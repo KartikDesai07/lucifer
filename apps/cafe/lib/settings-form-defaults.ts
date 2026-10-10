@@ -9,7 +9,7 @@ import {
   LOYALTY_REWARD_VALUE_DEFAULT,
 } from "@pos/shared/public-diner";
 import { TABLE_LONG_STAY_DEFAULT_MINUTES } from "@/lib/constants";
-import { payQrMinutesOf, payQrModeOf } from "@pos/shared/print-qr";
+import { payQrMinutesOf, payQrModeOf, upiRulesOf } from "@pos/shared/print-qr";
 import { tokenReadyClearMinutesOf } from "@pos/shared/slip-day";
 import type { Settings } from "@/types";
 
@@ -66,6 +66,8 @@ export function settingsFormDefaults(settings: Settings): SettingsInput {
     productLogo: settings.productLogo ?? "",
     fssai: settings.fssai ?? "",
     upiId: settings.upiId ?? "",
+    // Seeded through the lenient reader: a stored slab the strict gate would refuse is dropped, not re-sent.
+    upiRules: upiRulesOf(settings.upiRules),
     // Never `||`: a stored 0 (= No limit) must survive the seed.
     payQrMode: payQrModeOf(settings.payQrMode),
     payQrValidMinutes: payQrMinutesOf(settings.payQrValidMinutes),

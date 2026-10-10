@@ -171,10 +171,11 @@ export function resolvePromoDiscount(
   };
 }
 
-// CB-5D — one day, in milliseconds. Local to this module (utils.ts's own
-// ONE_DAY_MS is unexported and this file must not reach across for it) — a
-// named constant so the day math below is never a bare magic number.
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+// CB-5D — one day, in milliseconds. Exported (CB-7) so the reward-level
+// engine's deadlineFrom shares this one definition; utils.ts keeps its own
+// private copy for dayRange. A named constant so the day math below is never
+// a bare magic number.
+export const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 // CB-5D — the ONE place an assigned code's expiry timestamp is computed, so
 // no caller re-rolls this date math. `validDays` is whole days counted from

@@ -34,6 +34,7 @@ import { LOYALTY_RULES_SCHEMA_VERSION } from "@pos/shared/loyalty-rules";
 import { generateOrderId } from "@pos/shared/utils";
 import { runTokenLegs } from "./verify-slip-numbers-live-token";
 import { runTokenPrintLegs } from "./verify-slip-numbers-live-token-print";
+import { runInvoiceLegs } from "./verify-slip-numbers-live-invoice";
 
 const SCRATCH_PREFIX = "pos_scratch_";
 const DEFAULT_URI = `mongodb://127.0.0.1:27017/${SCRATCH_PREFIX}slip_numbers`;
@@ -222,7 +223,7 @@ async function leg7(): Promise<void> {
   console.log("L7 — follow-ups: a ledger throw still frees the table and grants the stamp");
   const cust = await Customer.create({ name: "Follow diner", mobile: "9876500002", stamps: 0 });
   await Table.create({ tableNo: "T-9", status: "Occupied", currentOrderId: "ORD-FOLLOW" });
-  const tab = { orderId: "ORD-FOLLOW", customerId: String(cust._id), payment: "Unpaid" as const, total: 500, paidAmount: 0, status: "Pending" as const, tableNo: "T-9" };
+  const tab = { orderId: "ORD-FOLLOW", customerId: String(cust._id), payment: "Unpaid" as const, total: 500, paidAmount: 0, status: "Pending" as const, tableNo: "T-9", createdAt: new Date() };
   const settings = await getSettings();
   const out = await runSettleFollowUps(tab, { ...tab, payment: "Cash", paidAmount: 500, status: "Completed" }, settings, {
     ...SETTLE_FOLLOW_UP_DEPS,
@@ -280,6 +281,8 @@ async function main(): Promise<void> {
     await runTokenLegs(check);
     console.log("P - the token slip through the real routes (print customization S7)");
     await runTokenPrintLegs(check);
+    console.log("I - the GST invoice serial through the real modules and routes (print customization S10)");
+    await runInvoiceLegs(check);
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();

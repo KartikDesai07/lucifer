@@ -23,6 +23,7 @@ import { SendDiscard } from "@/components/pos/SendDiscard";
 import type { WriteNotice } from "@/lib/pending-writes";
 import { POS_CART_CTA_CLASS, POS_CART_GST_BUTTON_CLASS, POS_CART_LIST_CLASS } from "@/lib/pos-layout";
 import { GST_DISCOUNT_LABEL } from "@/lib/constants";
+import { REWARD_BLOCKS_GST_DISCOUNT_MESSAGE } from "@/lib/receipt";
 import type { CartItem } from "@/hooks/use-cart";
 import type { RungOffer } from "@/lib/reward-rungs";
 
@@ -291,11 +292,19 @@ export function Cart({
           variant={gstActive ? "default" : "outline"}
           className={POS_CART_GST_BUTTON_CLASS}
           aria-pressed={gstActive}
-          disabled={items.length === 0}
+          disabled={items.length === 0 || (rewardLocked && !gstActive)}
           onClick={() => onDiscountUnitChange(gstActive ? "₹" : "GST")}
         >
           {GST_DISCOUNT_LABEL}
         </Button>
+      )}
+      {/* P4 (s87) — a resumed tab's reward is already spent and owns the
+          bill's one discount kind; the server 409s a GST preset on it, so
+          the button says no first and this line says why. A preset that is
+          ALREADY on (the reward reached the tab from another device) stays
+          tappable, but only to turn it off. */}
+      {canGstDiscount && rewardLocked && (
+        <p className="text-xs text-muted-foreground">{REWARD_BLOCKS_GST_DISCOUNT_MESSAGE}</p>
       )}
 
       {/* CB-CHG (plan §5C) — the staff-entered extra charges. A takeaway bill

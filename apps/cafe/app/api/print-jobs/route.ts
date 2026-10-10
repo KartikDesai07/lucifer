@@ -8,6 +8,7 @@ import { enqueuePrintJob, prunePrintJobsThrottled } from "@/lib/print-queue";
 import { enqueueDirectPrintJob, enqueueOwnPrintJob, printIntentOf } from "@/lib/print-order-jobs";
 import { enqueueRoutedPrintJob } from "@/lib/print-printer-jobs";
 import { billPayloadWithFirstPrint } from "@/lib/bill-first-print";
+import { billPayloadWithInvoice } from "@/lib/slip-numbers";
 import { PRINT_HOST_DEVICE_ID_MAX_CHARS } from "@/lib/print-host";
 import { success, failure, requireAuth, serverError, validateBody } from "@/lib/api-helpers";
 import { noStore } from "@/lib/order-request-tray";
@@ -80,8 +81,9 @@ export async function POST(req: Request) {
     await connectDB();
     // A bill's pay QR counts "Valid till" from its FIRST print: the server stamps that
     // moment once and every enqueue (reprints too, every lane below) stores it in the payload.
-    // Never throws, so it cannot fail the enqueue; any client-sent stamp is dropped inside.
-    const payload = await billPayloadWithFirstPrint(parsed.data.payload, nowMs);
+    // Never throws, so it cannot fail the enqueue; any client-sent stamp is dropped inside. A GST bill's
+    // invoice serial (S10) comes from the stored order the same way: never the client's, an old tab's bill gets it.
+    const payload = await billPayloadWithFirstPrint(parsed.data.payload, nowMs).then(billPayloadWithInvoice);
     const intent = printIntentOf(req);
     // Session 2C (spec §8): printers mode routes the slip to its printers, whoever asks. null: simple mode.
     const routed = await enqueueRoutedPrintJob({

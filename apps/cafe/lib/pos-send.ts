@@ -20,6 +20,7 @@
 
 import { kotRoundOfIdemKey } from "@pos/shared/order-idem";
 import { classifyFailure, NOTICE_TITLES, signedOut, tabLabel, type WriteNotice, type WriteNoticeAction } from "@/lib/pending-writes";
+import { roundSkipsKitchen } from "@/lib/kitchen-lines";
 import type { Order } from "@/types";
 
 /** Which surface a send belongs to: the cart (Send to Kitchen) or the payment popup (Pay Now). */
@@ -125,7 +126,13 @@ export function kotRoundOfSend(order: Order, isRound: boolean, idemKey: string |
 }
 
 /** The one success toast of a Send to Kitchen. `round` null = a new order. */
-export function kitchenSentMessage(order: Pick<Order, "tableNo" | "orderId">, round: number | null): string {
+export function kitchenSentMessage(order: Pick<Order, "tableNo" | "orderId" | "items">, round: number | null): string {
+  // Skip-KOT: a round of only no-kitchen lines made no ticket, so the toast must not claim one.
+  if (roundSkipsKitchen(order.items, round ?? FIRST_KOT_ROUND)) {
+    return round === null
+      ? `Order saved. ${tabLabel(order)} is in Open tabs. Nothing went to the kitchen.`
+      : `Round ${round} added. ${tabLabel(order)} is still open. Nothing went to the kitchen.`;
+  }
   return round === null
     ? `Sent to kitchen. ${tabLabel(order)} is in Open tabs.`
     : `Round ${round} sent. ${tabLabel(order)} is still open.`;

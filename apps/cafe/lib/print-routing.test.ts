@@ -20,7 +20,7 @@ import {
   type PrintHostRouting,
 } from "@/lib/print-routing";
 import { printJobKeyOf, printJobOrderIdOf } from "@/lib/print-queue";
-import { PRINT_JOB_LABEL_MAX_CHARS, type PrintHostState } from "@pos/shared/print-job";
+import { PRINT_JOB_LABEL_MAX_CHARS, printOrderSnapshot, type PrintHostState } from "@pos/shared/print-job";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
 import { printJobPayloadSchema, printOrderSnapshotSchema, type PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 import type { Order, OrderVoid, OrderItem } from "@/types";
@@ -464,6 +464,30 @@ test("voidPrintJob: reason/voidedBy/voidedAt come from the ENTRY, never the orde
 });
 
 // ── (h) snapshot completeness ────────────────────────────────────────────
+
+// ── Skip-KOT: a KOT / moved / cancel-notice snapshot lists kitchen lines only ─────────────────────────────
+
+const WATER: OrderItem = { ...SNAPSHOT_ITEM, productId: "p2", name: "Water Bottle", price: 2000, qty: 1, noKot: true };
+const MIXED = (): Order => orderFixture({ items: [SNAPSHOT_ITEM, WATER] });
+const namesOf = (payload: PrintJobPayload): string[] =>
+  payload.kind === "kot" || payload.kind === "moved" || payload.kind === "cancel-notice" ? payload.snapshot.items.map((i) => i.name) : [];
+
+test("skip-KOT: the KOT, moved and cancel-notice snapshots drop a no-kitchen line; the bill and the token keep the whole order", () => {
+  const order = MIXED();
+  assert.deepEqual(namesOf(kotPrintJob(order, 1).payload), ["Filter Coffee"]);
+  assert.deepEqual(namesOf(movedPrintJob(order, { movedBy: "Asha", movedAt: "2026-10-07T10:00:00.000Z" }, { reprint: false }).payload), ["Filter Coffee"]);
+  assert.deepEqual(namesOf(cancelNoticePrintJob(order, "Guest left").payload), ["Filter Coffee"]);
+  const bill = billPrintJob(order, { reprint: false }).payload;
+  const token = tokenPrintJob(order, { reprint: false }).payload;
+  assert.deepEqual(bill.kind === "bill" ? bill.snapshot.items.map((i) => i.name) : [], ["Filter Coffee", "Water Bottle"]);
+  assert.deepEqual(token.kind === "token" ? token.snapshot.items.map((i) => i.name) : [], ["Filter Coffee", "Water Bottle"]);
+});
+
+test("skip-KOT: an order with no skip line builds the very same KOT payload as before (vision guard)", () => {
+  const order = orderFixture();
+  assert.deepEqual(namesOf(kotPrintJob(order, 1).payload), ["Filter Coffee"]);
+  assert.deepEqual(kotPrintJob(order, 1).payload, { kind: "kot", snapshot: printOrderSnapshot(order), round: 1 });
+});
 
 test("kotPrintJob: payload.snapshot parses printOrderSnapshotSchema, and items[0] carries modifiers, instructions, variation, name", () => {
   const job = kotPrintJob(orderFixture(), 1);
@@ -912,7 +936,7 @@ test("PIN: OrderDetailSheet's printKitchenSlip never calls printKot() bare — t
   // positive landmark: the !order branch must toast instead of printing.
   assert.match(
     src,
-    /if \(!order\) \{\s*toast\.error\(PRINT_ORDER_CHANGED_MESSAGE\);\s*return;\s*\}\s*routePrint\(\s*\(\) =>\s*isCancelled\s*\?\s*cancelNoticePrintJob\(order, order\.cancelReason \?\? ""\)\s*:\s*kotPrintJob\(order, null\),\s*localPrintOf\(order, printKot\),\s*\);/,
+    /if \(!order\) \{\s*toast\.error\(PRINT_ORDER_CHANGED_MESSAGE\);\s*return;\s*\}\s*(?:\/\/[^\n]*\n\s*)?if \(orderSkipsKitchen\(order\)\) \{\s*toast\.info\(KITCHEN_NOTHING_TO_SEND_MESSAGE\);\s*return;\s*\}\s*routePrint\(\s*\(\) =>\s*isCancelled\s*\?\s*cancelNoticePrintJob\(order, order\.cancelReason \?\? ""\)\s*:\s*kotPrintJob\(order, null\),\s*localPrintOf\(order, printKot\),\s*\);/,
     "printKitchenSlip's `if (!order)` branch must toast PRINT_ORDER_CHANGED_MESSAGE and return, and its routed call must still hand routePrint the GUARDED localPrintOf(order, printKot)",
   );
   // negative: the bare-reference shape this replaces (the confirmed defect)

@@ -9,7 +9,7 @@ import type { GstOrderView } from "@/lib/reports/gst-fold";
 import type { DashboardRange } from "@/types/dashboard";
 import type { GstReport } from "@/types/reports-b2";
 
-const GST_ORDER_SELECT = "createdAt status total gstAmount gstRate gstMode chargeAmount billNumber orderId payment";
+const GST_ORDER_SELECT = "createdAt status total gstAmount gstRate gstMode chargeAmount billNumber invoiceNumber invoiceFy orderId payment";
 
 export async function buildGstReport(
   range: DashboardRange,
@@ -21,7 +21,12 @@ export async function buildGstReport(
   const [orders, settings] = await Promise.all([
     Order.find({
       ...inWindow(current),
-      $or: [{ status: "Completed" }, { status: "Cancelled", billNumber: { $exists: true } }],
+      // A bill cancelled after payment keeps its bill / invoice number and still counts as "cancelled".
+      $or: [
+        { status: "Completed" },
+        { status: "Cancelled", billNumber: { $exists: true } },
+        { status: "Cancelled", invoiceNumber: { $exists: true } },
+      ],
     })
       .select(GST_ORDER_SELECT)
       .lean<GstOrderView[]>(),

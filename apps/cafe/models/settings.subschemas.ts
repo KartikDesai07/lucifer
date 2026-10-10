@@ -1,6 +1,7 @@
 import { Schema } from "mongoose";
 import { PROMO_KINDS, type PromoCodeConfig } from "@pos/shared/public";
 import { LOYALTY_REWARD_KINDS } from "@pos/shared/public-diner";
+import type { UpiRule } from "@pos/shared/print-qr";
 import {
   PRESET_IDS,
   FONT_PAIR_KEYS,
@@ -152,6 +153,17 @@ export const loyaltyRulesMongooseSchema = new Schema<LoyaltyRulesInput>(
     // field existed must stay ABSENT, and ladderOf() then falls back to the
     // last reward's `at`, exactly as it does today.
     cardSize: { type: Number },
+  },
+  { _id: false },
+);
+
+// One UPI amount slab (print-qr.ts UpiRule): "bills up to `upTo` rupees pay to `upiId`". `_id:false` (promoCodeSchema
+// precedent). Both fields are declared so strict:true cannot drop them; neither is `required` (Mongoose's String
+// `required` rejects "" and the Zod gate already demands a valid ID and a whole-rupee limit).
+export const upiRuleMongooseSchema = new Schema<UpiRule>(
+  {
+    upTo: { type: Number },
+    upiId: { type: String, trim: true },
   },
   { _id: false },
 );

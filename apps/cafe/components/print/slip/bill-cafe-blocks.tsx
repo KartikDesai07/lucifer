@@ -4,6 +4,7 @@ import { billThemedBlocks, type BillTheme } from "./bill-themed-blocks";
 import type { SlipDesign, BillRenderers } from "./slip-designs";
 import { CLASSIC_BILL_GROUP } from "./slip-groups";
 import { THEMED_REGULAR_CLASS } from "./slip-style";
+import { formatHalfGst } from "@/lib/gst-half";
 import { inr } from "@/lib/utils";
 
 // Bill design "Cafe" (previews/designs.mjs cafe): everything centred, slab headings (name, tagline as "~ tagline ~",
@@ -38,6 +39,7 @@ const CAFE_THEME: BillTheme = {
   itemClass: "font-bold",
   leaders: true,
   amount: inr,
+  halfAmount: formatHalfGst,
   totalKind: "box",
   totalLabel: "Total",
   footerClass: "text-[1.15em] font-bold",

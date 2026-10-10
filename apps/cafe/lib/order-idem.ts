@@ -9,7 +9,8 @@
 import type { IndexDefinition, IndexOptions, Types, mongo } from "mongoose";
 import { Order } from "@/models/Order";
 import { success, failure, serverError } from "@pos/shared/api";
-import { issueBillNumber, BILL_NUMBER_UNCONFIRMED, type SeriesNumbering } from "@/lib/slip-numbers";
+import { issueBillNumbers, BILL_NUMBER_UNCONFIRMED } from "@/lib/slip-numbers";
+import { billNumberingPlan, planHasWork, type BillNumberingPlan, type NumberableOrder } from "@/lib/gst-invoice";
 import type { PrintConfig } from "@/lib/print";
 import { idemReplayVerdict, kotRoundOfIdemKey, type IdemLine, type IdemStoredLine } from "@pos/shared/order-idem";
 
@@ -18,7 +19,6 @@ const OPENING_ROUND = 1;
 const REPLAY_REFUSED_STATUS = 409;
 /** Retryable: the client treats a 5xx as uncertain and its next Send asks again. */
 const REPLAY_PENDING_STATUS = 503;
-const ORDER_STATUS_COMPLETED = "Completed";
 const IDEM_KEY_FIELD = "idemKey";
 
 /**
@@ -129,9 +129,9 @@ export async function findCreateReplay(
 }
 
 /** The slice of a create replay the numbering rule reads (a lean Order satisfies it). */
-interface CreateReplayableOrder extends ReplayableOrder {
+interface CreateReplayableOrder extends ReplayableOrder, NumberableOrder {
   _id: Types.ObjectId | string;
-  createdAt?: Date | string;
+  updatedAt?: Date | string;
 }
 
 /** The two bill settings the rule reads — `printConfigOf(settings).bill`, as the insert winner reads them. */
@@ -139,14 +139,19 @@ type BillNumbering = Pick<PrintConfig["bill"], "showNumber" | "numberStart" | "r
 
 export interface ReplayNumberingDeps {
   now(): number;
-  issueBillNumber(id: Types.ObjectId | string, bill: SeriesNumbering): Promise<unknown>;
+  issueBillNumbers(id: Types.ObjectId | string, plan: BillNumberingPlan): Promise<unknown>;
 }
 
-const REPLAY_NUMBERING_DEPS: ReplayNumberingDeps = { now: () => Date.now(), issueBillNumber };
+const REPLAY_NUMBERING_DEPS: ReplayNumberingDeps = { now: () => Date.now(), issueBillNumbers };
 
-/** Past the settle window by the SERVER clock? An unknown age counts as young (never numbered). */
-function settled(createdAt: Date | string | undefined, now: number): boolean {
-  const age = createdAt === undefined ? Number.NaN : now - new Date(createdAt).getTime();
+/**
+ * Past the settle window by the SERVER clock, counted from the order's LAST write (the later of createdAt and
+ * updatedAt): a tab opened long ago that a settle just landed on is still being numbered by that settle (S10 review
+ * M1). An unknown or unreadable time counts as young (never numbered).
+ */
+function settled(order: { createdAt?: Date | string; updatedAt?: Date | string }, now: number): boolean {
+  const writes = [order.createdAt, order.updatedAt].filter((at) => at !== undefined).map((at) => new Date(at).getTime());
+  const age = writes.length === 0 ? Number.NaN : now - Math.max(...writes);
   return age >= BILL_NUMBER_SETTLE_MS;
 }
 
@@ -159,7 +164,7 @@ function settled(createdAt: Date | string | undefined, now: number): boolean {
  *    and a second draw here would skip a number — answer the retryable 503.
  *  - OLDER: the winner's route is long over and its numbering failed (or the
  *    sale predates numbering being switched on), so the replay finishes it with
- *    the guarded issueBillNumber, whose $exists:false set cannot double-number.
+ *    the guarded issueBillNumbers, whose $exists:false sets cannot double-number.
  * Never a 200 that would print an unnumbered bill.
  */
 export async function createReplayVerdict(
@@ -168,15 +173,15 @@ export async function createReplayVerdict(
   bill: BillNumbering,
   deps: ReplayNumberingDeps = REPLAY_NUMBERING_DEPS,
 ) {
-  const awaitsNumber =
-    bill.showNumber && order.status === ORDER_STATUS_COMPLETED && order.billNumber === undefined;
-  if (!awaitsNumber || idemReplayVerdict(order, sent, OPENING_ROUND).kind !== "replay") {
+  // The insert winner's own rule (lib/gst-invoice): the daily bill number and a GST bill's invoice serial.
+  const plan = billNumberingPlan(order, bill);
+  if (!planHasWork(plan) || idemReplayVerdict(order, sent, OPENING_ROUND).kind !== "replay") {
     return verdictResponse(order, sent, OPENING_ROUND);
   }
-  if (!settled(order.createdAt, deps.now())) return failure(BILL_NUMBER_PENDING_ERROR, REPLAY_PENDING_STATUS);
+  if (!settled(order, deps.now())) return failure(BILL_NUMBER_PENDING_ERROR, REPLAY_PENDING_STATUS);
   let numbered: unknown;
   try {
-    numbered = await deps.issueBillNumber(order._id, bill);
+    numbered = await deps.issueBillNumbers(order._id, plan);
   } catch (error) {
     return serverError(BILL_NUMBER_UNCONFIRMED, error);
   }

@@ -98,6 +98,7 @@ test("landmark: reportSectionPath builds the same paths the sidebar and the page
   assert.equal(reportSectionPath("cancels"), "/reports/cancels");
   assert.equal(reportSectionPath("gst"), "/reports/gst");
   assert.equal(reportSectionPath("dues"), "/reports/dues");
+  assert.equal(reportSectionPath("expenses"), "/reports/expenses");
 });
 
 test("PIN: /reports opens the first report through a next.config redirect (no index page to stream a blank 200)", () => {

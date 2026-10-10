@@ -50,7 +50,7 @@ import type { PromoCodeConfig, SelfOrderMode } from "./public";
 import type { LoyaltyRewardKind } from "./public-diner";
 import type { DinerBannerInput } from "./schemas/settings-diner.schema";
 import type { OrderCharge } from "./order-charges";
-import type { PayQrMode } from "./print-qr";
+import type { PayQrMode, UpiRule } from "./print-qr";
 
 import type {
   PaymentMode,
@@ -108,6 +108,8 @@ export interface Product {
   icon?: string;
   // Printing Phase 2: this item's own kitchen station; ABSENT = its category's.
   stationId?: string;
+  // Skip-KOT: true = never on a kitchen ticket, false = always, ABSENT = its category's choice.
+  noKot?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -128,6 +130,8 @@ export interface Category {
   order: number;
   // Printing Phase 2: the kitchen station; ABSENT = the default station.
   stationId?: string;
+  // Skip-KOT: true = this category's items never go on a kitchen ticket; ABSENT = they do.
+  noKot?: true;
   createdAt: string;
   updatedAt: string;
 }
@@ -218,6 +222,9 @@ export interface OrderItem {
   // field since S12; it was missing HERE, which is why nothing client-side
   // could render or forward it.
   note?: string;
+  // Skip-KOT: stamped by the SERVER at write time (never client-declared, see orderItemSchema) on a
+  // line that never goes to the kitchen. Omit-empty: a kitchen line carries no key.
+  noKot?: true;
 }
 
 // One append-only entry in an order's void trail (CR1.3): a snapshot of what was
@@ -252,6 +259,8 @@ export interface OrderVoid {
   // trail records that the stopped dish was given as a loyalty reward, not
   // sold at its listed price.
   reward?: true;
+  // Snapshotted from the voided line (see OrderItem.noKot): voiding it needs no void slip.
+  noKot?: true;
 }
 
 export interface Order {
@@ -317,6 +326,10 @@ export interface Order {
   // Print customization S6: the order's token number, drawn once at create when tokens are on (Pay Now, a held tab,
   // an accepted QR order). Never set on an add-round, never re-drawn on a retry. Absent = no token.
   tokenNumber?: number;
+  // Print customization S10: a GST bill's invoice serial (invoice-number.ts) — the running number and the financial
+  // year it belongs to (its start year). Set together, once, after the bill is paid; absent on every non-GST bill.
+  invoiceNumber?: number;
+  invoiceFy?: number;
   // Print customization S3b: when this bill was FIRST printed (ISO). Set once by the server (lib/bill-first-print.ts,
   // a first-write CAS), never by a client; a bill's pay QR counts its "Valid till" from it. Absent = never printed
   // through the server.
@@ -416,6 +429,9 @@ export interface Settings {
   // Print customization S3: the cafe's UPI ID ("yourshop@okaxis"), encoded by a bill's "Scan to pay" QR line.
   // Optional for the same lean-read reason as productLogo: older documents have none. "" = not set.
   upiId?: string;
+  // Amount slabs (up to UPI_RULES_MAX): a pay QR asking for `upTo` rupees or less pays to that slab's UPI ID; above
+  // the highest, `upiId`. Optional (older documents have none); read through upiRulesOf, never raw.
+  upiRules?: UpiRule[];
   // S3b: when a bill prints the pay QR (PAY_QR_MODES) and for how many minutes after its first print; 0 = No limit.
   // Optional for the same lean-read reason: read through payQrModeOf / payQrMinutesOf, never raw.
   payQrMode?: PayQrMode;

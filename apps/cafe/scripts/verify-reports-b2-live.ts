@@ -41,6 +41,7 @@ import { buildDashboard } from "@/lib/dashboard/build";
 import { buildSalesReport } from "@/lib/reports/sales-build";
 import { UNCATEGORISED_LABEL, REMOVED_ITEMS_LABEL, CATEGORY_LIMIT } from "@/lib/dashboard/fold";
 import type { ItemsReport, CancelsReport, GstReport } from "@/types/reports-b2";
+import { assertGstInvoices, assertCancelledInvoiceOnly } from "./verify-reports-b2-invoices";
 
 const SCRATCH_PREFIX = "pos_scratch_";
 const DEFAULT_URI = `mongodb://127.0.0.1:27017/${SCRATCH_PREFIX}reportsb2_${randomUUID().slice(0, 8)}`;
@@ -166,6 +167,9 @@ async function main(): Promise<void> {
       const sorted = [...ats].sort();
       check("GST: billRows oldest first", JSON.stringify(ats) === JSON.stringify(sorted));
     }
+    // S10-D: GST invoice serials (the seed numbers 11 bills of FY 2026-27; runs LAST — it adds one more order).
+    assertGstInvoices(check, gstReport, gstReportWithBills);
+    await assertCancelledInvoiceOnly(check, RANGE, NOW);
   } finally {
     const finalDbName = mongoose.connection.db?.databaseName ?? "";
     if (finalDbName.startsWith(SCRATCH_PREFIX)) {

@@ -9,7 +9,10 @@ import { Types } from "mongoose";
 import { mintPublicCode } from "@/lib/public-token";
 import { computeOrderTotals, type GstConfig, type OrderTotals } from "@/lib/receipt";
 import type { DiscountKind } from "@/lib/constants";
-import type { PlanContext, PlannedOrderRequest, PlannedCounters, OrdersPlan } from "./types";
+import { isTaxInvoice } from "@/lib/gst-invoice";
+import { invoiceCounterKey } from "@/models/Counter";
+import { invoiceFyOf } from "@pos/shared/invoice-number";
+import type { PlanContext, PlannedOrder, PlannedOrderRequest, PlannedCounters, OrdersPlan } from "./types";
 import { addMinutes, dayKeyToCompact } from "./rng";
 import { composeLines, pickLineCount } from "./orders-plan-lines";
 import { planDay, pickReceiver, SELF_ORDER_COUNT, SELF_ORDER_DAY_START, SELF_ORDER_DAY_END } from "./orders-plan-day";
@@ -107,6 +110,23 @@ function planTodayStandaloneRequests(
   return requests;
 }
 
+// Print customization S10: the live settle numbers every paid GST bill from ONE running series per financial year
+// (invoiceCounterKey), never restarting with the daily bill number. Mirror it so the demo is demonstrable: Completed
+// orders that are GST tax invoices (their own snapshot, like the live rule) get 1, 2, 3... per FY in creation order,
+// and each FY's counter holds the last serial, so the first live GST sale after seeding continues the series.
+function numberGstInvoices(orders: PlannedOrder[], counters: PlannedCounters): void {
+  const lastByFy = new Map<number, number>();
+  for (const order of orders) {
+    if (order.status !== "Completed" || !isTaxInvoice(order)) continue;
+    const fy = invoiceFyOf(order.createdAt);
+    const serial = (lastByFy.get(fy) ?? 0) + 1;
+    lastByFy.set(fy, serial);
+    order.invoiceNumber = serial;
+    order.invoiceFy = fy;
+    counters[invoiceCounterKey(fy)] = serial;
+  }
+}
+
 export function planOrders(ctx: PlanContext): OrdersPlan {
   const orders: OrdersPlan["orders"] = [];
   const requests: PlannedOrderRequest[] = [];
@@ -142,6 +162,7 @@ export function planOrders(ctx: PlanContext): OrdersPlan {
   requests.push(...planTodayStandaloneRequests(ctx, occupiedTableNos));
 
   orders.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  numberGstInvoices(orders, counters);
 
   return { orders, requests, counters, tableStates };
 }

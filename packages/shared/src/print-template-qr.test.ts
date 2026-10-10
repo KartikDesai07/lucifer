@@ -1,7 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PRINT_QR_CAPTION_MAX, PRINT_QR_URL_MAX } from "./print-template";
-import { billTemplateSchema, kotTemplateSchema, tokenTemplateSchema } from "./schemas/print-template.schema";
+import { PRINT_QR_CAPTION_MAX, PRINT_QR_SIZES, PRINT_QR_URL_MAX } from "./print-template";
+import {
+  billTemplateReadSchema,
+  billTemplateSchema,
+  kotTemplateReadSchema,
+  kotTemplateSchema,
+  tokenTemplateReadSchema,
+  tokenTemplateSchema,
+} from "./schemas/print-template.schema";
 import {
   accepts,
   billFixture,
@@ -82,4 +89,36 @@ test("QR caption: trimmed, 1..60", () => {
   rejects(tokenTemplateSchema, onToken({ ...link, caption: "c".repeat(PRINT_QR_CAPTION_MAX + 1) }), "blocks.1.options.caption");
   rejects(tokenTemplateSchema, onToken({ ...link, caption: "  " }), "blocks.1.options.caption");
   rejects(billTemplateSchema, onBill({ content: "upi", caption: "" }), `${billQr}.options.caption`);
+});
+
+// QR size: Normal / Large / Extra large. Absent = normal; accepted by the write gate AND the read schema, on every kind.
+test("QR size: the three sizes are accepted on every kind (write and read), absent is fine", () => {
+  assert.deepEqual([...PRINT_QR_SIZES], ["normal", "large", "xlarge"]);
+  const link = { content: "link", url: "https://example.com" };
+  for (const size of PRINT_QR_SIZES) {
+    accepts(billTemplateSchema, onBill({ content: "upi", size }), size);
+    accepts(billTemplateSchema, onBill({ ...link, size, caption: "Menu" }), size);
+    accepts(kotTemplateSchema, onKot({ ...link, size }), size);
+    accepts(tokenTemplateSchema, onToken({ ...link, size }), size);
+    accepts(billTemplateReadSchema, onBill({ content: "upi", size }), size);
+    accepts(billTemplateReadSchema, onBill({ ...link, size }), size);
+    accepts(kotTemplateReadSchema, onKot({ ...link, size }), size);
+    accepts(tokenTemplateReadSchema, onToken({ ...link, size }), size);
+  }
+  accepts(billTemplateSchema, onBill({ content: "upi" }));
+  accepts(billTemplateReadSchema, onBill({ content: "upi" }));
+  const parsed = billTemplateSchema.parse(onBill({ content: "upi", size: "xlarge" }));
+  assert.equal((parsed.blocks[billFixture().blocks.length] as unknown as { options: { size?: string } }).options.size, "xlarge");
+});
+
+test("QR size: a value outside the three is rejected by write and read, on every kind", () => {
+  const link = { content: "link", url: "https://example.com" };
+  for (const size of ["huge", "Large", "", 3, null]) {
+    rejects(billTemplateSchema, onBill({ content: "upi", size }), `${billQr}.options.size`);
+    rejects(billTemplateSchema, onBill({ ...link, size }), `${billQr}.options.size`);
+    rejects(kotTemplateSchema, onKot({ ...link, size }), `${kotQr}.options.size`);
+    rejects(tokenTemplateSchema, onToken({ ...link, size }), "blocks.1.options.size");
+    rejects(billTemplateReadSchema, onBill({ content: "upi", size }), `${billQr}.options.size`);
+    rejects(tokenTemplateReadSchema, onToken({ ...link, size }), "blocks.1.options.size");
+  }
 });

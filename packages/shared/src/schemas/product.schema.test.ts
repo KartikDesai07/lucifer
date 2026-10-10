@@ -266,3 +266,32 @@ test("the CSV import never sets a station: coerceProductRow has no station colum
   const parsed = importProductRowSchema.safeParse({ name: "Tea", category: "Drinks", price: "20", stationId: STATION });
   assert.ok(parsed.success && !("stationId" in parsed.data), "the import row schema never carries one");
 });
+
+// ── Skip-KOT: the item's own kitchen-ticket choice ──────────────────────────
+
+test("createProductSchema: noKot is an optional boolean with no default (absent = follow the category)", () => {
+  const r = createProductSchema.safeParse(BASE);
+  assert.ok(r.success && !("noKot" in r.data), "an item made without a choice has no noKot key");
+  const skip = createProductSchema.safeParse({ ...BASE, noKot: true });
+  assert.ok(skip.success && skip.data.noKot === true);
+  const always = createProductSchema.safeParse({ ...BASE, noKot: false });
+  assert.ok(always.success && always.data.noKot === false, "false = always on the KOT, kept");
+  assert.equal(createProductSchema.safeParse({ ...BASE, noKot: null }).success, false, "null is an update sentinel only");
+  assert.equal(createProductSchema.safeParse({ ...BASE, noKot: "yes" }).success, false);
+});
+
+test("updateProductSchema: noKot:null restores 'same as its category'; absent leaves it alone", () => {
+  const cleared = updateProductSchema.safeParse({ noKot: null });
+  assert.ok(cleared.success && cleared.data.noKot === null);
+  assert.equal(updateProductSchema.safeParse({ noKot: true }).success, true);
+  assert.equal(updateProductSchema.safeParse({ noKot: false }).success, true);
+  const untouched = updateProductSchema.safeParse({ price: 130 });
+  assert.ok(untouched.success && !("noKot" in untouched.data));
+});
+
+test("the CSV import never sets noKot: coerceProductRow has no such column", () => {
+  const row = coerceProductRow({ name: "Water", category: "Drinks", price: "20", noKot: "true" });
+  assert.ok(!("noKot" in row), "an extra CSV column never reaches the product");
+  const parsed = importProductRowSchema.safeParse({ name: "Water", category: "Drinks", price: "20", noKot: true });
+  assert.ok(parsed.success && !("noKot" in parsed.data), "the import row schema never carries one");
+});

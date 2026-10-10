@@ -448,3 +448,77 @@ test("K1 wait: a read that finds the tab gone forgets the first sight too", asyn
   assert.equal(h.flow.noticeFor(TAB_ID)?.message, SETTLE_BILL_SAVING);
   assert.equal(h.log.settled.length, 0);
 });
+
+// ── S10: a paid GST bill is also still being numbered until it holds its invoice serial ──
+
+const GST_SNAPSHOT = { gstMode: "exclusive", gstRate: 5, gstAmount: 5, total: TOTAL } as const;
+const OURS_GST = order({ status: "Completed", payment: "Cash", paidAmount: TOTAL, ...GST_SNAPSHOT });
+const OURS_GST_INVOICED = order({ status: "Completed", payment: "Cash", paidAmount: TOTAL, ...GST_SNAPSHOT, invoiceNumber: 12, invoiceFy: 2026 });
+
+test("S10 K1: a GST bill that reads back without its invoice waits even when the cafe prints NO bill numbers (billNumbered false)", async () => {
+  const h = harness([TIMEOUT], [OURS_GST, OURS_GST_INVOICED], false);
+  await h.tap(); // timeout
+  await h.tap(); // Check: ours, GST, no invoice serial yet
+  const n = h.flow.noticeFor(TAB_ID);
+  assert.equal(n?.kind, "uncertain");
+  assert.equal(n?.message, SETTLE_BILL_SAVING, "the same 'still saving' notice the bill number gives");
+  assert.equal(n?.action, "check");
+  assert.equal(h.log.settled.length, 0, "no onSettled, so no bill prints without its serial");
+  assert.equal(h.log.toastSettled.length, 0);
+  await h.tap(); // Check again: now invoiced
+  assert.equal(h.log.posts, 1, "never a second POST");
+  assert.deepEqual(h.log.settled, [OURS_GST_INVOICED]);
+  assert.equal(h.flow.noticeFor(TAB_ID), null);
+});
+
+test("S10 K1: the GST wait ends at BILL_NUMBER_WAIT_MS from the FIRST sight, then the bill is adopted as stored (one onSettled)", async () => {
+  const h = harness([TIMEOUT], [OURS_GST, OURS_GST, OURS_GST], false);
+  await h.tap(); // timeout
+  await h.tap(); // first sight at t=0
+  h.clock.t = BILL_NUMBER_WAIT_MS - 1;
+  await h.tap();
+  assert.equal(h.flow.noticeFor(TAB_ID)?.message, SETTLE_BILL_SAVING, "one millisecond short: still waiting");
+  assert.equal(h.log.settled.length, 0);
+  h.clock.t = BILL_NUMBER_WAIT_MS;
+  await h.tap();
+  assert.deepEqual(h.log.settled, [OURS_GST], "adopted as stored (numbering failed for good)");
+  assert.equal(h.flow.noticeFor(TAB_ID), null);
+});
+
+test("S10 K1: a non-GST bill with billNumbered false never waits, in the same harness that makes a GST bill wait", async () => {
+  const plainBill = harness([TIMEOUT], [OURS], false);
+  await plainBill.tap();
+  await plainBill.tap();
+  assert.deepEqual(plainBill.log.settled, [OURS], "adopted on the first Check");
+  assert.equal(plainBill.flow.noticeFor(TAB_ID), null);
+  // Landmark: the GST twin of the very same order DOES wait, so the adoption above is the GST rule and not a dead wait.
+  const gstBill = harness([TIMEOUT], [OURS_GST], false);
+  await gstBill.tap();
+  await gstBill.tap();
+  assert.equal(gstBill.log.settled.length, 0);
+});
+
+test("S10 K1: a GST bill that already holds its invoice is adopted at once when bill numbers are off", async () => {
+  const h = harness([TIMEOUT], [OURS_GST_INVOICED], false);
+  await h.tap();
+  await h.tap();
+  assert.deepEqual(h.log.settled, [OURS_GST_INVOICED]);
+  assert.equal(h.flow.noticeFor(TAB_ID), null);
+  assert.equal(h.log.gets, 1);
+});
+
+test("S10 K1: in a numbering cafe a GST bill waits for BOTH — the invoice alone is not enough, nor the bill number alone", async () => {
+  const invoiceOnly = harness([TIMEOUT], [OURS_GST_INVOICED, { ...OURS_GST_INVOICED, billNumber: BILL_NO } as Order], true);
+  await invoiceOnly.tap();
+  await invoiceOnly.tap();
+  assert.equal(invoiceOnly.flow.noticeFor(TAB_ID)?.message, SETTLE_BILL_SAVING, "invoice held, daily number missing");
+  assert.equal(invoiceOnly.log.settled.length, 0);
+  await invoiceOnly.tap();
+  assert.equal(invoiceOnly.log.settled.length, 1, "landmark: it is adopted once both are held");
+
+  const billOnly = harness([TIMEOUT], [{ ...OURS_GST, billNumber: BILL_NO } as Order], true);
+  await billOnly.tap();
+  await billOnly.tap();
+  assert.equal(billOnly.flow.noticeFor(TAB_ID)?.message, SETTLE_BILL_SAVING, "daily number held, invoice missing");
+  assert.equal(billOnly.log.settled.length, 0);
+});

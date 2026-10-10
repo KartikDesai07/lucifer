@@ -20,6 +20,8 @@ const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel),
 
 const TABLES_ROUTE = "apps/cafe/app/api/tables/route.ts";
 const ORDERS_ROUTE = "apps/cafe/app/api/orders/route.ts";
+// The create route's table claim lives in its follow-ups lib (CB-7 S2 Slice A split).
+const CREATE_FOLLOWUPS = "apps/cafe/lib/order-create-followups.ts";
 const FLOOR_LEG = "apps/cafe/scripts/verify-tables-floor-live.ts";
 
 const AUTH_CALL = "requireAuth" + "(";
@@ -55,13 +57,13 @@ function routeBodies(): { get: string; patch: string } {
   return { get: src.slice(getStart, postStart), patch: src.slice(patchStart) };
 }
 
-// The status literal the order-claim filter demands, read out of the source.
-function claimStatusOfRoute(ordersSrc: string): string | null {
-  const start = ordersSrc.indexOf("const occupyTable");
+// The status literal the order-claim filter demands, read out of the follow-ups
+// source (the dep's body runs to the end of the deps object literal).
+function claimStatusOfRoute(followUpsSrc: string): string | null {
+  const start = followUpsSrc.indexOf("occupyTable: (tableNo, orderId) =>");
   if (start < 0) return null;
-  const open = ordersSrc.indexOf("=> {", start) + 3;
-  const body = ordersSrc.slice(open, matchingBraceEnd(ordersSrc, open) + 1);
-  const m = body.match(/Table\.findOneAndUpdate\(\s*\{ tableNo: data\.tableNo, status: "(\w+)" \}/);
+  const body = followUpsSrc.slice(start, followUpsSrc.indexOf("};", start));
+  const m = body.match(/Table\.findOneAndUpdate\(\s*\{ tableNo, status: "(\w+)" \}/);
   return m ? m[1] : null;
 }
 function claimStatusOfLeg(legSrc: string): { shape: string | null; keyedByTableNo: boolean } {
@@ -112,7 +114,11 @@ test("PIN: PATCH /api/tables refuses a list that is not the current set (409, TA
 });
 
 test("PIN (R6): the live leg's order-claim filter is the same shape as the real occupyTable claim - status Available, keyed by tableNo", () => {
-  const ordersSrc = stripComments(readSrc(ORDERS_ROUTE));
+  const ordersSrc = stripComments(readSrc(CREATE_FOLLOWUPS));
+  // The create route still hands the table to that claim: one runner call, carrying data.tableNo.
+  const routeSrc = stripComments(readSrc(ORDERS_ROUTE));
+  assert.equal(count(routeSrc, "runCreateFollowUps("), 1, "the create route calls the follow-ups runner once");
+  assert.ok(routeSrc.includes("tableNo: data.tableNo,"), "the create route passes the order's table to the runner");
   const legSrc = stripComments(readSrc(FLOOR_LEG));
 
   // Vision guard: the extractor really finds the route's literal, and it

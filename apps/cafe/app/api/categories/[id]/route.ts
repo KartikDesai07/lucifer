@@ -39,10 +39,13 @@ export async function PUT(req: Request, { params }: Params) {
 
     // Printing Phase 2 (spec §6.2): stationId null sends the category back to the default station by
     // removing the field (omit-empty); a plain set would STORE null.
-    const { stationId, ...rest } = parsed.data;
+    // Skip-KOT: noKot null (the switch back ON) is removed the same way; true is stored (omit-empty: never false).
+    const { stationId, noKot, ...rest } = parsed.data;
     existing.set(rest);
     if (stationId === null) existing.set("stationId", undefined);
     else if (stationId !== undefined) existing.set("stationId", stationId);
+    if (noKot === null) existing.set("noKot", undefined);
+    else if (noKot !== undefined) existing.set("noKot", noKot);
     await existing.save();
 
     cache.del("categories");

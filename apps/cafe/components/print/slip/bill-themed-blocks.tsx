@@ -3,6 +3,7 @@ import Image from "next/image";
 
 import { orderItemLabel, orderItemModifierLines, discountLineLabel } from "@pos/shared/utils";
 import { chargesFromOrder } from "@pos/shared/order-charges";
+import { halfGst } from "@/lib/gst-half";
 import { printFontStack, type PrintFontFace } from "@pos/shared/print-fonts";
 import { inr } from "@/lib/utils";
 import { PRINT_LOGO_CLASS } from "@/lib/print";
@@ -55,12 +56,17 @@ export interface BillTheme {
   /** Subtotal / charges / payment rows with a dotted leader instead of a gap. */
   leaders: boolean;
   amount: (n: number) => string;
+  /** A CGST / SGST half of a bill's GST, in this theme's money style (symbol or none; an odd half to the paisa). */
+  halfAmount: (gst: number) => string;
   totalKind: TotalKind;
   totalLabel: string;
   footerClass: string;
 }
 
 const SUB_LINE_CLASS = "pl-4 text-left text-[0.85em]";
+const SPLIT_LINE_CLASS = "text-[0.85em]";
+// The invoice number is a legal identifier, not a number read back at the counter: bold, but never size-bumped.
+const INVOICE_NO_CLASS = "font-bold";
 // Whole literal classes (Tailwind scans source text). Each total row may wrap: on 58 mm a big amount in a big face
 // (Express's ₹1,00,000) does not fit beside its label, so it moves to its own line, flush right, never split.
 const TOTAL_CLASS: Record<TotalKind, string> = {
@@ -158,12 +164,21 @@ export function billThemedBlocks(theme: BillTheme): BillRenderers {
           {rule()}
         </>
       ),
-    billNo: (_block, { order }) => {
-      if (order.billNumber === undefined) return null;
-      if (theme.metaStyle === "inline") {
-        return <div className={`${theme.metaClass} ${theme.billNoClass}`}>Bill #{order.billNumber}</div>;
-      }
-      return meta("Bill No", String(order.billNumber), theme.billNoClass);
+    // S10: the Bill No. row follows "Show bill number"; the GST invoice number prints whenever the order holds one.
+    billNo: (_block, { order, showBillNumber, invoiceNo }) => {
+      const showBill = showBillNumber && order.billNumber !== undefined;
+      if (!showBill && invoiceNo === null) return null;
+      return (
+        <>
+          {showBill &&
+            (theme.metaStyle === "inline" ? (
+              <div className={`${theme.metaClass} ${theme.billNoClass}`}>Bill #{order.billNumber}</div>
+            ) : (
+              meta("Bill No", String(order.billNumber), theme.billNoClass)
+            ))}
+          {invoiceNo !== null && meta("Invoice No", invoiceNo, INVOICE_NO_CLASS)}
+        </>
+      );
     },
     // The order's token (S6), as loud as the bill number; only when the order has one. Express boxes it (D5).
     token: (_block, { order }) => {
@@ -208,7 +223,16 @@ export function billThemedBlocks(theme: BillTheme): BillRenderers {
     subtotal: (_block, { order }) => row("Subtotal", money(order.subtotal)),
     discount: (_block, { order }) =>
       order.discount > 0 && row(discountLineLabel(order.discountKind), `-${money(order.discount)}`),
-    taxes: (_block, { gst }) => gst.show && !gst.inclusive && row(`GST @${gst.rate}%`, `+${money(gst.gstAmount)}`),
+    // The tax split under the GST line (S10): each half is half the rate and half the tax, in this theme's money style.
+    taxes: (_block, { gst }) =>
+      gst.show &&
+      !gst.inclusive && (
+        <>
+          {row(`GST @${gst.rate}%`, `+${money(gst.gstAmount)}`)}
+          {row(`CGST @${halfGst(gst.rate)}%`, theme.halfAmount(gst.gstAmount), SPLIT_LINE_CLASS)}
+          {row(`SGST @${halfGst(gst.rate)}%`, theme.halfAmount(gst.gstAmount), SPLIT_LINE_CLASS)}
+        </>
+      ),
     charges: (_block, { order }) =>
       chargesFromOrder(order).map((c, i) => <div key={`${c.label}-${i}`}>{row(c.label, `+${money(c.amount)}`)}</div>),
     loyalty: (_block, { rewardSaved }) => rewardSaved > 0 && row("Reward saved", money(rewardSaved)),
@@ -221,9 +245,13 @@ export function billThemedBlocks(theme: BillTheme): BillRenderers {
     taxIncluded: (_block, { gst }) =>
       gst.show &&
       gst.inclusive && (
-        <div className="text-[0.85em]">
-          incl. GST @{gst.rate}%: {money(gst.gstAmount)} (taxable {money(gst.taxable)})
-        </div>
+        <>
+          <div className="text-[0.85em]">
+            incl. GST @{gst.rate}%: {money(gst.gstAmount)} (taxable {money(gst.taxable)})
+          </div>
+          <div className={SPLIT_LINE_CLASS}>CGST @{halfGst(gst.rate)}%: {theme.halfAmount(gst.gstAmount)}</div>
+          <div className={SPLIT_LINE_CLASS}>SGST @{halfGst(gst.rate)}%: {theme.halfAmount(gst.gstAmount)}</div>
+        </>
       ),
     // A cancelled bill's payment / paidAmount are snapshots the books no longer count: no Paid / Due lines.
     payment: (_block, { order, isCancelled }) =>

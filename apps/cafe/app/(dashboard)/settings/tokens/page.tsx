@@ -9,6 +9,7 @@ import { TokenSettingsFields } from "@/components/settings/TokenSettingsFields";
 import { TokenSlipPreview } from "@/components/settings/TokenSlipPreview";
 import { PreviewLoadNotice } from "@/components/settings/print-design/DesignSection";
 import { TokenDesignSection } from "@/components/settings/print-design/TokenDesignSection";
+import { NowServingLink } from "@/components/now-serving/NowServingLink";
 import { tokenTemplateNeedsSlipCode } from "@/components/print/slip/slip-code";
 import { useTokenDesignDraft } from "@/hooks/use-token-design-draft";
 import type { SettingsSection } from "@/lib/settings-sections";
@@ -43,6 +44,7 @@ function TokensForm({ settings, section }: { settings: Settings; section: Settin
               See the slip
             </a>
             <TokenSettingsFields control={control} register={register} setValue={setValue} errors={errors} />
+            <NowServingLink variant="hint" />
             <TokenDesignSection design={design} settings={settings} control={control} />
           </div>
           <div className="border-t border-brand-rule pt-6 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-11rem)] lg:overflow-y-auto lg:border-t-0 lg:pt-0">

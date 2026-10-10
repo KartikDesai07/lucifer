@@ -57,16 +57,25 @@ test("PIN (1): RequestAlertBar.tsx imports usePosPulseContext + usePrintReadback
   const visibleLineMatch = src.match(/const visible = ([^\n]+);/);
   assert.ok(visibleLineMatch, "positive landmark: a `const visible = ...;` line must exist");
   const visibleLine = visibleLineMatch![1];
-  // CB-UI2 (owner 2026-09-23): the line may now be PREFIXED by the POS
-  // route-suppression gate (`!alertBarSuppressedForPath(pathname) && (…)`) —
-  // that gate only ever REMOVES the band, and living inside `visible` is what
-  // also drops the published height. The three positive triggers must still
-  // all be present and OR'd, so the band can never stop showing real work.
+  // E1: the OR of the three triggers now lives in lib/alert-bar-scope.ts
+  // (alertBandVisible, pure + unit-tested); the visible line must hand it all
+  // three — open count, unprinted count, the print band — and the lib must
+  // still OR them, so the band can never stop showing real work.
+  assert.match(visibleLine, /^alertBandVisible\(\{/, `the visible line must call alertBandVisible({ ... }), got: ${visibleLine}`);
+  assert.match(visibleLine, /openCount,/, "the visible line must pass openCount");
+  assert.match(visibleLine, /unprintedCount: unprinted\.length/, "the visible line must pass unprintedCount: unprinted.length");
+  assert.match(visibleLine, /printBand: printBandVisible\(pulse, readback\)/, "the visible line must pass printBand: printBandVisible(pulse, readback)");
+  // s89b review: the Dashboard gate is only as good as the flag handed in — a
+  // hard-coded `onDashboard: true` would type-check and bring the empty strip back.
+  assert.match(visibleLine, /[{,]\s*onDashboard\s*[,}]/, "the visible line must pass the onDashboard binding itself (shorthand)");
+  assert.ok(src.includes("const onDashboard = alertDetailForPath(pathname);"), "onDashboard must be the real Dashboard check");
+  assert.doesNotMatch("alertBandVisible({ suppressed: x, onDashboard: true, openCount })", /[{,]\s*onDashboard\s*[,}]/, "vision guard: a literal flag is not the binding");
+  const scopeSrc = stripComments(readSrc("apps/cafe/lib/alert-bar-scope.ts"));
   assert.ok(
-    /openCount > 0 \|\| unprinted\.length > 0 \|\|/.test(visibleLine),
-    `the visible line must still OR together "openCount > 0 || unprinted.length > 0 ||", got: ${visibleLine}`,
+    /openCount > 0 \|\| unprintedCount > 0 \|\|/.test(scopeSrc),
+    "alertBandVisible must still OR together \"openCount > 0 || unprintedCount > 0 ||\" and the print band",
   );
-  assert.match(visibleLine, /printBandVisible\(pulse, readback\)/, "the visible line must call printBandVisible(pulse, readback)");
+  assert.ok(/\(onDashboard && printBand\)/.test(scopeSrc), "alertBandVisible must gate the print band on the Dashboard (CB-UI2)");
 
   const bandRefAt = src.indexOf("ref={bandRef}");
   const sectionAt = src.indexOf("<PrintHostBandSection pulse={pulse} readback={readback} />");

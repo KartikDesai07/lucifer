@@ -18,6 +18,7 @@ import {
   BASE_FONT_CHOICES,
   BILL_EDITOR,
   EDITOR_HIDDEN_BLOCK_TYPES,
+  KOT_EDITOR,
   activate,
   baselineOf,
   draftDirty,
@@ -29,7 +30,7 @@ import {
 } from "@/lib/print-design-editor";
 import { BILL_BLOCK_LABEL, DESIGN_LABEL, FONT_LABEL, LOCK_REASON_TEXT, TOKEN_ROW_NOTE, turnedOnNotice } from "@/lib/print-design-labels";
 import { BILL_KIND } from "@/lib/print-design-kinds";
-import { defaultBillTemplate } from "@/lib/print-template-designs";
+import { defaultBillTemplate, defaultKotTemplate } from "@/lib/print-template-designs";
 import type { Settings } from "@/types";
 
 // Print customization S4 (04-S4-plan §5, plan Amendment A7): the Bill design editor's pure model. Signatures take the
@@ -220,7 +221,7 @@ test("BASE_FONT_CHOICES: geistMono plus every key whose face has aligned digits 
     assert.ok(FONT_LABEL[key].length > 0, `${key} has a label`);
   }
   assert.deepEqual([...BASE_FONT_CHOICES], ["geistMono", "mono", "sans", "condensed"]);
-  assert.deepEqual([...EDITOR_HIDDEN_BLOCK_TYPES], ["station"], "only the kitchen station line (renders nothing until Phase 2) is hidden; the token line has a row since S6");
+  assert.deepEqual([...EDITOR_HIDDEN_BLOCK_TYPES], [], "every line has a row: token since S6, the kitchen station line since Phase 2 wired stationLine");
 });
 
 test("labels: every bill line, design, font and lock reason has a plain non-empty label; no label or notice is a field name or path", () => {
@@ -281,4 +282,19 @@ test("MIN-3(a): a stored design with its token line at a non-default index keeps
   assert.ok(base.baseline, "landmark: the stored design read");
   assert.equal(base.baseline.blocks.findIndex((b) => b.type === "token"), savedIndex, "nothing moved the token line");
   assert.equal(draftDirty(base, clone(base.baseline), false), false, "the draft opens clean: nothing moved by itself");
+});
+
+test("MIN-3(a): a stored kitchen ticket with its station line saved last keeps it there, and the draft does not open dirty", () => {
+  const settings = settingsOf();
+  const stored = clone(defaultKotTemplate("classic", settings));
+  const station = stored.blocks.find((b) => b.type === "station");
+  assert.ok(station, "landmark: Classic has a station line");
+  stored.blocks = [...stored.blocks.filter((b) => b.type !== "station"), station];
+  const savedIndex = stored.blocks.length - 1;
+  assert.notEqual(savedIndex, defaultKotTemplate("classic", settings).blocks.findIndex((b) => b.type === "station"), "landmark: the saved index differs from the default");
+  const base = baselineOf(KOT_EDITOR, settingsOf({ kotTemplate: stored }));
+  assert.ok(base.baseline, "landmark: the stored design read");
+  assert.equal(base.baseline.blocks.findIndex((b) => b.type === "station"), savedIndex, "nothing moved the station line");
+  assert.equal(draftDirty(base, clone(base.baseline), false), false, "the draft opens clean: nothing moved by itself");
+  assert.ok(!KOT_EDITOR.hidden.includes("station"), "and the station row is shown");
 });

@@ -1,5 +1,7 @@
 import mongoose, { Schema, type Document, type Model } from "mongoose";
 import { CUSTOMER_NOTES, type CustomerNote } from "@/lib/constants";
+import { rewardCardSchema } from "@/models/customer-reward-card";
+import type { RewardCardSnapshot } from "@pos/shared/reward-levels";
 
 // CB-5D — one promo code ASSIGNED to this customer by a milestone claim
 // (config-time minted code, claim-time assignment — owner decision). This is
@@ -104,6 +106,19 @@ export interface ICustomer extends Document {
   // `stamps` above, fenced by that function's own `$gte` filter — this map
   // can never gate a redemption's money, only its timing.
   rungEarnedAt?: Map<string, Date>;
+
+  // ── CB-7 reward levels (S1: storage only, nothing writes these until S2) ──
+  // When this customer's progress began (set once, via `$min`). A plain field: small and not secret. F2: the
+  // staff PIN reset must never $unset it - it keeps a diner who reset their PIN on their own ladder.
+  rewardsAnchorAt?: Date;
+  // Lifetime counted bills (the ladder position). A counter moved by a guarded `$inc`; small, not secret.
+  cardSteps?: number;
+  // Idempotency markers for the progress step, a further array beside stampOrders (never shared with it: each
+  // array's `$ne` filter gates its own `$inc`). `select: false` - filter-only, never rendered.
+  cardStepOrders?: string[];
+  // Issued scratch cards. `select: false`: an unscratched card's outcome must never reach a staff/diner payload
+  // by accident. Read only with an explicit `+rewardCards` projection and mapped to an allowlist DTO.
+  rewardCards?: RewardCardSnapshot[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -184,6 +199,16 @@ export const customerSchema = new Schema<ICustomer>(
     // must be able to read this. NO index: it is only ever read by its own
     // customer's _id lookup, never queried standalone.
     rungEarnedAt: { type: Map, of: Date, default: undefined },
+
+    // CB-7 reward levels (plan 2.2). Plain fields first: no `default:` (omit-empty - a customer with no
+    // progress stores none of these keys), not `select: false` (small, not secret).
+    rewardsAnchorAt: { type: Date },
+    cardSteps: { type: Number },
+    // `select: false` hides these on find/findById/findByIdAndUpdate (new, lean)/toObject/toJSON (probed s86,
+    // mongoose 8.24); only `aggregate` ignores it, and the Customer aggregates are $match+$group totals.
+    // `default: undefined` = omit-empty, so an untouched customer stores no empty array. NO index on either.
+    cardStepOrders: { type: [String], select: false, default: undefined },
+    rewardCards: { type: [rewardCardSchema], select: false, default: undefined },
   },
   { timestamps: true },
 );

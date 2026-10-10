@@ -1,7 +1,7 @@
 import type { BillBlockType } from "@pos/shared/print-template";
 import { billThemedBlocks, type BillTheme } from "./bill-themed-blocks";
 import type { SlipDesign, BillRenderers } from "./slip-designs";
-import { plainAmount } from "./slip-format";
+import { plainAmount, plainHalfGst } from "./slip-format";
 import { CLASSIC_BILL_GROUP } from "./slip-groups";
 import { THEMED_REGULAR_CLASS } from "./slip-style";
 
@@ -34,6 +34,7 @@ const EXPRESS_THEME: BillTheme = {
   itemClass: "font-bold uppercase",
   leaders: false,
   amount: plainAmount,
+  halfAmount: plainHalfGst,
   totalKind: "huge",
   totalLabel: "TOTAL",
   footerClass: "text-center text-[1.1em] font-bold uppercase tracking-wide",

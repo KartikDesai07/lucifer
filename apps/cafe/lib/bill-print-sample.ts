@@ -1,4 +1,6 @@
+import { invoiceFyOf } from "@pos/shared/invoice-number";
 import { printConfigOf, type KotPrintConfig } from "@/lib/print";
+import { isTaxInvoice } from "@/lib/gst-invoice";
 import { ROUND_LABEL_PREFIX } from "@/lib/print-host-slips";
 import { computeOrderTotals } from "@/lib/receipt";
 import type { GstConfig } from "@/lib/receipt";
@@ -23,6 +25,8 @@ export const SAMPLE_KITCHEN_TABLE = "T4";
 export const SAMPLE_KITCHEN_NOTE = "Serve the chai first";
 export const SAMPLE_KITCHEN_INSTRUCTION = "Less sugar";
 // A ticket is not a bill, so no GST is applied to it.
+// A GST sample bill shows serial 1 of its own financial year, so the preview shows the invoice line it will print.
+const SAMPLE_INVOICE_SERIAL = 1;
 const SAMPLE_KITCHEN_GST: GstConfig = { gstEnabled: false, gstRate: 0, gstMode: "inclusive" };
 
 // Whole rupees, like SAMPLE_ITEM_PRICE in lib/gst-sample-bill.ts.
@@ -55,7 +59,7 @@ export function sampleBillOrder(cfg: GstConfig, billNumber: number, createdAt: s
     charge: 0,
     cfg,
   });
-  return {
+  const order: Order = {
     _id: SAMPLE_DOC_ID,
     orderId: SAMPLE_ORDER_ID,
     customerName: SAMPLE_CUSTOMER,
@@ -76,6 +80,9 @@ export function sampleBillOrder(cfg: GstConfig, billNumber: number, createdAt: s
     createdAt,
     updatedAt: createdAt,
   };
+  return isTaxInvoice(order)
+    ? { ...order, invoiceNumber: SAMPLE_INVOICE_SERIAL, invoiceFy: invoiceFyOf(new Date(createdAt)) }
+    : order;
 }
 
 // The Kitchen ticket page sample (components/pos/KOTReceipt.tsx renders it):

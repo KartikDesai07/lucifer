@@ -91,15 +91,18 @@ export function invalidateSettingsCache() {
 
 // The PUT-only slip-template keys of updateSettingsSchema (print customization S2).
 const SLIP_TEMPLATE_KEYS = ["billTemplate", "kotTemplate", "tokenTemplate"] as const;
+// CB-7 S1: the reward-levels blob is PUT-only too and clears the same way.
+const REWARD_BLOB_KEYS = ["rewardLevels"] as const;
 
-// PUT /api/settings' update document. A template is cleared by sending null: undefined never survives JSON, so
-// it can never clear a field (and a stored null would be one more shape for every reader). A null template
-// therefore becomes $unset — the key absent is today's legacy slip. With no null template the parsed body is
-// returned untouched, so every other save keeps its partial-$set exactly as before.
+// PUT /api/settings' update document. A PUT-only blob (a template, the reward levels) is cleared by sending
+// null: undefined never survives JSON, so it can never clear a field (and a stored null would be one more shape
+// for every reader). A null blob therefore becomes $unset — the key absent is the legacy slip / feature off.
+// With no null blob the parsed body is returned untouched, so every other save keeps its partial-$set exactly
+// as before.
 export function settingsUpdateOf(data: UpdateSettingsInput): UpdateQuery<ISettings> {
   const set: Record<string, unknown> = { ...data };
   const unset: Record<string, 1> = {};
-  for (const key of SLIP_TEMPLATE_KEYS) {
+  for (const key of [...SLIP_TEMPLATE_KEYS, ...REWARD_BLOB_KEYS]) {
     if (set[key] === null) {
       delete set[key];
       unset[key] = 1;

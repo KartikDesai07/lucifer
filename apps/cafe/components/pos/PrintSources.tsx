@@ -6,6 +6,7 @@ import { OrderReceipt } from "@/components/pos/OrderReceipt";
 import { KOTReceipt } from "@/components/pos/KOTReceipt";
 import { TokenSlip } from "@/components/print/slip/TokenSlip";
 import { usePrintFontsPreload } from "@/hooks/use-print-fonts-preload";
+import { kitchenLinesOf, kitchenOrderOf } from "@/lib/kitchen-lines";
 import type { KotVariant, KotReceiptVariant } from "@/hooks/use-pos-print";
 import type { Order, OrderItem, Settings } from "@/types";
 
@@ -80,10 +81,11 @@ export function PrintSources({
       {tokenRef && order?.tokenNumber !== undefined && (
         <TokenSlip order={order} settings={settings} banner={banner} ref={tokenRef} />
       )}
+      {/* Skip-KOT: the kitchen ticket lists kitchen lines only; the bill and the token keep the whole order. */}
       <KOTReceipt
-        order={order}
+        order={order ? kitchenOrderOf(order) : order}
         settings={settings}
-        roundItems={kotRoundItems ?? undefined}
+        roundItems={kotRoundItems ? [...kitchenLinesOf(kotRoundItems)] : undefined}
         roundLabel={kotRoundLabel}
         roundNumber={kotRoundNumber}
         variant={receiptVariant}

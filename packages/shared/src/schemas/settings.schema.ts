@@ -10,7 +10,14 @@ import {
   TABLE_LONG_STAY_MIN_MINUTES,
   TABLE_LONG_STAY_MAX_MINUTES,
 } from "../constants";
-import { PAY_QR_MODES, UPI_ID_MAX_LEN, isPayQrMinutes, isValidUpiId } from "../print-qr";
+import {
+  PAY_QR_MODES,
+  UPI_ID_MAX_LEN,
+  UPI_RULES_MAX,
+  UPI_RULE_UPTO_MAX,
+  isPayQrMinutes,
+  isValidUpiId,
+} from "../print-qr";
 import { SELF_ORDER_MODES } from "../public";
 import {
   NUMBER_RESET_MINUTES_MAX,
@@ -30,6 +37,7 @@ import { numberStartSchema, promoCodesSchema, appearanceSchema } from "./setting
 import { loyaltyRulesSchema, refineLoyaltyReward } from "./settings-loyalty.schema";
 import { dinerBannersSchema } from "./settings-diner.schema";
 import { billTemplateSchema, kotTemplateSchema, tokenTemplateSchema } from "./print-template.schema";
+import { rewardLevelsWriteSchema } from "./reward-levels.schema";
 
 // Restaurant + receipt settings (singleton) — CORE fields only. The print
 // (bill/kot) block, promo codes, and Appearance moved to
@@ -73,6 +81,29 @@ export const settingsSchema = z.object({
     .trim()
     .max(UPI_ID_MAX_LEN)
     .refine((v) => v === "" || isValidUpiId(v), "Enter a UPI ID like yourshop@okaxis"),
+  // Amount slabs for the pay QR (print-qr.ts upiRulesOf reads them). OPTIONAL like payQr*; the duplicate check
+  // sits on the FIELD, for the same .partial() reason.
+  upiRules: z
+    .array(
+      z
+        .object({
+          upTo: z
+            .number({ invalid_type_error: "Enter the amount as a whole number" })
+            .int("Use a whole number of rupees")
+            .min(1, "Enter an amount of at least ₹1")
+            .max(UPI_RULE_UPTO_MAX, `Keep the amount under ₹${UPI_RULE_UPTO_MAX}`),
+          upiId: z
+            .string()
+            .trim()
+            .min(1, "Enter a UPI ID")
+            .max(UPI_ID_MAX_LEN)
+            .refine(isValidUpiId, "Enter a UPI ID like yourshop@okaxis"),
+        })
+        .strict(),
+    )
+    .max(UPI_RULES_MAX, `Use at most ${UPI_RULES_MAX} amount slabs`)
+    .refine((rules) => new Set(rules.map((r) => r.upTo)).size === rules.length, "Two slabs have the same amount")
+    .optional(),
   // S3b: when a bill prints the pay QR, and for how many minutes after its first print (0 = No limit). OPTIONAL:
   // documents written before S3b have neither, and every reader goes through payQrModeOf / payQrMinutesOf
   // (print-qr.ts), which supply the defaults. The range check sits on the FIELD, for the same .partial() reason.
@@ -236,12 +267,17 @@ export const settingsSchema = z.object({
 // either be re-sent through the write gate on each toggle save (a stored template that a later, stricter gate
 // rejects would block the page) or, defaulted to null, wipe the design. Each is saved whole and strictly
 // (the WRITE schema); null clears it (the route turns null into $unset — undefined never clears over JSON).
+//
+// CB-7: `rewardLevels` (the scratch-card ladder) is a PUT-only blob for the same reason as the templates: it is
+// never in settingsSchema, so the loyalty section form can neither resend it through the write gate nor wipe it
+// with a default. It is written whole by the levels editor, strictly; null clears it.
 export const updateSettingsSchema = settingsSchema
   .partial()
   .extend({
     billTemplate: billTemplateSchema.nullable().optional(),
     kotTemplate: kotTemplateSchema.nullable().optional(),
     tokenTemplate: tokenTemplateSchema.nullable().optional(),
+    rewardLevels: rewardLevelsWriteSchema.nullable().optional(),
   })
   .superRefine(refineLoyaltyReward);
 

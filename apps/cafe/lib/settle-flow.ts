@@ -25,6 +25,7 @@ import {
   type WriteNotice,
 } from "@/lib/pending-writes";
 import type { SettleSeen } from "@/lib/settle-guard";
+import { numbersPending } from "@/lib/gst-invoice";
 import type { Order, SettleOrderInput } from "@/types";
 
 export interface SettleFlowHandlers {
@@ -144,9 +145,10 @@ export function createSettleFlow(ports: SettleFlowPorts): SettleFlow {
     }
     const step = stepFromOrder(order, unanswered, seen);
     // K1: the server numbers the bill only after the settle lands, so ours
-    // without its number is still being saved — printing now would print none.
+    // without its number (or a GST bill without its invoice serial, S10) is
+    // still being saved — printing now would print none.
     // Only for BILL_NUMBER_WAIT_MS from the first sight: then it is adopted.
-    if (step.kind === "settled" && ports.billNumbered() && typeof step.order.billNumber !== "number") {
+    if (step.kind === "settled" && numbersPending(step.order, ports.billNumbered())) {
       const since = unnumberedSince.get(id) ?? ports.now();
       unnumberedSince.set(id, since);
       if (ports.now() - since < BILL_NUMBER_WAIT_MS) {

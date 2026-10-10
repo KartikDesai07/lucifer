@@ -1,6 +1,7 @@
 import { OrderRequest } from "@/models/OrderRequest";
 import { Order, type IOrder } from "@/models/Order";
 import { SELF_ORDER_RECEIVER } from "@pos/shared/public";
+import { skipsKitchenTicket } from "@/lib/kitchen-lines";
 import {
   PULSE_OPEN_SCAN_LIMIT,
   PULSE_SELF_ORDER_LIMIT,
@@ -186,7 +187,8 @@ export async function claimKotPrint(id: string): Promise<ClaimKotPrintResult> {
   // to print", the same marker that stops the nag and frees the pulse slot;
   // idempotent under the CAS's own $exists guard) and report not-eligible so
   // no caller prints.
-  const roundHasLines = order.items.some((it) => it.kotRound === request.acceptedKotRound);
+  // Skip-KOT: a round of only no-kitchen lines has no ticket to print either — same "resolved" outcome.
+  const roundHasLines = order.items.some((it) => it.kotRound === request.acceptedKotRound && !skipsKitchenTicket(it));
   if (order.status === "Cancelled" || !roundHasLines) {
     await OrderRequest.updateOne(
       { _id: id, status: "accepted", kotPrintedAt: { $exists: false } },

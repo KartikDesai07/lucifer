@@ -59,7 +59,7 @@ export interface SlipKindSpec<T extends EditableTemplate> {
   catalog: readonly string[];
   /** The lines the save gate keeps on a slip. */
   required: readonly string[];
-  /** Lines the person never sees a row for (the kitchen station line renders nothing yet). */
+  /** Lines the person never sees a row for (none today; up/down still step over any listed here). */
   hidden: readonly string[];
   /** Lines whose `on` is always true in the editor: another control switches them (Show bill / ticket number). */
   forcedOn: readonly string[];
@@ -71,9 +71,9 @@ export interface SlipKindSpec<T extends EditableTemplate> {
   schema: ZodType<T>;
 }
 
-// The kitchen station line renders nothing until the office PC's Phase 2 fills it; a row for it would be a switch
-// that does nothing. The token line has a row (S6): it prints the order's token number once tokens are on.
-export const EDITOR_HIDDEN_BLOCK_TYPES: readonly string[] = ["station"];
+// Every line has a row. The token line (S6) prints once tokens are on; the kitchen station line prints on a ticket
+// that Printer setup splits by station (stationLine). A stored row stays where it was saved (MIN-3 (a)).
+export const EDITOR_HIDDEN_BLOCK_TYPES: readonly string[] = [];
 
 const BILL_TYPE_SET: ReadonlySet<string> = new Set(BILL_BLOCK_TYPES);
 const KOT_TYPE_SET: ReadonlySet<string> = new Set(KOT_BLOCK_TYPES);

@@ -5,7 +5,8 @@
 // headline the page shows.
 import { CAFE_TIMEZONE } from "@/lib/constants";
 import { TOTAL_ROW_LABEL } from "@/lib/reports/csv";
-import type { CancelsReport, GstBillRow, GstReport, ItemsReport } from "@/types/reports-b2";
+import { invoiceLabel } from "@pos/shared/invoice-number";
+import type { CancelsReport, GstBillRow, GstInvoices, GstReport, ItemsReport } from "@/types/reports-b2";
 
 type CsvRow = Record<string, string | number>;
 
@@ -84,6 +85,11 @@ export function cancelsCsvRows(report: CancelsReport): CsvRow[] {
   return rows;
 }
 
+/** "2627/000123" for an invoice range end, "" when the day / range has none (or spans two financial years). */
+function invoiceEnd(inv: GstInvoices, serial: number | null): string {
+  return inv.fy !== null && serial !== null ? invoiceLabel(inv.fy, serial) : "";
+}
+
 /** One row per day, GST breakdown + documents issued, + a Total row. */
 export function gstDayCsvRows(report: GstReport): CsvRow[] {
   const row = (
@@ -91,6 +97,8 @@ export function gstDayCsvRows(report: GstReport): CsvRow[] {
     bills: number,
     first: number | string,
     last: number | string,
+    firstInvoice: string,
+    lastInvoice: string,
     cancelled: number,
     taxable: number,
     gst: number,
@@ -110,13 +118,16 @@ export function gstDayCsvRows(report: GstReport): CsvRow[] {
     "No-GST bills": noGstBills,
     "Charges (no GST)": charges,
     "Bill value": value,
+    // Appended last so every earlier column keeps its position.
+    "First invoice": firstInvoice,
+    "Last invoice": lastInvoice,
   });
 
   const rows: CsvRow[] = report.days.map((d) =>
-    row(d.date, d.bills, d.docs.first ?? "", d.docs.last ?? "", d.docs.cancelled, d.taxable, d.gst, "", d.charges, d.value),
+    row(d.date, d.bills, d.docs.first ?? "", d.docs.last ?? "", invoiceEnd(d.invoices, d.invoices.first), invoiceEnd(d.invoices, d.invoices.last), d.docs.cancelled, d.taxable, d.gst, "", d.charges, d.value),
   );
   rows.push(
-    row(TOTAL_ROW_LABEL, report.bills, "", "", report.docs.cancelled, report.taxable, report.gst, report.noGstBills, report.charges, report.netSales),
+    row(TOTAL_ROW_LABEL, report.bills, "", "", invoiceEnd(report.invoices, report.invoices.first), invoiceEnd(report.invoices, report.invoices.last), report.docs.cancelled, report.taxable, report.gst, report.noGstBills, report.charges, report.netSales),
   );
   return rows;
 }
@@ -135,5 +146,7 @@ export function gstBillCsvRows(rows: GstBillRow[]): CsvRow[] {
     Charges: r.charges,
     "Bill total": r.total,
     Payment: r.payment,
+    // Appended last so every earlier column keeps its position.
+    "Invoice no.": r.invoiceNumber !== undefined && r.invoiceFy !== undefined ? invoiceLabel(r.invoiceFy, r.invoiceNumber) : "",
   }));
 }

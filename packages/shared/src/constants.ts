@@ -181,6 +181,7 @@ export const ADMIN_ROUTES = [
   "/tables/setup",
   "/tables/qr",
   "/printers",
+  "/expenses/categories",
 ] as const;
 
 // Tables redesign (2026-09-30). An occupied table whose open bill is at least

@@ -98,6 +98,9 @@ export function orderOf(o: OrderOpts): Order {
   };
 }
 
+/** S10: a GST bill's invoice number as the order stores it (FY 2026-27 -> "2627/0000nn"). */
+export const invoiceOf = (invoiceNumber: number): Partial<Order> => ({ invoiceNumber, invoiceFy: 2026 });
+
 export interface BillFixture {
   id: string;
   order: Order;
@@ -110,12 +113,12 @@ const EMPTY_CONTENT: Partial<Settings> = {
 
 export const BILL_FIXTURES: BillFixture[] = [
   { id: "paid-cash", order: orderOf({}), settings: settingsOf() },
-  { id: "split", order: orderOf({ gst: { rate: 5, mode: "inclusive" }, over: { payment: "Split", splitCash: 300, splitOnline: 0 } }), settings: settingsOf(gstOn(5, "inclusive")) },
+  { id: "split", order: orderOf({ gst: { rate: 5, mode: "inclusive" }, over: { payment: "Split", splitCash: 300, splitOnline: 0, ...invoiceOf(45) } }), settings: settingsOf(gstOn(5, "inclusive")) },
   { id: "partial-due", order: orderOf({ over: { paidAmount: 200, status: "Pending", billNumber: undefined } }), settings: settingsOf() },
-  { id: "cancelled-reason", order: orderOf({ gst: { rate: 5, mode: "exclusive" }, over: { status: "Cancelled", cancelReason: "Guest left before food arrived" } }), settings: settingsOf(gstOn(5, "exclusive")) },
+  { id: "cancelled-reason", order: orderOf({ gst: { rate: 5, mode: "exclusive" }, over: { status: "Cancelled", cancelReason: "Guest left before food arrived", ...invoiceOf(46) } }), settings: settingsOf(gstOn(5, "exclusive")) },
   { id: "reward-note", order: orderOf({ items: [...ITEMS, REWARD_LINE] }), settings: settingsOf() },
-  { id: "excl-gst-discount-charges", order: orderOf({ gst: { rate: 18, mode: "exclusive" }, discount: 20, discountKind: "gst", tableCharge: 20, extraCharge: 15 }), settings: settingsOf(gstOn(18, "exclusive")) },
-  { id: "incl-gst", order: orderOf({ gst: { rate: 12, mode: "inclusive" }, discount: 30 }), settings: settingsOf(gstOn(12, "inclusive")) },
+  { id: "excl-gst-discount-charges", order: orderOf({ gst: { rate: 18, mode: "exclusive" }, discount: 20, discountKind: "gst", tableCharge: 20, extraCharge: 15, over: invoiceOf(123456) }), settings: settingsOf(gstOn(18, "exclusive")) },
+  { id: "incl-gst", order: orderOf({ gst: { rate: 12, mode: "inclusive" }, discount: 30, over: invoiceOf(1) }), settings: settingsOf(gstOn(12, "inclusive")) },
   { id: "gst-off", order: orderOf({}), settings: settingsOf({ gstEnabled: false }) },
   { id: "gst-settings-fallback", order: orderOf({ over: { gstRate: undefined, gstMode: undefined, gstAmount: undefined } }), settings: settingsOf(gstOn(5, "inclusive")) },
   // Blind-branch closers (review): walk-in table, a qty>1 reward line with no note, Split with no split amounts.
@@ -251,8 +254,8 @@ export const LEGACY_LINE_RE =
   /<div class="flex justify-between gap-2"><span class="whitespace-pre">([^<]*)<\/span><span class="text-right">([^<]*)<\/span><\/div>/g;
 export const WRAPPED_LINE = (label: string, value: string): string =>
   `<div class="flex flex-wrap justify-between gap-x-2"><span class="max-w-full whitespace-pre-wrap">${label}</span><span class="max-w-full grow basis-0 text-right">${value}</span></div>`;
-const LEGACY_NUMBER_RE = // S6: the Token row is the Bill No. row twin; the label is captured
-  /<div class="flex justify-between gap-2 font-bold"><span>(Bill No\.|Token)<\/span><span class="text-right">([^<]*)<\/span><\/div>/g;
+const LEGACY_NUMBER_RE = // S6: the Token row is the Bill No. row twin; S10: so is Invoice No.; the label is captured
+  /<div class="flex justify-between gap-2 font-bold"><span>(Bill No\.|Invoice No\.|Token)<\/span><span class="text-right">([^<]*)<\/span><\/div>/g;
 const WRAPPED_NUMBER = (label: string, value: string): string =>
   `<div class="flex flex-wrap justify-between gap-2 font-bold"><span>${label}</span><span class="ml-auto text-right">${value}</span></div>`;
 const LEGACY_TOTAL_RE =

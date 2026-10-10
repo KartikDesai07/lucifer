@@ -108,11 +108,52 @@ export function payQrMinutesOf(value: unknown): number {
   return typeof value === "number" && isPayQrMinutes(value) ? value : PAY_QR_MINUTES_DEFAULT;
 }
 
+// ── UPI amount slabs ("bills up to ₹500 pay to A, up to ₹2000 to B, above that the main ID") ──────────────────
+export const UPI_RULES_MAX = 5;
+/** Whole rupees; far above any bill a cafe prints. */
+export const UPI_RULE_UPTO_MAX = 1_000_000;
+
+export interface UpiRule {
+  /** Whole rupees: a QR asking for this amount or less pays to `upiId`. */
+  upTo: number;
+  upiId: string;
+}
+
+/** The stored slabs, read leniently: keeps entries with a whole-rupee limit (1..UPI_RULE_UPTO_MAX) and a valid UPI ID,
+ *  sorted ascending by limit, a repeated limit dropped after the first, at most UPI_RULES_MAX. An older document or
+ *  a foreign value gives []. */
+export function upiRulesOf(value: unknown): UpiRule[] {
+  if (!Array.isArray(value)) return [];
+  const kept: UpiRule[] = [];
+  for (const entry of value as unknown[]) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const { upTo, upiId } = entry as { upTo?: unknown; upiId?: unknown };
+    if (typeof upTo !== "number" || !Number.isInteger(upTo) || upTo < 1 || upTo > UPI_RULE_UPTO_MAX) continue;
+    if (typeof upiId !== "string" || !isValidUpiId(upiId.trim())) continue;
+    kept.push({ upTo, upiId: upiId.trim() });
+  }
+  // Array.prototype.sort is stable, so of two equal limits the first one stored stays first and wins below.
+  kept.sort((a, b) => a.upTo - b.upTo);
+  return kept.filter((rule, i) => i === 0 || rule.upTo !== kept[i - 1].upTo).slice(0, UPI_RULES_MAX);
+}
+
+/** The UPI ID a QR asking for `amount` pays to: the first slab (lowest limit first) with `amount <= upTo`, else the
+ *  main ID. `rules` need not be sorted. */
+export function upiIdForAmount(amount: number, rules: readonly UpiRule[], fallback: string): string {
+  let best: UpiRule | undefined;
+  for (const rule of rules) {
+    if (amount <= rule.upTo && (best === undefined || rule.upTo < best.upTo)) best = rule;
+  }
+  return best === undefined ? fallback : best.upiId;
+}
+
 export interface PayQrInput {
   mode: PayQrMode;
   /** Minutes the QR stays valid after the first print; PAY_QR_NO_LIMIT = no limit. */
   minutes: number;
   upiId: string;
+  /** Amount slabs (upiRulesOf); [] = every QR pays to `upiId`. */
+  upiRules: readonly UpiRule[];
   cancelled: boolean;
   /** Rupees, the order's own units. */
   total: number;
@@ -128,24 +169,29 @@ export interface PayQr {
   amount: number;
   /** Epoch ms the slip prints as "Valid till"; null = No limit (no line). */
   validTillMs: number | null;
+  /** The UPI ID this QR pays to: the amount's slab, else the main ID. Always valid. */
+  upiId: string;
 }
 
 /** The whole pay-QR rule; null = this slip prints no pay QR. Each check is its own owner decision (A4). */
 export function payQrPlan(input: PayQrInput): PayQr | null {
   if (input.cancelled) return null;
   if (input.mode === "never") return null;
-  if (!isValidUpiId(input.upiId)) return null;
   // Whole paise, so float dust in total - paid neither prints "Scan to pay ₹0.00" nor counts as owed.
   const due = Math.round((input.total - input.paid) * PAISE_PER_RUPEE) / PAISE_PER_RUPEE;
   if (input.mode === "owed" && due <= 0) return null;
   // A partly paid bill never asks for more than is owed; a fully (or over-) paid one asks for the full total.
   const amount = due > 0 ? due : input.total;
   if (!(amount > 0)) return null;
-  if (input.minutes === PAY_QR_NO_LIMIT) return { amount, validTillMs: null };
+  // The slab keys on the amount THIS QR collects (what is owed, or the full total once paid), then the chosen ID
+  // (a slab's or the main one) must still be a valid UPI ID.
+  const upiId = upiIdForAmount(amount, input.upiRules, input.upiId);
+  if (!isValidUpiId(upiId)) return null;
+  if (input.minutes === PAY_QR_NO_LIMIT) return { amount, validTillMs: null, upiId };
   const stamped = input.firstPrintedAt !== undefined ? Date.parse(input.firstPrintedAt) : Number.NaN;
   const start = Number.isFinite(stamped) ? stamped : input.nowMs;
   const validTillMs = start + input.minutes * MS_PER_MINUTE;
   // A reprint after the window leaves the QR off; at exactly "valid till" it still prints.
   if (input.nowMs > validTillMs) return null;
-  return { amount, validTillMs };
+  return { amount, validTillMs, upiId };
 }

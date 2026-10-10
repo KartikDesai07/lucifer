@@ -19,6 +19,7 @@ import { printJobRefOf } from "@/lib/print-agent-calls";
 import type { HostPrintDone } from "@/lib/print-host-outcomes";
 import type { HostPrintSlip } from "@/lib/print-host-slips";
 import { kotPrintJob, opensWithToken, tokenPrintJob } from "@/lib/print-routing";
+import { roundSkipsKitchen } from "@/lib/kitchen-lines";
 import type { Order } from "@/types";
 
 interface PrintHostDrainProps {
@@ -70,7 +71,10 @@ export function PrintHostDrain({ enabled, surfacesMounted, deviceId, tabId, busy
   const { routePrint } = useHostRouting();
   const queueKotRound = useCallback(
     (order: Order, round: number = order.kotRounds) => {
-      routePrint(() => kotPrintJob(order, round), () => undefined, printJobRefOf(order, "kot"));
+      // Skip-KOT: a round of only no-kitchen lines has no ticket (the token below is untouched).
+      if (!roundSkipsKitchen(order.items, round)) {
+        routePrint(() => kotPrintJob(order, round), () => undefined, printJobRefOf(order, "kot"));
+      }
       if (opensWithToken(order, round)) {
         routePrint(() => tokenPrintJob(order, { reprint: false }), () => undefined, printJobRefOf(order, "token"));
       }

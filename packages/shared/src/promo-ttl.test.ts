@@ -16,7 +16,7 @@ import {
   promoExpiryFrom,
 } from "./public-promo";
 
-// Derived explicitly here (not imported from the unexported ONE_DAY_MS in
+// Derived explicitly here (not imported from the exported ONE_DAY_MS in
 // public-promo.ts) so this suite would still catch a broken day constant in
 // the source rather than trivially agreeing with it.
 const DAY_MS = 86400000;

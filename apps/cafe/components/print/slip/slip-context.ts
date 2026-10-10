@@ -1,6 +1,8 @@
 import type { SlipLockContext } from "@pos/shared/print-template";
 import { SLIP_DEVANAGARI_RE } from "@pos/shared/print-fonts";
-import { payQrMinutesOf, payQrModeOf, type PayQrMode } from "@pos/shared/print-qr";
+import { invoiceLabelOf } from "@pos/shared/invoice-number";
+import { payQrMinutesOf, payQrModeOf, upiRulesOf, type PayQrMode, type UpiRule } from "@pos/shared/print-qr";
+import { printConfigOf } from "@/lib/print";
 import { receiptGst, type GstBreakdown, type GstConfig } from "@/lib/receipt";
 import { productImageUrl } from "@/lib/images";
 import type { Order, OrderItem, Settings } from "@/types";
@@ -22,11 +24,17 @@ export interface BillSlipContext {
   logoUrl: string | null;
   // The cafe's UPI id, trimmed; the pay QR checks it (isValidUpiId) before printing.
   upiId: string | undefined;
+  // The cafe's UPI amount slabs (upiRulesOf: valid, sorted, capped); [] = every pay QR uses upiId.
+  upiRules: UpiRule[];
   // The pay QR's owner-rule inputs (payQrPlan): when it prints, how long it stays valid, and the render-time clock.
   payQrMode: PayQrMode;
   payQrMinutes: number;
   nowMs: number;
   gst: GstBreakdown;
+  // "Show bill number": controls the daily Bill No. row only (S10, owner Q1: a GST bill prints its invoice number either way).
+  showBillNumber: boolean;
+  // The GST invoice number ("2627/000123"), or null when the order holds none.
+  invoiceNo: string | null;
   due: number;
   isCancelled: boolean;
   // What loyalty rewards took off this bill: the free lines' worth plus any reward discount.
@@ -58,10 +66,13 @@ export function billSlipContext(order: Order, settings: Settings | null | undefi
     fssai: settings?.fssai?.trim(),
     logoUrl: productImageUrl(settings?.logo, undefined, { fit: true }),
     upiId: settings?.upiId?.trim(),
+    upiRules: upiRulesOf(settings?.upiRules),
     payQrMode: payQrModeOf(settings?.payQrMode),
     payQrMinutes: payQrMinutesOf(settings?.payQrValidMinutes),
     nowMs,
     gst: receiptGst(order, gstCfg),
+    showBillNumber: printConfigOf(settings).bill.showNumber,
+    invoiceNo: invoiceLabelOf({ invoiceNumber: order.invoiceNumber, invoiceFy: order.invoiceFy }),
     due: order.total - order.paidAmount,
     isCancelled: order.status === "Cancelled",
     rewardSaved:

@@ -9,6 +9,7 @@ import type { ISettings } from "@/models/Settings";
 import { nextOrderSequence } from "@/models/Counter";
 import { printConfigOf } from "@/lib/print";
 import { allocateOpeningSlips } from "@/lib/slip-numbers";
+import { withKitchenFlags } from "@/lib/kitchen-lines-server";
 import cache from "@/lib/cache";
 import { generateOrderId } from "@/lib/utils";
 import { computeOrderTotals, gstConfigFromOrder, gstConfigOfSettings } from "@/lib/receipt";
@@ -322,7 +323,9 @@ export async function acceptOrderRequest(
 
   // The opening KOT number and the order's token, omit-empty; spread into `doc` below so the duplicate-key
   // retry (order-request-accept-write) reuses both. A refused insert burns them (accepted).
-  const slips = await allocateOpeningSlips(printCfg);
+  // Skip-KOT: stamp the opening lines the menu never sends to the kitchen BEFORE the draw (an all-skip order takes no KOT number, no token).
+  const kot = await withKitchenFlags(orderItems);
+  const slips = await allocateOpeningSlips(printCfg, { kitchen: kot.kitchen });
   // FIX6 — the diner's note plus a staff-actionable promo line (CR2.2c),
   // through the EXISTING mergedNote helper so it composes, never replaces.
   const promoLine = promoNoteLine(request.promoCode, promo.discount);
@@ -330,7 +333,7 @@ export async function acceptOrderRequest(
     customerName,
     customerId,
     // orderItems already carries a claimed item reward's free-dish line.
-    items: orderItems.map((it) => ({ ...it, kotRound: 1 })),
+    items: kot.lines.map((it) => ({ ...it, kotRound: 1 })),
     kotRounds: 1,
     subtotal: totals.subtotal,
     discount: totals.discount,

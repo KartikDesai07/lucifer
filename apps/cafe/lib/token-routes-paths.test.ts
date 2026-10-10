@@ -142,10 +142,15 @@ test("token-board-server: the board read selects TOKEN_BOARD_SELECT and no selec
   const literals = Array.from(src.matchAll(/\.select\("([^"]*)"\)/g)).map((m) => m[1]);
   assert.ok(literals.length >= 3, `landmark: the scan saw the file's select literals (${literals.join(" | ")})`);
   for (const literal of literals) {
-    for (const banned of ["customerName", "total", "items", "paidAmount", "receiver", "paymentMode"]) {
+    for (const banned of ["customerName", "total", "items", "paidAmount", "receiver", "paymentMode", "items.name", "items.price"]) {
       assert.ok(!literal.split(/\s+/).includes(banned), `select "${literal}" must not carry ${banned}`);
     }
+    // skip-KOT: the only items paths a token read may take are the round number and the kitchen flag.
+    for (const field of literal.split(/\s+/).filter((f) => f.startsWith("items"))) {
+      assert.ok(field === "items.kotRound" || field === "items.noKot", `select "${literal}" reaches ${field}`);
+    }
   }
+  assert.ok(literals.some((l) => l.split(/\s+/).includes("items.noKot")), "positive landmark: the candidates read carries the kitchen flag");
   assert.match(src, /\.sort\(\{\s*createdAt:\s*-1\s*\}\)\s*\.limit\(TOKEN_DAY_SCAN_LIMIT\)/, "the board scan is bounded");
   assert.match(src, /select\("readyAt readyMarkedAt collectedAt"\)/, "the ticks read is the three stamps and not the refs");
 });

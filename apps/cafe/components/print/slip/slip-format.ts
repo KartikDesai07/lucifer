@@ -1,5 +1,6 @@
 import { cafeDateString } from "@pos/shared/utils";
 import { CAFE_TIMEZONE } from "@/lib/constants";
+import { halfGst } from "@/lib/gst-half";
 import type { PrintLogoSize } from "@/lib/constants";
 
 // Helpers the S3 design themes share. The Classic files keep their own byte-copied twins (they must stay
@@ -42,6 +43,14 @@ export function validTillLabel(tillMs: number, nowMs: number): string {
 const PLAIN_AMOUNT = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 export function plainAmount(amount: number): string {
   return PLAIN_AMOUNT.format(amount);
+}
+
+// A CGST / SGST half in the same symbol-free style: a whole half as plainAmount, an odd half to the paisa ("12.50").
+// The whole amount never goes through plainAmount (it would round 12.5 away), as formatHalfGst never uses inr.
+const PLAIN_PAISE = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+export function plainHalfGst(gst: number): string {
+  const half = halfGst(gst);
+  return Number.isInteger(half) ? plainAmount(half) : PLAIN_PAISE.format(half);
 }
 
 /** True when a React node prints nothing: null / undefined / false / "" or an array of only those. */

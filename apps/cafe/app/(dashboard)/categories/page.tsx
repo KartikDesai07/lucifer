@@ -13,6 +13,7 @@ import {
 import { useProducts } from "@/hooks/use-products";
 import { useStations } from "@/hooks/use-print-setup";
 import { StationSelect } from "@/components/print/setup/StationSelect";
+import { CategoryKitchenTicketField } from "@/components/menu/CategoryKitchenTicketField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -73,6 +74,8 @@ function CategoriesPageContent() {
   const { stations } = useStations();
   const defaultStation = stations.find((station) => station.isDefault);
   const [stationId, setStationId] = useState("");
+  // Skip-KOT: true = this category's items never go on a kitchen ticket (the stored flag; absent = they do).
+  const [noKot, setNoKot] = useState(false);
 
   useEffect(() => {
     if (formOpen) setName(editing?.name ?? "");
@@ -80,6 +83,7 @@ function CategoriesPageContent() {
   useEffect(() => {
     // The saved id as it is: a list still loading never turns it into "default" on save.
     if (formOpen) setStationId(editing?.stationId ?? "");
+    if (formOpen) setNoKot(editing?.noKot === true);
   }, [formOpen, editing]);
 
   const list = categories.data ?? [];
@@ -128,10 +132,11 @@ function CategoriesPageContent() {
         await updateCategory.mutateAsync({
           id: editing._id,
           // null: back to the default station (an absent key would leave the saved one).
-          data: { name: trimmed, stationId: stationId === "" ? null : stationId },
+          // noKot null: the switch is back ON (an absent key would leave the saved flag).
+          data: { name: trimmed, stationId: stationId === "" ? null : stationId, noKot: noKot ? true : null },
         });
       } else {
-        await createCategory.mutateAsync({ name: trimmed, order: nextCategoryOrder(list), ...(stationId !== "" ? { stationId } : {}) });
+        await createCategory.mutateAsync({ name: trimmed, order: nextCategoryOrder(list), ...(stationId !== "" ? { stationId } : {}), ...(noKot ? { noKot } : {}) });
       }
       setFormOpen(false);
     } catch {
@@ -248,6 +253,7 @@ function CategoriesPageContent() {
               inheritLabel={`Default station (${defaultStation?.name ?? "Kitchen"})`}
             />
             <p className="text-xs text-muted-foreground">Where this category&apos;s KOTs print once printers are set up (Printer setup).</p>
+            <CategoryKitchenTicketField id="category-no-kot" noKot={noKot} onChange={setNoKot} />
             <DialogFooter className="pt-2">
               <Button type="submit" disabled={!name.trim() || createCategory.isPending || updateCategory.isPending}>
                 {(createCategory.isPending || updateCategory.isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

@@ -76,9 +76,11 @@ export interface KotSlipProps {
 // A line prints when it is on or its lock forces it. The bill number is the one exception (owner, s78): "Show bill
 // number" is its SOLE control on every design, as on today's bill (OrderReceipt gates it on billShowNumber alone), so
 // the line's own `on` and its GST lock are ignored: turning numbering off also hides an old number on a reprint, and
-// the editor's preview can never disagree with the print. Nothing switches numbering on by itself.
-function billBlockVisible(block: BillBlock, lockCtx: SlipLockContext, showNumber: boolean): boolean {
-  if (block.type === "billNo") return showNumber;
+// the editor's preview can never disagree with the print. Nothing switches numbering on by itself. S10 (owner Q1):
+// the block also carries the GST invoice number, which prints whenever the order holds one, so the block shows when
+// numbering is on OR the bill has an invoice; its Bill No. row still follows "Show bill number" alone (the renderers).
+function billBlockVisible(block: BillBlock, lockCtx: SlipLockContext, showNumber: boolean, hasInvoice: boolean): boolean {
+  if (block.type === "billNo") return showNumber || hasInvoice;
   return block.on || billBlockLocked(block.type, lockCtx);
 }
 
@@ -155,7 +157,7 @@ export function BillSlip({ order, settings, banner, now, template, ref }: BillSl
   const design = billDesignSpec(template.design);
   const base = order ? billSlipContext(order, settings, now) : null;
   const lockCtx = base ? billLockContext(base) : null;
-  const visible = lockCtx ? template.blocks.filter((b) => billBlockVisible(b, lockCtx, cfg.showNumber)) : [];
+  const visible = lockCtx ? template.blocks.filter((b) => billBlockVisible(b, lockCtx, cfg.showNumber, Boolean(base?.invoiceNo))) : [];
   const devanagari = slipHasDevanagari([
     order, base?.name, base?.tagline, base?.address, base?.header, base?.footer, template.blocks,
   ]);

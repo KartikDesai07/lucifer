@@ -19,7 +19,7 @@ import mongoose, { Types } from "mongoose";
 import { Order } from "@/models/Order";
 import { Customer } from "@/models/Customer";
 import { Table } from "@/models/Table";
-import { Counter } from "@/models/Counter";
+import { Counter, invoiceCounterKey } from "@/models/Counter";
 import { duesPaidTotal } from "@/lib/due-payment";
 import { cafeDateString, dayRange } from "@/lib/utils";
 import { runSeedDemo } from "./seed-demo/index";
@@ -159,6 +159,17 @@ async function main(): Promise<void> {
       `Counter order-${todayKey} (${todayOrderCounter?.seq ?? 0}) === today's order count (${todaysOrderCount})`,
       (todayOrderCounter?.seq ?? 0) === todaysOrderCount,
     );
+
+    // S10-E: the GST bills carry invoice serials 1..n per financial year, and each year's counter holds the last one.
+    const invoiced = await Order.find({ invoiceNumber: { $exists: true } }).select("invoiceNumber invoiceFy status").lean();
+    check(`GST invoices were seeded (${invoiced.length})`, invoiced.length > 0);
+    check("every invoiced order is Completed and holds both fields", invoiced.every((o) => o.status === "Completed" && typeof o.invoiceFy === "number"));
+    for (const fy of new Set(invoiced.map((o) => o.invoiceFy as number))) {
+      const serials = invoiced.filter((o) => o.invoiceFy === fy).map((o) => o.invoiceNumber as number).sort((x, y) => x - y);
+      const counter = await Counter.findById(invoiceCounterKey(fy)).lean();
+      check(`FY ${fy}: serials 1..${serials.length} with no gap`, serials.every((n, i) => n === i + 1));
+      check(`Counter ${invoiceCounterKey(fy)} (${counter?.seq ?? 0}) === last serial (${serials.length})`, (counter?.seq ?? 0) === serials.length);
+    }
   } finally {
     const db = mongoose.connection.db;
     if (db) await db.dropDatabase();

@@ -15,6 +15,7 @@ import { idemKeySchema } from "@pos/shared/schemas/order.schema";
 import { mintAttemptId } from "./pos-device-id";
 import {
   createPosSend,
+  kitchenSentMessage,
   kotRoundOfSend,
   SEND_DONE_AWAY_KITCHEN,
   SEND_DONE_AWAY_PAY,
@@ -418,4 +419,26 @@ test("K2: while mounted nothing is toasted from here — the notice and the conf
   await send.run(job("refused", [BAD_REQUEST]));
   assert.deepEqual(log.toasts, []);
   assert.equal(log.confirmed.length, 1);
+});
+
+// ── Skip-KOT: the send toast says so when nothing went to the kitchen ─────────────────────────────────
+
+const toastOrder = (lines: Array<{ kotRound: number; noKot?: true }>) => ({
+  tableNo: "4",
+  orderId: "ORD-9",
+  items: lines.map((line) => ({ productId: "p1", name: "Item", price: 100, qty: 1, modifiers: [], instructions: "", ...line })),
+});
+
+test("kitchenSentMessage: a send with a kitchen line keeps today's exact words, new order and round", () => {
+  assert.equal(kitchenSentMessage(toastOrder([{ kotRound: 1 }, { kotRound: 1, noKot: true }]), null), "Sent to kitchen. Table 4 is in Open tabs.");
+  assert.equal(kitchenSentMessage(toastOrder([{ kotRound: 1 }, { kotRound: 2 }]), 2), "Round 2 sent. Table 4 is still open.");
+  assert.equal(kitchenSentMessage(toastOrder([]), null), "Sent to kitchen. Table 4 is in Open tabs.", "no lines to judge: today's words");
+});
+
+test("kitchenSentMessage: an all-skip new order or round says the kitchen got nothing (only THAT round is judged)", () => {
+  const water = toastOrder([{ kotRound: 1, noKot: true }]);
+  assert.equal(kitchenSentMessage(water, null), "Order saved. Table 4 is in Open tabs. Nothing went to the kitchen.");
+  const later = toastOrder([{ kotRound: 1 }, { kotRound: 2, noKot: true }]);
+  assert.equal(kitchenSentMessage(later, 2), "Round 2 added. Table 4 is still open. Nothing went to the kitchen.");
+  assert.equal(kitchenSentMessage(later, 1), "Round 1 sent. Table 4 is still open.", "round 1 of that tab did reach the kitchen");
 });

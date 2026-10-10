@@ -292,6 +292,10 @@ export function printOrderSnapshot(order: Order): PrintOrderSnapshot {
     ...(order.billFirstPrintedAt ? { billFirstPrintedAt: order.billFirstPrintedAt } : {}),
     // S6: the token the customer holds — omit-empty, so an order without one snapshots byte-identically.
     ...(typeof order.tokenNumber === "number" ? { tokenNumber: order.tokenNumber } : {}),
+    // S10: a GST bill's invoice serial — both keys or neither, so a half-stored pair never prints a broken number.
+    ...(typeof order.invoiceNumber === "number" && typeof order.invoiceFy === "number"
+      ? { invoiceNumber: order.invoiceNumber, invoiceFy: order.invoiceFy }
+      : {}),
     items: order.items.map((item) => {
       const { productId, name, price, qty, variation, modifiers, instructions, kotRound } = item;
       // CB-5B S14 — `reward`/`note` ride along so a host-printed slip is the

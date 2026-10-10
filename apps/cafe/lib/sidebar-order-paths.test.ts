@@ -44,11 +44,11 @@ function rowsOf(src: string, label: string): Row[] {
   }));
 }
 
-test("PIN: Service lists New Order, Orders, Floor, Order Requests, Kitchen, Reservations in that order; Floor is a plain exact row open to every role", () => {
+test("PIN: Service lists New Order, Orders, Floor, Order Requests, Kitchen, Now Serving, Reservations in that order; Floor is a plain exact row open to every role", () => {
   const rows = rowsOf(readSrc(APP_SIDEBAR), "Service");
   assert.deepEqual(
     rows.map((r) => r.title),
-    ["New Order", "Orders", "Floor", "Order Requests", "Kitchen", "Reservations"],
+    ["New Order", "Orders", "Floor", "Order Requests", "Kitchen", "Now Serving", "Reservations"],
   );
   const floor = rows[2];
   assert.equal(floor.url, "/tables");

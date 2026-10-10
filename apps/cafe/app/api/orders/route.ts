@@ -4,12 +4,14 @@ import { connectDB } from "@/lib/db";
 import { Order } from "@/models/Order";
 import { Customer } from "@/models/Customer";
 import { Product } from "@/models/Product";
-import { Table } from "@/models/Table";
 import { nextOrderSequence, bumpOrderSequenceTo } from "@/models/Counter";
 import { printConfigOf } from "@/lib/print";
-import { allocateOpeningSlips, issueBillNumber, BILL_NUMBER_UNCONFIRMED } from "@/lib/slip-numbers";
+import { allocateOpeningSlips, BILL_NUMBER_UNCONFIRMED } from "@/lib/slip-numbers";
+import { billNumberingPlan } from "@/lib/gst-invoice";
+import { runCreateFollowUps } from "@/lib/order-create-followups";
 import { settledValue } from "@/lib/settled";
 import { createReplayResponse, createReplayVerdict, findCreateReplay, isIdemKeyDuplicate } from "@/lib/order-idem";
+import { withKitchenFlags } from "@/lib/kitchen-lines-server";
 import { createOrderPrintJobs, openingSlipsOf, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
 import cache from "@/lib/cache";
 import {
@@ -29,7 +31,7 @@ import {
 } from "@/lib/utils";
 import { getSettings, gstConfigOf } from "@/lib/settings";
 import { computeOrderTotals } from "@/lib/receipt";
-import { derivePayment, ledgerContribution } from "@/lib/order";
+import { derivePayment } from "@/lib/order";
 import { parseListCursor, applyCursor } from "@/lib/order-query";
 import { createOrderSchema } from "@/schemas";
 import { resolveTableCharge } from "@/lib/table-admin";
@@ -51,7 +53,6 @@ import {
   resolveAcceptPromo,
   claimPromoRedemption,
   releasePromoRedemption,
-  backfillPromoRedemptionOrderId,
   promoIsClaimable,
   promoNoteLine,
   PROMO_USED_ERROR,
@@ -59,7 +60,7 @@ import {
 import { REWARD_PROMO_EXCLUSIVE, type PromoKind } from "@pos/shared/public";
 import { mintedPromoCodes } from "@pos/shared/loyalty-rules";
 import { mergedNote } from "@/lib/order-request-accept-core";
-import { markAssignedRewardUsed, assignedRewardRefusal } from "@/lib/assigned-reward-gate";
+import { assignedRewardRefusal } from "@/lib/assigned-reward-gate";
 
 export const dynamic = "force-dynamic";
 
@@ -465,6 +466,11 @@ export async function POST(req: Request) {
       }
     }
 
+    // Skip-KOT: stamp the opening lines the menu never sends to the kitchen BEFORE the number draw and
+    // the doc below read them (fails open: an unreadable menu stamps nothing, prints as before).
+    const kot = await withKitchenFlags(rewardItems);
+    rewardItems = kot.lines;
+
     // Pay Now's bill: the SAME condition under which this route makes the server's bill job
     // below, named once so the stamp and the job can never drift apart.
     const printsBillNow = intent?.bill === true && data.status === "Completed";
@@ -602,10 +608,9 @@ export async function POST(req: Request) {
     // per order, reused by the retry through `doc`, burned by a refused insert. The BILL number is not
     // taken here at all: only the insert that WON takes it (below), so a Pay
     // Now twin that loses on the send key can never leave a gap in the bills.
-    const issuesBill = printCfg.bill.showNumber && data.status === "Completed";
     let slips: Awaited<ReturnType<typeof allocateOpeningSlips>>;
     try {
-      slips = await allocateOpeningSlips(printCfg);
+      slips = await allocateOpeningSlips(printCfg, { kitchen: kot.kitchen });
     } catch (slipError) {
       // No insert has run, so this is a DEFINITE no-order: both claims go back.
       await Promise.allSettled([unclaimFor(orderId), unfencePromoFor(orderId)]);
@@ -687,49 +692,23 @@ export async function POST(req: Request) {
     // a retry → duplicate order), so all of it settles together: any drift is
     // repairable via the customer reconcile endpoint.
     const landed = order;
-    // A held "Unpaid" open tab contributes nothing yet (ledgerContribution → 0);
-    // its visit/spend/due land at settlement. Every other order contributes now.
-    const applyLedger = async (): Promise<void> => {
-      if (!customerId) return;
-      const c = ledgerContribution({
-        payment: data.payment,
-        total: totals.total,
-        paidAmount: pay.paidAmount,
-        status: data.status,
-      });
-      if (!(c.visits || c.spend || c.due)) return;
-      await Customer.findByIdAndUpdate(customerId, {
-        $inc: { visits: c.visits, totalSpend: c.spend, totalDue: c.due },
-      });
-      cache.del("customers");
-    };
-    // Occupy the table ONLY if it is currently free, so two staff can't claim
-    // the same table and overwrite each other's currentOrderId.
-    const occupyTable = async (): Promise<void> => {
-      if (!data.tableNo) return;
-      await Table.findOneAndUpdate(
-        { tableNo: data.tableNo, status: "Available" },
-        { status: "Occupied", currentOrderId: landed.orderId },
-      );
-      cache.del("tables");
-    };
-    const [numbered] = await Promise.allSettled([
-      // This insert WON, so a Pay Now bill takes its number now — exactly once
-      // per order: a twin that lost on the send key adopted above, unnumbered.
-      issuesBill ? issueBillNumber(landed._id, printCfg.bill) : Promise.resolve(null),
-      // CB-5D part 2 — the fence's trace (which order consumed this code). The
-      // claim above IS the fence; this only makes it readable to staff/ops.
-      promoFenceMobile && promoIsClaimable(promoDiscount, data.promoCode, promoKind)
-        ? backfillPromoRedemptionOrderId(data.promoCode, promoFenceMobile, landed.orderId)
-        : null,
-      // CB-5D part 2 (owner decision) — the ASSIGNED code is now SPENT, so it
-      // leaves the diner's "my rewards" list; a failure costs a stale list row.
-      data.promoCode && promoFenceMobile
-        ? markAssignedRewardUsed(data.promoCode, promoFenceMobile, landed.orderId, new Date())
-        : null,
-      applyLedger(),
-      occupyTable(),
-    ]);
+    const numbering = billNumberingPlan(landed, printCfg.bill); // a paid sale's bill number + GST invoice serial
+    // The five writes (bill number, promo trace + spent, ledger, table) settle
+    // together inside lib/order-create-followups.ts; the promo gates stay here
+    // because they read the route's fence state.
+    const { numbered } = await runCreateFollowUps({
+      landed,
+      settings,
+      numbering,
+      customerId,
+      tableNo: data.tableNo,
+      ledger: { payment: data.payment, total: totals.total, paidAmount: pay.paidAmount, status: data.status },
+      promoTrace:
+        promoFenceMobile && promoIsClaimable(promoDiscount, data.promoCode, promoKind)
+          ? { code: data.promoCode, mobile: promoFenceMobile }
+          : null,
+      promoSpent: data.promoCode && promoFenceMobile ? { code: data.promoCode, mobile: promoFenceMobile } : null,
+    });
 
     cache.del(orderSummaryCacheKey());
     // The tab changed — nudge the POS pulse and the Kitchen board ahead of

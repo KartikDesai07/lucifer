@@ -48,6 +48,27 @@ test("expectedKotJobs: only server-owned rounds fired in the last 30 min that st
   assert.deepEqual(expectedKotJobs([{ ...fresh, createdAt: new Date(NOW - 31 * MIN) }], NOW), [], "older than the stale window");
 });
 
+test("expectedKotJobs: a round whose every line skips the kitchen is never repaired; a mixed round is; a legacy line without the flag is", () => {
+  const base = { _id: "64b7f0c2a1b2c3d4e5f60718", createdAt: new Date(NOW - MIN), kotRounds: 3, kotPrintDevices: ["dev-1", "dev-1", "dev-1"] };
+  const order = {
+    ...base,
+    kotFiredAt: [new Date(NOW - MIN), new Date(NOW - MIN), new Date(NOW - MIN)],
+    items: [
+      { kotRound: 1, noKot: true }, // round 1: water only, no ticket was ever made
+      { kotRound: 2, noKot: true },
+      { kotRound: 2 }, // round 2: mixed, the kitchen got the burger
+      { kotRound: 3 }, // round 3: a line from before the flag existed
+    ],
+  };
+  assert.deepEqual(expectedKotJobs([order], NOW).map((job) => job.round), [2, 3]);
+  const vision = { ...order, items: [{ kotRound: 1 }], kotRounds: 1, kotPrintDevices: ["dev-1"] };
+  assert.deepEqual(expectedKotJobs([vision], NOW).map((job) => job.round), [1], "vision guard: with no skip line the round is expected, as before");
+});
+
+test("PIN: the repair selects the flag it reads", () => {
+  assert.match(src("apps/cafe/lib/print-repair.ts"), /items.kotRound items.noKot/);
+});
+
 test("expectedKotJobs: the key it looks for is the one a created job carries (printJobKeyOf)", () => {
   const id = "64b7f0c2a1b2c3d4e5f60719";
   const wire = {

@@ -554,3 +554,45 @@ test("CB-5B negative control: the SAME void with reward: undefined yields discou
   );
   assert.equal(result.totals.total, 150, "with no reward threaded through, the diner would be charged the FULL remaining bill");
 });
+
+// ── Skip-KOT: the void trail keeps what the kitchen was never told ───────────
+// A line stamped `noKot` never reached a kitchen ticket, so voiding it needs no void slip. The
+// trail entry snapshots the flag (the "synthesized print lines need every new field" rule) so
+// the void route can skip the slip and the number; a kitchen line's entry carries no such key.
+
+test("skip-KOT: voiding a noKot line carries noKot: true onto the trail entry", () => {
+  const water = line({ productId: PRODUCT_ID_2, name: "Water", price: 20, qty: 2, noKot: true });
+  const tea = line({ productId: PRODUCT_ID_1, name: "Tea", price: 20, qty: 1 });
+  const result = resolveItemVoid({
+    items: [tea, water],
+    request: request({ index: 1, lineKey: keyOf(water), qty: 1 }),
+    discount: 0,
+    discountKind: undefined,
+    reward: undefined,
+    charge: 0,
+    gstCfg: GST_OFF,
+  });
+  assert.ok("nextItems" in result);
+  if (!("nextItems" in result)) return;
+  assert.equal(result.entry.name, "Water", "landmark: the entry is the water line");
+  assert.equal(result.entry.noKot, true);
+  assert.equal(result.nextItems[1].noKot, true, "the reduced line keeps its stamp");
+});
+
+test("skip-KOT: voiding a kitchen line leaves NO noKot key on the entry (omit-empty)", () => {
+  const tea = line({ productId: PRODUCT_ID_1, name: "Tea", price: 20, qty: 2 });
+  const water = line({ productId: PRODUCT_ID_2, name: "Water", price: 20, qty: 1, noKot: true });
+  const result = resolveItemVoid({
+    items: [tea, water],
+    request: request({ index: 0, lineKey: keyOf(tea), qty: 1 }),
+    discount: 0,
+    discountKind: undefined,
+    reward: undefined,
+    charge: 0,
+    gstCfg: GST_OFF,
+  });
+  assert.ok("nextItems" in result);
+  if (!("nextItems" in result)) return;
+  assert.equal(result.entry.name, "Tea", "landmark: the entry is the tea line");
+  assert.ok(!("noKot" in result.entry), "a kitchen line's void entry carries no noKot key");
+});

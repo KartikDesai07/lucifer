@@ -9,6 +9,7 @@ import {
   PRINT_CUSTOM_TEXT_MAX,
   PRINT_QR_BLOCKS_MAX,
   PRINT_QR_CAPTION_MAX,
+  PRINT_QR_SIZES,
   PRINT_QR_URL_MAX,
   PRINT_TEMPLATE_BLOCKS_MAX,
   TOKEN_BLOCK_TYPES,
@@ -121,13 +122,16 @@ function linkQrOptionsSchema(mode: TemplateMode) {
         .max(max, `Keep the link under ${max} characters`)
         .refine((value) => mode === "read" || isSafeHttpsLink(value), QR_URL_PROBLEM),
       caption: qrCaption(mode),
+      size: z.enum(PRINT_QR_SIZES).optional(),
     })
     .strict();
 }
 
 // "upi" pays the cafe's own UPI id, so it carries no link; only the bill has an amount to pay (A1.1).
 function upiQrOptionsSchema(mode: TemplateMode) {
-  return z.object({ content: z.literal("upi"), caption: qrCaption(mode) }).strict();
+  return z
+    .object({ content: z.literal("upi"), caption: qrCaption(mode), size: z.enum(PRINT_QR_SIZES).optional() })
+    .strict();
 }
 
 function billQrBlockSchema(mode: TemplateMode) {

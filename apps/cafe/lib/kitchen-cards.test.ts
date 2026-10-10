@@ -668,3 +668,56 @@ test("S8-5: isHiddenByReady — the lost-ticket comparison (>=), absent and unpa
   assert.equal(isHiddenByReady(held, "garbage"), false);
   assert.equal(isHiddenByReady(held, new Date(Number.NaN)), false);
 });
+
+// ── Skip-KOT (S4) — the ghost card: a no-kitchen round never moves the Ready bound ───────────────────────
+
+const GHOST_R1 = new Date("2026-09-23T10:00:00.000Z");
+const GHOST_R2 = new Date("2026-09-23T10:30:00.000Z");
+const GHOST_READY = new Date("2026-09-23T10:10:00.000Z");
+
+// Round 1 is a Burger (kitchen), round 2 is a Water (no kitchen ticket).
+function ghostOrder(over: Partial<KitchenOrderInput> = {}): KitchenOrderInput {
+  return order({
+    createdAt: GHOST_R1,
+    kotFiredAt: [GHOST_R1, GHOST_R2],
+    items: [
+      firedItem({ name: "Burger", kotRound: 1 }),
+      firedItem({ productId: "2".repeat(24), name: "Water", kotRound: 2, noKot: true }),
+    ],
+    ...over,
+  });
+}
+
+test("S4 ghost card: a Ready tab that later fires a water-only round stays hidden", () => {
+  const ord = ghostOrder();
+  const readyAtByOrder = { [String(ord._id)]: GHOST_READY };
+  assert.equal(buildKitchenCards({ orders: [ord], ticksByOrder: {}, readyAtByOrder }).length, 0, "the water round must not bring the card back");
+  assert.equal(isHiddenByReady(ord, GHOST_READY), true);
+  assert.equal(newestFiredAtMs(ord), GHOST_R1.getTime(), "the newest KITCHEN round is round 1");
+});
+
+test("S4 ghost card vision guards: a kitchen round 2 DOES bring the card back, and with no noKot line the loop is today's", () => {
+  const kitchenR2 = ghostOrder({
+    items: [firedItem({ name: "Burger", kotRound: 1 }), firedItem({ name: "Fries", kotRound: 2 })],
+  });
+  const readyAtByOrder = { [String(kitchenR2._id)]: GHOST_READY };
+  assert.equal(buildKitchenCards({ orders: [kitchenR2], ticksByOrder: {}, readyAtByOrder }).length, 1, "a kitchen round after Ready still returns");
+  assert.equal(newestFiredAtMs(kitchenR2), GHOST_R2.getTime());
+  // A mixed round (Burger + Water in round 2) is a kitchen round: it counts.
+  const mixedR2 = ghostOrder({
+    items: [
+      firedItem({ name: "Burger", kotRound: 1 }),
+      firedItem({ name: "Fries", kotRound: 2 }),
+      firedItem({ productId: "2".repeat(24), name: "Water", kotRound: 2, noKot: true }),
+    ],
+  });
+  assert.equal(newestFiredAtMs(mixedR2), GHOST_R2.getTime(), "a round with a kitchen line counts, water or not");
+  // noKot:false is not a skip; items undefined is today's loop.
+  assert.equal(newestFiredAtMs({ createdAt: GHOST_R1, kotFiredAt: [GHOST_R1, GHOST_R2], items: [] }), GHOST_R2.getTime(), "no lines to judge by: today's loop");
+  assert.equal(newestFiredAtMs({ createdAt: GHOST_R1, kotFiredAt: [GHOST_R1, GHOST_R2] }), GHOST_R2.getTime());
+});
+
+test("S4: an all-skip order gets no card at all (F2)", () => {
+  const ord = order({ items: [firedItem({ name: "Water", noKot: true })], kotFiredAt: [GHOST_R1], createdAt: GHOST_R1 });
+  assert.equal(buildKitchenCards({ orders: [ord], ticksByOrder: {} }).length, 0);
+});

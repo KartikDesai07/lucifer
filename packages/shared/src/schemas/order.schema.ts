@@ -47,6 +47,8 @@ export const orderItemSchema = z.object({
   // milestone against the diner's own stamp balance. If this schema ever
   // gains a `reward` field, a client payload could mark any line as a free
   // reward and have it silently excluded from the bill total.
+  // Same fence for skip-KOT: deliberately NO `noKot` key either. Only the server stamps it (from the
+  // menu, at write time), so a client cannot hide a dish from the kitchen.
 });
 
 // F5 — the send idempotency key: one RFC-4122 UUID the POS mints per Send to

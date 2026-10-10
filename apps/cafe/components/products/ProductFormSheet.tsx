@@ -25,6 +25,7 @@ import { ModifierInput } from "@/components/products/ModifierInput";
 import { ProductArtField } from "@/components/products/ProductArtField";
 import { VariationsField } from "@/components/products/VariationsField";
 import { PublicVisibleField } from "@/components/products/PublicVisibleField";
+import { KitchenTicketField } from "@/components/products/KitchenTicketField";
 import { ModifiersPreselectedField, modifiersPreselectedToSave } from "@/components/products/ModifiersPreselectedField";
 import type { Category, Product } from "@/types";
 
@@ -99,6 +100,7 @@ export function ProductFormSheet({
             icon: isProductIconKey(product.icon) ? product.icon : undefined,
             // The saved id as it is: a station list still loading never clears it on save.
             stationId: product.stationId,
+            noKot: product.noKot,
           }
         : emptyValues,
     );
@@ -142,6 +144,8 @@ export function ProductFormSheet({
             icon: values.icon ?? null,
             // And once more: "Use the category's station" restores ABSENT.
             stationId: values.stationId ?? null,
+            // Same sentinel: "Same as its category" restores ABSENT (the PUT route $unsets a null).
+            noKot: values.noKot ?? null,
           },
         });
       } else {
@@ -284,6 +288,8 @@ export function ProductFormSheet({
           )}
         />
       </FormField>
+
+      <KitchenTicketField control={control} categories={categories} />
     </FormSheet>
   );
 }

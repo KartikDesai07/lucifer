@@ -14,12 +14,19 @@ import {
 } from "@/lib/api-helpers";
 import { orderSummaryCacheKey } from "@/lib/utils";
 import { resolveSettleMoney, validCustomer } from "@/lib/order";
-import { computeOrderTotals, gstConfigFromOrder, resolveDiscountKind } from "@/lib/receipt";
+import {
+  computeOrderTotals,
+  gstConfigFromOrder,
+  resolveDiscountKind,
+  rewardBlocksDiscountKind,
+  REWARD_BLOCKS_GST_DISCOUNT_MESSAGE,
+} from "@/lib/receipt";
 import { voidGuardFilter } from "@/lib/order-void";
 import { settleRefusal } from "@/lib/settle-guard";
 import { getSettings, gstConfigOf } from "@/lib/settings";
 import { printConfigOf } from "@/lib/print";
-import { issueBillNumber, BILL_NUMBER_UNCONFIRMED } from "@/lib/slip-numbers";
+import { issueBillNumbers, BILL_NUMBER_UNCONFIRMED } from "@/lib/slip-numbers";
+import { billNumberingPlan, planHasWork } from "@/lib/gst-invoice";
 import { runSettleFollowUps } from "@/lib/settle-followups";
 import { billFirstPrintFresh, stampFirstBillPrint, withFirstBillPrint } from "@/lib/bill-first-print";
 import { settledValue } from "@/lib/settled";
@@ -77,6 +84,10 @@ export async function POST(req: Request, { params }: Params) {
     // with the live-leg verifier so both refuse on the same rules.
     const refusal = settleRefusal(old, data);
     if (refusal) return failure(refusal, 409);
+    // P4 (s87) — same refusal as add-round, before any claim or write.
+    if (rewardBlocksDiscountKind(data.discountKind, old.discountKind)) {
+      return failure(REWARD_BLOCKS_GST_DISCOUNT_MESSAGE, 409);
+    }
     const settings = settledValue(settingsR);
 
     // CB-5B S5 — a reward claimed AT SETTLE TIME. refuseItemKind: TRUE (D9,
@@ -269,6 +280,11 @@ export async function POST(req: Request, { params }: Params) {
       _id: id,
       status: "Pending",
       total: old.total,
+      // P1 (s87) — the round we read, the SAME term the items and void routes
+      // fence on: an add-round that leaves the total unchanged (a ₹100 dish
+      // under a ₹100 reward) passes the total term, and this settle — priced
+      // from our stale items — would complete the bill with that round unbilled.
+      kotRounds: old.kotRounds ?? 0,
       ...voidGuardFilter(old.voids?.length ?? 0),
     };
 
@@ -298,12 +314,11 @@ export async function POST(req: Request, { params }: Params) {
     }
 
     // The settle LANDED. Only now is the bill ISSUED, so only now does it take
-    // a number — and only if it has none (a re-settle never renumbers a bill
-    // the customer holds). A tab that ran all evening takes the number of the
-    // moment it was paid; a cancelled tab never takes one. The follow-ups run
-    // alongside; allSettled, so neither can turn this landed settle into a throw.
-    const printCfg = printConfigOf(settings);
-    const numbering = printCfg.bill.showNumber && updated.billNumber === undefined;
+    // its numbers (the daily bill number; a GST bill's invoice serial, S10) — and
+    // only those it has none of (a re-settle never renumbers a bill the customer
+    // holds). A cancelled tab never takes one. The follow-ups run alongside;
+    // allSettled, so neither can turn this landed settle into a throw.
+    const numbering = billNumberingPlan(updated, printConfigOf(settings).bill);
     // The bill's first print is this settle when the call prints it and the stored
     // stamp is not for this bill's total (never printed, or the total changed since):
     // stamp the moment the pay QR's "Valid till" counts from. A SEPARATE guarded write on purpose
@@ -312,7 +327,7 @@ export async function POST(req: Request, { params }: Params) {
     // is otherwise valid. allSettled keeps a stamp failure from touching the settle.
     const stamping = intent?.bill === true && !billFirstPrintFresh(updated);
     const [numbered, followUps, stamped] = await Promise.allSettled([
-      numbering ? issueBillNumber(id, printCfg.bill) : Promise.resolve(updated),
+      planHasWork(numbering) ? issueBillNumbers(id, numbering) : Promise.resolve(updated),
       runSettleFollowUps(old, updated, settings),
       stamping ? stampFirstBillPrint(id, Date.now()) : Promise.resolve(null),
     ]);

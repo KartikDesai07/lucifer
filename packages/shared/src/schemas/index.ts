@@ -16,3 +16,4 @@ export * from "./public-order.schema";
 export * from "./report.schema";
 export * from "./due-payment.schema";
 export * from "./print-template.schema";
+export * from "./expense.schema";

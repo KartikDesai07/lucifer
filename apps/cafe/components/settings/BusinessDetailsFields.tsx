@@ -18,6 +18,7 @@ import { Field, SettingsGroup } from "@/components/settings/SettingsFields";
 import { BillHeaderPreview } from "@/components/settings/BillHeaderPreview";
 import { PosLayoutPicker } from "@/components/settings/PosLayoutPicker";
 import { PayQrFields } from "@/components/settings/PayQrFields";
+import { UpiRulesFields } from "@/components/settings/UpiRulesFields";
 import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 
 interface BusinessDetailsFieldsProps {
@@ -106,6 +107,7 @@ export function BusinessDetailsFields({
             {...register("upiId")}
           />
         </Field>
+        <UpiRulesFields control={control} register={register} errors={errors} />
         <PayQrFields control={control} errors={errors} />
       </SettingsGroup>
 

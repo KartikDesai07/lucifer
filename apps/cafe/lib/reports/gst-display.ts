@@ -3,12 +3,13 @@
 // rule); `inr()` rounds to whole rupees, so a half-GST that lands on an odd
 // paisa (e.g. ₹25 GST -> ₹12.50 half) must be shown to the paisa via
 // inrPaise, never inr (which would silently round it to ₹13 or ₹12).
-import { inr, inrPaise } from "@/lib/utils";
+import { halfGst } from "@/lib/gst-half";
 import { addDays } from "@/lib/dashboard/range";
 import type { DashboardRange } from "@/types/dashboard";
 import type { GstRateRow } from "@/types/reports";
 
-const HALF = 2;
+// The halves moved to lib/gst-half.ts (client-safe, shared with the printed bill); re-exported so callers are unchanged.
+export { halfGst, formatHalfGst } from "@/lib/gst-half";
 
 /**
  * The bill-wise CSV is fetched at most this many days per request: a Vercel
@@ -26,22 +27,6 @@ export function gstBillChunks(range: DashboardRange): DashboardRange[] {
     chunks.push({ from, to: last < range.to ? last : range.to });
   }
   return chunks;
-}
-const PAISE_PER_RUPEE = 100;
-const HALF_PAISE_PER_RUPEE = PAISE_PER_RUPEE / HALF; // 1 rupee of GST = 50 paise of half-GST
-
-/** CGST or SGST — half the bill's (or range's) GST. */
-export function halfGst(gst: number): number {
-  return gst / HALF;
-}
-
-/** halfGst(gst), formatted: a whole-rupee half via inr(), an odd half to the paisa. */
-export function formatHalfGst(gst: number): string {
-  const half = halfGst(gst);
-  if (Number.isInteger(half)) return inr(half);
-  // gst is in RUPEES; half its value in PAISE is gst * 50 (never divide then
-  // re-multiply by a float 100/2, which reintroduces the rounding this exists to avoid).
-  return inrPaise(Math.round(gst * HALF_PAISE_PER_RUPEE));
 }
 
 /** "CGST 2.5%" when the range carried exactly one taxed rate (each half carries HALF the rate), else the plain label. */

@@ -1,6 +1,7 @@
 import mongoose, { Schema, type Connection, type Model } from "mongoose";
 import { cafeDateString } from "@/lib/utils";
 import { slipDayKey } from "@pos/shared/slip-day";
+import { invoiceFyLabel } from "@pos/shared/invoice-number";
 
 // Atomic sequence counters. Each document is one named sequence whose `seq` is
 // advanced with a single $inc — no read-then-write race, so concurrent order
@@ -116,6 +117,25 @@ export async function nextSlipSequence(
   const doc = await resolveCounter(conn)
     .findOneAndUpdate(
       { _id: slipCounterKey(series, date, resetMinutes) },
+      { $inc: { seq: 1 } },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    )
+    .lean();
+  return doc?.seq ?? 1;
+}
+
+// ── GST invoice series (print customization S10) ──────────────────────────────
+// One running number per financial year (@pos/shared/invoice-number), keyed "invoice-2627". The restart time
+// never applies: the series runs the whole year. ALWAYS the default (CORE) Counter, never a ledger connection: a
+// per-ledger counter would restart the series at 1 on a ledger flip and hand out a number twice in one year.
+export function invoiceCounterKey(fy: number): string {
+  return `invoice-${invoiceFyLabel(fy)}`;
+}
+
+export async function nextInvoiceSequence(fy: number): Promise<number> {
+  const doc = await resolveCounter(null)
+    .findOneAndUpdate(
+      { _id: invoiceCounterKey(fy) },
       { $inc: { seq: 1 } },
       { upsert: true, new: true, setDefaultsOnInsert: true },
     )

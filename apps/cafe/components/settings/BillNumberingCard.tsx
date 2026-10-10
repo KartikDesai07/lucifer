@@ -14,7 +14,7 @@ import { blankToMinStart, makeNumberStartBlurHandler } from "@/components/settin
 import { settingsSectionPath } from "@/lib/settings-sections";
 
 const BILL_NUMBER_START_ID = "settings-bill-number-start";
-const GST_NUMBER_HINT = "A GST bill needs a bill number. Turn on Show bill number to print it.";
+const GST_NUMBER_HINT = "GST bills always print their invoice number (like 2627/000123). It runs for the whole financial year.";
 
 // "Numbers start again at" is set once for the token, the ticket and the bill, on the Tokens & numbering page.
 function RestartNote({ lead }: { lead: string }) {
@@ -34,8 +34,8 @@ interface BillNumberingCardProps {
   setValue: UseFormSetValue<SettingsInput>;
   watch: UseFormWatch<SettingsInput>;
   errors: FieldErrors<SettingsInput>;
-  // A bill design is being edited and the saved settings print GST. Only a hint: nothing here (or anywhere) turns
-  // the number on by itself, and the switch stays free.
+  // The saved settings print GST. Only a hint (a GST bill always prints its invoice number, whatever the switch says):
+  // nothing here (or anywhere) turns the number on by itself, and the switch stays free.
   gstHint: boolean;
 }
 
@@ -74,7 +74,7 @@ export function BillNumberingCard({ control, register, setValue, watch, errors, 
           />
         )}
       />
-      {gstHint && !showNumber && <p className={HINT_CLASS}>{GST_NUMBER_HINT}</p>}
+      {gstHint && <p className={HINT_CLASS}>{GST_NUMBER_HINT}</p>}
       {showNumber && (
         <Field
           label="Bill number starts at"

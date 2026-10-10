@@ -8,6 +8,7 @@ import { CAFE_TIMEZONE } from "@/lib/constants";
 import type { PrintLogoSize } from "@/lib/constants";
 import { inr } from "@/lib/utils";
 import { PRINT_LOGO_CLASS } from "@/lib/print";
+import { GstSplitLines, InvoiceNoRow } from "@/components/pos/slip-gst-lines";
 import { BillTokenRow } from "@/components/pos/slip-token-lines";
 import type { BillSlipContext } from "./slip-context";
 import { genericBillQr, genericCustomText, ruleNode, type GenericTheme } from "./generic-blocks";
@@ -123,14 +124,23 @@ export const BILL_CLASSIC_BLOCKS: ClassicBillRenderers = {
   // Rendered only when the order actually HAS one: an order that
   // hasn't been paid yet carries no bill number, and a blank label
   // is worse than printing nothing.
-  billNo: (_block, { order }) =>
-    order.billNumber !== undefined && (
-      // flex-wrap + ml-auto (A4, s78): at a large size the number drops to its own line instead of off the slip.
-      <div className="flex flex-wrap justify-between gap-2 font-bold">
-        <span>Bill No.</span>
-        <span className="ml-auto text-right">{order.billNumber}</span>
-      </div>
-    ),
+  // S10: a GST bill's invoice number prints under it, whatever "Show bill number" says (the Bill No. row follows that).
+  billNo: (_block, { order, showBillNumber, invoiceNo }) => {
+    const showBill = showBillNumber && order.billNumber !== undefined;
+    if (!showBill && invoiceNo === null) return false;
+    return (
+      <>
+        {showBill && (
+          // flex-wrap + ml-auto (A4, s78): at a large size the number drops to its own line instead of off the slip.
+          <div className="flex flex-wrap justify-between gap-2 font-bold">
+            <span>Bill No.</span>
+            <span className="ml-auto text-right">{order.billNumber}</span>
+          </div>
+        )}
+        {invoiceNo !== null && <InvoiceNoRow invoiceNo={invoiceNo} wrap />}
+      </>
+    );
+  },
   orderId: (_block, { order }) => <Line label="Order" value={order.orderId} />,
   dateTime: (_block, { order }) => <Line label="Date" value={fmtDateTime(order.createdAt)} />,
   table: (_block, { order }) => <Line label="Table" value={order.tableNo ?? "Walk-In"} />,
@@ -192,7 +202,10 @@ export const BILL_CLASSIC_BLOCKS: ClassicBillRenderers = {
   taxes: (_block, { gst }) =>
     gst.show &&
     !gst.inclusive && (
-      <Line label={`GST @${gst.rate}%`} value={`+${inr(gst.gstAmount)}`} />
+      <>
+        <Line label={`GST @${gst.rate}%`} value={`+${inr(gst.gstAmount)}`} />
+        <GstSplitLines gst={gst} />
+      </>
     ),
   // CB-CHG — every charge line (table + staff-entered extras), each
   // printed under its own name, after the tax line, because they
@@ -216,10 +229,13 @@ export const BILL_CLASSIC_BLOCKS: ClassicBillRenderers = {
   taxIncluded: (_block, { gst }) =>
     gst.show &&
     gst.inclusive && (
-      <div className="pl-2 text-[0.83em]">
-        incl. GST @{gst.rate}%: {inr(gst.gstAmount)} (taxable{" "}
-        {inr(gst.taxable)})
-      </div>
+      <>
+        <div className="pl-2 text-[0.83em]">
+          incl. GST @{gst.rate}%: {inr(gst.gstAmount)} (taxable{" "}
+          {inr(gst.taxable)})
+        </div>
+        <GstSplitLines gst={gst} />
+      </>
     ),
   // A cancelled bill's `payment`/`paidAmount` are historical snapshots
   // the books no longer count — printing "Paid"/"Due" here would

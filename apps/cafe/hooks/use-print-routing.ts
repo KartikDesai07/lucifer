@@ -7,6 +7,7 @@
 // OrderDetailSheet, EndOfDayButton) and any test keep importing from here.
 
 import { useCallback } from "react";
+import { toast } from "sonner";
 
 import {
   billPrintJob,
@@ -17,6 +18,7 @@ import {
   type PrintHostRouting,
 } from "@/lib/print-routing";
 import { printJobRefOf } from "@/lib/print-agent-calls";
+import { KITCHEN_NOTHING_TO_SEND_MESSAGE, orderSkipsKitchen, roundSkipsKitchen } from "@/lib/kitchen-lines";
 import type { Order, OrderVoid } from "@/types";
 import { useHostRouting, type PrintRoutingHost } from "@/hooks/use-host-routing";
 
@@ -80,7 +82,10 @@ export function usePrintRouting(args: {
     // lanes so the enqueued job and a local fallback print identical slips.
     const resolved = round ?? order.kotRounds;
     noteOrder(order);
-    routePrint(() => kotPrintJob(order, resolved), () => localKot(order, resolved), printJobRefOf(order, "kot"));
+    // Skip-KOT: a round of only no-kitchen lines has no ticket (the token below is untouched).
+    if (!roundSkipsKitchen(order.items, resolved)) {
+      routePrint(() => kotPrintJob(order, resolved), () => localKot(order, resolved), printJobRefOf(order, "kot"));
+    }
     // The token slip follows the opening KOT (opensWithToken is the one rule the server's job creation shares).
     if (opensWithToken(order, resolved)) {
       routePrint(() => tokenPrintJob(order, { reprint: false }), () => localToken(order), printJobRefOf(order, "token"));
@@ -89,6 +94,7 @@ export function usePrintRouting(args: {
 
   const queueVoidSlip = useCallback((order: Order, entry: OrderVoid) => {
     noteOrder(order);
+    if (entry.noKot) return; // Skip-KOT: voiding a no-kitchen line sends the kitchen nothing.
     routePrint(() => voidPrintJob(order, entry, { reprint: false }), () => localVoid(order, entry), printJobRefOf(order, "void"));
   }, [routePrint, localVoid, noteOrder]);
 
@@ -101,6 +107,11 @@ export function usePrintRouting(args: {
       return;
     }
     const target = lastOrder;
+    // Skip-KOT: every fired line skips the kitchen, so there is no ticket to repeat.
+    if (orderSkipsKitchen(target)) {
+      toast.info(KITCHEN_NOTHING_TO_SEND_MESSAGE);
+      return;
+    }
     // This is the one local path carrying NO order: it just raises the print
     // flag, and the page's print source renders whatever `lastOrder` is at
     // print time. On the routed lane that verdict lands after a round trip, by

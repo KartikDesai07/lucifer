@@ -4,6 +4,7 @@ import { priceDisplayOf, itemSubLine, isOutOfStock, isHiddenFromQr } from "@/lib
 import { categoryNameOf } from "@/lib/category-map";
 import { inr, cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { NoKotTag, itemSkipsKitchen } from "@/components/menu/NoKotTag";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BRAND_CHECKBOX_SQUARE_CLASS } from "@/components/brand/brand-classes";
@@ -115,6 +116,7 @@ export function ItemCards({
                 {isHiddenFromQr(product) && (
                   <Badge variant="outline" className="text-[10px]">Hidden from QR</Badge>
                 )}
+                <NoKotTag skips={itemSkipsKitchen(product, categoryMap)} />
                 {archived && <Badge variant="outline" className="text-[10px]">Archived</Badge>}
               </div>
             </div>

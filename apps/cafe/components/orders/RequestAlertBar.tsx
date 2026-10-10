@@ -10,7 +10,7 @@ import { usePosPulseContext, usePrintReadback } from "@/components/layout/PosPul
 import { PrintHostBandSection } from "@/components/orders/PrintHostBandSection";
 import { readDevicePrefs, type PosDevicePrefs } from "@/lib/pos-device-prefs";
 import { printBandVisible, printHostNoteOf } from "@/lib/print-readback";
-import { alertBarSuppressedForPath, alertDetailForPath } from "@/lib/alert-bar-scope";
+import { alertBandVisible, alertBarSuppressedForPath, alertDetailForPath } from "@/lib/alert-bar-scope";
 import { SELF_ORDER_ALERT_LIMITATION } from "@pos/shared/self-order-alert";
 import { POS_ALERT_HEIGHT_VAR } from "@/lib/pos-layout";
 
@@ -63,7 +63,7 @@ export function RequestAlertBar() {
   // MERGED-18: another device's in-flight job never flips this band; own work
   // does. CB-UI2: POS shows NO band — folding that into `visible` also drops
   // the published height, so the terminal reclaims the space.
-  const visible = !alertBarSuppressedForPath(pathname) && (openCount > 0 || unprinted.length > 0 || printBandVisible(pulse, readback));
+  const visible = alertBandVisible({ suppressed: alertBarSuppressedForPath(pathname), onDashboard, openCount, unprintedCount: unprinted.length, printBand: printBandVisible(pulse, readback) });
   const hostNote = printHostNoteOf(pulse, prefs.printHostSeen);
   const bandRef = useRef<HTMLDivElement | null>(null);
   // Publish the band's height for the POS root (POS_ALERT_HEIGHT_VAR) in a

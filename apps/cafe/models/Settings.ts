@@ -25,6 +25,7 @@ import {
   appearanceMongooseSchema,
   loyaltyRulesMongooseSchema,
   dinerBannerMongooseSchema,
+  upiRuleMongooseSchema,
 } from "./settings.subschemas";
 
 // CB-5A S2 — split into settings.types.ts (the ISettings interface) and
@@ -50,6 +51,9 @@ export const settingsSchema = new Schema<ISettings>(
     productLogo: { type: String, default: "", trim: true },
     fssai: { type: String, default: "", trim: true },
     upiId: { type: String, default: "", trim: true },
+    // Amount slabs for the pay QR (up to UPI_RULES_MAX). No `default:` (omit-empty, promoCodes precedent): an existing
+    // Settings doc must keep validating untouched with this key absent, and a read goes through upiRulesOf.
+    upiRules: { type: [upiRuleMongooseSchema], default: undefined },
     // When the bill's pay QR prints, and how long it stays valid after the bill's
     // FIRST print (0 = no limit). The validator is the shared predicate so the PUT
     // (runValidators) and the Zod schema can never disagree on the allowed set.
@@ -115,6 +119,12 @@ export const settingsSchema = new Schema<ISettings>(
     kotTemplate: { type: Schema.Types.Mixed, default: undefined },
     // S7: the token slip's design (absent = Big Number, the default design).
     tokenTemplate: { type: Schema.Types.Mixed, default: undefined },
+
+    // CB-7 S1 — the reward-levels config. A PUT-only Mixed blob (never a section field, so a section save can't
+    // wipe it); the strict Zod WRITE gate (updateSettingsSchema) is the validator and nothing reads it raw —
+    // lib/reward-levels-config.ts re-parses on read. No `default:` (omit-empty): absent = the feature is off,
+    // and a null PUT $unsets it (lib/settings.ts settingsUpdateOf).
+    rewardLevels: { type: Schema.Types.Mixed, default: undefined },
 
     // Self-order (QR) — CR2. "approve" is the safer default: a cafe that
     // never touches this still has staff accept every order before the

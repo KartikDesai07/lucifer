@@ -479,6 +479,8 @@ function buildSettleWrite(
     _id: old._id,
     status: "Pending",
     total: old.total,
+    // P1 (s87) — mirrors the route: the round we read (leg22).
+    kotRounds: old.kotRounds ?? 0,
     ...voidGuardFilter(old.voids?.length ?? 0),
   };
   return { ok: true as const, money, filter, update };
@@ -2222,6 +2224,80 @@ async function leg21(): Promise<void> {
   );
 }
 
+// P1 (s87) — settle's CAS was blind to an add-round whose new total EQUALS the
+// old one. The settle write is built from its READ of the tab (old.total, the
+// old items); an add-round landing between that read and the CAS changes
+// kotRounds and the items but, when the operator raises the discount by exactly
+// the new line's worth, NOT the total — so `total: old.total` still matched and
+// the bill completed with the new round's lines unbilled (paid for nothing).
+// Written before the fix: expected RED until settle's filter gains
+// `kotRounds: old.kotRounds ?? 0` (buildSettleWrite mirrors the route, so the
+// mirror and the route take the term together — pinned in
+// lib/order-integrity.test.ts).
+async function leg22(): Promise<void> {
+  console.log(
+    "\nLeg 22 — /settle vs a concurrent EQUAL-TOTAL add-round: the total-CAS alone can't see it, the round count must\n",
+  );
+
+  const order = await Order.create(
+    buildOrder({
+      orderId: "ORD-LEG22-001",
+      items: [line(fixtureHex("p-a"), "Item A", 200, 1, 1)],
+      payment: "Unpaid",
+      status: "Pending",
+      gstRate: 5,
+      gstMode: "exclusive",
+      kotRounds: 1,
+    }),
+  );
+  check("seed tab is Rs 200 at 5% exclusive GST -> total 210, one round", order.total === 210 && order.kotRounds === 1);
+
+  // Snapshot S — the /settle read, BEFORE the concurrent round commits.
+  const staleSnapshot = await Order.findById(order._id).lean<LeanOrder>();
+  if (!staleSnapshot) throw new Error("leg22: seed order missing");
+
+  // A concurrent add-round commits off a FRESH read: one Rs 100 item, with the
+  // discount raised to Rs 100 in the same payload -> subtotal 300, base 200,
+  // GST 10 -> total 210, the SAME total the settle priced.
+  const round = buildItemsWrite(
+    staleSnapshot,
+    [line(fixtureHex("p-b"), "Item B", 100, 1, 0)],
+    100,
+    LIVE_GST_FALLBACK,
+  );
+  check("sanity: the round's own re-price lands on the SAME total (210) — the case the total term cannot see", round.totals.total === staleSnapshot.total);
+  const afterRound = await Order.findOneAndUpdate(round.filter, round.update, { new: true, runValidators: true }).lean();
+  check(
+    "the concurrent add-round lands: two rounds, two lines, total still 210",
+    afterRound !== null && afterRound.kotRounds === 2 && afterRound.items.length === 2 && afterRound.total === 210,
+  );
+
+  // The settle write built from the STALE snapshot, mirroring the real route's
+  // filter/update exactly (see buildSettleWrite). `discountKind: null` is what
+  // the POS settle always sends (use-pos-tab.ts), so this takes the RE-PRICE
+  // path — the one that writes subtotal/total from the stale items.
+  const staleSettle = buildSettleWrite(staleSnapshot, { payment: "Cash", discountKind: null }, LIVE_GST_FALLBACK);
+  if (!staleSettle.ok) throw new Error("leg22: stale settle should resolve cleanly (no error path)");
+  check(
+    "the stale settle re-priced from the OLD items (subtotal 200) — had it landed, Item B would sit on the bill unbilled",
+    staleSettle.money.totals?.subtotal === 200 && staleSettle.money.totals?.total === 210,
+  );
+  const staleAttempt = await Order.findOneAndUpdate(staleSettle.filter, staleSettle.update, {
+    new: true,
+    runValidators: true,
+  }).lean();
+  check(
+    "the stale settle write matches NOTHING even though total:210 == total:210 — the kotRounds term is what catches it",
+    staleAttempt === null,
+  );
+
+  const final = await Order.findById(order._id).lean<LeanOrder>();
+  check(
+    "no bill was settled — still Pending with both rounds on it, so the new round was never left unbilled",
+    final?.status === "Pending" && final?.kotRounds === 2 && (final?.items.length ?? 0) === 2,
+  );
+}
+
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
   const dbName = new URL(uri.replace("mongodb://", "http://")).pathname.slice(1);
@@ -2260,6 +2336,7 @@ async function main(): Promise<void> {
     await leg19();
     await leg20();
     await leg21();
+    await leg22();
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();

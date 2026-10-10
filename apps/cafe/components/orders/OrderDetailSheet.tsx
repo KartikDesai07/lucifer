@@ -38,6 +38,7 @@ import { MoveTableDialog } from "@/components/orders/MoveTableDialog";
 import type { PaymentResult } from "@/components/pos/PaymentModal";
 import { collectedAmount } from "@/lib/payment-result";
 import { tokenLabelOf } from "@/lib/token-view";
+import { KITCHEN_NOTHING_TO_SEND_MESSAGE, kitchenOrderOf, orderSkipsKitchen } from "@/lib/kitchen-lines";
 import type { Customer, Order, SettleOrderInput } from "@/types";
 
 const PaymentModal = dynamic(
@@ -260,6 +261,11 @@ export function OrderDetailSheet({
       toast.error(PRINT_ORDER_CHANGED_MESSAGE);
       return;
     }
+    // Skip-KOT: every fired line skips the kitchen, so there is no ticket (or stop notice) to send.
+    if (orderSkipsKitchen(order)) {
+      toast.info(KITCHEN_NOTHING_TO_SEND_MESSAGE);
+      return;
+    }
     routePrint(
       () =>
         isCancelled
@@ -468,7 +474,7 @@ export function OrderDetailSheet({
         <div className="pointer-events-none absolute left-[-9999px] top-0" aria-hidden>
           <OrderReceipt order={order} settings={settings.data} ref={receiptRef} />
           <KOTReceipt
-            order={order}
+            order={order ? kitchenOrderOf(order) : order}
             settings={settings.data}
             variant={isCancelled ? "void" : "kot"}
             reason={isCancelled ? order?.cancelReason : undefined}

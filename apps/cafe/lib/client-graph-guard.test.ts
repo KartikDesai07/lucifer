@@ -34,7 +34,11 @@ const SOURCE_EXTS = [".ts", ".tsx"];
 // components/pos/VoidItemDialog.tsx -> lib/order-void.ts -> `import { Types }
 // from "mongoose"` was found doing exactly that (fixed by splitting the
 // client-safe rule out into lib/order-void-rules.ts).
-const SERVER_ONLY = /(^|\/)models\/|\/lib\/db\.ts$/;
+// CB-7 S1: lib/reward-levels-config.ts reads process.env (the platform owner's scratch-card block switch — in a
+// browser it would read undefined = "not blocked") and lib/reward-rng.ts imports node:crypto. CB-7 S2 adds lib/reward-progress-plan.ts (reads
+// settings through the env-reading config) and lib/reward-progress.ts (Customer model + the crypto rng). This repo
+// has no `server-only` package, so this graph walk is their guard.
+const SERVER_ONLY = /(^|\/)models\/|\/lib\/db\.ts$|\/lib\/reward-(?:levels-config|rng|progress-plan|progress)\.ts$/;
 // Bare PACKAGE specifiers that must never be value-imported from the client
 // graph. Kept separate from SERVER_ONLY above because that regex is tested
 // against a RESOLVED file path, and resolveSpecifier() returns null for a bare
@@ -52,8 +56,10 @@ const MIN_CLIENT_MODULES = 150;
 const LANDMARK_FROM = "hooks/use-customer-rewards.ts";
 const LANDMARK_TO = "lib/reward-rungs.ts";
 
+// The clause classes exclude quotes, backticks and ";" so one alternative can never run from a side-effect
+// `import "x";` on into the NEXT statement's `from "y"` (CB-7 S1: that swallowed "x" whole).
 const IMPORT_RE =
-  /import\s+(type\s+)?([\s\S]*?)\s*from\s*["']([^"']+)["']|import\s*["']([^"']+)["']|export\s+(type\s+)?([\s\S]*?)\s*from\s*["']([^"']+)["']/g;
+  /import\s+(type\s+)?([^"'`;]*?)\s*from\s*["']([^"']+)["']|import\s*["']([^"']+)["']|export\s+(type\s+)?([^"'`;]*?)\s*from\s*["']([^"']+)["']/g;
 
 function rel(file: string): string {
   return path.relative(CAFE_ROOT, file).replace(/\\/g, "/");
@@ -180,4 +186,21 @@ test("value-import parser: type-only imports are erased, quoted imports in comme
     `import "./side-effect";`,
   ].join("\n");
   assert.deepEqual(valueImportSpecifiers(sample), ["@/lib/real", "./mixed", "./reexport", "./side-effect"]);
+});
+
+// CB-7 S1 mutation survivor: a side-effect import FOLLOWED by another import was swallowed — the `import … from`
+// alternative's lazy clause ran from `import "x";` on to the NEXT statement's `from "y"`, so "x" never reached the
+// walk (the sample above puts the side-effect import LAST, which is why it never showed). Order and both statement
+// kinds are covered here.
+test("value-import parser: a side-effect import followed by other imports/re-exports is still seen", () => {
+  const sample = [
+    `"use client";`,
+    `import "@/lib/first-side-effect";`,
+    ``,
+    `import { useEffect } from "react";`,
+    `import "./second-side-effect";`,
+    `export { g } from "./reexport-after";`,
+    `import type { T } from "./type-only";`,
+  ].join("\n");
+  assert.deepEqual(valueImportSpecifiers(sample), ["@/lib/first-side-effect", "react", "./second-side-effect", "./reexport-after"]);
 });

@@ -7,9 +7,10 @@
 import { receiptGst, type GstConfig } from "@/lib/receipt";
 import { addDays } from "@/lib/dashboard/range";
 import { cafeDateString } from "@/lib/utils";
+import { isTaxInvoice } from "@/lib/gst-invoice";
 import type { GstMode } from "@/lib/constants";
 import type { DashboardRange } from "@/types/dashboard";
-import type { GstBillRow, GstDayRow, GstDocs, GstRateRow, GstReport } from "@/types/reports-b2";
+import type { GstBillRow, GstDayRow, GstDocs, GstInvoices, GstRateRow, GstReport } from "@/types/reports-b2";
 
 const COMPLETED = "Completed";
 const CANCELLED = "Cancelled";
@@ -24,6 +25,8 @@ export interface GstOrderView {
   gstMode?: GstMode;
   chargeAmount?: number;
   billNumber?: number;
+  invoiceNumber?: number;
+  invoiceFy?: number;
   payment?: string;
 }
 
@@ -47,6 +50,30 @@ export function gstOfBill(order: GstOrderView, liveCfg: GstConfig): GstBillBreak
   return { rate: 0, inclusive: false, taxable: 0, gst: 0, noGst: order.total - charges, charges, total: order.total };
 }
 
+interface InvoiceEntry {
+  fy: number;
+  serial: number;
+}
+
+/**
+ * One day's (or the whole range's) GST invoice summary. The serials are only comparable inside one financial year,
+ * so first/last are given only when every numbered invoice is in the same year; across 1 April they are null and
+ * only the counts are reported.
+ */
+function summarizeInvoices(entries: InvoiceEntry[], cancelled: number, without: number): GstInvoices {
+  const fys = new Set(entries.map((e) => e.fy));
+  const single = fys.size === 1;
+  const serials = entries.map((e) => e.serial);
+  return {
+    fy: single ? entries[0].fy : null,
+    first: single ? Math.min(...serials) : null,
+    last: single ? Math.max(...serials) : null,
+    numbered: entries.length,
+    cancelled,
+    without,
+  };
+}
+
 interface DayAccumulator {
   bills: number;
   taxable: number;
@@ -59,10 +86,13 @@ interface DayAccumulator {
   cancelled: number;
   unnumbered: number;
   billNumbers: number[];
+  invoices: InvoiceEntry[];
+  invoicesCancelled: number;
+  invoicesWithout: number;
 }
 
 function emptyDay(): DayAccumulator {
-  return { bills: 0, taxable: 0, gst: 0, noGst: 0, charges: 0, value: 0, noGstBills: 0, numbered: 0, cancelled: 0, unnumbered: 0, billNumbers: [] };
+  return { bills: 0, taxable: 0, gst: 0, noGst: 0, charges: 0, value: 0, noGstBills: 0, numbered: 0, cancelled: 0, unnumbered: 0, billNumbers: [], invoices: [], invoicesCancelled: 0, invoicesWithout: 0 };
 }
 
 export interface FoldGstReportInput {
@@ -97,6 +127,15 @@ export function foldGstReport({ range, orders, liveCfg, withBills }: FoldGstRepo
       acc.unnumbered += 1;
     }
 
+    // GST invoice serials (S10): a paid GST bill holds one; a Completed GST bill without one is reported, never hidden.
+    // Bucketed by the same createdAt day as everything else — the restart time never reaches this report.
+    if (typeof order.invoiceNumber === "number" && typeof order.invoiceFy === "number") {
+      acc.invoices.push({ fy: order.invoiceFy, serial: order.invoiceNumber });
+      if (order.status === CANCELLED) acc.invoicesCancelled += 1;
+    } else if (order.status === COMPLETED && isTaxInvoice(order)) {
+      acc.invoicesWithout += 1;
+    }
+
     if (order.status !== COMPLETED) continue;
 
     const b = gstOfBill(order, liveCfg);
@@ -121,6 +160,9 @@ export function foldGstReport({ range, orders, liveCfg, withBills }: FoldGstRepo
         date: day,
         at: order.createdAt.toISOString(),
         ...(typeof order.billNumber === "number" ? { billNumber: order.billNumber } : {}),
+        ...(typeof order.invoiceNumber === "number" && typeof order.invoiceFy === "number"
+          ? { invoiceNumber: order.invoiceNumber, invoiceFy: order.invoiceFy }
+          : {}),
         orderId: order.orderId,
         rate: b.rate,
         inclusive: b.inclusive,
@@ -153,6 +195,7 @@ export function foldGstReport({ range, orders, liveCfg, withBills }: FoldGstRepo
       charges: acc.charges,
       value: acc.value,
       docs,
+      invoices: summarizeInvoices(acc.invoices, acc.invoicesCancelled, acc.invoicesWithout),
     });
   }
 
@@ -175,7 +218,15 @@ export function foldGstReport({ range, orders, liveCfg, withBills }: FoldGstRepo
     { bills: 0, taxable: 0, gst: 0, noGst: 0, charges: 0, value: 0, numbered: 0, cancelled: 0, unnumbered: 0 },
   );
   let noGstBills = 0;
-  for (const acc of byDay.values()) noGstBills += acc.noGstBills;
+  const rangeInvoices: InvoiceEntry[] = [];
+  let invoicesCancelled = 0;
+  let invoicesWithout = 0;
+  for (const acc of byDay.values()) {
+    noGstBills += acc.noGstBills;
+    rangeInvoices.push(...acc.invoices);
+    invoicesCancelled += acc.invoicesCancelled;
+    invoicesWithout += acc.invoicesWithout;
+  }
 
   return {
     range,
@@ -189,6 +240,7 @@ export function foldGstReport({ range, orders, liveCfg, withBills }: FoldGstRepo
     rates,
     days,
     docs: { numbered: totals.numbered, cancelled: totals.cancelled, unnumbered: totals.unnumbered },
+    invoices: summarizeInvoices(rangeInvoices, invoicesCancelled, invoicesWithout),
     ...(withBills ? { billRows: billRows.sort((a, b) => a.at.localeCompare(b.at) || a.orderId.localeCompare(b.orderId)) } : {}),
   };
 }

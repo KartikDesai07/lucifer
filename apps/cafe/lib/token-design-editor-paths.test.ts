@@ -71,7 +71,7 @@ test("the number's row is locked ON with 'Always printed'; no other token line i
     assert.equal(lockReasonOf(TOKEN_EDITOR, "tokenNo", ctx), "always");
     for (const type of TOKEN_BLOCK_TYPES.filter((t) => t !== "tokenNo")) assert.equal(lockReasonOf(TOKEN_EDITOR, type, ctx), null, `${type} is free`);
   }
-  assert.deepEqual([...TOKEN_EDITOR.hidden], [], "no token line is hidden from the editor (the kitchen ticket hides its station)");
+  assert.deepEqual([...TOKEN_EDITOR.hidden], [], "no token line is hidden from the editor");
   assert.deepEqual([...TOKEN_EDITOR.forcedOn], [], "and none is switched by another control");
   for (const design of TOKEN_DESIGNS) {
     const started = activate(TOKEN_EDITOR, design, settingsOf());

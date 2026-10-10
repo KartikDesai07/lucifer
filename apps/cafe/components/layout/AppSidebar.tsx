@@ -19,6 +19,8 @@ import {
   Printer,
   Settings,
   ChefHat,
+  Tv,
+  Wallet,
 } from "lucide-react";
 
 import { useAuth } from "@/hooks/use-auth";
@@ -28,6 +30,7 @@ import { brandFontVariables } from "@/lib/brand-fonts";
 import { brandingUrl, productImageUrl } from "@/lib/images";
 import { APP_NAME } from "@/lib/constants";
 import { isActivePath } from "@/lib/nav-active";
+import { printConfigOf } from "@/lib/print";
 import { SETTINGS_BASE_PATH } from "@/lib/settings-sections";
 import { REPORTS_BASE_PATH } from "@/lib/report-sections";
 import { isMenuPath } from "@/lib/menu-sections";
@@ -69,6 +72,8 @@ type NavItem = {
   url: string;
   icon: typeof LayoutDashboard;
   adminOnly?: boolean;
+  /** Shown only while tokens are on (Settings -> Tokens & numbering). */
+  tokensOnly?: boolean;
   /** Lights on this exact path only, not its sub-paths (Floor vs Setup / QR). */
   exact?: boolean;
 };
@@ -93,6 +98,7 @@ const sections: NavSection[] = [
       { title: "Floor", url: "/tables", icon: LayoutGrid, exact: true },
       { title: "Order Requests", url: "/requests", icon: Inbox },
       { title: "Kitchen", url: "/kitchen", icon: ChefHat },
+      { title: "Now Serving", url: "/now-serving", icon: Tv, tokensOnly: true },
       { title: "Reservations", url: "/reservations", icon: CalendarClock },
     ],
   },
@@ -102,6 +108,9 @@ const sections: NavSection[] = [
       { title: "Menu", url: "/products", icon: Coffee },
       { title: "Tables", url: "/tables/setup", icon: Armchair, adminOnly: true },
       { title: "Customers", url: "/customers", icon: Users },
+      // Open to every role: staff add an expense and see their own from today;
+      // the full list, categories and the report stay admin-only inside the page.
+      { title: "Expenses", url: "/expenses", icon: Wallet },
       { title: "Events", url: "/events", icon: PartyPopper },
     ],
   },
@@ -175,6 +184,7 @@ export function AppSidebar() {
   // configured on the Settings page — generic fallback before it's set.
   const settings = useSettings();
   const brandName = settings.data?.restaurantName?.trim() || APP_NAME;
+  const tokensOn = printConfigOf(settings.data).token.enabled;
   const logoUrl = productImageUrl(settings.data?.logo, undefined, { fit: true });
   // A cafe that hasn't uploaded its own mark yet should see the PRODUCT's mark
   // rather than a generic glyph — restaurant logo takes priority, then the saved
@@ -185,7 +195,10 @@ export function AppSidebar() {
   const displayLogoUrl = logoUrl ?? productLogoUrl ?? brandingUrl("productLogo");
 
   const visibleSections = sections
-    .map((section) => ({ ...section, items: section.items.filter((item) => !item.adminOnly || isAdmin) }))
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => !item.adminOnly || isAdmin).filter((item) => !item.tokensOnly || tokensOn),
+    }))
     .filter((section) => section.items.length > 0);
   const warmHrefs = visibleSections
     .filter((section) => section.warm)

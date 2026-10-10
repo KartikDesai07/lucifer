@@ -59,7 +59,11 @@ test("SLIP_ORDER: kot, then token, then void, moved, bill - the token sits after
   assert.ok(rank.kot < rank.token && rank.token < rank.bill, "KOT -> token -> bill");
   assert.ok(rank.token < rank.void && rank.token < rank.moved, "the token also precedes the void and moved slips");
   assert.deepEqual(new Set(Object.values(rank)).size, 5, "no two kinds share a rank (a tie would leave the order to the sort)");
-  assert.ok(body.includes("[...input.slips].sort((a, b) => SLIP_ORDER[a.kind] - SLIP_ORDER[b.kind]);"), "createOrderPrintJobs sorts by it before creating");
+  // Skip-KOT: the slips are first narrowed to the ones the kitchen still needs (kitchenSlipsOf), then sorted.
+  const narrowed = body.indexOf("const wanted = kitchenSlipsOf(order, input.slips);");
+  const sorted = body.indexOf("[...wanted].sort((a, b) => SLIP_ORDER[a.kind] - SLIP_ORDER[b.kind]);");
+  assert.ok(narrowed !== -1 && sorted !== -1, "createOrderPrintJobs sorts by it before creating");
+  assert.ok(narrowed < sorted, "the kitchen narrowing runs before the sort, so the sort sees only wanted slips");
 });
 
 // ── createOrderPrintJobs over fake models ────────────────────────────────────

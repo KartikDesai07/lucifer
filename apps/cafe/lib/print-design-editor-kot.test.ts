@@ -43,7 +43,7 @@ import {
   EDITOR_HIDDEN_BLOCK_TYPES,
 } from "@/lib/print-design-editor";
 import { BILL_KIND, KOT_KIND } from "@/lib/print-design-kinds";
-import { KOT_BANNER_NOTE, KOT_PRICES_NEEDED_NOTE, KOT_VOID_ITEMS_NOTE, KITCHEN_PREVIEW_CHIPS, TOKEN_ROW_NOTE } from "@/lib/print-design-labels";
+import { KOT_BANNER_NOTE, KOT_PRICES_NEEDED_NOTE, KOT_VOID_ITEMS_NOTE, KITCHEN_PREVIEW_CHIPS, STATION_ROW_NOTE, TOKEN_ROW_NOTE } from "@/lib/print-design-labels";
 import { legacyKotSettingsOf } from "@/hooks/use-kot-design-draft";
 import { sampleKitchenOrder, sampleKitchenSlip, SAMPLE_MOVED_FROM, SAMPLE_VOID_REASON } from "@/lib/bill-print-sample";
 import { hostPrintSlipOf, orderFromSnapshot } from "@/lib/print-host-slips";
@@ -98,8 +98,8 @@ test("lockReasonOf(KOT_EDITOR) equals kotBlockLocked for every KOT type x every 
   }
   assert.equal(locked, 3 * 4, "landmark: three lines x the four banner contexts");
   assert.equal(lockReasonOf(KOT_EDITOR, "billNo", { gst: true, fssai: true, banner: true }), null, "a bill-only type is never a KOT lock");
-  assert.deepEqual([[...KOT_EDITOR.required], [...KOT_EDITOR.forcedOn], [...KOT_EDITOR.hidden]], [[...KOT_REQUIRED_BLOCKS], ["kotNo"], ["station"]]);
-  assert.ok(KOT_BLOCK_TYPES.includes("token") && !KOT_EDITOR.hidden.includes("token"), "S6: the token line is in the catalog and now has an editor row (only station stays hidden)");
+  assert.deepEqual([[...KOT_EDITOR.required], [...KOT_EDITOR.forcedOn], [...KOT_EDITOR.hidden]], [[...KOT_REQUIRED_BLOCKS], ["kotNo"], []]);
+  for (const type of ["token", "station"] as const) assert.ok(KOT_BLOCK_TYPES.includes(type) && !KOT_EDITOR.hidden.includes(type), `${type}: in the catalog and has an editor row (token since S6, station since stationLine is wired)`);
 });
 
 test("legacyKotSettingsOf touches exactly the ten fields classicKotTemplate reads, and each one really is read (none missing, none spare)", () => {
@@ -131,18 +131,19 @@ test("kinds: KOT_KIND.bodyOf -> { kotTemplate }, BILL_KIND.bodyOf -> { billTempl
   assert.deepEqual([KOT_KIND.allowUpiQr, BILL_KIND.allowUpiQr, KOT_KIND.spec === KOT_EDITOR], [false, true, true]);
 });
 
-test("KOT_KIND.noteOf: the token note on token, the banner note on title / table, the void-only note on items (a moved ticket lists no dishes), the prices note on roundTotal only while items.prices is off, nothing else", () => {
+test("KOT_KIND.noteOf: the token note on token, the station note on station, the banner note on title / table, the void-only note on items (a moved ticket lists no dishes), the prices note on roundTotal only while items.prices is off, nothing else", () => {
   const t = activate(KOT_EDITOR, "classic", settingsOf({ kotShowPrices: false })).template;
   const priced = setKotItemsPrices(t, "items", true);
   assert.equal(itemsOf(t).options.prices, false, "landmark: prices start off");
   assert.equal(itemsOf(priced).options.prices, true, "landmark: and the op turned them on");
   for (const block of t.blocks) {
-    const banner = block.type === "token" ? TOKEN_ROW_NOTE : block.type === "items" ? KOT_VOID_ITEMS_NOTE : ["title", "table"].includes(block.type) ? KOT_BANNER_NOTE : null;
+    const banner = block.type === "token" ? TOKEN_ROW_NOTE : block.type === "station" ? STATION_ROW_NOTE : block.type === "items" ? KOT_VOID_ITEMS_NOTE : ["title", "table"].includes(block.type) ? KOT_BANNER_NOTE : null;
     const expectOff = banner ?? (block.type === "roundTotal" ? KOT_PRICES_NEEDED_NOTE : null);
     assert.equal(KOT_KIND.noteOf(block, t), expectOff, `${block.type} (prices off)`);
     assert.equal(KOT_KIND.noteOf(block, priced), banner, `${block.type} (prices on)`);
   }
-  assert.ok(t.blocks.some((b) => b.type === "token"), "landmark: the Classic ticket carries a token line, so the loop above pinned its note");
+  assert.ok(t.blocks.some((b) => b.type === "token") && t.blocks.some((b) => b.type === "station"), "landmark: the Classic ticket carries token and station lines, so the loop above pinned their notes");
+  assert.ok(STATION_ROW_NOTE.includes("Printer setup"), "landmark: the station note names the page that splits tickets by station");
   assert.equal(BILL_KIND.noteOf(t.blocks[0], t as never), null, "the bill kind shows no note on an ordinary line");
 });
 

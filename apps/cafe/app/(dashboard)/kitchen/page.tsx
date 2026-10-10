@@ -15,6 +15,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { MenuPageShell } from "@/components/menu/MenuPageShell";
 import { KitchenBoardBody } from "@/components/kitchen/KitchenBoardBody";
 import { KitchenFreshnessChip } from "@/components/kitchen/KitchenFreshnessChip";
+import { NowServingLink } from "@/components/now-serving/NowServingLink";
 
 // P4-A/B — the "Kitchen" order-card board. Deliberately open to both roles —
 // staff and admin both work the kitchen, and nothing on this screen reads or
@@ -118,7 +119,7 @@ function KitchenBoard() {
         eyebrow="Service"
         title="Kitchen"
         description="Every fired order, oldest first. Tick a line off once it's cooked."
-        actions={<KitchenFreshnessChip dataUpdatedAt={board.dataUpdatedAt} />}
+        actions={<NowServingLink variant="button"><KitchenFreshnessChip dataUpdatedAt={board.dataUpdatedAt} /></NowServingLink>}
       />
 
       {/* Counts only once the board has loaded (a 0/0/0 line under the skeleton

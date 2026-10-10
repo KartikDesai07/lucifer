@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { stripComments } from "@/lib/source-pin-utils";
-import { buildKotPrintDevices, printIntentOf, wireOrderOf, withPrintJobs } from "@/lib/print-order-jobs";
+import { buildKotPrintDevices, kitchenSlipsOf, printIntentOf, wireOrderOf, withPrintJobs, type OrderPrintSlip } from "@/lib/print-order-jobs";
 import { printPulseDeviceOf } from "@/lib/print-agent-server";
 
 // Printing redesign Phase 1, Session 1B (plan docs/superpowers/plans/2026-10-02-phase-1-lifecycle.md):
@@ -74,6 +74,45 @@ test("withPrintJobs: without an opt-in the answer is the very same object; with 
   assert.deepEqual(withPrintJobs(order, []), { _id: "o1", createdAt: "2026-10-02T10:00:00.000Z", printJobs: [] });
   const wire = wireOrderOf({ createdAt: new Date("2026-10-02T10:00:00.000Z") });
   assert.equal(wire.createdAt, "2026-10-02T10:00:00.000Z", "Dates reach the builders as the ISO strings the client sees");
+});
+
+// Skip-KOT: the slips that exist for an order whose lines may skip the kitchen.
+const MOVED: OrderPrintSlip = { kind: "moved", meta: { movedBy: "Asha", movedAt: "2026-10-07T10:00:00.000Z" } };
+const ALL_SLIPS: OrderPrintSlip[] = [{ kind: "kot", round: 1 }, { kind: "kot", round: 2 }, { kind: "token" }, { kind: "void" }, MOVED, { kind: "bill" }];
+
+test("kitchenSlipsOf: an order with no skip line keeps EVERY slip — the same array, byte for byte", () => {
+  const order = { items: [{ kotRound: 1 }, { kotRound: 2 }], voids: [{ noKot: false }] };
+  assert.equal(kitchenSlipsOf(order, ALL_SLIPS), ALL_SLIPS);
+  assert.deepEqual(kitchenSlipsOf({ items: [] }, [{ kind: "bill" }]), [{ kind: "bill" }], "an order with nothing fired is not all-skip");
+});
+
+test("kitchenSlipsOf: a KOT whose round has only skip lines is dropped; a mixed round and another round are kept", () => {
+  const order = { items: [{ kotRound: 1, noKot: true }, { kotRound: 2, noKot: true }, { kotRound: 2 }] };
+  assert.deepEqual(kitchenSlipsOf(order, [{ kind: "kot", round: 1 }, { kind: "kot", round: 2 }]), [{ kind: "kot", round: 2 }]);
+});
+
+test("kitchenSlipsOf: the token and the bill are never dropped, even when the whole order skips the kitchen", () => {
+  const order = { items: [{ kotRound: 1, noKot: true }, { kotRound: 2, noKot: true }] };
+  assert.deepEqual(kitchenSlipsOf(order, ALL_SLIPS.filter((s) => s.kind !== "void")).map((s) => s.kind), ["token", "bill"], "no kot, no moved; token + bill stay (F3: an all-skip order has no token NUMBER, so none is asked for)");
+});
+
+test("kitchenSlipsOf: a void slip goes only when the newest void entry was a kitchen line", () => {
+  const items = [{ kotRound: 1 }];
+  assert.deepEqual(kitchenSlipsOf({ items, voids: [{ noKot: true }] }, [{ kind: "void" }]), [], "the entry this request pushed skipped the kitchen");
+  assert.deepEqual(kitchenSlipsOf({ items, voids: [{ noKot: true }, {}] }, [{ kind: "void" }]), [{ kind: "void" }], "the newest entry is a kitchen line");
+  assert.deepEqual(kitchenSlipsOf({ items }, [{ kind: "void" }]), [{ kind: "void" }], "no trail: left to requestOf (it makes nothing without an entry)");
+});
+
+test("kitchenSlipsOf: a moved slip is dropped only when the order has fired lines and every one skips; a mixed order still moves", () => {
+  assert.deepEqual(kitchenSlipsOf({ items: [{ kotRound: 1, noKot: true }, { kotRound: 2, noKot: true }] }, [MOVED]), []);
+  assert.deepEqual(kitchenSlipsOf({ items: [{ kotRound: 1, noKot: true }, { kotRound: 2 }] }, [MOVED]), [MOVED]);
+  assert.deepEqual(kitchenSlipsOf({ items: [{ noKot: true }] }, [MOVED]), [MOVED], "nothing fired yet: not decided");
+});
+
+test("PIN (skip-KOT): createOrderPrintJobs filters through kitchenSlipsOf on the wire order and returns before any read when nothing is left", () => {
+  const s = src("apps/cafe/lib/print-order-jobs.ts");
+  const fn = s.slice(s.indexOf("export async function createOrderPrintJobs("), s.indexOf("export async function enqueueOwnPrintJob("));
+  inOrder(fn, ["const order = wireOrderOf(input.order);", "kitchenSlipsOf(order, input.slips)", "if (wanted.length === 0) return refs;", "await readPrintRouting({"], "createOrderPrintJobs");
 });
 
 test("PIN: createOrderPrintJobs never throws, announces each new job to its device, and nudges an old host only when there is one", () => {

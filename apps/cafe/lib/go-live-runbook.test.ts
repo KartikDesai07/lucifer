@@ -1360,17 +1360,17 @@ test("PIN §6: the doc names prices, item add/edit, archive/restore, CSV import,
   );
 });
 
-test("PIN §6: the doc's role summary lists Categories, Tables Setup, Tables QR codes and Printer setup alongside Staff, Reports and Settings as blocked for staff — the same seven routes ADMIN_ROUTES names", () => {
+test("PIN §6: the doc's role summary lists Categories, Tables Setup, Tables QR codes, Expense categories and Printer setup alongside Staff, Reports and Settings as blocked for staff — the same eight routes ADMIN_ROUTES names", () => {
   const section = sectionSlice("## §6 Staff accounts").replace(/\s+/g, " ");
   assert.match(
     section,
-    /Staff, Reports, Printer setup, Settings, Categories, Tables Setup and Tables QR codes are blocked/i,
-    "§6's role summary must list all seven ADMIN_ROUTES screens by name",
+    /Staff, Reports, Printer setup, Settings, Categories, Tables Setup, Tables QR codes and Expense categories are blocked/i,
+    "§6's role summary must list all eight ADMIN_ROUTES screens by name",
   );
   assert.deepEqual(
     [...ADMIN_ROUTES].sort(),
-    ["/categories", "/printers", "/reports", "/settings", "/staff", "/tables/qr", "/tables/setup"],
-    "ADMIN_ROUTES must still be exactly these seven routes for the doc's role summary to stay true",
+    ["/categories", "/expenses/categories", "/printers", "/reports", "/settings", "/staff", "/tables/qr", "/tables/setup"],
+    "ADMIN_ROUTES must still be exactly these eight routes for the doc's role summary to stay true",
   );
 });
 

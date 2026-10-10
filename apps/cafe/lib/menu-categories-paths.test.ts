@@ -179,13 +179,29 @@ test("PIN: MENU_SECTIONS' adminOnly set is exactly ADMIN_ROUTES intersected with
 // Create uses nextCategoryOrder (max + 1), not list.length.
 // ══════════════════════════════════════════════════════════════════════════
 
-// Changed in Phase 2 Session 2D: a new category may carry its kitchen station after its order.
+// Changed in Phase 2 Session 2D: a new category may carry its kitchen station after its order; skip-KOT then added the noKot spread.
 test("PIN: a new category's order comes from nextCategoryOrder(list), not list.length", () => {
   const src = readStripped(CATEGORIES_PAGE);
   assert.match(
     src,
-    /createCategory\.mutateAsync\(\{\s*name:\s*trimmed,\s*order:\s*nextCategoryOrder\(list\)(,\s*\.\.\.\(stationId !== "" \? \{ stationId \} : \{\}\))?\s*\}\)/,
+    /createCategory\.mutateAsync\(\{\s*name:\s*trimmed,\s*order:\s*nextCategoryOrder\(list\)(,\s*\.\.\.\(stationId !== "" \? \{ stationId \} : \{\}\))?(,\s*\.\.\.\(noKot \? \{ noKot \} : \{\}\))?\s*\}\)/,
     "create must send order: nextCategoryOrder(list)",
   );
   assert.ok(!/order:\s*list\.length/.test(src), "create must not send order: list.length (collides after a delete)");
+});
+
+// Skip-KOT smoke s12 (2026-10-08): the shadcn Badge behind NoKotTag renders a <div>, and a <div> inside a <p> is invalid
+// HTML that React reports as a hydration error on /categories. Every element that holds the tag must be a non-<p> box.
+test("PIN: the No KOT tag never sits inside a <p> (Badge is a <div>: hydration error)", () => {
+  const files = ["apps/cafe/components/menu/CategoryRow.tsx", "apps/cafe/components/menu/ItemCards.tsx", "apps/cafe/components/menu/ItemsTable.tsx"];
+  for (const rel of files) {
+    const src = readStripped(rel);
+    const at = src.indexOf("<NoKotTag");
+    assert.ok(at !== -1, `landmark: ${rel} renders the tag`);
+    const before = src.slice(0, at);
+    const openP = before.lastIndexOf("<p");
+    const closeP = before.lastIndexOf("</p>");
+    const insideP = openP !== -1 && openP > closeP && /^<p[\s>]/.test(before.slice(openP));
+    assert.equal(insideP, false, `${rel}: <NoKotTag> must not be a descendant of a <p>`);
+  }
 });

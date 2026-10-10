@@ -8,6 +8,7 @@ import {
   type KitchenOrderInput,
   type KitchenRow,
 } from "@/lib/kitchen-board";
+import { roundSkipsKitchen, skipsKitchenTicket, type KitchenRoundLine } from "@/lib/kitchen-lines";
 
 // P4-B — the kitchen board's ORDER-CARD view. Pure: no DB, no React, no fetch.
 // The route hands it data it already fetched; the tests hand it fixtures.
@@ -72,18 +73,28 @@ export interface BuildKitchenCardsInput {
   readyAtByOrder?: Record<string, Date | string | undefined>;
 }
 
-/** The two fields the fire-time helpers read — so the token board (S8), which
- *  selects no lines, can share THE lost-ticket rule instead of copying it. */
-export type FiredOrder = Pick<KitchenOrderInput, "createdAt" | "kotFiredAt">;
+/** The fields the fire-time helpers read — so the token board (S8), which selects no names, can share THE
+ *  lost-ticket rule instead of copying it. `items` is optional and read only for `kotRound` + `noKot` (skip-KOT). */
+export type FiredOrder = Pick<KitchenOrderInput, "createdAt" | "kotFiredAt"> & {
+  items?: readonly KitchenRoundLine[];
+};
 
 /** The newest round-fire instant on an order, as ms. Falls back to createdAt for
  *  a tab fired before age tracking existed (kotFiredAt is `?`-optional and can
  *  be short — the /items route backfills positionally, but an old doc may carry
- *  nothing at all). */
+ *  nothing at all).
+ *
+ *  Skip-KOT: a round whose every line has no kitchen ticket (a water-only round) is not kitchen work, so it
+ *  does not count — otherwise a Ready tab that fires one comes straight back as a ghost card (and its token
+ *  flips to Preparing). With no noKot line on the order this is today's exact loop. */
 export function newestFiredAtMs(order: FiredOrder): number {
   let newest = new Date(order.createdAt).getTime();
-  for (const stamp of order.kotFiredAt ?? []) {
-    const ms = new Date(stamp).getTime();
+  const stamps = order.kotFiredAt ?? [];
+  const lines = order.items;
+  const judged = lines !== undefined && lines.some(skipsKitchenTicket) ? lines : undefined;
+  for (let i = 0; i < stamps.length; i++) {
+    if (judged && roundSkipsKitchen(judged, i + 1)) continue;
+    const ms = new Date(stamps[i]).getTime();
     if (Number.isFinite(ms) && ms > newest) newest = ms;
   }
   return newest;

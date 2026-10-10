@@ -89,8 +89,9 @@ export async function POST(req: Request, { params }: Params) {
     // the SAME daily series. Without a number of its own a void slip is the one
     // piece of paper the kitchen cannot reconcile against anything.
     const printCfg = printConfigOf(settings);
+    // Skip-KOT: a void of a no-kitchen line prints no slip, so it takes no number either.
     const voidTicket =
-      printCfg.kot.showNumber && printCfg.kot.numberVoidSlips
+      printCfg.kot.showNumber && printCfg.kot.numberVoidSlips && !resolved.entry.noKot
         ? await nextPrintedNumber("kot", printCfg.kot)
         : undefined;
 

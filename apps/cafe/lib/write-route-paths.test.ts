@@ -72,23 +72,24 @@ test("PIN (settle): reads run in one wave, then 404 → settleRefusal → settin
 
 test("PIN (settle): no bill number before the CAS — no counter call in the route, none in the CAS $set", () => {
   const src = read(SETTLE_ROUTE);
-  mustIndexOf(src, "issueBillNumber(", "landmark: the post-CAS numbering call");
+  mustIndexOf(src, "issueBillNumbers(", "landmark: the post-CAS numbering call");
   assert.equal(count(src, "nextSlipSequence("), 0, "the route must never draw a slip number itself");
   const setStart = mustIndexOf(src, "const set: Record<string, unknown> = {", "the CAS $set literal");
   const unsetStart = mustIndexOf(src, "const unset: Record<string, \"\"> = {};", "the $unset literal", setStart);
   assert.ok(!src.slice(setStart, unsetStart).includes("billNumber"), "the CAS $set must not carry a bill number");
 });
 
-test("PIN (settle): exactly one issueBillNumber, after the CAS-miss 409, gated on a tab with no number yet", () => {
+test("PIN (settle): exactly one issueBillNumbers, after the CAS-miss 409, gated on what the tab does not hold yet", () => {
   const src = read(SETTLE_ROUTE);
-  assert.equal(count(src, "issueBillNumber("), 1, "exactly one numbering call site");
+  assert.equal(count(src, "issueBillNumbers("), 1, "exactly one numbering call site");
+  assert.equal(count(src, "issueBillNumber("), 0, "S10: never the daily number alone — the plan also carries a GST bill's invoice serial");
   assertChain(
     src,
     [
       ["await Order.findOneAndUpdate(filter, update, {", "the settle CAS"],
       ['return failure("Tab changed or already settled — reopen it and try again", 409);', "the CAS-miss 409"],
-      ["const numbering = printCfg.bill.showNumber && updated.billNumber === undefined;", "the no-renumber gate"],
-      ["numbering ? issueBillNumber(id, printCfg.bill) : Promise.resolve(updated),", "the numbering call (the bill config carries start AND restart time)"],
+      ["const numbering = billNumberingPlan(updated, printConfigOf(settings).bill);", "the no-renumber plan, from the LANDED doc"],
+      ["planHasWork(numbering) ? issueBillNumbers(id, numbering) : Promise.resolve(updated),", "the numbering call (the plan carries start AND restart time)"],
       ["return success(", "the success return"],
     ],
     "only a settle that WON its CAS may take a number, and a held bill is never renumbered",
@@ -102,11 +103,11 @@ test("PIN (settle): follow-ups live in lib/settle-followups.ts and run alongside
   }
   assert.match(
     src,
-    /const \[numbered, followUps, stamped\] = await Promise\.allSettled\(\[\s*numbering \? issueBillNumber\([^)]*\) : Promise\.resolve\(updated\),\s*runSettleFollowUps\(old, updated, settings\),\s*stamping \? stampFirstBillPrint\(id, Date\.now\(\)\) : Promise\.resolve\(null\),\s*\]\);/,
+    /const \[numbered, followUps, stamped\] = await Promise\.allSettled\(\[\s*planHasWork\(numbering\) \? issueBillNumbers\([^)]*\) : Promise\.resolve\(updated\),\s*runSettleFollowUps\(old, updated, settings\),\s*stamping \? stampFirstBillPrint\(id, Date\.now\(\)\) : Promise\.resolve\(null\),\s*\]\);/,
     "numbering and follow-ups settle together: neither can turn a landed settle into a throw",
   );
   assert.equal(count(src, "publishCafeEvent("), 1, "exactly one publish");
-  const wave = mustIndexOf(src, "await Promise.allSettled([\n      numbering", "the post-CAS wave");
+  const wave = mustIndexOf(src, "await Promise.allSettled([\n      planHasWork(numbering)", "the post-CAS wave");
   const publish = mustIndexOf(src, 'publishCafeEvent("order-changed");', "the publish");
   const unconfirmed = mustIndexOf(src, "return serverError(BILL_NUMBER_UNCONFIRMED, numbered.reason);", "the numbering-failure answer");
   // Printing Phase 1 (Session 1B): the answer carries printJobs when the request opted in.
@@ -159,7 +160,7 @@ test("PIN (create): every replay asks the insert winner's own numbering check, b
         "the late replay, numbering-aware",
       ],
       ["await lateReplay()", "the first late replay call"],
-      ['const issuesBill = printCfg.bill.showNumber && data.status === "Completed";', "the insert winner's numbering gate"],
+      ["const numbering = billNumberingPlan(landed, printCfg.bill);", "the insert winner's numbering plan, from the LANDED doc"],
     ],
     "printCfg must be bound before lateReplay first runs (a const read in its TDZ would throw), and all three read one check",
   );
@@ -175,7 +176,7 @@ test("PIN (create): the KOT number is taken after every refusal and the fence, a
       ['if ("error" in pay) return failure(pay.error, 400);', "the payment 400"],
       ['"Select a customer — the unpaid remainder becomes their due"', "the carrier refusal"],
       ["if (!(await fencePromoFor(orderId))) {", "the promo fence"],
-      ["slips = await allocateOpeningSlips(printCfg);", "the KOT number + token allocation"],
+      ["slips = await allocateOpeningSlips(printCfg, { kitchen: kot.kitchen });", "the KOT number + token allocation"],
       ["} catch (slipError) {", "the slip catch"],
       ["const doc = { ...unnumberedDoc, ...slips };", "the numbered doc"],
       ["Order.create({ ...doc, orderId });", "the insert"],
@@ -203,12 +204,22 @@ test("PIN (create): the insert carries no bill number; only the winner numbers i
     "the doc literal carries no slip numbers and no token: allocateOpeningSlips adds them just before the insert",
   );
   assert.match(doc, /\.\.\.\(data\.idemKey \? \{ idemKey: data\.idemKey \} : \{\}\),/, "the key is stored, omit-empty (never null)");
-  assert.equal(count(src, "issueBillNumber("), 1, "exactly one bill numbering call");
+  // CB-7 S2 Slice A: the winner's numbering moved into the create follow-ups lib; the route's one landmark is the runner call.
+  const followUps = read("lib/order-create-followups.ts");
+  assert.equal(count(src, "issueBillNumbers("), 0, "the route no longer draws a number itself - the runner does");
+  assert.equal(count(src, "runCreateFollowUps("), 1, "exactly one follow-ups runner call");
+  assert.equal(count(followUps, "issueBillNumbers("), 1, "exactly one bill numbering call");
+  assert.equal(count(src, "issueBillNumber("), 0, "S10: never the daily number alone");
+  assert.equal(count(followUps, "issueBillNumber("), 0, "S10: never the daily number alone (follow-ups)");
+  assert.ok(
+    followUps.includes("planHasWork(numbering) ? deps.issueBillNumbers(landed._id, numbering) : Promise.resolve(null),"),
+    "the winner's numbering, gated by planHasWork, inside the runner's one allSettled wave",
+  );
   assertChain(
     src,
     [
       ["order = await Order.create({ ...doc, orderId: retryOrderId });", "the retry insert"],
-      ["issuesBill ? issueBillNumber(landed._id, printCfg.bill) : Promise.resolve(null),", "the winner's numbering"],
+      ["const { numbered } = await runCreateFollowUps({", "the winner's numbering (inside the follow-ups runner)"],
       ['publishCafeEvent("order-changed");', "the publish"],
       ["return serverError(BILL_NUMBER_UNCONFIRMED, numbered.reason);", "the numbering-failure answer"],
       // Printing Phase 1 (Session 1B): the answer carries printJobs when the request opted in.
@@ -416,4 +427,25 @@ test("PIN (S6): no route under app/api and no lib/order-request-accept*.ts calls
     .filter((f) => stripComments(readFileSync(f, "utf8")).includes("nextSlipSequence("))
     .map(relOf);
   assert.deepEqual(callers, [], "a route or accept file drawing a slip number itself would skip the restart time");
+});
+
+// ── Skip-KOT S2: every writer stamps its lines BEFORE it draws a KOT number, and a no-kitchen round draws none ──
+
+test("PIN (skip-KOT): each order writer stamps through withKitchenFlags before its number draw, and the draw is gated on the stamp", () => {
+  const create = read(ORDERS_ROUTE);
+  assert.ok(mustIndexOf(create, "const kot = await withKitchenFlags(rewardItems);", "create: the stamp") < mustIndexOf(create, "const unnumberedDoc = {", "create: the doc"), "create: the stamp precedes the doc built from rewardItems");
+  mustIndexOf(create, "rewardItems = kot.lines;", "create: the stamped lines are the ones stored");
+  mustIndexOf(create, "allocateOpeningSlips(printCfg, { kitchen: kot.kitchen })", "create: the draw reads the stamp");
+  const accept = read(ACCEPT_LIB);
+  assert.ok(mustIndexOf(accept, "const kot = await withKitchenFlags(orderItems);", "accept: the stamp") < mustIndexOf(accept, "allocateOpeningSlips(printCfg, { kitchen: kot.kitchen })", "accept: the draw reads the stamp"));
+  mustIndexOf(accept, "items: kot.lines.map((it) => ({ ...it, kotRound: 1 })),", "accept: the stamped lines are the ones stored");
+  const items = read(ITEMS_ROUTE);
+  assert.ok(mustIndexOf(items, "const kot = await withKitchenFlags(fullItems.slice(old.items.length));", "add-round: the stamp covers the NEW slice (reward line included)") < mustIndexOf(items, 'nextPrintedNumber("kot", printCfg.kot)', "add-round: the draw"));
+  mustIndexOf(items, "fullItems = [...old.items, ...kot.lines];", "add-round: the stamped lines are the ones stored");
+  mustIndexOf(items, "printCfg.kot.showNumber && kot.kitchen", "add-round: no kitchen line, no number");
+  const addRound = read(ACCEPT_ADDROUND);
+  assert.ok(mustIndexOf(addRound, "const kot = await withKitchenFlags(items);", "qr add-round: the stamp") < mustIndexOf(addRound, 'nextPrintedNumber("kot", printCfg.kot)', "qr add-round: the draw"));
+  mustIndexOf(addRound, "...kot.lines.map((it) => ({ ...it, kotRound: round }))", "qr add-round: the stamped lines are the ones stored");
+  mustIndexOf(addRound, "printCfg.kot.showNumber && kot.kitchen", "qr add-round: no kitchen line, no number");
+  mustIndexOf(read(VOID_ROUTE), "printCfg.kot.numberVoidSlips && !resolved.entry.noKot", "void: a no-kitchen line's void takes no number");
 });

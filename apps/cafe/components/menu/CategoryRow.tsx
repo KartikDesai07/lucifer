@@ -5,6 +5,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { GripVertical, Pencil, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { NoKotTag } from "@/components/menu/NoKotTag";
 import { cn } from "@/lib/utils";
 import { menuItemsHref } from "@/lib/menu-sections";
 import type { Category } from "@/types";
@@ -99,7 +100,11 @@ export function CategoryRow({ category, index, total, counts, disabled, onMove, 
         </div>
 
         <div className="min-w-0">
-          <p className="truncate font-medium">{category.name}</p>
+          {/* A <div>, not a <p>: the No KOT tag is a Badge, which renders a <div> (invalid inside a <p>). */}
+          <div className="flex items-center gap-1.5 font-medium">
+            <span className="truncate">{category.name}</span>
+            <NoKotTag skips={category.noKot === true} />
+          </div>
           <Link
             href={menuItemsHref({ categoryId: category._id })}
             prefetch={false}

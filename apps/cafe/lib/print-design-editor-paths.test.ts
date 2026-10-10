@@ -273,13 +273,13 @@ test("PIN: no \"Print a sample\" host wiring (owner Q2): the host provider, brid
 test("PIN: BillNumberingCard shows the GST hint but its switch is never disabled or set by it, and no server file sets billShowNumber (no automation, A7)", () => {
   const raw = read(`${CAFE}/components/settings/BillNumberingCard.tsx`);
   const card = stripComments(raw);
-  assert.ok(raw.includes("A GST bill needs a bill number. Turn on Show bill number to print it."), "the hint text");
-  assert.ok(card.includes("{gstHint && !showNumber && <p className={HINT_CLASS}>{GST_NUMBER_HINT}</p>}"), "shown only while GST prints and the switch is off");
+  assert.ok(raw.includes("GST bills always print their invoice number (like 2627/000123). It runs for the whole financial year."), "the hint text");
+  assert.ok(card.includes("{gstHint && <p className={HINT_CLASS}>{GST_NUMBER_HINT}</p>}"), "shown while GST prints, whatever the switch says (S10: the invoice number never follows it)");
   assert.ok(card.includes('name="billShowNumber"') && card.includes("<ToggleRow") && card.includes("checked={field.value}") && card.includes("onChange={(v) => {"), "landmark: the switch is the plain form-bound ToggleRow");
   assert.ok(!/disabled/i.test(raw), "nothing in the card disables the switch");
   assert.ok(!card.includes('setValue("billShowNumber"') && !card.includes("useEffect") && !card.includes("field.onChange(true)"), "nothing in the card switches it on by itself");
   const page = code(PAGE);
-  assert.ok(page.includes("const gstHint = design.active && settings.gstEnabled && settings.gstRate > 0;") && page.includes("gstHint={gstHint}"), "landmark: the page computes and passes the hint only");
+  assert.ok(page.includes("const gstHint = settings.gstEnabled && settings.gstRate > 0;") && page.includes("gstHint={gstHint}"), "landmark: the page computes and passes the hint only");
   for (const file of [PAGE, DRAFT_HOOK, ...DESIGN_FILES, ...EDITOR_LIB]) {
     assert.ok(!code(file).includes('"billShowNumber"'), `${file} never writes the numbering field`);
   }

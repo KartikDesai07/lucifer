@@ -40,6 +40,9 @@ export interface VoidableLine {
   // snapshot discipline as every other field here); this flag is the only way
   // the void trail can say the line was comped rather than sold.
   reward?: boolean;
+  // Skip-KOT: the line never went to the kitchen (server-stamped). Carried onto the void entry so the
+  // route can skip the void slip and its number.
+  noKot?: boolean;
 }
 
 export interface ItemVoidRequest {
@@ -192,6 +195,8 @@ export function resolveItemVoid<T extends VoidableLine>(
       // it was. Normalised to a literal `true` (never the field's own truthy
       // value) because the stored model field is boolean, not just truthy.
       ...(line.reward ? { reward: true } : {}),
+      // Same normalisation: a kitchen line's entry carries no key at all (omit-empty).
+      ...(line.noKot ? { noKot: true } : {}),
       reason: request.reason,
       voidedBy: request.voidedBy,
       at: request.at,

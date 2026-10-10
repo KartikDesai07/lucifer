@@ -14,9 +14,16 @@ import {
 } from "@/lib/api-helpers";
 import { orderSummaryCacheKey } from "@/lib/utils";
 import { getSettings, gstConfigOf } from "@/lib/settings";
-import { computeOrderTotals, gstConfigFromOrder, resolveDiscountKind } from "@/lib/receipt";
+import {
+  computeOrderTotals,
+  gstConfigFromOrder,
+  resolveDiscountKind,
+  rewardBlocksDiscountKind,
+  REWARD_BLOCKS_GST_DISCOUNT_MESSAGE,
+} from "@/lib/receipt";
 import { printConfigOf } from "@/lib/print";
 import { nextPrintedNumber } from "@/lib/slip-numbers";
+import { withKitchenFlags } from "@/lib/kitchen-lines-server";
 import { voidGuardFilter } from "@/lib/order-void";
 import { addItemsSchema } from "@/schemas";
 import { checkItemVariations, checkItemRemovedModifiers } from "@/lib/variations";
@@ -125,6 +132,12 @@ export async function POST(req: Request, { params }: Params) {
 
     if (old.status !== "Pending" || old.payment !== "Unpaid") {
       return failure("Can only add items to an open tab", 409);
+    }
+    // P4 (s87) — a tab whose reward is already spent refuses a GST preset
+    // outright, before any claim or write: swapping the kind would drop the
+    // reward's money while its stamps stayed spent.
+    if (rewardBlocksDiscountKind(parsed.data.discountKind, old.discountKind)) {
+      return failure(REWARD_BLOCKS_GST_DISCOUNT_MESSAGE, 409);
     }
 
     // B2 - menu re-check on the NEW lines only (a fired line of the tab is
@@ -278,7 +291,11 @@ export async function POST(req: Request, { params }: Params) {
     // that write loses its CAS race the number is spent, which costs a gap in
     // the series — strictly better than two rounds sharing one ticket number.
     const printCfg = printConfigOf(settings);
-    const ticket = printCfg.kot.showNumber
+    // Skip-KOT: stamp THIS round's lines (the reward line included) before the ticket draw reads them;
+    // a round with no kitchen line takes no number.
+    const kot = await withKitchenFlags(fullItems.slice(old.items.length));
+    fullItems = [...old.items, ...kot.lines];
+    const ticket = printCfg.kot.showNumber && kot.kitchen
       ? await nextPrintedNumber("kot", printCfg.kot)
       : undefined;
     // P4-A — this round's fire instant, stamped ONCE and reused for the whole

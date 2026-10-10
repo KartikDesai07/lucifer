@@ -275,3 +275,29 @@ test("KITCHEN_ROW_LIMIT: rows beyond the cap are dropped, oldest-first order pre
   const rows = buildKitchenRows({ orders: many, ticksByOrder: {}, now: NOW });
   assert.equal(rows.length, 5, "under the cap, nothing is dropped");
 });
+
+// ── Skip-KOT (S4): a no-kitchen-ticket line never reaches the board ───────────────────────────────────────
+
+test("S4: noKot lines are hidden from the rows; the kitchen lines of the same round stay", () => {
+  const ord = order({
+    items: [
+      firedItem({ productId: PRODUCT_A, name: "Burger", kotRound: 1 }),
+      firedItem({ productId: PRODUCT_B, name: "Water", kotRound: 1, noKot: true }),
+    ],
+  });
+  const rows = buildKitchenRows({ orders: [ord], ticksByOrder: {}, now: NOW });
+  assert.deepStrictEqual(rows.map((r) => r.name), ["Burger"], "only the kitchen line is a row");
+  // vision guard: the same order with the flag off shows both lines.
+  const plain = order({
+    items: [
+      firedItem({ productId: PRODUCT_A, name: "Burger", kotRound: 1 }),
+      firedItem({ productId: PRODUCT_B, name: "Water", kotRound: 1, noKot: false }),
+    ],
+  });
+  assert.equal(buildKitchenRows({ orders: [plain], ticksByOrder: {}, now: NOW }).length, 2, "noKot:false is a kitchen line");
+});
+
+test("S4: an all-skip order has no rows at all, so its card is dropped", () => {
+  const ord = order({ items: [firedItem({ name: "Water", noKot: true }), firedItem({ productId: PRODUCT_B, name: "Juice", noKot: true })] });
+  assert.equal(buildKitchenRows({ orders: [ord], ticksByOrder: {}, now: NOW }).length, 0);
+});

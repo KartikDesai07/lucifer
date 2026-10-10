@@ -11,14 +11,19 @@ import {
   PAY_QR_NO_LIMIT,
   UPI_ID_MAX_LEN,
   UPI_PAYEE_ESCAPED_MAX,
+  UPI_RULES_MAX,
+  UPI_RULE_UPTO_MAX,
   isPayQrMinutes,
   isSafeHttpsLink,
   isValidUpiId,
   payQrMinutesOf,
   payQrModeOf,
   payQrPlan,
+  upiIdForAmount,
   upiPayUri,
+  upiRulesOf,
   type PayQrInput,
+  type UpiRule,
 } from "./print-qr";
 
 test("isValidUpiId accepts handle@bank shapes", () => {
@@ -86,10 +91,12 @@ test("isSafeHttpsLink rejects http, an upper-case scheme, userinfo, a backslash,
 // unchanged BASE still prints (the positive landmark: a plan that returned null for everything would pass a bare
 // "is null" check).
 const NOW = Date.UTC(2026, 9, 4, 12, 0, 0);
+const MAIN_UPI = "samplecafe@okaxis";
 const BASE: PayQrInput = {
   mode: "always",
   minutes: PAY_QR_MINUTES_DEFAULT,
-  upiId: "samplecafe@okaxis",
+  upiId: MAIN_UPI,
+  upiRules: [],
   cancelled: false,
   total: 100,
   paid: 0,
@@ -108,7 +115,7 @@ test("pay QR policy constants: 5 to 1440 minutes, default 60, No limit is 0, def
 });
 
 test("payQrPlan: the unchanged BASE bill prints, asking the whole total for 60 minutes from now", () => {
-  assert.deepEqual(plan(), { amount: 100, validTillMs: NOW + 60 * MS_PER_MINUTE });
+  assert.deepEqual(plan(), { amount: 100, validTillMs: NOW + 60 * MS_PER_MINUTE, upiId: MAIN_UPI });
 });
 
 test("payQrPlan: a cancelled bill prints no pay QR, whatever the mode", () => {
@@ -173,7 +180,7 @@ test("payQrPlan: float dust in total - paid counts as paid: no Scan to pay 0.00 
 
 test("payQrPlan: No limit (0) prints with no valid-till even when the bill was first printed days ago", () => {
   const daysAgo = new Date(NOW - 3 * 24 * 60 * MS_PER_MINUTE).toISOString();
-  assert.deepEqual(plan({ minutes: PAY_QR_NO_LIMIT, firstPrintedAt: daysAgo }), { amount: 100, validTillMs: null });
+  assert.deepEqual(plan({ minutes: PAY_QR_NO_LIMIT, firstPrintedAt: daysAgo }), { amount: 100, validTillMs: null, upiId: MAIN_UPI });
   // The same stamp under a 60 minute window has long expired, so the leg above is not passing for another reason.
   assert.equal(plan({ minutes: 60, firstPrintedAt: daysAgo }), null);
 });
@@ -183,6 +190,7 @@ test("payQrPlan: the window starts at the first-print stamp, not at now", () => 
   assert.deepEqual(plan({ minutes: 60, firstPrintedAt: new Date(stamp).toISOString() }), {
     amount: 100,
     validTillMs: stamp + 60 * MS_PER_MINUTE,
+    upiId: MAIN_UPI,
   });
 });
 
@@ -190,18 +198,18 @@ test("payQrPlan: a reprint exactly at valid-till still prints; one millisecond l
   const stamp = NOW - 60 * MS_PER_MINUTE;
   const firstPrintedAt = new Date(stamp).toISOString();
   const till = stamp + 60 * MS_PER_MINUTE;
-  assert.deepEqual(plan({ minutes: 60, firstPrintedAt, nowMs: till }), { amount: 100, validTillMs: till });
+  assert.deepEqual(plan({ minutes: 60, firstPrintedAt, nowMs: till }), { amount: 100, validTillMs: till, upiId: MAIN_UPI });
   assert.equal(plan({ minutes: 60, firstPrintedAt, nowMs: till + 1 }), null);
 });
 
 test("payQrPlan: with no stamp this print is the first, so valid-till is now + minutes", () => {
-  assert.deepEqual(plan({ minutes: 5 }), { amount: 100, validTillMs: NOW + 5 * MS_PER_MINUTE });
-  assert.deepEqual(plan({ minutes: 1440, firstPrintedAt: undefined }), { amount: 100, validTillMs: NOW + 1440 * MS_PER_MINUTE });
+  assert.deepEqual(plan({ minutes: 5 }), { amount: 100, validTillMs: NOW + 5 * MS_PER_MINUTE, upiId: MAIN_UPI });
+  assert.deepEqual(plan({ minutes: 1440, firstPrintedAt: undefined }), { amount: 100, validTillMs: NOW + 1440 * MS_PER_MINUTE, upiId: MAIN_UPI });
 });
 
 test("payQrPlan: an unparseable stamp is treated as no stamp (window from now), not as an expired bill", () => {
   assert.deepEqual(plan({ minutes: 60, firstPrintedAt: "garbage" }), plan({ minutes: 60 }));
-  assert.deepEqual(plan({ minutes: 60, firstPrintedAt: "" }), { amount: 100, validTillMs: NOW + 60 * MS_PER_MINUTE });
+  assert.deepEqual(plan({ minutes: 60, firstPrintedAt: "" }), { amount: 100, validTillMs: NOW + 60 * MS_PER_MINUTE, upiId: MAIN_UPI });
 });
 
 test("payQrModeOf keeps each member and falls back to always for an absent, foreign or non-string value", () => {

@@ -250,6 +250,13 @@ export async function seedReportsB2(): Promise<SeedResult> {
     cancelledAt: ist("2026-09-24T11:05:00"), receiver: "Asha",
   });
 
+  // Print customization S10-D: GST invoice serials, FY 2026-27, in creation order. Left un-numbered on purpose:
+  // O2 (legacy, no GST snapshot: never a tax invoice), O12 and O18 (GST bills with no number: "without").
+  // O13 is the cancelled-after-billing bill and keeps its number (GSTR-1 Table 13).
+  const INVOICE_FY = 2026;
+  const invoiced: Array<[OrderDoc, number]> = [[O1, 1], [O4, 2], [O7, 3], [O8, 4], [O9, 5], [O10, 6], [O11, 7], [O13, 8], [O14, 9], [O16, 10], [O17, 11]];
+  for (const [o, serial] of invoiced) Object.assign(o, { invoiceNumber: serial, invoiceFy: INVOICE_FY });
+
   await Order.insertMany([O1, O2, O3, O4, O5, O6, O7, O8, O9, O10, O11, O12, O13, O14, O15, O16, O17, O18, O19, O20]);
   console.log(`Seeded 20 orders across 27-29 Sep + compare window.\n`);
 

@@ -12,6 +12,7 @@ import type { PosPulseData } from "@pos/shared/self-order-alert";
 import { REWARD_ITEM_LINE_NOTE } from "@pos/shared/reward-redemption";
 import type { PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 import type { Order, OrderVoid } from "@/types";
+import { kitchenOrderOf } from "@/lib/kitchen-lines"; // skip-KOT: a KOT / moved / cancel slip shows kitchen lines only
 
 // ── The seam's user-facing copy ───────────────────────────────────────────────
 // Homed here beside the label vocabulary (and imported by the hook) so the seam
@@ -135,7 +136,7 @@ export interface PrintJobRequest {
 export function kotPrintJob(order: Order, round: number | null): PrintJobRequest {
   const base = round === null ? KOT_REPRINT_LABEL : `${KOT_ROUND_LABEL_PREFIX}${round}`;
   return {
-    payload: { kind: "kot", snapshot: printOrderSnapshot(order), round },
+    payload: { kind: "kot", snapshot: printOrderSnapshot(kitchenOrderOf(order)), round },
     label: printJobLabel(`${base}${orderSuffix(order)}`, order.orderId),
   };
 }
@@ -258,7 +259,7 @@ export function movedPrintJob(
   return {
     payload: {
       kind: "moved",
-      snapshot: printOrderSnapshot(order),
+      snapshot: printOrderSnapshot(kitchenOrderOf(order)),
       // Omitted, never null/"": the schema field is optional and this repo's
       // omit-empty discipline keeps an absent origin absent from the payload.
       ...(meta.from ? { from: meta.from } : {}),
@@ -292,7 +293,7 @@ export function eodPrintJob(meta: { dateKey: string; dateLabel: string }): Print
  *  an order that is already cancelled. */
 export function cancelNoticePrintJob(order: Order, reason: string): PrintJobRequest {
   return {
-    payload: { kind: "cancel-notice", snapshot: printOrderSnapshot(order), reason },
+    payload: { kind: "cancel-notice", snapshot: printOrderSnapshot(kitchenOrderOf(order)), reason },
     label: printJobLabel(`${CANCELLED_LABEL}${LABEL_SEPARATOR}${order.orderId}`, order.orderId),
   };
 }

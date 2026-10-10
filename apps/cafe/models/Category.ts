@@ -6,6 +6,9 @@ export interface ICategory extends Document {
   // Printing Phase 2 (spec §6.2): the kitchen station this category's items print at. ABSENT means the
   // default station (omit-empty, no default below: every category made before Phase 2 keeps meaning that).
   stationId?: Types.ObjectId;
+  // Skip-KOT: true = this category's items never go on a kitchen ticket. ABSENT = they do (omit-empty,
+  // no default below: every existing category keeps meaning that).
+  noKot?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -18,6 +21,7 @@ export const categorySchema = new Schema<ICategory>(
     name: { type: String, required: true, unique: true, trim: true },
     order: { type: Number, default: 0 },
     stationId: { type: Schema.Types.ObjectId },
+    noKot: { type: Boolean },
   },
   { timestamps: true },
 );

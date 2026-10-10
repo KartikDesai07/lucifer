@@ -108,6 +108,9 @@ export const printOrderSnapshotSchema = z.object({
   kotNumbers: z.array(z.number().int()).optional(),
   // S6: the order's token number — omit-empty, only an order that has one carries the key.
   tokenNumber: z.number().int().optional(),
+  // S10: a GST bill's invoice serial + its financial year — omit-empty, both or neither (printOrderSnapshot).
+  invoiceNumber: z.number().int().optional(),
+  invoiceFy: z.number().int().optional(),
   // Read by OrderReceipt's *** CANCELLED *** banner and KOTReceipt's
   // cancel-notice whole-order void render.
   cancelReason: z.string().optional(),

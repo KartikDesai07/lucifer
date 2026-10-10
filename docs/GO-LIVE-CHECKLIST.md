@@ -606,12 +606,15 @@ Two routes: type it in, or import a CSV. For more than ~30 items, import.
       stored lowercase), *Role*, *Password* (≥8 characters).
 - [ ] Roles understood:
       - **admin** — everything, including Staff, Reports, Printer setup, Settings,
-        Categories, Tables Setup and Tables QR codes.
+        Categories, Tables Setup, Tables QR codes and Expense categories, plus
+        editing and deleting expenses.
       - **staff** — everything else: POS, orders, tables (the live floor only),
         customers, reservations, events, **and the Items screen (Menu → Items)**
         — but on Items, staff can only mark an item In stock / Out of stock.
-        Staff, Reports, Printer setup, Settings, Categories, Tables Setup and Tables QR codes are
-        blocked (they get redirected, not just hidden).
+        On **Expenses**, staff can add an expense and see only what they added
+        today (no editing, deleting, other days or the report).
+        Staff, Reports, Printer setup, Settings, Categories, Tables Setup, Tables QR codes and
+        Expense categories are blocked (they get redirected, not just hidden).
 - [ ] The client knows what a **staff** account can still do — and, just as
       important this session, what changed: **staff can now only mark an item
       In stock or Out of stock**. Prices, adding or editing an item,
@@ -1283,7 +1286,7 @@ the test fails — fix the code or this file, never just this file.
 | Username minimum | 3 | `createStaffSchema` |
 | Mobile minimum | 10 | `createStaffSchema` |
 | Customer mobile mask (staff, non-admin) | first 5 chars shown, rest `*` — `9876543210` → `98765*****` | `MOBILE_VISIBLE_PREFIX` / `MOBILE_MASK_CHAR` |
-| Admin-only screens | `/staff`, `/reports`, `/settings`, `/categories`, `/tables/setup`, `/tables/qr`, `/printers` | `ADMIN_ROUTES` |
+| Admin-only screens | `/staff`, `/reports`, `/settings`, `/categories`, `/tables/setup`, `/tables/qr`, `/printers`, `/expenses/categories` | `ADMIN_ROUTES` |
 | Slugs that never resolve to a cafe | www, app, api, admin, hub | `RESERVED_SUBDOMAINS` |
 | Dues receipt modes | Cash, Online | `DUES_RECEIPT_MODES` |
 | GST rate quick picks | 0, 5, 12, 18, 28 | `GST_RATES` |

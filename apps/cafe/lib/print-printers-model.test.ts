@@ -102,12 +102,12 @@ function cafeSrc(rel: string): string {
 
 test("PIN: PUT /api/categories/[id] turns stationId:null into a removed field, never a stored null", () => {
   const src = cafeSrc("app/api/categories/[id]/route.ts");
-  assert.match(src, /const \{ stationId, \.\.\.rest \} = parsed\.data;/);
+  assert.match(src, /const \{ stationId, noKot, \.\.\.rest \} = parsed\.data;/, "skip-KOT: noKot is taken out of the rest like stationId, never set as it came");
   assert.match(src, /if \(stationId === null\) existing\.set\("stationId", undefined\);/);
   assert.ok(!/existing\.set\(parsed\.data\)/.test(src), "the whole body is never set as it came");
 });
 
 test("PIN: PUT /api/products/[id] clears stationId on null like icon and publicVisible", () => {
   const src = cafeSrc("app/api/products/[id]/route.ts");
-  assert.match(src, /nullClearsFields: \["variations", "publicVisible", "icon", "stationId"\]/);
+  assert.match(src, /nullClearsFields: \["variations", "publicVisible", "icon", "stationId", "noKot"\]/, "skip-KOT: noKot null is a real $unset (false is a stored choice)");
 });

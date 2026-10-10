@@ -81,3 +81,33 @@ test("SOURCE PIN: SLIP_TEMPLATE_KEYS in lib/settings.ts lists tokenTemplate besi
   const src = readFileSync(path.join(process.cwd(), "lib/settings.ts"), "utf8");
   assert.ok(src.includes('const SLIP_TEMPLATE_KEYS = ["billTemplate", "kotTemplate", "tokenTemplate"] as const;'));
 });
+
+// ── CB-7 S1: rewardLevels is the fourth PUT-only blob; null clears it exactly like a template ─────────────────────
+
+const REWARD_BLOB = { v: 1, enabled: false, levels: [] } as unknown as Record<string, unknown>;
+
+test("settingsUpdateOf: a null rewardLevels becomes $unset (alone, and beside a template null), never a $set null", () => {
+  assert.deepEqual(settingsUpdateOf(bodyOf({ rewardLevels: null })), { $unset: { rewardLevels: 1 } });
+  assert.deepEqual(settingsUpdateOf(bodyOf({ rewardLevels: null, billTemplate: null })), {
+    $unset: { billTemplate: 1, rewardLevels: 1 },
+  });
+  assert.deepEqual(settingsUpdateOf(bodyOf({ rewardLevels: null, tokenEnabled: true })), {
+    $set: { tokenEnabled: true },
+    $unset: { rewardLevels: 1 },
+  });
+});
+
+test("settingsUpdateOf: a non-null rewardLevels passes through untouched (the SAME body object, a plain $set field)", () => {
+  const withBlob = bodyOf({ rewardLevels: REWARD_BLOB });
+  assert.equal(settingsUpdateOf(withBlob), withBlob);
+  assert.deepEqual(settingsUpdateOf(bodyOf({ rewardLevels: REWARD_BLOB, billTemplate: null })), {
+    $set: { rewardLevels: REWARD_BLOB },
+    $unset: { billTemplate: 1 },
+  });
+});
+
+test("SOURCE PIN: the $unset loop in lib/settings.ts walks the slip-template keys AND REWARD_BLOB_KEYS", () => {
+  const src = readFileSync(path.join(process.cwd(), "lib/settings.ts"), "utf8");
+  assert.ok(src.includes('const REWARD_BLOB_KEYS = ["rewardLevels"] as const;'));
+  assert.ok(src.includes("for (const key of [...SLIP_TEMPLATE_KEYS, ...REWARD_BLOB_KEYS]) {"));
+});

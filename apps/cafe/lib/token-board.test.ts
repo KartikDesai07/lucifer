@@ -218,10 +218,10 @@ test("kitchenSelectOf: off is KITCHEN_ORDER_SELECT is the literal (parcel includ
   assert.equal(kitchenSelectOf({ tokenMode: false }), LITERAL);
 });
 
-test("TOKEN_BOARD_SELECT is exactly the four fields (numbers, times, and status for the paid stale-out) — never a name, an amount, a dish or a receiver", () => {
+test("TOKEN_BOARD_SELECT is exactly the four top-level fields plus the two kitchen-round sub-paths — never a name, an amount, a dish or a receiver", () => {
   const fields = TOKEN_BOARD_SELECT.split(/\s+/);
-  assert.deepStrictEqual(fields, ["tokenNumber", "kotFiredAt", "createdAt", "status"], "positive landmark: the board reads numbers, times and the status it needs for the stale rule");
-  for (const banned of ["customerName", "total", "items", "paidAmount", "receiver", "notes", "tableNo"]) {
+  assert.deepStrictEqual(fields, ["tokenNumber", "kotFiredAt", "createdAt", "status", "items.kotRound", "items.noKot"], "positive landmark: numbers, times, the status for the stale rule, and the per-line round + kitchen flag");
+  for (const banned of ["customerName", "total", "items", "paidAmount", "receiver", "notes", "tableNo", "items.name", "items.price"]) {
     assert.ok(!fields.includes(banned), `the token board must not select ${banned}`);
   }
   assert.ok(!TOKEN_BOARD_SELECT.startsWith("-"), "an inclusive projection, not an exclusion list");
@@ -361,7 +361,7 @@ test("buildTokenBoard: entry keys are EXACTLY {id, number, firedAt} (+ readySinc
     items: [{ name: "Chai" }],
     paidAmount: 12345,
     receiver: "Staff",
-  } as TokenOrderInput;
+  } as unknown as TokenOrderInput;
   const readyOrder = { ...order(2), customerName: "B. Customer", total: 999 } as TokenOrderInput;
   const board = buildTokenBoard({
     orders: [leaky, readyOrder],
@@ -785,6 +785,8 @@ test("PIN: lib/token-board.ts is pure — no driver, model, DB, React or fetch; 
     [
       "@/lib/kitchen-board",
       "@/lib/kitchen-cards",
+      // Skip-KOT (review M1): orderSkipsKitchen — kitchen-lines.ts itself imports nothing (pinned below).
+      "@/lib/kitchen-lines",
       "@/lib/print",
       "@/lib/token-view",
       "@pos/shared/print-budget",
@@ -797,6 +799,12 @@ test("PIN: lib/token-board.ts is pure — no driver, model, DB, React or fetch; 
   }
 });
 
+test("PIN: lib/kitchen-lines.ts (now imported by the pure token board) imports nothing at all", () => {
+  const src = stripComments(readLib("kitchen-lines.ts"));
+  assert.match(src, /export function orderSkipsKitchen\b/, "positive landmark");
+  assert.deepStrictEqual(importsOf(src), [], "kitchen-lines.ts stays dependency-free, so the token board stays pure");
+});
+
 test("PIN: neither module logs or names a cafe", () => {
   const cafeName = "Luci" + "fer";
   for (const name of ["token-board.ts", "token-view.ts"]) {
@@ -805,4 +813,51 @@ test("PIN: neither module logs or names a cafe", () => {
     assert.ok(!raw.includes("console" + "."), `${name} has no console call`);
     assert.ok(!raw.toLowerCase().includes(cafeName.toLowerCase()), `${name} hardcodes no cafe name`);
   }
+});
+
+// ── Skip-KOT (S4): token status uses the kitchen-round rule ───────────────────────────────────────────────
+
+test("S4: a Ready token stays Ready after a water-only (no kitchen ticket) round", () => {
+  const items = [{ kotRound: 1 }, { kotRound: 2, noKot: true }];
+  const held = order(7, { kotFiredAt: [at(T0), at(T0 + 2 * MIN)], items });
+  const tick = { readyAt: at(T0 + MIN), readyMarkedAt: at(NOW - MIN) };
+  assert.equal(tokenStatusOf(held, tick, NOW, CLEAR), "ready", "the water round must not flip the token back to Preparing");
+  // vision guard: the same second round WITHOUT the flag is a kitchen round, so it does flip back.
+  const kitchen = order(7, { kotFiredAt: [at(T0), at(T0 + 2 * MIN)], items: [{ kotRound: 1 }, { kotRound: 2 }] });
+  assert.equal(tokenStatusOf(kitchen, tick, NOW, CLEAR), "preparing");
+  // and the board entry's firedAt stays the newest KITCHEN round.
+  const board = buildTokenBoard({ orders: [held], ticks: { [hex(7)]: tick }, nowMs: NOW, clearMinutes: CLEAR });
+  assert.equal(board.ready.length, 1);
+  assert.equal(board.ready[0].firedAt, at(T0).toISOString());
+});
+
+test("S4: the paid arm's pendingTokenIds applies the same kitchen-round rule", () => {
+  const paidHeld = { _id: hex(8), createdAt: at(T0), kotFiredAt: [at(T0), at(T0 + 2 * MIN)], items: [{ kotRound: 1 }, { kotRound: 2, noKot: true }] };
+  assert.deepStrictEqual(pendingTokenIds([paidHeld], { [hex(8)]: at(T0 + MIN) }, NOW), [], "Ready covers the newest kitchen round");
+});
+
+test("S4: TOKEN_BOARD_SELECT reads only the kitchen-round sub-paths of items, never a name or a price", () => {
+  const fields = TOKEN_BOARD_SELECT.split(/\s+/);
+  assert.ok(fields.includes("items.kotRound") && fields.includes("items.noKot"), "positive landmark: the two sub-paths");
+  assert.ok(!fields.includes("items"), "never the whole items array");
+  for (const banned of ["items.name", "items.price", "items.productId", "items.qty", "items.modifiers", "items.instructions", "items.variation", "items.note"]) {
+    assert.ok(!fields.includes(banned), `the public token board must not select ${banned}`);
+  }
+  assert.ok(fields.every((f) => !f.startsWith("items.") || f === "items.kotRound" || f === "items.noKot"), "no other items sub-path");
+});
+
+// Review M1 (skip-KOT): voiding every kitchen line of a token order leaves only no-kitchen lines. The Kitchen screen
+// then shows no card (nothing for the cook to mark Ready), so the token must leave the board too — the F3 rule (an
+// order with nothing for the kitchen is never on Now Serving) — instead of sitting on Preparing.
+test("M1: a token order whose remaining fired lines ALL skip the kitchen is hidden, not Preparing", () => {
+  const waterOnly = order(9, { kotFiredAt: [at(T0)], items: [{ kotRound: 1, noKot: true }] });
+  assert.equal(tokenStatusOf(waterOnly, undefined, NOW, CLEAR), "hidden", "no kitchen work left: off the board");
+  const board = buildTokenBoard({ orders: [waterOnly], ticks: {}, nowMs: NOW, clearMinutes: CLEAR });
+  assert.equal(board.preparing.length + board.ready.length, 0, "neither Preparing nor Ready");
+  // vision guards: a mixed order (a kitchen line remains) is still Preparing, and an order read WITHOUT items
+  // (no line data) keeps today's rule.
+  const mixed = order(9, { kotFiredAt: [at(T0)], items: [{ kotRound: 1 }, { kotRound: 1, noKot: true }] });
+  assert.equal(tokenStatusOf(mixed, undefined, NOW, CLEAR), "preparing");
+  const noLines = order(9, { kotFiredAt: [at(T0)] });
+  assert.equal(tokenStatusOf(noLines, undefined, NOW, CLEAR), "preparing");
 });

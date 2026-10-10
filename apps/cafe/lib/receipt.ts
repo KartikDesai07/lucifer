@@ -77,8 +77,28 @@ export function resolveDiscountKind(
   // reinstated (or inflated) with no stamp check at all, while the order's own
   // reward snapshot still claimed the redemption. A reward is removed only by
   // cancelling the order (S6), which RETURNS the stamps as it goes.
-  if (stored === "reward" && supplied === null) return stored;
+  // P4 (s87) — sticky against EVERY supplied value, not just null: a supplied
+  // "gst" swapped the kind too, so the reward's money vanished while its
+  // stamps stayed spent. The staff writers 409 that request first (see
+  // rewardBlocksDiscountKind); this is the backstop for any other caller.
+  if (stored === "reward") return stored;
   return supplied ?? undefined;
+}
+
+// P4 (s87) — the one plain answer every writer gives a request that would put
+// a different discount kind on a bill whose reward is already spent. Shared by
+// the items + settle routes (409) and the POS cart's GST-button hint.
+export const REWARD_BLOCKS_GST_DISCOUNT_MESSAGE =
+  "This bill already has a reward, so the GST discount can't be added to it";
+
+// True when the client SENT a kind ("gst") that a stored "reward" must refuse.
+// Absent and null are not refused: absent leaves the kind alone, and null is
+// already ignored above (it never meant "remove the reward").
+export function rewardBlocksDiscountKind(
+  supplied: DiscountKind | null | undefined,
+  stored: DiscountKind | undefined,
+): boolean {
+  return stored === "reward" && supplied != null && supplied !== "reward";
 }
 
 // ── Table charge ─────────────────────────────────────────────────────────────

@@ -21,6 +21,7 @@ import { Field, HINT_CLASS, HINT_LINK_CLASS, SettingsGroup, ToggleRow } from "@/
 import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 import { blankToMinStart, makeNumberStartBlurHandler } from "@/components/settings/print-form-utils";
 import { usePrintersRead } from "@/hooks/use-agent-printers";
+import { KITCHEN_TOKEN_HINT } from "@/lib/kitchen-lines";
 import { NUMBER_RESET_HINT, TOKENS_NO_BILL_PRINTER_WARNING, TOKENS_RELOAD_HINT, tokensHaveNoBillPrinter } from "@/lib/token-settings-notes";
 
 const TOKEN_NUMBER_START_ID = "settings-token-number-start";
@@ -62,6 +63,7 @@ export function TokenSettingsFields({ control, register, setValue, errors }: Tok
           )}
         />
         <p className={HINT_CLASS}>{TOKENS_RELOAD_HINT}</p>
+        <p className={HINT_CLASS}>{KITCHEN_TOKEN_HINT}</p>
         {noBillPrinter && (
           <p role="alert" className="rounded-lg border border-destructive p-3 text-sm text-brand-ink">
             {TOKENS_NO_BILL_PRINTER_WARNING}{" "}

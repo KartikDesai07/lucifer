@@ -385,3 +385,47 @@ test("2C: only no-host lets a caller print a slip itself; not-routed never does"
     assert.equal(printJobEnqueueAllowsLocalPrint(outcome), false, outcome);
   }
 });
+
+// -- invoiceNumber / invoiceFy (S10: a GST bill's invoice serial) -------------
+
+test("printOrderSnapshot: invoiceNumber + invoiceFy are copied together and leave NO keys when absent (omit-empty)", () => {
+  // Positive landmark first: a picker that never copied the pair would pass the absence asserts below.
+  const withInvoice = printOrderSnapshot(order({ invoiceNumber: 123, invoiceFy: 2026 }));
+  assert.equal(withInvoice.invoiceNumber, 123);
+  assert.equal(withInvoice.invoiceFy, 2026);
+  assert.equal(printOrderSnapshotSchema.safeParse(withInvoice).success, true);
+  const plain = printOrderSnapshot(order());
+  assert.equal("invoiceNumber" in plain, false);
+  assert.equal("invoiceFy" in plain, false);
+  assert.equal("tokenNumber" in plain, false, "landmark: the neighbouring omit-empty key behaves the same, so an absent invoice is not a regression of the whole block");
+});
+
+test("printOrderSnapshot: the invoice keys are BOTH-OR-NEITHER — one stored field alone (or a non-number) copies nothing", () => {
+  const landmark = printOrderSnapshot(order({ invoiceNumber: 7, invoiceFy: 2026 }));
+  assert.equal("invoiceNumber" in landmark && "invoiceFy" in landmark, true, "landmark: the full pair is copied");
+  for (const half of [{ invoiceNumber: 7 }, { invoiceFy: 2026 }] as Array<Partial<Order>>) {
+    const snap = printOrderSnapshot(order(half));
+    assert.equal("invoiceNumber" in snap, false, `${JSON.stringify(half)}: no invoiceNumber key`);
+    assert.equal("invoiceFy" in snap, false, `${JSON.stringify(half)}: no invoiceFy key`);
+  }
+  const notNumbers = order({ invoiceNumber: "7" as unknown as number, invoiceFy: 2026 });
+  assert.equal("invoiceNumber" in printOrderSnapshot(notNumbers), false, "a string number is not copied, and neither is its partner");
+  assert.equal("invoiceFy" in printOrderSnapshot(notNumbers), false);
+});
+
+test("printOrderSnapshotSchema: a snapshot carrying both invoice keys parses and keeps them; a non-integer is rejected; absent stays valid", () => {
+  const snapshot = printOrderSnapshot(order({ invoiceNumber: 123, invoiceFy: 2026 }));
+  const parsed = printOrderSnapshotSchema.safeParse(snapshot);
+  assert.equal(parsed.success, true);
+  if (parsed.success) {
+    assert.equal(parsed.data.invoiceNumber, 123, "the parse keeps the number (the schema declares the key, strict does not drop or reject it)");
+    assert.equal(parsed.data.invoiceFy, 2026);
+  }
+  assert.ok("invoiceNumber" in printOrderSnapshotSchema.shape && "invoiceFy" in printOrderSnapshotSchema.shape, "landmark: both keys are declared");
+  assert.equal(printOrderSnapshotSchema.safeParse({ ...snapshot, invoiceNumber: 1.5 }).success, false, "1.5 is not an integer");
+  assert.equal(printOrderSnapshotSchema.safeParse({ ...snapshot, invoiceFy: 2026.5 }).success, false);
+  assert.equal(printOrderSnapshotSchema.safeParse({ ...snapshot, invoiceNumber: "123" }).success, false, "a string is not a number");
+  assert.equal(printOrderSnapshotSchema.safeParse(printOrderSnapshot(order())).success, true, "absent stays valid: only a numbered GST bill carries the keys");
+  const bill = printJobPayloadSchema.safeParse({ kind: "bill", snapshot });
+  assert.equal(bill.success, true, "and a bill payload carrying the pair parses end to end");
+});

@@ -31,8 +31,8 @@ export default function BillPrintSettingsPage() {
 // PUT carry both the form's fields and the design.
 function BillPrintForm({ settings, section }: { settings: Settings; section: SettingsSection }) {
   const design = useBillDesignDraft(settings);
-  // A GST bill needs a bill number: only a hint, never an automatic switch (owner rule, plan Amendment A7).
-  const gstHint = design.active && settings.gstEnabled && settings.gstRate > 0;
+  // A GST bill always prints its invoice number (S10): only a hint, never an automatic switch (owner rule, plan Amendment A7).
+  const gstHint = settings.gstEnabled && settings.gstRate > 0;
 
   return (
     <SettingsSectionForm settings={settings} section={section} extra={design.extra}>

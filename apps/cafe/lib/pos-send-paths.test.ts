@@ -52,7 +52,8 @@ test("S1: the controller is pure — no React, no fetch, no timers — and reach
   const raw = readRaw(CONTROLLER);
   const specifiers = [...raw.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]);
   assert.ok(specifiers.includes("@pos/shared/order-idem"), "landmark: the controller reuses the shared idempotency rules");
-  const allowed = new Set(["@pos/shared/order-idem", "@/lib/pending-writes", "@/types"]);
+  // @/lib/kitchen-lines (skip-KOT) is pure and client-safe: no React, no DOM, no value import of its own.
+  const allowed = new Set(["@pos/shared/order-idem", "@/lib/pending-writes", "@/lib/kitchen-lines", "@/types"]);
   assert.deepEqual(specifiers.filter((s) => !allowed.has(s)), [], "no React, no toasts, no hooks, no api-client");
   const src = readSrc(CONTROLLER);
   assert.ok(src.includes("export function createPosSend(ports: PosSendPorts): PosSend {"), "landmark");

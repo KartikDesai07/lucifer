@@ -6,7 +6,7 @@
 
 export const REPORTS_BASE_PATH = "/reports";
 
-export type ReportSectionSlug = "sales" | "payments" | "items" | "order-types" | "cancels" | "gst" | "dues";
+export type ReportSectionSlug = "sales" | "payments" | "items" | "order-types" | "cancels" | "gst" | "dues" | "expenses";
 
 export interface ReportSection {
   slug: ReportSectionSlug;
@@ -50,6 +50,11 @@ export const REPORT_SECTIONS: readonly ReportSection[] = [
     slug: "dues",
     title: "Customer dues",
     description: "Who owes you, and what came in",
+  },
+  {
+    slug: "expenses",
+    title: "Expenses",
+    description: "Where the money went, and what is left from sales",
   },
 ];
 

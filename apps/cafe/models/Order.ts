@@ -11,6 +11,7 @@ import {
 } from "@/lib/constants";
 import { LOYALTY_REWARD_KINDS, type LoyaltyRewardKind } from "@pos/shared/public-diner";
 import { ORDER_CHARGE_TYPES, type OrderCharge } from "@pos/shared/order-charges";
+import { isInvoiceFy, isInvoiceSerial } from "@pos/shared/invoice-number";
 
 // Embedded subdocument — never saved independently (parent Order owns it).
 export interface IOrderItem {
@@ -51,6 +52,7 @@ export interface IOrderItem {
   // reworded since. Live-probed: without the schema path below, strict:true
   // dropped this silently on every claim while `reward` itself stored fine.
   note?: string;
+  noKot?: boolean; // skip-KOT: server-stamped, never on a kitchen ticket; absent on a kitchen line
 }
 
 // Append-only void trail (CR1.3). A snapshot, not a reference: `qty` is what was
@@ -78,6 +80,7 @@ export interface IOrderVoid {
   // comped dish from a sold one; `price` above stays the dish's real value, the
   // same snapshot discipline as every other field here.
   reward?: boolean;
+  noKot?: boolean; // skip-KOT: carried from the voided line, so no void slip is needed
   reason: string;
   voidedBy: string; // staff name from the session
   at: Date;
@@ -173,6 +176,9 @@ export interface IOrder extends Document {
   // Print customization S6: the order's token number, drawn once at create when tokens are on. Never set on an
   // add-round. Absent on every order created while tokens were off.
   tokenNumber?: number;
+  // Print customization S10: a GST bill's invoice serial and its financial year (lib/slip-numbers issueInvoiceNumber).
+  invoiceNumber?: number;
+  invoiceFy?: number;
   // The moment the bill FIRST printed — the UPI pay QR's "Valid till" counts from
   // it — and the total it was printed for. Written only by lib/bill-first-print.ts
   // (CAS): once per bill; a print after the total changed starts a new window.
@@ -222,6 +228,7 @@ const orderVoidSchema = new Schema<IOrderVoid>(
     removedModifiers: { type: [String], default: undefined },
     variation: { type: String },
     reward: { type: Boolean },
+    noKot: { type: Boolean }, // no default (omit-empty)
     reason: { type: String, required: true },
     voidedBy: { type: String, required: true },
     at: { type: Date, required: true },
@@ -277,6 +284,7 @@ const orderItemSchema = new Schema<IOrderItem>(
     // Stored rather than re-derived at print time, so a reprint reproduces
     // the paper as issued even if the constant is reworded later.
     note: { type: String },
+    noKot: { type: Boolean }, // skip-KOT, no default (omit-empty): only ever true, stamped server-side
   },
   { _id: false }, // embedded — no _id needed
 );
@@ -359,6 +367,10 @@ const orderSchema = new Schema<IOrder>(
     // S6 — declared for the strict:true reason (an undeclared path is silently dropped on insert); NO default, so
     // an order created with tokens off carries no key at all.
     tokenNumber: { type: Number },
+    // S10 — declared for the strict:true reason; NO default (omit-empty): only a paid GST bill carries them, set
+    // together by one guarded write. The validators are the shared predicates.
+    invoiceNumber: { type: Number, validate: isInvoiceSerial },
+    invoiceFy: { type: Number, validate: isInvoiceFy },
     // Declared for the strict:true reason; NO default (omit-empty) so the CAS
     // filter `$exists:false` means "never printed". Written only by
     // lib/bill-first-print.ts, always together with the total it was printed for.

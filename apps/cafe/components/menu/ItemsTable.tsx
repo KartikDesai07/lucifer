@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/table";
 import { ItemArt } from "@/components/menu/ItemArt";
 import { ItemRowMenu } from "@/components/menu/ItemRowMenu";
+import { NoKotTag, itemSkipsKitchen } from "@/components/menu/NoKotTag";
 import type { Category, Product } from "@/types";
 
 interface ItemsTableProps {
@@ -166,6 +167,7 @@ export function ItemsTable({
                     {isHiddenFromQr(product) && (
                       <Badge variant="outline" className="text-[10px]">Hidden from QR</Badge>
                     )}
+                    <NoKotTag skips={itemSkipsKitchen(product, categoryMap)} />
                   </div>
                 </TableCell>
                 <TableCell className="text-muted-foreground">

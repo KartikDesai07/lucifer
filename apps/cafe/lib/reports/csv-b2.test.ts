@@ -97,9 +97,10 @@ function makeGstReport(): GstReport {
     netSales: 10050,
     rates: [],
     days: [
-      { date: "2026-09-29", bills: 10, taxable: 9000, gst: 450, noGst: 500, charges: 100, value: 10050, docs: { first: 1, last: 10, numbered: 10, cancelled: 0, unnumbered: 0 } },
+      { date: "2026-09-29", bills: 10, taxable: 9000, gst: 450, noGst: 500, charges: 100, value: 10050, docs: { first: 1, last: 10, numbered: 10, cancelled: 0, unnumbered: 0 }, invoices: { fy: 2026, first: 41, last: 50, numbered: 10, cancelled: 0, without: 0 } },
     ],
     docs: { numbered: 10, cancelled: 0, unnumbered: 0 },
+    invoices: { fy: 2026, first: 41, last: 50, numbered: 10, cancelled: 0, without: 0 },
   };
 }
 
@@ -124,4 +125,39 @@ test("gstBillCsvRows: one row per bill, CGST/SGST halves, payment carried throug
   assert.equal(rows[0].CGST, 25);
   assert.equal(rows[0].SGST, 25);
   assert.equal(rows[0].Payment, "Cash");
+});
+
+test("gstDayCsvRows: First/Last invoice are printed labels per day and in the Total row; blank for a day without one or a range over two financial years", () => {
+  const base = makeGstReport();
+  const rows = gstDayCsvRows(base);
+  assert.equal(rows[0]["First invoice"], "2627/000041");
+  assert.equal(rows[0]["Last invoice"], "2627/000050");
+  assert.equal(rows[1]["First invoice"], "2627/000041");
+  assert.equal(rows[1]["Last invoice"], "2627/000050");
+  // The old columns are all still there, in the same relative order, with the new ones appended last.
+  assert.deepEqual(Object.keys(rows[0]), [
+    "Day", "Bills", "First bill", "Last bill", "Cancelled after billing", "Taxable value", "CGST", "SGST", "Total GST",
+    "No-GST bills", "Charges (no GST)", "Bill value", "First invoice", "Last invoice",
+  ]);
+
+  const none = { fy: null, first: null, last: null, numbered: 0, cancelled: 0, without: 2 };
+  const crossing: GstReport = {
+    ...base,
+    days: [{ ...base.days[0], invoices: none }],
+    invoices: { fy: null, first: null, last: null, numbered: 12, cancelled: 0, without: 2 },
+  };
+  const blank = gstDayCsvRows(crossing);
+  assert.equal(blank[0]["First invoice"], "");
+  assert.equal(blank[0]["Last invoice"], "");
+  assert.equal(blank[1]["First invoice"], "");
+  assert.equal(blank[1]["Last invoice"], "");
+});
+
+test("gstBillCsvRows: Invoice no. is the printed label when the bill holds one, blank otherwise, and sits after the old columns", () => {
+  const bill = { date: "2026-09-29", at: "2026-09-29T10:00:00.000Z", orderId: "ORD-9", rate: 5, inclusive: true, taxable: 950, gst: 50, noGst: 0, charges: 0, total: 1000, payment: "Cash" };
+  const rows = gstBillCsvRows([{ ...bill, invoiceNumber: 123, invoiceFy: 2026 }, bill]);
+  assert.equal(rows[0]["Invoice no."], "2627/000123");
+  assert.equal(rows[1]["Invoice no."], "");
+  assert.equal(Object.keys(rows[0]).at(-1), "Invoice no.");
+  assert.equal(Object.keys(rows[0]).at(-2), "Payment");
 });

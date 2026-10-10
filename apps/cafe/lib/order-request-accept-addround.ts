@@ -3,6 +3,7 @@ import type { IOrderRequest } from "@/models/OrderRequest";
 import { computeOrderTotals, type GstConfig } from "@/lib/receipt";
 import type { PrintConfig } from "@/lib/print";
 import { nextPrintedNumber } from "@/lib/slip-numbers";
+import { withKitchenFlags } from "@/lib/kitchen-lines-server";
 import { SELF_ORDER_SOURCE } from "@pos/shared/public";
 import type { DiscountKind } from "@pos/shared/constants";
 import {
@@ -132,7 +133,9 @@ export async function acceptAddRoundBranch(
   ctx: AcceptContext,
 ): Promise<{ order: IOrder; request: IOrderRequest; replayed: boolean } | { error: string; status: 409 }> {
   const round = (openTab.kotRounds ?? 0) + 1;
-  const fullItems = [...openTab.items, ...items.map((it) => ({ ...it, kotRound: round }))];
+  // Skip-KOT: stamp this round's lines before the ticket draw below reads them (fails open).
+  const kot = await withKitchenFlags(items);
+  const fullItems = [...openTab.items, ...kot.lines.map((it) => ({ ...it, kotRound: round }))];
   // CB-CHG — a QR round carries the tab's charges through UNCHANGED (never
   // originates/drops one — that is staff-only); chargesFromOrder upgrades a
   // legacy scalar-only tab in memory, money-neutral by construction. Split
@@ -233,7 +236,7 @@ export async function acceptAddRoundBranch(
     cfg: tabGstCfg,
     ...(rewardForTotals ? { reward: rewardForTotals } : {}),
   });
-  const ticket = printCfg.kot.showNumber
+  const ticket = printCfg.kot.showNumber && kot.kitchen
     ? await nextPrintedNumber("kot", printCfg.kot)
     : undefined;
   const kotNumbers = buildKotNumbers(openTab.kotNumbers, round, ticket);

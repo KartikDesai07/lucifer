@@ -35,6 +35,9 @@ import { planExtras } from "./extras-plan";
 import { DEMO_AREA_NAMES, demoAreaIndexOf } from "./area-plan";
 import { rollupsOf } from "./finalize";
 import { computeOrderTotals } from "@/lib/receipt";
+import { isTaxInvoice } from "@/lib/gst-invoice";
+import { invoiceCounterKey } from "@/models/Counter";
+import { invoiceFyOf } from "@pos/shared/invoice-number";
 import { derivePayment } from "@/lib/order";
 import { REWARD_ITEM_LINE_NOTE } from "@pos/shared/reward-redemption";
 import type {
@@ -567,6 +570,59 @@ function runPlanOrdersChecks(label: string, gstEnabled: boolean, gstRate: number
 
 runPlanOrdersChecks("gst-inclusive-5pct", true, 5, "inclusive");
 runPlanOrdersChecks("gst-exclusive-18pct", true, 18, "exclusive");
+
+// ── GST invoice serials (S10-E): the seeded demo continues the live series ──
+// 10 Apr 2027 IST with 31 days back crosses 1 April 2027, so TWO financial years are planned.
+const FY_CROSSING_NOW = new Date("2027-04-10T09:30:00.000Z");
+
+function runInvoicePlanChecks(label: string, gstRate: number, gstMode: "inclusive" | "exclusive") {
+  test(`planOrders[${label}]: GST invoice serials run 1..n per financial year in creation order, only on Completed GST bills`, () => {
+    const ctx = buildCtx({ seed: 7, gstEnabled: true, gstRate, gstMode, now: FY_CROSSING_NOW });
+    const plan = planOrders(ctx);
+    const byFy = new Map<number, number[]>();
+    for (const o of plan.orders) {
+      const shouldHold = o.status === "Completed" && isTaxInvoice(o);
+      assert.equal(o.invoiceNumber !== undefined, shouldHold, `order ${o.orderId}: invoice number iff a Completed GST bill`);
+      assert.equal(o.invoiceFy !== undefined, shouldHold, `order ${o.orderId}: invoice year set together with the number`);
+      if (!shouldHold) continue;
+      assert.equal(o.invoiceFy, invoiceFyOf(o.createdAt), `order ${o.orderId}: FY is the createdAt FY`);
+      const arr = byFy.get(o.invoiceFy as number) ?? [];
+      arr.push(o.invoiceNumber as number); // plan.orders is createdAt-ascending, so this is creation order
+      byFy.set(o.invoiceFy as number, arr);
+    }
+    assert.deepEqual([...byFy.keys()].sort(), [2026, 2027], "the plan crosses 1 April: two financial years");
+    for (const [fy, serials] of byFy) {
+      assert.ok(serials.length > 1, `FY ${fy} has several invoices`);
+      assert.deepEqual(serials, serials.map((_, i) => i + 1), `FY ${fy}: serials consecutive from 1, in creation order`);
+    }
+  });
+
+  test(`planOrders[${label}]: each financial year's invoice counter holds exactly its last serial`, () => {
+    const ctx = buildCtx({ seed: 7, gstEnabled: true, gstRate, gstMode, now: FY_CROSSING_NOW });
+    const plan = planOrders(ctx);
+    const lastByFy = new Map<number, number>();
+    for (const o of plan.orders) {
+      if (o.invoiceNumber === undefined || o.invoiceFy === undefined) continue;
+      lastByFy.set(o.invoiceFy, Math.max(lastByFy.get(o.invoiceFy) ?? 0, o.invoiceNumber));
+    }
+    assert.equal(lastByFy.size, 2);
+    for (const [fy, last] of lastByFy) {
+      assert.equal(plan.counters[invoiceCounterKey(fy)], last, `counter ${invoiceCounterKey(fy)} === last serial`);
+    }
+    const invoiceKeys = Object.keys(plan.counters).filter((k) => k.startsWith("invoice-"));
+    assert.equal(invoiceKeys.length, lastByFy.size, "no invoice counter for a year without invoices");
+    assert.ok("invoice-2627" in plan.counters && "invoice-2728" in plan.counters);
+  });
+}
+
+runInvoicePlanChecks("gst-inclusive-5pct", 5, "inclusive");
+runInvoicePlanChecks("gst-exclusive-18pct", 18, "exclusive");
+
+test("planOrders: with GST off no order is numbered and no invoice counter is planned", () => {
+  const plan = planOrders(buildCtx({ seed: 7, gstEnabled: false, gstRate: 0, gstMode: "inclusive", now: FY_CROSSING_NOW }));
+  assert.ok(plan.orders.every((o) => o.invoiceNumber === undefined && o.invoiceFy === undefined));
+  assert.equal(Object.keys(plan.counters).filter((k) => k.startsWith("invoice-")).length, 0);
+});
 
 // ── planExtras invariants ────────────────────────────────────────────────────
 test("planExtras: event/reservation date formats, future/past split, Seated table not in occupied set", () => {

@@ -10,10 +10,9 @@ import {
 } from "@/components/brand/brand-classes";
 import { cn } from "@/lib/utils";
 import { settingsSectionPath } from "@/lib/settings-sections";
+import { HINT_CLASS, HINT_LINK_CLASS } from "@/components/settings/hint-classes";
 
-export const HINT_CLASS = "text-xs text-brand-muted";
-// Always underlined: inside muted hint text, colour alone would not mark it as a link.
-export const HINT_LINK_CLASS = "font-medium text-brand-primary underline underline-offset-2";
+export { HINT_CLASS, HINT_LINK_CLASS };
 
 // A link inside a hint that points at the section which sets the value a
 // toggle prints.

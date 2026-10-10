@@ -185,6 +185,9 @@ export interface PlannedOrder {
   kotRounds: number;
   kotNumbers?: number[];
   billNumber?: number;
+  // Print customization S10: a paid GST bill's invoice serial + its financial year (start year), set together.
+  invoiceNumber?: number;
+  invoiceFy?: number;
   voids?: PlannedOrderVoid[];
   cancelReason?: string;
   cancelledBy?: string;
@@ -226,7 +229,7 @@ export interface PlannedOrderRequest {
   createdAt: Date;
   updatedAt: Date;
 }
-/** Counter documents the live routes continue from: key → seq (e.g. "order-20260913" → 27). */
+/** Counter documents the live routes continue from: key → seq (e.g. "order-20260913" → 27, "invoice-2627" → 412). */
 export type PlannedCounters = Record<string, number>;
 export interface PlannedTableState {
   tableNo: string;

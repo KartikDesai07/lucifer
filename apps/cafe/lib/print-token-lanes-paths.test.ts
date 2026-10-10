@@ -281,3 +281,117 @@ test("wedge guard: a token flag whose lastOrder has no token number clears witho
   assert.deepEqual(printed, ["token"], "landmark: the same flag with a numbered order does print");
   real.hook.unmount();
 });
+
+// ── skip-KOT: the client KOT seam skips a no-kitchen round; the bill (Pay Now) never waits for a KOT ─────
+
+const SEAM = {
+  routed: [] as Array<{ kind: string; names: string[] }>,
+  infos: [] as string[],
+  noted: [] as string[],
+  localKot: 0,
+};
+const routedKinds = (): string[] => SEAM.routed.map((r) => r.kind);
+const namesIn = (snapshot: { items: Array<{ name: string }> }): string[] => snapshot.items.map((i) => i.name);
+stubModule("@/hooks/use-host-routing", {
+  useHostRouting: () => ({
+    routing: "no-host",
+    hostConfigured: false,
+    routePrint: (build: () => { payload: { kind: string; snapshot?: { items: Array<{ name: string }> } } }): void => {
+      const { payload } = build();
+      SEAM.routed.push({ kind: payload.kind, names: payload.snapshot ? namesIn(payload.snapshot) : [] });
+    },
+    queueMovedSlip: async (): Promise<boolean> => true,
+  }),
+});
+stubModule("sonner", { toast: { error: (m: string) => void m, success: (m: string) => void m, info: (m: string) => SEAM.infos.push(m) } });
+const { usePrintRouting } = createRequire(__filename)("@/hooks/use-print-routing") as typeof import("@/hooks/use-print-routing");
+
+const lineOf = (name: string, over: Partial<Order["items"][number]> = {}): Order["items"][number] => ({
+  productId: `p-${name}`, name, price: 5000, qty: 1, modifiers: [], instructions: "", kotRound: 1, ...over,
+});
+const BURGER = lineOf("Burger");
+const WATER = lineOf("Water", { noKot: true });
+
+function seam(lastOrder: Order | null) {
+  Object.assign(SEAM, { routed: [], infos: [], noted: [], localKot: 0 });
+  const local = {
+    queueKotRound: () => void (SEAM.localKot += 1),
+    queueVoidSlip: () => undefined,
+    reprintKot: () => undefined,
+    queueReceipt: () => undefined,
+    queueTokenSlip: () => undefined,
+    setLastOrder: (o: Order) => void SEAM.noted.push(o.orderId),
+  };
+  const hook = mountHook(() => usePrintRouting({ local, lastOrder }));
+  return { hook, api: () => hook.result() };
+}
+
+test("skip-KOT seam: a water-only Pay Now queues the BILL at once and no KOT; a mixed round queues a KITCHEN-ONLY KOT then the full bill", () => {
+  const water = orderOf({ items: [WATER], over: { kotRounds: 1, kotNumbers: undefined } });
+  const a = seam(null);
+  a.api().queueKotRound(water);
+  a.api().queueReceipt(water);
+  assert.deepEqual(SEAM.routed, [{ kind: "bill", names: ["Water"] }], "no KOT job and the bill is not held for one");
+  assert.equal(SEAM.localKot, 0, "the local KOT is never raised, so the bridge's bill effect has no KOT to wait for");
+  a.hook.unmount();
+  const mixed = orderOf({ items: [BURGER, WATER], over: { kotRounds: 1 } });
+  const b = seam(null);
+  b.api().queueKotRound(mixed);
+  b.api().queueReceipt(mixed);
+  assert.deepEqual(SEAM.routed, [{ kind: "kot", names: ["Burger"] }, { kind: "bill", names: ["Burger", "Water"] }]);
+  b.hook.unmount();
+});
+
+test("skip-KOT seam: only the ROUND asked for is judged — a water-only round 2 on a tab whose round 1 is food sends nothing", () => {
+  const tab = orderOf({ items: [BURGER, lineOf("Water", { noKot: true, kotRound: 2 })], over: { kotRounds: 2 } });
+  const s = seam(null);
+  s.api().queueKotRound(tab, 2);
+  assert.deepEqual(SEAM.routed, []);
+  s.api().queueKotRound(tab, 1);
+  assert.deepEqual(SEAM.routed, [{ kind: "kot", names: ["Burger"] }], "round 1 still goes (vision guard)");
+  assert.deepEqual(SEAM.noted, [tab.orderId, tab.orderId], "the tab is still recorded for a reprint");
+  s.hook.unmount();
+});
+
+test("skip-KOT seam: voiding a no-kitchen line queues no void slip (the tab is still noted); a kitchen line's void still prints", () => {
+  const order = orderOf({ items: [BURGER], over: { voids: [] } });
+  const entry = { productId: "p-Water", name: "Water", price: 5000, qty: 1, kotRound: 1, reason: "Wrong", voidedBy: "Asha", at: "2026-10-07T10:00:00.000Z" };
+  const s = seam(null);
+  s.api().queueVoidSlip(order, { ...entry, noKot: true });
+  assert.deepEqual(SEAM.routed, []);
+  assert.deepEqual(SEAM.noted, [order.orderId]);
+  s.api().queueVoidSlip(order, entry);
+  assert.deepEqual(routedKinds(), ["void"]);
+  s.hook.unmount();
+});
+
+test("skip-KOT seam: reprinting the KOT of an order whose every fired line skips says so and sends nothing; a mixed order reprints kitchen lines only", () => {
+  const water = orderOf({ items: [WATER], over: { kotRounds: 1 } });
+  const a = seam(water);
+  a.api().reprintKot();
+  assert.deepEqual(SEAM.routed, []);
+  assert.deepEqual(SEAM.infos, ["Nothing to send to the kitchen. These items are handed over directly."]);
+  a.hook.unmount();
+  const mixed = orderOf({ items: [BURGER, WATER], over: { kotRounds: 1 } });
+  const b = seam(mixed);
+  b.api().reprintKot();
+  assert.deepEqual(SEAM.routed, [{ kind: "kot", names: ["Burger"] }]);
+  assert.deepEqual(SEAM.infos, []);
+  b.hook.unmount();
+});
+
+test("PIN (skip-KOT): the host's self-order lane and the Orders / Move screens carry the same gates", () => {
+  const drain = code("components/print/PrintHostDrain.tsx");
+  assert.ok(drain.includes("if (!roundSkipsKitchen(order.items, round)) {"), "the host lane never makes a KOT for a no-kitchen round");
+  assert.ok(at(drain, "if (!roundSkipsKitchen(order.items, round)) {") < at(drain, "if (opensWithToken(order, round)) {"), "the token line stays outside the gate");
+  const sheet = code("components/orders/OrderDetailSheet.tsx");
+  assert.ok(sheet.includes("if (orderSkipsKitchen(order)) {") && sheet.includes("toast.info(KITCHEN_NOTHING_TO_SEND_MESSAGE);"), "Notify Kitchen toasts instead of printing");
+  assert.ok(at(sheet, "if (orderSkipsKitchen(order)) {") < at(sheet, "isCancelled\n          ? cancelNoticePrintJob("), "the gate comes before the job is built");
+  assert.ok(sheet.includes("order={order ? kitchenOrderOf(order) : order}"), "the sheet's own KOT lists kitchen lines only");
+  const move = code("components/orders/MoveTableDialog.tsx");
+  assert.ok(move.includes("if (orderSkipsKitchen(slip.order)) {"), "no moved slip for a no-kitchen order");
+  assert.ok(at(move, "if (orderSkipsKitchen(slip.order)) {") < at(move, "} else if (!shouldRoute) {") && at(move, "} else if (!shouldRoute) {") < at(move, "onOpenChange(false);"), "both print branches are behind the gate and the dialog still closes");
+  const sources = code("components/pos/PrintSources.tsx");
+  assert.ok(sources.includes("order={order ? kitchenOrderOf(order) : order}") && sources.includes("roundItems={kotRoundItems ? [...kitchenLinesOf(kotRoundItems)] : undefined}"), "the KOT is kitchen lines only");
+  assert.ok(sources.includes("<OrderReceipt order={order} ") && sources.includes("<TokenSlip order={order} "), "the bill and the token keep the whole order");
+});

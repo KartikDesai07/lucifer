@@ -23,6 +23,7 @@ import { billPrintJob, kotPrintJob, movedPrintJob, voidPrintJob, type PrintJobRe
 import { publishCafeEvent, publishPrintStatus } from "@/lib/realtime-publish";
 import type { Order } from "@/types";
 import { opensWithToken, tokenPrintJob } from "@/lib/print-routing";
+import { orderSkipsKitchen, roundSkipsKitchen, type KitchenFlagged, type KitchenRoundLine } from "@/lib/kitchen-lines";
 
 // Printing redesign, Phase 1 Session 1B (spec §7.4): server-side job creation. An order route whose
 // call site opts in (PRINT_AGENT_HEADER) creates, in the same request and right after its order write
@@ -104,6 +105,30 @@ export function openingSlipsOf(order: unknown, round: number): OrderPrintSlip[] 
   return opensWithToken(tokenOf, round) ? [kot, { kind: "token" }] : [kot];
 }
 
+/** Skip-KOT: the slips that still make sense for this order. A KOT whose round has only no-kitchen lines, a
+ *  void slip for a no-kitchen line (the newest void entry, the one this request pushed) and a moved slip
+ *  for an order whose every fired line skips the kitchen are dropped; the token and the bill never are.
+ *  The SAME array comes back when nothing is dropped, so an ordinary order is untouched. */
+export function kitchenSlipsOf(
+  order: { items: readonly KitchenRoundLine[]; voids?: readonly KitchenFlagged[] },
+  slips: OrderPrintSlip[],
+): OrderPrintSlip[] {
+  const kept = slips.filter((slip) => {
+    switch (slip.kind) {
+      case "kot":
+        return !roundSkipsKitchen(order.items, slip.round);
+      case "void":
+        return order.voids?.at(-1)?.noKot !== true;
+      case "moved":
+        return !orderSkipsKitchen(order);
+      case "bill":
+      case "token":
+        return true;
+    }
+  });
+  return kept.length === slips.length ? slips : kept;
+}
+
 /** A lean or hydrated Order as the wire Order the client builders read: through JSON, exactly as the
  *  response sends it, so a server-made slip is the slip the device would have built (§7.4). */
 export function wireOrderOf(order: unknown): Order {
@@ -157,7 +182,9 @@ export async function createOrderPrintJobs(input: {
   if (input.slips.length === 0) return refs;
   try {
     const order = wireOrderOf(input.order);
-    const slips = [...input.slips].sort((a, b) => SLIP_ORDER[a.kind] - SLIP_ORDER[b.kind]);
+    const wanted = kitchenSlipsOf(order, input.slips);
+    if (wanted.length === 0) return refs;
+    const slips = [...wanted].sort((a, b) => SLIP_ORDER[a.kind] - SLIP_ORDER[b.kind]);
     const requests = slips.map((slip) => requestOf(order, slip)).filter((request): request is PrintJobRequest => request !== null);
     // One small read in simple mode (spec §6.6); printers mode adds the stations of these slips' lines.
     const routing = await readPrintRouting({

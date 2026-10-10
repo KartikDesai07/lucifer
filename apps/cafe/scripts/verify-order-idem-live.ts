@@ -224,11 +224,17 @@ async function leg3b(): Promise<void> {
   // An OLD unnumbered sale (its winner's numbering failed, or it predates
   // numbering being switched on): past the settle window the replay numbers
   // it. Aged over the raw collection — Mongoose drops a $set of the immutable
-  // createdAt without a word.
-  await Order.collection.updateOne(
-    { idemKey: key },
-    { $unset: { billNumber: "" }, $set: { createdAt: new Date(Date.now() - BILL_NUMBER_SETTLE_MS - AGE_MARGIN_MS) } },
+  // createdAt without a word. The window counts from the LAST write (S10 review
+  // M1): a sale created long ago that a write just touched is still young.
+  const aged = new Date(Date.now() - BILL_NUMBER_SETTLE_MS - AGE_MARGIN_MS);
+  await Order.collection.updateOne({ idemKey: key }, { $unset: { billNumber: "" }, $set: { createdAt: aged } });
+  const youngBill = (await counters()).bill;
+  const touched = await create(payload);
+  check(
+    "S10 M1: created long ago but written just now (updatedAt fresh) is still young: 503, nothing drawn",
+    touched.status === PENDING_STATUS && (await counters()).bill === youngBill,
   );
+  await Order.collection.updateOne({ idemKey: key }, { $set: { updatedAt: aged } });
   const billBefore = (await counters()).bill;
   const finished = await create(payload);
   const billAfter = (await counters()).bill;

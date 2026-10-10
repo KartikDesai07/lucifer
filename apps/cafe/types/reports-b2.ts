@@ -196,13 +196,29 @@ export interface GstRateRow {
   value: number; // taxable + gst (charges excluded)
 }
 
-/** GSTR-1 Table 13 style — bill numbers restart every day, so each day is its own series. */
+/** GSTR-1 Table 13 style — daily bill numbers restart at the cafe's restart time, so each day is its own series (GST invoice serials: see GstInvoices). */
 export interface GstDocs {
   first: number | null; // lowest billNumber that day (null when none numbered)
   last: number | null;
   numbered: number; // bills holding a number: Completed + Cancelled-after-billing
   cancelled: number; // of those, cancelled after the bill was issued
   unnumbered: number; // Completed bills with no bill number (numbering off / older bills)
+}
+
+/**
+ * GST invoice serials (print customization S10), per day and for the whole range. One series runs the whole
+ * financial year (never restarts daily), so a day always belongs to ONE financial year. For a RANGE, `fy` is that
+ * financial year (start year, e.g. 2026 = 2026-27) only when every numbered invoice is in the same one; when the
+ * range crosses 1 April it is null and first/last are null too (serials of two years never share one range), while
+ * the counts stay exact.
+ */
+export interface GstInvoices {
+  fy: number | null; // null when nothing is numbered, or (range level) the numbered invoices span two financial years
+  first: number | null; // lowest invoice serial in that financial year
+  last: number | null;
+  numbered: number; // paid bills holding an invoice number: Completed + Cancelled-after-billing
+  cancelled: number; // of those, cancelled after the invoice was issued (GSTR-1 Table 13)
+  without: number; // Completed GST bills with no invoice number (paid before invoice numbers, or a rare numbering gap)
 }
 
 export interface GstDayRow {
@@ -214,12 +230,15 @@ export interface GstDayRow {
   charges: number;
   value: number; // Σ total
   docs: GstDocs;
+  invoices: GstInvoices;
 }
 
 export interface GstBillRow {
   date: string;
   at: string; // ISO createdAt
   billNumber?: number;
+  invoiceNumber?: number; // running serial; set together with invoiceFy
+  invoiceFy?: number;
   orderId: string;
   rate: number; // 0 = no GST on this bill
   inclusive: boolean;
@@ -247,6 +266,8 @@ export interface GstReport {
   days: GstDayRow[];
   /** Range totals (first/last are per day — see days[].docs). */
   docs: Omit<GstDocs, "first" | "last">;
+  /** Range-level GST invoice summary (see GstInvoices: `fy` is null when the range spans two financial years). */
+  invoices: GstInvoices;
   /** Only when requested (?bills=1) — the bill-wise CSV, oldest first. */
   billRows?: GstBillRow[];
 }

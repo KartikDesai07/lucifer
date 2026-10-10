@@ -13,13 +13,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useDeleteStation, useSaveStation } from "@/hooks/use-print-setup";
 import { stationDeleteQuestion } from "@/lib/print-setup-text";
+import { KITCHEN_PRINTER_SETUP_NOTE } from "@/lib/kitchen-lines";
 
 interface StationsSetupSectionProps {
   stations: readonly StationConfig[];
   printers: readonly PrinterConfig[];
 }
 
-const SECTION_DESCRIPTION = "Each category prints at a station; an item can choose its own (Menu → Items).";
+const SECTION_DESCRIPTION = `Each category prints at a station; an item can choose its own (Menu → Items). ${KITCHEN_PRINTER_SETUP_NOTE}`;
 const DEFAULT_CANT_DELETE = "The default station can't be deleted. Make another station the default first.";
 
 

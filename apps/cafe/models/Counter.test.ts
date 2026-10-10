@@ -4,6 +4,8 @@ import mongoose, { type Connection, type Model } from "mongoose";
 import {
   Counter,
   counterModelFor,
+  invoiceCounterKey,
+  nextInvoiceSequence,
   nextOrderSequence,
   nextSlipSequence,
   slipCounterKey,
@@ -416,4 +418,81 @@ test("restart time changed 04:00 -> 00:00 at 02:00: today's key is fresh and sta
   assert.equal(drawn[drawn.length - 1].key, "token-20260715");
   assert.equal(await draw(AT_0430_IST, 0), 2);
   assertNeverRepeats(drawn);
+});
+
+// ── S10: the GST invoice series (one running number per financial year, always on the CORE counter) ──
+
+test("invoiceCounterKey: invoice-<yyzz> from the FY start year (2026 -> invoice-2627), clear of every other counter prefix", () => {
+  assert.equal(invoiceCounterKey(2026), "invoice-2627");
+  assert.equal(invoiceCounterKey(2025), "invoice-2526");
+  assert.equal(invoiceCounterKey(2099), "invoice-9900");
+  assert.notEqual(invoiceCounterKey(2026), invoiceCounterKey(2027), "landmark: a new financial year is a new counter");
+  // The existing series keep their own keys, unchanged, and none can collide with an invoice key.
+  const key = invoiceCounterKey(2026);
+  for (const other of [dayKey(FIXED), slipKey("kot", FIXED), slipKey("bill", FIXED), slipCounterKey("token", FIXED)]) {
+    assert.notEqual(other, key);
+    assert.equal(other.startsWith("invoice-"), false, `${other} is not in the invoice namespace`);
+  }
+  assert.deepEqual([...SLIP_SERIES], ["kot", "bill", "token"], "the invoice series is NOT a slip series (no restart time, no start number)");
+});
+
+test("nextInvoiceSequence: ONE atomic $inc (upsert) on the FY key, returns the counter seq, falls back to 1 on an empty reply", async () => {
+  const fake = makeFakeCounter({ _id: "invoice-2627", seq: 42 });
+  __setCounterModelResolverForTests(() => fake.model);
+  assert.equal(await nextInvoiceSequence(2026), 42);
+  assert.equal(fake.calls.length, 1);
+  assert.deepEqual(fake.calls[0].filter, { _id: "invoice-2627" });
+  assert.deepEqual(fake.calls[0].update, { $inc: { seq: 1 } }, "one increment, no read-then-write");
+  assert.deepEqual(fake.calls[0].options, { upsert: true, new: true, setDefaultsOnInsert: true });
+
+  const empty = makeFakeCounter(null);
+  __setCounterModelResolverForTests(() => empty.model);
+  assert.equal(await nextInvoiceSequence(2026), 1);
+});
+
+test("nextInvoiceSequence: resolves the CORE counter — the resolver is asked for NO connection (null/undefined), never a ledger", async () => {
+  const fake = makeFakeCounter({ _id: "invoice-2627", seq: 1 });
+  const asked: Array<Connection | null | undefined> = [];
+  __setCounterModelResolverForTests((conn) => {
+    asked.push(conn);
+    return fake.model;
+  });
+  await nextInvoiceSequence(2026);
+  assert.equal(asked.length, 1, "landmark: the resolver really was consulted");
+  assert.ok(asked[0] === null || asked[0] === undefined, "no ledger connection reaches the invoice counter");
+  // Landmark for the check above: the order allocator, given a connection, DOES pass it through.
+  const conn = freshConn();
+  await nextOrderSequence(conn, FIXED);
+  assert.equal(asked[1], conn);
+});
+
+test("nextInvoiceSequence: through the default resolver it is the v1 default-bound Counter that is incremented", async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const original = Counter.findOneAndUpdate;
+  (Counter as unknown as { findOneAndUpdate: unknown }).findOneAndUpdate = (filter: Record<string, unknown>) => {
+    calls.push(filter);
+    return { lean: () => Promise.resolve({ _id: "invoice-2627", seq: 8 }) };
+  };
+  try {
+    assert.equal(await nextInvoiceSequence(2026), 8);
+  } finally {
+    (Counter as unknown as { findOneAndUpdate: unknown }).findOneAndUpdate = original;
+  }
+  assert.deepEqual(calls, [{ _id: "invoice-2627" }]);
+});
+
+test("nextInvoiceSequence does not depend on a restart time: it takes the FY alone, and an extra argument changes nothing", async () => {
+  assert.equal(nextInvoiceSequence.length, 1, "no restart-time or connection parameter");
+  assert.equal(invoiceCounterKey.length, 1);
+  const fake = makeFakeCounter({ _id: "x", seq: 3 });
+  __setCounterModelResolverForTests(() => fake.model);
+  const loose = nextInvoiceSequence as unknown as (...args: unknown[]) => Promise<number>;
+  await loose(2026);
+  await loose(2026, 240);
+  await loose(2026, 1439);
+  assert.deepEqual(
+    fake.calls.map((c) => c.filter._id),
+    ["invoice-2627", "invoice-2627", "invoice-2627"],
+    "a restart time of 0, 240 or 1439 names the very same counter",
+  );
 });

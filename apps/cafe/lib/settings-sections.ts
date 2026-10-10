@@ -47,6 +47,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
       "productLogo",
       "fssai",
       "upiId",
+      "upiRules",
       "payQrMode",
       "payQrValidMinutes",
       "posLayout",

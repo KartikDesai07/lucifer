@@ -850,3 +850,102 @@ test("PIN (S6/D2): cancel/route.ts does NOT reverse the EARN side — no stamp g
     "cancel/route.ts must never DECREMENT stamps — it only returns them via returnRewardStamps; any negative stamps $inc here is an earn-side clawback D2 forbids",
   );
 });
+
+// ── P4 / P1 (s87): a stored reward refuses a supplied GST discount; settle's CAS ─
+// carries the round term ─────────────────────────────────────────────────────
+// P4 — resolveDiscountKind used to let a supplied "gst" REPLACE a stored reward
+// on add-round and settle (reward money gone, stamps still spent). The fix is
+// a 409 from BOTH writers, placed BEFORE any stamp claim or CAS write so a
+// refused request has no side effect. P1 — settle's CAS filter had no kotRounds
+// term, so an add-round landing between settle's read and its CAS with an
+// EQUAL total slipped past `total: old.total`; the term is the same one
+// items/route.ts and items/void/route.ts already carry. Written before the
+// fix: every pin below is expected RED until the main thread lands it.
+
+// CRLF-safe: a checkout with autocrlf must not blind the multi-line regexes.
+const lf = (s: string) => s.replace(/\r\n/g, "\n");
+// The symbols must come from the ONE module that owns them: the refusal
+// sentence is single-homed in lib/receipt.ts, never re-typed in a route or the
+// Cart.
+function assertReceiptImports(src: string, names: readonly string[]): void {
+  const imp = /import\s*\{([^}]*)\}\s*from\s*"@\/lib\/receipt"/.exec(src);
+  assert.ok(imp, "landmark: the file must import from @/lib/receipt");
+  for (const name of names) {
+    assert.ok(new RegExp(`\\b${name}\\b`).test(imp[1]), `${name} must be imported from @/lib/receipt`);
+  }
+}
+const BLOCKS_CALL = /if\s*\(\s*rewardBlocksDiscountKind\(\s*([\w.]+)\s*,\s*old\.discountKind\s*\)\s*\)\s*\{?\s*return failure\(\s*REWARD_BLOCKS_GST_DISCOUNT_MESSAGE\s*,\s*409\s*\)/;
+
+test("PIN (P4): items/route.ts answers REWARD_BLOCKS_GST_DISCOUNT_MESSAGE 409 on rewardBlocksDiscountKind(parsed.data.discountKind, old.discountKind) — after the open-tab check, BEFORE the reward claim, the stamp claim and the CAS write", () => {
+  const src = lf(stripComments(readSrc("app/api/orders/[id]/items/route.ts")));
+  // Positive landmarks first: the three things the guard must precede still exist.
+  const openTab = mustIndexOf(src, "Can only add items to an open tab", "the open-tab refusal");
+  const claimLine = mustIndexOf(src, "resolveRewardClaimAndLine(", "the reward claim call");
+  const claimStamps = mustIndexOf(src, "claimRewardStamps(String(", "the stamp claim call");
+  const cas = mustIndexOf(src, "Order.findOneAndUpdate(", "the CAS write");
+  const m = BLOCKS_CALL.exec(src);
+  assert.ok(m, "items/route.ts must `if (rewardBlocksDiscountKind(...)) return failure(REWARD_BLOCKS_GST_DISCOUNT_MESSAGE, 409)`");
+  assert.equal(m[1], "parsed.data.discountKind", "the supplied kind is the body field, the stored kind is old.discountKind");
+  assert.ok(m.index > openTab, "the guard sits after the open-tab status check");
+  assert.ok(m.index < claimLine, "the guard must precede resolveRewardClaimAndLine( — a refused request must resolve no claim");
+  assert.ok(m.index < claimStamps, "the guard must precede claimRewardStamps( — a refused request must spend no stamps");
+  assert.ok(m.index < cas, "the guard must precede the findOneAndUpdate CAS write");
+  assertReceiptImports(src, ["rewardBlocksDiscountKind", "REWARD_BLOCKS_GST_DISCOUNT_MESSAGE"]);
+});
+
+test("PIN (P4): settle/route.ts answers REWARD_BLOCKS_GST_DISCOUNT_MESSAGE 409 on rewardBlocksDiscountKind(data.discountKind, old.discountKind) — after settleRefusal, BEFORE the reward claim, the stamp claim and the CAS write", () => {
+  const src = lf(stripComments(readSrc("app/api/orders/[id]/settle/route.ts")));
+  const refusal = mustIndexOf(src, "settleRefusal(old, data)", "the settleRefusal call");
+  const claimCall = mustIndexOf(src, "resolveRewardClaim({", "the reward claim call");
+  const claimStamps = mustIndexOf(src, "claimRewardStamps(String(", "the stamp claim call");
+  const cas = mustIndexOf(src, "Order.findOneAndUpdate(", "the CAS write");
+  const m = BLOCKS_CALL.exec(src);
+  assert.ok(m, "settle/route.ts must `if (rewardBlocksDiscountKind(...)) return failure(REWARD_BLOCKS_GST_DISCOUNT_MESSAGE, 409)`");
+  assert.equal(m[1], "data.discountKind", "the supplied kind is the parsed body field, the stored kind is old.discountKind");
+  assert.ok(m.index > refusal, "the guard sits right after settleRefusal");
+  assert.ok(m.index < claimCall, "the guard must precede resolveRewardClaim( — a refused settle must resolve no claim");
+  assert.ok(m.index < claimStamps, "the guard must precede claimRewardStamps( — a refused settle must spend no stamps");
+  assert.ok(m.index < cas, "the guard must precede the findOneAndUpdate CAS write");
+  assertReceiptImports(src, ["rewardBlocksDiscountKind", "REWARD_BLOCKS_GST_DISCOUNT_MESSAGE"]);
+});
+
+test("PIN (P1): settle/route.ts's CAS `const filter` carries `kotRounds: old.kotRounds ?? 0` — the SAME term items/route.ts and items/void/route.ts use — so an equal-total add-round cannot slip past `total: old.total`", () => {
+  const settle = lf(stripComments(readSrc("app/api/orders/[id]/settle/route.ts")));
+  const block = /const filter: FilterQuery<IOrder> = \{[\s\S]*?\n    \};/.exec(settle);
+  assert.ok(block, "landmark: settle/route.ts must still hold its `const filter: FilterQuery<IOrder> = {...}` CAS block");
+  assert.match(block[0], /total:\s*old\.total/, "landmark: the total term is still in the same block");
+  assert.match(block[0], /status:\s*"Pending"/, "landmark: the status term is still in the same block");
+  assert.match(
+    block[0],
+    /kotRounds:\s*old\.kotRounds\s*\?\?\s*0,/,
+    "settle's CAS must also match the round count it read — an add-round whose new total EQUALS the old one is invisible to the total term",
+  );
+  // The reciprocal writers' term is the exact same shape (one convention, three writers).
+  for (const rel of ["app/api/orders/[id]/items/route.ts", "app/api/orders/[id]/items/void/route.ts"]) {
+    assert.match(
+      lf(stripComments(readSrc(rel))),
+      /kotRounds:\s*old\.kotRounds\s*\?\?\s*0,/,
+      `${rel} must keep the kotRounds CAS term settle now mirrors`,
+    );
+  }
+});
+
+test("PIN (P4): Cart.tsx's GST Discount button is disabled while a reward is locked and a one-line hint renders REWARD_BLOCKS_GST_DISCOUNT_MESSAGE", () => {
+  const src = lf(readSrc("components/pos/Cart.tsx"));
+  const start = mustIndexOf(src, "canGstDiscount && (", "the GST Discount button's gate");
+  const end = mustIndexOf(src, "<CartExtraCharges", "the extra-charges landmark that follows the GST button");
+  assert.ok(end > start, "landmark order: the GST button precedes <CartExtraCharges");
+  const block = src.slice(start, end);
+  assert.match(block, /GST_DISCOUNT_LABEL/, "landmark: this block is the GST Discount button");
+  assert.match(
+    block,
+    /disabled=\{items\.length === 0 \|\| \(rewardLocked && !gstActive\)\}/,
+    "the button must be disabled while rewardLocked (the server would 409 it anyway) — except to turn an already-active preset OFF",
+  );
+  assert.match(
+    block,
+    /\{REWARD_BLOCKS_GST_DISCOUNT_MESSAGE\}/,
+    "a locked button must say why, with the one shared sentence",
+  );
+  assertReceiptImports(src, ["REWARD_BLOCKS_GST_DISCOUNT_MESSAGE"]);
+});

@@ -74,3 +74,24 @@ test("updateCategorySchema: stationId:null means back to the default station; ab
   const renamed = updateCategorySchema.safeParse({ name: "Hot drinks" });
   assert.ok(renamed.success && !("stationId" in renamed.data), "a rename never touches the station");
 });
+
+// ── Skip-KOT: the category's "no kitchen ticket" switch ─────────────────────
+
+test("createCategorySchema: noKot is optional, true-only, with no default (absent = sent to the kitchen)", () => {
+  const plain = createCategorySchema.safeParse({ name: "Drinks" });
+  assert.ok(plain.success && !("noKot" in plain.data), "no noKot key unless the switch is off");
+  const skip = createCategorySchema.safeParse({ name: "Beverages", noKot: true });
+  assert.ok(skip.success && skip.data.noKot === true);
+  assert.equal(createCategorySchema.safeParse({ name: "Beverages", noKot: false }).success, false, "false is never stored");
+  assert.equal(createCategorySchema.safeParse({ name: "Beverages", noKot: null }).success, false, "null is an update sentinel only");
+});
+
+test("updateCategorySchema: noKot:null is the sentinel back to 'sent to the kitchen'; absent leaves it alone", () => {
+  const cleared = updateCategorySchema.safeParse({ noKot: null });
+  assert.ok(cleared.success && cleared.data.noKot === null);
+  const set = updateCategorySchema.safeParse({ noKot: true });
+  assert.ok(set.success && set.data.noKot === true);
+  const renamed = updateCategorySchema.safeParse({ name: "Hot drinks" });
+  assert.ok(renamed.success && !("noKot" in renamed.data), "a rename never touches the switch");
+  assert.equal(updateCategorySchema.safeParse({ noKot: false }).success, false);
+});

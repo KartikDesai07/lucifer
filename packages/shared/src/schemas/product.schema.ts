@@ -83,6 +83,9 @@ export const createProductSchema = z.object({
   // Printing Phase 2 (spec §6.2): this item's own kitchen station, overriding its category's. Optional
   // with NO default (the publicVisible precedent): the CSV import has no column for it.
   stationId: z.string().regex(OBJECT_ID_HEX_PATTERN, "Pick a station").optional(),
+  // Skip-KOT: true = never on a kitchen ticket, false = always (even if its category skips), absent =
+  // follow the category. Optional with NO default (the CSV import has no column for it).
+  noKot: z.boolean().optional(),
 });
 
 // PUT /api/products/[id]. Everything optional, PLUS one sentinel the create
@@ -109,6 +112,8 @@ export const updateProductSchema = createProductSchema.partial().extend({
   icon: productIconSchema.nullable().optional(),
   // Same sentinel once more: "Use the category's station" restores ABSENT.
   stationId: z.string().regex(OBJECT_ID_HEX_PATTERN, "Pick a station").nullable().optional(),
+  // Same sentinel: `null` = "Same as its category" restores ABSENT.
+  noKot: z.boolean().nullable().optional(),
 });
 
 export type CreateProductInput = z.infer<typeof createProductSchema>;

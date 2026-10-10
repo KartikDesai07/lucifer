@@ -43,6 +43,9 @@ export interface IProduct extends Document {
   // "use the category's station" — no `default:` below, the publicVisible precedent: the CSV import has
   // no column for it, so a re-import can never clear a chosen station.
   stationId?: Types.ObjectId;
+  // Skip-KOT: true = never on a kitchen ticket, false = always (even if its category skips), ABSENT =
+  // its category's choice. No `default:` below (the CSV import has no column for it).
+  noKot?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -85,6 +88,7 @@ export const productSchema = new Schema<IProduct>(
     icon: { type: String },
     // No `default:` — see the IProduct comment above: absent means the category's station.
     stationId: { type: Schema.Types.ObjectId },
+    noKot: { type: Boolean },
   },
   { timestamps: true },
 );

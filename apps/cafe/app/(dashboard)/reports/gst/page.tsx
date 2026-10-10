@@ -8,6 +8,7 @@ import { exportToCSV } from "@/lib/export";
 import { gstDayCsvRows, gstBillCsvRows } from "@/lib/reports/csv-b2";
 import { formatHalfGst, gstRateLabel } from "@/lib/reports/gst-display";
 import { dayLabel, weekdayDayLabel } from "@/lib/dashboard/range";
+import { invoiceLabel } from "@pos/shared/invoice-number";
 import { useReportRange } from "@/components/reports/ReportRangeContext";
 import { useGstReport, fetchGstBills } from "@/hooks/use-reports";
 import { StatCard } from "@/components/reports/StatCard";
@@ -16,12 +17,23 @@ import { ReportHeader } from "@/components/reports/ReportHeader";
 import { ReportTable, type ReportTableColumn } from "@/components/reports/ReportTable";
 import { TallyCard } from "@/components/reports/TallyCard";
 import { DaySheet } from "@/components/reports/DaySheet";
-import type { GstDayRow, GstRateRow } from "@/types/reports";
+import type { GstDayRow, GstInvoices, GstRateRow } from "@/types/reports";
 
 const RATE_ROW_KEY_NO_GST = "no-gst";
 const RATE_ROW_KEY_CHARGES = "charges";
 const GST_TALLY_RESERVE_LINES = 4;
 const BILL_CSV_FAIL_MESSAGE = "Couldn't build the bill-wise CSV. Please try again.";
+const INVOICE_RANGE_SEPARATOR = " – ";
+const TWO_YEARS_NOTE = "Covers two financial years — see each day below";
+
+/** "2627/000001 – 2627/000045"; null when nothing in the period carries an invoice number, a note across two years. */
+function invoiceRangeText(inv: GstInvoices): string | null {
+  if (inv.numbered === 0) return null;
+  if (inv.fy === null || inv.first === null || inv.last === null) return TWO_YEARS_NOTE;
+  return inv.first === inv.last
+    ? invoiceLabel(inv.fy, inv.first)
+    : `${invoiceLabel(inv.fy, inv.first)}${INVOICE_RANGE_SEPARATOR}${invoiceLabel(inv.fy, inv.last)}`;
+}
 
 interface RateDisplayRow {
   key: string;
@@ -96,6 +108,12 @@ export default function GstReportPage() {
       align: "right",
       cell: (row) => (row.docs.first !== null && row.docs.last !== null ? `#${row.docs.first} – #${row.docs.last}` : "—"),
     },
+    {
+      key: "invoices",
+      label: "GST invoice numbers",
+      align: "right",
+      cell: (row) => invoiceRangeText(row.invoices) ?? "—",
+    },
     { key: "taxable", label: "Taxable value", align: "right", cell: (row) => inr(row.taxable), total: inr(r?.taxable ?? 0) },
     { key: "cgst", label: "CGST", align: "right", cell: (row) => formatHalfGst(row.gst), total: formatHalfGst(r?.gst ?? 0) },
     { key: "sgst", label: "SGST", align: "right", cell: (row) => formatHalfGst(row.gst), total: formatHalfGst(r?.gst ?? 0) },
@@ -103,6 +121,7 @@ export default function GstReportPage() {
   ];
 
   const netIssued = r ? r.docs.numbered - r.docs.cancelled : 0;
+  const invoiceRange = r ? invoiceRangeText(r.invoices) : null;
 
   return (
     <>
@@ -201,8 +220,26 @@ export default function GstReportPage() {
                 <DocsRow label="Net issued" value={String(netIssued)} strong />
                 {r.docs.unnumbered > 0 && <DocsRow label="Bills without a number" value={String(r.docs.unnumbered)} />}
               </dl>
+              {(r.invoices.numbered > 0 || r.invoices.without > 0) && (
+                <dl className="flex flex-col divide-y divide-brand-rule/70 text-[13.5px]">
+                  <DocsRow label="GST invoices issued" value={String(r.invoices.numbered)} />
+                  {invoiceRange !== null && <DocsRow label="Invoice numbers" value={invoiceRange} />}
+                  <DocsRow label="Invoices cancelled after billing" value={String(r.invoices.cancelled)} />
+                  {r.invoices.without > 0 && <DocsRow label="GST bills without an invoice number" value={String(r.invoices.without)} />}
+                </dl>
+              )}
+              {r.invoices.without > 0 && (
+                <p className="text-[12px] text-brand-muted">
+                  Bills paid before invoice numbers started have none. A new one here means a bill was paid but its invoice number could not be saved.
+                </p>
+              )}
+              {r.invoices.numbered === 0 && r.invoices.without === 0 && (
+                <p className="text-[12px] text-brand-muted">
+                  No GST invoice numbers in this period yet. A bill with GST gets its invoice number when it is paid.
+                </p>
+              )}
               <p className="text-[12px] text-brand-muted">
-                Bill numbers restart every day — each day&apos;s first and last number is in the table below.
+                GST invoice numbers run for the whole financial year. Daily bill numbers restart at your restart time.
               </p>
               <button
                 type="button"
@@ -251,7 +288,7 @@ function DocsRow({ label, value, strong }: { label: string; value: string; stron
   return (
     <div className={`flex items-center justify-between gap-3 py-1.5 ${strong ? "font-semibold text-brand-ink" : "text-brand-ink"}`}>
       <dt>{label}</dt>
-      <dd className="tabular-nums">{value}</dd>
+      <dd className="min-w-0 break-words text-right tabular-nums">{value}</dd>
     </div>
   );
 }

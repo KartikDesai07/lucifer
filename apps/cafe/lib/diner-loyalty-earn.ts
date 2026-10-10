@@ -3,6 +3,7 @@ import { Customer } from "@/models/Customer";
 import type { ISettings } from "@/models/Settings";
 import { billEarnsStamp, resolveLoyaltyConfig } from "@/lib/diner-loyalty";
 import { dinerLoyaltyOn } from "@/lib/diner-route-guard";
+import { rewardLevelsChosen } from "@/lib/reward-levels-config";
 
 // CB-4 — granting ONE stamp for ONE settled bill, exactly once.
 //
@@ -22,7 +23,7 @@ import { dinerLoyaltyOn } from "@/lib/diner-route-guard";
 
 export type StampGrantResult =
   | { granted: true }
-  | { granted: false; reason: "loyalty-off" | "no-customer" | "below-min-bill" | "already-stamped" };
+  | { granted: false; reason: "loyalty-off" | "levels-on" | "no-customer" | "below-min-bill" | "already-stamped" };
 
 /**
  * Best-effort, exactly-once-per-order stamp grant for a settled bill.
@@ -44,6 +45,10 @@ export async function grantStampForSettledOrder(
   now: number = Date.now(),
 ): Promise<StampGrantResult> {
   if (!dinerLoyaltyOn(settings)) return { granted: false, reason: "loyalty-off" };
+  // CB-7 F1 — Levels replace the stamp card: no NEW stamps while the owner has
+  // chosen levels. Stamps and codes already held stay claimable. Read raw (the
+  // owner's mode), so a block or an unreadable blob never turns stamps back on.
+  if (rewardLevelsChosen(settings)) return { granted: false, reason: "levels-on" };
   // A walk-in with no Customer row has nothing to stamp. Not an error: most
   // counter bills are exactly this.
   if (!customerId) return { granted: false, reason: "no-customer" };

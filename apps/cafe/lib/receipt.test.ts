@@ -8,9 +8,13 @@ import {
   receiptGst,
   tableChargeOf,
   resolveDiscountKind,
+  rewardBlocksDiscountKind,
+  REWARD_BLOCKS_GST_DISCOUNT_MESSAGE,
   NO_TABLE_CHARGE,
   type GstConfig,
 } from "./receipt";
+import { rewardFromOrderSnapshot, type RedeemedReward } from "@pos/shared/reward-redemption";
+import type { DiscountKind } from "@/lib/constants";
 import { TABLE_CHARGE_MAX } from "@/lib/constants";
 import { stripComments } from "@/lib/source-pin-utils";
 
@@ -414,8 +418,141 @@ test("resolveDiscountKind: stored reward + supplied undefined -> stays reward (u
   assert.equal(resolveDiscountKind(undefined, "reward"), "reward");
 });
 
-test("resolveDiscountKind: stored reward + supplied \"gst\" -> becomes gst — an explicit DIFFERENT kind is still allowed; the fence guards only the null-clear path, not a deliberate kind switch", () => {
-  assert.equal(resolveDiscountKind("gst", "reward"), "gst");
+test("resolveDiscountKind (P4, s87): stored reward + supplied \"gst\" -> STAYS reward — a supplied GST preset must not replace a stamp-funded redemption", () => {
+  // P4 (s87, arbiter-confirmed s86): this test used to expect "gst" ("an
+  // explicit DIFFERENT kind is still allowed") — that expectation WAS the bug.
+  // A "gst" supplied on add-round / settle replaced the stored reward, so the
+  // reward's money vanished from the bill while the diner's stamps stayed spent.
+  assert.equal(resolveDiscountKind("gst", "reward"), "reward");
+});
+
+test("resolveDiscountKind (P4): stored reward + supplied \"reward\" -> reward (a re-sent reward kind is a no-op, not a switch)", () => {
+  assert.equal(resolveDiscountKind("reward", "reward"), "reward");
+});
+
+test("resolveDiscountKind (P4 guard): a stored reward answers \"reward\" for EVERY supplied value — and gst/undefined behaviour for a non-reward stored kind is unchanged", () => {
+  const supplied: Array<DiscountKind | null | undefined> = [undefined, null, "gst", "reward"];
+  for (const s of supplied) {
+    assert.equal(resolveDiscountKind(s, "reward"), "reward", `stored reward, supplied ${String(s)}`);
+  }
+  // Positive landmarks that the non-reward paths still behave as shipped.
+  assert.equal(resolveDiscountKind("gst", undefined), "gst");
+  assert.equal(resolveDiscountKind("gst", "gst"), "gst");
+  assert.equal(resolveDiscountKind(undefined, "gst"), "gst");
+  assert.equal(resolveDiscountKind(null, "gst"), undefined);
+  assert.equal(resolveDiscountKind("reward", undefined), "reward");
+});
+
+// ── rewardBlocksDiscountKind (P4): the 409 predicate both writers share ───────
+// True IFF the order STORES a reward and the client SUPPLIED a different kind
+// (today only "gst"). Absent / null / "reward" supplied never block — null is
+// already held sticky by resolveDiscountKind, and a re-sent "reward" is a no-op.
+
+test("rewardBlocksDiscountKind (P4): the full truth table — only stored reward x supplied gst blocks", () => {
+  const supplied: Array<DiscountKind | null | undefined> = [undefined, null, "gst", "reward"];
+  const stored: Array<DiscountKind | undefined> = [undefined, "gst", "reward"];
+  for (const st of stored) {
+    for (const su of supplied) {
+      const expected = st === "reward" && su === "gst";
+      assert.equal(
+        rewardBlocksDiscountKind(su, st),
+        expected,
+        `stored ${String(st)} x supplied ${String(su)} -> ${expected}`,
+      );
+    }
+  }
+  // Vision-guard: the loop above must have exercised the one TRUE cell, or an
+  // always-false stub would pass every negative row vacuously.
+  assert.equal(rewardBlocksDiscountKind("gst", "reward"), true);
+});
+
+test("REWARD_BLOCKS_GST_DISCOUNT_MESSAGE (P4): the one refusal sentence both writers and the Cart hint share", () => {
+  assert.equal(
+    REWARD_BLOCKS_GST_DISCOUNT_MESSAGE,
+    "This bill already has a reward, so the GST discount can't be added to it",
+  );
+});
+
+// ── P4 money repros: the stamp reward must survive a supplied "gst" ───────────
+// Real functions end to end (resolveDiscountKind -> rewardFromOrderSnapshot ->
+// computeOrderTotals), priced exactly as app/api/orders/[id]/items/route.ts
+// does it. Probed against the live bug: a flat Rs 100 reward tab (Rs 300) + a
+// Rs 50 round, GST 5% exclusive, subtotal 350, priced discount 17 / total 350
+// instead of 100 / 263 (the "gst" kind replaced the reward, so
+// gstEquivalentDiscount(350) = 17 was taken and the Rs 100 the stamps bought
+// vanished). Expected numbers derived by hand from the pricing rules: flat 100
+// -> base 250, GST round(12.5) = 13, total 263; percent 20 -> discount 70, base
+// 280, GST 14, total 294; item reward -> discount 0, GST round(17.5) = 18,
+// total 368.
+
+interface RewardTab {
+  discountKind: DiscountKind;
+  rewardAt: number;
+  rewardKind: RedeemedReward["kind"];
+  rewardValue: number;
+  rewardItem?: string;
+}
+
+const FLAT_100_TAB: RewardTab = { discountKind: "reward", rewardAt: 5, rewardKind: "flat", rewardValue: 100 };
+const PERCENT_20_TAB: RewardTab = { discountKind: "reward", rewardAt: 8, rewardKind: "percent", rewardValue: 20 };
+const ITEM_TAB: RewardTab = {
+  discountKind: "reward", rewardAt: 10, rewardKind: "item", rewardValue: 0, rewardItem: "Cake",
+};
+
+// The add-round route's pricing, step for step: the kind it resolves from the
+// body + the stored tab, then the reward REBUILT from the stored snapshot.
+function priceAddRound(
+  tab: RewardTab,
+  oldItems: Array<{ price: number; qty: number; reward?: boolean }>,
+  roundItems: Array<{ price: number; qty: number }>,
+  suppliedKind: DiscountKind | null | undefined,
+) {
+  const discountKind = resolveDiscountKind(suppliedKind, tab.discountKind);
+  const totals = computeOrderTotals({
+    items: [...oldItems, ...roundItems],
+    discount: 0,
+    discountKind,
+    charge: 0,
+    cfg: GST_5_EXCLUSIVE,
+    reward: rewardFromOrderSnapshot(tab),
+  });
+  return { discountKind, totals };
+}
+
+test("P4 repro (add-round): a flat Rs 100 reward tab + a Rs 50 round with a supplied \"gst\" still prices discount 100 / total 263 — not 17 / 350", () => {
+  const { discountKind, totals } = priceAddRound(FLAT_100_TAB, [{ price: 300, qty: 1 }], [{ price: 50, qty: 1 }], "gst");
+  assert.equal(totals.subtotal, 350);
+  assert.equal(totals.discount, 100, "the Rs 100 the stamps bought must still be on the bill (the bug priced 17)");
+  assert.equal(totals.total, 263, "(350 - 100) + GST 13 (the bug billed 350)");
+  assert.equal(discountKind, "reward", "the stored reward kind must survive a supplied gst");
+});
+
+test("P4 repro (add-round): a percent 20% reward tab survives a supplied \"gst\" — discount 70 / total 294", () => {
+  const { discountKind, totals } = priceAddRound(PERCENT_20_TAB, [{ price: 300, qty: 1 }], [{ price: 50, qty: 1 }], "gst");
+  assert.equal(totals.discount, 70, "20% of the 350 subtotal");
+  assert.equal(totals.total, 294, "(350 - 70) + GST 14");
+  assert.equal(discountKind, "reward");
+});
+
+test("P4 repro (add-round): an item reward tab keeps kind reward and a derived discount of 0 under a supplied \"gst\" — no GST discount appears", () => {
+  const { discountKind, totals } = priceAddRound(
+    ITEM_TAB,
+    [{ price: 300, qty: 1 }, { price: 150, qty: 1, reward: true }],
+    [{ price: 50, qty: 1 }],
+    "gst",
+  );
+  assert.equal(totals.subtotal, 350, "the free dish is priced but never totalled");
+  assert.equal(totals.discount, 0, "an item reward's rupee discount is always 0 (the bug derived a GST discount of 17)");
+  assert.equal(totals.total, 368, "350 + GST round(17.5) = 18");
+  assert.equal(discountKind, "reward");
+});
+
+test("P4 control (add-round): the SAME flat reward tab with the key absent or null prices 100 / 263 today — so the repros above differ only by the supplied \"gst\"", () => {
+  for (const supplied of [undefined, null] as const) {
+    const { totals } = priceAddRound(FLAT_100_TAB, [{ price: 300, qty: 1 }], [{ price: 50, qty: 1 }], supplied);
+    assert.equal(totals.discount, 100, `supplied ${String(supplied)}`);
+    assert.equal(totals.total, 263, `supplied ${String(supplied)}`);
+  }
 });
 
 test("resolveDiscountKind (regression risk of the fix): stored gst + supplied null -> CLEARED to undefined — the original operator-clears-preset behaviour must still work for a NON-reward stored kind", () => {

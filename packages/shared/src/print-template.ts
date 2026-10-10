@@ -44,6 +44,9 @@ export const PRINT_QR_BLOCKS_MAX = 3;
 /** A longer link makes a denser QR than a 2-px module survives on 58 mm paper. */
 export const PRINT_QR_URL_MAX = 200;
 export const PRINT_QR_CAPTION_MAX = 60;
+/** A QR code's printed size: Normal is today's (2 CSS px per module); the bigger ones scan more easily. Absent = normal. */
+export const PRINT_QR_SIZES = ["normal", "large", "xlarge"] as const;
+export type PrintQrSize = (typeof PRINT_QR_SIZES)[number];
 /** Upper bound on a repeatable block's "-n" suffix — well above PRINT_TEMPLATE_BLOCKS_MAX. */
 export const PRINT_REPEAT_INDEX_MAX = 999;
 
@@ -121,12 +124,14 @@ export interface CustomTextBlock extends BlockCommon {
 export interface UpiQrOptions {
   content: "upi";
   caption?: string;
+  size?: PrintQrSize;
 }
 /** A menu / review / Instagram / website link: an https URL in visible ASCII (no invisible pasted characters). */
 export interface LinkQrOptions {
   content: "link";
   url: string;
   caption?: string;
+  size?: PrintQrSize;
 }
 export type QrOptions = UpiQrOptions | LinkQrOptions;
 export interface QrBlock extends BlockCommon {

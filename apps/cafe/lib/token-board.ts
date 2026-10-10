@@ -7,6 +7,7 @@
 //   ready     — covered, not collected since the Ready mark, and marked less than the clear time ago;
 //   hidden    — collected, or ready for longer than the clear time (auto-clear at read time: no write, no cron).
 import { isHiddenByReady, newestFiredAtMs, KITCHEN_CARD_LIMIT, type FiredOrder } from "@/lib/kitchen-cards";
+import { orderSkipsKitchen } from "@/lib/kitchen-lines";
 import type { KitchenOrderInput } from "@/lib/kitchen-board";
 import { printConfigOf } from "@/lib/print";
 import type { TokenBoardEntry } from "@/lib/token-view";
@@ -23,8 +24,10 @@ export const OPEN_TAB_FILTER = { status: "Pending", payment: "Unpaid" } as const
 export const KITCHEN_ORDER_SELECT = "orderId items kotRounds kotNumbers kotFiredAt tableNo parcel notes source createdAt";
 
 /** The token board reads numbers, fire times and the order status (for the paid stale-out) only — never a name, an
- *  amount or a dish (S9's TV is public). The status never reaches the payload. */
-export const TOKEN_BOARD_SELECT = "tokenNumber kotFiredAt createdAt status";
+ *  amount or a dish (S9's TV is public). The status never reaches the payload. `items.kotRound items.noKot` are
+ *  sub-paths (a round number and a flag per line, no names or prices): they let a water-only round be ignored by
+ *  the same kitchen-round rule the Kitchen screen uses (skip-KOT). */
+export const TOKEN_BOARD_SELECT = "tokenNumber kotFiredAt createdAt status items.kotRound items.noKot";
 
 /** Bounds a day's token-order scan: twice a busy day's orders (print-budget.ts). */
 export const TOKEN_DAY_SCAN_LIMIT = 2 * PRINT_BUDGET_BUSY_DAY.orders;
@@ -151,6 +154,9 @@ export function isStalePaidToken(order: TokenStateOrder, nowMs: number): boolean
 }
 
 function tokenStateOf(order: TokenStateOrder, tick: TokenTickInput | undefined, nowMs: number, clearMinutes: number): TokenState {
+  // Skip-KOT (review M1): every kitchen line was voided, so only no-kitchen lines remain. The Kitchen screen has no
+  // card to mark Ready, so the token leaves the board — the F3 rule: nothing for the kitchen, never on Now Serving.
+  if (order.items !== undefined && orderSkipsKitchen({ items: order.items })) return { status: "hidden" };
   if (!isHiddenByReady(order, tick?.readyAt)) {
     return isStalePaidToken(order, nowMs) ? { status: "hidden" } : { status: "preparing" };
   }

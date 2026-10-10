@@ -2,6 +2,7 @@ import { PRINT_REPAIR_ORDER_MAX_AGE_MS, PRINT_REPAIR_WINDOW_MS } from "@pos/shar
 import { Order } from "@/models/Order";
 import { PrintJob } from "@/models/PrintJob";
 import { createOrderPrintJobs } from "./print-order-jobs";
+import { roundSkipsKitchen } from "./kitchen-lines";
 
 // Printing redesign, Phase 1 Session 1B (spec §7.4, sweep step 2): the repair. A request can die
 // between its order write and its job create (a timeout, a crash), or its create can fail. For a KOT
@@ -26,7 +27,7 @@ interface RepairCandidate {
   kotRounds?: number;
   kotFiredAt?: Date[];
   kotPrintDevices?: string[];
-  items: Array<{ kotRound?: number }>;
+  items: Array<{ kotRound?: number; noKot?: boolean }>;
 }
 
 export interface MissingKotJob {
@@ -38,7 +39,7 @@ export interface MissingKotJob {
 
 /** Pure: the server-owned rounds of these orders that fired inside the repair window and still have
  *  lines, each with the jobKey its job carries (printJobKeyOf's KOT key; print-order-jobs.test.ts pins
- *  the two together). A wholly voided round has nothing to print. */
+ *  the two together). A wholly voided round, or one of only no-kitchen lines, has nothing to print. */
 export function expectedKotJobs(orders: readonly RepairCandidate[], nowMs: number): MissingKotJob[] {
   const since = nowMs - PRINT_REPAIR_WINDOW_MS;
   const out: MissingKotJob[] = [];
@@ -51,6 +52,8 @@ export function expectedKotJobs(orders: readonly RepairCandidate[], nowMs: numbe
       const firedAt = order.kotFiredAt?.[round - 1] ?? order.createdAt;
       if (firedAt.getTime() < since) continue;
       if (!order.items.some((item) => item.kotRound === round)) continue;
+      // Skip-KOT: a round of only no-kitchen lines never had a ticket, so there is nothing to repair.
+      if (roundSkipsKitchen(order.items, round)) continue;
       out.push({ orderId, round, deviceId, jobKey: `kot:${orderId}:${round}` });
     }
   }
@@ -81,7 +84,7 @@ export async function repairMissingKotJobs(nowMs: number): Promise<number> {
     kotPrintDevices: { $exists: true },
     $or: [{ createdAt: { $gte: since } }, { kotFiredAt: { $elemMatch: { $gte: since } } }],
   })
-    .select("_id createdAt kotRounds kotFiredAt kotPrintDevices items.kotRound")
+    .select("_id createdAt kotRounds kotFiredAt kotPrintDevices items.kotRound items.noKot")
     .sort({ createdAt: -1 })
     .limit(PRINT_REPAIR_BATCH)
     .lean<RepairCandidate[]>();

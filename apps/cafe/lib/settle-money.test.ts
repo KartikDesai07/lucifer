@@ -6,7 +6,7 @@ import path from "node:path";
 import { ledgerContribution, resolveSettleMoney, type SettleMoneyInput } from "./order";
 import { settleOrderSchema, createOrderSchema } from "@/schemas";
 import { collectedAmount } from "@/lib/payment-result";
-import type { RedeemedReward } from "@pos/shared/reward-redemption";
+import { rewardFromOrderSnapshot, type RedeemedReward } from "@pos/shared/reward-redemption";
 
 // CR1.2 — failing-repro leg for two confirmed money bugs at settle. These tests
 // are written against the FIX's surface (a `resolveSettleMoney` pure function, a
@@ -492,4 +492,107 @@ test("CB-5B: reward alone (no discount/chargeAmount/discountKind supplied) still
   assert.ok(result.totals, "reward !== undefined alone must trigger the recompute branch");
   assert.equal(result.totals?.discount, 100);
   assert.equal(result.total, 400);
+});
+
+// ── P4 repro (s87, arbiter-confirmed s86): a supplied "gst" at settle must not ─
+// replace a stored reward. resolveDiscountKind kept a stored "reward" sticky
+// only against a supplied null; a supplied "gst" REPLACED it, so the reward's
+// money vanished while the stamps stayed spent. Probed: a flat Rs 100 reward tab
+// (subtotal 350, GST 5% exclusive) settled with discountKind "gst" priced
+// discount 17 / total 350 instead of 100 / 263. The route still resolves the
+// reward from the stored snapshot (settle/route.ts: claim?.reward ??
+// rewardFromOrderSnapshot(old)), so these tests do the same — real
+// rewardFromOrderSnapshot + real resolveSettleMoney, no hand-fed reward.
+// Expected numbers by hand: flat 100 -> base 250, GST round(12.5) = 13, total
+// 263; percent 20 -> discount 70, base 280, GST 14, total 294; item reward ->
+// discount 0, GST round(17.5) = 18, total 368.
+
+const GST_5_EXCL = { gstEnabled: true, gstRate: 5, gstMode: "exclusive" as const };
+
+// A Pending reward tab as the stored document carries it: the kind, the five-
+// field reward snapshot, the tab's own GST snapshot, and the total it was last
+// priced at. Items sum to a 350 subtotal (a reward line is priced, untotalled).
+function rewardTab(
+  snapshot: { rewardAt: number; rewardKind: RedeemedReward["kind"]; rewardValue: number; rewardItem?: string },
+  storedTotal: number,
+  extraItems: ReadonlyArray<{ price: number; qty: number; reward?: boolean }> = [],
+) {
+  return {
+    order: tab(storedTotal, {
+      items: [{ price: 300, qty: 1 }, { price: 50, qty: 1 }, ...extraItems],
+      discountKind: "reward",
+      gstRate: 5,
+      gstMode: "exclusive",
+    }),
+    snapshot,
+  };
+}
+
+test("P4 repro (settle): a flat Rs 100 reward tab settled with a supplied \"gst\" still prices discount 100 / total 263 and keeps kind reward — not 17 / 350", () => {
+  const { order, snapshot } = rewardTab({ rewardAt: 5, rewardKind: "flat", rewardValue: 100 }, 263);
+  const result = resolveSettleMoney({
+    order,
+    payment: "Cash",
+    discountKind: "gst",
+    reward: rewardFromOrderSnapshot(snapshot),
+    liveGst: GST_5_EXCL,
+  });
+  assert.ok(!("error" in result));
+  if ("error" in result) return;
+  assert.equal(result.totals?.subtotal, 350);
+  assert.equal(result.totals?.discount, 100, "the Rs 100 the stamps bought must still be on the bill (the bug priced 17)");
+  assert.equal(result.total, 263, "(350 - 100) + GST 13 (the bug billed 350)");
+  assert.equal(result.discountKind, "reward", "the stored reward kind must survive a supplied gst");
+});
+
+test("P4 repro (settle): a percent 20% reward tab settled with a supplied \"gst\" keeps discount 70 / total 294 and kind reward", () => {
+  const { order, snapshot } = rewardTab({ rewardAt: 8, rewardKind: "percent", rewardValue: 20 }, 294);
+  const result = resolveSettleMoney({
+    order,
+    payment: "Cash",
+    discountKind: "gst",
+    reward: rewardFromOrderSnapshot(snapshot),
+    liveGst: GST_5_EXCL,
+  });
+  assert.ok(!("error" in result));
+  if ("error" in result) return;
+  assert.equal(result.totals?.discount, 70, "20% of the 350 subtotal");
+  assert.equal(result.total, 294, "(350 - 70) + GST 14");
+  assert.equal(result.discountKind, "reward");
+});
+
+test("P4 repro (settle): an item reward tab settled with a supplied \"gst\" keeps its reward line, kind reward and a derived discount of 0 — no GST discount appears", () => {
+  const { order, snapshot } = rewardTab(
+    { rewardAt: 10, rewardKind: "item", rewardValue: 0, rewardItem: "Cake" },
+    368,
+    [{ price: 150, qty: 1, reward: true }],
+  );
+  const result = resolveSettleMoney({
+    order,
+    payment: "Cash",
+    discountKind: "gst",
+    reward: rewardFromOrderSnapshot(snapshot),
+    liveGst: GST_5_EXCL,
+  });
+  assert.ok(!("error" in result));
+  if ("error" in result) return;
+  assert.equal(result.totals?.subtotal, 350, "the free dish is priced but never totalled");
+  assert.equal(result.totals?.discount, 0, "an item reward's rupee discount is always 0 (the bug derived a GST discount of 17)");
+  assert.equal(result.total, 368, "350 + GST round(17.5) = 18");
+  assert.equal(result.discountKind, "reward");
+});
+
+test("P4 control (settle): the SAME flat reward tab settled with discountKind absent prices 100 / 263 today — so the repros above differ only by the supplied \"gst\"", () => {
+  const { order, snapshot } = rewardTab({ rewardAt: 5, rewardKind: "flat", rewardValue: 100 }, 263);
+  const result = resolveSettleMoney({
+    order,
+    payment: "Cash",
+    discount: 0, // forces the recompute; the stored reward kind still decides the discount
+    reward: rewardFromOrderSnapshot(snapshot),
+    liveGst: GST_5_EXCL,
+  });
+  assert.ok(!("error" in result));
+  if ("error" in result) return;
+  assert.equal(result.totals?.discount, 100);
+  assert.equal(result.total, 263);
 });

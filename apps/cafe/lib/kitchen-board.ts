@@ -6,6 +6,7 @@
 import type { Types } from "mongoose";
 import { kotLineRef, orderItemLabel } from "@pos/shared/utils";
 import { SELF_ORDER_SOURCE } from "@pos/shared/public";
+import { skipsKitchenTicket } from "@/lib/kitchen-lines";
 
 // P4-A — pure board-builder for the kitchen line view. NO DB, NO React, NO
 // fetch: the route calls this with plain data it already fetched, and the
@@ -24,6 +25,7 @@ export interface FiredItem {
   removedModifiers?: string[]; // "NO …" (modifiers come ticked) — part of the line's identity
   instructions?: string;
   kotRound: number; // 0 = not yet fired / legacy — filtered out below
+  noKot?: boolean; // skip-KOT: a "no kitchen ticket" line — never a board row
 }
 
 // The subset of an Order the board needs — deliberately narrow (matches the
@@ -165,6 +167,7 @@ export function buildKitchenRows({
 
     for (const item of order.items) {
       if (!item.kotRound || item.kotRound < 1) continue; // unfired / legacy
+      if (skipsKitchenTicket(item)) continue; // skip-KOT: handed over directly, never kitchen work
 
       const ref = kotLineRef({
         productId: String(item.productId),

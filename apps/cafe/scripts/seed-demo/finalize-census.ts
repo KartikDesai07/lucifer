@@ -11,6 +11,8 @@ import { Order } from "@/models/Order";
 import { OrderRequest } from "@/models/OrderRequest";
 import { DuePayment } from "@/models/DuePayment";
 import { Table } from "@/models/Table";
+import { invoiceCounterKey } from "@/models/Counter";
+import { isTaxInvoice } from "@/lib/gst-invoice";
 
 export interface CensusLine {
   pass: boolean;
@@ -60,5 +62,43 @@ export async function objectIdCensus(): Promise<CensusLine[]> {
     await Table.countDocuments({ areaId: { $exists: true, ...NOT_OBJECT_ID } }),
     "every present Table.areaId is a BSON ObjectId",
   );
+  return lines;
+}
+
+type TaxedOrder = Parameters<typeof isTaxInvoice>[0];
+
+interface InvoicedOrder extends TaxedOrder {
+  status: string;
+  invoiceNumber?: number | null;
+  invoiceFy?: number | null;
+}
+
+/**
+ * GST invoice serials (print customization S10): both fields or neither on every order, each financial year's
+ * serials run 1..n with no gap, and its `invoice-<yyzz>` counter holds exactly the last one (the next live GST sale
+ * continues the series instead of colliding with a seeded number).
+ */
+export function invoiceSeedLines(orders: ReadonlyArray<InvoicedOrder>, counterByKey: ReadonlyMap<string, number>): CensusLine[] {
+  const lines: CensusLine[] = [];
+  const lonely = orders.filter((o) => (o.invoiceNumber == null) !== (o.invoiceFy == null)).length;
+  lines.push({ pass: lonely === 0, message: `invoice: invoiceNumber and invoiceFy are set together (${lonely} offending orders)` });
+  // S10 review M4: every paid GST bill carries its serial (the seed never leaves a "without" row on the GST report).
+  const missing = orders.filter((o) => o.status === "Completed" && isTaxInvoice(o) && o.invoiceNumber == null).length;
+  lines.push({ pass: missing === 0, message: `invoice: every paid GST bill carries its serial (${missing} without)` });
+
+  const serialsByFy = new Map<number, number[]>();
+  for (const o of orders) {
+    if (o.invoiceNumber == null || o.invoiceFy == null) continue;
+    const arr = serialsByFy.get(o.invoiceFy) ?? [];
+    arr.push(o.invoiceNumber);
+    serialsByFy.set(o.invoiceFy, arr);
+  }
+  for (const [fy, serials] of serialsByFy) {
+    const sorted = [...serials].sort((a, b) => a - b);
+    lines.push({ pass: sorted.every((n, i) => n === i + 1), message: `invoice FY ${fy}: serials contiguous from 1 (${sorted.length})` });
+    const key = invoiceCounterKey(fy);
+    const stored = counterByKey.get(key);
+    lines.push({ pass: stored === sorted[sorted.length - 1], message: `counter ${key} (${stored}) === last serial (${sorted[sorted.length - 1]})` });
+  }
   return lines;
 }

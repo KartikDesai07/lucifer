@@ -47,6 +47,7 @@ import { Printer } from "@/models/Printer";
 import { Category } from "@/models/Category";
 import { Product } from "@/models/Product";
 import { legAY } from "./print-host-live/token-jobs";
+import { legAZ } from "./print-host-live/invoice-jobs";
 
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
@@ -136,6 +137,8 @@ async function main(): Promise<void> {
     await legAX(Date.now());
     // Print customization S7 leg (the customer's token slip: jobs, keys, lease order, eligibility, skew fence).
     await legAY(Date.now());
+    // Print customization S10 leg (the GST invoice serial a bill job is stored with).
+    await legAZ(Date.now());
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();

@@ -4,6 +4,7 @@ import { useWatch } from "react-hook-form";
 import type { Control } from "react-hook-form";
 
 import { cn, inr } from "@/lib/utils";
+import { GstSplitLines } from "@/components/pos/slip-gst-lines";
 import { sampleGstBill, SAMPLE_ITEM_PRICE } from "@/lib/gst-sample-bill";
 import type { SampleGstBill } from "@/lib/gst-sample-bill";
 import { printConfigOf, PAPER_WIDTH_CLASS, PRINT_FONT_CLASS } from "@/lib/print";
@@ -56,17 +57,23 @@ function SampleBody({
       <div className="space-y-0.5">
         <Line label="Subtotal" value={inr(bill.subtotal)} />
         {gst.show && !gst.inclusive && (
-          <Line label={`GST @${gst.rate}%`} value={`+${inr(gst.gstAmount)}`} />
+          <>
+            <Line label={`GST @${gst.rate}%`} value={`+${inr(gst.gstAmount)}`} />
+            <GstSplitLines gst={gst} />
+          </>
         )}
         <div className="flex justify-between text-[1.17em] font-bold">
           <span>TOTAL</span>
           <span>{inr(bill.total)}</span>
         </div>
         {gst.show && gst.inclusive && (
-          <div className="pl-2 text-[0.83em]">
-            incl. GST @{gst.rate}%: {inr(gst.gstAmount)} (taxable{" "}
-            {inr(gst.taxable)})
-          </div>
+          <>
+            <div className="pl-2 text-[0.83em]">
+              incl. GST @{gst.rate}%: {inr(gst.gstAmount)} (taxable{" "}
+              {inr(gst.taxable)})
+            </div>
+            <GstSplitLines gst={gst} />
+          </>
         )}
       </div>
     </>

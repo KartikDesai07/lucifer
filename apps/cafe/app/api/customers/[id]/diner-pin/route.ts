@@ -42,6 +42,16 @@ export async function DELETE(_req: Request, { params }: Params) {
 
   try {
     await connectDB();
+    // CB-7 §2.3 A5 — a reset never pauses the ladder of a diner who held a PIN
+    // before anchors existed: copy pinSetAt into rewardsAnchorAt first, only when
+    // no anchor is stored yet. A pipeline update, because a classic update
+    // cannot copy one field into another (probed on mongoose 8.24: it copies the
+    // date, and is a no-op when already anchored). The reset below never names
+    // rewardsAnchorAt: the anchor survives it.
+    await Customer.updateOne(
+      { _id: id, pinHash: { $exists: true }, pinSetAt: { $exists: true }, rewardsAnchorAt: { $exists: false } },
+      [{ $set: { rewardsAnchorAt: "$pinSetAt" } }],
+    );
     // $unset, never `$set: { pinHash: null }` — the public set-PIN route's CAS
     // filter is `pinHash: { $exists: false }`, and a null value still EXISTS.
     // Setting null here would clear the diner's PIN and then make it

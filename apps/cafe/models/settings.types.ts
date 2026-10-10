@@ -8,7 +8,7 @@ import {
 } from "@/lib/constants";
 import { type SelfOrderMode, type PromoCodeConfig } from "@pos/shared/public";
 import { type LoyaltyRewardKind } from "@pos/shared/public-diner";
-import { type PayQrMode } from "@pos/shared/print-qr";
+import { type PayQrMode, type UpiRule } from "@pos/shared/print-qr";
 import { type AppearanceInput } from "@pos/shared/appearance";
 import type { LoyaltyRulesInput } from "@pos/shared/schemas/settings-loyalty.schema";
 import type { DinerBannerInput } from "@pos/shared/schemas/settings-diner.schema";
@@ -37,6 +37,7 @@ export interface ISettings extends Document {
   productLogo: string; // opaque image ref — the PRODUCT's mark (browser tab, login)
   fssai: string; // FSSAI license number, shown on the receipt when set
   upiId: string; // UPI ID for the bill's "Scan to pay" QR; "" = not set
+  upiRules?: UpiRule[]; // amount slabs: a QR asking up to `upTo` rupees pays to that slab's ID (omit-empty)
   payQrMode: PayQrMode; // when the pay QR prints: always | owed | never
   payQrValidMinutes: number; // "Valid till" window from the first print; 0 = no limit
 
@@ -80,6 +81,8 @@ export interface ISettings extends Document {
   billTemplate?: unknown;
   kotTemplate?: unknown;
   tokenTemplate?: unknown;
+  // CB-7 S1 — Mixed blob; read only via lib/reward-levels-config.ts, never raw.
+  rewardLevels?: unknown;
 
   // Self-order (QR) — CR2. See settingsSchema (packages/shared) for the field
   // semantics; the defaults below are what a NEW cafe gets and what a lean

@@ -3,7 +3,7 @@ import { inr } from "@/lib/utils";
 import type { OrderItem } from "@/types";
 import { billThemedBlocks, type BillTheme } from "./bill-themed-blocks";
 import type { SlipDesign, BillRenderers } from "./slip-designs";
-import { plainAmount } from "./slip-format";
+import { plainAmount, plainHalfGst } from "./slip-format";
 import { CLASSIC_BILL_GROUP } from "./slip-groups";
 import { THEMED_REGULAR_CLASS } from "./slip-style";
 import type { BillBlockType } from "@pos/shared/print-template";
@@ -37,6 +37,7 @@ const MODERN_THEME: BillTheme = {
   itemClass: "font-bold",
   leaders: false,
   amount: plainAmount,
+  halfAmount: plainHalfGst,
   totalKind: "band",
   totalLabel: "TOTAL",
   footerClass: "text-center font-bold",

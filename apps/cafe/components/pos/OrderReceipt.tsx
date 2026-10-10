@@ -5,12 +5,14 @@ import Image from "next/image";
 
 import { orderItemLabel, orderItemModifierLines, discountLineLabel } from "@pos/shared/utils";
 import { chargesFromOrder } from "@pos/shared/order-charges";
+import { invoiceLabelOf } from "@pos/shared/invoice-number";
 import { CAFE_TIMEZONE } from "@/lib/constants";
 import type { PrintLogoSize } from "@/lib/constants";
 import { inr } from "@/lib/utils";
 import { receiptGst, type GstConfig } from "@/lib/receipt";
 import { productImageUrl } from "@/lib/images";
 import { PrintBanner } from "@/components/pos/PrintBanner";
+import { GstSplitLines, InvoiceNoRow } from "@/components/pos/slip-gst-lines";
 import { BillTokenRow } from "@/components/pos/slip-token-lines";
 import { BillSlip } from "@/components/print/slip/SlipEngine";
 import { SlipSkeleton } from "@/components/print/slip/SlipSkeleton";
@@ -82,6 +84,7 @@ export function OrderReceipt({ order, settings, banner, ref }: OrderReceiptProps
     gstMode: settings?.gstMode ?? "inclusive",
   };
   const gst = order ? receiptGst(order, gstCfg) : null;
+  const invoiceNo = order ? invoiceLabelOf({ invoiceNumber: order.invoiceNumber, invoiceFy: order.invoiceFy }) : null;
   const due = order ? order.total - order.paidAmount : 0;
   const isCancelled = order?.status === "Cancelled";
 
@@ -161,6 +164,8 @@ export function OrderReceipt({ order, settings, banner, ref }: OrderReceiptProps
                 <span className="text-right">{order.billNumber}</span>
               </div>
             )}
+            {/* S10: a GST bill prints its invoice number whatever "Show bill number" says (that controls Bill No. only). */}
+            {invoiceNo !== null && <InvoiceNoRow invoiceNo={invoiceNo} />}
             {order.tokenNumber !== undefined && <BillTokenRow tokenNumber={order.tokenNumber} />}
             <Line label="Order" value={order.orderId} />
             <Line label="Date" value={fmtDateTime(order.createdAt)} />
@@ -184,14 +189,7 @@ export function OrderReceipt({ order, settings, banner, ref }: OrderReceiptProps
                     {orderItemLabel(item)}
                     {item.qty > 1 ? ` x${item.qty}` : ""}
                   </span>
-                  {/* CB-5B — a reward line is on the bill so the customer SEES
-                      what they were given, but its money is excluded from the
-                      subtotal (lib/receipt.ts's reducer skips it). Printing its
-                      real price in the amount column would make the bill fail
-                      to add up in the customer's hands, so the amount column
-                      says FREE and the worth is shown struck through beside the
-                      name. The stored `note` is preferred over the live
-                      constant: a reprint must reproduce the paper as issued. */}
+                  {/* CB-5B: a reward line says FREE, its worth struck through (rationale: bill-classic-blocks.tsx items). */}
                   {item.reward ? (
                     <span className="whitespace-nowrap">
                       <span className="line-through opacity-60">{inr(item.price * item.qty)}</span>{" "}
@@ -223,14 +221,13 @@ export function OrderReceipt({ order, settings, banner, ref }: OrderReceiptProps
             )}
             {/* Exclusive GST is added on top of the total. */}
             {gst?.show && !gst.inclusive && (
-              <Line label={`GST @${gst.rate}%`} value={`+${inr(gst.gstAmount)}`} />
+              <>
+                <Line label={`GST @${gst.rate}%`} value={`+${inr(gst.gstAmount)}`} />
+                <GstSplitLines gst={gst} />
+              </>
             )}
-            {/* CB-CHG — every charge line (table + staff-entered extras), each
-                printed under its own name, after the tax line, because they
-                are added on top of the taxed bill rather than taxed with it.
-                A legacy order (no `charges[]`, only the scalars) derives to
-                exactly the ONE line the old conditional printed, under the
-                same "Table charge" fallback — a reprint is byte-identical. */}
+            {/* CB-CHG: every charge line, each under its own name, after the tax line (added on top of the taxed bill).
+                A legacy order (scalars only) derives to the ONE old "Table charge" line, so a reprint is byte-identical. */}
             {chargesFromOrder(order).map((c, i) => (
               <Line key={`${c.label}-${i}`} label={c.label} value={`+${inr(c.amount)}`} />
             ))}
@@ -242,10 +239,13 @@ export function OrderReceipt({ order, settings, banner, ref }: OrderReceiptProps
 
             {/* Inclusive GST is already in the total — shown as a breakdown note. */}
             {gst?.show && gst.inclusive && (
-              <div className="pl-2 text-[0.83em]">
-                incl. GST @{gst.rate}%: {inr(gst.gstAmount)} (taxable{" "}
-                {inr(gst.taxable)})
-              </div>
+              <>
+                <div className="pl-2 text-[0.83em]">
+                  incl. GST @{gst.rate}%: {inr(gst.gstAmount)} (taxable{" "}
+                  {inr(gst.taxable)})
+                </div>
+                <GstSplitLines gst={gst} />
+              </>
             )}
 
             {/* A cancelled bill's `payment`/`paidAmount` are historical snapshots

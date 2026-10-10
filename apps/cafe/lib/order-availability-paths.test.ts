@@ -64,14 +64,14 @@ test("PIN (create): the menu re-check sits after every replay answer and 400, be
       ["const plainTotals = computeOrderTotals(", "the pricing"],
       ["await nextOrderSequence();", "the order number"],
       ["await claimFor(orderId)", "the stamp claim"],
-      ["await allocateOpeningSlips(printCfg)", "the opening KOT number and token"],
+      ["await allocateOpeningSlips(printCfg, { kitchen: kot.kitchen })", "the opening KOT number and token"],
       ["Order.create({ ...doc, orderId });", "the first insert"],
     ],
     "a refused line must answer before it costs a number, a claim or a write",
   );
   // Upper bound: nothing that spends or publishes may precede the 409.
   const refusalAnswer = at[7];
-  for (const writer of ["publishCafeEvent(", "fencePromoFor(orderId)", "markAssignedRewardUsed(", "bumpOrderSequenceTo("]) {
+  for (const writer of ["publishCafeEvent(", "fencePromoFor(orderId)", "runCreateFollowUps(", "bumpOrderSequenceTo("]) {
     const w = mustIndexOf(src, writer, `writer landmark ${writer}`);
     assert.ok(refusalAnswer < w, `the menu 409 must come before ${writer}`);
   }

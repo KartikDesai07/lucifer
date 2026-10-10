@@ -34,6 +34,7 @@ export const { GET, PUT, DELETE } = createItemRoute({
   // to ABSENT — a stored explicit value here would defeat the catalogue's
   // append-only, omit-empty discipline (product-icons.ts).
   // Printing Phase 2: "Use the category's station" sends stationId: null, back to ABSENT the same way.
-  nullClearsFields: ["variations", "publicVisible", "icon", "stationId"],
+  // Skip-KOT: "Same as its category" sends noKot: null, back to ABSENT (false means "always send", a real value).
+  nullClearsFields: ["variations", "publicVisible", "icon", "stationId", "noKot"],
   softDelete: true,
 });

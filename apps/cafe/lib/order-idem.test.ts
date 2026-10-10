@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { Order } from "@/models/Order";
 import { orderSchema as ledgerOrderSchema } from "@/models/order.ledger";
 import { IDEM_KEY_MISMATCH_ERROR, IDEM_REPLAY_CANCELLED_ERROR } from "@pos/shared/order-idem";
-import { BILL_NUMBER_UNCONFIRMED, type SeriesNumbering } from "./slip-numbers";
+import { BILL_NUMBER_UNCONFIRMED } from "./slip-numbers";
+import type { BillNumberingPlan } from "./gst-invoice";
 import {
   BILL_NUMBER_PENDING_ERROR,
   BILL_NUMBER_SETTLE_MS,
@@ -109,21 +110,21 @@ test("roundReplayResponse: the landed round replays as 200 with the tab; a misma
 
 const T0 = Date.UTC(2026, 8, 29, 12, 0, 0);
 const at = (ageMs: number) => new Date(T0 - ageMs);
-const SALE = { _id: "665f0000000000000000ab01", status: "Completed", items: [{ productId: TEA, qty: 1, kotRound: 1 }], voids: [], createdAt: at(0) };
+const SALE = { _id: "665f0000000000000000ab01", status: "Completed", total: 100, items: [{ productId: TEA, qty: 1, kotRound: 1 }], voids: [], createdAt: at(0) };
 const SENT = [{ productId: TEA, qty: 1 }];
 const BILL_NO = 42;
 const NUMBERING = { showNumber: true, numberStart: 1, resetMinutes: 0 };
 const UNNUMBERED = { showNumber: false, numberStart: 1, resetMinutes: 0 };
 
-/** Fake numbering deps on a fixed server clock; records every issueBillNumber call. */
+/** Fake numbering deps on a fixed server clock; records every issueBillNumbers call. */
 function numberingDeps(result: "numbered" | "null" | "throw" = "numbered") {
-  const calls: Array<[unknown, SeriesNumbering]> = [];
+  const calls: Array<[unknown, BillNumberingPlan]> = [];
   return {
     calls,
     deps: {
       now: () => T0,
-      issueBillNumber: async (id: unknown, bill: SeriesNumbering) => {
-        calls.push([id, bill]);
+      issueBillNumbers: async (id: unknown, plan: BillNumberingPlan) => {
+        calls.push([id, plan]);
         if (result === "throw") throw new Error("counter down");
         return result === "null" ? null : { ...SALE, billNumber: BILL_NO };
       },
@@ -163,8 +164,8 @@ test("createReplayVerdict: an OLD unnumbered Completed sale is numbered by the r
     assert.equal(body.data.billNumber, BILL_NO, "the answer is the NUMBERED order");
     assert.deepEqual(
       calls,
-      [[old._id, { showNumber: true, numberStart: 500, resetMinutes: 240 }]],
-      "one guarded issueBillNumber on this order, handed the cafe's start AND its restart time",
+      [[old._id, { bill: { numberStart: 500, resetMinutes: 240 } }]],
+      "one guarded issueBillNumbers on this order, handed the cafe's start AND its restart time (a non-GST sale: no invoice)",
     );
   }
 });
@@ -213,4 +214,43 @@ test("createReplayVerdict: a refusal still wins, young or old (a mismatch or a c
     assert.deepEqual(await cancelled.json(), { success: false, error: IDEM_REPLAY_CANCELLED_ERROR });
     assert.equal(calls.length, 0);
   }
+});
+
+// ── S10: a GST sale also waits for its invoice serial, whatever "Show bill number" says ──
+
+test("createReplayVerdict (S10): an old GST sale without its invoice serial is numbered by the replay in the FY of its createdAt; young = 503; a held serial = nothing", async () => {
+  const GST_SALE = { ...SALE, gstMode: "exclusive" as const, gstRate: 5, gstAmount: 5, total: 105 };
+  const old = { ...GST_SALE, createdAt: at(BILL_NUMBER_SETTLE_MS) };
+  const numbered = numberingDeps();
+  assert.equal((await createReplayVerdict(old, SENT, UNNUMBERED, numbered.deps)).status, 200);
+  assert.deepEqual(numbered.calls, [[old._id, { invoiceAt: old.createdAt }]], "the invoice alone: the cafe prints no daily number");
+  const both = numberingDeps();
+  await createReplayVerdict(old, SENT, NUMBERING, both.deps);
+  assert.deepEqual(both.calls, [[old._id, { bill: { numberStart: 1, resetMinutes: 0 }, invoiceAt: old.createdAt }]], "both numbers in one call");
+  const young = numberingDeps();
+  assert.equal((await createReplayVerdict({ ...GST_SALE, createdAt: at(0) }, SENT, UNNUMBERED, young.deps)).status, 503, "the winner may still be numbering it");
+  assert.equal(young.calls.length, 0);
+  const held = numberingDeps();
+  const reply = await createReplayVerdict({ ...old, invoiceNumber: 7, invoiceFy: 2026 }, SENT, UNNUMBERED, held.deps);
+  assert.equal(reply.status, 200);
+  assert.equal(held.calls.length, 0, "a sale that holds its serial is replayed as stored");
+  const inclusive = numberingDeps();
+  await createReplayVerdict({ ...old, gstMode: "inclusive" as const, gstAmount: undefined, total: 105 }, SENT, UNNUMBERED, inclusive.deps);
+  assert.equal(inclusive.calls.length, 1, "landmark: an inclusive-GST sale is a tax invoice too");
+});
+
+test("createReplayVerdict (S10 review M1): an old tab that a settle JUST landed on is still young (its updatedAt) — no second draw races the settle's own numbering", async () => {
+  const GST_TAB = { ...SALE, gstMode: "exclusive" as const, gstRate: 5, gstAmount: 5, total: 105 };
+  const justSettled = { ...GST_TAB, createdAt: at(BILL_NUMBER_SETTLE_MS * 80), updatedAt: at(0) };
+  const racing = numberingDeps();
+  const reply = await createReplayVerdict(justSettled, SENT, NUMBERING, racing.deps);
+  assert.equal(reply.status, 503, "the settle may still be numbering it: the retryable answer");
+  assert.equal(racing.calls.length, 0, "no replay draw while the settle's numbering may be in flight");
+  const stale = { ...justSettled, updatedAt: at(BILL_NUMBER_SETTLE_MS) };
+  const healed = numberingDeps();
+  assert.equal((await createReplayVerdict(stale, SENT, NUMBERING, healed.deps)).status, 200, "landmark: a settle long over is healed by the replay");
+  assert.equal(healed.calls.length, 1);
+  const garbled = numberingDeps();
+  assert.equal((await createReplayVerdict({ ...justSettled, updatedAt: "not a date" }, SENT, NUMBERING, garbled.deps)).status, 503, "an unreadable write time counts as young");
+  assert.equal(garbled.calls.length, 0);
 });

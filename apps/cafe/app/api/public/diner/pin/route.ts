@@ -110,9 +110,13 @@ export async function POST(req: Request) {
     // read — two concurrent claims on the same fresh account cannot both
     // observe "no PIN yet" and both win. matchedCount === 0 means the account
     // already had a PIN (or does not exist), and both answer the same way.
+    // CB-7 F2 — the first PIN set starts the reward ladder: `$min` can never move
+    // the anchor later (a reset and re-set keeps the first), and it is written
+    // even while levels are off, in the SAME update, so there is no extra write.
+    const setAt = new Date();
     const claimed = await Customer.findOneAndUpdate(
       { mobile, pinHash: { $exists: false } },
-      { $set: { pinHash, pinSetAt: new Date() }, $inc: { pinVersion: 1 } },
+      { $set: { pinHash, pinSetAt: setAt }, $min: { rewardsAnchorAt: setAt }, $inc: { pinVersion: 1 } },
       { new: true },
     )
       .select("name mobile")

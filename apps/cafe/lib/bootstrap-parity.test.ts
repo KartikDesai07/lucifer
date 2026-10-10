@@ -474,7 +474,12 @@ test("PIN: BOOTSTRAP_VERSION is at least 12 and the masters blob carries the are
   // Print customization S8 then added Settings.tokenReadyClearMinutes (11 -> 12): a v11 blob has none, so a device holding one
   // would clear Ready tokens after the default 10 minutes whatever the owner chose on the token settings.
   // Lowering it below 12 would revive those blobs.
+  // Skip-KOT then added Category.noKot / Product.noKot (13 -> 14): a v13 blob has neither, so the item form would read "Same as its category" for an item set to "No kitchen ticket" and a save would clear it.
   assert.ok(BOOTSTRAP_VERSION >= 12, `BOOTSTRAP_VERSION is ${BOOTSTRAP_VERSION} - Settings carrying tokenReadyClearMinutes (print customization S8) needs at least 12`);
+  assert.ok(BOOTSTRAP_VERSION >= 14, `BOOTSTRAP_VERSION is ${BOOTSTRAP_VERSION} - Category/Product carrying noKot (skip-KOT) needs at least 14`);
+  // CB-7 S1 then added Settings.rewardLevels (14 -> 15): a v14 blob has none, so a device holding one would read the reward
+  // levels as never configured after the owner saved a set. Lowering it below 15 would revive those blobs.
+  assert.ok(BOOTSTRAP_VERSION >= 15, `BOOTSTRAP_VERSION is ${BOOTSTRAP_VERSION} - Settings carrying rewardLevels (CB-7 S1) needs at least 15`);
   // Positive landmark: the part the version bump was for is really in the key list.
   assert.ok((MASTERS_PART_KEYS as readonly string[]).includes("areas"), "MASTERS_PART_KEYS includes areas");
 });

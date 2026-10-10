@@ -104,7 +104,8 @@ test("P2b: the controller is pure — no React, no fetch — and reaches the ser
   const raw = readRaw(CONTROLLER);
   const specifiers = [...raw.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]);
   assert.ok(specifiers.includes("@/lib/pending-writes"), "landmark: the controller reads the pure rules");
-  const allowed = new Set(["@/lib/pending-writes", "@/lib/settle-guard", "@/types"]);
+  // S10: @/lib/gst-invoice is pure too (K1 asks it which numbers a paid bill still waits for).
+  const allowed = new Set(["@/lib/pending-writes", "@/lib/settle-guard", "@/lib/gst-invoice", "@/types"]);
   assert.deepEqual(specifiers.filter((s) => !allowed.has(s)), [], "no React, no toasts, no hooks, no api-client");
   const src = readSrc(CONTROLLER);
   assert.ok(src.includes("export function createSettleFlow(ports: SettleFlowPorts): SettleFlow {"), "landmark");

@@ -16,7 +16,7 @@ import { OrderRequest } from "@/models/OrderRequest";
 import { computeOrderTotals, type GstConfig } from "@/lib/receipt";
 import { cafeDateString, dayRange, cafeHourOf } from "@/lib/utils";
 import type { CustomerRollup, ExtrasPlan, OrdersPlan, PlannedDuePayment, PlannedOrder } from "./types";
-import { objectIdCensus } from "./finalize-census";
+import { objectIdCensus, invoiceSeedLines } from "./finalize-census";
 import { rewardChecksOf, rewardSettingsChecksOf } from "./finalize-reward";
 
 // Mirrors orders-plan-draft.ts's HOUR_WEIGHTS (cafe hours 11:00-22:59 IST) —
@@ -189,6 +189,7 @@ export async function verifySeed(
     const stored = counterByKey.get(key) ?? 0;
     check(stored >= maxIssued, `counter ${key} (${stored}) >= max issued (${maxIssued})`, lines);
   }
+  for (const line of invoiceSeedLines(dbOrders, counterByKey)) check(line.pass, line.message, lines);
 
   const productIds = new Set((await Product.find().select("_id").lean()).map((p) => p._id.toString()));
   const customerIds = new Set((await Customer.find().select("_id").lean()).map((c) => c._id.toString()));

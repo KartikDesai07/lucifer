@@ -14,6 +14,7 @@ import {
   KOT_DESIGN_LABEL,
   KOT_NO_ROW_TEXT,
   KOT_PRICES_NEEDED_NOTE,
+  STATION_ROW_NOTE,
   TOKEN_BLOCK_LABEL,
   TOKEN_DESIGN_BLURB,
   TOKEN_DESIGN_LABEL,
@@ -118,6 +119,7 @@ export const KOT_KIND: EditorKind<KotTemplate> = {
   forcedRowText: KOT_NO_ROW_TEXT,
   noteOf: (block, template) => {
     if (block.type === "token") return TOKEN_ROW_NOTE;
+    if (block.type === "station") return STATION_ROW_NOTE;
     // A cancelled-item or table-moved ticket always prints these three (shared KOT_LOCKS.withBanner); their
     // switches stay free because a normal ticket is the client's choice.
     if (KOT_EDITOR.locks.withBanner.includes(block.type)) {

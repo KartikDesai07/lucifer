@@ -23,7 +23,7 @@ import {
  *  readyAt-vs-newest-fire comparison the open-tab arm uses — so a settled tab's later round is never hidden. */
 export async function readKitchenTokenArm(dayStart: Date): Promise<KitchenOrderInput[]> {
   const candidates = await Order.find({ ...paidTokenFilter(dayStart), kotRounds: { $gte: 1 } })
-    .select("kotFiredAt createdAt")
+    .select("kotFiredAt createdAt items.kotRound items.noKot")
     .sort({ createdAt: -1 })
     .limit(TOKEN_DAY_SCAN_LIMIT)
     .lean();

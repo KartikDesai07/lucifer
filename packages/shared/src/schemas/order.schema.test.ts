@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { addItemsSchema, moveOrderTableSchema, createOrderSchema, settleOrderSchema } from "./order.schema";
+import { addItemsSchema, moveOrderTableSchema, createOrderSchema, settleOrderSchema, orderItemSchema } from "./order.schema";
 
 // ── Defect 2 regression (owner decision 2026-08-16) ──────────────────────────
 // "A charge waived on a resumed tab was silently discarded when the next KOT
@@ -273,4 +273,33 @@ test("PIN (SOURCE): orderItemSchema has no 'reward' key — a client may never d
   const block = blockMatch![0];
   assert.match(block, /variation:/, "positive landmark: variation must still be a real key in this shape");
   assert.ok(!/reward:/.test(block), "orderItemSchema must never accept a client-supplied 'reward' key — money fence");
+});
+
+// ── Skip-KOT fence: a client can never declare a line kitchen-free. The server stamps `noKot` from the
+// menu (lib/kitchen-lines-server.ts); orderItemSchema must DROP a client-sent one, at the line level and
+// inside both order payloads that carry lines. Positive landmarks keep each assert from passing vacuously.
+test("orderItemSchema STRIPS a client-sent noKot (and still keeps the real fields)", () => {
+  const r = orderItemSchema.safeParse({ ...sampleItems[0], noKot: true });
+  assert.equal(r.success, true);
+  assert.ok(r.success && r.data.name === "Chai" && r.data.qty === 1, "landmark: the real fields survive");
+  assert.ok(r.success && !("noKot" in r.data), "a client-declared noKot never reaches the route");
+});
+
+test("createOrderSchema / addItemsSchema lines carry no client noKot either", () => {
+  const dirty = sampleItems.map((i) => ({ ...i, noKot: true }));
+  const created = createOrderSchema.safeParse({ ...sampleOrder, items: dirty });
+  assert.ok(created.success && created.data.items[0].name === "Chai", "landmark: the order parsed");
+  assert.ok(created.success && !("noKot" in created.data.items[0]));
+  const added = addItemsSchema.safeParse({ items: dirty });
+  assert.ok(added.success && added.data.items[0].name === "Chai", "landmark: the round parsed");
+  assert.ok(added.success && !("noKot" in added.data.items[0]));
+});
+
+test("PIN (SOURCE): orderItemSchema declares no 'noKot' key", () => {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const src = readFileSync(path.join(here, "order.schema.ts"), "utf8");
+  const blockMatch = src.match(/export const orderItemSchema = z\.object\(\{[\s\S]*?\n\}\);/);
+  assert.ok(blockMatch, "landmark: orderItemSchema block must be found");
+  assert.match(blockMatch![0], /variation:/, "positive landmark: variation is still a real key");
+  assert.ok(!/noKot\s*:/.test(blockMatch![0]), "orderItemSchema must never accept a client-supplied noKot key");
 });

@@ -33,11 +33,12 @@ const GLOBALS_CSS = "apps/cafe/app/globals.css";
  *  scan at all (see the Menu-group test below, which reads MENU_SECTIONS
  *  directly instead). */
 const ADMIN_ONLY_URLS = ["/printers", "/reports", "/settings", "/staff", "/tables/setup"];
-const NAV_ENTRY_COUNT = 15;
+const NAV_ENTRY_COUNT = 17;
 
+// 2026-10-10: Expenses (Manage, open to every role) became the 17th flat row.
 // 2026-10-02: Floor (Service) and Printer setup (Admin, above Settings) became
 // flat rows; the Tables row (Setup + QR codes) became admin-only.
-test("PIN: the sidebar lists all 15 flat screens once each, and exactly Staff, Reports, Printer setup, Settings and the Tables (Setup / QR) row are admin-only", () => {
+test("PIN: the sidebar lists all 17 flat screens once each, and exactly Staff, Reports, Printer setup, Settings and the Tables (Setup / QR) row are admin-only", () => {
   const src = stripComments(readSrc(APP_SIDEBAR));
   const entries = [...src.matchAll(/\{\s*title:\s*"([^"]+)",\s*url:\s*"([^"]+)"[^}]*\}/g)].map((m) => ({
     title: m[1],
@@ -179,7 +180,7 @@ test("PIN: the sidebar's colours come from the brand palette on :root (the phone
 // spread it to setup/admin screens (each warm route costs a background request
 // per reuse window on every open device).
 // Order (owner, 2026-09-29): Orders directly under New Order; Floor under both (2026-10-02).
-const WARM_URLS = ["/", "/pos", "/orders", "/tables", "/requests", "/kitchen", "/reservations"];
+const WARM_URLS = ["/", "/pos", "/orders", "/tables", "/requests", "/kitchen", "/now-serving", "/reservations"];
 const NEXT_CONFIG = "apps/cafe/next.config.ts";
 
 test("PIN: exactly the Dashboard and Service sections are warm — no setup or admin screen — and only the line-gated hook prefetches them (their Links never do)", () => {

@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { KOTReceipt } from "@/components/pos/KOTReceipt";
 import { MoveTablePicker } from "@/components/orders/MoveTablePicker";
+import { kitchenOrderOf, orderSkipsKitchen } from "@/lib/kitchen-lines";
 import type { Order, Table } from "@/types";
 
 interface MoveTableDialogProps {
@@ -122,7 +123,9 @@ export function MoveTableDialog({ order, open, onOpenChange, onMoved }: MoveTabl
     // renders an absent movedFrom as just the destination. Routing must NOT
     // depend on which verb produced the slip — a cafe with a print host expects
     // every table slip at the counter printer, not just two of the three.
-    if (!shouldRoute) {
+    if (orderSkipsKitchen(slip.order)) {
+      // Skip-KOT: every fired line skips the kitchen, so no moved slip (the dialog still closes below).
+    } else if (!shouldRoute) {
       printSlip();
     } else {
       void queueMovedSlip(slip.order, {
@@ -283,7 +286,7 @@ export function MoveTableDialog({ order, open, onOpenChange, onMoved }: MoveTabl
           working across the close that happens right after printSlip() fires. */}
       <div className="pointer-events-none absolute left-[-9999px] top-0" aria-hidden>
         <KOTReceipt
-          order={slip?.order ?? null}
+          order={slip ? kitchenOrderOf(slip.order) : null}
           settings={settings.data}
           variant="moved"
           movedFrom={slip?.from}

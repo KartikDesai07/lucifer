@@ -33,7 +33,13 @@ import type { Area, Category, Product, Settings, Staff, Table } from "@/types";
 // token design from it after the owner saved another — v10 blobs are discarded.
 // Print customization S8 (2026-10-06): Settings gained `tokenReadyClearMinutes`. A v11 blob has none, so the Tokens settings form
 // would show (and a section save would write back) 10 minutes after the owner chose another — v11 blobs are discarded.
-export const BOOTSTRAP_VERSION = 12;
+// UPI amount slabs (2026-10-07): Settings gained `upiRules`. A v12 blob has none, so a device would print the main UPI ID
+// on every bill from it although the owner set slabs — v12 blobs are discarded.
+// Skip-KOT (2026-10-07): Category and Product gained `noKot`. A v13 blob has none, so the item form would read "Same as its
+// category" for an item the owner set to "No kitchen ticket" and a save would clear it, and the tags would be missing - v13 blobs are discarded.
+// CB-7 S1 (2026-10-08): Settings gained `rewardLevels`. A v14 blob has none, so a device holding one would read the reward
+// levels as never configured after the owner saved a set - v14 blobs are discarded.
+export const BOOTSTRAP_VERSION = 15;
 
 // Device storage key (the browser's persistent per-origin store — survives a
 // reload, a closed tab and a restart of the app shell; cleared on logout and

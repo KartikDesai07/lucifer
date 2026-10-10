@@ -188,6 +188,14 @@ test("C11: the title prefix survives route changes and cleans up on unmount", ()
   );
 });
 
+test("skip-KOT: claimKotPrint's roundHasLines needs a KITCHEN line — a water-only self-order round is not-eligible (never claimed, never printed)", () => {
+  const lib = stripComments(readSrc(PULSE_LIB));
+  const at = mustIndexOf(lib, "const roundHasLines =", "the voided-round gate");
+  const line = lib.slice(at, lib.indexOf(";", at));
+  assert.match(line, /it\.kotRound === request\.acceptedKotRound/, "landmark: still the accepted round");
+  assert.match(line, /!skipsKitchenTicket\(it\)/, "and the line must not skip the kitchen");
+});
+
 test("C14: claimKotPrint gates on the Order's LIVE state before the claim CAS", () => {
   const lib = stripComments(readSrc(PULSE_LIB));
   const cancelledIdx = mustIndexOf(lib, 'order.status === "Cancelled"', "the cancelled-order gate");

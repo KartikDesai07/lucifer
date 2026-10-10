@@ -6,6 +6,7 @@ import path from "node:path";
 import { ledgerContribution, type LedgerContribution } from "./order";
 import { ORDER_STATUSES, type PaymentMode } from "@/lib/constants";
 import { cancelOrderSchema, voidItemSchema, createOrderSchema } from "@/schemas";
+import { stripComments } from "@/lib/source-pin-utils";
 
 // CR1.3 — order integrity: the money-reversal contract a cancel relies on, the
 // append-only status list, the two new admin/staff input schemas, and a set of
@@ -400,6 +401,31 @@ test("PIN: app/api/orders/[id]/settle/route.ts guards its conditional update on 
     "on a fully comped tab a void leaves total at 0 both before and after, so `total: old.total` alone would pass while " +
       "settling a bill that still charges the voided line",
   );
+});
+
+test("PIN (P1 parity): the settle CAS filter carries `kotRounds: old.kotRounds ?? 0` in BOTH the route and the live leg's buildSettleWrite mirror — the total term alone cannot see an equal-total add-round", () => {
+  // The mirror is what the live leg (leg 22) drives; if only one side gains the
+  // term the leg certifies a filter production does not send (or vice versa).
+  // Comments are stripped first: the leg's own explanatory comment quotes the
+  // term, which must not satisfy the pin by itself.
+  const TERM = /kotRounds:\s*old\.kotRounds\s*\?\?\s*0,/;
+  const lf = (s: string) => s.replace(/\r\n/g, "\n");
+  const route = lf(stripComments(readSource("apps/cafe/app/api/orders/[id]/settle/route.ts")));
+  const routeFilter = /const filter: FilterQuery<IOrder> = \{[\s\S]*?\n    \};/.exec(route);
+  assert.ok(routeFilter, "landmark: the route still builds its CAS in a `const filter: FilterQuery<IOrder> = {...}` block");
+  assert.match(routeFilter[0], /total:\s*old\.total/, "landmark: the route's filter still holds the total term");
+  assert.match(routeFilter[0], TERM, "the route's settle CAS must carry the kotRounds term");
+
+  const leg = lf(stripComments(readSource("apps/cafe/scripts/verify-order-integrity-live.ts")));
+  const mirror = /function buildSettleWrite\([\s\S]*?\n\}\n/.exec(leg);
+  assert.ok(mirror, "landmark: the live leg still defines buildSettleWrite");
+  const mirrorFilter = /const filter = \{[\s\S]*?\n  \};/.exec(mirror[0]);
+  assert.ok(mirrorFilter, "landmark: buildSettleWrite still builds a `const filter = {...}`");
+  assert.match(mirrorFilter[0], /total:\s*old\.total/, "landmark: the mirror's filter still holds the total term");
+  assert.match(mirrorFilter[0], TERM, "buildSettleWrite's filter must mirror the route's kotRounds term");
+  // And the leg that exercises it is still wired into the runner.
+  assert.match(leg, /async function leg22\(\)/, "landmark: the equal-total settle-vs-add-round leg exists");
+  assert.match(leg, /await leg22\(\);/, "landmark: leg22 is wired into main()");
 });
 
 test("PIN: PUT app/api/orders/[id]/route.ts writes conditionally on the status it READ (findOneAndUpdate keyed on old.status), never an unconditional findByIdAndUpdate", () => {

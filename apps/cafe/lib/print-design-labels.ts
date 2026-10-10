@@ -190,6 +190,9 @@ export const KOT_PRICES_NEEDED_NOTE = "Prints only when Items show prices.";
 // The token row (bill and kitchen ticket) keeps its own switch; this says why a slip may still show none.
 export const TOKEN_ROW_NOTE = "Prints only on orders that have a token. Turn tokens on in Tokens & numbering.";
 
+// The kitchen station row: the line ("BAR", "ALL STATIONS") exists only on a ticket split by station in printers mode.
+export const STATION_ROW_NOTE = "Prints only when tickets are split by kitchen station, e.g. BAR. Set up stations in Printer setup.";
+
 export const KOT_DESIGN_LABEL: Record<KotDesign, string> = {
   classic: "Classic",
   kitchenBold: "Kitchen Bold",

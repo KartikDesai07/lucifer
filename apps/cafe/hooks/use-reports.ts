@@ -7,6 +7,7 @@ import { gstBillChunks } from "@/lib/reports/gst-display";
 import type { DashboardChannel, DashboardRange } from "@/types/dashboard";
 import type { SalesReport, DuesReport, ItemsReport, ItemDetail, CancelsReport, GstBillRow, GstReport } from "@/types/reports";
 import type { OrderTypesReport, HourDetail } from "@/types/reports-b3";
+import type { ExpenseReport } from "@/types/expenses";
 
 // The Reports screens' data (Batch 1 — sales, payments, dues; Batch 2 — items,
 // cancels, gst; Batch 3 — order types & busy hours). `all` is a prefix every
@@ -25,6 +26,9 @@ export const REPORT_KEYS = {
   orderTypes: (r: DashboardRange) => ["reports", "order-types", r.from, r.to] as const,
   hourDetail: (r: DashboardRange, hour: number, type: DashboardChannel | null) =>
     ["reports", "order-types", r.from, r.to, "detail", hour, type ?? "all"] as const,
+  // Expense management (Step EXP): hooks/use-expenses.ts invalidates the prefix after every write.
+  expensesAll: ["reports", "expenses"] as const,
+  expenses: (r: DashboardRange) => ["reports", "expenses", r.from, r.to] as const,
 };
 
 function rangeQuery(r: DashboardRange): string {
@@ -88,6 +92,17 @@ export function useOrderTypesReport(range: DashboardRange, enabled = true) {
     enabled,
     queryKey: REPORT_KEYS.orderTypes(range),
     queryFn: () => apiGet<OrderTypesReport>(`/api/reports/order-types${rangeQuery(range)}`),
+    staleTime: STALE_TIMES.REPORTS,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** The Expenses report (Step EXP) — totals by category, day and payment mode. */
+export function useExpenseReport(range: DashboardRange, enabled = true) {
+  return useQuery({
+    enabled,
+    queryKey: REPORT_KEYS.expenses(range),
+    queryFn: () => apiGet<ExpenseReport>(`/api/reports/expenses${rangeQuery(range)}`),
     staleTime: STALE_TIMES.REPORTS,
     placeholderData: keepPreviousData,
   });

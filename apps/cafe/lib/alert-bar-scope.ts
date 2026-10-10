@@ -34,3 +34,18 @@ export function alertBarSuppressedForPath(pathname: string): boolean {
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
 }
+
+export interface AlertBandVisibleInput {
+  suppressed: boolean;
+  onDashboard: boolean;
+  openCount: number;
+  unprintedCount: number;
+  printBand: boolean;
+}
+
+// Whether the band renders at all (and so whether it publishes its height).
+// CB-UI2: the print-host block renders on the Dashboard only, so off it the
+// print state must not open the band — it would paint an EMPTY amber strip.
+export function alertBandVisible({ suppressed, onDashboard, openCount, unprintedCount, printBand }: AlertBandVisibleInput): boolean {
+  return !suppressed && (openCount > 0 || unprintedCount > 0 || (onDashboard && printBand));
+}
