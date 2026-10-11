@@ -6,37 +6,17 @@ import type { Control, FieldErrors, UseFormRegister, UseFormSetValue } from "rea
 
 import type { SettingsInput } from "@/schemas";
 import {
-  LOYALTY_REWARD_KINDS,
   LOYALTY_REWARD_PERCENT_MAX,
   LOYALTY_MIN_BILL_MIN,
   LOYALTY_MIN_BILL_MAX,
-  type LoyaltyRewardKind,
 } from "@pos/shared/public-diner";
 import { LOYALTY_REWARD_QTY_MIN, LOYALTY_REWARD_QTY_MAX } from "@pos/shared/public-diner";
-import { useProducts } from "@/hooks/use-products";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { BRAND_CONTROL_CLASS, BRAND_FIELD_ERROR_CLASS } from "@/components/brand/brand-classes";
+import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 import { Field } from "@/components/settings/SettingsFields";
-import { PrintSizeChoice } from "@/components/settings/PrintSizeChoice";
+import { ProductPicker } from "@/components/settings/ProductPicker";
+import { RewardKindSelect, isRewardKind } from "@/components/settings/RewardKindSelect";
 import { MilestoneRewardCodeFields } from "@/components/settings/MilestoneRewardCodeFields";
-
-const REWARD_KIND_LABELS: Record<LoyaltyRewardKind, string> = {
-  flat: "Amount off",
-  percent: "Percent off",
-  item: "Free item",
-};
-
-// The form types a row's kind as a plain string; the choice row needs the union.
-function isRewardKind(value: unknown): value is LoyaltyRewardKind {
-  return LOYALTY_REWARD_KINDS.some((k) => k === value);
-}
 
 // Same two-place error lesson as PromoCodesFields.tsx: RHF reports a
 // milestone row's problems per-ROW (`loyaltyRules.milestones.${i}.<field>`)
@@ -100,7 +80,7 @@ interface MilestoneRewardFieldsProps {
   // subscribe every sibling to the same query (the row deliberately watches
   // only its own field path). Optional because LoyaltyStampGrid's Sheet
   // renders exactly one row standalone with no list above it to fetch this —
-  // it falls back to calling useProducts() itself below. That fallback costs
+  // ProductPicker falls back to calling useProducts() itself. That fallback costs
   // no extra request: useProducts() is served from MasterDataProvider's
   // bootstrap cache, so a second caller just re-reads the same cached query.
   products?: readonly PickableProduct[];
@@ -114,14 +94,7 @@ interface MilestoneRewardFieldsProps {
 // Watches its own kind (not the parent) so mounting/unmounting this component
 // never re-renders every sibling's Controller subscriptions.
 export function MilestoneRewardFields({ control, register, errors, index, setValue, products }: MilestoneRewardFieldsProps) {
-  // useProducts() has no `enabled` gate to skip this when `products` is
-  // already supplied — but it costs nothing extra either way: it's served
-  // from MasterDataProvider's bootstrap cache (STALE_TIMES.MASTERS), so a
-  // second subscriber with the same query key re-reads the cached result
-  // instead of firing a new request.
-  const { data: fetchedProducts } = useProducts();
-  const pickable = products ?? fetchedProducts ?? [];
-
+  const kindId = useId();
   const itemId = useId();
   const valueId = useId();
   const qtyId = useId();
@@ -138,12 +111,10 @@ export function MilestoneRewardFields({ control, register, errors, index, setVal
         render={({ field }) => {
           const kindError = rowFieldMessage(errors.loyaltyRules?.milestones, index, "kind");
           return (
-            <div className="space-y-1.5">
-              <PrintSizeChoice
-                legend="Reward"
-                options={LOYALTY_REWARD_KINDS}
+            <Field label="Reward" htmlFor={kindId} error={kindError}>
+              <RewardKindSelect
+                id={kindId}
                 value={isRewardKind(field.value) ? field.value : "flat"}
-                labelOf={(k) => REWARD_KIND_LABELS[k]}
                 onChange={(next) => {
                   field.onChange(next);
                   // Switching AWAY from a free item must drop the dish with
@@ -162,8 +133,7 @@ export function MilestoneRewardFields({ control, register, errors, index, setVal
                   }
                 }}
               />
-              {kindError && <p className={BRAND_FIELD_ERROR_CLASS}>{kindError}</p>}
-            </div>
+            </Field>
           );
         }}
       />
@@ -183,31 +153,21 @@ export function MilestoneRewardFields({ control, register, errors, index, setVal
             control={control}
             name={`loyaltyRules.milestones.${index}.itemProductId`}
             render={({ field }) => (
-              <Select
+              <ProductPicker
+                id={itemId}
                 value={field.value ?? ""}
-                onValueChange={(next) => {
+                currentName={row?.item}
+                onChange={(next, name) => {
                   field.onChange(next);
                   // Keep the display name in step with the reference. Both
                   // travel together or the ladder would read one dish while
                   // the bill printed another.
-                  const picked = pickable.find((product) => product._id === next);
-                  setValue(`loyaltyRules.milestones.${index}.item`, picked?.name ?? "", {
+                  setValue(`loyaltyRules.milestones.${index}.item`, name, {
                     shouldDirty: true,
                   });
                 }}
-                disabled={pickable.length === 0}
-              >
-                <SelectTrigger id={itemId} className={BRAND_CONTROL_CLASS}>
-                  <SelectValue placeholder={pickable.length === 0 ? "Add a menu item first" : "Choose an item"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {pickable.map((product) => (
-                    <SelectItem key={product._id} value={product._id}>
-                      {product.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                products={products}
+              />
             )}
           />
         </Field>

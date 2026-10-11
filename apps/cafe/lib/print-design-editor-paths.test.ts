@@ -25,6 +25,7 @@ const SECTION_HOOK = `${CAFE}/hooks/use-settings-section-form.ts`;
 const SAMPLE_LIB = `${CAFE}/lib/bill-print-sample.ts`;
 const KOT_PAGE = `${CAFE}/app/(dashboard)/settings/kitchen-ticket/page.tsx`;
 const TOKEN_PAGE = `${CAFE}/app/(dashboard)/settings/tokens/page.tsx`; // S7 Slice D: the third page that passes `extra`
+const LOYALTY_PAGE = `${CAFE}/app/(dashboard)/settings/loyalty/page.tsx`; // CB-7 S3: the scratch-card levels blob rides its Save bar
 const TOKEN_DRAFT_HOOK = `${CAFE}/hooks/use-token-design-draft.ts`;
 const DRAFT_HOOK = `${CAFE}/hooks/use-slip-design-draft.ts`; // the generic state machine; the bill and kitchen hooks are thin wrappers
 const DRAFT_HOOKS = [DRAFT_HOOK, `${CAFE}/hooks/use-bill-design-draft.ts`, `${CAFE}/hooks/use-kot-design-draft.ts`];
@@ -207,12 +208,12 @@ test("PIN: the section-form hook checks extra.problem() before sending, sends ex
   assert.match(src, /extra\?: SectionFormExtra,/, "the parameter is optional");
 });
 
-test("PIN: only the Bill print, Kitchen ticket and Tokens pages pass `extra` (the other section pages keep the exact old behaviour)", () => {
+test("PIN: only the Bill print, Kitchen ticket, Tokens and Loyalty pages pass `extra` (the other section pages keep the exact old behaviour)", () => {
   const pages = walk(`${CAFE}/app/(dashboard)/settings`).filter((f) => f.endsWith("/page.tsx"));
   const forms = pages.filter((f) => code(f).includes("<SettingsSectionForm"));
   assert.ok(forms.length >= 6, `landmark: ${forms.length} section pages use <SettingsSectionForm`);
-  assert.deepEqual(forms.filter((f) => /\bextra=/.test(code(f))), [KOT_PAGE, PAGE, TOKEN_PAGE].sort());
-  assert.ok(forms.includes(PAGE) && forms.includes(KOT_PAGE) && forms.includes(TOKEN_PAGE));
+  assert.deepEqual(forms.filter((f) => /\bextra=/.test(code(f))), [KOT_PAGE, LOYALTY_PAGE, PAGE, TOKEN_PAGE].sort());
+  assert.ok(forms.includes(PAGE) && forms.includes(KOT_PAGE) && forms.includes(TOKEN_PAGE) && forms.includes(LOYALTY_PAGE));
 });
 
 test("PIN: the draft hook sends the draft (null clears it), re-seeds from the saved document, and Discard re-seeds from the props", () => {

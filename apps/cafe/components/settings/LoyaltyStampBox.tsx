@@ -11,7 +11,11 @@ interface LoyaltyStampBoxProps {
   hasError: boolean;
   disabled: boolean;
   onOpen: () => void;
+  // What the box is called in its aria label; the stamp card says "Stamp", a scratch-card level "Box".
+  noun?: string;
 }
+
+const DEFAULT_NOUN = "Stamp";
 
 // One box on the stamp card (settings pass slice 8). A reward is a solid blue
 // box with a gift mark; a reward that also gives a promo code has a small
@@ -19,9 +23,17 @@ interface LoyaltyStampBoxProps {
 // (a failed Save lands its message inside the closed panel) is marked red with
 // an alert icon top-left, so the owner can find which box to open. At the
 // reward cap an EMPTY box is disabled — it could not take a reward.
-export function LoyaltyStampBox({ at, hasReward, hasCode, hasError, disabled, onOpen }: LoyaltyStampBoxProps) {
+export function LoyaltyStampBox({
+  at,
+  hasReward,
+  hasCode,
+  hasError,
+  disabled,
+  onOpen,
+  noun = DEFAULT_NOUN,
+}: LoyaltyStampBoxProps) {
   const label =
-    (hasReward ? `Stamp ${at}: edit its reward` : `Stamp ${at}: add a reward`) +
+    (hasReward ? `${noun} ${at}: edit its reward` : `${noun} ${at}: add a reward`) +
     (hasCode ? ", gives a promo code" : "") +
     (hasError ? ", needs fixing" : "");
 

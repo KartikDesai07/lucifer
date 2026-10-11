@@ -483,6 +483,10 @@ export interface Settings {
   billTemplate?: unknown;
   kotTemplate?: unknown;
   tokenTemplate?: unknown;
+  // CB-7 S3 — the scratch-card reward levels (reward-levels.ts), a fourth PUT-only blob like the templates above. `unknown`
+  // on purpose: Mongoose Mixed, so it is whatever was written. Read it ONLY through the READ schema (the editor's
+  // lib/reward-levels-form.ts seedRewardLevels, or the server's lib/reward-levels-config.ts). Absent = no levels setup.
+  rewardLevels?: unknown;
 
   // Self-order (QR) — CR2. Same lean-read hazard as the print block above:
   // these are NEW, so a pre-CR2 Settings document has none of them. Read as

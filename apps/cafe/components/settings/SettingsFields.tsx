@@ -70,7 +70,7 @@ export function ToggleRow({
   const id = useId();
   return (
     <label
-      className={`flex min-h-10 items-center justify-between gap-4 ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}
+      className={`flex min-h-10 items-center justify-between gap-4 pointer-coarse:min-h-11 ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}
     >
       <span className="space-y-0.5">
         <span id={`${id}-label`} className={`block ${BRAND_LABEL_CLASS}`}>{label}</span>

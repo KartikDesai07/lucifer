@@ -3,7 +3,7 @@
 // box with its pool and chances. Both are derived from CONFIG only, never from a rolled card.
 // PURE, client-safe. All money here is RUPEES, rounded to 2 decimals for display (never stored).
 
-import type { LevelPosition, RewardLevelsConfig, RewardOption, RewardSlot } from "./reward-levels";
+import { REWARD_PERCENT_MAX, type LevelPosition, type RewardLevelsConfig, type RewardOption, type RewardSlot } from "./reward-levels";
 import { positionOf, slotAt } from "./reward-levels-engine";
 import { optionLabel } from "./reward-levels-label";
 
@@ -42,11 +42,17 @@ function meanFlatCapped(min: number, max: number, bill: number): number {
   return (upTo + (hi - k) * bill) / (hi - lo + 1);
 }
 
-// The exact mean of min(base·v/100, cap) over every whole percent v in [min, max]. Percent is at most 100, so at most
-// 101 values — a plain loop.
+// A percent as the cost preview may use it: inside [0, REWARD_PERCENT_MAX]; NaN reads as 0. The editor previews its
+// UNVALIDATED local copy on every keystroke, so a typo like 1e15 must never set the loop below's length (s89h review).
+function clampPercent(value: number): number {
+  return Number.isFinite(value) ? Math.min(Math.max(value, 0), REWARD_PERCENT_MAX) : 0;
+}
+
+// The exact mean of min(base·v/100, cap) over every whole percent v in [min, max]. Both ends are clamped, so at most
+// REWARD_PERCENT_MAX + 1 values — a plain loop.
 function meanPercentCapped(min: number, max: number, base: number, capRupees: number | undefined): number {
-  const lo = Math.min(min, max);
-  const hi = Math.max(min, max);
+  const lo = Math.min(clampPercent(min), clampPercent(max));
+  const hi = Math.max(clampPercent(min), clampPercent(max));
   let sum = 0;
   for (let v = lo; v <= hi; v++) sum += capped((base * v) / PERCENT_DIVISOR, capRupees);
   return sum / (hi - lo + 1);
@@ -57,8 +63,8 @@ export function optionCost(option: RewardOption, ctx: CostContext): OptionCost {
   switch (option.kind) {
     case "bill-percent":
       return {
-        avg: round2((bill * midpoint(option.min, option.max)) / PERCENT_DIVISOR),
-        worst: round2((bill * option.max) / PERCENT_DIVISOR),
+        avg: round2((bill * midpoint(clampPercent(option.min), clampPercent(option.max))) / PERCENT_DIVISOR),
+        worst: round2((bill * clampPercent(option.max)) / PERCENT_DIVISOR),
         priceKnown: true,
       };
     case "bill-flat":
@@ -77,14 +83,14 @@ export function optionCost(option: RewardOption, ctx: CostContext): OptionCost {
       const limit = Math.min(price, option.capRupees ?? price);
       return {
         avg: round2(meanPercentCapped(option.min, option.max, price, limit)),
-        worst: round2(Math.min((price * option.max) / PERCENT_DIVISOR, limit)),
+        worst: round2(Math.min((price * clampPercent(option.max)) / PERCENT_DIVISOR, limit)),
         priceKnown: true,
       };
     }
     case "category-percent":
       return {
         avg: round2(meanPercentCapped(option.min, option.max, bill, option.capRupees)),
-        worst: round2(capped((bill * option.max) / PERCENT_DIVISOR, option.capRupees)),
+        worst: round2(capped((bill * clampPercent(option.max)) / PERCENT_DIVISOR, option.capRupees)),
         priceKnown: true,
       };
     case "free-item": {

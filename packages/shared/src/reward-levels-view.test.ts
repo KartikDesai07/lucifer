@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { REWARD_NONE_LABEL_DEFAULT, optionLabel } from "./reward-levels-label";
 import { ladderView, optionChances, optionCost, slotCost } from "./reward-levels-view";
-import { REWARD_LABEL_MAX_LEN, type RewardLevel, type RewardOption, type RewardSlot } from "./reward-levels";
+import { REWARD_LABEL_MAX_LEN, REWARD_PERCENT_MAX, type RewardLevel, type RewardOption, type RewardSlot } from "./reward-levels";
 
 // CB-7 S1 — labels, odds, cost estimates and the diner's ladder. All derived from CONFIG, never from a roll.
 
@@ -201,4 +201,19 @@ test("ladderView: a level with no boxes is skipped when counting; no boxes anywh
   // the search is bounded: a lone box far in the repeat still resolves within one extra lap
   assert.equal(ladderView({ levels: [level(30, [30])] }, 0).stepsToNextCard, 30);
   assert.equal(ladderView({ levels: [level(30, [1])] }, 1).stepsToNextCard, 30, "the same box on the next lap");
+});
+
+test("optionCost: an out-of-range percent typed in the editor is costed over the valid range, never one loop step per typed unit (s89h review MED)", () => {
+  // The editor previews the UNVALIDATED local copy on every keystroke; a typo like 2000000 used to run the mean
+  // loop two million times (1e15 froze the tab). A percent outside the write schema's range is clamped to it.
+  const ctx = { exampleBill: 500 };
+  const base = { id: "a", weight: 1, kind: "category-percent", min: 1, categoryId: CATEGORY_ID, categoryName: "B" } as const;
+  const typo: RewardOption = { ...base, max: 2_000_000 };
+  const valid: RewardOption = { ...base, max: REWARD_PERCENT_MAX };
+  assert.deepEqual(optionCost(typo, ctx), optionCost(valid, ctx));
+  const negative: RewardOption = { ...base, min: -1_000_000_000, max: 10 };
+  assert.deepEqual(optionCost(negative, ctx), optionCost({ ...base, min: 0, max: 10 }, ctx));
+  const product: RewardOption = { id: "p", weight: 1, kind: "product-percent", min: 5, max: 1e15, productId: CATEGORY_ID, productName: "Tea" };
+  const priced = { exampleBill: 500, priceOf: () => 80 };
+  assert.deepEqual(optionCost(product, priced), optionCost({ ...product, max: REWARD_PERCENT_MAX }, priced));
 });

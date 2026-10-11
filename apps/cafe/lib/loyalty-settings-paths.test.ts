@@ -19,6 +19,8 @@ const GRID = `${SETTINGS}/LoyaltyStampGrid.tsx`;
 const BOX = `${SETTINGS}/LoyaltyStampBox.tsx`;
 const REWARD = `${SETTINGS}/MilestoneRewardFields.tsx`;
 const CODE_FIELDS = `${SETTINGS}/MilestoneRewardCodeFields.tsx`;
+const PRODUCT_PICKER = `${SETTINGS}/ProductPicker.tsx`;
+const CATEGORY_PICKER = `${SETTINGS}/CategoryPicker.tsx`;
 
 const countOf = (src: string, re: RegExp): number => (src.match(re) ?? []).length;
 
@@ -29,12 +31,12 @@ function buttonLabelled(src: string, label: string): string {
   return seg;
 }
 
-test("PIN: the page puts LoyaltyCard then LoyaltyStampGrid in one space-y-6 column", () => {
+test("PIN: the page puts LoyaltyCard, LoyaltyStampGrid, then RewardLevelsSection in one space-y-6 column", () => {
   const src = code(PAGE);
   assert.match(
     src,
-    /<div className="space-y-6">\s*<LoyaltyCard\b[^>]*\/>\s*<LoyaltyStampGrid\b[^>]*\/>\s*<\/div>/,
-    "one wrapper, the card first, the rewards second",
+    /<div className="space-y-6">\s*<LoyaltyCard\b[^>]*\/>\s*<LoyaltyStampGrid\b[^>]*\/>\s*<RewardLevelsSection\b[\s\S]*?\/>\s*<\/div>/,
+    "one wrapper: the card first, the stamp rewards second, the scratch-card levels third",
   );
 });
 
@@ -199,27 +201,39 @@ test("PIN: the stamp box names its state for a screen reader and is natively dis
   assert.match(src, /export function LoyaltyStampBox\(/, "landmark: the component");
   assert.ok(src.includes('(hasCode ? ", gives a promo code" : "")'), "a promo code is read out");
   assert.ok(src.includes('(hasError ? ", needs fixing" : "")'), "an error is read out");
-  assert.ok(src.includes("`Stamp ${at}: edit its reward`") && src.includes("`Stamp ${at}: add a reward`"), "edit / add");
+  assert.ok(src.includes("`${noun} ${at}: edit its reward`") && src.includes("`${noun} ${at}: add a reward`"), "edit / add, named by the noun");
+  assert.ok(src.includes('const DEFAULT_NOUN = "Stamp";') && src.includes("noun = DEFAULT_NOUN"), "the noun defaults to Stamp");
+  assert.ok(src.includes("noun?: string;"), "the noun is an optional prop");
+  assert.ok(!src.includes("`Stamp ${at}"), "no hard-coded Stamp in the label");
   assert.match(src, /<button\s+type="button"\s+onClick=\{onOpen\}\s+disabled=\{disabled\}\s+aria-label=\{label\}/, "a real disabled button");
   assert.ok(src.includes('disabled && "cursor-not-allowed opacity-50"'), "a disabled box looks disabled");
   assert.ok(src.includes('hasError && "border-solid border-brand-danger"'), "an error box has a solid red border");
   assert.match(src, /<AlertCircle[^>]*aria-hidden="true"/, "the alert mark is decorative");
 });
 
-test("PIN: the reward kind is a PrintSizeChoice with plain labels, not a drop-down", () => {
+test("PIN: the reward kind is a Select (owner rule: pick-one = dropdown) offering every kind with plain labels, no chips", () => {
   const src = code(REWARD);
+  // s89h: the dropdown itself lives in RewardKindSelect.tsx (size cap); the row still renders it in its Controller.
+  const kindSrc = code(`${SETTINGS}/RewardKindSelect.tsx`);
   assert.match(
-    src,
+    kindSrc,
     /Record<LoyaltyRewardKind, string> = \{\s*flat: "Amount off",\s*percent: "Percent off",\s*item: "Free item",\s*\}/,
     "an exhaustive Record of the three labels",
   );
   assert.match(
     src,
-    /name=\{`loyaltyRules\.milestones\.\$\{index\}\.kind`\}\s*render=\{\(\{ field \}\) => \{[\s\S]*?<PrintSizeChoice\s+legend="Reward"\s+options=\{LOYALTY_REWARD_KINDS\}/,
-    "the choice row sits inside the kind Controller",
+    /name=\{`loyaltyRules\.milestones\.\$\{index\}\.kind`\}\s*render=\{\(\{ field \}\) => \{[\s\S]*?<Field label="Reward" htmlFor=\{kindId\} error=\{kindError\}>\s*<RewardKindSelect\s+id=\{kindId\}/,
+    "the labelled kind Select sits inside the kind Controller",
   );
-  assert.ok(!/<SelectItem key=\{k\}/.test(src), "no kind drop-down items left");
-  assert.ok(src.includes("labelOf={(k) => REWARD_KIND_LABELS[k]}"), "labels come from the Record");
+  const select = /function RewardKindSelect\([\s\S]*?\n\}\n/.exec(kindSrc)?.[0];
+  assert.ok(select, "landmark: RewardKindSelect");
+  assert.ok(/<Select\b/.test(select) && select.includes("<SelectTrigger id={id} className={BRAND_CONTROL_CLASS}>"), "a Select with an h-10 trigger that carries the id");
+  assert.ok(select.includes("{LOYALTY_REWARD_KINDS.map((k) => ("), "every kind is an item, in the schema's order");
+  assert.ok(select.includes("<SelectItem key={k} value={k} className={KIND_ITEM_CLASS}>") && select.includes("{STAMP_REWARD_KIND_LABELS[k]}"), "each item shows its plain label");
+  assert.ok(kindSrc.includes('const KIND_ITEM_CLASS = "pointer-coarse:min-h-11";'), "44 px rows on touch");
+  assert.ok(src.includes('import { RewardKindSelect, isRewardKind } from "@/components/settings/RewardKindSelect";'), "the row imports the dropdown from its own file");
+  assert.ok(select.includes("if (isRewardKind(next)) onChange(next);"), "a value that is not a kind is ignored");
+  assert.ok(!src.includes("PrintSizeChoice") && !/<fieldset\b/.test(src), "no chip group remains");
 });
 
 test("PIN: leaving Free item still clears the dish inside the kind onChange", () => {
@@ -237,11 +251,33 @@ test("PIN: rowFieldMessage returns the bare message; the controls are 40px with 
   assert.ok(fn, "landmark: rowFieldMessage");
   assert.ok(/return message;\s*\}$/.test(fn), "it returns the message itself");
   assert.ok(!/Reward \$\{/.test(src), "no 'Reward N:' prefix anywhere");
-  assert.ok(src.includes("<SelectTrigger id={itemId} className={BRAND_CONTROL_CLASS}>"), "the item picker is h-10 with an id");
+  assert.ok(/<ProductPicker\s+id=\{itemId\}/.test(src),"the item control is the shared ProductPicker, with an id");
+  assert.ok(!/<SelectTrigger id=\{itemId\}/.test(src), "no inline item trigger left");
   assert.equal(countOf(src, /<Input\b/g), 3, "landmark: value, how many, minimum bill");
-  assert.equal(countOf(src, /className=\{BRAND_CONTROL_CLASS\}/g), 4, "all three inputs and the picker are h-10");
+  // s89h: the kind Select's trigger moved to RewardKindSelect.tsx (size cap) — still h-10, counted there.
+  assert.equal(countOf(src, /className=\{BRAND_CONTROL_CLASS\}/g), 3, "all three inputs are h-10 (the item picker's trigger is pinned in ProductPicker)");
+  assert.equal(countOf(code(`${SETTINGS}/RewardKindSelect.tsx`), /className=\{BRAND_CONTROL_CLASS\}/g), 1, "the kind Select trigger is h-10");
   assert.equal(countOf(src, /inputMode="numeric"/g), 3, "each number input opens a number pad");
-  assert.equal(countOf(src, /htmlFor=\{\w+Id\}/g), 4, "each Field names its control");
+  assert.equal(countOf(src, /htmlFor=\{\w+Id\}/g), 5, "each Field names its control: kind, item, value, how many, minimum bill");
+  const picker = code(PRODUCT_PICKER);
+  assert.ok(picker.includes("<SelectTrigger id={id} className={className} aria-invalid={invalid || undefined}>"), "the picker trigger carries the id and the class");
+  assert.ok(picker.includes("className = BRAND_CONTROL_CLASS,"), "h-10 by default");
+});
+
+test("PIN: ProductPicker and CategoryPicker fall back to the menu, show a gone item disabled, and use 44 px touch rows", () => {
+  const products = code(PRODUCT_PICKER);
+  const categories = code(CATEGORY_PICKER);
+  assert.match(products, /export function ProductPicker\(/, "landmark: ProductPicker");
+  assert.match(categories, /export function CategoryPicker\(/, "landmark: CategoryPicker");
+  assert.ok(products.includes("const pickable = products ?? fetched ?? [];") && products.includes("useProducts()"), "products: a passed list wins, else the menu");
+  assert.ok(categories.includes("const pickable = categories ?? fetched ?? [];") && categories.includes("useCategories()"), "categories: a passed list wins, else the menu");
+  assert.ok(products.includes("(not on the menu)") && categories.includes("(deleted)"), "a stored id that left the list still shows, named");
+  for (const src of [products, categories]) {
+    assert.ok(/<SelectItem value=\{value\} disabled className=\{itemClassName\}>/.test(src), "the gone item is a disabled row");
+    assert.ok(src.includes('const PICKER_ITEM_CLASS = "pointer-coarse:min-h-11";') && src.includes("itemClassName = PICKER_ITEM_CLASS,"), "44 px on touch by default");
+    assert.ok(src.includes("onChange(next, picked?.name ?? \"\");"), "the id and its name travel together");
+    assert.ok(src.includes("disabled={disabled || pickable.length === 0}"), "an empty list disables the trigger");
+  }
 });
 
 test("PIN: the promo code is a Select over the promo list; No code stores undefined; no text input", () => {

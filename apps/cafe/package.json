@@ -441,7 +441,10 @@
     "lib/header-quick-tabs.test.ts",
     "lib/no-native-pickers-paths.test.ts",
     "scripts/print-soak-rules.test.ts",
-    "scripts/print-soak-writer.test.ts"
+    "scripts/print-soak-writer.test.ts",
+    "lib/reward-levels-form.test.ts",
+    "lib/reward-levels-starters.test.ts",
+    "lib/reward-levels-ui-paths.test.ts"
   ],
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
