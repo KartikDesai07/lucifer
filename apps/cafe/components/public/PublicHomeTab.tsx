@@ -10,6 +10,7 @@ import { PublicHomeHero } from "@/components/public/PublicHomeHero";
 import { PublicDinerBanners } from "@/components/public/PublicDinerBanners";
 import { PublicActiveOrderCard } from "@/components/public/PublicActiveOrderCard";
 import { PublicLoyaltyGlance } from "@/components/public/PublicLoyaltyGlance";
+import { PublicLevelGlance } from "@/components/public/rewards/PublicLevelGlance";
 import { PublicPopularRow } from "@/components/public/PublicPopularRow";
 import type { HomeActiveOrder, HomeLastOrder } from "@/components/public/public-home-data";
 import type { PublicMenuProduct } from "@/components/public/PublicMenuItem";
@@ -36,6 +37,10 @@ interface PublicHomeTabProps {
   signedIn: boolean;
   dinerName: string;
   loyaltyEnabled: boolean;
+  // CB-7 S4 — Reward Levels chosen: the level glance replaces the stamp glance.
+  levelsChosen: boolean;
+  // The signed-in diner's mobile (the wallet query's identity); null = signed out.
+  identity: string | null;
   loading: boolean;
   stampCard: DinerStampCard | null;
   banners: readonly PublicDinerBanner[];
@@ -59,6 +64,8 @@ export function PublicHomeTab({
   signedIn,
   dinerName,
   loyaltyEnabled,
+  levelsChosen,
+  identity,
   loading,
   stampCard,
   banners,
@@ -81,14 +88,18 @@ export function PublicHomeTab({
     <div className={PUB_HOME_STACK_CLASS}>
       <PublicHomeHero cafeName={cafeName} chrome={chrome} signedIn={signedIn} dinerName={dinerName} />
 
-      {loyaltyEnabled && (
-        <PublicLoyaltyGlance
-          signedIn={signedIn}
-          loading={loading}
-          stampCard={stampCard}
-          onSignIn={onSignIn}
-          onOpenRewards={onOpenRewards}
-        />
+      {levelsChosen ? (
+        <PublicLevelGlance identity={identity} loading={loading} onSignIn={onSignIn} onOpenRewards={onOpenRewards} />
+      ) : (
+        loyaltyEnabled && (
+          <PublicLoyaltyGlance
+            signedIn={signedIn}
+            loading={loading}
+            stampCard={stampCard}
+            onSignIn={onSignIn}
+            onOpenRewards={onOpenRewards}
+          />
+        )
       )}
 
       {activeOrder && <PublicActiveOrderCard order={activeOrder} onOpen={onOpenActiveOrder} />}

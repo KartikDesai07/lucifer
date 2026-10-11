@@ -30,6 +30,14 @@ export function rewardLevelsChosen(settings: ISettings | null): boolean {
   return rewardLevelsChosenRaw(settings?.rewardLevels);
 }
 
+// Whether the owner ever saved a levels blob (any object: readable or not, enabled or not). It decides only whether the
+// diner's wallet is worth reading (S4 cardsOn) - the cards a diner already holds outlive a switch-off. Never a
+// substitute for the owner's mode (rewardLevelsChosen) nor for "does it run" (rewardLevelsEarning).
+export function rewardLevelsStored(settings: ISettings | null): boolean {
+  const raw: unknown = settings?.rewardLevels;
+  return raw !== null && typeof raw === "object" && !Array.isArray(raw);
+}
+
 // Whether progress / issue / scratch actually run: accounts on, the owner chose levels, the blob parses, and
 // nothing blocks scratch cards. Using a revealed card stays gated by accounts alone (S5), not by this.
 export function rewardLevelsEarning(settings: ISettings | null, env: NodeJS.ProcessEnv = process.env): boolean {

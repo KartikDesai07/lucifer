@@ -6,6 +6,7 @@ import {
   resolveRewardLevels,
   rewardLevelsChosen,
   rewardLevelsEarning,
+  rewardLevelsStored,
   scratchCardsBlockedFor,
 } from "@/lib/reward-levels-config";
 import { SCRATCH_BLOCK_ENV_VAR } from "@pos/shared/reward-levels";
@@ -99,4 +100,25 @@ test("scratchCardsBlockedFor: the default env argument is process.env, which the
   // The signature default is the production path; passing nothing must agree with passing process.env.
   const plain = settingsOf({});
   assert.equal(scratchCardsBlockedFor(plain), scratchCardsBlockedFor(plain, process.env));
+});
+
+test("rewardLevelsStored: true for any stored blob object - readable or not, enabled or not", () => {
+  assert.equal(rewardLevelsStored(ON), true);
+  assert.equal(rewardLevelsStored(settingsOf({ rewardLevels: { ...BLOB, enabled: false } })), true, "switched off is still stored");
+  assert.equal(rewardLevelsStored(settingsOf({ rewardLevels: UNREADABLE })), true, "an unreadable blob is still stored");
+  assert.equal(rewardLevelsStored(settingsOf({ rewardLevels: {} })), true);
+});
+
+test("rewardLevelsStored: false for null settings, an absent blob, and a non-object blob", () => {
+  assert.equal(rewardLevelsStored(null), false);
+  assert.equal(rewardLevelsStored(settingsOf({})), false);
+  assert.equal(rewardLevelsStored(settingsOf({ rewardLevels: null })), false);
+  assert.equal(rewardLevelsStored(settingsOf({ rewardLevels: "yes" })), false);
+  assert.equal(rewardLevelsStored(settingsOf({ rewardLevels: [BLOB] })), false);
+});
+
+test("rewardLevelsStored: independent of the owner's mode, accounts and the block switch (it only gates reading the wallet)", () => {
+  const tn = settingsOf({ rewardLevels: BLOB, gstNumber: "33ABCDE1234F1Z5" });
+  assert.equal(rewardLevelsStored(tn), true, "blocked + accounts absent: still stored");
+  assert.equal(rewardLevelsChosen(settingsOf({ rewardLevels: { ...BLOB, enabled: false } })), false, "landmark: not chosen yet stored above");
 });

@@ -2,32 +2,18 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { toast } from "sonner";
-
 import type { LogoPlacement } from "@pos/shared/appearance";
-import type { PublicStatusItem } from "@pos/shared/public";
 import type { PublicDinerBanner } from "@pos/shared/public-diner";
 import { PublicOrderFlow } from "@/components/public/PublicOrderFlow";
 import type { AssignedRewardOffer } from "@/components/public/PublicPromoField";
-import type { PublicMenuProduct } from "@/components/public/PublicMenuItem";
 import { PublicTabBar, type DinerTab } from "@/components/public/PublicTabBar";
 import { PublicRewardsTab } from "@/components/public/PublicRewardsTab";
 import { PublicHomeTab } from "@/components/public/PublicHomeTab";
+import { PublicLevelsTab } from "@/components/public/rewards/PublicLevelsTab";
+import { useClearDinerCards } from "@/components/public/rewards/use-diner-cards";
 import { PublicAccountTab } from "@/components/public/PublicAccountTab";
 import { PublicMyOrdersTab } from "@/components/public/PublicMyOrdersTab";
-import {
-  pickActiveOrder,
-  pickLastOrder,
-  pickOfferItems,
-  pickPopularItems,
-} from "@/components/public/public-home-data";
-import {
-  SHELL_DEFAULT_GST,
-  applyRepeatOrder,
-  fetchMenuSnapshot,
-  repeatOrderCart,
-  type MenuSnapshot,
-} from "@/components/public/public-shell-repeat";
+import { fetchMenuSnapshot, type MenuSnapshot } from "@/components/public/public-shell-repeat";
 import {
   fetchDinerMe,
   postDinerLogout,
@@ -38,12 +24,10 @@ import {
   CONTENT_PAD_TABS_ONLY,
   SHELL_BOTTOM_CHROME_STYLE,
 } from "@/components/public/public-shell-layout";
+import { shellHomeView } from "@/components/public/public-shell-view";
 import { useMyOrders } from "@/components/public/use-my-orders";
+import { useRepeatOrder } from "@/components/public/use-repeat-order";
 import type { DinerStampCard } from "@/lib/diner-loyalty";
-
-// How many top sellers Home's "Popular here" row shows — a phone-width
-// scroller, never the whole list.
-const POPULAR_ROW_LIMIT = 8;
 
 // Total ITEMS (not lines) in the persisted cart — the Menu tab's badge count.
 // Read from the STORE (the same place PublicOrderFlow hydrates from), never
@@ -59,6 +43,10 @@ interface PublicDinerShellProps {
   // renders nothing of its own (no tab bar, no fetch): today's single screen.
   accountsEnabled: boolean;
   loyaltyEnabled: boolean;
+  // CB-7 S4 — Reward Levels: `levelsChosen` gates the Rewards tab + Home glance;
+  // `cardsOn` (a stored blob) only swaps the tab's body. Both off while dormant.
+  levelsChosen: boolean;
+  cardsOn: boolean;
   // Server-resolved via the SHARED selfOrderingAllowed predicate (S12).
   orderingAllowed: boolean;
   // CB-6C — owner-written Home banners, already normalised by
@@ -75,6 +63,8 @@ export function PublicDinerShell({
   chrome,
   accountsEnabled,
   loyaltyEnabled,
+  levelsChosen,
+  cardsOn,
   orderingAllowed,
   banners,
 }: PublicDinerShellProps) {
@@ -100,6 +90,7 @@ export function PublicDinerShell({
   // The both-features-off cafe must fetch NOTHING the shell adds.
   const shellActive = accountsEnabled || loyaltyEnabled;
   const orders = useMyOrders(shellActive, ordersEpoch);
+  const clearCards = useClearDinerCards();
 
   // A failed poll (null) keeps what is on screen rather than flipping a
   // signed-in diner to signed-out.
@@ -135,28 +126,13 @@ export function PublicDinerShell({
     };
   }, [shellActive]);
 
-  // "Order this again" / Home quick add: rebuild the cart from past lines,
-  // VALIDATED against the live menu (repeatOrderCart drops anything removed,
-  // hidden, sold out or whose variation is gone — never a stale price), merge
-  // onto the current cart, persist, remount the menu so it hydrates the new
-  // cart, and tell the diner what happened.
-  async function repeatOrder(items: PublicStatusItem[]) {
-    const result = await repeatOrderCart(items);
-    if (result === null) {
-      toast.error("Couldn't reach the menu — please try again.");
-      return;
-    }
-    if (!applyRepeatOrder(result)) return;
+  // "Order this again" / Home quick add (use-repeat-order.ts): after a validated
+  // merge writes the cart, remount the menu so it hydrates the new cart.
+  const { repeatOrder, quickAdd } = useRepeatOrder(() => {
     setMenuEpoch((n) => n + 1);
     setCartCount(countCartItems()); // the repeat just wrote to the cart
     setTab("menu");
-  }
-
-  // Home's one-tap add rides the SAME validated path — priced from the LIVE
-  // menu by buildRepeatCart, never from the snapshot. Simple items only.
-  function quickAdd(product: PublicMenuProduct) {
-    void repeatOrder([{ productId: product.id, name: product.name, price: product.price, qty: 1, modifiers: [] }]);
-  }
+  });
 
   // Leaving the Menu tab must also dismiss anything the MENU had open: the
   // cart Drawer (vaul) and the item Sheet (Radix) PORTAL to document.body, so
@@ -189,6 +165,9 @@ export function PublicDinerShell({
     // Clears diner-owned localStorage (identity + codes + menu path + refresh
     // timestamps) — deliberately NOT the cart or the theme.
     clearDinerData();
+    // CB-7 S4 — the wallet query is keyed on the mobile but cached app-wide: drop it
+    // so the next diner on a shared phone never sees the previous diner's cards.
+    clearCards();
     setOrdersEpoch((n) => n + 1);
     setPendingOpenCode(null);
     setTab("menu");
@@ -200,19 +179,13 @@ export function PublicDinerShell({
     return <PublicOrderFlow token={token} chrome={chrome} />;
   }
 
-  const tabs: DinerTab[] = loyaltyEnabled
+  const rewardsTab = loyaltyEnabled || levelsChosen;
+  const tabs: DinerTab[] = rewardsTab
     ? ["home", "menu", "orders", "rewards", "account"]
     : ["home", "menu", "orders", "account"];
 
   const signedIn = diner !== null;
-  const activeOrder = orders ? pickActiveOrder(orders) : null;
-  const lastOrder = orders ? pickLastOrder(orders) : null;
-  const popularItems = pickPopularItems(snapshot?.items, snapshot?.popular, POPULAR_ROW_LIMIT);
-  const offerItems = pickOfferItems(snapshot?.items);
-  // Seeded with the SAME default shape PublicOrderFlow uses — a pre-load bill
-  // must never invent tax.
-  const gst = snapshot?.gst ?? SHELL_DEFAULT_GST;
-  const cafeName = snapshot?.restaurantName ?? "";
+  const { activeOrder, lastOrder, popularItems, offerItems, gst, cafeName } = shellHomeView(orders, snapshot);
 
   return (
     // style: raises --pub-bottom-chrome for this whole subtree, which is how
@@ -234,6 +207,8 @@ export function PublicDinerShell({
           signedIn={signedIn}
           dinerName={diner?.name ?? ""}
           loyaltyEnabled={loyaltyEnabled}
+          levelsChosen={levelsChosen}
+          identity={diner?.mobile ?? null}
           loading={loading}
           stampCard={stampCard}
           banners={banners}
@@ -251,7 +226,7 @@ export function PublicDinerShell({
           onOpenActiveOrder={() => {
             if (activeOrder) openActiveOrder(activeOrder.code);
           }}
-          onOpenRewards={() => selectTab(loyaltyEnabled ? "rewards" : "account")}
+          onOpenRewards={() => selectTab(rewardsTab ? "rewards" : "account")}
           onSignIn={() => selectTab("account")}
           onQuickAdd={quickAdd}
         />
@@ -282,15 +257,27 @@ export function PublicDinerShell({
         />
       )}
 
-      {tab === "rewards" && (
-        <PublicRewardsTab
-          loading={loading}
-          signedIn={signedIn}
-          card={stampCard}
-          rewards={rewards}
-          onSignIn={() => selectTab("account")}
-        />
-      )}
+      {tab === "rewards" &&
+        (cardsOn ? (
+          <PublicLevelsTab
+            identity={diner?.mobile ?? null}
+            levelsChosen={levelsChosen}
+            cardsOn={cardsOn}
+            loyaltyEnabled={loyaltyEnabled}
+            loading={loading}
+            card={stampCard}
+            rewards={rewards}
+            onSignIn={() => selectTab("account")}
+          />
+        ) : (
+          <PublicRewardsTab
+            loading={loading}
+            signedIn={signedIn}
+            card={stampCard}
+            rewards={rewards}
+            onSignIn={() => selectTab("account")}
+          />
+        ))}
 
       <PublicTabBar active={tab} onSelect={selectTab} tabs={tabs} cartCount={cartCount} />
     </div>

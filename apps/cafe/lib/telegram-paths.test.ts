@@ -112,7 +112,7 @@ test("PIN W2: instrumentation-client.ts's BotID protect list never names the Tel
 
 // ── W3 — the frozen unauthenticated-route inventory ─────────────────────────
 
-test("PIN W3: the app's full unauthenticated-route inventory (guard = requireAuth/requireAdmin/auth( OR imports createCollectionRoute/createItemRoute from @/lib/crud-route) is EXACTLY the frozen fourteen — a route not on this list is a pre-existing hole to REPORT, never to silently freeze", () => {
+test("PIN W3: the app's full unauthenticated-route inventory (guard = requireAuth/requireAdmin/auth( OR imports createCollectionRoute/createItemRoute from @/lib/crud-route) is EXACTLY the frozen sixteen — a route not on this list is a pre-existing hole to REPORT, never to silently freeze", () => {
   const apiDirAbs = path.join(REPO_ROOT, "apps/cafe/app/api");
   const routeFiles: string[] = [];
   walk(apiDirAbs, /^route\.ts$/, routeFiles);
@@ -168,6 +168,21 @@ test("PIN W3: the app's full unauthenticated-route inventory (guard = requireAut
     // Every one of the four is no-store + nosniff (noStoreDiner) because these
     // payloads name ONE diner and a cached copy on shared cafe WiFi would be a
     // cross-diner leak. Their own pins live in lib/diner-paths.test.ts.
+    // CB-7 S4 (2026-10-12), REVIEWED — not silently frozen: the diner's
+    // scratch-card wallet (GET cards) and the scratch (POST cards/[id]/scratch).
+    // Unauthenticated in the Auth.js sense for the same reason as the four
+    // above; what guards them: dinerAccountsOn feature gate → the diner
+    // session cookie (401 without one) → a per-session-token rate-limit bucket
+    // charged BEFORE the uncached reads → the session row. The subject comes
+    // ONLY from the session (no id selects a customer); the scratch's card id
+    // is regex-checked before any DB call and the reveal is a CAS keyed on the
+    // session customer's _id, so an expired / unknown / another diner's card
+    // gets ONE identical 404 (no oracle). A ready card's outcome is never in
+    // a payload (allowlist DTO). Both no-store (noStoreDiner). Own pins:
+    // lib/reward-cards-paths.test.ts, lib/reward-card-scratch.test.ts,
+    // lib/reward-cards-view.test.ts; live leg verify:reward-cards:live.
+    "apps/cafe/app/api/public/diner/cards/[id]/scratch/route.ts",
+    "apps/cafe/app/api/public/diner/cards/route.ts",
     "apps/cafe/app/api/public/diner/login/route.ts",
     "apps/cafe/app/api/public/diner/logout/route.ts",
     "apps/cafe/app/api/public/diner/me/route.ts",

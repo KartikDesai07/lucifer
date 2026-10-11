@@ -80,6 +80,15 @@ export const DINER_SOURCE_RATE_MAX = 25;
 export const DINER_ME_BUCKET_PREFIX = "dinerme:";
 export const DINER_ME_RATE_MAX = 60;
 
+// CB-7 S4: GET /api/public/diner/cards reads the diner's whole card wallet (up to REWARD_CARDS_KEEP subdocs) —
+// the same per-session budget as /me (opened per Rewards tab visit + the Home glance). The scratch POST is a
+// WRITE and gets a tighter bucket of its own: a real diner scratches a handful of cards, a script would hammer.
+// Both are keyed on the session token (the routes refuse without one), on PUBLIC_ORDER_RATE_WINDOW_MS.
+export const DINER_CARDS_BUCKET_PREFIX = "dinercards:";
+export const DINER_CARDS_RATE_MAX = 60;
+export const DINER_SCRATCH_BUCKET_PREFIX = "dinerscratch:";
+export const DINER_SCRATCH_RATE_MAX = 30;
+
 export function dinerPinBucket(normalizedMobile: string): string {
   return `${DINER_PIN_BUCKET_PREFIX}${normalizedMobile}`;
 }
@@ -90,6 +99,14 @@ export function dinerMeBucket(key: string): string {
 
 export function dinerSourceBucket(sourceKey: string): string {
   return `${DINER_SOURCE_BUCKET_PREFIX}${sourceKey}`;
+}
+
+export function dinerCardsBucket(token: string): string {
+  return `${DINER_CARDS_BUCKET_PREFIX}${token}`;
+}
+
+export function dinerScratchBucket(token: string): string {
+  return `${DINER_SCRATCH_BUCKET_PREFIX}${token}`;
 }
 
 // ── Diner-facing copy ───────────────────────────────────────────────────────

@@ -1,5 +1,7 @@
 import { selfOrderingAllowed } from "@pos/shared/public";
 import { publicDinerBanners, type PublicDinerBanner } from "@pos/shared/public-diner";
+import { dinerAccountsOn } from "@/lib/diner-route-guard";
+import { rewardLevelsChosen, rewardLevelsStored } from "@/lib/reward-levels-config";
 import { readSettings } from "@/lib/settings";
 
 // CB-4 — the ONE function the /m pages call to learn which diner features this
@@ -15,6 +17,10 @@ import { readSettings } from "@/lib/settings";
 export interface PublicDinerConfig {
   accountsEnabled: boolean;
   loyaltyEnabled: boolean;
+  // CB-7 S4: the owner chose reward levels (the Rewards tab gate), and a levels blob is stored (the wallet is worth
+  // reading). Both need accounts. Computed here, so the client never sees the blob or the block switch.
+  levelsChosen: boolean;
+  cardsOn: boolean;
   orderingAllowed: boolean;
   banners: readonly PublicDinerBanner[];
 }
@@ -32,6 +38,8 @@ export interface PublicDinerConfig {
 const DINER_FEATURES_OFF: PublicDinerConfig = {
   accountsEnabled: false,
   loyaltyEnabled: false,
+  levelsChosen: false,
+  cardsOn: false,
   orderingAllowed: true,
   banners: [],
 };
@@ -45,6 +53,8 @@ export async function readPublicDinerConfig(): Promise<PublicDinerConfig> {
       // conjunction is resolved HERE rather than trusted to each caller.
       // Mirrors lib/diner-route-guard.ts's dinerLoyaltyOn on the API side.
       loyaltyEnabled: settings?.dinerAccountsEnabled === true && settings?.loyaltyEnabled === true,
+      levelsChosen: dinerAccountsOn(settings) && rewardLevelsChosen(settings),
+      cardsOn: dinerAccountsOn(settings) && rewardLevelsStored(settings),
       // The SHARED predicate, never a hand-written `=== "menu"` — see that
       // function's own comment on why it is written against the value that
       // DENIES rather than the values that allow.

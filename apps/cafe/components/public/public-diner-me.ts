@@ -2,8 +2,9 @@ import type { AssignedRewardOffer } from "@/components/public/PublicPromoField";
 import type { DinerStampCard } from "@/lib/diner-loyalty";
 
 // CB-6C — the shell's two diner-session calls, extracted from
-// PublicDinerShell.tsx (file budget). Plain fetch, never TanStack (the diner
-// bundle carries no query client). Both swallow network failure into a
+// PublicDinerShell.tsx (file budget). Plain fetch, not TanStack (the /m tree
+// IS inside Providers' QueryClientProvider, but these two calls need no cache).
+// Both swallow network failure into a
 // null/void result: the SHELL decides what a failed call means for what is on
 // screen (keep the signed-in state on a failed poll; clear local state on a
 // failed logout because the server row expires on its own).

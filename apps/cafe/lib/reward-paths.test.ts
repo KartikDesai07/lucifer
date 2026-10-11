@@ -43,5 +43,8 @@ test("SOURCE PIN: client-graph-guard lists reward-levels-config and reward-rng a
   assert.ok(re.test(cafe("models/Customer.ts")), "landmark: the regex still matches a model");
   assert.ok(re.test(cafe("lib/reward-levels-config.ts")), "reward-levels-config.ts is server-only in the client graph walk");
   assert.ok(re.test(cafe("lib/reward-rng.ts")), "reward-rng.ts is server-only in the client graph walk");
+  assert.ok(re.test(cafe("lib/reward-card-scratch.ts")), "reward-card-scratch.ts is server-only in the client graph walk");
+  assert.ok(re.test(cafe("lib/reward-cards-read.ts")), "reward-cards-read.ts is server-only in the client graph walk");
+  assert.equal(re.test(cafe("lib/reward-cards-view.ts")), false, "reward-cards-view.ts is the PURE client-safe half");
   assert.equal(re.test(cafe("lib/reward-levels-label.ts")), false, "the regex is not a blanket reward-* ban");
 });

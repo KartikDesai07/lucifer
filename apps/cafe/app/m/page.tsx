@@ -18,6 +18,8 @@ export default async function PublicMenuPage() {
       chrome={chrome}
       accountsEnabled={diner.accountsEnabled}
       loyaltyEnabled={diner.loyaltyEnabled}
+      levelsChosen={diner.levelsChosen}
+      cardsOn={diner.cardsOn}
       orderingAllowed={diner.orderingAllowed}
       banners={diner.banners}
     />

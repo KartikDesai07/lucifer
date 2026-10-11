@@ -122,9 +122,13 @@ export function slotCost(slot: Pick<RewardSlot, "options">, ctx: CostContext): O
 }
 
 // Whole-number chances in option order that ALWAYS add up to exactly 100 (largest remainder; a tie goes to the
-// earlier option) — "34% / 33% / 33%", never "33% / 33% / 33%".
+// earlier option) — "34% / 33% / 33%", never "33% / 33% / 33%" — and never 0% for an option that can be won.
 export function optionChances(slot: Pick<RewardSlot, "options">): number[] {
-  const weights = slot.options.map((o) => o.weight);
+  return chancesOf(slot.options.map((o) => o.weight));
+}
+
+// The same rule over bare weights — an issued card's snapshotted `pool` (RewardPoolEntry) is not a RewardOption.
+export function chancesOf(weights: readonly number[]): number[] {
   const total = weights.reduce((sum, w) => sum + w, 0);
   if (weights.length === 0 || total <= 0) return weights.map(() => 0);
   const floors = weights.map((w) => Math.floor((w * TOTAL_CHANCE_PERCENT) / total));
@@ -134,6 +138,22 @@ export function optionChances(slot: Pick<RewardSlot, "options">): number[] {
     .map((w, index) => ({ index, remainder: (w * TOTAL_CHANCE_PERCENT) % total }))
     .sort((a, b) => b.remainder - a.remainder || a.index - b.index);
   for (let i = 0; i < leftover; i++) floors[byRemainder[i].index] += 1;
+  // s90 review A1: a winnable option never reads "0%" (the diner's odds are a legal surface, F14). Each positive
+  // weight left at 0 takes 1 from the share that was rounded UP the most — the largest share·total − weight·100,
+  // integers again; ties: the later option — among shares above 1. The total stays exactly 100, and a likelier prize
+  // never reads below a less likely one (two equal shares: the smaller weight overshoots more, so it gives the 1).
+  weights.forEach((w, index) => {
+    if (w <= 0 || floors[index] > 0) return;
+    const overshoot = (j: number): number => floors[j] * total - weights[j] * TOTAL_CHANCE_PERCENT;
+    let donor = -1;
+    floors.forEach((share, j) => {
+      if (share > 1 && (donor === -1 || overshoot(j) >= overshoot(donor))) donor = j;
+    });
+    if (donor !== -1) {
+      floors[donor] -= 1;
+      floors[index] = 1;
+    }
+  });
   return floors;
 }
 

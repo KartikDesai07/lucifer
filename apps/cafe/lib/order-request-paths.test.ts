@@ -727,8 +727,23 @@ test("PIN: no file under components/public/** imports @tanstack/react-query — 
   walk(dirAbs, files);
   assert.ok(files.length > 0, "components/public must contain at least one file to check");
 
+  // CB-7 S4: the scratch-card wallet is the ONE deliberate exception — a mutation with an offline-fails-at-once
+  // contract (networkMode "always") that the /m tree's own QueryClientProvider serves. Exactly these two files, never
+  // a directory: any other diner file importing the query client still fails below.
+  const QUERY_CLIENT_ALLOWED = [
+    "apps/cafe/components/public/rewards/PublicLevelsTab.tsx",
+    "apps/cafe/components/public/rewards/use-diner-cards.ts",
+  ];
+  for (const allowed of QUERY_CLIENT_ALLOWED) {
+    assert.ok(
+      /from ["']@tanstack\/react-query["']/.test(stripComments(readSrc(allowed))),
+      `landmark: ${allowed} is the documented exception and must still import the query client`,
+    );
+  }
+
   for (const fileAbs of files) {
     const rel = relPath(fileAbs);
+    if (QUERY_CLIENT_ALLOWED.includes(rel)) continue;
     const src = stripComments(readFileSync(fileAbs, "utf8"));
     // Mutation this catches: a diner-facing component reaching for
     // useQuery/useMutation instead of the surface's established plain-fetch

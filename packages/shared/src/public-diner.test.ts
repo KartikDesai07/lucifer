@@ -7,10 +7,20 @@ import {
   isValidDinerPin,
   dinerPinBucket,
   dinerSourceBucket,
+  dinerMeBucket,
+  dinerCardsBucket,
+  dinerScratchBucket,
   stampsRemaining,
   rewardsAvailable,
 } from "./public-diner";
 import { SELF_ORDER_MODES, selfOrderingAllowed } from "./public";
+import {
+  DINER_CARDS_ENDPOINT,
+  DINER_READY_CARD_KEYS,
+  dinerScratchPath,
+  everyCardWins,
+  type DinerReadyCardDto,
+} from "./public-diner-cards";
 
 // CB-4 — the diner ACCOUNT + stamp-loyalty PURE contract. DB-free unit tests
 // over public-diner.ts's own math/predicates, mirroring public-rate-limit's
@@ -132,6 +142,55 @@ test("dinerPinBucket and dinerSourceBucket: no pin-bucket key for ANY input can 
     !sourcePrefixSample.startsWith(pinPrefixSample) && !pinPrefixSample.startsWith(sourcePrefixSample),
     "the pin-bucket and source-bucket prefixes must not be a prefix of one another",
   );
+});
+
+// CB-7 S4: every diner bucket prefix — pin, source, me, cards, scratch — is distinct and none is a prefix of another,
+// so no key in one bucket can ever equal a key in another (a scratch spray can never spend a /me or PIN budget).
+test("all five diner bucket prefixes are pairwise distinct and none is a prefix of another", () => {
+  const prefixes = [dinerPinBucket, dinerSourceBucket, dinerMeBucket, dinerCardsBucket, dinerScratchBucket].map((f) =>
+    f(""),
+  );
+  assert.equal(new Set(prefixes).size, prefixes.length);
+  for (const a of prefixes) {
+    for (const b of prefixes) {
+      if (a !== b) assert.ok(!a.startsWith(b), `${a} must not start with ${b}`);
+    }
+  }
+  assert.equal(dinerScratchBucket("tok"), "dinerscratch:tok");
+  assert.equal(dinerCardsBucket("tok"), "dinercards:tok");
+});
+
+// ── public-diner-cards (CB-7 S4) ────────────────────────────────────────────
+
+test("dinerScratchPath: the card id is URL-encoded under the cards endpoint", () => {
+  assert.equal(dinerScratchPath("0123456789ab"), `${DINER_CARDS_ENDPOINT}/0123456789ab/scratch`);
+  assert.equal(dinerScratchPath("a/b?c"), `${DINER_CARDS_ENDPOINT}/a%2Fb%3Fc/scratch`);
+});
+
+test("everyCardWins: true only for a non-empty pool with no 'none' choice (F9/F14)", () => {
+  assert.equal(everyCardWins(["bill-percent", "free-item"]), true);
+  assert.equal(everyCardWins(["bill-percent", "none"]), false);
+  assert.equal(everyCardWins(["none"]), false);
+  assert.equal(everyCardWins([]), false);
+});
+
+test("DINER_READY_CARD_KEYS: exactly the ready-card DTO keys, no outcome key among them", () => {
+  // Compile-time: every DTO key is listed (a new DTO key without a tuple entry fails tsc here).
+  const listed: Record<keyof DinerReadyCardDto, true> = {
+    id: true,
+    source: true,
+    level: true,
+    step: true,
+    issuedAt: true,
+    scratchBy: true,
+    status: true,
+    state: true,
+    pool: true,
+  };
+  assert.deepEqual([...DINER_READY_CARD_KEYS].sort(), Object.keys(listed).sort());
+  for (const banned of ["optionId", "kind", "value", "outcome", "productId", "categoryId", "minBill", "capRupees"]) {
+    assert.ok(!(DINER_READY_CARD_KEYS as readonly string[]).includes(banned), banned);
+  }
 });
 
 // ── selfOrderingAllowed / SELF_ORDER_MODES ──────────────────────────────────

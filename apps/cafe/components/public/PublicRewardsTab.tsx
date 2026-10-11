@@ -56,9 +56,12 @@ interface PublicRewardsTabProps {
   // rungs), rendered read-only below the ladder/stamp card. Optional: absent
   // on any surface that hasn't fetched diner/me, or for a signed-out diner.
   rewards?: AssignedRewardOffer[];
+  // CB-7 S4 — drawn INSIDE the Levels tab: no title, no how-it-works, no lifetime line and no signed-out branch (the
+  // Levels tab owns all four). Default false = the standalone tab, unchanged.
+  embedded?: boolean;
 }
 
-export function PublicRewardsTab({ loading, signedIn, card, onSignIn, rewards }: PublicRewardsTabProps) {
+export function PublicRewardsTab({ loading, signedIn, card, onSignIn, rewards, embedded = false }: PublicRewardsTabProps) {
   // Hydrated from the store on mount so a diner who picked a reward, left the
   // tab, and came back still sees it selected — and so a promo applied while
   // this tab wasn't mounted is picked up the moment it is.
@@ -80,6 +83,7 @@ export function PublicRewardsTab({ loading, signedIn, card, onSignIn, rewards }:
   }
 
   if (loading) {
+    if (embedded) return null;
     return (
       <div className={PUB_HOME_STACK_CLASS}>
         <Skeleton className="h-44 w-full rounded-3xl" />
@@ -89,6 +93,7 @@ export function PublicRewardsTab({ loading, signedIn, card, onSignIn, rewards }:
   }
 
   if (!signedIn || !card) {
+    if (embedded) return null;
     return (
       <div className={PUB_HOME_STACK_CLASS}>
         <p className={PUB_SCREEN_TITLE_CLASS}>Rewards</p>
@@ -129,8 +134,8 @@ export function PublicRewardsTab({ loading, signedIn, card, onSignIn, rewards }:
   const readyRewardAt = card.ladder[card.ladder.length - 1]?.at;
 
   return (
-    <div className={PUB_HOME_STACK_CLASS}>
-      <p className={PUB_SCREEN_TITLE_CLASS}>Rewards</p>
+    <div className={embedded ? "space-y-6" : PUB_HOME_STACK_CLASS}>
+      {!embedded && <p className={PUB_SCREEN_TITLE_CLASS}>Rewards</p>}
 
       <PublicStampCard
         stampsPerReward={card.stampsPerReward}
@@ -194,11 +199,11 @@ export function PublicRewardsTab({ loading, signedIn, card, onSignIn, rewards }:
         />
       )}
 
-      <PublicRewardsHowItWorks />
+      {!embedded && <PublicRewardsHowItWorks />}
 
       {rewards && <PublicRewardCodes rewards={rewards} />}
 
-      {card.lifetime > 0 && (
+      {!embedded && card.lifetime > 0 && (
         <p className="text-xs text-muted-foreground">
           You have collected {card.lifetime} {unitWord(card.lifetime, card.unitLabel)} here in total.
         </p>

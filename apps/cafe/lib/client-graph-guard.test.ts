@@ -37,8 +37,9 @@ const SOURCE_EXTS = [".ts", ".tsx"];
 // CB-7 S1: lib/reward-levels-config.ts reads process.env (the platform owner's scratch-card block switch — in a
 // browser it would read undefined = "not blocked") and lib/reward-rng.ts imports node:crypto. CB-7 S2 adds lib/reward-progress-plan.ts (reads
 // settings through the env-reading config) and lib/reward-progress.ts (Customer model + the crypto rng). This repo
-// has no `server-only` package, so this graph walk is their guard.
-const SERVER_ONLY = /(^|\/)models\/|\/lib\/db\.ts$|\/lib\/reward-(?:levels-config|rng|progress-plan|progress)\.ts$/;
+// has no `server-only` package, so this graph walk is their guard. CB-7 S4 adds lib/reward-card-scratch.ts and
+// lib/reward-cards-read.ts (Customer model + the env-reading config); lib/reward-cards-view.ts stays client-safe.
+const SERVER_ONLY = /(^|\/)models\/|\/lib\/db\.ts$|\/lib\/reward-(?:levels-config|rng|progress-plan|progress|card-scratch|cards-read)\.ts$/;
 // Bare PACKAGE specifiers that must never be value-imported from the client
 // graph. Kept separate from SERVER_ONLY above because that regex is tested
 // against a RESOLVED file path, and resolveSpecifier() returns null for a bare

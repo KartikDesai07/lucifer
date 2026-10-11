@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { REWARD_NONE_LABEL_DEFAULT, optionLabel } from "./reward-levels-label";
-import { ladderView, optionChances, optionCost, slotCost } from "./reward-levels-view";
+import { chancesOf, ladderView, optionChances, optionCost, slotCost } from "./reward-levels-view";
 import { REWARD_LABEL_MAX_LEN, REWARD_PERCENT_MAX, type RewardLevel, type RewardOption, type RewardSlot } from "./reward-levels";
 
 // CB-7 S1 — labels, odds, cost estimates and the diner's ladder. All derived from CONFIG, never from a roll.
@@ -62,6 +62,47 @@ test("optionChances: largest remainder — [1,1,1] → [34,33,33], ties go to th
   assert.deepEqual(optionChances(slotOf([1, 2])), [33, 67]);
   assert.deepEqual(optionChances(slotOf([5])), [100]);
   assert.deepEqual(optionChances(slotOf([])), []);
+});
+
+test("chancesOf: the same answer as optionChances over the bare weights (an issued card's pool)", () => {
+  for (const weights of [[1, 1, 1], [1, 3, 2], [1, 2], [5], [], [100, 1, 7, 12, 3]]) {
+    assert.deepEqual(chancesOf(weights), optionChances(slotOf(weights)), weights.join(","));
+  }
+});
+
+// s90 review A1 (arbitrated): whole-percent rounding must never tell a diner "0%" for a prize they can win (F14 odds
+// are a legal surface). Every positive weight shows at least 1%; the 1 comes from the share rounded UP the most (the
+// largest share·total − weight·100; ties: the later option), so the total stays exactly 100 and a likelier prize never
+// reads below a less likely one (fresh-eyes review: [1,1,1,97,98] must not show 49% / 48%).
+test("chancesOf: a positive weight never shows 0% — [1,100,100,100,100] → [1,25,25,25,24]", () => {
+  assert.deepEqual(chancesOf([1, 100, 100, 100, 100]), [1, 25, 25, 25, 24]);
+  assert.deepEqual(chancesOf([1, 100, 100]), [1, 50, 49]);
+  assert.deepEqual(chancesOf([1, 1, 50, 100]), [1, 1, 33, 65]);
+});
+
+test("chancesOf: the zero lift never ranks a likelier prize below a less likely one — [1,1,1,97,98] → [1,1,1,48,49]", () => {
+  assert.deepEqual(chancesOf([1, 1, 1, 97, 98]), [1, 1, 1, 48, 49]);
+});
+
+test("chancesOf: every write-valid box (≤5 options, weights 1..100 on a coarse grid) shows ≥1% per option, sums to 100 and keeps the weight order", () => {
+  const grid = [1, 2, 3, 7, 33, 100];
+  const boxes: number[][] = [];
+  const build = (prefix: number[]): void => {
+    if (prefix.length > 0) boxes.push(prefix);
+    if (prefix.length === 5) return;
+    for (const w of grid) build([...prefix, w]);
+  };
+  build([]);
+  for (const weights of boxes) {
+    const chances = chancesOf(weights);
+    assert.equal(chances.reduce((s, n) => s + n, 0), 100, weights.join(","));
+    assert.ok(chances.every((c) => c >= 1), `${weights.join(",")} → ${chances.join(",")}`);
+    weights.forEach((wi, i) =>
+      weights.forEach((wj, j) => {
+        if (wi < wj) assert.ok(chances[i] <= chances[j], `order: ${weights.join(",")} → ${chances.join(",")}`);
+      }),
+    );
+  }
 });
 
 test("optionChances: always sums to exactly 100 across many weight shapes", () => {
