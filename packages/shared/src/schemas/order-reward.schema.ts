@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { LOYALTY_MILESTONE_AT_MIN, LOYALTY_MILESTONE_AT_MAX } from "../loyalty-rules";
 import { PROMO_CODE_PATTERN } from "../public-promo";
+import { REWARD_CARD_ID_RE } from "../reward-levels";
 
 // The reward/promo INTENT fields of the order request schemas, split out of
 // order.schema.ts (S5a, behaviour-preserving move). Same chains, same fences.
@@ -34,9 +35,17 @@ export const counterPromoCodeSchema = z
   .refine((v) => PROMO_CODE_PATTERN.test(v), "Use 3-16 letters or numbers")
   .optional();
 
+// CB-7 S5 (§2.6) — a revealed scratch card, as INTENT ONLY: the card's id on
+// the customer's own row. The server reads the card, gates it, resolves its
+// money and claims it (lib/reward-card-claim.ts); a client can never send a
+// card's value. Sending this AND rewardAt is refused by the writer (one
+// reward per bill), not here — the create schema is a superRefine'd object.
+export const rewardCardIdSchema = z.string().regex(REWARD_CARD_ID_RE).optional();
+
 // Spread into createOrderSchema; the add-round and settle schemas take
-// rewardAtSchema alone (a promo code only exists at create).
+// rewardAtSchema + rewardCardIdSchema (a promo code only exists at create).
 export const orderRewardIntentShape = {
   rewardAt: rewardAtSchema,
+  rewardCardId: rewardCardIdSchema,
   promoCode: counterPromoCodeSchema,
 };

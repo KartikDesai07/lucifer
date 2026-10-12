@@ -6,6 +6,12 @@ import { resolveLoyaltyConfig } from "@/lib/diner-loyalty";
 import type { ResolvedMilestone } from "@pos/shared/loyalty-rules";
 import { success, notFound, requireAuth, serverError } from "@/lib/api-helpers";
 import { maskCustomer } from "@/lib/customer-privacy";
+import { Product } from "@/models/Product";
+import type { ISettings } from "@/models/Settings";
+import type { StaffRewardCard } from "@pos/shared/reward-card-use";
+import { dinerAccountsOn } from "@/lib/diner-route-guard";
+import { readWalletCardsOf } from "@/lib/reward-cards-read";
+import { staffCardCategoryIds, staffCardsOf } from "@/lib/reward-cards-staff";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +50,27 @@ export interface StaffRewardRung {
 export interface CustomerRewardsResponse {
   stamps: number;
   rungs: StaffRewardRung[];
+  // CB-7 S5 — the diner's USABLE scratch cards (revealed, money kind, not expired), built key by key from the staff
+  // allowlist (lib/reward-cards-staff.ts). Always [] while diner accounts are off: no account, no wallet.
+  cards: StaffRewardCard[];
+}
+
+// The wallet, filtered and allowlisted. A category card's product ids come from ONE product query for every category
+// at once (preview only — the server re-resolves at claim); a wallet with no category card makes no product query.
+async function loadStaffCards(customerId: string, settings: ISettings | null): Promise<StaffRewardCard[]> {
+  if (!dinerAccountsOn(settings)) return [];
+  const now = new Date();
+  const wallet = await readWalletCardsOf(customerId);
+  const categoryIds = staffCardCategoryIds(wallet, now).filter((cid) => mongoose.isValidObjectId(cid));
+  const scopeByCategory = new Map<string, string[]>();
+  if (categoryIds.length > 0) {
+    const rows = await Product.find({ categoryId: { $in: categoryIds } }).select("_id categoryId").lean();
+    for (const row of rows) {
+      const key = String(row.categoryId);
+      scopeByCategory.set(key, [...(scopeByCategory.get(key) ?? []), String(row._id)]);
+    }
+  }
+  return staffCardsOf(wallet, scopeByCategory, now);
 }
 
 // GET /api/customers/[id]/rewards — the counter's reward picker data: the
@@ -109,7 +136,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       ambiguous: (rawAtCounts.get(m.at) ?? 0) > 1,
     }));
 
-    const response: CustomerRewardsResponse = { stamps, rungs };
+    const cards = await loadStaffCards(id, settings);
+    const response: CustomerRewardsResponse = { stamps, rungs, cards };
     return success(response);
   } catch (error) {
     return serverError("Failed to load customer rewards", error);

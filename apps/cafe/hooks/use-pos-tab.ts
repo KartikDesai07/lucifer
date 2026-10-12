@@ -134,7 +134,7 @@ export function usePosTab(receiver: string) {
 
   const reward = useRewardSelection(
     customer, plain.total, resumedOrder, rewardAt, setRewardAt,
-    discountRaw, discountUnit, setDiscountRaw, setDiscountUnit,
+    discountRaw, discountUnit, setDiscountRaw, setDiscountUnit, cart, promoCode,
   );
 
   // The figures every surface shows, re-priced with the SELECTED rung so cart,
@@ -148,6 +148,7 @@ export function usePosTab(receiver: string) {
     extraCharges: extraChargesForTotals,
     settings: settings.data,
     reward: reward.selectedReward,
+    lines: cart,
   });
 
   // The one foreground settle (hooks/use-settle-flow.ts). Its handlers run only
@@ -215,8 +216,9 @@ export function usePosTab(receiver: string) {
     // null = explicit clear; when "gst" the server ignores the number and re-derives.
     discountKind: discountKind ?? null,
     gstAmount,
-    // CB-5B S9 — INTENT ONLY; `undefined` (omit) not `null` (not nullable).
+    // CB-5B S9 — INTENT ONLY; `undefined` (omit) not `null` (not nullable). CB-7 S5: a picked card's id, same rule.
     rewardAt: reward.pendingRewardAt,
+    rewardCardId: reward.pendingCardId,
     // CB-5D part 2 — INTENT ONLY, same omit-not-null rule as rewardAt above;
     // the schema field is `.optional()`, not nullable, and the server only
     // accepts this on CREATE (never add-round/settle — out of scope there).
@@ -288,13 +290,11 @@ export function usePosTab(receiver: string) {
     const newItems = cart.filter((ci) => ci.kotRound === 0).map(cartItemToInput);
     if (!newItems.length) return;
     const startedFor = resumedOrder?._id ?? null;
-    // CB-5B S9 — the reward claim rides the add-round too: an OPEN TAB is exactly
-    // when the counter applies one. INTENT ONLY (`pendingRewardAt` is the rung's
-    // `at`), already `undefined` — omitted over JSON, never `null` — for a tab
-    // that carries a reward, so the route's 409 is a backstop. CB-CHG — the
+    // CB-5B S9 — the reward claim rides the add-round too (a rung's `at` or CB-7 S5's card id): INTENT ONLY, already
+    // `undefined` (omitted over JSON) for a tab that carries a reward, so the route's 409 is a backstop. CB-CHG — the
     // complete new extra set (replace, decision 6).
     const round = resumedOrder
-      ? { id: resumedOrder._id, data: { items: newItems, discount, discountKind: discountKind ?? null, chargeAmount: chargeOverride, extraCharges, rewardAt: reward.pendingRewardAt } }
+      ? { id: resumedOrder._id, data: { items: newItems, discount, discountKind: discountKind ?? null, chargeAmount: chargeOverride, extraCharges, rewardAt: reward.pendingRewardAt, rewardCardId: reward.pendingCardId } }
       : null;
     const create = buildCreatePayload({});
     // One confirmed request: the cart is freed only on the server's answer, and

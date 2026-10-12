@@ -15,6 +15,7 @@ import {
 import { orderSummaryCacheKey } from "@/lib/utils";
 import { reconcileLedger, validCustomer } from "@/lib/order";
 import { returnRewardStamps } from "@/lib/reward-claim";
+import { releaseRewardCard } from "@/lib/reward-card-claim";
 import { releaseAssignedRewardForRung } from "@/lib/assigned-reward-gate";
 import { cancelOrderSchema } from "@/schemas";
 
@@ -157,6 +158,18 @@ export async function POST(req: Request, { params }: Params) {
           }
         } catch {
           // Deliberately empty — see above. The stamps stay spent; the cancel stands.
+        }
+      }
+
+      // CB-7 S5 — a cancelled bill gives its scratch card back, on the same terms as the stamps above: the cancel
+      // CAS has LANDED, so this is the compensating half of a committed write and its failure is swallowed (a 500
+      // would send the operator into the "already cancelled" 409). The release matches status "used" AND this
+      // orderId, so it can never un-spend a card another order holds; false (evicted / re-used) is expected.
+      if (rewardCustomer && updated.rewardCardId) {
+        try {
+          if (await releaseRewardCard(rewardCustomer, updated.rewardCardId, updated.orderId)) cache.del("customers");
+        } catch {
+          // Deliberately empty — see above. The card stays spent; the cancel stands.
         }
       }
 

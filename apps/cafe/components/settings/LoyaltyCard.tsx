@@ -14,11 +14,19 @@ import {
 import { Input } from "@/components/ui/input";
 import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 import { Field, SettingsGroup, ToggleRow } from "@/components/settings/SettingsFields";
+import { REWARD_NOTE_CLASS } from "@/components/settings/rewards/reward-ui";
+
+// One line when scratch-card levels are on: they REPLACE the stamp card for new bills, so the owner is told why
+// stamps stopped. The stamp switch below is left untouched (no automatic setting flips).
+const LEVELS_ON_NOTE =
+  "Scratch-card levels are on, so diners stop earning stamps. Stamps and codes they already hold can still be used.";
 
 interface LoyaltyCardProps {
   control: Control<SettingsInput>;
   register: UseFormRegister<SettingsInput>;
   errors: FieldErrors<SettingsInput>;
+  /** The SAVED scratch-card setup is switched on (the same stored flag that stops stamp grants). */
+  levelsChosen: boolean;
 }
 
 // CB-4 — diner accounts + the stamp card, on the SAME settings screen as QR
@@ -42,7 +50,7 @@ interface LoyaltyCardProps {
 // (diner-route-guard dinerLoyaltyOn), so the card switch is shown off and
 // locked while sign-in is off. The STORED value is never rewritten by that:
 // turn sign-in back on and the cafe's own choice is still there.
-export function LoyaltyCard({ control, register, errors }: LoyaltyCardProps) {
+export function LoyaltyCard({ control, register, errors, levelsChosen }: LoyaltyCardProps) {
   const minBillId = useId();
   const cardSizeId = useId();
   const unitLabelId = useId();
@@ -69,6 +77,12 @@ export function LoyaltyCard({ control, register, errors }: LoyaltyCardProps) {
         title="Stamp card"
         description="Diners collect stamps on their bills and earn rewards along the way."
       >
+        {levelsChosen && (
+          <p className={REWARD_NOTE_CLASS} role="status">
+            {LEVELS_ON_NOTE}
+          </p>
+        )}
+
         <Controller
           control={control}
           name="loyaltyEnabled"

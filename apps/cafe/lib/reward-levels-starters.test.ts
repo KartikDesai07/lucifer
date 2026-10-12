@@ -70,12 +70,19 @@ test("starters: every one passes the WRITE gate, is switched OFF, carries the ca
   }
 });
 
-test("starters: with the lock on, no starter or copy then edit reaches enabled:true", () => {
-  assert.equal(REWARD_LEVELS_LAUNCHED, false, "precondition: S4 flips the constant and rewrites this");
-  for (const id of IDS) assert.equal(setEnabled(starterConfig(id, 10), true).enabled, false, id);
+test("starters: launched, a starter or a copy still arrives OFF (no automatic flips) and only the owner's switch turns it on", () => {
+  assert.equal(REWARD_LEVELS_LAUNCHED, true, "precondition: unlocked in S5");
+  for (const id of IDS) {
+    const starter = starterConfig(id, 10);
+    assert.equal(starter.enabled, false, `${id} arrives off`);
+    const on = setEnabled(starter, true);
+    assert.equal(on.enabled, true, `${id} switches on`);
+    assert.equal(rewardLevelsWriteSchema.safeParse(on).success, true, `${id} switched on passes WRITE`);
+  }
   const copied = copyStampRewards({ milestones: [stamp(3)] }, 10).config;
   assert.ok(copied);
-  assert.equal(setEnabled(copied, true).enabled, false);
+  assert.equal(copied.enabled, false, "the copy arrives off");
+  assert.equal(setEnabled(copied, true).enabled, true);
 });
 
 test("starters: the ladder engine walks the three-level starter from box 5 of level 1 into level 2 and on into the repeating last level", () => {

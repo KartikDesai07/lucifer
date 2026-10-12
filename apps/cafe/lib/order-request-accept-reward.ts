@@ -9,6 +9,13 @@ import {
   type RewardAssignment,
 } from "@/lib/reward-claim";
 import { buildRewardAssignment } from "@/lib/reward-assignment";
+import {
+  resolveCardClaim,
+  claimRewardCard,
+  releaseRewardCard,
+  cardSnapshotFields,
+} from "@/lib/reward-card-claim";
+import type { CardScopeItem } from "@/lib/reward-card-cas";
 
 // CB-5B S8 (owner decision D4) — the accept-side half of a DINER-ORIGINATED
 // reward claim. Sibling of lib/order-request-accept*.ts, its own file because
@@ -25,27 +32,58 @@ import { buildRewardAssignment } from "@/lib/reward-assignment";
 // carries one scalar and one kind.
 
 // Staff-actionable copy for the one case a resolved claim still fails to
-// SPEND: another device redeemed the same stamps between this diner's submit
+// SPEND (reward-neutral: it is shown for a scratch card as well as a stamp rung): another device used the same reward between this diner's submit
 // and staff tapping accept. The bill the diner consented to had the reward on
 // it, so the honest outcome is a rejection they can re-order from — never a
 // silent full-price order, and never a discounted bill funded by nothing.
 export const REWARD_UNFUNDED_ERROR =
-  "Those stamps were already used on another order — reject this request and ask the customer to order again";
+  "That reward was already used on another order — reject this request and ask the customer to order again";
 
-export interface AcceptRewardResolution {
+// What the stored request asked for. At most one of the two is ever stored (the submit gates refuse both); `promoCode`
+// is the request's own promo, read only to fence a card (see resolveAcceptReward).
+export interface AcceptRewardIntent {
+  rewardAt?: number;
+  cardId?: string;
+  promoCode?: string;
+}
+
+interface AcceptRewardBase {
   reward: RedeemedReward;
-  cost: number;
   customerId: string;
-  // Present only for a kind:"item" rung — the free dish, already stamped with
+  // Present only for a kind:"item" rung or a free-item card — the free dish, already stamped with
   // kotRound 1 (an accept-created order is always on its first round), ready
   // to splice into the items array before pricing.
   line?: ResolvedRewardOrderItem;
+}
+
+export interface StampAcceptResolution extends AcceptRewardBase {
+  kind: "stamp";
+  cost: number;
   // CB-5D part 2 — present only when the claimed rung mints a promo code
   // (buildRewardAssignment returned something). Carried through unchanged to
   // claimAcceptReward so the code lands in the SAME update as the stamp
   // debit — see reward-redemption.ts's own comment on why that must be one
   // write, not two.
   assignment?: RewardAssignment;
+}
+
+// CB-7 S5 (§2.6) — a scratch card. No stamps, so no cost / assignment; `cardId` is the card on the customer's row.
+export interface CardAcceptResolution extends AcceptRewardBase {
+  kind: "card";
+  cardId: string;
+}
+
+export type AcceptRewardResolution = StampAcceptResolution | CardAcceptResolution;
+
+// The order's lines with a claimed free dish (item rung or free-item card) spliced in at its REAL price: the subtotal
+// reducer skips it, so the line is untotalled and untaxed (S12) while the kitchen still sees a normal dish to make.
+export function acceptOrderItems<T>(
+  items: T[],
+  resolution: AcceptRewardResolution | undefined,
+): Array<T | (Omit<ResolvedRewardOrderItem, "productId"> & { productId: string })> {
+  return resolution?.line
+    ? [...items, { ...resolution.line, productId: String(resolution.line.productId) }]
+    : items;
 }
 
 /**
@@ -71,11 +109,21 @@ export interface AcceptRewardResolution {
  * what the reward is worth.
  */
 export async function resolveAcceptReward(
-  requestedRewardAt: number | undefined,
+  intent: AcceptRewardIntent,
   customerId: string | undefined,
   settings: ISettings | null,
   billTotal: number,
+  // The accepted lines: a scoped card is refused (never burned for Rs 0) when nothing on the bill matches it.
+  items: readonly CardScopeItem[],
 ): Promise<AcceptRewardResolution | undefined> {
+  const requestedRewardAt = intent.rewardAt;
+  if (intent.cardId !== undefined) {
+    // FAIL CLOSED, nothing spent: the submit gates keep a card away from a stamp rung and from a promo, so either
+    // alongside a card means the stored request changed after submit (a promo can be ADDED by editing a pending
+    // request). One reward per bill: the promo / rung stays what the diner asked for, the card stays unspent.
+    if (requestedRewardAt !== undefined || intent.promoCode !== undefined) return undefined;
+    return resolveAcceptCard(intent.cardId, customerId, settings, billTotal, items);
+  }
   if (requestedRewardAt === undefined) return undefined;
   // Stamps live on a Customer row. The accept bridge only attaches a customer
   // when one already exists for this mobile, or when ctx.createCustomer mints
@@ -121,12 +169,41 @@ export async function resolveAcceptReward(
   const assignment = buildRewardAssignment(resolved.claim.milestone, settings?.promoCodes, assignedAt);
 
   return {
+    kind: "stamp",
     reward: resolved.claim.reward,
     cost: resolved.claim.cost,
     customerId,
     ...(resolved.line ? { line: resolved.line } : {}),
     ...(assignment ? { assignment } : {}),
   };
+}
+
+// The card half of the create/parcel accept. Same outcome rule as the stamp half: a card that no longer resolves (used
+// elsewhere, expired, bill below its minimum, nothing matches its scope, a new customer with no cards) leaves the
+// order at FULL price with nothing claimed. The identity is the customer the accept resolved BY MOBILE; the submit gate
+// bound that mobile to the signed-in diner, and resolveCardClaim re-reads the card from that row, so a card that is
+// not on it simply does not resolve. Nothing is written here.
+async function resolveAcceptCard(
+  cardId: string,
+  customerId: string | undefined,
+  settings: ISettings | null,
+  billTotal: number,
+  items: readonly CardScopeItem[],
+): Promise<CardAcceptResolution | undefined> {
+  if (!customerId) return undefined;
+  const resolved = await resolveCardClaim({
+    settings,
+    customerId,
+    cardId,
+    billTotal,
+    items,
+    // Order-taking writer: a free-dish card IS allowed here (the dish reaches the kitchen with the order).
+    refuseItemKind: false,
+    kotRound: 1,
+    now: new Date(),
+  });
+  if (!resolved.ok) return undefined;
+  return { kind: "card", cardId, reward: resolved.reward, customerId, ...(resolved.line ? { line: resolved.line } : {}) };
 }
 
 /**
@@ -146,6 +223,8 @@ export async function claimAcceptReward(
   resolution: AcceptRewardResolution,
   orderId: string,
 ): Promise<boolean> {
+  // A card is claimed against the clock of the claim itself (its use-by is checked in the CAS), never the resolve's.
+  if (resolution.kind === "card") return claimRewardCard(resolution.customerId, resolution.cardId, orderId, new Date());
   return claimRewardStamps(resolution.customerId, orderId, resolution.cost, resolution.assignment);
 }
 
@@ -163,12 +242,19 @@ export async function returnAcceptReward(
   resolution: AcceptRewardResolution,
   orderId: string,
 ): Promise<void> {
+  if (resolution.kind === "card") {
+    await releaseRewardCard(resolution.customerId, resolution.cardId, orderId);
+    return;
+  }
   await returnRewardStamps(resolution.customerId, orderId, resolution.cost, resolution.assignment);
 }
 
-/** The five-plus snapshot fields for the Order doc, or nothing. */
+/** The snapshot fields for the Order doc, or nothing. A card writes its own set and NEVER rewardAt / rewardStamps. */
 export function acceptRewardSnapshot(
   resolution: AcceptRewardResolution | undefined,
 ): Record<string, unknown> {
-  return resolution ? rewardSnapshotFields(resolution.reward, resolution.cost) : {};
+  if (!resolution) return {};
+  return resolution.kind === "card"
+    ? cardSnapshotFields(resolution.reward)
+    : rewardSnapshotFields(resolution.reward, resolution.cost);
 }

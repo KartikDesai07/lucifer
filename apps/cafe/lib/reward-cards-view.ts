@@ -31,7 +31,7 @@ import { inr } from "@pos/shared/utils";
 // row has none.
 const NAME_FALLBACK = "item";
 
-type CardInput = Pick<
+export type CardInput = Pick<
   RewardCardSnapshot,
   | "id"
   | "source"
@@ -99,7 +99,7 @@ function conditionOf(card: CardInput): string | null {
   return parts.length > 0 ? parts.join(" ") : null;
 }
 
-function outcomeOf(card: CardInput): DinerOutcomeDto {
+export function outcomeOf(card: CardInput): DinerOutcomeDto {
   return {
     kind: card.kind,
     value: card.value,

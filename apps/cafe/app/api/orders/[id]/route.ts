@@ -17,6 +17,8 @@ import { orderSummaryCacheKey } from "@/lib/utils";
 import { reconcileLedger } from "@/lib/order";
 import { updateOrderSchema } from "@/schemas";
 import { TABLE_CHANGE_WRONG_ROUTE_ERROR } from "@/lib/order-table-move";
+import { hasOrderReward } from "@/lib/order-reward-fence";
+import { REWARD_REASSIGN_REFUSED } from "@pos/shared/reward-card-use";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +80,14 @@ export async function PUT(req: Request, { params }: Params) {
     // the one field it cannot price. No shipped UI sends tableNo here.
     if (changingTable) return failure(TABLE_CHANGE_WRONG_ROUTE_ERROR, 400);
 
+    // CB-7 S5 — a bill that used a reward (stamp rung or scratch card) cannot move to another customer: the spend
+    // sits on the ORIGINAL customer's row, so a cancel could never give it back. The write below repeats the rule
+    // as CAS terms (the reciprocal of the customerId term in rewardClaimOrderFence), so a reward that lands
+    // between this read and the write makes the PUT miss instead of reassigning a rewarded bill.
+    const changingCustomer =
+      parsed.data.customerId !== undefined && parsed.data.customerId !== String(old.customerId ?? "");
+    if (changingCustomer && hasOrderReward(old)) return failure(REWARD_REASSIGN_REFUSED, 409);
+
     // Conditional on the status we READ, so the freeze above is enforced at the
     // WRITE and not merely checked beforehand: a cancel landing between that read
     // and this write would otherwise let the ledger delta below run a SECOND
@@ -93,6 +103,9 @@ export async function PUT(req: Request, { params }: Params) {
       // overwrites tableNo back to the old value, leaving the new table
       // Occupied by nobody (project lesson: reciprocal-cas-guards).
       ...(changingTable ? { tableNo: old.tableNo ?? { $in: [null, ""] } } : {}),
+      ...(changingCustomer
+        ? { discountKind: { $ne: "reward" }, rewardAt: { $exists: false }, rewardCardId: { $exists: false } }
+        : {}),
     };
     const updated = await Order.findOneAndUpdate(filter, parsed.data, {
       new: true,

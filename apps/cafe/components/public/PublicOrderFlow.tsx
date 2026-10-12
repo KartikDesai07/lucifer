@@ -47,12 +47,15 @@ interface PublicOrderFlowProps {
   // CB-5D part 2 — pass-through only: the shell owns the diner/me payload,
   // this flow just hands the assigned codes to the cart's promo field.
   rewards?: AssignedRewardOffer[];
+  // CB-7 S5 — pass-through to the cart's scratch-card picker: the signed-in diner's mobile while cards are on, else
+  // null/absent (the picker then renders nothing).
+  cardsIdentity?: string | null;
 }
 
 // Owns the diner's cart (persisted through public-cart-store), the resolved
 // table charge, and the /m name-based table pick — the one parent PublicMenu,
 // PublicItemSheet and PublicCart all report up to. SLICE 8.
-export function PublicOrderFlow({ token, chrome, rewards }: PublicOrderFlowProps) {
+export function PublicOrderFlow({ token, chrome, rewards, cardsIdentity }: PublicOrderFlowProps) {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [pickedTable, setPickedTable] = useState<TablePick | null>(null);
@@ -248,6 +251,7 @@ export function PublicOrderFlow({ token, chrome, rewards }: PublicOrderFlowProps
         onSubmitted={handleSubmitted}
         suggestions={suggestions}
         rewards={rewards}
+        cardsIdentity={cardsIdentity}
         onAddSuggestion={handleAddSuggestion}
       />
     </>

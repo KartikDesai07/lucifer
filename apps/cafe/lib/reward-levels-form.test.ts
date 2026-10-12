@@ -67,16 +67,18 @@ function oneBox(option: RewardOption): RewardLevelsConfig {
   return putSlot(emptyConfig(), 0, { ...newSlot(3), options: [option] });
 }
 
-test("lock is on: no edit sequence yields enabled:true, and every config the editor builds passes the WRITE gate disabled", () => {
-  assert.equal(REWARD_LEVELS_LAUNCHED, false, "precondition: these asserts are about the lock (S4 flips the constant and rewrites them)");
-  let cfg = emptyConfig(50);
-  cfg = setEnabled(cfg, true);
-  cfg = putSlot(addLevel(cfg), 1, newSlot(2));
-  cfg = setEnabled(setLevelSize(setMinBill(cfg, 10), 0, 5), true);
-  assert.equal(cfg.enabled, false);
-  assert.equal(canSwitchOn(true), false, "canSwitchOn is the lock AND accounts");
-  assert.equal(canSwitchOn(false), false);
-  assert.equal(rewardLevelsWriteSchema.safeParse(cfg).success, true);
+test("launched: the switch turns on and off, canSwitchOn is sign-in alone, and a built config passes the WRITE gate either way", () => {
+  assert.equal(REWARD_LEVELS_LAUNCHED, true, "precondition: unlocked in S5 (the lock is the mechanism to close it again)");
+  assert.deepEqual([canSwitchOn(true), canSwitchOn(false)], [true, false], "canSwitchOn is the launch flag AND sign-in");
+  const base = emptyConfig(50);
+  assert.equal(setEnabled(base, true).enabled, true);
+  assert.equal(setEnabled(setEnabled(base, true), false).enabled, false);
+  const cfg = setLevelSize(setMinBill(putSlot(addLevel(base), 1, newSlot(2)), 10), 0, 5);
+  const on = setEnabled(putSlot(cfg, 0, { ...newSlot(3), options: [newOption("bill-percent", "o1")] }), true);
+  assert.equal(on.enabled, true);
+  assert.equal(rewardLevelsWriteSchema.safeParse(on).success, true, "WRITE accepts a built config switched on");
+  assert.equal(rewardLevelsWriteSchema.safeParse(setEnabled(on, false)).success, true, "and switched off");
+  assert.equal(rewardLevelsProblems(on).some((p) => p.message === "Scratch cards are not available yet"), false, "the lock message is gone");
 });
 
 test("emptyConfig: one level of the stamp card's default size, no boxes, the cafe minimum carried only when it is real", () => {
@@ -287,12 +289,12 @@ test("problems: blank numbers, empty picks and an over-long level all read as se
   assert.ok(rewardLevelsProblems(blank).every((p) => p.message.endsWith("must be a whole number")));
 });
 
-test("problems: a box of only 'No reward' is refused, and a draft with the switch on never gets past the lock", () => {
+test("problems: a box of only 'No reward' is refused, and a switched-on draft no longer meets the launch lock", () => {
   const onlyNone = oneBox(newOption("none", "o1"));
   const [problem] = rewardLevelsProblems(onlyNone);
   assert.equal(problem.message, "Add at least one real reward to this box");
   assert.equal(problem.field, "options");
   assert.equal(fieldProblem([problem], 0, 3, null, "options"), "Add at least one real reward to this box");
   const forced = { ...oneBox(newOption("bill-percent", "o1")), enabled: true };
-  assert.equal(rewardLevelsProblems(forced).some((p) => p.message === "Scratch cards are not available yet"), !REWARD_LEVELS_LAUNCHED);
+  assert.equal(rewardLevelsProblems(forced).some((p) => p.message === "Scratch cards are not available yet"), false);
 });

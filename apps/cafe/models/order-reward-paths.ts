@@ -26,6 +26,17 @@ export interface IOrderRewardFields {
   // re-derived: deriving it live from the current ladder would refund the
   // WRONG number on cancel after the owner retunes the milestone's `at`.
   rewardStamps?: number;
+  // CB-7 S5 (§2.6) — a scratch card used on this bill. A card order stores rewardAt + rewardStamps ABSENT (no
+  // rung-keyed reader may run for it) and rebuilds through rewardFromOrderSnapshot's card arm keyed on
+  // rewardCardId. The scope ids are snapshotted at claim so no re-pricing writer re-reads the menu.
+  rewardCardId?: string;
+  rewardScopeProductIds?: string[];
+  rewardScopeMaxUnits?: number;
+  rewardScopeLabel?: string;
+  rewardCapRupees?: number;
+  // s86 P2 — the promo code the bill opened with (counter create, QR accept, QR add-round). Never $unset: its
+  // presence refuses every reward claim on the bill, inside the claim's CAS.
+  promoCode?: string;
 }
 
 export const orderRewardPaths = {
@@ -46,4 +57,13 @@ export const orderRewardPaths = {
     rewardItemProductId: { type: String },
     rewardQty: { type: Number },
     rewardStamps: { type: Number },
+    // CB-7 S5 — no `default:` on any path (omit-empty). The array MUST say
+    // `default: undefined`: a Mongoose array path defaults to [] otherwise,
+    // stamping an empty scope onto every order ever written.
+    rewardCardId: { type: String },
+    rewardScopeProductIds: { type: [String], default: undefined },
+    rewardScopeMaxUnits: { type: Number },
+    rewardScopeLabel: { type: String },
+    rewardCapRupees: { type: Number },
+    promoCode: { type: String },
 };

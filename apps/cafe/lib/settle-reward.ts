@@ -1,28 +1,48 @@
-import type { DiscountKind } from "@/lib/constants";
-import { computeOrderTotals, gstConfigFromOrder, resolveDiscountKind } from "@/lib/receipt";
+import { computeOrderTotals, gstConfigFromOrder } from "@/lib/receipt";
 import { resolveRewardClaim, rewardClaimMessage } from "@/lib/reward-claim";
 import { buildRewardAssignment } from "@/lib/reward-assignment";
+import { resolveCardClaim } from "@/lib/reward-card-claim";
+import { rewardClaimRefusal } from "@/lib/order-reward-fence";
 import { gstConfigOf } from "@/lib/settings";
+import { settleCharges } from "@/lib/settle-charges";
+import { chargesFromOrder, splitChargeTotals } from "@pos/shared/order-charges";
+import { CARD_REWARD_EXCLUSIVE } from "@pos/shared/reward-card-use";
+import type { RedeemedReward } from "@pos/shared/reward-redemption";
 import type { IOrder } from "@/models/Order";
 import type { ISettings } from "@/models/Settings";
 
 // The settle's reward resolution, split out of app/api/orders/[id]/settle/
 // route.ts (S5a, behaviour-preserving move) so the route file stops growing.
 
+// The kotRound resolveCardClaim stamps on a free-dish line; settle refuses that kind, so no line is ever stamped.
+const UNUSED_KOT_ROUND = 1;
+
 // The reward this settle claims, once resolved (never an item reward: D9).
 export type SettleRewardClaim = Extract<Awaited<ReturnType<typeof resolveRewardClaim>>, { ok: true }>;
 
+// CB-7 S5 — a scratch card resolved for this settle (never a free dish: D9); `now` is the one clock reading its claim uses.
+export interface SettleCardClaim {
+  id: string;
+  reward: RedeemedReward;
+  now: Date;
+}
+
 export interface ResolveSettleRewardArgs {
-  // The open tab as read: its lines, stored discount/charge, customer, any reward.
-  old: Pick<IOrder, "items" | "discount" | "chargeAmount" | "customerId" | "rewardAt" | "discountKind"> &
+  // The open tab as read: its lines, stored discount/charge, customer, any reward, the promo marker.
+  old: Pick<
+    IOrder,
+    "items" | "discount" | "chargeAmount" | "charges" | "chargeLabel" | "customerId" | "rewardAt" | "rewardCardId" | "promoCode" | "discountKind"
+  > &
     Parameters<typeof gstConfigFromOrder>[0];
   settings: ISettings;
   // The claimed rung's stamp cost, absent when this settle claims nothing.
   rewardAt: number | undefined;
-  // The settle body's own discount / kind / charge (all optional: omit = unchanged).
-  discount: number | undefined;
-  discountKind: DiscountKind | null | undefined;
+  // The revealed card to spend instead (exclusive with rewardAt), absent when none.
+  rewardCardId?: string;
+  // The settle body's own charge (optional: omit = unchanged).
   chargeAmount: number | undefined;
+  // The settle body's extra-charge set (G2: present = replaces the stored extras, absent = unchanged).
+  extraCharges?: readonly { label: string; amount: number }[];
 }
 
 export type SettleRewardResolution =
@@ -30,6 +50,7 @@ export type SettleRewardResolution =
   | {
       ok: true;
       claim: SettleRewardClaim | undefined;
+      card: SettleCardClaim | undefined;
       rewardAssignment: ReturnType<typeof buildRewardAssignment> | undefined;
     };
 
@@ -37,9 +58,9 @@ export async function resolveSettleReward({
   old,
   settings,
   rewardAt,
-  discount,
-  discountKind,
+  rewardCardId,
   chargeAmount,
+  extraCharges,
 }: ResolveSettleRewardArgs): Promise<SettleRewardResolution> {
   // CB-5B S5 — a reward claimed AT SETTLE TIME. refuseItemKind: TRUE (D9,
   // owner decision): a free DISH has to reach the kitchen while the order
@@ -47,21 +68,49 @@ export async function resolveSettleReward({
   // flat/percent money-off. An order that already carries a reward refuses
   // a second one outright, same one-scalar-one-kind reasoning as add-round.
   let claim: SettleRewardClaim | undefined;
-  if (rewardAt !== undefined) {
-    if (old.rewardAt !== undefined) {
-      return { ok: false, message: "This tab already has a reward applied", status: 409 };
-    }
-    // billTotal for the minBill gate: the bill WITHOUT the reward — any
-    // settle-time discount/charge change rides along, mirroring what
-    // resolveSettleMoney would price without a reward.
-    const plainKind = resolveDiscountKind(discountKind, old.discountKind);
-    const billTotal = computeOrderTotals({
+  let card: SettleCardClaim | undefined;
+  if (rewardAt !== undefined && rewardCardId !== undefined) {
+    return { ok: false, message: CARD_REWARD_EXCLUSIVE, status: 400 };
+  }
+  if (rewardAt !== undefined || rewardCardId !== undefined) {
+    // One reward per bill, and never on a promo bill (P2): the same rule rides the CAS filter
+    // (rewardClaimOrderFence) for a marker or reward that lands after this read.
+    const refusal = rewardClaimRefusal(old);
+    if (refusal) return { ok: false, message: refusal, status: 409 };
+  }
+  // billTotal for the minBill gate: the bill WITHOUT the reward — a settle-time charge change rides along. A claim
+  // REPLACES any manual/GST discount (the POS sends the reward's own preview as `discount`), so it is priced
+  // undiscounted; only a claiming request ever calls this. G2 — both charge lanes come from the SAME builder the bill
+  // uses (resolveSettleMoney), so the gate reads exactly the bill the settle will charge.
+  const plainTotal = (): number => {
+    const { table, extra } = splitChargeTotals(settleCharges(chargesFromOrder(old), chargeAmount, extraCharges));
+    return computeOrderTotals({
       items: old.items,
-      discount: discount ?? old.discount,
-      discountKind: plainKind,
-      charge: chargeAmount ?? old.chargeAmount ?? 0,
+      discount: 0,
+      discountKind: undefined,
+      charge: table,
+      extraCharge: extra,
       cfg: gstConfigFromOrder(old, gstConfigOf(settings)),
     }).total;
+  };
+  if (rewardCardId !== undefined) {
+    const now = new Date();
+    const resolved = await resolveCardClaim({
+      settings,
+      customerId: old.customerId ? String(old.customerId) : undefined,
+      cardId: rewardCardId,
+      billTotal: plainTotal(),
+      items: old.items,
+      // A free-dish card is refused here (CARD_ITEM_NOT_AT_SETTLE): the dish has to reach the kitchen at order-taking.
+      refuseItemKind: true,
+      kotRound: UNUSED_KOT_ROUND,
+      now,
+    });
+    if (!resolved.ok) return { ok: false, message: resolved.message, status: 400 };
+    card = { id: rewardCardId, reward: resolved.reward, now };
+  }
+  if (rewardAt !== undefined) {
+    const billTotal = plainTotal();
     const resolved = await resolveRewardClaim({
       settings,
       customerId: old.customerId ? String(old.customerId) : undefined,
@@ -83,5 +132,5 @@ export async function resolveSettleReward({
   const rewardAssignment = claim
     ? buildRewardAssignment(claim.milestone, settings?.promoCodes, new Date())
     : undefined;
-  return { ok: true, claim, rewardAssignment };
+  return { ok: true, claim, card, rewardAssignment };
 }

@@ -45,3 +45,19 @@ export async function readDinerCards(
     now: deps.now(),
   });
 }
+
+// CB-7 S5 — ONE card of THIS diner (the claim reads the card it is about to spend; the release reads the immutable
+// validUntil it puts back). The read is keyed on the customer's id, so another diner's card id is simply absent. A bare
+// "_id +rewardCards" returns only the cards (never the rest of the customer row).
+export async function readCardOf(customerId: string, cardId: string): Promise<RewardCardSnapshot | null> {
+  const row = await Customer.findById(customerId).select("_id +rewardCards").lean();
+  return row?.rewardCards?.find((c) => c.id === cardId) ?? null;
+}
+
+// CB-7 S5 — EVERY card of THIS diner, for the staff POS picker (GET /api/customers/[id]/rewards). The caller filters
+// to the usable ones and maps them through the staff allowlist (lib/reward-cards-staff.ts); this read never reaches a
+// browser. An unknown customer reads as no cards.
+export async function readWalletCardsOf(customerId: string): Promise<RewardCardSnapshot[]> {
+  const row = await Customer.findById(customerId).select("_id +rewardCards").lean();
+  return row?.rewardCards ?? [];
+}

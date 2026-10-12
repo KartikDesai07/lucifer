@@ -7,6 +7,7 @@
 import { LOYALTY_REWARD_KINDS, type LoyaltyRewardKind } from "./public-diner";
 import type { ResolvedMilestone } from "./loyalty-rules";
 import type { DiscountKind } from "./constants";
+import { CARD_REWARD_AT } from "./reward-card-use";
 
 // A resolved milestone, minus `minBill`. `minBill` is a GATE the route
 // evaluates ONCE, at claim time, to decide whether the milestone may be
@@ -27,6 +28,20 @@ export interface RedeemedReward {
   // pre-D8 stored order has neither.
   itemProductId?: string;
   qty?: number;
+  // CB-7 S5 (§2.6) — set only for a scratch card used on the bill (`at` is then CARD_REWARD_AT, never stored).
+  // `scope` narrows the discount to the listed dishes (absent = the whole bill); `capRupees` = "up to ₹X".
+  cardId?: string;
+  scope?: RewardScope;
+  capRupees?: number;
+}
+
+// CB-7 S5 — which dishes a card's discount applies to. `productIds` are resolved ONCE at claim (a category card
+// snapshots its category's ids then) and stored on the Order, so no re-pricing writer re-reads the menu.
+// `maxUnits` caps how many units are discounted (a product card: one — owner F8, the DEAREST unit, owner s91).
+export interface RewardScope {
+  productIds: string[];
+  maxUnits?: number;
+  label: string; // the product / category name, display only
 }
 
 /** Build the redemption snapshot from a resolved milestone at claim time. */
@@ -55,7 +70,7 @@ export function redemptionSnapshotOf(milestone: ResolvedMilestone): RedeemedRewa
 // The five Order snapshot fields (CB-5B §3b), typed structurally so this
 // module never imports a cafe Mongoose model — same reasoning as
 // `StoredOrder` in codec.ts staying a plain interface.
-interface OrderRewardSnapshot {
+export interface OrderRewardSnapshot {
   rewardAt?: number;
   rewardKind?: LoyaltyRewardKind;
   rewardValue?: number;
@@ -63,7 +78,32 @@ interface OrderRewardSnapshot {
   // CB-5B D8/D11 — the two new Order snapshot fields behind a free dish.
   rewardItemProductId?: string;
   rewardQty?: number;
+  // CB-7 S5 (§2.6) — a scratch card used on the bill. A card order stores rewardAt ABSENT; these + the money
+  // fields above rebuild it.
+  rewardCardId?: string;
+  rewardScopeProductIds?: string[];
+  rewardScopeMaxUnits?: number;
+  rewardScopeLabel?: string;
+  rewardCapRupees?: number;
 }
+
+// Every snapshot key, checked exhaustive at compile time: a reader that PROJECTS an Order before re-pricing it
+// (the table-move route) builds its projection from this list, so a new snapshot field can never be left out of
+// one writer's read and silently price as ₹0 there (s86 P3).
+const ORDER_REWARD_SNAPSHOT_KEY_SET: Readonly<Record<keyof OrderRewardSnapshot, true>> = {
+  rewardAt: true,
+  rewardKind: true,
+  rewardValue: true,
+  rewardItem: true,
+  rewardItemProductId: true,
+  rewardQty: true,
+  rewardCardId: true,
+  rewardScopeProductIds: true,
+  rewardScopeMaxUnits: true,
+  rewardScopeLabel: true,
+  rewardCapRupees: true,
+};
+export const ORDER_REWARD_SNAPSHOT_KEYS = Object.keys(ORDER_REWARD_SNAPSHOT_KEY_SET) as (keyof OrderRewardSnapshot)[];
 
 /**
  * Rebuild a `RedeemedReward` from the five snapshot fields stored on an
@@ -73,6 +113,32 @@ interface OrderRewardSnapshot {
  * from THOSE fields, never from the live (possibly re-tuned) ladder setting.
  */
 export function rewardFromOrderSnapshot(order: OrderRewardSnapshot): RedeemedReward | undefined {
+  // CB-7 S5 (P3) — the CARD arm, checked FIRST and keyed on rewardCardId: a card order stores rewardAt ABSENT, so the
+  // stamp arm below would rebuild it as undefined and every re-pricing writer would bill it at full price. Every
+  // optional piece is rebuilt only when stored (absence round-trips as absence); a card id without its money
+  // fields rebuilds nothing (fail closed).
+  if (order.rewardCardId !== undefined) {
+    if (order.rewardKind === undefined || order.rewardValue === undefined) return undefined;
+    return {
+      at: CARD_REWARD_AT,
+      kind: order.rewardKind,
+      value: order.rewardValue,
+      item: order.rewardItem ?? "",
+      cardId: order.rewardCardId,
+      ...(order.rewardItemProductId === undefined ? {} : { itemProductId: order.rewardItemProductId }),
+      ...(order.rewardQty === undefined ? {} : { qty: order.rewardQty }),
+      ...(order.rewardScopeProductIds === undefined
+        ? {}
+        : {
+            scope: {
+              productIds: [...order.rewardScopeProductIds],
+              ...(order.rewardScopeMaxUnits === undefined ? {} : { maxUnits: order.rewardScopeMaxUnits }),
+              label: order.rewardScopeLabel ?? "",
+            },
+          }),
+      ...(order.rewardCapRupees === undefined ? {} : { capRupees: order.rewardCapRupees }),
+    };
+  }
   if (
     order.rewardAt === undefined ||
     order.rewardKind === undefined ||

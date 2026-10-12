@@ -1,3 +1,4 @@
+import { REWARD_CARD_ID_RE } from "@pos/shared/reward-levels";
 import type { CartLine, PublicIdentity } from "@/components/public/public-cart-store";
 
 // The localStorage IO helpers and shape guards behind public-cart-store.ts,
@@ -71,6 +72,17 @@ export function isRefreshMap(v: unknown): v is Record<string, number> {
     v !== null &&
     !Array.isArray(v) &&
     Object.values(v).every((at) => typeof at === "number")
+  );
+}
+
+// CB-7 S5 — the stored shape of a scratch-card pick, `{card: "<12-hex id>"}`. A malformed id reads as "no pick" so a
+// corrupt value can never fail the submit preflight (the schema pins the same 12-hex id).
+export function isCardPick(v: unknown): v is { card: string } {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    typeof (v as { card?: unknown }).card === "string" &&
+    REWARD_CARD_ID_RE.test((v as { card: string }).card)
   );
 }
 

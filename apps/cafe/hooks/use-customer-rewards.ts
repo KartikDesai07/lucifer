@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api-client";
 import { STALE_TIMES, GC_TIMES } from "@/lib/query";
 import { rungOffers, pickDefaultRung, type RungOffer } from "@/lib/reward-rungs";
 import type { RedeemedReward } from "@pos/shared/reward-redemption";
+import { REWARD_NEEDS_NEW_ITEMS, staffCardReward, type StaffRewardCard } from "@pos/shared/reward-card-use";
+import { PROMO_BLOCKS_REWARD } from "@pos/shared/public-promo";
+import { cardOffers, type CardBillLine, type CardOffer } from "@/lib/reward-card-offers";
+import { canCarryClaim, hasOrderReward } from "@/lib/order-reward-fence";
 import type { DiscountUnit } from "@/components/pos/Cart";
 import type { Order } from "@/types";
 import type { CustomerRewardsResponse } from "@/app/api/customers/[id]/rewards/route";
@@ -60,6 +64,20 @@ export interface RewardSelection {
   // order already stores, so a resumed rewarded tab prices like its own bill.
   selectedReward: RedeemedReward | undefined;
   onSelectReward: (at: number | null) => void;
+  // CB-7 S5 — the diner's scratch cards. NEVER auto-armed (R7: using a card is an explicit act); picking one clears a
+  // picked rung and the reverse; a tab that already carries a reward locks both pickers.
+  cardOffers: CardOffer[];
+  // Shown as selected: the card the resumed tab already carries while locked, else this session's own pick.
+  selectedCardId: string | null;
+  // What a create / add-round payload carries: undefined when locked, blocked, a discount is on, or nothing picked.
+  pendingCardId: string | undefined;
+  // The picked card, for the preview and the applied row.
+  selectedCard: StaffRewardCard | undefined;
+  onSelectCard: (id: string | null) => void;
+  // P2 (UI): a resumed tab that opened with a promo code. It already holds the bill's one reward-family benefit, so
+  // BOTH pickers stand down (and the GST preset is refused on it). G1: also a resumed tab with nothing unsent. null = free.
+  rewardBlockedReason: string | null;
+  promoLocked: boolean;
   onManualDiscountRaw: (value: number) => void;
   onManualDiscountUnit: (unit: DiscountUnit) => void;
   manualDiscountActive: boolean;
@@ -83,6 +101,9 @@ export function useRewardSelection(
   discountUnit: DiscountUnit,
   setDiscountRaw: (value: number) => void,
   setDiscountUnit: (unit: DiscountUnit) => void,
+  lines: readonly (CardBillLine & { kotRound: number })[],
+  // The promo code typed on the cart right now (null = none). A fresh cart has no resumed order, so the marker alone misses it.
+  promoCode: string | null,
 ): RewardSelection {
   const customerId = customer?._id;
   const rewards = useCustomerRewards(customerId);
@@ -97,7 +118,19 @@ export function useRewardSelection(
   // claim is possible (the add-round route 409s it), so `rewardAt` (this
   // session's pending intent) must never be treated as one for that tab.
   const existingRewardAt = resumedOrder?.rewardAt ?? null;
-  const locked = existingRewardAt !== null;
+  // CB-7 S5 — a card order stores no rewardAt, so the lock reads the whole one-reward predicate (kind, rung, card).
+  const locked = resumedOrder ? hasOrderReward(resumedOrder) : false;
+  // P2 + F6 — a promo on the bill blocks every reward picker (and the stamp auto-default below): a resumed tab's marker, or a
+  // code typed on the cart (fresh or resumed). The same flag disables the GST preset in Cart.tsx.
+  const promoLocked = resumedOrder?.promoCode !== undefined || promoCode !== null;
+  // G1 — a NEW pick needs a round to carry its claim (D9: never at settle); else it would settle as a manual discount.
+  const noRound = !canCarryClaim(resumedOrder, lines);
+  const blocked = locked || promoLocked || noRound;
+
+  // The scratch-card pick, tagged with the customer and tab it was made for so it can never ride onto another.
+  const tabKey = resumedOrder?._id ?? null;
+  const [cardPick, setCardPick] = useState<{ id: string; customerId?: string; tabKey: string | null } | null>(null);
+  const offersNow = cardOffers(rewards.data?.cards ?? [], billTotal, lines, Date.now());
 
   // A2/D6: a manual ₹/%/GST discount is on the bill. Hoisted ABOVE the
   // auto-default effect because the effect must not arm a reward against one —
@@ -116,7 +149,13 @@ export function useRewardSelection(
     autoPickedRef.current = false;
   }
   useEffect(() => {
-    if (locked) return;
+    // G1 — no round to carry the claim: an armed rung stands down like the manual-discount branch below, so the next
+    // unsent item re-runs the auto-default and removing it disarms again.
+    if (noRound && rewardAt !== null) {
+      setRewardAt(null);
+      autoPickedRef.current = false;
+    }
+    if (blocked) return;
     // A2/D6 — never auto-arm against an active manual discount. Staff may
     // still pick one deliberately (onSelectReward clears the discount as it
     // goes); what must never happen is the reward arming itself behind a
@@ -150,7 +189,16 @@ export function useRewardSelection(
       setRewardAt(best.rung.at);
       autoPickedRef.current = true;
     }
-  }, [rewardOffers, rewardAt, setRewardAt, locked, manualDiscountActive]);
+  }, [rewardOffers, rewardAt, setRewardAt, blocked, manualDiscountActive, noRound]);
+
+  // The pick that still stands: same customer and tab, still usable on THIS bill, no manual discount on top.
+  const pickedOffer =
+    cardPick && cardPick.customerId === customerId && cardPick.tabKey === tabKey && !manualDiscountActive && !noRound
+      ? offersNow.find((o) => o.card.id === cardPick.id && o.usable)
+      : undefined;
+  useEffect(() => {
+    if (cardPick !== null && !pickedOffer) setCardPick(null);
+  }, [cardPick, pickedOffer]);
 
   // A2/D6 mutual exclusion, client side (the server fences this too). Reused
   // by both use-pos-tab.ts's returned setters — see the file-level note.
@@ -166,12 +214,25 @@ export function useRewardSelection(
     // The READER is gated, not merely the chip: a locked tab's reward is
     // already spent and unswappable (the route 409s a second claim), so a tap
     // that slipped past a `disabled` attribute must still change nothing here.
-    if (locked) return;
+    if (blocked) return;
     if (at !== null) {
       setDiscountRaw(0);
       setDiscountUnit("₹");
+      setCardPick(null);
     }
     setRewardAt(at);
+  };
+  const onSelectCard = (id: string | null) => {
+    // Gated on the reader like onSelectReward; also stands the stamp auto-default down for good (an explicit choice,
+    // or an explicit un-choice, is never second-guessed by the next tick).
+    if (blocked) return;
+    autoPickedRef.current = true;
+    if (id !== null) {
+      setDiscountRaw(0);
+      setDiscountUnit("₹");
+      setRewardAt(null);
+    }
+    setCardPick(id === null ? null : { id, customerId, tabKey });
   };
 
   // The rung currently driving the preview: this session's pick, matched back
@@ -192,7 +253,7 @@ export function useRewardSelection(
     // "Send to Kitchen" would still carry it. This derivation is evaluated at
     // the moment the payload is built, so the two states can never both reach
     // the wire — A2/D6 on the READER, not just on the control.
-    pendingRewardAt: locked || manualDiscountActive ? undefined : rewardAt ?? undefined,
+    pendingRewardAt: blocked || manualDiscountActive || pickedOffer ? undefined : rewardAt ?? undefined,
     // PREVIEW ONLY, and deliberately `undefined` on a LOCKED tab even though
     // the order carries a reward: enterResume/applyTabUpdate already copy the
     // server's own re-clamped `order.discount` into `discountRaw`, so that tab
@@ -200,9 +261,11 @@ export function useRewardSelection(
     // here too would apply the same money twice and show a total lower than
     // the bill. A fresh (unlocked) pick is the only case the manual arm knows
     // nothing about, so it is the only case that needs the preview.
-    selectedReward: locked || manualDiscountActive
+    selectedReward: blocked || manualDiscountActive
       ? undefined
-      : selectedOffer
+      : pickedOffer
+        ? staffCardReward(pickedOffer.card) ?? undefined
+        : selectedOffer
         ? {
             at: selectedOffer.rung.at,
             kind: selectedOffer.rung.kind,
@@ -211,6 +274,13 @@ export function useRewardSelection(
           }
         : undefined,
     onSelectReward,
+    cardOffers: offersNow,
+    selectedCardId: locked ? resumedOrder?.rewardCardId ?? null : pickedOffer?.card.id ?? null,
+    pendingCardId: blocked || manualDiscountActive ? undefined : pickedOffer?.card.id,
+    selectedCard: pickedOffer?.card,
+    onSelectCard,
+    rewardBlockedReason: promoLocked ? PROMO_BLOCKS_REWARD : noRound ? REWARD_NEEDS_NEW_ITEMS : null,
+    promoLocked,
     onManualDiscountRaw,
     onManualDiscountUnit,
     // The ONE derivation, hoisted above the effect — not a second copy of the

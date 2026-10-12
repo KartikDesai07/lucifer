@@ -18,15 +18,17 @@ import {
 } from "@/components/pos/CartExtraCharges";
 import { CartMoreMenu } from "@/components/pos/CartMoreMenu";
 import { CartAppliedRows } from "@/components/pos/CartAppliedRows";
+import { CartAppliedCard } from "@/components/pos/CartRewardCards";
 import { WriteNoticePanel } from "@/components/pos/WriteNotice";
 import { CartUnavailableNotice, type CartMenuNoticeProps } from "@/components/pos/CartUnavailableNotice";
 import { SendDiscard } from "@/components/pos/SendDiscard";
 import type { WriteNotice } from "@/lib/pending-writes";
 import { POS_CART_CTA_CLASS, POS_CART_GST_BUTTON_CLASS, POS_CART_LIST_CLASS } from "@/lib/pos-layout";
 import { GST_DISCOUNT_LABEL } from "@/lib/constants";
-import { REWARD_BLOCKS_GST_DISCOUNT_MESSAGE } from "@/lib/receipt";
+import { PROMO_BLOCKS_GST_DISCOUNT_MESSAGE, REWARD_BLOCKS_GST_DISCOUNT_MESSAGE } from "@/lib/receipt";
 import type { CartItem } from "@/hooks/use-cart";
 import type { RungOffer } from "@/lib/reward-rungs";
+import type { CardOffer } from "@/lib/reward-card-offers";
 
 // "GST" = the GST-equivalent preset; the amount is DERIVED (usePosTotals, and
 // authoritatively the server), never typed.
@@ -83,6 +85,12 @@ export interface CartProps {
   // The resumed tab already carries a reward: the picker shows it, read-only.
   rewardLocked?: boolean;
   onSelectReward?: (at: number | null) => void;
+  // CB-7 S5 — scratch cards (picked like a rung); P2: a promo-opened resumed tab blocks the pickers and the GST preset.
+  cardOffers?: CardOffer[];
+  selectedCardId?: string | null;
+  onSelectCard?: (id: string | null) => void;
+  rewardBlockedReason?: string | null;
+  promoLocked?: boolean;
   // A2/D6: true while a manual ₹/%/GST discount is active — mutually
   // exclusive with a reward claim (both sides fence this; see CartReward).
   manualDiscountActive?: boolean;
@@ -150,6 +158,11 @@ export function Cart({
   selectedRewardAt = null,
   rewardLocked = false,
   onSelectReward,
+  cardOffers = [],
+  selectedCardId = null,
+  onSelectCard,
+  rewardBlockedReason = null,
+  promoLocked = false,
   manualDiscountActive = false,
   promoCode = null,
   onApplyPromo,
@@ -195,7 +208,7 @@ export function Cart({
     activeAdjustments.push(gstActive ? "GST discount" : "Discount");
   }
   if (promoCode) activeAdjustments.push("Promo");
-  if (selectedRewardAt !== null) activeAdjustments.push("Reward");
+  if (selectedRewardAt !== null || selectedCardId !== null) activeAdjustments.push("Reward");
   if (extraCharges.length > 0) activeAdjustments.push("Extra charge");
 
   // D9.8/D9.8b — the OCCASIONAL money controls (reward, promo, discount, the
@@ -237,6 +250,8 @@ export function Cart({
         locked={rewardLocked}
         onSelect={onSelectReward ?? (() => {})}
         manualDiscountActive={manualDiscountActive}
+        cards={{ offers: cardOffers, selectedId: selectedCardId, onSelect: onSelectCard ?? (() => {}) }}
+        blockedReason={rewardBlockedReason}
         disabled={items.length === 0 || isBusy}
       />
 
@@ -248,7 +263,7 @@ export function Cart({
         code={promoCode}
         onApply={onApplyPromo ?? (() => {})}
         onRemove={onRemovePromo ?? (() => {})}
-        rewardActive={selectedRewardAt !== null}
+        rewardActive={selectedRewardAt !== null || selectedCardId !== null}
         disabled={items.length === 0 || isBusy}
       />
 
@@ -293,19 +308,18 @@ export function Cart({
           variant={gstActive ? "default" : "outline"}
           className={POS_CART_GST_BUTTON_CLASS}
           aria-pressed={gstActive}
-          disabled={items.length === 0 || (rewardLocked && !gstActive)}
+          disabled={items.length === 0 || ((rewardLocked || promoLocked) && !gstActive)}
           onClick={() => onDiscountUnitChange(gstActive ? "₹" : "GST")}
         >
           {GST_DISCOUNT_LABEL}
         </Button>
       )}
-      {/* P4 (s87) — a resumed tab's reward is already spent and owns the
-          bill's one discount kind; the server 409s a GST preset on it, so
-          the button says no first and this line says why. A preset that is
-          ALREADY on (the reward reached the tab from another device) stays
-          tappable, but only to turn it off. */}
-      {canGstDiscount && rewardLocked && (
-        <p className="text-xs text-muted-foreground">{REWARD_BLOCKS_GST_DISCOUNT_MESSAGE}</p>
+      {/* P4 + O2 — a resumed tab's reward or promo owns the bill's one discount; the server 409s a GST preset on it,
+          so the button says no first and this line says why. A preset already ON stays tappable, only to turn it off. */}
+      {canGstDiscount && (rewardLocked || promoLocked) && (
+        <p className="text-xs text-muted-foreground">
+          {rewardLocked ? REWARD_BLOCKS_GST_DISCOUNT_MESSAGE : PROMO_BLOCKS_GST_DISCOUNT_MESSAGE}
+        </p>
       )}
 
       {/* CB-CHG (plan §5C) — the staff-entered extra charges. A takeaway bill
@@ -441,6 +455,8 @@ export function Cart({
           onClearReward={() => onSelectReward?.(null)}
           disabled={isBusy}
         />
+        <CartAppliedCard offer={cardOffers.find((o) => o.card.id === selectedCardId)}
+          onClear={() => onSelectCard?.(null)} disabled={isBusy} />
 
         {gstAmount > 0 && (
           <div className="flex items-center justify-between text-sm text-muted-foreground">

@@ -8,6 +8,7 @@ import {
   shouldStoreDiscountKind,
   type RedeemedReward,
 } from "./reward-redemption";
+import { CARD_REWARD_AT } from "./reward-card-use";
 import { LOYALTY_REWARD_KINDS } from "./public-diner";
 import type { ResolvedMilestone } from "./loyalty-rules";
 
@@ -217,4 +218,82 @@ test("D8/D11: ref + qty survive the order-snapshot round trip, absence survives 
   assert.ok(old, "a pre-D8 reward still rebuilds");
   assert.ok(!("itemProductId" in old!), "absence must survive as absence, not as null");
   assert.ok(!("qty" in old!), "absence must survive as absence, not as a defaulted 1");
+});
+
+// ── CB-7 S5 P3 — the CARD arm: a scratch-card order stores rewardAt ABSENT and rebuilds through rewardCardId ─────
+// Before the fix, rewardFromOrderSnapshot required rewardAt, so a card order rebuilt as undefined and every
+// re-pricing writer (add-round, settle, void, table move, QR add-round) priced its reward at 0 (fails closed).
+
+const CARD_ID = "a1b2c3d4e5f6";
+
+test("P3: a card order with NO rewardAt rebuilds as the card (kind, value, cardId, at = CARD_REWARD_AT)", () => {
+  const rebuilt = rewardFromOrderSnapshot({ rewardCardId: CARD_ID, rewardKind: "flat", rewardValue: 100 });
+  assert.ok(rebuilt, "a card order must rebuild a reward — undefined here re-prices it at 0");
+  assert.equal(rebuilt.kind, "flat");
+  assert.equal(rebuilt.value, 100);
+  assert.equal(rebuilt.cardId, CARD_ID);
+  assert.equal(rebuilt.at, CARD_REWARD_AT);
+  assert.equal(rebuilt.item, "");
+  assert.ok(!("scope" in rebuilt) && !("capRupees" in rebuilt), "an unscoped, uncapped card carries neither (absence stays absence)");
+});
+
+test("P3: a scoped card round-trips scope (ids, maxUnits, label) and capRupees", () => {
+  const rebuilt = rewardFromOrderSnapshot({
+    rewardCardId: CARD_ID,
+    rewardKind: "percent",
+    rewardValue: 20,
+    rewardScopeProductIds: ["60a1b2c3d4e5f60718293a4b"],
+    rewardScopeMaxUnits: 1,
+    rewardScopeLabel: "Cold Coffee",
+    rewardCapRupees: 80,
+  });
+  assert.ok(rebuilt, "a scoped card order must rebuild");
+  assert.deepEqual(rebuilt.scope, { productIds: ["60a1b2c3d4e5f60718293a4b"], maxUnits: 1, label: "Cold Coffee" });
+  assert.equal(rebuilt.capRupees, 80);
+  assert.equal(rebuilt.cardId, CARD_ID);
+  // A category card stores no maxUnits: the scope must not invent one.
+  const category = rewardFromOrderSnapshot({
+    rewardCardId: CARD_ID,
+    rewardKind: "flat",
+    rewardValue: 50,
+    rewardScopeProductIds: ["60a1b2c3d4e5f60718293a4b", "60a1b2c3d4e5f60718293a4c"],
+    rewardScopeLabel: "Beverages",
+  });
+  assert.ok(category, "a category card order must rebuild");
+  assert.ok(category.scope, "the category scope must rebuild");
+  assert.ok(!("maxUnits" in category.scope), "absent maxUnits must stay absent on the rebuilt scope");
+  assert.equal(category.scope.productIds.length, 2);
+});
+
+test("P3: a free-dish card keeps its dish ref and qty through the rebuild", () => {
+  const rebuilt = rewardFromOrderSnapshot({
+    rewardCardId: CARD_ID,
+    rewardKind: "item",
+    rewardValue: 0,
+    rewardItem: "Masala Chai",
+    rewardItemProductId: "0123456789abcdef01234567",
+    rewardQty: 2,
+  });
+  assert.ok(rebuilt, "a free-dish card order must rebuild");
+  assert.equal(rebuilt.kind, "item");
+  assert.equal(rebuilt.itemProductId, "0123456789abcdef01234567");
+  assert.equal(rebuilt.qty, 2);
+  assert.equal(rebuilt.cardId, CARD_ID);
+});
+
+test("P3: the card arm is checked FIRST — a card order carrying a stray rewardAt still rebuilds as the card", () => {
+  const rebuilt = rewardFromOrderSnapshot({ rewardAt: 8, rewardCardId: CARD_ID, rewardKind: "flat", rewardValue: 100 });
+  assert.ok(rebuilt, "the order must rebuild");
+  assert.equal(rebuilt.cardId, CARD_ID, "keyed on rewardCardId, not on rewardAt");
+  assert.equal(rebuilt.at, CARD_REWARD_AT, "a card never takes a rung's stamp cost as its at");
+});
+
+test("P3 witness: the stamp arm is unchanged — rewardAt without a card id still rebuilds as the rung, with no cardId", () => {
+  const rebuilt = rewardFromOrderSnapshot({ rewardAt: 8, rewardKind: "flat", rewardValue: 100 });
+  assert.deepEqual(rebuilt, { at: 8, kind: "flat", value: 100, item: "" });
+});
+
+test("P3 witness: a card id with no money fields rebuilds nothing (fail closed, never a made-up discount)", () => {
+  assert.equal(rewardFromOrderSnapshot({ rewardCardId: CARD_ID }), undefined);
+  assert.equal(rewardFromOrderSnapshot({ rewardCardId: CARD_ID, rewardKind: "flat" }), undefined);
 });

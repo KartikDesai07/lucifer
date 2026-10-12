@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/drawer";
 import { PublicPromoField, type AssignedRewardOffer } from "@/components/public/PublicPromoField";
 import { PublicCartLine } from "@/components/public/PublicCartLine";
+import { PublicCardPicker } from "@/components/public/rewards/PublicCardPicker";
 import { PublicCartBill } from "@/components/public/PublicCartBill";
 import { PublicSuggestionChips } from "@/components/public/PublicSuggestionChips";
 import type { TablePick } from "@/components/public/TableChooser";
@@ -49,6 +50,9 @@ interface PublicCartProps {
   // through. Absent for a signed-out diner or a surface that never fetched
   // it, which is exactly when the promo field falls back to free text only.
   rewards?: AssignedRewardOffer[];
+  // CB-7 S5 — the signed-in diner's mobile when scratch cards are on (the wallet's cache key); null/absent hides the
+  // card picker. Derived by the shell exactly as the Levels tab gets it.
+  cardsIdentity?: string | null;
 }
 
 // The diner's review-and-send screen: line list, the table-charge disclosure
@@ -71,6 +75,7 @@ export function PublicCart({
   suggestions,
   rewards,
   onAddSuggestion,
+  cardsIdentity = null,
 }: PublicCartProps) {
   const {
     note,
@@ -87,11 +92,13 @@ export function PublicCart({
     promoCode,
     promoError,
     requestedRewardAt,
+    requestedCardId,
     rewardError,
     blockedReason,
     handleApplyPromo,
     handleRemovePromo,
     handleRemoveReward,
+    handlePickCard,
     handleSubmit,
   } = usePublicCartSubmit({ cart, token, pickedTable, onSubmitted, open });
 
@@ -153,7 +160,7 @@ export function PublicCart({
                 ever interactable at a time. A reward selected on the Rewards
                 tab takes the promo field's place here entirely (never just
                 visually disabled) so there is nothing left to tap into. */}
-            {requestedRewardAt !== null ? (
+            {requestedRewardAt !== null || requestedCardId !== null ? (
               <div className="flex items-center justify-between gap-2 text-sm">
                 <span>Reward selected — applied when the cafe accepts this order</span>
                 <button
@@ -183,6 +190,18 @@ export function PublicCart({
                   rewards={rewards}
                 />
               )
+            )}
+            {/* CB-7 S5 — a revealed scratch card is a reward too, so it follows the same rule: offered only while
+                the promo control is (chargeApplies), never beside an applied promo, and never beside a picked
+                stamp reward (storage holds ONE reward at a time). A picked card keeps its row selected here AND
+                shows the "Reward selected" row above. */}
+            {chargeApplies && !promoCode && requestedRewardAt === null && (
+              <PublicCardPicker
+                identity={cardsIdentity}
+                selectedId={requestedCardId}
+                onSelect={handlePickCard}
+                disabled={isSubmitting}
+              />
             )}
             {rewardError && <p className="text-sm text-destructive">{rewardError}</p>}
           </PublicCartBill>

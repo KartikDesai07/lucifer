@@ -23,6 +23,7 @@ import {
   promoIsClaimable,
 } from "@/lib/order-request-accept-promo";
 import { assignedRewardRefusal, markAssignedRewardUsed } from "@/lib/assigned-reward-gate";
+import { promoMarkerFields } from "@/lib/order-reward-fence";
 import { guardedReject, applyAddRound } from "@/lib/order-request-accept-write";
 import type { AcceptContext } from "@/lib/order-request-accept";
 import { REWARD_PROMO_CONFLICT_ERROR, resolveAddRoundKind } from "@/lib/order-request-addround-kind";
@@ -72,6 +73,11 @@ export async function acceptAddRoundBranch(
     | "rewardItem"
     | "rewardItemProductId"
     | "rewardQty"
+    | "rewardCardId"
+    | "rewardScopeProductIds"
+    | "rewardScopeMaxUnits"
+    | "rewardScopeLabel"
+    | "rewardCapRupees"
   >,
   items: Omit<IOrderItem, "kotRound">[],
   tabGstCfg: GstConfig,
@@ -218,6 +224,9 @@ export async function acceptAddRoundBranch(
       ...(kotNumbers ? { kotNumbers } : {}),
       ...(kotPrintDevices ? { kotPrintDevices } : {}),
       ...(notesChanged ? { notes } : {}),
+      // s86 P2 (FLAG 8) — a promo landing on a running tab marks it, so no reward claim can stack on its money later.
+      // Same single-homed predicate as the redemption fence below; never $unset anywhere.
+      ...promoMarkerFields(promoIsClaimable(promo.discount, request.promoCode, promo.kind) ? request.promoCode : undefined),
     },
     $addToSet: { sourceRequestIds: requestId },
   };

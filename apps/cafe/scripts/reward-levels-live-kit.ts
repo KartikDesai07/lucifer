@@ -23,7 +23,7 @@ export type Flt = FilterQuery<ICustomer>;
 export type Upd = UpdateQuery<ICustomer>;
 let mobileSeq = 0;
 let cardSeq = 0;
-// One real option of every kind, in two boxes (a box holds at most 5). enabled:false - the launch lock refuses true.
+// One real option of every kind, in two boxes (a box holds at most 5). enabled:false - a draft (the PUT leg stores it whole).
 export const BLOB = {
   v: 1,
   enabled: false,

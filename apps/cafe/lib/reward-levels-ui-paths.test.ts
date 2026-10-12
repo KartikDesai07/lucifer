@@ -149,7 +149,7 @@ test("PIN: rewardLevels is not a form section field (settings-sections / setting
   }
 });
 
-// The shape in source is `const switchable = canSwitchOn(accountsOn)` / `disabled={!switchable}` and `checked={switchChecked}`;
+// The shape in source is `const switchable = canSwitchOn(accountsOn)` / `disabled={!switchable || <blocked and off>}` and `checked={switchChecked}`;
 // a direct `disabled={!canSwitchOn(` / `checked={canSwitchOn(` also passes. Only the switch* aliases are expanded.
 const switchPin: Pin = (s) => {
   const row = /<ToggleRow[\s\S]*?\/>/.exec(s)?.[0] ?? "";
@@ -163,8 +163,8 @@ const switchPin: Pin = (s) => {
 test("PIN: the master switch is disabled unless canSwitchOn and shown on only when canSwitchOn && enabled === true", () => {
   const src = code(`${R}/RewardLevelsSection.tsx`);
   assert.match(src, /<ToggleRow\b[\s\S]*?label=\{SWITCH_LABEL\}/, "landmark: the master switch row");
-  pinned("switch", src, switchPin, (s) => s.replace("disabled={!switchable}", "disabled={false}"), (s) => s.replace("checked={switchChecked}", "checked={cfg?.enabled === true}"), (s) => s.replace("const switchable = canSwitchOn(accountsOn);", "const switchable = accountsOn;"), (s) => s.replace("switchable && cfg?.enabled === true", "cfg?.enabled === true"));
-  assert.ok(switchPin(src.replace("disabled={!switchable}", "disabled={!canSwitchOn(accountsOn)}")), "the direct spelling also passes");
+  pinned("switch", src, switchPin, (s) => s.replace("disabled={!switchable || ", "disabled={false || "), (s) => s.replace("checked={switchChecked}", "checked={cfg?.enabled === true}"), (s) => s.replace("const switchable = canSwitchOn(accountsOn);", "const switchable = accountsOn;"), (s) => s.replace("switchable && cfg?.enabled === true", "cfg?.enabled === true"));
+  assert.ok(switchPin(src.replace("disabled={!switchable || ", "disabled={!canSwitchOn(accountsOn) || ")), "the direct spelling also passes");
   assert.match(code("lib/reward-levels-form.ts"), /export function canSwitchOn\(accountsOn: boolean\): boolean \{\s*return LAUNCHED && accountsOn;/, "the lock itself is the launch flag AND sign-in");
 });
 

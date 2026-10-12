@@ -409,16 +409,23 @@ test("PIN: hooks/use-customer-rewards.ts's onSelectReward early-returns while lo
   const fnEnd = src.indexOf("\n  };", fnStart);
   assert.ok(fnEnd > fnStart, "landmark: onSelectReward's closing must be found to bound its body");
   const fnBody = src.slice(fnStart, fnEnd);
+  // CB-7 S5 (P2 UI) — the guard is the `blocked` flag, and `blocked` is DEFINED as locked-or-promo-marked, so the
+  // original "a locked tab changes nothing" rule is kept whole and a promo-opened tab joins it.
   assert.match(
     fnBody,
-    /if\s*\(locked\)\s*return;/,
-    "onSelectReward must early-return `if (locked) return;` as its FIRST guard — a tap that slipped past a disabled attribute must still change nothing here",
+    /if\s*\(blocked\)\s*return;/,
+    "onSelectReward must early-return `if (blocked) return;` as its FIRST guard — a tap that slipped past a disabled attribute must still change nothing here",
+  );
+  assert.match(
+    src,
+    /const blocked = locked \|\| promoLocked \|\| noRound;/,
+    "`blocked` must stay the union of the lock (a reward already on the bill), the promo marker and G1's no-round-to-carry-a-claim flag",
   );
   // Positive landmark that this guard actually runs BEFORE any state write —
   // setRewardAt must not appear before the guard in this function body.
-  const guardIdx = fnBody.indexOf("if (locked) return;");
+  const guardIdx = fnBody.indexOf("if (blocked) return;");
   const firstSetIdx = fnBody.indexOf("setRewardAt(");
-  assert.ok(firstSetIdx === -1 || guardIdx < firstSetIdx, "the locked guard must precede any setRewardAt call in onSelectReward");
+  assert.ok(firstSetIdx === -1 || guardIdx < firstSetIdx, "the blocked guard must precede any setRewardAt call in onSelectReward");
 });
 
 test("PIN: components/pos/CartReward.tsx's RungButton onClick early-returns on !usable — 'disabled' alone is not a fence", () => {
@@ -515,14 +522,14 @@ test("PIN (S9 REGRESSION): usePosTotals takes a `reward` input and derives it th
   // ...and is actually destructured and USED, not merely declared.
   assert.match(
     src,
-    /rewardDiscountAmount\(subtotal,\s*reward\)/,
-    "the reward arm must call the SHARED rewardDiscountAmount(subtotal, reward) — re-deriving the percent/flat math here is how the preview and the bill drift apart",
+    /rewardDiscountAmount\(subtotal,\s*reward,\s*lines\)/,
+    "the reward arm must call the SHARED rewardDiscountAmount(subtotal, reward, lines) — the cart lines are what a scoped scratch card reads its base from; re-deriving the percent/flat math here is how the preview and the bill drift apart",
   );
   // ORDER MATTERS: a reward REPLACES the kind server-side (A2/D6), so its arm
   // must be evaluated BEFORE the GST preset, exactly as computeOrderTotals'
   // rawDiscount ladder does. An upper bound (the return) plus the relative
   // order, per this repo's ordering-pin rule.
-  const rewardIdx = src.indexOf("rewardDiscountAmount(subtotal, reward)");
+  const rewardIdx = src.indexOf("rewardDiscountAmount(subtotal, reward, lines)");
   const gstIdx = src.indexOf("gstEquivalentDiscount(subtotal, gstCfg)");
   const returnIdx = src.indexOf("total: base + gstAmount + clampedCharge");
   assert.ok(rewardIdx >= 0, "landmark: the reward arm must exist");
@@ -540,7 +547,7 @@ test("PIN (S9 REGRESSION): usePosTotals takes a `reward` input and derives it th
   // drive the total negative.
   assert.match(
     src,
-    /Math\.min\(rewardDiscountAmount\(subtotal,\s*reward\),\s*subtotal\)/,
+    /Math\.min\(rewardDiscountAmount\(subtotal,\s*reward,\s*lines\),\s*subtotal\)/,
     "the reward preview must be clamped to the subtotal, mirroring computeOrderTotals' own clampedDiscount",
   );
 });
@@ -660,7 +667,7 @@ test("PIN (S9 REGRESSION): the auto-default NEVER arms a reward while a manual d
   );
   assert.match(
     src,
-    /\}, \[rewardOffers, rewardAt, setRewardAt, locked, manualDiscountActive\]\);/,
+    /\}, \[rewardOffers, rewardAt, setRewardAt, blocked, manualDiscountActive, noRound\]\);/,
     "manualDiscountActive must be in the dep array, or the effect reads a stale value",
   );
 
@@ -668,12 +675,12 @@ test("PIN (S9 REGRESSION): the auto-default NEVER arms a reward while a manual d
   // the same rule at the moment it is built.
   assert.match(
     src,
-    /pendingRewardAt:\s*locked \|\| manualDiscountActive \? undefined : rewardAt \?\? undefined,/,
+    /pendingRewardAt:\s*blocked \|\| manualDiscountActive \|\| pickedOffer \? undefined : rewardAt \?\? undefined,/,
     "pendingRewardAt must refuse a reward while a manual discount is active — the effect is a behaviour, not a fence, and there is a window between the two",
   );
   assert.match(
     src,
-    /selectedReward:\s*locked \|\| manualDiscountActive/,
+    /selectedReward:\s*blocked \|\| manualDiscountActive/,
     "the money PREVIEW must be suppressed in the same state, or the cart shows a reward discount the payload will not carry",
   );
 });

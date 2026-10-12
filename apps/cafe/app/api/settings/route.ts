@@ -10,8 +10,11 @@ import {
   requireAuth,
   requireAdmin,
   serverError,
+  failure,
 } from "@/lib/api-helpers";
 import { updateSettingsSchema } from "@/schemas";
+import { rewardLevelsSwitchOnRefusal } from "@/lib/reward-levels-config";
+import { SCRATCH_BLOCK_ENV_VAR } from "@pos/shared/reward-levels";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +43,17 @@ export async function PUT(req: Request) {
 
   try {
     await connectDB();
+    // CB-7 S5: an OFF -> ON flip of the scratch cards is refused while they are blocked for this cafe (platform
+    // flag or Tamil Nadu GSTIN). The stored blob is read FRESH (never the 45 s cache) and only when this PUT
+    // switches levels on; the GSTIN is the one the cafe will have after this save.
+    if (parsed.data.rewardLevels?.enabled === true) {
+      const stored = await Settings.findOne({}).select("rewardLevels gstNumber").lean();
+      const refusal = rewardLevelsSwitchOnRefusal(parsed.data.rewardLevels, stored?.rewardLevels, {
+        envFlag: process.env[SCRATCH_BLOCK_ENV_VAR],
+        gstNumber: parsed.data.gstNumber ?? stored?.gstNumber,
+      });
+      if (refusal !== null) return failure(refusal, 409);
+    }
     // A null slip template is cleared ($unset); see settingsUpdateOf.
     const settings = await Settings.findOneAndUpdate({}, settingsUpdateOf(parsed.data), {
       new: true,

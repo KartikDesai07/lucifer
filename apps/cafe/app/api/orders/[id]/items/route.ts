@@ -20,6 +20,8 @@ import {
   resolveDiscountKind,
   rewardBlocksDiscountKind,
   REWARD_BLOCKS_GST_DISCOUNT_MESSAGE,
+  promoBlocksDiscountKind,
+  PROMO_BLOCKS_GST_DISCOUNT_MESSAGE,
 } from "@/lib/receipt";
 import { printConfigOf } from "@/lib/print";
 import { nextPrintedNumber } from "@/lib/slip-numbers";
@@ -42,6 +44,9 @@ import {
   returnRewardStamps,
 } from "@/lib/reward-claim";
 import { resolveRoundReward } from "@/lib/order-round-reward";
+import { cardSnapshotFields, claimRewardCard, releaseRewardCard } from "@/lib/reward-card-claim";
+import { rewardClaimOrderFence } from "@/lib/order-reward-fence";
+import { CARD_NOT_USABLE } from "@pos/shared/reward-card-use";
 import { shouldStoreDiscountKind } from "@pos/shared/reward-redemption";
 import { buildKotIdemKeys } from "@pos/shared/order-idem";
 import { idemGuardFilter, roundReplayResponse, roundReplayAfterMiss } from "@/lib/order-idem";
@@ -134,6 +139,10 @@ export async function POST(req: Request, { params }: Params) {
     if (rewardBlocksDiscountKind(parsed.data.discountKind, old.discountKind)) {
       return failure(REWARD_BLOCKS_GST_DISCOUNT_MESSAGE, 409);
     }
+    // O2 (s91) — the same for a promo bill: its discount is the bill's money, and a GST preset would replace it.
+    if (promoBlocksDiscountKind(parsed.data.discountKind, old.promoCode, old.discountKind)) {
+      return failure(PROMO_BLOCKS_GST_DISCOUNT_MESSAGE, 409);
+    }
 
     // B2 - menu re-check on the NEW lines only (a fired line of the tab is
     // never re-judged): refuse an item gone, out of stock, re-priced or
@@ -156,17 +165,10 @@ export async function POST(req: Request, { params }: Params) {
     let discountKind = resolveDiscountKind(parsed.data.discountKind, old.discountKind);
     const settings = settledValue(settingsR);
     const gstCfg = gstConfigFromOrder(old, gstConfigOf(settings));
-    // CB-CHG — charges[] is the source of truth (plan §4), upgraded in place
-    // from the tab's legacy scalars if it predates this feature. The table
-    // lane is carried forward untouched unless the operator deliberately
-    // changed it (chargeAmount body override) — omitted means unchanged,
-    // exactly like discount. Adding a round is never an occasion to RE-READ
-    // the table: the charge was snapshotted when the tab opened, and an admin
-    // editing the table mid-service must not re-price a bill the kitchen is
-    // already cooking. The override now targets the TABLE ENTRY'S AMOUNT
-    // ONLY (0 = waive the table charge) — extras are their own list, carried
-    // through untouched by withTableCharge and replaced wholesale (present =
-    // the complete new set) by applyExtraCharges when the body sends one.
+    // CB-CHG — charges[] is the source of truth (plan §4), upgraded in place from the tab's legacy scalars.
+    // The table lane is carried forward untouched unless the operator changed it (chargeAmount override,
+    // 0 = waive; omitted = unchanged). A round never RE-READS the table: the charge was snapshotted when the
+    // tab opened. Extras are their own list, replaced wholesale only when the body sends one.
     const oldCharges = chargesFromOrder(old);
     const oldTableCharge = oldCharges.find((c) => c.type === "table");
     const tableChargeAmount = parsed.data.chargeAmount ?? oldTableCharge?.amount ?? 0;
@@ -190,18 +192,18 @@ export async function POST(req: Request, { params }: Params) {
       old,
       settings,
       rewardAt: parsed.data.rewardAt,
+      rewardCardId: parsed.data.rewardCardId,
       fullItems,
-      discount,
       discountKind,
       charge: chargeForTab,
       extraCharge: extraChargeForTab,
       cfg: gstCfg,
       round,
     });
-    if (!roundReward.ok) return failure(roundReward.message, roundReward.status);
+    if (!roundReward.ok) return (key ? await roundReplayAfterMiss(id, key, parsed.data.items) : null) ?? failure(roundReward.message, roundReward.status);
     fullItems = roundReward.fullItems;
     discountKind = roundReward.discountKind;
-    const { resolvedClaim, rewardAssignment, rewardForTotals } = roundReward;
+    const { resolvedClaim, card, rewardAssignment, rewardForTotals } = roundReward;
     const totals = computeOrderTotals({
       items: fullItems,
       discount,
@@ -216,14 +218,11 @@ export async function POST(req: Request, { params }: Params) {
     // reward's derived amount is always 0; see reward-redemption.ts).
     const storeKind = shouldStoreDiscountKind(totals.discount, discountKind);
 
-    // Guarded on still-open, the round we read, AND the void trail's length, so this
-    // read-modify-write can't silently clobber a concurrent add (the loser 409s and
-    // the client retries with its items intact) or append to a just-settled bill.
-    // The trail term is NOT redundant: a void changes neither status nor kotRounds,
-    // so without it a void committing inside this window is silently undone — the
-    // `items` below re-appends the voided line from our stale read and re-bills it,
-    // while voids[] still records it as voided (arbiter live-probe, CR1.3 review).
-    // It mirrors the void route's own guard, so the two routes fence each other.
+    // Guarded on still-open, the round we read, AND the void trail's length, so this read-modify-write can't
+    // clobber a concurrent add (the loser 409s; the client retries with its items intact) or append to a
+    // just-settled bill. The trail term is NOT redundant: a void changes neither status nor kotRounds, so
+    // without it a void inside this window is undone (`items` re-appends the voided line from our stale read
+    // and re-bills it — arbiter live-probe, CR1.3). It mirrors the void route's own guard.
     const filter: FilterQuery<IOrder> = {
       _id: id,
       status: "Pending",
@@ -231,6 +230,8 @@ export async function POST(req: Request, { params }: Params) {
       kotRounds: old.kotRounds ?? 0,
       ...voidGuardFilter(old.voids?.length ?? 0),
       ...idemGuardFilter(key),
+      // P2 — a claiming round also fences the bill's reward/promo state and customer (see order-reward-fence).
+      ...(resolvedClaim || card ? rewardClaimOrderFence(old) : {}),
     };
     // A waived charge is REMOVED, not stored as 0: the receipt keys its charge
     // line off the amount being present, so a 0 left beside the label would
@@ -250,29 +251,20 @@ export async function POST(req: Request, { params }: Params) {
     const ticket = printCfg.kot.showNumber && kot.kitchen
       ? await nextPrintedNumber("kot", printCfg.kot)
       : undefined;
-    // P4-A — this round's fire instant, stamped ONCE and reused for the whole
-    // write so kotFiredAt[round-1] below and any other reader of "now" in this
-    // request agree on the same millisecond.
+    // P4-A — this round's fire instant, stamped ONCE so every reader of "now" in this request agrees.
     const firedAt = new Date();
-    // Built POSITIONALLY, not appended. The slip is read back by index
-    // (use-pos-print: kotNumbers[kotRounds - 1]), and a tab can carry a SHORT
-    // array — every tab already open when numbering ships has none at all, and
-    // any round fired while the toggle was off adds no entry. Appending would
-    // then file this round's ticket under an earlier round's index: the slip
-    // would print no number at all while the series still spent one, and the
-    // stored array would claim a number for a round that was never numbered.
-    // 0 is a safe "this round was never numbered" sentinel — printedSlipNumber
-    // floors at PRINT_NUMBER_START_MIN (1), so 0 is not a printable number.
+    // Built POSITIONALLY, not appended. The slip is read back by index (use-pos-print: kotNumbers[kotRounds - 1])
+    // and a tab can carry a SHORT array (opened before numbering shipped, or rounds fired while it was off).
+    // Appending would file this round's ticket under an earlier round's index. 0 is a safe "never numbered"
+    // sentinel — printedSlipNumber floors at PRINT_NUMBER_START_MIN (1).
     const kotNumbers =
       ticket === undefined
         ? undefined
         : Array.from({ length: round }, (_, i) =>
             i === round - 1 ? ticket : (old.kotNumbers?.[i] ?? 0),
           );
-    // P4-A — same positional idiom as kotNumbers immediately above: earlier
-    // slots backfill from the tab's own prior stamp (or createdAt, for a round
-    // fired before this field existed) so the Date array never carries holes,
-    // and index round-1 gets THIS round's fire instant.
+    // P4-A — same positional idiom: earlier slots backfill from the tab's prior stamp (or createdAt) so the
+    // Date array never carries holes; index round-1 gets THIS round's fire instant.
     const kotFiredAt = Array.from({ length: round }, (_, i) =>
       i === round - 1 ? firedAt : (old.kotFiredAt?.[i] ?? old.createdAt),
     );
@@ -305,6 +297,8 @@ export async function POST(req: Request, { params }: Params) {
         ...(kotIdemKeys ? { kotIdemKeys } : {}),
         ...(kotPrintDevices ? { kotPrintDevices } : {}),
         ...(resolvedClaim ? rewardSnapshotFields(resolvedClaim.reward, resolvedClaim.cost) : {}),
+        // A card order stores the card snapshot and NEVER rewardAt / rewardStamps.
+        ...(card ? cardSnapshotFields(card.reward) : {}),
       },
     };
     const unset: Record<string, ""> = { ...(chargeFields.unset ?? {}) };
@@ -316,10 +310,8 @@ export async function POST(req: Request, { params }: Params) {
     if (!storeKind) unset.discountKind = "";
     if (Object.keys(unset).length > 0) update.$unset = unset;
 
-    // CB-5B — claim BEFORE the CAS write, mirroring the create route: a
-    // redeemed bill must never be written before its stamps are spent. Keyed
-    // on the ORDER id (already fixed — this is an existing tab, not a new
-    // one), so unlike create there is no orderId-minting subtlety here.
+    // CB-5B — claim BEFORE the CAS write, mirroring the create route: a redeemed bill must never be written
+    // before its stamps are spent. Keyed on the tab's own (already fixed) orderId — no minting subtlety here.
     if (resolvedClaim) {
       const claimed = await claimRewardStamps(String(old.customerId), old.orderId, resolvedClaim.cost, rewardAssignment);
       // A twin with the same key may have landed (and claimed) first.
@@ -327,18 +319,22 @@ export async function POST(req: Request, { params }: Params) {
         return (key ? await roundReplayAfterMiss(id, key, parsed.data.items) : null) ?? failure("Not enough stamps for that reward", 409);
       }
     }
+    // The card is claimed the same way: before the CAS, released only on its definite miss below.
+    if (card && !(await claimRewardCard(String(old.customerId), card.id, old.orderId, card.now))) {
+      return (key ? await roundReplayAfterMiss(id, key, parsed.data.items) : null) ?? failure(CARD_NOT_USABLE, 409);
+    }
     const updated = await Order.findOneAndUpdate(filter, update, {
       new: true,
       runValidators: true,
     }).lean();
     if (!updated) {
-      // A CAS MISS is the one DEFINITE no-write outcome this route has: the
-      // filter matched nothing, so the round (and the reward on it) never
-      // landed — the claimed stamps must go back before reporting the 409,
-      // or a customer would lose stamps for a redemption that never happened.
+      // A CAS MISS is the one DEFINITE no-write outcome this route has: the round (and its reward) never
+      // landed, so the claimed stamps / card go back before the 409 — nothing is lost for a redemption that
+      // never happened.
       if (resolvedClaim) {
         await returnRewardStamps(String(old.customerId), old.orderId, resolvedClaim.cost, rewardAssignment);
       }
+      if (card) await releaseRewardCard(String(old.customerId), card.id, old.orderId);
       // F5 — the overlap twin that won this CAS may be our own send: answer
       // with the round that landed instead of a 409 the cashier would re-ring.
       const late = key ? await roundReplayAfterMiss(id, key, parsed.data.items) : null;

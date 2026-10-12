@@ -14,6 +14,15 @@ import {
   REWARD_PROMO_EXCLUSIVE,
   REWARD_ON_OPEN_TAB,
 } from "@pos/shared/public";
+import { PROMO_BLOCKS_REWARD } from "@pos/shared/public-promo";
+import {
+  CARD_BILL_TOO_SMALL,
+  CARD_CATEGORY_TOO_BIG,
+  CARD_NEEDS_SIGN_IN,
+  CARD_NOT_USABLE,
+  CARD_NOTHING_TO_DISCOUNT,
+  CARD_REWARD_EXCLUSIVE,
+} from "@pos/shared/reward-card-use";
 import type { CreatePublicOrderRequestInput, PublicOrderTarget } from "@pos/shared/schemas/public-order.schema";
 import type { CartLine } from "@/components/public/public-cart-store";
 import type { TablePick } from "@/components/public/TableChooser";
@@ -58,7 +67,15 @@ export function isRewardErrorMessage(message: string): boolean {
     message === REWARD_NOT_ENOUGH_STAMPS ||
     message === REWARD_BILL_TOO_SMALL ||
     message === REWARD_PROMO_EXCLUSIVE ||
-    message === REWARD_ON_OPEN_TAB
+    message === REWARD_ON_OPEN_TAB ||
+    // CB-7 S5 — the scratch-card refusals ride the same path: the pick is dropped and the diner can retry.
+    message === CARD_NOT_USABLE ||
+    message === CARD_BILL_TOO_SMALL ||
+    message === CARD_NOTHING_TO_DISCOUNT ||
+    message === CARD_NEEDS_SIGN_IN ||
+    message === CARD_CATEGORY_TOO_BIG ||
+    message === CARD_REWARD_EXCLUSIVE ||
+    message === PROMO_BLOCKS_REWARD
   );
 }
 
@@ -133,11 +150,12 @@ export function classifySubmitFailure(
 // rejection (no reward was sent, or the text doesn't match).
 export function classifyRewardFailure(
   status: number,
-  requestedRewardAt: number | null,
+  // The reward intent that rode this submit: a stamp rung (number), a scratch card id (string), or null for none.
+  requestedReward: number | string | null,
   envelopeError: string | undefined,
 ): string | null {
   if (status !== 422) return null;
-  if (requestedRewardAt === null || !envelopeError) return null;
+  if (requestedReward === null || !envelopeError) return null;
   return isRewardErrorMessage(envelopeError) ? envelopeError : null;
 }
 
@@ -163,12 +181,16 @@ export interface BuildOrderRequestBodyInput {
   // createPublicOrderRequestSchema's own comment). `null` when no rung is
   // selected, mirroring promoCode's own null-means-none shape.
   requestedRewardAt: number | null;
+  // CB-7 S5 — a revealed scratch card's id, INTENT ONLY. Optional so callers with no card keep today's shape; when
+  // set it WINS and requestedRewardAt is never sent (the schema allows one reward intent per order).
+  requestedCardId?: string | null;
 }
 
 // Builds EXACTLY createPublicOrderRequestSchema's .strict() shape — items
 // carry no price/name, the server derives both from the live product.
 export function buildOrderRequestBody(input: BuildOrderRequestBodyInput): CreatePublicOrderRequestInput {
-  const { target, cart, note, promoCode, name, mobile, requestedRewardAt } = input;
+  const { target, cart, note, promoCode, name, mobile, requestedRewardAt, requestedCardId } = input;
+  const cardPicked = requestedCardId !== undefined && requestedCardId !== null;
   return {
     target,
     items: cart.map((line) => ({
@@ -183,7 +205,8 @@ export function buildOrderRequestBody(input: BuildOrderRequestBodyInput): Create
     })),
     note: note.trim().length > 0 ? note.trim() : undefined,
     promoCode: promoCode ?? undefined,
-    requestedRewardAt: requestedRewardAt ?? undefined,
+    requestedRewardAt: cardPicked ? undefined : (requestedRewardAt ?? undefined),
+    ...(cardPicked ? { requestedCardId } : {}),
     name: name.trim(),
     mobile: mobile.trim(),
   };

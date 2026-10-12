@@ -56,6 +56,8 @@ import {
 } from "@pos/shared/reward-redemption";
 import { orderLineKey } from "@pos/shared/utils";
 import type { ResolvedMilestone } from "@pos/shared/loyalty-rules";
+// CB-7 S5 — P2 (promo bill refuses a later reward) + O2 (GST preset refused on a promo bill), through the REAL routes.
+import { runPromoFenceLegs } from "./reward-promo-fence-live-kit";
 
 const SCRATCH_PREFIX = "pos_scratch_";
 const DEFAULT_URI = `mongodb://127.0.0.1:27017/${SCRATCH_PREFIX}reward_redeem`;
@@ -1567,6 +1569,10 @@ async function main(): Promise<void> {
         assert.equal(updated!.subtotal, 260, "and must not move the subtotal either");
       },
     );
+
+    // CB-7 S5 — scenarios 21-26 (kit): the real routes, RED until the promo marker + O2 refusal land.
+    process.env.MONGODB_URI = uri;
+    await runPromoFenceLegs(scenario, productId, 21);
 
   } finally {
     await Order.deleteMany({});

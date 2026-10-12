@@ -228,8 +228,8 @@ test("S8: the accept claims BEFORE Order.create, and re-keys the claim when the 
   assert.match(src, /onRekey:/, "the recovery must be handed a re-key callback");
   assert.match(
     src,
-    /await returnAcceptReward\(rewardResolution, firstOrderId\);\s*\n?\s*return claimAcceptReward\(rewardResolution, retryOrderId\)/,
-    "the re-key must hand back the first id's claim and re-claim against the RE-NUMBERED order",
+    /await returnAcceptReward\(rewardResolution, claimedFor\);\s*\n?\s*claimedFor = retryOrderId;\s*\n?\s*return claimAcceptReward\(rewardResolution, retryOrderId\)/,
+    "the re-key must hand back the claim's CURRENT id, track the new one, and re-claim against the RE-NUMBERED order",
   );
   // COUNT: exactly one pre-create claim. A duplicate would spend twice.
   assert.equal(
@@ -512,7 +512,7 @@ test("S8 REVIEW-CONFIRMED: an ambiguous create throw RESOLVES whether an order l
   assert.match(src, /catch \(fatal\)/, "landmark: the ambiguous-throw arm must exist");
   assert.match(
     src,
-    /if \(!landed\) await returnAcceptReward\(rewardResolution, firstOrderId\)/,
+    /if \(!landed \|\| landed\.orderId !== claimedFor\) await returnAcceptReward\(rewardResolution, claimedFor\)/,
     "the return must fire ONLY when no order carries this requestId — a definite no-write",
   );
   assert.match(

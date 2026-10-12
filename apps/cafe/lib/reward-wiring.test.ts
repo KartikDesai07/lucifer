@@ -477,7 +477,8 @@ test("PIN (CB-5B fix): app/api/orders/[id]/items/route.ts imports rewardFromOrde
   );
   mustIndexOf(
     src,
-    "const rewardForTotals = resolvedClaim?.reward ?? rewardFromOrderSnapshot(old);",
+    // CB-7 S5 slice C: a card claimed THIS round prices ahead of the stored-snapshot fallback.
+    "const rewardForTotals = resolvedClaim?.reward ?? card?.reward ?? rewardFromOrderSnapshot(old);",
     "the fallback call site that feeds computeOrderTotals's reward",
   );
   const fallbackIdx = mustIndexOf(
@@ -511,12 +512,13 @@ test("PIN (CB-5B fix): app/api/orders/[id]/settle/route.ts imports rewardFromOrd
   const claimCallIdx = mustIndexOf(src, "const money = resolveSettleMoney({", "the resolveSettleMoney call site");
   const fallbackIdx = mustIndexOf(
     src,
-    "reward: claim?.reward ?? rewardFromOrderSnapshot(old),",
+    // CB-7 S5 slice C: a card claimed at this settle prices ahead of the stored-snapshot fallback.
+    "reward: claim?.reward ?? card?.reward ?? rewardFromOrderSnapshot(old),",
     "the fallback passed as resolveSettleMoney's reward argument",
   );
   assert.ok(
     claimCallIdx < fallbackIdx,
-    "the reward: claim?.reward ?? rewardFromOrderSnapshot(old) argument must sit INSIDE the resolveSettleMoney({ ... }) call",
+    "the reward: claim?.reward ?? card?.reward ?? rewardFromOrderSnapshot(old) argument must sit INSIDE the resolveSettleMoney({ ... }) call",
   );
 });
 
@@ -954,13 +956,13 @@ test("PIN (P4): Cart.tsx's GST Discount button is disabled while a reward is loc
   assert.match(block, /GST_DISCOUNT_LABEL/, "landmark: this block is the GST Discount button");
   assert.match(
     block,
-    /disabled=\{items\.length === 0 \|\| \(rewardLocked && !gstActive\)\}/,
-    "the button must be disabled while rewardLocked (the server would 409 it anyway) — except to turn an already-active preset OFF",
+    /disabled=\{items\.length === 0 \|\| \(\(rewardLocked \|\| promoLocked\) && !gstActive\)\}/,
+    "the button must be disabled while rewardLocked or promoLocked (the server would 409 it anyway) — except to turn an already-active preset OFF",
   );
   assert.match(
     block,
-    /\{REWARD_BLOCKS_GST_DISCOUNT_MESSAGE\}/,
-    "a locked button must say why, with the one shared sentence",
+    /\{rewardLocked \? REWARD_BLOCKS_GST_DISCOUNT_MESSAGE : PROMO_BLOCKS_GST_DISCOUNT_MESSAGE\}/,
+    "a locked button must say why, with the one shared sentence for a reward, and the promo sentence for a promo tab (CB-7 S5 O2)",
   );
   assertReceiptImports(src, ["REWARD_BLOCKS_GST_DISCOUNT_MESSAGE"]);
 });

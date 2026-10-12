@@ -30,7 +30,7 @@ import { moveOrderTableSchema } from "@/schemas";
 import { orderSummaryCacheKey } from "@/lib/utils";
 import { getSettings, gstConfigOf } from "@/lib/settings";
 import { computeOrderTotals, gstConfigFromOrder } from "@/lib/receipt";
-import { rewardFromOrderSnapshot } from "@pos/shared/reward-redemption";
+import { ORDER_REWARD_SNAPSHOT_KEYS, rewardFromOrderSnapshot } from "@pos/shared/reward-redemption";
 import { chargesFromOrder, withTableCharge, splitChargeTotals } from "@pos/shared/order-charges";
 import { chargeWriteFields } from "@/lib/order-charges-write";
 import { createOrderPrintJobs, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
@@ -72,12 +72,15 @@ export async function POST(req: Request, { params }: Params) {
     // the tab's own GST snapshot (never live settings — gstConfigFromOrder),
     // the reward snapshot (rewardFromOrderSnapshot fails CLOSED at 0, so
     // omitting it would re-bill a reward tab at full price), and the terms
-    // the widened CAS filter (moveOrderFilter) now guards on.
+    // the widened CAS filter (moveOrderFilter) now guards on. The reward keys
+    // come from the shared ORDER_REWARD_SNAPSHOT_KEYS (CB-7 P3), so a snapshot
+    // field added later (card id/scope/cap, rewardQty) can never be missed here.
     const order = await Order.findById(id)
       .select(
         "orderId status tableNo charges chargeAmount chargeLabel items discount discountKind " +
-          "gstRate gstMode total kotRounds voids rewardAt rewardKind rewardValue rewardItem " +
-          "rewardItemProductId createdAt",
+          "gstRate gstMode total kotRounds voids " +
+          ORDER_REWARD_SNAPSHOT_KEYS.join(" ") +
+          " createdAt",
       )
       .lean();
     if (!order) return notFound("Order not found");

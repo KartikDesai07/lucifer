@@ -7,6 +7,7 @@ import { ledgerContribution, resolveSettleMoney, type SettleMoneyInput } from ".
 import { settleOrderSchema, createOrderSchema } from "@/schemas";
 import { collectedAmount } from "@/lib/payment-result";
 import { rewardFromOrderSnapshot, type RedeemedReward } from "@pos/shared/reward-redemption";
+import { stripComments } from "./source-pin-utils";
 
 // CR1.2 — failing-repro leg for two confirmed money bugs at settle. These tests
 // are written against the FIX's surface (a `resolveSettleMoney` pure function, a
@@ -595,4 +596,62 @@ test("P4 control (settle): the SAME flat reward tab settled with discountKind ab
   if ("error" in result) return;
   assert.equal(result.totals?.discount, 100);
   assert.equal(result.total, 263);
+});
+
+// ── G2 (s91 arbiter round 2): the settle-time claim's minBill gate prices charges like the bill ─────────────────────
+// lib/settle-reward.ts built its gate from `chargeAmount ?? old.chargeAmount` with no extra lane, while the bill
+// (resolveSettleMoney) rebuilds both lanes — a Rs 530 bill (Rs 30 Packing extra) read as Rs 500 and the claim 400'd.
+// ONE builder now serves both; the live legs g2a-g2d (scripts/reward-card-use-live-legs-charges.ts) prove the routes.
+
+const PACKING_30 = { type: "extra" as const, label: "Packing", amount: 30 };
+const TABLE_40 = { type: "table" as const, label: "AC", amount: 40 };
+
+test("G2 settleCharges: table lane from chargeAmount (else the stored table entry), extra lane from extraCharges (else the stored extras)", async () => {
+  const { settleCharges } = await import("./settle-charges");
+  const { splitChargeTotals } = await import("@pos/shared/order-charges");
+  const lanes = (...args: Parameters<typeof settleCharges>) => splitChargeTotals(settleCharges(...args));
+  assert.deepEqual(lanes([PACKING_30], 0, undefined), { table: 0, extra: 30 }, "a table waiver never drops the extra");
+  assert.deepEqual(lanes([], undefined, [{ label: "Packing", amount: 30 }]), { table: 0, extra: 30 }, "an extra added at settle counts");
+  assert.deepEqual(lanes([PACKING_30], undefined, []), { table: 0, extra: 0 }, "an extra removed at settle is gone");
+  assert.deepEqual(lanes([TABLE_40, PACKING_30], undefined, undefined), { table: 40, extra: 30 }, "nothing supplied: both stored lanes");
+  assert.deepEqual(lanes([TABLE_40, PACKING_30], 0, undefined), { table: 0, extra: 30 });
+  assert.deepEqual(lanes([PACKING_30], 20, undefined), { table: 20, extra: 30 });
+  assert.equal(settleCharges([TABLE_40], 25, undefined)[0]?.label, "AC", "an adjusted table charge keeps its label");
+});
+
+test("G2 parity: resolveSettleMoney bills exactly the charges settleCharges builds (the gate and the bill read one path)", async () => {
+  const { settleCharges } = await import("./settle-charges");
+  const { chargesFromOrder } = await import("@pos/shared/order-charges");
+  const order = { items: [{ price: 500, qty: 1 }], total: 530, discount: 0, chargeAmount: 30, charges: [PACKING_30] };
+  for (const [chargeAmount, extraCharges] of [[0, undefined], [undefined, []], [15, [{ label: "Box", amount: 5 }]]] as const) {
+    const money = resolveSettleMoney({ order, payment: "Cash", chargeAmount, extraCharges, liveGst: GST_OFF });
+    assert.ok(!("error" in money));
+    if ("error" in money) return;
+    assert.deepEqual(money.charges, settleCharges(chargesFromOrder(order), chargeAmount, extraCharges));
+  }
+});
+
+test("PIN (G2): settle-reward's gate and resolveSettleMoney build charges through the ONE settleCharges helper", () => {
+  const repoRoot = fileURLToPath(new URL("../", import.meta.url));
+  const read = (rel: string) => stripComments(readFileSync(path.join(repoRoot, rel), "utf8"));
+  const importsHelper = /import \{[^}]*\bsettleCharges\b[^}]*\} from "@\/lib\/settle-charges"/;
+  const order = read("lib/order.ts");
+  const gate = read("lib/settle-reward.ts");
+  const route = read("app/api/orders/[id]/settle/route.ts");
+  assert.match(order, /export function resolveSettleMoney/, "landmark: the bill");
+  assert.match(order, importsHelper, "resolveSettleMoney imports the shared builder");
+  assert.match(order, /:\s*settleCharges\(baseCharges, input\.chargeAmount, input\.extraCharges\);/, "the bill's charges come from it");
+  assert.match(gate, importsHelper, "the gate imports the shared builder");
+  assert.match(
+    gate,
+    /splitChargeTotals\(settleCharges\(chargesFromOrder\(old\), chargeAmount, extraCharges\)\)/,
+    "the gate splits the SAME charges the bill is priced with",
+  );
+  assert.match(gate, /charge: table,\s*extraCharge: extra,/, "both lanes reach the gate's total, like resolveSettleMoney");
+  assert.match(gate, /computeOrderTotals\(\{/, "landmark: the gate's total");
+  for (const [name, src] of [["lib/order.ts", order], ["lib/settle-reward.ts", gate]] as const) {
+    assert.ok(!/withTableCharge\(|applyExtraCharges\(/.test(src), `${name} must not hand-roll the lanes beside the helper`);
+  }
+  assert.ok(!gate.includes("old.chargeAmount"), "the gate never reads the stored scalar (it misses the extra lane)");
+  assert.match(route, /resolveSettleReward\(\{[^}]*\bchargeAmount: data\.chargeAmount,\s*extraCharges: data\.extraCharges,/, "the route hands the gate the body's extras");
 });

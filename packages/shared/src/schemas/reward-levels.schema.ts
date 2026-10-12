@@ -40,6 +40,9 @@ import {
 
 const WHOLE = "Use a whole number";
 
+// Widened so TypeScript does not fold the launch lock into a constant (a dead branch) once the flag is true.
+const LAUNCHED: boolean = REWARD_LEVELS_LAUNCHED;
+
 function int(min: number, max: number, what: string): z.ZodNumber {
   return z
     .number({ invalid_type_error: `${what} must be a whole number` })
@@ -158,7 +161,7 @@ export const rewardLevelsWriteSchema = z
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["levels"], message: "Add at least one level with a reward box before you switch this on" });
     }
     // The launch lock (s86 review B4): no PUT can switch the feature on before the diner can scratch and use a card.
-    if (cfg.enabled && !REWARD_LEVELS_LAUNCHED) {
+    if (cfg.enabled && !LAUNCHED) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["enabled"], message: "Scratch cards are not available yet" });
     }
   });

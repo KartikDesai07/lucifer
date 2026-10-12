@@ -7,8 +7,8 @@ import * as C from "../reward-levels";
 import type { RewardLevelsConfig } from "../reward-levels";
 
 // CB-7 S1 — the WRITE gate (every rule, strict, integers), the READ twin (shape-only, own ceilings, fail closed
-// to null) and the Settings PUT wiring. NOTE: enabled:true is refused while REWARD_LEVELS_LAUNCHED is false, so the
-// "valid" fixture is a DRAFT (enabled:false); the lock itself is asserted separately.
+// to null) and the Settings PUT wiring. NOTE: REWARD_LEVELS_LAUNCHED is true since S5, so enabled:true is ACCEPTED when
+// the config is otherwise valid; the "valid" fixture stays a DRAFT (enabled:false) as the baseline the tests mutate.
 
 const PRODUCT_UPPER = "0123456789ABCDEF01234567";
 const PRODUCT_ID = PRODUCT_UPPER.toLowerCase();
@@ -206,18 +206,18 @@ test("WRITE: count caps — levels, boxes per level, options per box", () => {
   assert.ok(paths(mutate((d) => (slot0(d).options = many))).includes("levels.0.slots.0.options"));
 });
 
-test("LAUNCH LOCK: enabled:true is refused at 'enabled' while REWARD_LEVELS_LAUNCHED is false", () => {
-  assert.equal(C.REWARD_LEVELS_LAUNCHED, false, "landmark: still locked — flipping this is S4's job, with this test");
+test("LAUNCHED: a valid enabled:true config passes and the old lock message is gone", () => {
+  assert.equal(C.REWARD_LEVELS_LAUNCHED, true, "landmark: unlocked in S5 (the WRITE-schema lock is the mechanism to close it again)");
   const on = mutate((d) => (d.enabled = true));
-  assert.deepEqual(paths(on), ["enabled"]);
-  assert.ok(messages(on).includes("Scratch cards are not available yet"));
-  assert.ok(rewardLevelsWriteSchema.safeParse(valid()).success, "landmark: the same config switched off passes");
+  assert.deepEqual(paths(on), [], JSON.stringify(on));
+  assert.ok(!messages(on).includes("Scratch cards are not available yet"));
+  assert.ok(rewardLevelsWriteSchema.safeParse({ ...valid(), enabled: true }).success, "enabled:true parses");
+  assert.ok(rewardLevelsWriteSchema.safeParse(valid()).success, "landmark: the same config switched off still passes");
 });
 
-test("WRITE: enabled:true with no level holding a box is refused at 'levels' (beside the lock)", () => {
+test("WRITE: enabled:true with no level holding a box is refused at exactly 'levels'", () => {
   for (const levels of [[], [{ size: 3, slots: [] }]]) {
-    const got = paths({ v: 1, enabled: true, levels });
-    assert.ok(got.includes("levels") && got.includes("enabled"), JSON.stringify(got));
+    assert.deepEqual(paths({ v: 1, enabled: true, levels }), ["levels"]);
   }
   assert.ok(!paths({ v: 1, enabled: false, levels: [{ size: 3, slots: [] }] }).includes("levels"), "a draft may be empty");
 });
@@ -321,7 +321,10 @@ test("updateSettingsSchema rejects an unknown key inside rewardLevels, at a path
   const r = updateSettingsSchema.safeParse({ rewardLevels: { ...valid(), sneaky: 1 } });
   assert.equal(r.success, false);
   if (!r.success) assert.ok(r.error.issues.every((i) => i.path[0] === "rewardLevels"), JSON.stringify(r.error.issues.map((i) => i.path)));
-  assert.equal(updateSettingsSchema.safeParse({ rewardLevels: { ...valid(), enabled: true } }).success, false, "the launch lock applies through the PUT gate");
+  const on = updateSettingsSchema.safeParse({ rewardLevels: { ...valid(), enabled: true } });
+  assert.ok(on.success, "the PUT gate accepts enabled:true now the feature is launched");
+  if (on.success) assert.equal(on.data.rewardLevels?.enabled, true);
+  assert.equal(updateSettingsSchema.safeParse({ rewardLevels: { v: 1, enabled: true, levels: [] } }).success, false, "an empty enabled config is still refused through the PUT gate");
 });
 
 test("PIN: rewardLevels is PUT-only — never a key of settingsSchema (a section form would resend or wipe it)", () => {

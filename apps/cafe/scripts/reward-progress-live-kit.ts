@@ -1,6 +1,6 @@
 /**
  * Shared fixtures + helpers of the CB-7 S2 live leg (verify-reward-progress-live.ts): the enabled blob, the Settings
- * writer that bypasses the launch lock, the PIN-set / staff-reset update shapes copied from the routes (and pinned
+ * writer that inserts the blob straight (no PUT), the PIN-set / staff-reset update shapes copied from the routes (and pinned
  * to the route SOURCE so a drift fails the leg), a contention barrier and the dep wrappers. Split out only to keep
  * both files under the size cap. (ops CLI support module, not app code.)
  */
@@ -55,8 +55,8 @@ export const T0 = new Date("2026-10-01T10:00:00.000Z");
 const MS_PER_MIN = 60_000;
 export const after = (d: Date, minutes: number): Date => new Date(d.getTime() + minutes * MS_PER_MIN);
 
-// Settings with the blob written STRAIGHT into the collection (the WRITE gate refuses enabled:true while the launch
-// lock holds), read back through the model like the routes do.
+// Settings with the blob written STRAIGHT into the collection (no PUT, so the legs need no valid-config or
+// Tamil Nadu setup), read back through the model like the routes do.
 export async function writeSettings(blob: unknown, extra: Rec = {}): Promise<ISettings> {
   await Settings.collection.deleteMany({});
   await Settings.collection.insertOne({ dinerAccountsEnabled: true, ...(blob === undefined ? {} : { rewardLevels: blob }), ...extra });

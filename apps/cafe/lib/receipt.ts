@@ -3,7 +3,9 @@ import type { RedeemedReward } from "@pos/shared/reward-redemption";
 import { rewardDiscountAmount } from "@/lib/reward-discount";
 
 export {
+  PROMO_BLOCKS_GST_DISCOUNT_MESSAGE,
   REWARD_BLOCKS_GST_DISCOUNT_MESSAGE,
+  promoBlocksDiscountKind,
   resolveDiscountKind,
   rewardBlocksDiscountKind,
   rewardDiscountAmount,
@@ -107,7 +109,8 @@ export interface OrderTotalsInput {
   // `reward` marks a line given as a loyalty reward: priced, but worth 0 on the
   // bill (see the reducer below). Optional so every existing caller compiles
   // unchanged — an ordinary sold line simply omits it.
-  items: ReadonlyArray<{ price: number; qty: number; reward?: boolean }>;
+  // `productId` (CB-7 S5) lets a scoped scratch card find its eligible lines; every other caller may omit it.
+  items: ReadonlyArray<{ price: number; qty: number; reward?: boolean; productId?: unknown }>;
   discount: number;
   // Required-and-nullable, same reason as `charge` below: every re-pricing
   // writer has to state out loud whether the discount is the GST preset (then
@@ -176,7 +179,7 @@ export function computeOrderTotals({
     discountKind === "gst"
       ? gstEquivalentDiscount(subtotal, cfg)
       : discountKind === "reward"
-        ? rewardDiscountAmount(subtotal, reward)
+        ? rewardDiscountAmount(subtotal, reward, items)
         : discount;
   const clampedDiscount = Math.min(Math.max(0, Math.round(rawDiscount)), subtotal);
   const base = subtotal - clampedDiscount;

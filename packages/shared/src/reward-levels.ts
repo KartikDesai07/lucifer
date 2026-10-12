@@ -16,8 +16,9 @@ import {
 export const REWARD_LEVELS_SCHEMA_VERSION = 1;
 
 // The launch lock (s86 review B4): while false, the WRITE schema refuses `enabled: true`, so no PUT can switch the
-// feature on before the diner can scratch (S4) and use (S5) a card. Flipped to true in S4 — never earlier.
-export const REWARD_LEVELS_LAUNCHED = false;
+// feature on before the diner can scratch AND use a card. Flipped to true in S5, once both exist; the WRITE-schema
+// lock stays as the mechanism if the feature ever has to be closed again.
+export const REWARD_LEVELS_LAUNCHED = true;
 
 // ── Config limits (§2.1). Worst case 5 × 8 × 5 options ≈ 24 KB inside the Settings doc. ──────────────────────────
 export const REWARD_LEVELS_MAX = 5;

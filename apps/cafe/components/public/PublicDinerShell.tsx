@@ -197,7 +197,13 @@ export function PublicDinerShell({
           repeat/quick add writes the rebuilt cart to localStorage, and
           PublicOrderFlow hydrates from there exactly once on mount. */}
       <div hidden={tab !== "menu"}>
-        <PublicOrderFlow key={menuEpoch} token={token} chrome={chrome} rewards={rewards} />
+        <PublicOrderFlow
+          key={menuEpoch}
+          token={token}
+          chrome={chrome}
+          rewards={rewards}
+          cardsIdentity={cardsOn ? (diner?.mobile ?? null) : null}
+        />
       </div>
 
       {tab === "home" && (

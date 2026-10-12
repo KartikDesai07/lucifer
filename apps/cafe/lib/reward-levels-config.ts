@@ -1,7 +1,8 @@
 import type { ISettings } from "@/models/Settings";
 import { dinerAccountsOn } from "@/lib/diner-route-guard";
 import { SCRATCH_BLOCK_ENV_VAR, type RewardLevelsConfig } from "@pos/shared/reward-levels";
-import { scratchCardsBlocked } from "@pos/shared/reward-levels-engine";
+import { gstinBlocksScratch, scratchCardsBlocked, scratchEnvBlocks } from "@pos/shared/reward-levels-engine";
+import { BLOCKED_PLATFORM, BLOCKED_TN } from "@/lib/reward-levels-copy";
 import { parseStoredRewardLevels, rewardLevelsChosenRaw } from "@pos/shared/schemas/reward-levels-read.schema";
 
 // CB-7 S1 — the ONE place the stored reward-levels blob is read, and the three-predicate split of plan §2.11
@@ -47,4 +48,20 @@ export function rewardLevelsEarning(settings: ISettings | null, env: NodeJS.Proc
     resolveRewardLevels(settings) !== null &&
     !scratchCardsBlockedFor(settings, env)
   );
+}
+
+// CB-7 S5 unlock: the PUT refuses an OFF -> ON flip while scratch cards are blocked for this cafe (the Tamil Nadu
+// guard of §2.11: the platform env flag OR a GSTIN state code the owner cannot flip). Returns the plain-English
+// refusal, or null to let the write through. ONLY the flip is refused: turning OFF, clearing, re-saving a blob that
+// is already on (an existing state is never locked out) and saving a draft all stay allowed. `stored` is the blob
+// as saved BEFORE this PUT; `gstNumber` is the GSTIN the cafe will have AFTER it (body value, else the stored one).
+export function rewardLevelsSwitchOnRefusal(
+  incoming: unknown,
+  stored: unknown,
+  block: { envFlag: string | undefined | null; gstNumber: string | undefined | null },
+): string | null {
+  if (!rewardLevelsChosenRaw(incoming) || rewardLevelsChosenRaw(stored)) return null;
+  if (gstinBlocksScratch(block.gstNumber)) return BLOCKED_TN;
+  if (scratchEnvBlocks(block.envFlag)) return BLOCKED_PLATFORM;
+  return null;
 }

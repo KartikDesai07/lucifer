@@ -21,6 +21,7 @@ import {
   type IntakeTable,
 } from "@/lib/order-request-intake";
 import { resolveRequestReward } from "@/lib/order-request-reward";
+import { resolveRequestCard } from "@/lib/order-request-card";
 import { resolveRequestPromo, resolveAutoAcceptStatus, TABLE_NOT_FOUND_MESSAGE, RATE_LIMITED_MESSAGE, ORDER_REQUEST_FAILED_MESSAGE, SELF_ORDER_DISABLED_MESSAGE } from "@/lib/order-request-create";
 import { intakePublicOrderRequest, noStore } from "@/lib/public-order-intake";
 import { notifyRequestEvent, telegramSummaryOfCreate } from "@/lib/telegram/notify";
@@ -216,6 +217,15 @@ export async function POST(req: Request) {
       return noStore(failure(reward.error, 422));
     }
 
+    // 9.7. Scratch card (CB-7 S5 / §2.6) — the diner's OWN revealed card, same rules as 9.6: gates in order
+    // (promo, stamp rung, session, mobile, open tab, usable + minimum), nothing claimed here (the accept claims it
+    // against the orderId that lands), every refusal the caller's own fact so the slot is refunded.
+    const card = await resolveRequestCard(data, settings, rewardQuote.quotedTotal, priced.lines);
+    if ("error" in card) {
+      await refundRateLimit(bucket, now);
+      return noStore(failure(card.error, 422));
+    }
+
     const doc = buildRequestDoc(
       data, priced.lines, table, settings, chargeApplies, promo.discount, promo.code,
       reward.requestedRewardAt,
@@ -223,7 +233,8 @@ export async function POST(req: Request) {
     const shortCode = await mintUniquePublicCode((code) =>
       OrderRequest.exists({ shortCode: code }).then(Boolean),
     );
-    const request = await OrderRequest.create({ ...doc, shortCode });
+    // `card` is `{}` or `{ requestedCardId }` — the intent only, omit-empty.
+    const request = await OrderRequest.create({ ...doc, ...card, shortCode });
 
     // 10. Auto-accept — settings.selfOrderMode === "auto" (the branch itself
     // moved to lib/order-request-create.ts's resolveAutoAcceptStatus to keep

@@ -5,6 +5,7 @@ import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { rungWorthLabel, type RungOffer } from "@/lib/reward-rungs";
+import { CartRewardCards, type CartRewardCardsState } from "@/components/pos/CartRewardCards";
 
 // CB-5B S9 — the STAFF counter's reward-redemption picker. Mirrors the
 // diner-facing RewardClaimControl toggle idiom (components/public/
@@ -28,6 +29,10 @@ interface CartRewardProps {
   locked?: boolean;
   onSelect: (at: number | null) => void;
   manualDiscountActive: boolean;
+  // CB-7 S5 — the diner's scratch cards, listed under the stamp rungs (see CartRewardCards).
+  cards?: CartRewardCardsState;
+  // P2 (UI) — why NO reward can be picked on this tab (it opened with a promo code); one plain line, null = free.
+  blockedReason?: string | null;
   disabled?: boolean;
 }
 
@@ -40,6 +45,8 @@ export function CartReward({
   locked = false,
   onSelect,
   manualDiscountActive,
+  cards,
+  blockedReason = null,
   disabled,
 }: CartRewardProps) {
   // D9.3: the panel only exists once staff have picked a customer — no dead
@@ -47,7 +54,8 @@ export function CartReward({
   if (!customerSelected) return null;
   // A cafe with no configured ladder (and this customer has never earned a
   // stamp) has nothing to show here at all.
-  if (offers.length === 0 && (stamps ?? 0) === 0) return null;
+  const hasCards = (cards?.offers.length ?? 0) > 0;
+  if (offers.length === 0 && (stamps ?? 0) === 0 && !hasCards) return null;
 
   const selectedOffer = offers.find((o) => o.rung.at === selectedAt);
 
@@ -58,7 +66,7 @@ export function CartReward({
         {loading ? (
           <span>Loading…</span>
         ) : (
-          <span>{stamps ?? 0} stamps</span>
+          (offers.length > 0 || (stamps ?? 0) > 0) && <span>{stamps ?? 0} stamps</span>
         )}
       </div>
 
@@ -81,6 +89,8 @@ export function CartReward({
             Already applied to this bill. One reward per order.
           </p>
         </>
+      ) : blockedReason !== null ? (
+        <p className="text-xs text-muted-foreground">{blockedReason}</p>
       ) : /* A2/D6 mutual exclusion — the server fences this both ways already;
           this line is so staff never see an offer they cannot actually take. */
       manualDiscountActive ? (
@@ -121,6 +131,7 @@ export function CartReward({
               onSelect={onSelect}
             />
           )}
+          {cards && <CartRewardCards {...cards} disabled={disabled} />}
         </>
       )}
     </div>

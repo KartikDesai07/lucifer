@@ -43,8 +43,9 @@ interface RewardLevelsSectionProps {
 // STACKED, each with its own row of boxes (owner answer Q3). It rides the page's ONE Save bar through `levels.extra`,
 // and renders INSIDE the settings <form>, so every button here is type="button".
 //
-// The switch is locked while the feature is not launched (or sign-in is off): shown OFF and disabled, and the stored
-// value is never rewritten by that. A newly opened box or a looked-at level never creates a draft.
+// The switch is locked while the feature is not launched, sign-in is off, or scratch cards are blocked for this cafe
+// (Tamil Nadu GSTIN / platform flag): shown OFF and disabled, and the stored value is never rewritten by that. A
+// block locks only the OFF -> ON direction: a switch that is already ON stays usable so the owner can turn it OFF. A newly opened box or a looked-at level never creates a draft.
 export function RewardLevelsSection({ levels, settings, control, getValues }: RewardLevelsSectionProps) {
   const accountsOn = useWatch({ control, name: "dinerAccountsEnabled" }) === true;
   const status = useRewardLevelsStatus();
@@ -79,7 +80,7 @@ export function RewardLevelsSection({ levels, settings, control, getValues }: Re
         <ToggleRow
           label={SWITCH_LABEL}
           description={switchText}
-          disabled={!switchable}
+          disabled={!switchable || (blockedText !== null && !switchChecked)}
           checked={switchChecked}
           onChange={(next) => {
             // Reachable only while launched; with nothing set up there is nothing to switch on.

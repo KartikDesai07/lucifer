@@ -56,6 +56,12 @@ export function buildCartProps(pos: Pos, onVoidItem: () => void, menu?: Product[
     selectedRewardAt: pos.selectedRewardAt,
     rewardLocked: pos.rewardLocked,
     onSelectReward: pos.onSelectReward,
+    // CB-7 S5 — the diner's scratch cards, and P2's promo block (a promo-opened tab: no pickers, no GST preset).
+    cardOffers: pos.cardOffers,
+    selectedCardId: pos.selectedCardId,
+    onSelectCard: pos.onSelectCard,
+    rewardBlockedReason: pos.rewardBlockedReason,
+    promoLocked: pos.promoLocked,
     manualDiscountActive: pos.manualDiscountActive,
     // CB-5D part 2 — the promo-code control (see CartPromo/use-pos-tab.ts).
     promoCode: pos.promoCode,
@@ -92,11 +98,15 @@ export function buildCartProps(pos: Pos, onVoidItem: () => void, menu?: Product[
  * 0 — a surviving discount would otherwise report nothing at all.
  */
 export function hasPendingAdjustment(
-  input: Pick<CartProps, "promoCode" | "selectedRewardAt" | "discountRaw" | "discountUnit" | "extraCharges">,
+  input: Pick<
+    CartProps,
+    "promoCode" | "selectedRewardAt" | "selectedCardId" | "discountRaw" | "discountUnit" | "extraCharges"
+  >,
 ): boolean {
   return (
     !!input.promoCode ||
     input.selectedRewardAt != null ||
+    input.selectedCardId != null ||
     input.discountRaw > 0 ||
     input.discountUnit === "GST" ||
     input.extraCharges.length > 0

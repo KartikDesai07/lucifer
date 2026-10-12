@@ -4,6 +4,7 @@ import {
   safeRemove,
   isCartLineArray,
   isIdentity,
+  isCardPick,
   isStringArray,
   isRefreshMap,
   isMenuCacheEntry,
@@ -160,6 +161,17 @@ export function clearIdentity(): void {
 // selection that was cleared, or storage disabled/corrupt).
 export function readRequestedRewardAt(): number | null {
   return safeRead(REQUESTED_REWARD_KEY, (v): v is number => typeof v === "number");
+}
+
+// CB-7 S5 — a scratch-card pick lives under the SAME key as `{card: "<id>"}`, so one reward at a time holds by
+// construction (a write of either shape replaces the other) and every existing clear point wipes it. A stored
+// object reads null above (a stamp rung is a number); a stored number reads null here.
+export function readRequestedCardId(): string | null {
+  return safeRead(REQUESTED_REWARD_KEY, isCardPick)?.card ?? null;
+}
+
+export function writeRequestedCardId(cardId: string): void {
+  safeWrite(REQUESTED_REWARD_KEY, { card: cardId });
 }
 
 export function writeRequestedRewardAt(at: number): void {

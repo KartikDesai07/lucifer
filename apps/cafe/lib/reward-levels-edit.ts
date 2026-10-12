@@ -103,8 +103,8 @@ export function removeSlot(cfg: RewardLevelsConfig, levelIndex: number, step: nu
   };
 }
 
-// A no-op while the launch lock is on. The stored value is never rewritten here: the switch only ever turns on what
-// the lock lets through.
+// Turns the switch on or off. Launched since S5; a no-op again only if the launch lock is ever closed. Nothing else
+// calls this: a starter or a copy arrives OFF and only the owner's switch turns it on (no automatic setting flips).
 export function setEnabled(cfg: RewardLevelsConfig, enabled: boolean): RewardLevelsConfig {
   if (!LAUNCHED) return cfg;
   return { ...cfg, enabled };

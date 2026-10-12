@@ -9,10 +9,13 @@ import {
   type GstConfig,
 } from "@/lib/receipt";
 import type { RedeemedReward } from "@pos/shared/reward-redemption";
+import type { RewardBaseLine } from "@/lib/reward-discount";
 import { chargesTotal, type OrderCharge } from "@pos/shared/order-charges";
 import { TABLE_CHARGE_MAX } from "@/lib/constants";
 import type { DiscountUnit } from "@/components/pos/Cart";
 import type { Settings } from "@/types";
+
+const NO_LINES: readonly RewardBaseLine[] = [];
 
 interface PosTotalsInput {
   subtotal: number;
@@ -40,6 +43,9 @@ interface PosTotalsInput {
   // and the server re-resolves value/kind/cost from Settings + the customer's
   // own row. Nothing here is ever sent.
   reward?: RedeemedReward;
+  // CB-7 S5 — the cart lines a SCOPED reward (a scratch card for one dish or one category) reads its base from, with
+  // their product ids: the same lines, the same function the server prices with. Unscoped rewards ignore it.
+  lines?: readonly RewardBaseLine[];
 }
 
 export interface PosTotals {
@@ -62,6 +68,7 @@ export function usePosTotals({
   extraCharges = [],
   settings,
   reward,
+  lines = NO_LINES,
 }: PosTotalsInput): PosTotals {
   const gstCfg: GstConfig = useMemo(() => gstConfigOfSettings(settings), [settings]);
 
@@ -77,7 +84,7 @@ export function usePosTotals({
     // server appends and excludes from the subtotal, so the local cart's
     // subtotal is already the right base.
     if (reward) {
-      return Math.min(rewardDiscountAmount(subtotal, reward), subtotal);
+      return Math.min(rewardDiscountAmount(subtotal, reward, lines), subtotal);
     }
     if (discountUnit === "GST") return gstEquivalentDiscount(subtotal, gstCfg);
     const amount =
@@ -85,7 +92,7 @@ export function usePosTotals({
         ? Math.round((subtotal * discountRaw) / 100)
         : discountRaw;
     return Math.min(Math.max(0, amount), subtotal);
-  }, [discountRaw, discountUnit, subtotal, gstCfg, reward]);
+  }, [discountRaw, discountUnit, subtotal, gstCfg, reward, lines]);
 
   // Taxable base, then GST added on top in exclusive mode (inclusive adds 0).
   // The table charge lands AFTER tax and outside the discount — it is not part

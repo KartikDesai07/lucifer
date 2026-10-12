@@ -28,7 +28,7 @@ import {
   orderSummaryCacheKey,
 } from "@/lib/utils";
 import { getSettings, gstConfigOf } from "@/lib/settings";
-import { computeOrderTotals } from "@/lib/receipt";
+import { computeOrderTotals, PROMO_BLOCKS_GST_DISCOUNT_MESSAGE } from "@/lib/receipt";
 import { derivePayment } from "@/lib/order";
 import { listOrders } from "@/lib/order-list";
 import { resolveCreateReward } from "@/lib/order-create-reward";
@@ -54,6 +54,10 @@ import {
   PROMO_USED_ERROR,
 } from "@/lib/order-request-accept-promo";
 import { REWARD_PROMO_EXCLUSIVE, type PromoKind } from "@pos/shared/public";
+import { PROMO_BLOCKS_REWARD } from "@pos/shared/public-promo";
+import { CARD_NOT_USABLE } from "@pos/shared/reward-card-use";
+import { cardSnapshotFields, claimRewardCard, releaseRewardCard } from "@/lib/reward-card-claim";
+import { promoMarkerFields } from "@/lib/order-reward-fence";
 import { mintedPromoCodes } from "@pos/shared/loyalty-rules";
 import { mergedNote } from "@/lib/order-request-accept-core";
 import { assignedRewardRefusal } from "@/lib/assigned-reward-gate";
@@ -187,13 +191,14 @@ export async function POST(req: Request) {
         ? data.customerId
         : undefined;
 
-    // Plain totals — no reward — priced ONLY to give resolveRewardClaim a
-    // billTotal to gate a milestone's own minBill against. Never written or
-    // returned; a reward, once resolved, replaces this with the real totals.
+    // Plain totals — no reward — priced ONLY to give resolveRewardClaim a billTotal to gate a milestone's own
+    // minBill against; never written or returned (a resolved reward replaces it). A claim REPLACES any manual/GST
+    // discount (the POS sends the reward's own preview as `discount`), so a claiming request gates on the undiscounted bill.
+    const claims = data.rewardAt !== undefined || data.rewardCardId !== undefined;
     const plainTotals = computeOrderTotals({
       items: data.items,
-      discount: data.discount,
-      discountKind: data.discountKind ?? undefined,
+      discount: claims ? 0 : data.discount,
+      discountKind: claims ? undefined : (data.discountKind ?? undefined),
       charge,
       extraCharge,
       cfg: gstCfg,
@@ -206,11 +211,13 @@ export async function POST(req: Request) {
       items: data.items,
       discountKind: data.discountKind ?? undefined,
       rewardAt: data.rewardAt,
+      rewardCardId: data.rewardCardId,
       billTotal: plainTotals.total,
     });
-    if (!rewardR.ok) return failure(rewardR.message, 400);
+    if (!rewardR.ok) return (await lateReplay()) ?? failure(rewardR.message, 400);
     let { rewardItems } = rewardR;
     const { effectiveDiscountKind, resolvedClaim, rewardAssignment } = rewardR;
+    const { resolvedCard } = rewardR;
 
     // ── CB-5D part 2 — COUNTER-SIDE PROMO CODES ──────────────────────────
     // The same code a diner can type on the QR surface must work at the till.
@@ -228,12 +235,12 @@ export async function POST(req: Request) {
     let promoFenceMobile: string | undefined;
     let promoKind: PromoKind | undefined;
     if (data.promoCode) {
-      // A reward and a promo are mutually exclusive on ONE bill — the same
-      // rule the diner surface states (REWARD_PROMO_EXCLUSIVE) and the
-      // add-round writer enforces (resolveAddRoundKind). An Order carries one
-      // discount scalar and one kind, so allowing both would silently drop
-      // whichever lost. Checked BEFORE anything is claimed or written.
+      // A reward and a promo are mutually exclusive on ONE bill (REWARD_PROMO_EXCLUSIVE, as on the diner surface and
+      // add-round): an Order carries one discount scalar and one kind, so both would silently drop the loser. So is the
+      // GST preset (it would replace the code's rupees while the fence burned). All BEFORE anything is claimed or written.
       if (resolvedClaim) return failure(REWARD_PROMO_EXCLUSIVE, 400);
+      if (resolvedCard) return failure(PROMO_BLOCKS_REWARD, 400);
+      if (data.discountKind === "gst") return failure(PROMO_BLOCKS_GST_DISCOUNT_MESSAGE, 400);
 
       const promo = resolveAcceptPromo(
         data.promoCode,
@@ -253,42 +260,26 @@ export async function POST(req: Request) {
       promoKind = promo.kind;
       promoLine = promoNoteLine(data.promoCode, promo.discount);
 
-      // THE HAZARD THIS BLOCK EXISTS TO CLOSE (owner-flagged): the fence must
-      // key on the CUSTOMER'S MOBILE, never the customerId. PromoRedemption's
-      // unique index is {code, mobile}, and the diner surface — which knows
-      // only a mobile — writes the canonical form of it. Keying a counter
-      // claim on the id instead would give ONE person two independent fences,
-      // so a once-per-customer code could be spent once from the QR surface
-      // and once again at the till. The mobile is not on the Order, so it is
-      // read from the Customer row here; canonicalPromoMobile (inside
-      // claimPromoRedemption) then collapses +91/0 re-typings to one key.
+      // THE HAZARD THIS BLOCK EXISTS TO CLOSE (owner-flagged): the fence must key on the CUSTOMER'S MOBILE,
+      // never the customerId. PromoRedemption's unique index is {code, mobile} and the diner surface writes the
+      // canonical mobile; keying a counter claim on the id would give ONE person two independent fences (a
+      // once-per-customer code spent once at the QR and again at the till). The mobile is not on the Order, so
+      // it is read from the Customer row; canonicalPromoMobile (inside claimPromoRedemption) collapses +91/0
+      // re-typings to one key.
       //
-      // Hoisted to run whenever a promoCode is present (not merely when
-      // oncePerCustomer's fence needs it): the counter-expiry defect fix below
-      // needs this SAME mobile to check an ASSIGNED code's validDays, and an
-      // assigned code is by definition attached to a customer (it lives on
-      // Customer.rewards[], never on an anonymous till sale) — so a walk-in
-      // with no customer selected can never be carrying one, and refusing to
-      // resolve a mobile for them is correct, not merely incidental. Reusing
-      // ONE lookup for both purposes also avoids a second indexed query on the
-      // same order.
+      // Hoisted to run whenever a promoCode is present: the counter-expiry check below needs the SAME mobile
+      // for an ASSIGNED code's validDays, and an assigned code is by definition attached to a customer, so a
+      // walk-in can never be carrying one. One lookup serves both purposes.
       let promoMobile: string | undefined;
       if (customerId) {
         const carrier = await Customer.findById(customerId).select("mobile").lean();
         promoMobile = carrier?.mobile;
       }
 
-      // CB-5D part 2 DEFECT FIX — the counter never checked an ASSIGNED code's
-      // expiry (validDays), only marked it spent (markAssignedRewardUsed,
-      // below). Run AFTER resolveAcceptPromo succeeds — so a code that is
-      // merely invalid/drifted still reports THAT, never "expired" — and
-      // BEFORE any fence claim, so an expired code is refused before anything
-      // is claimed. A code with no matching assigned-reward row (an ordinary
-      // Settings promo, never assigned to anyone) is untouched by this gate
-      // (assignedRewardRefusal's own contract). A walk-in with no resolved
-      // mobile cannot be holding an assigned code at all, so this is skipped
-      // rather than refused — refusing here would 400 every anonymous, non-
-      // assigned promo redemption at the till.
+      // CB-5D part 2 DEFECT FIX — the counter never checked an ASSIGNED code's expiry (validDays), only marked
+      // it spent. Run AFTER resolveAcceptPromo succeeds (an invalid code still reports THAT, never "expired")
+      // and BEFORE any fence claim. An ordinary Settings promo (no assigned row) is untouched by this gate;
+      // a walk-in with no resolved mobile is skipped, not refused — refusing would 400 every anonymous promo.
       if (promoMobile) {
         const refusal = await assignedRewardRefusal(data.promoCode, promoMobile, Date.now());
         if (refusal) return failure(refusal, 400);
@@ -305,7 +296,8 @@ export async function POST(req: Request) {
       }
     }
 
-    const totals = resolvedClaim
+    const rewardForTotals = resolvedClaim?.reward ?? resolvedCard?.reward;
+    const totals = rewardForTotals
       ? computeOrderTotals({
           items: rewardItems,
           discount: data.discount,
@@ -313,7 +305,7 @@ export async function POST(req: Request) {
           charge,
           extraCharge,
           cfg: gstCfg,
-          reward: resolvedClaim.reward,
+          reward: rewardForTotals,
         })
       : data.promoCode
         ? // A promo REPLACES the operator's manual discount figure: the code's
@@ -405,13 +397,17 @@ export async function POST(req: Request) {
       ...(data.parcel ? { parcel: true } : {}),
       // CB-5D part 2 — the promo's staff-actionable line composes onto the
       // operator's own note rather than replacing it, through the SAME
-      // mergedNote helper the diner accept path uses. The Order model stores
-      // no promo field (the fence row is the durable record), so this line is
-      // what makes a promo visible on the bill and the reprint.
+      // mergedNote helper the diner accept path uses. This line is what makes a
+      // promo visible on the bill and the reprint; the P2 marker below is what
+      // makes the bill refuse a later reward claim.
       notes: mergedNote(data.notes, promoLine),
       // CB-5B — the reward reprint snapshot, omit-empty (no keys at all when
       // no reward resolved).
       ...(resolvedClaim ? rewardSnapshotFields(resolvedClaim.reward, resolvedClaim.cost) : {}),
+      // A card order stores the card snapshot and NEVER rewardAt / rewardStamps; the promo marker (P2) refuses
+      // every later reward claim on this bill (promoIsClaimable: the same predicate that burns the fence row).
+      ...(resolvedCard ? cardSnapshotFields(resolvedCard.reward) : {}),
+      ...promoMarkerFields(promoIsClaimable(promoDiscount, data.promoCode, promoKind) ? data.promoCode : undefined),
       // F5 — the send key, omit-empty (never null: the partial unique index
       // counts null). A second insert with the same key is refused by the index.
       ...(data.idemKey ? { idemKey: data.idemKey } : {}),
@@ -428,29 +424,29 @@ export async function POST(req: Request) {
     // rare collision with orders predating the counter, reseed from the day's
     // max once — the unique index on orderId is the safety net.
     //
-    // CLAIM ORDERING (CB-5B S4): the stamp claim keys its marker on the
-    // orderId (claimRewardStamps -> redeemedOrders), and the claim happens
-    // BEFORE the create — the claimPromoRedemption shape — so a bill can
-    // never be discounted by stamps that were not actually spent.
+    // CLAIM ORDERING (CB-5B S4): the stamp claim keys its marker on the orderId (claimRewardStamps ->
+    // redeemedOrders; a scratch card keys on it too) and happens BEFORE the create, so a bill is never
+    // discounted by a reward that was not actually spent.
     //
-    // The claim is therefore bound to the orderId the order is ACTUALLY
-    // created with, not merely to the first one we minted. The duplicate-key
-    // retry below re-numbers the order (seq2), so claiming once against the
-    // first orderId would leave the spend recorded against an orderId no
-    // order carries: the cancel path (S6) looks the redemption up BY orderId
-    // and would find nothing, so the stamps could never be returned, and the
-    // `redeemedOrders: {$ne: orderId}` fence would no longer recognise the
-    // real order — the same diner could redeem against it a second time.
-    // Each attempt claims for its own orderId, and a failed attempt returns
-    // what it claimed before the next one begins.
+    // The claim is bound to the orderId the order is ACTUALLY created with. The duplicate-key retry below
+    // re-numbers the order (seq2); claiming once against the first orderId would leave the spend recorded
+    // against an id no order carries — the cancel path (S6) looks the redemption up BY orderId and could never
+    // return it, and the `redeemedOrders: {$ne: orderId}` fence would not recognise the real order. Each
+    // attempt claims for its own orderId, and a failed attempt returns what it claimed before the next begins.
     const claimFor = async (oid: string): Promise<boolean> =>
-      resolvedClaim ? claimRewardStamps(customerId!, oid, resolvedClaim.cost, rewardAssignment) : true;
+      resolvedCard
+        ? claimRewardCard(customerId!, resolvedCard.id, oid, resolvedCard.now)
+        : resolvedClaim
+          ? claimRewardStamps(customerId!, oid, resolvedClaim.cost, rewardAssignment)
+          : true;
     // The undo passes the SAME assignment the claim minted (O10): whatever a
     // claim writes, its compensation must unwrite — without it the stamps came
     // back and the rung's promo code stayed live with the diner.
     const unclaimFor = async (oid: string): Promise<void> => {
+      if (resolvedCard) await releaseRewardCard(customerId!, resolvedCard.id, oid);
       if (resolvedClaim) await returnRewardStamps(customerId!, oid, resolvedClaim.cost, rewardAssignment);
     };
+    const claimMiss = resolvedCard ? CARD_NOT_USABLE : "Not enough stamps for that reward";
 
     // CB-5D part 2 — the promo fence, claimed per ORDER ID for exactly the
     // reason the stamp claim above is: the duplicate-key retry re-numbers the
@@ -477,7 +473,7 @@ export async function POST(req: Request) {
     const seq = await nextOrderSequence();
     const orderId = generateOrderId(seq);
     if (!(await claimFor(orderId))) {
-      return (await lateReplay()) ?? failure("Not enough stamps for that reward", 409);
+      return (await lateReplay()) ?? failure(claimMiss, 409);
     }
     // After the stamp claim so the two compensations nest in one order: if the
     // fence refuses, the stamps claimed just above are returned before the
@@ -549,7 +545,7 @@ export async function POST(req: Request) {
       // only if another device genuinely took them in between — and then the
       // bill must not be discounted, exactly as on the first attempt.
       if (!(await claimFor(retryOrderId))) {
-        return failure("Not enough stamps for that reward", 409);
+        return failure(claimMiss, 409);
       }
       // Re-fenced against the RE-NUMBERED order, mirroring the re-claim above:
       // the released row is gone, so this claim lands fresh unless another

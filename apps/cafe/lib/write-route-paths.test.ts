@@ -261,7 +261,13 @@ test("PIN (create): a duplicate idemKey adopts the landed order — after the cl
     ],
     "the retry insert adopts the same way",
   );
-  for (const refusal of ['failure("Not enough stamps for that reward", 409)', "failure(PROMO_USED_ERROR, 409)"]) {
+  // CB-7 S5 slice C: the claim-miss copy is chosen once (claimMiss: the card copy or the stamps copy), so the
+  // landed-twin check keys on that name — and the stamps copy must still be the one it falls back to.
+  assert.ok(
+    src.includes('const claimMiss = resolvedCard ? CARD_NOT_USABLE : "Not enough stamps for that reward";'),
+    "claimMiss keeps the stamps copy verbatim beside the card copy",
+  );
+  for (const refusal of ["failure(claimMiss, 409)", "failure(PROMO_USED_ERROR, 409)"]) {
     assert.ok(
       src.includes(`return (await lateReplay()) ?? ${refusal};`),
       `the ${refusal} refusal checks for a landed twin first`,

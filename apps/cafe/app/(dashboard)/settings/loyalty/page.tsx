@@ -6,6 +6,7 @@ import { LoyaltyCard } from "@/components/settings/LoyaltyCard";
 import { LoyaltyStampGrid } from "@/components/settings/LoyaltyStampGrid";
 import { RewardLevelsSection } from "@/components/settings/rewards/RewardLevelsSection";
 import { useRewardLevelsDraft } from "@/hooks/use-reward-levels-draft";
+import { rewardLevelsChosenRaw } from "@pos/shared/schemas/reward-levels-read.schema";
 import type { SettingsSection } from "@/lib/settings-sections";
 import type { Settings } from "@/types";
 
@@ -49,7 +50,7 @@ function LoyaltyForm({ settings, section }: { settings: Settings; section: Setti
     <SettingsSectionForm settings={settings} section={section} extra={levels.extra}>
       {({ control, register, setValue, getValues, errors }) => (
         <div className="space-y-6">
-          <LoyaltyCard control={control} register={register} errors={errors} />
+          <LoyaltyCard control={control} register={register} errors={errors} levelsChosen={rewardLevelsChosenRaw(settings.rewardLevels)} />
           <LoyaltyStampGrid control={control} register={register} errors={errors} setValue={setValue} />
           <RewardLevelsSection levels={levels} settings={settings} control={control} getValues={getValues} />
         </div>

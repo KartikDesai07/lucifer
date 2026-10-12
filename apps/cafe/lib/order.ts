@@ -12,11 +12,9 @@ import type { RedeemedReward } from "@pos/shared/reward-redemption";
 import {
   chargesFromOrder,
   splitChargeTotals,
-  withTableCharge,
-  applyExtraCharges,
-  DEFAULT_TABLE_CHARGE_LABEL,
   type OrderCharge,
 } from "@pos/shared/order-charges";
+import { settleCharges } from "@/lib/settle-charges";
 
 // Server-only order-domain helpers: payment derivation, the customer-ledger
 // contribution model, ledger reconciliation, and settle-time money resolution.
@@ -258,20 +256,11 @@ export function resolveSettleMoney(input: SettleMoneyInput): SettleMoney {
   // legacy scalar-only order in memory (money-neutral by construction), and
   // the two lanes (table via chargeAmount, extra via extraCharges) apply
   // through their own fences so neither can clobber the other's entries.
+  // G2 — the re-pricing lanes come from lib/settle-charges.ts, the SAME builder the settle-time claim gate prices with.
   const baseCharges = chargesFromOrder(input.order);
-  const tableEntry = baseCharges.find((c) => c.type === "table");
-  const tableChargeAmount = input.chargeAmount ?? tableEntry?.amount ?? 0;
   const charges = noRecompute
     ? baseCharges
-    : applyExtraCharges(
-        withTableCharge(
-          baseCharges,
-          tableChargeAmount > 0
-            ? { label: tableEntry?.label ?? DEFAULT_TABLE_CHARGE_LABEL, amount: tableChargeAmount }
-            : null,
-        ),
-        input.extraCharges ?? baseCharges.filter((c) => c.type === "extra"),
-      );
+    : settleCharges(baseCharges, input.chargeAmount, input.extraCharges);
   // CB-CHG — split, never summed: the table portion keeps its shipped
   // TABLE_CHARGE_MAX ceiling, the staff-entered extras ride on top uncapped
   // (decision 8) — summing them first would silently cap a legitimate bill

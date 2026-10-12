@@ -4,14 +4,25 @@ import {
   type RewardResolution,
 } from "@/lib/reward-claim";
 import { buildRewardAssignment } from "@/lib/reward-assignment";
+import { resolveCardClaim } from "@/lib/reward-card-claim";
 import type { ISettings } from "@/models/Settings";
 import type { OrderItemInput } from "@/schemas";
+import { CARD_REWARD_EXCLUSIVE } from "@pos/shared/reward-card-use";
+import type { RedeemedReward } from "@pos/shared/reward-redemption";
 
 // The counter create's reward resolution, split out of app/api/orders/route.ts
 // (S5a, behaviour-preserving move). Resolved BEFORE totals (CB-5B S4) so a
 // reward claim can be validated against the plain bill (no reward yet) and, if
 // it resolves, folded into the SAME totals computation the route already
 // trusts — there is no second money path for a redeemed order.
+
+// CB-7 S5 — a scratch card resolved for this create (never written yet). `now` is the ONE clock reading the claim, and
+// the renumber retry's re-claim, both use.
+export interface CreateCardClaim {
+  id: string;
+  reward: RedeemedReward;
+  now: Date;
+}
 
 export interface ResolveCreateRewardArgs {
   settings: ISettings | null;
@@ -22,6 +33,8 @@ export interface ResolveCreateRewardArgs {
   discountKind: DiscountKind | undefined;
   // The claimed rung's stamp cost, absent when no reward was requested.
   rewardAt: number | undefined;
+  // The revealed card to spend instead (exclusive with rewardAt), absent when none.
+  rewardCardId?: string;
   // The plain bill (no reward yet), in RUPEES — gates the rung's own minBill.
   billTotal: number;
 }
@@ -33,6 +46,7 @@ export type CreateRewardResolution =
       rewardItems: OrderItemInput[];
       effectiveDiscountKind: DiscountKind | undefined;
       resolvedClaim: Extract<RewardResolution, { ok: true }> | undefined;
+      resolvedCard: CreateCardClaim | undefined;
       rewardAssignment: ReturnType<typeof buildRewardAssignment> | undefined;
     };
 
@@ -42,6 +56,7 @@ export async function resolveCreateReward({
   items,
   discountKind,
   rewardAt,
+  rewardCardId,
   billTotal,
 }: ResolveCreateRewardArgs): Promise<CreateRewardResolution> {
   let rewardItems = items;
@@ -58,6 +73,20 @@ export async function resolveCreateReward({
   // object into both claimFor(orderId) and claimFor(retryOrderId) is what
   // prevents that duplicate.
   let rewardAssignment: ReturnType<typeof buildRewardAssignment> | undefined;
+  let resolvedCard: CreateCardClaim | undefined;
+  // One order carries ONE reward: a stamp rung and a card together is refused before anything is read or claimed.
+  if (rewardAt !== undefined && rewardCardId !== undefined) return { ok: false, message: CARD_REWARD_EXCLUSIVE };
+  if (rewardCardId !== undefined) {
+    const now = new Date();
+    // Same plain bill (no reward yet) the stamp gate reads; the free-dish line, if any, is stamped round 1.
+    const card = await resolveCardClaim({
+      settings, customerId, cardId: rewardCardId, billTotal, items, refuseItemKind: false, kotRound: 1, now,
+    });
+    if (!card.ok) return { ok: false, message: card.message };
+    if (card.line) rewardItems = [...items, { ...card.line, productId: String(card.line.productId) }];
+    effectiveDiscountKind = "reward";
+    resolvedCard = { id: rewardCardId, reward: card.reward, now };
+  }
   if (rewardAt !== undefined) {
     // KOT_ROUND_OPENING (1) — the opening items are always round 1, so a
     // resolved item-reward's dish line is stamped the same way.
@@ -97,5 +126,5 @@ export async function resolveCreateReward({
     // mints, so the two surfaces can never disagree about a code.
     rewardAssignment = buildRewardAssignment(resolved.claim.milestone, settings?.promoCodes, new Date());
   }
-  return { ok: true, rewardItems, effectiveDiscountKind, resolvedClaim, rewardAssignment };
+  return { ok: true, rewardItems, effectiveDiscountKind, resolvedClaim, resolvedCard, rewardAssignment };
 }

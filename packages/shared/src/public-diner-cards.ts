@@ -131,6 +131,8 @@ export const CARD_TERMS =
   "The reward is fixed when the card is given to you; the chances are shown above. One reward per bill. " +
   "It can't be exchanged for cash.";
 export const POINTS_RULE = "1 point = ₹1 off a later bill.";
+// The cart's card picker heading (CB-7 S5): says what the diner can DO with a revealed card.
+export const CART_CARDS_HEADING = "Use a scratch card on this order";
 
 export const CARD_STATE_WORDS: Readonly<Record<CardState | "locked", string>> = {
   locked: "Locked",

@@ -1263,6 +1263,7 @@ test("PIN: D9.8c — on mobile, a surviving adjustment keeps the cart bar OPENAB
   for (const needle of [
     "input.promoCode",
     "input.selectedRewardAt",
+    "input.selectedCardId",
     "input.discountRaw",
     'input.discountUnit === "GST"',
     "input.extraCharges.length",

@@ -83,6 +83,11 @@ export interface IOrderRequest extends Document {
   // Stored as the diner's REQUEST, never as a grant: the accept re-resolves
   // the rung from live Settings and can still refuse it.
   requestedRewardAt?: number;
+  // CB-7 S5 (§2.6) — the diner's scratch card for this order, as INTENT (the
+  // card id on their own row). Same rule as requestedRewardAt: nothing is
+  // claimed while it sits here; the accept claims it against the orderId that
+  // lands. Omit-empty.
+  requestedCardId?: string;
   // `mobile` must NEVER appear in any public (unauthenticated) response —
   // lib/customer-privacy.ts owns masking on staff-facing surfaces; this field
   // exists so staff can reach a diner, not so a diner can be looked up by
@@ -153,6 +158,8 @@ export const orderRequestSchema = new Schema<IOrderRequest>(
     // top-level path (not nested), so `strict: true` has no subschema to drop
     // it through.
     requestedRewardAt: { type: Number },
+    // CB-7 S5 — no default, omit-empty, a top-level path (same reasons).
+    requestedCardId: { type: String },
     mobile: { type: String, required: true },
     name: { type: String, required: true },
     acceptedOrderId: { type: String },

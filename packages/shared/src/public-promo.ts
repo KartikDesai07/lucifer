@@ -86,6 +86,11 @@ export const REWARD_NOT_ENOUGH_STAMPS = "You do not have enough stamps for that 
 export const REWARD_BILL_TOO_SMALL = "This order is too small for that reward";
 export const REWARD_PROMO_EXCLUSIVE =
   "Use either a promo code or a stamp reward on one order, not both";
+// s86 P2 — a bill opened with a promo code carries a marker (Order.promoCode);
+// every later reward claim on it (stamp rung, scratch card) and the GST
+// Discount preset are refused, because the promo IS the bill's one reward and
+// its once-per-customer use is already spent.
+export const PROMO_BLOCKS_REWARD = "This bill used a promo code — one reward per bill";
 // A reward can only be claimed when the order OPENS a bill. Once a table has
 // a bill running, an accepted request adds a round to it, and a round cannot
 // carry its own reward — the bill has one discount and one reason for it.

@@ -46,8 +46,10 @@ import {
   claimAcceptReward,
   returnAcceptReward,
   acceptRewardSnapshot,
+  acceptOrderItems,
   REWARD_UNFUNDED_ERROR,
 } from "@/lib/order-request-accept-reward";
+import { promoMarkerFields } from "@/lib/order-reward-fence";
 import { shouldStoreDiscountKind } from "@pos/shared/reward-redemption";
 import {
   PROMO_DRIFT_ERROR,
@@ -262,7 +264,7 @@ export async function acceptOrderRequest(
   // The stamps are spent HERE, at accept, never at request-submit: a request
   // is pre-money, and a rejected one must cost no stamps.
   const rewardResolution = await resolveAcceptReward(
-    request.requestedRewardAt,
+    { rewardAt: request.requestedRewardAt, cardId: request.requestedCardId, promoCode: request.promoCode },
     customerId,
     ctx.settings,
     // Priced WITHOUT the reward — the per-milestone minBill gate is about what
@@ -270,13 +272,10 @@ export async function acceptOrderRequest(
     computeOrderTotals({
       items, discount: promo.discount, discountKind: undefined, charge: tableResolved.charge.amount, cfg: gstCfg,
     }).total,
+    items,
   );
-  // A claimed item reward puts its free dish on the bill at its REAL price;
-  // the subtotal reducer skips it, so the line is untotalled and untaxed (S12)
-  // while the kitchen still sees a normal dish to make.
-  const orderItems = rewardResolution?.line
-    ? [...items, { ...rewardResolution.line, productId: String(rewardResolution.line.productId) }]
-    : items;
+  // A claimed free dish joins the bill at its REAL price (untotalled, untaxed: S12).
+  const orderItems = acceptOrderItems(items, rewardResolution);
   const rewardKind = rewardResolution ? ("reward" as const) : undefined;
   const totals = computeOrderTotals({
     items: orderItems,
@@ -347,6 +346,7 @@ export async function acceptOrderRequest(
     // that cost is STORED on the issued row, never re-derived from a ladder
     // the owner may since have retuned.
     ...acceptRewardSnapshot(rewardResolution),
+    ...promoMarkerFields(promoIsClaimable(promo.discount, request.promoCode, promo.kind) ? request.promoCode : undefined),
     gstAmount: totals.gstAmount,
     gstRate: gstCfg.gstEnabled ? gstCfg.gstRate : 0,
     gstMode: gstCfg.gstMode,
@@ -386,6 +386,9 @@ export async function acceptOrderRequest(
   // recovery is handed a re-key callback and moves the claim with the number.
   const seq = await nextOrderSequence();
   const firstOrderId = generateOrderId(seq);
+  // The orderId the claim CURRENTLY sits on: onRekey moves it with the number. Every compensation below releases THIS id,
+  // never firstOrderId - a release keyed on a number the claim already left is a silent no-op that strands the reward.
+  let claimedFor = firstOrderId;
   if (rewardResolution && !(await claimAcceptReward(rewardResolution, firstOrderId))) {
     // The balance moved between the submit-time courtesy check and this atomic
     // spend (another device redeemed the same stamps). A discounted bill whose
@@ -409,52 +412,39 @@ export async function acceptOrderRequest(
         // return under.
         onRekey: async (retryOrderId: string): Promise<boolean> => {
           if (!rewardResolution) return true;
-          await returnAcceptReward(rewardResolution, firstOrderId);
+          await returnAcceptReward(rewardResolution, claimedFor);
+          // Moved BEFORE the re-claim: if that throws ambiguously the claim may sit on the retry id, and the retry
+          // insert never ran, so a release keyed there is a no-op at worst.
+          claimedFor = retryOrderId;
           return claimAcceptReward(rewardResolution, retryOrderId);
         },
       });
     } catch (fatal) {
-      // A throw recoverOrderCreate did not handle — it rethrows anything that
-      // is not a duplicate key, so this is the AMBIGUOUS case: the insert may
-      // have committed, or it may not.
-      //
-      // WHY THE CLAIM CANNOT SIMPLY BE LEFT (review of this slice, two HIGH
-      // findings sharing one root cause). The claim marker is keyed on the
-      // ORDER ID — the right key for the cancel path, which refunds by the
-      // landed order's id — but this bridge is deliberately RE-ENTERABLE, and
-      // nextOrderSequence burns a FRESH number on every attempt. Stamps left
-      // spent against an orderId no order carries are therefore unreachable by
-      // every recovery path there is: a resumed accept re-claims under a NEW
-      // id (spending twice for one order), and a staff reject of the stranded
-      // "accepting" row returns nothing, because reject() knows only the
-      // requestId (which is why the promo fence, being requestId-keyed, CAN be
-      // released there and this cannot). The diner would lose the stamps with
-      // no order and no bill behind them.
-      //
-      // never-revert-on-write-throw is DIRECTIONAL and permits exactly this:
-      // reverse only on a DEFINITE no-write. So the ambiguity is RESOLVED
-      // rather than assumed — findByRequestId asks the database whether any
-      // order carries this requestId (`sourceRequestIds`, the same
-      // multikey-indexed read step 3's repair lookup uses). An order found
-      // means the insert COMMITTED and the claim is correct where it is.
-      // Nothing found is the definite no-write the rule allows a compensating
-      // return under.
-      //
-      // The resolving read is itself best-effort: if IT throws too (the same
-      // outage that failed the insert), the claim STAYS. Leaving stamps spent
-      // is the safe side of an unresolvable ambiguity — returning them for an
-      // order that did land would be a silent double-spend.
+      // A throw recoverOrderCreate did not handle - the AMBIGUOUS case: the insert may have committed or not. The claim
+      // is keyed on an orderId no recovery path can find (this bridge is re-enterable and burns a fresh number per
+      // attempt; reject() knows only the requestId), so leaving it spent for an order that never landed loses the reward
+      // for good. never-revert-on-write-throw is directional: RESOLVE the ambiguity instead of assuming it. sourceRequestIds
+      // is unique, so no order = a definite no-write, and an order under a DIFFERENT id (another accept won, e.g. the
+      // retry insert's own E11000) proves ours never landed. Only an order under claimedFor keeps the claim. The read is
+      // best-effort: if IT throws too, the claim STAYS (releasing for an order that did land is a silent double-spend).
       if (rewardResolution) {
         try {
           const landed = await findByRequestId(requestId);
-          if (!landed) await returnAcceptReward(rewardResolution, firstOrderId);
+          if (!landed || landed.orderId !== claimedFor) await returnAcceptReward(rewardResolution, claimedFor);
         } catch {
-          /* unresolvable — keep the claim rather than risk crediting a landed order */
+          /* unresolvable - keep the claim rather than risk crediting a landed order */
         }
       }
       throw fatal;
     }
-    if ("replayed" in recovered) return recovered;
+    if ("replayed" in recovered) {
+      // The insert lost on sourceRequestIds: ANOTHER accept's order holds this request (a definite no-write for ours), so
+      // the claim made for this attempt rides on no order. Best-effort - a failed release never masks the replay answer.
+      if (rewardResolution && recovered.order.orderId !== claimedFor) {
+        await returnAcceptReward(rewardResolution, claimedFor).catch(() => undefined);
+      }
+      return recovered;
+    }
     if ("rewardUnfunded" in recovered) {
       // The re-claim lost the race against the re-numbered order. Same rule as
       // the first attempt, and the stamps for the first id are already back.

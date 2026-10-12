@@ -15,6 +15,7 @@ import {
   PUBLIC_ORDER_MODIFIER_MAX_LEN,
 } from "../public";
 import { LOYALTY_MILESTONE_AT_MIN, LOYALTY_MILESTONE_AT_MAX } from "../loyalty-rules";
+import { REWARD_CARD_ID_RE } from "../reward-levels";
 
 // The shape of a public (diner-facing, unauthenticated) order request — phase
 // CR2. Pure and client-safe like public.ts: the diner's menu page bundles this
@@ -98,6 +99,11 @@ export const createPublicOrderRequestSchema = z
       .min(LOYALTY_MILESTONE_AT_MIN)
       .max(LOYALTY_MILESTONE_AT_MAX)
       .optional(),
+    // CB-7 S5 (§2.6) — a revealed scratch card the diner wants on this order,
+    // as INTENT: the card's id on their OWN Customer row. Same money fence as
+    // requestedRewardAt above; the route checks identity / promo / open tab,
+    // the accept claims it keyed on the orderId that lands.
+    requestedCardId: z.string().regex(REWARD_CARD_ID_RE).optional(),
     name: z.string().trim().min(1).max(PUBLIC_NAME_MAX_LEN),
     mobile: z
       .string()

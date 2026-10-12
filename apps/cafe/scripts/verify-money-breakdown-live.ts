@@ -27,6 +27,9 @@ import {
   type MoneyOrderView,
 } from "@/lib/money-breakdown";
 import { MONEY_FIXTURE_ORDERS, type MoneyFixtureOrder } from "@/lib/money-breakdown-fixtures";
+import {
+  MONEY_CARD_DISCOUNT, MONEY_CARD_FIXTURE_ORDER, MONEY_CARD_GST, MONEY_CARD_MANUAL_TWIN, MONEY_CARD_TOTAL,
+} from "@/lib/money-breakdown-card-fixtures";
 import type { MoneyBreakdown } from "@/types";
 
 const SCRATCH_PREFIX = "pos_scratch_";
@@ -53,6 +56,29 @@ function toOrderView(f: MoneyFixtureOrder): MoneyOrderView {
     gstAmount: f.gstAmount,
     chargeAmount: f.chargeAmount,
     items: f.items,
+  };
+}
+
+// The Order document a fixture inserts (every field the model requires; orderId is per-run).
+function toInsertDoc(f: MoneyFixtureOrder, orderId: string) {
+  return {
+    orderId,
+    customerName: f.customerName,
+    items: f.items,
+    subtotal: f.subtotal,
+    discount: f.discount,
+    discountKind: f.discountKind,
+    gstAmount: f.gstAmount,
+    gstRate: f.gstRate,
+    gstMode: f.gstMode,
+    chargeAmount: f.chargeAmount,
+    total: f.total,
+    paidAmount: f.paidAmount,
+    payment: f.payment,
+    status: f.status,
+    receiver: f.receiver,
+    kotRounds: 1,
+    createdAt: new Date(),
   };
 }
 
@@ -85,25 +111,7 @@ async function main(): Promise<void> {
     const docs = MONEY_FIXTURE_ORDERS.map((f, i) => {
       const orderId = `SCRATCH-MONEY-${runSuffix}-${String(i).padStart(2, "0")}`;
       insertedIds.push(orderId);
-      return {
-        orderId,
-        customerName: f.customerName,
-        items: f.items,
-        subtotal: f.subtotal,
-        discount: f.discount,
-        discountKind: f.discountKind,
-        gstAmount: f.gstAmount,
-        gstRate: f.gstRate,
-        gstMode: f.gstMode,
-        chargeAmount: f.chargeAmount,
-        total: f.total,
-        paidAmount: f.paidAmount,
-        payment: f.payment,
-        status: f.status,
-        receiver: f.receiver,
-        kotRounds: 1,
-        createdAt: new Date(),
-      };
+      return toInsertDoc(f, orderId);
     });
     await Order.insertMany(docs);
     console.log(`\nD10 money-breakdown live — inserted ${docs.length} fixture orders against ${dbName}\n`);
@@ -211,6 +219,61 @@ async function main(): Promise<void> {
         );
       }
     }
+
+    // (d) CB-7 S5 — ONE scoped scratch-card order (lib/money-breakdown-card-fixtures.ts), inserted on its own so the
+    // totals above stay about the nine D10 fixtures. The reward bucket must hold exactly the card's discount, and the
+    // tax must be consistent: GST on subtotal - discount, identical to an equal manual discount (one tax pipeline).
+    const cardFixture = MONEY_CARD_FIXTURE_ORDER;
+    const cardOrderId = `SCRATCH-MONEY-${runSuffix}-card`;
+    insertedIds.push(cardOrderId);
+    await Order.insertMany([{ ...toInsertDoc(cardFixture, cardOrderId), ...cardFixture.rewardCardFields }]);
+    check(
+      "card fixture: the modelled bill is the hand-computed one (subtotal 500, discount 36, gst 23, total 487)",
+      cardFixture.subtotal === 500 &&
+        cardFixture.discount === MONEY_CARD_DISCOUNT &&
+        cardFixture.gstAmount === MONEY_CARD_GST &&
+        cardFixture.total === MONEY_CARD_TOTAL,
+    );
+    const [cardAgg] = await Order.aggregate<TotalsAgg>([
+      { $match: { orderId: cardOrderId } },
+      { $group: { _id: null, totalSales: { $sum: "$total" }, ...MONEY_BREAKDOWN_GROUP } },
+    ]);
+    check("card order: the aggregation ran and returned a row", cardAgg !== undefined);
+    if (cardAgg) {
+      for (const key of Object.keys(cardFixture.expected) as Array<keyof MoneyBreakdown>) {
+        check(
+          `card order: MONEY_BREAKDOWN_GROUP.${key} (${cardAgg[key]}) === the hand-computed ${cardFixture.expected[key]}`,
+          cardAgg[key] === cardFixture.expected[key],
+        );
+      }
+      check(
+        "card order: the reward bucket holds exactly the card's discount, the discount bucket none of it",
+        cardAgg.reward === MONEY_CARD_DISCOUNT && cardAgg.discount === 0,
+      );
+      check(
+        "card order: identity gross - discount - reward + gst + charges === total",
+        cardAgg.gross - cardAgg.discount - cardAgg.reward + cardAgg.gst + cardAgg.charges === cardAgg.totalSales,
+      );
+      const folded = foldMoneyBreakdown([toOrderView(cardFixture)]);
+      check(
+        "card order: the JS fold agrees with the pipeline on every bucket",
+        (Object.keys(folded) as Array<keyof MoneyBreakdown>).every((k) => folded[k] === cardAgg[k]),
+      );
+    }
+    check(
+      "card order: GST and total equal an equal MANUAL discount's (tax base = subtotal - discount)",
+      cardFixture.gstAmount === MONEY_CARD_MANUAL_TWIN.gstAmount && cardFixture.total === MONEY_CARD_MANUAL_TWIN.total,
+    );
+    const storedCard = await Order.collection.findOne({ orderId: cardOrderId });
+    check(
+      "card order: every card field survived the strict schema on the raw doc, with no rewardAt / rewardStamps",
+      storedCard !== null &&
+        (Object.entries(cardFixture.rewardCardFields) as Array<[string, unknown]>).every(
+          ([k, v]) => JSON.stringify(storedCard[k]) === JSON.stringify(v),
+        ) &&
+        !("rewardAt" in storedCard) &&
+        !("rewardStamps" in storedCard),
+    );
   } finally {
     await Order.deleteMany({ orderId: { $in: insertedIds } });
     await mongoose.disconnect();

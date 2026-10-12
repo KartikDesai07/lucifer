@@ -18,8 +18,10 @@ import {
   pushMyCode,
   readAppliedPromoCode,
   readIdentity,
+  readRequestedCardId,
   readRequestedRewardAt,
   writeAppliedPromoCode,
+  writeRequestedCardId,
   writeIdentity,
   writeLastMenuPath,
   type CartLine,
@@ -83,6 +85,9 @@ export function usePublicCartSubmit({ cart, token, pickedTable, onSubmitted, ope
   // selection to null and shows the server's own reason, rather than staying
   // "selected" while the diner tries to fix something they cannot see.
   const [rewardError, setRewardError] = useState<string | null>(null);
+  // CB-7 S5 — the scratch card the diner picked in the cart (PublicCardPicker). Shares the stamp pick's storage key,
+  // so at most one of requestedRewardAt / requestedCardId is ever non-null.
+  const [requestedCardId, setRequestedCardId] = useState<string | null>(null);
 
   useEffect(() => {
     const identity = readIdentity();
@@ -97,6 +102,7 @@ export function usePublicCartSubmit({ cart, token, pickedTable, onSubmitted, ope
   useEffect(() => {
     if (!open) return;
     setRequestedRewardAt(readRequestedRewardAt());
+    setRequestedCardId(readRequestedCardId());
     setPromoCode(readAppliedPromoCode());
   }, [open]);
 
@@ -123,7 +129,16 @@ export function usePublicCartSubmit({ cart, token, pickedTable, onSubmitted, ope
   // shape PublicPromoField already uses for its own applied code.
   function handleRemoveReward() {
     setRequestedRewardAt(null);
+    setRequestedCardId(null);
     clearRequestedRewardAt();
+  }
+
+  // CB-7 S5 — pick a scratch card (or null to un-pick). One reward at a time: a card pick replaces a stamp pick.
+  function handlePickCard(cardId: string | null) {
+    setRequestedRewardAt(null);
+    setRequestedCardId(cardId);
+    if (cardId === null) clearRequestedRewardAt();
+    else writeRequestedCardId(cardId);
   }
 
   async function handleSubmit() {
@@ -150,6 +165,7 @@ export function usePublicCartSubmit({ cart, token, pickedTable, onSubmitted, ope
       name,
       mobile,
       requestedRewardAt,
+      requestedCardId,
     });
 
     // FIX3 preflight — the SAME schema the route enforces (shared source of
@@ -207,9 +223,14 @@ export function usePublicCartSubmit({ cart, token, pickedTable, onSubmitted, ope
         res.status === 422 ? ((await res.json().catch(() => null)) as { success: false; error: string } | null) : null;
       // Checked BEFORE classifySubmitFailure — see that function's own
       // comment on why the reward classification stays a separate function.
-      const rewardFailure = classifyRewardFailure(res.status, requestedRewardAt, envelope422?.error);
+      const rewardFailure = classifyRewardFailure(
+        res.status,
+        requestedCardId ?? requestedRewardAt,
+        envelope422?.error,
+      );
       if (rewardFailure !== null) {
         setRequestedRewardAt(null);
+        setRequestedCardId(null);
         clearRequestedRewardAt();
         setRewardError(rewardFailure);
       } else {
@@ -244,12 +265,14 @@ export function usePublicCartSubmit({ cart, token, pickedTable, onSubmitted, ope
     promoCode,
     promoError,
     requestedRewardAt,
+    requestedCardId,
     rewardError,
     identityValid,
     blockedReason,
     handleApplyPromo,
     handleRemovePromo,
     handleRemoveReward,
+    handlePickCard,
     handleSubmit,
   };
 }

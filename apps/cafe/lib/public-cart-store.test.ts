@@ -17,6 +17,11 @@ import {
   pushMyCode,
   readMyCodes,
   readLastMenuPath,
+  readRequestedCardId,
+  readRequestedRewardAt,
+  writeRequestedCardId,
+  writeRequestedRewardAt,
+  clearRequestedRewardAt,
   writeLastMenuPath,
   readRefreshAt,
   writeRefreshAt,
@@ -301,6 +306,67 @@ test("clearDinerData removes exactly DINER_OWNED_KEYS and leaves cart, theme and
     const cached = readMenuCache();
     assert.ok(cached !== null);
     assert.deepEqual(cached.payload, { categories: [] });
+  });
+});
+
+// CB-7 S5 — the requested reward key holds a stamp rung (a number) OR a scratch-card pick ({card}), never both.
+const CARD_ID = "0123456789ab";
+const REWARD_KEY = "pos.public.reward.v1";
+
+test("a card pick round-trips as {card} and reads back null as a stamp rung", () => {
+  withWindow((storage) => {
+    writeRequestedCardId(CARD_ID);
+    assert.equal(readRequestedCardId(), CARD_ID);
+    assert.equal(readRequestedRewardAt(), null);
+    assert.equal(storage.getItem(REWARD_KEY), JSON.stringify({ card: CARD_ID }));
+  });
+});
+
+test("an old stored number still reads as a stamp rung and is no card pick", () => {
+  withWindow((storage) => {
+    storage.setItem(REWARD_KEY, "5");
+    assert.equal(readRequestedRewardAt(), 5);
+    assert.equal(readRequestedCardId(), null);
+  });
+});
+
+test("one reward at a time: writing either shape replaces the other", () => {
+  withWindow(() => {
+    writeRequestedRewardAt(5);
+    writeRequestedCardId(CARD_ID);
+    assert.equal(readRequestedRewardAt(), null);
+    assert.equal(readRequestedCardId(), CARD_ID);
+    writeRequestedRewardAt(7);
+    assert.equal(readRequestedCardId(), null);
+    assert.equal(readRequestedRewardAt(), 7);
+  });
+});
+
+test("a malformed card pick reads as no pick (never reaches the submit body)", () => {
+  withWindow((storage) => {
+    const bad = [{ card: "not-hex" }, { card: 42 }, { card: "0123456789ABCDEF" }, { other: "x" }];
+    for (const value of bad) {
+      storage.setItem(REWARD_KEY, JSON.stringify(value));
+      assert.equal(readRequestedCardId(), null, JSON.stringify(value));
+    }
+    storage.setItem(REWARD_KEY, "{bad json");
+    assert.equal(readRequestedCardId(), null);
+  });
+});
+
+test("clearRequestedRewardAt, clearCart (a submit) and clearDinerData (sign-out) each wipe a card pick", () => {
+  withWindow(() => {
+    writeRequestedCardId(CARD_ID);
+    clearRequestedRewardAt();
+    assert.equal(readRequestedCardId(), null);
+
+    writeRequestedCardId(CARD_ID);
+    clearCart();
+    assert.equal(readRequestedCardId(), null);
+
+    writeRequestedCardId(CARD_ID);
+    clearDinerData();
+    assert.equal(readRequestedCardId(), null);
   });
 });
 

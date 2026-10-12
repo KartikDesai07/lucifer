@@ -2,6 +2,9 @@ import type { DiscountKind } from "@/lib/constants";
 import { computeOrderTotals, type GstConfig } from "@/lib/receipt";
 import { resolveRewardClaimAndLine, type RewardResolution } from "@/lib/reward-claim";
 import { buildRewardAssignment } from "@/lib/reward-assignment";
+import { resolveCardClaim } from "@/lib/reward-card-claim";
+import { rewardClaimRefusal } from "@/lib/order-reward-fence";
+import { CARD_REWARD_EXCLUSIVE } from "@pos/shared/reward-card-use";
 import { rewardFromOrderSnapshot, type RedeemedReward } from "@pos/shared/reward-redemption";
 import type { IOrder, IOrderItem } from "@/models/Order";
 import type { ISettings } from "@/models/Settings";
@@ -13,15 +16,23 @@ import type { OrderItemInput } from "@/schemas";
 // A line on the tab being priced: one already stored, or one of this round.
 type RoundLine = IOrderItem | (OrderItemInput & { kotRound: number });
 
+// CB-7 S5 — a scratch card resolved for this round (not yet claimed); `now` is the one clock reading its claim uses.
+export interface RoundCardClaim {
+  id: string;
+  reward: RedeemedReward;
+  now: Date;
+}
+
 export interface ResolveRoundRewardArgs {
-  // The open tab as read (its customer, any reward snapshot).
-  old: Pick<IOrder, "customerId"> & Parameters<typeof rewardFromOrderSnapshot>[0];
+  // The open tab as read (its customer, any reward snapshot, the promo marker the one-reward fence reads).
+  old: Pick<IOrder, "customerId" | "discountKind" | "promoCode"> & Parameters<typeof rewardFromOrderSnapshot>[0];
   settings: ISettings | null;
   // The claimed rung's stamp cost, absent when this round claims nothing.
   rewardAt: number | undefined;
+  // The revealed card to spend instead (exclusive with rewardAt), absent when none.
+  rewardCardId?: string;
   // The tab's stored lines plus this round's new ones.
   fullItems: RoundLine[];
-  discount: number;
   // The kind AFTER resolveDiscountKind (what the tab would carry without a claim).
   discountKind: DiscountKind | undefined;
   // The charge portions computeOrderTotals takes separately.
@@ -39,6 +50,7 @@ export type RoundRewardResolution =
       fullItems: RoundLine[];
       discountKind: DiscountKind | undefined;
       resolvedClaim: Extract<RewardResolution, { ok: true }> | undefined;
+      card: RoundCardClaim | undefined;
       rewardAssignment: ReturnType<typeof buildRewardAssignment> | undefined;
       rewardForTotals: RedeemedReward | undefined;
     };
@@ -47,8 +59,8 @@ export async function resolveRoundReward({
   old,
   settings,
   rewardAt,
+  rewardCardId,
   fullItems: tabItems,
-  discount,
   discountKind: tabKind,
   charge: chargeForTab,
   extraCharge: extraChargeForTab,
@@ -71,21 +83,49 @@ export async function resolveRoundReward({
   // the assignment as one whole element, so it must never be reconstructed
   // with a fresh Date at a second call site.
   let rewardAssignment: ReturnType<typeof buildRewardAssignment> | undefined;
-  if (rewardAt !== undefined) {
-    // A tab already carrying a reward must refuse a second one outright:
-    // Order has ONE scalar + ONE kind, so a second claim would silently
-    // overwrite the first snapshot while its stamps stayed spent.
-    if (old.rewardAt !== undefined) {
-      return { ok: false, message: "This tab already has a reward applied", status: 409 };
-    }
-    const billTotal = computeOrderTotals({
+  let card: RoundCardClaim | undefined;
+  if (rewardAt !== undefined && rewardCardId !== undefined) {
+    return { ok: false, message: CARD_REWARD_EXCLUSIVE, status: 400 };
+  }
+  if (rewardAt !== undefined || rewardCardId !== undefined) {
+    // A tab already carrying a reward (stamp OR card) or a promo must refuse a
+    // second one outright: Order has ONE scalar + ONE kind, so a second claim
+    // would silently overwrite the first snapshot while its spend stayed burned.
+    // The same rule rides the CAS filter (rewardClaimOrderFence) for the race.
+    const refusal = rewardClaimRefusal(old);
+    if (refusal) return { ok: false, message: refusal, status: 409 };
+  }
+  // The bill WITHOUT any reward — what both claim kinds gate their minimum against. A claim REPLACES any manual/GST
+  // discount (the POS sends the reward's own preview as `discount`), so it is priced undiscounted; only a claiming
+  // request ever calls this.
+  const plainTotal = (): number =>
+    computeOrderTotals({
       items: fullItems,
-      discount,
-      discountKind,
+      discount: 0,
+      discountKind: undefined,
       charge: chargeForTab,
       extraCharge: extraChargeForTab,
       cfg: gstCfg,
     }).total;
+  if (rewardCardId !== undefined) {
+    const now = new Date();
+    const resolved = await resolveCardClaim({
+      settings,
+      customerId: old.customerId ? String(old.customerId) : undefined,
+      cardId: rewardCardId,
+      billTotal: plainTotal(),
+      items: fullItems,
+      refuseItemKind: false,
+      kotRound: round,
+      now,
+    });
+    if (!resolved.ok) return { ok: false, message: resolved.message, status: 400 };
+    if (resolved.line) fullItems = [...fullItems, resolved.line];
+    discountKind = "reward";
+    card = { id: rewardCardId, reward: resolved.reward, now };
+  }
+  if (rewardAt !== undefined) {
+    const billTotal = plainTotal();
     const resolved = await resolveRewardClaimAndLine(
       {
         settings,
@@ -117,6 +157,6 @@ export async function resolveRoundReward({
   // would stay spent while the discount they bought quietly left the bill.
   // Rebuilt from the stored snapshot, never re-read from the live ladder,
   // so a rung the owner retunes mid-service cannot change an issued reward.
-  const rewardForTotals = resolvedClaim?.reward ?? rewardFromOrderSnapshot(old);
-  return { ok: true, fullItems, discountKind, resolvedClaim, rewardAssignment, rewardForTotals };
+  const rewardForTotals = resolvedClaim?.reward ?? card?.reward ?? rewardFromOrderSnapshot(old);
+  return { ok: true, fullItems, discountKind, resolvedClaim, card, rewardAssignment, rewardForTotals };
 }

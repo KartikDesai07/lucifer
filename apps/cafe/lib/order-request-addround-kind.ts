@@ -11,7 +11,7 @@ import type { DiscountKind } from "@pos/shared/constants";
 // The refusal is staff-actionable — the request is rejected and the diner
 // re-orders without the code — never a silent merge.
 export const REWARD_PROMO_CONFLICT_ERROR =
-  "This tab already has a stamp reward applied — reject this request and ask the customer to order again without the promo code";
+  "This tab already has a reward applied — reject this request and ask the customer to order again without the promo code";
 
 /**
  * Which `discountKind` an add-round must price and store, from the kind the

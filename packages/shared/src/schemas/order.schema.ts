@@ -12,7 +12,7 @@ import {
   VARIATION_NAME_PATTERN,
   DISCOUNT_KINDS,
 } from "../constants";
-import { orderRewardIntentShape, rewardAtSchema } from "./order-reward.schema";
+import { orderRewardIntentShape, rewardAtSchema, rewardCardIdSchema } from "./order-reward.schema";
 import { tableNoSchema } from "./table.schema";
 import { objectIdString } from "./object-id.schema";
 import { extraChargesSchema } from "./order-charge.schema";
@@ -173,6 +173,8 @@ export const addItemsSchema = z
     discountKind: z.enum(DISCOUNT_KINDS).nullable().optional(),
     // CB-5B S4/S5 — reward claim INTENT ONLY (stamp cost of the rung); see order-reward.schema.ts.
     rewardAt: rewardAtSchema,
+    // CB-7 S5 — scratch-card INTENT ONLY (the card id); see order-reward.schema.ts.
+    rewardCardId: rewardCardIdSchema,
     // A charge waiver made while the tab is running has to travel with the
     // round that follows it, or it lives only in one browser's state: the
     // operator waives, fires the round, and the server — which never heard
@@ -204,6 +206,8 @@ export const settleOrderSchema = z
     discountKind: z.enum(DISCOUNT_KINDS).nullable().optional(),
     // CB-5B S4/S5 — reward claim INTENT ONLY (stamp cost of the rung); see order-reward.schema.ts.
     rewardAt: rewardAtSchema,
+    // CB-7 S5 — scratch-card INTENT ONLY (the card id); see order-reward.schema.ts.
+    rewardCardId: rewardCardIdSchema,
     // Settle-time waiver/adjustment of the table charge. Omit to keep whatever
     // the tab was opened with — the same omit=unchanged discipline as
     // `discount`, so an Orders-page settle that knows nothing about charges
