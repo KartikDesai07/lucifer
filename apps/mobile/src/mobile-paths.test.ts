@@ -3104,3 +3104,96 @@ test('pin 31 mutation: every install needle can fail', () => {
     ['android:name=".update.UpdateInstallReceiver"\n        android:exported="false"', 'android:name=".update.UpdateInstallReceiver"\n        android:exported="true"'],
   ]);
 });
+
+// ── pin 32: native apps 2.0, the updater module (Session N2) ────────────────
+// spec §6, D3: NativeModules.PosUpdate offers the card at most once per app open and only while no printer of this app
+// has a job in flight; it looks for an update only at an open; its base comes only from the build setting
+// (R.string.pos_update_base, pin 29); its schedule is touched on the main thread only (the N1 review's I-2), with the
+// clock that counts deep sleep; and MainApplication registers it next to the printer module.
+const UPDATE_METHOD_ORACLE = ['takeCard', 'install', 'later'];
+interface UpdateModuleSources {
+  module: string;
+  js: string;
+  app: string;
+  pool: string;
+  manager: string;
+  updateKt: string;
+}
+function updateModuleProblems(s: UpdateModuleSources): string[] {
+  const out: string[] = [];
+  const k = strip(s.module);
+  const j = strip(s.js);
+  const need = (text: string, needle: string, why: string) => {
+    if (!text.includes(needle)) {
+      out.push(why);
+    }
+  };
+  const kotlin = [...k.matchAll(/@ReactMethod\s+fun\s+(\w+)\s*\(/g)].map(m => m[1]);
+  const calls = [...j.matchAll(/\bcall\(\s*'(\w+)'/g)].map(m => m[1]);
+  const iface = /export interface PosUpdateModule\s*\{([\s\S]*?)\n\}/.exec(j);
+  const declared = iface ? [...iface[1].matchAll(/^ {2}(\w+)\(/gm)].map(m => m[1]) : [];
+  out.push(...setProblems('kotlin vs update oracle', kotlin, UPDATE_METHOD_ORACLE));
+  out.push(...setProblems('js calls vs update oracle', calls, UPDATE_METHOD_ORACLE));
+  out.push(...setProblems('js interface vs update oracle', declared, UPDATE_METHOD_ORACLE));
+  need(k, 'const val NAME = "PosUpdate"', 'the Kotlin module is not PosUpdate');
+  need(j, 'NativeModules as { PosUpdate?:', 'the JS wrapper does not look up PosUpdate');
+  need(k, 'reactContext.getString(R.string.pos_update_base)', 'the base is not the build setting');
+  if (/"https?:\/\//.test(strip(s.updateKt))) {
+    out.push('an address literal in the updater');
+  }
+  need(k, 'if (open && schedule.checkDue(System.currentTimeMillis(), UpdateStore.lastCheckAt(reactContext))) check()', 'a look is not tied to an app open');
+  if ((k.match(/[^\w.]check\(\)/g) ?? []).length !== 2) {
+    out.push('check() is called from somewhere other than an app open');
+  }
+  need(k, 'schedule.shown(SystemClock.elapsedRealtime(), ', 'an open is not timed with elapsedRealtime');
+  need(k, 'schedule.hidden(SystemClock.elapsedRealtime())', 'going away is not timed with elapsedRealtime');
+  need(k, 'fun takeCard(promise: Promise) {\n    UiThreadUtil.runOnUiThread(', 'takeCard touches the schedule off the main thread');
+  need(k, 'PrinterPool.anyPrinting() -> {', 'the card does not wait for a print in flight');
+  need(k, 'while (PrinterPool.anyPrinting() && waited < INSTALL_IDLE_WAIT_MS)', 'Install does not wait for a print in flight');
+  need(k, '} catch (t: Throwable) {\n        Log.i(TAG, "check: "', 'a failed look can end the updater thread');
+  need(strip(s.pool), 'fun anyPrinting(): Boolean = managers().any { it.isPrinting() }', 'the printers cannot say a job is in flight');
+  need(strip(s.manager), 'fun isPrinting(): Boolean = printing.get()', 'a printer cannot say a job is in flight');
+  const app = strip(s.app);
+  if (!/^\s*add\(PosUpdatePackage\(\)\)\s*$/m.test(app) || !/^import com\.possoftware\.pos\.update\.PosUpdatePackage\s*$/m.test(app)) {
+    out.push('MainApplication does not register PosUpdatePackage');
+  }
+  return out;
+}
+const updateModuleSources = (): UpdateModuleSources => ({
+  module: upd('PosUpdateModule.kt'),
+  js: read(join(SRC, 'native', 'PosUpdate.ts')),
+  app: read(join(JAVA, 'com', 'possoftware', 'pos', 'MainApplication.kt')),
+  pool: kt('PrinterPool.kt'),
+  manager: kt('PrinterManager.kt'),
+  updateKt: Object.values(loadAll(listFiles(UPDATE_DIR, isKt))).join('\n'),
+});
+
+test('pin 32: the updater module: once per open, after a print, looks only at an open, the main thread, registered', () => {
+  assert.deepEqual(updateModuleProblems(updateModuleSources()), []);
+});
+
+test('pin 32 mutation: every module needle can fail', () => {
+  const base = updateModuleSources();
+  const run = (key: keyof UpdateModuleSources) => (text: string) => updateModuleProblems({ ...base, [key]: text });
+  everyMutationCaught(run('module'), base.module, [
+    ['@ReactMethod\n  fun later(', 'fun later('],
+    ['const val NAME = "PosUpdate"', 'const val NAME = "PosUpdates"'],
+    ['reactContext.getString(R.string.pos_update_base)', '"https://files.sandbee.in/pos"'],
+    ['if (open && schedule.checkDue(', 'if (schedule.checkDue('],
+    ['    schedule.hidden(SystemClock.elapsedRealtime())\n', '    schedule.hidden(SystemClock.elapsedRealtime())\n    check()\n'],
+    ['schedule.shown(SystemClock.elapsedRealtime(), ', 'schedule.shown(System.currentTimeMillis(), '],
+    ['schedule.hidden(SystemClock.elapsedRealtime())', 'schedule.hidden(System.currentTimeMillis())'],
+    ['fun takeCard(promise: Promise) {\n    UiThreadUtil.runOnUiThread(', 'fun takeCard(promise: Promise) {\n    worker.execute('],
+    ['PrinterPool.anyPrinting() -> {', 'false -> {'],
+    ['while (PrinterPool.anyPrinting() && waited', 'while (false && waited'],
+    ['} catch (t: Throwable) {\n        Log.i(TAG, "check: "', '} catch (t: Exception) {\n        Log.i(TAG, "check: "'],
+  ]);
+  everyMutationCaught(run('js'), base.js, [
+    ["call('install')", "call('installNow')"],
+    ['NativeModules as { PosUpdate?:', 'NativeModules as { PosUpdater?:'],
+  ]);
+  everyMutationCaught(run('app'), base.app, [['add(PosUpdatePackage())', '// add(PosUpdatePackage())']]);
+  everyMutationCaught(run('pool'), base.pool, [['managers().any { it.isPrinting() }', 'false']]);
+  everyMutationCaught(run('manager'), base.manager, [['= printing.get()', '= false']]);
+  everyMutationCaught(run('updateKt'), base.updateKt, [['const val TAG = "PosUpdate"', 'const val TAG = "PosUpdate"\n  const val HOST = "https://files.sandbee.in"']]);
+});

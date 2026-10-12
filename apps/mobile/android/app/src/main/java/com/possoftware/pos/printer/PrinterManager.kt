@@ -78,6 +78,9 @@ class PrinterManager(val info: PrinterInfo, private val env: PrinterEnv, private
   /** This printer's state as the page reads it ("none" only once it left the list). */
   fun state(): String = synchronized(lock) { state }
 
+  /** Native apps 2.0 (spec §6.3): a job is being sent to this printer now (the update card and its install wait). */
+  fun isPrinting(): Boolean = printing.get()
+
   /** The transport of a CONNECTED printer, else null. */
   fun connectedTransport(): PrinterTransport? =
       synchronized(lock) { if (state == BridgeCodes.STATE_CONNECTED) transport else null }
