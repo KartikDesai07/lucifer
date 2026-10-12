@@ -1292,7 +1292,7 @@ itself from a fake files server on this PC, installing when it quits or on "Rest
 
 ### Task 2: Docs
 
-- `docs/GO-LIVE-CHECKLIST.md`: a new section "Existing cafes: the native apps 2.0 release" (each printing phone or tablet once: uninstall, install 2.0.0, open, type the cafe's name, sign in, set this device's printer, Admin → Printer setup → choose this device again; Windows installs over 1.x; what staff see from then on: the card at an app open, Install or Later; Windows installs at closing or on "Restart to update"; nothing ever blocks work); §7's install lines point at `files.sandbee.in` once the owner has set it up; §A pinned facts. Pins in `go-live-runbook.test.ts`.
+- `docs/GO-LIVE-CHECKLIST.md`: a new section "Existing cafes: the native apps 2.0 release" (each printing phone or tablet once: uninstall, install 2.0.0, open, type the cafe's name, sign in, set this device's printer, Admin → Printer setup → choose this device again; Windows installs over 1.x; what staff see from then on: the card at an app open, Install or Later; Windows installs at closing or on "Restart to update"; nothing ever blocks work; a device whose screen never turns off and whose app never leaves the screen has no app open, so it updates after its next restart, or when it is away from the app for 30 minutes); §7's install lines point at `files.sandbee.in` once the owner has set it up; §A pinned facts. Pins in `go-live-runbook.test.ts`.
 - `apps/mobile/README.md` and `apps/desktop/README.md`: building a release and running the packaging; the upload order. `apps/cafe/DEPLOY.md`: the line about the native apps.
 
 ### Task 3: Full verification
