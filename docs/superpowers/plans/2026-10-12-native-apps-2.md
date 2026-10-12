@@ -1307,3 +1307,122 @@ itself from a fake files server on this PC, installing when it quits or on "Rest
 ### Task 5: The final review
 
 - A fresh review of the whole branch (spec, plan, diff, Results) on Claude Fable 5.1 (on a 429 limit: wait for the reset, never switch silently). Fixes by TDD; Results; the owner's merge OK.
+
+---
+
+## Session N1 Results
+
+Run on 2026-10-12 in one session (superpowers:executing-plans, inline), Tasks 0–6 in order, code copied verbatim from
+this plan. Nothing pushed, merged, uploaded or released.
+
+### Commits (branch `feat/native-apps-2`, from `8588479`)
+
+| Task | Commit | What |
+|---|---|---|
+| 1 | `0fc281c` | one version 2.0.0, versionCode computed, pin 27 |
+| 2 | `5db3ca2` | the release-key guard, no debug-key fallback, README "### 1. The signing key", pin 28 |
+| 3 | `c8568e4` | update base and times as build settings, `res/raw/pos_update_keep.xml`, pin 29 |
+| 4 | `865a9ec` | `UpdateManifest` + 9 JUnit, `org.json:json:20180813` (test only) |
+| 5 | `8f3d44a` | `UpdateSchedule` + 8 JUnit |
+| review | `443df45` | the cafe go-live runbook's Windows-app version pin follows 2.0.0 (the review's I-1) |
+| 6 | this commit | these Results |
+
+### Counts
+
+| Suite | Baseline | After N1 | Expected |
+|---|---|---|---|
+| mobile (`npm test`) | 148 | 154, 0 fail | baseline + 6 |
+| desktop (`npm test`) | 205 | 205, 0 fail | baseline |
+| JUnit (`:app:testDebugUnitTest --rerun`) | 65 | 82, 0 failures, 0 errors | baseline + 17 |
+| typecheck + lint (mobile, desktop) | clean | clean | clean |
+| cafe chain (`apps/cafe`, `npm test`) | not in this plan's list (see I-1) | 5656: 5655 pass, 0 fail, 1 skipped; typecheck clean | — |
+
+The plan's "last known" mobile count was 143; the launcher icon fix `57f93be` (on this branch) added
+`src/app-icon.test.ts` (5 tests), so the baseline is 148.
+
+### The key (Task 2)
+
+- `D:\kd\pos-signing\sandbee-pos-release.jks`, made once with Step 6's command on 2026-10-12 14:17 IST: 4322 bytes,
+  PKCS12, alias `sandbee-pos`, RSA 4096, `SHA384withRSA`, `CN=Sandbee POS, O=sandbee, C=IN`.
+- Valid from 2026-10-12 until 2066-10-12.
+- Certificate SHA-256: `5B:D0:6E:F3:E9:A7:8E:FC:B0:DF:BD:1F:F1:02:DE:93:2C:58:1A:78:03:4D:93:EF:75:72:F5:37:3B:5B:3E:40`
+  (apksigner: `5bd06ef3e9a78efcb0dfbd1ff102de932c581a78034d93ef7572f5373b5b3e40`; N4's `EXPECTED_CERT_SHA256`). Not the
+  React Native debug key (`FA:C6:17:45:…`).
+- Four `POS_RELEASE_` lines in `D:\gradle-home\gradle.properties` (the file did not exist before). No password was
+  printed, logged, committed or reported.
+- **The owner's backup (Step 10): pending.** N2's prompt waits for the owner's confirmation.
+
+### Guard dry runs (Task 2 Step 8)
+
+1. `assembleRelease --dry-run -PPOS_RELEASE_KEY_ALIAS=` → `A release build needs the private Sandbee POS key: set
+   POS_RELEASE_KEY_ALIAS in D:\gradle-home\gradle.properties (apps/mobile/README.md). It never signs with the debug key.`,
+   `BUILD FAILED`.
+2. `aR --dry-run -PPOS_RELEASE_STORE_FILE=D:/kd/pos-signing/no-such.jks` → `The release key file is missing:
+   D:/kd/pos-signing/no-such.jks`, `BUILD FAILED` (an `aR` build is caught).
+3. `assembleRelease --dry-run` with the key → `BUILD SUCCESSFUL`.
+
+### Gradle settings checks (Tasks 1 and 3)
+
+- `:app:help` → `BUILD SUCCESSFUL`; `-PposVersion=2.0` → `posVersion must look like 2.0.0, minor and patch below 100: 2.0`,
+  `BUILD FAILED`.
+- `-PposUpdateBase=http://example.com/pos` → `posUpdateBase must be https://<host>/<path>, or
+  http://127.0.0.1:<port>/<path> for a test build: …`, `BUILD FAILED`; `-PposUpdateCheckMinutes=1` (real base) → `… are for
+  test builds only …`, `BUILD FAILED`.
+- `:app:generateDebugResValues` (the task name as in the plan) with the test base and times → `http://127.0.0.1:8765/pos`,
+  `1`, `1`; without them → `https://files.sandbee.in/pos`, `720`, `30`.
+
+### Release read-back (Task 6)
+
+One release pair from `8f3d44a` (`:app:compileReleaseKotlin --rerun` exit 0, then `assembleRelease
+-PreactNativeArchitectures=arm64-v8a,armeabi-v7a`, `BUILD SUCCESSFUL`), kept in the session scratchpad only, released to
+nobody:
+
+| APK | Bytes | SHA-256 |
+|---|---|---|
+| `app-arm64-v8a-release.apk` | 7,347,394 | `5cae6c908757aee393986ce257c6f42c6752d8d44bb30f941ca1a6a173760a1f` |
+| `app-armeabi-v7a-release.apk` | 6,755,228 | `ebb77ae2521567909d3e83c0542735bb90689df046928ac6bab403091aa6ec53` |
+
+Both: one signer, APK Signature Scheme v2 only (minSdk 24), `CN=Sandbee POS, O=sandbee, C=IN`, certificate SHA-256
+`5bd06ef3…3e40` (the key above, not `fac61745…`); `package: name='com.possoftware.pos' versionCode='20000'
+versionName='2.0.0'`; no `application-debuggable`; `string/pos_update_base` → `"https://files.sandbee.in/pos"`,
+`integer/pos_update_check_minutes` → 720, `integer/pos_update_reopen_minutes` → 30, all found by name (the shrinker kept
+them). D: had 13 GB free before and after.
+
+### Differences from this plan, and why
+
+1. **Pin 29's base needle (Task 3).** The plan's needle `resValue "string", "pos_update_base", posUpdateBase` is a prefix
+   of its own mutation's result (`… posUpdateBaseDefault`), so `pin 29 mutation` failed ("mutation not caught") on the
+   correct code, and a real regression to the default base would have passed the pin. The one needle now ends at the
+   line end (`… posUpdateBase\n`); the mutation table is unchanged. Stricter, not looser; the repo is LF-only
+   (`.gitattributes`), as pin 27's `\n` needles already assume.
+2. **Task 1's RED wording.** `pin 27 mutation` failed on `everyMutationCaught`'s "baseline must be clean", which the helper
+   checks before any mutation target; the plan expected "mutation target not found". Same cause (nothing implemented).
+3. **apksigner's output (Task 6).** build-tools 37's apksigner prints `V2 Signer: certificate DN: …` and `V2 Signer:
+   certificate SHA-256 digest: …`, not `Signer #1 certificate …`. Same facts. N4's packaging must read this form.
+
+### The session's fresh review (Claude Fable 5.1, `8588479..8f3d44a`)
+
+Verdict "with fixes": 0 Critical, 2 Important, 5 Minor. The reviewer diffed every block of this plan against the commits
+(identical, except the pin 29 needle above) and found no other needle in pins 27–29 that is a prefix of its mutation.
+
+- **I-1, fixed (`443df45`).** `apps/cafe/lib/go-live-runbook.test.ts` pins `apps/desktop/package.json`'s version
+  (`"1.12.0"`, "the Windows app of Phase 3"); Task 1's 2.0.0 turned it red (96/97). This session's suite list never ran
+  the cafe chain. The pin now says `"2.0.0"`, with a "Native apps 2.0 Session N1 deliberately changed" comment, as
+  Session 3E did for 1.12.0; the Phase 2 and Phase 3 steps' installer names are unchanged. RED → GREEN 97/97; the whole
+  cafe chain passes: 5656 tests, 5655 pass, 0 fail, 1 skipped; cafe typecheck clean. **N2–N4's "every suite" steps must include the cafe chain (`apps/cafe`: `npm test`).**
+- **I-2, not changed here (for the N1 gate).** `UpdateSchedule`'s KDoc says "Main thread only", but N2 Task 4's
+  `@ReactMethod takeCard` runs on the NativeModules thread while `shown`/`hidden` run on the UI thread. N1 has no caller
+  and its code is this plan's, so the gate decides when it makes N2 exact: `@Synchronized` on `shown`, `hidden` and
+  `takeCard` (tests unchanged), or a `UiThreadUtil` hop in `PosUpdateModule` and a pin.
+- **Minors, for the gate:** m-3 `UpdateManifest` catches only `JSONException`; a deeply nested ≤ 16 KB body can throw
+  `StackOverflowError`, so N2's check thread needs a catch-all (or catch `Throwable` around the parse, with a JUnit case);
+  m-4 `"notes": null` ignores the whole manifest (treat `JSONObject.NULL` as absent, or N4's writer omits the key);
+  m-5 a UTF-8 BOM makes `latest.json` "not JSON" silently (N2 strips a leading U+FEFF and/or N4 refuses it); m-6 the
+  guard's message names `D:\gradle-home\gradle.properties` only (another build PC uses `%USERPROFILE%\.gradle`); m-7
+  `pos_update_keep.xml` says the build does not package it, but a debug build does (release drops it).
+- **The reviewer's notes for N2/N4:** N2 Task 5's "going to the background drops a card" conflicts with E5 (the "Install
+  unknown apps" setting and the installer's confirm screen put the app in the background mid-install): a
+  `waitingFor: 'permission' | 'installer'` state should survive one background round trip; N2's pins should require
+  `SystemClock.elapsedRealtime()` for `shown`/`hidden`; a system dialog at start (Bluetooth enable) pauses the activity
+  between `shown()` and `takeCard()` and drops that open's card (the next open offers it again); N4's packaging must read
+  apksigner's `V2 Signer: certificate SHA-256 digest:` line.
