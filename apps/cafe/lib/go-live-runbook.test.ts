@@ -1393,8 +1393,10 @@ test("PIN §1 (printing Phase 2): the existing-cafe release step keeps the go-li
   }
   // Phase 3 Session 3E deliberately changed: the Windows app is 1.12.0 now, and this step stays the Phase 2 release's
   // (its installer, 1.11.0); the Phase 3 release step (Session 3G) names 1.12.0.
+  // Native apps 2.0 Session N1 deliberately changed: both apps are 2.0.0 now (spec §5); this step still names the Phase 2
+  // release's installer, the Phase 3 step 1.12.0, and the native apps 2.0 release step (Session N4) will name 2.0.0.
   const desktop = JSON.parse(readFileSync(path.join(REPO_ROOT, "apps/desktop/package.json"), "utf8")) as { version: string };
-  assert.equal(desktop.version, "1.12.0", "the Windows app of Phase 3");
+  assert.equal(desktop.version, "2.0.0", "the Windows app of native apps 2.0");
   assert.ok(step.includes("POS-Software-Setup-1.11.0.exe"), "the step names the Phase 2 release's desktop installer");
   assert.ok(step.includes("apps/mobile/TEST-CHECKLIST.md"), "the step sends the deployer to the real-printer checks");
 });
