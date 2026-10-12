@@ -97,12 +97,29 @@ def posVersionParts = posVersionName.tokenize('.').collect { it as int }
 def posVersionCode = posVersionParts[0] * 10000 + posVersionParts[1] * 100 + posVersionParts[2]
 
 /**
- * Release signing comes from four Gradle properties (put them in ~/.gradle/gradle.properties, never
- * in the repo): POS_RELEASE_STORE_FILE, POS_RELEASE_STORE_PASSWORD, POS_RELEASE_KEY_ALIAS,
- * POS_RELEASE_KEY_PASSWORD. Without them the release build is signed with the debug key.
+ * Release signing comes from four Gradle properties (in D:\gradle-home\gradle.properties on the build PC, never in the
+ * repo): POS_RELEASE_STORE_FILE, POS_RELEASE_STORE_PASSWORD, POS_RELEASE_KEY_ALIAS, POS_RELEASE_KEY_PASSWORD.
+ *
+ * Native apps 2.0 (spec §8): they name the app's private key, and a release APK is signed with it or not built at all.
+ * Before 2.0.0 a release fell back to React Native's public debug key, which anyone can sign with, and an installed app
+ * only ever updates from APKs signed with its own key. The guard looks at the task graph, so an `aR` build (no
+ * "release" in its task name) is caught too; without the key the release build type has no signing config, so a build
+ * that somehow slips past the guard comes out unsigned (not installable), never debug-signed.
  */
 def posReleaseStoreFile = findProperty('POS_RELEASE_STORE_FILE')
 def hasPosReleaseKey = posReleaseStoreFile != null
+def posReleaseKeyProps = ['POS_RELEASE_STORE_FILE', 'POS_RELEASE_STORE_PASSWORD', 'POS_RELEASE_KEY_ALIAS', 'POS_RELEASE_KEY_PASSWORD']
+gradle.taskGraph.whenReady { graph ->
+    if (graph.allTasks.any { it.path in [':app:packageRelease', ':app:packageReleaseBundle'] }) {
+        def missing = posReleaseKeyProps.findAll { !findProperty(it) }
+        if (!missing.isEmpty()) {
+            throw new GradleException("A release build needs the private Sandbee POS key: set ${missing.join(', ')} in D:\\gradle-home\\gradle.properties (apps/mobile/README.md). It never signs with the debug key.")
+        }
+        if (!file(posReleaseStoreFile).isFile()) {
+            throw new GradleException("The release key file is missing: ${posReleaseStoreFile}")
+        }
+    }
+}
 
 android {
     ndkVersion rootProject.ext.ndkVersion
@@ -138,9 +155,7 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig hasPosReleaseKey ? signingConfigs.release : signingConfigs.debug
+            signingConfig hasPosReleaseKey ? signingConfigs.release : null
             minifyEnabled enableProguardInReleaseBuilds
             shrinkResources enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"

@@ -2852,3 +2852,58 @@ test('pin 27 mutation: either version drifting or a literal versionCode is caugh
   ]);
   everyMutationCaught(run('desktop'), base.desktop, [['"version": "2.0.0"', '"version": "2.0.1"']]);
 });
+
+// ── pin 28: native apps 2.0, the private release key (2026-10-12) ───────────
+// spec §8: a release APK is signed with the app's private key or not built at all. Before 2.0.0 it fell back to React
+// Native's public debug key, which anyone can sign with. The guard looks at the task graph (an `aR` build has no
+// "release" in its task name), and without the key the release build type has no signing config: unsigned, never
+// debug-signed.
+function releaseKeyProblems(gradle: string, readme: string): string[] {
+  const out: string[] = [];
+  const g = strip(gradle);
+  const need = (needle: string, why: string) => {
+    if (!g.includes(needle)) {
+      out.push(why);
+    }
+  };
+  need('signingConfig hasPosReleaseKey ? signingConfigs.release : null', 'a release build without the key falls back to another key');
+  need('gradle.taskGraph.whenReady { graph ->', 'the release-key guard does not look at the task graph');
+  need("graph.allTasks.any { it.path in [':app:packageRelease', ':app:packageReleaseBundle'] }", 'the guard misses a release APK or bundle');
+  need("def posReleaseKeyProps = ['POS_RELEASE_STORE_FILE', 'POS_RELEASE_STORE_PASSWORD', 'POS_RELEASE_KEY_ALIAS', 'POS_RELEASE_KEY_PASSWORD']", 'the guard does not check all four key properties');
+  need('throw new GradleException("A release build needs the private Sandbee POS key', 'a release build without the key does not stop');
+  need('if (!file(posReleaseStoreFile).isFile())', 'a missing key file is not caught before the build');
+  const types = g.slice(Math.max(0, g.indexOf('buildTypes {')));
+  const release = /release \{([\s\S]*?)\n {8}\}/.exec(types)?.[1] ?? '';
+  if (release === '') {
+    out.push('landmark: buildTypes.release not found');
+  } else if (release.includes('signingConfigs.debug')) {
+    out.push('the release build type can still sign with the debug key');
+  }
+  if (!readme.includes('A release build stops when these four properties are missing')) {
+    out.push('README does not say a release build stops without the key');
+  }
+  if (readme.includes('the release build is signed with the debug key')) {
+    out.push('README still says the release build falls back to the debug key');
+  }
+  return out;
+}
+
+test('pin 28: a release APK is signed with the private key or not built', () => {
+  assert.deepEqual(releaseKeyProblems(read(GRADLE_APP), read(join(ROOT, 'README.md'))), []);
+});
+
+test('pin 28 mutation: every key-guard needle can fail', () => {
+  const gradle = read(GRADLE_APP);
+  const readme = read(join(ROOT, 'README.md'));
+  everyMutationCaught(s => releaseKeyProblems(s, readme), gradle, [
+    ['signingConfigs.release : null', 'signingConfigs.release : signingConfigs.debug'],
+    ['gradle.taskGraph.whenReady { graph ->', 'gradle.projectsEvaluated { graph ->'],
+    ["':app:packageRelease', ':app:packageReleaseBundle'", "':app:packageReleaseBundle'"],
+    ["'POS_RELEASE_KEY_ALIAS', 'POS_RELEASE_KEY_PASSWORD']", "'POS_RELEASE_KEY_ALIAS']"],
+    ['throw new GradleException("A release build needs', 'logger.warn("A release build needs'],
+    ['if (!file(posReleaseStoreFile).isFile())', 'if (false)'],
+  ]);
+  everyMutationCaught(s => releaseKeyProblems(gradle, s), readme, [
+    ['A release build stops when these four properties are missing', 'A release build may use these four properties'],
+  ]);
+});
