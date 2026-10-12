@@ -161,24 +161,24 @@ test("PIN: settle's reward claim is NOT wrapped in the earn-side's empty-catch s
 
 // ── 5: D9 ITEM FENCE ──────────────────────────────────────────────────────────
 
-test("PIN: settle/route.ts passes refuseItemKind: true; both order-taking writers (create, items) pass refuseItemKind: false", () => {
-  const settleSrc = stripComments(readSrc("app/api/orders/[id]/settle/route.ts"));
+test("PIN: settle (lib/settle-reward.ts) passes refuseItemKind: true; both order-taking writers (create, items) pass refuseItemKind: false", () => {
+  const settleSrc = stripComments(readSrc("lib/settle-reward.ts"));
   assert.match(
     settleSrc,
     /refuseItemKind:\s*true,/,
-    "settle/route.ts must pass refuseItemKind: true — D9: a free dish must reach the kitchen while the order is being taken, never after payment",
+    "lib/settle-reward.ts must pass refuseItemKind: true — D9: a free dish must reach the kitchen while the order is being taken, never after payment",
   );
-  const createSrc = stripComments(readSrc("app/api/orders/route.ts"));
+  const createSrc = stripComments(readSrc("lib/order-create-reward.ts"));
   assert.match(
     createSrc,
     /refuseItemKind:\s*false,/,
-    "app/api/orders/route.ts (create) must pass refuseItemKind: false — an item reward IS allowed at order-taking time",
+    "lib/order-create-reward.ts (create) must pass refuseItemKind: false — an item reward IS allowed at order-taking time",
   );
-  const itemsSrc = stripComments(readSrc("app/api/orders/[id]/items/route.ts"));
+  const itemsSrc = stripComments(readSrc("lib/order-round-reward.ts"));
   assert.match(
     itemsSrc,
     /refuseItemKind:\s*false,/,
-    "app/api/orders/[id]/items/route.ts (add-round) must pass refuseItemKind: false — an item reward IS allowed on an add-round",
+    "lib/order-round-reward.ts (add-round) must pass refuseItemKind: false — an item reward IS allowed on an add-round",
   );
 });
 
@@ -256,10 +256,17 @@ test("PIN (CB-5D part 2 regression): app/api/orders/route.ts's claimFor does NOT
   // And the positive half of the fix: `rewardAssignment` must be captured
   // ABOVE claimFor's declaration (built once, alongside resolvedClaim), not
   // merely absent from the body by coincidence of some other refactor.
-  const captureIdx = mustIndexOf(
-    src,
+  // S5a: the capture site moved into lib/order-create-reward.ts (the route
+  // receives it from resolveCreateReward(), called before claimFor is declared).
+  mustIndexOf(
+    stripComments(readSrc("lib/order-create-reward.ts")),
     "let rewardAssignment: ReturnType<typeof buildRewardAssignment> | undefined;",
     "the single rewardAssignment capture site",
+  );
+  const captureIdx = mustIndexOf(
+    src,
+    "const { effectiveDiscountKind, resolvedClaim, rewardAssignment } = rewardR;",
+    "the route's single rewardAssignment receive site",
   );
   assert.ok(
     captureIdx < claimForDeclIdx,
@@ -452,7 +459,10 @@ test("rewardSnapshotFields: rewardStamps always records the claim's cost, regard
 // (resolveItemVoid) and settle-money.test.ts (resolveSettleMoney).
 
 test("PIN (CB-5B fix): app/api/orders/[id]/items/route.ts imports rewardFromOrderSnapshot AND calls it as the fallback into computeOrderTotals's reward", () => {
-  const src = stripComments(readSrc("app/api/orders/[id]/items/route.ts"));
+  // S5a: the fallback now lives in lib/order-round-reward.ts (resolveRoundReward);
+  // the route keeps the computeOrderTotals call that consumes it.
+  const src = stripComments(readSrc("lib/order-round-reward.ts"));
+  const routeSrc = stripComments(readSrc("app/api/orders/[id]/items/route.ts"));
   // Positive landmark: the import exists at all (guards against the whole
   // block being renamed/removed out from under the call-site needle below).
   assert.match(
@@ -465,13 +475,18 @@ test("PIN (CB-5B fix): app/api/orders/[id]/items/route.ts imports rewardFromOrde
     "rewardFromOrderSnapshot,",
     "the named import of rewardFromOrderSnapshot from @pos/shared/reward-redemption",
   );
-  const fallbackIdx = mustIndexOf(
+  mustIndexOf(
     src,
     "const rewardForTotals = resolvedClaim?.reward ?? rewardFromOrderSnapshot(old);",
     "the fallback call site that feeds computeOrderTotals's reward",
   );
+  const fallbackIdx = mustIndexOf(
+    routeSrc,
+    "await resolveRoundReward(",
+    "the route's call into the fallback-resolving helper",
+  );
   const totalsCallIdx = mustIndexOf(
-    src,
+    routeSrc,
     "reward: rewardForTotals,",
     "computeOrderTotals being fed the fallback-resolved reward",
   );
@@ -880,14 +895,14 @@ test("PIN (P4): items/route.ts answers REWARD_BLOCKS_GST_DISCOUNT_MESSAGE 409 on
   const src = lf(stripComments(readSrc("app/api/orders/[id]/items/route.ts")));
   // Positive landmarks first: the three things the guard must precede still exist.
   const openTab = mustIndexOf(src, "Can only add items to an open tab", "the open-tab refusal");
-  const claimLine = mustIndexOf(src, "resolveRewardClaimAndLine(", "the reward claim call");
+  const claimLine = mustIndexOf(src, "resolveRoundReward(", "the reward claim call");
   const claimStamps = mustIndexOf(src, "claimRewardStamps(String(", "the stamp claim call");
   const cas = mustIndexOf(src, "Order.findOneAndUpdate(", "the CAS write");
   const m = BLOCKS_CALL.exec(src);
   assert.ok(m, "items/route.ts must `if (rewardBlocksDiscountKind(...)) return failure(REWARD_BLOCKS_GST_DISCOUNT_MESSAGE, 409)`");
   assert.equal(m[1], "parsed.data.discountKind", "the supplied kind is the body field, the stored kind is old.discountKind");
   assert.ok(m.index > openTab, "the guard sits after the open-tab status check");
-  assert.ok(m.index < claimLine, "the guard must precede resolveRewardClaimAndLine( — a refused request must resolve no claim");
+  assert.ok(m.index < claimLine, "the guard must precede resolveRoundReward( — a refused request must resolve no claim");
   assert.ok(m.index < claimStamps, "the guard must precede claimRewardStamps( — a refused request must spend no stamps");
   assert.ok(m.index < cas, "the guard must precede the findOneAndUpdate CAS write");
   assertReceiptImports(src, ["rewardBlocksDiscountKind", "REWARD_BLOCKS_GST_DISCOUNT_MESSAGE"]);
@@ -896,14 +911,14 @@ test("PIN (P4): items/route.ts answers REWARD_BLOCKS_GST_DISCOUNT_MESSAGE 409 on
 test("PIN (P4): settle/route.ts answers REWARD_BLOCKS_GST_DISCOUNT_MESSAGE 409 on rewardBlocksDiscountKind(data.discountKind, old.discountKind) — after settleRefusal, BEFORE the reward claim, the stamp claim and the CAS write", () => {
   const src = lf(stripComments(readSrc("app/api/orders/[id]/settle/route.ts")));
   const refusal = mustIndexOf(src, "settleRefusal(old, data)", "the settleRefusal call");
-  const claimCall = mustIndexOf(src, "resolveRewardClaim({", "the reward claim call");
+  const claimCall = mustIndexOf(src, "resolveSettleReward(", "the reward claim call");
   const claimStamps = mustIndexOf(src, "claimRewardStamps(String(", "the stamp claim call");
   const cas = mustIndexOf(src, "Order.findOneAndUpdate(", "the CAS write");
   const m = BLOCKS_CALL.exec(src);
   assert.ok(m, "settle/route.ts must `if (rewardBlocksDiscountKind(...)) return failure(REWARD_BLOCKS_GST_DISCOUNT_MESSAGE, 409)`");
   assert.equal(m[1], "data.discountKind", "the supplied kind is the parsed body field, the stored kind is old.discountKind");
   assert.ok(m.index > refusal, "the guard sits right after settleRefusal");
-  assert.ok(m.index < claimCall, "the guard must precede resolveRewardClaim( — a refused settle must resolve no claim");
+  assert.ok(m.index < claimCall, "the guard must precede resolveSettleReward( — a refused settle must resolve no claim");
   assert.ok(m.index < claimStamps, "the guard must precede claimRewardStamps( — a refused settle must spend no stamps");
   assert.ok(m.index < cas, "the guard must precede the findOneAndUpdate CAS write");
   assertReceiptImports(src, ["rewardBlocksDiscountKind", "REWARD_BLOCKS_GST_DISCOUNT_MESSAGE"]);

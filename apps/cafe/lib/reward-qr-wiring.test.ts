@@ -157,7 +157,7 @@ test("S7: the A2 conflict refusal runs BEFORE the promo fence claim and before t
   assert.equal(
     countOf(src, /REWARD_PROMO_CONFLICT_ERROR/g),
     2,
-    "REWARD_PROMO_CONFLICT_ERROR must appear exactly twice: its declaration and its ONE use",
+    "REWARD_PROMO_CONFLICT_ERROR must appear exactly twice here: its import (it is declared in order-request-addround-kind.ts, S5a) and its ONE use",
   );
   assert.equal(countOf(src, /applyAddRound\(openTab, update/g), 1, "exactly one add-round write");
 });

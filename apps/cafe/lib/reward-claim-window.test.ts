@@ -159,16 +159,16 @@ test("the staff-facing claim-window-closed message stays CONSISTENT with the din
 // resolveRewardClaim/resolveRewardClaimAndLine, which is what makes the fix
 // SINGLE-HOMED rather than requiring four hand-copied checks.
 
-test("wiring: app/api/orders/route.ts (counter create) resolves its claim through resolveRewardClaimAndLine, which now inherits the window gate", () => {
-  const src = stripComments(readSrc("../app/api/orders/route.ts"));
+test("wiring: lib/order-create-reward.ts (counter create, called from app/api/orders/route.ts) resolves its claim through resolveRewardClaimAndLine, which now inherits the window gate", () => {
+  const src = stripComments(readSrc("./order-create-reward.ts"));
   assert.match(src, /resolveRewardClaimAndLine\(/, "the counter create path must still call resolveRewardClaimAndLine");
 });
 
-test("wiring: app/api/orders/[id]/items/route.ts (add-round) and .../settle/route.ts (settle) resolve their claims through resolveRewardClaim(AndLine), inheriting the window gate", () => {
-  const itemsSrc = stripComments(readSrc("../app/api/orders/[id]/items/route.ts"));
-  const settleSrc = stripComments(readSrc("../app/api/orders/[id]/settle/route.ts"));
+test("wiring: lib/order-round-reward.ts (add-round, called from items/route.ts) and lib/settle-reward.ts (settle, called from settle/route.ts) resolve their claims through resolveRewardClaim(AndLine), inheriting the window gate", () => {
+  const itemsSrc = stripComments(readSrc("./order-round-reward.ts"));
+  const settleSrc = stripComments(readSrc("./settle-reward.ts"));
   assert.match(itemsSrc, /resolveRewardClaimAndLine\(/, "items/route.ts (add-round) must call resolveRewardClaimAndLine");
-  assert.match(settleSrc, /resolveRewardClaim\(\{/, "settle/route.ts must call resolveRewardClaim directly (D9 refuses item kind, no dish line to resolve)");
+  assert.match(settleSrc, /resolveRewardClaim\(\{/, "lib/settle-reward.ts must call resolveRewardClaim directly (D9 refuses item kind, no dish line to resolve)");
 });
 
 test("wiring: lib/order-request-accept-reward.ts (the QR ACCEPT path that actually SPENDS) resolves its claim through resolveRewardClaimAndLine, inheriting the window gate", () => {

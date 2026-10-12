@@ -4,16 +4,14 @@ import { Order, type IOrder } from "@/models/Order";
 import { OrderRequest, type IOrderRequest } from "@/models/OrderRequest";
 import { Product } from "@/models/Product";
 import { Customer } from "@/models/Customer";
-import { Table } from "@/models/Table";
 import type { ISettings } from "@/models/Settings";
 import { nextOrderSequence } from "@/models/Counter";
 import { printConfigOf } from "@/lib/print";
 import { allocateOpeningSlips } from "@/lib/slip-numbers";
 import { withKitchenFlags } from "@/lib/kitchen-lines-server";
-import cache from "@/lib/cache";
 import { generateOrderId } from "@/lib/utils";
 import { computeOrderTotals, gstConfigFromOrder, gstConfigOfSettings } from "@/lib/receipt";
-import { derivePayment, ledgerContribution } from "@/lib/order";
+import { derivePayment } from "@/lib/order";
 import { resolveTableCharge } from "@/lib/table-admin";
 import { priceRequestItems, PRICE_DRIFT_ERROR, type PricedProductSource } from "@/lib/public-pricing";
 import { PARCEL_SELECTION, SELF_ORDER_SOURCE } from "@pos/shared/public";
@@ -42,6 +40,7 @@ import {
   gstConfigDrifted,
 } from "@/lib/order-request-accept-write";
 import { acceptAddRoundBranch } from "@/lib/order-request-accept-addround";
+import { runAcceptFollowUps } from "@/lib/order-request-accept-followups";
 import {
   resolveAcceptReward,
   claimAcceptReward,
@@ -481,33 +480,8 @@ export async function acceptOrderRequest(
     await markAssignedRewardUsed(request.promoCode, request.mobile, order.orderId, new Date());
   }
 
-  // Ledger contribution — best-effort, mirrors POST /api/orders exactly.
-  if (customerId) {
-    const c = ledgerContribution({ payment: "Unpaid", total: totals.total, paidAmount, status: "Pending" });
-    if (c.visits || c.spend || c.due) {
-      try {
-        await Customer.findByIdAndUpdate(customerId, {
-          $inc: { visits: c.visits, totalSpend: c.spend, totalDue: c.due },
-        });
-        cache.del("customers");
-      } catch {
-        /* best-effort — recoverable via reconcile */
-      }
-    }
-  }
-
-  // Claim the table only if still free (same guard as POST /api/orders) — a parcel claims nothing.
-  if (target === "create" && tableNo) {
-    try {
-      await Table.findOneAndUpdate(
-        { tableNo, status: "Available" },
-        { status: "Occupied", currentOrderId: order.orderId },
-      );
-      cache.del("tables");
-    } catch {
-      /* best-effort */
-    }
-  }
+  // Customer ledger + table claim — best-effort (lib/order-request-accept-followups.ts).
+  await runAcceptFollowUps({ customerId, total: totals.total, paidAmount, target, tableNo, orderId: order.orderId });
 
   return finalizeAccept(order, requestId, ctx.actor, false);
 }

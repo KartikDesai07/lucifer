@@ -120,7 +120,7 @@ export function useOrders(
 // Kept as its own hook (not a mode of useOrders) so the plain Order[] list
 // query and the {pages,pageParams} infinite query never share a cache entry
 // shape — see the ORDER_KEYS.infinite comment above.
-const ORDERS_PAGE_SIZE = 50; // mirrors app/api/orders/route.ts's DEFAULT_LIMIT
+const ORDERS_PAGE_SIZE = 50; // mirrors lib/order-list.ts's DEFAULT_LIMIT
 // How long the Orders page's list survives while nobody is looking at it — six
 // times the live lists' GC_TIMES.ORDERS. Coming back to Orders mid-service then
 // paints the last rows at once while the refetch runs (staleTime stays 0, so it

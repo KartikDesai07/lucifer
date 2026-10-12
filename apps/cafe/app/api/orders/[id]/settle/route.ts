@@ -14,13 +14,7 @@ import {
 } from "@/lib/api-helpers";
 import { orderSummaryCacheKey } from "@/lib/utils";
 import { resolveSettleMoney, validCustomer } from "@/lib/order";
-import {
-  computeOrderTotals,
-  gstConfigFromOrder,
-  resolveDiscountKind,
-  rewardBlocksDiscountKind,
-  REWARD_BLOCKS_GST_DISCOUNT_MESSAGE,
-} from "@/lib/receipt";
+import { rewardBlocksDiscountKind, REWARD_BLOCKS_GST_DISCOUNT_MESSAGE } from "@/lib/receipt";
 import { voidGuardFilter } from "@/lib/order-void";
 import { settleRefusal } from "@/lib/settle-guard";
 import { getSettings, gstConfigOf } from "@/lib/settings";
@@ -32,13 +26,11 @@ import { billFirstPrintFresh, stampFirstBillPrint, withFirstBillPrint } from "@/
 import { settledValue } from "@/lib/settled";
 import { settleOrderSchema } from "@/schemas";
 import {
-  resolveRewardClaim,
-  rewardClaimMessage,
   rewardSnapshotFields,
   claimRewardStamps,
   returnRewardStamps,
 } from "@/lib/reward-claim";
-import { buildRewardAssignment } from "@/lib/reward-assignment";
+import { resolveSettleReward } from "@/lib/settle-reward";
 import { shouldStoreDiscountKind, rewardFromOrderSnapshot } from "@pos/shared/reward-redemption";
 import { chargeWriteFields } from "@/lib/order-charges-write";
 import { createOrderPrintJobs, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
@@ -90,48 +82,18 @@ export async function POST(req: Request, { params }: Params) {
     }
     const settings = settledValue(settingsR);
 
-    // CB-5B S5 — a reward claimed AT SETTLE TIME. refuseItemKind: TRUE (D9,
-    // owner decision): a free DISH has to reach the kitchen while the order
-    // is being taken, never after payment — this path may only grant a
-    // flat/percent money-off. An order that already carries a reward refuses
-    // a second one outright, same one-scalar-one-kind reasoning as add-round.
-    let claim: Extract<Awaited<ReturnType<typeof resolveRewardClaim>>, { ok: true }> | undefined;
-    if (data.rewardAt !== undefined) {
-      if (old.rewardAt !== undefined) {
-        return failure("This tab already has a reward applied", 409);
-      }
-      // billTotal for the minBill gate: the bill WITHOUT the reward — any
-      // settle-time discount/charge change rides along, mirroring what
-      // resolveSettleMoney would price without a reward.
-      const plainKind = resolveDiscountKind(data.discountKind, old.discountKind);
-      const billTotal = computeOrderTotals({
-        items: old.items,
-        discount: data.discount ?? old.discount,
-        discountKind: plainKind,
-        charge: data.chargeAmount ?? old.chargeAmount ?? 0,
-        cfg: gstConfigFromOrder(old, gstConfigOf(settings)),
-      }).total;
-      const resolved = await resolveRewardClaim({
-        settings,
-        customerId: old.customerId ? String(old.customerId) : undefined,
-        rewardAt: data.rewardAt,
-        billTotal,
-        refuseItemKind: true,
-      });
-      if (!resolved.ok) return failure(rewardClaimMessage(resolved.reason), 400);
-      claim = resolved;
-    }
-    // CB-5D part 2 — captured ONCE, alongside `claim`, and reused by the single
-    // claimRewardStamps call below. Settle claims for an already-fixed
-    // orderId (no renumber-retry), but the assignment is still built here
-    // rather than inline in the call so `assignedAt` is pinned to one Date
-    // even if a future change adds a retry path — claimRewardStamps's
-    // $addToSet treats the assignment as one whole element, and a
-    // reconstructed Date at a second call site would duplicate the reward.
-    // Same settings?.promoCodes source every other reward-minting writer uses.
-    const rewardAssignment = claim
-      ? buildRewardAssignment(claim.milestone, settings?.promoCodes, new Date())
-      : undefined;
+    // CB-5B S5 — a reward claimed at settle time (and the code it mints):
+    // lib/settle-reward.ts (S5a split).
+    const settleReward = await resolveSettleReward({
+      old,
+      settings,
+      rewardAt: data.rewardAt,
+      discount: data.discount,
+      discountKind: data.discountKind,
+      chargeAmount: data.chargeAmount,
+    });
+    if (!settleReward.ok) return failure(settleReward.message, settleReward.status);
+    const { claim, rewardAssignment } = settleReward;
 
     // No settle-time discount → price against the STORED total, exactly as
     // before. A supplied one recomputes from the tab's own items using the tab's

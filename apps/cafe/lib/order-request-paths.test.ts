@@ -176,8 +176,14 @@ test("PIN: order-request-accept.ts + order-request-accept-core.ts + order-reques
   );
   assert.match(
     stripComments(readSrc(ACCEPT_LIB)),
-    /import \{ derivePayment, ledgerContribution \} from "@\/lib\/order";/,
+    /import \{ derivePayment \} from "@\/lib\/order";/,
     "derivePayment must come from lib/order.ts",
+  );
+  // S5a: the ledger follow-up moved to the -followups sibling, with its import.
+  assert.match(
+    stripComments(readSrc("apps/cafe/lib/order-request-accept-followups.ts")),
+    /import \{ ledgerContribution \} from "@\/lib\/order";/,
+    "ledgerContribution must come from lib/order.ts",
   );
 });
 

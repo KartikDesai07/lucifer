@@ -1,3 +1,14 @@
+import {
+  safeRead,
+  safeWrite,
+  safeRemove,
+  isCartLineArray,
+  isIdentity,
+  isStringArray,
+  isRefreshMap,
+  isMenuCacheEntry,
+} from "@/components/public/public-store-io";
+
 // Pure localStorage-backed persistence for the diner-side cart, identity and
 // order-code history — CR2.2 SLICE 8. Zero React: PublicOrderFlow owns the
 // React state and calls these on mount (hydrate) and on every change
@@ -112,95 +123,8 @@ export interface PublicIdentity {
   name: string;
 }
 
-// Every read tolerates a corrupt or absent value — a diner's browser storage
-// is outside this app's control (another tab, a stale schema, a full quota
-// truncating a write) and must never throw and crash the menu page.
-function safeRead<T>(key: string, isValid: (v: unknown) => v is T): T | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (raw === null) return null;
-    const parsed: unknown = JSON.parse(raw);
-    return isValid(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function safeWrite(key: string, value: unknown): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Quota exceeded or storage disabled — the diner keeps ordering with an
-    // in-memory-only cart for this session rather than crashing the page.
-  }
-}
-
-function safeRemove(key: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(key);
-  } catch {
-    // Storage disabled — nothing was persisted to begin with.
-  }
-}
-
-function isCartLineArray(v: unknown): v is CartLine[] {
-  return (
-    Array.isArray(v) &&
-    v.every(
-      (line) =>
-        typeof line === "object" &&
-        line !== null &&
-        typeof (line as CartLine).lineId === "string" &&
-        typeof (line as CartLine).productId === "string" &&
-        typeof (line as CartLine).qty === "number",
-    )
-  );
-}
-
-function isIdentity(v: unknown): v is PublicIdentity {
-  return (
-    typeof v === "object" &&
-    v !== null &&
-    typeof (v as PublicIdentity).mobile === "string" &&
-    typeof (v as PublicIdentity).name === "string"
-  );
-}
-
-function isStringArray(v: unknown): v is string[] {
-  return Array.isArray(v) && v.every((c) => typeof c === "string");
-}
-
-function isRefreshMap(v: unknown): v is Record<string, number> {
-  return (
-    typeof v === "object" &&
-    v !== null &&
-    !Array.isArray(v) &&
-    Object.values(v).every((at) => typeof at === "number")
-  );
-}
-
 function isThemeValue(v: unknown): v is ThemeValue {
   return typeof v === "string" && (THEME_VALUES as readonly string[]).includes(v);
-}
-
-interface MenuCacheEntry {
-  at: number;
-  payload: unknown;
-}
-
-// `payload` is deliberately opaque (unknown) — this module never interprets
-// the public menu shape, only the envelope around it — so validation checks
-// only the envelope's own fields.
-function isMenuCacheEntry(v: unknown): v is MenuCacheEntry {
-  return (
-    typeof v === "object" &&
-    v !== null &&
-    typeof (v as MenuCacheEntry).at === "number" &&
-    "payload" in v
-  );
 }
 
 export function readCart(): CartLine[] {

@@ -1,12 +1,13 @@
 "use client";
 
-import { ShoppingCart, ChefHat, Ban, X, ChevronLeft, Loader2 } from "lucide-react";
+import { ShoppingCart, ChefHat, X, ChevronLeft, Loader2 } from "lucide-react";
 
 import { inr, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { CartLine, CartSection } from "@/components/pos/CartLine";
+import { CartSentSection } from "@/components/pos/CartSentSection";
 import { CartNotes } from "@/components/pos/CartNotes";
 import { CartReward } from "@/components/pos/CartReward";
 import { CartPromo } from "@/components/pos/CartPromo";
@@ -378,26 +379,7 @@ export function Cart({
           />
         ) : (
           <div className="space-y-3">
-            {fired.length > 0 && (
-              <CartSection label="Sent to kitchen">
-                {fired.map((item) => (
-                  <CartLine key={item.lineId} item={item} locked />
-                ))}
-                {resuming && onVoidItem && (
-                  <li>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="mt-1 h-7 w-full justify-start text-muted-foreground hover:text-destructive"
-                      onClick={onVoidItem}
-                      disabled={isBusy}
-                    >
-                      <Ban className="mr-1.5 h-3.5 w-3.5" /> Void an item
-                    </Button>
-                  </li>
-                )}
-              </CartSection>
-            )}
+            <CartSentSection fired={fired} resuming={resuming} onVoidItem={onVoidItem} isBusy={isBusy} />
             {(hasNew || fired.length > 0) && (
               <CartSection label={fired.length > 0 ? "New items" : undefined}>
                 {fresh.length === 0 ? (

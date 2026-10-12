@@ -12,8 +12,7 @@ import {
   VARIATION_NAME_PATTERN,
   DISCOUNT_KINDS,
 } from "../constants";
-import { LOYALTY_MILESTONE_AT_MIN, LOYALTY_MILESTONE_AT_MAX } from "../loyalty-rules";
-import { PROMO_CODE_PATTERN } from "../public-promo";
+import { orderRewardIntentShape, rewardAtSchema } from "./order-reward.schema";
 import { tableNoSchema } from "./table.schema";
 import { objectIdString } from "./object-id.schema";
 import { extraChargesSchema } from "./order-charge.schema";
@@ -71,33 +70,7 @@ const orderObject = z.object({
   // `null` = clear the kind, absent = leave it unchanged, "gst" = set — the
   // explicit-null sentinel because `undefined` cannot clear a field over JSON.
   discountKind: z.enum(DISCOUNT_KINDS).nullable().optional(),
-  // CB-5B S4/S5 — the reward claim, as INTENT ONLY: the stamp COST of the rung
-  // the diner is redeeming, which is an identifier into the OWNER-configured
-  // ladder, never an amount. The server resolves the value/kind/dish from
-  // Settings and spends the stamps off the customer's own row
-  // (lib/reward-claim.ts). This is the same MONEY FENCE the item schema above
-  // states: a client that could send a reward AMOUNT could grant itself an
-  // unfunded discount. Bounded by the ladder's own limits so a nonsense value
-  // is rejected at the edge rather than scanned for.
-  rewardAt: z
-    .number()
-    .int()
-    .min(LOYALTY_MILESTONE_AT_MIN)
-    .max(LOYALTY_MILESTONE_AT_MAX)
-    .optional(),
-  // CB-5D part 2 — the COUNTER's promo code, INTENT ONLY, exactly like
-  // `rewardAt` above: the staff type a code, never an amount. The server
-  // re-resolves it against the cafe's own promo list and computes the
-  // discount itself (lib/order-request-accept-promo.ts's resolveAcceptPromo),
-  // so a client that lies about the value cannot grant an unfunded discount.
-  // Normalised here (trim+uppercase) so the route compares one spelling, the
-  // same transform the milestone's own promoCode field uses.
-  promoCode: z
-    .string()
-    .trim()
-    .transform((v) => v.toUpperCase())
-    .refine((v) => PROMO_CODE_PATTERN.test(v), "Use 3-16 letters or numbers")
-    .optional(),
+  ...orderRewardIntentShape,
   gstAmount: z.number().min(0).optional(), // GST added on top (exclusive mode)
   // The table's extra charge as the operator left it for THIS bill — they may
   // waive or adjust it at the counter, so this is intent, like `discount`, and
@@ -198,20 +171,8 @@ export const addItemsSchema = z
     items: z.array(orderItemSchema).min(1, "Add at least one item"),
     discount: z.number().min(0).optional(),
     discountKind: z.enum(DISCOUNT_KINDS).nullable().optional(),
-    // CB-5B S4/S5 — the reward claim, as INTENT ONLY: the stamp COST of the rung
-    // the diner is redeeming, which is an identifier into the OWNER-configured
-    // ladder, never an amount. The server resolves the value/kind/dish from
-    // Settings and spends the stamps off the customer's own row
-    // (lib/reward-claim.ts). This is the same MONEY FENCE the item schema above
-    // states: a client that could send a reward AMOUNT could grant itself an
-    // unfunded discount. Bounded by the ladder's own limits so a nonsense value
-    // is rejected at the edge rather than scanned for.
-    rewardAt: z
-      .number()
-      .int()
-      .min(LOYALTY_MILESTONE_AT_MIN)
-      .max(LOYALTY_MILESTONE_AT_MAX)
-      .optional(),
+    // CB-5B S4/S5 — reward claim INTENT ONLY (stamp cost of the rung); see order-reward.schema.ts.
+    rewardAt: rewardAtSchema,
     // A charge waiver made while the tab is running has to travel with the
     // round that follows it, or it lives only in one browser's state: the
     // operator waives, fires the round, and the server — which never heard
@@ -241,20 +202,8 @@ export const settleOrderSchema = z
     customerId: objectIdString.optional(),
     discount: z.number().min(0).optional(), // flat rupees; server re-clamps + recomputes
     discountKind: z.enum(DISCOUNT_KINDS).nullable().optional(),
-    // CB-5B S4/S5 — the reward claim, as INTENT ONLY: the stamp COST of the rung
-    // the diner is redeeming, which is an identifier into the OWNER-configured
-    // ladder, never an amount. The server resolves the value/kind/dish from
-    // Settings and spends the stamps off the customer's own row
-    // (lib/reward-claim.ts). This is the same MONEY FENCE the item schema above
-    // states: a client that could send a reward AMOUNT could grant itself an
-    // unfunded discount. Bounded by the ladder's own limits so a nonsense value
-    // is rejected at the edge rather than scanned for.
-    rewardAt: z
-      .number()
-      .int()
-      .min(LOYALTY_MILESTONE_AT_MIN)
-      .max(LOYALTY_MILESTONE_AT_MAX)
-      .optional(),
+    // CB-5B S4/S5 — reward claim INTENT ONLY (stamp cost of the rung); see order-reward.schema.ts.
+    rewardAt: rewardAtSchema,
     // Settle-time waiver/adjustment of the table charge. Omit to keep whatever
     // the tab was opened with — the same omit=unchanged discipline as
     // `discount`, so an Orders-page settle that knows nothing about charges

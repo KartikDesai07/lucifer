@@ -47,7 +47,7 @@ import type {
 import type { ImportRowStatus } from "./product-import";
 import type { DuesCollected } from "./types-analytics";
 import type { PromoCodeConfig, SelfOrderMode } from "./public";
-import type { LoyaltyRewardKind } from "./public-diner";
+import type { OrderRewardFields } from "./types-order-reward";
 import type { DinerBannerInput } from "./schemas/settings-diner.schema";
 import type { OrderCharge } from "./order-charges";
 import type { PayQrMode, UpiRule } from "./print-qr";
@@ -263,7 +263,7 @@ export interface OrderVoid {
   noKot?: true;
 }
 
-export interface Order {
+export interface Order extends OrderRewardFields {
   _id: string;
   orderId: string; // ORD-YYYYMMDD-NNN
   customerId?: string;
@@ -272,14 +272,6 @@ export interface Order {
   subtotal: number;
   discount: number; // flat amount at order level
   discountKind?: DiscountKind; // "gst" = the amount is the GST-equivalent preset, re-derived server-side; "reward" = a redeemed loyalty milestone (CB-5B); absent = a manual discount
-  // CB-5B reward redemption snapshot — WHICH milestone was claimed, stored so
-  // a re-tuned ladder can never re-price an already-issued redemption (mirrors
-  // the GST snapshot fields below). Present only when discountKind === "reward".
-  rewardAt?: number; // the milestone rung claimed (stamps)
-  rewardKind?: LoyaltyRewardKind;
-  rewardValue?: number;
-  rewardItem?: string; // "" legal when rewardKind is not "item"
-  rewardStamps?: number; // stamps DEBITED — the cost, stored, never re-derived
   gstAmount?: number; // GST added on top (exclusive mode); 0/absent otherwise
   gstRate?: number; // GST rate snapshot at order time (0 if GST was off then)
   gstMode?: GstMode; // GST mode snapshot at order time

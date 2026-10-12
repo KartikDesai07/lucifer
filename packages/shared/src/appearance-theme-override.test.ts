@@ -28,6 +28,8 @@ const FONT_FAMILIES = { body: "Inter, sans-serif", display: "Playfair Display, s
 // OTHER side's source (see .claude/rules/shared.md), so that is done here.
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const CART_STORE = "apps/cafe/components/public/public-cart-store.ts";
+// S5a: safeWrite (the store's JSON.stringify) moved here from the store file.
+const CART_STORE_IO = "apps/cafe/components/public/public-store-io.ts";
 
 function attrBlockCustomProps(css: string, scheme: "light" | "dark"): Set<string> {
   const re = new RegExp(`:root\\[data-pub-theme="${scheme}"\\]\\{([^}]*)\\}`);
@@ -148,7 +150,7 @@ test("PARITY: DINER_THEME_SCRIPT reads the SAME localStorage key the cafe's publ
 });
 
 test("PARITY: DINER_THEME_SCRIPT parses the key the same way the store WRITES it (JSON, not a bare string)", () => {
-  const storeSrc = readFileSync(path.join(REPO_ROOT, CART_STORE), "utf8");
+  const storeSrc = readFileSync(path.join(REPO_ROOT, CART_STORE_IO), "utf8");
   // safeWrite JSON.stringifies every value, so a stored "light" is the bytes
   // `"light"` WITH quotes. A script comparing getItem() === "light" would
   // never match — the bug this pin exists to catch.

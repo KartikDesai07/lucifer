@@ -4,10 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import type { SettlementPayMode, DiscountKind } from "@/lib/constants";
-import { tableChargeOf } from "@/lib/receipt";
 import { chargesFromOrder } from "@pos/shared/order-charges";
 import type { ExtraChargeEntry } from "@/components/pos/CartExtraCharges";
-import { useTables } from "@/hooks/use-tables";
+import { usePosCharge } from "@/hooks/use-pos-charge";
 import { useCart, cartItemFromOrderItem, cartItemToInput } from "@/hooks/use-cart";
 import { usePosTotals } from "@/hooks/use-pos-totals";
 import { usePosModalTotals } from "@/hooks/use-pos-modal-totals";
@@ -105,25 +104,8 @@ export function usePosTab(receiver: string) {
   const print = usePosPrint();
   const freeTable = useFreeTablePrompt();
 
-  // The charge before any waiver: a resumed tab keeps the one it was OPENED with
-  // (re-reading the table would let an admin edit re-price a served bill); a new
-  // sale takes it from the table currently selected.
-  const tables = useTables();
-  const entitledCharge = useMemo(() => {
-    if (resumedOrder) return resumedOrder.chargeAmount ?? 0;
-    const selected = table
-      ? tables.data?.find((t) => t.tableNo === table)
-      : undefined;
-    return tableChargeOf(selected).amount;
-  }, [resumedOrder, table, tables.data]);
-
-  const chargeLabel = useMemo(() => {
-    if (resumedOrder) return resumedOrder.chargeLabel ?? "";
-    const selected = table
-      ? tables.data?.find((t) => t.tableNo === table)
-      : undefined;
-    return tableChargeOf(selected).label;
-  }, [resumedOrder, table, tables.data]);
+  // The charge before any waiver (hooks/use-pos-charge.ts): a resumed tab keeps the one it was OPENED with.
+  const { entitledCharge, chargeLabel } = usePosCharge(resumedOrder, table);
 
   const charge = chargeOverride ?? entitledCharge;
 

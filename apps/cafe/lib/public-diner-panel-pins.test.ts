@@ -159,30 +159,30 @@ test("PIN: dir-wide NO-EMOJI walk over components/public/** and app/m/** (code f
   }
 });
 
-test("PIN: file budget — every code file under components/public/** is <= 300 lines, except the recorded allow-list (public-cart-store.ts, pre-existing 351 lines)", () => {
-  const ALLOW_LIST = new Set(["apps/cafe/components/public/public-cart-store.ts"]);
+test("PIN: file budget — every code file under components/public/** is <= 300 lines, no exceptions (public-cart-store.ts was split to fit, S5a)", () => {
   const files: string[] = [];
   walkCodeFiles(path.join(REPO_ROOT, "apps/cafe/components/public"), files);
   assert.ok(files.length >= 40, `expected to scan at least 40 files, found ${files.length}`);
 
-  // Vision guard: the allow-listed file must still exist, or this pin would
-  // silently stop checking anything without failing loud.
-  for (const rel of ALLOW_LIST) {
-    assert.ok(existsSync(path.join(REPO_ROOT, rel)), `allow-listed file ${rel} must still exist`);
-  }
+  // Vision guard: the formerly allow-listed file must still exist (and now
+  // be within budget below), or this pin would stop checking the one file it
+  // was once written around.
+  assert.ok(
+    existsSync(path.join(REPO_ROOT, "apps/cafe/components/public/public-cart-store.ts")),
+    "public-cart-store.ts must still exist",
+  );
 
   let overBudget = 0;
   for (const fileAbs of files) {
     const rel = path.relative(REPO_ROOT, fileAbs).split(path.sep).join("/");
     const lineCount = readFileSync(fileAbs, "utf8").split("\n").length;
-    if (ALLOW_LIST.has(rel)) continue;
     if (lineCount > 300) overBudget += 1;
     assert.ok(
       lineCount <= 300,
       `${rel} is ${lineCount} lines — components/public/** files must stay <= 300 lines (split before you exceed)`,
     );
   }
-  assert.equal(overBudget, 0, "no file outside the allow-list may exceed the 300-line budget");
+  assert.equal(overBudget, 0, "no file may exceed the 300-line budget");
 });
 
 // ── (e) STATUS_CHIP_META single-home + (f is in public-shell-layout.test.ts) ─

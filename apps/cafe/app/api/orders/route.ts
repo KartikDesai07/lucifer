@@ -15,7 +15,6 @@ import { withKitchenFlags } from "@/lib/kitchen-lines-server";
 import { createOrderPrintJobs, openingSlipsOf, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
 import cache from "@/lib/cache";
 import {
-  success,
   created,
   failure,
   validateBody,
@@ -27,12 +26,12 @@ import {
   generateOrderId,
   dayRange,
   orderSummaryCacheKey,
-  escapeRegex,
 } from "@/lib/utils";
 import { getSettings, gstConfigOf } from "@/lib/settings";
 import { computeOrderTotals } from "@/lib/receipt";
 import { derivePayment } from "@/lib/order";
-import { parseListCursor, applyCursor } from "@/lib/order-query";
+import { listOrders } from "@/lib/order-list";
+import { resolveCreateReward } from "@/lib/order-create-reward";
 import { createOrderSchema } from "@/schemas";
 import { resolveTableCharge } from "@/lib/table-admin";
 import { withTableCharge, applyExtraCharges, splitChargeTotals } from "@pos/shared/order-charges";
@@ -40,13 +39,10 @@ import { chargeWriteFields } from "@/lib/order-charges-write";
 import { checkItemVariations, checkItemRemovedModifiers } from "@/lib/variations";
 import { orderLinesRefusal, MENU_REFUSAL_STATUS } from "@/lib/order-availability";
 import {
-  resolveRewardClaimAndLine,
   rewardSnapshotFields,
   claimRewardStamps,
   returnRewardStamps,
-  type RewardResolution,
 } from "@/lib/reward-claim";
-import { buildRewardAssignment } from "@/lib/reward-assignment";
 import { firstBillPrintInsertFields } from "@/lib/bill-first-print";
 import { shouldStoreDiscountKind } from "@pos/shared/reward-redemption";
 import {
@@ -64,76 +60,9 @@ import { assignedRewardRefusal } from "@/lib/assigned-reward-gate";
 
 export const dynamic = "force-dynamic";
 
-const DEFAULT_LIMIT = 50;
-const MAX_LIMIT = 200;
-
-// GET /api/orders — always fresh (NO cache). Filters: status, tableNo, date,
-// limit, before (cursor pagination: createdAt of the oldest row already seen)
+// GET /api/orders — the list handler lives in lib/order-list.ts (S5a split).
 export async function GET(req: Request) {
-  const authed = await requireAuth();
-  if ("error" in authed) return authed.error;
-
-  const sp = new URL(req.url).searchParams;
-  const status = sp.get("status");
-  const tableNo = sp.get("tableNo");
-  const payment = sp.get("payment");
-  const customerId = sp.get("customerId");
-  const phone = sp.get("phone")?.trim(); // search orders by the customer's mobile
-  const date = sp.get("date"); // YYYY-MM-DD
-  const beforeParam = sp.get("before"); // cursor: createdAt of the last row already seen
-  const limitParam = Number(sp.get("limit"));
-  const limit = Math.min(
-    Number.isFinite(limitParam) && limitParam > 0 ? limitParam : DEFAULT_LIMIT,
-    MAX_LIMIT,
-  );
-
-  let cursor: Date | null = null;
-  if (beforeParam) {
-    cursor = parseListCursor(beforeParam);
-    if (!cursor) return failure("Invalid `before` cursor", 400);
-  }
-
-  try {
-    await connectDB();
-    const query: Record<string, unknown> = {};
-    if (status) query.status = status;
-    if (tableNo) query.tableNo = tableNo;
-    if (payment) query.payment = payment;
-    if (customerId && mongoose.isValidObjectId(customerId)) {
-      query.customerId = customerId;
-    }
-    // Phone search: orders don't store a phone, so reverse-look-up the matching
-    // customers and filter by their ids. An explicit customerId param wins (the
-    // UI never sends both). No match → an empty list (not "all orders").
-    if (phone && query.customerId === undefined) {
-      const matches = await Customer.find({
-        mobile: new RegExp(escapeRegex(phone), "i"),
-      })
-        .select("_id")
-        .limit(50)
-        .lean();
-      if (matches.length === 0) return success([]);
-      query.customerId = { $in: matches.map((c) => c._id) };
-    }
-    if (date) {
-      const { start, end } = dayRange(new Date(date));
-      query.createdAt = { $gte: start, $lte: end };
-    }
-    if (cursor) applyCursor(query, cursor);
-
-    // Near-full projection is DELIBERATE (F2.10 audit): the detail sheet,
-    // settle modal, and both receipts render from these list rows without a
-    // per-order refetch, so every field except `updatedAt` is consumed
-    // client-side. Only the one truly-unused field is excluded.
-    const orders = await Order.find(query)
-      .select("-updatedAt")
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .lean();
-    return success(orders);
-  } catch (error) {
-    return serverError("Failed to fetch orders", error);
-  }
+  return listOrders(req);
 }
 
 // POST /api/orders — create order, update customer stats + table status
@@ -270,59 +199,18 @@ export async function POST(req: Request) {
       cfg: gstCfg,
     });
 
-    let rewardItems = data.items;
-    let effectiveDiscountKind = data.discountKind ?? undefined;
-    let resolvedClaim: Extract<RewardResolution, { ok: true }> | undefined;
-    // CB-5D part 2 — the promo-code assignment a claimed rung mints (or
-    // undefined, the overwhelmingly common case). Built ONCE here, alongside
-    // resolvedClaim, and reused by every claim attempt below (including the
-    // duplicate-key retry's re-claim against the renumbered orderId):
-    // claimRewardStamps de-dupes a retry via $addToSet, whose element equality
-    // is WHOLE-DOCUMENT, so a fresh `new Date()` on a retry would make that
-    // retry's element unequal to the first attempt's and append the reward a
-    // SECOND time. Capturing assignedAt once and passing the SAME assignment
-    // object into both claimFor(orderId) and claimFor(retryOrderId) is what
-    // prevents that duplicate.
-    let rewardAssignment: ReturnType<typeof buildRewardAssignment> | undefined;
-    if (data.rewardAt !== undefined) {
-      // KOT_ROUND_OPENING (1) — the opening items are always round 1, so a
-      // resolved item-reward's dish line is stamped the same way.
-      const resolved = await resolveRewardClaimAndLine(
-        {
-          settings,
-          customerId,
-          rewardAt: data.rewardAt,
-          billTotal: plainTotals.total,
-          // Order-taking writer — an item reward IS allowed here (D9: the
-          // free dish must reach the kitchen at order-taking time, so this is
-          // exactly the writer that is allowed to grant one).
-          refuseItemKind: false,
-        },
-        1,
-      );
-      // Rejected BEFORE anything is written or a slip number is burned (the
-      // KOT number is taken only after every refusal, the bill number only by
-      // the insert that won) — a bad claim must cost the till nothing.
-      if (!resolved.ok) return failure(resolved.message, 400);
-
-      // Appended to the priced items so it reaches BOTH computeOrderTotals
-      // (untotalled/untaxed via the reward skip) and the stored doc. productId
-      // is re-stringified: resolveRewardItemLine resolves a real ObjectId
-      // (it queried Product by it), but every OTHER element in this array is
-      // the Zod-parsed `data.items` shape, whose productId is a plain string
-      // (Order.create casts either spelling the same way).
-      if (resolved.line) {
-        rewardItems = [...data.items, { ...resolved.line, productId: String(resolved.line.productId) }];
-      }
-      // A reward REPLACES the discountKind — Order carries one scalar + one
-      // kind, so a reward and a gst preset can never both be the stored kind.
-      effectiveDiscountKind = "reward";
-      resolvedClaim = resolved.claim;
-      // Same settings?.promoCodes source the QR accept path resolves against
-      // (order-request-accept-reward.ts) — one place decides what a rung
-      // mints, so the two surfaces can never disagree about a code.
-      rewardAssignment = buildRewardAssignment(resolved.claim.milestone, settings?.promoCodes, new Date());
-    }
+    // The claim, its dish line and the minted-code assignment: lib/order-create-reward.ts.
+    const rewardR = await resolveCreateReward({
+      settings,
+      customerId,
+      items: data.items,
+      discountKind: data.discountKind ?? undefined,
+      rewardAt: data.rewardAt,
+      billTotal: plainTotals.total,
+    });
+    if (!rewardR.ok) return failure(rewardR.message, 400);
+    let { rewardItems } = rewardR;
+    const { effectiveDiscountKind, resolvedClaim, rewardAssignment } = rewardR;
 
     // ── CB-5D part 2 — COUNTER-SIDE PROMO CODES ──────────────────────────
     // The same code a diner can type on the QR surface must work at the till.

@@ -436,8 +436,9 @@ test("PIN: lib/order-request-accept-addround.ts keeps the gst arm (keepGstKind v
   // pinning a dead variable name into existence is how a pin starts forcing
   // code to exist for the pin's sake. The arm itself is pinned just below
   // (the "gst" case) and exhaustively in reward-qr-wiring.test.ts.
+  // S5a: resolveAddRoundKind (and so the gst arm) now lives in order-request-addround-kind.ts.
   assert.match(
-    src,
+    stripComments(readSrc("lib/order-request-addround-kind.ts")),
     /storedKind === "gst" && promoDiscount === 0\) return "gst"/,
     "the gst arm must survive: a gst tab with NO promo keeps its kind (shipped C5 behaviour)",
   );

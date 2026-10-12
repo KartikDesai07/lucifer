@@ -37,17 +37,12 @@ import {
 } from "@pos/shared/order-charges";
 import { chargeWriteFields } from "@/lib/order-charges-write";
 import {
-  resolveRewardClaimAndLine,
   rewardSnapshotFields,
   claimRewardStamps,
   returnRewardStamps,
-  type RewardResolution,
 } from "@/lib/reward-claim";
-import { buildRewardAssignment } from "@/lib/reward-assignment";
-import {
-  shouldStoreDiscountKind,
-  rewardFromOrderSnapshot,
-} from "@pos/shared/reward-redemption";
+import { resolveRoundReward } from "@/lib/order-round-reward";
+import { shouldStoreDiscountKind } from "@pos/shared/reward-redemption";
 import { buildKotIdemKeys } from "@pos/shared/order-idem";
 import { idemGuardFilter, roundReplayResponse, roundReplayAfterMiss } from "@/lib/order-idem";
 import { settledValue } from "@/lib/settled";
@@ -189,67 +184,24 @@ export async function POST(req: Request, { params }: Params) {
     // ceiling; extras ride on top uncapped — decision 8).
     const { table: chargeForTab, extra: extraChargeForTab } = splitChargeTotals(charges);
 
-    // CB-5B S4 — a reward claim on an add-round. Resolved against the OPEN
-    // TAB's own customer (never a body customer: the tab's identity is
-    // already fixed), against a billTotal priced from the FULL item set
-    // WITHOUT the reward (the per-milestone minBill gate is about what the
-    // customer is spending this round, not the reward's own dish).
-    let resolvedClaim: Extract<RewardResolution, { ok: true }> | undefined;
-    // CB-5D part 2 — captured ONCE, alongside resolvedClaim, and reused by the
-    // single claimRewardStamps call below. Unlike the create route, an
-    // add-round claims for an EXISTING, already-fixed orderId — there is no
-    // renumber-retry here — but the assignment is still built from a single
-    // `assignedAt` for the same reason: claimRewardStamps's $addToSet treats
-    // the assignment as one whole element, so it must never be reconstructed
-    // with a fresh Date at a second call site.
-    let rewardAssignment: ReturnType<typeof buildRewardAssignment> | undefined;
-    if (parsed.data.rewardAt !== undefined) {
-      // A tab already carrying a reward must refuse a second one outright:
-      // Order has ONE scalar + ONE kind, so a second claim would silently
-      // overwrite the first snapshot while its stamps stayed spent.
-      if (old.rewardAt !== undefined) {
-        return failure("This tab already has a reward applied", 409);
-      }
-      const billTotal = computeOrderTotals({
-        items: fullItems,
-        discount,
-        discountKind,
-        charge: chargeForTab,
-        extraCharge: extraChargeForTab,
-        cfg: gstCfg,
-      }).total;
-      const resolved = await resolveRewardClaimAndLine(
-        {
-          settings,
-          customerId: old.customerId ? String(old.customerId) : undefined,
-          rewardAt: parsed.data.rewardAt,
-          billTotal,
-          // Order-taking writer (D9 permits an item reward here, same as create).
-          refuseItemKind: false,
-        },
-        round,
-      );
-      if (!resolved.ok) return failure(resolved.message, 400);
-      if (resolved.line) fullItems = [...fullItems, resolved.line];
-      // A reward REPLACES the discountKind, same reasoning as the create route.
-      discountKind = "reward";
-      resolvedClaim = resolved.claim;
-      // Same settings?.promoCodes source the QR accept path and the counter
-      // create route resolve against — one place decides what a rung mints.
-      rewardAssignment = buildRewardAssignment(resolved.claim.milestone, settings?.promoCodes, new Date());
-    }
-
-    // The reward this round must price against: a claim made RIGHT NOW, or the
-    // one the tab is already carrying. Rebuilding the existing one from the
-    // Order's own snapshot is load-bearing, not defensive: `discountKind`
-    // carries forward as "reward" for a tab created with one, and
-    // rewardDiscountAmount returns 0 for a MISSING reward (it fails closed).
-    // So passing only a fresh claim here would silently re-price an existing
-    // flat/percent reward to zero on every added round — the diner's stamps
-    // would stay spent while the discount they bought quietly left the bill.
-    // Rebuilt from the stored snapshot, never re-read from the live ladder,
-    // so a rung the owner retunes mid-service cannot change an issued reward.
-    const rewardForTotals = resolvedClaim?.reward ?? rewardFromOrderSnapshot(old);
+    // CB-5B S4 — the claim, its dish line and the reward this round prices against:
+    // lib/order-round-reward.ts (S5a split).
+    const roundReward = await resolveRoundReward({
+      old,
+      settings,
+      rewardAt: parsed.data.rewardAt,
+      fullItems,
+      discount,
+      discountKind,
+      charge: chargeForTab,
+      extraCharge: extraChargeForTab,
+      cfg: gstCfg,
+      round,
+    });
+    if (!roundReward.ok) return failure(roundReward.message, roundReward.status);
+    fullItems = roundReward.fullItems;
+    discountKind = roundReward.discountKind;
+    const { resolvedClaim, rewardAssignment, rewardForTotals } = roundReward;
     const totals = computeOrderTotals({
       items: fullItems,
       discount,
