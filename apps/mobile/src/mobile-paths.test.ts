@@ -2907,3 +2907,48 @@ test('pin 28 mutation: every key-guard needle can fail', () => {
     ['A release build stops when these four properties are missing', 'A release build may use these four properties'],
   ]);
 });
+
+// ── pin 29: native apps 2.0, the update base and times are build settings (2026-10-12) ───────
+// spec §4, §11: the base is https://files.sandbee.in/pos unless a test build passes a 127.0.0.1 base; only a test base
+// may shorten the times (12 hours between checks, an app open after 30 minutes away). They live in resources that the
+// shrinker keeps, so the release packaging can read the base back out of the APK.
+function updateBaseProblems(gradle: string, keep: string): string[] {
+  const out: string[] = [];
+  const g = strip(gradle);
+  const need = (needle: string, why: string) => {
+    if (!g.includes(needle)) {
+      out.push(why);
+    }
+  };
+  need('def posUpdateBaseDefault = "https://files.sandbee.in/pos"', 'the release base is not https://files.sandbee.in/pos');
+  need("def posUpdateBase = (findProperty('posUpdateBase') ?: posUpdateBaseDefault).toString()", 'the base is not a build setting with the release default');
+  need('posUpdateBase ==~ /http:\\/\\/127\\.0\\.0\\.1:\\d{1,5}(\\/[A-Za-z0-9._-]+)*/', 'a test base may be any http address');
+  need('if (posUpdateBase == posUpdateBaseDefault && (posUpdateCheckMinutes != 720 || posUpdateReopenMinutes != 30))', 'a build with the real base can carry test times');
+  need('resValue "string", "pos_update_base", posUpdateBase\n', 'the base is not in the APK for the updater and the packaging');
+  need('resValue "integer", "pos_update_check_minutes", posUpdateCheckMinutes.toString()', 'the check gap is not a resource');
+  need('resValue "integer", "pos_update_reopen_minutes", posUpdateReopenMinutes.toString()', 'the app-open gap is not a resource');
+  if (!keep.includes('tools:keep="@string/pos_update_base,@integer/pos_update_check_minutes,@integer/pos_update_reopen_minutes"')) {
+    out.push('the resource shrinker may drop the update settings');
+  }
+  return out;
+}
+const UPDATE_KEEP = join(MAIN, 'res', 'raw', 'pos_update_keep.xml');
+
+test('pin 29: the update base and times are build settings with the release defaults', () => {
+  assert.deepEqual(updateBaseProblems(read(GRADLE_APP), read(UPDATE_KEEP)), []);
+});
+
+test('pin 29 mutation: every update-setting needle can fail', () => {
+  const gradle = read(GRADLE_APP);
+  const keep = read(UPDATE_KEEP);
+  everyMutationCaught(s => updateBaseProblems(s, keep), gradle, [
+    ['"https://files.sandbee.in/pos"', '"https://files.sandbee.in/other"'],
+    ["(findProperty('posUpdateBase') ?: posUpdateBaseDefault)", '(posUpdateBaseDefault)'],
+    ['http:\\/\\/127\\.0\\.0\\.1:', 'http:\\/\\/[a-z0-9.-]+:'],
+    ['posUpdateCheckMinutes != 720 ||', 'false ||'],
+    ['"pos_update_base", posUpdateBase', '"pos_update_base", posUpdateBaseDefault'],
+    ['"pos_update_check_minutes", posUpdateCheckMinutes', '"pos_update_check_minutes", 720'],
+    ['"pos_update_reopen_minutes", posUpdateReopenMinutes', '"pos_update_reopen_minutes", 30'],
+  ]);
+  everyMutationCaught(s => updateBaseProblems(gradle, s), keep, [['@integer/pos_update_reopen_minutes"', '"']]);
+});

@@ -121,6 +121,28 @@ gradle.taskGraph.whenReady { graph ->
     }
 }
 
+/**
+ * Native apps 2.0 (spec §4, §11): where the app looks for its updates, and how often. Resources the updater reads
+ * (R.string.pos_update_base, R.integer.pos_update_check_minutes, R.integer.pos_update_reopen_minutes;
+ * res/raw/pos_update_keep.xml keeps them through the resource shrinker), so the release packaging can read the base back
+ * out of an APK with aapt2 and refuse any other (scripts/release-native.mjs). A test build passes
+ * -PposUpdateBase=http://127.0.0.1:<port>/pos (the emulator reaches it through adb reverse) and may shorten the times;
+ * a build with the real base always has the real ones (12 hours between checks, an app open after 30 minutes away).
+ */
+def posUpdateBaseDefault = "https://files.sandbee.in/pos"
+def posUpdateBase = (findProperty('posUpdateBase') ?: posUpdateBaseDefault).toString()
+if (!(posUpdateBase ==~ /https:\/\/[a-z0-9.-]+(\/[A-Za-z0-9._-]+)*/ || posUpdateBase ==~ /http:\/\/127\.0\.0\.1:\d{1,5}(\/[A-Za-z0-9._-]+)*/)) {
+    throw new GradleException("posUpdateBase must be https://<host>/<path>, or http://127.0.0.1:<port>/<path> for a test build: ${posUpdateBase}")
+}
+def posUpdateCheckMinutes = (findProperty('posUpdateCheckMinutes') ?: '720').toString() as int
+def posUpdateReopenMinutes = (findProperty('posUpdateReopenMinutes') ?: '30').toString() as int
+if (posUpdateBase == posUpdateBaseDefault && (posUpdateCheckMinutes != 720 || posUpdateReopenMinutes != 30)) {
+    throw new GradleException("posUpdateCheckMinutes and posUpdateReopenMinutes are for test builds only (with a test posUpdateBase)")
+}
+if (posUpdateCheckMinutes < 1 || posUpdateReopenMinutes < 1) {
+    throw new GradleException("posUpdateCheckMinutes and posUpdateReopenMinutes must be at least 1")
+}
+
 android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
@@ -133,6 +155,9 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode posVersionCode
         versionName posVersionName
+        resValue "string", "pos_update_base", posUpdateBase
+        resValue "integer", "pos_update_check_minutes", posUpdateCheckMinutes.toString()
+        resValue "integer", "pos_update_reopen_minutes", posUpdateReopenMinutes.toString()
     }
     signingConfigs {
         debug {
