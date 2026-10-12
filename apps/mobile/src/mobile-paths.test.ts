@@ -2790,3 +2790,65 @@ test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
   assert.equal(app.displayName, 'Sandbee POS', 'app.json displayName matches the launcher label');
   assert.equal(app.name, 'PosSoftware', 'the component name MainActivity registers never changes');
 });
+
+// ── pin 27: native apps 2.0, one version for both apps (2026-10-12) ─────────
+// spec §5: the Android app and the Windows app carry the same version. Android's versionCode is major × 10000 +
+// minor × 100 + patch, computed in build.gradle from the one version string (never a literal), so the updater can
+// compare versions as numbers. A test build may override the version with -PposVersion.
+const DESKTOP_PKG = join(ROOT, '..', 'desktop', 'package.json');
+interface VersionSources {
+  gradle: string;
+  desktop: string;
+}
+function versionProblems(s: VersionSources): string[] {
+  const out: string[] = [];
+  const g = strip(s.gradle);
+  const android = /^def posVersionRelease = "(\d{1,3}\.\d{1,2}\.\d{1,2})"$/m.exec(g)?.[1];
+  if (android === undefined) {
+    out.push('build.gradle has no def posVersionRelease = "x.y.z" (minor and patch below 100)');
+  }
+  let desktop: string | undefined;
+  try {
+    desktop = (JSON.parse(s.desktop) as { version?: string }).version;
+  } catch {
+    out.push('apps/desktop/package.json is not JSON');
+  }
+  if (android !== undefined && desktop !== android) {
+    out.push('the Windows app is ' + String(desktop) + ', the Android app ' + android);
+  }
+  const need = (needle: string, why: string) => {
+    if (!g.includes(needle)) {
+      out.push(why);
+    }
+  };
+  need("def posVersionName = (findProperty('posVersion') ?: posVersionRelease).toString()", 'the version is not posVersionRelease (or a test build\'s -PposVersion)');
+  need('if (!(posVersionName ==~ /\\d{1,3}\\.\\d{1,2}\\.\\d{1,2}/))', 'a version with minor or patch above 99 is not refused');
+  need('def posVersionCode = posVersionParts[0] * 10000 + posVersionParts[1] * 100 + posVersionParts[2]', 'versionCode is not major × 10000 + minor × 100 + patch');
+  need('versionCode posVersionCode\n        versionName posVersionName', 'defaultConfig does not use the computed version');
+  if (/versionCode\s+\d/.test(g)) {
+    out.push('a literal versionCode is back');
+  }
+  return out;
+}
+const versionSources = (): VersionSources => ({
+  gradle: read(GRADLE_APP),
+  desktop: read(DESKTOP_PKG),
+});
+
+test('pin 27: one version for both apps, the Android versionCode computed from it', () => {
+  assert.deepEqual(versionProblems(versionSources()), []);
+});
+
+test('pin 27 mutation: either version drifting or a literal versionCode is caught', () => {
+  const base = versionSources();
+  const run = (key: keyof VersionSources) => (text: string) => versionProblems({ ...base, [key]: text });
+  everyMutationCaught(run('gradle'), base.gradle, [
+    ['def posVersionRelease = "2.0.0"', 'def posVersionRelease = "2.0.1"'],
+    ['def posVersionRelease = "2.0.0"', 'def posVersionRelease = "2.100.0"'],
+    ["(findProperty('posVersion') ?: posVersionRelease)", '(posVersionRelease)'],
+    ['\\d{1,3}\\.\\d{1,2}\\.\\d{1,2}/))', '.+/))'],
+    ['posVersionParts[1] * 100', 'posVersionParts[1] * 1000'],
+    ['versionCode posVersionCode', 'versionCode 20000'],
+  ]);
+  everyMutationCaught(run('desktop'), base.desktop, [['"version": "2.0.0"', '"version": "2.0.1"']]);
+});
