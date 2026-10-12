@@ -2955,3 +2955,84 @@ test('pin 29 mutation: every update-setting needle can fail', () => {
   ]);
   everyMutationCaught(s => updateBaseProblems(gradle, s), keep, [['@integer/pos_update_reopen_minutes"', '"']]);
 });
+
+// ── pin 30: native apps 2.0, the download path (Session N2) ─────────────────
+// spec §4, §6.1, §6.2: the manifest and the APK come only from <base>/android/ (UpdateFiles), a download is kept only
+// when its size and SHA-256 are the manifest's and then its package, version and signer are the installed app's
+// (ApkCheck), and the updater keeps its own preferences file; a kept download is dropped once the app is that version.
+const UPDATE_DIR = join(JAVA, 'com', 'possoftware', 'pos', 'update');
+const upd = (name: string) => read(join(UPDATE_DIR, name));
+interface DownloadSources {
+  downloader: string;
+  check: string;
+  store: string;
+}
+function downloadProblems(s: DownloadSources): string[] {
+  const out: string[] = [];
+  const d = strip(s.downloader);
+  const c = strip(s.check);
+  const st = strip(s.store);
+  const need = (text: string, needle: string, why: string) => {
+    if (!text.includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(d, 'URL(UpdateFiles.manifestUrl(base)).openConnection()', 'the manifest is not read from <base>/android/latest.json');
+  need(d, 'URL(UpdateFiles.apkUrl(base, offer.file)).openConnection()', 'the APK is not read from <base>/android/<file>');
+  need(d, 'private const val TIMEOUT_MS = 10_000', 'the requests do not time out after 10 s');
+  need(d, 'UpdateStore.deleteFilesExcept(ctx, null)', 'a download does not start from an empty updates folder');
+  need(d, 'UpdateFiles.copyVerified(input, out, offer.size, offer.sha256)', 'a download is not checked by size and SHA-256');
+  const renamed = d.indexOf('if (!part.renameTo(apk))');
+  const checked = d.indexOf('if (!ApkCheck.matches(ctx, apk, offer))');
+  if (renamed < 0 || checked < 0 || checked < renamed) {
+    out.push('the APK is not checked (package, version, signer) once complete');
+  }
+  need(c, 'if (archive.packageName != ctx.packageName) return false', 'an APK of another package is not refused');
+  need(c, 'if (PackageInfoCompat.getLongVersionCode(archive) != offer.versionCode.toLong()) return false', 'an APK of another version is not refused');
+  need(c, 'return theirs.isNotEmpty() && theirs == ours', 'an APK signed by another key is not refused');
+  need(c, '.apkContentsSigners', 'the signers compared are not the APK contents signers');
+  // The N1 review gate (the N2 review's I-1): Android 9 reads a downloaded APK's certificates only for GET_SIGNATURES.
+  need(c, 'pm.getPackageArchiveInfo(apk.path, archiveFlags())', 'the downloaded APK is not read with the archive flags');
+  need(c, 'private fun archiveFlags(): Int = signingFlags() or PackageManager.GET_SIGNATURES', 'Android 9 reads no certificates from a downloaded APK');
+  need(c, 'info.signingInfo?.apkContentsSigners ?: info.signatures', 'an APK whose signing info is missing has no signers to compare');
+  need(st, 'private const val FILE = "pos_update"', 'the updater does not keep its own preferences file');
+  need(st, 'if (!File(updatesDir(ctx), file).isFile) return null', 'a kept update whose file is gone is still offered');
+  need(st, 'if (UpdateFiles.staleAfterUpdate(code, installedCode, exists))', 'a kept download is not dropped once the app is that version');
+  return out;
+}
+const downloadSources = (): DownloadSources => ({
+  downloader: upd('UpdateDownloader.kt'),
+  check: upd('ApkCheck.kt'),
+  store: upd('UpdateStore.kt'),
+});
+
+test('pin 30: the download path: <base>/android/ only, size and SHA-256, then package, version and signer', () => {
+  assert.deepEqual(downloadProblems(downloadSources()), []);
+});
+
+test('pin 30 mutation: every download needle can fail', () => {
+  const base = downloadSources();
+  const run = (key: keyof DownloadSources) => (text: string) => downloadProblems({ ...base, [key]: text });
+  everyMutationCaught(run('downloader'), base.downloader, [
+    ['URL(UpdateFiles.manifestUrl(base))', 'URL(base)'],
+    ['URL(UpdateFiles.apkUrl(base, offer.file))', 'URL(offer.file)'],
+    ['TIMEOUT_MS = 10_000', 'TIMEOUT_MS = 0'],
+    ['UpdateStore.deleteFilesExcept(ctx, null)', 'dir.mkdirs()'],
+    ['UpdateFiles.copyVerified(input, out, offer.size, offer.sha256)', 'input.copyTo(out) > 0'],
+    ['if (!ApkCheck.matches(ctx, apk, offer))', 'if (false)'],
+  ]);
+  everyMutationCaught(run('check'), base.check, [
+    ['if (archive.packageName != ctx.packageName) return false', ''],
+    ['!= offer.versionCode.toLong()) return false', '== -1L) return false'],
+    ['theirs.isNotEmpty() && theirs == ours', 'theirs.isNotEmpty()'],
+    ['.apkContentsSigners', '.signingCertificateHistory'],
+    ['getPackageArchiveInfo(apk.path, archiveFlags())', 'getPackageArchiveInfo(apk.path, signingFlags())'],
+    ['signingFlags() or PackageManager.GET_SIGNATURES', 'signingFlags()'],
+    ['?.apkContentsSigners ?: info.signatures', '?.apkContentsSigners'],
+  ]);
+  everyMutationCaught(run('store'), base.store, [
+    ['FILE = "pos_update"', 'FILE = "pos_printer"'],
+    ['if (!File(updatesDir(ctx), file).isFile) return null', ''],
+    ['if (UpdateFiles.staleAfterUpdate(code, installedCode, exists))', 'if (false)'],
+  ]);
+});
