@@ -607,14 +607,17 @@ function manifestProblems(xml: string): string[] {
   }
   // Session 3D (spec §9.5) deliberately changed: one receiver, the reboot and update notice ("POS printing is off. Tap to
   // start."), which hears only those two system broadcasts and never starts the app.
+  // Native apps 2.0 (Session N2) deliberately changed: a second receiver after it, Android's answer to an update install
+  // the card started (never exported, no intent filter; pin 31).
   const receivers = [
     ...x.matchAll(/<receiver\b[\s\S]*?<\/receiver>|<receiver\b[^>]*\/>/g),
   ].map(m => m[0]);
   if (
-    receivers.length !== 1 ||
-    !receivers[0].includes('android:name=".printer.PrintingOffReceiver"')
+    receivers.length !== 2 ||
+    !receivers[0].includes('android:name=".printer.PrintingOffReceiver"') ||
+    !receivers[1].includes('android:name=".update.UpdateInstallReceiver"')
   ) {
-    out.push('the one <receiver> is not PrintingOffReceiver');
+    out.push('the <receiver>s are not PrintingOffReceiver and UpdateInstallReceiver');
   } else {
     for (const need of [
       'android:exported="true"',
@@ -636,7 +639,7 @@ function manifestProblems(xml: string): string[] {
 }
 const manifest = () => read(join(MAIN, 'AndroidManifest.xml'));
 
-test('pin 6: AndroidManifest permissions, service, USB and one receiver (Session 3D)', () => {
+test('pin 6: AndroidManifest permissions, service, USB and two receivers (Session 3D, native apps 2.0)', () => {
   assert.deepEqual(manifestProblems(manifest()), []);
   const raw = manifest();
   assert.ok(
@@ -3034,5 +3037,70 @@ test('pin 30 mutation: every download needle can fail', () => {
     ['FILE = "pos_update"', 'FILE = "pos_printer"'],
     ['if (!File(updatesDir(ctx), file).isFile) return null', ''],
     ['if (UpdateFiles.staleAfterUpdate(code, installedCode, exists))', 'if (false)'],
+  ]);
+});
+
+// ── pin 31: native apps 2.0, the install path (Session N2) ──────────────────
+// spec §6.2, §6.4, D3: an install starts only from the card's Install: the first time Android's "Install unknown apps"
+// page for this app, then a PackageInstaller session that always asks in Android's own dialog, whose answer comes back
+// to a receiver nobody else can reach.
+interface InstallSources {
+  installer: string;
+  receiver: string;
+  manifest: string;
+}
+function installProblems(s: InstallSources): string[] {
+  const out: string[] = [];
+  const i = strip(s.installer);
+  const r = strip(s.receiver);
+  const m = strip(s.manifest);
+  const need = (text: string, needle: string, why: string) => {
+    if (!text.includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(i, 'if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !app.packageManager.canRequestPackageInstalls())', 'Android 8+ is not asked to allow installs first');
+  need(i, 'Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + app.packageName))', 'the permission page is not this app\'s');
+  need(i, 'params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_REQUIRED)', 'an install may run without Android\'s own dialog');
+  need(i, 'Intent(app, UpdateInstallReceiver::class.java)', 'the installer\'s answer does not come to this app\'s receiver');
+  need(i, 'PendingIntent.FLAG_MUTABLE', 'the installer cannot add its answer on Android 12+');
+  need(r, 'PackageInstaller.STATUS_PENDING_USER_ACTION ->', 'Android\'s install dialog is never shown');
+  need(r, 'context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))', 'Android\'s install dialog is never shown');
+  need(r, 'onFailed?.invoke()', 'a failed or cancelled install never reaches the card');
+  need(m, '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />', 'REQUEST_INSTALL_PACKAGES missing');
+  const receiver = /<receiver\b[^>]*android:name="\.update\.UpdateInstallReceiver"[^>]*\/>/.exec(m)?.[0];
+  if (receiver === undefined || !receiver.includes('android:exported="false"')) {
+    out.push('the install receiver is missing, has an intent filter, or is exported');
+  }
+  return out;
+}
+const installSources = (): InstallSources => ({
+  installer: upd('UpdateInstaller.kt'),
+  receiver: upd('UpdateInstallReceiver.kt'),
+  manifest: read(join(MAIN, 'AndroidManifest.xml')),
+});
+
+test('pin 31: the install path: the permission page, Android\'s own dialog, a private answer', () => {
+  assert.deepEqual(installProblems(installSources()), []);
+});
+
+test('pin 31 mutation: every install needle can fail', () => {
+  const base = installSources();
+  const run = (key: keyof InstallSources) => (text: string) => installProblems({ ...base, [key]: text });
+  everyMutationCaught(run('installer'), base.installer, [
+    ['&& !app.packageManager.canRequestPackageInstalls()', '&& false'],
+    ['Uri.parse("package:" + app.packageName)', 'Uri.parse("package:com.example")'],
+    ['USER_ACTION_REQUIRED)', 'USER_ACTION_NOT_REQUIRED)'],
+    ['Intent(app, UpdateInstallReceiver::class.java)', 'Intent("com.possoftware.pos.UPDATE_STATUS")'],
+    ['PendingIntent.FLAG_MUTABLE', 'PendingIntent.FLAG_IMMUTABLE'],
+  ]);
+  everyMutationCaught(run('receiver'), base.receiver, [
+    ['PackageInstaller.STATUS_PENDING_USER_ACTION ->', 'PackageInstaller.STATUS_SUCCESS + 99 ->'],
+    ['context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))', 'Unit'],
+    ['onFailed?.invoke()', 'Unit'],
+  ]);
+  everyMutationCaught(run('manifest'), base.manifest, [
+    ['android.permission.REQUEST_INSTALL_PACKAGES', 'android.permission.REQUEST_DELETE_PACKAGES'],
+    ['android:name=".update.UpdateInstallReceiver"\n        android:exported="false"', 'android:name=".update.UpdateInstallReceiver"\n        android:exported="true"'],
   ]);
 });
