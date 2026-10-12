@@ -221,6 +221,9 @@ dependencies {
     implementation "androidx.webkit:webkit:1.14.0"
     // Phase 2 Session 2F2 (spec §13): pure-JVM unit tests of the printer pool's state machine (src/test); no device.
     testImplementation "junit:junit:4.13.2"
+    // Native apps 2.0 (Session N1): the real org.json for the updater's JVM tests (Android's own is only a stub there).
+    // 20180813 reads numbers as Android does (an integer as Int, a decimal as Double) and is in D:\gradle-home already.
+    testImplementation "org.json:json:20180813"
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
