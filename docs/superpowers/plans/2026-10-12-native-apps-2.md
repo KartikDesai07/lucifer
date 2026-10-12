@@ -4096,3 +4096,190 @@ needle catches its mutation (no needle a prefix of its mutation's result), and t
   installs from Sandbee POS (Samsung: Auto Blocker off first), and that after Update the app is opened from its icon or
   the "POS printing is off" notice (no Open button).
 - N4 Task 44: the emulator holds the debug-key 1.0 again after N2, so the smoke test rehearses the one-time move.
+
+## Session N2 Results
+
+Run on 2026-10-12 in one session (superpowers:executing-plans, inline), Tasks 20–26 in order. Every code block was
+applied verbatim with the gate's block applier (`apply_blocks_clone.py`, a dry run first, per step range, so each RED
+was seen before its code went in). After each task the `apps/` tree equals the gold commit's: Task 20 `17b22860` (gold
+`8a49c73`), 21 `af389a48` (`40e8674`), 22 `17a47738` (`bc73ad8`), 23 `96261f28` (`eb8124c`), 24 `fe04ac3f` (`1c6f294`),
+25 `32ce7447` (`a8abc8a`). Nothing pushed, merged, uploaded or released.
+
+### Commits (branch `feat/native-apps-2`, from `c1db099`)
+
+| Task | Commit | What |
+|---|---|---|
+| 20 | `32b988e` | the N1 review's minors m-3 to m-7: three JVM tests, a pin 28 needle |
+| 21 | `ecefcae` | `UpdateFiles` + 7 JVM tests |
+| 22 | `59e031c` | `UpdateStore`, `UpdateDownloader`, `ApkCheck`, pin 30 |
+| 23 | `268955d` | `UpdateInstaller`, `UpdateInstallReceiver`, `REQUEST_INSTALL_PACKAGES`, pin 6 (two receivers), pin 31 |
+| 24 | `1186761` | `PosUpdateModule`, `PosUpdatePackage`, `isPrinting`/`anyPrinting`, `src/native/PosUpdate.ts`, pin 32 |
+| 25 | `30e0302` | `update-card.ts` (7 node tests), `UpdateCard.tsx`, the card over the POS (2 Jest tests) |
+| 26 | this commit | these Results |
+
+### Counts
+
+| Suite | Baseline (`c1db099`) | After N2 (`30e0302`) | Expected |
+|---|---|---|---|
+| mobile (`npm test`) | 154 | 167, 0 fail | 167 |
+| Jest (`npx jest`) | 5 | 7, 4 suites | 7 |
+| JUnit (`:app:testDebugUnitTest --rerun`) | 82 | 92, 0 failures, 0 errors | 92 |
+| desktop (`npm test`) | 205 | 205, 0 fail | 205 |
+| cafe chain (`apps/cafe`, `npm test`) | 5656: 5655 pass, 0 fail, 1 skipped | 5656: 5655 pass, 0 fail, 1 skipped | unchanged |
+| typecheck + lint (mobile, desktop) | clean | clean | clean |
+
+Per task: mobile 154 → 154 (20: a needle) → 154 (21) → 156 (22) → 158 (23) → 160 (24) → 167 (25); JUnit 82 → 85 → 92.
+
+### RED, then GREEN (each as the plan's Expected)
+
+- Task 20: pin 28 and its mutation failed with `'the guard sends another build PC to a folder it may not have'`; JUnit
+  `20 tests completed, 3 failed` (`aByteOrderMarkBeforeTheManifestIsRead` and `aNullNoteIsNoNote` AssertionError,
+  `aFileNestedTooDeepIsIgnoredNeverACrash` `java.lang.StackOverflowError at JSONTokener.java:208`), `BUILD FAILED`. GREEN:
+  pins 28–29 4/4, `UpdateManifestTest` 12/12, and the guard dry run printed `… set POS_RELEASE_KEY_ALIAS in
+  gradle.properties in the Gradle user home (D:\gradle-home on the build PC; apps/mobile/README.md). It never signs with
+  the debug key.`, `BUILD FAILED`. The `\uFEFF` escapes are text in both files (no literal U+FEFF; checked byte-wise).
+- Task 21: `13 Unresolved reference 'UpdateFiles'`, `BUILD FAILED`; GREEN `UpdateFilesTest` 7, `UpdateManifestTest` 12,
+  `UpdateScheduleTest` 8.
+- Task 22: pin 30 both `missing file: …\update\UpdateDownloader.kt`; GREEN 2/2, `compileDebugKotlin --rerun` clean.
+- Task 23: pin 6 and its mutation `'the <receiver>s are not PrintingOffReceiver and UpdateInstallReceiver'`, pin 31 both
+  `missing file: …\update\UpdateInstaller.kt`, `# fail 4`; GREEN 4/4, compile clean.
+- Task 24: pin 32 both `missing file: …\update\PosUpdateModule.kt`; GREEN pins 4, 5, 19, 32 8/8, mobile 160, typecheck and
+  lint exit 0, compile clean.
+- Task 25: `Cannot find module './update-card'`, `# fail 1`; Jest `Tests: 2 failed, 2 total` (`takeCard` expected 1 call,
+  received 0); GREEN 7/7, mobile 167, Jest `Test Suites: 4 passed`, `Tests: 7 passed`.
+
+### Test APKs (Task 26 Step 2, `n2-ab.sh`, head `30e0302`)
+
+x86_64 `aR` builds after `:app:compileReleaseKotlin --rerun` (exit 0 both), the private key, the test base
+`http://127.0.0.1:8765/pos`, 1-minute times; kept in the session scratchpad only, released to nobody:
+
+| APK | Bytes | SHA-256 | Read back |
+|---|---|---|---|
+| A `A-2.0.0-x86_64.apk` | 7,492,605 | `f22e20b87eedcd17d47c2531d6705bf120611d6d745ab0d57a5961aa4f09bb35` | `versionCode='20000' versionName='2.0.0'` |
+| B `Sandbee-POS-2.0.1-x86_64.apk` | 7,492,609 | `f704e1eca4f3d10160ae32b7e0949a438a35f2c17c1edb0225b4582dda199331` | `versionCode='20001' versionName='2.0.1'` |
+
+Both: `V2 Signer: certificate SHA-256 digest: 5bd06ef3e9a78efcb0dfbd1ff102de932c581a78034d93ef7572f5373b5b3e40`,
+`uses-permission: name='android.permission.REQUEST_INSTALL_PACKAGES'`, `native-code: 'x86_64'`, `string/pos_update_base`
+→ `"http://127.0.0.1:8765/pos"`, both integers `1`. (The hashes differ from the gate's gold-worktree APKs, as builds from
+another checkout always have; A's size equals the gate's second A.)
+
+### Emulator end to end (Task 26 Steps 3–6)
+
+Local POS `next start -p 3110` on a fresh database `pos_scratch_e2e_n2s` (`Admin account created.`; health
+`{"ok":true,"db":"up","tenant":"dev",…}`), the fake files server `n2-files.mjs` on 127.0.0.1:8765 (`listening for
+Sandbee-POS-2.0.1-x86_64.apk sha256 f704e1ec… size 7492609`; the first `GET /pos/android/latest.json` in its log is Step
+3's own `curl`, which answered 404). The AVD `Pixel_7_API_33` (API 33, WebView 109) booted `-no-snapshot -memory 2048`
+with C: at 79 GB free. Times below are the emulator's logcat (IST); `files.log` is UTC. Screenshots in the session
+scratchpad's `shots/`.
+
+- **One-time move (Step 4): PASS.** Found the gate's debug-key release 1.0 (`versionCode=1`); `pm uninstall` Success; both
+  reverses listed; A installed (Success, no crash). Typed `http://localhost:3110`, Open POS, signed in as `e2eadmin`
+  (password by `type-secret.py`, 23 characters, never shown) → the Dashboard; `19:18:27.991 open`,
+  `19:18:28.029 check: HTTP 404`.
+- **E1 (`manifest=404`): PASS.** Away 70 s → `open`, `check: HTTP 404`, one `GET /pos/android/latest.json`; away 15 s → no
+  line, no request.
+- **E2 (`manifest=wronghash&apk=fast`): PASS.** Away 70 s → `open`, `download: the size or SHA-256 is not the manifest's`;
+  `files.log`: the manifest, the APK once (`sent … 7492609 bytes`); no card (`e2-no-card`). "No file left" is shown by
+  the log line (the gate's ruling: no root, no `run-as` on a release app).
+- **E7 (`manifest=ok&apk=slow`): PASS.** Away 70 s → `open` at 19:24:20.206, HOME again at 19:24:22; `19:24:50.052 download:
+  2.0.1 verified (7492609 bytes)` while the launcher was the top resumed activity; back at 19:24:52 (30 s after that
+  HOME) → no `open`, no `card:` line, no card (`e7-back-no-card`).
+- **E4 (`apk=fast`): PASS.** Away 70 s → `open`, `check: 2.0.1 is ready`, `card: 2.0.1`; the card (`e4-card`): the logo,
+  "Update available", "Sandbee POS 2.0.1 is ready to install.", "A test update from the fake files server.", "The first
+  time, Android asks you to allow installs from Sandbee POS.", Install, Later. **Later** → `card: later`, the card gone
+  (`e4-after-later`); away 70 s → `open`, `check: 2.0.1 is ready`, `card: 2.0.1`, the card again (`e4-card-again`).
+- **Cold start: PASS.** `am force-stop`, launch → `19:28:07.254 open`, `19:28:07.255 card: 2.0.1` (no look: the last was
+  21 s earlier), the card over New Order (`cold-card`).
+- **E5: PASS.** Install → `install: permission`, Android's "Install unknown apps" for Sandbee POS 2.0.0; Allow from this
+  source (`appops … REQUEST_INSTALL_PACKAGES: allow`); Back → the same process (pid 5314), the card with "Allow Sandbee POS
+  to install apps, then tap Install again." (`e5-back-card-permission`). Install → `install: started`, "Do you want to
+  update this app?"; **Cancel** → `install: status 3`, still pid 5314, the card with "The update could not be installed.
+  It will be offered again next time." (`e5-cancelled-card`). Install → `install: started` → **Update** → Google Play
+  Protect "App scan recommended" (`e5-play-protect`) → **More details** → **Install without scanning** (`e5-more-details`;
+  **Scan app was never tapped**). Logcat: `Force stopping com.possoftware.pos appid=10183 user=-1: installPackageLI`,
+  `Start proc 5927:com.possoftware.pos/u0a183 for broadcast
+  {com.possoftware.pos/com.possoftware.pos.printer.PrintingOffReceiver}`, `install: done`; `dumpsys package` →
+  `versionCode=20001`, `versionName=2.0.1`; no crash. Launch → still signed in (`e5-201-open`), `open`, `check: ignored
+  (not newer)`, no card.
+- **E6: PASS.** `adb reverse --remove tcp:8765`, away 70 s → `open`, `check: no answer`, pid 5927 unchanged, no request
+  reached the files server; the reverse back, away 70 s → `open`, `check: ignored (not newer)`, pid 5927.
+- **E3: PASS.** Uninstall, install A, type the address, Open POS → `19:34:07.889 open`, `19:34:08.111 download: 2.0.1
+  verified (7492609 bytes)` while the app was in view; signed in at 19:34:48 and stayed in view (MainActivity top
+  resumed) until 19:36:53 → no `card:` line, no card (`e3-in-view-2min`); away 70 s → `open`, `check: 2.0.1 is ready`,
+  `card: 2.0.1`, the card (`e3-card-next-open`).
+- **E8: not run** (the gate's ruling); pin 32 holds `PrinterPool.anyPrinting() -> {` in `takeCard` and the 30-second
+  wait in `install`.
+- **Put back (Step 6):** A uninstalled; the debug-key release 1.0 installed from
+  `D:\kd\pos-dev-keep\apk-release\pos-emulator-x86_64-release.apk` (sha256 `29115bdf…`, `versionCode=1`); `adb reverse
+  --remove-all`; `adb shell sync`; `adb emu kill` (graceful shutdown). This session's `next start` (3110) and fake files
+  server (8765) stopped by PID after checking their command lines. The scratch database `pos_scratch_e2e_n2s` stays (one
+  admin; this PC does not drop databases).
+
+### Release read-back (Task 26 Step 7, `n2-release.sh`, head `30e0302`)
+
+`:app:compileReleaseKotlin --rerun` exit 0, then `assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a`
+`BUILD SUCCESSFUL in 43s`; kept in the session scratchpad only, released to nobody:
+
+| APK | Bytes | SHA-256 |
+|---|---|---|
+| `app-arm64-v8a-release.apk` | 7,360,886 | `6c62b11048619785d96b62f71ccd93705b9608d7addf5bc0dcdc97e5fc5df2e9` |
+| `app-armeabi-v7a-release.apk` | 6,768,720 | `a95c29283b99657dd7ad5c6e21bce8dfbae18fa38d547abcf6024e39621e4c63` |
+
+Both: `V2 Signer: certificate DN: CN=Sandbee POS, O=sandbee, C=IN`, `V2 Signer: certificate SHA-256 digest:
+5bd06ef3e9a78efcb0dfbd1ff102de932c581a78034d93ef7572f5373b5b3e40`, `versionCode='20000' versionName='2.0.0'`,
+`uses-permission: name='android.permission.REQUEST_INSTALL_PACKAGES'`, no `application-debuggable`,
+`string/pos_update_base` → `"https://files.sandbee.in/pos"`, `integer/pos_update_check_minutes` → 720,
+`integer/pos_update_reopen_minutes` → 30. D: had 5.6 GB free before and 5.5 GB after.
+
+### Differences from this plan, and why
+
+None in code or behaviour: every block applied as written, every Expected matched. Notes only:
+1. Step 3's own `curl` of `latest.json` is the first GET in `files.log` (it answered 404 as expected); the app's requests
+   are the ones after it.
+2. The emulator's background command ended with exit 1 after `adb emu kill`: its log says it waited for a graceful
+   shutdown ("Not saving state: RAM not mapped as shared"); `adb devices` was empty afterwards.
+
+### The session's fresh review (Claude Fable 5.1, `c1db099..30e0302`)
+
+Verdict **"Ready to merge: Yes"**: 0 Critical, 0 Important, 8 Minor. The reviewer read the whole range with the code around
+it (read-only; nothing run or sent) and found no drift from this plan's blocks; it confirmed the threading (the schedule
+and `waiting` only on the main thread, the requests and the install on one worker), React Native's lazy-module ordering,
+that every download failure path deletes both files and `copyVerified` reads at most `size + 1` bytes (Review Focus 3),
+that a card never surfaces mid-work in Kotlin or in the reducer (Review Focus 1), the install path's safety (only
+`<base>/android/<plain name>`, `USER_ACTION_REQUIRED`, an explicit non-exported receiver, no install without a tap), and
+that no pin 30–32 needle is a prefix of its mutation's result. The re-grade by effect kept all eight at Minor (narrow
+windows, wording or robustness; none changes an outcome for staff on a normal day), so there was no fix pass; they are
+for the N2 gate:
+
+1. **Later or Back during Install's wait for the printers** (`UpdateCard.tsx` `later`; `PosUpdateModule.install`): the
+   worker still opens "Install unknown apps" or Android's dialog up to 30 s after the card was dismissed (only when a
+   print started between the card and the tap). Fix idea: a cancel flag set by `later()` and checked after the wait.
+2. **A kept file corrupted by a power loss right after its download** (`UpdateDownloader`: no `fsync` before the rename;
+   `check: … is ready` and `install()` do not re-hash): the card would come at every open and Android's installer fail
+   each time, until a newer release. Fix idea: sync before the rename, and re-hash in `install()` (on a mismatch delete,
+   `clearVerified`, answer "failed").
+3. **The card's wait for an idle printer is unbounded** (`offerWhenIdle` every 2 s): in a busy printers-mode cafe the card
+   could come minutes into the open at the first lull. The gate accepted the design; a bound (about 2 minutes, then the
+   next open) would keep §6.3's "never later in a session" too.
+4. **Cancel in Android's dialog reads as a failure** (`UpdateInstallReceiver`: `STATUS_FAILURE_ABORTED` = 3 falls into
+   `else`): the card says "The update could not be installed." after a deliberate Cancel (as E5 shows). Fix idea: a
+   distinct answer for 3.
+5. **A RuntimeException from `openWrite`/`commit` leaves the session open** (`UpdateInstaller`: only `IOException` and
+   `SecurityException` abandon it); the module still answers "failed". Fix idea: one `catch (e: Exception)` that abandons.
+6. **Android 7.x has no per-app "Install unknown apps"**: below Android 8 the session fails when the global "Unknown
+   sources" is off, and the failed note does not say what to turn on. For N4's GO-LIVE text.
+7. **The Jest background test takes the last `AppState.addEventListener` call** (`__tests__/UpdateCard.test.tsx`): right
+   today only because the hook's effect runs last; another AppState listener added later in `PosScreen` would redirect
+   the test. Fix idea: assert the call count or find the card's own listener.
+8. `verified()` reads the preferences and stats the file on the main thread at an open and in `takeCard` (a one-time
+   millisecond read; StrictMode would flag it).
+
+Set aside by the reviewer, with this session's rulings: Play Protect, Samsung's Auto Blocker and the missing Open button
+(already N4's GO-LIVE text); Android 9's archive signers (fixed and pinned at the gate; no API 28 image here); API 34–36
+run-time behaviour of the mutable PendingIntent, the receiver's `startActivity` and `USER_ACTION_REQUIRED` (the code reads
+right; only an API 33 image exists: repeat E5 once on API 34/35 when an image is available); spec §6.1's
+`UpdateStore`/`status()` wording (superseded by N1's approved `UpdateSchedule`/`takeCard` design); a 404 or failed
+download not retried for 12 hours (the plan's rule, "any HTTP answer counts as a look"; §6.2.2's "retried at the next
+check" holds); the deferred minors #2, #4–#7, #10 (re-read, still Minor); a future `minSdkVersion` raise (the manifest has
+no `minSdk` field: N4's GO-LIVE text or a later schema); Task 26 itself (outside the range); N3 and N4; the 12 h, 30 min
+and once-per-open values (the owner's decisions).
