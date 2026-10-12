@@ -137,4 +137,25 @@ class UpdateManifestTest {
     assertNull(UpdateManifest.codeOf("2.0"))
     assertNull(UpdateManifest.codeOf("v2.0.0"))
   }
+
+  // The N1 review gate (native apps 2.0, Session N2 Task 0): the review's m-3, m-4 and m-5.
+
+  @Test
+  fun aByteOrderMarkBeforeTheManifestIsRead() {
+    // m-5: a file re-saved by an editor that writes a UTF-8 byte order mark is still the manifest.
+    assertEquals(20100, offer("\uFEFF" + manifest()).versionCode)
+  }
+
+  @Test
+  fun aNullNoteIsNoNote() {
+    // m-4: notes are optional, and null says "none" as a missing field does.
+    assertEquals("", offer(manifest { it.put("notes", JSONObject.NULL) }).notes)
+  }
+
+  @Test
+  fun aFileNestedTooDeepIsIgnoredNeverACrash() {
+    // m-3: the parser goes one call deeper per bracket, so a small file nested deep enough overflows the stack, an Error
+    // (not a JSONException) that would end the updater's thread.
+    ignored("not JSON", "{\"a\":" + "[".repeat(UpdateManifest.MAX_JSON_CHARS - 10))
+  }
 }

@@ -113,7 +113,7 @@ gradle.taskGraph.whenReady { graph ->
     if (graph.allTasks.any { it.path in [':app:packageRelease', ':app:packageReleaseBundle'] }) {
         def missing = posReleaseKeyProps.findAll { !findProperty(it) }
         if (!missing.isEmpty()) {
-            throw new GradleException("A release build needs the private Sandbee POS key: set ${missing.join(', ')} in D:\\gradle-home\\gradle.properties (apps/mobile/README.md). It never signs with the debug key.")
+            throw new GradleException("A release build needs the private Sandbee POS key: set ${missing.join(', ')} in gradle.properties in the Gradle user home (D:\\gradle-home on the build PC; apps/mobile/README.md). It never signs with the debug key.")
         }
         if (!file(posReleaseStoreFile).isFile()) {
             throw new GradleException("The release key file is missing: ${posReleaseStoreFile}")

@@ -2871,6 +2871,8 @@ function releaseKeyProblems(gradle: string, readme: string): string[] {
   need("graph.allTasks.any { it.path in [':app:packageRelease', ':app:packageReleaseBundle'] }", 'the guard misses a release APK or bundle');
   need("def posReleaseKeyProps = ['POS_RELEASE_STORE_FILE', 'POS_RELEASE_STORE_PASSWORD', 'POS_RELEASE_KEY_ALIAS', 'POS_RELEASE_KEY_PASSWORD']", 'the guard does not check all four key properties');
   need('throw new GradleException("A release build needs the private Sandbee POS key', 'a release build without the key does not stop');
+  // The N1 review gate (m-6): the guard names the Gradle user home, not only this PC's folder.
+  need('in gradle.properties in the Gradle user home (D:\\\\gradle-home on the build PC;', 'the guard sends another build PC to a folder it may not have');
   need('if (!file(posReleaseStoreFile).isFile())', 'a missing key file is not caught before the build');
   const types = g.slice(Math.max(0, g.indexOf('buildTypes {')));
   const release = /release \{([\s\S]*?)\n {8}\}/.exec(types)?.[1] ?? '';
@@ -2901,6 +2903,7 @@ test('pin 28 mutation: every key-guard needle can fail', () => {
     ["':app:packageRelease', ':app:packageReleaseBundle'", "':app:packageReleaseBundle'"],
     ["'POS_RELEASE_KEY_ALIAS', 'POS_RELEASE_KEY_PASSWORD']", "'POS_RELEASE_KEY_ALIAS']"],
     ['throw new GradleException("A release build needs', 'logger.warn("A release build needs'],
+    ['in gradle.properties in the Gradle user home (', 'in ('],
     ['if (!file(posReleaseStoreFile).isFile())', 'if (false)'],
   ]);
   everyMutationCaught(s => releaseKeyProblems(gradle, s), readme, [

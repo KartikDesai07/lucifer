@@ -24,6 +24,9 @@ object UpdateManifest {
   private val FILE = Regex("""[A-Za-z0-9][A-Za-z0-9._-]{0,98}\.apk""")
   private val SHA256 = Regex("""[0-9a-fA-F]{64}""")
 
+  /** A UTF-8 byte order mark an editor may write before the text (the N1 review gate, m-5). */
+  private const val BOM = "\uFEFF"
+
   /** The newer release this device can install: the APK for its preferred CPU type. */
   data class Offer(
       val version: String,
@@ -53,8 +56,12 @@ object UpdateManifest {
   fun read(json: String, packageName: String, installedCode: Int, deviceAbis: List<String>): Result {
     if (json.length > MAX_JSON_CHARS) return Ignored("too large")
     val root = try {
-      JSONObject(json)
+      JSONObject(json.removePrefix(BOM))
     } catch (e: JSONException) {
+      return Ignored("not JSON")
+    } catch (e: StackOverflowError) {
+      // The N1 review gate (m-3): the parser goes one call deeper per bracket; a file nested deep enough is not a
+      // manifest, and must never end the updater's thread.
       return Ignored("not JSON")
     }
     if (root.opt("schema") != SCHEMA) return Ignored("schema")
@@ -66,7 +73,8 @@ object UpdateManifest {
     val released = root.opt("released") as? String
     if (released == null || !DATE.matches(released)) return Ignored("released")
     val notes = when (val n = root.opt("notes")) {
-      null -> ""
+      // The N1 review gate (m-4): null says "no notes", as a missing field does.
+      null, JSONObject.NULL -> ""
       is String -> if (n.length <= MAX_NOTES_CHARS) n.trim() else return Ignored("notes")
       else -> return Ignored("notes")
     }
