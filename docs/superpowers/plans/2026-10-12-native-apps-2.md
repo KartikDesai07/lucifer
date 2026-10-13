@@ -58,7 +58,7 @@ After N4 (not in this plan): the S3 bucket and HTTPS on `files.sandbee.in`, set 
 1. **A card in the middle of work.** A download that finishes while staff work, an app hidden and shown again within 30 minutes, or a card not taken before the app went away: no card until the next open. Pinned in N1 Task 5 (`aDownloadThatEndsDuringWorkWaitsForTheNextOpen`, `aCardNotTakenBeforeTheAppWentAwayWaitsForTheNextOpen`, `backAfterThirtyMinutesAwayIsAnOpenSoonerIsNot`).
 2. **Typing the address on Windows the way people type.** `MyCafe `, `mycafe/pos`, `mycafe.sandbee.in`, `http://192.168.1.20:3000`, a pasted full URL: the same origin, or the same error, as the Android app. Pinned in N3 Task 1 (the parity table runs every input through both apps' functions).
 3. **An interrupted or wrong download.** The network drops mid-file, a CDN error page arrives instead of the APK, the file is longer than the manifest says, or the APK is signed by another key: it is never installed, it is deleted, and the next check tries again. Pinned in N2 Task 2 (`UpdateFiles.copyVerified` JUnit cases: truncated, longer, one byte changed) and N2 Task 6 (emulator E2: a wrong hash shows no card and leaves no file).
-4. **A release built the wrong way.** No key on the build PC, an `aR` build (no "release" in its task name), a missing key file, a test base or shortened times left in: the build stops or the packaging refuses. Never a debug-key or test-base release. Pinned in N1 Task 2 (pin 28 + three Gradle dry runs), N1 Task 3 (pin 29 + Gradle refusals) and N4 Task 1 (the packaging refuses a non-default base, another signer or mismatched versions).
+4. **A release built the wrong way.** No key on the build PC, an `aR` build (no "release" in its task name), a missing key file, a test base or shortened times left in: the build stops or the packaging refuses. Never a debug-key or test-base release. Pinned in N1 Task 2 (pin 28 + three Gradle dry runs), N1 Task 3 (pin 29 + Gradle refusals) and N4 Task 41 (the packaging refuses a non-default base, another signer or mismatched versions).
 5. **A manifest that parses but is wrong.** A file name that is a path or an address, numbers written as strings or decimals, a version and versionCode that disagree, an oversized APK, no APK for the device's CPU type: ignored silently, the app unchanged. Pinned in N1 Task 4 (`anApkFileIsAPlainNameNeverAPathOrAnAddress`, `everyTopLevelFieldIsChecked`, `hashAndSizeRules`, `aDeviceWithoutAnApkForItsCpuTypeIsNotOffered`).
 
 ## File structure
@@ -8558,49 +8558,1923 @@ Report to the owner in Hinglish.
 
 ---
 
-# Session N4: release folder, docs, the 2.0.0 set and the final review (spec; made exact at the N3 gate)
+# Session N4 (exact): the N3 review's minors, the release folder, the docs, the 2.0.0 set and the final review
+
+Made exact at the N3 review gate (2026-10-13, section "N3 review gate" at the end of this plan). Sessions N1–N3 are in
+`main` since `543b193` (the owner's merge OK of 2026-10-13, pushed); this branch was fast-forwarded to it, so Session N4
+starts from `543b193`. Every code and doc block below was written and run in the gold worktree (`D:\kd\n2g`, detached
+at `543b193`): tasks 40–42 as three commits (`2e16409`, `0b2c4ad`, `8f6652f`; branch `gold-n4`; Tasks 41 and 42
+amended with the gate review's findings, first `94c0866`, `8c6661b`), the last whole tree
+`43524fee05e94b6ecbfc37d73216560482f1ddfc`; the blocks were generated from those commits, then applied step by step on
+the gold worktree reset to `543b193` (each find matched exactly once, every task's whole tree came out identical, and
+every Expected below is that run's output). The gate pre-ran Task 44: the builds (the private key, the real base), the
+packaging into a scratch folder (and its refusals on real wrong files), and the emulator smoke (the one-time move from
+the debug-key 1.0 to 2.0.0, sign-in, a test print, then Cancel in Android's dialog with test APKs).
+
+Acceptance: `node scripts/release-native.mjs` turns the built APK pair and the Windows installer into
+`D:\kd\pos-apk-release\Sandbee-POS-2.0.0\` (the bucket's keys, `SHA256SUMS.txt`, `UPLOAD-STEPS.txt`) and refuses a
+release built the wrong way; GO-LIVE says how each cafe moves to 2.0.0 once and what staff see from then on; the 2.0.0
+set is built and smoke-tested; a fresh review passes; nothing is uploaded or released (the owner uploads by hand).
+
+**Changes from the spec version of N4** (the gate's rulings; reasons in the gate section):
+- Task 40 is new: the N3 review's minors as ruled. m-2: the owner's words (2026-10-13) for no answer, "Couldn't reach
+  <host>. Check the name and the internet connection." (spec §9 amended at the gate); m-4 pin (3)'s comment; m-5 a JUnit
+  message; m-6 the updater's one error line names electron-updater's code; m-1 a note at `allowPrerelease` (the
+  generic provider ignores it; Task 41 refuses a prerelease version). m-3 and m-7 stand.
+- Task 41: `--out` (default `D:\kd\pos-apk-release`) so a test can write elsewhere; apksigner runs as
+  `java -jar <build-tools>\lib\apksigner.jar` (no `.bat` from Node); every check runs before anything is written; the
+  version is `apps/desktop/package.json`'s and must equal `posVersionRelease`; a version with a prerelease part is
+  refused (m-1); `SHA256SUMS.txt` lists the files under `upload\` in `sha256sum --binary` format; 12 tests, among them the
+  whole folder from fake APKs and a fake installer with fake tools, and 24 refusals that write nothing. The gate's review
+  added: the folder is written as `Sandbee-POS-<version>.partial` and renamed when complete (a leftover `.partial` is
+  refused); a version lower than an already packaged `Sandbee-POS-x.y.z` is refused (spec §5); a missing tool is named
+  (java from `JAVA_HOME` when set), never read as a bad signature; two signers, a missing `app-update.yml` and a
+  `latest.yml` naming another file are refusal rows; `UPLOAD-STEPS.txt` also says how to check a hash in PowerShell.
+- Task 42: no fenced code blocks inside the new README text (the block applier ends a block at a fence line), so the
+  commands are inline code; a new `apps/desktop/README.md`; §A gets four update facts; five new runbook pins and the §7
+  desktop pin quotes "Restart to update".
+- Task 44: the release notes are the owner's (2026-10-13): "Sandbee POS now updates itself. You will see a card like
+  this when a new version is ready."; `files.sandbee.in` has no DNS record yet (NXDOMAIN at the gate), so the release
+  APK's look logs `check: no answer` and no request reaches anyone; the smoke's Cancel uses test APKs A/B.
+
+**Expected counts** (baseline = `543b193`): mobile `npm test` 168 → **168**, Jest **8**, JUnit 94 → **94**, desktop
+211 → **211**, `npm run test:release-native` (new) → **12**, the cafe chain 5802 (5801 pass, 0 fail, 1 skipped) →
+**5807** (5806 pass, 0 fail, 1 skipped; the go-live runbook 97 → 102), typecheck and lint clean in mobile, desktop and
+cafe.
+
+Work in `D:\kd\lucifer` on `feat/native-apps-2`; `$SP` is the session's scratchpad. Always
+`GRADLE_USER_HOME='D:\gradle-home'`. Tasks are numbered 40–45 (Session N4 = 4x), so `task-start <plan> 41` brings only
+this session's task. Apply a step's blocks with `D:\kd\pos-dev-keep\phase3-final-gate\apply_blocks_clone.py` (a dry run
+first). Every commit message goes in a scratch file and is committed with `git commit -F`; the messages below end with
+the Co-Authored-By line the N4 prompt gives (Claude Opus 5.5); if a session's prompt gives another, its line wins. Desktop
+pin runs carry `timeout`.
+
+### Task 40: The N3 review's minors
+
+**Files:**
+- Modify: `apps/desktop/src/pos-health.ts` (`unreachableError`), `apps/desktop/src/updater.ts` (`errorCode`, the `allowPrerelease` note)
+- Test: `apps/desktop/src/pos-health.test.ts` (the words), `src/desktop-paths.test.ts` ((U2)'s error line; pin (3)'s comment), `UpdateFilesTest.kt` (a message)
+
+**Interfaces:** `unreachableError(host)` → `Couldn't reach <host>. Check the name and the internet connection.`; `updater.ts` `errorCode(error): string` (electron-updater's `code`, else the error's name).
+
+- [ ] **Step 1: Check the branch, the disks and every suite**
+
+```bash
+cd /d/kd/lucifer && git status --short && git branch --show-current && git log --oneline -3 && df -h /c /d
+cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)" && npm run typecheck > /dev/null && npm run lint > /dev/null && echo "mobile typecheck and lint clean" && npx jest 2>&1 | grep -E "^Tests:"
+cd /d/kd/lucifer/apps/desktop && timeout 250 npm test 2>&1 | grep -E "^# (tests|pass|fail)" && npm run typecheck > /dev/null && npm run lint > /dev/null && echo "desktop typecheck and lint clean"
+cd /d/kd/lucifer/apps/cafe && npm test > "$SP/cafe-base.log" 2>&1; grep -E "^# (tests|pass|fail|skipped)" "$SP/cafe-base.log"
+cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun --console=plain > "$SP/junit-base.log" 2>&1; tail -3 "$SP/junit-base.log"
+cat app/build/test-results/testDebugUnitTest/*.xml | grep -o '<testsuite [^>]*' | sed -E 's/.*tests="([0-9]+)".*failures="([0-9]+)".*errors="([0-9]+)".*/\1 \2 \3/' | awk '{t+=$1; f+=$2; e+=$3} END {print "tests="t" failures="f" errors="e}'
+```
+Expected: clean, `feat/native-apps-2`, this gate's plan commit on top of `543b193`; mobile 168/168, typecheck and lint
+clean, Jest `Tests: 8 passed`; desktop 211/211, typecheck and lint clean; cafe `# tests 5802`, `# pass 5801`, `# fail 0`,
+`# skipped 1`; JUnit `tests=94 failures=0 errors=0`. The cafe chain takes a few minutes: run it in the background and
+wait for its log with an until-loop. D: needs about 1 GB free for this session's builds and the release folder.
+
+- [ ] **Step 2: Write the failing tests**
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+});
+
+// Native apps 2.0 Session N3 deliberately changed: a third call sets start-with-Windows again at every start (U4).
+test("(3) main.ts: setLoginItemSettings called exactly three times, all with args: [HIDDEN_FLAG]", () => {
+  const calls = mainSrc.match(/setLoginItemSettings\(/g) ?? [];
+```
+
+Replace it with:
+
+```ts
+});
+
+// Native apps 2.0 Session N3 deliberately changed: a third call puts start-with-Windows back at a start when its entry
+// is missing and the operator chose it (U4; the N3 review's m-4).
+test("(3) main.ts: setLoginItemSettings called exactly three times, all with args: [HIDDEN_FLAG]", () => {
+  const calls = mainSrc.match(/setLoginItemSettings\(/g) ?? [];
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+    "const first = setTimeout(check, FIRST_CHECK_MS);",
+    "const every = setInterval(check, CHECK_EVERY_MS);",
+    'autoUpdater.on("error", (error) => deps.log.error(`updater: ${error.name}`));',
+    "const notice = noticeFor(notified, info.version);",
+  ]) {
+```
+
+Replace it with:
+
+```ts
+    "const first = setTimeout(check, FIRST_CHECK_MS);",
+    "const every = setInterval(check, CHECK_EVERY_MS);",
+    // The N3 review gate (the review's m-6): the one error line names electron-updater's code (ERR_UPDATER_…).
+    'autoUpdater.on("error", (error) => deps.log.error(`updater: ${errorCode(error)}`));',
+    'return typeof code === "string" ? code : error.name;',
+    "const notice = noticeFor(notified, info.version);",
+  ]) {
+```
+
+In `apps/desktop/src/pos-health.test.ts`, find:
+
+```ts
+const json = (value: unknown) => () => Promise.resolve(value);
+const NOT_FOUND = "We couldn't find a POS at mycafe.sandbee.in. Check the name.";
+const UNREACHABLE = "Couldn't reach mycafe.sandbee.in. Check the internet connection.";
+
+test("a POS whose database is up (200, its tenant named) is found, in one GET of /api/health that follows no redirect", async () => {
+```
+
+Replace it with:
+
+```ts
+const json = (value: unknown) => () => Promise.resolve(value);
+const NOT_FOUND = "We couldn't find a POS at mycafe.sandbee.in. Check the name.";
+// The N3 review gate (the review's m-2, the owner's ruling of 2026-10-13): a mistyped workspace name has no answer
+// either, so the words name both causes.
+const UNREACHABLE = "Couldn't reach mycafe.sandbee.in. Check the name and the internet connection.";
+
+test("a POS whose database is up (200, its tenant named) is found, in one GET of /api/health that follows no redirect", async () => {
+```
+
+In `apps/mobile/android/app/src/test/java/com/possoftware/pos/update/UpdateFilesTest.kt`, find:
+
+```kotlin
+  @Test
+  fun aKeptFileHashesToTheManifestsSha256() {
+    assertEquals(sha, UpdateFiles.sha256Of(ByteArrayInputStream(apk)))
+  }
+
+```
+
+Replace it with:
+
+```kotlin
+  @Test
+  fun aKeptFileHashesToTheManifestsSha256() {
+    assertEquals("the manifest's SHA-256", sha, UpdateFiles.sha256Of(ByteArrayInputStream(apk)))
+  }
+
+```
+
+- [ ] **Step 3: Run them and see them fail**
+
+```bash
+cd /d/kd/lucifer/apps/desktop && timeout 250 node --import tsx --test src/pos-health.test.ts src/desktop-paths.test.ts 2>&1 | grep -E "^not ok|^# (tests|pass|fail)"
+```
+Expected: `not ok … (U2) updater.ts: download in the background, …`, `not ok … no answer at all (a network error) is not
+reached`, `not ok … no answer in time is not reached, and the request is aborted`; `# tests 82`, `# pass 79`, `# fail 3`.
+(The JUnit message and the comment change nothing that runs.)
+
+- [ ] **Step 4: Implement**
+
+In `apps/desktop/src/pos-health.ts`, find:
+
+```ts
+}
+
+export function unreachableError(host: string): string {
+  return `Couldn't reach ${host}. Check the internet connection.`;
+}
+
+```
+
+Replace it with:
+
+```ts
+}
+
+/** No answer: the internet, or a mistyped workspace name (no such name answers either; the N3 review gate, the owner's
+ *  ruling of 2026-10-13). */
+export function unreachableError(host: string): string {
+  return `Couldn't reach ${host}. Check the name and the internet connection.`;
+}
+
+```
+
+In `apps/desktop/src/updater.ts`, find:
+
+```ts
+}
+
+/** Starts the checks; returns what stops them (the app's before-quit). */
+export function startUpdater(deps: UpdaterDeps): () => void {
+```
+
+Replace it with:
+
+```ts
+}
+
+/** electron-updater's errors carry a code (ERR_UPDATER_…): the one log line names it, the logger has the detail (the N3
+ *  review's m-6). */
+function errorCode(error: Error): string {
+  const { code } = error as Error & { code?: unknown };
+  return typeof code === "string" ? code : error.name;
+}
+
+/** Starts the checks; returns what stops them (the app's before-quit). */
+export function startUpdater(deps: UpdaterDeps): () => void {
+```
+
+In `apps/desktop/src/updater.ts`, find:
+
+```ts
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.allowDowngrade = false;
+  autoUpdater.allowPrerelease = false;
+  autoUpdater.logger = {
+```
+
+Replace it with:
+
+```ts
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.allowDowngrade = false;
+  // The generic provider does not read allowPrerelease (only the GitHub ones do): the release packaging refuses a
+  // version with a prerelease part instead (scripts/release-native.mjs; the N3 review's m-1).
+  autoUpdater.allowPrerelease = false;
+  autoUpdater.logger = {
+```
+
+In `apps/desktop/src/updater.ts`, find:
+
+```ts
+    new Notification({ title: notice.title, body: notice.body }).show();
+  });
+  autoUpdater.on("error", (error) => deps.log.error(`updater: ${error.name}`));
+  const check = (): void => {
+    autoUpdater.checkForUpdates().catch(() => undefined);
+```
+
+Replace it with:
+
+```ts
+    new Notification({ title: notice.title, body: notice.body }).show();
+  });
+  autoUpdater.on("error", (error) => deps.log.error(`updater: ${errorCode(error)}`));
+  const check = (): void => {
+    autoUpdater.checkForUpdates().catch(() => undefined);
+```
+
+- [ ] **Step 5: Run them and see them pass, with JUnit**
+
+```bash
+cd /d/kd/lucifer/apps/desktop && timeout 250 npm test 2>&1 | grep -E "^not ok|^# (tests|pass|fail)" && npm run typecheck > /dev/null && npm run lint > /dev/null && echo "typecheck and lint clean"
+cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun --console=plain 2>&1 | grep -E "^BUILD|FAILED" | sed -E 's/ in [0-9hms ]+$//'
+cat app/build/test-results/testDebugUnitTest/*.xml | grep -o '<testsuite [^>]*' | sed -E 's/.*tests="([0-9]+)".*failures="([0-9]+)".*errors="([0-9]+)".*/\1 \2 \3/' | awk '{t+=$1; f+=$2; e+=$3} END {print "tests="t" failures="f" errors="e}'
+```
+Expected: `# tests 211`, `# pass 211`, `# fail 0`, `typecheck and lint clean`; `BUILD SUCCESSFUL`;
+`tests=94 failures=0 errors=0`.
+
+- [ ] **Step 6: Commit** (`$SP/msg-n4-0.txt`):
+
+```text
+fix(apps): the N3 review's minors as ruled at its gate: the address window's no-answer words name both causes ("Couldn't reach <host>. Check the name and the internet connection.", the owner's ruling of 2026-10-13), the updater's one error line names electron-updater's code, a note that the generic provider ignores allowPrerelease (the packaging refuses a prerelease instead), pin (3)'s comment and a JUnit message (native apps 2.0, Session N4, the N3 review gate)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+```
 
 ### Task 41: `scripts/release-native.mjs`
 
-- Run: `node scripts/release-native.mjs --arm64 <apk> --armv7 <apk> --windows apps/desktop/dist --notes "<text>" [--released YYYY-MM-DD]`. It builds nothing.
-- Checks, refusing with a clear line on the first failure: each APK's signer SHA-256 (`apksigner verify --print-certs`) equals `EXPECTED_CERT_SHA256` (N1's fingerprint, a constant in the script); `aapt2 dump badging`: package `com.possoftware.pos`, versionName = `apps/desktop/package.json` version, versionCode = its code, not debuggable, the right native-code ABI per file; `aapt2 dump resources`: `pos_update_base` = `https://files.sandbee.in/pos`, check 720, reopen 30; Windows: `dist/latest.yml` version = the version, its file = `POS-Software-Setup-<version>.exe`, its sha512 = the installer's, the blockmap present, `dist/win-unpacked/resources/app-update.yml` url = `https://files.sandbee.in/pos/windows`; notes ≤ 300 characters; the release folder does not exist yet.
-- Writes `D:\kd\pos-apk-release\Sandbee-POS-<version>\upload\pos\android\{latest.json, Sandbee-POS-<version>-arm64-v8a.apk, Sandbee-POS-<version>-armeabi-v7a.apk}` and `upload\pos\windows\{latest.yml, POS-Software-Setup-<version>.exe, POS-Software-Setup-<version>.exe.blockmap}`, `SHA256SUMS.txt` (every file) and `UPLOAD-STEPS.txt` (the S3 keys, the order: APKs + installer + blockmap first, `latest.json` + `latest.yml` last; `Cache-Control: max-age=60` for `latest.*`, `max-age=31536000, immutable` for versioned files; how to check from a phone).
-- `scripts/release-native.test.mjs` (root script `test:release-native`): the pure parts — the manifest writer checked by the same rules as `UpdateManifest` (a JS validator with the JUnit cases' table), the version code, the file names, the `latest.yml` reader, the steps text, refusal of an existing folder.
-- (The N1 review gate.) apksigner from build-tools 37 prints `V2 Signer: certificate SHA-256 digest: <hex>` (a v2-only APK,
-  minSdk 24), not `Signer #1 …`; `EXPECTED_CERT_SHA256` = `5bd06ef3e9a78efcb0dfbd1ff102de932c581a78034d93ef7572f5373b5b3e40`.
-- (The N2 review gate.) It also reads `dist/win-unpacked/resources/app-update.yml` (`provider: generic`,
-  `url: https://files.sandbee.in/pos/windows`, `updaterCacheDirName: pos-desktop-updater`) and refuses any other url.
+**Files:**
+- Create: `scripts/release-native.mjs`; Test: `scripts/release-native.test.mjs` (12 tests)
+- Modify: `package.json` (root script `test:release-native`)
+
+**Interfaces:** `node scripts/release-native.mjs --arm64 <apk> --armv7 <apk> --windows <folder> --notes "<text>" [--released YYYY-MM-DD] [--out <folder>]`; exports `packageRelease(opts, tools)` (throws `Refused` before writing anything), `versionCode`, `apkName`, `installerName`, `buildManifest`, `manifestProblems`, `readLatestYml`, `readAppUpdateYml`, `signerDigests`, `readBadging`, `resourceValue`, `uploadSteps`, `repoVersion`, `parseArgs`, `realTools`, `EXPECTED_CERT_SHA256`.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `package.json`, find:
+
+```json
+    "test:go-live": "node --test scripts/go-live/lib.test.mjs scripts/go-live/run.test.mjs scripts/go-live/ui.test.mjs scripts/go-live/ui-pure.test.mjs scripts/go-live/rollout.test.mjs scripts/go-live/dns-check.test.mjs scripts/go-live/lock.test.mjs scripts/go-live/deploy-lock.test.mjs scripts/go-live/deploy-profile.test.mjs scripts/go-live/realtime.test.mjs",
+    "test:print-tools": "node --test scripts/fake-escpos-printer.test.mjs",
+    "deploy": "node scripts/deploy.mjs",
+    "go-live": "node scripts/go-live/index.mjs",
+```
+
+Replace it with:
+
+```json
+    "test:go-live": "node --test scripts/go-live/lib.test.mjs scripts/go-live/run.test.mjs scripts/go-live/ui.test.mjs scripts/go-live/ui-pure.test.mjs scripts/go-live/rollout.test.mjs scripts/go-live/dns-check.test.mjs scripts/go-live/lock.test.mjs scripts/go-live/deploy-lock.test.mjs scripts/go-live/deploy-profile.test.mjs scripts/go-live/realtime.test.mjs",
+    "test:print-tools": "node --test scripts/fake-escpos-printer.test.mjs",
+    "test:release-native": "node --test scripts/release-native.test.mjs",
+    "deploy": "node scripts/deploy.mjs",
+    "go-live": "node scripts/go-live/index.mjs",
+```
+
+Create `scripts/release-native.test.mjs`:
+
+```js
+// Native apps 2.0 (spec §10, Session N4): the release folder. The pure parts on their own (the manifest by the app's
+// rules, the version code, the names, electron-builder's files, the Android tools' outputs as this PC's build-tools 37
+// print them, the upload steps), then the whole folder written from fake APKs and a fake installer with fake tools, and
+// every way a release built wrong is refused before anything is written (Review Focus 4).
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { createHash, randomBytes } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import {
+  apkName,
+  buildManifest,
+  EXPECTED_CERT_SHA256,
+  installerName,
+  manifestProblems,
+  MAX_APK_BYTES,
+  packageRelease,
+  parseArgs,
+  readAppUpdateYml,
+  readBadging,
+  readLatestYml,
+  Refused,
+  repoVersion,
+  resourceValue,
+  signerDigests,
+  uploadSteps,
+  versionCode,
+} from "./release-native.mjs";
+
+const SHA = "ab".repeat(32);
+
+function scratch() {
+  return mkdtempSync(path.join(os.tmpdir(), "release-native-test-"));
+}
+
+/** A valid 2.1.0 manifest as the script writes it; [edit] changes it. */
+function manifest(edit = () => undefined) {
+  const m = buildManifest({
+    version: "2.1.0",
+    released: "2026-11-02",
+    notes: "Faster printing.",
+    apks: {
+      "arm64-v8a": { file: "Sandbee-POS-2.1.0-arm64-v8a.apk", sha256: SHA, size: 7_320_758 },
+      "armeabi-v7a": { file: "Sandbee-POS-2.1.0-armeabi-v7a.apk", sha256: SHA, size: 6_728_592 },
+    },
+  });
+  edit(m);
+  return m;
+}
+
+test("a version code is major × 10000 + minor × 100 + patch; a prerelease or anything else is no version", () => {
+  assert.equal(versionCode("2.0.0"), 20000, "2.0.0");
+  assert.equal(versionCode("2.1.0"), 20100, "2.1.0");
+  assert.equal(versionCode("10.99.99"), 109999, "10.99.99");
+  for (const bad of ["2.100.0", "2.0", "v2.0.0", "2.1.0-rc.1", "2.0.0-test", "2.0.0 ", "", undefined]) {
+    assert.equal(versionCode(bad), null, `no version: ${JSON.stringify(bad)}`);
+  }
+});
+
+test("the files are named as the bucket's keys say (spec §4)", () => {
+  assert.equal(apkName("2.0.0", "arm64-v8a"), "Sandbee-POS-2.0.0-arm64-v8a.apk", "the 64-bit APK");
+  assert.equal(apkName("2.0.0", "armeabi-v7a"), "Sandbee-POS-2.0.0-armeabi-v7a.apk", "the 32-bit APK");
+  assert.equal(installerName("2.0.0"), "POS-Software-Setup-2.0.0.exe", "the installer, as electron-builder names it");
+});
+
+test("the manifest the script writes is one the app accepts, in the spec's field order, with no notes field when there are none", () => {
+  assert.deepEqual(manifestProblems(manifest()), [], "a release's manifest");
+  assert.deepEqual(
+    Object.keys(manifest()),
+    ["schema", "package", "version", "versionCode", "released", "notes", "apks"],
+    "the spec's order",
+  );
+  assert.equal(manifest().versionCode, 20100, "the code comes from the version");
+  const none = buildManifest({ version: "2.1.0", released: "2026-11-02", notes: "", apks: manifest().apks });
+  assert.equal("notes" in none, false, "empty notes are no field");
+  assert.deepEqual(manifestProblems(none), [], "notes are optional");
+});
+
+test("every rule of the app's manifest reader (UpdateManifestTest's table) is a problem, by its own reason", () => {
+  const cases = [
+    ["schema", (m) => delete m.schema],
+    ["schema", (m) => (m.schema = 2)],
+    ["schema", (m) => (m.schema = "1")],
+    ["package", (m) => (m.package = "com.example.other")],
+    ["version", (m) => delete m.version],
+    ["version", (m) => (m.version = "2.1")],
+    ["version", (m) => (m.version = "2.100.0")],
+    ["version", (m) => (m.version = "2.1.1")],
+    ["versionCode", (m) => (m.versionCode = "20100")],
+    ["versionCode", (m) => (m.versionCode = 20100.5)],
+    ["released", (m) => delete m.released],
+    ["released", (m) => (m.released = "02/11/2026")],
+    ["notes", (m) => (m.notes = "x".repeat(301))],
+    ["notes", (m) => (m.notes = 5)],
+    ["apks", (m) => delete m.apks],
+    ["apks", (m) => (m.apks = "Sandbee-POS-2.1.0-arm64-v8a.apk")],
+    ["sha256 arm64-v8a", (m) => (m.apks["arm64-v8a"].sha256 = "ab".repeat(31) + "a")],
+    ["sha256 arm64-v8a", (m) => (m.apks["arm64-v8a"].sha256 = "zz".repeat(32))],
+    ["sha256 arm64-v8a", (m) => delete m.apks["arm64-v8a"].sha256],
+    ["size arm64-v8a", (m) => (m.apks["arm64-v8a"].size = 0)],
+    ["size arm64-v8a", (m) => (m.apks["arm64-v8a"].size = -1)],
+    ["size arm64-v8a", (m) => (m.apks["arm64-v8a"].size = MAX_APK_BYTES + 1)],
+    ["size arm64-v8a", (m) => (m.apks["arm64-v8a"].size = "7320758")],
+    // The release's own rules: both CPU types, each file named for its version and CPU type.
+    ["apk armeabi-v7a", (m) => delete m.apks["armeabi-v7a"]],
+    ["file arm64-v8a", (m) => (m.apks["arm64-v8a"].file = "Sandbee-POS-2.0.0-arm64-v8a.apk")],
+  ];
+  for (const [reason, edit] of cases) {
+    assert.deepEqual(manifestProblems(manifest(edit)), [reason], `${reason}: ${edit.toString()}`);
+  }
+  for (const file of ["../Sandbee.apk", "a/b.apk", "a\\b.apk", "https://evil.example/x.apk", "x.apk.exe", ".apk", "-x.apk", "x..apk", "", "x".repeat(100) + ".apk"]) {
+    assert.deepEqual(manifestProblems(manifest((m) => (m.apks["arm64-v8a"].file = file))), ["file arm64-v8a"], `file ${file}`);
+  }
+  assert.deepEqual(manifestProblems(manifest((m) => (m.apks["arm64-v8a"].size = MAX_APK_BYTES))), [], "100 MB is allowed");
+  assert.deepEqual(manifestProblems(manifest((m) => (m.notes = "x".repeat(300)))), [], "300 characters of notes are allowed");
+  assert.deepEqual(manifestProblems(manifest((m) => (m.apks["arm64-v8a"].sha256 = SHA.toUpperCase()))), [], "the app reads an upper-case hash");
+  assert.deepEqual(manifestProblems([1, 2]), ["not JSON"], "not a manifest");
+});
+
+// electron-builder 26.16.0's files for a 2.0.0 build (Session N3's test build, the release url).
+const LATEST_YML = [
+  "version: 2.0.0",
+  "files:",
+  "  - url: POS-Software-Setup-2.0.0.exe",
+  "    sha512: Xo8ur19P7cVXc7K7kbnrZ/Bu4j6NAXrLQEUESJWHH9WUyKkYjiZpn3BUSFVKaL+/9atj2taJgNDsqWlOPC/7oA==",
+  "    size: 112542296",
+  "path: POS-Software-Setup-2.0.0.exe",
+  "sha512: Xo8ur19P7cVXc7K7kbnrZ/Bu4j6NAXrLQEUESJWHH9WUyKkYjiZpn3BUSFVKaL+/9atj2taJgNDsqWlOPC/7oA==",
+  "releaseDate: '2026-10-13T10:51:14.926Z'",
+  "",
+].join("\n");
+
+test("electron-builder's latest.yml and app-update.yml are read as it writes them", () => {
+  const sha512 = "Xo8ur19P7cVXc7K7kbnrZ/Bu4j6NAXrLQEUESJWHH9WUyKkYjiZpn3BUSFVKaL+/9atj2taJgNDsqWlOPC/7oA==";
+  assert.deepEqual(
+    readLatestYml(LATEST_YML),
+    {
+      version: "2.0.0",
+      files: [{ url: "POS-Software-Setup-2.0.0.exe", sha512, size: 112542296 }],
+      path: "POS-Software-Setup-2.0.0.exe",
+      sha512,
+      releaseDate: "2026-10-13T10:51:14.926Z",
+    },
+    "latest.yml",
+  );
+  assert.equal(readLatestYml(LATEST_YML.replace(/\n/g, "\r\n")).version, "2.0.0", "CRLF lines too");
+  assert.deepEqual(
+    readAppUpdateYml("provider: generic\nurl: https://files.sandbee.in/pos/windows\nupdaterCacheDirName: pos-desktop-updater\n"),
+    { provider: "generic", url: "https://files.sandbee.in/pos/windows", updaterCacheDirName: "pos-desktop-updater" },
+    "app-update.yml",
+  );
+});
+
+// What build-tools 37 printed for the N3 gate's release APKs (excerpts).
+const APKSIGNER_OUT = [
+  "V2 Signer: certificate DN: CN=Sandbee POS, O=sandbee, C=IN",
+  `V2 Signer: certificate SHA-256 digest: ${EXPECTED_CERT_SHA256}`,
+  "V2 Signer: certificate SHA-1 digest: a690cc2614d486327962ed6f72f05605b4dc831c",
+  "V2 Signer: certificate MD5 digest: 57b7122c5291362b5514c130594d682c",
+  "",
+].join("\n");
+
+function badgingOut({ name = "com.possoftware.pos", code = 20000, version = "2.0.0", native = "'arm64-v8a'", debuggable = false } = {}) {
+  return [
+    `package: name='${name}' versionCode='${code}' versionName='${version}' platformBuildVersionName='17' platformBuildVersionCode='37' compileSdkVersion='37' compileSdkVersionCodename='17'`,
+    "minSdkVersion:'24'",
+    "targetSdkVersion:'36'",
+    "uses-permission: name='android.permission.REQUEST_INSTALL_PACKAGES'",
+    "application-label:'Sandbee POS'",
+    ...(debuggable ? ["application-debuggable"] : []),
+    "densities: '160' '240' '320' '480' '640' '65534'",
+    `native-code: ${native}`,
+    "",
+  ].join("\n");
+}
+
+function resourcesOut({ base = "https://files.sandbee.in/pos", check = 720, reopen = 30 } = {}) {
+  return [
+    "    resource 0x7f090004 integer/pos_update_check_minutes",
+    `      () ${check}`,
+    "    resource 0x7f090005 integer/pos_update_reopen_minutes",
+    `      () ${reopen}`,
+    "    resource 0x7f0e0051 string/pos_update_base_label",
+    '      () "a neighbour that is not it"',
+    "    resource 0x7f0e0052 string/pos_update_base",
+    `      () "${base}"`,
+    "    resource 0x7f0e0053 string/print_host_alert_channel_name",
+    '      () "POS printing"',
+    "",
+  ].join("\n");
+}
+
+test("the Android tools' outputs are read: the signer's certificate, the package line, debuggable, the CPU type, the update settings", () => {
+  assert.deepEqual(signerDigests(APKSIGNER_OUT), [EXPECTED_CERT_SHA256], "build-tools 37's V2 Signer line");
+  assert.deepEqual(signerDigests(`Signer #1 certificate SHA-256 digest: ${SHA}\n`), [SHA], "an older build-tools' line");
+  assert.deepEqual(
+    readBadging(badgingOut()),
+    { package: "com.possoftware.pos", versionCode: 20000, versionName: "2.0.0", debuggable: false, nativeCode: ["arm64-v8a"] },
+    "a release APK",
+  );
+  assert.equal(readBadging(badgingOut({ debuggable: true })).debuggable, true, "a debug build says so");
+  assert.deepEqual(readBadging(badgingOut({ native: "'arm64-v8a' 'x86_64'" })).nativeCode, ["arm64-v8a", "x86_64"], "two CPU types");
+  assert.equal(resourceValue(resourcesOut(), "string/pos_update_base"), "https://files.sandbee.in/pos", "the base, not its neighbour");
+  assert.equal(resourceValue(resourcesOut(), "integer/pos_update_check_minutes"), 720, "the check");
+  assert.equal(resourceValue(resourcesOut(), "integer/pos_update_reopen_minutes"), 30, "the reopen time");
+  assert.equal(resourceValue(resourcesOut(), "string/missing"), null, "no such resource");
+});
+
+test("the upload steps put the versioned files first and latest.json and latest.yml last, with the cache headers", () => {
+  const steps = uploadSteps("2.0.0");
+  const at = (text, from = 0) => {
+    const index = steps.indexOf(text, from);
+    assert.ok(index >= 0, `the steps name ${text}`);
+    return index;
+  };
+  const first = at("2. Upload these first");
+  const last = at("3. Then, LAST");
+  const check = at("4. Check from a phone");
+  for (const file of ["Sandbee-POS-2.0.0-arm64-v8a.apk", "Sandbee-POS-2.0.0-armeabi-v7a.apk", "POS-Software-Setup-2.0.0.exe", "POS-Software-Setup-2.0.0.exe.blockmap"]) {
+    const index = at(`/${file}`, first);
+    assert.ok(index < last, `${file} in the first step`);
+  }
+  for (const file of ["pos/android/latest.json", "pos/windows/latest.yml"]) {
+    const index = at(file, last);
+    assert.ok(index < check, `${file} in the last step`);
+  }
+  assert.ok(at("max-age=31536000, immutable", first) < last, "the versioned files' cache header");
+  assert.ok(at("max-age=60", last) < check, "the latest files' cache header");
+  assert.ok(at("sha256sum -c SHA256SUMS.txt") < first, "check the files first");
+  assert.ok(at("Get-FileHash -Algorithm SHA256") < first, "... in PowerShell too (the N3 gate's review, m-5)");
+  assert.ok(at("https://files.sandbee.in/pos/android/latest.json", check) > check, "the check from a phone");
+});
+
+test("the one version is the Windows app's, and the Android build setting must say the same (spec §5)", () => {
+  const root = scratch();
+  try {
+    mkdirSync(path.join(root, "apps", "desktop"), { recursive: true });
+    mkdirSync(path.join(root, "apps", "mobile", "android", "app"), { recursive: true });
+    writeFileSync(path.join(root, "apps", "desktop", "package.json"), JSON.stringify({ version: "2.0.1" }));
+    const gradle = path.join(root, "apps", "mobile", "android", "app", "build.gradle");
+    writeFileSync(gradle, 'def posVersionRelease = "2.0.1"\n');
+    assert.equal(repoVersion(root), "2.0.1", "both say 2.0.1");
+    writeFileSync(gradle, 'def posVersionRelease = "2.0.0"\n');
+    assert.throws(() => repoVersion(root), (e) => e instanceof Refused && /one version for both/.test(e.message), "they differ");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the flags: the four the release needs, two optional, and the usage line for anything else", () => {
+  assert.deepEqual(
+    parseArgs(["--arm64", "a.apk", "--armv7", "b.apk", "--windows", "dist", "--notes", "Faster.", "--released", "2026-10-20", "--out", "o"]),
+    { arm64: "a.apk", armv7: "b.apk", windows: "dist", notes: "Faster.", released: "2026-10-20", out: "o" },
+    "every flag",
+  );
+  assert.throws(() => parseArgs(["--arm64", "a.apk", "--armv7", "b.apk", "--windows", "dist"]), Refused, "no --notes");
+  assert.throws(() => parseArgs(["--arm64", "a.apk", "--armv7", "b.apk", "--windows", "dist", "--notes", "x", "--force", "1"]), Refused, "an unknown flag");
+  assert.throws(() => parseArgs(["--arm64"]), Refused, "a flag without its value");
+});
+
+const sha512 = (bytes) => createHash("sha512").update(bytes).digest("base64");
+const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+
+/** A built release on disk (two fake APKs, a fake installer with electron-builder's files) and fake tools that answer
+ *  as build-tools 37 does for a correct release; [edit] breaks one thing. */
+function release(edit = {}) {
+  const root = scratch();
+  const apk64 = path.join(root, "apk", "app-arm64-v8a-release.apk");
+  const apk32 = path.join(root, "apk", "app-armeabi-v7a-release.apk");
+  mkdirSync(path.dirname(apk64), { recursive: true });
+  writeFileSync(apk64, randomBytes(4096));
+  writeFileSync(apk32, randomBytes(3072));
+  const dist = path.join(root, "dist");
+  mkdirSync(path.join(dist, "win-unpacked", "resources"), { recursive: true });
+  const installer = randomBytes(8192);
+  writeFileSync(path.join(dist, "POS-Software-Setup-2.0.0.exe"), installer);
+  writeFileSync(path.join(dist, "POS-Software-Setup-2.0.0.exe.blockmap"), randomBytes(256));
+  writeFileSync(
+    path.join(dist, "latest.yml"),
+    LATEST_YML.replaceAll("Xo8ur19P7cVXc7K7kbnrZ/Bu4j6NAXrLQEUESJWHH9WUyKkYjiZpn3BUSFVKaL+/9atj2taJgNDsqWlOPC/7oA==", sha512(installer)).replace("112542296", String(installer.length)),
+  );
+  writeFileSync(
+    path.join(dist, "win-unpacked", "resources", "app-update.yml"),
+    "provider: generic\nurl: https://files.sandbee.in/pos/windows\nupdaterCacheDirName: pos-desktop-updater\n",
+  );
+  const abiOf = (apk) => (apk === apk64 ? "arm64-v8a" : "armeabi-v7a");
+  const tools = {
+    apksigner: () => APKSIGNER_OUT,
+    badging: (apk) => badgingOut({ native: `'${abiOf(apk)}'` }),
+    resources: () => resourcesOut(),
+  };
+  const opts = { version: "2.0.0", arm64: apk64, armv7: apk32, windows: dist, notes: "Sandbee POS now updates itself.", released: "2026-10-20", out: path.join(root, "out") };
+  const r = { root, apk64, apk32, dist, installer, tools, opts };
+  edit.run?.(r);
+  return r;
+}
+
+test("a release folder: the APKs and the installer under the bucket's keys, latest.json by the app's rules, SHA256SUMS.txt for every file, the upload steps", () => {
+  const r = release();
+  try {
+    const { dir, files, manifest: written } = packageRelease(r.opts, r.tools);
+    assert.equal(dir, path.join(r.opts.out, "Sandbee-POS-2.0.0"), "the folder is named for the version");
+    assert.deepEqual(
+      files,
+      [
+        "upload/pos/android/Sandbee-POS-2.0.0-arm64-v8a.apk",
+        "upload/pos/android/Sandbee-POS-2.0.0-armeabi-v7a.apk",
+        "upload/pos/android/latest.json",
+        "upload/pos/windows/POS-Software-Setup-2.0.0.exe",
+        "upload/pos/windows/POS-Software-Setup-2.0.0.exe.blockmap",
+        "upload/pos/windows/latest.yml",
+      ],
+      "the bucket's keys",
+    );
+    const latest = JSON.parse(readFileSync(path.join(dir, "upload", "pos", "android", "latest.json"), "utf8"));
+    assert.deepEqual(latest, written, "latest.json is what was checked");
+    assert.deepEqual(manifestProblems(latest), [], "the app accepts it");
+    assert.deepEqual(
+      latest,
+      {
+        schema: 1,
+        package: "com.possoftware.pos",
+        version: "2.0.0",
+        versionCode: 20000,
+        released: "2026-10-20",
+        notes: "Sandbee POS now updates itself.",
+        apks: {
+          "arm64-v8a": { file: "Sandbee-POS-2.0.0-arm64-v8a.apk", sha256: sha256(readFileSync(r.apk64)), size: 4096 },
+          "armeabi-v7a": { file: "Sandbee-POS-2.0.0-armeabi-v7a.apk", sha256: sha256(readFileSync(r.apk32)), size: 3072 },
+        },
+      },
+      "the hashes and sizes are the built APKs'",
+    );
+    const sums = readFileSync(path.join(dir, "SHA256SUMS.txt"), "utf8").trimEnd().split("\n");
+    assert.equal(sums.length, files.length, "one line per file");
+    for (const [i, file] of files.entries()) {
+      assert.equal(sums[i], `${sha256(readFileSync(path.join(dir, file)))} *${file}`, `sha256sum's line for ${file}`);
+    }
+    assert.ok(readFileSync(path.join(dir, "upload", "pos", "windows", "POS-Software-Setup-2.0.0.exe")).equals(r.installer), "the installer, byte for byte");
+    assert.equal(readFileSync(path.join(dir, "upload", "pos", "windows", "latest.yml"), "utf8"), readFileSync(path.join(r.dist, "latest.yml"), "utf8"), "electron-builder's latest.yml as it is");
+    assert.equal(readFileSync(path.join(dir, "UPLOAD-STEPS.txt"), "utf8"), uploadSteps("2.0.0"), "the upload steps");
+    assert.equal(existsSync(dir + ".partial"), false, "written in a .partial folder and renamed at the end");
+  } finally {
+    rmSync(r.root, { recursive: true, force: true });
+  }
+});
+
+test("a release built the wrong way is refused with one clear line, and nothing is written (Review Focus 4)", () => {
+  const cases = [
+    ["not signed with the private key", (r) => (r.tools.apksigner = () => `V2 Signer: certificate SHA-256 digest: ${SHA}\n`)],
+    ["apksigner says its signature does not verify", (r) => (r.tools.apksigner = () => { throw new Error("DOES NOT VERIFY"); })],
+    ["a debuggable build is not a release", (r) => (r.tools.badging = (apk) => badgingOut({ debuggable: true, native: apk === r.apk64 ? "'arm64-v8a'" : "'armeabi-v7a'" }))],
+    ["package com.example.other", (r) => (r.tools.badging = () => badgingOut({ name: "com.example.other" }))],
+    ["version 2.0.1 (20001), not 2.0.0 (20000)", (r) => (r.tools.badging = () => badgingOut({ code: 20001, version: "2.0.1" }))],
+    ["native code armeabi-v7a, not arm64-v8a alone", (r) => ([r.opts.arm64, r.opts.armv7] = [r.apk32, r.apk64])],
+    ["native code arm64-v8a, x86_64, not arm64-v8a alone", (r) => (r.tools.badging = () => badgingOut({ native: "'arm64-v8a' 'x86_64'" }))],
+    ["update base http://127.0.0.1:8765/pos", (r) => (r.tools.resources = () => resourcesOut({ base: "http://127.0.0.1:8765/pos" }))],
+    ["update times 1/1 minutes", (r) => (r.tools.resources = () => resourcesOut({ check: 1, reopen: 1 }))],
+    ["no such APK", (r) => (r.opts.arm64 = path.join(r.root, "apk", "missing.apk"))],
+    ["no latest.yml", (r) => rmSync(path.join(r.dist, "latest.yml"))],
+    ["latest.yml: version 2.0.1", (r) => writeFileSync(path.join(r.dist, "latest.yml"), readFileSync(path.join(r.dist, "latest.yml"), "utf8").replace("version: 2.0.0", "version: 2.0.1"))],
+    ["its SHA-512 or size is not", (r) => writeFileSync(path.join(r.dist, "POS-Software-Setup-2.0.0.exe"), randomBytes(8192))],
+    ["POS-Software-Setup-2.0.0.exe.blockmap: missing", (r) => rmSync(path.join(r.dist, "POS-Software-Setup-2.0.0.exe.blockmap"))],
+    ["not generic https://files.sandbee.in/pos/windows", (r) => writeFileSync(path.join(r.dist, "win-unpacked", "resources", "app-update.yml"), "provider: generic\nurl: http://127.0.0.1:8766/pos/windows\nupdaterCacheDirName: pos-desktop-updater\n")],
+    ["no prerelease part", (r) => (r.opts.version = "2.0.1-rc.1")],
+    ["notes: 301 characters", (r) => (r.opts.notes = "x".repeat(301))],
+    ["released 20/10/2026", (r) => (r.opts.released = "20/10/2026")],
+    // The N3 gate's review of N4 (its m-1, m-2, m-3, m-7).
+    ["not signed with the private key", (r) => (r.tools.apksigner = () => APKSIGNER_OUT + `V2 Signer: certificate SHA-256 digest: ${SHA}\n`)],
+    ["cannot run java", (r) => (r.tools.apksigner = () => { throw Object.assign(new Error("spawn java ENOENT"), { code: "ENOENT", path: "java" }); })],
+    ["no win-unpacked", (r) => rmSync(path.join(r.dist, "win-unpacked", "resources", "app-update.yml"))],
+    ["latest.yml: names POS-Software-Setup-2.0.1.exe", (r) => writeFileSync(path.join(r.dist, "latest.yml"), readFileSync(path.join(r.dist, "latest.yml"), "utf8").replace("path: POS-Software-Setup-2.0.0.exe", "path: POS-Software-Setup-2.0.1.exe"))],
+    ["left from an incomplete run", (r) => mkdirSync(path.join(r.opts.out, "Sandbee-POS-2.0.0.partial"), { recursive: true })],
+    ["Sandbee-POS-2.0.1 is newer than 2.0.0", (r) => mkdirSync(path.join(r.opts.out, "Sandbee-POS-2.0.1"), { recursive: true })],
+  ];
+  const listing = (folder) => (existsSync(folder) ? readdirSync(folder, { recursive: true }).map(String).sort() : null);
+  for (const [message, run] of cases) {
+    const r = release({ run });
+    try {
+      const before = listing(r.opts.out);
+      assert.throws(() => packageRelease(r.opts, r.tools), (e) => e instanceof Refused && e.message.includes(message), `refused: ${message}`);
+      assert.deepEqual(listing(r.opts.out), before, `nothing written: ${message}`);
+    } finally {
+      rmSync(r.root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("a release folder is written once: an existing one is refused and left as it is", () => {
+  const r = release();
+  try {
+    const dir = path.join(r.opts.out, "Sandbee-POS-2.0.0");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "keep.txt"), "the owner's");
+    assert.throws(() => packageRelease(r.opts, r.tools), (e) => e instanceof Refused && /already exists/.test(e.message), "refused");
+    assert.equal(readFileSync(path.join(dir, "keep.txt"), "utf8"), "the owner's", "untouched");
+    assert.equal(existsSync(path.join(dir, "upload")), false, "nothing added");
+  } finally {
+    rmSync(r.root, { recursive: true, force: true });
+  }
+});
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+```bash
+cd /d/kd/lucifer && npm run test:release-native 2>&1 | grep -E "^not ok|Cannot find module|^# (tests|pass|fail)" | sed -E 's/ from .*//'
+```
+Expected: `# Error [ERR_MODULE_NOT_FOUND]: Cannot find module 'D:\\kd\\lucifer\\scripts\\release-native.mjs' imported`,
+`not ok 1 - scripts\\release-native.test.mjs`, `# tests 1`, `# pass 0`, `# fail 1`.
+
+- [ ] **Step 3: Implement**
+
+Create `scripts/release-native.mjs`:
+
+```js
+#!/usr/bin/env node
+// Native apps 2.0 (spec §10): the release folder for one version of both native apps. It builds nothing: it takes the
+// release APK pair and the Windows installer that the usual commands built, checks them, and writes
+//
+//   <out>\Sandbee-POS-<version>\upload\pos\android\{latest.json, Sandbee-POS-<version>-arm64-v8a.apk, …-armeabi-v7a.apk}
+//   <out>\Sandbee-POS-<version>\upload\pos\windows\{latest.yml, POS-Software-Setup-<version>.exe, ….exe.blockmap}
+//   <out>\Sandbee-POS-<version>\SHA256SUMS.txt and UPLOAD-STEPS.txt
+//
+// laid out exactly as the bucket's keys. Nothing is uploaded: the owner uploads by hand, latest.json and latest.yml last.
+//
+//   node scripts/release-native.mjs --arm64 <apk> --armv7 <apk> --windows <electron-builder output folder>
+//                                   --notes "<text>" [--released YYYY-MM-DD] [--out <folder>]
+//
+// It refuses, with one clear line and before writing anything, a release built the wrong way (spec §4, Review Focus 4):
+// an APK not signed with the private key, a debug build, another package, version or CPU type, a test update base or
+// shortened times, an installer whose latest.yml or app-update.yml is not the release's, a version with a prerelease
+// part (electron-updater's generic provider would offer it: the N3 review's m-1), notes over 300 characters, or a
+// release folder that already exists. The tools: apksigner (build-tools' lib/apksigner.jar, run with java) and aapt2,
+// from ANDROID_HOME (default %LOCALAPPDATA%\Android\Sdk). The pure parts are exported for release-native.test.mjs.
+
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+export const PACKAGE = "com.possoftware.pos";
+/** The private key's certificate (Session N1; apksigner prints it as "certificate SHA-256 digest"). */
+export const EXPECTED_CERT_SHA256 = "5bd06ef3e9a78efcb0dfbd1ff102de932c581a78034d93ef7572f5373b5b3e40";
+export const UPDATE_BASE = "https://files.sandbee.in/pos";
+export const WINDOWS_FEED = UPDATE_BASE + "/windows";
+export const UPDATER_CACHE_DIR = "pos-desktop-updater";
+export const CHECK_MINUTES = 720;
+export const REOPEN_MINUTES = 30;
+export const MAX_APK_BYTES = 100 * 1024 * 1024;
+export const MAX_NOTES_CHARS = 300;
+/** The release's two CPU types, by this script's flag. */
+export const RELEASE_ABIS = { arm64: "arm64-v8a", armv7: "armeabi-v7a" };
+export const DEFAULT_OUT = "D:\\kd\\pos-apk-release";
+export const BUILD_TOOLS = "37.0.0";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const VERSION = /^(\d{1,3})\.(\d{1,2})\.(\d{1,2})$/;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const APK_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,98}\.apk$/;
+const SHA256 = /^[0-9a-fA-F]{64}$/;
+
+/** A refusal: the release is not written. */
+export class Refused extends Error {}
+
+/** spec §5: major × 10000 + minor × 100 + patch; null for anything but x.y.z with minor and patch below 100 (so a
+ *  prerelease such as 2.1.0-rc.1 is no version here). */
+export function versionCode(version) {
+  const m = typeof version === "string" ? VERSION.exec(version) : null;
+  return m ? Number(m[1]) * 10000 + Number(m[2]) * 100 + Number(m[3]) : null;
+}
+
+export const apkName = (version, abi) => `Sandbee-POS-${version}-${abi}.apk`;
+export const installerName = (version) => `POS-Software-Setup-${version}.exe`;
+export const folderName = (version) => `Sandbee-POS-${version}`;
+
+/** android/latest.json in the spec's field order; no notes field when the notes are empty. */
+export function buildManifest({ version, released, notes, apks }) {
+  const manifest = { schema: 1, package: PACKAGE, version, versionCode: versionCode(version), released };
+  if (notes !== "") manifest.notes = notes;
+  manifest.apks = {};
+  for (const [abi, apk] of Object.entries(apks)) manifest.apks[abi] = { file: apk.file, sha256: apk.sha256, size: apk.size };
+  return manifest;
+}
+
+/** The app's manifest rules (UpdateManifest.kt, spec §4) as reasons, in its order, plus the release's own: both release
+ *  CPU types, each file named for its version and CPU type. [] when an older app accepts it. */
+export function manifestProblems(m) {
+  if (typeof m !== "object" || m === null || Array.isArray(m)) return ["not JSON"];
+  if (m.schema !== 1) return ["schema"];
+  if (m.package !== PACKAGE) return ["package"];
+  if (typeof m.version !== "string") return ["version"];
+  if (!Number.isInteger(m.versionCode)) return ["versionCode"];
+  if (versionCode(m.version) !== m.versionCode) return ["version"];
+  if (typeof m.released !== "string" || !DATE.test(m.released)) return ["released"];
+  if (m.notes !== undefined && m.notes !== null && (typeof m.notes !== "string" || m.notes.length > MAX_NOTES_CHARS)) {
+    return ["notes"];
+  }
+  if (typeof m.apks !== "object" || m.apks === null || Array.isArray(m.apks)) return ["apks"];
+  const problems = [];
+  for (const abi of Object.values(RELEASE_ABIS)) {
+    const apk = m.apks[abi];
+    if (typeof apk !== "object" || apk === null) {
+      problems.push(`apk ${abi}`);
+      continue;
+    }
+    if (typeof apk.file !== "string" || !APK_FILE.test(apk.file) || apk.file.includes("..") || apk.file !== apkName(m.version, abi)) {
+      problems.push(`file ${abi}`);
+    } else if (typeof apk.sha256 !== "string" || !SHA256.test(apk.sha256)) {
+      problems.push(`sha256 ${abi}`);
+    } else if (!Number.isInteger(apk.size) || apk.size <= 0 || apk.size > MAX_APK_BYTES) {
+      problems.push(`size ${abi}`);
+    }
+  }
+  return problems;
+}
+
+function unquote(value) {
+  const v = value.trim();
+  return /^'.*'$|^".*"$/.test(v) ? v.slice(1, -1) : v;
+}
+
+/** electron-builder's latest.yml: version, path, sha512, releaseDate and the files list (url, sha512, size). */
+export function readLatestYml(text) {
+  const out = { files: [] };
+  let file = null;
+  for (const line of text.split(/\r?\n/)) {
+    let m;
+    if ((m = /^(version|path|sha512|releaseDate): (.+)$/.exec(line))) {
+      out[m[1]] = unquote(m[2]);
+    } else if ((m = /^ {2}- url: (.+)$/.exec(line))) {
+      file = { url: unquote(m[1]) };
+      out.files.push(file);
+    } else if ((m = /^ {4}(sha512|size): (.+)$/.exec(line)) && file !== null) {
+      file[m[1]] = m[1] === "size" ? Number(m[2]) : unquote(m[2]);
+    }
+  }
+  return out;
+}
+
+/** win-unpacked\resources\app-update.yml: flat "key: value" lines. */
+export function readAppUpdateYml(text) {
+  const out = {};
+  for (const line of text.split(/\r?\n/)) {
+    const m = /^([A-Za-z]+): (.+)$/.exec(line);
+    if (m) out[m[1]] = unquote(m[2]);
+  }
+  return out;
+}
+
+/** apksigner verify --print-certs: every signer's certificate SHA-256 (build-tools 37 prints "V2 Signer: certificate
+ *  SHA-256 digest: <hex>"; older ones "Signer #1 certificate SHA-256 digest: <hex>"). */
+export function signerDigests(text) {
+  return [...text.matchAll(/certificate SHA-256 digest: ([0-9a-f]{64})/g)].map((m) => m[1]);
+}
+
+/** aapt2 dump badging: the package line, debuggable or not, the native code's CPU types. */
+export function readBadging(text) {
+  const pkg = /^package: name='([^']*)' versionCode='([^']*)' versionName='([^']*)'/m.exec(text);
+  const native = /^native-code: (.+)$/m.exec(text);
+  return {
+    package: pkg?.[1] ?? null,
+    versionCode: pkg ? Number(pkg[2]) : null,
+    versionName: pkg?.[3] ?? null,
+    debuggable: /^application-debuggable$/m.test(text),
+    nativeCode: native ? [...native[1].matchAll(/'([^']+)'/g)].map((m) => m[1]) : [],
+  };
+}
+
+/** aapt2 dump resources: the value under a resource's line ("() "text"" for a string, "() 720" for an integer). */
+export function resourceValue(text, name) {
+  const lines = text.split(/\r?\n/);
+  const at = lines.findIndex((line) => new RegExp(`\\s${name.replace("/", "\\/")}$`).test(line.trimEnd()));
+  if (at < 0 || at + 1 >= lines.length) return null;
+  const m = /^\s*\(\)\s+(?:"(.*)"|(-?\d+))\s*$/.exec(lines[at + 1]);
+  if (!m) return null;
+  return m[1] !== undefined ? m[1] : Number(m[2]);
+}
+
+export function sha256Of(file) {
+  return createHash("sha256").update(readFileSync(file)).digest("hex");
+}
+
+function sha512Base64(file) {
+  return createHash("sha512").update(readFileSync(file)).digest("base64");
+}
+
+/** The upload steps for the owner (spec §10): the bucket keys, versioned files first, latest.* last, the cache headers,
+ *  the check from a phone. */
+export function uploadSteps(version) {
+  const a64 = apkName(version, RELEASE_ABIS.arm64);
+  const a32 = apkName(version, RELEASE_ABIS.armv7);
+  const exe = installerName(version);
+  return [
+    `Sandbee POS ${version}: how to upload this release (native apps 2.0, spec §10)`,
+    "",
+    "Nothing in this folder has been uploaded. Every file under upload\\ goes to the bucket under the same path:",
+    "upload\\pos\\android\\latest.json becomes the key pos/android/latest.json, and so on.",
+    "",
+    "1. Check the files first: in this folder, `sha256sum -c SHA256SUMS.txt` (Git Bash) says OK for every line; in",
+    "   PowerShell, `Get-FileHash -Algorithm SHA256 <file>` gives the hash on that file's line.",
+    "",
+    "2. Upload these first, with Cache-Control: max-age=31536000, immutable",
+    `   pos/android/${a64}    Content-Type: application/vnd.android.package-archive`,
+    `   pos/android/${a32}    Content-Type: application/vnd.android.package-archive`,
+    `   pos/windows/${exe}    Content-Type: application/octet-stream`,
+    `   pos/windows/${exe}.blockmap    Content-Type: application/octet-stream`,
+    "",
+    "3. Then, LAST, with Cache-Control: max-age=60",
+    "   pos/android/latest.json    Content-Type: application/json",
+    "   pos/windows/latest.yml    Content-Type: text/yaml",
+    "   (never before the files they name: a device would see an update it cannot download yet)",
+    "",
+    "4. Check from a phone's browser:",
+    `   ${UPDATE_BASE}/android/latest.json shows "version": "${version}"`,
+    `   ${WINDOWS_FEED}/latest.yml shows version: ${version}`,
+    "",
+    "5. What happens next: an Android device offers the update at an app open after its next look (at most every 12",
+    "   hours); a Windows PC downloads it a minute after the app starts (or at its daily look) and installs it when the",
+    "   app is closed, or at once with Restart to update. Nothing ever blocks work.",
+    "",
+    "A release is never taken back: a bad one is fixed by a newer version. Devices still on a 1.x app never update",
+    "themselves: they move to 2.0.0 by hand once (GO-LIVE-CHECKLIST, \"Existing cafes: the native apps 2.0 release\").",
+    "",
+  ].join("\n");
+}
+
+/** The one version: apps/desktop/package.json's, which the Android build setting must equal (pin 27). */
+export function repoVersion(root = ROOT) {
+  const desktop = JSON.parse(readFileSync(path.join(root, "apps", "desktop", "package.json"), "utf8")).version;
+  const gradle = /def posVersionRelease = "([^"]*)"/.exec(
+    readFileSync(path.join(root, "apps", "mobile", "android", "app", "build.gradle"), "utf8"),
+  )?.[1];
+  if (desktop !== gradle) {
+    throw new Refused(`the Windows app is ${desktop} and the Android app ${gradle}: one version for both (spec §5)`);
+  }
+  return desktop;
+}
+
+export function today(now = new Date()) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/** apksigner and aapt2 from the Android SDK on this PC; java from JAVA_HOME when it is set (the N3 gate's review, m-1:
+ *  a missing tool is named, never read as a bad signature). */
+export function realTools(sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || path.join(process.env.LOCALAPPDATA ?? "", "Android", "Sdk")) {
+  const bt = path.join(sdk, "build-tools", BUILD_TOOLS);
+  const jar = path.join(bt, "lib", "apksigner.jar");
+  const aapt2 = path.join(bt, "aapt2.exe");
+  for (const tool of [jar, aapt2]) {
+    if (!existsSync(tool)) throw new Refused(`cannot run ${tool}: no build-tools ${BUILD_TOOLS} there (set ANDROID_HOME)`);
+  }
+  const java = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", process.platform === "win32" ? "java.exe" : "java") : "java";
+  const run = (file, args) =>
+    execFileSync(file, args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
+  return {
+    apksigner: (apk) => run(java, ["-jar", jar, "verify", "--print-certs", apk]),
+    badging: (apk) => run(aapt2, ["dump", "badging", apk]),
+    resources: (apk) => run(aapt2, ["dump", "resources", apk]),
+  };
+}
+
+function read(name, what, run) {
+  try {
+    return run();
+  } catch (error) {
+    if (error?.code === "ENOENT") throw new Refused(`cannot run ${error.path ?? "a tool"} (set JAVA_HOME and ANDROID_HOME)`);
+    throw new Refused(`${name}: ${what}`);
+  }
+}
+
+function checkApk(file, abi, version, tools) {
+  const name = path.basename(file);
+  if (!existsSync(file) || !statSync(file).isFile()) throw new Refused(`${name}: no such APK`);
+  const size = statSync(file).size;
+  if (size <= 0 || size > MAX_APK_BYTES) throw new Refused(`${name}: ${size} bytes is not an APK of at most 100 MB`);
+  const signers = signerDigests(read(name, "apksigner says its signature does not verify", () => tools.apksigner(file)));
+  if (signers.length === 0 || signers.some((digest) => digest !== EXPECTED_CERT_SHA256)) {
+    throw new Refused(`${name}: not signed with the private key (certificate ${signers.join(", ") || "none"})`);
+  }
+  const badging = readBadging(read(name, "aapt2 cannot read it", () => tools.badging(file)));
+  if (badging.package !== PACKAGE) throw new Refused(`${name}: package ${badging.package}, not ${PACKAGE}`);
+  if (badging.versionName !== version || badging.versionCode !== versionCode(version)) {
+    throw new Refused(`${name}: version ${badging.versionName} (${badging.versionCode}), not ${version} (${versionCode(version)})`);
+  }
+  if (badging.debuggable) throw new Refused(`${name}: a debuggable build is not a release`);
+  if (badging.nativeCode.length !== 1 || badging.nativeCode[0] !== abi) {
+    throw new Refused(`${name}: native code ${badging.nativeCode.join(", ") || "none"}, not ${abi} alone`);
+  }
+  const resources = read(name, "aapt2 cannot read its resources", () => tools.resources(file));
+  const base = resourceValue(resources, "string/pos_update_base");
+  const check = resourceValue(resources, "integer/pos_update_check_minutes");
+  const reopen = resourceValue(resources, "integer/pos_update_reopen_minutes");
+  if (base !== UPDATE_BASE) throw new Refused(`${name}: update base ${base}, not ${UPDATE_BASE}`);
+  if (check !== CHECK_MINUTES || reopen !== REOPEN_MINUTES) {
+    throw new Refused(`${name}: update times ${check}/${reopen} minutes, not ${CHECK_MINUTES}/${REOPEN_MINUTES}`);
+  }
+  return { file, size };
+}
+
+function checkWindows(dir, version) {
+  const exe = installerName(version);
+  const latestPath = path.join(dir, "latest.yml");
+  if (!existsSync(latestPath)) throw new Refused(`${dir}: no latest.yml (build the installer with npm run dist)`);
+  const latest = readLatestYml(readFileSync(latestPath, "utf8"));
+  if (latest.version !== version) throw new Refused(`latest.yml: version ${latest.version}, not ${version}`);
+  if (latest.path !== exe || latest.files.length !== 1 || latest.files[0].url !== exe) {
+    throw new Refused(`latest.yml: names ${latest.path}, not ${exe} alone`);
+  }
+  const installer = path.join(dir, exe);
+  if (!existsSync(installer)) throw new Refused(`${exe}: no such installer in ${dir}`);
+  const sha512 = sha512Base64(installer);
+  if (latest.sha512 !== sha512 || latest.files[0].sha512 !== sha512 || latest.files[0].size !== statSync(installer).size) {
+    throw new Refused(`latest.yml: its SHA-512 or size is not ${exe}'s (an installer from another build)`);
+  }
+  const blockmap = installer + ".blockmap";
+  if (!existsSync(blockmap)) throw new Refused(`${exe}.blockmap: missing`);
+  const feedPath = path.join(dir, "win-unpacked", "resources", "app-update.yml");
+  if (!existsSync(feedPath)) throw new Refused(`${dir}: no win-unpacked\\resources\\app-update.yml`);
+  const feed = readAppUpdateYml(readFileSync(feedPath, "utf8"));
+  if (feed.provider !== "generic" || feed.url !== WINDOWS_FEED || feed.updaterCacheDirName !== UPDATER_CACHE_DIR) {
+    throw new Refused(`app-update.yml: ${feed.provider} ${feed.url}, not generic ${WINDOWS_FEED} (a test build?)`);
+  }
+  return { installer, blockmap, latestPath };
+}
+
+/** Checks everything, then writes the release folder; returns its path and its files (relative, "/"). Throws
+ *  [Refused] before writing anything. */
+export function packageRelease(opts, tools = realTools()) {
+  const version = opts.version ?? repoVersion();
+  if (versionCode(version) === null) {
+    throw new Refused(`version ${version}: a release is x.y.z, minor and patch below 100, no prerelease part`);
+  }
+  const notes = (opts.notes ?? "").trim();
+  if (notes.length > MAX_NOTES_CHARS) throw new Refused(`notes: ${notes.length} characters, at most ${MAX_NOTES_CHARS}`);
+  const released = opts.released ?? today();
+  if (!DATE.test(released)) throw new Refused(`released ${released}: YYYY-MM-DD`);
+  const out = opts.out ?? DEFAULT_OUT;
+  const dir = path.join(out, folderName(version));
+  if (existsSync(dir)) throw new Refused(`${dir} already exists: a release folder is written once`);
+  // Written into <dir>.partial and renamed at the end, so a failed copy never leaves a folder that looks finished (the
+  // N3 gate's review, m-2).
+  const partial = dir + ".partial";
+  if (existsSync(partial)) throw new Refused(`${partial} is left from an incomplete run: delete it, then run again`);
+  // spec §5: versions only go up (the N3 gate's review, m-7).
+  const newer = (existsSync(out) ? readdirSync(out) : [])
+    .map((name) => /^Sandbee-POS-(\d+\.\d+\.\d+)$/.exec(name)?.[1])
+    .filter((v) => v !== undefined && versionCode(v) !== null && versionCode(v) > versionCode(version));
+  if (newer.length > 0) throw new Refused(`Sandbee-POS-${newer[0]} is newer than ${version}: a release only goes up (spec §5)`);
+  const arm64 = checkApk(opts.arm64, RELEASE_ABIS.arm64, version, tools);
+  const armv7 = checkApk(opts.armv7, RELEASE_ABIS.armv7, version, tools);
+  const win = checkWindows(opts.windows, version);
+
+  const apks = {};
+  for (const [abi, apk] of [[RELEASE_ABIS.arm64, arm64], [RELEASE_ABIS.armv7, armv7]]) {
+    apks[abi] = { file: apkName(version, abi), sha256: sha256Of(apk.file), size: apk.size, from: apk.file };
+  }
+  const manifest = buildManifest({ version, released, notes, apks });
+  const problems = manifestProblems(manifest);
+  if (problems.length > 0) throw new Refused(`latest.json: ${problems.join(", ")}`);
+
+  const android = path.join(partial, "upload", "pos", "android");
+  const windows = path.join(partial, "upload", "pos", "windows");
+  mkdirSync(android, { recursive: true });
+  mkdirSync(windows, { recursive: true });
+  for (const apk of Object.values(apks)) {
+    const target = path.join(android, apk.file);
+    copyFileSync(apk.from, target);
+    if (sha256Of(target) !== apk.sha256) throw new Refused(`${apk.file}: the copy differs from the built APK`);
+  }
+  writeFileSync(path.join(android, "latest.json"), JSON.stringify(manifest, null, 2) + "\n");
+  copyFileSync(win.installer, path.join(windows, installerName(version)));
+  copyFileSync(win.blockmap, path.join(windows, installerName(version) + ".blockmap"));
+  copyFileSync(win.latestPath, path.join(windows, "latest.yml"));
+
+  const files = [];
+  const walk = (folder) => {
+    for (const entry of readdirSync(folder, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+      const full = path.join(folder, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else files.push(path.relative(partial, full).split(path.sep).join("/"));
+    }
+  };
+  walk(path.join(partial, "upload"));
+  writeFileSync(path.join(partial, "SHA256SUMS.txt"), files.map((f) => `${sha256Of(path.join(partial, f))} *${f}`).join("\n") + "\n");
+  writeFileSync(path.join(partial, "UPLOAD-STEPS.txt"), uploadSteps(version));
+  renameSync(partial, dir);
+  return { dir, version, files, manifest };
+}
+
+const USAGE =
+  'usage: node scripts/release-native.mjs --arm64 <apk> --armv7 <apk> --windows <folder> --notes "<text>" [--released YYYY-MM-DD] [--out <folder>]';
+
+export function parseArgs(argv) {
+  const flags = { "--arm64": "arm64", "--armv7": "armv7", "--windows": "windows", "--notes": "notes", "--released": "released", "--out": "out" };
+  const opts = {};
+  for (let i = 0; i < argv.length; i += 2) {
+    const key = flags[argv[i]];
+    if (key === undefined || argv[i + 1] === undefined) throw new Refused(USAGE);
+    opts[key] = argv[i + 1];
+  }
+  for (const key of ["arm64", "armv7", "windows", "notes"]) {
+    if (opts[key] === undefined) throw new Refused(USAGE);
+  }
+  return opts;
+}
+
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  try {
+    const { dir, version, files, manifest } = packageRelease(parseArgs(process.argv.slice(2)));
+    console.log(`Sandbee POS ${version} (versionCode ${manifest.versionCode}): ${dir}`);
+    for (const file of files) console.log(`  ${file}`);
+    console.log("  SHA256SUMS.txt, UPLOAD-STEPS.txt (nothing uploaded; latest.json and latest.yml go last)");
+  } catch (error) {
+    if (!(error instanceof Refused)) throw error;
+    console.error(`release-native: refused: ${error.message}`);
+    process.exitCode = 1;
+  }
+}
+```
+
+- [ ] **Step 4: Run them and see them pass**
+
+```bash
+cd /d/kd/lucifer && npm run test:release-native 2>&1 | grep -E "^not ok|^# (tests|pass|fail)"
+```
+Expected: `# tests 12`, `# pass 12`, `# fail 0`.
+
+- [ ] **Step 5: Commit** (`$SP/msg-n4-1.txt`):
+
+```text
+feat(apps): the release folder, scripts/release-native.mjs: it builds nothing; it checks the built APK pair (the private key's certificate, the package, the one version, not debuggable, one CPU type each, the real update base and times) and the Windows installer (latest.yml's version, file and SHA-512, the blockmap, app-update.yml's feed), refuses a prerelease or lower version, long notes, an existing or half-written folder and a missing tool before writing anything, and writes D:\kd\pos-apk-release\Sandbee-POS-<version>\ (through a .partial folder) with upload\pos\... as the bucket's keys, latest.json by the app's rules, SHA256SUMS.txt and UPLOAD-STEPS.txt (latest.json and latest.yml last); 12 tests (native apps 2.0, Session N4, spec §10)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+```
 
 ### Task 42: Docs
 
-- `docs/GO-LIVE-CHECKLIST.md`: a new section "Existing cafes: the native apps 2.0 release" (each printing phone or tablet once: uninstall, install 2.0.0, open, type the cafe's name, sign in, set this device's printer, Admin → Printer setup → choose this device again; Windows installs over 1.x; what staff see from then on: the card at an app open, Install or Later; Windows installs at closing or on "Restart to update"; nothing ever blocks work; a device whose screen never turns off and whose app never leaves the screen has no app open, so it updates after its next restart, or when it is away from the app for 30 minutes); §7's install lines point at `files.sandbee.in` once the owner has set it up; §A pinned facts. Pins in `go-live-runbook.test.ts`.
-- (The N1 review gate.) The section also says: the first update on each phone asks once to allow installs from Sandbee
-  POS ("Install unknown apps"); Google Play Protect may show "App scan recommended" at the first install and at an
-  update (Sandbee POS is not from the Play Store): **More details → Install without scanning** installs at once, and
-  **Scan app** also works on the cafe's own phone (it sends the app to Google and takes a while); on Samsung (One UI 6+)
-  Auto Blocker must be off before "Install unknown apps" can be allowed; after **Update** there is no Open button (the
-  app updated itself): open it from its icon, or tap "POS printing is off. Tap to start." on a printing device.
-- (The N2 review gate.) It also says: Cancel in Android's update dialog just closes the card until the next app open;
-  Android 7 phones have one global "Unknown sources" switch instead of "Install unknown apps"; never raise the Android
-  app's `minSdkVersion` while older devices are in use (or add a `minSdk` field to a later manifest schema first); the
-  Windows app shows **Restart to update** in the tray and the Help menu once an update is downloaded, otherwise it
-  installs when the app is closed; the move from 1.x keeps Start with Windows (the first 2.0.0 start sets it again); if
-  the address window says "Couldn't reach" on the first try (a POS waking up), press Open POS once more.
-- `apps/mobile/README.md` and `apps/desktop/README.md`: building a release and running the packaging; the upload order. `apps/cafe/DEPLOY.md`: the line about the native apps.
+**Files:**
+- Modify: `docs/GO-LIVE-CHECKLIST.md` (§1 "Existing cafes: the native apps 2.0 release", §7's install line, four §A rows), `apps/mobile/README.md` ("Release a new version (both apps)"), `apps/cafe/DEPLOY.md` (the native apps line)
+- Create: `apps/desktop/README.md`
+- Test: `apps/cafe/lib/go-live-runbook.test.ts` (five pins; the §7 desktop pin quotes "Restart to update" and files.sandbee.in)
+
+- [ ] **Step 1: Write the failing pins**
+
+In `apps/cafe/lib/go-live-runbook.test.ts`, find:
+
+```ts
+  const urlHtml = readFileSync(path.join(REPO_ROOT, "apps/desktop/assets/url-window.html"), "utf8");
+  const sharedSrc = readFileSync(path.join(REPO_ROOT, "apps/desktop/src/shared.ts"), "utf8");
+  for (const [label, src, where] of [
+    ["Open POS", menuSrc, "menu.ts"],
+```
+
+Replace it with:
+
+```ts
+  const urlHtml = readFileSync(path.join(REPO_ROOT, "apps/desktop/assets/url-window.html"), "utf8");
+  const sharedSrc = readFileSync(path.join(REPO_ROOT, "apps/desktop/src/shared.ts"), "utf8");
+  const updatePlanSrc = readFileSync(path.join(REPO_ROOT, "apps/desktop/src/update-plan.ts"), "utf8");
+  for (const [label, src, where] of [
+    ["Open POS", menuSrc, "menu.ts"],
+```
+
+In `apps/cafe/lib/go-live-runbook.test.ts`, find:
+
+```ts
+    // Native apps 2.0 Session N3 deliberately changed: the address window's words (spec §9).
+    ["POS address", urlHtml, "url-window.html"],
+  ] as const) {
+    assert.ok(section.includes(label), `§7 desktop sub-section must quote "${label}"`);
+```
+
+Replace it with:
+
+```ts
+    // Native apps 2.0 Session N3 deliberately changed: the address window's words (spec §9).
+    ["POS address", urlHtml, "url-window.html"],
+    // Native apps 2.0 Session N4 deliberately changed: the app updates itself (spec §7).
+    ["Restart to update", updatePlanSrc, "update-plan.ts"],
+  ] as const) {
+    assert.ok(section.includes(label), `§7 desktop sub-section must quote "${label}"`);
+```
+
+In `apps/cafe/lib/go-live-runbook.test.ts`, find:
+
+```ts
+  assert.ok(section.includes("pos-desktop.log") && sharedSrc.includes('LOG_FILE_NAME = "pos-desktop.log"'), "the section must name the log file support will ask for");
+  assert.ok(/notification/i.test(section), "the section must say a failed print raises a Windows notification");
+});
+
+```
+
+Replace it with:
+
+```ts
+  assert.ok(section.includes("pos-desktop.log") && sharedSrc.includes('LOG_FILE_NAME = "pos-desktop.log"'), "the section must name the log file support will ask for");
+  assert.ok(/notification/i.test(section), "the section must say a failed print raises a Windows notification");
+  assert.ok(
+    !section.includes("never downloaded from anywhere") && section.includes("files.sandbee.in"),
+    "from 2.0.0 the app updates itself from files.sandbee.in (native apps 2.0)",
+  );
+});
+
+```
+
+In `apps/cafe/lib/go-live-runbook.test.ts`, find:
+
+```ts
+  assert.ok(open.includes("open the app from its icon"), "... so the deployer opens the app either way");
+});
+
+```
+
+Replace it with:
+
+```ts
+  assert.ok(open.includes("open the app from its icon"), "... so the deployer opens the app either way");
+});
+
+// ── Native apps 2.0 (Session N4): the release step, the update facts, the address window's words ─────────────────
+// apps/mobile, apps/desktop and scripts/ are outside this workspace: their files are read as text (rule 3 above).
+
+const NATIVE_STEP = "### Existing cafes: the native apps 2.0 release";
+
+test("PIN §1 (native apps 2.0): the release step keeps its order (the owner's upload first, each printing device moved once, then the Windows app over 1.x), names the packaging script's files and their hashes, and changes no web or Worker", () => {
+  const step = norm(sectionSlice(NATIVE_STEP));
+  let at = -1;
+  for (const landmark of [
+    "**First, the owner's upload.**",
+    "UPLOAD-STEPS.txt",
+    "**Each printing phone or tablet, once:**",
+    "uninstall the old POS app",
+    "Sandbee-POS-2.0.0-arm64-v8a.apk",
+    "**Admin → Printer setup**",
+    "choose this device again",
+    "**The Windows counter PC:**",
+    "POS-Software-Setup-2.0.0.exe",
+  ]) {
+    const next = step.indexOf(landmark);
+    assert.ok(next > at, `the native apps 2.0 step names "${landmark}" after the one before it`);
+    at = next;
+  }
+  assert.ok(step.includes("SHA256SUMS.txt"), "each file's hash is checked before it is sent");
+  assert.ok(step.includes("No web change and no Worker change"), "this release changes neither");
+  const script = readFileSync(path.join(REPO_ROOT, "scripts/release-native.mjs"), "utf8");
+  assert.ok(script.includes("`Sandbee-POS-${version}-${abi}.apk`"), "the packaging script names the APKs as the step does");
+  assert.ok(script.includes("`POS-Software-Setup-${version}.exe`"), "... and the installer");
+});
+
+test("PIN §1 (native apps 2.0): what staff see from then on, in the apps' own words: the card at an app open, Android's one-time questions, Cancel and no Open button; the Windows notice, Restart to update, install at closing; nothing ever blocks work", () => {
+  const step = norm(sectionSlice(NATIVE_STEP));
+  for (const phrase of [
+    "Nothing ever blocks work",
+    "**Install**",
+    "**Later**",
+    "after 30 minutes away",
+    "Install unknown apps",
+    "Auto Blocker",
+    "Unknown sources",
+    "**More details → Install without scanning**",
+    "Cancel in Android's update dialog just closes the card until the next app open",
+    "there is no Open button",
+    "**Restart to update**",
+    "installs when the app is closed",
+  ]) {
+    assert.ok(step.includes(phrase), `the step tells the staff: ${phrase}`);
+  }
+  const card = readFileSync(path.join(REPO_ROOT, "apps/mobile/src/screens/UpdateCard.tsx"), "utf8");
+  assert.ok(step.includes('"Update available"') && card.includes("Update available"), "the card's title, as the app shows it");
+  const strings = readFileSync(path.join(REPO_ROOT, "apps/mobile/android/app/src/main/res/values/strings.xml"), "utf8");
+  assert.ok(step.includes('"POS printing is off. Tap to start."') && strings.includes(">POS printing is off. Tap to start.<"), "the printing device's notice");
+  const plan = readFileSync(path.join(REPO_ROOT, "apps/desktop/src/update-plan.ts"), "utf8");
+  assert.ok(step.includes("is ready. It installs when you close the app.") && plan.includes("is ready. It installs when you close the app."), "the Windows notice, as update-plan.ts says it");
+  assert.ok(plan.includes('RESTART_TO_UPDATE = "Restart to update"'), "the menu item's label");
+});
+
+test("PIN §1 (native apps 2.0, the N3 review's m-2): the address window's no-answer words are quoted as pos-health.ts says them, with the spelling to check first", () => {
+  const step = norm(sectionSlice(NATIVE_STEP));
+  const health = readFileSync(path.join(REPO_ROOT, "apps/desktop/src/pos-health.ts"), "utf8");
+  assert.ok(health.includes("Check the name and the internet connection."), "pos-health.ts's words (the owner's ruling of 2026-10-13)");
+  assert.ok(step.includes("Check the name and the internet connection."), "the step quotes them");
+  assert.ok(step.includes("check the spelling of the workspace name first"), "a mistyped name is the likely cause on a working connection");
+  assert.ok(step.includes("**Open POS** once more"), "a POS that was asleep may need a second try (the N2 gate's review of N3, m-2)");
+});
+
+test("PIN §A (native apps 2.0): the update base, the POS app's look, the Windows app's look and the card's wait for idle printers match the code", () => {
+  const gradle = readFileSync(path.join(REPO_ROOT, "apps/mobile/android/app/build.gradle"), "utf8");
+  const desktop = JSON.parse(readFileSync(path.join(REPO_ROOT, "apps/desktop/package.json"), "utf8")) as {
+    build: { publish: { provider: string; url: string } };
+  };
+  const plan = readFileSync(path.join(REPO_ROOT, "apps/desktop/src/update-plan.ts"), "utf8");
+  const moduleKt = readFileSync(path.join(REPO_ROOT, "apps/mobile/android/app/src/main/java/com/possoftware/pos/update/PosUpdateModule.kt"), "utf8");
+  const base = backtickTokens(factRowIn(SECTION_A_HEADING, "Update files base (both native apps)"))[0];
+  assert.equal(base, "https://files.sandbee.in/pos", "the doc's base");
+  assert.ok(gradle.includes(`def posUpdateBaseDefault = "${base}"`), "the POS app's default base");
+  assert.equal(desktop.build.publish.provider, "generic", "the Windows app's provider");
+  assert.equal(desktop.build.publish.url, `${base}/windows`, "the Windows app's feed");
+  const look = factRowIn(SECTION_A_HEADING, "POS app update look");
+  assert.ok(look.includes("12 hours") && gradle.includes("(findProperty('posUpdateCheckMinutes') ?: '720')"), "12 hours = 720 minutes");
+  assert.ok(look.includes("30 minutes") && gradle.includes("(findProperty('posUpdateReopenMinutes') ?: '30')"), "an app open after 30 minutes away");
+  const windows = factRowIn(SECTION_A_HEADING, "Windows app update look");
+  assert.ok(windows.includes("1 minute") && plan.includes("FIRST_CHECK_MS = 60_000"), "1 minute after start");
+  assert.ok(windows.includes("24 hours") && plan.includes("CHECK_EVERY_MS = 86_400_000"), "then every 24 hours");
+  const wait = factRowIn(SECTION_A_HEADING, "Update card wait for idle printers");
+  assert.ok(wait.includes("2 minutes") && moduleKt.includes("CARD_IDLE_WAIT_MS = 120_000L"), "at most 2 minutes (the owner's ruling of 2026-10-13)");
+});
+
+test("PIN (native apps 2.0): the READMEs say how a release is built and packaged, latest.* uploaded last, and DEPLOY.md says a web deploy does not update the native apps", () => {
+  const mobile = norm(readFileSync(path.join(REPO_ROOT, "apps/mobile/README.md"), "utf8"));
+  const release = mobile.slice(mobile.indexOf("## Release a new version (both apps)"));
+  assert.ok(release.length > 0 && mobile.includes("## Release a new version (both apps)"), "the mobile README's release section");
+  for (const phrase of [
+    "posVersionRelease",
+    ":app:compileReleaseKotlin --rerun",
+    "assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a",
+    "npm run dist",
+    "node scripts/release-native.mjs",
+    "UPLOAD-STEPS.txt",
+    "`latest.json` and `latest.yml` last",
+    "minSdkVersion",
+  ]) {
+    assert.ok(release.includes(phrase), `the release section names ${phrase}`);
+  }
+  const desktopReadme = norm(readFileSync(path.join(REPO_ROOT, "apps/desktop/README.md"), "utf8"));
+  for (const phrase of ["npm run dist", "https://files.sandbee.in/pos/windows/", "**Restart to update**", "scripts/release-native.mjs", "`latest.yml` last"]) {
+    assert.ok(desktopReadme.includes(phrase), `the desktop README names ${phrase}`);
+  }
+  const deploy = norm(readFileSync(path.join(REPO_ROOT, "apps/cafe/DEPLOY.md"), "utf8"));
+  assert.ok(deploy.includes("The native apps are not part of a web deploy.") && deploy.includes("files.sandbee.in"), "DEPLOY.md's native apps line");
+});
+
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+```bash
+cd /d/kd/lucifer/apps/cafe && timeout 300 node --import tsx --test lib/go-live-runbook.test.ts 2>&1 | grep -E "^not ok|^  error:|^# (tests|pass|fail)"
+```
+Expected: six fail (`# tests 102`, `# pass 96`, `# fail 6`): `PIN §7 desktop app: …` with `'§7 desktop sub-section must
+quote "Restart to update"'`; the three `PIN §1 (native apps 2.0…)` pins with `could not find the heading "### Existing
+cafes: the native apps 2.0 release"`; `PIN §A (native apps 2.0)` with `could not find the row "Update files base (both
+native apps)"`; `PIN (native apps 2.0): the READMEs …` with `"the mobile README's release section"`.
+
+- [ ] **Step 3: Implement**
+
+In `apps/cafe/DEPLOY.md`, find:
+
+```markdown
+- [ ] Reports load with data
+
+## 3. Backups
+
+```
+
+Replace it with:
+
+```markdown
+- [ ] Reports load with data
+
+> **The native apps are not part of a web deploy.** The POS app (Android) and the
+> Windows app update themselves from `files.sandbee.in` (native apps 2.0): a new
+> version is built and packaged on the build PC (`apps/mobile/README.md` →
+> "Release a new version (both apps)") and uploaded by the owner. When a web
+> release needs a new app, its "Existing cafes" step in
+> `docs/GO-LIVE-CHECKLIST.md` says so.
+
+## 3. Backups
+
+```
+
+Create `apps/desktop/README.md`:
+
+```markdown
+# POS Software by sandbee: Windows app
+
+The counter PC's Windows app (Electron 44). It opens the cafe's POS from one
+saved address, stays in the tray, starts with Windows, and prints slips
+silently. It sits outside the npm workspace, with its own `node_modules`.
+
+## Checks
+
+`npm test` (the node:test suites in `src/`, with the source pins),
+`npm run typecheck` and `npm run lint`.
+
+## The address window
+
+At the first start, and from **Help → Change POS address…**, the app asks for the
+POS address in a window that looks like the Android app's start screen. It reads
+the address by the Android app's rules (`src/pos-url.ts`: a bare workspace name
+means `<name>.sandbee.in`) and checks it once with `GET /api/health`
+(`src/pos-health.ts`) before it saves it.
+
+## Updates
+
+The app updates itself with electron-updater's generic provider from
+`https://files.sandbee.in/pos/windows/` (`build.publish` in `package.json`;
+electron-builder writes it into `resources\app-update.yml`). It looks one minute
+after it starts and then every 24 hours, downloads a new version in the
+background, shows one notification, and installs it when the app is closed, or
+at once with **Restart to update** in the tray and the Help menu. Never a dialog,
+never an automatic restart. Errors go to the app's log,
+`%APPDATA%\POS Software by sandbee\pos-desktop.log`.
+
+## Build the installer
+
+`npm run dist` writes `dist\POS-Software-Setup-<version>.exe`, its `.blockmap` and
+`latest.yml`, and publishes nothing. A release is packaged with
+`scripts/release-native.mjs` (`apps/mobile/README.md` → "Release a new version
+(both apps)"), and the owner uploads it, `latest.yml` last.
+
+A test build for this PC only takes another feed and version, for example
+`npx electron-builder --win nsis --publish never "-c.publish.url=http://127.0.0.1:8766/pos/windows" "-c.extraMetadata.version=2.0.1"`;
+the packaging refuses such a build. Where `ELECTRON_RUN_AS_NODE` is set in the
+environment, unset it before building or starting the app.
+```
+
+In `apps/mobile/README.md`, find:
+
+```markdown
+
+Or copy the file to the device and open it there (allow "install unknown
+apps" for the file manager). The APK is handed to clients directly; it is not
+uploaded anywhere.
+
+Before you hand the APK to a client, run the checks in
+[TEST-CHECKLIST.md](./TEST-CHECKLIST.md) on a real device.
+
+## Checks (no device needed)
+```
+
+Replace it with:
+
+```markdown
+
+Or copy the file to the device and open it there (allow "install unknown
+apps" for the file manager). A device's first 2.0.0 install is handed over
+directly; later versions reach it from files.sandbee.in ("Release a new version
+(both apps)" below).
+
+Before you hand the APK to a client, run the checks in
+[TEST-CHECKLIST.md](./TEST-CHECKLIST.md) on a real device.
+
+## Release a new version (both apps)
+
+The POS app and the Windows app share one version (2.0.0 was the first managed
+release), and devices update themselves from `https://files.sandbee.in/pos/`
+(the owner's bucket). Nothing is uploaded from this PC: the owner uploads the
+release folder by hand.
+
+1. **Raise the version in both places, the same:** `posVersionRelease` in
+   `android/app/build.gradle` and `version` in `apps/desktop/package.json` (a
+   test pins that they are equal). Only x.y.z, minor and patch below 100, never
+   lower than the last release, and no `-rc` part: electron-updater's feed would
+   offer a prerelease to every PC, so the packaging refuses one.
+2. **Build the APK pair** (the private key and the real update base are the
+   defaults; a release never passes `-PposUpdateBase` or the minute settings):
+   in `android`, `.\gradlew.bat :app:compileReleaseKotlin --rerun`, then
+   `.\gradlew.bat assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a`.
+3. **Build the Windows installer:** in `apps/desktop`, `npm run dist` (it
+   writes `dist\` and publishes nothing).
+4. **Package them** from the repository root, on one line. The script builds
+   nothing; it checks every file and writes
+   `D:\kd\pos-apk-release\Sandbee-POS-<version>\`:
+   `node scripts/release-native.mjs --arm64 apps\mobile\android\app\build\outputs\apk\release\app-arm64-v8a-release.apk --armv7 apps\mobile\android\app\build\outputs\apk\release\app-armeabi-v7a-release.apk --windows apps\desktop\dist --notes "<one short English sentence for the update card>"`.
+   It refuses, before writing anything, an APK not signed with the private key,
+   a debug build, another package, version or CPU type, a test update base or
+   shortened times, an installer built for a test feed or from another build, a
+   version with a prerelease part or lower than one already packaged, notes
+   over 300 characters, and a release folder that already exists. It writes
+   into `Sandbee-POS-<version>.partial` and renames it when it is complete.
+5. **The owner uploads** the folder as its `UPLOAD-STEPS.txt` says: the APKs,
+   the installer and its blockmap first, `latest.json` and `latest.yml` last,
+   then opens `https://files.sandbee.in/pos/android/latest.json` from a phone.
+
+Never raise `minSdkVersion` while older devices are in use: the manifest names no
+minimum Android version, so such a device would download every new version and
+fail to install it (or add a `minSdk` field to a later manifest schema first).
+
+## Checks (no device needed)
+```
+
+In `docs/GO-LIVE-CHECKLIST.md`, find:
+
+```markdown
+      health, the service)" on the cafe's real printers, with the earlier checks and "Network printers on the
+      Windows app (Phase 3)" on a counter PC with the 1.12.0 app.
+
+---
+```
+
+Replace it with:
+
+```markdown
+      health, the service)" on the cafe's real printers, with the earlier checks and "Network printers on the
+      Windows app (Phase 3)" on a counter PC with the 1.12.0 app.
+
+### Existing cafes: the native apps 2.0 release
+
+Native apps 2.0 makes the POS app (Android) and the Windows app update themselves from `files.sandbee.in`. Nothing
+ever blocks work: the POS app offers a new version on a card when it is opened, and the Windows app downloads it in
+the background and installs it when it is closed. Release 2.0.0 also signs the POS app with its own private key (every
+earlier APK carried React Native's public test key), so each printing phone or tablet moves to 2.0.0 by hand once;
+every later version arrives by itself. **No web change and no Worker change.**
+
+- [ ] **First, the owner's upload.** The release folder `D:\kd\pos-apk-release\Sandbee-POS-2.0.0\` is uploaded as its
+      `UPLOAD-STEPS.txt` says (the APKs, the installer and its blockmap first, `latest.json` and `latest.yml` last),
+      and `https://files.sandbee.in/pos/android/latest.json` opens from a phone.
+- [ ] **Each printing phone or tablet, once:** uninstall the old POS app (Android puts no app over one signed with
+      another key), install `Sandbee-POS-2.0.0-arm64-v8a.apk` (`Sandbee-POS-2.0.0-armeabi-v7a.apk` for an old 32-bit
+      phone; check its SHA-256 against the release's `SHA256SUMS.txt` before you send it), open it, type the cafe's
+      name, sign in, and set this device's printer. Then **Admin → Printer setup**: choose this device again for its
+      printers (an app installed again is a new device). A phone that only takes orders moves the same way when
+      convenient; until then its old app keeps working and never updates itself.
+- [ ] **The Windows counter PC:** `POS-Software-Setup-2.0.0.exe` installs over 1.x with no uninstall (check its
+      SHA-256 against `SHA256SUMS.txt`). It keeps the POS address, the printers and Start with Windows (the first
+      2.0.0 start sets Start with Windows again). From 2.0.0 the address window checks a typed address once: if it
+      says "Couldn't reach <name>.sandbee.in. Check the name and the internet connection.", check the spelling of the
+      workspace name first; a POS that was asleep may need **Open POS** once more.
+- [ ] **Tell the staff what they will see from now on.** Nothing ever blocks work.
+  - **The POS app:** when a new version is ready, a card "Update available" when the app is opened, with
+    **Install** and **Later** (Later hides it until the next app open). An app open is a start, or coming back to the
+    app after 30 minutes away: a device whose screen never turns off and whose app never leaves the screen updates
+    after its next restart. The first update on each phone asks once to allow installs from Sandbee POS ("Install
+    unknown apps"); on a Samsung (One UI 6 and later) Auto Blocker must be off first, and Android 7 has one "Unknown
+    sources" switch instead. Google Play Protect may say "App scan recommended" (Sandbee POS is not from the Play
+    Store): **More details → Install without scanning** installs at once (**Scan app** also works; it sends the app to
+    Google and takes a while). Cancel in Android's update dialog just closes the card until the next app open. After
+    **Update** there is no Open button: open the app from its icon, or tap "POS printing is off. Tap to start." on a
+    printing device.
+  - **The Windows app:** it downloads a new version in the background and shows one notification "POS Software
+    <version> is ready. It installs when you close the app."; it installs when the app is closed (at closing time),
+    or at once with **Restart to update** in the tray or the Help menu.
+- [ ] **Whoever builds a release:** `apps/mobile/README.md` → "Release a new version (both apps)". Never raise the POS
+      app's `minSdkVersion` while older devices are in use: the manifest names no minimum Android version, so such a
+      device would download every new version and fail to install it.
+
+---
+```
+
+In `docs/GO-LIVE-CHECKLIST.md`, find:
+
+```markdown
+
+- [ ] Copy `POS-Software-Setup-<version>.exe` to the counter PC by hand (USB or
+      the local network). It is never downloaded from anywhere.
+- [ ] Run it. Windows SmartScreen says the publisher is unknown: **More info →
+      Run anyway**, once. Installs for this Windows user only, no admin rights.
+```
+
+Replace it with:
+
+```markdown
+
+- [ ] Copy `POS-Software-Setup-<version>.exe` to the counter PC by hand (USB or
+      the local network), or download it from
+      `https://files.sandbee.in/pos/windows/POS-Software-Setup-<version>.exe` once
+      the owner has set that up. From then on the app updates itself: it
+      downloads a new version in the background and installs it when the app
+      is closed, or at once with **Restart to update** (the tray and the Help
+      menu, once an update is ready).
+- [ ] Run it. Windows SmartScreen says the publisher is unknown: **More info →
+      Run anyway**, once. Installs for this Windows user only, no admin rights.
+```
+
+In `docs/GO-LIVE-CHECKLIST.md`, find:
+
+```markdown
+| Kitchen stations per cafe | 20 | `STATIONS_MAX` |
+| Copies per printer (KOT, bill) | 1–3 | `PRINTER_COPIES_MIN` / `PRINTER_COPIES_MAX` |
+
+---
+```
+
+Replace it with:
+
+```markdown
+| Kitchen stations per cafe | 20 | `STATIONS_MAX` |
+| Copies per printer (KOT, bill) | 1–3 | `PRINTER_COPIES_MIN` / `PRINTER_COPIES_MAX` |
+| Update files base (both native apps) | `https://files.sandbee.in/pos` | `posUpdateBaseDefault` (`app/build.gradle`), `build.publish.url` (`apps/desktop/package.json`) |
+| POS app update look | at an app open, at most every 12 hours; an app open is a start, or back after 30 minutes away | `posUpdateCheckMinutes` / `posUpdateReopenMinutes` (`app/build.gradle`) |
+| Windows app update look | 1 minute after the app starts, then every 24 hours | `FIRST_CHECK_MS` / `CHECK_EVERY_MS` |
+| Update card wait for idle printers | at most 2 minutes, then the next app open | `CARD_IDLE_WAIT_MS` |
+
+---
+```
+
+- [ ] **Step 4: Run them and see them pass, with the suites the new files touch**
+
+```bash
+cd /d/kd/lucifer/apps/cafe && timeout 300 node --import tsx --test lib/go-live-runbook.test.ts 2>&1 | grep -E "^not ok|^# (tests|pass|fail)" && npm run typecheck > /dev/null && echo "cafe typecheck clean"
+cd /d/kd/lucifer/apps/desktop && timeout 250 npm test 2>&1 | grep -E "^# (tests|pass|fail)"
+cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)"
+```
+Expected: the runbook `# tests 102`, `# pass 102`, `# fail 0`, `cafe typecheck clean`; desktop `# tests 211`, `# fail 0`
+(the new README breaks no desktop pin); mobile `# tests 168`, `# fail 0`.
+
+- [ ] **Step 5: Commit** (`$SP/msg-n4-2.txt`):
+
+```text
+docs(apps): native apps 2.0 for the people who run it: GO-LIVE's "Existing cafes: the native apps 2.0 release" (the owner's upload first, each printing device moved to 2.0.0 once, the Windows app over 1.x, what staff see from then on in the apps' own words), §7's install line (the app updates itself), four §A update facts, the mobile README's "Release a new version (both apps)", a Windows app README and DEPLOY.md's native apps line; five runbook pins against the code (native apps 2.0, Session N4, spec §8, §10)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+```
 
 ### Task 43: Full verification
 
-- Every suite equal to the expected counts (mobile, desktop, JUnit, Jest, `test:release-native`, the cafe chain with the go-live runbook test, the cafe typecheck), lint and typecheck clean.
+- [ ] **Step 1: Every suite**
+
+```bash
+cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)" && npm run typecheck > /dev/null && npm run lint > /dev/null && echo "mobile typecheck and lint clean" && npx jest 2>&1 | grep -E "^Tests:|^Test Suites:"
+cd /d/kd/lucifer/apps/desktop && timeout 250 npm test 2>&1 | grep -E "^# (tests|pass|fail)" && npm run typecheck > /dev/null && npm run lint > /dev/null && echo "desktop typecheck and lint clean"
+cd /d/kd/lucifer && npm run test:release-native 2>&1 | grep -E "^# (tests|pass|fail)"
+cd /d/kd/lucifer/apps/cafe && npm run typecheck > /dev/null && npm run lint > /dev/null && echo "cafe typecheck and lint clean"
+cd /d/kd/lucifer/apps/cafe && npm test > "$SP/cafe-n4.log" 2>&1; grep -E "^# (tests|pass|fail|skipped)" "$SP/cafe-n4.log"
+cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun --console=plain > "$SP/junit-n4.log" 2>&1; tail -3 "$SP/junit-n4.log"
+cat app/build/test-results/testDebugUnitTest/*.xml | grep -o '<testsuite [^>]*' | sed -E 's/.*tests="([0-9]+)".*failures="([0-9]+)".*errors="([0-9]+)".*/\1 \2 \3/' | awk '{t+=$1; f+=$2; e+=$3} END {print "tests="t" failures="f" errors="e}'
+```
+Expected: mobile 168/168, typecheck and lint clean, `Test Suites: 4 passed`, `Tests: 8 passed`; desktop 211/211,
+typecheck and lint clean; `# tests 12`, `# pass 12`; cafe typecheck and lint clean; cafe `# tests 5807`,
+`# pass 5806`, `# fail 0`, `# skipped 1`; JUnit `tests=94 failures=0 errors=0`. (The cafe chain in the background.)
 
 ### Task 44: The 2.0.0 release set
 
-- Build the APK pair (private key, real base; `:app:compileReleaseKotlin --rerun` first) and the Windows installer (`npm run dist`); run the packaging into `D:\kd\pos-apk-release\Sandbee-POS-2.0.0\`; an x86_64 build of the same commit installed on the emulator for a smoke test (open, sign in, print); the emulator holds the debug-key 1.0 again after N2, so this rehearses the one-time move. (The N2 review gate.) The smoke test also runs E5's Cancel (the card closes and comes
-  back at the next open), and E5 once more on an API 34/35 image if one is on the PC.
-- Nothing is uploaded. The owner gets the folder path, `UPLOAD-STEPS.txt`, and (later, with the owner) the S3 + domain steps.
+**Files:** scratch only (`$SP`) and the release folder `D:\kd\pos-apk-release\Sandbee-POS-2.0.0\` (outside the repo);
+nothing committed. Nothing is uploaded: the owner gets the folder's path and its `UPLOAD-STEPS.txt`.
 
-### Task 45: The final review
+- [ ] **Step 1: The scratch tools.** Copy `D:\kd\pos-dev-keep\phase3-final-gate\ui.py` and `type-secret.py` into `$SP`
+(ui.py: `dump [filter]`, `shot <name>`; type-secret.py types the e2e admin's password into a focused password field and
+prints only its length). Write these into `$SP`:
 
-- A fresh review of the whole branch (spec, plan, diff, Results) on Claude Fable 5.1 (on a 429 limit: wait for the reset, never switch silently). Fixes by TDD; Results; the owner's merge OK.
+`$SP/n4-builds.sh` (every artifact, read back in full):
+
+```bash
+#!/bin/bash
+# Session N4 (Task 44): every artifact of the 2.0.0 set, from the repo at its head, read back in full. The release pair
+# and the Windows installer (npm run dist: apps/desktop/dist) are the release; the x86_64 APK (the real base) and the
+# test APKs A (2.0.0) and B (2.0.1) (the test base http://127.0.0.1:8765/pos, 1-minute times) are for the emulator smoke
+# only. Local only, released to nobody. usage: n4-builds.sh <out>
+OUT="$1"; mkdir -p "$OUT/pair" "$OUT/x86" "$OUT/ab" "$OUT/readback"; S="$OUT/build.txt"; : > "$S"
+BT="/c/Users/kartik.desai/AppData/Local/Android/Sdk/build-tools/37.0.0"
+cd /d/kd/lucifer/apps/mobile/android || exit 2
+echo "start $(date -Is) head $(git rev-parse --short HEAD)" >> "$S"; df -h /c /d >> "$S"
+G() { GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat "$@" --console=plain; }
+G :app:compileReleaseKotlin --rerun > "$OUT/kotlin-pair.log" 2>&1; echo "kotlin pair exit=$?" >> "$S"
+G assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a > "$OUT/pair.log" 2>&1; echo "pair exit=$? $(grep -E '^BUILD' "$OUT/pair.log")" >> "$S"
+cp app/build/outputs/apk/release/app-arm64-v8a-release.apk app/build/outputs/apk/release/app-armeabi-v7a-release.apk "$OUT/pair/"
+G aR -PreactNativeArchitectures=x86_64 > "$OUT/x86.log" 2>&1; echo "x86_64 exit=$? $(grep -E '^BUILD' "$OUT/x86.log")" >> "$S"
+cp app/build/outputs/apk/release/app-release.apk "$OUT/x86/Sandbee-POS-2.0.0-x86_64.apk"
+T="-PreactNativeArchitectures=x86_64 -PposUpdateBase=http://127.0.0.1:8765/pos -PposUpdateCheckMinutes=1 -PposUpdateReopenMinutes=1"
+G :app:compileReleaseKotlin --rerun $T > "$OUT/kotlin-a.log" 2>&1; echo "kotlin A exit=$?" >> "$S"
+G aR $T > "$OUT/a.log" 2>&1; echo "A exit=$? $(grep -E '^BUILD' "$OUT/a.log")" >> "$S"
+cp app/build/outputs/apk/release/app-release.apk "$OUT/ab/A-2.0.0-x86_64.apk"
+G :app:compileReleaseKotlin --rerun $T -PposVersion=2.0.1 > "$OUT/kotlin-b.log" 2>&1; echo "kotlin B exit=$?" >> "$S"
+G aR $T -PposVersion=2.0.1 > "$OUT/b.log" 2>&1; echo "B exit=$? $(grep -E '^BUILD' "$OUT/b.log")" >> "$S"
+cp app/build/outputs/apk/release/app-release.apk "$OUT/ab/Sandbee-POS-2.0.1-x86_64.apk"
+# The repo's last release classes back to the real base (a later plain aR must not reuse the test base).
+G :app:compileReleaseKotlin --rerun > "$OUT/kotlin-reset.log" 2>&1; echo "kotlin reset exit=$?" >> "$S"
+for f in "$OUT"/pair/*.apk "$OUT"/x86/*.apk "$OUT"/ab/*.apk; do
+  b=$(basename "$f" .apk)
+  echo "== $b $(stat -c %s "$f") $(sha256sum "$f" | cut -c1-64)" >> "$S"
+  java -jar "$BT/lib/apksigner.jar" verify --print-certs "$f" > "$OUT/readback/$b.apksigner.txt" 2>&1; echo "apksigner exit=$?" >> "$S"
+  "$BT/aapt2.exe" dump badging "$f" > "$OUT/readback/$b.badging.txt" 2>&1
+  "$BT/aapt2.exe" dump resources "$f" > "$OUT/readback/$b.resources.txt" 2>&1
+  grep -E "certificate SHA-256" "$OUT/readback/$b.apksigner.txt" >> "$S"
+  grep -E "^package:|native-code|application-debuggable" "$OUT/readback/$b.badging.txt" >> "$S"
+  grep -A1 -E "(string/pos_update_base|integer/pos_update_(check|reopen)_minutes)" "$OUT/readback/$b.resources.txt" >> "$S"
+done
+cd /d/kd/lucifer/apps/desktop || exit 3
+env -u ELECTRON_RUN_AS_NODE npm run dist > "$OUT/dist.log" 2>&1; echo "installer exit=$?" >> "$S"
+ls -la dist >> "$S"; cat dist/latest.yml dist/win-unpacked/resources/app-update.yml >> "$S" 2>&1
+df -h /c /d >> "$S"; echo "DONE $(date -Is)" >> "$S"
+```
+
+`$SP/mkenv4.py` (the local POS env, a fresh database, port 3110; prints no value):
+
+```python
+# Session N4: copies the kept e2e.env into <dir> (type-secret.py reads it there) and writes <dir>/n4.env for the local
+# POS: a fresh database (pos_scratch_e2e_n4s) and port 3110. Prints no value. usage: python mkenv4.py <dir>
+import io
+import os
+import sys
+
+out_dir = sys.argv[1]
+src = io.open(r"D:\kd\pos-dev-keep\env\e2e.env", encoding="utf-8").read()
+io.open(os.path.join(out_dir, "e2e.env"), "w", encoding="utf-8", newline="\n").write(src if src.endswith("\n") else src + "\n")
+out = []
+for line in src.splitlines():
+    if line.startswith("MONGODB_URI="):
+        line = "MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_e2e_n4s"
+    elif line.startswith("NEXTAUTH_URL="):
+        line = "NEXTAUTH_URL=http://localhost:3110"
+    out.append(line)
+io.open(os.path.join(out_dir, "n4.env"), "w", encoding="utf-8", newline="\n").write("\n".join(out) + "\n")
+print("n4.env keys:", ", ".join(l.split("=", 1)[0] for l in out if "=" in l))
+```
+
+`$SP/n2-files.mjs` (Session N2's fake files.sandbee.in, unchanged):
+
+```js
+// Native apps 2.0, Session N2 (emulator end to end): a fake files.sandbee.in on 127.0.0.1:8765 (the emulator reaches it
+// through `adb reverse tcp:8765 tcp:8765`). It serves /pos/android/latest.json for the update APK given on the command
+// line, and that APK, and logs every request. Switch answers with GET /__mode?manifest=404|ok|wronghash&apk=fast|slow;
+// read the log with GET /__log. Local only; scratch, never committed.
+// usage: node n2-files.mjs <path to the 2.0.1 APK> <log file>
+import { createHash } from 'node:crypto';
+import { appendFileSync, readFileSync, statSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { basename } from 'node:path';
+
+const [apkPath, logPath] = process.argv.slice(2);
+const apk = readFileSync(apkPath);
+const file = 'Sandbee-POS-2.0.1-x86_64.apk';
+const sha256 = createHash('sha256').update(apk).digest('hex');
+const size = statSync(apkPath).size;
+const mode = { manifest: '404', apk: 'fast' };
+const lines = [];
+
+function log(text) {
+  const line = new Date().toISOString() + ' ' + text;
+  lines.push(line);
+  appendFileSync(logPath, line + '\n');
+}
+
+function manifest() {
+  return JSON.stringify({
+    schema: 1,
+    package: 'com.possoftware.pos',
+    version: '2.0.1',
+    versionCode: 20001,
+    released: '2026-10-12',
+    notes: 'A test update from the fake files server.',
+    apks: { x86_64: { file, sha256: mode.manifest === 'wronghash' ? '0'.repeat(64) : sha256, size } },
+  });
+}
+
+createServer((req, res) => {
+  const url = new URL(req.url, 'http://127.0.0.1:8765');
+  if (url.pathname === '/__mode') {
+    for (const key of ['manifest', 'apk']) {
+      const value = url.searchParams.get(key);
+      if (value) mode[key] = value;
+    }
+    log('MODE ' + JSON.stringify(mode));
+    res.end(JSON.stringify(mode) + '\n');
+    return;
+  }
+  if (url.pathname === '/__log') {
+    res.end(lines.join('\n') + '\n');
+    return;
+  }
+  log(req.method + ' ' + url.pathname + ' (manifest=' + mode.manifest + ', apk=' + mode.apk + ')');
+  if (url.pathname === '/pos/android/latest.json') {
+    if (mode.manifest === '404') {
+      res.writeHead(404, { 'content-type': 'text/html' });
+      res.end('<html><body>404 Not Found</body></html>');
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(manifest());
+    return;
+  }
+  if (url.pathname === '/pos/android/' + file) {
+    res.writeHead(200, { 'content-type': 'application/vnd.android.package-archive', 'content-length': String(size) });
+    if (mode.apk !== 'slow') {
+      res.end(apk);
+      log('sent ' + file + ' (' + size + ' bytes)');
+      return;
+    }
+    // slow: 64 KB every 250 ms (about 256 KB/s), so a test can hide the app while the download runs.
+    let at = 0;
+    const timer = setInterval(() => {
+      const next = Math.min(at + 65536, size);
+      res.write(apk.subarray(at, next));
+      at = next;
+      if (at >= size) {
+        clearInterval(timer);
+        res.end();
+        log('sent ' + file + ' slowly (' + size + ' bytes)');
+      }
+    }, 250);
+    req.on('close', () => clearInterval(timer));
+    return;
+  }
+  res.writeHead(404);
+  res.end();
+}).listen(8765, '127.0.0.1', () => log('listening for ' + basename(apkPath) + ' sha256 ' + sha256 + ' size ' + size));
+```
+
+- [ ] **Step 2: Build** (background; wait for `DONE` in `$SP/n4-apk/build.txt` with an until-loop):
+`bash "$SP/n4-builds.sh" "$SP/n4-apk"`. Expected, as at the gate (about 4 minutes): `kotlin pair exit=0`,
+`pair exit=0 BUILD SUCCESSFUL`, `x86_64 exit=0 BUILD SUCCESSFUL`, `kotlin A exit=0`, `A exit=0 BUILD SUCCESSFUL`,
+`kotlin B exit=0`, `B exit=0 BUILD SUCCESSFUL`, `kotlin reset exit=0`; every APK `apksigner exit=0` and
+`V2 Signer: certificate SHA-256 digest: 5bd06ef3e9a78efcb0dfbd1ff102de932c581a78034d93ef7572f5373b5b3e40`; the pair
+`versionCode='20000' versionName='2.0.0'`, `native-code: 'arm64-v8a'` / `'armeabi-v7a'`, `() 720`, `() 30`,
+`() "https://files.sandbee.in/pos"` (the gate's pair at `543b193`: arm64 7,362,354 B `0dc49fc6…`, armv7 6,770,188 B
+`86c88741…`; Task 40 changes only a test in `apps/mobile`, so equal hashes are likely, not required); the x86_64 APK the
+same with `native-code: 'x86_64'`; A `2.0.0` and B `versionCode='20001' versionName='2.0.1'`, both `() 1`, `() 1`,
+`() "http://127.0.0.1:8765/pos"`; `installer exit=0`, `dist\POS-Software-Setup-2.0.0.exe` (about 112.5 MB), its
+`.blockmap`, `latest.yml` `version: 2.0.0`, and `provider: generic`, `url: https://files.sandbee.in/pos/windows`,
+`updaterCacheDirName: pos-desktop-updater`.
+
+- [ ] **Step 3: The release folder.** From `/d/kd/lucifer`, with `A="$(cygpath -w "$SP")\\n4-apk"`:
+
+```bash
+node scripts/release-native.mjs --arm64 "$A\\pair\\app-arm64-v8a-release.apk" --armv7 "$A\\pair\\app-armeabi-v7a-release.apk" --windows "apps\\desktop\\dist" --notes "Sandbee POS now updates itself. You will see a card like this when a new version is ready."
+cd /d/kd/pos-apk-release/Sandbee-POS-2.0.0 && sha256sum -c SHA256SUMS.txt && cat upload/pos/android/latest.json && cd /d/kd/lucifer
+node scripts/release-native.mjs --arm64 "$A\\ab\\A-2.0.0-x86_64.apk" --armv7 "$A\\pair\\app-armeabi-v7a-release.apk" --windows "apps\\desktop\\dist" --notes "x" --out "$(cygpath -w "$SP")\\refused"; echo "exit=$?"
+node scripts/release-native.mjs --arm64 "$A\\pair\\app-arm64-v8a-release.apk" --armv7 "$A\\pair\\app-armeabi-v7a-release.apk" --windows "apps\\desktop\\dist" --notes "x"; echo "exit=$?"
+```
+Expected, as at the gate (it wrote into a scratch folder): `Sandbee POS 2.0.0 (versionCode 20000): D:\kd\pos-apk-release\Sandbee-POS-2.0.0`
+and the six files `upload/pos/android/Sandbee-POS-2.0.0-arm64-v8a.apk`, `…-armeabi-v7a.apk`, `upload/pos/android/latest.json`,
+`upload/pos/windows/POS-Software-Setup-2.0.0.exe`, `….exe.blockmap`, `upload/pos/windows/latest.yml`; `sha256sum -c` says
+`OK` six times; `latest.json` with `"version": "2.0.0"`, `"versionCode": 20000`, today's `"released"`, the notes, and
+both APKs with the pair's hashes and sizes; `release-native: refused: A-2.0.0-x86_64.apk: native code x86_64, not
+arm64-v8a alone`, `exit=1`; `release-native: refused: D:\kd\pos-apk-release\Sandbee-POS-2.0.0 already exists: a
+release folder is written once`, `exit=1`; no `Sandbee-POS-2.0.0.partial` is left. If `D:\kd\pos-apk-release\Sandbee-POS-2.0.0`
+(or a `.partial` of it) exists before the first command, stop and ask the owner (never delete or overwrite it).
+
+- [ ] **Step 4: The local POS, the fake files server and the fake printer**
+
+```bash
+python -X utf8 "$SP/mkenv4.py" "$(cygpath -w "$SP")"
+cd /d/kd/lucifer/apps/cafe && node /d/kd/pos-dev-keep/phase3-final-gate/dbs.cjs pos_scratch_e2e_n4s
+MSYS_NO_PATHCONV=1 node --env-file="$(cygpath -w "$SP")/n4.env" --import tsx scripts/seed-admin.ts 2>&1 | grep -E "created|exists"
+netstat -ano | grep LISTEN | grep -E ":(3110|8765|9100) "
+```
+Expected: `n4.env keys: MONGODB_URI, NEXTAUTH_SECRET, AUTH_SECRET, NEXTAUTH_URL, AUTH_TRUST_HOST, SEED_ADMIN_USERNAME,
+SEED_ADMIN_PASSWORD`; `(none with pos_scratch_e2e_n4s)`; `Admin account created.`; nothing listening. Then, each in the
+background: `cd /d/kd/lucifer/apps/cafe && MSYS_NO_PATHCONV=1 node --env-file="$(cygpath -w "$SP")/n4.env" ../../node_modules/next/dist/bin/next start -p 3110 > "$SP/next.log" 2>&1`,
+`node "$SP/n2-files.mjs" "$(cygpath -w "$SP")\\n4-apk\\ab\\Sandbee-POS-2.0.1-x86_64.apk" "$(cygpath -w "$SP")\\files.log"`
+and `cd /d/kd/lucifer && node scripts/fake-escpos-printer.mjs --port 9100 --out "$(cygpath -w "$SP")\\printer-out"`
+(then `keep.txt` in `printer-out`). Expected: `curl -s http://localhost:3110/api/health` → `{"ok":true,"db":"up","tenant":"dev",…}`;
+`files.log` says `listening for Sandbee-POS-2.0.1-x86_64.apk sha256 <B's> size <B's>`; `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8765/pos/android/latest.json` → `404`.
+(`apps/cafe/.next` must exist; it did at the gate. If it does not, stop and report. If a port already listens, stop and
+report; never stop another program's process.)
+
+- [ ] **Step 5: The emulator and the one-time move.** `df -h /c` (≥ 3 GB free), then in the background (timeout 2 h)
+`/c/Users/kartik.desai/AppData/Local/Android/Sdk/emulator/emulator.exe -avd Pixel_7_API_33 -no-snapshot -memory 2048 -no-boot-anim -no-audio`;
+wait for `adb shell getprop sys.boot_completed` = 1. Then:
+
+```bash
+adb shell pm path com.possoftware.pos && adb shell dumpsys package com.possoftware.pos | grep -E "versionName|versionCode" | head -2
+adb shell pm uninstall com.possoftware.pos
+adb reverse tcp:3110 tcp:3110 && adb reverse tcp:8765 tcp:8765 && adb reverse tcp:9100 tcp:9100 && adb reverse --list
+adb install "$SP/n4-apk/x86/Sandbee-POS-2.0.0-x86_64.apk" && adb logcat -c && adb logcat -b crash -c && adb shell monkey -p com.possoftware.pos -c android.intent.category.LAUNCHER 1
+```
+Expected: the gate left the debug-key release 1.0 (`versionCode=1`); `Success`; three reverses listed; `Success`. This
+is the one-time move of GO-LIVE's new section (uninstall, install 2.0.0). Then, as at the gate: `adb logcat -d -s PosUpdate`
+→ `open`, `check: no answer` (the release APK looks at `https://files.sandbee.in/pos`, which has no DNS record yet). On
+the start screen tap the field (`ui.py dump EditText`), `adb shell input text "http://localhost:3110"` (with
+`MSYS_NO_PATHCONV=1`), Back, tap **Open POS**. The sign-in page loads in the WebView (a dump may still show the start
+screen's nodes: use `ui.py shot`; the username field was at about 540,1392 and the password at 540,1632 on the
+1080 × 2400 screen): tap the username field, `adb shell input text e2eadmin`, `keyevent 61`, `type-secret.py`,
+`keyevent 66`. Expected: the Dashboard, and `adb logcat -b crash -d` empty.
+
+- [ ] **Step 6: A print.** Tap the top bar's printer button ("Printer not connected — open printer set…", about
+980,208), swipe up once (`input swipe 540 2000 540 600 600`), tap the **Printer address** field, `input text 127.0.0.1`,
+Back, tap **Use this network printer** (port 9100 is the default). Expected: "Network printer 127.0.0.1 is connected.".
+Then **Print test slip** → `printer-out/jobs.log` gets a job with `"bytes":` about 13,700 and `"statusOnly":false` (the
+gate's: 13,706 bytes); answer **Yes** to "Did the test slip print?", then **Done**. No crash.
+
+- [ ] **Step 7: Cancel in Android's dialog** (the N2 gate's ruling for N4: the card closes and comes back at the next
+open). `curl -s "http://127.0.0.1:8765/__mode?manifest=ok&apk=fast"`, then `adb install -r "$SP/n4-apk/ab/A-2.0.0-x86_64.apk"`
+(the same key and version: it keeps the sign-in), `adb logcat -c`, launch. Expected, as at the gate: `open`, `download:
+2.0.1 verified (<B's size> bytes)` (no card in this open). HOME, wait 70 s, launch → `open`, `check: 2.0.1 is ready`,
+`card: 2.0.1` and the card ("Update available", "Sandbee POS 2.0.1 is ready to install.", "A test update from the fake
+files server.", the first-install line, Install, Later). **Install** → `install: permission`, "Install unknown apps" for
+Sandbee POS 2.0.0 → **Allow from this source** (`adb shell appops get com.possoftware.pos REQUEST_INSTALL_PACKAGES` →
+`allow`) → Back → the card with "Allow Sandbee POS to install apps, then tap Install again." (the same process: `adb
+shell pidof com.possoftware.pos` unchanged) → **Install** → `install: started`, "Do you want to update this app?" →
+**Cancel** → `install: cancelled`, the card gone with no line, the same process. HOME, wait 70 s, launch → `open`,
+`check: 2.0.1 is ready`, `card: 2.0.1`. No crash (`adb logcat -b crash -d` empty).
+
+- [ ] **Step 8: Put the emulator back**: `adb shell pm uninstall com.possoftware.pos`, `adb install D:/kd/pos-dev-keep/apk-release/pos-emulator-x86_64-release.apk` (the debug-key 1.0, sha256 `29115bdf…`), `adb reverse --remove-all`, `adb shell sync`, `adb emu kill`. Stop this session's `next start`, fake files server and fake printer by their PIDs (`netstat -ano | grep LISTEN | grep -E ":(3110|8765|9100) "`, check each command line, then `Stop-Process -Id`); never another program's. The scratch database `pos_scratch_e2e_n4s` stays; name it in the Results.
+
+### Task 45: The final review, the Results, the owner's merge OK
+
+- [ ] **Step 1: A fresh review of the whole native apps 2.0 work** on Claude Fable 5.1 (on a 429 limit: wait for the
+reset and say so; never switch models silently): the spec, this plan, the diff `1672a85..HEAD` (everything native apps
+2.0 brought on top of the owner's last main before the N3 merge: Sessions N1–N4), the Results sections and the release
+folder's files (read only). Read-only for the reviewer: no Gradle, no npm install, no emulator, no servers, no network,
+no file written (save its report into `$SP` yourself). Critical and Important findings: one fix pass, each by TDD (RED
+first), the suites again; minors to the Results for the owner. **If the fix pass changes `apps/mobile`, `apps/desktop`
+or `scripts/release-native.mjs`**, the release folder from Task 44 no longer matches the head (the gate review's I-1):
+stop and ask the owner first; with the owner's OK rename the earlier folder to
+`D:\kd\pos-apk-release\Sandbee-POS-2.0.0.superseded-<its head>` (never delete it), then repeat Task 44 Steps 2–3
+(and Steps 4–8 when the Android updater changed); the Results name both folders and why.
+
+- [ ] **Step 2: Every suite** (as Task 43, after any fix).
+
+- [ ] **Step 3: Results and commit.** Append `## Session N4 Results` to this plan (the counts, the commits, each step's
+evidence, the APK and installer hashes, the release folder's `SHA256SUMS.txt`, the review, anything that differed and
+why) and commit (`$SP/msg-n4-5.txt`):
+
+```text
+docs(apps): native apps 2.0 Session N4 results: the release folder for 2.0.0 (built, packaged and read back), the docs, the emulator smoke (the one-time move, a print, Cancel in Android's dialog), the final review and every suite recorded
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+```
+Update the project memory (`native-apps-2-2026-10.md` and its MEMORY.md line). No push and no merge in this session:
+report to the owner in Hinglish (the release folder's path, `UPLOAD-STEPS.txt`, the review) and ask for the merge OK; the
+S3 bucket and `files.sandbee.in` are set up with the owner, step by step, after that (spec §10).
 
 ---
 
@@ -9339,3 +11213,118 @@ tray's Quit path, spec §7); GO-LIVE's "the installer is never downloaded from a
 parity); the health-check words only on Windows (spec §9); one invocation and one database ping per typed address (the
 spec's free-tier sentence); the desktop lock's root version 2.0.0 (as `npm install` writes it); the Co-Authored-By line
 (the N3 prompt's); the N2 gate's own ruled list, m-2 and m-3 (nothing new).
+
+## N3 review gate (2026-10-13)
+
+Run right after Session N3, in the same Claude session (the owner: "merge safe ho to merge karo and next work continue
+karo"). The fresh eyes were the N3 review (Claude Fable 5.1, before the N3 Results commit) and this gate's own review of
+Session N4's exact section (below). Nothing uploaded or released.
+
+### N3 re-verified, merged and pushed
+
+- Commits `da3747a`, `e017496`, `25a1c6b`, `d84ac90`, `12a7826`, `ed721ec`, `e88a331`; after each task the `apps/` tree
+  equalled the N2 gate's gold (Session N3 Results); the N3 review: "Ready to merge: Yes", 0 Critical, 0 Important.
+- **The merge (the owner's OK of 2026-10-13, "merge safe ho to merge karo"), judged safe:** the branch changes no cafe
+  code that runs (only `DEPLOY.md`, the runbook test and GO-LIVE text); `origin/main`'s two newer commits (`1d30ac6`,
+  `1672a85`, the owner's CB-7 S5a/S5) touch no file of the branch; no dependency changed; three Fable reviews (N1–N3)
+  passed. Local `main` was fast-forwarded to `origin/main` `1672a85` and `feat/native-apps-2` merged with `--no-ff`:
+  **`543b193`**. Verified on it: shared 964 and typecheck, the cafe typecheck, lint, chain 5802 (5801 pass, 0 fail,
+  1 skipped) and build (144 routes), mobile 168, Jest 8, JUnit 94, desktop 211. Fetched again (`origin/main` still
+  `1672a85`) and **pushed with the token** (the owner: "Haan, push karo"): `origin/main` = `543b193`. Not deployed (no
+  web change). The native apps on `main` are 2.0.0 in progress: nothing is built or handed out from `main` until N4's
+  release set. This branch was fast-forwarded to `543b193`; Session N4 continues here and merges again after its review.
+
+### Rulings on the N3 review
+
+| Finding | Ruling |
+|---|---|
+| m-1 `allowPrerelease = false` is inert on electron-updater's generic provider | Correct (6.8.9 reads it only in the GitHub providers; `isUpdateAvailable` is a plain semver comparison), so **the N2 gate's point 4 above is wrong**: a version with a prerelease part in `latest.yml` would be offered. Task 41's packaging refuses such a version; Task 40 notes it at the line. N3's test versions were plain, so N3's run stands. |
+| m-2 a mistyped bare name reads "Check the internet connection." | **The owner (2026-10-13): "Couldn't reach <host>. Check the name and the internet connection."** for every no-answer case (Task 40; spec §9 amended); GO-LIVE says to check the spelling first and to press Open POS once more for a POS that was asleep (Task 42). |
+| m-3 `takeCard` offers one card for a kept file damaged on disk | Stands: Install hashes it again, says it could not be installed, drops it and resets `lastCheckAt`, so the next open downloads it again; hashing ~7 MB on the main thread at every open would cost more. |
+| m-4 pin (3)'s comment | Task 40. |
+| m-5 a JUnit assertion without a message | Task 40. |
+| m-6 the updater's error line names only `error.name` | Task 40: `errorCode(error)` (electron-updater's `code`, else the name), pinned in (U2). |
+| m-7 Cancel shown by a saved address, not by the main process's allow | Stands: the main process decides; the two coincide (the first run has no address, "Change POS address…" always has one). |
+| The review's declined-to-judge lines | Stand as the session ledgered them; GO-LIVE's "It is never downloaded from anywhere." is rewritten in Task 42. |
+| The 2.0.0 release notes | **The owner (2026-10-13):** "Sandbee POS now updates itself. You will see a card like this when a new version is ready." (Task 44). |
+
+### Session N4 made exact and pre-validated
+
+- Gold worktree `D:\kd\n2g` (reused; its Gradle caches kept), detached at `543b193`: commits `2e16409` (Task 40),
+  `0b2c4ad` (Task 41), `8f6652f` (Task 42; branch `gold-n4`, and a bundle in `D:\kd\n2g-apk\n3-gate\gold-n4.bundle`),
+  whole tree `43524fee05e94b6ecbfc37d73216560482f1ddfc` (Tasks 41 and 42 amended with this gate's review, below; first
+  `94c0866`, `8c6661b`). Written test first in each task (RED seen, then GREEN).
+- The section's blocks were generated from those commits (`gen4_ops.py`: the N2 gate's generator; a `.test.mjs` file and a
+  root `"test…"` script are test ops) and applied step by step on the gold worktree reset to `543b193` (`val4.py`): every
+  task's **whole tree** came out identical to gold, and every RED/GREEN Expected in the section is that run's output. The
+  cafe chain on the gold tree: 5807 (5806 pass, 0 fail, 1 skipped). A dry run of the section's 21 ops on the repo: OK.
+- **Task 44 pre-run** (builds at `543b193` from the repo, scratchpad only, released to nobody): the pair (arm64 7,362,354
+  B `0dc49fc68569c5bd…`, armv7 6,770,188 B `86c88741785b5b7d…`), the x86_64 APK (7,494,077 B `39ab511f…`) and the test
+  APKs A (7,494,073 B `60e10533…`) and B 2.0.1 (7,494,081 B `42729a59…`), every one signed `5bd06ef3…`, the right
+  versions, CPU types, bases and times; the installer 2.0.0 (112,542,298 B) with `url: https://files.sandbee.in/pos/windows`.
+  The packaging into a scratch folder: the six files, `sha256sum -c` OK six times, `latest.json` with the owner's notes;
+  refused on real wrong files: the x86_64 test APK as `--arm64` ("native code x86_64, not arm64-v8a alone"), N3's test
+  installer ("app-update.yml: generic http://127.0.0.1:8766/pos/windows, …"), the Phase 3 debug-key APK ("not signed with
+  the private key (certificate fac61745…)"), an existing folder ("already exists").
+- **The emulator smoke** (API 33, `-no-snapshot -memory 2048`, C: 72 GB free): the debug-key 1.0 the N2 gate left →
+  uninstalled → the real-base 2.0.0 x86_64 → `open`, `check: no answer` → `http://localhost:3110`, signed in (`e2eadmin`,
+  database `pos_scratch_e2e_n4g`) → the printer panel → network printer `127.0.0.1:9100` (adb reverse to a fake printer)
+  "Network printer 127.0.0.1 is connected." → Print test slip → the fake printer's job of 13,706 bytes → Yes, Done; then
+  A over it (`install -r`, still signed in) → `download: 2.0.1 verified (7494081 bytes)`; away 70 s → `check: 2.0.1 is
+  ready`, `card: 2.0.1`, the card → Install → `install: permission` → Allow from this source → Back → the card with "Allow
+  Sandbee POS to install apps, then tap Install again." (same process) → Install → `install: started` → **Cancel** →
+  `install: cancelled`, the card gone with no line, the same process → away 70 s → `card: 2.0.1` again; no crash. Put back
+  to the debug-key 1.0 (`29115bdf…`), reverses removed, `sync`, `emu kill`; the gate's servers stopped by PID; the scratch
+  database `pos_scratch_e2e_n4g` stays. Evidence in the session scratchpad `8350f3dd…/n3-gate/` (copied to
+  `D:\kd\n2g-apk\n3-gate\`).
+
+### What making N4 exact found
+
+1. **`files.sandbee.in` has no DNS record** (NXDOMAIN on 2026-10-13), and `*.sandbee.in` has no wildcard (a random name
+   is NXDOMAIN; `posdemo` resolves to Vercel): until the owner's bucket and domain exist, the apps' looks get no answer
+   and no request reaches any cafe. GO-LIVE's new step puts the owner's upload before any device moves.
+2. The block applier ends a block at a line holding only a fence, so a doc block cannot carry a fenced code block: the
+   new README text uses inline code.
+3. A `localeCompare` sort listed `latest.json` before the APKs; the folder test caught it (code-unit order, as
+   `sha256sum` lists files).
+4. apksigner runs as `java -jar <build-tools>\lib\apksigner.jar` (Node cannot spawn a `.bat` without a shell); build-tools
+   37 prints `V2 Signer: certificate SHA-256 digest: <hex>`; aapt2's resource dump prints the value on the line after
+   the resource's name (`() "https://…"`, `() 720`).
+5. The packaging checks everything before it writes; `latest.json`'s hashes come from the built APKs and each copy is
+   hashed again; `SHA256SUMS.txt` lists the files under `upload\` in `sha256sum --binary` format.
+6. The x86_64 APK is for the emulator only: the release is the pair (the packaging takes no third APK).
+
+### The gate's review of Session N4 (Claude Fable 5.1, a fresh context)
+
+Verdict "Ready to run as written: With fixes": 0 Critical, 1 Important, 7 Minor. It confirmed that the packaging is
+fail-closed (every check before the first write; every printed certificate must be the private key's, so a second
+signer refuses; package, versions, debuggable, one CPU type, the base and both times read back from the APK; the
+installer tied to `latest.yml` by SHA-512 and size; a prerelease refused, the N3 review's m-1 closed), that the manifest
+it writes is always one `UpdateManifest.kt` accepts, the Windows specifics (no `.bat` spawned, arrays of arguments,
+`sha256sum --binary` lines), that every refusal row asserts its own words and that nothing was written, that every
+claim in the new docs is true of the code, that Task 44 is safe (write-once, `--out` for the refusal demos, no request to
+anyone, the emulator put back), and the counts. It re-ran release-native 12/12, the runbook 102/102 and desktop 211/211
+on the gold worktree. Everything was folded in before this commit (gold Tasks 41 and 42 amended, the section
+re-generated and re-validated: every task's whole tree identical again):
+
+| Finding | Ruling |
+|---|---|
+| I-1 Task 45 names a fix pass but not what happens to the write-once release folder if a fix changes the apps or the script | Folded into Task 45 Step 1: stop and ask the owner; with the OK rename the earlier folder `….superseded-<head>` (never delete), repeat Task 44's builds and packaging (and the smoke if the Android updater changed); the Results name both folders. |
+| m-1 a missing java/aapt2/build-tools reads as "signature does not verify" | Folded: `realTools` names a missing build-tools folder, java comes from `JAVA_HOME` when set, and a spawn `ENOENT` is "cannot run <tool>" (a refusal row). |
+| m-2 an I/O failure mid-copy leaves a folder that looks finished | Folded: written into `Sandbee-POS-<version>.partial`, renamed when complete; a leftover `.partial` is refused (a refusal row; the folder test checks none remains). |
+| m-3 refusal rows missing: two signers, no `app-update.yml`, `latest.yml` naming another file | Folded (three rows). An APK over 100 MB is not a row (a 100 MB temporary file per test run); the size rule is pinned by the manifest table. |
+| m-4 §7's download line points at a folder the bucket will not list | Folded: it names `https://files.sandbee.in/pos/windows/POS-Software-Setup-<version>.exe`. |
+| m-5 the upload steps assume `sha256sum` | Folded: `Get-FileHash -Algorithm SHA256` for PowerShell (pinned in the steps test). |
+| m-6 Review Focus 4 says "N4 Task 1"; Task 40's scope `fix(desktop)` also touches a Kotlin test | Folded: "N4 Task 41"; `fix(apps)`. |
+| m-7 spec §5 "versions only go up" is not enforced by the packaging | Folded: a version lower than an existing `Sandbee-POS-x.y.z` in `--out` is refused (a refusal row; the owner's `Sandbee-POS-phase2-…` and `-phase3` folders are not versions and are ignored). |
+| Declined to judge (aapt2/apksigner formats taken from the gate's read-back; the emulator's 1.0 uninstalled without the demo check; `released` = packaging day; CloudFront and the listing block; differential downloads; a hand-mixed `dist/`; `$SP` path forms; the old device's printer rows; x86 devices; PowerShell vs Git Bash README commands; `lastCheckAt` after the release APK's run; the Co-Authored-By line) | Stand: each is either proven by the gate's runs, set up with the owner after N4 (spec §10), or harmless as the reviewer says. |
+
+Real files after the fold: the packaging wrote the folder through `.partial` (six files, `sha256sum -c` OK), refused a
+folder next to a `Sandbee-POS-2.0.1` ("is newer than 2.0.0: a release only goes up") and an `ANDROID_HOME` without
+build-tools ("cannot run …\apksigner.jar: no build-tools 37.0.0 there").
+
+### Changes to later sessions
+
+- None: N4 is the last session of this plan. After it: the owner's merge OK, then the S3 bucket and HTTPS on
+  `files.sandbee.in` with the owner, step by step (spec §10), then the owner's upload and GO-LIVE's "Existing cafes: the
+  native apps 2.0 release".
