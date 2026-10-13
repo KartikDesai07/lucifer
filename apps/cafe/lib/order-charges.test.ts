@@ -7,6 +7,7 @@ import {
   chargesFromOrder,
   withTableCharge,
   applyExtraCharges,
+  orderTableCharge,
   DEFAULT_TABLE_CHARGE_LABEL,
   type OrderCharge,
 } from "@pos/shared/order-charges";
@@ -201,4 +202,31 @@ test("omitting extraCharge fails SAFE (adds nothing) and matches the pre-CB-CHG 
   const withoutKey = computeOrderTotals({ items, discount: 10, discountKind: undefined, charge: 50, cfg });
   const withZero = computeOrderTotals({ items, discount: 10, discountKind: undefined, charge: 50, extraCharge: 0, cfg });
   assert.deepEqual(withoutKey, withZero, "an omitted extraCharge must behave exactly like 0");
+});
+
+// s92 — the resumed-tab double count (live since CB-CHG 92d9ded). chargeAmount is the MIRROR (table + extras), so a
+// resumed tab that read it as the TABLE charge and then added its extras again showed 560 against a stored 530.
+// orderTableCharge is the stored table lane ONLY — the same entry the server settles from (settleCharges).
+test("orderTableCharge: the table entry only, never the chargeAmount mirror", () => {
+  const both = { charges: [{ type: "table" as const, label: "Rooftop", amount: 40 }, { type: "extra" as const, label: "Box", amount: 30 }], chargeAmount: 70, chargeLabel: "Rooftop" };
+  assert.deepEqual(orderTableCharge(both), { type: "table", label: "Rooftop", amount: 40 });
+  // An extra-only bill: the mirror says 30 + "Box", but there is NO table charge.
+  const extraOnly = { charges: [{ type: "extra" as const, label: "Box", amount: 30 }], chargeAmount: 30, chargeLabel: "Box" };
+  assert.equal(orderTableCharge(extraOnly), null);
+  // A pre-CB-CHG order carries only the scalars: they ARE the table charge (chargesFromOrder's compat read).
+  assert.deepEqual(orderTableCharge({ chargeAmount: 40, chargeLabel: "Cover" }), { type: "table", label: "Cover", amount: 40 });
+  assert.equal(orderTableCharge({}), null);
+  assert.equal(orderTableCharge(null), null);
+});
+
+test("a resumed tab with a Rs 30 extra previews the STORED total (530), not the mirror counted twice (560)", () => {
+  const cfg: GstConfig = { gstEnabled: false, gstRate: 0, gstMode: "exclusive" };
+  const charges: OrderCharge[] = [{ type: "extra", label: "Box", amount: 30 }];
+  const tab = { items: [{ price: 500, qty: 1 }], charges, chargeAmount: chargeMirror(charges).amount, chargeLabel: "Box" };
+  const split = splitChargeTotals(charges);
+  const stored = computeOrderTotals({ items: tab.items, discount: 0, discountKind: undefined, charge: split.table, extraCharge: split.extra, cfg });
+  assert.equal(stored.total, 530);
+  const extras = chargesTotal(chargesFromOrder(tab).filter((c) => c.type === "extra"));
+  const preview = computeOrderTotals({ items: tab.items, discount: 0, discountKind: undefined, charge: orderTableCharge(tab)?.amount ?? 0, extraCharge: extras, cfg });
+  assert.equal(preview.total, stored.total);
 });

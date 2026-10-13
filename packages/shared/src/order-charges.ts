@@ -118,6 +118,15 @@ export function chargesFromOrder(
   return [];
 }
 
+// The stored TABLE lane of an order — what a resumed tab's cart and settle modal start from, and the same entry
+// settleCharges re-bills. Never the chargeAmount mirror: that scalar is table + extras, so reading it as the table
+// charge and then adding the extras again counted every extra twice (s92: a Rs 30 extra showed 560 vs a stored 530).
+export function orderTableCharge(
+  order: { charges?: OrderCharge[]; chargeAmount?: number; chargeLabel?: string } | null | undefined,
+): OrderCharge | null {
+  return chargesFromOrder(order).find((c) => c.type === "table") ?? null;
+}
+
 // The fence for the `type:"table"` lane (plan §3): replaces or removes ONLY
 // the table entry, and can never express "touch an extra" — that is what
 // makes "a move must not destroy a takeaway charge" true by construction,

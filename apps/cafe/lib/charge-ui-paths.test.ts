@@ -191,3 +191,32 @@ test("PIN (6): CartExtraCharges.tsx does NOT compare the amount against any uppe
   assert.match(stripped, /label\.trim\(\)\.length === 0/, "positive landmark: validationError must check label.trim().length === 0");
   assert.match(stripped, /Number\.isInteger\(amount\)/, "positive landmark: validationError must check Number.isInteger(amount) — shape only, never size");
 });
+
+// ── (7) s92 — a resumed tab prices its TABLE charge from the stored table entry, never the chargeAmount mirror ──
+// chargeAmount = table + extras since CB-CHG; reading it as the table charge and then adding the extras again showed a
+// resumed tab with a Rs 30 extra as 560 against a stored 530, in the cart AND the settle modal. The settle modal must
+// also show the LIVE extra set — the settle body always sends it and the server replaces the stored set with it.
+const USE_POS_CHARGE = "apps/cafe/hooks/use-pos-charge.ts";
+const USE_POS_MODAL_TOTALS = "apps/cafe/hooks/use-pos-modal-totals.ts";
+
+test("PIN (7): use-pos-charge.ts + use-pos-modal-totals.ts never read the chargeAmount mirror; both use orderTableCharge; the settle modal's extras are the live extraCharges", () => {
+  const mirrorNeedle = "." + "chargeAmount";
+  for (const rel of [USE_POS_CHARGE, USE_POS_MODAL_TOTALS]) {
+    const src = stripComments(readSrc(rel));
+    assert.ok(!src.includes(mirrorNeedle), `${rel} must not read ${mirrorNeedle} (the table + extras mirror)`);
+    assert.match(src, /orderTableCharge\(resumedOrder\)/, `positive landmark: ${rel} must derive the table charge via orderTableCharge(resumedOrder)`);
+  }
+  // The VALUES come from the table entry, not just an unused import of the helper.
+  const charge = stripComments(readSrc(USE_POS_CHARGE));
+  assert.match(charge, /if \(resumedOrder\) return resumedTable\?\.amount \?\? 0;/, "entitledCharge on a resumed tab = the table entry's amount");
+  assert.match(charge, /if \(resumedOrder\) return resumedTable\?\.label \?\? "";/, "chargeLabel on a resumed tab = the table entry's label");
+  const modal = stripComments(readSrc(USE_POS_MODAL_TOTALS));
+  assert.match(modal, /charge: chargeOverride \?\? resumedTable\?\.amount \?\? 0,/, "the settle pricing's table charge = override ?? the table entry (settleCharges' own rule)");
+  assert.match(modal, /total: settleTotals\.total \+ settleExtrasTotal,/, "the settle total adds the live extras exactly once");
+  const settleStart = modal.indexOf("if (settling) {");
+  assert.ok(settleStart >= 0, "positive landmark: the settle branch must exist");
+  const settleBranch = modal.slice(settleStart, modal.indexOf("confirmLabel: \"Settle\"", settleStart));
+  assert.ok(!settleBranch.includes("chargesFromOrder("), "the settle branch must not itemise the STORED extras — the settle body sends the live set");
+  assert.match(settleBranch, /\.\.\.settleExtraEntries\b/, "positive landmark: the settle branch itemises settleExtraEntries");
+  assert.match(modal, /const settleExtraEntries = useMemo\(\s*\(\): OrderCharge\[\] => extraCharges\.map\(/, "settleExtraEntries is built from the LIVE extraCharges (what settlePayload sends)");
+});

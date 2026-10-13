@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { computeOrderTotals, gstConfigFromOrder, gstConfigOfSettings } from "@/lib/receipt";
 import type { DiscountKind } from "@/lib/constants";
-import { chargesFromOrder, chargesTotal, type OrderCharge } from "@pos/shared/order-charges";
+import { chargesTotal, orderTableCharge, type OrderCharge } from "@pos/shared/order-charges";
 import type { Order, Settings } from "@/types";
 
 interface PosModalTotalsInput {
@@ -70,17 +70,17 @@ export function usePosModalTotals({
   total,
   count,
 }: PosModalTotalsInput): PosModalTotals {
-  // CB-CHG — the tab's own extras (the operator's live cart carries the
-  // authoritative set once touched; chargesFromOrder is only the READ path
-  // for what the server already stored). Extras ride on TOP of
-  // computeOrderTotals' single-scalar `charge`, uncapped (decision 8) — that
-  // function's own clamp is the TABLE charge's bound and must not also cap
-  // the extras' sum, so they are added here instead of folded into the
-  // argument.
-  const settleExtrasTotal = useMemo(
-    () => chargesTotal(chargesFromOrder(resumedOrder).filter((c) => c.type === "extra")),
-    [resumedOrder],
+  // CB-CHG — the extras the settle body SENDS: the live cart's set (use-pos-tab seeds it from the stored tab, and
+  // settlePayload always sends it, so the server replaces the stored set with exactly this). Extras ride on TOP of
+  // computeOrderTotals' single-scalar `charge`, uncapped (decision 8) — that function's own clamp is the TABLE
+  // charge's bound and must not also cap the extras' sum, so they are added here instead of folded into the argument.
+  // The table charge is the stored TABLE entry (orderTableCharge), never the table + extras mirror (s92 double count).
+  const settleExtraEntries = useMemo(
+    (): OrderCharge[] => extraCharges.map((e) => ({ type: "extra", label: e.label, amount: e.amount })),
+    [extraCharges],
   );
+  const settleExtrasTotal = chargesTotal(settleExtraEntries);
+  const resumedTable = useMemo(() => (resumedOrder ? orderTableCharge(resumedOrder) : null), [resumedOrder]);
 
   const settleTotals = useMemo(
     () =>
@@ -91,11 +91,11 @@ export function usePosModalTotals({
             discountKind,
             // The tab's own snapshotted charge, so the modal shows exactly the
             // figure the server will re-derive when it settles.
-            charge: chargeOverride ?? resumedOrder.chargeAmount ?? 0,
+            charge: chargeOverride ?? resumedTable?.amount ?? 0,
             cfg: gstConfigFromOrder(resumedOrder, gstConfigOfSettings(settings)),
           })
         : null,
-    [resumedOrder, discount, discountKind, chargeOverride, settings],
+    [resumedOrder, resumedTable, discount, discountKind, chargeOverride, settings],
   );
 
   const settling = paymentIntent === "settle" && resumedOrder && settleTotals;
@@ -105,9 +105,8 @@ export function usePosModalTotals({
     // was just called with) plus its extras, itemised for the modal.
     const tableEntry: OrderCharge | null =
       settleTotals.charge > 0
-        ? { type: "table", label: resumedOrder.chargeLabel ?? chargeLabel, amount: settleTotals.charge }
+        ? { type: "table", label: resumedTable?.label ?? chargeLabel, amount: settleTotals.charge }
         : null;
-    const extraEntries = chargesFromOrder(resumedOrder).filter((c) => c.type === "extra");
     return {
       subtotal: settleTotals.subtotal,
       discount: settleTotals.discount,
@@ -117,8 +116,8 @@ export function usePosModalTotals({
       charge: settleTotals.charge + settleExtrasTotal,
       // The tab's own snapshotted name — the table may have been renamed or
       // re-priced since this tab opened, and the bill keeps what it sold.
-      chargeLabel: resumedOrder.chargeLabel ?? chargeLabel,
-      charges: tableEntry ? [tableEntry, ...extraEntries] : extraEntries,
+      chargeLabel: resumedTable?.label ?? chargeLabel,
+      charges: tableEntry ? [tableEntry, ...settleExtraEntries] : settleExtraEntries,
       total: settleTotals.total + settleExtrasTotal,
       itemCount: resumedOrder.items.reduce((n, it) => n + it.qty, 0),
       confirmLabel: "Settle",
