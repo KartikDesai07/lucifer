@@ -11328,3 +11328,183 @@ build-tools ("cannot run …\apksigner.jar: no build-tools 37.0.0 there").
 - None: N4 is the last session of this plan. After it: the owner's merge OK, then the S3 bucket and HTTPS on
   `files.sandbee.in` with the owner, step by step (spec §10), then the owner's upload and GO-LIVE's "Existing cafes: the
   native apps 2.0 release".
+
+## Session N4 Results
+
+Run on 2026-10-13 (superpowers:executing-plans, inline), Tasks 40–45 in order. Every code and doc block was applied
+verbatim with the gate's block applier (`apply_blocks_clone.py`, a dry run first, per step range, so each RED was seen
+before its code went in). After each task the `apps/` and `scripts/` trees, the root `package.json` and
+`docs/GO-LIVE-CHECKLIST.md` equal the gold commit's: Task 40 `apps` `282e02d3` (gold `2e16409`), 41 `scripts`
+`ae89bc04` (`0b2c4ad`), 42 `apps` `c18a0001`, GO-LIVE `b53347b6` (`8f6652f`); at Task 42 the whole tree outside
+`docs/superpowers/` equals gold's `43524fee`. Nothing pushed, merged, uploaded or released; no download and no web
+request (the release APK's own look got no answer: `files.sandbee.in` has no DNS record). Disk: C: 72 GB, D: 15 → 14 GB
+free.
+
+### Commits (branch `feat/native-apps-2`, from `4ee022e`)
+
+| Task | Commit | What |
+|---|---|---|
+| 40 | `08c5fd9` | the N3 review's minors as ruled: the no-answer words (the owner's), `errorCode` in the updater's error line, the `allowPrerelease` note, pin (3)'s comment, a JUnit message |
+| 41 | `acd19cc` | `scripts/release-native.mjs` + `scripts/release-native.test.mjs` (12 tests), root `test:release-native` |
+| 42 | `9424c70` | GO-LIVE "Existing cafes: the native apps 2.0 release", §7's install line, four §A rows; mobile README "Release a new version (both apps)"; `apps/desktop/README.md`; DEPLOY.md's native apps line; five runbook pins |
+| 43 | (none) | every suite |
+| 44 | (none) | the 2.0.0 set and the release folder (outside the repo), the emulator smoke |
+| 45 | this commit | these Results |
+
+### Counts
+
+| Suite | Baseline (`4ee022e`) | After N4 (`9424c70`) | Expected |
+|---|---|---|---|
+| mobile (`npm test`) | 168 | 168, 0 fail | 168 |
+| Jest (`npx jest`) | 8 | 8, 4 suites | 8 |
+| JUnit (`:app:testDebugUnitTest --rerun`) | 94 | 94, 0 failures, 0 errors | 94 |
+| desktop (`npm test`) | 211 | 211, 0 fail | 211 |
+| `npm run test:release-native` | (none) | 12, 0 fail | 12 |
+| cafe chain (`apps/cafe`, `npm test`) | 5802: 5801 pass, 0 fail, 1 skipped | 5807: 5806 pass, 0 fail, 1 skipped | 5807 |
+| the go-live runbook | 97 | 102 | 102 |
+| typecheck + lint (mobile, desktop, cafe) | clean | clean | clean |
+
+### RED, then GREEN (each as the plan's Expected)
+
+- Task 40: `not ok … (U2) updater.ts: download in the background, …`, `not ok … no answer at all (a network error) is not
+  reached`, `not ok … no answer in time is not reached, and the request is aborted` (`# tests 82`, `# pass 79`,
+  `# fail 3`). GREEN: desktop 211/211, typecheck and lint clean, `BUILD SUCCESSFUL`, JUnit `tests=94 failures=0 errors=0`.
+- Task 41: `Cannot find module 'D:\\kd\\lucifer\\scripts\\release-native.mjs'`, `not ok 1 - scripts\\release-native.test.mjs`
+  (`# tests 1`, `# fail 1`). GREEN: `# tests 12`, `# pass 12`, `# fail 0`.
+- Task 42: six fail (`# tests 102`, `# pass 96`, `# fail 6`) with exactly the plan's messages (`§7 desktop sub-section
+  must quote "Restart to update"`, three × `could not find the heading "### Existing cafes: the native apps 2.0
+  release"`, `could not find the row "Update files base (both native apps)"`, `the mobile README's release section`).
+  GREEN: runbook 102/102, cafe typecheck clean, desktop 211, mobile 168.
+- Task 43: every count in the table above (the cafe chain `rc=0`).
+
+### The 2.0.0 set (Task 44)
+
+Evidence in the session scratchpad
+(`C:\Users\Kartik.desai\AppData\Local\Temp\claude\d--kd-lucifer\00f0ea58-…\scratchpad`): `n4-apk/build.txt` (with
+`readback/` for every APK and the logs), `shots/`, `files.log`, `printer-out/jobs.log`, `posupdate-step7.log`,
+`crash-step7.log`.
+
+- **Step 2, the builds (head `9424c70`): PASS**, about 3 minutes: `kotlin pair exit=0`, `pair exit=0 BUILD SUCCESSFUL`,
+  `x86_64 exit=0`, `kotlin A exit=0`, `A exit=0`, `kotlin B exit=0`, `B exit=0`, `kotlin reset exit=0`, `installer
+  exit=0`. Every APK `apksigner exit=0` and `V2 Signer: certificate SHA-256 digest:
+  5bd06ef3e9a78efcb0dfbd1ff102de932c581a78034d93ef7572f5373b5b3e40`; every hash equals the gate's pre-run at `543b193`:
+
+  | APK | Bytes | SHA-256 | Version, CPU, base, times |
+  |---|---|---|---|
+  | release arm64-v8a | 7,362,354 | `0dc49fc68569c5bd265f94b9878f2080ac901cbffec4e42e0fd95fac8d5284e1` | 20000 / 2.0.0, `'arm64-v8a'`, `https://files.sandbee.in/pos`, 720 / 30 |
+  | release armeabi-v7a | 6,770,188 | `86c88741785b5b7db6bca5436308203ad02fd79e0dcdd7931654784ad209923e` | 20000 / 2.0.0, `'armeabi-v7a'`, the real base, 720 / 30 |
+  | x86_64 (emulator only) | 7,494,077 | `39ab511f64250c6038de8bf83bafe004e00baf4179eac6d35de5937a5084a32f` | 20000 / 2.0.0, `'x86_64'`, the real base, 720 / 30 |
+  | test A (emulator only) | 7,494,073 | `60e10533bd20140218b9f6f8f9a147cf6f09e7950c08532585f9f30b53b07c66` | 20000 / 2.0.0, `'x86_64'`, `http://127.0.0.1:8765/pos`, 1 / 1 |
+  | test B (emulator only) | 7,494,081 | `42729a596cd17e0aade8e45bd12da32cbd11f842995eb674ff966ce05b5e66dd` | 20001 / 2.0.1, `'x86_64'`, the test base, 1 / 1 |
+
+  The installer `apps/desktop/dist/POS-Software-Setup-2.0.0.exe` 112,542,431 B (electron-builder's hash differs per
+  build), its blockmap 119,862 B, `latest.yml` `version: 2.0.0` with its SHA-512, `app-update.yml` `provider: generic`,
+  `url: https://files.sandbee.in/pos/windows`, `updaterCacheDirName: pos-desktop-updater`.
+- **Step 3, the release folder: PASS.** `D:\kd\pos-apk-release\Sandbee-POS-2.0.0` did not exist before (nor a
+  `.partial`); the script printed `Sandbee POS 2.0.0 (versionCode 20000): D:\kd\pos-apk-release\Sandbee-POS-2.0.0` and
+  the six files; `sha256sum -c SHA256SUMS.txt` OK six times; `latest.json` `"version": "2.0.0"`, `"versionCode": 20000`,
+  `"released": "2026-10-13"`, the owner's notes, both APKs with the pair's hashes and sizes; no `.partial` left. The two
+  refusals: `release-native: refused: A-2.0.0-x86_64.apk: native code x86_64, not arm64-v8a alone`, `exit=1` (nothing
+  written in its `--out`); `release-native: refused: D:\kd\pos-apk-release\Sandbee-POS-2.0.0 already exists: a release
+  folder is written once`, `exit=1`. Its `SHA256SUMS.txt`:
+
+  ```text
+  0dc49fc68569c5bd265f94b9878f2080ac901cbffec4e42e0fd95fac8d5284e1 *upload/pos/android/Sandbee-POS-2.0.0-arm64-v8a.apk
+  86c88741785b5b7db6bca5436308203ad02fd79e0dcdd7931654784ad209923e *upload/pos/android/Sandbee-POS-2.0.0-armeabi-v7a.apk
+  1f3398953cbbe326ff27660775d6a1a8da62ef6a9027cae56f1a00f4788b22d4 *upload/pos/android/latest.json
+  29b6eb9c47675ae9337943ed20c611475d6ccb3a5ebb327900f7733285992f11 *upload/pos/windows/POS-Software-Setup-2.0.0.exe
+  99306917a562d0e3a6fc9f7272ff96b0f4384153914a07da45cc6b65ca27f357 *upload/pos/windows/POS-Software-Setup-2.0.0.exe.blockmap
+  4fc15fa75f810d44e0873c7a65488b7505277ea612b419a8ad43ee21de5785e4 *upload/pos/windows/latest.yml
+  ```
+- **Step 4: PASS.** `n4.env keys: MONGODB_URI, NEXTAUTH_SECRET, AUTH_SECRET, NEXTAUTH_URL, AUTH_TRUST_HOST,
+  SEED_ADMIN_USERNAME, SEED_ADMIN_PASSWORD` (no value printed); `(none with pos_scratch_e2e_n4s)`; `Admin account
+  created.`; 3110, 8765 and 9100 free; `next start -p 3110` → `{"ok":true,"db":"up","tenant":"dev",…}`; `files.log`
+  `listening for Sandbee-POS-2.0.1-x86_64.apk sha256 42729a59… size 7494081`; `latest.json` → `404`; the fake printer
+  on 9100 (`keep.txt` in `printer-out`).
+- **Step 5, the one-time move: PASS.** C: 72 GB free; `-no-snapshot -memory 2048` booted. As found: the debug-key
+  release 1.0 (`versionCode=1`) on its start screen with an empty address. `pm uninstall` → `Success`; the three
+  reverses; `adb install` of the x86_64 2.0.0 → `Success`, `versionCode=20000`, `versionName=2.0.0`. The start screen;
+  `http://localhost:3110`, Back, Open POS → `PosUpdate: open`, `check: no answer` (the real base, no DNS record); the
+  sign-in page; `e2eadmin`, the password by `type-secret.py` (23 characters), Enter → the Dashboard; the crash buffer
+  empty.
+- **Step 6, a print: PASS.** The printer button → the panel; `127.0.0.1` in Printer address, Use this network printer →
+  "Network printer 127.0.0.1 is connected."; Print test slip → `jobs.log` job 3 `"bytes":13706`, `"statusOnly":false`
+  (the gate's 13,706 bytes; jobs 1–2 are the connect probe and the status check); Yes ("Printing works on this
+  device."), Done; the top bar's dot green; no crash.
+- **Step 7, Cancel in Android's dialog: PASS.** `__mode` → `{"manifest":"ok","apk":"fast"}`; A over 2.0.0 with
+  `install -r` (still signed in); launch → `open`, `download: 2.0.1 verified (7494081 bytes)`, no card (`files.log`:
+  one `latest.json`, one APK, `sent … (7494081 bytes)`). HOME, 70 s, launch → `open`, `check: 2.0.1 is ready`,
+  `card: 2.0.1`: "Update available", "Sandbee POS 2.0.1 is ready to install.", "A test update from the fake files
+  server.", the first-install line, Install, Later. Install → `install: permission`, "Install unknown apps" for Sandbee
+  POS 2.0.0 → Allow from this source (`REQUEST_INSTALL_PACKAGES: allow`) → Back → the card with "Allow Sandbee POS to
+  install apps, then tap Install again." (pid 5158 unchanged) → Install → `install: started`, "Do you want to update this
+  app?" → Cancel → `install: cancelled`, the card gone with no line, pid 5158, still 2.0.0. HOME, 70 s, launch → `open`,
+  `check: 2.0.1 is ready`, `card: 2.0.1`. The crash buffer empty throughout.
+- **Step 8, put back: PASS.** `pm uninstall` → `Success`; `pos-emulator-x86_64-release.apk` (`29115bdf…`) → `Success`,
+  `versionCode=1`, `versionName=1.0`; `adb reverse --remove-all` (none listed after); `adb shell sync`; `adb emu kill`.
+  This session's `next start` (PID 17700), fake files server (51600) and fake printer (54116) stopped by PID after
+  checking their command lines; nothing listens on 3110, 8765 or 9100. The scratch database `pos_scratch_e2e_n4s`
+  stays.
+
+### Differences from this plan, and why
+
+No difference in code or behaviour: every block applied as written, every Expected matched. Notes:
+1. Task 44 Step 5: the release APK's `open` / `check: no answer` lines appear when Open POS shows the POS screen, not on
+   the start screen: the updater's native module loads with the POS screen (`useUpdateCard` in `PosScreen.tsx`), as
+   designed (no look before an address is set). The lines and their order are the plan's.
+2. Task 44 Step 5: the first `type-secret.py` refused ("the focused field is not a password field": the dump right after
+   TAB still showed the username field focused) and the following Enter submitted the form with no password ("Password
+   is required", the local POS only); the second run typed it into the focused password field and signed in.
+3. The final review ran in the background during Task 44 Steps 4–8, read-only and told to stay off Gradle, npm, adb,
+   the servers and the network.
+
+### The final review (Claude Fable 5.1, a fresh context, `1672a85..9424c70`)
+
+Verdict **"Ready to merge: Yes"**: 0 Critical, 0 Important, 5 Minor. The reviewer read the whole native apps 2.0 range
+statically (the Kotlin updater, the React Native side, the desktop app, the packaging script and its tests, the docs,
+every Results and gate section, the ledger, the release folder's `UPLOAD-STEPS.txt`, `SHA256SUMS.txt`, `latest.json`
+and `latest.yml`, and Task 44's build read-back), during Task 44 Steps 4–8, with no build, no test run, no device, no
+server and no network. It confirmed each Review Focus item in code and in a test that would catch its loss, the Android
+integrity chain (the plain file name under the base, size and SHA-256, then package, versionCode and an identical
+signer set, `USER_ACTION_REQUIRED`, a private receiver, no install without a tap), the never-block rule on both apps,
+the free-tier rule (one `GET /api/health` from the main process only), that the release folder was built from the head
+(`9424c70`) and that its `latest.json` passes every rule of `UpdateManifest.read`, that `UPLOAD-STEPS.txt` is spec §10,
+and that every claim in the new docs is true of the code. The re-grade by effect kept all five at Minor (none changes a
+staff member's day or the 2.0.0 release path), so there was no fix pass and the release folder stays matched to the
+head. The minors, for the owner:
+
+1. The runbook pin `apps/cafe/lib/go-live-runbook.test.ts:1406` asserts the Windows app's version `"2.0.0"` literally,
+   and the mobile README's "Release a new version (both apps)" step 1 names only pin 27: the next version bump turns
+   the cafe chain red in a workspace the builder did not touch. Make the pin compare with `posVersionRelease` (as pin 27
+   does), or name it in the README, before 2.0.1.
+2. GO-LIVE §7 (`docs/GO-LIVE-CHECKLIST.md:860`) "The tray icon has **Open POS** and **Quit**." misses "Change POS
+   address…" and, once an update is downloaded, "Restart to update".
+3. GO-LIVE's "First, the owner's upload" presumes the bucket and HTTPS on `files.sandbee.in` exist; the checklist does
+   not point at spec §10's set-up (the phone check at the end of the step is the only gate).
+4. `PosUpdateModule.install()` runs on the same single worker as the look and installs the kept verified file, not the
+   card's version: only when two releases fall within one check cycle and Install is tapped in the open whose look
+   started the newer download (the button waits for that download, then installs the newer version, or answers
+   "missing" mid-swap). The N1/N2 gates' deferred "two releases between opens" stands; this is its new nuance.
+5. `PosScreen.tsx` takes the open's card (`useUpdateCard`) before the load-error early return, so a card is used up while
+   the load-error screen shows; the next open offers it again.
+
+Set aside by the reviewer, with this session's rulings (all stand): the unsigned Windows installer (spec §12; the
+bucket's write access is the root of trust); a 1.x address the stricter rules reject is asked again (the N3 gate); a
+503 naming a tenant counts as found (the N3 review); a system dialog between `shown` and `takeCard` (the N1 gate);
+`lastCheckAt` on any HTTP answer (N2); a redirect read as no answer (the N3 gate's m-3); API 34/35 (only an API 33 image
+here: repeat E5 when one exists); cleartext allowed at the OS level for LAN POS addresses (pre-existing; the update base
+admits only `https://` or `127.0.0.1`); the smoke and these Results (recorded above, database `pos_scratch_e2e_n4s`);
+`x86`/`x86_64` in the manifest reader (emulator test manifests; the packaging writes only the pair); the old device's
+printer rows (the N3 gate); the Co-Authored-By line (the owner's N4 prompt).
+
+The reviewer's recommendations for the owner: treat the S3 bucket's write credentials as the root of trust for every
+Windows PC (owner-only, with MFA; public read only on `pos/*`, listing blocked); once `files.sandbee.in` answers, one
+real check before any cafe moves (a 2.0.0 phone logs `check: ignored (not newer)`, a 2.0.0 PC's log shows its look at
+`latest.yml`), then GO-LIVE's step; take minor 1 before the next version bump.
+
+### What is next
+
+The owner's merge OK (this branch: `main` `543b193` + `4ee022e` + this session's four commits). Then, with the owner,
+step by step: the S3 bucket and HTTPS on `files.sandbee.in` (spec §10), the owner's upload of
+`D:\kd\pos-apk-release\Sandbee-POS-2.0.0\` as its `UPLOAD-STEPS.txt` says (`latest.json` and `latest.yml` last), the
+real check from a phone and a PC, and then GO-LIVE's "Existing cafes: the native apps 2.0 release".
