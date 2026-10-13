@@ -40,7 +40,7 @@ After N4 (not in this plan): the S3 bucket and HTTPS on `files.sandbee.in`, set 
 - Base URL in both apps: `https://files.sandbee.in/pos`. Keys: `android/latest.json`, `android/Sandbee-POS-<version>-arm64-v8a.apk`, `android/Sandbee-POS-<version>-armeabi-v7a.apk`, `windows/latest.yml`, `windows/POS-Software-Setup-<version>.exe`, `windows/POS-Software-Setup-<version>.exe.blockmap`.
 - **Never block (D3):** no force update, no blocking screen, no Android install without a tap, no automatic restart of a running Windows app. "Show that an update has come, once, when the app is opened; nothing else."
 - Android **app open** = the first view after the app's process started, or back in view after at least 30 minutes away. A check runs at an open when the last one is at least 12 hours old. The card shows once per open, only for an APK verified before that open; **Later** hides it until the next open.
-- Windows: check 1 minute after start and every 24 hours; `autoDownload: true`, `autoInstallOnAppQuit: true`, `allowDowngrade: false`, `allowPrerelease: false`; one notification "POS Software <version> is ready. It installs when you close the app." and a tray item **Restart to update**; no dialog.
+- Windows: check 1 minute after start and every 24 hours; `autoDownload: true`, `autoInstallOnAppQuit: true`, `allowDowngrade: false`, `allowPrerelease: false`; one notification "POS Software <version> is ready. It installs when you close the app." and a tray item **Restart to update** (also in the Help menu: the N2 gate); no dialog; Start with Windows survives every update (the N2 gate's G-1).
 - One version for both apps; 2.0.0 is the first managed release. `versionCode = major × 10000 + minor × 100 + patch` (2.0.0 → 20000; minor and patch below 100). Versions only go up.
 - Manifest (§4): `schema` 1, `package` = the app's, `versionCode` an integer greater than the installed one, `version` `x.y.z`, an APK for one of `Build.SUPPORTED_ABIS`, `file` a plain file name, `sha256` 64 hex, `size` a positive integer ≤ 100 MB, `notes` optional ≤ 300 characters, `released` `YYYY-MM-DD`. The APK URL is always `<base>/android/<file>`. Anything else is ignored silently.
 - Integrity: Android uses a file only when its SHA-256 and size equal the manifest's **and** the APK's package, versionCode and signing certificate equal the installed app's. Windows: electron-updater's SHA-512.
@@ -3771,54 +3771,4790 @@ Report to the owner in Hinglish.
 
 ---
 
-# Session N3: the Windows app (spec; made exact at the N2 gate)
+# Session N3 (exact): the Windows app, and the N2 review's minors
+
+Made exact at the N2 review gate (2026-10-13, section "N2 review gate" at the end of this plan). Every code block below
+was written and run in a gold worktree (`D:\kd\n2g`, reused from the N1 gate, detached from `8bcd4a6`): tasks 30–35 as
+six commits (`a86ccd0` … `2c40140`), apps tree `16d4bc930bec6f8e64d09233bfa94f6ba54b2392`, docs tree
+`389363ff58ade2e1c7924d9ead97b14f22977f0c`; the blocks were generated from those commits, then applied step by step on
+the gold worktree reset to `8bcd4a6` (each find matched exactly once, every task's trees came out identical, and every
+Expected below is that run's output). The gate pre-ran Task 30 on the emulator (Cancel in Android's dialog closes the
+card) and Task 36 on this PC (the move from 1.12.0, the address window, Restart to update, install on quit, the
+uninstall).
 
 Acceptance: the address window looks and behaves like the Android start screen and accepts a bare name; the app updates
-itself from a fake files server on this PC, installing when it quits or on "Restart to update".
+itself from a fake files server on this PC, installing when it quits or on "Restart to update"; start with Windows
+survives every update; the N2 review's minors are fixed as the owner ruled.
 
-Tasks are numbered 31–36 (the N1 review gate: `task-brief` collects every "Task N" heading in this plan). Every suite
-run in this session includes the cafe chain (`cd apps/cafe && npm test`; 5656 at the N1 gate).
+**Changes from the spec version of N3** (the gate's rulings; reasons in the gate section):
+- Task 30 is new: the N2 review's minors m-1, m-2, m-4, m-5, m-7, and m-3 with the owner's two rulings of 2026-10-13:
+  Cancel in Android's install dialog closes the card like Later (offered again at the next open), and the card waits at
+  most 2 minutes for idle printers.
+- Task 31: the saved address is read back by the same rules (`store.ts`), so a private-network `http://` address saved
+  by the window survives a restart; `normalizeServerUrl`, its error words and its 16 tests go; `startUrl`,
+  `isSameOrigin` and `isExternalHttpUrl` stay in `server-url.ts`; `apps/mobile/src/url.ts`'s header names the port.
+- Task 32: the check takes a narrow `HealthFetch` (the part of `fetch` it uses), so `url-window.ts` passes
+  `(url, init) => net.fetch(url, init)`.
+- Task 33: GO-LIVE §7's first-run line and its runbook pin move here with the window's words (the cafe chain stays green
+  after every task); the window asks for 480 × 640 of content (`useContentSize`; the page measured 480 × 666 on this PC);
+  the version comes as an additional argument; the save handler logs "address check: found / not saved".
+- Task 34: also the About dialog ("POS address: …") and a pin (A3).
+- Task 35: `electron-updater` 6.8.9 (released with electron-builder 26.15.0, the newest before 26.16.0, the same
+  `builder-util-runtime` 9.7.0); `build.publish` is an object (so `-c.publish.url` overrides it); test builds are
+  2.0.0, 2.0.1 and 2.0.2 (a `-test` suffix is a prerelease, which `allowPrerelease: false` never offers); **Restart to
+  update is in the tray and in the Help menu**; the gate's finding G-1 is fixed here: an update (and the move from 1.x)
+  ran the old uninstaller, which removed the start-with-Windows entry, so `installer.nsh` keeps it on `--updated` and
+  the app puts the entry back at start when it is missing and the operator chose it (a disable made in Windows, which
+  keeps the entry, is left alone: the N3 review's m-1).
+- Task 36: `posdemo` is not typed (a found address is saved and opens that POS, the live demo); a bare name is checked
+  with `--host-resolver-rules` (no request leaves the PC); the 1.12.0 → 2.0.0 move comes first (G-1); the app is driven
+  by playwright-core's Electron support (no global keys or clicks); the owner's two leftover folders are renamed for the
+  test and renamed back (the owner's OK of 2026-10-13).
+
+**Expected counts** (baseline = N2's end): mobile `npm test` 167 → **168** (+1 reducer test), Jest 7 → **8**, JUnit 92 →
+**94**, desktop 205 → **211** (−16 `normalizeServerUrl`, +3 parity, +1 store, +7 health, +4 update plan, +2 (A1)/(A2),
++1 (A3), +4 (U1)–(U4)), the cafe chain 5656 (5655 pass, 0 fail, 1 skipped) → unchanged, typecheck and lint clean in both
+apps.
+
+Work in `D:\kd\lucifer` on `feat/native-apps-2`; `$SP` is the session's scratchpad. Always
+`GRADLE_USER_HOME='D:\gradle-home'`. Tasks are numbered 30–36 (Session N3 = 3x), so `task-start <plan> 31` brings only
+this session's task. Every commit message goes in a scratch file and is committed with `git commit -F`; the messages below
+end with the Co-Authored-By line the N3 prompt gives (Claude Opus 5.5); if a session's prompt gives another, its line
+wins. Desktop pin runs carry `timeout`: a failing `assert.ok` without a message can hang
+`desktop-paths.test.ts` under tsx (every new assertion here has one).
+
+### Task 30: The N2 review's minors (Android)
+
+**Files:**
+- Modify: `…/update/UpdateFiles.kt` (`sha256Of`), `UpdateDownloader.kt` (sync before the rename), `UpdateInstaller.kt` (`CANCELLED`; a `RuntimeException` abandons the session), `UpdateInstallReceiver.kt` (`STATUS_FAILURE_ABORTED` → `onCancelled`), `PosUpdateModule.kt` (the install ticket, the re-hash, the 2-minute bound, the Cancel event)
+- Modify: `apps/mobile/src/native/PosUpdate.ts` (`'cancelled'`), `src/update-card.ts` (`cardResultEvent`), `src/screens/UpdateCard.tsx`
+- Test: `UpdateFilesTest.kt` (2 tests), `src/update-card.test.ts` (1 test, one title), `__tests__/UpdateCard.test.tsx` (every AppState listener; 1 test), `src/mobile-paths.test.ts` (pins 30–32: needles)
+
+**Interfaces:** `UpdateFiles.sha256Of(input): String`; `UpdateInstaller.InstallStart.CANCELLED("cancelled")`; `UpdateInstallReceiver.onCancelled`; `PosUpdateModule.RESULT_EVENT` payload `{ ok: false, cancelled: Boolean }`; JS `InstallAnswer` adds `'cancelled'`; `cardResultEvent(value): CardEvent` (`later` for a Cancel, else `installFailed`). Log lines: `install: cancelled`, `install: the kept file changed on disk`, `card: printing for 2 minutes; the next open offers it`.
+
+- [ ] **Step 1: Check the branch, the disks and every suite**
+
+```bash
+cd /d/kd/lucifer && git status --short && git branch --show-current && git log --oneline -3 && df -h /c /d
+cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)" && npm run typecheck && npm run lint && npx jest 2>&1 | grep -E "^Tests:"
+cd /d/kd/lucifer/apps/desktop && npm test 2>&1 | grep -E "^# (tests|pass|fail)" && npm run typecheck && npm run lint
+cd /d/kd/lucifer/apps/cafe && npm test > "$SP/cafe-base.log" 2>&1; grep -E "^# (tests|pass|fail|skipped)" "$SP/cafe-base.log"
+cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun --console=plain > "$SP/junit-base.log" 2>&1; tail -3 "$SP/junit-base.log"
+cat app/build/test-results/testDebugUnitTest/*.xml | grep -o '<testsuite [^>]*' | sed -E 's/.*tests="([0-9]+)".*failures="([0-9]+)".*errors="([0-9]+)".*/\1 \2 \3/' | awk '{t+=$1; f+=$2; e+=$3} END {print "tests="t" failures="f" errors="e}'
+```
+Expected: clean, `feat/native-apps-2`, this gate's plan commit on top; mobile 167/167, typecheck and lint clean, Jest
+`Tests: 7 passed`; desktop 205/205; cafe `# tests 5656`, `# pass 5655`, `# fail 0`, `# skipped 1`; JUnit
+`tests=92 failures=0 errors=0`. The cafe chain takes a few minutes: run that line in the background and wait for its log
+with an until-loop. D: needs about 1 GB free for this session's builds (the installers go to C:).
+
+- [ ] **Step 2: Write the failing tests**
+
+In `apps/mobile/__tests__/UpdateCard.test.tsx`, find:
+
+```tsx
+
+import React from 'react';
+import { AccessibilityInfo, AppState, NativeModules, Text } from 'react-native';
+import ReactTestRenderer from 'react-test-renderer';
+import { PosScreen } from '../src/screens/PosScreen';
+```
+
+Replace it with:
+
+```tsx
+
+import React from 'react';
+import {
+  AccessibilityInfo,
+  AppState,
+  DeviceEventEmitter,
+  NativeModules,
+  Text,
+} from 'react-native';
+import ReactTestRenderer from 'react-test-renderer';
+import { PosScreen } from '../src/screens/PosScreen';
+```
+
+In `apps/mobile/__tests__/UpdateCard.test.tsx`, find:
+
+```tsx
+  (NativeModules as { PosUpdate?: unknown }).PosUpdate = update;
+  (AppState as { currentState: unknown }).currentState = 'active';
+  return update;
+}
+```
+
+Replace it with:
+
+```tsx
+  (NativeModules as { PosUpdate?: unknown }).PosUpdate = update;
+  (AppState as { currentState: unknown }).currentState = 'active';
+  // Each test's screen registers its own listeners; an earlier test's are not this screen's.
+  (AppState.addEventListener as jest.Mock).mockClear();
+  return update;
+}
+```
+
+In `apps/mobile/__tests__/UpdateCard.test.tsx`, find:
+
+```tsx
+    });
+    expect(textOf(screen)).toContain('Update available');
+    const listen = AppState.addEventListener as jest.Mock;
+    const onChange = listen.mock.calls[listen.mock.calls.length - 1][1] as (
+      state: string,
+    ) => void;
+    await ReactTestRenderer.act(async () => {
+      onChange('background');
+    });
+    expect(textOf(screen)).not.toContain('Update available');
+```
+
+Replace it with:
+
+```tsx
+    });
+    expect(textOf(screen)).toContain('Update available');
+    // The N2 review gate (the review's m-7): every AppState listener of this screen hears the change, as on a phone,
+    // so the test does not depend on which listener was added last.
+    const listen = AppState.addEventListener as jest.Mock;
+    const onChanges = listen.mock.calls
+      .filter(call => call[0] === 'change')
+      .map(call => call[1] as (state: string) => void);
+    expect(onChanges.length).toBeGreaterThan(0);
+    await ReactTestRenderer.act(async () => {
+      for (const onChange of onChanges) {
+        onChange('background');
+      }
+    });
+    expect(textOf(screen)).not.toContain('Update available');
+```
+
+In `apps/mobile/__tests__/UpdateCard.test.tsx`, find:
+
+```tsx
+    });
+    expect(textOf(screen)).not.toContain('Update available');
+    await ReactTestRenderer.act(async () => {
+      screen.unmount();
+    });
+  },
+  COLD_START_TIMEOUT_MS,
+);
+
+```
+
+Replace it with:
+
+```tsx
+    });
+    expect(textOf(screen)).not.toContain('Update available');
+    await ReactTestRenderer.act(async () => {
+      screen.unmount();
+    });
+  },
+  COLD_START_TIMEOUT_MS,
+);
+
+test(
+  "Cancel in Android's install dialog closes the card like Later",
+  async () => {
+    // The N2 review gate (the review's m-4, the owner's ruling of 2026-10-13): the app's answer to a Cancel.
+    stubs();
+    let screen!: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      screen = ReactTestRenderer.create(
+        <PosScreen origin="https://cafe.example.com" onChangeUrl={() => undefined} />,
+      );
+    });
+    expect(textOf(screen)).toContain('Update available');
+    await ReactTestRenderer.act(async () => {
+      DeviceEventEmitter.emit('PosUpdateResult', { ok: false, cancelled: true });
+    });
+    expect(textOf(screen)).not.toContain('Update available');
+    expect(textOf(screen)).not.toContain('could not be installed');
+    await ReactTestRenderer.act(async () => {
+      screen.unmount();
+    });
+  },
+  COLD_START_TIMEOUT_MS,
+);
+
+```
+
+In `apps/mobile/android/app/src/test/java/com/possoftware/pos/update/UpdateFilesTest.kt`, find:
+
+```kotlin
+    assertFalse(UpdateFiles.copyVerified(ByteArrayInputStream(page), ByteArrayOutputStream(), apk.size, sha))
+  }
+}
+
+```
+
+Replace it with:
+
+```kotlin
+    assertFalse(UpdateFiles.copyVerified(ByteArrayInputStream(page), ByteArrayOutputStream(), apk.size, sha))
+  }
+
+  // The N2 review gate (native apps 2.0, Session N3 Task 30): the review's m-2. A kept file is hashed again before it is
+  // offered as ready or handed to Android's installer, so a file damaged on disk is downloaded again, never offered.
+
+  @Test
+  fun aKeptFileHashesToTheManifestsSha256() {
+    assertEquals(sha, UpdateFiles.sha256Of(ByteArrayInputStream(apk)))
+  }
+
+  @Test
+  fun aKeptFileDamagedOnDiskHashesToSomethingElse() {
+    val changed = apk.copyOf().also { it[7] = (it[7] + 1).toByte() }
+    assertFalse("one byte changed", UpdateFiles.sha256Of(ByteArrayInputStream(changed)) == sha)
+    assertFalse("cut short", UpdateFiles.sha256Of(ByteArrayInputStream(apk.copyOf(1000))) == sha)
+    assertEquals(
+        "empty: the SHA-256 of nothing",
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        UpdateFiles.sha256Of(ByteArrayInputStream(ByteArray(0))))
+  }
+}
+
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  need(d, 'UpdateStore.deleteFilesExcept(ctx, null)', 'a download does not start from an empty updates folder');
+  need(d, 'UpdateFiles.copyVerified(input, out, offer.size, offer.sha256)', 'a download is not checked by size and SHA-256');
+  const renamed = d.indexOf('if (!part.renameTo(apk))');
+  const checked = d.indexOf('if (!ApkCheck.matches(ctx, apk, offer))');
+```
+
+Replace it with:
+
+```ts
+  need(d, 'UpdateStore.deleteFilesExcept(ctx, null)', 'a download does not start from an empty updates folder');
+  need(d, 'UpdateFiles.copyVerified(input, out, offer.size, offer.sha256)', 'a download is not checked by size and SHA-256');
+  // The N2 review gate (the review's m-2): the bytes are on disk before the rename.
+  need(d, 'UpdateFiles.copyVerified(input, out, offer.size, offer.sha256).also { if (it) out.fd.sync() }', 'a download is renamed before its bytes are on disk');
+  const renamed = d.indexOf('if (!part.renameTo(apk))');
+  const checked = d.indexOf('if (!ApkCheck.matches(ctx, apk, offer))');
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+    ['UpdateStore.deleteFilesExcept(ctx, null)', 'dir.mkdirs()'],
+    ['UpdateFiles.copyVerified(input, out, offer.size, offer.sha256)', 'input.copyTo(out) > 0'],
+    ['if (!ApkCheck.matches(ctx, apk, offer))', 'if (false)'],
+  ]);
+```
+
+Replace it with:
+
+```ts
+    ['UpdateStore.deleteFilesExcept(ctx, null)', 'dir.mkdirs()'],
+    ['UpdateFiles.copyVerified(input, out, offer.size, offer.sha256)', 'input.copyTo(out) > 0'],
+    ['.also { if (it) out.fd.sync() }', ''],
+    ['if (!ApkCheck.matches(ctx, apk, offer))', 'if (false)'],
+  ]);
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  need(r, 'PackageInstaller.STATUS_PENDING_USER_ACTION ->', 'Android\'s install dialog is never shown');
+  need(r, 'context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))', 'Android\'s install dialog is never shown');
+  need(r, 'onFailed?.invoke()', 'a failed or cancelled install never reaches the card');
+  need(m, '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />', 'REQUEST_INSTALL_PACKAGES missing');
+  const receiver = /<receiver\b[^>]*android:name="\.update\.UpdateInstallReceiver"[^>]*\/>/.exec(m)?.[0];
+```
+
+Replace it with:
+
+```ts
+  need(r, 'PackageInstaller.STATUS_PENDING_USER_ACTION ->', 'Android\'s install dialog is never shown');
+  need(r, 'context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))', 'Android\'s install dialog is never shown');
+  need(r, 'onFailed?.invoke()', 'a failed install never reaches the card');
+  // The N2 review gate: a session that cannot be written is abandoned (the review's m-5), and a Cancel in Android's
+  // dialog is Later, not a failure (the review's m-4, the owner's ruling of 2026-10-13).
+  need(i, '} catch (e: RuntimeException) {\n      installer.abandonSession(id)', 'a session that cannot be written stays open');
+  need(r, 'PackageInstaller.STATUS_FAILURE_ABORTED -> {', 'a Cancel in Android\'s dialog reads as a failure');
+  need(r, 'onCancelled?.invoke()', 'a Cancel in Android\'s dialog never reaches the card');
+  need(m, '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />', 'REQUEST_INSTALL_PACKAGES missing');
+  const receiver = /<receiver\b[^>]*android:name="\.update\.UpdateInstallReceiver"[^>]*\/>/.exec(m)?.[0];
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+    ['Intent(app, UpdateInstallReceiver::class.java)', 'Intent("com.possoftware.pos.UPDATE_STATUS")'],
+    ['PendingIntent.FLAG_MUTABLE', 'PendingIntent.FLAG_IMMUTABLE'],
+  ]);
+  everyMutationCaught(run('receiver'), base.receiver, [
+```
+
+Replace it with:
+
+```ts
+    ['Intent(app, UpdateInstallReceiver::class.java)', 'Intent("com.possoftware.pos.UPDATE_STATUS")'],
+    ['PendingIntent.FLAG_MUTABLE', 'PendingIntent.FLAG_IMMUTABLE'],
+    ['catch (e: RuntimeException)', 'catch (e: SecurityException)'],
+  ]);
+  everyMutationCaught(run('receiver'), base.receiver, [
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+    ['context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))', 'Unit'],
+    ['onFailed?.invoke()', 'Unit'],
+  ]);
+  everyMutationCaught(run('manifest'), base.manifest, [
+```
+
+Replace it with:
+
+```ts
+    ['context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))', 'Unit'],
+    ['onFailed?.invoke()', 'Unit'],
+    ['PackageInstaller.STATUS_FAILURE_ABORTED -> {', 'PackageInstaller.STATUS_SUCCESS + 98 -> {'],
+    ['onCancelled?.invoke()', 'Unit'],
+  ]);
+  everyMutationCaught(run('manifest'), base.manifest, [
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  need(k, 'while (PrinterPool.anyPrinting() && waited < INSTALL_IDLE_WAIT_MS)', 'Install does not wait for a print in flight');
+  need(k, '} catch (t: Throwable) {\n        Log.i(TAG, "check: "', 'a failed look can end the updater thread');
+  need(strip(s.pool), 'fun anyPrinting(): Boolean = managers().any { it.isPrinting() }', 'the printers cannot say a job is in flight');
+  need(strip(s.manager), 'fun isPrinting(): Boolean = printing.get()', 'a printer cannot say a job is in flight');
+```
+
+Replace it with:
+
+```ts
+  need(k, 'while (PrinterPool.anyPrinting() && waited < INSTALL_IDLE_WAIT_MS)', 'Install does not wait for a print in flight');
+  need(k, '} catch (t: Throwable) {\n        Log.i(TAG, "check: "', 'a failed look can end the updater thread');
+  // The N2 review gate: the card waits at most 2 minutes for idle printers (the review's m-3, the owner's ruling of
+  // 2026-10-13); Later stops an Install still waiting for them (m-1); a kept file is hashed again before it is called
+  // ready or handed to the installer (m-2); a Cancel in Android's dialog reaches the card as Later (m-4).
+  need(k, 'private const val CARD_IDLE_WAIT_MS = 120_000L', 'the card waits for idle printers without a bound');
+  need(k, 'if (SystemClock.elapsedRealtime() - waitingSince >= CARD_IDLE_WAIT_MS) {', 'the card waits for idle printers without a bound');
+  need(k, 'fun later() {\n    installTicket.incrementAndGet()', 'Later does not stop an Install still waiting for the printers');
+  need(k, 'ticket != installTicket.get() -> UpdateInstaller.InstallStart.CANCELLED', 'Later does not stop an Install still waiting for the printers');
+  need(k, '!keptIntact(update) -> {', 'a kept file is handed to the installer without its hash checked again');
+  need(k, '&& keptIntact(kept)', 'a kept file is called ready without its hash checked again');
+  need(k, 'UpdateInstallReceiver.onCancelled = { emitResult(ok = false, cancelled = true) }', 'a Cancel in Android\'s dialog never reaches the card');
+  need(strip(s.pool), 'fun anyPrinting(): Boolean = managers().any { it.isPrinting() }', 'the printers cannot say a job is in flight');
+  need(strip(s.manager), 'fun isPrinting(): Boolean = printing.get()', 'a printer cannot say a job is in flight');
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+    ['while (PrinterPool.anyPrinting() && waited', 'while (false && waited'],
+    ['} catch (t: Throwable) {\n        Log.i(TAG, "check: "', '} catch (t: Exception) {\n        Log.i(TAG, "check: "'],
+  ]);
+  everyMutationCaught(run('js'), base.js, [
+```
+
+Replace it with:
+
+```ts
+    ['while (PrinterPool.anyPrinting() && waited', 'while (false && waited'],
+    ['} catch (t: Throwable) {\n        Log.i(TAG, "check: "', '} catch (t: Exception) {\n        Log.i(TAG, "check: "'],
+    ['CARD_IDLE_WAIT_MS = 120_000L', 'CARD_IDLE_WAIT_MS = Long.MAX_VALUE'],
+    ['if (SystemClock.elapsedRealtime() - waitingSince >= CARD_IDLE_WAIT_MS) {', 'if (false) {'],
+    ['fun later() {\n    installTicket.incrementAndGet()', 'fun later() {\n    Unit'],
+    ['ticket != installTicket.get() -> ', 'false -> '],
+    ['!keptIntact(update) -> {', 'false -> {'],
+    ['&& keptIntact(kept)', ''],
+    ['emitResult(ok = false, cancelled = true) }', 'emitResult(ok = false, cancelled = false) }'],
+  ]);
+  everyMutationCaught(run('js'), base.js, [
+```
+
+In `apps/mobile/src/update-card.test.ts`, find:
+
+```ts
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { asCardInfo, CARD_START, reduceCard, type CardState } from './update-card';
+
+const info = { version: '2.0.1', notes: 'Faster printing.' };
+```
+
+Replace it with:
+
+```ts
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { asCardInfo, CARD_START, cardResultEvent, reduceCard, type CardState } from './update-card';
+
+const info = { version: '2.0.1', notes: 'Faster printing.' };
+```
+
+In `apps/mobile/src/update-card.test.ts`, find:
+
+```ts
+});
+
+test("Install started: the card stays while Android's dialog is up; a failed or cancelled install says so", () => {
+  const started = reduceCard(shown(), { type: 'install', answer: 'started' });
+  const dialog = reduceCard(started, { type: 'appState', state: 'background' });
+  assert.deepEqual(dialog.card, info, "Android's install dialog is not the app going away");
+  const cancelled = reduceCard(reduceCard(dialog, { type: 'appState', state: 'active' }), { type: 'installFailed' });
+  assert.deepEqual(cancelled.card, info);
+  assert.equal(cancelled.note, 'failed');
+  assert.equal(reduceCard(shown(), { type: 'install', answer: 'failed' }).note, 'failed');
+  assert.equal(reduceCard(CARD_START, { type: 'installFailed' }).card, null, 'no card, nothing to say');
+});
+
+```
+
+Replace it with:
+
+```ts
+});
+
+test("Install started: the card stays while Android's dialog is up; a failed install says so", () => {
+  const started = reduceCard(shown(), { type: 'install', answer: 'started' });
+  const dialog = reduceCard(started, { type: 'appState', state: 'background' });
+  assert.deepEqual(dialog.card, info, "Android's install dialog is not the app going away");
+  const failed = reduceCard(reduceCard(dialog, { type: 'appState', state: 'active' }), { type: 'installFailed' });
+  assert.deepEqual(failed.card, info);
+  assert.equal(failed.note, 'failed');
+  assert.equal(reduceCard(shown(), { type: 'install', answer: 'failed' }).note, 'failed');
+  assert.equal(reduceCard(CARD_START, { type: 'installFailed' }).card, null, 'no card, nothing to say');
+});
+
+test("Cancel in Android's dialog closes the card like Later; the next app open offers it again", () => {
+  // The N2 review gate (the owner, 2026-10-13): the review's m-4. A Cancel is the staff's own choice, not a failure.
+  const started = reduceCard(shown(), { type: 'install', answer: 'started' });
+  const back = reduceCard(reduceCard(started, { type: 'appState', state: 'background' }), { type: 'appState', state: 'active' });
+  const cancelled = reduceCard(back, cardResultEvent({ ok: false, cancelled: true }));
+  assert.equal(cancelled.card, null);
+  assert.equal(cancelled.note, 'none');
+  assert.equal(cardResultEvent({ ok: false }).type, 'installFailed', 'a failure keeps the card, with its line');
+  assert.equal(cardResultEvent('x').type, 'installFailed');
+  // The review's m-1: Later during Install's wait for the printers; the app answers "cancelled" and starts nothing.
+  assert.equal(reduceCard(shown(), { type: 'install', answer: 'cancelled' }).card, null);
+});
+
+```
+
+- [ ] **Step 3: Run them and see them fail**
+
+```bash
+cd /d/kd/lucifer/apps/mobile && node --import tsx --test src/update-card.test.ts 2>&1 | grep -E "^not ok|cardResultEvent|# (pass|fail)"
+node --import tsx --test --test-name-pattern "pin 3[012]" src/mobile-paths.test.ts 2>&1 | grep -E "^not ok|^    [0-9]+:|# (pass|fail)"
+npx jest __tests__/UpdateCard.test.tsx 2>&1 | grep -E "^Tests:"
+cd android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --tests 'com.possoftware.pos.update.*' --console=plain 2>&1 | grep -E "Unresolved reference|^BUILD" | sed -E 's/.*(Unresolved reference [^.]*).*/\1/; s/ in [0-9hms ]+$//' | sort | uniq -c
+```
+Expected: `not ok … Cancel in Android's dialog closes the card like Later; the next app open offers it again` with
+`(0 , import_update_card.cardResultEvent) is not a function`, `# pass 7`, `# fail 1`; pins 30, 31, 32 and their mutations
+fail (`# pass 0`, `# fail 6`): pin 30 `'a download is renamed before its bytes are on disk'`; pin 31 `'a session that
+cannot be written stays open'`, `"a Cancel in Android's dialog reads as a failure"`, `"a Cancel in Android's dialog never
+reaches the card"`; pin 32 `'the card waits for idle printers without a bound'` (twice), `'Later does not stop an Install
+still waiting for the printers'` (twice), `'a kept file is handed to the installer without its hash checked again'`, `'a
+kept file is called ready without its hash checked again'`, `"a Cancel in Android's dialog never reaches the card"`; Jest
+`Tests: 1 failed, 2 passed, 3 total`; JUnit `4 Unresolved reference 'sha256Of'` and `1 BUILD FAILED`.
+
+- [ ] **Step 4: Implement**
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/update/PosUpdateModule.kt`, find:
+
+```kotlin
+import com.possoftware.pos.printer.PrinterPool
+import java.io.File
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+
+/**
+```
+
+Replace it with:
+
+```kotlin
+import com.possoftware.pos.printer.PrinterPool
+import java.io.File
+import java.io.FileInputStream
+import java.io.IOException
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+
+/**
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/update/PosUpdateModule.kt`, find:
+
+```kotlin
+    private const val INSTALL_IDLE_WAIT_MS = 30_000L
+    private const val INSTALL_IDLE_POLL_MS = 500L
+  }
+
+```
+
+Replace it with:
+
+```kotlin
+    private const val INSTALL_IDLE_WAIT_MS = 30_000L
+    private const val INSTALL_IDLE_POLL_MS = 500L
+    /** The N2 review gate (the review's m-3, the owner's ruling of 2026-10-13): a card waits at most 2 minutes for idle
+     *  printers; after that this open offers nothing and the next open offers it again. */
+    private const val CARD_IDLE_WAIT_MS = 120_000L
+  }
+
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/update/PosUpdateModule.kt`, find:
+
+```kotlin
+  private val main = Handler(Looper.getMainLooper())
+  private var waiting: UpdateStore.Verified? = null
+
+  override fun getName(): String = NAME
+```
+
+Replace it with:
+
+```kotlin
+  private val main = Handler(Looper.getMainLooper())
+  private var waiting: UpdateStore.Verified? = null
+  private var waitingSince = 0L
+  /** Each tap on Install takes a ticket; Later takes the next one, so an Install still waiting for the printers starts
+   *  nothing (the N2 review gate, the review's m-1). */
+  private val installTicket = AtomicInteger(0)
+
+  override fun getName(): String = NAME
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/update/PosUpdateModule.kt`, find:
+
+```kotlin
+  override fun initialize() {
+    UpdateStore.startUp(reactContext, installedCode)
+    UpdateInstallReceiver.onFailed = { emitResult(false) }
+    reactContext.addLifecycleEventListener(this)
+  }
+```
+
+Replace it with:
+
+```kotlin
+  override fun initialize() {
+    UpdateStore.startUp(reactContext, installedCode)
+    UpdateInstallReceiver.onFailed = { emitResult(ok = false, cancelled = false) }
+    UpdateInstallReceiver.onCancelled = { emitResult(ok = false, cancelled = true) }
+    reactContext.addLifecycleEventListener(this)
+  }
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/update/PosUpdateModule.kt`, find:
+
+```kotlin
+  override fun invalidate() {
+    UpdateInstallReceiver.onFailed = null
+    reactContext.removeLifecycleEventListener(this)
+    main.removeCallbacksAndMessages(null)
+```
+
+Replace it with:
+
+```kotlin
+  override fun invalidate() {
+    UpdateInstallReceiver.onFailed = null
+    UpdateInstallReceiver.onCancelled = null
+    reactContext.removeLifecycleEventListener(this)
+    main.removeCallbacksAndMessages(null)
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/update/PosUpdateModule.kt`, find:
+
+```kotlin
+        val offer = result.offer
+        val kept = UpdateStore.verified(reactContext)
+        if (kept != null && kept.versionCode == offer.versionCode && kept.sha256 == offer.sha256) {
+          Log.i(TAG, "check: " + offer.version + " is ready")
+          return
+```
+
+Replace it with:
+
+```kotlin
+        val offer = result.offer
+        val kept = UpdateStore.verified(reactContext)
+        if (kept != null && kept.versionCode == offer.versionCode && kept.sha256 == offer.sha256 && keptIntact(kept)) {
+          Log.i(TAG, "check: " + offer.version + " is ready")
+          return
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/update/PosUpdateModule.kt`, find:
+
+```kotlin
+  }
+
+  /** spec §6.3: the card for this app open, at most once; null when there is none. While a printer of this app has a
+   *  job in flight the card waits, and follows as [CARD_EVENT] once every printer is idle, if the app is still in view
+   *  (going away drops it). */
+  @ReactMethod
+  fun takeCard(promise: Promise) {
+```
+
+Replace it with:
+
+```kotlin
+  }
+
+  /** The kept file still hashes to the verified SHA-256 (the N2 review gate, the review's m-2): a file damaged on disk is
+   *  downloaded again, never offered or installed. Worker thread only. */
+  private fun keptIntact(v: UpdateStore.Verified): Boolean =
+      try {
+        FileInputStream(File(UpdateStore.updatesDir(reactContext), v.file)).use { UpdateFiles.sha256Of(it) } == v.sha256
+      } catch (e: IOException) {
+        false
+      }
+
+  /** spec §6.3: the card for this app open, at most once; null when there is none. While a printer of this app has a
+   *  job in flight the card waits, and follows as [CARD_EVENT] once every printer is idle, if the app is still in view
+   *  (going away drops it) and within [CARD_IDLE_WAIT_MS]. */
+  @ReactMethod
+  fun takeCard(promise: Promise) {
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/update/PosUpdateModule.kt`, find:
+
+```kotlin
+              Log.i(TAG, "card: waits for a print")
+              waiting = update
+              main.postDelayed({ offerWhenIdle() }, IDLE_POLL_MS)
+              promise.resolve(null)
+```
+
+Replace it with:
+
+```kotlin
+              Log.i(TAG, "card: waits for a print")
+              waiting = update
+              waitingSince = SystemClock.elapsedRealtime()
+              main.postDelayed({ offerWhenIdle() }, IDLE_POLL_MS)
+              promise.resolve(null)
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/update/PosUpdateModule.kt`, find:
+
+```kotlin
+    val update = waiting ?: return
+    if (PrinterPool.anyPrinting()) {
+      main.postDelayed({ offerWhenIdle() }, IDLE_POLL_MS)
+      return
+```
+
+Replace it with:
+
+```kotlin
+    val update = waiting ?: return
+    if (PrinterPool.anyPrinting()) {
+      if (SystemClock.elapsedRealtime() - waitingSince >= CARD_IDLE_WAIT_MS) {
+        waiting = null
+        Log.i(TAG, "card: printing for 2 minutes; the next open offers it")
+        return
+      }
+      main.postDelayed({ offerWhenIdle() }, IDLE_POLL_MS)
+      return
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/update/PosUpdateModule.kt`, find:
+
+```kotlin
+
+  /** Only from a tap on the card's Install: waits up to 30 s for the printers to be idle, then hands the verified file
+   *  to Android's installer. Resolves "started", "permission", "missing" or "failed". */
+  @ReactMethod
+  fun install(promise: Promise) {
+    worker.execute {
+      val start =
+```
+
+Replace it with:
+
+```kotlin
+
+  /** Only from a tap on the card's Install: waits up to 30 s for the printers to be idle, then hands the verified file
+   *  to Android's installer. Resolves "started", "permission", "missing", "failed" or "cancelled" (Later came first). */
+  @ReactMethod
+  fun install(promise: Promise) {
+    val ticket = installTicket.incrementAndGet()
+    worker.execute {
+      val start =
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/update/PosUpdateModule.kt`, find:
+
+```kotlin
+            }
+            val update = UpdateStore.verified(reactContext)
+            if (update == null) {
+              UpdateInstaller.InstallStart.MISSING
+            } else {
+              UpdateInstaller.install(reactContext, File(UpdateStore.updatesDir(reactContext), update.file))
+            }
+          } catch (t: Throwable) {
+```
+
+Replace it with:
+
+```kotlin
+            }
+            val update = UpdateStore.verified(reactContext)
+            when {
+              ticket != installTicket.get() -> UpdateInstaller.InstallStart.CANCELLED
+              update == null -> UpdateInstaller.InstallStart.MISSING
+              !keptIntact(update) -> {
+                // Damaged on disk: dropped, and the next app open looks and downloads it again.
+                UpdateStore.clearVerified(reactContext)
+                UpdateStore.deleteFilesExcept(reactContext, null)
+                UpdateStore.setLastCheckAt(reactContext, 0L)
+                Log.i(TAG, "install: the kept file changed on disk")
+                UpdateInstaller.InstallStart.FAILED
+              }
+              else -> UpdateInstaller.install(reactContext, File(UpdateStore.updatesDir(reactContext), update.file))
+            }
+          } catch (t: Throwable) {
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/update/PosUpdateModule.kt`, find:
+
+```kotlin
+  }
+
+  /** Later on the card: nothing to keep (the next app open offers it again). */
+  @ReactMethod
+  fun later() {
+    Log.i(TAG, "card: later")
+  }
+```
+
+Replace it with:
+
+```kotlin
+  }
+
+  /** Later (or Back) on the card: nothing to keep (the next app open offers it again), and an Install still waiting for
+   *  the printers starts nothing. */
+  @ReactMethod
+  fun later() {
+    installTicket.incrementAndGet()
+    Log.i(TAG, "card: later")
+  }
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/update/PosUpdateModule.kt`, find:
+
+```kotlin
+      }
+
+  private fun emitResult(ok: Boolean) {
+    reactContext.emitDeviceEvent(RESULT_EVENT, Arguments.createMap().apply { putBoolean("ok", ok) })
+  }
+}
+```
+
+Replace it with:
+
+```kotlin
+      }
+
+  private fun emitResult(ok: Boolean, cancelled: Boolean) {
+    reactContext.emitDeviceEvent(
+        RESULT_EVENT,
+        Arguments.createMap().apply {
+          putBoolean("ok", ok)
+          putBoolean("cancelled", cancelled)
+        },
+    )
+  }
+}
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/update/UpdateDownloader.kt`, find:
+
+```kotlin
+      val copied =
+          conn.inputStream.use { input ->
+            FileOutputStream(part).use { out -> UpdateFiles.copyVerified(input, out, offer.size, offer.sha256) }
+          }
+      if (!copied) return failed(part, apk, "download: the size or SHA-256 is not the manifest's")
+```
+
+Replace it with:
+
+```kotlin
+      val copied =
+          conn.inputStream.use { input ->
+            FileOutputStream(part).use { out ->
+              // The N2 review gate (the review's m-2): on disk before the rename, so a power cut cannot keep a short file.
+              UpdateFiles.copyVerified(input, out, offer.size, offer.sha256).also { if (it) out.fd.sync() }
+            }
+          }
+      if (!copied) return failed(part, apk, "download: the size or SHA-256 is not the manifest's")
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/update/UpdateFiles.kt`, find:
+
+```kotlin
+  }
+
+  private fun hex(bytes: ByteArray): String {
+    val out = StringBuilder(bytes.size * 2)
+```
+
+Replace it with:
+
+```kotlin
+  }
+
+  /** The SHA-256 (lower-case hex) of everything [input] holds: a kept file is hashed again before it is called ready or
+   *  handed to the installer (the N2 review gate, the review's m-2), so a file damaged on disk is never offered. */
+  fun sha256Of(input: InputStream): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    val buffer = ByteArray(BUFFER_BYTES)
+    while (true) {
+      val read = input.read(buffer)
+      if (read < 0) break
+      digest.update(buffer, 0, read)
+    }
+    return hex(digest.digest())
+  }
+
+  private fun hex(bytes: ByteArray): String {
+    val out = StringBuilder(bytes.size * 2)
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/update/UpdateInstallReceiver.kt`, find:
+
+```kotlin
+ * Native apps 2.0 (spec §6.2): Android's answer to the install the card started. Not exported: only the installer's
+ * PendingIntent ([UpdateInstaller]) reaches it. "The user must confirm" opens Android's own install dialog; success
+ * needs nothing (the update is replacing this app); a failure, or Cancel in that dialog, tells the card ([onFailed]) and
+ * keeps the file, so the next app open offers the card again.
+ */
+class UpdateInstallReceiver : BroadcastReceiver() {
+```
+
+Replace it with:
+
+```kotlin
+ * Native apps 2.0 (spec §6.2): Android's answer to the install the card started. Not exported: only the installer's
+ * PendingIntent ([UpdateInstaller]) reaches it. "The user must confirm" opens Android's own install dialog; success
+ * needs nothing (the update is replacing this app); a failure tells the card ([onFailed]), and Cancel in that dialog
+ * closes it as Later does ([onCancelled]; the N2 review gate, the owner's ruling of 2026-10-13); either way the file is
+ * kept, so the next app open offers the card again.
+ */
+class UpdateInstallReceiver : BroadcastReceiver() {
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/update/UpdateInstallReceiver.kt`, find:
+
+```kotlin
+    /** Set by [PosUpdateModule] while React runs. */
+    @Volatile var onFailed: (() -> Unit)? = null
+  }
+
+```
+
+Replace it with:
+
+```kotlin
+    /** Set by [PosUpdateModule] while React runs. */
+    @Volatile var onFailed: (() -> Unit)? = null
+    @Volatile var onCancelled: (() -> Unit)? = null
+  }
+
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/update/UpdateInstallReceiver.kt`, find:
+
+```kotlin
+      }
+      PackageInstaller.STATUS_SUCCESS -> Log.i(UpdateDownloader.TAG, "install: done")
+      else -> failed("install: status $status")
+    }
+```
+
+Replace it with:
+
+```kotlin
+      }
+      PackageInstaller.STATUS_SUCCESS -> Log.i(UpdateDownloader.TAG, "install: done")
+      PackageInstaller.STATUS_FAILURE_ABORTED -> {
+        Log.i(UpdateDownloader.TAG, "install: cancelled")
+        onCancelled?.invoke()
+      }
+      else -> failed("install: status $status")
+    }
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/update/UpdateInstaller.kt`, find:
+
+```kotlin
+    MISSING("missing"),
+    FAILED("failed"),
+  }
+
+```
+
+Replace it with:
+
+```kotlin
+    MISSING("missing"),
+    FAILED("failed"),
+    /** Later (or Back) on the card while Install still waited for the printers: nothing started (the N2 review gate,
+     *  the review's m-1). */
+    CANCELLED("cancelled"),
+  }
+
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/update/UpdateInstaller.kt`, find:
+
+```kotlin
+      params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_REQUIRED)
+    }
+    val id = installer.createSession(params)
+    return try {
+```
+
+Replace it with:
+
+```kotlin
+      params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_REQUIRED)
+    }
+    // A session that cannot be written or committed is abandoned, never left open: an IOException, or a RuntimeException
+    // such as SecurityException (the N2 review gate, the review's m-5).
+    val id = installer.createSession(params)
+    return try {
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/update/UpdateInstaller.kt`, find:
+
+```kotlin
+      installer.abandonSession(id)
+      InstallStart.FAILED
+    } catch (e: SecurityException) {
+      installer.abandonSession(id)
+      InstallStart.FAILED
+```
+
+Replace it with:
+
+```kotlin
+      installer.abandonSession(id)
+      InstallStart.FAILED
+    } catch (e: RuntimeException) {
+      installer.abandonSession(id)
+      InstallStart.FAILED
+```
+
+In `apps/mobile/src/native/PosUpdate.ts`, find:
+
+```ts
+export type UpdateCardInfo = { version: string; notes: string };
+
+/** What a tap on Install started (Kotlin's UpdateInstaller.InstallStart). */
+export type InstallAnswer = 'started' | 'permission' | 'missing' | 'failed';
+
+export interface PosUpdateModule {
+```
+
+Replace it with:
+
+```ts
+export type UpdateCardInfo = { version: string; notes: string };
+
+/** What a tap on Install started (Kotlin's UpdateInstaller.InstallStart); "cancelled": Later came while Install still
+ *  waited for the printers, so nothing started. */
+export type InstallAnswer =
+  | 'started'
+  | 'permission'
+  | 'missing'
+  | 'failed'
+  | 'cancelled';
+
+export interface PosUpdateModule {
+```
+
+In `apps/mobile/src/native/PosUpdate.ts`, find:
+
+```ts
+/** Kotlin's PosUpdateModule.CARD_EVENT: a card that waited for a print to finish. */
+export const UPDATE_CARD_EVENT = 'PosUpdateCard';
+/** Kotlin's PosUpdateModule.RESULT_EVENT: Android's installer failed, or the user cancelled its dialog. */
+export const UPDATE_RESULT_EVENT = 'PosUpdateResult';
+
+```
+
+Replace it with:
+
+```ts
+/** Kotlin's PosUpdateModule.CARD_EVENT: a card that waited for a print to finish. */
+export const UPDATE_CARD_EVENT = 'PosUpdateCard';
+/** Kotlin's PosUpdateModule.RESULT_EVENT, `{ ok: false, cancelled }`: Android's installer failed, or the user cancelled
+ *  its dialog (`cancelled: true`). */
+export const UPDATE_RESULT_EVENT = 'PosUpdateResult';
+
+```
+
+In `apps/mobile/src/screens/UpdateCard.tsx`, find:
+
+```tsx
+  asCardInfo,
+  CARD_START,
+  reduceCard,
+  type CardState,
+```
+
+Replace it with:
+
+```tsx
+  asCardInfo,
+  CARD_START,
+  cardResultEvent,
+  reduceCard,
+  type CardState,
+```
+
+In `apps/mobile/src/screens/UpdateCard.tsx`, find:
+
+```tsx
+ * The POS screen's update card: asked for when the screen mounts in view and each time the app comes back into view
+ * (the app hands a card out at most once per open, so asking again is harmless); a card that waited for a print
+ * arrives as an event, and a failed or cancelled install as another.
+ */
+export function useUpdateCard() {
+```
+
+Replace it with:
+
+```tsx
+ * The POS screen's update card: asked for when the screen mounts in view and each time the app comes back into view
+ * (the app hands a card out at most once per open, so asking again is harmless); a card that waited for a print
+ * arrives as an event, and Android's answer to an install as another (a Cancel closes the card as Later does).
+ */
+export function useUpdateCard() {
+```
+
+In `apps/mobile/src/screens/UpdateCard.tsx`, find:
+
+```tsx
+    });
+    const card = DeviceEventEmitter.addListener(UPDATE_CARD_EVENT, offer);
+    const result = DeviceEventEmitter.addListener(UPDATE_RESULT_EVENT, () =>
+      dispatch({ type: 'installFailed' }),
+    );
+    return () => {
+```
+
+Replace it with:
+
+```tsx
+    });
+    const card = DeviceEventEmitter.addListener(UPDATE_CARD_EVENT, offer);
+    const result = DeviceEventEmitter.addListener(UPDATE_RESULT_EVENT, value =>
+      dispatch(cardResultEvent(value)),
+    );
+    return () => {
+```
+
+In `apps/mobile/src/update-card.ts`, find:
+
+```ts
+      return { ...state, note: 'failed', waiting: 'none' };
+    case 'missing':
+      return closed(state);
+  }
+}
+
+```
+
+Replace it with:
+
+```ts
+      return { ...state, note: 'failed', waiting: 'none' };
+    case 'missing':
+    case 'cancelled':
+      return closed(state);
+  }
+}
+
+/** The app's answer after Android's installer (Kotlin's RESULT_EVENT): a Cancel in its dialog closes the card as Later
+ *  does (the N2 review gate, the owner's ruling of 2026-10-13); anything else is a failure the card says. */
+export function cardResultEvent(value: unknown): CardEvent {
+  const cancelled =
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { cancelled?: unknown }).cancelled === true;
+  return cancelled ? { type: 'later' } : { type: 'installFailed' };
+}
+
+```
+
+- [ ] **Step 5: Run them and see them pass, with the suites**
+
+```bash
+cd /d/kd/lucifer/apps/mobile && node --import tsx --test src/update-card.test.ts 2>&1 | grep -E "^not ok|# (tests|pass|fail)"
+npm test 2>&1 | grep -E "^not ok|^# (tests|pass|fail)" && npm run typecheck > /dev/null && npm run lint > /dev/null && echo "typecheck and lint clean"
+npx jest 2>&1 | grep -E "^Tests:|^Test Suites:"
+cd android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun --console=plain 2>&1 | grep -E "^e:|^w:.*/update/|FAILED|^BUILD" | sed -E 's/ in [0-9hms ]+$//'
+for f in app/build/test-results/testDebugUnitTest/TEST-com.possoftware.pos.update.*.xml; do grep -o 'name="[^"]*" tests="[0-9]*" skipped="[0-9]*" failures="[0-9]*" errors="[0-9]*"' "$f" | head -1; done
+```
+Expected: `# tests 8`, `# pass 8`, `# fail 0`; mobile `# tests 168`, `# pass 168`, `# fail 0`, `typecheck and lint
+clean`; `Test Suites: 4 passed, 4 total`, `Tests: 8 passed, 8 total`; `BUILD SUCCESSFUL`, no `e:` line and no warning in
+`update/`; `UpdateFilesTest` `tests="9"`, `UpdateManifestTest` `tests="12"`, `UpdateScheduleTest` `tests="8"`, each
+`failures="0" errors="0"`.
+
+- [ ] **Step 6: Commit** (`git add` the twelve files; `$SP/msg-n3-0.txt`):
+
+```text
+fix(app): the N2 review's minors and the owner's two rulings: Cancel in Android's install dialog closes the update card like Later (offered again at the next app open), the card waits at most 2 minutes for idle printers, Later stops an Install still waiting for them, a download is on disk before its rename and a kept file is hashed again before it is called ready or installed (a damaged one downloads again), a session that cannot be written is always abandoned, and the Jest test hears every AppState listener; two JVM tests, a reducer test, a Jest test, pins 30-32 needles (native apps 2.0, Session N3, the N2 review gate)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+```
 
 ### Task 31: The Android address rules on Windows (`src/pos-url.ts`)
 
-- A port of `apps/mobile/src/url.ts`'s `normalizePosUrl` and the helpers it needs (`parseUrlParts`, `isValidHost`, `isPrivateIpv4`, `expandWorkspaceName`, the error strings, `SANDBEE_DOMAIN`), with a header naming the source; `NormalizeResult` as on Android.
-- `src/pos-url.test.ts` (added to the desktop `test` script): one table of at least 40 inputs, run through the desktop function and through `apps/mobile/src/url.ts` (dynamic `import()` by relative path: it has no imports, so node can load it). Results must be deeply equal. The table includes: `mycafe`, `MyCafe `, `  mycafe  `, `mycafe/pos`, `mycafe?x=1`, `mycafe.sandbee.in`, `https://mycafe.sandbee.in/pos`, `HTTPS://MyCafe.Sandbee.in`, `http://mycafe.sandbee.in`, `http://localhost:3000`, `http://127.0.0.1:3110`, `http://192.168.1.20:3000`, `http://10.0.0.5`, `http://172.16.0.1`, `http://172.32.0.1`, `http://8.8.8.8`, `https://8.8.8.8`, `1234`, `192.168.1.20`, `localhost`, `https://user:pw@mycafe.sandbee.in`, `https://mycafe.sandbee.in:0`, `:65536`, `:443`, `:8443`, `ftp://mycafe.sandbee.in`, `my_cafe`, `-mycafe`, `mycafe-`, a 64-character label, a 253+ character host, `[::1]`, `https://[::1]`, `mycafé`, an empty string, spaces only, a tab inside, `https://mycafe.sandbee.in#x`, `mycafe.sandbee.in/`, `https://mycafe.sandbee.in./`.
-- Seven fixed expectations besides parity (e.g. `MyCafe ` → `https://mycafe.sandbee.in`; `http://8.8.8.8` → the http error) so both cannot drift together.
-- `url-window.ts`'s save handler uses `normalizePosUrl`; `normalizeServerUrl` and its tests go if nothing else uses them (the gate checks `store.ts` and `main.ts`).
+**Files:**
+- Create: `apps/desktop/src/pos-url.ts`; Test: `apps/desktop/src/pos-url.test.ts` (3 tests)
+- Modify: `apps/desktop/src/store.ts`, `src/url-window.ts` (`normalizePosUrl`), `src/server-url.ts` (the address rules go), `apps/mobile/src/url.ts` (header comment)
+- Test: `src/server-url.test.ts` (the 16 `normalizeServerUrl` tests go), `src/store.test.ts` (1 test), `src/desktop-paths.test.ts` (pins (11)/(12) read `pos-url.ts`), `apps/desktop/package.json` (the test script)
+
+**Interfaces:** `normalizePosUrl(input): NormalizeResult` and the six error words, `parseUrlParts`, `isValidHost`, `isPrivateIpv4`, `SANDBEE_DOMAIN`, as in `apps/mobile/src/url.ts`; `server-url.ts` keeps `START_PATH`, `startUrl`, `isSameOrigin`, `isExternalHttpUrl`.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `apps/desktop/package.json`, find:
+
+```json
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "node --import tsx --test src/server-url.test.ts src/store.test.ts src/window-state.test.ts src/escpos.test.ts src/raw-spool.test.ts src/raw-tcp.test.ts src/printer-check.test.ts src/desktop-paths.test.ts",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && electron-builder --win nsis --publish never"
+```
+
+Replace it with:
+
+```json
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "node --import tsx --test src/server-url.test.ts src/pos-url.test.ts src/store.test.ts src/window-state.test.ts src/escpos.test.ts src/raw-spool.test.ts src/raw-tcp.test.ts src/printer-check.test.ts src/desktop-paths.test.ts",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && electron-builder --win nsis --publish never"
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+    "log.ts",
+    "server-url.ts",
+    "store.ts",
+    "window-state.ts",
+```
+
+Replace it with:
+
+```ts
+    "log.ts",
+    "server-url.ts",
+    "pos-url.ts",
+    "store.ts",
+    "window-state.ts",
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+    ["src/log.ts", read("src/log.ts")],
+    ["src/server-url.ts", read("src/server-url.ts")],
+    ["src/store.ts", read("src/store.ts")],
+    ["src/window-state.ts", read("src/window-state.ts")],
+```
+
+Replace it with:
+
+```ts
+    ["src/log.ts", read("src/log.ts")],
+    ["src/server-url.ts", read("src/server-url.ts")],
+    ["src/pos-url.ts", read("src/pos-url.ts")],
+    ["src/store.ts", read("src/store.ts")],
+    ["src/window-state.ts", read("src/window-state.ts")],
+```
+
+Create `apps/desktop/src/pos-url.test.ts`:
+
+```ts
+// Native apps 2.0 (spec §9): the Windows address window reads an address exactly as the Android start screen does. One
+// table of inputs, the way people type them, runs through this app's normalizePosUrl and through the Android app's own
+// (apps/mobile/src/url.ts, loaded by path: it has no imports); the results must be equal. A few fixed expectations keep
+// both from drifting together.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import {
+  normalizePosUrl,
+  URL_CREDENTIALS_ERROR,
+  URL_EMPTY_ERROR,
+  URL_HTTP_ERROR,
+  URL_INVALID_ERROR,
+  URL_PORT_ERROR,
+  URL_SCHEME_ERROR,
+  type NormalizeResult,
+} from "./pos-url";
+
+type AndroidUrl = {
+  normalizePosUrl(input: string): NormalizeResult;
+  URL_EMPTY_ERROR: string;
+  URL_INVALID_ERROR: string;
+  URL_SCHEME_ERROR: string;
+  URL_HTTP_ERROR: string;
+  URL_CREDENTIALS_ERROR: string;
+  URL_PORT_ERROR: string;
+};
+
+const ANDROID_URL = path.join(__dirname, "..", "..", "mobile", "src", "url.ts");
+
+async function android(): Promise<AndroidUrl> {
+  return (await import(pathToFileURL(ANDROID_URL).href)) as AndroidUrl;
+}
+
+const LONG_LABEL = "a".repeat(64);
+const LONG_HOST = Array.from({ length: 64 }, () => "abc").join(".") + ".in";
+
+const INPUTS = [
+  "mycafe",
+  "MyCafe ",
+  "  mycafe  ",
+  "mycafe/pos",
+  "mycafe?x=1",
+  "mycafe.sandbee.in",
+  "https://mycafe.sandbee.in/pos",
+  "HTTPS://MyCafe.Sandbee.in",
+  "http://mycafe.sandbee.in",
+  "http://localhost:3000",
+  "HTTP://LOCALHOST:3110",
+  "http://127.0.0.1:3110",
+  "http://192.168.1.20:3000",
+  "http://192.168.1.20:3000/pos?x=1",
+  "http://10.0.0.5",
+  "http://172.16.0.1",
+  "http://172.32.0.1",
+  "http://8.8.8.8",
+  "https://8.8.8.8",
+  "1234",
+  "192.168.1.20",
+  "localhost",
+  "https://user:pw@mycafe.sandbee.in",
+  "https://mycafe.sandbee.in:0",
+  "https://mycafe.sandbee.in:65536",
+  "https://mycafe.sandbee.in:443",
+  "https://mycafe.sandbee.in:8443",
+  "mycafe.sandbee.in:8443",
+  "ftp://mycafe.sandbee.in",
+  "javascript:alert(1)",
+  "my_cafe",
+  "-mycafe",
+  "mycafe-",
+  LONG_LABEL,
+  "https://" + LONG_HOST,
+  "[::1]",
+  "https://[::1]",
+  "mycafé",
+  "",
+  "   ",
+  "my\tcafe",
+  "https://mycafe.sandbee.in#x",
+  "mycafe.sandbee.in/",
+  "https://mycafe.sandbee.in./",
+  "https://pos.mycafe.example.com",
+];
+
+test("parity: every input gives the Android app's result, origin or error", async () => {
+  assert.ok(INPUTS.length >= 40, "at least 40 inputs");
+  assert.ok(LONG_HOST.length > 253, "the long host is over 253 characters");
+  const { normalizePosUrl: onAndroid } = await android();
+  for (const input of INPUTS) {
+    assert.deepEqual(normalizePosUrl(input), onAndroid(input), JSON.stringify(input));
+  }
+});
+
+test("the rules themselves, so both apps cannot drift together", () => {
+  const ok = (origin: string): NormalizeResult => ({ ok: true, origin });
+  const no = (error: string): NormalizeResult => ({ ok: false, error });
+  assert.deepEqual(normalizePosUrl("MyCafe "), ok("https://mycafe.sandbee.in"));
+  assert.deepEqual(normalizePosUrl("mycafe/pos"), ok("https://mycafe.sandbee.in"));
+  assert.deepEqual(normalizePosUrl("http://192.168.1.20:3000"), ok("http://192.168.1.20:3000"));
+  assert.deepEqual(normalizePosUrl("https://mycafe.sandbee.in:443"), ok("https://mycafe.sandbee.in"));
+  assert.deepEqual(normalizePosUrl("http://8.8.8.8"), no(URL_HTTP_ERROR));
+  assert.deepEqual(normalizePosUrl("1234"), no(URL_INVALID_ERROR));
+  assert.deepEqual(normalizePosUrl("https://user:pw@mycafe.sandbee.in"), no(URL_CREDENTIALS_ERROR));
+  assert.deepEqual(normalizePosUrl("https://mycafe.sandbee.in:65536"), no(URL_PORT_ERROR));
+  assert.deepEqual(normalizePosUrl("ftp://mycafe.sandbee.in"), no(URL_SCHEME_ERROR));
+  assert.deepEqual(normalizePosUrl("   "), no(URL_EMPTY_ERROR));
+});
+
+test("the error words are the Android app's, and all different", async () => {
+  const a = await android();
+  const ours = [URL_EMPTY_ERROR, URL_INVALID_ERROR, URL_SCHEME_ERROR, URL_HTTP_ERROR, URL_CREDENTIALS_ERROR, URL_PORT_ERROR];
+  const theirs = [a.URL_EMPTY_ERROR, a.URL_INVALID_ERROR, a.URL_SCHEME_ERROR, a.URL_HTTP_ERROR, a.URL_CREDENTIALS_ERROR, a.URL_PORT_ERROR];
+  assert.deepEqual(ours, theirs);
+  assert.equal(new Set(ours).size, ours.length);
+});
+```
+
+Replace the whole of `apps/desktop/src/server-url.test.ts` with:
+
+```ts
+// Pins for src/server-url.ts -- pure module, no electron import. The saved address itself is read by pos-url.ts (the
+// Android app's rules, native apps 2.0); pos-url.test.ts pins those.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { START_PATH, startUrl, isSameOrigin, isExternalHttpUrl } from "./server-url";
+
+test("startUrl: appends START_PATH to the origin", () => {
+  assert.equal(START_PATH, "/pos");
+  assert.equal(startUrl("https://my-pos.example.com"), "https://my-pos.example.com/pos");
+});
+
+test("isSameOrigin: identical origin -> true", () => {
+  assert.equal(
+    isSameOrigin("https://my-pos.example.com/pos", "https://my-pos.example.com"),
+    true,
+  );
+});
+
+test("isSameOrigin: different host -> false", () => {
+  assert.equal(
+    isSameOrigin("https://evil.example.com/pos", "https://my-pos.example.com"),
+    false,
+  );
+});
+
+test("isSameOrigin: different port -> false", () => {
+  assert.equal(
+    isSameOrigin("https://my-pos.example.com:8080/pos", "https://my-pos.example.com"),
+    false,
+  );
+});
+
+test("isSameOrigin: different scheme -> false", () => {
+  assert.equal(
+    isSameOrigin("http://my-pos.example.com/pos", "https://my-pos.example.com"),
+    false,
+  );
+});
+
+test("isSameOrigin: garbage url -> false, does not throw", () => {
+  assert.doesNotThrow(() => {
+    assert.equal(isSameOrigin("not a url", "https://my-pos.example.com"), false);
+  });
+});
+
+test("isExternalHttpUrl: http -> true", () => {
+  assert.equal(isExternalHttpUrl("http://example.com"), true);
+});
+
+test("isExternalHttpUrl: https -> true", () => {
+  assert.equal(isExternalHttpUrl("https://example.com"), true);
+});
+
+test("isExternalHttpUrl: file: -> false", () => {
+  assert.equal(isExternalHttpUrl("file:///etc/passwd"), false);
+});
+
+test("isExternalHttpUrl: javascript: -> false", () => {
+  assert.equal(isExternalHttpUrl("javascript:alert(1)"), false);
+});
+
+test("isExternalHttpUrl: about: -> false", () => {
+  assert.equal(isExternalHttpUrl("about:blank"), false);
+});
+
+test("isExternalHttpUrl: mailto: -> false", () => {
+  assert.equal(isExternalHttpUrl("mailto:someone@example.com"), false);
+});
+
+test("isExternalHttpUrl: garbage -> false, does not throw", () => {
+  assert.doesNotThrow(() => {
+    assert.equal(isExternalHttpUrl("not a url"), false);
+  });
+});
+```
+
+In `apps/desktop/src/store.test.ts`, find:
+
+```ts
+});
+
+test("normalizeStore: autoStart false survives (not coerced to null)", () => {
+  const result = normalizeStore({ autoStart: false });
+```
+
+Replace it with:
+
+```ts
+});
+
+test("normalizeStore: serverOrigin is re-validated by the Android app's rules -- a private-network http address stays", () => {
+  // Native apps 2.0 (spec §9): the address window saves what normalizePosUrl accepts; the next start must read it back.
+  assert.equal(normalizeStore({ serverOrigin: "http://192.168.1.20:3000" }).serverOrigin, "http://192.168.1.20:3000");
+  assert.equal(normalizeStore({ serverOrigin: "http://localhost:3110" }).serverOrigin, "http://localhost:3110");
+});
+
+test("normalizeStore: autoStart false survives (not coerced to null)", () => {
+  const result = normalizeStore({ autoStart: false });
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+```bash
+cd /d/kd/lucifer/apps/desktop && timeout 250 node --import tsx --test src/pos-url.test.ts src/store.test.ts src/server-url.test.ts src/desktop-paths.test.ts 2>&1 | grep -E "^not ok|Cannot find module|^# (tests|pass|fail)"
+```
+Expected: `# Error: Cannot find module './pos-url'` (the file `src\\pos-url.test.ts` fails), `not ok … normalizeStore:
+serverOrigin is re-validated by the Android app's rules -- a private-network http address stays`, and pins `(11)` and
+`(12)` (they read `pos-url.ts`); `# tests 117`, `# pass 113`, `# fail 4`.
+
+- [ ] **Step 3: Implement**
+
+Create `apps/desktop/src/pos-url.ts`:
+
+```ts
+// The POS address rules of the Android app, ported from apps/mobile/src/url.ts (native apps 2.0, spec §9): a bare
+// workspace name means <name>.sandbee.in, an address without a scheme gets https://, http:// works only for this PC or a
+// private network address, a port from 1 to 65535, no user name or password, and the same error words. pos-url.test.ts
+// runs one table of inputs through both apps' functions and requires equal results. Pure (no electron import, no global
+// URL): safe for node:test.
+
+export const MIN_PORT = 1;
+export const MAX_PORT = 65535;
+export const MAX_HOST_CHARS = 253;
+export const MAX_LABEL_CHARS = 63;
+
+export const URL_EMPTY_ERROR = "Enter the address of your POS.";
+export const URL_INVALID_ERROR =
+  "That is not a valid address. Type your workspace name (like yourcafe) or the full address (like https://yourcafe.sandbee.in).";
+export const URL_SCHEME_ERROR = "The address must start with https://";
+export const URL_HTTP_ERROR =
+  "http:// only works for this device or a computer on your own network. Use https:// for any other address.";
+export const URL_CREDENTIALS_ERROR = "Remove the user name and password from the address.";
+export const URL_PORT_ERROR = "The port number must be between 1 and 65535.";
+
+const DEFAULT_PORTS: Record<string, number> = { http: 80, https: 443 };
+const SCHEME_PREFIX = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/([^/?#]*)/;
+const PORT_DIGITS = /^\d{1,5}$/;
+const NUMERIC_HOST = /^[0-9.]+$/;
+const LABEL = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+const OCTET = /^(0|[1-9]\d{0,2})$/;
+
+export type UrlParts = {
+  scheme: string;
+  userinfo: string | null;
+  host: string;
+  port: string | null;
+};
+
+export type NormalizeResult = { ok: true; origin: string } | { ok: false; error: string };
+
+// Splits "scheme://[user@]host[:port]" without interpreting the host.
+export function parseUrlParts(input: string): UrlParts | null {
+  const match = SCHEME_PREFIX.exec(input);
+  if (match === null) {
+    return null;
+  }
+  const authority = match[2]!;
+  const at = authority.lastIndexOf("@");
+  const userinfo = at >= 0 ? authority.slice(0, at) : null;
+  const hostPort = at >= 0 ? authority.slice(at + 1) : authority;
+  const bracketEnd = hostPort.startsWith("[") ? hostPort.indexOf("]") : -1;
+  const colon = hostPort.lastIndexOf(":");
+  if (colon > bracketEnd) {
+    return {
+      scheme: match[1]!.toLowerCase(),
+      userinfo,
+      host: hostPort.slice(0, colon).toLowerCase(),
+      port: hostPort.slice(colon + 1),
+    };
+  }
+  return { scheme: match[1]!.toLowerCase(), userinfo, host: hostPort.toLowerCase(), port: null };
+}
+
+function octetsOf(host: string): number[] | null {
+  const parts = host.split(".");
+  if (parts.length !== 4 || !parts.every((part) => OCTET.test(part))) {
+    return null;
+  }
+  const octets = parts.map(Number);
+  return octets.every((n) => n <= 255) ? octets : null;
+}
+
+// A DNS-style name or a dotted IPv4. IPv6 literals and anything with an odd character (backslash, space, tab...) are
+// rejected on purpose.
+export function isValidHost(host: string): boolean {
+  if (host.length === 0 || host.length > MAX_HOST_CHARS) {
+    return false;
+  }
+  if (NUMERIC_HOST.test(host)) {
+    return octetsOf(host) !== null;
+  }
+  return host.split(".").every((label) => label.length <= MAX_LABEL_CHARS && LABEL.test(label));
+}
+
+export function isPrivateIpv4(host: string): boolean {
+  const octets = octetsOf(host);
+  if (octets === null) {
+    return false;
+  }
+  const [a, b] = octets as [number, number, number, number];
+  return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+}
+
+// null = no port written; NaN = written but malformed.
+function portNumber(port: string | null): number | null {
+  if (port === null) {
+    return null;
+  }
+  if (!PORT_DIGITS.test(port)) {
+    return Number.NaN;
+  }
+  const value = Number(port);
+  return value >= MIN_PORT && value <= MAX_PORT ? value : Number.NaN;
+}
+
+function buildOrigin(parts: UrlParts, port: number | null): string {
+  const keep = port !== null && port !== DEFAULT_PORTS[parts.scheme];
+  return parts.scheme + "://" + parts.host + (keep ? ":" + port : "");
+}
+
+// The Sandbee apps' rule: a bare workspace name (one DNS label with a letter in it, no dot, scheme or port; a path,
+// query or hash after it is dropped later with the rest of the address) means <name>.sandbee.in. A digits-only label is
+// a mistyped IP, never a name. Every full address is taken as written.
+export const SANDBEE_DOMAIN = "sandbee.in";
+const HAS_LETTER = /[a-z]/;
+const PATH_START = /[/?#]/;
+
+function expandWorkspaceName(input: string): string {
+  const cut = input.search(PATH_START);
+  const name = (cut < 0 ? input : input.slice(0, cut)).toLowerCase();
+  const rest = cut < 0 ? "" : input.slice(cut);
+  return name !== "localhost" && name.length <= MAX_LABEL_CHARS && LABEL.test(name) && HAS_LETTER.test(name)
+    ? name + "." + SANDBEE_DOMAIN + rest
+    : input;
+}
+
+export function normalizePosUrl(input: string): NormalizeResult {
+  const trimmed = input.trim();
+  if (trimmed.length === 0) {
+    return { ok: false, error: URL_EMPTY_ERROR };
+  }
+  const withScheme = SCHEME_PREFIX.test(trimmed) ? trimmed : "https://" + expandWorkspaceName(trimmed);
+  const parts = parseUrlParts(withScheme);
+  if (parts === null) {
+    return { ok: false, error: URL_INVALID_ERROR };
+  }
+  if (parts.userinfo !== null) {
+    return { ok: false, error: URL_CREDENTIALS_ERROR };
+  }
+  if (parts.scheme !== "https" && parts.scheme !== "http") {
+    return { ok: false, error: URL_SCHEME_ERROR };
+  }
+  const port = portNumber(parts.port);
+  if (port !== null && Number.isNaN(port)) {
+    return { ok: false, error: URL_PORT_ERROR };
+  }
+  if (!isValidHost(parts.host)) {
+    return { ok: false, error: URL_INVALID_ERROR };
+  }
+  if (parts.scheme === "http" && parts.host !== "localhost" && !isPrivateIpv4(parts.host)) {
+    return { ok: false, error: URL_HTTP_ERROR };
+  }
+  return { ok: true, origin: buildOrigin(parts, port) };
+}
+```
+
+In `apps/desktop/src/server-url.ts`, find:
+
+```ts
+// Pure URL validation/normalization for the desktop shell's saved server address.
+// No electron imports — safe for node:test.
+
+export const START_PATH = "/pos";
+export const LOCAL_HOSTNAMES = ["localhost", "127.0.0.1"] as const;
+
+export const URL_EMPTY_ERROR = "Enter the address of your POS.";
+export const URL_INVALID_ERROR =
+  "That is not a valid web address. It should look like https://your-pos.example.com";
+export const URL_SCHEME_ERROR = "The address must start with https://";
+export const URL_CREDENTIALS_ERROR = "Remove the user name and password from the address.";
+
+export function startUrl(origin: string): string {
+  return origin + START_PATH;
+}
+
+export type NormalizeResult = { ok: true; origin: string } | { ok: false; error: string };
+
+export function normalizeServerUrl(input: string): NormalizeResult {
+  const trimmed = input.trim();
+  if (trimmed.length === 0) {
+    return { ok: false, error: URL_EMPTY_ERROR };
+  }
+
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return { ok: false, error: URL_INVALID_ERROR };
+  }
+
+  if (url.username.length > 0 || url.password.length > 0) {
+    return { ok: false, error: URL_CREDENTIALS_ERROR };
+  }
+
+  if (url.protocol === "https:") {
+    return { ok: true, origin: url.origin };
+  }
+
+  if (url.protocol === "http:" && LOCAL_HOSTNAMES.includes(url.hostname as (typeof LOCAL_HOSTNAMES)[number])) {
+    return { ok: true, origin: url.origin };
+  }
+
+  return { ok: false, error: URL_SCHEME_ERROR };
+}
+
+```
+
+Replace it with:
+
+```ts
+// The start path and the origin checks for the desktop shell's saved POS address. The address itself is read by
+// pos-url.ts (the Android app's rules, native apps 2.0). No electron imports — safe for node:test.
+
+export const START_PATH = "/pos";
+
+export function startUrl(origin: string): string {
+  return origin + START_PATH;
+}
+
+```
+
+In `apps/desktop/src/store.ts`, find:
+
+```ts
+// (no electron imports) — safe for node:test.
+import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { normalizeServerUrl } from "./server-url";
+import { isPrintMode, type PrintMode } from "./shared";
+
+```
+
+Replace it with:
+
+```ts
+// (no electron imports) — safe for node:test.
+import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { normalizePosUrl } from "./pos-url";
+import { isPrintMode, type PrintMode } from "./shared";
+
+```
+
+In `apps/desktop/src/store.ts`, find:
+
+```ts
+  let serverOrigin: string | null = null;
+  if (Object.hasOwn(source, "serverOrigin") && typeof source.serverOrigin === "string") {
+    const normalized = normalizeServerUrl(source.serverOrigin);
+    serverOrigin = normalized.ok ? normalized.origin : null;
+  }
+```
+
+Replace it with:
+
+```ts
+  let serverOrigin: string | null = null;
+  if (Object.hasOwn(source, "serverOrigin") && typeof source.serverOrigin === "string") {
+    const normalized = normalizePosUrl(source.serverOrigin);
+    serverOrigin = normalized.ok ? normalized.origin : null;
+  }
+```
+
+In `apps/desktop/src/url-window.ts`, find:
+
+```ts
+// The first-run/"Change server address…" window: a small, non-resizable
+// prompt for the saved server origin. No preload state beyond three IPC
+// channels; the actual validation lives in server-url.ts.
+import path from "node:path";
+import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from "electron";
+```
+
+Replace it with:
+
+```ts
+// The first-run/"Change server address…" window: a small, non-resizable
+// prompt for the saved server origin. No preload state beyond three IPC
+// channels; the address rules live in pos-url.ts (the Android app's).
+import path from "node:path";
+import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from "electron";
+```
+
+In `apps/desktop/src/url-window.ts`, find:
+
+```ts
+  URL_SAVE_CHANNEL,
+} from "./shared";
+import { normalizeServerUrl } from "./server-url";
+import type { Logger } from "./log";
+
+```
+
+Replace it with:
+
+```ts
+  URL_SAVE_CHANNEL,
+} from "./shared";
+import { normalizePosUrl, URL_EMPTY_ERROR } from "./pos-url";
+import type { Logger } from "./log";
+
+```
+
+In `apps/desktop/src/url-window.ts`, find:
+
+```ts
+  ipcMain.handle(URL_SAVE_CHANNEL, (_event: IpcMainInvokeEvent, input: unknown) => {
+    if (typeof input !== "string") {
+      return { ok: false, error: "Enter the address of your POS." };
+    }
+    const result = normalizeServerUrl(input);
+    if (result.ok) {
+      deps.onSaved(result.origin);
+```
+
+Replace it with:
+
+```ts
+  ipcMain.handle(URL_SAVE_CHANNEL, (_event: IpcMainInvokeEvent, input: unknown) => {
+    if (typeof input !== "string") {
+      return { ok: false, error: URL_EMPTY_ERROR };
+    }
+    const result = normalizePosUrl(input);
+    if (result.ok) {
+      deps.onSaved(result.origin);
+```
+
+In `apps/mobile/src/url.ts`, find:
+
+```ts
+// Pure URL validation for the saved POS address. No global URL (React Native's
+// polyfill is partial), no react-native import: safe for node:test.
+// Mirrors apps/desktop/src/server-url.ts, plus the private-network http rule and
+// the Sandbee app's bare workspace name (the Windows app does not expand one).
+
+export const START_PATH = '/pos';
+```
+
+Replace it with:
+
+```ts
+// Pure URL validation for the saved POS address. No global URL (React Native's
+// polyfill is partial), no react-native import: safe for node:test.
+// The Windows app reads an address by the same rules (apps/desktop/src/pos-url.ts;
+// its parity test runs one table of inputs through both).
+
+export const START_PATH = '/pos';
+```
+
+- [ ] **Step 4: Run them and see them pass, with the suites**
+
+```bash
+cd /d/kd/lucifer/apps/desktop && timeout 250 npm test 2>&1 | grep -E "^not ok|^# (tests|pass|fail)" && npm run typecheck > /dev/null && npm run lint > /dev/null && echo "typecheck and lint clean"
+cd ../mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)"
+```
+Expected: desktop `# tests 193`, `# pass 193`, `# fail 0`, `typecheck and lint clean`; mobile `# tests 168`, `# fail 0`.
+
+- [ ] **Step 5: Commit** (`$SP/msg-n3-1.txt`):
+
+```text
+feat(desktop): the Windows app reads a POS address by the Android app's rules (pos-url.ts, ported from apps/mobile/src/url.ts): a bare workspace name means <name>.sandbee.in, http:// only for this PC or a private network address, a port from 1 to 65535, no user name or password, the same error words; a parity test runs 45 inputs through both apps; the saved address is read back by the same rules; normalizeServerUrl and its tests go (native apps 2.0, Session N3, spec §9)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+```
 
 ### Task 32: The one health check (`src/pos-health.ts`)
 
-- `type PosCheck = { ok: true } | { ok: false; error: string }`; `checkPos(origin: string, fetcher: typeof fetch, timeoutMs = 5000): Promise<PosCheck>`.
-- `GET <origin>/api/health` once, no redirects to another origin. Found = a JSON body with a string `tenant` and a boolean `ok`, at status 200 **or 503** (refinement of §9 recorded here: 503 is a POS whose database is down; the address is right, so it is saved, and the POS page shows its own error). Anything else (404, an HTML page, other JSON) → "We couldn't find a POS at <host>. Check the name." A network error or the timeout → "Couldn't reach <host>. Check the internet connection."
-- Tests with a fake fetcher: 200 found; 503 found; 404; 200 HTML; 200 JSON without `tenant`; a thrown `TypeError`; a timeout (an `AbortSignal` that fires); exactly one request per call.
-- The main process passes Electron's `net.fetch` (system proxy); the gate confirms the import.
+**Files:**
+- Create: `apps/desktop/src/pos-health.ts`; Test: `apps/desktop/src/pos-health.test.ts` (7 tests)
+- Test: `src/desktop-paths.test.ts` (pins (11)/(12) read `pos-health.ts`), `apps/desktop/package.json` (the test script)
+
+**Interfaces:** `checkPos(origin, fetcher: HealthFetch, timeoutMs = HEALTH_TIMEOUT_MS): Promise<PosCheck>`; `PosCheck = { ok: true } | { ok: false; error }`; `HealthInit` (GET, `redirect: "manual"`, `cache: "no-store"`, an `accept` header, the abort signal); `HEALTH_PATH = "/api/health"`, `HEALTH_TIMEOUT_MS = 5_000`; words "We couldn't find a POS at <host>. Check the name." and "Couldn't reach <host>. Check the internet connection."
+
+- [ ] **Step 1: Write the failing tests**
+
+In `apps/desktop/package.json`, find:
+
+```json
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "node --import tsx --test src/server-url.test.ts src/pos-url.test.ts src/store.test.ts src/window-state.test.ts src/escpos.test.ts src/raw-spool.test.ts src/raw-tcp.test.ts src/printer-check.test.ts src/desktop-paths.test.ts",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && electron-builder --win nsis --publish never"
+```
+
+Replace it with:
+
+```json
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "node --import tsx --test src/server-url.test.ts src/pos-url.test.ts src/pos-health.test.ts src/store.test.ts src/window-state.test.ts src/escpos.test.ts src/raw-spool.test.ts src/raw-tcp.test.ts src/printer-check.test.ts src/desktop-paths.test.ts",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && electron-builder --win nsis --publish never"
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+    "server-url.ts",
+    "pos-url.ts",
+    "store.ts",
+    "window-state.ts",
+```
+
+Replace it with:
+
+```ts
+    "server-url.ts",
+    "pos-url.ts",
+    "pos-health.ts",
+    "store.ts",
+    "window-state.ts",
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+    ["src/server-url.ts", read("src/server-url.ts")],
+    ["src/pos-url.ts", read("src/pos-url.ts")],
+    ["src/store.ts", read("src/store.ts")],
+    ["src/window-state.ts", read("src/window-state.ts")],
+```
+
+Replace it with:
+
+```ts
+    ["src/server-url.ts", read("src/server-url.ts")],
+    ["src/pos-url.ts", read("src/pos-url.ts")],
+    ["src/pos-health.ts", read("src/pos-health.ts")],
+    ["src/store.ts", read("src/store.ts")],
+    ["src/window-state.ts", read("src/window-state.ts")],
+```
+
+Create `apps/desktop/src/pos-health.test.ts`:
+
+```ts
+// Native apps 2.0 (spec §9): the address window checks a typed address once before saving it. A fake fetch stands in for
+// Electron's net.fetch: what the POS answers decides found, not found or not reached, always in one request.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { checkPos, HEALTH_PATH, HEALTH_TIMEOUT_MS, type HealthFetch, type HealthInit } from "./pos-health";
+
+type Call = { url: string; init: HealthInit };
+
+function answering(status: number, body: () => Promise<unknown>): { fetch: HealthFetch; calls: Call[] } {
+  const calls: Call[] = [];
+  const fetch: HealthFetch = async (url, init) => {
+    calls.push({ url, init });
+    return { status, json: body };
+  };
+  return { fetch, calls };
+}
+
+const json = (value: unknown) => () => Promise.resolve(value);
+const NOT_FOUND = "We couldn't find a POS at mycafe.sandbee.in. Check the name.";
+const UNREACHABLE = "Couldn't reach mycafe.sandbee.in. Check the internet connection.";
+
+test("a POS whose database is up (200, its tenant named) is found, in one GET of /api/health that follows no redirect", async () => {
+  const { fetch, calls } = answering(200, json({ ok: true, db: "up", tenant: "dev", ts: 1 }));
+  assert.deepEqual(await checkPos("https://mycafe.sandbee.in", fetch), { ok: true });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]!.url, "https://mycafe.sandbee.in" + HEALTH_PATH);
+  assert.equal(HEALTH_PATH, "/api/health");
+  assert.equal(calls[0]!.init.method, "GET");
+  assert.equal(calls[0]!.init.redirect, "manual");
+  assert.equal(HEALTH_TIMEOUT_MS, 5_000);
+});
+
+test("a POS whose database is down (503, its tenant named) is found: the address is right, the POS page shows its own error", async () => {
+  const { fetch, calls } = answering(503, json({ ok: false, db: "down", tenant: "mycafe", ts: 1 }));
+  assert.deepEqual(await checkPos("https://mycafe.sandbee.in", fetch), { ok: true });
+  assert.equal(calls.length, 1);
+});
+
+test("no POS at the address (404) is not found, and the message names the host", async () => {
+  const { fetch, calls } = answering(404, json({ error: "not found" }));
+  assert.deepEqual(await checkPos("https://mycafe.sandbee.in", fetch), { ok: false, error: NOT_FOUND });
+  assert.equal(calls.length, 1);
+  const local = answering(404, json({}));
+  assert.deepEqual(await checkPos("http://127.0.0.1:8766", local.fetch), {
+    ok: false,
+    error: "We couldn't find a POS at 127.0.0.1:8766. Check the name.",
+  });
+});
+
+test("another site's page (200 HTML) is not found", async () => {
+  const { fetch, calls } = answering(200, () => Promise.reject(new SyntaxError("Unexpected token <")));
+  assert.deepEqual(await checkPos("https://mycafe.sandbee.in", fetch), { ok: false, error: NOT_FOUND });
+  assert.equal(calls.length, 1);
+});
+
+test("other JSON (200 without a tenant, or a redirect) is not found", async () => {
+  for (const [status, body] of [
+    [200, { ok: true }],
+    [200, { tenant: 7, ok: true }],
+    [200, null],
+    [302, { tenant: "dev", ok: true }],
+  ] as const) {
+    const { fetch, calls } = answering(status, json(body));
+    assert.deepEqual(await checkPos("https://mycafe.sandbee.in", fetch), { ok: false, error: NOT_FOUND }, JSON.stringify(body));
+    assert.equal(calls.length, 1);
+  }
+});
+
+test("no answer at all (a network error) is not reached", async () => {
+  let calls = 0;
+  const fetch: HealthFetch = async () => {
+    calls += 1;
+    throw new TypeError("fetch failed");
+  };
+  assert.deepEqual(await checkPos("https://mycafe.sandbee.in", fetch), { ok: false, error: UNREACHABLE });
+  assert.equal(calls, 1);
+});
+
+test("no answer in time is not reached, and the request is aborted", async () => {
+  let calls = 0;
+  let aborted = false;
+  const fetch: HealthFetch = (_url, init) => {
+    calls += 1;
+    return new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => {
+        aborted = true;
+        reject(new DOMException("The operation was aborted.", "AbortError"));
+      });
+    });
+  };
+  const started = Date.now();
+  assert.deepEqual(await checkPos("https://mycafe.sandbee.in", fetch, 30), { ok: false, error: UNREACHABLE });
+  assert.ok(Date.now() - started < 2_000, "the timeout ended the wait");
+  assert.equal(aborted, true);
+  assert.equal(calls, 1);
+});
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+```bash
+cd /d/kd/lucifer/apps/desktop && timeout 250 node --import tsx --test src/pos-health.test.ts src/desktop-paths.test.ts 2>&1 | grep -E "^not ok|Cannot find module|^# (tests|pass|fail)"
+```
+Expected: `# Error: Cannot find module './pos-health'` (the file `src\\pos-health.test.ts` fails) and pins `(11)` and
+`(12)`; `# tests 69`, `# pass 66`, `# fail 3`.
+
+- [ ] **Step 3: Implement**
+
+Create `apps/desktop/src/pos-health.ts`:
+
+```ts
+// Native apps 2.0 (spec §9): the address window's one check before it saves an address. GET <origin>/api/health once,
+// following no redirect. A POS answers with JSON that names its tenant: 200 when its database is up, 503 when it is down
+// (the address is right either way, so it is saved and the POS page shows its own error). Any other answer is not a POS
+// at that address; no answer at all, or none within 5 seconds, is a network problem. One request per typed address,
+// nothing recurring (the free-tier rule). Pure: the fetch is passed in (Electron's net.fetch from url-window.ts), so
+// node:test drives it with a fake.
+
+export const HEALTH_PATH = "/api/health";
+export const HEALTH_TIMEOUT_MS = 5_000;
+
+export type PosCheck = { ok: true } | { ok: false; error: string };
+
+export interface HealthInit {
+  method: "GET";
+  redirect: "manual";
+  cache: "no-store";
+  headers: Record<string, string>;
+  signal: AbortSignal;
+}
+
+/** The part of fetch this check uses (Electron's net.fetch in the app, a fake in the tests). */
+export type HealthFetch = (url: string, init: HealthInit) => Promise<{ status: number; json(): Promise<unknown> }>;
+
+const FOUND_STATUSES = [200, 503];
+
+export function notFoundError(host: string): string {
+  return `We couldn't find a POS at ${host}. Check the name.`;
+}
+
+export function unreachableError(host: string): string {
+  return `Couldn't reach ${host}. Check the internet connection.`;
+}
+
+/** The host (and port) of an origin normalizePosUrl made: "scheme://host[:port]". */
+function hostOf(origin: string): string {
+  return origin.replace(/^[a-z]+:\/\//, "");
+}
+
+function isPosHealth(body: unknown): boolean {
+  if (typeof body !== "object" || body === null) return false;
+  const { tenant, ok } = body as { tenant?: unknown; ok?: unknown };
+  return typeof tenant === "string" && typeof ok === "boolean";
+}
+
+export async function checkPos(origin: string, fetcher: HealthFetch, timeoutMs = HEALTH_TIMEOUT_MS): Promise<PosCheck> {
+  const host = hostOf(origin);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    let response: Awaited<ReturnType<HealthFetch>>;
+    try {
+      response = await fetcher(origin + HEALTH_PATH, {
+        method: "GET",
+        redirect: "manual",
+        cache: "no-store",
+        headers: { accept: "application/json" },
+        signal: controller.signal,
+      });
+    } catch {
+      return { ok: false, error: unreachableError(host) };
+    }
+    if (!FOUND_STATUSES.includes(response.status)) {
+      return { ok: false, error: notFoundError(host) };
+    }
+    try {
+      return isPosHealth(await response.json()) ? { ok: true } : { ok: false, error: notFoundError(host) };
+    } catch {
+      // Not JSON: another site's page.
+      return { ok: false, error: notFoundError(host) };
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+}
+```
+
+- [ ] **Step 4: Run them and see them pass, with the suite**
+
+```bash
+cd /d/kd/lucifer/apps/desktop && node --import tsx --test src/pos-health.test.ts 2>&1 | grep -E "^not ok|^# (tests|pass|fail)"
+timeout 250 npm test 2>&1 | grep -E "^not ok|^# (tests|pass|fail)" && npm run typecheck > /dev/null && npm run lint > /dev/null && echo "typecheck and lint clean"
+```
+Expected: `# tests 7`, `# pass 7`, `# fail 0`; desktop `# tests 200`, `# pass 200`, `# fail 0`, `typecheck and lint
+clean`.
+
+- [ ] **Step 5: Commit** (`$SP/msg-n3-2.txt`):
+
+```text
+feat(desktop): the address window's one check: GET <origin>/api/health once, no redirect, 5 seconds; a POS naming its tenant at 200 (its database up) or 503 (down: the address is right) is found, any other answer is not a POS at that address, no answer is a network problem; seven tests with a fake fetch, one request each (native apps 2.0, Session N3, spec §9)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+```
 
 ### Task 33: The window
 
-- `assets/url-window.html` + `assets/url-window.js` redesigned per §9: 480 × 640, not resizable; background `#f5f7fb`, a white card, the red Sandbee icon (`assets/app-icon.png`), "Connect to your workspace", "Your cafe, orders and printers. All in one place.", label "POS address", the field with an icon and a clear button, placeholder "yourcafe or yourcafe.sandbee.in", the info box "Your workspace" / "Type your workspace name, or the full address shared by your administrator. We'll remember it for next time." (red "Check the address" with the error text), a full-width **Open POS** (`#2f6fed`, "Connecting…" while checking), **Cancel** only from "Change POS address…", footer "Windows printers · USB · Wi-Fi / LAN" and "POS Software by sandbee · <version>". Enter submits; Esc cancels when Cancel is shown. The window title "POS address". The CSP stays as strict as today.
-- `url-preload.ts` adds the app version (an additional argument, like `shell-window.ts`'s `VERSION_ARG_PREFIX`); the save IPC becomes normalize → `checkPos` → save, returning the error text to the page.
-- `desktop-paths.test.ts`: pins (8)/(9) change deliberately to the new copy, size and the Cancel rule; a new pin that the window makes no request itself (only the main process's one `checkPos`).
-- A visual check: headless desktop Chrome (`npx playwright-core`) loads the page with a stub `posDesktopSetup`; screenshots at 480 × 640 of empty, typing, error, connecting and the Cancel variant, kept in the scratchpad and looked at.
+**Files:**
+- Replace: `apps/desktop/assets/url-window.html` (the inline logo kept byte for byte), `assets/url-window.js`
+- Modify: `src/url-window.ts` (480 × 640 of content, "POS address", the version, normalize → `checkPos` → save), `src/url-preload.ts` (`version`), `src/main.ts` (the logger to the URL handlers), `docs/GO-LIVE-CHECKLIST.md` (§7's first-run line)
+- Test: `src/desktop-paths.test.ts` (pins (8), (9), (R5) deliberately changed; (A1), (A2)), `apps/cafe/lib/go-live-runbook.test.ts` (the window's words)
+
+**Interfaces:** `posDesktopSetup` = `{ version, current(), save(input), cancel() }`; `save` answers `{ ok: true }` or `{ ok: false, error }` with pos-url's or pos-health's words.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `apps/cafe/lib/go-live-runbook.test.ts`, find:
+
+```ts
+    ["Start with Windows", menuSrc, "menu.ts"],
+    ["Change server address…", menuSrc, "menu.ts"],
+    ["Use this address", urlHtml, "url-window.html"],
+    ["Server address", urlHtml, "url-window.html"],
+  ] as const) {
+    assert.ok(section.includes(label), `§7 desktop sub-section must quote "${label}"`);
+```
+
+Replace it with:
+
+```ts
+    ["Start with Windows", menuSrc, "menu.ts"],
+    ["Change server address…", menuSrc, "menu.ts"],
+    // Native apps 2.0 Session N3 deliberately changed: the address window's words (spec §9).
+    ["POS address", urlHtml, "url-window.html"],
+  ] as const) {
+    assert.ok(section.includes(label), `§7 desktop sub-section must quote "${label}"`);
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import {
+```
+
+Replace it with:
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+import {
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+});
+
+test("(8) url-preload.ts duplicated literals equal shared.ts (URL_*_CHANNEL, SETUP_BRIDGE_KEY)", () => {
+  assert.ok(urlPreloadSrc.includes(JSON.stringify(URL_CURRENT_CHANNEL)));
+  assert.ok(urlPreloadSrc.includes(JSON.stringify(URL_SAVE_CHANNEL)));
+  assert.ok(urlPreloadSrc.includes(JSON.stringify(URL_CANCEL_CHANNEL)));
+  assert.ok(urlPreloadSrc.includes(JSON.stringify(SETUP_BRIDGE_KEY)));
+});
+
+test("(8) url-preload.ts exposes exactly ['current', 'save', 'cancel'] on posDesktopSetup", () => {
+  const keys = extractExposedKeys(urlPreloadSrc, '"posDesktopSetup"');
+  assert.deepEqual(keys.sort(), ["cancel", "current", "save"]);
+});
+
+```
+
+Replace it with:
+
+```ts
+});
+
+test("(8) url-preload.ts duplicated literals equal shared.ts (URL_*_CHANNEL, SETUP_BRIDGE_KEY, VERSION_ARG_PREFIX)", () => {
+  assert.ok(urlPreloadSrc.includes(JSON.stringify(URL_CURRENT_CHANNEL)));
+  assert.ok(urlPreloadSrc.includes(JSON.stringify(URL_SAVE_CHANNEL)));
+  assert.ok(urlPreloadSrc.includes(JSON.stringify(URL_CANCEL_CHANNEL)));
+  assert.ok(urlPreloadSrc.includes(JSON.stringify(SETUP_BRIDGE_KEY)));
+  // Native apps 2.0 (spec §9): the window's footer shows the app's version, passed as preload.ts gets it.
+  assert.ok(urlPreloadSrc.includes(JSON.stringify(VERSION_ARG_PREFIX)), "url-preload.ts must carry VERSION_ARG_PREFIX");
+});
+
+// Native apps 2.0 Session N3 deliberately changed: the version joins the three calls.
+test("(8) url-preload.ts exposes exactly ['cancel', 'current', 'save', 'version'] on posDesktopSetup", () => {
+  const keys = extractExposedKeys(urlPreloadSrc, '"posDesktopSetup"');
+  assert.deepEqual(keys.sort(), ["cancel", "current", "save", "version"]);
+});
+
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+    assert.ok(!source.includes("url("), `${name} must not use a CSS url()`);
+  }
+  // Landmark: the placeholder copy legitimately contains "https://" as text,
+  // not a loaded resource -- proves the scan actually read real content and
+  // the negatives above aren't vacuous from an empty/blinded read.
+  assert.ok(urlWindowHtml.includes('placeholder="https://your-pos.example.com"'));
+});
+
+test("(9) url-window.html: the five copy strings from plan A.12 are present (landmark id=\"error\")", () => {
+  assert.ok(urlWindowHtml.includes('id="error"'));
+  assert.match(urlWindowHtml, /Server address/);
+  assert.ok(urlWindowHtml.includes('placeholder="https://your-pos.example.com"'));
+  assert.match(urlWindowHtml, /Ask the person who set up your POS/);
+  assert.match(urlWindowHtml, /Use this address/);
+  assert.match(urlWindowHtml, />Cancel</);
+});
+
+```
+
+Replace it with:
+
+```ts
+    assert.ok(!source.includes("url("), `${name} must not use a CSS url()`);
+  }
+  // Landmarks: the scan actually read real content, so the negatives above aren't vacuous from an empty/blinded read.
+  assert.ok(urlWindowHtml.includes('placeholder="yourcafe or yourcafe.sandbee.in"'), "landmark: the placeholder");
+  assert.ok(urlWindowJs.includes("posDesktopSetup.save("), "landmark: the script saves through the bridge");
+});
+
+// Native apps 2.0 Session N3 deliberately changed (spec §9): the Android start screen's words replace plan A.12's.
+test("(9) url-window: the Android start screen's words, the help text the same in the page and the script (landmark id=\"error\")", () => {
+  assert.ok(urlWindowHtml.includes('id="error"'), "landmark: id=error");
+  for (const text of [
+    "<title>POS address</title>",
+    ">Connect to your workspace<",
+    ">Your cafe, orders and printers. All in one place.<",
+    ">POS address<",
+    'placeholder="yourcafe or yourcafe.sandbee.in"',
+    ">Your workspace<",
+    ">Open POS<",
+    ">Cancel<",
+    ">Windows printers · USB · Wi-Fi / LAN<",
+    `>${PRODUCT_NAME}<`,
+  ]) {
+    assert.ok(urlWindowHtml.includes(text), `url-window.html must carry ${text}`);
+  }
+  const help = "Type your workspace name, or the full address shared by your administrator. We’ll remember it for next time.";
+  assert.ok(urlWindowHtml.includes(`>${help}<`) && urlWindowJs.includes(`"${help}"`), "the help words are the same in the page and the script");
+  for (const text of ['"Check the address"', '"Connecting…"', '"Open POS"', `"${PRODUCT_NAME} · "`]) {
+    assert.ok(urlWindowJs.includes(text), `url-window.js must carry ${text}`);
+  }
+  assert.ok(urlWindowHtml.includes('<button id="cancel" class="cancel" type="button" hidden>Cancel</button>'), "Cancel starts hidden (the first run)");
+  assert.ok(urlWindowJs.includes('event.key === "Escape" && !cancelButton.hidden'), "Esc cancels only when Cancel is shown");
+});
+
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+});
+
+test("(R5) url-window assets: inline data: logo under a data:-only img-src, a real form (Enter submits), product name in the header", () => {
+  assert.ok(urlWindowHtml.includes("img-src data:"), "CSP must allow only data: images (the logo is inlined; file:// 'self' is not relied on)");
+  assert.ok(urlWindowHtml.includes('src="data:image/png;base64,'), "the header logo must be inlined");
+```
+
+Replace it with:
+
+```ts
+});
+
+// -- (A) native apps 2.0 (spec §9): the address window ----------------------
+test("(A1) url-window.ts: 480 x 640 of content, not resizable, titled POS address, the version passed to the page", () => {
+  assert.ok(urlWindowSrc.includes("export const URL_WINDOW_WIDTH = 480;"), "the window is 480 wide");
+  assert.ok(urlWindowSrc.includes("export const URL_WINDOW_HEIGHT = 640;"), "the window is 640 high");
+  assert.match(urlWindowSrc, /useContentSize: true,\s*resizable: false,/, "480 x 640 of content, not resizable");
+  assert.ok(urlWindowSrc.includes('title: "POS address",'), "the window is titled POS address");
+  assert.ok(urlWindowSrc.includes("additionalArguments: [`${VERSION_ARG_PREFIX}${app.getVersion()}`]"), "the version is passed to the page");
+});
+
+test("(A2) the address window makes no request itself: the main process reads the address by the Android rules, checks it once through net.fetch, then saves", () => {
+  for (const needle of ["fetch(", "XMLHttpRequest", "WebSocket", "EventSource", "sendBeacon", "import("]) {
+    assert.ok(!urlWindowJs.includes(needle), `url-window.js must not use ${needle}`);
+  }
+  assert.ok(!urlWindowHtml.includes("connect-src"), "default-src 'none' must keep blocking every request from the page");
+  const save = urlWindowSrc.slice(urlWindowSrc.indexOf("ipcMain.handle(URL_SAVE_CHANNEL"), urlWindowSrc.indexOf("ipcMain.handle(URL_CANCEL_CHANNEL"));
+  const normalized = save.indexOf("normalizePosUrl(input)");
+  const checked = save.indexOf("await checkPos(result.origin, (url, init) => net.fetch(url, init))");
+  const saved = save.indexOf("deps.onSaved(result.origin)");
+  assert.ok(normalized >= 0 && checked > normalized && saved > checked, "normalize, then the one check, then save");
+  assert.ok(save.includes("if (!check.ok) return check;"), "an address that failed its check is never saved");
+  const callers = readdirSync(SRC).filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts") && read(`src/${name}`).includes("checkPos("));
+  assert.deepEqual(callers.sort(), ["pos-health.ts", "url-window.ts"], "the one check is made only from the address window's save");
+});
+
+test("(R5) url-window assets: inline data: logo under a data:-only img-src, a real form (Enter submits), the product name on the page", () => {
+  assert.ok(urlWindowHtml.includes("img-src data:"), "CSP must allow only data: images (the logo is inlined; file:// 'self' is not relied on)");
+  assert.ok(urlWindowHtml.includes('src="data:image/png;base64,'), "the header logo must be inlined");
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+  assert.ok(urlWindowHtml.includes('<form id="address-form"') && urlWindowHtml.includes('type="submit"'), "the address entry must be a form so Enter submits (C27)");
+  assert.ok(urlWindowJs.includes('addEventListener("submit"'), "the script must handle the form submit");
+  assert.ok(urlWindowHtml.includes(PRODUCT_NAME), "the header must carry the product name (C13)");
+  assert.ok(!existsSync(path.join(ROOT, "assets", "logo.png")), "assets/logo.png must not exist (it is inlined)");
+});
+```
+
+Replace it with:
+
+```ts
+  assert.ok(urlWindowHtml.includes('<form id="address-form"') && urlWindowHtml.includes('type="submit"'), "the address entry must be a form so Enter submits (C27)");
+  assert.ok(urlWindowJs.includes('addEventListener("submit"'), "the script must handle the form submit");
+  assert.ok(urlWindowHtml.includes(PRODUCT_NAME), "the page must carry the product name (C13; the footer since native apps 2.0)");
+  assert.ok(!existsSync(path.join(ROOT, "assets", "logo.png")), "assets/logo.png must not exist (it is inlined)");
+});
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+```bash
+cd /d/kd/lucifer/apps/desktop && timeout 250 node --import tsx --test src/desktop-paths.test.ts 2>&1 | grep -E "^not ok|^# (tests|pass|fail)"
+cd ../cafe && timeout 300 node --import tsx --test lib/go-live-runbook.test.ts 2>&1 | grep -E "^not ok|^  error:|^# (tests|pass|fail)"
+```
+Expected: six pins fail (`# tests 70`, `# pass 64`, `# fail 6`): both `(8)` pins, `(9) vision-guard: …` (its landmark is
+the new placeholder), `(9) url-window: the Android start screen's words, …`, `(A1)`, `(A2)`; the runbook's `PIN §7
+desktop app: …` fails with `'§7 desktop sub-section must quote "POS address"'` (`# tests 97`, `# pass 96`, `# fail 1`).
+
+- [ ] **Step 3: Implement**
+
+Replace the whole of `apps/desktop/assets/url-window.html` with:
+
+```html
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src data:" />
+  <title>POS address</title>
+  <!-- Native apps 2.0 (spec §9): the Android start screen (apps/mobile/src/screens/UrlScreen.tsx), its colours and words. -->
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    html,
+    body {
+      height: 100%;
+    }
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: #f5f7fb;
+      color: #0f172a;
+      user-select: none;
+    }
+    .card {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      padding: 22px 26px 16px;
+      background: #ffffff;
+      border: 1px solid #e1e7f0;
+      border-radius: 20px;
+    }
+    .logo {
+      display: block;
+      width: 64px;
+      height: 64px;
+      margin: 2px auto 16px;
+      border-radius: 16px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 32px;
+      font-weight: 600;
+      text-align: center;
+    }
+    .subtitle {
+      margin: 6px 0 20px;
+      font-size: 14px;
+      line-height: 20px;
+      color: #526179;
+      text-align: center;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #526179;
+    }
+    .field {
+      display: flex;
+      align-items: center;
+      min-height: 52px;
+      padding-left: 12px;
+      background: #ffffff;
+      border: 1.5px solid #e1e7f0;
+      border-radius: 14px;
+    }
+    .field:focus-within {
+      border-color: #2f6fed;
+    }
+    .field.error {
+      border-color: #b91c1c;
+    }
+    .badge {
+      display: flex;
+      flex: none;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      margin-right: 10px;
+      border-radius: 15px;
+      background: #eaf1ff;
+      color: #2f6fed;
+    }
+    .field.error .badge {
+      background: #fdecec;
+      color: #b91c1c;
+    }
+    input {
+      flex: 1;
+      min-width: 0;
+      height: 48px;
+      padding: 0 4px;
+      border: 0;
+      outline: none;
+      background: transparent;
+      font: inherit;
+      font-size: 15px;
+      color: #0f172a;
+      user-select: text;
+    }
+    input::placeholder {
+      color: #526179;
+    }
+    .clear {
+      display: flex;
+      flex: none;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 48px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: #526179;
+      cursor: pointer;
+    }
+    .clear[hidden] {
+      display: none;
+    }
+    .field.error .clear {
+      color: #b91c1c;
+    }
+    .hint {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 80px;
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: #eaf1ff;
+    }
+    .hint.error {
+      background: #fdecec;
+    }
+    .hint-badge {
+      display: flex;
+      flex: none;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 13px;
+      background: #2f6fed;
+      color: #ffffff;
+    }
+    .hint.error .hint-badge {
+      background: #b91c1c;
+    }
+    .hint .icon-error,
+    .hint.error .icon-info {
+      display: none;
+    }
+    .hint.error .icon-error {
+      display: block;
+    }
+    .hint-title {
+      margin: 0 0 2px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .hint-body {
+      margin: 0;
+      font-size: 13px;
+      line-height: 19px;
+      color: #526179;
+    }
+    .hint.error .hint-title,
+    .hint.error .hint-body {
+      color: #b91c1c;
+    }
+    .open {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      min-height: 52px;
+      margin-top: 20px;
+      border: 0;
+      border-radius: 28px;
+      background: #2f6fed;
+      color: #ffffff;
+      font: inherit;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .open:hover {
+      background: #1e56c9;
+    }
+    .open:disabled {
+      background: #c9d2df;
+      cursor: default;
+    }
+    .open:disabled .arrow {
+      display: none;
+    }
+    .cancel {
+      display: block;
+      width: 100%;
+      min-height: 40px;
+      margin-top: 6px;
+      border: 0;
+      border-radius: 20px;
+      background: transparent;
+      color: #2f6fed;
+      font: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .cancel[hidden] {
+      display: none;
+    }
+    .footer {
+      margin-top: auto;
+      padding-top: 10px;
+      font-size: 12px;
+      line-height: 18px;
+      color: #526179;
+      text-align: center;
+    }
+    .footer p {
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <img class="logo" src="data:image/png;base64,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" alt="" />
+    <h1>Connect to your workspace</h1>
+    <p class="subtitle">Your cafe, orders and printers. All in one place.</p>
+    <form id="address-form" novalidate>
+      <label for="address">POS address</label>
+      <div class="field" id="field">
+        <span class="badge" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z" /></svg>
+        </span>
+        <input id="address" type="text" placeholder="yourcafe or yourcafe.sandbee.in" autocomplete="off" spellcheck="false" maxlength="2048" autofocus />
+        <button id="clear" class="clear" type="button" aria-label="Clear POS address" hidden>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z" /></svg>
+        </button>
+      </div>
+      <div class="hint" id="hint" role="status" aria-live="polite">
+        <span class="hint-badge" aria-hidden="true">
+          <svg class="icon-info" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" /></svg>
+          <svg class="icon-error" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" /></svg>
+        </span>
+        <div>
+          <p class="hint-title" id="hint-title">Your workspace</p>
+          <p class="hint-body" id="error">Type your workspace name, or the full address shared by your administrator. We’ll remember it for next time.</p>
+        </div>
+      </div>
+      <button id="save" class="open" type="submit">
+        <span id="save-label">Open POS</span>
+        <svg class="arrow" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" /></svg>
+      </button>
+      <button id="cancel" class="cancel" type="button" hidden>Cancel</button>
+    </form>
+    <footer class="footer">
+      <p>Windows printers · USB · Wi-Fi / LAN</p>
+      <p id="product">POS Software by sandbee</p>
+    </footer>
+  </main>
+  <script src="url-window.js"></script>
+</body>
+</html>
+```
+
+Replace the whole of `apps/desktop/assets/url-window.js` with:
+
+```js
+// Plain browser script for the POS address window (no bundler, no framework): the Android start screen's look and words
+// (native apps 2.0, spec §9). Talks only to window.posDesktopSetup, exposed by url-preload.ts. The main process reads the
+// address by the Android app's rules, checks it once and saves it, and answers with the words to show.
+/* global posDesktopSetup */
+(function () {
+  "use strict";
+
+  var HELP_TITLE = "Your workspace";
+  var HELP_BODY =
+    "Type your workspace name, or the full address shared by your administrator. We’ll remember it for next time.";
+  var ERROR_TITLE = "Check the address";
+  var SAVE_FAILED = "The address could not be saved. Close the app and try again.";
+
+  var form = document.getElementById("address-form");
+  var field = document.getElementById("field");
+  var addressInput = document.getElementById("address");
+  var clearButton = document.getElementById("clear");
+  var hint = document.getElementById("hint");
+  var hintTitle = document.getElementById("hint-title");
+  var hintBody = document.getElementById("error");
+  var saveButton = document.getElementById("save");
+  var saveLabel = document.getElementById("save-label");
+  var cancelButton = document.getElementById("cancel");
+  var product = document.getElementById("product");
+  var busy = false;
+
+  if (posDesktopSetup.version) {
+    product.textContent = "POS Software by sandbee · " + posDesktopSetup.version;
+  }
+
+  function showError(message) {
+    var hasError = Boolean(message);
+    field.classList.toggle("error", hasError);
+    hint.classList.toggle("error", hasError);
+    hintTitle.textContent = hasError ? ERROR_TITLE : HELP_TITLE;
+    hintBody.textContent = hasError ? message : HELP_BODY;
+  }
+
+  function updateClear() {
+    clearButton.hidden = busy || addressInput.value.length === 0;
+  }
+
+  // While the address is checked (at most 5 seconds) the form waits: "Connecting…".
+  function setBusy(on) {
+    busy = on;
+    addressInput.readOnly = on;
+    saveButton.disabled = on;
+    saveLabel.textContent = on ? "Connecting…" : "Open POS";
+    updateClear();
+  }
+
+  // A saved address means "Change POS address…": the window may be cancelled (the main process checks it too).
+  posDesktopSetup.current().then(function (origin) {
+    if (origin) {
+      addressInput.value = origin;
+      cancelButton.hidden = false;
+    }
+    updateClear();
+  });
+
+  addressInput.addEventListener("input", function () {
+    showError("");
+    updateClear();
+  });
+
+  clearButton.addEventListener("click", function () {
+    addressInput.value = "";
+    showError("");
+    updateClear();
+    addressInput.focus();
+  });
+
+  // Submit = Open POS OR Enter in the field.
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    if (busy) {
+      return;
+    }
+    showError("");
+    setBusy(true);
+    posDesktopSetup.save(addressInput.value).then(
+      function (result) {
+        setBusy(false);
+        if (!result.ok) {
+          showError(result.error);
+          addressInput.focus();
+        }
+      },
+      function () {
+        setBusy(false);
+        showError(SAVE_FAILED);
+      },
+    );
+  });
+
+  cancelButton.addEventListener("click", function () {
+    if (!cancelButton.hidden && !busy) {
+      posDesktopSetup.cancel();
+    }
+  });
+
+  // Esc cancels, only when Cancel is shown.
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && !cancelButton.hidden && !busy) {
+      posDesktopSetup.cancel();
+    }
+  });
+})();
+```
+
+In `apps/desktop/src/main.ts`, find:
+
+```ts
+      allowCancel: () => urlWindowAllowsCancel,
+      closeUrlWindow,
+    });
+
+```
+
+Replace it with:
+
+```ts
+      allowCancel: () => urlWindowAllowsCancel,
+      closeUrlWindow,
+      log,
+    });
+
+```
+
+In `apps/desktop/src/url-preload.ts`, find:
+
+```ts
+const URL_SAVE_CHANNEL = "pos-desktop:url-save";
+const URL_CANCEL_CHANNEL = "pos-desktop:url-cancel";
+
+contextBridge.exposeInMainWorld("posDesktopSetup", {
+  current: (): Promise<string | null> => electron.ipcRenderer.invoke(URL_CURRENT_CHANNEL),
+  save: (input: string): Promise<{ ok: true } | { ok: false; error: string }> =>
+```
+
+Replace it with:
+
+```ts
+const URL_SAVE_CHANNEL = "pos-desktop:url-save";
+const URL_CANCEL_CHANNEL = "pos-desktop:url-cancel";
+// Native apps 2.0 (spec §9): the window's footer shows the app's version, passed as the main window's preload gets it.
+const VERSION_ARG_PREFIX = "--pos-desktop-version=";
+
+const versionArg = process.argv.find((arg: string) => arg.startsWith(VERSION_ARG_PREFIX));
+const version = versionArg ? versionArg.slice(VERSION_ARG_PREFIX.length) : "";
+
+contextBridge.exposeInMainWorld("posDesktopSetup", {
+  version,
+  current: (): Promise<string | null> => electron.ipcRenderer.invoke(URL_CURRENT_CHANNEL),
+  save: (input: string): Promise<{ ok: true } | { ok: false; error: string }> =>
+```
+
+In `apps/desktop/src/url-window.ts`, find:
+
+```ts
+// channels; the address rules live in pos-url.ts (the Android app's).
+import path from "node:path";
+import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from "electron";
+import {
+  APP_ICON_FILE,
+```
+
+Replace it with:
+
+```ts
+// channels; the address rules live in pos-url.ts (the Android app's).
+import path from "node:path";
+import { app, BrowserWindow, ipcMain, net, type IpcMainInvokeEvent } from "electron";
+import {
+  APP_ICON_FILE,
+```
+
+In `apps/desktop/src/url-window.ts`, find:
+
+```ts
+  URL_CURRENT_CHANNEL,
+  URL_SAVE_CHANNEL,
+} from "./shared";
+import { normalizePosUrl, URL_EMPTY_ERROR } from "./pos-url";
+import type { Logger } from "./log";
+
+export const URL_WINDOW_WIDTH = 520;
+export const URL_WINDOW_HEIGHT = 360;
+
+interface OpenUrlWindowDeps {
+```
+
+Replace it with:
+
+```ts
+  URL_CURRENT_CHANNEL,
+  URL_SAVE_CHANNEL,
+  VERSION_ARG_PREFIX,
+} from "./shared";
+import { normalizePosUrl, URL_EMPTY_ERROR } from "./pos-url";
+import { checkPos } from "./pos-health";
+import type { Logger } from "./log";
+
+// Native apps 2.0 (spec §9): the Android start screen's size on a PC, of content (the menu bar comes on top).
+export const URL_WINDOW_WIDTH = 480;
+export const URL_WINDOW_HEIGHT = 640;
+
+interface OpenUrlWindowDeps {
+```
+
+In `apps/desktop/src/url-window.ts`, find:
+
+```ts
+    width: URL_WINDOW_WIDTH,
+    height: URL_WINDOW_HEIGHT,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    title: "Server address",
+    icon: path.join(__dirname, "../assets", APP_ICON_FILE),
+    webPreferences: {
+```
+
+Replace it with:
+
+```ts
+    width: URL_WINDOW_WIDTH,
+    height: URL_WINDOW_HEIGHT,
+    useContentSize: true,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    title: "POS address",
+    backgroundColor: "#f5f7fb",
+    icon: path.join(__dirname, "../assets", APP_ICON_FILE),
+    webPreferences: {
+```
+
+In `apps/desktop/src/url-window.ts`, find:
+
+```ts
+      nodeIntegration: false,
+      devTools: false,
+    },
+  });
+```
+
+Replace it with:
+
+```ts
+      nodeIntegration: false,
+      devTools: false,
+      additionalArguments: [`${VERSION_ARG_PREFIX}${app.getVersion()}`],
+    },
+  });
+```
+
+In `apps/desktop/src/url-window.ts`, find:
+
+```ts
+  allowCancel(): boolean;
+  closeUrlWindow(): void;
+}
+
+```
+
+Replace it with:
+
+```ts
+  allowCancel(): boolean;
+  closeUrlWindow(): void;
+  log: Logger;
+}
+
+```
+
+In `apps/desktop/src/url-window.ts`, find:
+
+```ts
+  });
+
+  ipcMain.handle(URL_SAVE_CHANNEL, (_event: IpcMainInvokeEvent, input: unknown) => {
+    if (typeof input !== "string") {
+      return { ok: false, error: URL_EMPTY_ERROR };
+    }
+    const result = normalizePosUrl(input);
+    if (result.ok) {
+      deps.onSaved(result.origin);
+      return { ok: true };
+    }
+    return { ok: false, error: result.error };
+  });
+
+```
+
+Replace it with:
+
+```ts
+  });
+
+  ipcMain.handle(URL_SAVE_CHANNEL, async (_event: IpcMainInvokeEvent, input: unknown) => {
+    if (typeof input !== "string") {
+      return { ok: false, error: URL_EMPTY_ERROR };
+    }
+    const result = normalizePosUrl(input);
+    if (!result.ok) {
+      return { ok: false, error: result.error };
+    }
+    // Native apps 2.0 (spec §9): one GET <origin>/api/health before saving, through the system proxy (net.fetch); the
+    // page itself makes no request.
+    const check = await checkPos(result.origin, (url, init) => net.fetch(url, init));
+    deps.log.info(`address check: ${check.ok ? "found" : "not saved"}`);
+    if (!check.ok) return check;
+    deps.onSaved(result.origin);
+    return { ok: true };
+  });
+
+```
+
+In `docs/GO-LIVE-CHECKLIST.md`, find:
+
+```markdown
+- [ ] Run it. Windows SmartScreen says the publisher is unknown: **More info →
+      Run anyway**, once. Installs for this Windows user only, no admin rights.
+- [ ] First run asks for the **Server address** — type the app's address (for
+      example `https://your-pos.example.com`) and choose **Use this address**.
+- [ ] Log in once as a real staff account. The sign-in lasts 30 days and renews
+      with use, so the PC stays signed in.
+```
+
+Replace it with:
+
+```markdown
+- [ ] Run it. Windows SmartScreen says the publisher is unknown: **More info →
+      Run anyway**, once. Installs for this Windows user only, no admin rights.
+- [ ] First run asks for the **POS address** — type the cafe's workspace name
+      (for example `yourcafe`) or the full address, and choose **Open POS**. The
+      app checks the address once before saving it.
+- [ ] Log in once as a real staff account. The sign-in lasts 30 days and renews
+      with use, so the PC stays signed in.
+```
+
+- [ ] **Step 4: Run them and see them pass, with the suites**
+
+```bash
+cd /d/kd/lucifer/apps/desktop && timeout 250 npm test 2>&1 | grep -E "^not ok|^# (tests|pass|fail)" && npm run typecheck > /dev/null && npm run lint > /dev/null && echo "typecheck and lint clean"
+cd ../cafe && timeout 300 node --import tsx --test lib/go-live-runbook.test.ts 2>&1 | grep -E "^not ok|^# (tests|pass|fail)"
+```
+Expected: desktop `# tests 202`, `# pass 202`, `# fail 0`, `typecheck and lint clean`; the runbook `# tests 97`,
+`# pass 97`, `# fail 0`.
+
+- [ ] **Step 5: A visual check** of the page in headless desktop Chrome with a stub `posDesktopSetup` (no request: a
+`file://` page). Write `$SP/url-window-shots.cjs`:
+
+```js
+// Native apps 2.0 (Session N3 Task 33 / the N2 gate): the address window's page in headless desktop Chrome with a stub
+// posDesktopSetup, screenshots at 480 x 640. Local only: a file:// page, no request. usage: node url-window-shots.cjs <html> <out dir>
+const { createRequire } = require("node:module");
+const path = require("node:path");
+const fs = require("node:fs");
+const pw = createRequire("C:/Users/Kartik.desai/AppData/Local/npm-cache/_npx/9833c18b2d85bc59/node_modules/playwright-core/package.json")("playwright-core");
+
+const [html, out] = process.argv.slice(2);
+fs.mkdirSync(out, { recursive: true });
+const url = "file:///" + path.resolve(html).replace(/\\/g, "/");
+
+// mode: "none" | "saved"; save: "error" | "hang"
+function stub(mode, save) {
+  return `window.posDesktopSetup = {
+    version: "2.0.0",
+    current: () => Promise.resolve(${mode === "saved" ? '"https://mycafe.sandbee.in"' : "null"}),
+    save: (input) => { window.__saved = input; return ${save === "hang" ? "new Promise(() => {})" : 'Promise.resolve({ ok: false, error: "We couldn\'t find a POS at mycafe.sandbee.in. Check the name." })'}; },
+    cancel: () => { window.__cancelled = true; return Promise.resolve(); },
+  };`;
+}
+
+(async () => {
+  const browser = await pw.chromium.launch({ executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
+  const report = [];
+  async function page(mode, save) {
+    const context = await browser.newContext({ viewport: { width: 480, height: 640 }, deviceScaleFactor: 1 });
+    await context.addInitScript(stub(mode, save));
+    const p = await context.newPage();
+    const errors = [];
+    p.on("pageerror", (e) => errors.push(String(e)));
+    p.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+    await p.goto(url);
+    await p.waitForTimeout(300);
+    return { context, p, errors };
+  }
+  const shot = async (p, name) => { await p.screenshot({ path: path.join(out, name + ".png") }); report.push(name); };
+
+  let { context, p, errors } = await page("none", "error");
+  await shot(p, "1-empty");
+  report.push("empty: cancel hidden=" + (await p.locator("#cancel").isHidden()) + " clear hidden=" + (await p.locator("#clear").isHidden()) + " footer=" + (await p.locator("#product").textContent()));
+  await p.locator("#address").type("MyCafe ");
+  await shot(p, "2-typing");
+  report.push("typing: clear visible=" + (await p.locator("#clear").isVisible()));
+  await p.keyboard.press("Enter");
+  await p.waitForTimeout(200);
+  await shot(p, "3-error");
+  report.push("error: saved=" + JSON.stringify(await p.evaluate(() => window.__saved)) + " title=" + (await p.locator("#hint-title").textContent()) + " body=" + (await p.locator("#error").textContent()));
+  await p.locator("#address").type("x");
+  report.push("typing clears the error: title=" + (await p.locator("#hint-title").textContent()));
+  await p.keyboard.press("Escape");
+  report.push("first run: Esc does not cancel: " + !(await p.evaluate(() => window.__cancelled === true)));
+  report.push("errors: " + JSON.stringify(errors));
+  await context.close();
+
+  ({ context, p, errors } = await page("none", "hang"));
+  await p.locator("#address").type("mycafe");
+  await p.locator("#save").click();
+  await p.waitForTimeout(200);
+  await shot(p, "4-connecting");
+  report.push("connecting: label=" + (await p.locator("#save-label").textContent()) + " disabled=" + (await p.locator("#save").isDisabled()) + " readonly=" + (await p.locator("#address").getAttribute("readonly")));
+  await context.close();
+
+  ({ context, p, errors } = await page("saved", "error"));
+  await shot(p, "5-change-address");
+  report.push("change: value=" + (await p.locator("#address").inputValue()) + " cancel visible=" + (await p.locator("#cancel").isVisible()));
+  await p.keyboard.press("Escape");
+  report.push("change: Esc cancels: " + (await p.evaluate(() => window.__cancelled === true)));
+  report.push("errors: " + JSON.stringify(errors));
+  await context.close();
+  await browser.close();
+  fs.writeFileSync(path.join(out, "report.txt"), report.join("\n") + "\n");
+  console.log(report.join("\n"));
+})().catch((e) => { console.error(e); process.exit(1); });
+```
+
+(It loads playwright-core from this PC's npx cache, `_npx/9833c18b2d85bc59` (1.64.0-alpha, present at the gate); if
+that folder is gone, run `npx -y playwright-core --version` once and put the new `_npx/<hash>` path into the script.)
+
+Run `cd "$SP" && node url-window-shots.cjs D:/kd/lucifer/apps/desktop/assets/url-window.html "$(cygpath -w "$SP")/shots-url"` and look at the five
+screenshots (`1-empty`, `2-typing`, `3-error`, `4-connecting`, `5-change-address`). Expected, as at the gate:
+```text
+empty: cancel hidden=true clear hidden=true footer=POS Software by sandbee · 2.0.0
+typing: clear visible=true
+error: saved="MyCafe " title=Check the address body=We couldn't find a POS at mycafe.sandbee.in. Check the name.
+typing clears the error: title=Your workspace
+first run: Esc does not cancel: true
+errors: []
+connecting: label=Connecting… disabled=true readonly=
+change: value=https://mycafe.sandbee.in cancel visible=true
+change: Esc cancels: true
+errors: []
+```
+and screenshots like the Android start screen: the red icon, "Connect to your workspace" and its subtitle, "POS
+address" over the field with its blue badge (a clear button once something is typed), the blue "Your workspace" hint
+(red "Check the address" with the error), the blue Open POS with its arrow (grey "Connecting…" while checking), Cancel
+only in `5-change-address`, the two footer lines with `· 2.0.0`.
+
+- [ ] **Step 6: Commit** (`$SP/msg-n3-3.txt`):
+
+```text
+feat(desktop): the address window looks and reads like the Android start screen: 480 x 640, the red Sandbee icon, "Connect to your workspace", the field with its icon and clear button, the workspace hint that turns into "Check the address", Open POS ("Connecting..." while checking), Cancel and Esc only from Change POS address, the version in the footer; the main process normalizes, checks once through net.fetch, then saves, and the page makes no request; pins (8), (9), (R5) deliberately changed, (A1), (A2); GO-LIVE's first-run line and its runbook pin (native apps 2.0, Session N3, spec §9)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+```
 
 ### Task 34: "Change POS address…" everywhere
 
-- `menu.ts` (Help menu and tray), the comments in `main.ts`, `shell-window.ts`, `url-window.ts`; `docs/GO-LIVE-CHECKLIST.md` (line 817 and any other), `apps/cafe/DEPLOY.md` (line 169), `apps/cafe/lib/go-live-runbook.test.ts` (line 1321: the menu pin). A grep for "Change server address" returns only history (plans, specs).
+**Files:**
+- Modify: `apps/desktop/src/menu.ts` (the Help menu, the tray, the About dialog), the comments in `src/main.ts`, `src/shell-window.ts`, `src/url-window.ts`; `docs/GO-LIVE-CHECKLIST.md` (§7), `apps/cafe/DEPLOY.md`
+- Test: `apps/cafe/lib/go-live-runbook.test.ts` (the menu label), `apps/desktop/src/desktop-paths.test.ts` ((A3))
+
+- [ ] **Step 1: Write the failing tests**
+
+In `apps/cafe/lib/go-live-runbook.test.ts`, find:
+
+```ts
+    ["Quit", menuSrc, "menu.ts"],
+    ["Start with Windows", menuSrc, "menu.ts"],
+    ["Change server address…", menuSrc, "menu.ts"],
+    // Native apps 2.0 Session N3 deliberately changed: the address window's words (spec §9).
+    ["POS address", urlHtml, "url-window.html"],
+```
+
+Replace it with:
+
+```ts
+    ["Quit", menuSrc, "menu.ts"],
+    ["Start with Windows", menuSrc, "menu.ts"],
+    ["Change POS address…", menuSrc, "menu.ts"],
+    // Native apps 2.0 Session N3 deliberately changed: the address window's words (spec §9).
+    ["POS address", urlHtml, "url-window.html"],
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+});
+
+test("(R5) url-window assets: inline data: logo under a data:-only img-src, a real form (Enter submits), the product name on the page", () => {
+  assert.ok(urlWindowHtml.includes("img-src data:"), "CSP must allow only data: images (the logo is inlined; file:// 'self' is not relied on)");
+```
+
+Replace it with:
+
+```ts
+});
+
+test("(A3) the menu and the tray say Change POS address…, the About dialog names the POS address", () => {
+  const menuSrc = read("src/menu.ts");
+  assert.equal((menuSrc.match(/label: "Change POS address…"/g) ?? []).length, 2, "the Help menu and the tray");
+  assert.ok(!menuSrc.includes("server address") && !menuSrc.includes("Server address"), "no server address left in the menu");
+  assert.ok(menuSrc.includes("`POS address: ${details.serverOrigin ?? \"not set\"}`"), "the About dialog names the POS address");
+});
+
+test("(R5) url-window assets: inline data: logo under a data:-only img-src, a real form (Enter submits), the product name on the page", () => {
+  assert.ok(urlWindowHtml.includes("img-src data:"), "CSP must allow only data: images (the logo is inlined; file:// 'self' is not relied on)");
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+```bash
+cd /d/kd/lucifer/apps/desktop && timeout 250 node --import tsx --test src/desktop-paths.test.ts 2>&1 | grep -E "^not ok|^# (tests|pass|fail)"
+cd ../cafe && timeout 300 node --import tsx --test lib/go-live-runbook.test.ts 2>&1 | grep -E "^not ok|^  error:|^# (tests|pass|fail)"
+```
+Expected: `(A3)` fails (`# tests 71`, `# pass 70`, `# fail 1`); the runbook's `PIN §7 desktop app: …` fails with `'§7
+desktop sub-section must quote "Change POS address…"'` (`# tests 97`, `# fail 1`).
+
+- [ ] **Step 3: Implement**
+
+In `apps/cafe/DEPLOY.md`, find:
+
+```markdown
+and the console shows **HOLD**. On a real switch the old `*.vercel.app` address (and, after
+a rename, the old `<sub>.<apex>` name) is left **redirecting** to the new one (so old printed QR codes and bookmarks keep working) and the after-switch
+checklist appears: staff sign in again, counter PC → "Change server address…", Settings →
+Telegram → Repair webhook, R2 bucket CORS → add the new origin. **More ▾ → Revert web
+address…** removes the redirects first, then goes back to the `*.vercel.app` address (the
+```
+
+Replace it with:
+
+```markdown
+and the console shows **HOLD**. On a real switch the old `*.vercel.app` address (and, after
+a rename, the old `<sub>.<apex>` name) is left **redirecting** to the new one (so old printed QR codes and bookmarks keep working) and the after-switch
+checklist appears: staff sign in again, counter PC → "Change POS address…", Settings →
+Telegram → Repair webhook, R2 bucket CORS → add the new origin. **More ▾ → Revert web
+address…** removes the redirects first, then goes back to the `*.vercel.app` address (the
+```
+
+In `apps/desktop/src/main.ts`, find:
+
+```ts
+
+    // Mutable so the currently-open window's Cancel button reflects how it
+    // was opened (first run: no cancel; "Change server address…": cancel ok).
+    let urlWindowAllowsCancel = false;
+
+```
+
+Replace it with:
+
+```ts
+
+    // Mutable so the currently-open window's Cancel button reflects how it
+    // was opened (first run: no cancel; "Change POS address…": cancel ok).
+    let urlWindowAllowsCancel = false;
+
+```
+
+In `apps/desktop/src/menu.ts`, find:
+
+```ts
+        { label: "Reload", click: () => actions.reload() },
+        { type: "separator" },
+        { label: "Change server address…", click: () => actions.changeServerAddress() },
+        {
+          label: "Start with Windows",
+```
+
+Replace it with:
+
+```ts
+        { label: "Reload", click: () => actions.reload() },
+        { type: "separator" },
+        { label: "Change POS address…", click: () => actions.changeServerAddress() },
+        {
+          label: "Start with Windows",
+```
+
+In `apps/desktop/src/menu.ts`, find:
+
+```ts
+    Menu.buildFromTemplate([
+      { label: "Open POS", click: () => actions.openPos() },
+      { label: "Change server address…", click: () => actions.changeServerAddress() },
+      { type: "separator" },
+      { label: "Quit", click: () => actions.quit() },
+```
+
+Replace it with:
+
+```ts
+    Menu.buildFromTemplate([
+      { label: "Open POS", click: () => actions.openPos() },
+      { label: "Change POS address…", click: () => actions.changeServerAddress() },
+      { type: "separator" },
+      { label: "Quit", click: () => actions.quit() },
+```
+
+In `apps/desktop/src/menu.ts`, find:
+
+```ts
+      `Version ${details.version}\n` +
+      `Electron ${details.electronVersion}\n` +
+      `Server address: ${details.serverOrigin ?? "not set"}`,
+  });
+}
+```
+
+Replace it with:
+
+```ts
+      `Version ${details.version}\n` +
+      `Electron ${details.electronVersion}\n` +
+      `POS address: ${details.serverOrigin ?? "not set"}`,
+  });
+}
+```
+
+In `apps/desktop/src/shell-window.ts`, find:
+
+```ts
+
+interface CreateMainWindowDeps {
+  // A getter, not a value: "Change server address…" re-points the SAME window,
+  // so the navigation guards and the retry must always read the current origin.
+  getOrigin(): string;
+```
+
+Replace it with:
+
+```ts
+
+interface CreateMainWindowDeps {
+  // A getter, not a value: "Change POS address…" re-points the SAME window,
+  // so the navigation guards and the retry must always read the current origin.
+  getOrigin(): string;
+```
+
+In `apps/desktop/src/url-window.ts`, find:
+
+```ts
+// The first-run/"Change server address…" window: a small, non-resizable
+// prompt for the saved server origin. No preload state beyond three IPC
+// channels; the address rules live in pos-url.ts (the Android app's).
+import path from "node:path";
+import { app, BrowserWindow, ipcMain, net, type IpcMainInvokeEvent } from "electron";
+```
+
+Replace it with:
+
+```ts
+// The first-run/"Change POS address…" window (native apps 2.0: the Android
+// start screen's look): a non-resizable prompt for the saved POS origin. The
+// preload exposes three IPC calls and the app's version; the address rules
+// live in pos-url.ts (the Android app's), the one check in pos-health.ts.
+import path from "node:path";
+import { app, BrowserWindow, ipcMain, net, type IpcMainInvokeEvent } from "electron";
+```
+
+In `apps/desktop/src/url-window.ts`, find:
+
+```ts
+  // Read at cancel-time, not registration-time: the same handlers serve
+  // both the first-run window (allowCancel false) and every later
+  // "Change server address…" window (allowCancel true) — ipcMain.handle
+  // can only be bound once per channel for the app's lifetime.
+  allowCancel(): boolean;
+```
+
+Replace it with:
+
+```ts
+  // Read at cancel-time, not registration-time: the same handlers serve
+  // both the first-run window (allowCancel false) and every later
+  // "Change POS address…" window (allowCancel true) — ipcMain.handle
+  // can only be bound once per channel for the app's lifetime.
+  allowCancel(): boolean;
+```
+
+In `docs/GO-LIVE-CHECKLIST.md`, find:
+
+```markdown
+- [ ] After the first successful load the app starts hidden with Windows.
+      **Help → Start with Windows** turns that off and on.
+- [ ] **Help → Change server address…** if the address ever changes.
+- [ ] Uninstall from Windows **Settings → Apps → POS Software by sandbee** (this
+      also removes the app's start-with-Windows entry).
+```
+
+Replace it with:
+
+```markdown
+- [ ] After the first successful load the app starts hidden with Windows.
+      **Help → Start with Windows** turns that off and on.
+- [ ] **Help → Change POS address…** if the address ever changes.
+- [ ] Uninstall from Windows **Settings → Apps → POS Software by sandbee** (this
+      also removes the app's start-with-Windows entry).
+```
+
+- [ ] **Step 4: Run them and see them pass, and the grep**
+
+```bash
+cd /d/kd/lucifer/apps/desktop && timeout 250 npm test 2>&1 | grep -E "^not ok|^# (tests|pass|fail)" && npm run typecheck > /dev/null && npm run lint > /dev/null && echo "typecheck and lint clean"
+cd ../cafe && timeout 300 node --import tsx --test lib/go-live-runbook.test.ts 2>&1 | grep -E "^not ok|^# (tests|pass|fail)"
+cd /d/kd/lucifer && git grep -n "Change server address\|Server address" -- apps docs ":!docs/superpowers" ":!*/out/*"
+```
+Expected: desktop `# tests 203`, `# pass 203`, `# fail 0`, `typecheck and lint clean`; the runbook `# tests 97`,
+`# pass 97`, `# fail 0`; the grep finds only `(A3)`'s own negative needle
+(`apps/desktop/src/desktop-paths.test.ts:…:  assert.ok(!menuSrc.includes("server address") && …`).
+
+- [ ] **Step 5: Commit** (`$SP/msg-n3-4.txt`):
+
+```text
+feat(desktop): "Change POS address..." everywhere: the Help menu, the tray, the About dialog (POS address), the code comments, GO-LIVE, DEPLOY.md and the go-live runbook pin; pin (A3) (native apps 2.0, Session N3, spec §9)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+```
 
 ### Task 35: The Windows updater
 
-- `electron-updater` as a dependency, pinned exact to the version `npm view electron-builder@26.16.0` pairs it with (recorded).
-- `package.json` `build.publish`: `[{ "provider": "generic", "url": "https://files.sandbee.in/pos/windows" }]`; `dist` keeps `--publish never`. A test build overrides it on the command line (`-c.publish.url=http://127.0.0.1:8766/pos/windows -c.extraMetadata.version=2.0.1`): electron-updater reads the base from the installed `resources/app-update.yml`, so this is the one setting (it replaces the spec's "extraMetadata base" idea; same rule: the packaging refuses any other base).
-- `src/update-plan.ts` (pure, tested): `FIRST_CHECK_MS = 60_000`, `CHECK_EVERY_MS = 86_400_000`; `readyNotice(version)` → title "Update ready", body "POS Software <version> is ready. It installs when you close the app."; `trayUpdateItem(state)` → nothing until downloaded, then "Restart to update".
-- `src/updater.ts`: `autoUpdater` with `autoDownload = true`, `autoInstallOnAppQuit = true`, `allowDowngrade = false`, `allowPrerelease = false`, the logger → `log.ts`; checks at 1 minute and every 24 hours; only when `app.isPackaged`; errors logged only; on `update-downloaded` one notification per version and the tray rebuilt with **Restart to update**, which runs the tray Quit's own path and then `autoUpdater.quitAndInstall(true, true)`. No `dialog`, no automatic restart.
-- `desktop-paths.test.ts` pins: the publish config; the four updater settings; no `dialog` in `updater.ts`; `quitAndInstall` only from the tray item; the menu text.
+**Files:**
+- Create: `apps/desktop/src/update-plan.ts`, `src/updater.ts`; Test: `src/update-plan.test.ts` (4 tests)
+- Modify: `apps/desktop/package.json` (`electron-updater` 6.8.9, `build.publish`), `package-lock.json` (as `npm install` writes it), `src/menu.ts` (Restart to update in the Help menu and the tray), `src/main.ts` (the updater; start with Windows put back at start when its entry is missing), `resources/installer.nsh` (the entries kept on `--updated`)
+- Test: `src/desktop-paths.test.ts` (pins (3), (10) deliberately changed; (R7); (U1)–(U4); (11)/(12) read the two files), `package.json` (the test script)
 
-### Task 36: Windows end to end on this PC (D8)
+**Interfaces:** `startUpdater({ log, onStateChange }): () => void` (a packaged app only), `restartToUpdate()`; `update-plan.ts`: `FIRST_CHECK_MS = 60_000`, `CHECK_EVERY_MS = 86_400_000`, `UpdateState`, `UPDATE_IDLE`, `RESTART_TO_UPDATE`, `readyNotice(version)` → "Update ready" / "POS Software <version> is ready. It installs when you close the app.", `noticeFor(lastNotified, version)`, `trayUpdateItem(state)`; `menu.ts`: `AppMenuActions.updateItem`/`restartToUpdate`, `TrayActions.restartToUpdate`, `setTrayUpdateItem(item)`. Log lines: `updater: …` (electron-updater's own), `updater: <version> is ready; notified`.
 
-- Check first: the app is not installed here, and its user-data folder (`%APPDATA%\POS Software by sandbee` or as `app.getPath('userData')` says) does not exist; if either exists, stop and ask.
-- Fake files server (`$SP/n3-files.mjs`, port 8766). Builds A = 2.0.0-test and B = 2.0.1-test (test publish url); B's `latest.yml`, installer and blockmap served.
-- Install A silently per-user into `D:\kd\pos-dev-keep\win-test\` (`/S /D=…`), start it: the address window (screenshots): `localhost:3110`-style local address works; a bare name typed with spaces and capitals; a wrong name → "We couldn't find a POS at …"; no network → "Couldn't reach …"; `posdemo` → only the one read-only health GET (the demo rule: no login).
-- The updater: within about a minute B downloads → one notification (screenshot) → the tray shows **Restart to update** → click → it installs and reopens as 2.0.1 (version in the window footer), the saved address and printers kept. Then a 2.0.2-test build: **Quit** from the tray → the next start is 2.0.2.
-- Uninstall silently, remove the test folder and the test's user data, `adb`-free. Record every step in the Results.
+- [ ] **Step 1: Write the failing tests**
+
+In `apps/desktop/package.json`, find:
+
+```json
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "node --import tsx --test src/server-url.test.ts src/pos-url.test.ts src/pos-health.test.ts src/store.test.ts src/window-state.test.ts src/escpos.test.ts src/raw-spool.test.ts src/raw-tcp.test.ts src/printer-check.test.ts src/desktop-paths.test.ts",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && electron-builder --win nsis --publish never"
+```
+
+Replace it with:
+
+```json
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "node --import tsx --test src/server-url.test.ts src/pos-url.test.ts src/pos-health.test.ts src/update-plan.test.ts src/store.test.ts src/window-state.test.ts src/escpos.test.ts src/raw-spool.test.ts src/raw-tcp.test.ts src/printer-check.test.ts src/desktop-paths.test.ts",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && electron-builder --win nsis --publish never"
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+});
+
+test("(3) main.ts: setLoginItemSettings called exactly twice, both with args: [HIDDEN_FLAG]", () => {
+  const calls = mainSrc.match(/setLoginItemSettings\(/g) ?? [];
+  assert.equal(calls.length, 2, "expected exactly two setLoginItemSettings call sites");
+  const argsMatches = mainSrc.match(/args:\s*\[HIDDEN_FLAG\]/g) ?? [];
+  assert.equal(argsMatches.length, 2, "both setLoginItemSettings calls must pass args: [HIDDEN_FLAG]");
+});
+
+```
+
+Replace it with:
+
+```ts
+});
+
+// Native apps 2.0 Session N3 deliberately changed: a third call sets start-with-Windows again at every start (U4).
+test("(3) main.ts: setLoginItemSettings called exactly three times, all with args: [HIDDEN_FLAG]", () => {
+  const calls = mainSrc.match(/setLoginItemSettings\(/g) ?? [];
+  assert.equal(calls.length, 3, "expected exactly three setLoginItemSettings call sites");
+  const argsMatches = mainSrc.match(/args:\s*\[HIDDEN_FLAG\]/g) ?? [];
+  assert.equal(argsMatches.length, 3, "every setLoginItemSettings call must pass args: [HIDDEN_FLAG]");
+});
+
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+});
+
+test("(10) package.json build block: no publish key, no sign/cert key anywhere under build", () => {
+  assert.equal(Object.prototype.hasOwnProperty.call(typedPkg.build, "publish"), false);
+
+  function scanForSignOrCert(value: unknown, keyPath: string): void {
+```
+
+Replace it with:
+
+```ts
+});
+
+// Native apps 2.0 Session N3 deliberately changed (spec §7): build.publish is the generic provider at the owner's files
+// address, so electron-builder writes latest.yml, the blockmap and resources/app-update.yml; `dist` still publishes
+// nothing (--publish never), and the owner uploads by hand.
+test("(10) package.json build block: publish is the generic provider at files.sandbee.in/pos/windows, no sign/cert key anywhere under build", () => {
+  assert.deepEqual(typedPkg.build.publish, { provider: "generic", url: "https://files.sandbee.in/pos/windows" });
+
+  function scanForSignOrCert(value: unknown, keyPath: string): void {
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+    "pos-url.ts",
+    "pos-health.ts",
+    "store.ts",
+    "window-state.ts",
+```
+
+Replace it with:
+
+```ts
+    "pos-url.ts",
+    "pos-health.ts",
+    "update-plan.ts",
+    "updater.ts",
+    "store.ts",
+    "window-state.ts",
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+    ["src/pos-url.ts", read("src/pos-url.ts")],
+    ["src/pos-health.ts", read("src/pos-health.ts")],
+    ["src/store.ts", read("src/store.ts")],
+    ["src/window-state.ts", read("src/window-state.ts")],
+```
+
+Replace it with:
+
+```ts
+    ["src/pos-url.ts", read("src/pos-url.ts")],
+    ["src/pos-health.ts", read("src/pos-health.ts")],
+    ["src/update-plan.ts", read("src/update-plan.ts")],
+    ["src/updater.ts", read("src/updater.ts")],
+    ["src/store.ts", read("src/store.ts")],
+    ["src/window-state.ts", read("src/window-state.ts")],
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+  assert.equal((installerNsh.match(new RegExp(JSON.stringify(APP_ID), "g")) ?? []).length, 2, "both values must be named by the AppUserModelId (= build.appId) — a rename here strands the entry (C13)");
+  assert.ok(installerNsh.includes("StartupApproved"));
+});
+
+```
+
+Replace it with:
+
+```ts
+  assert.equal((installerNsh.match(new RegExp(JSON.stringify(APP_ID), "g")) ?? []).length, 2, "both values must be named by the AppUserModelId (= build.appId) — a rename here strands the entry (C13)");
+  assert.ok(installerNsh.includes("StartupApproved"));
+  // Native apps 2.0 (the N2 review gate, G-1): an install over an older version runs the old uninstaller with --updated;
+  // the start-with-Windows entries stay then (U4).
+  assert.match(installerNsh, /\$\{ifNot\} \$\{isUpdated\}\s+DeleteRegValue HKCU[^\n]+\n\s+DeleteRegValue HKCU[^\n]+\n\s+\$\{endIf\}/, "the entries are removed only by a real uninstall");
+});
+
+// -- (U) native apps 2.0 (spec §7): the Windows updater ----------------------
+const updaterSrc = existsSync(path.join(SRC, "updater.ts")) ? read("src/updater.ts") : "";
+
+test("(U1) package.json: electron-updater is a runtime dependency, an exact pin of the version paired with electron-builder 26.16.0", () => {
+  const typed = pkg as { dependencies: Record<string, string>; devDependencies: Record<string, string> };
+  assert.equal(typed.dependencies["electron-updater"], "6.8.9", "6.8.9 shares builder-util-runtime 9.7.0 with electron-builder 26.16.0");
+  assert.equal(typed.devDependencies["electron-builder"], "26.16.0", "the builder it is paired with");
+});
+
+test("(U2) updater.ts: download in the background, install when the app quits, never down, never a prerelease, only a packaged app, errors only logged, no dialog", () => {
+  for (const line of [
+    "autoUpdater.autoDownload = true;",
+    "autoUpdater.autoInstallOnAppQuit = true;",
+    "autoUpdater.allowDowngrade = false;",
+    "autoUpdater.allowPrerelease = false;",
+    "if (!app.isPackaged) return () => undefined;",
+    "const first = setTimeout(check, FIRST_CHECK_MS);",
+    "const every = setInterval(check, CHECK_EVERY_MS);",
+    'autoUpdater.on("error", (error) => deps.log.error(`updater: ${error.name}`));',
+    "const notice = noticeFor(notified, info.version);",
+  ]) {
+    assert.ok(updaterSrc.includes(line), `updater.ts must carry: ${line}`);
+  }
+  const code = (src: string) => src.replace(/^\s*\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.ok(!/\bdialog\b/.test(code(updaterSrc)), "no dialog in the updater's code (spec D3)");
+  assert.ok(!/\bdialog\b/.test(code(mainSrc)), "no dialog in main.ts's code either");
+  assert.ok(updaterSrc.includes("Never a dialog"), "landmark: the comments were stripped, not the code");
+});
+
+test("(U3) quitAndInstall runs only from Restart to update, which the tray and the Help menu offer once an update is downloaded", () => {
+  const all = readdirSync(SRC).filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"));
+  const quitters = all.filter((name) => read(`src/${name}`).includes("quitAndInstall("));
+  assert.deepEqual(quitters, ["updater.ts"], "only updater.ts calls quitAndInstall");
+  assert.equal((updaterSrc.match(/quitAndInstall\(/g) ?? []).length, 1, "one call");
+  assert.ok(updaterSrc.includes("autoUpdater.quitAndInstall(true, true);"), "silent, and the app starts again");
+  const importers = all.filter((name) => read(`src/${name}`).includes('from "electron-updater"'));
+  assert.deepEqual(importers, ["updater.ts"], "only updater.ts talks to electron-updater");
+  const menuSrc = read("src/menu.ts");
+  assert.equal((menuSrc.match(/click: \(\) => actions\.restartToUpdate\(\)/g) ?? []).length, 2, "the Help menu and the tray");
+  assert.equal((menuSrc.match(/\.\.\.\(update \? \[\{ label: update\.label, click: \(\) => actions\.restartToUpdate\(\) \}/g) ?? []).length, 2, "only when an update is downloaded");
+  assert.ok(mainSrc.includes("restartToUpdate: () => restartToUpdate(),"), "main.ts wires the item to the updater");
+});
+
+test("(U4) start with Windows survives an update: the uninstaller keeps it on --updated, and the app puts the entry back at start when it is missing", () => {
+  assert.ok(mainSrc.includes("const loginItem = { path: process.execPath, args: [HIDDEN_FLAG] };"), "the entry: this exe with --hidden, as the first arming");
+  const at = mainSrc.indexOf("if (store.autoStart === true && app.isPackaged && !app.getLoginItemSettings(loginItem).openAtLogin) {");
+  assert.ok(at >= 0, "main.ts puts it back only when the operator chose it and the entry is missing (a Windows-side disable is left alone)");
+  const body = mainSrc.slice(at, mainSrc.indexOf("\n    }", at));
+  assert.ok(body.includes("app.setLoginItemSettings({ openAtLogin: true, ...loginItem });"), "the same entry as the first arming");
+});
+
+```
+
+Create `apps/desktop/src/update-plan.test.ts`:
+
+```ts
+// Native apps 2.0 (spec §7): what the Windows updater does when. It looks one minute after start and then every 24
+// hours; a downloaded update is announced once per version and the tray offers Restart to update; it installs when the
+// app quits. Never a dialog, never an automatic restart (spec D3).
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  CHECK_EVERY_MS,
+  FIRST_CHECK_MS,
+  noticeFor,
+  readyNotice,
+  RESTART_TO_UPDATE,
+  trayUpdateItem,
+  UPDATE_IDLE,
+} from "./update-plan";
+
+test("the updater looks one minute after start, then every 24 hours", () => {
+  assert.equal(FIRST_CHECK_MS, 60_000);
+  assert.equal(CHECK_EVERY_MS, 24 * 60 * 60 * 1000);
+});
+
+test("the ready notice names the version and says it installs when the app is closed", () => {
+  assert.deepEqual(readyNotice("2.0.1"), {
+    title: "Update ready",
+    body: "POS Software 2.0.1 is ready. It installs when you close the app.",
+  });
+});
+
+test("one notice per version: the same version again is quiet, a newer one is announced", () => {
+  assert.deepEqual(noticeFor(null, "2.0.1"), readyNotice("2.0.1"));
+  assert.equal(noticeFor("2.0.1", "2.0.1"), null);
+  assert.deepEqual(noticeFor("2.0.1", "2.0.2"), readyNotice("2.0.2"));
+});
+
+test("the tray offers Restart to update only once an update is downloaded", () => {
+  assert.equal(trayUpdateItem(UPDATE_IDLE), null);
+  assert.deepEqual(trayUpdateItem({ kind: "downloaded", version: "2.0.1" }), { label: "Restart to update" });
+  assert.equal(RESTART_TO_UPDATE, "Restart to update");
+});
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+```bash
+cd /d/kd/lucifer/apps/desktop && timeout 250 npm test 2>&1 | grep -E "^not ok|Cannot find module|^# (tests|pass|fail)"
+```
+Expected: ten fail (`# tests 208`, `# pass 198`, `# fail 10`): `(3) …exactly three times…`, `(10) …publish is the
+generic provider…`, `(11)`, `(12)`, `(R7)`, `(U1)`, `(U2)`, `(U3)`, `(U4)`, and `src\\update-plan.test.ts`
+(`# Error: Cannot find module './update-plan'`).
+
+- [ ] **Step 3: Implement** (then `npm install` writes nothing new: the lock below is what it writes)
+
+In `apps/desktop/package-lock.json`, find:
+
+```json
+{
+  "name": "pos-desktop",
+  "version": "1.9.0",
+  "lockfileVersion": 3,
+  "requires": true,
+```
+
+Replace it with:
+
+```json
+{
+  "name": "pos-desktop",
+  "version": "2.0.0",
+  "lockfileVersion": 3,
+  "requires": true,
+```
+
+In `apps/desktop/package-lock.json`, find:
+
+```json
+    "": {
+      "name": "pos-desktop",
+      "version": "1.9.0",
+      "dependencies": {
+        "koffi": "3.3.1"
+      },
+```
+
+Replace it with:
+
+```json
+    "": {
+      "name": "pos-desktop",
+      "version": "2.0.0",
+      "dependencies": {
+        "electron-updater": "6.8.9",
+        "koffi": "3.3.1"
+      },
+```
+
+In `apps/desktop/package-lock.json`, find:
+
+```json
+      "resolved": "https://registry.npmjs.org/argparse/-/argparse-2.0.1.tgz",
+      "integrity": "sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==",
+      "dev": true,
+      "license": "Python-2.0"
+    },
+```
+
+Replace it with:
+
+```json
+      "resolved": "https://registry.npmjs.org/argparse/-/argparse-2.0.1.tgz",
+      "integrity": "sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==",
+      "license": "Python-2.0"
+    },
+```
+
+In `apps/desktop/package-lock.json`, find:
+
+```json
+      "resolved": "https://registry.npmjs.org/builder-util-runtime/-/builder-util-runtime-9.7.0.tgz",
+      "integrity": "sha512-g/kR520giAFYkSXTzcmF3kqQq7wi8F6N6SzeDgZrqTBN+VHdmgWOyTdD1yD7AATDId/yXLvuP34CxW46/BwCdw==",
+      "dev": true,
+      "license": "MIT",
+      "dependencies": {
+```
+
+Replace it with:
+
+```json
+      "resolved": "https://registry.npmjs.org/builder-util-runtime/-/builder-util-runtime-9.7.0.tgz",
+      "integrity": "sha512-g/kR520giAFYkSXTzcmF3kqQq7wi8F6N6SzeDgZrqTBN+VHdmgWOyTdD1yD7AATDId/yXLvuP34CxW46/BwCdw==",
+      "license": "MIT",
+      "dependencies": {
+```
+
+In `apps/desktop/package-lock.json`, find:
+
+```json
+      "resolved": "https://registry.npmjs.org/debug/-/debug-4.4.3.tgz",
+      "integrity": "sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==",
+      "dev": true,
+      "license": "MIT",
+      "dependencies": {
+```
+
+Replace it with:
+
+```json
+      "resolved": "https://registry.npmjs.org/debug/-/debug-4.4.3.tgz",
+      "integrity": "sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==",
+      "license": "MIT",
+      "dependencies": {
+```
+
+In `apps/desktop/package-lock.json`, find:
+
+```json
+        "lazy-val": "^1.0.5",
+        "mime": "^2.5.2"
+      }
+    },
+```
+
+Replace it with:
+
+```json
+        "lazy-val": "^1.0.5",
+        "mime": "^2.5.2"
+      }
+    },
+    "node_modules/electron-updater": {
+      "version": "6.8.9",
+      "resolved": "https://registry.npmjs.org/electron-updater/-/electron-updater-6.8.9.tgz",
+      "integrity": "sha512-ZhVxM9iGONUpZGI1FxdMRgJjUFXi7AYGVa5PwKlO1tV1/4zDxQmfKpXOHVztKrd6L9rLcFjERvi1Mf2vxyTkig==",
+      "license": "MIT",
+      "dependencies": {
+        "builder-util-runtime": "9.7.0",
+        "fs-extra": "^10.1.0",
+        "js-yaml": "^4.1.0",
+        "lazy-val": "^1.0.5",
+        "lodash.escaperegexp": "^4.1.2",
+        "lodash.isequal": "^4.5.0",
+        "semver": "~7.7.3",
+        "tiny-typed-emitter": "^2.1.0"
+      }
+    },
+    "node_modules/electron-updater/node_modules/semver": {
+      "version": "7.7.4",
+      "resolved": "https://registry.npmjs.org/semver/-/semver-7.7.4.tgz",
+      "integrity": "sha512-vFKC2IEtQnVhpT78h1Yp8wzwrf8CM+MzKMHGJZfBtzhZNycRFnXsHk6E5TxIkkMsgNS7mdX3AGB7x2QM2di4lA==",
+      "license": "ISC",
+      "bin": {
+        "semver": "bin/semver.js"
+      },
+      "engines": {
+        "node": ">=10"
+      }
+    },
+```
+
+In `apps/desktop/package-lock.json`, find:
+
+```json
+      "resolved": "https://registry.npmjs.org/fs-extra/-/fs-extra-10.1.0.tgz",
+      "integrity": "sha512-oRXApq54ETRj4eMiFzGnHWGy+zo5raudjuxN0b8H7s/RU2oW0Wvsx9O0ACRN/kRq9E8Vu/ReskGB5o3ji+FzHQ==",
+      "dev": true,
+      "license": "MIT",
+      "dependencies": {
+```
+
+Replace it with:
+
+```json
+      "resolved": "https://registry.npmjs.org/fs-extra/-/fs-extra-10.1.0.tgz",
+      "integrity": "sha512-oRXApq54ETRj4eMiFzGnHWGy+zo5raudjuxN0b8H7s/RU2oW0Wvsx9O0ACRN/kRq9E8Vu/ReskGB5o3ji+FzHQ==",
+      "license": "MIT",
+      "dependencies": {
+```
+
+In `apps/desktop/package-lock.json`, find:
+
+```json
+      "resolved": "https://registry.npmjs.org/graceful-fs/-/graceful-fs-4.2.11.tgz",
+      "integrity": "sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==",
+      "dev": true,
+      "license": "ISC"
+    },
+```
+
+Replace it with:
+
+```json
+      "resolved": "https://registry.npmjs.org/graceful-fs/-/graceful-fs-4.2.11.tgz",
+      "integrity": "sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==",
+      "license": "ISC"
+    },
+```
+
+In `apps/desktop/package-lock.json`, find:
+
+```json
+      "resolved": "https://registry.npmjs.org/js-yaml/-/js-yaml-4.3.2.tgz",
+      "integrity": "sha512-SFNOvSJ+Dgf/9An904Yx+CgSlIPCkIpao4qo51lpee25TIRejdH3rhR4EZMGoNx3/TP3O+wzWuiTFl4sqbltzA==",
+      "dev": true,
+      "funding": [
+        {
+```
+
+Replace it with:
+
+```json
+      "resolved": "https://registry.npmjs.org/js-yaml/-/js-yaml-4.3.2.tgz",
+      "integrity": "sha512-SFNOvSJ+Dgf/9An904Yx+CgSlIPCkIpao4qo51lpee25TIRejdH3rhR4EZMGoNx3/TP3O+wzWuiTFl4sqbltzA==",
+      "funding": [
+        {
+```
+
+In `apps/desktop/package-lock.json`, find:
+
+```json
+      "resolved": "https://registry.npmjs.org/jsonfile/-/jsonfile-6.2.1.tgz",
+      "integrity": "sha512-zwOTdL3rFQ/lRdBnntKVOX6k5cKJwEc1HdilT71BWEu7J41gXIB2MRp+vxduPSwZJPWBxEzv4yH1wYLJGUHX4Q==",
+      "dev": true,
+      "license": "MIT",
+      "dependencies": {
+```
+
+Replace it with:
+
+```json
+      "resolved": "https://registry.npmjs.org/jsonfile/-/jsonfile-6.2.1.tgz",
+      "integrity": "sha512-zwOTdL3rFQ/lRdBnntKVOX6k5cKJwEc1HdilT71BWEu7J41gXIB2MRp+vxduPSwZJPWBxEzv4yH1wYLJGUHX4Q==",
+      "license": "MIT",
+      "dependencies": {
+```
+
+In `apps/desktop/package-lock.json`, find:
+
+```json
+      "resolved": "https://registry.npmjs.org/lazy-val/-/lazy-val-1.0.5.tgz",
+      "integrity": "sha512-0/BnGCCfyUMkBpeDgWihanIAF9JmZhHBgUhEqzvf+adhNGLoP6TaiI5oF8oyb3I45P+PcnrqihSf01M0l0G5+Q==",
+      "dev": true,
+      "license": "MIT"
+    },
+```
+
+Replace it with:
+
+```json
+      "resolved": "https://registry.npmjs.org/lazy-val/-/lazy-val-1.0.5.tgz",
+      "integrity": "sha512-0/BnGCCfyUMkBpeDgWihanIAF9JmZhHBgUhEqzvf+adhNGLoP6TaiI5oF8oyb3I45P+PcnrqihSf01M0l0G5+Q==",
+      "license": "MIT"
+    },
+```
+
+In `apps/desktop/package-lock.json`, find:
+
+```json
+      "integrity": "sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==",
+      "dev": true,
+      "license": "MIT"
+    },
+```
+
+Replace it with:
+
+```json
+      "integrity": "sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==",
+      "dev": true,
+      "license": "MIT"
+    },
+    "node_modules/lodash.escaperegexp": {
+      "version": "4.1.2",
+      "resolved": "https://registry.npmjs.org/lodash.escaperegexp/-/lodash.escaperegexp-4.1.2.tgz",
+      "integrity": "sha512-TM9YBvyC84ZxE3rgfefxUWiQKLilstD6k7PTGt6wfbtXF8ixIJLOL3VYyV/z+ZiPLsVxAsKAFVwWlWeb2Y8Yyw==",
+      "license": "MIT"
+    },
+    "node_modules/lodash.isequal": {
+      "version": "4.5.0",
+      "resolved": "https://registry.npmjs.org/lodash.isequal/-/lodash.isequal-4.5.0.tgz",
+      "integrity": "sha512-pDo3lu8Jhfjqls6GkMgpahsF9kCyayhgykjyLMNFTKWrpVdAQtYyB4muAMWozBB4ig/dtWAmsMxLEI8wuz+DYQ==",
+      "deprecated": "This package is deprecated. Use require('node:util').isDeepStrictEqual instead.",
+      "license": "MIT"
+    },
+```
+
+In `apps/desktop/package-lock.json`, find:
+
+```json
+      "resolved": "https://registry.npmjs.org/ms/-/ms-2.1.3.tgz",
+      "integrity": "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==",
+      "dev": true,
+      "license": "MIT"
+    },
+```
+
+Replace it with:
+
+```json
+      "resolved": "https://registry.npmjs.org/ms/-/ms-2.1.3.tgz",
+      "integrity": "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==",
+      "license": "MIT"
+    },
+```
+
+In `apps/desktop/package-lock.json`, find:
+
+```json
+      "resolved": "https://registry.npmjs.org/sax/-/sax-1.6.1.tgz",
+      "integrity": "sha512-42tBVwLWnaQvW5zc4HbZrTuWccECCZfBi92FDuwtqxasH+JbPB3/FOKb1m222K42R4WxuxzzMsTswfzgtSu64Q==",
+      "dev": true,
+      "license": "BlueOak-1.0.0",
+      "engines": {
+```
+
+Replace it with:
+
+```json
+      "resolved": "https://registry.npmjs.org/sax/-/sax-1.6.1.tgz",
+      "integrity": "sha512-42tBVwLWnaQvW5zc4HbZrTuWccECCZfBi92FDuwtqxasH+JbPB3/FOKb1m222K42R4WxuxzzMsTswfzgtSu64Q==",
+      "license": "BlueOak-1.0.0",
+      "engines": {
+```
+
+In `apps/desktop/package-lock.json`, find:
+
+```json
+      }
+    },
+    "node_modules/tinyglobby": {
+      "version": "0.2.17",
+```
+
+Replace it with:
+
+```json
+      }
+    },
+    "node_modules/tiny-typed-emitter": {
+      "version": "2.1.0",
+      "resolved": "https://registry.npmjs.org/tiny-typed-emitter/-/tiny-typed-emitter-2.1.0.tgz",
+      "integrity": "sha512-qVtvMxeXbVej0cQWKqVSSAHmKZEHAvxdF8HEUBFWts8h+xEo5m/lEiPakuyZ3BnCBjOD8i24kzNOiOLLgsSxhA==",
+      "license": "MIT"
+    },
+    "node_modules/tinyglobby": {
+      "version": "0.2.17",
+```
+
+In `apps/desktop/package-lock.json`, find:
+
+```json
+      "resolved": "https://registry.npmjs.org/universalify/-/universalify-2.0.1.tgz",
+      "integrity": "sha512-gptHNQghINnc/vTGIk0SOFGFNXw7JVrlRUtConJRlvaw6DuX0wO5Jeko9sWrMBhh+PsYAZ7oXAiOnf/UKogyiw==",
+      "dev": true,
+      "license": "MIT",
+      "engines": {
+```
+
+Replace it with:
+
+```json
+      "resolved": "https://registry.npmjs.org/universalify/-/universalify-2.0.1.tgz",
+      "integrity": "sha512-gptHNQghINnc/vTGIk0SOFGFNXw7JVrlRUtConJRlvaw6DuX0wO5Jeko9sWrMBhh+PsYAZ7oXAiOnf/UKogyiw==",
+      "license": "MIT",
+      "engines": {
+```
+
+In `apps/desktop/package.json`, find:
+
+```json
+      "shortcutName": "POS Software by sandbee",
+      "include": "resources/installer.nsh"
+    }
+  },
+  "dependencies": {
+    "koffi": "3.3.1"
+  },
+```
+
+Replace it with:
+
+```json
+      "shortcutName": "POS Software by sandbee",
+      "include": "resources/installer.nsh"
+    },
+    "publish": { "provider": "generic", "url": "https://files.sandbee.in/pos/windows" }
+  },
+  "dependencies": {
+    "electron-updater": "6.8.9",
+    "koffi": "3.3.1"
+  },
+```
+
+In `apps/desktop/resources/installer.nsh`, find:
+
+```nsis
+; uninstaller does not know about that registry value, so remove it here — a
+; dangling Run entry would otherwise point at the deleted exe after uninstall.
+!macro customUnInstall
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "com.possoftware.pos-desktop"
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "com.possoftware.pos-desktop"
+!macroend
+
+```
+
+Replace it with:
+
+```nsis
+; uninstaller does not know about that registry value, so remove it here — a
+; dangling Run entry would otherwise point at the deleted exe after uninstall.
+;
+; Native apps 2.0 (the N2 review gate, G-1): an install over an older version, and every update, runs the old
+; uninstaller with --updated first; the start-with-Windows entries stay then (the app is still installed).
+!macro customUnInstall
+  ${ifNot} ${isUpdated}
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "com.possoftware.pos-desktop"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "com.possoftware.pos-desktop"
+  ${endIf}
+!macroend
+
+```
+
+In `apps/desktop/src/main.ts`, find:
+
+```ts
+import { createMainWindow } from "./shell-window";
+import { openUrlWindow, registerUrlHandlers } from "./url-window";
+import { buildAppMenu, createTray, showAboutDialog } from "./menu";
+import type { BrowserWindow } from "electron";
+
+```
+
+Replace it with:
+
+```ts
+import { createMainWindow } from "./shell-window";
+import { openUrlWindow, registerUrlHandlers } from "./url-window";
+import { buildAppMenu, createTray, setTrayUpdateItem, showAboutDialog } from "./menu";
+import { restartToUpdate, startUpdater } from "./updater";
+import { trayUpdateItem, UPDATE_IDLE, type UpdateState } from "./update-plan";
+import type { BrowserWindow } from "electron";
+
+```
+
+In `apps/desktop/src/main.ts`, find:
+
+```ts
+  // Cancels the one-shot startup printer check if the app quits before it runs.
+  let cancelPrinterCheck: (() => void) | null = null;
+
+  void app.whenReady().then(() => {
+```
+
+Replace it with:
+
+```ts
+  // Cancels the one-shot startup printer check if the app quits before it runs.
+  let cancelPrinterCheck: (() => void) | null = null;
+  // Stops the updater's checks when the app quits (native apps 2.0).
+  let stopUpdater: (() => void) | null = null;
+
+  void app.whenReady().then(() => {
+```
+
+In `apps/desktop/src/main.ts`, find:
+
+```ts
+    const log = createLogger(logFile);
+    store = readStore(storeFile);
+
+    // The single writer. deviceName and printMode are written by the web
+```
+
+Replace it with:
+
+```ts
+    const log = createLogger(logFile);
+    store = readStore(storeFile);
+
+    // Native apps 2.0 (the N2 review gate, G-1): an install over an older version runs the old uninstaller, and a 1.x
+    // uninstaller removes the start-with-Windows entry. An app the operator set to start with Windows puts the entry
+    // back at start when it is missing (the same entry as the first arming below); a disable made in Windows (Task
+    // Manager, Settings > Startup) keeps the entry, and is left alone.
+    const loginItem = { path: process.execPath, args: [HIDDEN_FLAG] };
+    if (store.autoStart === true && app.isPackaged && !app.getLoginItemSettings(loginItem).openAtLogin) {
+      app.setLoginItemSettings({ openAtLogin: true, ...loginItem });
+    }
+
+    // The single writer. deviceName and printMode are written by the web
+```
+
+In `apps/desktop/src/main.ts`, find:
+
+```ts
+    };
+
+    function rebuildMenu(): void {
+      const menu = buildAppMenu({
+```
+
+Replace it with:
+
+```ts
+    };
+
+    // Native apps 2.0 (spec §7): an update downloaded in the background adds Restart to update to both menus.
+    let update: UpdateState = UPDATE_IDLE;
+
+    function rebuildMenu(): void {
+      const menu = buildAppMenu({
+```
+
+In `apps/desktop/src/main.ts`, find:
+
+```ts
+          });
+        },
+        quit: () => app.quit(),
+      });
+```
+
+Replace it with:
+
+```ts
+          });
+        },
+        updateItem: trayUpdateItem(update),
+        restartToUpdate: () => restartToUpdate(),
+        quit: () => app.quit(),
+      });
+```
+
+In `apps/desktop/src/main.ts`, find:
+
+```ts
+      openPos: () => openMain(),
+      changeServerAddress: () => openSetupWindow(true),
+      quit: () => app.quit(),
+    });
+
+```
+
+Replace it with:
+
+```ts
+      openPos: () => openMain(),
+      changeServerAddress: () => openSetupWindow(true),
+      restartToUpdate: () => restartToUpdate(),
+      quit: () => app.quit(),
+    });
+
+    // Native apps 2.0 (spec §7): the Windows updater (a packaged app only): one minute after start, then every 24 hours.
+    stopUpdater = startUpdater({
+      log,
+      onStateChange: (state: UpdateState) => {
+        update = state;
+        rebuildMenu();
+        setTrayUpdateItem(trayUpdateItem(state));
+      },
+    });
+
+```
+
+In `apps/desktop/src/main.ts`, find:
+
+```ts
+    cancelPrinterCheck?.();
+    cancelPrinterCheck = null;
+  });
+}
+```
+
+Replace it with:
+
+```ts
+    cancelPrinterCheck?.();
+    cancelPrinterCheck = null;
+    stopUpdater?.();
+    stopUpdater = null;
+  });
+}
+```
+
+In `apps/desktop/src/menu.ts`, find:
+
+```ts
+  setAutoStart(on: boolean): void;
+  showAbout(): void;
+  quit(): void;
+}
+
+export function buildAppMenu(actions: AppMenuActions): Menu {
+  return Menu.buildFromTemplate([
+    {
+```
+
+Replace it with:
+
+```ts
+  setAutoStart(on: boolean): void;
+  showAbout(): void;
+  // Native apps 2.0 (spec §7): Restart to update, once an update is downloaded (update-plan.ts's trayUpdateItem).
+  updateItem: { label: string } | null;
+  restartToUpdate(): void;
+  quit(): void;
+}
+
+export function buildAppMenu(actions: AppMenuActions): Menu {
+  const update = actions.updateItem;
+  return Menu.buildFromTemplate([
+    {
+```
+
+In `apps/desktop/src/menu.ts`, find:
+
+```ts
+        { label: `About ${PRODUCT_NAME}`, click: () => actions.showAbout() },
+        { type: "separator" },
+        { label: "Quit", click: () => actions.quit() },
+      ],
+```
+
+Replace it with:
+
+```ts
+        { label: `About ${PRODUCT_NAME}`, click: () => actions.showAbout() },
+        { type: "separator" },
+        ...(update ? [{ label: update.label, click: () => actions.restartToUpdate() }] : []),
+        { label: "Quit", click: () => actions.quit() },
+      ],
+```
+
+In `apps/desktop/src/menu.ts`, find:
+
+```ts
+  openPos(): void;
+  changeServerAddress(): void;
+  quit(): void;
+}
+```
+
+Replace it with:
+
+```ts
+  openPos(): void;
+  changeServerAddress(): void;
+  restartToUpdate(): void;
+  quit(): void;
+}
+```
+
+In `apps/desktop/src/menu.ts`, find:
+
+```ts
+// the tray icon if its object is garbage-collected.
+let tray: Tray | null = null;
+
+export function createTray(actions: TrayActions): Tray {
+```
+
+Replace it with:
+
+```ts
+// the tray icon if its object is garbage-collected.
+let tray: Tray | null = null;
+let trayActions: TrayActions | null = null;
+
+function trayMenu(actions: TrayActions, update: { label: string } | null): Menu {
+  return Menu.buildFromTemplate([
+    { label: "Open POS", click: () => actions.openPos() },
+    { label: "Change POS address…", click: () => actions.changeServerAddress() },
+    { type: "separator" },
+    ...(update ? [{ label: update.label, click: () => actions.restartToUpdate() }] : []),
+    { label: "Quit", click: () => actions.quit() },
+  ]);
+}
+
+/** Native apps 2.0 (spec §7): the tray's menu with Restart to update once an update is downloaded. */
+export function setTrayUpdateItem(update: { label: string } | null): void {
+  if (tray && trayActions) tray.setContextMenu(trayMenu(trayActions, update));
+}
+
+export function createTray(actions: TrayActions): Tray {
+```
+
+In `apps/desktop/src/menu.ts`, find:
+
+```ts
+  const icon = nativeImage.createFromPath(path.join(__dirname, "../assets/tray.png"));
+  tray = new Tray(icon);
+  tray.setToolTip(PRODUCT_NAME);
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "Open POS", click: () => actions.openPos() },
+      { label: "Change POS address…", click: () => actions.changeServerAddress() },
+      { type: "separator" },
+      { label: "Quit", click: () => actions.quit() },
+    ]),
+  );
+  // M6: both click and double-click open the POS window.
+  tray.on("click", () => actions.openPos());
+```
+
+Replace it with:
+
+```ts
+  const icon = nativeImage.createFromPath(path.join(__dirname, "../assets/tray.png"));
+  tray = new Tray(icon);
+  trayActions = actions;
+  tray.setToolTip(PRODUCT_NAME);
+  tray.setContextMenu(trayMenu(actions, null));
+  // M6: both click and double-click open the POS window.
+  tray.on("click", () => actions.openPos());
+```
+
+Create `apps/desktop/src/update-plan.ts`:
+
+```ts
+// Native apps 2.0 (spec §7): what the Windows updater does when, as pure values (update-plan.test.ts). It looks one
+// minute after start and then every 24 hours; a downloaded update is announced once per version (one Windows
+// notification) and the tray and the Help menu offer Restart to update; otherwise it installs when the app quits. Never a
+// dialog, never an automatic restart (spec D3).
+
+export const FIRST_CHECK_MS = 60_000;
+export const CHECK_EVERY_MS = 86_400_000;
+
+export type UpdateState = { kind: "idle" } | { kind: "downloaded"; version: string };
+export const UPDATE_IDLE: UpdateState = { kind: "idle" };
+
+export const RESTART_TO_UPDATE = "Restart to update";
+
+export interface ReadyNotice {
+  title: string;
+  body: string;
+}
+
+export function readyNotice(version: string): ReadyNotice {
+  return { title: "Update ready", body: `POS Software ${version} is ready. It installs when you close the app.` };
+}
+
+/** The notice for a downloaded [version], or null when that version was already announced. */
+export function noticeFor(lastNotified: string | null, version: string): ReadyNotice | null {
+  return version === lastNotified ? null : readyNotice(version);
+}
+
+/** The menu item a downloaded update adds; nothing until then. */
+export function trayUpdateItem(state: UpdateState): { label: string } | null {
+  return state.kind === "downloaded" ? { label: RESTART_TO_UPDATE } : null;
+}
+```
+
+Create `apps/desktop/src/updater.ts`:
+
+```ts
+// Native apps 2.0 (spec §7): the Windows updater. electron-updater's generic provider reads <base>/latest.yml (the base
+// is package.json's build.publish url, written into resources/app-update.yml by electron-builder), downloads the new
+// installer in the background, checks its SHA-512, and installs it when the app quits. Never a dialog, never an automatic
+// restart (spec D3): one Windows notification per version, and Restart to update in the tray and the Help menu. Only a
+// packaged app looks; errors (no network, a missing file) go to the log only.
+import { app, Notification } from "electron";
+import { autoUpdater } from "electron-updater";
+import { CHECK_EVERY_MS, FIRST_CHECK_MS, noticeFor, type UpdateState } from "./update-plan";
+import type { Logger } from "./log";
+
+interface UpdaterDeps {
+  log: Logger;
+  onStateChange(state: UpdateState): void;
+}
+
+/** Starts the checks; returns what stops them (the app's before-quit). */
+export function startUpdater(deps: UpdaterDeps): () => void {
+  if (!app.isPackaged) return () => undefined;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.allowDowngrade = false;
+  autoUpdater.allowPrerelease = false;
+  autoUpdater.logger = {
+    info: (message?: unknown) => deps.log.info(`updater: ${String(message)}`),
+    warn: (message?: unknown) => deps.log.info(`updater: warn: ${String(message)}`),
+    error: (message?: unknown) => deps.log.error(`updater: ${String(message)}`),
+  };
+  let notified: string | null = null;
+  autoUpdater.on("update-downloaded", (info) => {
+    deps.onStateChange({ kind: "downloaded", version: info.version });
+    const notice = noticeFor(notified, info.version);
+    if (notice === null || !Notification.isSupported()) return;
+    notified = info.version;
+    deps.log.info(`updater: ${info.version} is ready; notified`);
+    new Notification({ title: notice.title, body: notice.body }).show();
+  });
+  autoUpdater.on("error", (error) => deps.log.error(`updater: ${error.name}`));
+  const check = (): void => {
+    autoUpdater.checkForUpdates().catch(() => undefined);
+  };
+  const first = setTimeout(check, FIRST_CHECK_MS);
+  const every = setInterval(check, CHECK_EVERY_MS);
+  return () => {
+    clearTimeout(first);
+    clearInterval(every);
+  };
+}
+
+/** Restart to update (the tray and the Help menu): the app quits as the tray's Quit does (before-quit), the installer
+ *  runs silently, and the app starts again. */
+export function restartToUpdate(): void {
+  autoUpdater.quitAndInstall(true, true);
+}
+```
+
+- [ ] **Step 4: Install, run the tests, build**
+
+```bash
+cd /d/kd/lucifer/apps/desktop && npm install --no-audit --no-fund 2>&1 | grep -E "^(added|up to date|changed|removed)" | sed -E "s/ in [0-9.]+m?s$//"
+sha256sum package.json package-lock.json
+grep '"version"' node_modules/electron-updater/package.json node_modules/builder-util-runtime/package.json
+timeout 250 npm test 2>&1 | grep -E "^not ok|^# (tests|pass|fail)" && npm run typecheck > /dev/null && npm run lint > /dev/null && echo "typecheck and lint clean"
+npm run build > /dev/null && ls out/updater.js out/update-plan.js out/pos-url.js out/pos-health.js
+```
+Expected: `added 5 packages` (the gate's copy already had them: `up to date`); `64de4af9f7f2799eb5cf0679368c60ca55bb932e180fb8dc51ff5382528b2701 *package.json` and
+`72ab12d8ee9060d9d52dd88caffad6614bee2f9db4a6c0ef7fb1624eb9aa3677 *package-lock.json` (npm wrote nothing more);
+electron-updater `"version": "6.8.9"`, builder-util-runtime `"version": "9.7.0"`; desktop `# tests 211`, `# pass 211`,
+`# fail 0`, `typecheck and lint clean`; `out/pos-health.js`, `out/pos-url.js`, `out/update-plan.js`, `out/updater.js`.
+
+- [ ] **Step 5: Commit** (`$SP/msg-n3-5.txt`):
+
+```text
+feat(desktop): the Windows updater: electron-updater 6.8.9 (the version paired with electron-builder 26.16.0) on the generic provider at https://files.sandbee.in/pos/windows (build.publish; dist still publishes nothing), a look one minute after start and every 24 hours, download in the background, install when the app quits, never down, never a prerelease, no dialog: one notification per version and Restart to update in the tray and the Help menu; start with Windows now survives an update and the move from 1.x (the uninstaller keeps it on --updated, and the app puts the entry back at start when it is missing, leaving a disable made in Windows alone: the N2 review gate's G-1); pins (3), (10) deliberately changed, (R7), (U1)-(U4), update-plan tests (native apps 2.0, Session N3, spec §7)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+```
+
+### Task 36: Windows end to end on this PC (D8), every suite, the Results
+
+**Files:** scratch only (`$SP`), nothing committed but this plan's Results.
+
+- [ ] **Step 1: The scratch tools.** Write each into `$SP` as below.
+
+`$SP/mkenv3.py` (the local POS env, a fresh database, port 3110; prints no value):
+
+```python
+# Session N3: writes <dir>/n3.env for the local POS the Windows app opens: a fresh database (pos_scratch_e2e_n3s) and
+# port 3110, from the kept e2e.env. Prints no value. usage: python mkenv3.py <dir>
+import io
+import os
+import sys
+
+out_dir = sys.argv[1]
+src = io.open(r"D:\kd\pos-dev-keep\env\e2e.env", encoding="utf-8").read()
+out = []
+for line in src.splitlines():
+    if line.startswith("MONGODB_URI="):
+        line = "MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_e2e_n3s"
+    elif line.startswith("NEXTAUTH_URL="):
+        line = "NEXTAUTH_URL=http://localhost:3110"
+    out.append(line)
+io.open(os.path.join(out_dir, "n3.env"), "w", encoding="utf-8", newline="\n").write("\n".join(out) + "\n")
+print("n3.env keys:", ", ".join(l.split("=", 1)[0] for l in out if "=" in l))
+```
+
+`$SP/n3-files.mjs` (the fake files.sandbee.in on 127.0.0.1:8766):
+
+```js
+// Native apps 2.0, Session N3 (Windows end to end): a fake files.sandbee.in on 127.0.0.1:8766. It serves
+// /pos/windows/latest.yml, the installer and its blockmap from one electron-builder output folder at a time, answers
+// /api/health with 404 (a server that is not a POS), and logs every request. Switch the folder with
+// GET /__serve?dir=<absolute folder>; serve nothing with GET /__serve?dir=none. Local only; scratch, never committed.
+// usage: node n3-files.mjs <log file>
+import { appendFileSync, createReadStream, existsSync, statSync } from "node:fs";
+import { createServer } from "node:http";
+import { basename, join } from "node:path";
+
+const [logPath] = process.argv.slice(2);
+let dir = null;
+
+function log(text) {
+  appendFileSync(logPath, new Date().toISOString() + " " + text + "\n");
+}
+
+createServer((req, res) => {
+  const url = new URL(req.url, "http://127.0.0.1:8766");
+  if (url.pathname === "/__serve") {
+    const next = url.searchParams.get("dir");
+    dir = next && next !== "none" ? next : null;
+    log("SERVE " + (dir ?? "none"));
+    res.end((dir ?? "none") + "\n");
+    return;
+  }
+  log(req.method + " " + url.pathname + (req.headers.range ? " range " + req.headers.range : ""));
+  const prefix = "/pos/windows/";
+  if (dir !== null && url.pathname.startsWith(prefix)) {
+    const name = decodeURIComponent(url.pathname.slice(prefix.length));
+    const file = join(dir, name);
+    if (name === basename(name) && existsSync(file) && statSync(file).isFile()) {
+      const size = statSync(file).size;
+      const range = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range ?? "");
+      if (range) {
+        const start = Number(range[1]);
+        const end = range[2] ? Number(range[2]) : size - 1;
+        res.writeHead(206, { "content-range": `bytes ${start}-${end}/${size}`, "content-length": String(end - start + 1), "accept-ranges": "bytes" });
+        createReadStream(file, { start, end }).pipe(res);
+        return;
+      }
+      res.writeHead(200, { "content-length": String(size), "accept-ranges": "bytes" });
+      createReadStream(file).pipe(res).on("finish", () => log("sent " + name + " (" + size + " bytes)"));
+      return;
+    }
+  }
+  res.writeHead(404, { "content-type": "text/html" });
+  res.end("<html><body>404 Not Found</body></html>");
+}).listen(8766, "127.0.0.1", () => log("listening"));
+```
+
+`$SP/n3-builds.sh` (three test installers, 2.0.0 / 2.0.1 / 2.0.2, the test publish url, output in `$SP`):
+
+```bash
+#!/bin/bash
+# The N2 gate (Session N3 Task 36 pre-run): three test installers of the gold desktop app, 2.0.0 / 2.0.1 / 2.0.2, each
+# with the test publish url http://127.0.0.1:8766/pos/windows; output outside apps/desktop/dist. Local only, released to
+# nobody. usage: n3-builds.sh <desktop dir> <out dir>
+DESK="$1"; OUT="$2"; mkdir -p "$OUT"; S="$OUT/build.txt"; : > "$S"
+cd "$DESK" || exit 2
+echo "start $(date -Is) head $(git rev-parse --short HEAD)" >> "$S"
+npm run build > "$OUT/tsc.log" 2>&1; echo "tsc exit=$?" >> "$S"
+OUTW="$(cygpath -w "$OUT")"
+for v in 2.0.0 2.0.1 2.0.2; do
+  env -u ELECTRON_RUN_AS_NODE npx electron-builder --win nsis --publish never "-c.directories.output=$OUTW\\$v" \
+    "-c.publish.url=http://127.0.0.1:8766/pos/windows" "-c.extraMetadata.version=$v" > "$OUT/eb-$v.log" 2>&1
+  echo "$v exit=$?" >> "$S"
+  ls -la "$OUT/$v" >> "$S" 2>&1
+  cat "$OUT/$v/win-unpacked/resources/app-update.yml" >> "$S" 2>&1
+  cat "$OUT/$v/latest.yml" >> "$S" 2>&1
+done
+echo "DONE $(date -Is)" >> "$S"
+```
+
+`$SP/n3-e2e.mjs` (drives the installed app with playwright-core's Electron support, one step per run):
+
+```js
+// Native apps 2.0, Session N3 Task 36 (the N2 gate's pre-run): drives the INSTALLED Windows app with playwright-core's
+// Electron support (no global keys or clicks on the desktop), one step per run. Local only: the app points at the local
+// POS (http://localhost:3110) or at local test addresses; bare names resolve nowhere (--host-resolver-rules).
+// usage: node n3-e2e.mjs <exe> <shots dir> <step> [args]
+//   steps: first-run-old <address>   (1.x window: type, "Use this address", wait for the POS page, quit)
+//          start                     (launch, wait for the POS page, print version + menu labels, quit)
+//          address                   (Change POS address…: the cases, screenshots, then http://localhost:3110)
+//          wait-update <version> <log file>  (launch, wait for "<version> is ready" in the app log, print menu, keep running
+//                                     until <action>: restart | quit)
+import { createRequire } from "node:module";
+import { readFileSync, existsSync, mkdirSync } from "node:fs";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+
+const require = createRequire("C:/Users/Kartik.desai/AppData/Local/npm-cache/_npx/9833c18b2d85bc59/node_modules/playwright-core/package.json");
+const { _electron } = require("playwright-core");
+
+const [exe, shots, step, ...rest] = process.argv.slice(2);
+mkdirSync(shots, { recursive: true });
+const env = { ...process.env };
+delete env.ELECTRON_RUN_AS_NODE;
+const RESOLVER = "--host-resolver-rules=MAP *.sandbee.in ~NOTFOUND";
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function launch() {
+  const app = await _electron.launch({ executablePath: exe, args: [RESOLVER], env, timeout: 60_000 });
+  app.process().stderr?.on("data", () => undefined);
+  return app;
+}
+
+async function windowWith(app, test, ms = 30_000) {
+  const until = Date.now() + ms;
+  while (Date.now() < until) {
+    for (const w of app.windows()) {
+      if (test(w.url())) return w;
+    }
+    await sleep(250);
+  }
+  throw new Error("no window: " + app.windows().map((w) => w.url()).join(", "));
+}
+
+const isUrlWindow = (u) => u.startsWith("file:") && u.includes("url-window.html");
+const isPos = (u) => u.startsWith("http://localhost:3110/");
+
+async function menuLabels(app) {
+  return app.evaluate(({ Menu }) => {
+    const out = [];
+    const walk = (items) => items.forEach((i) => { if (i.label) out.push(i.label); if (i.submenu) walk(i.submenu.items); });
+    walk(Menu.getApplicationMenu()?.items ?? []);
+    return out;
+  });
+}
+
+async function clickMenu(app, label) {
+  const ok = await app.evaluate(({ Menu }, wanted) => {
+    const find = (items) => { for (const i of items) { if (i.label === wanted) return i; if (i.submenu) { const f = find(i.submenu.items); if (f) return f; } } return null; };
+    const item = find(Menu.getApplicationMenu()?.items ?? []);
+    if (!item) return false;
+    item.click();
+    return true;
+  }, label);
+  if (!ok) throw new Error("no menu item " + label);
+}
+
+async function quit(app) {
+  const exited = new Promise((r) => app.process().once("exit", r));
+  await app.evaluate(({ app: a }) => a.quit()).catch(() => undefined);
+  await Promise.race([exited, sleep(20_000)]);
+}
+
+async function tryAddress(win, value, name) {
+  await win.fill("#address", value);
+  await win.click("#save");
+  // "Connecting…" while checked, then the answer (or the window closes when saved).
+  const answer = await win.waitForFunction(() => document.getElementById("save-label")?.textContent === "Open POS" && document.getElementById("hint-title")?.textContent === "Check the address", null, { timeout: 15_000 }).then(() => "error", () => "no error");
+  const text = answer === "error" ? await win.textContent("#error") : "";
+  await win.screenshot({ path: path.join(shots, name + ".png") });
+  console.log(`${name}: typed ${JSON.stringify(value)} -> ${answer}: ${text}`);
+}
+
+if (step === "first-run-old") {
+  const app = await launch();
+  const win = await windowWith(app, isUrlWindow);
+  await win.screenshot({ path: path.join(shots, "old-first-run.png") });
+  await win.fill("#address", rest[0]);
+  await win.click("#save");
+  const pos = await windowWith(app, isPos);
+  await pos.waitForLoadState("load");
+  await sleep(3000);
+  console.log("POS page: " + pos.url() + " version " + (await app.evaluate(({ app: a }) => a.getVersion())));
+  await quit(app);
+} else if (step === "start") {
+  const app = await launch();
+  const pos = await windowWith(app, isPos);
+  await pos.waitForLoadState("load");
+  await sleep(3000);
+  console.log("version " + (await app.evaluate(({ app: a }) => a.getVersion())) + "; POS page " + pos.url());
+  console.log("menu: " + JSON.stringify(await menuLabels(app)));
+  await quit(app);
+} else if (step === "address") {
+  const app = await launch();
+  const pos = await windowWith(app, isPos);
+  await pos.waitForLoadState("load");
+  await clickMenu(app, "Change POS address…");
+  const win = await windowWith(app, isUrlWindow);
+  await win.waitForLoadState("load");
+  await sleep(500);
+  const size = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => w.getTitle() === "POS address").map((w) => ({ content: w.getContentSize(), resizable: w.isResizable() })));
+  console.log("window: " + JSON.stringify(size) + " footer: " + (await win.textContent("#product")) + " cancel visible: " + (await win.isVisible("#cancel")) + " value: " + (await win.inputValue("#address")));
+  await win.screenshot({ path: path.join(shots, "a0-change.png") });
+  await tryAddress(win, " MyCafe ", "a1-bare-name");
+  await tryAddress(win, "http://127.0.0.1:8766", "a2-not-a-pos");
+  await tryAddress(win, "http://127.0.0.1:9", "a3-no-answer");
+  await tryAddress(win, "http://8.8.8.8", "a4-http-rule");
+  await win.press("#address", "Escape").catch(() => undefined); // the window closes under the key
+  await sleep(1000);
+  console.log("Esc closed the window: " + !app.windows().some((w) => isUrlWindow(w.url())));
+  await clickMenu(app, "Change POS address…");
+  const again = await windowWith(app, isUrlWindow);
+  await again.waitForLoadState("load");
+  await again.fill("#address", "http://localhost:3110");
+  await again.click("#save");
+  await sleep(4000);
+  console.log("saved http://localhost:3110: window closed " + !app.windows().some((w) => isUrlWindow(w.url())) + "; POS " + (await windowWith(app, isPos)).url());
+  await quit(app);
+} else if (step === "wait-update") {
+  const [version, logFile, action] = rest;
+  const app = await launch();
+  const pos = await windowWith(app, isPos);
+  await pos.waitForLoadState("load");
+  const started = Date.now();
+  const needle = `updater: ${version} is ready; notified`;
+  while (!(existsSync(logFile) && readFileSync(logFile, "utf8").includes(needle))) {
+    if (Date.now() - started > 240_000) throw new Error("no " + needle);
+    await sleep(1000);
+  }
+  console.log(`"${needle}" after ${Math.round((Date.now() - started) / 1000)} s`);
+  try {
+    execFileSync("powershell", ["-NoProfile", "-File", path.join(HERE, "corner-shot.ps1"), path.join(shots, `toast-${version}.png`)], { stdio: "inherit" });
+  } catch {
+    console.log("corner screenshot failed");
+  }
+  console.log("menu: " + JSON.stringify(await menuLabels(app)));
+  if (action === "restart") {
+    const exited = new Promise((r) => app.process().once("exit", r));
+    await clickMenu(app, "Restart to update");
+    await Promise.race([exited, sleep(30_000)]);
+    console.log("Restart to update: the app exited");
+  } else {
+    await quit(app);
+    console.log("Quit: the app exited");
+  }
+} else {
+  throw new Error("unknown step " + step);
+}
+```
+
+(It loads playwright-core from this PC's npx cache, `_npx/9833c18b2d85bc59` (1.64.0-alpha, present at the gate); if
+that folder is gone, run `npx -y playwright-core --version` once and put the new `_npx/<hash>` path into the script.)
+
+`$SP/corner-shot.ps1` (a screenshot of the notification corner only):
+
+```powershell
+# The N2 gate (Session N3 Task 36): a screenshot of the bottom-right corner of the primary screen only, where Windows
+# shows a notification; nothing else of the desktop is kept. usage: corner-shot.ps1 <png>
+param([Parameter(Mandatory = $true)][string]$Out)
+Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+$screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+$w = 520; $h = 360
+$bmp = New-Object System.Drawing.Bitmap $w, $h
+$g = [System.Drawing.Graphics]::FromImage($bmp)
+$g.CopyFromScreen($screen.Right - $w, $screen.Bottom - $h, 0, 0, (New-Object System.Drawing.Size $w, $h))
+$bmp.Save($Out, [System.Drawing.Imaging.ImageFormat]::Png)
+$g.Dispose(); $bmp.Dispose()
+Write-Output "corner shot: $Out"
+```
+
+- [ ] **Step 2: Check first, and the owner's leftovers** (PowerShell):
+
+```powershell
+Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'POS Software*' } | Select-Object DisplayName, DisplayVersion
+'Run: [' + (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue).'com.possoftware.pos-desktop' + ']'
+foreach ($p in @((Join-Path $env:APPDATA 'POS Software by sandbee'), (Join-Path $env:LOCALAPPDATA 'pos-desktop-updater'), 'D:\kd\pos-dev-keep\win-test')) { $p + ' exists=' + (Test-Path -LiteralPath $p) }
+```
+Expected, as at the gate: no "POS Software" uninstall entry, `Run: []`, no `win-test`; **the two folders exist** (the
+owner's own leftovers of 12 Oct: user data whose address is the live demo, and a 1.12.0 `installer.exe` of 10 Oct). The
+owner allowed (2026-10-13) renaming them for this test and renaming them back after it: `Rename-Item` each to
+`<name>.n3-backup` (PowerShell, `-LiteralPath`), list both backups. If they are absent, skip the rename here and the
+rename back in Step 8. If anything else is found (an installed app, a Run value), stop and ask.
+
+- [ ] **Step 3: Build the three installers** (background; wait for `DONE` in `$SP/n3-dist/build.txt`):
+`bash "$SP/n3-builds.sh" /d/kd/lucifer/apps/desktop "$SP/n3-dist"`. Expected: `tsc exit=0`, then for each of 2.0.0,
+2.0.1, 2.0.2 `exit=0`, `POS-Software-Setup-<v>.exe` (about 112.5 MB), its `.blockmap`, `latest.yml` (`version: <v>`), and
+`win-unpacked/resources/app-update.yml` with `provider: generic`, `url: http://127.0.0.1:8766/pos/windows`,
+`updaterCacheDirName: pos-desktop-updater`.
+
+- [ ] **Step 4: The local POS and the fake files server**
+
+```bash
+python -X utf8 "$SP/mkenv3.py" "$(cygpath -w "$SP")"
+netstat -ano | grep LISTEN | grep -E ":(3110|8766) "
+```
+Expected: `n3.env keys: MONGODB_URI, NEXTAUTH_SECRET, AUTH_SECRET, NEXTAUTH_URL, AUTH_TRUST_HOST, SEED_ADMIN_USERNAME,
+SEED_ADMIN_PASSWORD`; nothing listening. Then, each in the background: `cd /d/kd/lucifer/apps/cafe && MSYS_NO_PATHCONV=1 node --env-file="$(cygpath -w "$SP")/n3.env" ../../node_modules/next/dist/bin/next start -p 3110 > "$SP/next-n3.log" 2>&1`
+and `node "$SP/n3-files.mjs" "$(cygpath -w "$SP")/files-n3.log"`. Expected: `curl -s http://localhost:3110/api/health` →
+`{"ok":true,"db":"up","tenant":"dev",…}`; `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8766/api/health` → `404`.
+(`apps/cafe/.next` must exist; if it does not, stop and report: building the cafe app is not part of N3. The local
+mongod must be running: a stopped one makes the POS answer 503, still "found" by the window's check but not this
+Expected. If 3110 or 8766 already listen, stop and report; never stop another program's process.)
+
+- [ ] **Step 5: The move from 1.12.0** (PowerShell for the installers; `E2E=$SP/n3-e2e.mjs`, `EXE="D:/kd/pos-dev-keep/win-test/POS Software by sandbee.exe"`, `SHOTS="$(cygpath -w "$SP")/shots-win"`):
+1. Hash `D:\kd\pos-apk-release\Sandbee-POS-phase3\POS-Software-Setup-1.12.0.exe` against its `SHA256SUMS.txt`
+   (`060d8d84…`), then `Start-Process <it> -ArgumentList '/S','/D=D:\kd\pos-dev-keep\win-test' -Wait -PassThru` → exit 0,
+   the exe's `VersionInfo.FileVersion` 1.12.0.
+2. `node "$E2E" "$EXE" "$SHOTS" first-run-old http://localhost:3110` → `POS page: http://localhost:3110/login version 1.12.0`;
+   the Run value `"D:\kd\pos-dev-keep\win-test\POS Software by sandbee.exe" --hidden`.
+3. Install `$SP\n3-dist\2.0.0\POS-Software-Setup-2.0.0.exe` the same way → exit 0, FileVersion 2.0.0, **the Run value
+   gone** (1.12.0's uninstaller ran with `--updated`), `resources\app-update.yml` the test url.
+4. `node "$E2E" "$EXE" "$SHOTS" start` → `version 2.0.0; POS page http://localhost:3110/login`, the menu `["Help","Open POS","Reload","Change POS address…","Start with Windows","About POS Software by sandbee","Quit"]`; **the Run value back**.
+
+- [ ] **Step 6: The address window:** `node "$E2E" "$EXE" "$SHOTS" address`. Expected, as at the gate:
+```text
+window: [{"content":[480,666],"resizable":false}] footer: POS Software by sandbee · 2.0.0 cancel visible: true value: http://localhost:3110
+a1-bare-name: typed " MyCafe " -> error: Couldn't reach mycafe.sandbee.in. Check the internet connection.
+a2-not-a-pos: typed "http://127.0.0.1:8766" -> error: We couldn't find a POS at 127.0.0.1:8766. Check the name.
+a3-no-answer: typed "http://127.0.0.1:9" -> error: Couldn't reach 127.0.0.1:9. Check the internet connection.
+a4-http-rule: typed "http://8.8.8.8" -> error: http:// only works for this device or a computer on your own network. Use https:// for any other address.
+Esc closed the window: true
+saved http://localhost:3110: window closed true; POS http://localhost:3110/login
+```
+(The window's content measured 480 × 666 on this PC; a different display may give a few pixels more or less.)
+`files-n3.log` gets exactly one `GET /api/health` (the 127.0.0.1:8766 case); the app log
+(`%APPDATA%\POS Software by sandbee\pos-desktop.log`) three "address check: not saved" lines, then "address check:
+found" (the http://8.8.8.8 case is refused before any check). Look at `a0-change`, `a1-bare-name`, `a2-not-a-pos`,
+`a3-no-answer`.
+
+- [ ] **Step 7: The updater.** `LOG="$(cygpath -w "$APPDATA/POS Software by sandbee/pos-desktop.log")"`.
+1. `curl -s "http://127.0.0.1:8766/__serve?dir=$(cygpath -m "$SP/n3-dist/2.0.1")"`, then
+   `node "$E2E" "$EXE" "$SHOTS" wait-update 2.0.1 "$LOG" restart`. Expected: `"updater: 2.0.1 is ready; notified" after
+   61 s` (the look one minute after start), the corner shot shows the notification "Update ready" / "POS Software 2.0.1
+   is ready. It installs when you close the app.", the menu with `"Restart to update"` before `"Quit"`, `Restart to
+   update: the app exited`; the app log: `Install on explicit quitAndInstall`, `isSilent: true, isForceRunAfter: true`,
+   `--updated,/S,--force-run`. About 20 s later: FileVersion 2.0.1, the app running again with `--updated` (its
+   renderer has `--pos-desktop-version=2.0.1`), the Run value kept, the store's address and `autoStart` kept. Stop that
+   process by its PID (PowerShell, after checking its path is `win-test`).
+2. Serve `2.0.2` the same way, then `… wait-update 2.0.2 "$LOG" quit`. Expected: `2.0.2 is ready; notified after 61 s`,
+   `Quit: the app exited`; the app log `Auto install update on quit`, `isForceRunAfter: false`, `--updated,/S`; about
+   15 s later FileVersion 2.0.2 and **no process running** (no restart); the Run value kept.
+3. `curl -s "http://127.0.0.1:8766/__serve?dir=none"`, then `node "$E2E" "$EXE" "$SHOTS" start` → `version 2.0.2`, the
+   menu without Restart to update.
+(electron-updater tries a differential download first; the fake server does not serve the old blockmap or multi-range
+requests, so it falls back to the full installer: an `ERROR updater: Cannot download differentially, fallback to full
+download` line is expected.)
+
+- [ ] **Step 8: Uninstall and put everything back.** `Start-Process 'D:\kd\pos-dev-keep\win-test\Uninstall POS Software by sandbee.exe' -ArgumentList '/S' -Wait`
+→ exit 0; the NSIS uninstaller re-launches itself from `%TEMP%`, so poll up to 30 s until `win-test` and the uninstall
+entry are gone; the Run value gone (a real uninstall removes it). Then remove the test's
+own `%LOCALAPPDATA%\pos-desktop-updater` and `%APPDATA%\POS Software by sandbee` (`Remove-Item -LiteralPath '<literal
+path>' -Recurse -Force`, one per command), rename both `.n3-backup` folders back, and check: the user data's
+`pos-desktop.json` address is the owner's again (the live demo; read only), `installer.exe` 10/10/2026 112,216,876 B, no
+Run value. Stop this session's `next start` and fake server by their PIDs after checking their command lines; the
+scratch database `pos_scratch_e2e_n3s` stays.
+
+- [ ] **Step 9: Every suite** (as Task 30 Step 1). Expected: mobile 168, typecheck and lint clean, Jest 8 (4 suites);
+desktop 211; cafe 5656 (5655 pass, 0 fail, 1 skipped); JUnit `tests=94 failures=0 errors=0`.
+
+- [ ] **Step 10: Results and commit.** Append `## Session N3 Results` to this plan (the counts, the commits, each step's
+evidence, the installer hashes, anything that differed and why) and commit (`$SP/msg-n3-6.txt`):
+
+```text
+docs(apps): native apps 2.0 Session N3 results: the Windows app's address window and updater, its end to end on this PC (the move from 1.12.0, Restart to update, install on quit, the uninstall) and every suite recorded
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+```
+Update the project memory (`native-apps-2-2026-10.md` and its MEMORY.md line). No push unless the session prompt says so.
+Report to the owner in Hinglish.
 
 ---
 
@@ -3832,6 +8568,8 @@ run in this session includes the cafe chain (`cd apps/cafe && npm test`; 5656 at
 - `scripts/release-native.test.mjs` (root script `test:release-native`): the pure parts — the manifest writer checked by the same rules as `UpdateManifest` (a JS validator with the JUnit cases' table), the version code, the file names, the `latest.yml` reader, the steps text, refusal of an existing folder.
 - (The N1 review gate.) apksigner from build-tools 37 prints `V2 Signer: certificate SHA-256 digest: <hex>` (a v2-only APK,
   minSdk 24), not `Signer #1 …`; `EXPECTED_CERT_SHA256` = `5bd06ef3e9a78efcb0dfbd1ff102de932c581a78034d93ef7572f5373b5b3e40`.
+- (The N2 review gate.) It also reads `dist/win-unpacked/resources/app-update.yml` (`provider: generic`,
+  `url: https://files.sandbee.in/pos/windows`, `updaterCacheDirName: pos-desktop-updater`) and refuses any other url.
 
 ### Task 42: Docs
 
@@ -3842,6 +8580,12 @@ run in this session includes the cafe chain (`cd apps/cafe && npm test`; 5656 at
   **Scan app** also works on the cafe's own phone (it sends the app to Google and takes a while); on Samsung (One UI 6+)
   Auto Blocker must be off before "Install unknown apps" can be allowed; after **Update** there is no Open button (the
   app updated itself): open it from its icon, or tap "POS printing is off. Tap to start." on a printing device.
+- (The N2 review gate.) It also says: Cancel in Android's update dialog just closes the card until the next app open;
+  Android 7 phones have one global "Unknown sources" switch instead of "Install unknown apps"; never raise the Android
+  app's `minSdkVersion` while older devices are in use (or add a `minSdk` field to a later manifest schema first); the
+  Windows app shows **Restart to update** in the tray and the Help menu once an update is downloaded, otherwise it
+  installs when the app is closed; the move from 1.x keeps Start with Windows (the first 2.0.0 start sets it again); if
+  the address window says "Couldn't reach" on the first try (a POS waking up), press Open POS once more.
 - `apps/mobile/README.md` and `apps/desktop/README.md`: building a release and running the packaging; the upload order. `apps/cafe/DEPLOY.md`: the line about the native apps.
 
 ### Task 43: Full verification
@@ -3850,7 +8594,8 @@ run in this session includes the cafe chain (`cd apps/cafe && npm test`; 5656 at
 
 ### Task 44: The 2.0.0 release set
 
-- Build the APK pair (private key, real base; `:app:compileReleaseKotlin --rerun` first) and the Windows installer (`npm run dist`); run the packaging into `D:\kd\pos-apk-release\Sandbee-POS-2.0.0\`; an x86_64 build of the same commit installed on the emulator for a smoke test (open, sign in, print); the emulator holds the debug-key 1.0 again after N2, so this rehearses the one-time move.
+- Build the APK pair (private key, real base; `:app:compileReleaseKotlin --rerun` first) and the Windows installer (`npm run dist`); run the packaging into `D:\kd\pos-apk-release\Sandbee-POS-2.0.0\`; an x86_64 build of the same commit installed on the emulator for a smoke test (open, sign in, print); the emulator holds the debug-key 1.0 again after N2, so this rehearses the one-time move. (The N2 review gate.) The smoke test also runs E5's Cancel (the card closes and comes
+  back at the next open), and E5 once more on an API 34/35 image if one is on the PC.
 - Nothing is uploaded. The owner gets the folder path, `UPLOAD-STEPS.txt`, and (later, with the owner) the S3 + domain steps.
 
 ### Task 45: The final review
@@ -4283,3 +9028,140 @@ download not retried for 12 hours (the plan's rule, "any HTTP answer counts as a
 check" holds); the deferred minors #2, #4–#7, #10 (re-read, still Minor); a future `minSdkVersion` raise (the manifest has
 no `minSdk` field: N4's GO-LIVE text or a later schema); Task 26 itself (outside the range); N3 and N4; the 12 h, 30 min
 and once-per-open values (the owner's decisions).
+
+## N2 review gate (2026-10-13)
+
+Run right after Session N2, in the same Claude session (the owner: "go"). The fresh eyes were the N2 review (Claude Fable
+5.1, before the N2 Results commit) and this gate's own review of Session N3's exact section (below). Nothing pushed,
+merged, uploaded or released.
+
+### N2 re-verified
+
+- Commits `32b988e`, `ecefcae`, `59e031c`, `268955d`, `1186761`, `30e0302`, `8bcd4a6` read; after each task the `apps/`
+  tree equalled the N1 gate's gold commit (checked in Session N2; N2 applied every block with the gate's applier).
+- Suites at this gate's commit (code as at `8bcd4a6`): mobile 167, Jest 7 (4 suites), desktop 205, JUnit 92 (0 failures, 0 errors), the cafe chain 5656 (5655
+  pass, 0 fail, 1 skipped), typecheck and lint clean in both apps.
+- The Results' evidence (E1–E7, the cold start, Cancel, Play Protect's Install without scanning, the release read-back)
+  is in the session scratchpad named there.
+
+### Rulings on the N2 review
+
+| Finding | Ruling |
+|---|---|
+| m-1 Later during Install's wait for the printers still starts Android's screens | N3 Task 30: each Install takes a ticket, Later takes the next; a waiting Install answers `cancelled` and starts nothing (pin 32). Not runnable on the emulator (it needs a print in flight). |
+| m-2 a kept file damaged on disk is offered at every open | N3 Task 30: `out.fd.sync()` before the rename (pin 30); `check: … is ready` and `install()` hash the kept file again (`UpdateFiles.sha256Of`, two JVM tests); a damaged one is dropped and `lastCheckAt` reset, so the next open downloads it again (pin 32). |
+| m-3 the card's wait for idle printers is unbounded | **The owner (2026-10-13): at most 2 minutes**, then this open offers nothing and the next open does (`CARD_IDLE_WAIT_MS`, pin 32). |
+| m-4 Cancel in Android's dialog reads as a failure | **The owner (2026-10-13): Cancel closes the card like Later.** `STATUS_FAILURE_ABORTED` → `install: cancelled` → `RESULT_EVENT { ok: false, cancelled: true }` → the reducer's `later` (a node test, a Jest test, pin 31); proven on the emulator (below). |
+| m-5 a `RuntimeException` from the session leaves it open | N3 Task 30: one `catch (e: RuntimeException)` abandons it (pin 31). |
+| m-6 Android 7 has only the global "Unknown sources" | N4 Task 42's GO-LIVE text. |
+| m-7 the Jest test takes the last AppState listener | N3 Task 30: every `change` listener of the screen hears the change; the mock's calls are cleared per test. |
+| m-8 the preferences read on the main thread | Stands: one millisecond read at an open; the app runs no StrictMode. |
+| The N1 gate's deferred #2, #4, #5, #6, #7, #10 | Stand, as recorded at the N1 gate (re-read by the N2 review, still Minor). |
+| E5 on API 34/35 | N4 Task 44, when such an image is on this PC (only API 33 is). |
+| A future `minSdkVersion` raise | N4 Task 42's GO-LIVE text: never raise it while older devices are in use, or add a `minSdk` field to a later manifest schema first. |
+
+### Session N3 made exact and pre-validated
+
+- Gold worktree `D:\kd\n2g` (the N1 gate's, reused; detached at `8bcd4a6`, its Gradle and CMake caches kept;
+  `apps/desktop/node_modules` a real copy so `electron-updater` landed only there): commits `a86ccd0` (Task 30),
+  `171cd66`, `0699819`, `e480583`, `e658887`, `2c40140` (Task 35 with the review's m-1; first `ae53f5f`), apps tree
+  `16d4bc93…`, docs tree `389363ff…`; a bundle of them in `D:\kd\n2g-apk\n2-gate\gold-n3.bundle`. Written test first
+  in each task (RED seen, then GREEN).
+- The N3 section's blocks were generated from those commits (`gate/gen3_ops.py`: whole-file blocks for the rewritten
+  `url-window.html`, `url-window.js` and `server-url.test.ts`; `package.json`'s test-script hunks with the tests) and
+  applied step by step on the gold worktree reset to `8bcd4a6` (`gate/val3.py`): every task's apps and docs trees came out
+  **identical** to gold, and every RED/GREEN Expected in the section is that run's output. A dry run of the whole section
+  on the base: 127 ops OK.
+- Gold suites: mobile 168, Jest 8, JUnit 94, desktop 211, typecheck and lint clean in both apps; the go-live runbook 97/97
+  after Tasks 33 and 34.
+- **Task 30 on the emulator** (API 33, gold test APKs A `329b0531…` / B `0a788507…`, the private key, the test base):
+  the one-time move from the debug-key 1.0, sign-in, `download: 2.0.1 verified`, `check: 2.0.1 is ready` (the kept file
+  hashed again), the card; Install → "Install unknown apps" → Allow → back → Install → Android's dialog → **Cancel →
+  `install: cancelled`, the card closed with no line, same process**; away 70 s → the card again → Install → Update →
+  Play Protect (More details → Install without scanning; Scan app never tapped) → 2.0.1, `install: done`. Put back to the
+  debug-key 1.0 (`29115bdf…`), `sync`, `emu kill`.
+- **Task 36 on this PC** (installers 2.0.0 / 2.0.1 / 2.0.2 from gold with the test publish url): the owner's two leftover
+  folders renamed (the owner's OK); 1.12.0 (`060d8d84…`, the release set's) installed per-user into
+  `D:\kd\pos-dev-keep\win-test`, first run on `http://localhost:3110`, Start with Windows armed; **2.0.0 over it removed
+  the Run value (G-1), and 2.0.0's first start set it again**; the address window: a bare " MyCafe " → "Couldn't reach
+  mycafe.sandbee.in…" (no request left the PC), `http://127.0.0.1:8766` → "We couldn't find a POS at 127.0.0.1:8766…"
+  (one `GET /api/health`), `http://127.0.0.1:9` → "Couldn't reach…", `http://8.8.8.8` → the http rule, Esc closed it,
+  `http://localhost:3110` found and saved; serving nothing: the look at 1 minute logged a 404 and showed nothing; serving
+  2.0.1: notified after 61 s (the corner screenshot shows "Update ready"), Restart to update → installed and started
+  again as 2.0.1 (`--updated`), the Run value, the address and `autoStart` kept; serving 2.0.2: Quit → "Auto install
+  update on quit", installed with no restart, next start 2.0.2; uninstall → the Run value removed; the test's data
+  removed and the owner's two folders renamed back (the address and `installer.exe` as they were).
+- The page in headless desktop Chrome: five screenshots at 480 × 640 (empty, typing, error, connecting, change) and the
+  behaviour lines Task 33 Step 5 expects.
+
+### What making N3 exact found
+
+1. **G-1, Start with Windows lost at every update.** electron-builder's installer always runs the old uninstaller with
+   `--updated` (`installUtil.nsh`), and our `customUnInstall` deleted both Run values unconditionally; `main.ts` arms
+   Start with Windows only while `autoStart` is never decided. So every update, and the 1.x → 2.0.0 move, silently
+   turned it off on the counter PC. Fixed in Task 35 (the `${ifNot} ${isUpdated}` guard, and the app puts the entry back
+   at start when it is missing and the operator chose it); both halves proven on this PC. A 1.x uninstaller still removes
+   it during the move: the 2.0.0 app's first start puts it back.
+2. **electron-updater 6.8.9** is the version paired with electron-builder 26.16.0 (published with 26.15.0, the newest
+   before 26.16.0, the same `builder-util-runtime` 9.7.0; 6.8.10 came with 26.17.0).
+3. `npm install <package>` on this PC reformats `package.json` (it expands the compact arrays): the plan edits
+   `package.json` and the lock by blocks and runs a plain `npm install`, which writes nothing more (hashes pinned).
+4. `build.publish` is an object, so `-c.publish.url=http://127.0.0.1:8766/pos/windows` overrides it for test builds;
+   `-c.extraMetadata.version` sets the version. A `-test` suffix would be a prerelease, never offered
+   (`allowPrerelease: false`): the test versions are 2.0.0, 2.0.1, 2.0.2.
+5. Restart to update is also in the Help menu: the tray's menu cannot be reached by a test, and the operator at the
+   window sees the Help menu first. Same action, same rule (only once an update is downloaded).
+6. `posdemo` is not typed in the test: a found address is saved and the window opens that POS (the live demo). A bare
+   name is proven with Chromium's `--host-resolver-rules=MAP *.sandbee.in ~NOTFOUND` (no request leaves the PC).
+7. The window asks for 480 × 640 of content (`useContentSize`); the page measured 480 × 666 on this PC (the spec says
+   about 480 × 640). Recorded, not pinned.
+8. electron-updater first tries a differential download (the installed version's blockmap and multi-range requests);
+   the fake server serves neither, so it fell back to the full 112 MB installer. N4's release folder carries the
+   blockmap; S3 answers range requests one range at a time, so the fallback is the expected path there too.
+9. The mobile pins' `strip()` turns a whole comment line into an empty line, so a needle cannot span one (a comment was
+   moved above the code); a failing message-less `assert.ok` hung `desktop-paths.test.ts` again (every new assertion has
+   a message; the plan's desktop pin runs carry `timeout`).
+10. D: had about 1.3–2 GB free during the gate: the gate's installers and screenshots stayed on C:, and the repo's
+    `apps/mobile/android/app/build` (Sessions N1–N2's outputs, git-ignored) was emptied to make room (N3's first JUnit
+    run rebuilds it).
+
+### The gate's review of Session N3 (Claude Fable 5.1, a fresh context)
+
+Verdict "Ready to run as written: Yes": 0 Critical, 0 Important, 7 Minor. It confirmed the G-1 diagnosis and the scope
+of `${isUpdated}` inside `customUnInstall`, that the window makes no request (pin (A2) finds every caller of `checkPos`),
+the parity table, Task 30's threads (the ticket read on the worker after the wait, `waiting` on the main thread,
+`keptIntact` on the worker only), that no new pin passes vacuously or asserts without a message, the plan's commands on
+this PC and the count arithmetic.
+
+- **m-1, folded** (gold Task 35 amended to `2c40140`; Task 35 re-validated, trees identical): the start-up re-assert
+  re-enabled a startup entry disabled in Task Manager (Electron's `enabled` defaults to true). The app now puts the
+  entry back only when it is missing (`getLoginItemSettings(…).openAtLogin`), which still repairs the 1.x move; pin (U4)
+  follows. The gate's pre-run proved the missing-entry path with the first version; Session N3's Task 36 runs it again.
+- **m-2, ruled:** the 5-second check (spec §9) can time out on a cold free-tier POS; it stays 5 s (the spec), and N4's
+  GO-LIVE text says to press Open POS once more when the first try says "Couldn't reach".
+- **m-3, ruled:** a redirecting address is not tried against the real `net.fetch` (Electron cancels a manual redirect,
+  so the words may be "Couldn't reach…" rather than "We couldn't find a POS…"); either way nothing is saved and no
+  redirect is followed. Recorded.
+- **m-4 to m-7, folded into the section's text:** which Co-Authored-By line wins; where playwright-core comes from and
+  what to do if that npx folder is gone; Task 36 Step 4's prerequisites (mongod up; a port in use: stop and report);
+  Step 8 polls for the self-relaunching uninstaller; Step 2 when the owner's folders are absent.
+- **Declined to judge, ruled to stand:** a 1.x saved origin the Android rules reject is asked for again (rare); a
+  scheme-less local address becomes https (parity with Android); a hosting error page reads as "couldn't find" (spec
+  §9); a printer address typed as the POS gets one GET (a confusion of fields); N2's deferred #4 and #8; the ticket's
+  millisecond race; a second `update-downloaded` at the 24-hour look (still one notification); errors logged twice;
+  install on Windows shutdown (electron-updater's own); 480 × 666; `isUpdated`'s define generated at build time (its
+  scope proven by the built installers); the 6.8.9 pairing (the gate read npm's metadata); Restart to update in the
+  global menu above the address window.
+
+
+### Changes to later sessions
+
+- N4 Task 41: the packaging also reads `dist/win-unpacked/resources/app-update.yml` (`provider: generic`,
+  `url: https://files.sandbee.in/pos/windows`, `updaterCacheDirName: pos-desktop-updater`) and refuses any other url.
+- N4 Task 42 GO-LIVE: Android 7's global "Unknown sources" (m-6); never raise `minSdkVersion` while older devices are in
+  use; the Windows app: "Restart to update" in the tray and the Help menu once an update is downloaded, otherwise it
+  installs when the app is closed; the move from 1.x keeps Start with Windows (the first 2.0.0 start sets it again);
+  Cancel in Android's update dialog simply closes the card until the next open; if the address window says "Couldn't
+  reach" on the first try (a POS waking up), press Open POS once more (the N3 review's m-2).
+- N4 Task 44: on the emulator, the smoke test also runs E5's Cancel (the card closes, offered again at the next open);
+  E5 once more on an API 34/35 image if one is on the PC.
