@@ -13,12 +13,21 @@ interface UpdaterDeps {
   onStateChange(state: UpdateState): void;
 }
 
+/** electron-updater's errors carry a code (ERR_UPDATER_…): the one log line names it, the logger has the detail (the N3
+ *  review's m-6). */
+function errorCode(error: Error): string {
+  const { code } = error as Error & { code?: unknown };
+  return typeof code === "string" ? code : error.name;
+}
+
 /** Starts the checks; returns what stops them (the app's before-quit). */
 export function startUpdater(deps: UpdaterDeps): () => void {
   if (!app.isPackaged) return () => undefined;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.allowDowngrade = false;
+  // The generic provider does not read allowPrerelease (only the GitHub ones do): the release packaging refuses a
+  // version with a prerelease part instead (scripts/release-native.mjs; the N3 review's m-1).
   autoUpdater.allowPrerelease = false;
   autoUpdater.logger = {
     info: (message?: unknown) => deps.log.info(`updater: ${String(message)}`),
@@ -34,7 +43,7 @@ export function startUpdater(deps: UpdaterDeps): () => void {
     deps.log.info(`updater: ${info.version} is ready; notified`);
     new Notification({ title: notice.title, body: notice.body }).show();
   });
-  autoUpdater.on("error", (error) => deps.log.error(`updater: ${error.name}`));
+  autoUpdater.on("error", (error) => deps.log.error(`updater: ${errorCode(error)}`));
   const check = (): void => {
     autoUpdater.checkForUpdates().catch(() => undefined);
   };

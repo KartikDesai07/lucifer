@@ -27,8 +27,10 @@ export function notFoundError(host: string): string {
   return `We couldn't find a POS at ${host}. Check the name.`;
 }
 
+/** No answer: the internet, or a mistyped workspace name (no such name answers either; the N3 review gate, the owner's
+ *  ruling of 2026-10-13). */
 export function unreachableError(host: string): string {
-  return `Couldn't reach ${host}. Check the internet connection.`;
+  return `Couldn't reach ${host}. Check the name and the internet connection.`;
 }
 
 /** The host (and port) of an origin normalizePosUrl made: "scheme://host[:port]". */

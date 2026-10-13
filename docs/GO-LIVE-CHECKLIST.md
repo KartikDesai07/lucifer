@@ -363,6 +363,46 @@ and the app opened once there, then the Windows app.
       health, the service)" on the cafe's real printers, with the earlier checks and "Network printers on the
       Windows app (Phase 3)" on a counter PC with the 1.12.0 app.
 
+### Existing cafes: the native apps 2.0 release
+
+Native apps 2.0 makes the POS app (Android) and the Windows app update themselves from `files.sandbee.in`. Nothing
+ever blocks work: the POS app offers a new version on a card when it is opened, and the Windows app downloads it in
+the background and installs it when it is closed. Release 2.0.0 also signs the POS app with its own private key (every
+earlier APK carried React Native's public test key), so each printing phone or tablet moves to 2.0.0 by hand once;
+every later version arrives by itself. **No web change and no Worker change.**
+
+- [ ] **First, the owner's upload.** The release folder `D:\kd\pos-apk-release\Sandbee-POS-2.0.0\` is uploaded as its
+      `UPLOAD-STEPS.txt` says (the APKs, the installer and its blockmap first, `latest.json` and `latest.yml` last),
+      and `https://files.sandbee.in/pos/android/latest.json` opens from a phone.
+- [ ] **Each printing phone or tablet, once:** uninstall the old POS app (Android puts no app over one signed with
+      another key), install `Sandbee-POS-2.0.0-arm64-v8a.apk` (`Sandbee-POS-2.0.0-armeabi-v7a.apk` for an old 32-bit
+      phone; check its SHA-256 against the release's `SHA256SUMS.txt` before you send it), open it, type the cafe's
+      name, sign in, and set this device's printer. Then **Admin → Printer setup**: choose this device again for its
+      printers (an app installed again is a new device). A phone that only takes orders moves the same way when
+      convenient; until then its old app keeps working and never updates itself.
+- [ ] **The Windows counter PC:** `POS-Software-Setup-2.0.0.exe` installs over 1.x with no uninstall (check its
+      SHA-256 against `SHA256SUMS.txt`). It keeps the POS address, the printers and Start with Windows (the first
+      2.0.0 start sets Start with Windows again). From 2.0.0 the address window checks a typed address once: if it
+      says "Couldn't reach <name>.sandbee.in. Check the name and the internet connection.", check the spelling of the
+      workspace name first; a POS that was asleep may need **Open POS** once more.
+- [ ] **Tell the staff what they will see from now on.** Nothing ever blocks work.
+  - **The POS app:** when a new version is ready, a card "Update available" when the app is opened, with
+    **Install** and **Later** (Later hides it until the next app open). An app open is a start, or coming back to the
+    app after 30 minutes away: a device whose screen never turns off and whose app never leaves the screen updates
+    after its next restart. The first update on each phone asks once to allow installs from Sandbee POS ("Install
+    unknown apps"); on a Samsung (One UI 6 and later) Auto Blocker must be off first, and Android 7 has one "Unknown
+    sources" switch instead. Google Play Protect may say "App scan recommended" (Sandbee POS is not from the Play
+    Store): **More details → Install without scanning** installs at once (**Scan app** also works; it sends the app to
+    Google and takes a while). Cancel in Android's update dialog just closes the card until the next app open. After
+    **Update** there is no Open button: open the app from its icon, or tap "POS printing is off. Tap to start." on a
+    printing device.
+  - **The Windows app:** it downloads a new version in the background and shows one notification "POS Software
+    <version> is ready. It installs when you close the app."; it installs when the app is closed (at closing time),
+    or at once with **Restart to update** in the tray or the Help menu.
+- [ ] **Whoever builds a release:** `apps/mobile/README.md` → "Release a new version (both apps)". Never raise the POS
+      app's `minSdkVersion` while older devices are in use: the manifest names no minimum Android version, so such a
+      device would download every new version and fail to install it.
+
 ---
 
 ## §2 First run, and the admin handover (DEPLOYER → CAFE ADMIN)
@@ -767,7 +807,12 @@ prints slips silently — no dialog on every sale — and keeps printing while
 another program is in front.
 
 - [ ] Copy `POS-Software-Setup-<version>.exe` to the counter PC by hand (USB or
-      the local network). It is never downloaded from anywhere.
+      the local network), or download it from
+      `https://files.sandbee.in/pos/windows/POS-Software-Setup-<version>.exe` once
+      the owner has set that up. From then on the app updates itself: it
+      downloads a new version in the background and installs it when the app
+      is closed, or at once with **Restart to update** (the tray and the Help
+      menu, once an update is ready).
 - [ ] Run it. Windows SmartScreen says the publisher is unknown: **More info →
       Run anyway**, once. Installs for this Windows user only, no admin rights.
 - [ ] First run asks for the **POS address** — type the cafe's workspace name
@@ -1412,6 +1457,10 @@ the test fails — fix the code or this file, never just this file.
 | Printers per cafe | 12 | `PRINTERS_MAX` |
 | Kitchen stations per cafe | 20 | `STATIONS_MAX` |
 | Copies per printer (KOT, bill) | 1–3 | `PRINTER_COPIES_MIN` / `PRINTER_COPIES_MAX` |
+| Update files base (both native apps) | `https://files.sandbee.in/pos` | `posUpdateBaseDefault` (`app/build.gradle`), `build.publish.url` (`apps/desktop/package.json`) |
+| POS app update look | at an app open, at most every 12 hours; an app open is a start, or back after 30 minutes away | `posUpdateCheckMinutes` / `posUpdateReopenMinutes` (`app/build.gradle`) |
+| Windows app update look | 1 minute after the app starts, then every 24 hours | `FIRST_CHECK_MS` / `CHECK_EVERY_MS` |
+| Update card wait for idle printers | at most 2 minutes, then the next app open | `CARD_IDLE_WAIT_MS` |
 
 ---
 

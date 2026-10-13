@@ -124,7 +124,8 @@ open (6.2), never later in a session and never while the app is hidden.
 ## 7. Windows updater
 
 - `electron-updater` (the same major as `electron-builder` 26) with the generic provider at `<base>/windows/`.
-  `autoDownload: true`, `autoInstallOnAppQuit: true`, `allowDowngrade: false`, `allowPrerelease: false`.
+  `autoDownload: true`, `autoInstallOnAppQuit: true`, `allowDowngrade: false`, `allowPrerelease: false` (the generic
+  provider ignores the last one, so the release packaging refuses a version with a prerelease part: the N3 gate).
 - Checks one minute after start and every 24 hours. Errors (no network, missing file) are logged to the app's log only.
 - On `update-downloaded`: one Windows notification "POS Software <version> is ready. It installs when you close the
   app.", and a tray menu item **Restart to update** (calls `quitAndInstall` after the same quit path the tray's Quit
@@ -162,7 +163,8 @@ open (6.2), never later in a session and never while the app is hidden.
   words. A parity test runs one table of inputs through both apps' functions and requires equal results.
 - **Check before saving**: `GET <origin>/api/health` (5 s timeout). 200 with `ok: true` → save and open the POS. A 404 or
   any other answer → stay on the form: "We couldn't find a POS at <host>. Check the name." No answer → "Couldn't reach
-  <host>. Check the internet connection." One request per typed address, nothing recurring.
+  <host>. Check the name and the internet connection." (the owner's words of 2026-10-13: a mistyped workspace name has
+  no answer either). One request per typed address, nothing recurring.
 - "Change server address…" becomes **"Change POS address…"** everywhere (the menu, the shell, GO-LIVE, DEPLOY.md and the
   runbook pin).
 

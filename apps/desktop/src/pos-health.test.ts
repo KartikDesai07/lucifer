@@ -17,7 +17,9 @@ function answering(status: number, body: () => Promise<unknown>): { fetch: Healt
 
 const json = (value: unknown) => () => Promise.resolve(value);
 const NOT_FOUND = "We couldn't find a POS at mycafe.sandbee.in. Check the name.";
-const UNREACHABLE = "Couldn't reach mycafe.sandbee.in. Check the internet connection.";
+// The N3 review gate (the review's m-2, the owner's ruling of 2026-10-13): a mistyped workspace name has no answer
+// either, so the words name both causes.
+const UNREACHABLE = "Couldn't reach mycafe.sandbee.in. Check the name and the internet connection.";
 
 test("a POS whose database is up (200, its tenant named) is found, in one GET of /api/health that follows no redirect", async () => {
   const { fetch, calls } = answering(200, json({ ok: true, db: "up", tenant: "dev", ts: 1 }));
