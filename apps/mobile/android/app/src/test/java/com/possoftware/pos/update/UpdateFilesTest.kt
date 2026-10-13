@@ -82,4 +82,23 @@ class UpdateFilesTest {
     val page = "<html><body>404 Not Found</body></html>".toByteArray()
     assertFalse(UpdateFiles.copyVerified(ByteArrayInputStream(page), ByteArrayOutputStream(), apk.size, sha))
   }
+
+  // The N2 review gate (native apps 2.0, Session N3 Task 30): the review's m-2. A kept file is hashed again before it is
+  // offered as ready or handed to Android's installer, so a file damaged on disk is downloaded again, never offered.
+
+  @Test
+  fun aKeptFileHashesToTheManifestsSha256() {
+    assertEquals(sha, UpdateFiles.sha256Of(ByteArrayInputStream(apk)))
+  }
+
+  @Test
+  fun aKeptFileDamagedOnDiskHashesToSomethingElse() {
+    val changed = apk.copyOf().also { it[7] = (it[7] + 1).toByte() }
+    assertFalse("one byte changed", UpdateFiles.sha256Of(ByteArrayInputStream(changed)) == sha)
+    assertFalse("cut short", UpdateFiles.sha256Of(ByteArrayInputStream(apk.copyOf(1000))) == sha)
+    assertEquals(
+        "empty: the SHA-256 of nothing",
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        UpdateFiles.sha256Of(ByteArrayInputStream(ByteArray(0))))
+  }
 }

@@ -10,13 +10,15 @@ import android.util.Log
 /**
  * Native apps 2.0 (spec §6.2): Android's answer to the install the card started. Not exported: only the installer's
  * PendingIntent ([UpdateInstaller]) reaches it. "The user must confirm" opens Android's own install dialog; success
- * needs nothing (the update is replacing this app); a failure, or Cancel in that dialog, tells the card ([onFailed]) and
- * keeps the file, so the next app open offers the card again.
+ * needs nothing (the update is replacing this app); a failure tells the card ([onFailed]), and Cancel in that dialog
+ * closes it as Later does ([onCancelled]; the N2 review gate, the owner's ruling of 2026-10-13); either way the file is
+ * kept, so the next app open offers the card again.
  */
 class UpdateInstallReceiver : BroadcastReceiver() {
   companion object {
     /** Set by [PosUpdateModule] while React runs. */
     @Volatile var onFailed: (() -> Unit)? = null
+    @Volatile var onCancelled: (() -> Unit)? = null
   }
 
   override fun onReceive(context: Context, intent: Intent) {
@@ -34,6 +36,10 @@ class UpdateInstallReceiver : BroadcastReceiver() {
         }
       }
       PackageInstaller.STATUS_SUCCESS -> Log.i(UpdateDownloader.TAG, "install: done")
+      PackageInstaller.STATUS_FAILURE_ABORTED -> {
+        Log.i(UpdateDownloader.TAG, "install: cancelled")
+        onCancelled?.invoke()
+      }
       else -> failed("install: status $status")
     }
   }

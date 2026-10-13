@@ -3,7 +3,13 @@
  */
 
 import React from 'react';
-import { AccessibilityInfo, AppState, NativeModules, Text } from 'react-native';
+import {
+  AccessibilityInfo,
+  AppState,
+  DeviceEventEmitter,
+  NativeModules,
+  Text,
+} from 'react-native';
 import ReactTestRenderer from 'react-test-renderer';
 import { PosScreen } from '../src/screens/PosScreen';
 
@@ -62,6 +68,8 @@ function stubs() {
   };
   (NativeModules as { PosUpdate?: unknown }).PosUpdate = update;
   (AppState as { currentState: unknown }).currentState = 'active';
+  // Each test's screen registers its own listeners; an earlier test's are not this screen's.
+  (AppState.addEventListener as jest.Mock).mockClear();
   return update;
 }
 
@@ -104,14 +112,43 @@ test(
       );
     });
     expect(textOf(screen)).toContain('Update available');
+    // The N2 review gate (the review's m-7): every AppState listener of this screen hears the change, as on a phone,
+    // so the test does not depend on which listener was added last.
     const listen = AppState.addEventListener as jest.Mock;
-    const onChange = listen.mock.calls[listen.mock.calls.length - 1][1] as (
-      state: string,
-    ) => void;
+    const onChanges = listen.mock.calls
+      .filter(call => call[0] === 'change')
+      .map(call => call[1] as (state: string) => void);
+    expect(onChanges.length).toBeGreaterThan(0);
     await ReactTestRenderer.act(async () => {
-      onChange('background');
+      for (const onChange of onChanges) {
+        onChange('background');
+      }
     });
     expect(textOf(screen)).not.toContain('Update available');
+    await ReactTestRenderer.act(async () => {
+      screen.unmount();
+    });
+  },
+  COLD_START_TIMEOUT_MS,
+);
+
+test(
+  "Cancel in Android's install dialog closes the card like Later",
+  async () => {
+    // The N2 review gate (the review's m-4, the owner's ruling of 2026-10-13): the app's answer to a Cancel.
+    stubs();
+    let screen!: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      screen = ReactTestRenderer.create(
+        <PosScreen origin="https://cafe.example.com" onChangeUrl={() => undefined} />,
+      );
+    });
+    expect(textOf(screen)).toContain('Update available');
+    await ReactTestRenderer.act(async () => {
+      DeviceEventEmitter.emit('PosUpdateResult', { ok: false, cancelled: true });
+    });
+    expect(textOf(screen)).not.toContain('Update available');
+    expect(textOf(screen)).not.toContain('could not be installed');
     await ReactTestRenderer.act(async () => {
       screen.unmount();
     });

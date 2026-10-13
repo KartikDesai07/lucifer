@@ -24,6 +24,9 @@ object UpdateInstaller {
     NEEDS_PERMISSION("permission"),
     MISSING("missing"),
     FAILED("failed"),
+    /** Later (or Back) on the card while Install still waited for the printers: nothing started (the N2 review gate,
+     *  the review's m-1). */
+    CANCELLED("cancelled"),
   }
 
   private const val SESSION_FILE = "update.apk"
@@ -47,6 +50,8 @@ object UpdateInstaller {
       // Always Android's own dialog, never an install without the user's tap there (spec D3).
       params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_REQUIRED)
     }
+    // A session that cannot be written or committed is abandoned, never left open: an IOException, or a RuntimeException
+    // such as SecurityException (the N2 review gate, the review's m-5).
     val id = installer.createSession(params)
     return try {
       installer.openSession(id).use { session ->
@@ -62,7 +67,7 @@ object UpdateInstaller {
     } catch (e: IOException) {
       installer.abandonSession(id)
       InstallStart.FAILED
-    } catch (e: SecurityException) {
+    } catch (e: RuntimeException) {
       installer.abandonSession(id)
       InstallStart.FAILED
     }

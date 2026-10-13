@@ -72,7 +72,10 @@ object UpdateDownloader {
       if (status != HttpURLConnection.HTTP_OK) return failed(part, apk, "download: HTTP $status")
       val copied =
           conn.inputStream.use { input ->
-            FileOutputStream(part).use { out -> UpdateFiles.copyVerified(input, out, offer.size, offer.sha256) }
+            FileOutputStream(part).use { out ->
+              // The N2 review gate (the review's m-2): on disk before the rename, so a power cut cannot keep a short file.
+              UpdateFiles.copyVerified(input, out, offer.size, offer.sha256).also { if (it) out.fd.sync() }
+            }
           }
       if (!copied) return failed(part, apk, "download: the size or SHA-256 is not the manifest's")
       if (!part.renameTo(apk)) return failed(part, apk, "download: could not keep the file")

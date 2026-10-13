@@ -4,7 +4,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { asCardInfo, CARD_START, reduceCard, type CardState } from './update-card';
+import { asCardInfo, CARD_START, cardResultEvent, reduceCard, type CardState } from './update-card';
 
 const info = { version: '2.0.1', notes: 'Faster printing.' };
 const shown = (state: CardState = CARD_START) => reduceCard(state, { type: 'card', info });
@@ -34,15 +34,28 @@ test('Install the first time: the card stays across the "Install unknown apps" p
   assert.equal(reduceCard(back, { type: 'appState', state: 'background' }).card, null);
 });
 
-test("Install started: the card stays while Android's dialog is up; a failed or cancelled install says so", () => {
+test("Install started: the card stays while Android's dialog is up; a failed install says so", () => {
   const started = reduceCard(shown(), { type: 'install', answer: 'started' });
   const dialog = reduceCard(started, { type: 'appState', state: 'background' });
   assert.deepEqual(dialog.card, info, "Android's install dialog is not the app going away");
-  const cancelled = reduceCard(reduceCard(dialog, { type: 'appState', state: 'active' }), { type: 'installFailed' });
-  assert.deepEqual(cancelled.card, info);
-  assert.equal(cancelled.note, 'failed');
+  const failed = reduceCard(reduceCard(dialog, { type: 'appState', state: 'active' }), { type: 'installFailed' });
+  assert.deepEqual(failed.card, info);
+  assert.equal(failed.note, 'failed');
   assert.equal(reduceCard(shown(), { type: 'install', answer: 'failed' }).note, 'failed');
   assert.equal(reduceCard(CARD_START, { type: 'installFailed' }).card, null, 'no card, nothing to say');
+});
+
+test("Cancel in Android's dialog closes the card like Later; the next app open offers it again", () => {
+  // The N2 review gate (the owner, 2026-10-13): the review's m-4. A Cancel is the staff's own choice, not a failure.
+  const started = reduceCard(shown(), { type: 'install', answer: 'started' });
+  const back = reduceCard(reduceCard(started, { type: 'appState', state: 'background' }), { type: 'appState', state: 'active' });
+  const cancelled = reduceCard(back, cardResultEvent({ ok: false, cancelled: true }));
+  assert.equal(cancelled.card, null);
+  assert.equal(cancelled.note, 'none');
+  assert.equal(cardResultEvent({ ok: false }).type, 'installFailed', 'a failure keeps the card, with its line');
+  assert.equal(cardResultEvent('x').type, 'installFailed');
+  // The review's m-1: Later during Install's wait for the printers; the app answers "cancelled" and starts nothing.
+  assert.equal(reduceCard(shown(), { type: 'install', answer: 'cancelled' }).card, null);
 });
 
 test('Later, or an update whose file is gone, closes the card', () => {

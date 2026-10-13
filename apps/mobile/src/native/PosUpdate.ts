@@ -7,8 +7,14 @@ import { NativeModules } from 'react-native';
 /** What the card shows: the verified update's version and its notes ("" when none). */
 export type UpdateCardInfo = { version: string; notes: string };
 
-/** What a tap on Install started (Kotlin's UpdateInstaller.InstallStart). */
-export type InstallAnswer = 'started' | 'permission' | 'missing' | 'failed';
+/** What a tap on Install started (Kotlin's UpdateInstaller.InstallStart); "cancelled": Later came while Install still
+ *  waited for the printers, so nothing started. */
+export type InstallAnswer =
+  | 'started'
+  | 'permission'
+  | 'missing'
+  | 'failed'
+  | 'cancelled';
 
 export interface PosUpdateModule {
   takeCard(): Promise<UpdateCardInfo | null>;
@@ -18,7 +24,8 @@ export interface PosUpdateModule {
 
 /** Kotlin's PosUpdateModule.CARD_EVENT: a card that waited for a print to finish. */
 export const UPDATE_CARD_EVENT = 'PosUpdateCard';
-/** Kotlin's PosUpdateModule.RESULT_EVENT: Android's installer failed, or the user cancelled its dialog. */
+/** Kotlin's PosUpdateModule.RESULT_EVENT, `{ ok: false, cancelled }`: Android's installer failed, or the user cancelled
+ *  its dialog (`cancelled: true`). */
 export const UPDATE_RESULT_EVENT = 'PosUpdateResult';
 
 type MethodName = keyof PosUpdateModule;

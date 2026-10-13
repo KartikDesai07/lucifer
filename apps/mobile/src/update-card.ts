@@ -58,8 +58,19 @@ function installed(state: CardState, answer: InstallAnswer): CardState {
     case 'failed':
       return { ...state, note: 'failed', waiting: 'none' };
     case 'missing':
+    case 'cancelled':
       return closed(state);
   }
+}
+
+/** The app's answer after Android's installer (Kotlin's RESULT_EVENT): a Cancel in its dialog closes the card as Later
+ *  does (the N2 review gate, the owner's ruling of 2026-10-13); anything else is a failure the card says. */
+export function cardResultEvent(value: unknown): CardEvent {
+  const cancelled =
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { cancelled?: unknown }).cancelled === true;
+  return cancelled ? { type: 'later' } : { type: 'installFailed' };
 }
 
 export function reduceCard(state: CardState, event: CardEvent): CardState {

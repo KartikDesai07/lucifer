@@ -46,6 +46,19 @@ object UpdateFiles {
     return total == size.toLong() && hex(digest.digest()) == sha256
   }
 
+  /** The SHA-256 (lower-case hex) of everything [input] holds: a kept file is hashed again before it is called ready or
+   *  handed to the installer (the N2 review gate, the review's m-2), so a file damaged on disk is never offered. */
+  fun sha256Of(input: InputStream): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    val buffer = ByteArray(BUFFER_BYTES)
+    while (true) {
+      val read = input.read(buffer)
+      if (read < 0) break
+      digest.update(buffer, 0, read)
+    }
+    return hex(digest.digest())
+  }
+
   private fun hex(bytes: ByteArray): String {
     val out = StringBuilder(bytes.size * 2)
     for (b in bytes) out.append(String.format(Locale.ROOT, "%02x", b.toInt() and BYTE_MASK))

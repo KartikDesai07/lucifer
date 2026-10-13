@@ -22,6 +22,7 @@ import {
 import {
   asCardInfo,
   CARD_START,
+  cardResultEvent,
   reduceCard,
   type CardState,
 } from '../update-card';
@@ -33,7 +34,7 @@ const noop = () => undefined;
 /**
  * The POS screen's update card: asked for when the screen mounts in view and each time the app comes back into view
  * (the app hands a card out at most once per open, so asking again is harmless); a card that waited for a print
- * arrives as an event, and a failed or cancelled install as another.
+ * arrives as an event, and Android's answer to an install as another (a Cancel closes the card as Later does).
  */
 export function useUpdateCard() {
   const [state, dispatch] = useReducer(reduceCard, CARD_START, start => ({
@@ -63,8 +64,8 @@ export function useUpdateCard() {
       }
     });
     const card = DeviceEventEmitter.addListener(UPDATE_CARD_EVENT, offer);
-    const result = DeviceEventEmitter.addListener(UPDATE_RESULT_EVENT, () =>
-      dispatch({ type: 'installFailed' }),
+    const result = DeviceEventEmitter.addListener(UPDATE_RESULT_EVENT, value =>
+      dispatch(cardResultEvent(value)),
     );
     return () => {
       live = false;

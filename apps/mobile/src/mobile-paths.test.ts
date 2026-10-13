@@ -2985,6 +2985,8 @@ function downloadProblems(s: DownloadSources): string[] {
   need(d, 'private const val TIMEOUT_MS = 10_000', 'the requests do not time out after 10 s');
   need(d, 'UpdateStore.deleteFilesExcept(ctx, null)', 'a download does not start from an empty updates folder');
   need(d, 'UpdateFiles.copyVerified(input, out, offer.size, offer.sha256)', 'a download is not checked by size and SHA-256');
+  // The N2 review gate (the review's m-2): the bytes are on disk before the rename.
+  need(d, 'UpdateFiles.copyVerified(input, out, offer.size, offer.sha256).also { if (it) out.fd.sync() }', 'a download is renamed before its bytes are on disk');
   const renamed = d.indexOf('if (!part.renameTo(apk))');
   const checked = d.indexOf('if (!ApkCheck.matches(ctx, apk, offer))');
   if (renamed < 0 || checked < 0 || checked < renamed) {
@@ -3022,6 +3024,7 @@ test('pin 30 mutation: every download needle can fail', () => {
     ['TIMEOUT_MS = 10_000', 'TIMEOUT_MS = 0'],
     ['UpdateStore.deleteFilesExcept(ctx, null)', 'dir.mkdirs()'],
     ['UpdateFiles.copyVerified(input, out, offer.size, offer.sha256)', 'input.copyTo(out) > 0'],
+    ['.also { if (it) out.fd.sync() }', ''],
     ['if (!ApkCheck.matches(ctx, apk, offer))', 'if (false)'],
   ]);
   everyMutationCaught(run('check'), base.check, [
@@ -3066,7 +3069,12 @@ function installProblems(s: InstallSources): string[] {
   need(i, 'PendingIntent.FLAG_MUTABLE', 'the installer cannot add its answer on Android 12+');
   need(r, 'PackageInstaller.STATUS_PENDING_USER_ACTION ->', 'Android\'s install dialog is never shown');
   need(r, 'context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))', 'Android\'s install dialog is never shown');
-  need(r, 'onFailed?.invoke()', 'a failed or cancelled install never reaches the card');
+  need(r, 'onFailed?.invoke()', 'a failed install never reaches the card');
+  // The N2 review gate: a session that cannot be written is abandoned (the review's m-5), and a Cancel in Android's
+  // dialog is Later, not a failure (the review's m-4, the owner's ruling of 2026-10-13).
+  need(i, '} catch (e: RuntimeException) {\n      installer.abandonSession(id)', 'a session that cannot be written stays open');
+  need(r, 'PackageInstaller.STATUS_FAILURE_ABORTED -> {', 'a Cancel in Android\'s dialog reads as a failure');
+  need(r, 'onCancelled?.invoke()', 'a Cancel in Android\'s dialog never reaches the card');
   need(m, '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />', 'REQUEST_INSTALL_PACKAGES missing');
   const receiver = /<receiver\b[^>]*android:name="\.update\.UpdateInstallReceiver"[^>]*\/>/.exec(m)?.[0];
   if (receiver === undefined || !receiver.includes('android:exported="false"')) {
@@ -3093,11 +3101,14 @@ test('pin 31 mutation: every install needle can fail', () => {
     ['USER_ACTION_REQUIRED)', 'USER_ACTION_NOT_REQUIRED)'],
     ['Intent(app, UpdateInstallReceiver::class.java)', 'Intent("com.possoftware.pos.UPDATE_STATUS")'],
     ['PendingIntent.FLAG_MUTABLE', 'PendingIntent.FLAG_IMMUTABLE'],
+    ['catch (e: RuntimeException)', 'catch (e: SecurityException)'],
   ]);
   everyMutationCaught(run('receiver'), base.receiver, [
     ['PackageInstaller.STATUS_PENDING_USER_ACTION ->', 'PackageInstaller.STATUS_SUCCESS + 99 ->'],
     ['context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))', 'Unit'],
     ['onFailed?.invoke()', 'Unit'],
+    ['PackageInstaller.STATUS_FAILURE_ABORTED -> {', 'PackageInstaller.STATUS_SUCCESS + 98 -> {'],
+    ['onCancelled?.invoke()', 'Unit'],
   ]);
   everyMutationCaught(run('manifest'), base.manifest, [
     ['android.permission.REQUEST_INSTALL_PACKAGES', 'android.permission.REQUEST_DELETE_PACKAGES'],
@@ -3151,6 +3162,16 @@ function updateModuleProblems(s: UpdateModuleSources): string[] {
   need(k, 'PrinterPool.anyPrinting() -> {', 'the card does not wait for a print in flight');
   need(k, 'while (PrinterPool.anyPrinting() && waited < INSTALL_IDLE_WAIT_MS)', 'Install does not wait for a print in flight');
   need(k, '} catch (t: Throwable) {\n        Log.i(TAG, "check: "', 'a failed look can end the updater thread');
+  // The N2 review gate: the card waits at most 2 minutes for idle printers (the review's m-3, the owner's ruling of
+  // 2026-10-13); Later stops an Install still waiting for them (m-1); a kept file is hashed again before it is called
+  // ready or handed to the installer (m-2); a Cancel in Android's dialog reaches the card as Later (m-4).
+  need(k, 'private const val CARD_IDLE_WAIT_MS = 120_000L', 'the card waits for idle printers without a bound');
+  need(k, 'if (SystemClock.elapsedRealtime() - waitingSince >= CARD_IDLE_WAIT_MS) {', 'the card waits for idle printers without a bound');
+  need(k, 'fun later() {\n    installTicket.incrementAndGet()', 'Later does not stop an Install still waiting for the printers');
+  need(k, 'ticket != installTicket.get() -> UpdateInstaller.InstallStart.CANCELLED', 'Later does not stop an Install still waiting for the printers');
+  need(k, '!keptIntact(update) -> {', 'a kept file is handed to the installer without its hash checked again');
+  need(k, '&& keptIntact(kept)', 'a kept file is called ready without its hash checked again');
+  need(k, 'UpdateInstallReceiver.onCancelled = { emitResult(ok = false, cancelled = true) }', 'a Cancel in Android\'s dialog never reaches the card');
   need(strip(s.pool), 'fun anyPrinting(): Boolean = managers().any { it.isPrinting() }', 'the printers cannot say a job is in flight');
   need(strip(s.manager), 'fun isPrinting(): Boolean = printing.get()', 'a printer cannot say a job is in flight');
   const app = strip(s.app);
@@ -3187,6 +3208,13 @@ test('pin 32 mutation: every module needle can fail', () => {
     ['PrinterPool.anyPrinting() -> {', 'false -> {'],
     ['while (PrinterPool.anyPrinting() && waited', 'while (false && waited'],
     ['} catch (t: Throwable) {\n        Log.i(TAG, "check: "', '} catch (t: Exception) {\n        Log.i(TAG, "check: "'],
+    ['CARD_IDLE_WAIT_MS = 120_000L', 'CARD_IDLE_WAIT_MS = Long.MAX_VALUE'],
+    ['if (SystemClock.elapsedRealtime() - waitingSince >= CARD_IDLE_WAIT_MS) {', 'if (false) {'],
+    ['fun later() {\n    installTicket.incrementAndGet()', 'fun later() {\n    Unit'],
+    ['ticket != installTicket.get() -> ', 'false -> '],
+    ['!keptIntact(update) -> {', 'false -> {'],
+    ['&& keptIntact(kept)', ''],
+    ['emitResult(ok = false, cancelled = true) }', 'emitResult(ok = false, cancelled = false) }'],
   ]);
   everyMutationCaught(run('js'), base.js, [
     ["call('install')", "call('installNow')"],
