@@ -4,14 +4,7 @@ import { connectDB } from "@/lib/db";
 import { Order, type IOrder } from "@/models/Order";
 import { Customer } from "@/models/Customer";
 import cache from "@/lib/cache";
-import {
-  success,
-  failure,
-  notFound,
-  validateBody,
-  requireAuth,
-  serverError,
-} from "@/lib/api-helpers";
+import { success, failure, notFound, validateBody, requireAuth, serverError } from "@/lib/api-helpers";
 import { orderSummaryCacheKey } from "@/lib/utils";
 import { resolveSettleMoney, validCustomer } from "@/lib/order";
 import {
@@ -30,14 +23,12 @@ import { runSettleFollowUps } from "@/lib/settle-followups";
 import { billFirstPrintFresh, stampFirstBillPrint, withFirstBillPrint } from "@/lib/bill-first-print";
 import { settledValue } from "@/lib/settled";
 import { settleOrderSchema } from "@/schemas";
-import {
-  rewardSnapshotFields,
-  claimRewardStamps,
-  returnRewardStamps,
-} from "@/lib/reward-claim";
+import { rewardSnapshotFields, claimRewardStamps, returnRewardStamps } from "@/lib/reward-claim";
 import { resolveSettleReward } from "@/lib/settle-reward";
 import { cardSnapshotFields, claimRewardCard, releaseRewardCard } from "@/lib/reward-card-claim";
 import { rewardClaimOrderFence } from "@/lib/order-reward-fence";
+import { returnPoints, spendPoints } from "@/lib/reward-points-spend";
+import { POINTS_CHANGED } from "@pos/shared/reward-points";
 import { CARD_NOT_USABLE } from "@pos/shared/reward-card-use";
 import { shouldStoreDiscountKind, rewardFromOrderSnapshot } from "@pos/shared/reward-redemption";
 import { chargeWriteFields } from "@/lib/order-charges-write";
@@ -101,11 +92,13 @@ export async function POST(req: Request, { params }: Params) {
       settings,
       rewardAt: data.rewardAt,
       rewardCardId: data.rewardCardId,
+      rewardPoints: data.rewardPoints,
+      discountKind: data.discountKind,
       chargeAmount: data.chargeAmount,
       extraCharges: data.extraCharges,
     });
     if (!settleReward.ok) return failure(settleReward.message, settleReward.status);
-    const { claim, card, rewardAssignment } = settleReward;
+    const { claim, card, points, rewardAssignment } = settleReward;
 
     // No settle-time discount → price against the STORED total, exactly as
     // before. A supplied one recomputes from the tab's own items using the tab's
@@ -118,7 +111,7 @@ export async function POST(req: Request, { params }: Params) {
       // Only the POS settle path sends this; omitted = leave the tab's stored
       // kind untouched. A resolved reward below OVERRIDES this — a reward and
       // a gst preset can never both be the stored kind (one scalar, one kind).
-      discountKind: claim || card ? "reward" : data.discountKind,
+      discountKind: claim || card || points ? "reward" : data.discountKind,
       // Omitted = leave the tab's snapshotted table charge alone. Only the POS
       // settle path, where the operator can actually see and waive the charge,
       // ever sends this; the Orders-page settle never does, so it can never
@@ -131,11 +124,11 @@ export async function POST(req: Request, { params }: Params) {
       splitCash: data.splitCash,
       splitOnline: data.splitOnline,
       liveGst: gstConfigOf(settings),
-      // A settle-time claim (stamp or card), or the reward the tab has ALREADY been carrying. The fallback is
+      // A settle-time claim (stamp, card or points), or the reward the tab has ALREADY been carrying. The fallback is
       // load-bearing: a re-pricing settle (discount, charge waiver) of a "reward" tab would otherwise recompute
       // with NO reward, and rewardDiscountAmount fails closed at 0 — the spent reward would stop discounting.
       // Rebuilt from the order's OWN snapshot, never the live ladder.
-      reward: claim?.reward ?? card?.reward ?? rewardFromOrderSnapshot(old),
+      reward: claim?.reward ?? card?.reward ?? points?.reward ?? rewardFromOrderSnapshot(old),
     });
     if ("error" in money) return failure(money.error, 400);
 
@@ -225,6 +218,8 @@ export async function POST(req: Request, { params }: Params) {
     if (claim) Object.assign(set, rewardSnapshotFields(claim.reward, claim.cost));
     // A card order stores the card snapshot and NEVER rewardAt / rewardStamps.
     if (card) Object.assign(set, cardSnapshotFields(card.reward));
+    // Points store only their cost (the lot plan is on the Customer's spend record); never rewardAt / rewardStamps.
+    if (points) set.rewardPoints = points.n;
     const update: Record<string, unknown> = { $set: set };
     if (Object.keys(unset).length > 0) update.$unset = unset;
 
@@ -245,7 +240,7 @@ export async function POST(req: Request, { params }: Params) {
       kotRounds: old.kotRounds ?? 0,
       ...voidGuardFilter(old.voids?.length ?? 0),
       // P2 — a claiming settle also fences the bill's reward/promo state and customer (see order-reward-fence).
-      ...(claim || card ? rewardClaimOrderFence(old) : {}),
+      ...(claim || card || points ? rewardClaimOrderFence(old) : {}),
     };
 
     // CB-5B — claim the stamps BEFORE this CAS write, never after: a redeemed bill must never be marked
@@ -260,6 +255,10 @@ export async function POST(req: Request, { params }: Params) {
     if (card && !(await claimRewardCard(String(old.customerId), card.id, old.orderId, card.now))) {
       return failure(CARD_NOT_USABLE, 409);
     }
+    // Points: claimed before the CAS like the card (exactly n or a 409, never less), returned only on the miss below.
+    if (points && !(await spendPoints(String(old.customerId), old.orderId, points.n, points.now))) {
+      return failure(POINTS_CHANGED, 409);
+    }
     const updated = await Order.findOneAndUpdate(filter, update, {
       new: true,
       runValidators: true,
@@ -269,6 +268,7 @@ export async function POST(req: Request, { params }: Params) {
       // non-write may reverse a claim): the settle never landed, so the stamps / card go back before the 409.
       if (claim) await returnRewardStamps(String(old.customerId), old.orderId, claim.cost, rewardAssignment);
       if (card) await releaseRewardCard(String(old.customerId), card.id, old.orderId);
+      if (points) await returnPoints(String(old.customerId), old.orderId);
       return failure("Tab changed or already settled — reopen it and try again", 409);
     }
 

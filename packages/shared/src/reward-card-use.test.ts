@@ -235,7 +235,7 @@ test("staffCardReward: is cardRedeemedReward(card, card.scopeProductIds) for eve
 
 // ── ORDER_REWARD_SNAPSHOT_KEYS (shared/reward-redemption) ───────────────────────────────────────────────────────
 
-test("ORDER_REWARD_SNAPSHOT_KEYS: the eleven snapshot keys, no duplicates", () => {
+test("ORDER_REWARD_SNAPSHOT_KEYS: the twelve snapshot keys, no duplicates", () => {
   assert.deepEqual([...ORDER_REWARD_SNAPSHOT_KEYS].sort(), [
     "rewardAt",
     "rewardCapRupees",
@@ -243,11 +243,12 @@ test("ORDER_REWARD_SNAPSHOT_KEYS: the eleven snapshot keys, no duplicates", () =
     "rewardItem",
     "rewardItemProductId",
     "rewardKind",
+    "rewardPoints",
     "rewardQty",
     "rewardScopeLabel",
     "rewardScopeMaxUnits",
     "rewardScopeProductIds",
     "rewardValue",
   ]);
-  assert.equal(ORDER_REWARD_SNAPSHOT_KEYS.length, 11);
+  assert.equal(ORDER_REWARD_SNAPSHOT_KEYS.length, 12);
 });

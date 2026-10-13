@@ -34,6 +34,9 @@ export interface IOrderRewardFields {
   rewardScopeMaxUnits?: number;
   rewardScopeLabel?: string;
   rewardCapRupees?: number;
+  // CB-7 S6 (§2.7) — the points SPENT on this bill = its discount (1 point = ₹1), the cost stored like rewardStamps. The
+  // lot plan is NOT here: it only exists after the spend CAS, so Customer.pointsSpends is the one record a return reads.
+  rewardPoints?: number;
   // s86 P2 — the promo code the bill opened with (counter create, QR accept, QR add-round). Never $unset: its
   // presence refuses every reward claim on the bill, inside the claim's CAS.
   promoCode?: string;
@@ -65,5 +68,7 @@ export const orderRewardPaths = {
     rewardScopeMaxUnits: { type: Number },
     rewardScopeLabel: { type: String },
     rewardCapRupees: { type: Number },
+    // CB-7 S6 — no `default:` (omit-empty), like rewardStamps.
+    rewardPoints: { type: Number },
     promoCode: { type: String },
 };

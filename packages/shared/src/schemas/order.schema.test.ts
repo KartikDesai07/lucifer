@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { POINTS_SPEND_MAX } from "../reward-points";
 import { addItemsSchema, moveOrderTableSchema, createOrderSchema, settleOrderSchema, orderItemSchema } from "./order.schema";
 
 // ── Defect 2 regression (owner decision 2026-08-16) ──────────────────────────
@@ -302,4 +303,40 @@ test("PIN (SOURCE): orderItemSchema declares no 'noKot' key", () => {
   assert.ok(blockMatch, "landmark: orderItemSchema block must be found");
   assert.match(blockMatch![0], /variation:/, "positive landmark: variation is still a real key");
   assert.ok(!/noKot\s*:/.test(blockMatch![0]), "orderItemSchema must never accept a client-supplied noKot key");
+});
+
+// CB-7 S6 (§2.7) — reward POINTS intent: whole points 1..POINTS_SPEND_MAX at create and settle, never on an add-round.
+test("settleOrderSchema: rewardPoints accepts whole numbers 1..POINTS_SPEND_MAX and absent", () => {
+  for (const n of [1, 40, POINTS_SPEND_MAX]) {
+    const r = settleOrderSchema.safeParse({ payment: "Cash", rewardPoints: n });
+    assert.ok(r.success && r.data.rewardPoints === n, `rewardPoints ${n}`);
+  }
+  assert.equal(settleOrderSchema.safeParse({ payment: "Cash" }).success, true);
+});
+
+test("settleOrderSchema: rewardPoints rejects 0, a fraction, a negative, MAX+1 and a string", () => {
+  for (const n of [0, 1.5, -1, POINTS_SPEND_MAX + 1, "40"]) {
+    assert.equal(settleOrderSchema.safeParse({ payment: "Cash", rewardPoints: n }).success, false, String(n));
+  }
+});
+
+test("settleOrderSchema: the spread keeps rewardAt and rewardCardId (and .strict() still rejects unknown keys)", () => {
+  assert.equal(settleOrderSchema.safeParse({ payment: "Cash", rewardAt: 8 }).success, true);
+  assert.equal(settleOrderSchema.safeParse({ payment: "Cash", rewardCardId: "a1b2c3d4e5f6" }).success, true);
+  assert.equal(settleOrderSchema.safeParse({ payment: "Cash", rewardAt: 0 }).success, false, "rung floor still holds");
+  assert.equal(settleOrderSchema.safeParse({ payment: "Cash", rewardPoints: 5, bogus: 1 }).success, false);
+});
+
+test("createOrderSchema: rewardPoints accepts a whole 1..MAX and rejects 0, a fraction and MAX+1", () => {
+  const ok = createOrderSchema.safeParse({ ...sampleOrder, rewardPoints: 25 });
+  assert.ok(ok.success && ok.data.rewardPoints === 25);
+  assert.equal(createOrderSchema.safeParse({ ...sampleOrder, rewardPoints: POINTS_SPEND_MAX }).success, true);
+  for (const n of [0, 1.5, POINTS_SPEND_MAX + 1]) {
+    assert.equal(createOrderSchema.safeParse({ ...sampleOrder, rewardPoints: n }).success, false, String(n));
+  }
+});
+
+test("addItemsSchema: rewardPoints is refused (strict) — points never ride an add-round", () => {
+  assert.equal(addItemsSchema.safeParse({ items: sampleItems, rewardPoints: 10 }).success, false);
+  assert.equal(addItemsSchema.safeParse({ items: sampleItems }).success, true, "landmark: the round itself parses");
 });

@@ -566,12 +566,12 @@ test("PIN (S9 REGRESSION): use-pos-tab.ts prices TWICE — a PRE-reward pass tha
   // ...and the figures every surface shows must carry the reward.
   assert.match(
     src,
-    /reward:\s*reward\.selectedReward,/,
+    /reward:\s*reward\.selectedReward \?\? points\.reward,/, // CB-7 S6: the points switch is the other source of the shown reward
     "the displayed totals must be re-priced with reward.selectedReward — this is the line whose absence made the POS collect the undiscounted amount",
   );
   const plainIdx = src.indexOf("const plain = usePosTotals(");
   const selectionIdx = src.indexOf("useRewardSelection(");
-  const shownIdx = src.indexOf("reward: reward.selectedReward,");
+  const shownIdx = src.indexOf("reward: reward.selectedReward ?? points.reward,");
   assert.ok(plainIdx >= 0, "landmark: the pre-reward pricing pass must exist");
   assert.ok(
     plainIdx < selectionIdx && selectionIdx < shownIdx,

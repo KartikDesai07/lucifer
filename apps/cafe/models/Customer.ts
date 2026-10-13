@@ -1,6 +1,8 @@
 import mongoose, { Schema, type Document, type Model } from "mongoose";
 import { CUSTOMER_NOTES, type CustomerNote } from "@/lib/constants";
 import { rewardCardSchema } from "@/models/customer-reward-card";
+import { pointsSpendSchema } from "@/models/customer-points-spend";
+import type { PointsSpendRecord } from "@pos/shared/reward-points";
 import type { RewardCardSnapshot } from "@pos/shared/reward-levels";
 
 // CB-5D — one promo code ASSIGNED to this customer by a milestone claim
@@ -119,6 +121,9 @@ export interface ICustomer extends Document {
   // Issued scratch cards. `select: false`: an unscratched card's outcome must never reach a staff/diner payload
   // by accident. Read only with an explicit `+rewardCards` projection and mapped to an allowlist DTO.
   rewardCards?: RewardCardSnapshot[];
+  // CB-7 S6 (§2.7) — points spends (the lot plan per bill, so a cancel returns exactly what was taken). `select: false`:
+  // filter/return-only, read with an explicit `+pointsSpends` projection, never rendered.
+  pointsSpends?: PointsSpendRecord[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -209,6 +214,7 @@ export const customerSchema = new Schema<ICustomer>(
     // `default: undefined` = omit-empty, so an untouched customer stores no empty array. NO index on either.
     cardStepOrders: { type: [String], select: false, default: undefined },
     rewardCards: { type: [rewardCardSchema], select: false, default: undefined },
+    pointsSpends: { type: [pointsSpendSchema], select: false, default: undefined },
   },
   { timestamps: true },
 );

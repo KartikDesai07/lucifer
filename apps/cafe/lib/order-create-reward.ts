@@ -5,9 +5,11 @@ import {
 } from "@/lib/reward-claim";
 import { buildRewardAssignment } from "@/lib/reward-assignment";
 import { resolveCardClaim } from "@/lib/reward-card-claim";
+import { resolvePointsSpend } from "@/lib/reward-points-spend";
 import type { ISettings } from "@/models/Settings";
 import type { OrderItemInput } from "@/schemas";
 import { CARD_REWARD_EXCLUSIVE } from "@pos/shared/reward-card-use";
+import { POINTS_AT_PAYMENT, POINTS_REWARD_EXCLUSIVE } from "@pos/shared/reward-points";
 import type { RedeemedReward } from "@pos/shared/reward-redemption";
 
 // The counter create's reward resolution, split out of app/api/orders/route.ts
@@ -24,6 +26,14 @@ export interface CreateCardClaim {
   now: Date;
 }
 
+// CB-7 S6 — reward points resolved for this create (never spent yet). `now` is the ONE clock reading the spend, and the
+// renumber retry's re-spend, both use.
+export interface CreatePointsClaim {
+  n: number;
+  reward: RedeemedReward;
+  now: Date;
+}
+
 export interface ResolveCreateRewardArgs {
   settings: ISettings | null;
   customerId: string | undefined;
@@ -35,18 +45,28 @@ export interface ResolveCreateRewardArgs {
   rewardAt: number | undefined;
   // The revealed card to spend instead (exclusive with rewardAt), absent when none.
   rewardCardId?: string;
+  // Whole reward points to spend instead (exclusive with both), absent when none. Pay Now only, exactly N or refused.
+  rewardPoints?: number;
+  // The request's status: points are spent when the bill is PAID, so only a Completed create may carry them.
+  status?: string;
   // The plain bill (no reward yet), in RUPEES — gates the rung's own minBill.
   billTotal: number;
+  // The plain FOOD total (items only, no reward / GST / charges), in RUPEES — the most points one bill can take.
+  // Omitted = 0, so a caller that forgets it refuses points (fail closed) instead of spending against a made-up ceiling.
+  // Omitted = 0, so a caller that forgets it refuses points (fail closed) instead of spending against a made-up ceiling.
+  subtotal?: number;
 }
 
 export type CreateRewardResolution =
-  | { ok: false; message: string }
+  // `status` only when the refusal is not the route's default 400 (a short points balance is a 409: the view was stale).
+  | { ok: false; message: string; status?: 409 | 400 }
   | {
       ok: true;
       rewardItems: OrderItemInput[];
       effectiveDiscountKind: DiscountKind | undefined;
       resolvedClaim: Extract<RewardResolution, { ok: true }> | undefined;
       resolvedCard: CreateCardClaim | undefined;
+      resolvedPoints: CreatePointsClaim | undefined;
       rewardAssignment: ReturnType<typeof buildRewardAssignment> | undefined;
     };
 
@@ -57,7 +77,10 @@ export async function resolveCreateReward({
   discountKind,
   rewardAt,
   rewardCardId,
+  rewardPoints,
+  status,
   billTotal,
+  subtotal = 0,
 }: ResolveCreateRewardArgs): Promise<CreateRewardResolution> {
   let rewardItems = items;
   let effectiveDiscountKind = discountKind;
@@ -74,8 +97,16 @@ export async function resolveCreateReward({
   // prevents that duplicate.
   let rewardAssignment: ReturnType<typeof buildRewardAssignment> | undefined;
   let resolvedCard: CreateCardClaim | undefined;
+  let resolvedPoints: CreatePointsClaim | undefined;
   // One order carries ONE reward: a stamp rung and a card together is refused before anything is read or claimed.
   if (rewardAt !== undefined && rewardCardId !== undefined) return { ok: false, message: CARD_REWARD_EXCLUSIVE };
+  // Points: only on a bill paid now, alone (never beside a rung, a card or the GST preset). All before any read.
+  if (rewardPoints !== undefined) {
+    if (status !== "Completed") return { ok: false, message: POINTS_AT_PAYMENT };
+    if (rewardAt !== undefined || rewardCardId !== undefined || discountKind === "gst") {
+      return { ok: false, message: POINTS_REWARD_EXCLUSIVE };
+    }
+  }
   if (rewardCardId !== undefined) {
     const now = new Date();
     // Same plain bill (no reward yet) the stamp gate reads; the free-dish line, if any, is stamped round 1.
@@ -86,6 +117,13 @@ export async function resolveCreateReward({
     if (card.line) rewardItems = [...items, { ...card.line, productId: String(card.line.productId) }];
     effectiveDiscountKind = "reward";
     resolvedCard = { id: rewardCardId, reward: card.reward, now };
+  }
+  if (rewardPoints !== undefined) {
+    const now = new Date();
+    const points = await resolvePointsSpend({ settings, customerId, points: rewardPoints, subtotal, now });
+    if (!points.ok) return { ok: false, message: points.message, status: points.status };
+    effectiveDiscountKind = "reward";
+    resolvedPoints = { n: points.n, reward: points.reward, now: points.now };
   }
   if (rewardAt !== undefined) {
     // KOT_ROUND_OPENING (1) — the opening items are always round 1, so a
@@ -126,5 +164,5 @@ export async function resolveCreateReward({
     // mints, so the two surfaces can never disagree about a code.
     rewardAssignment = buildRewardAssignment(resolved.claim.milestone, settings?.promoCodes, new Date());
   }
-  return { ok: true, rewardItems, effectiveDiscountKind, resolvedClaim, resolvedCard, rewardAssignment };
+  return { ok: true, rewardItems, effectiveDiscountKind, resolvedClaim, resolvedCard, resolvedPoints, rewardAssignment };
 }

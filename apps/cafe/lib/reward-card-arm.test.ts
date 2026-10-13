@@ -9,6 +9,7 @@ import { resolveItemVoid } from "./order-void";
 import { stripComments } from "@/lib/source-pin-utils";
 import { orderLineKey } from "@pos/shared/utils";
 import { rewardFromOrderSnapshot, ORDER_REWARD_SNAPSHOT_KEYS } from "@pos/shared/reward-redemption";
+import { pointsRedeemedReward } from "@pos/shared/reward-points";
 
 // CB-7 S5 / s86 P3 — a scratch-card order stores rewardAt ABSENT. Every writer that RE-PRICES an open tab rebuilds the
 // reward with rewardFromOrderSnapshot(order); before the card arm existed that returned undefined for a card order and
@@ -97,6 +98,75 @@ test("P3 void: resolveItemVoid on a card order keeps the Rs 100 discount on what
   assert.equal(resolved.totals.subtotal, 200, "landmark: one unit remains");
   assert.equal(resolved.totals.discount, FLAT, "a card order must keep its Rs 100 off after a void (0 = re-billed at full price)");
   assert.equal(resolved.totals.total, 100);
+});
+
+// ── CB-7 S6: the POINTS arm - a points order stores rewardAt ABSENT too; the money is rewardPoints alone ───────────
+
+const pointsOrder = { rewardPoints: FLAT };
+
+test("S6 add-round: computeOrderTotals with a points order's rebuilt reward keeps the Rs 100 discount", () => {
+  const totals = computeOrderTotals({
+    items: [line, { ...line, kotRound: 2 }],
+    discount: FLAT,
+    discountKind: "reward",
+    charge: 0,
+    extraCharge: 0,
+    cfg: NO_GST,
+    reward: rewardFromOrderSnapshot(pointsOrder),
+  });
+  assert.equal(totals.subtotal, 800, "landmark: both rounds are on the bill");
+  assert.equal(totals.discount, FLAT, "a points order must keep its Rs 100 off on a new round (0 = re-billed at full price)");
+  assert.equal(totals.total, 700);
+});
+
+test("S6 settle: resolveSettleMoney re-pricing a points order (a charge waiver) keeps the Rs 100 discount", () => {
+  const money = resolveSettleMoney({
+    order: { items: [line], total: 300, discount: FLAT, discountKind: "reward", gstRate: 0, gstMode: "inclusive", chargeAmount: 0 },
+    payment: "Cash",
+    chargeAmount: 0,
+    liveGst: NO_GST,
+    reward: rewardFromOrderSnapshot(pointsOrder),
+  });
+  assert.ok(!("error" in money), "the settle must resolve");
+  assert.ok(money.totals, "landmark: this settle re-priced the bill (the no-recompute path would hide the bug)");
+  assert.equal(money.totals.subtotal, 400);
+  assert.equal(money.totals.discount, FLAT, "a points order must keep its Rs 100 off at settle (0 = the diner pays full price)");
+  assert.equal(money.total, 300);
+});
+
+test("S6 void: resolveItemVoid on a points order keeps the Rs 100 discount on what remains", () => {
+  const resolved = resolveItemVoid({
+    items: [line],
+    request: {
+      index: 0,
+      lineKey: orderLineKey({ ...line }),
+      qty: 1,
+      reason: "dish returned",
+      voidedBy: "Staff",
+      at: new Date("2026-10-12T10:00:00.000Z"),
+    },
+    discount: FLAT,
+    discountKind: "reward",
+    reward: rewardFromOrderSnapshot(pointsOrder),
+    charge: 0,
+    gstCfg: NO_GST,
+  });
+  assert.ok(!("error" in resolved), "the void must resolve");
+  assert.equal(resolved.totals.subtotal, 200, "landmark: one unit remains");
+  assert.equal(resolved.totals.discount, FLAT, "a points order must keep its Rs 100 off after a void (0 = re-billed at full price)");
+  assert.equal(resolved.totals.total, 100);
+});
+
+test("S6 preview == server: the shared pointsRedeemedReward prices the same as the rebuilt snapshot, GST off and on", () => {
+  const GST_EXCL: GstConfig = { gstEnabled: true, gstRate: 5, gstMode: "exclusive" };
+  const GST_INCL: GstConfig = { gstEnabled: true, gstRate: 5, gstMode: "inclusive" };
+  for (const cfg of [NO_GST, GST_EXCL, GST_INCL]) {
+    const price = (reward: ReturnType<typeof rewardFromOrderSnapshot>) =>
+      computeOrderTotals({ items: [line], discount: 0, discountKind: "reward", charge: 0, cfg, reward });
+    const preview = price(pointsRedeemedReward(FLAT));
+    assert.equal(preview.discount, FLAT, "landmark: the preview discounts the points");
+    assert.deepEqual(preview, price(rewardFromOrderSnapshot(pointsOrder)), `server rebuild prices exactly the preview (${cfg.gstMode})`);
+  }
 });
 
 // ── P3 source pin: the table-move route PROJECTS the order before re-pricing it ─────────────────────────────────────

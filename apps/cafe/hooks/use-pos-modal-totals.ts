@@ -3,6 +3,8 @@
 import { useMemo } from "react";
 import { computeOrderTotals, gstConfigFromOrder, gstConfigOfSettings } from "@/lib/receipt";
 import type { DiscountKind } from "@/lib/constants";
+import type { RedeemedReward } from "@pos/shared/reward-redemption";
+import type { SettlePointsView } from "@/hooks/use-settle-points";
 import { chargesTotal, orderTableCharge, type OrderCharge } from "@pos/shared/order-charges";
 import type { Order, Settings } from "@/types";
 
@@ -25,6 +27,9 @@ interface PosModalTotalsInput {
   extraCharges: { label: string; amount: number }[];
   settings: Settings | undefined;
   paymentIntent: "pay" | "settle";
+  // CB-7 S6 — the points the operator ticked, as the SAME reward the server prices with (pointsRedeemedReward). Present
+  // only while the switch is on; the bill then prices as discountKind "reward" and the line reads Reward (owner O1).
+  reward: RedeemedReward | undefined;
   // Live-cart totals, used verbatim on the "pay" (non-resumed) branch.
   subtotal: number;
   gstAmount: number;
@@ -47,6 +52,8 @@ export interface PosModalTotals {
   total: number;
   itemCount: number;
   confirmLabel: string;
+  // The popup's points row (hooks/use-settle-points.ts); added by usePosTab, spread on to PaymentModal with the rest.
+  points?: SettlePointsView;
 }
 
 // The settle/pay modal's totals — extracted out of usePosTab to keep that file
@@ -64,6 +71,7 @@ export function usePosModalTotals({
   extraCharges,
   settings,
   paymentIntent,
+  reward,
   subtotal,
   gstAmount,
   gstRate,
@@ -88,14 +96,15 @@ export function usePosModalTotals({
         ? computeOrderTotals({
             items: resumedOrder.items,
             discount,
-            discountKind,
+            discountKind: reward ? "reward" : discountKind,
+            reward,
             // The tab's own snapshotted charge, so the modal shows exactly the
             // figure the server will re-derive when it settles.
             charge: chargeOverride ?? resumedTable?.amount ?? 0,
             cfg: gstConfigFromOrder(resumedOrder, gstConfigOfSettings(settings)),
           })
         : null,
-    [resumedOrder, resumedTable, discount, discountKind, chargeOverride, settings],
+    [resumedOrder, resumedTable, discount, discountKind, reward, chargeOverride, settings],
   );
 
   const settling = paymentIntent === "settle" && resumedOrder && settleTotals;
@@ -110,7 +119,7 @@ export function usePosModalTotals({
     return {
       subtotal: settleTotals.subtotal,
       discount: settleTotals.discount,
-      discountKind,
+      discountKind: reward ? "reward" : discountKind,
       gstAmount: settleTotals.gstAmount,
       gstRate: resumedOrder.gstRate ?? gstRate,
       charge: settleTotals.charge + settleExtrasTotal,
@@ -133,7 +142,7 @@ export function usePosModalTotals({
   return {
     subtotal,
     discount,
-    discountKind,
+    discountKind: reward ? "reward" : discountKind,
     gstAmount,
     gstRate,
     charge,

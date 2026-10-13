@@ -6,7 +6,10 @@ import { rewardClaimRefusal } from "@/lib/order-reward-fence";
 import { gstConfigOf } from "@/lib/settings";
 import { settleCharges } from "@/lib/settle-charges";
 import { chargesFromOrder, splitChargeTotals } from "@pos/shared/order-charges";
+import { resolvePointsSpend } from "@/lib/reward-points-spend";
 import { CARD_REWARD_EXCLUSIVE } from "@pos/shared/reward-card-use";
+import { POINTS_REWARD_EXCLUSIVE } from "@pos/shared/reward-points";
+import type { DiscountKind } from "@/lib/constants";
 import type { RedeemedReward } from "@pos/shared/reward-redemption";
 import type { IOrder } from "@/models/Order";
 import type { ISettings } from "@/models/Settings";
@@ -27,11 +30,19 @@ export interface SettleCardClaim {
   now: Date;
 }
 
+// CB-7 S6 — reward points resolved for this settle: `n` is exactly what the client asked for, `now` the one clock reading
+// its spend uses. Never written yet.
+export interface SettlePointsClaim {
+  n: number;
+  reward: RedeemedReward;
+  now: Date;
+}
+
 export interface ResolveSettleRewardArgs {
   // The open tab as read: its lines, stored discount/charge, customer, any reward, the promo marker.
   old: Pick<
     IOrder,
-    "items" | "discount" | "chargeAmount" | "charges" | "chargeLabel" | "customerId" | "rewardAt" | "rewardCardId" | "promoCode" | "discountKind"
+    "items" | "discount" | "chargeAmount" | "charges" | "chargeLabel" | "customerId" | "rewardAt" | "rewardCardId" | "rewardPoints" | "promoCode" | "discountKind"
   > &
     Parameters<typeof gstConfigFromOrder>[0];
   settings: ISettings;
@@ -39,6 +50,10 @@ export interface ResolveSettleRewardArgs {
   rewardAt: number | undefined;
   // The revealed card to spend instead (exclusive with rewardAt), absent when none.
   rewardCardId?: string;
+  // Whole reward points to spend instead (exclusive with both), absent when none. Spent exactly or refused, never clamped.
+  rewardPoints?: number;
+  // What the body SENT as its discount kind: the GST preset beside points is refused (one discount per bill).
+  discountKind?: DiscountKind | null;
   // The settle body's own charge (optional: omit = unchanged).
   chargeAmount: number | undefined;
   // The settle body's extra-charge set (G2: present = replaces the stored extras, absent = unchanged).
@@ -51,6 +66,7 @@ export type SettleRewardResolution =
       ok: true;
       claim: SettleRewardClaim | undefined;
       card: SettleCardClaim | undefined;
+      points: SettlePointsClaim | undefined;
       rewardAssignment: ReturnType<typeof buildRewardAssignment> | undefined;
     };
 
@@ -59,6 +75,8 @@ export async function resolveSettleReward({
   settings,
   rewardAt,
   rewardCardId,
+  rewardPoints,
+  discountKind,
   chargeAmount,
   extraCharges,
 }: ResolveSettleRewardArgs): Promise<SettleRewardResolution> {
@@ -69,10 +87,14 @@ export async function resolveSettleReward({
   // a second one outright, same one-scalar-one-kind reasoning as add-round.
   let claim: SettleRewardClaim | undefined;
   let card: SettleCardClaim | undefined;
+  let points: SettlePointsClaim | undefined;
   if (rewardAt !== undefined && rewardCardId !== undefined) {
     return { ok: false, message: CARD_REWARD_EXCLUSIVE, status: 400 };
   }
-  if (rewardAt !== undefined || rewardCardId !== undefined) {
+  if (rewardPoints !== undefined && (rewardAt !== undefined || rewardCardId !== undefined || discountKind === "gst")) {
+    return { ok: false, message: POINTS_REWARD_EXCLUSIVE, status: 400 };
+  }
+  if (rewardAt !== undefined || rewardCardId !== undefined || rewardPoints !== undefined) {
     // One reward per bill, and never on a promo bill (P2): the same rule rides the CAS filter
     // (rewardClaimOrderFence) for a marker or reward that lands after this read.
     const refusal = rewardClaimRefusal(old);
@@ -82,7 +104,7 @@ export async function resolveSettleReward({
   // REPLACES any manual/GST discount (the POS sends the reward's own preview as `discount`), so it is priced
   // undiscounted; only a claiming request ever calls this. G2 — both charge lanes come from the SAME builder the bill
   // uses (resolveSettleMoney), so the gate reads exactly the bill the settle will charge.
-  const plainTotal = (): number => {
+  const plainTotals = () => {
     const { table, extra } = splitChargeTotals(settleCharges(chargesFromOrder(old), chargeAmount, extraCharges));
     return computeOrderTotals({
       items: old.items,
@@ -91,8 +113,9 @@ export async function resolveSettleReward({
       charge: table,
       extraCharge: extra,
       cfg: gstConfigFromOrder(old, gstConfigOf(settings)),
-    }).total;
+    });
   };
+  const plainTotal = (): number => plainTotals().total;
   if (rewardCardId !== undefined) {
     const now = new Date();
     const resolved = await resolveCardClaim({
@@ -108,6 +131,20 @@ export async function resolveSettleReward({
     });
     if (!resolved.ok) return { ok: false, message: resolved.message, status: 400 };
     card = { id: rewardCardId, reward: resolved.reward, now };
+  }
+  if (rewardPoints !== undefined) {
+    // Points come off the FOOD total (the bill before any reward, GST and charges excluded). A missing customer is
+    // refused inside the resolve (400), a short balance is a 409; nothing is read for a request refused above.
+    const now = new Date();
+    const resolved = await resolvePointsSpend({
+      settings,
+      customerId: old.customerId ? String(old.customerId) : undefined,
+      points: rewardPoints,
+      subtotal: plainTotals().subtotal,
+      now,
+    });
+    if (!resolved.ok) return { ok: false, message: resolved.message, status: resolved.status };
+    points = { n: resolved.n, reward: resolved.reward, now: resolved.now };
   }
   if (rewardAt !== undefined) {
     const billTotal = plainTotal();
@@ -132,5 +169,5 @@ export async function resolveSettleReward({
   const rewardAssignment = claim
     ? buildRewardAssignment(claim.milestone, settings?.promoCodes, new Date())
     : undefined;
-  return { ok: true, claim, card, rewardAssignment };
+  return { ok: true, claim, card, points, rewardAssignment };
 }

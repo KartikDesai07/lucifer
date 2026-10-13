@@ -74,6 +74,7 @@ export async function acceptAddRoundBranch(
     | "rewardItemProductId"
     | "rewardQty"
     | "rewardCardId"
+    | "rewardPoints"
     | "rewardScopeProductIds"
     | "rewardScopeMaxUnits"
     | "rewardScopeLabel"

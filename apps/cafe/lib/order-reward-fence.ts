@@ -15,13 +15,19 @@ export interface OrderRewardState {
   discountKind?: string;
   rewardAt?: number;
   rewardCardId?: string;
+  rewardPoints?: number;
   promoCode?: string;
 }
 
-// True when the bill already holds a reward: the kind flag, a stamp rung, OR a card id. The rewardAt / rewardCardId
-// terms also cover a pre-P4 anomaly row (a reward snapshot whose discountKind was since swapped away).
-export function hasOrderReward(o: Pick<OrderRewardState, "discountKind" | "rewardAt" | "rewardCardId">): boolean {
-  return o.discountKind === "reward" || o.rewardAt !== undefined || o.rewardCardId !== undefined;
+// True when the bill already holds a reward: the kind flag, a stamp rung, a card id, OR spent points. The rewardAt /
+// rewardCardId / rewardPoints terms also cover a pre-P4 anomaly row (a reward snapshot whose discountKind was since
+// swapped away).
+export function hasOrderReward(
+  o: Pick<OrderRewardState, "discountKind" | "rewardAt" | "rewardCardId" | "rewardPoints">,
+): boolean {
+  return (
+    o.discountKind === "reward" || o.rewardAt !== undefined || o.rewardCardId !== undefined || o.rewardPoints !== undefined
+  );
 }
 
 // G1 — can the staff POS arm a NEW reward (stamp rung or card) right now? A claim rides only an order-taking write —
@@ -52,6 +58,7 @@ export function rewardClaimOrderFence(o: { customerId?: unknown }): Record<strin
     discountKind: { $ne: "reward" },
     rewardAt: { $exists: false },
     rewardCardId: { $exists: false },
+    rewardPoints: { $exists: false },
     promoCode: { $exists: false },
     customerId: o.customerId,
   };

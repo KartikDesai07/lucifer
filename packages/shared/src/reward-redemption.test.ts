@@ -297,3 +297,29 @@ test("P3 witness: a card id with no money fields rebuilds nothing (fail closed, 
   assert.equal(rewardFromOrderSnapshot({ rewardCardId: CARD_ID }), undefined);
   assert.equal(rewardFromOrderSnapshot({ rewardCardId: CARD_ID, rewardKind: "flat" }), undefined);
 });
+
+// ── CB-7 S6 — the POINTS arm: a points order stores rewardAt ABSENT and rebuilds through rewardPoints ──────────
+
+test("S6: a points order rebuilds as n rupees off, costing n points (at = CARD_REWARD_AT, no cardId)", () => {
+  const rebuilt = rewardFromOrderSnapshot({ rewardPoints: 120, rewardKind: "flat", rewardValue: 120 });
+  assert.ok(rebuilt, "a points order must rebuild a reward (undefined = every re-pricing writer bills it at full price)");
+  assert.deepEqual(rebuilt, { at: CARD_REWARD_AT, kind: "flat", value: 120, item: "", points: 120 });
+});
+
+test("S6: the points arm keys on rewardPoints ALONE (the snapshot's money fields are not needed)", () => {
+  assert.deepEqual(rewardFromOrderSnapshot({ rewardPoints: 7 }), { at: CARD_REWARD_AT, kind: "flat", value: 7, item: "", points: 7 });
+});
+
+test("S6: the card arm still wins over a stray rewardPoints; the stamp arm is untouched without it", () => {
+  const card = rewardFromOrderSnapshot({ rewardCardId: "c1", rewardPoints: 5, rewardKind: "flat", rewardValue: 100 });
+  assert.equal(card?.cardId, "c1");
+  assert.equal(card?.points, undefined);
+  const stamp = rewardFromOrderSnapshot({ rewardAt: 8, rewardKind: "flat", rewardValue: 100 });
+  assert.equal(stamp?.points, undefined);
+  assert.equal(stamp?.at, 8);
+});
+
+test("S6: a zero or negative rewardPoints rebuilds nothing (fail closed)", () => {
+  assert.equal(rewardFromOrderSnapshot({ rewardPoints: 0 }), undefined);
+  assert.equal(rewardFromOrderSnapshot({ rewardPoints: -3 }), undefined);
+});

@@ -86,6 +86,26 @@ test("intentOf reads exactly the four money fields off the payload that was sent
   assert.deepEqual(intentOf({ payment: "Cash", paidAmount: 300 }), { payment: "Cash", paidAmount: 300, splitCash: undefined, splitOnline: undefined });
 });
 
+// CB-7 S6 — points ride the settle: our settle is recognised only on an order that spent exactly those points.
+test("intentOf carries rewardPoints only when the payload sent some", () => {
+  assert.deepEqual(intentOf({ payment: "Cash", rewardPoints: 80 }), { payment: "Cash", paidAmount: undefined, splitCash: undefined, splitOnline: undefined, rewardPoints: 80 });
+  assert.ok(!("rewardPoints" in intentOf({ payment: "Cash" })), "no points sent, no key");
+});
+
+test("reconcileSettle: a points settle is adopted only when the order spent those same points", () => {
+  const withPoints: SettleIntent = { payment: "Cash", rewardPoints: 80 };
+  const done = (over: Partial<Order>) => order({ status: "Completed", payment: "Cash", paidAmount: 460, total: 460, ...over });
+  assert.equal(reconcileSettle(withPoints, done({ rewardPoints: 80 })), "adopt");
+  assert.equal(reconcileSettle(withPoints, done({})), "elsewhere", "another device's settle that used no points is never ours");
+  assert.equal(reconcileSettle(withPoints, done({ rewardPoints: 40 })), "elsewhere", "other points, other settle");
+  assert.equal(reconcileSettle({ payment: "Cash" }, done({ rewardPoints: 80 })), "elsewhere", "we sent none, so a points settle is someone else's");
+  assert.equal(reconcileSettle({ payment: "Cash" }, done({})), "adopt", "no points either side: as before");
+  const split: SettleIntent = { payment: "Split", splitCash: 160, splitOnline: 300, rewardPoints: 80 };
+  assert.equal(reconcileSettle(split, done({ payment: "Split", splitCash: 160, splitOnline: 300, rewardPoints: 80 })), "adopt");
+  assert.equal(reconcileSettle(split, done({ payment: "Split", splitCash: 160, splitOnline: 300 })), "elsewhere");
+  assert.equal(reconcileSettle({ payment: "Due", rewardPoints: 80 }, done({ payment: "Due", paidAmount: 0 })), "elsewhere", "Due too");
+});
+
 test("stepFromOrder: a Completed order is ours ONLY when an unanswered attempt of ours matches it", () => {
   assert.deepEqual(stepFromOrder(DONE, [CASH], SEEN), { kind: "settled", order: DONE });
   // Ported from the lane's first-attempt 409 case: with nothing unanswered,

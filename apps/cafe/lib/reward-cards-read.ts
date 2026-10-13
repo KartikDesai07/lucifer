@@ -1,5 +1,6 @@
 import type { DinerCardsData } from "@pos/shared/public-diner-cards";
 import type { RewardCardSnapshot } from "@pos/shared/reward-levels";
+import type { PointsSpendRecord } from "@pos/shared/reward-points";
 import { Customer } from "@/models/Customer";
 import type { ISettings } from "@/models/Settings";
 import { buildDinerCardsData } from "@/lib/reward-cards-view";
@@ -60,4 +61,17 @@ export async function readCardOf(customerId: string, cardId: string): Promise<Re
 export async function readWalletCardsOf(customerId: string): Promise<RewardCardSnapshot[]> {
   const row = await Customer.findById(customerId).select("_id +rewardCards").lean();
   return row?.rewardCards ?? [];
+}
+
+// CB-7 S6 (§2.7) — what a points spend / return reads: THIS diner's wallet plus the spend records (the lot plans a return
+// undoes). `pointsSpends` is select:false and filter/return-only, so it is asked for by name here and nowhere else. An
+// unknown customer reads as null.
+export interface PointsState {
+  rewardCards: RewardCardSnapshot[];
+  pointsSpends: PointsSpendRecord[];
+}
+
+export async function readPointsStateOf(customerId: string): Promise<PointsState | null> {
+  const row = await Customer.findById(customerId).select("_id +rewardCards +pointsSpends").lean();
+  return row ? { rewardCards: row.rewardCards ?? [], pointsSpends: row.pointsSpends ?? [] } : null;
 }

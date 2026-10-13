@@ -22,6 +22,7 @@ test("hasOrderReward: true for each of the three markers alone, false for a clea
   assert.equal(hasOrderReward({ discountKind: "reward" }), true);
   assert.equal(hasOrderReward({ rewardAt: 8 }), true, "an anomaly row: a stamp rung with the kind swapped away");
   assert.equal(hasOrderReward({ rewardCardId: CARD_ID }), true, "an anomaly row: a card id with the kind swapped away");
+  assert.equal(hasOrderReward({ rewardPoints: 40 }), true, "an anomaly row: spent points with the kind swapped away");
   assert.equal(hasOrderReward({ discountKind: "gst", rewardAt: 8, rewardCardId: CARD_ID }), true);
 });
 
@@ -36,6 +37,7 @@ test("rewardClaimRefusal: promo first, then an existing reward, else null", () =
   assert.equal(rewardClaimRefusal({ discountKind: "reward" }), ONE_REWARD_PER_BILL);
   assert.equal(rewardClaimRefusal({ rewardAt: 4 }), ONE_REWARD_PER_BILL);
   assert.equal(rewardClaimRefusal({ rewardCardId: CARD_ID }), ONE_REWARD_PER_BILL);
+  assert.equal(rewardClaimRefusal({ rewardPoints: 40 }), ONE_REWARD_PER_BILL);
   assert.equal(
     rewardClaimRefusal({ promoCode: CODE, discountKind: "reward", rewardAt: 4, rewardCardId: CARD_ID }),
     PROMO_BLOCKS_REWARD,
@@ -50,6 +52,7 @@ test("rewardClaimOrderFence: the exact CAS terms, customerId carried through by 
     discountKind: { $ne: "reward" },
     rewardAt: { $exists: false },
     rewardCardId: { $exists: false },
+    rewardPoints: { $exists: false },
     promoCode: { $exists: false },
     customerId,
   });
@@ -64,7 +67,7 @@ test("rewardClaimOrderFence: an anonymous bill keeps the customerId term (it mus
 
 test("rewardClaimOrderFence: every refusal marker has a matching CAS term (read and write guards cannot drift)", () => {
   const fence = rewardClaimOrderFence({ customerId: "x" });
-  for (const key of ["discountKind", "rewardAt", "rewardCardId", "promoCode"]) {
+  for (const key of ["discountKind", "rewardAt", "rewardCardId", "rewardPoints", "promoCode"]) {
     assert.ok(key in fence, `the fence must guard ${key}`);
   }
 });
@@ -188,5 +191,28 @@ test("PIN (G1): use-pos-tab hands the cart itself (kotRound per line) to the sel
   assert.match(tab, /customer, plain\.total, resumedOrder, rewardAt, setRewardAt,\s*discountRaw, discountUnit, setDiscountRaw, setDiscountUnit, cart, promoCode,/, "resumedOrder and cart reach the predicate");
   const settle = between(tab, "const settlePayload = (", "\n  });");
   assert.ok(settle.includes("discount,"), "landmark: the settle sends the shown discount");
-  assert.ok(!/reward/i.test(settle), "the settle payload never names a reward — a pick only travels with a round");
+  // CB-7 S6 (§2.7, plan FLAG 4) — re-specced, not weakened: points are the ONE reward that rides the settle (A4). The
+  // payload may carry `rewardPoints` and nothing else reward-shaped: never a stamp rung or a card id.
+  assert.ok(!/rewardAt|rewardCardId/.test(settle), "the settle payload never names a stamp rung or a card — those only travel with a round");
+  const withoutPoints = settle.replace(/\brewardPoints\b/g, "");
+  assert.ok(!/reward/i.test(withoutPoints), "apart from rewardPoints the settle payload names no reward");
+  for (const m of settle.matchAll(/\brewardPoints\b(?!:|,)/g)) {
+    assert.fail(`rewardPoints must be a plain property of the payload (found "${settle.slice(m.index, m.index + 20)}")`);
+  }
+  // Tightened now the hook exists (hooks/use-settle-points.ts): the ONLY source is the points hook's own amount, sent as
+  // a whole number or omitted — never a number computed here, never `reward.*`.
+  assert.equal(settle.split("rewardPoints").length - 1, 1, "the settle payload names rewardPoints exactly once");
+  assert.ok(settle.includes("rewardPoints: points.amount || undefined,"), "rewardPoints comes from the points hook alone, omitted when 0");
+  assert.match(tab, /const points = useSettlePoints\(\{/, "landmark: the hook is called in use-pos-tab");
+});
+
+test("PIN (S6 slice C): Pay Now's create carries the points; Send to Kitchen, the add-round and the plain create payload never do", () => {
+  const tab = readCafe("hooks/use-pos-tab.ts");
+  const build = between(tab, "const buildCreatePayload = (", "...overrides,");
+  const round = between(tab, "const round = resumedOrder", "const create = buildCreatePayload");
+  const sale = between(tab, "const sale = buildCreatePayload({", "});");
+  assert.ok(build.includes("rewardAt: reward.pendingRewardAt") && round.includes("rewardAt: reward.pendingRewardAt"), "landmarks: both order-taking payloads");
+  assert.ok(!/rewardPoints/.test(build), "the create payload sent by Send to Kitchen (status Pending) carries no points: they are spent at payment only");
+  assert.ok(!/rewardPoints/.test(round), "the add-round payload carries no points");
+  assert.ok(sale.includes('status: "Completed"') && sale.includes("rewardPoints: points.amount || undefined,"), "Pay Now's create (Completed) carries the points");
 });

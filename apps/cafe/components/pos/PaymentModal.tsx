@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, AlertCircle } from "lucide-react";
 
-import { SETTLEMENT_PAY_MODES, PAY_STYLES, type PaymentMode, type DiscountKind } from "@/lib/constants";
-import { inr, cn } from "@/lib/utils";
+import { SETTLEMENT_PAY_MODES, type PaymentMode, type DiscountKind } from "@/lib/constants";
+import { inr } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,12 +18,16 @@ import {
 } from "@/components/ui/dialog";
 import { CustomerSearch } from "@/components/pos/CustomerSearch";
 import { PaymentSummary } from "@/components/pos/PaymentSummary";
+import { PaymentModeGrid } from "@/components/pos/PaymentModeGrid";
+import { PaymentPoints } from "@/components/pos/PaymentPoints";
 import { PaymentSplitFields } from "@/components/pos/PaymentSplitFields";
 import { WriteNoticePanel } from "@/components/pos/WriteNotice";
 import { SendDiscard } from "@/components/pos/SendDiscard";
 import type { OrderCharge } from "@pos/shared/order-charges";
+import type { SettlePointsView } from "@/hooks/use-settle-points";
 import type { Customer } from "@/types";
 import {
+  openedTotalAfterToggle,
   paymentPopupChange,
   splitAfterBillChange,
   type PaymentResult,
@@ -73,6 +77,8 @@ interface PaymentModalProps {
   // The last write's outcome for this bill (lib/pending-writes.ts). Its action
   // decides the main button: confirm, Check, Send again or Close.
   notice?: WriteNotice | null;
+  // CB-7 S6 — the "Use points" row (hooks/use-settle-points.ts); omit for a surface that cannot spend points.
+  points?: SettlePointsView;
 }
 
 // Due/Credit are unpaid-at-counter sales — they require a customer so the
@@ -104,6 +110,7 @@ export function PaymentModal({
   confirmLabel = "Place Order",
   onSelectCustomer,
   notice = null,
+  points,
 }: PaymentModalProps) {
   const [mode, setMode] = useState<PaymentMode>("Cash");
   const [collected, setCollected] = useState(total);
@@ -112,19 +119,26 @@ export function PaymentModal({
   // open:false first, so a popup that mounts already open still resets.
   const seenRef = useRef<PopupSnapshot>({ open: false, total });
 
+  // The points the operator has ticked (0 = off): their own toggle moves the total, which is not "the bill changed".
+  const pointsNow = points?.on ? points.row.amount : 0;
+  const pointsOn = pointsNow > 0;
   // Reset the mode + split only as the popup OPENS. A bill that changes while
   // it is open keeps the operator's mode and re-derives the split (F8).
   useEffect(() => {
-    const change = paymentPopupChange(seenRef.current, { open, total });
-    seenRef.current = { open, total };
+    const prevTotal = seenRef.current.total;
+    const change = paymentPopupChange(seenRef.current, { open, total, pointsOn });
+    seenRef.current = { open, total, pointsOn };
     if (change === "opened") {
       setMode("Cash");
       setSplit({ cash: total, online: 0 });
       setOpenedTotal(total);
     } else if (change === "bill-changed") {
       setSplit((s) => splitAfterBillChange(s, total));
+    } else if (change === "rebaselined") {
+      setOpenedTotal((opened) => openedTotalAfterToggle(opened, prevTotal, total));
+      setSplit((s) => splitAfterBillChange(s, total));
     }
-  }, [open, total]);
+  }, [open, total, pointsOn]);
   // Collected also resets on a mode switch, so a stale partial never carries over.
   useEffect(() => {
     if (open) setCollected(total);
@@ -155,6 +169,7 @@ export function PaymentModal({
       paidAmount: paid,
       partial,
       ...(mode === "Split" ? { splitCash: split.cash, splitOnline: split.online } : {}),
+      ...(pointsNow > 0 ? { rewardPoints: pointsNow } : {}),
     });
   };
 
@@ -202,30 +217,9 @@ export function PaymentModal({
           </div>
         )}
 
-        {/* Payment mode buttons */}
-        <div className="grid grid-cols-3 gap-2">
-          {modes.map((m) => {
-            const style = PAY_STYLES[m];
-            const active = mode === m;
-            return (
-              <button
-                key={m}
-                type="button"
-                disabled={locked}
-                onClick={() => setMode(m)}
-                className={cn(
-                  "rounded-md border py-2 text-sm font-semibold transition disabled:cursor-not-allowed",
-                  // Locked (in flight / unconfirmed): the other modes dim, the chosen one stays clear.
-                  active
-                    ? `${style.bg} ${style.color} border-current ring-2 ring-current`
-                    : "enabled:hover:bg-muted disabled:opacity-50",
-                )}
-              >
-                {style.label}
-              </button>
-            );
-          })}
-        </div>
+        {points?.show && <PaymentPoints points={points} disabled={locked} />}
+
+        <PaymentModeGrid modes={modes} mode={mode} onSelect={setMode} locked={locked} />
 
         {/* Cash and Online both accept a partial collection here. */}
         {collectable && (

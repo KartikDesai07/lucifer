@@ -30,6 +30,8 @@ import { MONEY_FIXTURE_ORDERS, type MoneyFixtureOrder } from "@/lib/money-breakd
 import {
   MONEY_CARD_DISCOUNT, MONEY_CARD_FIXTURE_ORDER, MONEY_CARD_GST, MONEY_CARD_MANUAL_TWIN, MONEY_CARD_TOTAL,
 } from "@/lib/money-breakdown-card-fixtures";
+import { MONEY_POINTS_FIXTURE_ORDER } from "@/lib/money-breakdown-points-fixtures";
+import { checkPointsOrder } from "./money-points-live-leg";
 import type { MoneyBreakdown } from "@/types";
 
 const SCRATCH_PREFIX = "pos_scratch_";
@@ -274,6 +276,11 @@ async function main(): Promise<void> {
         !("rewardAt" in storedCard) &&
         !("rewardStamps" in storedCard),
     );
+
+    // (e) CB-7 S6 - ONE points order (lib/money-breakdown-points-fixtures.ts), the same checks as (d): scripts/money-points-live-leg.ts.
+    const pointsOrderId = `SCRATCH-MONEY-${runSuffix}-points`;
+    insertedIds.push(pointsOrderId);
+    await checkPointsOrder(check, pointsOrderId, toInsertDoc(MONEY_POINTS_FIXTURE_ORDER, pointsOrderId), toOrderView(MONEY_POINTS_FIXTURE_ORDER));
   } finally {
     await Order.deleteMany({ orderId: { $in: insertedIds } });
     await mongoose.disconnect();

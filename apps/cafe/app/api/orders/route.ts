@@ -14,19 +14,8 @@ import { createReplayResponse, createReplayVerdict, findCreateReplay, isIdemKeyD
 import { withKitchenFlags } from "@/lib/kitchen-lines-server";
 import { createOrderPrintJobs, openingSlipsOf, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
 import cache from "@/lib/cache";
-import {
-  created,
-  failure,
-  validateBody,
-  requireAuth,
-  isDuplicateKeyError,
-  serverError,
-} from "@/lib/api-helpers";
-import {
-  generateOrderId,
-  dayRange,
-  orderSummaryCacheKey,
-} from "@/lib/utils";
+import { created, failure, validateBody, requireAuth, isDuplicateKeyError, serverError } from "@/lib/api-helpers";
+import { generateOrderId, dayRange, orderSummaryCacheKey } from "@/lib/utils";
 import { getSettings, gstConfigOf } from "@/lib/settings";
 import { computeOrderTotals, PROMO_BLOCKS_GST_DISCOUNT_MESSAGE } from "@/lib/receipt";
 import { derivePayment } from "@/lib/order";
@@ -38,11 +27,7 @@ import { withTableCharge, applyExtraCharges, splitChargeTotals } from "@pos/shar
 import { chargeWriteFields } from "@/lib/order-charges-write";
 import { checkItemVariations, checkItemRemovedModifiers } from "@/lib/variations";
 import { orderLinesRefusal, MENU_REFUSAL_STATUS } from "@/lib/order-availability";
-import {
-  rewardSnapshotFields,
-  claimRewardStamps,
-  returnRewardStamps,
-} from "@/lib/reward-claim";
+import { rewardSnapshotFields, claimRewardStamps, returnRewardStamps } from "@/lib/reward-claim";
 import { firstBillPrintInsertFields } from "@/lib/bill-first-print";
 import { shouldStoreDiscountKind } from "@pos/shared/reward-redemption";
 import {
@@ -57,6 +42,8 @@ import { REWARD_PROMO_EXCLUSIVE, type PromoKind } from "@pos/shared/public";
 import { PROMO_BLOCKS_REWARD } from "@pos/shared/public-promo";
 import { CARD_NOT_USABLE } from "@pos/shared/reward-card-use";
 import { cardSnapshotFields, claimRewardCard, releaseRewardCard } from "@/lib/reward-card-claim";
+import { returnPoints, spendPoints } from "@/lib/reward-points-spend";
+import { POINTS_CHANGED } from "@pos/shared/reward-points";
 import { promoMarkerFields } from "@/lib/order-reward-fence";
 import { mintedPromoCodes } from "@pos/shared/loyalty-rules";
 import { mergedNote } from "@/lib/order-request-accept-core";
@@ -194,7 +181,7 @@ export async function POST(req: Request) {
     // Plain totals — no reward — priced ONLY to give resolveRewardClaim a billTotal to gate a milestone's own
     // minBill against; never written or returned (a resolved reward replaces it). A claim REPLACES any manual/GST
     // discount (the POS sends the reward's own preview as `discount`), so a claiming request gates on the undiscounted bill.
-    const claims = data.rewardAt !== undefined || data.rewardCardId !== undefined;
+    const claims = data.rewardAt !== undefined || data.rewardCardId !== undefined || data.rewardPoints !== undefined;
     const plainTotals = computeOrderTotals({
       items: data.items,
       discount: claims ? 0 : data.discount,
@@ -212,12 +199,15 @@ export async function POST(req: Request) {
       discountKind: data.discountKind ?? undefined,
       rewardAt: data.rewardAt,
       rewardCardId: data.rewardCardId,
+      rewardPoints: data.rewardPoints,
+      status: data.status,
       billTotal: plainTotals.total,
+      subtotal: plainTotals.subtotal,
     });
-    if (!rewardR.ok) return (await lateReplay()) ?? failure(rewardR.message, 400);
+    if (!rewardR.ok) return (await lateReplay()) ?? failure(rewardR.message, rewardR.status ?? 400);
     let { rewardItems } = rewardR;
     const { effectiveDiscountKind, resolvedClaim, rewardAssignment } = rewardR;
-    const { resolvedCard } = rewardR;
+    const { resolvedCard, resolvedPoints } = rewardR;
 
     // ── CB-5D part 2 — COUNTER-SIDE PROMO CODES ──────────────────────────
     // The same code a diner can type on the QR surface must work at the till.
@@ -240,6 +230,7 @@ export async function POST(req: Request) {
       // GST preset (it would replace the code's rupees while the fence burned). All BEFORE anything is claimed or written.
       if (resolvedClaim) return failure(REWARD_PROMO_EXCLUSIVE, 400);
       if (resolvedCard) return failure(PROMO_BLOCKS_REWARD, 400);
+      if (resolvedPoints) return failure(PROMO_BLOCKS_REWARD, 400);
       if (data.discountKind === "gst") return failure(PROMO_BLOCKS_GST_DISCOUNT_MESSAGE, 400);
 
       const promo = resolveAcceptPromo(
@@ -296,7 +287,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const rewardForTotals = resolvedClaim?.reward ?? resolvedCard?.reward;
+    const rewardForTotals = resolvedClaim?.reward ?? resolvedCard?.reward ?? resolvedPoints?.reward;
     const totals = rewardForTotals
       ? computeOrderTotals({
           items: rewardItems,
@@ -407,6 +398,8 @@ export async function POST(req: Request) {
       // A card order stores the card snapshot and NEVER rewardAt / rewardStamps; the promo marker (P2) refuses
       // every later reward claim on this bill (promoIsClaimable: the same predicate that burns the fence row).
       ...(resolvedCard ? cardSnapshotFields(resolvedCard.reward) : {}),
+      // Points store only their cost (never rewardAt / rewardStamps); the lot plan is on the Customer's spend record.
+      ...(resolvedPoints ? { rewardPoints: resolvedPoints.n } : {}),
       ...promoMarkerFields(promoIsClaimable(promoDiscount, data.promoCode, promoKind) ? data.promoCode : undefined),
       // F5 — the send key, omit-empty (never null: the partial unique index
       // counts null). A second insert with the same key is refused by the index.
@@ -438,15 +431,18 @@ export async function POST(req: Request) {
         ? claimRewardCard(customerId!, resolvedCard.id, oid, resolvedCard.now)
         : resolvedClaim
           ? claimRewardStamps(customerId!, oid, resolvedClaim.cost, rewardAssignment)
-          : true;
+          : resolvedPoints
+            ? spendPoints(customerId!, oid, resolvedPoints.n, resolvedPoints.now)
+            : true;
     // The undo passes the SAME assignment the claim minted (O10): whatever a
     // claim writes, its compensation must unwrite — without it the stamps came
     // back and the rung's promo code stayed live with the diner.
     const unclaimFor = async (oid: string): Promise<void> => {
       if (resolvedCard) await releaseRewardCard(customerId!, resolvedCard.id, oid);
       if (resolvedClaim) await returnRewardStamps(customerId!, oid, resolvedClaim.cost, rewardAssignment);
+      if (resolvedPoints) await returnPoints(customerId!, oid);
     };
-    const claimMiss = resolvedCard ? CARD_NOT_USABLE : "Not enough stamps for that reward";
+    const claimMiss = resolvedCard ? CARD_NOT_USABLE : resolvedPoints ? POINTS_CHANGED : "Not enough stamps for that reward";
 
     // CB-5D part 2 — the promo fence, claimed per ORDER ID for exactly the
     // reason the stamp claim above is: the duplicate-key retry re-numbers the

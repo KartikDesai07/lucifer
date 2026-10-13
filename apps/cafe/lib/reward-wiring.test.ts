@@ -512,13 +512,13 @@ test("PIN (CB-5B fix): app/api/orders/[id]/settle/route.ts imports rewardFromOrd
   const claimCallIdx = mustIndexOf(src, "const money = resolveSettleMoney({", "the resolveSettleMoney call site");
   const fallbackIdx = mustIndexOf(
     src,
-    // CB-7 S5 slice C: a card claimed at this settle prices ahead of the stored-snapshot fallback.
-    "reward: claim?.reward ?? card?.reward ?? rewardFromOrderSnapshot(old),",
+    // CB-7 S5 slice C: a card claimed at this settle prices ahead of the stored-snapshot fallback; CB-7 S6: so do points.
+    "reward: claim?.reward ?? card?.reward ?? points?.reward ?? rewardFromOrderSnapshot(old),",
     "the fallback passed as resolveSettleMoney's reward argument",
   );
   assert.ok(
     claimCallIdx < fallbackIdx,
-    "the reward: claim?.reward ?? card?.reward ?? rewardFromOrderSnapshot(old) argument must sit INSIDE the resolveSettleMoney({ ... }) call",
+    "the reward: claim?.reward ?? card?.reward ?? points?.reward ?? rewardFromOrderSnapshot(old) argument must sit INSIDE the resolveSettleMoney({ ... }) call",
   );
 });
 

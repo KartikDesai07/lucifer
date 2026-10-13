@@ -16,6 +16,7 @@ import { useSettings } from "@/hooks/use-settings";
 import { useCreateOrder, useAddOrderItems } from "@/hooks/use-orders";
 import { useRewardSelection } from "@/hooks/use-customer-rewards";
 import { useSettleFlow } from "@/hooks/use-settle-flow";
+import { useSettlePoints } from "@/hooks/use-settle-points";
 import { usePosSend } from "@/hooks/use-pos-send";
 import { moneyEditedSince } from "@/lib/pending-writes";
 import { kitchenSentMessage, kotRoundOfSend } from "@/lib/pos-send";
@@ -136,6 +137,11 @@ export function usePosTab(receiver: string) {
     customer, plain.total, resumedOrder, rewardAt, setRewardAt,
     discountRaw, discountUnit, setDiscountRaw, setDiscountUnit, cart, promoCode,
   );
+  // CB-7 S6 — the payment popup's "Use points" switch (hooks/use-settle-points.ts); its reward prices the previews below.
+  const points = useSettlePoints({
+    customer, resumedOrder, subtotal, open: paymentOpen, promo: reward.promoLocked, manualDiscount: reward.manualDiscountActive,
+    rewardPending: reward.pendingRewardAt !== undefined || reward.pendingCardId !== undefined, frozen: send.frozen !== null,
+  });
 
   // The figures every surface shows, re-priced with the SELECTED rung so cart,
   // mobile bar and payment modal preview the bill the server will store (a
@@ -147,7 +153,7 @@ export function usePosTab(receiver: string) {
     charge,
     extraCharges: extraChargesForTotals,
     settings: settings.data,
-    reward: reward.selectedReward,
+    reward: reward.selectedReward ?? points.reward,
     lines: cart,
   });
 
@@ -337,6 +343,8 @@ export function usePosTab(receiver: string) {
     chargeAmount: chargeOverride,
     // CB-CHG — the complete new extra set (replace, decision 6).
     extraCharges,
+    // Points ticked on the payment popup (1 point = ₹1): spent exactly, or the server refuses (409).
+    rewardPoints: points.amount || undefined,
     paidAmount: collectedAmount(result),
     // Only meaningful alongside a defined paidAmount above — lets the
     // route detect a stale modalTotals snapshot (CR1.2 regression).
@@ -362,6 +370,7 @@ export function usePosTab(receiver: string) {
         paidAmount: collectedAmount(result),
         splitCash: result.splitCash,
         splitOnline: result.splitOnline,
+        rewardPoints: points.amount || undefined,
       });
       // One confirmed request (lib/pos-send.ts); "Couldn't confirm" keeps the
       // popup open on Send again — the same sale with the same key (R13).
@@ -453,23 +462,14 @@ export function usePosTab(receiver: string) {
     resetOrder();
   };
 
-  // The settle/pay modal's totals — extracted to keep this file under budget.
-  const modalTotals = usePosModalTotals({
-    resumedOrder,
-    discount,
-    discountKind,
-    chargeOverride,
-    charge,
-    chargeLabel,
-    extraCharges,
-    settings: settings.data,
-    paymentIntent,
-    subtotal,
-    gstAmount,
-    gstRate,
-    total,
-    count,
-  });
+  // The settle/pay modal's totals — extracted to keep this file under budget; the points row rides with them.
+  const modalTotals = {
+    ...usePosModalTotals({
+      resumedOrder, discount, discountKind, chargeOverride, charge, chargeLabel, extraCharges, settings: settings.data,
+      paymentIntent, reward: points.reward, subtotal, gstAmount, gstRate, total, count,
+    }),
+    points: points.view,
+  };
 
   return {
     settings,

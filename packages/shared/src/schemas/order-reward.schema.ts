@@ -2,6 +2,7 @@ import { z } from "zod";
 import { LOYALTY_MILESTONE_AT_MIN, LOYALTY_MILESTONE_AT_MAX } from "../loyalty-rules";
 import { PROMO_CODE_PATTERN } from "../public-promo";
 import { REWARD_CARD_ID_RE } from "../reward-levels";
+import { POINTS_SPEND_MAX } from "../reward-points";
 
 // The reward/promo INTENT fields of the order request schemas, split out of
 // order.schema.ts (S5a, behaviour-preserving move). Same chains, same fences.
@@ -42,10 +43,22 @@ export const counterPromoCodeSchema = z
 // reward per bill), not here — the create schema is a superRefine'd object.
 export const rewardCardIdSchema = z.string().regex(REWARD_CARD_ID_RE).optional();
 
-// Spread into createOrderSchema; the add-round and settle schemas take
-// rewardAtSchema + rewardCardIdSchema (a promo code only exists at create).
+// CB-7 S6 (§2.7) — reward points to spend, as INTENT ONLY: a whole number of points (1 point = ₹1). The server spends
+// EXACTLY this many off the customer's lots or refuses (409) — it never clamps; a client can never send a rupee amount.
+export const rewardPointsSchema = z.number().int().min(1).max(POINTS_SPEND_MAX).optional();
+
+// Spread into createOrderSchema; the add-round schema takes rewardAtSchema + rewardCardIdSchema, the settle schema
+// takes settleRewardIntentShape (a promo code only exists at create; points only at create and settle).
 export const orderRewardIntentShape = {
   rewardAt: rewardAtSchema,
   rewardCardId: rewardCardIdSchema,
+  rewardPoints: rewardPointsSchema,
   promoCode: counterPromoCodeSchema,
+};
+
+// The settle's reward INTENT: a stamp rung, a scratch card, or points — the writer refuses more than one.
+export const settleRewardIntentShape = {
+  rewardAt: rewardAtSchema,
+  rewardCardId: rewardCardIdSchema,
+  rewardPoints: rewardPointsSchema,
 };

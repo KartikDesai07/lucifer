@@ -9,6 +9,7 @@ import { maskCustomer } from "@/lib/customer-privacy";
 import { Product } from "@/models/Product";
 import type { ISettings } from "@/models/Settings";
 import type { StaffRewardCard } from "@pos/shared/reward-card-use";
+import { pointsBalance } from "@pos/shared/reward-levels-engine";
 import { dinerAccountsOn } from "@/lib/diner-route-guard";
 import { readWalletCardsOf } from "@/lib/reward-cards-read";
 import { staffCardCategoryIds, staffCardsOf } from "@/lib/reward-cards-staff";
@@ -53,12 +54,16 @@ export interface CustomerRewardsResponse {
   // CB-7 S5 — the diner's USABLE scratch cards (revealed, money kind, not expired), built key by key from the staff
   // allowlist (lib/reward-cards-staff.ts). Always [] while diner accounts are off: no account, no wallet.
   cards: StaffRewardCard[];
+  // CB-7 S6 — the diner's spendable POINTS (revealed, unexpired lots; 1 point = ₹1) for the payment popup's "Use points"
+  // row. 0 while diner accounts are off. The server re-checks the balance when the settle spends (409 if it moved).
+  points: number;
 }
 
-// The wallet, filtered and allowlisted. A category card's product ids come from ONE product query for every category
-// at once (preview only — the server re-resolves at claim); a wallet with no category card makes no product query.
-async function loadStaffCards(customerId: string, settings: ISettings | null): Promise<StaffRewardCard[]> {
-  if (!dinerAccountsOn(settings)) return [];
+// The wallet, filtered and allowlisted, plus its points balance from the SAME read. A category card's product ids come
+// from ONE product query for every category at once (preview only — the server re-resolves at claim); a wallet with no
+// category card makes no product query.
+async function loadStaffCards(customerId: string, settings: ISettings | null): Promise<{ cards: StaffRewardCard[]; points: number }> {
+  if (!dinerAccountsOn(settings)) return { cards: [], points: 0 };
   const now = new Date();
   const wallet = await readWalletCardsOf(customerId);
   const categoryIds = staffCardCategoryIds(wallet, now).filter((cid) => mongoose.isValidObjectId(cid));
@@ -70,7 +75,7 @@ async function loadStaffCards(customerId: string, settings: ISettings | null): P
       scopeByCategory.set(key, [...(scopeByCategory.get(key) ?? []), String(row._id)]);
     }
   }
-  return staffCardsOf(wallet, scopeByCategory, now);
+  return { cards: staffCardsOf(wallet, scopeByCategory, now), points: pointsBalance(wallet, now) };
 }
 
 // GET /api/customers/[id]/rewards — the counter's reward picker data: the
@@ -136,8 +141,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       ambiguous: (rawAtCounts.get(m.at) ?? 0) > 1,
     }));
 
-    const cards = await loadStaffCards(id, settings);
-    const response: CustomerRewardsResponse = { stamps, rungs, cards };
+    const { cards, points } = await loadStaffCards(id, settings);
+    const response: CustomerRewardsResponse = { stamps, rungs, cards, points };
     return success(response);
   } catch (error) {
     return serverError("Failed to load customer rewards", error);

@@ -71,7 +71,7 @@ test("PIN (create route): card claim sits before Order.create; release only in u
     "the P2 marker is written through promoMarkerFields, only when the SAME predicate that burns the fence row says so",
   );
   assert.match(src, /if \(resolvedCard\) return failure\(PROMO_BLOCKS_REWARD, 400\);/, "a card plus a promo code is refused 400");
-  assert.ok(src.includes('const claimMiss = resolvedCard ? CARD_NOT_USABLE : "Not enough stamps for that reward";'), "a card miss answers CARD_NOT_USABLE; the stamps copy is unchanged");
+  assert.ok(src.includes('const claimMiss = resolvedCard ? CARD_NOT_USABLE : resolvedPoints ? POINTS_CHANGED : "Not enough stamps for that reward";'), "a card miss answers CARD_NOT_USABLE, a points miss POINTS_CHANGED; the stamps copy is unchanged");
   assert.ok(src.includes("reward: rewardForTotals,"), "totals price with the card's reward");
 });
 
@@ -99,7 +99,7 @@ for (const [name, rel, kind] of [
   test(`PIN (${name}): the claiming CAS filter spreads rewardClaimOrderFence(old) only when this request claims; the card snapshot rides the $set`, () => {
     const src = read(rel);
     const filter = span(src, "const filter: FilterQuery<IOrder> = {", "\n    };", "the CAS filter");
-    assert.ok(filter.includes("...(" + (name === "items" ? "resolvedClaim || card" : "claim || card") + " ? rewardClaimOrderFence(old) : {}),"), "stamp OR card claim spreads the shared fence");
+    assert.ok(filter.includes("...(" + (name === "items" ? "resolvedClaim || card" : "claim || card || points") + " ? rewardClaimOrderFence(old) : {}),"), "stamp, card OR (settle only) points claim spreads the shared fence");
     assert.equal(count(src, "rewardClaimOrderFence("), 1, "one spread, inside the filter");
     assert.equal(count(src, "cardSnapshotFields(card.reward)"), 1, "the card's Order fields are written once");
     assert.ok(!src.includes("rewardSnapshotFields(card"), "a card order never takes the stamp snapshot (no rewardAt / rewardStamps)");
@@ -241,7 +241,7 @@ test("PIN (D9/R10): settle's CARD claim itself refuses a free-dish card — refu
 
 test("PIN (F1): create gates a claim's minimum on the bill BEFORE any discount — the client's discount is the reward preview", () => {
   const src = read(CREATE);
-  at(src, "const claims = data.rewardAt !== undefined || data.rewardCardId !== undefined;", "the claims flag");
+  at(src, "const claims = data.rewardAt !== undefined || data.rewardCardId !== undefined || data.rewardPoints !== undefined;", "the claims flag");
   const plain = span(src, "const plainTotals = computeOrderTotals({", "});", "the create gate total");
   assert.match(plain, /discount: claims \? 0 : data\.discount,/, "a claiming create prices its gate undiscounted");
   assert.match(plain, /discountKind: claims \? undefined :/, "...and with no preset kind");
@@ -250,7 +250,10 @@ test("PIN (F1): create gates a claim's minimum on the bill BEFORE any discount �
 
 test("PIN (F1): the add-round and settle gate totals are priced undiscounted (discount 0, no kind)", () => {
   for (const [rel, label] of [[ROUND_LIB, "add-round"], [SETTLE_LIB, "settle"]] as const) {
-    const plain = span(read(rel), "const plainTotal = (): number =>", "}).total;", `the ${label} gate total`);
+    // Settle's gate builder returns the whole totals (points read its subtotal); add-round still returns the total.
+    const src = read(rel);
+    const plain = rel === SETTLE_LIB ? span(src, "const plainTotals = () => {", "});", `the ${label} gate totals`) : span(src, "const plainTotal = (): number =>", "}).total;", `the ${label} gate total`);
+    if (rel === SETTLE_LIB) at(src, "const plainTotal = (): number => plainTotals().total;", "settle's plainTotal derives from the same builder");
     assert.match(plain, /discount: 0,/, `${label}: gate ignores the client discount`);
     assert.match(plain, /discountKind: undefined,/, `${label}: gate ignores the preset kind`);
   }
@@ -258,7 +261,7 @@ test("PIN (F1): the add-round and settle gate totals are priced undiscounted (di
 
 test("PIN (F3): a reward-resolve refusal answers a landed same-key twin first — create (lateReplay) and add-round (roundReplayAfterMiss)", () => {
   const create = read(CREATE);
-  const guarded = "if (!rewardR.ok) return (await lateReplay()) ?? failure(rewardR.message, 400);";
+  const guarded = "if (!rewardR.ok) return (await lateReplay()) ?? failure(rewardR.message, rewardR.status ?? 400);";
   at(create, guarded, "the guarded create refusal");
   assert.equal(count(create, "failure(rewardR.message"), count(create, guarded), "every create reward refusal is late-replay guarded");
   const items = read(ITEMS);

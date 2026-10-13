@@ -16,6 +16,7 @@ import { orderSummaryCacheKey } from "@/lib/utils";
 import { reconcileLedger, validCustomer } from "@/lib/order";
 import { returnRewardStamps } from "@/lib/reward-claim";
 import { releaseRewardCard } from "@/lib/reward-card-claim";
+import { returnPoints } from "@/lib/reward-points-spend";
 import { releaseAssignedRewardForRung } from "@/lib/assigned-reward-gate";
 import { cancelOrderSchema } from "@/schemas";
 
@@ -170,6 +171,18 @@ export async function POST(req: Request, { params }: Params) {
           if (await releaseRewardCard(rewardCustomer, updated.rewardCardId, updated.orderId)) cache.del("customers");
         } catch {
           // Deliberately empty — see above. The card stays spent; the cancel stands.
+        }
+      }
+
+      // CB-7 S6 - a cancelled bill gives its points back, on the same terms as the card: the cancel CAS has LANDED, so this
+      // is the compensating half of a committed write and a failure is swallowed (a 500 would send the operator into
+      // the "already cancelled" 409). The return matches an UNRETURNED record of THIS order only, so a second cancel or
+      // another order's points can never be touched; false (evicted lots, already returned) is expected.
+      if (rewardCustomer && updated.rewardPoints !== undefined) {
+        try {
+          if (await returnPoints(rewardCustomer, updated.orderId)) cache.del("customers");
+        } catch {
+          // Deliberately empty - see above. The points stay spent; the cancel stands.
         }
       }
 

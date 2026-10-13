@@ -8,6 +8,7 @@ import { LOYALTY_REWARD_KINDS, type LoyaltyRewardKind } from "./public-diner";
 import type { ResolvedMilestone } from "./loyalty-rules";
 import type { DiscountKind } from "./constants";
 import { CARD_REWARD_AT } from "./reward-card-use";
+import { pointsRedeemedReward } from "./reward-points";
 
 // A resolved milestone, minus `minBill`. `minBill` is a GATE the route
 // evaluates ONCE, at claim time, to decide whether the milestone may be
@@ -33,6 +34,8 @@ export interface RedeemedReward {
   cardId?: string;
   scope?: RewardScope;
   capRupees?: number;
+  // CB-7 S6 (§2.7) — set only for reward POINTS spent on the bill (1 point = ₹1): the points taken, equal to `value`.
+  points?: number;
 }
 
 // CB-7 S5 — which dishes a card's discount applies to. `productIds` are resolved ONCE at claim (a category card
@@ -85,6 +88,8 @@ export interface OrderRewardSnapshot {
   rewardScopeMaxUnits?: number;
   rewardScopeLabel?: string;
   rewardCapRupees?: number;
+  // CB-7 S6 (§2.7) — the points spent on this bill (its discount, as flat rupees). `at` is stored ABSENT, as for a card.
+  rewardPoints?: number;
 }
 
 // Every snapshot key, checked exhaustive at compile time: a reader that PROJECTS an Order before re-pricing it
@@ -102,6 +107,7 @@ const ORDER_REWARD_SNAPSHOT_KEY_SET: Readonly<Record<keyof OrderRewardSnapshot, 
   rewardScopeMaxUnits: true,
   rewardScopeLabel: true,
   rewardCapRupees: true,
+  rewardPoints: true,
 };
 export const ORDER_REWARD_SNAPSHOT_KEYS = Object.keys(ORDER_REWARD_SNAPSHOT_KEY_SET) as (keyof OrderRewardSnapshot)[];
 
@@ -138,6 +144,12 @@ export function rewardFromOrderSnapshot(order: OrderRewardSnapshot): RedeemedRew
           }),
       ...(order.rewardCapRupees === undefined ? {} : { capRupees: order.rewardCapRupees }),
     };
+  }
+  // CB-7 S6 (§2.7) — the POINTS arm, after the card arm and before the stamp arm: a points order stores rewardAt ABSENT
+  // too, so without this every re-pricing writer would bill it at full price. Keyed on rewardPoints alone (the points
+  // ARE the discount in rupees); a zero / negative count rebuilds nothing (fail closed).
+  if (order.rewardPoints !== undefined) {
+    return order.rewardPoints > 0 ? pointsRedeemedReward(order.rewardPoints) : undefined;
   }
   if (
     order.rewardAt === undefined ||

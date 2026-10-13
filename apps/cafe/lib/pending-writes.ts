@@ -54,9 +54,11 @@ export interface SettleIntent {
   paidAmount?: number;
   splitCash?: number;
   splitOnline?: number;
+  // CB-7 S6 — the reward points the settle asked to spend (absent = none).
+  rewardPoints?: number;
 }
 
-type SettledShape = Pick<Order, "status" | "payment" | "paidAmount" | "total" | "splitCash" | "splitOnline">;
+type SettledShape = Pick<Order, "status" | "payment" | "paidAmount" | "total" | "splitCash" | "splitOnline" | "rewardPoints">;
 
 /** Reading an order after an unanswered or conflicting attempt:
  *  "adopt"     — Completed exactly as we asked: our settle landed.
@@ -69,6 +71,8 @@ export function reconcileSettle(intent: SettleIntent, order: SettledShape): Sett
   if (order.status === "Cancelled") return "cancelled";
   if (order.status !== "Completed") return "open";
   if (order.payment !== intent.payment) return "elsewhere";
+  // Points are part of the ask: a settle that spent other points (or none) is another device's, never ours.
+  if ((order.rewardPoints ?? 0) !== (intent.rewardPoints ?? 0)) return "elsewhere";
   // Same mode — the amount must match what derivePayment would have stored.
   const paid = order.paidAmount ?? 0;
   switch (intent.payment) {
@@ -91,8 +95,16 @@ export function reconcileSettle(intent: SettleIntent, order: SettledShape): Sett
 }
 
 /** The intent a settle payload carries — read off the very payload sent. */
-export function intentOf(p: Pick<SettleOrderInput, "payment" | "paidAmount" | "splitCash" | "splitOnline">): SettleIntent {
-  return { payment: p.payment, paidAmount: p.paidAmount, splitCash: p.splitCash, splitOnline: p.splitOnline };
+export function intentOf(
+  p: Pick<SettleOrderInput, "payment" | "paidAmount" | "splitCash" | "splitOnline" | "rewardPoints">,
+): SettleIntent {
+  return {
+    payment: p.payment,
+    paidAmount: p.paidAmount,
+    splitCash: p.splitCash,
+    splitOnline: p.splitOnline,
+    ...(p.rewardPoints !== undefined ? { rewardPoints: p.rewardPoints } : {}),
+  };
 }
 
 const HTTP_UNAUTHORIZED = 401;

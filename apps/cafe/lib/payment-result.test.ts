@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { stripComments } from "@/lib/source-pin-utils";
-import { paymentPopupChange, splitAfterBillChange } from "./payment-result";
+import { openedTotalAfterToggle, paymentPopupChange, splitAfterBillChange } from "./payment-result";
 
 const CAFE_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const readRaw = (rel: string): string => readFileSync(path.join(CAFE_ROOT, rel), "utf8");
@@ -29,6 +29,29 @@ test("paymentPopupChange: opening is 'opened' (even a first mount already open),
   assert.equal(paymentPopupChange({ open: true, total: 500 }, { open: true, total: 500 }), "none", "a StrictMode re-run of the same snapshot");
   assert.equal(paymentPopupChange({ open: true, total: 500 }, { open: false, total: 500 }), "none");
   assert.equal(paymentPopupChange({ open: false, total: 500 }, { open: false, total: 400 }), "none");
+});
+
+test("paymentPopupChange: only the operator's own FLIP of the points switch re-baselines (CB-7 S6, review F2)", () => {
+  // Flipping the switch moves the total: the operator's own act, not "the bill changed".
+  assert.equal(paymentPopupChange({ open: true, total: 500, pointsOn: false }, { open: true, total: 420, pointsOn: true }), "rebaselined");
+  assert.equal(paymentPopupChange({ open: true, total: 420, pointsOn: true }, { open: true, total: 500, pointsOn: false }), "rebaselined", "switching it back off too");
+  // The switch STATE counts, never the amount: a balance refetch that moves the total with the switch still on is a real change.
+  assert.equal(paymentPopupChange({ open: true, total: 420, pointsOn: true }, { open: true, total: 380, pointsOn: true }), "bill-changed");
+  assert.equal(paymentPopupChange({ open: true, total: 500, pointsOn: false }, { open: true, total: 450, pointsOn: false }), "bill-changed");
+  // An omitted switch reads as off: the pre-S6 snapshots behave exactly as before.
+  assert.equal(paymentPopupChange({ open: true, total: 500 }, { open: true, total: 400 }), "bill-changed");
+  // Opening wins over everything; a flip that moves no money is nothing.
+  assert.equal(paymentPopupChange({ open: false, total: 500, pointsOn: false }, { open: true, total: 420, pointsOn: true }), "opened");
+  assert.equal(paymentPopupChange({ open: true, total: 500, pointsOn: false }, { open: true, total: 500, pointsOn: true }), "none");
+});
+
+test("openedTotalAfterToggle moves the opened total by ONLY the toggle's delta, so an earlier real change stays named", () => {
+  // No earlier change: opened == the total before the flip, so it lands on the new total (no banner).
+  assert.equal(openedTotalAfterToggle(500, 500, 420), 420);
+  assert.equal(openedTotalAfterToggle(420, 420, 500), 500, "and back off");
+  // A real change already showed (opened 500, bill now 480 after a table refresh): the flip keeps the 500 -> 480 gap.
+  assert.equal(openedTotalAfterToggle(500, 480, 400), 420, "the banner then says 420 -> 400, still naming the earlier change");
+  assert.notEqual(openedTotalAfterToggle(500, 480, 400), 400, "never re-baselined to the new total");
 });
 
 test("splitAfterBillChange keeps the Online part and lets Cash take the rest (never below zero)", () => {
@@ -52,20 +75,27 @@ test("PIN: PaymentModal resets the pay mode ONLY on the closed-to-open edge, nev
   // change re-derives the split instead (resetting openedTotal there would
   // hide the bill-changed line for good).
   const openedBranch = src.slice(opened, changed);
-  for (const needle of ["setSplit({ cash: total, online: 0 })", "setOpenedTotal(total)"]) {
-    assert.equal(count(src, needle), 1, `${needle} appears exactly once`);
-    assert.ok(openedBranch.includes(needle), `${needle} lives in the opened branch only`);
-  }
-  assert.equal(count(src, "setOpenedTotal("), 1, "openedTotal is set only as the popup opens");
-  const billBranch = src.slice(changed, src.indexOf("}, [open, total]);", changed));
+  assert.equal(count(src, "setSplit({ cash: total, online: 0 })"), 1, "the split reset appears exactly once");
+  assert.ok(openedBranch.includes("setSplit({ cash: total, online: 0 })"), "the split reset lives in the opened branch only");
+  assert.ok(openedBranch.includes("setOpenedTotal(total)"), "the opened total is set in the opened branch (its one other home is the points toggle below)");
+  // CB-7 S6: the operator's own points toggle is the ONE other place the baseline moves (the "rebaselined" branch below).
+  assert.equal(count(src, "setOpenedTotal("), 2, "openedTotal is set as the popup opens and on the operator's own points toggle only");
+  const rebase = src.indexOf('} else if (change === "rebaselined") {', changed);
+  assert.ok(rebase > changed, "landmark: the rebaselined branch follows the bill-changed branch");
+  assert.ok(src.slice(rebase, src.indexOf("}, [open, total, pointsOn]);", rebase)).includes("setOpenedTotal((opened) => openedTotalAfterToggle(opened, prevTotal, total))"), "the toggle shifts the opened total by its own delta only");
+  assert.ok(!src.slice(changed, rebase).includes("setOpenedTotal("), "a real bill change never re-baselines (it would hide the bill-changed line for good)");
+  assert.ok(!/setOpenedTotal\(total\);\s*setSplit\(\(s\) => splitAfterBillChange/.test(src), "the toggle never snaps the opened total to the new total (it would wipe an earlier real change)");
+  assert.ok(src.includes("const prevTotal = seenRef.current.total;") && src.includes("const pointsOn = pointsNow > 0;"), "the switch state (not the amount) feeds the snapshot");
+  const billBranch = src.slice(changed, src.indexOf("}, [open, total, pointsOn]);", changed));
   assert.ok(billBranch.includes("setSplit((s) => splitAfterBillChange(s, total))"), "a bill change re-derives the split");
-  const classify = src.indexOf("paymentPopupChange(seenRef.current, { open, total })");
-  const remember = src.indexOf("seenRef.current = { open, total };");
+  const classify = src.indexOf("paymentPopupChange(seenRef.current, { open, total, pointsOn })");
+  const remember = src.indexOf("seenRef.current = { open, total, pointsOn };");
   assert.ok(classify >= 0 && remember > classify, "the snapshot is compared first, then remembered");
   // R8: one "bill changed" message at a time — the notice panel wins.
   assert.ok(src.includes("billChangedFrom={notice == null && open && total !== openedTotal ? openedTotal : undefined}"));
   assert.ok(src.includes("<PaymentSummary"), "the summary card is rendered from its own file");
   assert.ok(src.includes("<PaymentSplitFields"), "the split inputs are rendered from their own file");
+  assert.ok(src.includes("<PaymentModeGrid") && src.includes("<PaymentPoints"), "the mode grid and the points row are rendered from their own files");
   assert.ok(src.includes("<WriteNoticePanel notice={notice} />"), "the write outcome shows inside the popup");
   const lines = readRaw("components/pos/PaymentModal.tsx").replace(/\n$/, "").split("\n").length;
   assert.ok(lines <= FILE_LINE_BUDGET, `PaymentModal.tsx must stay within ${FILE_LINE_BUDGET} lines, got ${lines}`);

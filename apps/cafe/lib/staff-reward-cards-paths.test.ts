@@ -148,21 +148,21 @@ test("PIN: the rewards route lists cards only behind dinerAccountsOn, through th
   const src = code(ROUTE);
   const pin: Pin = (s) => {
     const body = sliceFrom(s, "async function loadStaffCards(", "export async function GET");
-    const gate = body.indexOf("if (!dinerAccountsOn(settings)) return [];");
+    const gate = body.indexOf("if (!dinerAccountsOn(settings)) return { cards: [], points: 0 };");
     const read = body.indexOf("readWalletCardsOf(customerId)");
     return (
-      gate >= 0 && read > gate && body.includes("staffCardsOf(wallet, scopeByCategory, now)") &&
+      gate >= 0 && read > gate && body.includes("cards: staffCardsOf(wallet, scopeByCategory, now), points: pointsBalance(wallet, now)") &&
       /Product\.find\(\{ categoryId: \{ \$in: categoryIds \} \}\)\.select\("_id categoryId"\)\.lean\(\)/.test(body) &&
       (body.match(/Product\.find\(/g) ?? []).length === 1 &&
-      /const cards = await loadStaffCards\(id, settings\);\s*const response: CustomerRewardsResponse = \{ stamps, rungs, cards \};/.test(s) &&
-      /cards: StaffRewardCard\[\];/.test(s) && !s.includes("+reward" + "Cards")
+      /const \{ cards, points \} = await loadStaffCards\(id, settings\);\s*const response: CustomerRewardsResponse = \{ stamps, rungs, cards, points \};/.test(s) &&
+      /cards: StaffRewardCard\[\];/.test(s) && /points: number;/.test(s) && !s.includes("+reward" + "Cards")
     );
   };
   pinned(
     ROUTE, src, pin,
-    swap("if (!dinerAccountsOn(settings)) return [];", ""), swap("readWalletCardsOf(customerId)", "readCardsRaw(customerId)"),
-    swap("staffCardsOf(wallet, scopeByCategory, now)", "wallet"), swap(".select(\"_id categoryId\")", ""),
-    swap("{ stamps, rungs, cards }", "{ stamps, rungs }"), (s) => `${s}\nconst leak = "+reward" + "Cards"; const raw = "${"+reward" + "Cards"}";`,
+    swap("if (!dinerAccountsOn(settings)) return { cards: [], points: 0 };", ""), swap("readWalletCardsOf(customerId)", "readCardsRaw(customerId)"),
+    swap("staffCardsOf(wallet, scopeByCategory, now)", "wallet"), swap("points: pointsBalance(wallet, now)", "points: 0"), swap(".select(\"_id categoryId\")", ""),
+    swap("{ stamps, rungs, cards, points }", "{ stamps, rungs, cards }"), (s) => `${s}\nconst leak = "+reward" + "Cards"; const raw = "${"+reward" + "Cards"}";`,
   );
 });
 
@@ -253,7 +253,7 @@ test("PIN: the preview prices with the cart lines through the shared rewardDisco
   pinned(TOTALS, totals, (s) => s.includes("rewardDiscountAmount(subtotal, reward, lines)") && /lines\?: readonly RewardBaseLine\[\];/.test(s) && /\[discountRaw, discountUnit, subtotal, gstCfg, reward, lines\]/.test(s),
     swap("rewardDiscountAmount(subtotal, reward, lines)", "rewardDiscountAmount(subtotal, reward)"), swap("reward, lines]", "reward]"));
   const tab = code(TAB);
-  pinned(TAB, tab, (s) => /setDiscountUnit, cart, promoCode,\s*\)/.test(s) && /reward: reward\.selectedReward,\s*lines: cart,/.test(s),
+  pinned(TAB, tab, (s) => /setDiscountUnit, cart, promoCode,\s*\)/.test(s) && /reward: reward\.selectedReward \?\? points\.reward,\s*lines: cart,/.test(s),
     swap("setDiscountUnit, cart, promoCode,", "setDiscountUnit, promoCode,"), swap("cart, promoCode,", "cart,"), swap("lines: cart,", ""));
   assert.ok(code(HOOK).includes("staffCardReward("), "the picked card is priced through the shared builder");
 });
