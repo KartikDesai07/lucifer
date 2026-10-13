@@ -9165,3 +9165,177 @@ this PC and the count arithmetic.
   reach" on the first try (a POS waking up), press Open POS once more (the N3 review's m-2).
 - N4 Task 44: on the emulator, the smoke test also runs E5's Cancel (the card closes, offered again at the next open);
   E5 once more on an API 34/35 image if one is on the PC.
+
+## Session N3 Results
+
+Run on 2026-10-13 (superpowers:executing-plans, inline), Tasks 30–36 in order. Every code block was applied verbatim with
+the gate's block applier (`apply_blocks_clone.py`, a dry run first, per step range, so each RED was seen before its code
+went in). After each task the `apps/` tree (and `docs/GO-LIVE-CHECKLIST.md`) equals the gold commit's: Task 30 `6e172337`
+(gold `a86ccd0`), 31 `3e4cd74d` (`171cd66`), 32 `7fb203ae` (`0699819`), 33 `c2756536` (`e480583`), 34 `f956a39e`
+(`e658887`), 35 `16d4bc93` (`2c40140`). Nothing pushed, merged, uploaded or released; no emulator (the owner's N3 prompt).
+The one download was Task 35's `npm install` (electron-updater 6.8.9 and its four packages from the npm registry).
+
+### Commits (branch `feat/native-apps-2`, from `4c1be70`)
+
+| Task | Commit | What |
+|---|---|---|
+| 30 | `da3747a` | the N2 review's Android minors and the owner's two rulings: 2 JVM tests, a reducer test, a Jest test, pins 30–32 needles |
+| 31 | `e017496` | `src/pos-url.ts` (the Android rules, 45-input parity), `store.ts` re-validates, `normalizeServerUrl` gone |
+| 32 | `25a1c6b` | `src/pos-health.ts` (one `GET /api/health`, 7 tests) |
+| 33 | `d84ac90` | the address window like the Android start screen; GO-LIVE §7 + its runbook pin; pins (8), (9), (R5) changed, (A1), (A2) |
+| 34 | `12a7826` | "Change POS address…" in the Help menu, the tray, the About dialog, GO-LIVE, DEPLOY.md; pin (A3) |
+| 35 | `ed721ec` | the Windows updater (electron-updater 6.8.9, `build.publish`, Restart to update in the tray and the Help menu), G-1 fixed; pins (3), (10) changed, (R7), (U1)–(U4) |
+| 36 | this commit | these Results |
+
+### Counts
+
+| Suite | Baseline (`4c1be70`) | After N3 (`ed721ec`) | Expected |
+|---|---|---|---|
+| mobile (`npm test`) | 167 | 168, 0 fail | 168 |
+| Jest (`npx jest`) | 7 | 8, 4 suites | 8 |
+| JUnit (`:app:testDebugUnitTest --rerun`) | 92 | 94, 0 failures, 0 errors | 94 |
+| desktop (`npm test`) | 205 | 211, 0 fail | 211 |
+| cafe chain (`apps/cafe`, `npm test`) | 5656: 5655 pass, 0 fail, 1 skipped | 5656: 5655 pass, 0 fail, 1 skipped | unchanged |
+| typecheck + lint (mobile, desktop) | clean | clean | clean |
+
+Per task: desktop 205 (30) → 193 (31) → 200 (32) → 202 (33) → 203 (34) → 211 (35); mobile 167 → 168, Jest 7 → 8 and
+JUnit 92 → 94 in Task 30; the go-live runbook 97/97 after Tasks 33 and 34.
+
+### RED, then GREEN (each as the plan's Expected)
+
+- Task 30: `not ok … Cancel in Android's dialog closes the card like Later; the next app open offers it again` with
+  `(0 , import_update_card.cardResultEvent) is not a function` (`# pass 7`, `# fail 1`); pins 30–32 and their mutations
+  `# pass 0`, `# fail 6` with exactly the plan's messages; Jest `Tests: 1 failed, 2 passed, 3 total`; JUnit `4 Unresolved
+  reference 'sha256Of'`, `1 BUILD FAILED`. GREEN: reducer 8/8, mobile 168, typecheck and lint clean, Jest `4 passed` /
+  `8 passed`, `BUILD SUCCESSFUL` with no `e:` and no `update/` warning, `UpdateFilesTest` 9, `UpdateManifestTest` 12,
+  `UpdateScheduleTest` 8 (0 failures, 0 errors).
+- Task 31: `Cannot find module './pos-url'`, pins (11) and (12), `normalizeStore: serverOrigin is re-validated by the
+  Android app's rules -- a private-network http address stays` (`# tests 117`, `# pass 113`, `# fail 4`); GREEN desktop
+  193, typecheck and lint clean, mobile 168.
+- Task 32: `Cannot find module './pos-health'`, pins (11) and (12) (`# tests 69`, `# fail 3`); GREEN 7/7, desktop 200.
+- Task 33: (8) ×2, (9) ×2, (A1), (A2) (`# tests 70`, `# pass 64`, `# fail 6`); the runbook's `PIN §7 desktop app` with
+  `'§7 desktop sub-section must quote "POS address"'` (96/97); GREEN desktop 202, runbook 97/97. The page in headless
+  desktop Chrome (`url-window-shots.cjs`, a `file://` page, no request) printed the plan's ten behaviour lines exactly
+  (`footer=POS Software by sandbee · 2.0.0`, `saved="MyCafe "`, `Esc does not cancel: true`, `label=Connecting…
+  disabled=true`, `change: Esc cancels: true`, `errors: []` twice); the five screenshots look like the Android start
+  screen.
+- Task 34: (A3) (`# tests 71`, `# fail 1`); the runbook with `'§7 desktop sub-section must quote "Change POS address…"'`;
+  GREEN desktop 203, runbook 97/97; the grep finds only (A3)'s own negative needle
+  (`apps/desktop/src/desktop-paths.test.ts:1025`).
+- Task 35: ten fail (`# tests 208`, `# pass 198`, `# fail 10`): (3), (10), (11), (12), (R7), (U1)–(U4) and
+  `Cannot find module './update-plan'`. `package.json` and the lock hashed `64de4af9…2701` and `72ab12d8…3677` right after
+  the blocks; `npm install` → `added 5 packages`, the same two hashes (npm wrote nothing more); electron-updater
+  `6.8.9`, builder-util-runtime `9.7.0`; GREEN desktop 211, typecheck and lint clean, `npm run build` wrote
+  `out/pos-health.js`, `out/pos-url.js`, `out/update-plan.js`, `out/updater.js`.
+
+### Windows end to end on this PC (Task 36)
+
+Disk at the start of Task 36: C: 78 GB, D: 23 GB free. Evidence in the session scratchpad
+(`C:\Users\Kartik.desai\AppData\Local\Temp\claude\d--kd-lucifer\8350f3dd-…\scratchpad`): `n3-dist/build.txt` +
+`hashes.txt`, `e2e-*.txt`, `shots-win/`, `shots-url/`, `files-n3.log`, `pos-desktop-n3.log` (the test app's own log),
+`owner-folders-before.txt` / `-after.txt`.
+
+- **Step 2: PASS.** No "POS Software" uninstall entry (HKCU or HKLM), `Run: []`, no `win-test`; the owner's two leftover
+  folders present → renamed to `POS Software by sandbee.n3-backup` and `pos-desktop-updater.n3-backup` (the owner's OK);
+  their metadata (295 entries: names, sizes, times; no file opened) recorded first.
+- **Step 3: PASS.** `tsc exit=0`; 2.0.0, 2.0.1, 2.0.2 each `exit=0`, `app-update.yml` `provider: generic`,
+  `url: http://127.0.0.1:8766/pos/windows`, `updaterCacheDirName: pos-desktop-updater`, `latest.yml` `version: <v>`.
+  Test installers (scratchpad only, released to nobody):
+
+  | Installer | Bytes | SHA-256 | Blockmap |
+  |---|---|---|---|
+  | `POS-Software-Setup-2.0.0.exe` | 112,542,296 | `2a6de1241f3307f70ee386bf0d7c20a3b8267bf1b787cc579a18ed44f40aa5d1` | 119,945 |
+  | `POS-Software-Setup-2.0.1.exe` | 112,542,345 | `8190656389ff1787a27a3f992e50a13949204d72c007812c2fdf24660b708ca9` | 119,912 |
+  | `POS-Software-Setup-2.0.2.exe` | 112,542,329 | `e3d79f68b93552fbef0bada18194fa77ab965e14548dcb96fd6bbac63e59c8bd` | 119,851 |
+
+- **Step 4: PASS.** `n3.env keys: MONGODB_URI, NEXTAUTH_SECRET, AUTH_SECRET, NEXTAUTH_URL, AUTH_TRUST_HOST,
+  SEED_ADMIN_USERNAME, SEED_ADMIN_PASSWORD` (no value printed); 3110 and 8766 free; `next start -p 3110` on
+  `pos_scratch_e2e_n3s` → `{"ok":true,"db":"up","tenant":"dev",…}`; the fake files server → `404` for `/api/health`.
+- **Step 5, the move from 1.12.0: PASS.** 1.12.0 `060d8d84…` = `SHA256SUMS.txt`; installed per-user into
+  `D:\kd\pos-dev-keep\win-test` (exit 0, FileVersion 1.12.0); `first-run-old` → `POS page: http://localhost:3110/login
+  version 1.12.0`, the Run value `"D:\kd\pos-dev-keep\win-test\POS Software by sandbee.exe" --hidden`. 2.0.0 over it →
+  exit 0, FileVersion 2.0.0, **the Run value gone** (1.12.0's uninstaller ran with `--updated`: G-1), `app-update.yml` the
+  test url; `start` → `version 2.0.0; POS page http://localhost:3110/login`, the menu `["Help","Open POS","Reload","Change
+  POS address…","Start with Windows","About POS Software by sandbee","Quit"]`, **the Run value back** (the start-up
+  repair).
+- **Step 6, the address window: PASS**, every line as the plan's Expected: `window: [{"content":[480,666],
+  "resizable":false}] footer: POS Software by sandbee · 2.0.0 cancel visible: true value: http://localhost:3110`;
+  `" MyCafe "` → `Couldn't reach mycafe.sandbee.in. Check the internet connection.`; `http://127.0.0.1:8766` → `We
+  couldn't find a POS at 127.0.0.1:8766. Check the name.`; `http://127.0.0.1:9` → `Couldn't reach 127.0.0.1:9. Check the
+  internet connection.`; `http://8.8.8.8` → `http:// only works for this device or a computer on your own network. Use
+  https:// for any other address.`; `Esc closed the window: true`; `saved http://localhost:3110: window closed true; POS
+  http://localhost:3110/login`. `files-n3.log`: exactly one `GET /api/health` from the app (10:54:19Z; the one before it is
+  Step 4's own `curl`); the app log: three `address check: not saved`, then `address check: found`. The screenshots
+  `a0-change`, `a1-bare-name`, `a2-not-a-pos`, `a3-no-answer` match the page check.
+- **Step 7, the updater: PASS.**
+  1. Serving 2.0.1: `"updater: 2.0.1 is ready; notified" after 61 s`; the corner shot shows "POS Software by sandbee",
+     "Update ready", "POS Software 2.0.1 is ready. It installs when you close the app."; the menu with `"Restart to
+     update"` before `"Quit"`; `Restart to update: the app exited`; the app log `Install on explicit quitAndInstall`,
+     `isSilent: true, isForceRunAfter: true`, `--updated,/S,--force-run` (10:56:03Z). About 18 s later the app started
+     again (its first log line at 10:56:22Z): FileVersion 2.0.1, the main process with `--updated`, the renderer with
+     `--pos-desktop-version=2.0.1`, the Run value kept, the store
+     `serverOrigin: http://localhost:3110`, `autoStart: true`. Stopped by its PID after checking its path (`win-test`).
+  2. Serving 2.0.2: `2.0.2 is ready; notified" after 61 s`, the same notification for 2.0.2, `Quit: the app exited`; the
+     app log `Auto install update on quit`, `isForceRunAfter: false`, `--updated,/S` (10:58:04Z); at the first look 25 s
+     after the quit FileVersion 2.0.2, and 40 s after it still **no process running** (no restart); the Run value kept.
+  3. Serving nothing: `start` → `version 2.0.2`, the menu without Restart to update.
+  Both downloads tried the differential path first and fell back to the full installer (`Cannot download
+  differentially, fallback to full download`: 2.0.0's blockmap is not in the 2.0.1 folder; the fake server answers a
+  multi-range request with the whole file), as the plan expects.
+- **Step 8, uninstall and put back: PASS.** The uninstaller exit 0; `win-test` and the uninstall entry gone within the
+  poll; `Run: []`. The test's own `%LOCALAPPDATA%\pos-desktop-updater` and `%APPDATA%\POS Software by sandbee` (both
+  created at 16:22 IST today, no reparse points, the store's address `http://localhost:3110`) removed; the owner's two
+  folders renamed back; their metadata: 295 entries, the same names, every file's size and time unchanged; 15
+  directories' times differ by milliseconds to minutes, all still on 2026-10-12 (none today: NTFS refreshing the
+  directory-index copy of their times after the first recursive listing); `installer.exe` 10/10/2026 112,216,876 B; no
+  Run value. This session's `next start` and fake files server stopped by PID after checking their command lines; the
+  scratch database `pos_scratch_e2e_n3s` stays.
+- **Step 9, every suite: PASS** (the Counts above; the cafe chain `rc=0`).
+
+### Differences from this plan, and why
+
+No difference in code or behaviour: every block applied as written, every Expected matched. Notes:
+1. The session first stopped before Task 30 Step 1: D: was under 1 GB (965 MiB, falling ~140 MB a minute while another
+   project's `mongod` on port 27034 wrote to D:), the owner's rule. The owner made room (23 GB free) and said continue.
+2. Task 36 Step 8 asks to read the owner's `pos-desktop.json` address after the rename back; the owner's N3 prompt says
+   never to open anything inside those two folders, so they were checked by metadata only (above).
+3. The local POS logged `[cluster-registry] connection error on core: MongoServerSelectionError` once at start (this PC's
+   env has no core cluster); `/api/health` answered `db: up`, `tenant: dev` throughout.
+
+### The session's fresh review (Claude Fable 5.1, `4c1be70..ed721ec`)
+
+Verdict **"Ready to merge: Yes"**: 0 Critical, 0 Important, 7 Minor. The reviewer read the whole range read-only (no
+writes, no network), checked every commit's `apps/` tree against the gold chain, re-ran desktop 211, mobile 168 and Jest
+8, and read electron-updater 6.8.9 and app-builder-lib's NSIS templates on disk. It confirmed Review Focus 2 (a
+line-for-line port, the 45-input parity table loading the Android module by path, absolute expectations and the error
+words pinned), that the window makes no request itself (CSP `default-src 'none'`, pin (A2)), that `pos-health.ts` matches
+the real `/api/health`, Task 30's threads and the 2-minute bound, Cancel end to end, G-1 proven on both halves (Step 7's
+install on quit with no process running isolates the uninstaller's guard; Step 5 isolates the start-up repair), and the
+never-block rule on Windows (`quitAndInstall` only behind Restart to update; install on quit without `--force-run`; no
+dialog). The re-grade by effect kept all seven at Minor (none changes the 2.0.0 release path or a normal day at the
+counter), so there was no fix pass; they are for the N3 gate:
+
+1. `allowPrerelease = false` (`updater.ts`) is inert on electron-updater's generic provider (only the GitHub providers
+   read it; the update check is a plain semver comparison): the N2 gate's point 4 ("a `-test` suffix would be a
+   prerelease, never offered") does not hold, and a prerelease version in `latest.yml` would be offered. No effect on N3
+   (plain versions). Idea: N4 Task 41's packaging refuses a prerelease version.
+2. A typo in a bare workspace name (no such name in DNS) reads "Couldn't reach <name>.sandbee.in. Check the internet
+   connection." (spec §9's words; the owner's call): "Check the name and the internet connection.", or map Electron's
+   `ERR_NAME_NOT_RESOLVED` to the "Check the name" sentence; at least N4's GO-LIVE: check the spelling first.
+3. `takeCard` still offers one card for a kept file damaged on disk (it only checks the file exists on the main thread,
+   m-8); Install hashes it again, says it could not be installed, removes it and resets `lastCheckAt`, so the next open
+   downloads it again. Self-healing, as the plan words it.
+4. Pin (3)'s comment (`desktop-paths.test.ts:119`) says Start with Windows is set again at every start; the code (and
+   (U4)) puts it back only when it is missing.
+5. `UpdateFilesTest.aKeptFileHashesToTheManifestsSha256` asserts without a message (JUnit cannot hang on it).
+6. The updater's `error` handler logs `error.name` only ("Error"); the detail still reaches the log through
+   `autoUpdater.logger` (`error.code ?? error.name` would help).
+7. The page shows Cancel when a saved address exists, not when the main process allows a cancel (they coincide today; the
+   main process is the real gate).
+
+Set aside by the reviewer, with this session's rulings (all stand): Quit or Restart to update during a Windows print (the
+tray's Quit path, spec §7); GO-LIVE's "the installer is never downloaded from anywhere" (N4 Task 42 rewrites GO-LIVE for
+2.0); the first-run window closed with its X (pre-existing, C17); `mycafe:3000` → `https://mycafe:3000` (the Android rule;
+parity); the health-check words only on Windows (spec §9); one invocation and one database ping per typed address (the
+spec's free-tier sentence); the desktop lock's root version 2.0.0 (as `npm install` writes it); the Co-Authored-By line
+(the N3 prompt's); the N2 gate's own ruled list, m-2 and m-3 (nothing new).
