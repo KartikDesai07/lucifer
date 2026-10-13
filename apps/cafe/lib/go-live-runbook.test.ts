@@ -1319,8 +1319,8 @@ test("PIN §7 desktop app: every UI string the sub-section quotes exists verbati
     ["Quit", menuSrc, "menu.ts"],
     ["Start with Windows", menuSrc, "menu.ts"],
     ["Change server address…", menuSrc, "menu.ts"],
-    ["Use this address", urlHtml, "url-window.html"],
-    ["Server address", urlHtml, "url-window.html"],
+    // Native apps 2.0 Session N3 deliberately changed: the address window's words (spec §9).
+    ["POS address", urlHtml, "url-window.html"],
   ] as const) {
     assert.ok(section.includes(label), `§7 desktop sub-section must quote "${label}"`);
     assert.ok(src.includes(`"${label}"`) || src.includes(`>${label}<`), `"${label}" must exist verbatim in ${where}`);

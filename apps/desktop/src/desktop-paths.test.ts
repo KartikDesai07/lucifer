@@ -5,7 +5,7 @@
 // are paired with a positive landmark per testing.md.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
   APP_ID,
@@ -592,16 +592,19 @@ test("(P2) print.ts refuses an unchosen or file-writing printer BEFORE opening a
   );
 });
 
-test("(8) url-preload.ts duplicated literals equal shared.ts (URL_*_CHANNEL, SETUP_BRIDGE_KEY)", () => {
+test("(8) url-preload.ts duplicated literals equal shared.ts (URL_*_CHANNEL, SETUP_BRIDGE_KEY, VERSION_ARG_PREFIX)", () => {
   assert.ok(urlPreloadSrc.includes(JSON.stringify(URL_CURRENT_CHANNEL)));
   assert.ok(urlPreloadSrc.includes(JSON.stringify(URL_SAVE_CHANNEL)));
   assert.ok(urlPreloadSrc.includes(JSON.stringify(URL_CANCEL_CHANNEL)));
   assert.ok(urlPreloadSrc.includes(JSON.stringify(SETUP_BRIDGE_KEY)));
+  // Native apps 2.0 (spec §9): the window's footer shows the app's version, passed as preload.ts gets it.
+  assert.ok(urlPreloadSrc.includes(JSON.stringify(VERSION_ARG_PREFIX)), "url-preload.ts must carry VERSION_ARG_PREFIX");
 });
 
-test("(8) url-preload.ts exposes exactly ['current', 'save', 'cancel'] on posDesktopSetup", () => {
+// Native apps 2.0 Session N3 deliberately changed: the version joins the three calls.
+test("(8) url-preload.ts exposes exactly ['cancel', 'current', 'save', 'version'] on posDesktopSetup", () => {
   const keys = extractExposedKeys(urlPreloadSrc, '"posDesktopSetup"');
-  assert.deepEqual(keys.sort(), ["cancel", "current", "save"]);
+  assert.deepEqual(keys.sort(), ["cancel", "current", "save", "version"]);
 });
 
 // -- (9) url-window.html / url-window.js: no external resource loads ---------
@@ -628,19 +631,35 @@ test("(9) vision-guard: no external resource references in url-window.html or ur
     assert.ok(!source.includes("@import"), `${name} must not use @import`);
     assert.ok(!source.includes("url("), `${name} must not use a CSS url()`);
   }
-  // Landmark: the placeholder copy legitimately contains "https://" as text,
-  // not a loaded resource -- proves the scan actually read real content and
-  // the negatives above aren't vacuous from an empty/blinded read.
-  assert.ok(urlWindowHtml.includes('placeholder="https://your-pos.example.com"'));
+  // Landmarks: the scan actually read real content, so the negatives above aren't vacuous from an empty/blinded read.
+  assert.ok(urlWindowHtml.includes('placeholder="yourcafe or yourcafe.sandbee.in"'), "landmark: the placeholder");
+  assert.ok(urlWindowJs.includes("posDesktopSetup.save("), "landmark: the script saves through the bridge");
 });
 
-test("(9) url-window.html: the five copy strings from plan A.12 are present (landmark id=\"error\")", () => {
-  assert.ok(urlWindowHtml.includes('id="error"'));
-  assert.match(urlWindowHtml, /Server address/);
-  assert.ok(urlWindowHtml.includes('placeholder="https://your-pos.example.com"'));
-  assert.match(urlWindowHtml, /Ask the person who set up your POS/);
-  assert.match(urlWindowHtml, /Use this address/);
-  assert.match(urlWindowHtml, />Cancel</);
+// Native apps 2.0 Session N3 deliberately changed (spec §9): the Android start screen's words replace plan A.12's.
+test("(9) url-window: the Android start screen's words, the help text the same in the page and the script (landmark id=\"error\")", () => {
+  assert.ok(urlWindowHtml.includes('id="error"'), "landmark: id=error");
+  for (const text of [
+    "<title>POS address</title>",
+    ">Connect to your workspace<",
+    ">Your cafe, orders and printers. All in one place.<",
+    ">POS address<",
+    'placeholder="yourcafe or yourcafe.sandbee.in"',
+    ">Your workspace<",
+    ">Open POS<",
+    ">Cancel<",
+    ">Windows printers · USB · Wi-Fi / LAN<",
+    `>${PRODUCT_NAME}<`,
+  ]) {
+    assert.ok(urlWindowHtml.includes(text), `url-window.html must carry ${text}`);
+  }
+  const help = "Type your workspace name, or the full address shared by your administrator. We’ll remember it for next time.";
+  assert.ok(urlWindowHtml.includes(`>${help}<`) && urlWindowJs.includes(`"${help}"`), "the help words are the same in the page and the script");
+  for (const text of ['"Check the address"', '"Connecting…"', '"Open POS"', `"${PRODUCT_NAME} · "`]) {
+    assert.ok(urlWindowJs.includes(text), `url-window.js must carry ${text}`);
+  }
+  assert.ok(urlWindowHtml.includes('<button id="cancel" class="cancel" type="button" hidden>Cancel</button>'), "Cancel starts hidden (the first run)");
+  assert.ok(urlWindowJs.includes('event.key === "Escape" && !cancelButton.hidden'), "Esc cancels only when Cancel is shown");
 });
 
 // -- (10) package.json build config ------------------------------------------
@@ -976,13 +995,37 @@ test("(R4) url-window.ts: the same security posture and navigation guards as eve
   assert.ok(urlWindowSrc.includes("export function openUrlWindow("), "landmark");
 });
 
-test("(R5) url-window assets: inline data: logo under a data:-only img-src, a real form (Enter submits), product name in the header", () => {
+// -- (A) native apps 2.0 (spec §9): the address window ----------------------
+test("(A1) url-window.ts: 480 x 640 of content, not resizable, titled POS address, the version passed to the page", () => {
+  assert.ok(urlWindowSrc.includes("export const URL_WINDOW_WIDTH = 480;"), "the window is 480 wide");
+  assert.ok(urlWindowSrc.includes("export const URL_WINDOW_HEIGHT = 640;"), "the window is 640 high");
+  assert.match(urlWindowSrc, /useContentSize: true,\s*resizable: false,/, "480 x 640 of content, not resizable");
+  assert.ok(urlWindowSrc.includes('title: "POS address",'), "the window is titled POS address");
+  assert.ok(urlWindowSrc.includes("additionalArguments: [`${VERSION_ARG_PREFIX}${app.getVersion()}`]"), "the version is passed to the page");
+});
+
+test("(A2) the address window makes no request itself: the main process reads the address by the Android rules, checks it once through net.fetch, then saves", () => {
+  for (const needle of ["fetch(", "XMLHttpRequest", "WebSocket", "EventSource", "sendBeacon", "import("]) {
+    assert.ok(!urlWindowJs.includes(needle), `url-window.js must not use ${needle}`);
+  }
+  assert.ok(!urlWindowHtml.includes("connect-src"), "default-src 'none' must keep blocking every request from the page");
+  const save = urlWindowSrc.slice(urlWindowSrc.indexOf("ipcMain.handle(URL_SAVE_CHANNEL"), urlWindowSrc.indexOf("ipcMain.handle(URL_CANCEL_CHANNEL"));
+  const normalized = save.indexOf("normalizePosUrl(input)");
+  const checked = save.indexOf("await checkPos(result.origin, (url, init) => net.fetch(url, init))");
+  const saved = save.indexOf("deps.onSaved(result.origin)");
+  assert.ok(normalized >= 0 && checked > normalized && saved > checked, "normalize, then the one check, then save");
+  assert.ok(save.includes("if (!check.ok) return check;"), "an address that failed its check is never saved");
+  const callers = readdirSync(SRC).filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts") && read(`src/${name}`).includes("checkPos("));
+  assert.deepEqual(callers.sort(), ["pos-health.ts", "url-window.ts"], "the one check is made only from the address window's save");
+});
+
+test("(R5) url-window assets: inline data: logo under a data:-only img-src, a real form (Enter submits), the product name on the page", () => {
   assert.ok(urlWindowHtml.includes("img-src data:"), "CSP must allow only data: images (the logo is inlined; file:// 'self' is not relied on)");
   assert.ok(urlWindowHtml.includes('src="data:image/png;base64,'), "the header logo must be inlined");
   assert.ok(!urlWindowHtml.includes('src="logo.png"'), "no separate logo file is referenced");
   assert.ok(urlWindowHtml.includes('<form id="address-form"') && urlWindowHtml.includes('type="submit"'), "the address entry must be a form so Enter submits (C27)");
   assert.ok(urlWindowJs.includes('addEventListener("submit"'), "the script must handle the form submit");
-  assert.ok(urlWindowHtml.includes(PRODUCT_NAME), "the header must carry the product name (C13)");
+  assert.ok(urlWindowHtml.includes(PRODUCT_NAME), "the page must carry the product name (C13; the footer since native apps 2.0)");
   assert.ok(!existsSync(path.join(ROOT, "assets", "logo.png")), "assets/logo.png must not exist (it is inlined)");
 });
 

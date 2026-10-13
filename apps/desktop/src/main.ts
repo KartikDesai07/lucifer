@@ -226,6 +226,7 @@ if (!app.requestSingleInstanceLock()) {
       onSaved: onServerAddressSaved,
       allowCancel: () => urlWindowAllowsCancel,
       closeUrlWindow,
+      log,
     });
 
     const setAutoStart = (on: boolean): void => {
