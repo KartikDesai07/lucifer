@@ -19,7 +19,9 @@ import { registerPrintHandler } from "./print";
 import { registerRawPrintHandler } from "./print-raw";
 import { createMainWindow } from "./shell-window";
 import { openUrlWindow, registerUrlHandlers } from "./url-window";
-import { buildAppMenu, createTray, showAboutDialog } from "./menu";
+import { buildAppMenu, createTray, setTrayUpdateItem, showAboutDialog } from "./menu";
+import { restartToUpdate, startUpdater } from "./updater";
+import { trayUpdateItem, UPDATE_IDLE, type UpdateState } from "./update-plan";
 import type { BrowserWindow } from "electron";
 
 if (!app.requestSingleInstanceLock()) {
@@ -35,6 +37,8 @@ if (!app.requestSingleInstanceLock()) {
   let quitting = false;
   // Cancels the one-shot startup printer check if the app quits before it runs.
   let cancelPrinterCheck: (() => void) | null = null;
+  // Stops the updater's checks when the app quits (native apps 2.0).
+  let stopUpdater: (() => void) | null = null;
 
   void app.whenReady().then(() => {
     // M3: sets the Windows taskbar/tray identity; must match build.appId.
@@ -44,6 +48,15 @@ if (!app.requestSingleInstanceLock()) {
     const logFile = path.join(app.getPath("userData"), LOG_FILE_NAME);
     const log = createLogger(logFile);
     store = readStore(storeFile);
+
+    // Native apps 2.0 (the N2 review gate, G-1): an install over an older version runs the old uninstaller, and a 1.x
+    // uninstaller removes the start-with-Windows entry. An app the operator set to start with Windows puts the entry
+    // back at start when it is missing (the same entry as the first arming below); a disable made in Windows (Task
+    // Manager, Settings > Startup) keeps the entry, and is left alone.
+    const loginItem = { path: process.execPath, args: [HIDDEN_FLAG] };
+    if (store.autoStart === true && app.isPackaged && !app.getLoginItemSettings(loginItem).openAtLogin) {
+      app.setLoginItemSettings({ openAtLogin: true, ...loginItem });
+    }
 
     // The single writer. deviceName and printMode are written by the web
     // app's picker (and deviceName was hand-edited on disk in v1), so both are
@@ -199,7 +212,7 @@ if (!app.requestSingleInstanceLock()) {
     };
 
     // Mutable so the currently-open window's Cancel button reflects how it
-    // was opened (first run: no cancel; "Change server address…": cancel ok).
+    // was opened (first run: no cancel; "Change POS address…": cancel ok).
     let urlWindowAllowsCancel = false;
 
     const openSetupWindow = (allowCancel: boolean): void => {
@@ -226,6 +239,7 @@ if (!app.requestSingleInstanceLock()) {
       onSaved: onServerAddressSaved,
       allowCancel: () => urlWindowAllowsCancel,
       closeUrlWindow,
+      log,
     });
 
     const setAutoStart = (on: boolean): void => {
@@ -237,6 +251,9 @@ if (!app.requestSingleInstanceLock()) {
       });
       rebuildMenu();
     };
+
+    // Native apps 2.0 (spec §7): an update downloaded in the background adds Restart to update to both menus.
+    let update: UpdateState = UPDATE_IDLE;
 
     function rebuildMenu(): void {
       const menu = buildAppMenu({
@@ -254,6 +271,8 @@ if (!app.requestSingleInstanceLock()) {
             serverOrigin: store.serverOrigin,
           });
         },
+        updateItem: trayUpdateItem(update),
+        restartToUpdate: () => restartToUpdate(),
         quit: () => app.quit(),
       });
       // The tray keeps its own short menu (createTray) — never the Help menu.
@@ -265,7 +284,18 @@ if (!app.requestSingleInstanceLock()) {
     createTray({
       openPos: () => openMain(),
       changeServerAddress: () => openSetupWindow(true),
+      restartToUpdate: () => restartToUpdate(),
       quit: () => app.quit(),
+    });
+
+    // Native apps 2.0 (spec §7): the Windows updater (a packaged app only): one minute after start, then every 24 hours.
+    stopUpdater = startUpdater({
+      log,
+      onStateChange: (state: UpdateState) => {
+        update = state;
+        rebuildMenu();
+        setTrayUpdateItem(trayUpdateItem(state));
+      },
     });
 
     if (store.serverOrigin === null) {
@@ -304,5 +334,7 @@ if (!app.requestSingleInstanceLock()) {
     // A pending startup check must not fire into a tearing-down app.
     cancelPrinterCheck?.();
     cancelPrinterCheck = null;
+    stopUpdater?.();
+    stopUpdater = null;
   });
 }

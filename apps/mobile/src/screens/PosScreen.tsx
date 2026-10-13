@@ -33,6 +33,7 @@ import { CRASH_URL } from './backstop';
 import { BatteryScreen } from './BatteryScreen';
 import { LoadErrorScreen } from './LoadErrorScreen';
 import { colors } from './theme';
+import { UpdateCard, useUpdateCard } from './UpdateCard';
 import { useLoadGuards } from './use-load-guards';
 import { WorkspaceCover } from './WorkspaceCover';
 import { buildPagePaintScript, isPageReadyMessage } from './page-presentation';
@@ -321,6 +322,8 @@ export function PosScreen({ origin, onChangeUrl }: Props) {
   const [battery, setBattery] = useState(false);
   const openBattery = useCallback(() => setBattery(true), []);
   const closeBattery = useCallback(() => setBattery(false), []);
+  // Native apps 2.0 (spec §6.3): the update card, offered by the app only at an app open; it shows over the POS.
+  const update = useUpdateCard();
 
   if (failed) {
     return (
@@ -344,6 +347,15 @@ export function PosScreen({ origin, onChangeUrl }: Props) {
         onBattery={openBattery}
       />
       {battery && <BatteryScreen onDone={closeBattery} />}
+      {update.state.card !== null && update.state.active ? (
+        <UpdateCard
+          info={update.state.card}
+          note={update.state.note}
+          busy={update.installing}
+          onInstall={update.install}
+          onLater={update.later}
+        />
+      ) : null}
     </View>
   );
 }

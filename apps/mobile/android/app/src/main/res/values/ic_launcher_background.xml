@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The Windows app icon's red (apps/desktop/resources/icon.png), behind the adaptive icon's mark. -->
+    <color name="ic_launcher_background">#D00412</color>
+</resources>

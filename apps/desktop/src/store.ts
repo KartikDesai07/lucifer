@@ -1,7 +1,7 @@
 // Pure persisted-settings store for the desktop shell. node:fs + node:path only
 // (no electron imports) — safe for node:test.
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
-import { normalizeServerUrl } from "./server-url";
+import { normalizePosUrl } from "./pos-url";
 import { isPrintMode, type PrintMode } from "./shared";
 
 export interface WindowBounds {
@@ -58,7 +58,7 @@ export function normalizeStore(raw: unknown): ShellStore {
 
   let serverOrigin: string | null = null;
   if (Object.hasOwn(source, "serverOrigin") && typeof source.serverOrigin === "string") {
-    const normalized = normalizeServerUrl(source.serverOrigin);
+    const normalized = normalizePosUrl(source.serverOrigin);
     serverOrigin = normalized.ok ? normalized.origin : null;
   }
 

@@ -125,6 +125,9 @@ object PrinterPool {
 
   fun managers(): List<PrinterManager> = synchronized(poolLock) { list.all() }
 
+  /** Native apps 2.0 (spec §6.3): any printer of this app has a job in flight (the update card and its install wait). */
+  fun anyPrinting(): Boolean = managers().any { it.isPrinting() }
+
   /** v2 select: [info] joins the list, its printer started anew (a listed one is replaced in its place). */
   fun add(info: PrinterInfo): PrinterManager {
     val manager = newManager(info)

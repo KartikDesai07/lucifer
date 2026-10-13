@@ -7,6 +7,7 @@ import com.facebook.react.ReactHost
 import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.possoftware.pos.printer.PosPrinterPackage
+import com.possoftware.pos.update.PosUpdatePackage
 
 class MainApplication : Application(), ReactApplication {
 
@@ -18,6 +19,8 @@ class MainApplication : Application(), ReactApplication {
           // Packages that cannot be autolinked yet can be added manually here, for example:
           // add(MyReactNativePackage())
           add(PosPrinterPackage())
+          // Native apps 2.0 (spec §6): the updater.
+          add(PosUpdatePackage())
         },
     )
   }

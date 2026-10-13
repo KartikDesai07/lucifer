@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Native apps 2.0 (spec §4): the updater's settings stay in every release APK (build.gradle, posUpdateBase), so the
+     release packaging can read the base back with aapt2. A release build drops this file itself (the resource shrinker);
+     a debug build carries it as R.raw.pos_update_keep. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@string/pos_update_base,@integer/pos_update_check_minutes,@integer/pos_update_reopen_minutes" />

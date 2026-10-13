@@ -1,7 +1,7 @@
 // Pure URL validation for the saved POS address. No global URL (React Native's
 // polyfill is partial), no react-native import: safe for node:test.
-// Mirrors apps/desktop/src/server-url.ts, plus the private-network http rule and
-// the Sandbee app's bare workspace name (the Windows app does not expand one).
+// The Windows app reads an address by the same rules (apps/desktop/src/pos-url.ts;
+// its parity test runs one table of inputs through both).
 
 export const START_PATH = '/pos';
 export const MIN_PORT = 1;

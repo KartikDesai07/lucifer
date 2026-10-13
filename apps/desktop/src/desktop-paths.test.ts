@@ -5,7 +5,7 @@
 // are paired with a positive landmark per testing.md.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
   APP_ID,
@@ -116,11 +116,12 @@ test("(3) main.ts: single-instance lock, app lifecycle events, setAppUserModelId
   assert.match(mainSrc, /setAppUserModelId\(APP_ID\)/);
 });
 
-test("(3) main.ts: setLoginItemSettings called exactly twice, both with args: [HIDDEN_FLAG]", () => {
+// Native apps 2.0 Session N3 deliberately changed: a third call sets start-with-Windows again at every start (U4).
+test("(3) main.ts: setLoginItemSettings called exactly three times, all with args: [HIDDEN_FLAG]", () => {
   const calls = mainSrc.match(/setLoginItemSettings\(/g) ?? [];
-  assert.equal(calls.length, 2, "expected exactly two setLoginItemSettings call sites");
+  assert.equal(calls.length, 3, "expected exactly three setLoginItemSettings call sites");
   const argsMatches = mainSrc.match(/args:\s*\[HIDDEN_FLAG\]/g) ?? [];
-  assert.equal(argsMatches.length, 2, "both setLoginItemSettings calls must pass args: [HIDDEN_FLAG]");
+  assert.equal(argsMatches.length, 3, "every setLoginItemSettings call must pass args: [HIDDEN_FLAG]");
 });
 
 test("(3) main.ts: auto-start is armed inside did-finish-load and gates on app.isPackaged, the never-decided sentinel, AND a load that reached the saved origin", () => {
@@ -592,16 +593,19 @@ test("(P2) print.ts refuses an unchosen or file-writing printer BEFORE opening a
   );
 });
 
-test("(8) url-preload.ts duplicated literals equal shared.ts (URL_*_CHANNEL, SETUP_BRIDGE_KEY)", () => {
+test("(8) url-preload.ts duplicated literals equal shared.ts (URL_*_CHANNEL, SETUP_BRIDGE_KEY, VERSION_ARG_PREFIX)", () => {
   assert.ok(urlPreloadSrc.includes(JSON.stringify(URL_CURRENT_CHANNEL)));
   assert.ok(urlPreloadSrc.includes(JSON.stringify(URL_SAVE_CHANNEL)));
   assert.ok(urlPreloadSrc.includes(JSON.stringify(URL_CANCEL_CHANNEL)));
   assert.ok(urlPreloadSrc.includes(JSON.stringify(SETUP_BRIDGE_KEY)));
+  // Native apps 2.0 (spec §9): the window's footer shows the app's version, passed as preload.ts gets it.
+  assert.ok(urlPreloadSrc.includes(JSON.stringify(VERSION_ARG_PREFIX)), "url-preload.ts must carry VERSION_ARG_PREFIX");
 });
 
-test("(8) url-preload.ts exposes exactly ['current', 'save', 'cancel'] on posDesktopSetup", () => {
+// Native apps 2.0 Session N3 deliberately changed: the version joins the three calls.
+test("(8) url-preload.ts exposes exactly ['cancel', 'current', 'save', 'version'] on posDesktopSetup", () => {
   const keys = extractExposedKeys(urlPreloadSrc, '"posDesktopSetup"');
-  assert.deepEqual(keys.sort(), ["cancel", "current", "save"]);
+  assert.deepEqual(keys.sort(), ["cancel", "current", "save", "version"]);
 });
 
 // -- (9) url-window.html / url-window.js: no external resource loads ---------
@@ -628,19 +632,35 @@ test("(9) vision-guard: no external resource references in url-window.html or ur
     assert.ok(!source.includes("@import"), `${name} must not use @import`);
     assert.ok(!source.includes("url("), `${name} must not use a CSS url()`);
   }
-  // Landmark: the placeholder copy legitimately contains "https://" as text,
-  // not a loaded resource -- proves the scan actually read real content and
-  // the negatives above aren't vacuous from an empty/blinded read.
-  assert.ok(urlWindowHtml.includes('placeholder="https://your-pos.example.com"'));
+  // Landmarks: the scan actually read real content, so the negatives above aren't vacuous from an empty/blinded read.
+  assert.ok(urlWindowHtml.includes('placeholder="yourcafe or yourcafe.sandbee.in"'), "landmark: the placeholder");
+  assert.ok(urlWindowJs.includes("posDesktopSetup.save("), "landmark: the script saves through the bridge");
 });
 
-test("(9) url-window.html: the five copy strings from plan A.12 are present (landmark id=\"error\")", () => {
-  assert.ok(urlWindowHtml.includes('id="error"'));
-  assert.match(urlWindowHtml, /Server address/);
-  assert.ok(urlWindowHtml.includes('placeholder="https://your-pos.example.com"'));
-  assert.match(urlWindowHtml, /Ask the person who set up your POS/);
-  assert.match(urlWindowHtml, /Use this address/);
-  assert.match(urlWindowHtml, />Cancel</);
+// Native apps 2.0 Session N3 deliberately changed (spec §9): the Android start screen's words replace plan A.12's.
+test("(9) url-window: the Android start screen's words, the help text the same in the page and the script (landmark id=\"error\")", () => {
+  assert.ok(urlWindowHtml.includes('id="error"'), "landmark: id=error");
+  for (const text of [
+    "<title>POS address</title>",
+    ">Connect to your workspace<",
+    ">Your cafe, orders and printers. All in one place.<",
+    ">POS address<",
+    'placeholder="yourcafe or yourcafe.sandbee.in"',
+    ">Your workspace<",
+    ">Open POS<",
+    ">Cancel<",
+    ">Windows printers · USB · Wi-Fi / LAN<",
+    `>${PRODUCT_NAME}<`,
+  ]) {
+    assert.ok(urlWindowHtml.includes(text), `url-window.html must carry ${text}`);
+  }
+  const help = "Type your workspace name, or the full address shared by your administrator. We’ll remember it for next time.";
+  assert.ok(urlWindowHtml.includes(`>${help}<`) && urlWindowJs.includes(`"${help}"`), "the help words are the same in the page and the script");
+  for (const text of ['"Check the address"', '"Connecting…"', '"Open POS"', `"${PRODUCT_NAME} · "`]) {
+    assert.ok(urlWindowJs.includes(text), `url-window.js must carry ${text}`);
+  }
+  assert.ok(urlWindowHtml.includes('<button id="cancel" class="cancel" type="button" hidden>Cancel</button>'), "Cancel starts hidden (the first run)");
+  assert.ok(urlWindowJs.includes('event.key === "Escape" && !cancelButton.hidden'), "Esc cancels only when Cancel is shown");
 });
 
 // -- (10) package.json build config ------------------------------------------
@@ -706,8 +726,11 @@ test("(10) package.json: main entry is out/main.js", () => {
   assert.equal(typedPkg.main, "out/main.js");
 });
 
-test("(10) package.json build block: no publish key, no sign/cert key anywhere under build", () => {
-  assert.equal(Object.prototype.hasOwnProperty.call(typedPkg.build, "publish"), false);
+// Native apps 2.0 Session N3 deliberately changed (spec §7): build.publish is the generic provider at the owner's files
+// address, so electron-builder writes latest.yml, the blockmap and resources/app-update.yml; `dist` still publishes
+// nothing (--publish never), and the owner uploads by hand.
+test("(10) package.json build block: publish is the generic provider at files.sandbee.in/pos/windows, no sign/cert key anywhere under build", () => {
+  assert.deepEqual(typedPkg.build.publish, { provider: "generic", url: "https://files.sandbee.in/pos/windows" });
 
   function scanForSignOrCert(value: unknown, keyPath: string): void {
     if (value === null || typeof value !== "object") return;
@@ -737,6 +760,10 @@ test("(11) no console.* usage in any non-test src/*.ts file", () => {
     "shared.ts",
     "log.ts",
     "server-url.ts",
+    "pos-url.ts",
+    "pos-health.ts",
+    "update-plan.ts",
+    "updater.ts",
     "store.ts",
     "window-state.ts",
     "permissions.ts",
@@ -776,6 +803,10 @@ test("(12) no tenant/cafe name anywhere under apps/desktop source/config", () =>
     ["src/shared.ts", read("src/shared.ts")],
     ["src/log.ts", read("src/log.ts")],
     ["src/server-url.ts", read("src/server-url.ts")],
+    ["src/pos-url.ts", read("src/pos-url.ts")],
+    ["src/pos-health.ts", read("src/pos-health.ts")],
+    ["src/update-plan.ts", read("src/update-plan.ts")],
+    ["src/updater.ts", read("src/updater.ts")],
     ["src/store.ts", read("src/store.ts")],
     ["src/window-state.ts", read("src/window-state.ts")],
     ["src/permissions.ts", read("src/permissions.ts")],
@@ -972,13 +1003,44 @@ test("(R4) url-window.ts: the same security posture and navigation guards as eve
   assert.ok(urlWindowSrc.includes("export function openUrlWindow("), "landmark");
 });
 
-test("(R5) url-window assets: inline data: logo under a data:-only img-src, a real form (Enter submits), product name in the header", () => {
+// -- (A) native apps 2.0 (spec §9): the address window ----------------------
+test("(A1) url-window.ts: 480 x 640 of content, not resizable, titled POS address, the version passed to the page", () => {
+  assert.ok(urlWindowSrc.includes("export const URL_WINDOW_WIDTH = 480;"), "the window is 480 wide");
+  assert.ok(urlWindowSrc.includes("export const URL_WINDOW_HEIGHT = 640;"), "the window is 640 high");
+  assert.match(urlWindowSrc, /useContentSize: true,\s*resizable: false,/, "480 x 640 of content, not resizable");
+  assert.ok(urlWindowSrc.includes('title: "POS address",'), "the window is titled POS address");
+  assert.ok(urlWindowSrc.includes("additionalArguments: [`${VERSION_ARG_PREFIX}${app.getVersion()}`]"), "the version is passed to the page");
+});
+
+test("(A2) the address window makes no request itself: the main process reads the address by the Android rules, checks it once through net.fetch, then saves", () => {
+  for (const needle of ["fetch(", "XMLHttpRequest", "WebSocket", "EventSource", "sendBeacon", "import("]) {
+    assert.ok(!urlWindowJs.includes(needle), `url-window.js must not use ${needle}`);
+  }
+  assert.ok(!urlWindowHtml.includes("connect-src"), "default-src 'none' must keep blocking every request from the page");
+  const save = urlWindowSrc.slice(urlWindowSrc.indexOf("ipcMain.handle(URL_SAVE_CHANNEL"), urlWindowSrc.indexOf("ipcMain.handle(URL_CANCEL_CHANNEL"));
+  const normalized = save.indexOf("normalizePosUrl(input)");
+  const checked = save.indexOf("await checkPos(result.origin, (url, init) => net.fetch(url, init))");
+  const saved = save.indexOf("deps.onSaved(result.origin)");
+  assert.ok(normalized >= 0 && checked > normalized && saved > checked, "normalize, then the one check, then save");
+  assert.ok(save.includes("if (!check.ok) return check;"), "an address that failed its check is never saved");
+  const callers = readdirSync(SRC).filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts") && read(`src/${name}`).includes("checkPos("));
+  assert.deepEqual(callers.sort(), ["pos-health.ts", "url-window.ts"], "the one check is made only from the address window's save");
+});
+
+test("(A3) the menu and the tray say Change POS address…, the About dialog names the POS address", () => {
+  const menuSrc = read("src/menu.ts");
+  assert.equal((menuSrc.match(/label: "Change POS address…"/g) ?? []).length, 2, "the Help menu and the tray");
+  assert.ok(!menuSrc.includes("server address") && !menuSrc.includes("Server address"), "no server address left in the menu");
+  assert.ok(menuSrc.includes("`POS address: ${details.serverOrigin ?? \"not set\"}`"), "the About dialog names the POS address");
+});
+
+test("(R5) url-window assets: inline data: logo under a data:-only img-src, a real form (Enter submits), the product name on the page", () => {
   assert.ok(urlWindowHtml.includes("img-src data:"), "CSP must allow only data: images (the logo is inlined; file:// 'self' is not relied on)");
   assert.ok(urlWindowHtml.includes('src="data:image/png;base64,'), "the header logo must be inlined");
   assert.ok(!urlWindowHtml.includes('src="logo.png"'), "no separate logo file is referenced");
   assert.ok(urlWindowHtml.includes('<form id="address-form"') && urlWindowHtml.includes('type="submit"'), "the address entry must be a form so Enter submits (C27)");
   assert.ok(urlWindowJs.includes('addEventListener("submit"'), "the script must handle the form submit");
-  assert.ok(urlWindowHtml.includes(PRODUCT_NAME), "the header must carry the product name (C13)");
+  assert.ok(urlWindowHtml.includes(PRODUCT_NAME), "the page must carry the product name (C13; the footer since native apps 2.0)");
   assert.ok(!existsSync(path.join(ROOT, "assets", "logo.png")), "assets/logo.png must not exist (it is inlined)");
 });
 
@@ -995,6 +1057,60 @@ test("(R7) resources/installer.nsh: customUnInstall deletes BOTH auto-start regi
   assert.equal((installerNsh.match(/DeleteRegValue HKCU/g) ?? []).length, 2, "Run + StartupApproved\\Run");
   assert.equal((installerNsh.match(new RegExp(JSON.stringify(APP_ID), "g")) ?? []).length, 2, "both values must be named by the AppUserModelId (= build.appId) — a rename here strands the entry (C13)");
   assert.ok(installerNsh.includes("StartupApproved"));
+  // Native apps 2.0 (the N2 review gate, G-1): an install over an older version runs the old uninstaller with --updated;
+  // the start-with-Windows entries stay then (U4).
+  assert.match(installerNsh, /\$\{ifNot\} \$\{isUpdated\}\s+DeleteRegValue HKCU[^\n]+\n\s+DeleteRegValue HKCU[^\n]+\n\s+\$\{endIf\}/, "the entries are removed only by a real uninstall");
+});
+
+// -- (U) native apps 2.0 (spec §7): the Windows updater ----------------------
+const updaterSrc = existsSync(path.join(SRC, "updater.ts")) ? read("src/updater.ts") : "";
+
+test("(U1) package.json: electron-updater is a runtime dependency, an exact pin of the version paired with electron-builder 26.16.0", () => {
+  const typed = pkg as { dependencies: Record<string, string>; devDependencies: Record<string, string> };
+  assert.equal(typed.dependencies["electron-updater"], "6.8.9", "6.8.9 shares builder-util-runtime 9.7.0 with electron-builder 26.16.0");
+  assert.equal(typed.devDependencies["electron-builder"], "26.16.0", "the builder it is paired with");
+});
+
+test("(U2) updater.ts: download in the background, install when the app quits, never down, never a prerelease, only a packaged app, errors only logged, no dialog", () => {
+  for (const line of [
+    "autoUpdater.autoDownload = true;",
+    "autoUpdater.autoInstallOnAppQuit = true;",
+    "autoUpdater.allowDowngrade = false;",
+    "autoUpdater.allowPrerelease = false;",
+    "if (!app.isPackaged) return () => undefined;",
+    "const first = setTimeout(check, FIRST_CHECK_MS);",
+    "const every = setInterval(check, CHECK_EVERY_MS);",
+    'autoUpdater.on("error", (error) => deps.log.error(`updater: ${error.name}`));',
+    "const notice = noticeFor(notified, info.version);",
+  ]) {
+    assert.ok(updaterSrc.includes(line), `updater.ts must carry: ${line}`);
+  }
+  const code = (src: string) => src.replace(/^\s*\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.ok(!/\bdialog\b/.test(code(updaterSrc)), "no dialog in the updater's code (spec D3)");
+  assert.ok(!/\bdialog\b/.test(code(mainSrc)), "no dialog in main.ts's code either");
+  assert.ok(updaterSrc.includes("Never a dialog"), "landmark: the comments were stripped, not the code");
+});
+
+test("(U3) quitAndInstall runs only from Restart to update, which the tray and the Help menu offer once an update is downloaded", () => {
+  const all = readdirSync(SRC).filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"));
+  const quitters = all.filter((name) => read(`src/${name}`).includes("quitAndInstall("));
+  assert.deepEqual(quitters, ["updater.ts"], "only updater.ts calls quitAndInstall");
+  assert.equal((updaterSrc.match(/quitAndInstall\(/g) ?? []).length, 1, "one call");
+  assert.ok(updaterSrc.includes("autoUpdater.quitAndInstall(true, true);"), "silent, and the app starts again");
+  const importers = all.filter((name) => read(`src/${name}`).includes('from "electron-updater"'));
+  assert.deepEqual(importers, ["updater.ts"], "only updater.ts talks to electron-updater");
+  const menuSrc = read("src/menu.ts");
+  assert.equal((menuSrc.match(/click: \(\) => actions\.restartToUpdate\(\)/g) ?? []).length, 2, "the Help menu and the tray");
+  assert.equal((menuSrc.match(/\.\.\.\(update \? \[\{ label: update\.label, click: \(\) => actions\.restartToUpdate\(\) \}/g) ?? []).length, 2, "only when an update is downloaded");
+  assert.ok(mainSrc.includes("restartToUpdate: () => restartToUpdate(),"), "main.ts wires the item to the updater");
+});
+
+test("(U4) start with Windows survives an update: the uninstaller keeps it on --updated, and the app puts the entry back at start when it is missing", () => {
+  assert.ok(mainSrc.includes("const loginItem = { path: process.execPath, args: [HIDDEN_FLAG] };"), "the entry: this exe with --hidden, as the first arming");
+  const at = mainSrc.indexOf("if (store.autoStart === true && app.isPackaged && !app.getLoginItemSettings(loginItem).openAtLogin) {");
+  assert.ok(at >= 0, "main.ts puts it back only when the operator chose it and the entry is missing (a Windows-side disable is left alone)");
+  const body = mainSrc.slice(at, mainSrc.indexOf("\n    }", at));
+  assert.ok(body.includes("app.setLoginItemSettings({ openAtLogin: true, ...loginItem });"), "the same entry as the first arming");
 });
 
 // -- 2026-09-11 blank-slip fence ---------------------------------------------

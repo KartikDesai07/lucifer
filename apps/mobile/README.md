@@ -62,35 +62,34 @@ Call `npx` directly here. `npm run android -- --flag` loses the flags on Windows
 
 ## Build the release APK
 
-### 1. Create the signing key once, BEFORE the first client install
+### 1. The signing key
 
 Android only lets an app update itself if the new APK is signed with the same
-key. If you ship a client a debug-signed APK and later switch to a real key,
-that client has to **uninstall** the app first (their saved address and printer
-choice go with it). Create the key before anyone installs.
+key. The app's private key was made on 2026-10-12 for 2.0.0. Every APK before
+it was signed with React Native's public debug key, so each device moves to
+2.0.0 once by hand (docs/GO-LIVE-CHECKLIST.md, "Existing cafes: the native
+apps 2.0 release"). After that, updates arrive by themselves.
 
-Create a keystore outside the repository (keep two backups somewhere safe):
-
-```powershell
-keytool -genkeypair -v -keystore C:\keys\pos-release.keystore -alias pos -keyalg RSA -keysize 2048 -validity 10000
-```
-
-**If you lose this key or its passwords, every client must uninstall the app
-and install a freshly signed one.** Never commit the keystore, and never put the
-passwords in the repository.
-
-Add four lines to `%USERPROFILE%\.gradle\gradle.properties` (this file is on
-your PC only):
+- Key file: `D:\kd\pos-signing\sandbee-pos-release.jks` (PKCS12, RSA 4096,
+  alias `sandbee-pos`, valid 40 years).
+- Its passwords: four lines in `D:\gradle-home\gradle.properties` on the build
+  PC (Gradle's user home on this PC; `%USERPROFILE%\.gradle\gradle.properties`
+  on a PC without `GRADLE_USER_HOME`):
 
 ```properties
-POS_RELEASE_STORE_FILE=C:/keys/pos-release.keystore
-POS_RELEASE_STORE_PASSWORD=your-store-password
-POS_RELEASE_KEY_ALIAS=pos
-POS_RELEASE_KEY_PASSWORD=your-key-password
+POS_RELEASE_STORE_FILE=D:/kd/pos-signing/sandbee-pos-release.jks
+POS_RELEASE_STORE_PASSWORD=<the store password>
+POS_RELEASE_KEY_ALIAS=sandbee-pos
+POS_RELEASE_KEY_PASSWORD=<the same password: a PKCS12 key uses the store's>
 ```
 
-Without these four properties the release build is signed with the debug key
-(fine for your own testing, not for clients).
+**Keep two backups of the key file and these four lines, in two safe places.
+If they are lost, no update can ever be signed again, and every device must
+uninstall the app and install a newly signed one.** Never commit the key or put
+the passwords in the repository.
+
+A release build stops when these four properties are missing or the key file
+is not there. It never signs with the debug key.
 
 ### 2. Build and install
 

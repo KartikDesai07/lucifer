@@ -770,8 +770,9 @@ another program is in front.
       the local network). It is never downloaded from anywhere.
 - [ ] Run it. Windows SmartScreen says the publisher is unknown: **More info →
       Run anyway**, once. Installs for this Windows user only, no admin rights.
-- [ ] First run asks for the **Server address** — type the app's address (for
-      example `https://your-pos.example.com`) and choose **Use this address**.
+- [ ] First run asks for the **POS address** — type the cafe's workspace name
+      (for example `yourcafe`) or the full address, and choose **Open POS**. The
+      app checks the address once before saving it.
 - [ ] Log in once as a real staff account. The sign-in lasts 30 days and renews
       with use, so the PC stays signed in.
 - [ ] **Admin → Printer setup** → **Print all slips on this device** (this PC becomes the print
@@ -814,7 +815,7 @@ another program is in front.
       The tray icon has **Open POS** and **Quit**.
 - [ ] After the first successful load the app starts hidden with Windows.
       **Help → Start with Windows** turns that off and on.
-- [ ] **Help → Change server address…** if the address ever changes.
+- [ ] **Help → Change POS address…** if the address ever changes.
 - [ ] Uninstall from Windows **Settings → Apps → POS Software by sandbee** (this
       also removes the app's start-with-Windows entry).
 - [ ] Set the PC's power plan to never sleep, as below.

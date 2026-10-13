@@ -607,14 +607,17 @@ function manifestProblems(xml: string): string[] {
   }
   // Session 3D (spec §9.5) deliberately changed: one receiver, the reboot and update notice ("POS printing is off. Tap to
   // start."), which hears only those two system broadcasts and never starts the app.
+  // Native apps 2.0 (Session N2) deliberately changed: a second receiver after it, Android's answer to an update install
+  // the card started (never exported, no intent filter; pin 31).
   const receivers = [
     ...x.matchAll(/<receiver\b[\s\S]*?<\/receiver>|<receiver\b[^>]*\/>/g),
   ].map(m => m[0]);
   if (
-    receivers.length !== 1 ||
-    !receivers[0].includes('android:name=".printer.PrintingOffReceiver"')
+    receivers.length !== 2 ||
+    !receivers[0].includes('android:name=".printer.PrintingOffReceiver"') ||
+    !receivers[1].includes('android:name=".update.UpdateInstallReceiver"')
   ) {
-    out.push('the one <receiver> is not PrintingOffReceiver');
+    out.push('the <receiver>s are not PrintingOffReceiver and UpdateInstallReceiver');
   } else {
     for (const need of [
       'android:exported="true"',
@@ -636,7 +639,7 @@ function manifestProblems(xml: string): string[] {
 }
 const manifest = () => read(join(MAIN, 'AndroidManifest.xml'));
 
-test('pin 6: AndroidManifest permissions, service, USB and one receiver (Session 3D)', () => {
+test('pin 6: AndroidManifest permissions, service, USB and two receivers (Session 3D, native apps 2.0)', () => {
   assert.deepEqual(manifestProblems(manifest()), []);
   const raw = manifest();
   assert.ok(
@@ -2789,4 +2792,436 @@ test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
   const app = JSON.parse(readFileSync(join(ROOT, 'app.json'), 'utf8')) as { name: string; displayName: string };
   assert.equal(app.displayName, 'Sandbee POS', 'app.json displayName matches the launcher label');
   assert.equal(app.name, 'PosSoftware', 'the component name MainActivity registers never changes');
+});
+
+// ── pin 27: native apps 2.0, one version for both apps (2026-10-12) ─────────
+// spec §5: the Android app and the Windows app carry the same version. Android's versionCode is major × 10000 +
+// minor × 100 + patch, computed in build.gradle from the one version string (never a literal), so the updater can
+// compare versions as numbers. A test build may override the version with -PposVersion.
+const DESKTOP_PKG = join(ROOT, '..', 'desktop', 'package.json');
+interface VersionSources {
+  gradle: string;
+  desktop: string;
+}
+function versionProblems(s: VersionSources): string[] {
+  const out: string[] = [];
+  const g = strip(s.gradle);
+  const android = /^def posVersionRelease = "(\d{1,3}\.\d{1,2}\.\d{1,2})"$/m.exec(g)?.[1];
+  if (android === undefined) {
+    out.push('build.gradle has no def posVersionRelease = "x.y.z" (minor and patch below 100)');
+  }
+  let desktop: string | undefined;
+  try {
+    desktop = (JSON.parse(s.desktop) as { version?: string }).version;
+  } catch {
+    out.push('apps/desktop/package.json is not JSON');
+  }
+  if (android !== undefined && desktop !== android) {
+    out.push('the Windows app is ' + String(desktop) + ', the Android app ' + android);
+  }
+  const need = (needle: string, why: string) => {
+    if (!g.includes(needle)) {
+      out.push(why);
+    }
+  };
+  need("def posVersionName = (findProperty('posVersion') ?: posVersionRelease).toString()", 'the version is not posVersionRelease (or a test build\'s -PposVersion)');
+  need('if (!(posVersionName ==~ /\\d{1,3}\\.\\d{1,2}\\.\\d{1,2}/))', 'a version with minor or patch above 99 is not refused');
+  need('def posVersionCode = posVersionParts[0] * 10000 + posVersionParts[1] * 100 + posVersionParts[2]', 'versionCode is not major × 10000 + minor × 100 + patch');
+  need('versionCode posVersionCode\n        versionName posVersionName', 'defaultConfig does not use the computed version');
+  if (/versionCode\s+\d/.test(g)) {
+    out.push('a literal versionCode is back');
+  }
+  return out;
+}
+const versionSources = (): VersionSources => ({
+  gradle: read(GRADLE_APP),
+  desktop: read(DESKTOP_PKG),
+});
+
+test('pin 27: one version for both apps, the Android versionCode computed from it', () => {
+  assert.deepEqual(versionProblems(versionSources()), []);
+});
+
+test('pin 27 mutation: either version drifting or a literal versionCode is caught', () => {
+  const base = versionSources();
+  const run = (key: keyof VersionSources) => (text: string) => versionProblems({ ...base, [key]: text });
+  everyMutationCaught(run('gradle'), base.gradle, [
+    ['def posVersionRelease = "2.0.0"', 'def posVersionRelease = "2.0.1"'],
+    ['def posVersionRelease = "2.0.0"', 'def posVersionRelease = "2.100.0"'],
+    ["(findProperty('posVersion') ?: posVersionRelease)", '(posVersionRelease)'],
+    ['\\d{1,3}\\.\\d{1,2}\\.\\d{1,2}/))', '.+/))'],
+    ['posVersionParts[1] * 100', 'posVersionParts[1] * 1000'],
+    ['versionCode posVersionCode', 'versionCode 20000'],
+  ]);
+  everyMutationCaught(run('desktop'), base.desktop, [['"version": "2.0.0"', '"version": "2.0.1"']]);
+});
+
+// ── pin 28: native apps 2.0, the private release key (2026-10-12) ───────────
+// spec §8: a release APK is signed with the app's private key or not built at all. Before 2.0.0 it fell back to React
+// Native's public debug key, which anyone can sign with. The guard looks at the task graph (an `aR` build has no
+// "release" in its task name), and without the key the release build type has no signing config: unsigned, never
+// debug-signed.
+function releaseKeyProblems(gradle: string, readme: string): string[] {
+  const out: string[] = [];
+  const g = strip(gradle);
+  const need = (needle: string, why: string) => {
+    if (!g.includes(needle)) {
+      out.push(why);
+    }
+  };
+  need('signingConfig hasPosReleaseKey ? signingConfigs.release : null', 'a release build without the key falls back to another key');
+  need('gradle.taskGraph.whenReady { graph ->', 'the release-key guard does not look at the task graph');
+  need("graph.allTasks.any { it.path in [':app:packageRelease', ':app:packageReleaseBundle'] }", 'the guard misses a release APK or bundle');
+  need("def posReleaseKeyProps = ['POS_RELEASE_STORE_FILE', 'POS_RELEASE_STORE_PASSWORD', 'POS_RELEASE_KEY_ALIAS', 'POS_RELEASE_KEY_PASSWORD']", 'the guard does not check all four key properties');
+  need('throw new GradleException("A release build needs the private Sandbee POS key', 'a release build without the key does not stop');
+  // The N1 review gate (m-6): the guard names the Gradle user home, not only this PC's folder.
+  need('in gradle.properties in the Gradle user home (D:\\\\gradle-home on the build PC;', 'the guard sends another build PC to a folder it may not have');
+  need('if (!file(posReleaseStoreFile).isFile())', 'a missing key file is not caught before the build');
+  const types = g.slice(Math.max(0, g.indexOf('buildTypes {')));
+  const release = /release \{([\s\S]*?)\n {8}\}/.exec(types)?.[1] ?? '';
+  if (release === '') {
+    out.push('landmark: buildTypes.release not found');
+  } else if (release.includes('signingConfigs.debug')) {
+    out.push('the release build type can still sign with the debug key');
+  }
+  if (!readme.includes('A release build stops when these four properties are missing')) {
+    out.push('README does not say a release build stops without the key');
+  }
+  if (readme.includes('the release build is signed with the debug key')) {
+    out.push('README still says the release build falls back to the debug key');
+  }
+  return out;
+}
+
+test('pin 28: a release APK is signed with the private key or not built', () => {
+  assert.deepEqual(releaseKeyProblems(read(GRADLE_APP), read(join(ROOT, 'README.md'))), []);
+});
+
+test('pin 28 mutation: every key-guard needle can fail', () => {
+  const gradle = read(GRADLE_APP);
+  const readme = read(join(ROOT, 'README.md'));
+  everyMutationCaught(s => releaseKeyProblems(s, readme), gradle, [
+    ['signingConfigs.release : null', 'signingConfigs.release : signingConfigs.debug'],
+    ['gradle.taskGraph.whenReady { graph ->', 'gradle.projectsEvaluated { graph ->'],
+    ["':app:packageRelease', ':app:packageReleaseBundle'", "':app:packageReleaseBundle'"],
+    ["'POS_RELEASE_KEY_ALIAS', 'POS_RELEASE_KEY_PASSWORD']", "'POS_RELEASE_KEY_ALIAS']"],
+    ['throw new GradleException("A release build needs', 'logger.warn("A release build needs'],
+    ['in gradle.properties in the Gradle user home (', 'in ('],
+    ['if (!file(posReleaseStoreFile).isFile())', 'if (false)'],
+  ]);
+  everyMutationCaught(s => releaseKeyProblems(gradle, s), readme, [
+    ['A release build stops when these four properties are missing', 'A release build may use these four properties'],
+  ]);
+});
+
+// ── pin 29: native apps 2.0, the update base and times are build settings (2026-10-12) ───────
+// spec §4, §11: the base is https://files.sandbee.in/pos unless a test build passes a 127.0.0.1 base; only a test base
+// may shorten the times (12 hours between checks, an app open after 30 minutes away). They live in resources that the
+// shrinker keeps, so the release packaging can read the base back out of the APK.
+function updateBaseProblems(gradle: string, keep: string): string[] {
+  const out: string[] = [];
+  const g = strip(gradle);
+  const need = (needle: string, why: string) => {
+    if (!g.includes(needle)) {
+      out.push(why);
+    }
+  };
+  need('def posUpdateBaseDefault = "https://files.sandbee.in/pos"', 'the release base is not https://files.sandbee.in/pos');
+  need("def posUpdateBase = (findProperty('posUpdateBase') ?: posUpdateBaseDefault).toString()", 'the base is not a build setting with the release default');
+  need('posUpdateBase ==~ /http:\\/\\/127\\.0\\.0\\.1:\\d{1,5}(\\/[A-Za-z0-9._-]+)*/', 'a test base may be any http address');
+  need('if (posUpdateBase == posUpdateBaseDefault && (posUpdateCheckMinutes != 720 || posUpdateReopenMinutes != 30))', 'a build with the real base can carry test times');
+  need('resValue "string", "pos_update_base", posUpdateBase\n', 'the base is not in the APK for the updater and the packaging');
+  need('resValue "integer", "pos_update_check_minutes", posUpdateCheckMinutes.toString()', 'the check gap is not a resource');
+  need('resValue "integer", "pos_update_reopen_minutes", posUpdateReopenMinutes.toString()', 'the app-open gap is not a resource');
+  if (!keep.includes('tools:keep="@string/pos_update_base,@integer/pos_update_check_minutes,@integer/pos_update_reopen_minutes"')) {
+    out.push('the resource shrinker may drop the update settings');
+  }
+  return out;
+}
+const UPDATE_KEEP = join(MAIN, 'res', 'raw', 'pos_update_keep.xml');
+
+test('pin 29: the update base and times are build settings with the release defaults', () => {
+  assert.deepEqual(updateBaseProblems(read(GRADLE_APP), read(UPDATE_KEEP)), []);
+});
+
+test('pin 29 mutation: every update-setting needle can fail', () => {
+  const gradle = read(GRADLE_APP);
+  const keep = read(UPDATE_KEEP);
+  everyMutationCaught(s => updateBaseProblems(s, keep), gradle, [
+    ['"https://files.sandbee.in/pos"', '"https://files.sandbee.in/other"'],
+    ["(findProperty('posUpdateBase') ?: posUpdateBaseDefault)", '(posUpdateBaseDefault)'],
+    ['http:\\/\\/127\\.0\\.0\\.1:', 'http:\\/\\/[a-z0-9.-]+:'],
+    ['posUpdateCheckMinutes != 720 ||', 'false ||'],
+    ['"pos_update_base", posUpdateBase', '"pos_update_base", posUpdateBaseDefault'],
+    ['"pos_update_check_minutes", posUpdateCheckMinutes', '"pos_update_check_minutes", 720'],
+    ['"pos_update_reopen_minutes", posUpdateReopenMinutes', '"pos_update_reopen_minutes", 30'],
+  ]);
+  everyMutationCaught(s => updateBaseProblems(gradle, s), keep, [['@integer/pos_update_reopen_minutes"', '"']]);
+});
+
+// ── pin 30: native apps 2.0, the download path (Session N2) ─────────────────
+// spec §4, §6.1, §6.2: the manifest and the APK come only from <base>/android/ (UpdateFiles), a download is kept only
+// when its size and SHA-256 are the manifest's and then its package, version and signer are the installed app's
+// (ApkCheck), and the updater keeps its own preferences file; a kept download is dropped once the app is that version.
+const UPDATE_DIR = join(JAVA, 'com', 'possoftware', 'pos', 'update');
+const upd = (name: string) => read(join(UPDATE_DIR, name));
+interface DownloadSources {
+  downloader: string;
+  check: string;
+  store: string;
+}
+function downloadProblems(s: DownloadSources): string[] {
+  const out: string[] = [];
+  const d = strip(s.downloader);
+  const c = strip(s.check);
+  const st = strip(s.store);
+  const need = (text: string, needle: string, why: string) => {
+    if (!text.includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(d, 'URL(UpdateFiles.manifestUrl(base)).openConnection()', 'the manifest is not read from <base>/android/latest.json');
+  need(d, 'URL(UpdateFiles.apkUrl(base, offer.file)).openConnection()', 'the APK is not read from <base>/android/<file>');
+  need(d, 'private const val TIMEOUT_MS = 10_000', 'the requests do not time out after 10 s');
+  need(d, 'UpdateStore.deleteFilesExcept(ctx, null)', 'a download does not start from an empty updates folder');
+  need(d, 'UpdateFiles.copyVerified(input, out, offer.size, offer.sha256)', 'a download is not checked by size and SHA-256');
+  // The N2 review gate (the review's m-2): the bytes are on disk before the rename.
+  need(d, 'UpdateFiles.copyVerified(input, out, offer.size, offer.sha256).also { if (it) out.fd.sync() }', 'a download is renamed before its bytes are on disk');
+  const renamed = d.indexOf('if (!part.renameTo(apk))');
+  const checked = d.indexOf('if (!ApkCheck.matches(ctx, apk, offer))');
+  if (renamed < 0 || checked < 0 || checked < renamed) {
+    out.push('the APK is not checked (package, version, signer) once complete');
+  }
+  need(c, 'if (archive.packageName != ctx.packageName) return false', 'an APK of another package is not refused');
+  need(c, 'if (PackageInfoCompat.getLongVersionCode(archive) != offer.versionCode.toLong()) return false', 'an APK of another version is not refused');
+  need(c, 'return theirs.isNotEmpty() && theirs == ours', 'an APK signed by another key is not refused');
+  need(c, '.apkContentsSigners', 'the signers compared are not the APK contents signers');
+  // The N1 review gate (the N2 review's I-1): Android 9 reads a downloaded APK's certificates only for GET_SIGNATURES.
+  need(c, 'pm.getPackageArchiveInfo(apk.path, archiveFlags())', 'the downloaded APK is not read with the archive flags');
+  need(c, 'private fun archiveFlags(): Int = signingFlags() or PackageManager.GET_SIGNATURES', 'Android 9 reads no certificates from a downloaded APK');
+  need(c, 'info.signingInfo?.apkContentsSigners ?: info.signatures', 'an APK whose signing info is missing has no signers to compare');
+  need(st, 'private const val FILE = "pos_update"', 'the updater does not keep its own preferences file');
+  need(st, 'if (!File(updatesDir(ctx), file).isFile) return null', 'a kept update whose file is gone is still offered');
+  need(st, 'if (UpdateFiles.staleAfterUpdate(code, installedCode, exists))', 'a kept download is not dropped once the app is that version');
+  return out;
+}
+const downloadSources = (): DownloadSources => ({
+  downloader: upd('UpdateDownloader.kt'),
+  check: upd('ApkCheck.kt'),
+  store: upd('UpdateStore.kt'),
+});
+
+test('pin 30: the download path: <base>/android/ only, size and SHA-256, then package, version and signer', () => {
+  assert.deepEqual(downloadProblems(downloadSources()), []);
+});
+
+test('pin 30 mutation: every download needle can fail', () => {
+  const base = downloadSources();
+  const run = (key: keyof DownloadSources) => (text: string) => downloadProblems({ ...base, [key]: text });
+  everyMutationCaught(run('downloader'), base.downloader, [
+    ['URL(UpdateFiles.manifestUrl(base))', 'URL(base)'],
+    ['URL(UpdateFiles.apkUrl(base, offer.file))', 'URL(offer.file)'],
+    ['TIMEOUT_MS = 10_000', 'TIMEOUT_MS = 0'],
+    ['UpdateStore.deleteFilesExcept(ctx, null)', 'dir.mkdirs()'],
+    ['UpdateFiles.copyVerified(input, out, offer.size, offer.sha256)', 'input.copyTo(out) > 0'],
+    ['.also { if (it) out.fd.sync() }', ''],
+    ['if (!ApkCheck.matches(ctx, apk, offer))', 'if (false)'],
+  ]);
+  everyMutationCaught(run('check'), base.check, [
+    ['if (archive.packageName != ctx.packageName) return false', ''],
+    ['!= offer.versionCode.toLong()) return false', '== -1L) return false'],
+    ['theirs.isNotEmpty() && theirs == ours', 'theirs.isNotEmpty()'],
+    ['.apkContentsSigners', '.signingCertificateHistory'],
+    ['getPackageArchiveInfo(apk.path, archiveFlags())', 'getPackageArchiveInfo(apk.path, signingFlags())'],
+    ['signingFlags() or PackageManager.GET_SIGNATURES', 'signingFlags()'],
+    ['?.apkContentsSigners ?: info.signatures', '?.apkContentsSigners'],
+  ]);
+  everyMutationCaught(run('store'), base.store, [
+    ['FILE = "pos_update"', 'FILE = "pos_printer"'],
+    ['if (!File(updatesDir(ctx), file).isFile) return null', ''],
+    ['if (UpdateFiles.staleAfterUpdate(code, installedCode, exists))', 'if (false)'],
+  ]);
+});
+
+// ── pin 31: native apps 2.0, the install path (Session N2) ──────────────────
+// spec §6.2, §6.4, D3: an install starts only from the card's Install: the first time Android's "Install unknown apps"
+// page for this app, then a PackageInstaller session that always asks in Android's own dialog, whose answer comes back
+// to a receiver nobody else can reach.
+interface InstallSources {
+  installer: string;
+  receiver: string;
+  manifest: string;
+}
+function installProblems(s: InstallSources): string[] {
+  const out: string[] = [];
+  const i = strip(s.installer);
+  const r = strip(s.receiver);
+  const m = strip(s.manifest);
+  const need = (text: string, needle: string, why: string) => {
+    if (!text.includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(i, 'if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !app.packageManager.canRequestPackageInstalls())', 'Android 8+ is not asked to allow installs first');
+  need(i, 'Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + app.packageName))', 'the permission page is not this app\'s');
+  need(i, 'params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_REQUIRED)', 'an install may run without Android\'s own dialog');
+  need(i, 'Intent(app, UpdateInstallReceiver::class.java)', 'the installer\'s answer does not come to this app\'s receiver');
+  need(i, 'PendingIntent.FLAG_MUTABLE', 'the installer cannot add its answer on Android 12+');
+  need(r, 'PackageInstaller.STATUS_PENDING_USER_ACTION ->', 'Android\'s install dialog is never shown');
+  need(r, 'context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))', 'Android\'s install dialog is never shown');
+  need(r, 'onFailed?.invoke()', 'a failed install never reaches the card');
+  // The N2 review gate: a session that cannot be written is abandoned (the review's m-5), and a Cancel in Android's
+  // dialog is Later, not a failure (the review's m-4, the owner's ruling of 2026-10-13).
+  need(i, '} catch (e: RuntimeException) {\n      installer.abandonSession(id)', 'a session that cannot be written stays open');
+  need(r, 'PackageInstaller.STATUS_FAILURE_ABORTED -> {', 'a Cancel in Android\'s dialog reads as a failure');
+  need(r, 'onCancelled?.invoke()', 'a Cancel in Android\'s dialog never reaches the card');
+  need(m, '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />', 'REQUEST_INSTALL_PACKAGES missing');
+  const receiver = /<receiver\b[^>]*android:name="\.update\.UpdateInstallReceiver"[^>]*\/>/.exec(m)?.[0];
+  if (receiver === undefined || !receiver.includes('android:exported="false"')) {
+    out.push('the install receiver is missing, has an intent filter, or is exported');
+  }
+  return out;
+}
+const installSources = (): InstallSources => ({
+  installer: upd('UpdateInstaller.kt'),
+  receiver: upd('UpdateInstallReceiver.kt'),
+  manifest: read(join(MAIN, 'AndroidManifest.xml')),
+});
+
+test('pin 31: the install path: the permission page, Android\'s own dialog, a private answer', () => {
+  assert.deepEqual(installProblems(installSources()), []);
+});
+
+test('pin 31 mutation: every install needle can fail', () => {
+  const base = installSources();
+  const run = (key: keyof InstallSources) => (text: string) => installProblems({ ...base, [key]: text });
+  everyMutationCaught(run('installer'), base.installer, [
+    ['&& !app.packageManager.canRequestPackageInstalls()', '&& false'],
+    ['Uri.parse("package:" + app.packageName)', 'Uri.parse("package:com.example")'],
+    ['USER_ACTION_REQUIRED)', 'USER_ACTION_NOT_REQUIRED)'],
+    ['Intent(app, UpdateInstallReceiver::class.java)', 'Intent("com.possoftware.pos.UPDATE_STATUS")'],
+    ['PendingIntent.FLAG_MUTABLE', 'PendingIntent.FLAG_IMMUTABLE'],
+    ['catch (e: RuntimeException)', 'catch (e: SecurityException)'],
+  ]);
+  everyMutationCaught(run('receiver'), base.receiver, [
+    ['PackageInstaller.STATUS_PENDING_USER_ACTION ->', 'PackageInstaller.STATUS_SUCCESS + 99 ->'],
+    ['context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))', 'Unit'],
+    ['onFailed?.invoke()', 'Unit'],
+    ['PackageInstaller.STATUS_FAILURE_ABORTED -> {', 'PackageInstaller.STATUS_SUCCESS + 98 -> {'],
+    ['onCancelled?.invoke()', 'Unit'],
+  ]);
+  everyMutationCaught(run('manifest'), base.manifest, [
+    ['android.permission.REQUEST_INSTALL_PACKAGES', 'android.permission.REQUEST_DELETE_PACKAGES'],
+    ['android:name=".update.UpdateInstallReceiver"\n        android:exported="false"', 'android:name=".update.UpdateInstallReceiver"\n        android:exported="true"'],
+  ]);
+});
+
+// ── pin 32: native apps 2.0, the updater module (Session N2) ────────────────
+// spec §6, D3: NativeModules.PosUpdate offers the card at most once per app open and only while no printer of this app
+// has a job in flight; it looks for an update only at an open; its base comes only from the build setting
+// (R.string.pos_update_base, pin 29); its schedule is touched on the main thread only (the N1 review's I-2), with the
+// clock that counts deep sleep; and MainApplication registers it next to the printer module.
+const UPDATE_METHOD_ORACLE = ['takeCard', 'install', 'later'];
+interface UpdateModuleSources {
+  module: string;
+  js: string;
+  app: string;
+  pool: string;
+  manager: string;
+  updateKt: string;
+}
+function updateModuleProblems(s: UpdateModuleSources): string[] {
+  const out: string[] = [];
+  const k = strip(s.module);
+  const j = strip(s.js);
+  const need = (text: string, needle: string, why: string) => {
+    if (!text.includes(needle)) {
+      out.push(why);
+    }
+  };
+  const kotlin = [...k.matchAll(/@ReactMethod\s+fun\s+(\w+)\s*\(/g)].map(m => m[1]);
+  const calls = [...j.matchAll(/\bcall\(\s*'(\w+)'/g)].map(m => m[1]);
+  const iface = /export interface PosUpdateModule\s*\{([\s\S]*?)\n\}/.exec(j);
+  const declared = iface ? [...iface[1].matchAll(/^ {2}(\w+)\(/gm)].map(m => m[1]) : [];
+  out.push(...setProblems('kotlin vs update oracle', kotlin, UPDATE_METHOD_ORACLE));
+  out.push(...setProblems('js calls vs update oracle', calls, UPDATE_METHOD_ORACLE));
+  out.push(...setProblems('js interface vs update oracle', declared, UPDATE_METHOD_ORACLE));
+  need(k, 'const val NAME = "PosUpdate"', 'the Kotlin module is not PosUpdate');
+  need(j, 'NativeModules as { PosUpdate?:', 'the JS wrapper does not look up PosUpdate');
+  need(k, 'reactContext.getString(R.string.pos_update_base)', 'the base is not the build setting');
+  if (/"https?:\/\//.test(strip(s.updateKt))) {
+    out.push('an address literal in the updater');
+  }
+  need(k, 'if (open && schedule.checkDue(System.currentTimeMillis(), UpdateStore.lastCheckAt(reactContext))) check()', 'a look is not tied to an app open');
+  if ((k.match(/[^\w.]check\(\)/g) ?? []).length !== 2) {
+    out.push('check() is called from somewhere other than an app open');
+  }
+  need(k, 'schedule.shown(SystemClock.elapsedRealtime(), ', 'an open is not timed with elapsedRealtime');
+  need(k, 'schedule.hidden(SystemClock.elapsedRealtime())', 'going away is not timed with elapsedRealtime');
+  need(k, 'fun takeCard(promise: Promise) {\n    UiThreadUtil.runOnUiThread(', 'takeCard touches the schedule off the main thread');
+  need(k, 'PrinterPool.anyPrinting() -> {', 'the card does not wait for a print in flight');
+  need(k, 'while (PrinterPool.anyPrinting() && waited < INSTALL_IDLE_WAIT_MS)', 'Install does not wait for a print in flight');
+  need(k, '} catch (t: Throwable) {\n        Log.i(TAG, "check: "', 'a failed look can end the updater thread');
+  // The N2 review gate: the card waits at most 2 minutes for idle printers (the review's m-3, the owner's ruling of
+  // 2026-10-13); Later stops an Install still waiting for them (m-1); a kept file is hashed again before it is called
+  // ready or handed to the installer (m-2); a Cancel in Android's dialog reaches the card as Later (m-4).
+  need(k, 'private const val CARD_IDLE_WAIT_MS = 120_000L', 'the card waits for idle printers without a bound');
+  need(k, 'if (SystemClock.elapsedRealtime() - waitingSince >= CARD_IDLE_WAIT_MS) {', 'the card waits for idle printers without a bound');
+  need(k, 'fun later() {\n    installTicket.incrementAndGet()', 'Later does not stop an Install still waiting for the printers');
+  need(k, 'ticket != installTicket.get() -> UpdateInstaller.InstallStart.CANCELLED', 'Later does not stop an Install still waiting for the printers');
+  need(k, '!keptIntact(update) -> {', 'a kept file is handed to the installer without its hash checked again');
+  need(k, '&& keptIntact(kept)', 'a kept file is called ready without its hash checked again');
+  need(k, 'UpdateInstallReceiver.onCancelled = { emitResult(ok = false, cancelled = true) }', 'a Cancel in Android\'s dialog never reaches the card');
+  need(strip(s.pool), 'fun anyPrinting(): Boolean = managers().any { it.isPrinting() }', 'the printers cannot say a job is in flight');
+  need(strip(s.manager), 'fun isPrinting(): Boolean = printing.get()', 'a printer cannot say a job is in flight');
+  const app = strip(s.app);
+  if (!/^\s*add\(PosUpdatePackage\(\)\)\s*$/m.test(app) || !/^import com\.possoftware\.pos\.update\.PosUpdatePackage\s*$/m.test(app)) {
+    out.push('MainApplication does not register PosUpdatePackage');
+  }
+  return out;
+}
+const updateModuleSources = (): UpdateModuleSources => ({
+  module: upd('PosUpdateModule.kt'),
+  js: read(join(SRC, 'native', 'PosUpdate.ts')),
+  app: read(join(JAVA, 'com', 'possoftware', 'pos', 'MainApplication.kt')),
+  pool: kt('PrinterPool.kt'),
+  manager: kt('PrinterManager.kt'),
+  updateKt: Object.values(loadAll(listFiles(UPDATE_DIR, isKt))).join('\n'),
+});
+
+test('pin 32: the updater module: once per open, after a print, looks only at an open, the main thread, registered', () => {
+  assert.deepEqual(updateModuleProblems(updateModuleSources()), []);
+});
+
+test('pin 32 mutation: every module needle can fail', () => {
+  const base = updateModuleSources();
+  const run = (key: keyof UpdateModuleSources) => (text: string) => updateModuleProblems({ ...base, [key]: text });
+  everyMutationCaught(run('module'), base.module, [
+    ['@ReactMethod\n  fun later(', 'fun later('],
+    ['const val NAME = "PosUpdate"', 'const val NAME = "PosUpdates"'],
+    ['reactContext.getString(R.string.pos_update_base)', '"https://files.sandbee.in/pos"'],
+    ['if (open && schedule.checkDue(', 'if (schedule.checkDue('],
+    ['    schedule.hidden(SystemClock.elapsedRealtime())\n', '    schedule.hidden(SystemClock.elapsedRealtime())\n    check()\n'],
+    ['schedule.shown(SystemClock.elapsedRealtime(), ', 'schedule.shown(System.currentTimeMillis(), '],
+    ['schedule.hidden(SystemClock.elapsedRealtime())', 'schedule.hidden(System.currentTimeMillis())'],
+    ['fun takeCard(promise: Promise) {\n    UiThreadUtil.runOnUiThread(', 'fun takeCard(promise: Promise) {\n    worker.execute('],
+    ['PrinterPool.anyPrinting() -> {', 'false -> {'],
+    ['while (PrinterPool.anyPrinting() && waited', 'while (false && waited'],
+    ['} catch (t: Throwable) {\n        Log.i(TAG, "check: "', '} catch (t: Exception) {\n        Log.i(TAG, "check: "'],
+    ['CARD_IDLE_WAIT_MS = 120_000L', 'CARD_IDLE_WAIT_MS = Long.MAX_VALUE'],
+    ['if (SystemClock.elapsedRealtime() - waitingSince >= CARD_IDLE_WAIT_MS) {', 'if (false) {'],
+    ['fun later() {\n    installTicket.incrementAndGet()', 'fun later() {\n    Unit'],
+    ['ticket != installTicket.get() -> ', 'false -> '],
+    ['!keptIntact(update) -> {', 'false -> {'],
+    ['&& keptIntact(kept)', ''],
+    ['emitResult(ok = false, cancelled = true) }', 'emitResult(ok = false, cancelled = false) }'],
+  ]);
+  everyMutationCaught(run('js'), base.js, [
+    ["call('install')", "call('installNow')"],
+    ['NativeModules as { PosUpdate?:', 'NativeModules as { PosUpdater?:'],
+  ]);
+  everyMutationCaught(run('app'), base.app, [['add(PosUpdatePackage())', '// add(PosUpdatePackage())']]);
+  everyMutationCaught(run('pool'), base.pool, [['managers().any { it.isPrinting() }', 'false']]);
+  everyMutationCaught(run('manager'), base.manager, [['= printing.get()', '= false']]);
+  everyMutationCaught(run('updateKt'), base.updateKt, [['const val TAG = "PosUpdate"', 'const val TAG = "PosUpdate"\n  const val HOST = "https://files.sandbee.in"']]);
 });
