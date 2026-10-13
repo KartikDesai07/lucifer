@@ -116,11 +116,12 @@ test("(3) main.ts: single-instance lock, app lifecycle events, setAppUserModelId
   assert.match(mainSrc, /setAppUserModelId\(APP_ID\)/);
 });
 
-test("(3) main.ts: setLoginItemSettings called exactly twice, both with args: [HIDDEN_FLAG]", () => {
+// Native apps 2.0 Session N3 deliberately changed: a third call sets start-with-Windows again at every start (U4).
+test("(3) main.ts: setLoginItemSettings called exactly three times, all with args: [HIDDEN_FLAG]", () => {
   const calls = mainSrc.match(/setLoginItemSettings\(/g) ?? [];
-  assert.equal(calls.length, 2, "expected exactly two setLoginItemSettings call sites");
+  assert.equal(calls.length, 3, "expected exactly three setLoginItemSettings call sites");
   const argsMatches = mainSrc.match(/args:\s*\[HIDDEN_FLAG\]/g) ?? [];
-  assert.equal(argsMatches.length, 2, "both setLoginItemSettings calls must pass args: [HIDDEN_FLAG]");
+  assert.equal(argsMatches.length, 3, "every setLoginItemSettings call must pass args: [HIDDEN_FLAG]");
 });
 
 test("(3) main.ts: auto-start is armed inside did-finish-load and gates on app.isPackaged, the never-decided sentinel, AND a load that reached the saved origin", () => {
@@ -725,8 +726,11 @@ test("(10) package.json: main entry is out/main.js", () => {
   assert.equal(typedPkg.main, "out/main.js");
 });
 
-test("(10) package.json build block: no publish key, no sign/cert key anywhere under build", () => {
-  assert.equal(Object.prototype.hasOwnProperty.call(typedPkg.build, "publish"), false);
+// Native apps 2.0 Session N3 deliberately changed (spec §7): build.publish is the generic provider at the owner's files
+// address, so electron-builder writes latest.yml, the blockmap and resources/app-update.yml; `dist` still publishes
+// nothing (--publish never), and the owner uploads by hand.
+test("(10) package.json build block: publish is the generic provider at files.sandbee.in/pos/windows, no sign/cert key anywhere under build", () => {
+  assert.deepEqual(typedPkg.build.publish, { provider: "generic", url: "https://files.sandbee.in/pos/windows" });
 
   function scanForSignOrCert(value: unknown, keyPath: string): void {
     if (value === null || typeof value !== "object") return;
@@ -758,6 +762,8 @@ test("(11) no console.* usage in any non-test src/*.ts file", () => {
     "server-url.ts",
     "pos-url.ts",
     "pos-health.ts",
+    "update-plan.ts",
+    "updater.ts",
     "store.ts",
     "window-state.ts",
     "permissions.ts",
@@ -799,6 +805,8 @@ test("(12) no tenant/cafe name anywhere under apps/desktop source/config", () =>
     ["src/server-url.ts", read("src/server-url.ts")],
     ["src/pos-url.ts", read("src/pos-url.ts")],
     ["src/pos-health.ts", read("src/pos-health.ts")],
+    ["src/update-plan.ts", read("src/update-plan.ts")],
+    ["src/updater.ts", read("src/updater.ts")],
     ["src/store.ts", read("src/store.ts")],
     ["src/window-state.ts", read("src/window-state.ts")],
     ["src/permissions.ts", read("src/permissions.ts")],
@@ -1049,6 +1057,60 @@ test("(R7) resources/installer.nsh: customUnInstall deletes BOTH auto-start regi
   assert.equal((installerNsh.match(/DeleteRegValue HKCU/g) ?? []).length, 2, "Run + StartupApproved\\Run");
   assert.equal((installerNsh.match(new RegExp(JSON.stringify(APP_ID), "g")) ?? []).length, 2, "both values must be named by the AppUserModelId (= build.appId) — a rename here strands the entry (C13)");
   assert.ok(installerNsh.includes("StartupApproved"));
+  // Native apps 2.0 (the N2 review gate, G-1): an install over an older version runs the old uninstaller with --updated;
+  // the start-with-Windows entries stay then (U4).
+  assert.match(installerNsh, /\$\{ifNot\} \$\{isUpdated\}\s+DeleteRegValue HKCU[^\n]+\n\s+DeleteRegValue HKCU[^\n]+\n\s+\$\{endIf\}/, "the entries are removed only by a real uninstall");
+});
+
+// -- (U) native apps 2.0 (spec §7): the Windows updater ----------------------
+const updaterSrc = existsSync(path.join(SRC, "updater.ts")) ? read("src/updater.ts") : "";
+
+test("(U1) package.json: electron-updater is a runtime dependency, an exact pin of the version paired with electron-builder 26.16.0", () => {
+  const typed = pkg as { dependencies: Record<string, string>; devDependencies: Record<string, string> };
+  assert.equal(typed.dependencies["electron-updater"], "6.8.9", "6.8.9 shares builder-util-runtime 9.7.0 with electron-builder 26.16.0");
+  assert.equal(typed.devDependencies["electron-builder"], "26.16.0", "the builder it is paired with");
+});
+
+test("(U2) updater.ts: download in the background, install when the app quits, never down, never a prerelease, only a packaged app, errors only logged, no dialog", () => {
+  for (const line of [
+    "autoUpdater.autoDownload = true;",
+    "autoUpdater.autoInstallOnAppQuit = true;",
+    "autoUpdater.allowDowngrade = false;",
+    "autoUpdater.allowPrerelease = false;",
+    "if (!app.isPackaged) return () => undefined;",
+    "const first = setTimeout(check, FIRST_CHECK_MS);",
+    "const every = setInterval(check, CHECK_EVERY_MS);",
+    'autoUpdater.on("error", (error) => deps.log.error(`updater: ${error.name}`));',
+    "const notice = noticeFor(notified, info.version);",
+  ]) {
+    assert.ok(updaterSrc.includes(line), `updater.ts must carry: ${line}`);
+  }
+  const code = (src: string) => src.replace(/^\s*\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.ok(!/\bdialog\b/.test(code(updaterSrc)), "no dialog in the updater's code (spec D3)");
+  assert.ok(!/\bdialog\b/.test(code(mainSrc)), "no dialog in main.ts's code either");
+  assert.ok(updaterSrc.includes("Never a dialog"), "landmark: the comments were stripped, not the code");
+});
+
+test("(U3) quitAndInstall runs only from Restart to update, which the tray and the Help menu offer once an update is downloaded", () => {
+  const all = readdirSync(SRC).filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"));
+  const quitters = all.filter((name) => read(`src/${name}`).includes("quitAndInstall("));
+  assert.deepEqual(quitters, ["updater.ts"], "only updater.ts calls quitAndInstall");
+  assert.equal((updaterSrc.match(/quitAndInstall\(/g) ?? []).length, 1, "one call");
+  assert.ok(updaterSrc.includes("autoUpdater.quitAndInstall(true, true);"), "silent, and the app starts again");
+  const importers = all.filter((name) => read(`src/${name}`).includes('from "electron-updater"'));
+  assert.deepEqual(importers, ["updater.ts"], "only updater.ts talks to electron-updater");
+  const menuSrc = read("src/menu.ts");
+  assert.equal((menuSrc.match(/click: \(\) => actions\.restartToUpdate\(\)/g) ?? []).length, 2, "the Help menu and the tray");
+  assert.equal((menuSrc.match(/\.\.\.\(update \? \[\{ label: update\.label, click: \(\) => actions\.restartToUpdate\(\) \}/g) ?? []).length, 2, "only when an update is downloaded");
+  assert.ok(mainSrc.includes("restartToUpdate: () => restartToUpdate(),"), "main.ts wires the item to the updater");
+});
+
+test("(U4) start with Windows survives an update: the uninstaller keeps it on --updated, and the app puts the entry back at start when it is missing", () => {
+  assert.ok(mainSrc.includes("const loginItem = { path: process.execPath, args: [HIDDEN_FLAG] };"), "the entry: this exe with --hidden, as the first arming");
+  const at = mainSrc.indexOf("if (store.autoStart === true && app.isPackaged && !app.getLoginItemSettings(loginItem).openAtLogin) {");
+  assert.ok(at >= 0, "main.ts puts it back only when the operator chose it and the entry is missing (a Windows-side disable is left alone)");
+  const body = mainSrc.slice(at, mainSrc.indexOf("\n    }", at));
+  assert.ok(body.includes("app.setLoginItemSettings({ openAtLogin: true, ...loginItem });"), "the same entry as the first arming");
 });
 
 // -- 2026-09-11 blank-slip fence ---------------------------------------------
