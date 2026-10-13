@@ -96,6 +96,12 @@ test("normalizeStore: serverOrigin is re-validated -- https with a path -> store
   assert.equal(result.serverOrigin, "https://my-pos.example.com");
 });
 
+test("normalizeStore: serverOrigin is re-validated by the Android app's rules -- a private-network http address stays", () => {
+  // Native apps 2.0 (spec §9): the address window saves what normalizePosUrl accepts; the next start must read it back.
+  assert.equal(normalizeStore({ serverOrigin: "http://192.168.1.20:3000" }).serverOrigin, "http://192.168.1.20:3000");
+  assert.equal(normalizeStore({ serverOrigin: "http://localhost:3110" }).serverOrigin, "http://localhost:3110");
+});
+
 test("normalizeStore: autoStart false survives (not coerced to null)", () => {
   const result = normalizeStore({ autoStart: false });
   assert.equal(result.autoStart, false);

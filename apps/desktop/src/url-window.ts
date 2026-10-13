@@ -1,6 +1,6 @@
 // The first-run/"Change server address…" window: a small, non-resizable
 // prompt for the saved server origin. No preload state beyond three IPC
-// channels; the actual validation lives in server-url.ts.
+// channels; the address rules live in pos-url.ts (the Android app's).
 import path from "node:path";
 import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from "electron";
 import {
@@ -9,7 +9,7 @@ import {
   URL_CURRENT_CHANNEL,
   URL_SAVE_CHANNEL,
 } from "./shared";
-import { normalizeServerUrl } from "./server-url";
+import { normalizePosUrl, URL_EMPTY_ERROR } from "./pos-url";
 import type { Logger } from "./log";
 
 export const URL_WINDOW_WIDTH = 520;
@@ -75,9 +75,9 @@ export function registerUrlHandlers(deps: RegisterUrlHandlersDeps): void {
 
   ipcMain.handle(URL_SAVE_CHANNEL, (_event: IpcMainInvokeEvent, input: unknown) => {
     if (typeof input !== "string") {
-      return { ok: false, error: "Enter the address of your POS." };
+      return { ok: false, error: URL_EMPTY_ERROR };
     }
-    const result = normalizeServerUrl(input);
+    const result = normalizePosUrl(input);
     if (result.ok) {
       deps.onSaved(result.origin);
       return { ok: true };
