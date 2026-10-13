@@ -88,7 +88,7 @@ class UpdateFilesTest {
 
   @Test
   fun aKeptFileHashesToTheManifestsSha256() {
-    assertEquals(sha, UpdateFiles.sha256Of(ByteArrayInputStream(apk)))
+    assertEquals("the manifest's SHA-256", sha, UpdateFiles.sha256Of(ByteArrayInputStream(apk)))
   }
 
   @Test

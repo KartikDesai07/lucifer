@@ -116,7 +116,8 @@ test("(3) main.ts: single-instance lock, app lifecycle events, setAppUserModelId
   assert.match(mainSrc, /setAppUserModelId\(APP_ID\)/);
 });
 
-// Native apps 2.0 Session N3 deliberately changed: a third call sets start-with-Windows again at every start (U4).
+// Native apps 2.0 Session N3 deliberately changed: a third call puts start-with-Windows back at a start when its entry
+// is missing and the operator chose it (U4; the N3 review's m-4).
 test("(3) main.ts: setLoginItemSettings called exactly three times, all with args: [HIDDEN_FLAG]", () => {
   const calls = mainSrc.match(/setLoginItemSettings\(/g) ?? [];
   assert.equal(calls.length, 3, "expected exactly three setLoginItemSettings call sites");
@@ -1080,7 +1081,9 @@ test("(U2) updater.ts: download in the background, install when the app quits, n
     "if (!app.isPackaged) return () => undefined;",
     "const first = setTimeout(check, FIRST_CHECK_MS);",
     "const every = setInterval(check, CHECK_EVERY_MS);",
-    'autoUpdater.on("error", (error) => deps.log.error(`updater: ${error.name}`));',
+    // The N3 review gate (the review's m-6): the one error line names electron-updater's code (ERR_UPDATER_…).
+    'autoUpdater.on("error", (error) => deps.log.error(`updater: ${errorCode(error)}`));',
+    'return typeof code === "string" ? code : error.name;',
     "const notice = noticeFor(notified, info.version);",
   ]) {
     assert.ok(updaterSrc.includes(line), `updater.ts must carry: ${line}`);
