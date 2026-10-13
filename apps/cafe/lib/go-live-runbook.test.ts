@@ -1318,7 +1318,7 @@ test("PIN §7 desktop app: every UI string the sub-section quotes exists verbati
     ["Open POS", menuSrc, "menu.ts"],
     ["Quit", menuSrc, "menu.ts"],
     ["Start with Windows", menuSrc, "menu.ts"],
-    ["Change server address…", menuSrc, "menu.ts"],
+    ["Change POS address…", menuSrc, "menu.ts"],
     // Native apps 2.0 Session N3 deliberately changed: the address window's words (spec §9).
     ["POS address", urlHtml, "url-window.html"],
   ] as const) {

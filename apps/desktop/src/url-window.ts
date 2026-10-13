@@ -1,6 +1,7 @@
-// The first-run/"Change server address…" window: a small, non-resizable
-// prompt for the saved server origin. No preload state beyond three IPC
-// channels; the address rules live in pos-url.ts (the Android app's).
+// The first-run/"Change POS address…" window (native apps 2.0: the Android
+// start screen's look): a non-resizable prompt for the saved POS origin. The
+// preload exposes three IPC calls and the app's version; the address rules
+// live in pos-url.ts (the Android app's), the one check in pos-health.ts.
 import path from "node:path";
 import { app, BrowserWindow, ipcMain, net, type IpcMainInvokeEvent } from "electron";
 import {
@@ -68,7 +69,7 @@ interface RegisterUrlHandlersDeps {
   onSaved(origin: string): void;
   // Read at cancel-time, not registration-time: the same handlers serve
   // both the first-run window (allowCancel false) and every later
-  // "Change server address…" window (allowCancel true) — ipcMain.handle
+  // "Change POS address…" window (allowCancel true) — ipcMain.handle
   // can only be bound once per channel for the app's lifetime.
   allowCancel(): boolean;
   closeUrlWindow(): void;

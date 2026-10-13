@@ -22,7 +22,7 @@ export function buildAppMenu(actions: AppMenuActions): Menu {
         { label: "Open POS", click: () => actions.openPos() },
         { label: "Reload", click: () => actions.reload() },
         { type: "separator" },
-        { label: "Change server address…", click: () => actions.changeServerAddress() },
+        { label: "Change POS address…", click: () => actions.changeServerAddress() },
         {
           label: "Start with Windows",
           type: "checkbox",
@@ -56,7 +56,7 @@ export function createTray(actions: TrayActions): Tray {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "Open POS", click: () => actions.openPos() },
-      { label: "Change server address…", click: () => actions.changeServerAddress() },
+      { label: "Change POS address…", click: () => actions.changeServerAddress() },
       { type: "separator" },
       { label: "Quit", click: () => actions.quit() },
     ]),
@@ -84,6 +84,6 @@ export async function showAboutDialog(details: AboutDetails): Promise<void> {
     detail:
       `Version ${details.version}\n` +
       `Electron ${details.electronVersion}\n` +
-      `Server address: ${details.serverOrigin ?? "not set"}`,
+      `POS address: ${details.serverOrigin ?? "not set"}`,
   });
 }

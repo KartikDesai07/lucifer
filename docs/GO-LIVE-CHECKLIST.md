@@ -815,7 +815,7 @@ another program is in front.
       The tray icon has **Open POS** and **Quit**.
 - [ ] After the first successful load the app starts hidden with Windows.
       **Help → Start with Windows** turns that off and on.
-- [ ] **Help → Change server address…** if the address ever changes.
+- [ ] **Help → Change POS address…** if the address ever changes.
 - [ ] Uninstall from Windows **Settings → Apps → POS Software by sandbee** (this
       also removes the app's start-with-Windows entry).
 - [ ] Set the PC's power plan to never sleep, as below.

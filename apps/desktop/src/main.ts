@@ -199,7 +199,7 @@ if (!app.requestSingleInstanceLock()) {
     };
 
     // Mutable so the currently-open window's Cancel button reflects how it
-    // was opened (first run: no cancel; "Change server address…": cancel ok).
+    // was opened (first run: no cancel; "Change POS address…": cancel ok).
     let urlWindowAllowsCancel = false;
 
     const openSetupWindow = (allowCancel: boolean): void => {

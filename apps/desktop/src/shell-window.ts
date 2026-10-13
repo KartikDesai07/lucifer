@@ -19,7 +19,7 @@ import type { ShellStore, WindowBounds } from "./store";
 import type { Logger } from "./log";
 
 interface CreateMainWindowDeps {
-  // A getter, not a value: "Change server address…" re-points the SAME window,
+  // A getter, not a value: "Change POS address…" re-points the SAME window,
   // so the navigation guards and the retry must always read the current origin.
   getOrigin(): string;
   startHidden: boolean;

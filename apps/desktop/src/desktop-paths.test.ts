@@ -1019,6 +1019,13 @@ test("(A2) the address window makes no request itself: the main process reads th
   assert.deepEqual(callers.sort(), ["pos-health.ts", "url-window.ts"], "the one check is made only from the address window's save");
 });
 
+test("(A3) the menu and the tray say Change POS address…, the About dialog names the POS address", () => {
+  const menuSrc = read("src/menu.ts");
+  assert.equal((menuSrc.match(/label: "Change POS address…"/g) ?? []).length, 2, "the Help menu and the tray");
+  assert.ok(!menuSrc.includes("server address") && !menuSrc.includes("Server address"), "no server address left in the menu");
+  assert.ok(menuSrc.includes("`POS address: ${details.serverOrigin ?? \"not set\"}`"), "the About dialog names the POS address");
+});
+
 test("(R5) url-window assets: inline data: logo under a data:-only img-src, a real form (Enter submits), the product name on the page", () => {
   assert.ok(urlWindowHtml.includes("img-src data:"), "CSP must allow only data: images (the logo is inlined; file:// 'self' is not relied on)");
   assert.ok(urlWindowHtml.includes('src="data:image/png;base64,'), "the header logo must be inlined");

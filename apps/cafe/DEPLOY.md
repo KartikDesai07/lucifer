@@ -166,7 +166,7 @@ and verifies the address but only **switches** TENANT_ID to it once DNS/TLS are 
 tenant ids, never just any site) — until then the cafe keeps serving its current host
 and the console shows **HOLD**. On a real switch the old `*.vercel.app` address (and, after
 a rename, the old `<sub>.<apex>` name) is left **redirecting** to the new one (so old printed QR codes and bookmarks keep working) and the after-switch
-checklist appears: staff sign in again, counter PC → "Change server address…", Settings →
+checklist appears: staff sign in again, counter PC → "Change POS address…", Settings →
 Telegram → Repair webhook, R2 bucket CORS → add the new origin. **More ▾ → Revert web
 address…** removes the redirects first, then goes back to the `*.vercel.app` address (the
 subdomain stays attached in Vercel until removed by hand). `--check-dns` on the CLI does
