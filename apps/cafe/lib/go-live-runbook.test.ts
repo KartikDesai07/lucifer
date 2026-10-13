@@ -1314,6 +1314,7 @@ test("PIN §7 desktop app: every UI string the sub-section quotes exists verbati
   const menuSrc = readFileSync(path.join(REPO_ROOT, "apps/desktop/src/menu.ts"), "utf8");
   const urlHtml = readFileSync(path.join(REPO_ROOT, "apps/desktop/assets/url-window.html"), "utf8");
   const sharedSrc = readFileSync(path.join(REPO_ROOT, "apps/desktop/src/shared.ts"), "utf8");
+  const updatePlanSrc = readFileSync(path.join(REPO_ROOT, "apps/desktop/src/update-plan.ts"), "utf8");
   for (const [label, src, where] of [
     ["Open POS", menuSrc, "menu.ts"],
     ["Quit", menuSrc, "menu.ts"],
@@ -1321,6 +1322,8 @@ test("PIN §7 desktop app: every UI string the sub-section quotes exists verbati
     ["Change POS address…", menuSrc, "menu.ts"],
     // Native apps 2.0 Session N3 deliberately changed: the address window's words (spec §9).
     ["POS address", urlHtml, "url-window.html"],
+    // Native apps 2.0 Session N4 deliberately changed: the app updates itself (spec §7).
+    ["Restart to update", updatePlanSrc, "update-plan.ts"],
   ] as const) {
     assert.ok(section.includes(label), `§7 desktop sub-section must quote "${label}"`);
     assert.ok(src.includes(`"${label}"`) || src.includes(`>${label}<`), `"${label}" must exist verbatim in ${where}`);
@@ -1329,6 +1332,10 @@ test("PIN §7 desktop app: every UI string the sub-section quotes exists verbati
   assert.ok(/Printing preferences/i.test(section) && /80 mm/.test(section), "silent printing uses the printer's Windows defaults — the section must say where to set the roll size");
   assert.ok(section.includes("pos-desktop.log") && sharedSrc.includes('LOG_FILE_NAME = "pos-desktop.log"'), "the section must name the log file support will ask for");
   assert.ok(/notification/i.test(section), "the section must say a failed print raises a Windows notification");
+  assert.ok(
+    !section.includes("never downloaded from anywhere") && section.includes("files.sandbee.in"),
+    "from 2.0.0 the app updates itself from files.sandbee.in (native apps 2.0)",
+  );
 });
 
 // ── §6 Staff accounts: Menu redesign (owner, 2026-09-30) wording must match
@@ -1473,4 +1480,116 @@ test("PIN §1 (printing Phase 3, the final gate's m-5): opening the app once doe
   assert.ok(!open.includes("The install itself shows"), "no promise that every install shows the notice");
   assert.ok(open.includes("the Phase 2 app it replaces shows nothing"), "over the Phase 2 app nothing shows");
   assert.ok(open.includes("open the app from its icon"), "... so the deployer opens the app either way");
+});
+
+// ── Native apps 2.0 (Session N4): the release step, the update facts, the address window's words ─────────────────
+// apps/mobile, apps/desktop and scripts/ are outside this workspace: their files are read as text (rule 3 above).
+
+const NATIVE_STEP = "### Existing cafes: the native apps 2.0 release";
+
+test("PIN §1 (native apps 2.0): the release step keeps its order (the owner's upload first, each printing device moved once, then the Windows app over 1.x), names the packaging script's files and their hashes, and changes no web or Worker", () => {
+  const step = norm(sectionSlice(NATIVE_STEP));
+  let at = -1;
+  for (const landmark of [
+    "**First, the owner's upload.**",
+    "UPLOAD-STEPS.txt",
+    "**Each printing phone or tablet, once:**",
+    "uninstall the old POS app",
+    "Sandbee-POS-2.0.0-arm64-v8a.apk",
+    "**Admin → Printer setup**",
+    "choose this device again",
+    "**The Windows counter PC:**",
+    "POS-Software-Setup-2.0.0.exe",
+  ]) {
+    const next = step.indexOf(landmark);
+    assert.ok(next > at, `the native apps 2.0 step names "${landmark}" after the one before it`);
+    at = next;
+  }
+  assert.ok(step.includes("SHA256SUMS.txt"), "each file's hash is checked before it is sent");
+  assert.ok(step.includes("No web change and no Worker change"), "this release changes neither");
+  const script = readFileSync(path.join(REPO_ROOT, "scripts/release-native.mjs"), "utf8");
+  assert.ok(script.includes("`Sandbee-POS-${version}-${abi}.apk`"), "the packaging script names the APKs as the step does");
+  assert.ok(script.includes("`POS-Software-Setup-${version}.exe`"), "... and the installer");
+});
+
+test("PIN §1 (native apps 2.0): what staff see from then on, in the apps' own words: the card at an app open, Android's one-time questions, Cancel and no Open button; the Windows notice, Restart to update, install at closing; nothing ever blocks work", () => {
+  const step = norm(sectionSlice(NATIVE_STEP));
+  for (const phrase of [
+    "Nothing ever blocks work",
+    "**Install**",
+    "**Later**",
+    "after 30 minutes away",
+    "Install unknown apps",
+    "Auto Blocker",
+    "Unknown sources",
+    "**More details → Install without scanning**",
+    "Cancel in Android's update dialog just closes the card until the next app open",
+    "there is no Open button",
+    "**Restart to update**",
+    "installs when the app is closed",
+  ]) {
+    assert.ok(step.includes(phrase), `the step tells the staff: ${phrase}`);
+  }
+  const card = readFileSync(path.join(REPO_ROOT, "apps/mobile/src/screens/UpdateCard.tsx"), "utf8");
+  assert.ok(step.includes('"Update available"') && card.includes("Update available"), "the card's title, as the app shows it");
+  const strings = readFileSync(path.join(REPO_ROOT, "apps/mobile/android/app/src/main/res/values/strings.xml"), "utf8");
+  assert.ok(step.includes('"POS printing is off. Tap to start."') && strings.includes(">POS printing is off. Tap to start.<"), "the printing device's notice");
+  const plan = readFileSync(path.join(REPO_ROOT, "apps/desktop/src/update-plan.ts"), "utf8");
+  assert.ok(step.includes("is ready. It installs when you close the app.") && plan.includes("is ready. It installs when you close the app."), "the Windows notice, as update-plan.ts says it");
+  assert.ok(plan.includes('RESTART_TO_UPDATE = "Restart to update"'), "the menu item's label");
+});
+
+test("PIN §1 (native apps 2.0, the N3 review's m-2): the address window's no-answer words are quoted as pos-health.ts says them, with the spelling to check first", () => {
+  const step = norm(sectionSlice(NATIVE_STEP));
+  const health = readFileSync(path.join(REPO_ROOT, "apps/desktop/src/pos-health.ts"), "utf8");
+  assert.ok(health.includes("Check the name and the internet connection."), "pos-health.ts's words (the owner's ruling of 2026-10-13)");
+  assert.ok(step.includes("Check the name and the internet connection."), "the step quotes them");
+  assert.ok(step.includes("check the spelling of the workspace name first"), "a mistyped name is the likely cause on a working connection");
+  assert.ok(step.includes("**Open POS** once more"), "a POS that was asleep may need a second try (the N2 gate's review of N3, m-2)");
+});
+
+test("PIN §A (native apps 2.0): the update base, the POS app's look, the Windows app's look and the card's wait for idle printers match the code", () => {
+  const gradle = readFileSync(path.join(REPO_ROOT, "apps/mobile/android/app/build.gradle"), "utf8");
+  const desktop = JSON.parse(readFileSync(path.join(REPO_ROOT, "apps/desktop/package.json"), "utf8")) as {
+    build: { publish: { provider: string; url: string } };
+  };
+  const plan = readFileSync(path.join(REPO_ROOT, "apps/desktop/src/update-plan.ts"), "utf8");
+  const moduleKt = readFileSync(path.join(REPO_ROOT, "apps/mobile/android/app/src/main/java/com/possoftware/pos/update/PosUpdateModule.kt"), "utf8");
+  const base = backtickTokens(factRowIn(SECTION_A_HEADING, "Update files base (both native apps)"))[0];
+  assert.equal(base, "https://files.sandbee.in/pos", "the doc's base");
+  assert.ok(gradle.includes(`def posUpdateBaseDefault = "${base}"`), "the POS app's default base");
+  assert.equal(desktop.build.publish.provider, "generic", "the Windows app's provider");
+  assert.equal(desktop.build.publish.url, `${base}/windows`, "the Windows app's feed");
+  const look = factRowIn(SECTION_A_HEADING, "POS app update look");
+  assert.ok(look.includes("12 hours") && gradle.includes("(findProperty('posUpdateCheckMinutes') ?: '720')"), "12 hours = 720 minutes");
+  assert.ok(look.includes("30 minutes") && gradle.includes("(findProperty('posUpdateReopenMinutes') ?: '30')"), "an app open after 30 minutes away");
+  const windows = factRowIn(SECTION_A_HEADING, "Windows app update look");
+  assert.ok(windows.includes("1 minute") && plan.includes("FIRST_CHECK_MS = 60_000"), "1 minute after start");
+  assert.ok(windows.includes("24 hours") && plan.includes("CHECK_EVERY_MS = 86_400_000"), "then every 24 hours");
+  const wait = factRowIn(SECTION_A_HEADING, "Update card wait for idle printers");
+  assert.ok(wait.includes("2 minutes") && moduleKt.includes("CARD_IDLE_WAIT_MS = 120_000L"), "at most 2 minutes (the owner's ruling of 2026-10-13)");
+});
+
+test("PIN (native apps 2.0): the READMEs say how a release is built and packaged, latest.* uploaded last, and DEPLOY.md says a web deploy does not update the native apps", () => {
+  const mobile = norm(readFileSync(path.join(REPO_ROOT, "apps/mobile/README.md"), "utf8"));
+  const release = mobile.slice(mobile.indexOf("## Release a new version (both apps)"));
+  assert.ok(release.length > 0 && mobile.includes("## Release a new version (both apps)"), "the mobile README's release section");
+  for (const phrase of [
+    "posVersionRelease",
+    ":app:compileReleaseKotlin --rerun",
+    "assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a",
+    "npm run dist",
+    "node scripts/release-native.mjs",
+    "UPLOAD-STEPS.txt",
+    "`latest.json` and `latest.yml` last",
+    "minSdkVersion",
+  ]) {
+    assert.ok(release.includes(phrase), `the release section names ${phrase}`);
+  }
+  const desktopReadme = norm(readFileSync(path.join(REPO_ROOT, "apps/desktop/README.md"), "utf8"));
+  for (const phrase of ["npm run dist", "https://files.sandbee.in/pos/windows/", "**Restart to update**", "scripts/release-native.mjs", "`latest.yml` last"]) {
+    assert.ok(desktopReadme.includes(phrase), `the desktop README names ${phrase}`);
+  }
+  const deploy = norm(readFileSync(path.join(REPO_ROOT, "apps/cafe/DEPLOY.md"), "utf8"));
+  assert.ok(deploy.includes("The native apps are not part of a web deploy.") && deploy.includes("files.sandbee.in"), "DEPLOY.md's native apps line");
 });

@@ -133,11 +133,48 @@ adb install -r app\build\outputs\apk\release\app-arm64-v8a-release.apk
 ```
 
 Or copy the file to the device and open it there (allow "install unknown
-apps" for the file manager). The APK is handed to clients directly; it is not
-uploaded anywhere.
+apps" for the file manager). A device's first 2.0.0 install is handed over
+directly; later versions reach it from files.sandbee.in ("Release a new version
+(both apps)" below).
 
 Before you hand the APK to a client, run the checks in
 [TEST-CHECKLIST.md](./TEST-CHECKLIST.md) on a real device.
+
+## Release a new version (both apps)
+
+The POS app and the Windows app share one version (2.0.0 was the first managed
+release), and devices update themselves from `https://files.sandbee.in/pos/`
+(the owner's bucket). Nothing is uploaded from this PC: the owner uploads the
+release folder by hand.
+
+1. **Raise the version in both places, the same:** `posVersionRelease` in
+   `android/app/build.gradle` and `version` in `apps/desktop/package.json` (a
+   test pins that they are equal). Only x.y.z, minor and patch below 100, never
+   lower than the last release, and no `-rc` part: electron-updater's feed would
+   offer a prerelease to every PC, so the packaging refuses one.
+2. **Build the APK pair** (the private key and the real update base are the
+   defaults; a release never passes `-PposUpdateBase` or the minute settings):
+   in `android`, `.\gradlew.bat :app:compileReleaseKotlin --rerun`, then
+   `.\gradlew.bat assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a`.
+3. **Build the Windows installer:** in `apps/desktop`, `npm run dist` (it
+   writes `dist\` and publishes nothing).
+4. **Package them** from the repository root, on one line. The script builds
+   nothing; it checks every file and writes
+   `D:\kd\pos-apk-release\Sandbee-POS-<version>\`:
+   `node scripts/release-native.mjs --arm64 apps\mobile\android\app\build\outputs\apk\release\app-arm64-v8a-release.apk --armv7 apps\mobile\android\app\build\outputs\apk\release\app-armeabi-v7a-release.apk --windows apps\desktop\dist --notes "<one short English sentence for the update card>"`.
+   It refuses, before writing anything, an APK not signed with the private key,
+   a debug build, another package, version or CPU type, a test update base or
+   shortened times, an installer built for a test feed or from another build, a
+   version with a prerelease part or lower than one already packaged, notes
+   over 300 characters, and a release folder that already exists. It writes
+   into `Sandbee-POS-<version>.partial` and renames it when it is complete.
+5. **The owner uploads** the folder as its `UPLOAD-STEPS.txt` says: the APKs,
+   the installer and its blockmap first, `latest.json` and `latest.yml` last,
+   then opens `https://files.sandbee.in/pos/android/latest.json` from a phone.
+
+Never raise `minSdkVersion` while older devices are in use: the manifest names no
+minimum Android version, so such a device would download every new version and
+fail to install it (or add a `minSdk` field to a later manifest schema first).
 
 ## Checks (no device needed)
 

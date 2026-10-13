@@ -326,6 +326,13 @@ MONGODB_URI="mongodb+srv://…" npm run seed:tables
 - [ ] Orders page date filter + search work
 - [ ] Reports load with data
 
+> **The native apps are not part of a web deploy.** The POS app (Android) and the
+> Windows app update themselves from `files.sandbee.in` (native apps 2.0): a new
+> version is built and packaged on the build PC (`apps/mobile/README.md` →
+> "Release a new version (both apps)") and uploaded by the owner. When a web
+> release needs a new app, its "Existing cafes" step in
+> `docs/GO-LIVE-CHECKLIST.md` says so.
+
 ## 3. Backups
 
 Atlas M0 has **no automatic backups**. This repo carries an encrypted nightly
