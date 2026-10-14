@@ -25,6 +25,9 @@ export interface DinerReadyCardDto {
   source: RewardCardSource;
   level?: number;
   step?: number;
+  // A festival card's name (CB-7 S6 §2.8): the owner's CONFIG text ("Diwali treat"), never the outcome, so it is safe
+  // on a ready card. Absent on a level card.
+  title?: string;
   issuedAt: number;
   scratchBy: number;
   status: "ready";
@@ -37,6 +40,7 @@ export const DINER_READY_CARD_KEYS = [
   "source",
   "level",
   "step",
+  "title",
   "issuedAt",
   "scratchBy",
   "status",
@@ -59,6 +63,7 @@ export interface DinerRevealedCardDto {
   source: RewardCardSource;
   level?: number;
   step?: number;
+  title?: string;
   issuedAt: number;
   scratchBy: number;
   status: "revealed" | "used";

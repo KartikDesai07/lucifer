@@ -37,6 +37,7 @@ export type CardInput = Pick<
   | "source"
   | "level"
   | "step"
+  | "title"
   | "issuedAt"
   | "scratchBy"
   | "status"
@@ -109,13 +110,15 @@ export function outcomeOf(card: CardInput): DinerOutcomeDto {
   };
 }
 
-// The ready allowlist, key by key. `level` / `step` only when the card has them (a campaign card has neither).
+// The ready allowlist, key by key. `level` / `step` only when the card has them (a campaign card has neither); `title` only
+// when it has one (a festival card's campaign name - config text, never the outcome).
 function readyDtoOf(card: CardInput, now: Date): DinerReadyCardDto {
   return {
     id: card.id,
     source: card.source,
     ...(card.level !== undefined ? { level: card.level } : {}),
     ...(card.step !== undefined ? { step: card.step } : {}),
+    ...(card.title !== undefined ? { title: card.title } : {}),
     issuedAt: ms(card.issuedAt),
     scratchBy: ms(card.scratchBy),
     status: "ready",
@@ -130,6 +133,7 @@ function revealedDtoOf(card: CardInput, status: "revealed" | "used", now: Date):
     source: card.source,
     ...(card.level !== undefined ? { level: card.level } : {}),
     ...(card.step !== undefined ? { step: card.step } : {}),
+    ...(card.title !== undefined ? { title: card.title } : {}),
     issuedAt: ms(card.issuedAt),
     scratchBy: ms(card.scratchBy),
     status,

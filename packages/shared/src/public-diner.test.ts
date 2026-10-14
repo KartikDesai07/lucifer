@@ -181,6 +181,7 @@ test("DINER_READY_CARD_KEYS: exactly the ready-card DTO keys, no outcome key amo
     source: true,
     level: true,
     step: true,
+    title: true,
     issuedAt: true,
     scratchBy: true,
     status: true,

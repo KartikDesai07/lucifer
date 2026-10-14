@@ -4,6 +4,7 @@ import type { PointsSpendRecord } from "@pos/shared/reward-points";
 import { Customer } from "@/models/Customer";
 import type { ISettings } from "@/models/Settings";
 import { buildDinerCardsData } from "@/lib/reward-cards-view";
+import { issueCampaignCards } from "@/lib/reward-campaign-issue";
 import { resolveRewardLevels, rewardLevelsEarning } from "@/lib/reward-levels-config";
 
 // CB-7 S4 — the IO half of GET /api/public/diner/cards: one lean read of THIS diner's progress counter + cards,
@@ -12,19 +13,24 @@ import { resolveRewardLevels, rewardLevelsEarning } from "@/lib/reward-levels-co
 // (staff lists, the cached customers payload) never carries a card.
 
 export interface WalletRead {
+  rewardsAnchorAt?: Date;
+  pinSetAt?: Date; // stands in for "holds a PIN" - the PIN hash itself is never projected
   cardSteps?: number;
   rewardCards?: RewardCardSnapshot[];
 }
 
-// The seam the tests fake: the one database call and the two ambient inputs (clock, environment).
+// The seam the tests fake: the wallet read, the festival-card issue step, and the two ambient inputs (clock, environment).
 export interface DinerCardsDeps {
   readWallet(customerId: string): Promise<WalletRead | null>;
+  // CB-7 S6 session 3: gives the diner their festival cards; resolves to how many it pushed and never throws.
+  issueCampaigns(settings: ISettings | null, customerId: string, wallet: WalletRead): Promise<number>;
   now: () => Date;
   env: NodeJS.ProcessEnv;
 }
 
 export const DINER_CARDS_DEPS: DinerCardsDeps = {
-  readWallet: (customerId) => Customer.findById(customerId).select("cardSteps +rewardCards").lean(),
+  readWallet: (customerId) => Customer.findById(customerId).select("cardSteps rewardsAnchorAt pinSetAt +rewardCards").lean(),
+  issueCampaigns: (settings, customerId, wallet) => issueCampaignCards(settings, customerId, wallet),
   now: () => new Date(),
   env: process.env,
 };
@@ -36,8 +42,13 @@ export async function readDinerCards(
   customerId: string,
   deps: DinerCardsDeps = DINER_CARDS_DEPS,
 ): Promise<DinerCardsData | null> {
-  const wallet = await deps.readWallet(customerId);
+  let wallet = await deps.readWallet(customerId);
   if (!wallet) return null;
+  // Festival cards are issued BEFORE the view is built, so a card given by this very load is already in the wallet. The
+  // wallet is re-read only when a card was actually pushed (the common load costs no extra read).
+  if ((await deps.issueCampaigns(settings, customerId, wallet)) > 0) {
+    wallet = (await deps.readWallet(customerId)) ?? wallet;
+  }
   return buildDinerCardsData({
     earning: rewardLevelsEarning(settings, deps.env),
     cfg: resolveRewardLevels(settings),

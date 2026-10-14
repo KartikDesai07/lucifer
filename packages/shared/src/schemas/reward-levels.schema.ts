@@ -74,7 +74,8 @@ const percent = ranged(REWARD_PERCENT_MIN, REWARD_PERCENT_MAX, "percentage");
 const flat = ranged(REWARD_FLAT_MIN, REWARD_FLAT_MAX, "amount");
 const points = ranged(REWARD_POINTS_MIN, REWARD_POINTS_MAX, "points");
 
-const rewardOptionWriteSchema = z.discriminatedUnion("kind", [
+// Exported for the festival-card box (schemas/reward-campaign.schema.ts): one option grammar for every card source.
+export const rewardOptionWriteSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("bill-percent"), id: optionId, weight, ...percent, minBill }).strict(),
   z.object({ kind: z.literal("bill-flat"), id: optionId, weight, ...flat, minBill }).strict(),
   z
@@ -105,6 +106,26 @@ const rewardOptionWriteSchema = z.discriminatedUnion("kind", [
     })
     .strict(),
 ]);
+
+export type RewardOptionWriteInput = z.infer<typeof rewardOptionWriteSchema>;
+
+// The cross-option rules of ONE box (unique ids, min <= max, not all "No reward"), shared by a level's box and a
+// festival card's box so the two can never drift. `at` is the box's path; issues land under `[...at, "options", …]`.
+export function addBoxOptionIssues(options: readonly RewardOptionWriteInput[], ctx: z.RefinementCtx, at: readonly (string | number)[]): void {
+  const seenIds = new Set<string>();
+  options.forEach((option, oi) => {
+    if (seenIds.has(option.id)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [...at, "options", oi, "id"], message: "Two rewards in this box share an id" });
+    }
+    seenIds.add(option.id);
+    if ("min" in option && option.min > option.max) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [...at, "options", oi, "max"], message: "The highest value must not be below the lowest" });
+    }
+  });
+  if (options.every((option) => option.kind === "none")) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: [...at, "options"], message: "Add at least one real reward to this box" });
+  }
+}
 
 const rewardSlotWriteSchema = z
   .object({
@@ -142,19 +163,7 @@ export const rewardLevelsWriteSchema = z
           ctx.addIssue({ code: z.ZodIssueCode.custom, path: [...at, "step"], message: "Two reward boxes sit on the same step" });
         }
         seenSteps.add(slot.step);
-        const seenIds = new Set<string>();
-        slot.options.forEach((option, oi) => {
-          if (seenIds.has(option.id)) {
-            ctx.addIssue({ code: z.ZodIssueCode.custom, path: [...at, "options", oi, "id"], message: "Two rewards in this box share an id" });
-          }
-          seenIds.add(option.id);
-          if ("min" in option && option.min > option.max) {
-            ctx.addIssue({ code: z.ZodIssueCode.custom, path: [...at, "options", oi, "max"], message: "The highest value must not be below the lowest" });
-          }
-        });
-        if (slot.options.every((option) => option.kind === "none")) {
-          ctx.addIssue({ code: z.ZodIssueCode.custom, path: [...at, "options"], message: "Add at least one real reward to this box" });
-        }
+        addBoxOptionIssues(slot.options, ctx, at);
       });
     });
     if (cfg.enabled && !cfg.levels.some((level) => level.slots.length > 0)) {

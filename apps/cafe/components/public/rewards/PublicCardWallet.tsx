@@ -74,11 +74,12 @@ function ReadyTile({ card, earning, onScratch }: { card: DinerReadyCardDto; earn
     <button
       type="button"
       onClick={onScratch}
-      aria-label={`Scratch card. ${deadlineLine("scratch", card.scratchBy, Date.now())}`}
+      aria-label={`${card.title ? `${card.title}. ` : ""}Scratch card. ${deadlineLine("scratch", card.scratchBy, Date.now())}`}
       className={cn(TILE_CLASS, PUB_PRESS_CLASS, "bg-primary text-primary-foreground")}
     >
       <FoilPattern />
       <span className="relative flex h-full flex-col items-center justify-center gap-1 p-3 text-center">
+        {card.title && <span className="line-clamp-2 block break-words text-xs font-medium text-primary-foreground/90">{card.title}</span>}
         <span className="font-pub-display text-xl font-semibold">Scratch</span>
         <span className="text-xs text-primary-foreground/80">{deadlineLine("scratch", card.scratchBy, Date.now())}</span>
       </span>
@@ -94,11 +95,12 @@ function RevealedTile({ card, onOpen }: { card: DinerRevealedCardDto; onOpen: ()
     <button
       type="button"
       onClick={onOpen}
-      aria-label={`${outcome.label}. See card details`}
+      aria-label={`${card.title ? `${card.title}. ` : ""}${outcome.label}. See card details`}
       className={cn(TILE_CLASS, PUB_TONAL_CARD_CLASS, PUB_PRESS_CLASS, "flex flex-col justify-between gap-2 p-3")}
     >
-      <span className="line-clamp-2 block break-words font-pub-display text-xl font-semibold leading-tight">
-        {outcome.label}
+      <span className="block min-w-0">
+        {card.title && <span className="mb-0.5 line-clamp-1 block break-words text-xs font-medium text-muted-foreground">{card.title}</span>}
+        <span className="line-clamp-2 block break-words font-pub-display text-xl font-semibold leading-tight">{outcome.label}</span>
       </span>
       <span className="block shrink-0 space-y-0.5 text-xs text-muted-foreground">
         {detail !== null && <span className="line-clamp-2 block">{detail}</span>}

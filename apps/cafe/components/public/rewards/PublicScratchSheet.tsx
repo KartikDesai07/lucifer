@@ -115,7 +115,10 @@ function ScratchBody({ card, identity, onDone }: ScratchBodyProps) {
     <>
       <SheetHeader>
         <SheetTitle className="font-pub-display text-xl">Scratch your card</SheetTitle>
-        <SheetDescription>{deadlineLine("scratch", card.scratchBy, Date.now())}</SheetDescription>
+        <SheetDescription>
+          {card.title ? `${card.title} · ` : ""}
+          {deadlineLine("scratch", card.scratchBy, Date.now())}
+        </SheetDescription>
       </SheetHeader>
 
       <div className="space-y-4 py-4">

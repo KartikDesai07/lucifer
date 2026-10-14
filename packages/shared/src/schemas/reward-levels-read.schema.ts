@@ -43,7 +43,8 @@ const percent = { min: whole(0, L.percent), max: whole(0, L.percent) };
 const flat = { min: whole(0, L.flat), max: whole(0, L.flat) };
 const points = { min: whole(0, L.points), max: whole(0, L.points) };
 
-const optionReadSchema = z.discriminatedUnion("kind", [
+// Exported for the festival-card box READ (schemas/reward-campaign.schema.ts): never narrows, same as a level box.
+export const rewardOptionReadSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("bill-percent"), id: optionId, weight, ...percent, minBill }),
   z.object({ kind: z.literal("bill-flat"), id: optionId, weight, ...flat, minBill }),
   z.object({ kind: z.literal("product-percent"), id: optionId, weight, ...percent, productId: refId, productName: name, capRupees, minBill }),
@@ -58,7 +59,7 @@ const slotReadSchema = z.object({
   step: whole(1, L.levelSize),
   scratchDays: whole(1, L.days),
   useDays: whole(1, L.days),
-  options: z.array(optionReadSchema).min(1).max(L.optionsPerSlot),
+  options: z.array(rewardOptionReadSchema).min(1).max(L.optionsPerSlot),
 });
 
 const levelReadSchema = z.object({

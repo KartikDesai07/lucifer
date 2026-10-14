@@ -67,7 +67,7 @@ const FORBIDDEN_VALUES = ["prod-secret-1", "cat-secret-1", "opt-secret", "issueK
 
 test("PARITY: DinerReadyCardDto keys are exactly DINER_READY_CARD_KEYS (a Record<keyof, true> must list every key)", () => {
   const all: Record<keyof DinerReadyCardDto, true> = {
-    id: true, source: true, level: true, step: true, issuedAt: true, scratchBy: true, status: true, state: true, pool: true,
+    id: true, source: true, level: true, step: true, title: true, issuedAt: true, scratchBy: true, status: true, state: true, pool: true,
   };
   assert.deepEqual([...DINER_READY_CARD_KEYS].sort(), Object.keys(all).sort());
 });
@@ -269,4 +269,23 @@ test("nextBox: null when the config has no boxes at all (stepsToNextCard is null
   const progress = build(1, { cfg }).progress;
   assert.equal(progress?.stepsToNextCard, null);
   assert.equal(progress?.nextBox, null);
+});
+
+// CB-7 S6 session 3: a festival card carries its campaign name as `title` on BOTH DTO kinds (config text, never the
+// outcome); a level card has no `title` key at all.
+test("title: a campaign card carries it on ready AND revealed DTOs; a level card has no title key", () => {
+  const camp = { source: "campaign" as const, level: undefined, step: undefined, title: "Diwali treat" };
+  const ready = cardDtoOf(card("bill-percent", camp), NOW) as DinerReadyCardDto;
+  assert.equal(ready.title, "Diwali treat");
+  assert.equal(ready.status, "ready");
+  assert.ok(JSON.stringify(ready).includes('"pool"'), "landmark: the ready allowlist is present");
+  for (const key of Object.keys(ready)) assert.ok((DINER_READY_CARD_KEYS as readonly string[]).includes(key), `unexpected key ${key}`);
+
+  const shown = revealed("bill-percent", camp);
+  assert.equal(shown.title, "Diwali treat");
+  assert.equal(shown.status, "revealed");
+  assert.ok(shown.outcome, "landmark: the revealed card carries its outcome");
+
+  assert.equal("title" in (cardDtoOf(card("bill-percent"), NOW) as DinerReadyCardDto), false);
+  assert.equal("title" in revealed("bill-percent"), false);
 });

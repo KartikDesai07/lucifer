@@ -72,7 +72,7 @@ async function main(): Promise<void> {
     await scenario("a", "a ready card's wire JSON carries exactly the allowlist keys present on it (level/step optional) and nothing of the outcome - fresh and expired", async () => {
       await Customer.deleteMany({});
       const leaky = card({ productId: REF_A, productName: "Cold coffee", capRupees: 80, minBill: 100 }, T0);
-      const campaign = card({ source: "campaign", level: undefined, step: undefined, issueKey: "camp:x" }, T0);
+      const campaign = card({ source: "campaign", level: undefined, step: undefined, issueKey: "camp:x", title: "Diwali treat" }, T0);
       const id = await newCustomer([leaky, campaign]);
       const raw = JSON.stringify(await rawOf(id));
       assert.ok(raw.includes('"value"') && raw.includes('"optionId"') && raw.includes('"productId"'), "landmark: the STORED row really holds the outcome fields");
@@ -84,7 +84,7 @@ async function main(): Promise<void> {
           const json = JSON.stringify(dto);
           const keys = Object.keys(JSON.parse(json) as Rec);
           const optional = ["level", "step"];
-          const expected = allowed.filter((k) => !optional.includes(k) || (dto.id === leaky.id));
+          const expected = allowed.filter((k) => (k === "title" ? dto.id === campaign.id : !optional.includes(k) || dto.id === leaky.id));
           assert.deepEqual([...keys].sort(), [...expected].sort(), `${dto.id} keys`);
           assert.equal(dto.status, "ready");
           for (const banned of ['"value"', '"optionId"', '"productId"', '"outcome"', '"capRupees"', '"minBill"', '"productName"']) {

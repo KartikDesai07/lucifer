@@ -28,7 +28,10 @@ export function PublicCardDetailSheet({ card, open, onOpenChange }: PublicCardDe
           <>
             <SheetHeader>
               <SheetTitle className="break-words font-pub-display text-xl">{view.title}</SheetTitle>
-              <SheetDescription>{view.useBy ?? DETAIL_FALLBACK}</SheetDescription>
+              <SheetDescription>
+                {card?.title ? `${card.title} · ` : ""}
+                {view.useBy ?? DETAIL_FALLBACK}
+              </SheetDescription>
             </SheetHeader>
             <div className="space-y-4 py-4">
               {view.condition !== null && <p className="text-sm">{view.condition}</p>}

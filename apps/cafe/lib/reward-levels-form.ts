@@ -123,7 +123,7 @@ export interface RewardProblem {
 const PLAIN_ISSUE_CODES: ReadonlySet<string> = new Set(["custom", "too_small", "too_big", "invalid_string"]);
 const ZOD_DEFAULT_TYPE_MESSAGE_RE = /^(Required$|Expected |Invalid )/;
 
-function isPlain(issue: ZodIssue): boolean {
+export function isPlain(issue: ZodIssue): boolean {
   if (PLAIN_ISSUE_CODES.has(issue.code)) return true;
   return issue.code === "invalid_type" && !ZOD_DEFAULT_TYPE_MESSAGE_RE.test(issue.message);
 }

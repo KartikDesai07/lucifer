@@ -33,6 +33,7 @@
     "verify:reward-cards:live": "node --import tsx scripts/verify-reward-cards-live.ts",
     "verify:reward-card-use:live": "node --import tsx scripts/verify-reward-card-use-live.ts",
     "verify:reward-points:live": "node --import tsx scripts/verify-reward-points-live.ts",
+    "verify:reward-campaigns:live": "node --import tsx scripts/verify-reward-campaigns-live.ts",
     "verify:pay-qr:live": "node --import tsx scripts/verify-pay-qr-live.ts",
     "verify:reward-item:live": "node --import tsx scripts/verify-loyalty-reward-item-live.ts",
     "verify:reward-redeem:live": "node --import tsx scripts/verify-reward-redemption-live.ts",
@@ -475,7 +476,12 @@
     "lib/settle-points-paths.test.ts",
     "lib/order-request-points.test.ts",
     "lib/public-points-picker-paths.test.ts",
-    "components/public/rewards/card-detail-view.test.ts"
+    "components/public/rewards/card-detail-view.test.ts",
+    "lib/reward-campaign-issue.test.ts",
+    "lib/reward-campaigns-paths.test.ts",
+    "lib/reward-campaign-form.test.ts",
+    "lib/festival-cards-view.test.ts",
+    "lib/festival-cards-ui-paths.test.ts"
   ],
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

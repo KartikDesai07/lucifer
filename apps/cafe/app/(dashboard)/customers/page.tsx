@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Search } from "lucide-react";
+import Link from "next/link";
+import { Plus, Search, Sparkles } from "lucide-react";
+
+import { FESTIVAL_CARDS_PAGE, FESTIVAL_CARDS_TITLE } from "@pos/shared/reward-campaigns";
 
 import {
   useCustomers,
@@ -151,9 +154,18 @@ function CustomersContent() {
         title="Customers"
         description="Track visits, spending, and outstanding dues."
         actions={
-          <Button onClick={openAdd} className={BRAND_CONTROL_CLASS}>
-            <Plus className="mr-2 h-4 w-4" /> Add customer
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {isAdmin && (
+              <Button asChild variant="outline" className={BRAND_CONTROL_CLASS}>
+                <Link href={FESTIVAL_CARDS_PAGE}>
+                  <Sparkles className="mr-2 h-4 w-4" /> {FESTIVAL_CARDS_TITLE}
+                </Link>
+              </Button>
+            )}
+            <Button onClick={openAdd} className={BRAND_CONTROL_CLASS}>
+              <Plus className="mr-2 h-4 w-4" /> Add customer
+            </Button>
+          </div>
         }
       />
 
