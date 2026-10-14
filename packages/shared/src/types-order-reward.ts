@@ -20,6 +20,9 @@ export interface OrderRewardFields {
   rewardCapRupees?: number; // "up to ₹X"
   // CB-7 S6 (§2.7) — the points SPENT on this bill = its discount (1 point = ₹1); the lot plan lives on Customer.pointsSpends.
   rewardPoints?: number;
+  // CB-7 S6 session 2 (owner O2) — the diner asked to use their points in the QR cart. A HINT, not money and not a
+  // snapshot key: the payment popup starts its points switch ON for this tab; staff still confirm.
+  pointsRequested?: true;
   // s86 P2 — the promo code this bill opened with. Omit-empty, never $unset: its presence refuses every reward
   // claim on the bill (one reward per bill).
   promoCode?: string;

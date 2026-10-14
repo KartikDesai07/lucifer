@@ -19,9 +19,11 @@ import {
   readAppliedPromoCode,
   readIdentity,
   readRequestedCardId,
+  readRequestedPoints,
   readRequestedRewardAt,
   writeAppliedPromoCode,
   writeRequestedCardId,
+  writeRequestedPoints,
   writeIdentity,
   writeLastMenuPath,
   type CartLine,
@@ -88,6 +90,8 @@ export function usePublicCartSubmit({ cart, token, pickedTable, onSubmitted, ope
   // CB-7 S5 — the scratch card the diner picked in the cart (PublicCardPicker). Shares the stamp pick's storage key,
   // so at most one of requestedRewardAt / requestedCardId is ever non-null.
   const [requestedCardId, setRequestedCardId] = useState<string | null>(null);
+  // CB-7 S6 — "use my points": an ASK only (staff spend the points at payment); same key, so exclusive with both above.
+  const [requestedPoints, setRequestedPoints] = useState(false);
 
   useEffect(() => {
     const identity = readIdentity();
@@ -103,6 +107,7 @@ export function usePublicCartSubmit({ cart, token, pickedTable, onSubmitted, ope
     if (!open) return;
     setRequestedRewardAt(readRequestedRewardAt());
     setRequestedCardId(readRequestedCardId());
+    setRequestedPoints(readRequestedPoints());
     setPromoCode(readAppliedPromoCode());
   }, [open]);
 
@@ -130,15 +135,26 @@ export function usePublicCartSubmit({ cart, token, pickedTable, onSubmitted, ope
   function handleRemoveReward() {
     setRequestedRewardAt(null);
     setRequestedCardId(null);
+    setRequestedPoints(false);
     clearRequestedRewardAt();
   }
 
   // CB-7 S5 — pick a scratch card (or null to un-pick). One reward at a time: a card pick replaces a stamp pick.
   function handlePickCard(cardId: string | null) {
     setRequestedRewardAt(null);
+    setRequestedPoints(false);
     setRequestedCardId(cardId);
     if (cardId === null) clearRequestedRewardAt();
     else writeRequestedCardId(cardId);
+  }
+
+  // CB-7 S6 — toggle the points ask. One reward at a time: it replaces a stamp or card pick.
+  function handlePickPoints(on: boolean) {
+    setRequestedRewardAt(null);
+    setRequestedCardId(null);
+    setRequestedPoints(on);
+    if (on) writeRequestedPoints();
+    else clearRequestedRewardAt();
   }
 
   async function handleSubmit() {
@@ -164,6 +180,7 @@ export function usePublicCartSubmit({ cart, token, pickedTable, onSubmitted, ope
       promoCode,
       name,
       mobile,
+      requestedPoints,
       requestedRewardAt,
       requestedCardId,
     });
@@ -225,12 +242,13 @@ export function usePublicCartSubmit({ cart, token, pickedTable, onSubmitted, ope
       // comment on why the reward classification stays a separate function.
       const rewardFailure = classifyRewardFailure(
         res.status,
-        requestedCardId ?? requestedRewardAt,
+        requestedCardId ?? requestedRewardAt ?? (requestedPoints ? true : null),
         envelope422?.error,
       );
       if (rewardFailure !== null) {
         setRequestedRewardAt(null);
         setRequestedCardId(null);
+        setRequestedPoints(false);
         clearRequestedRewardAt();
         setRewardError(rewardFailure);
       } else {
@@ -266,6 +284,7 @@ export function usePublicCartSubmit({ cart, token, pickedTable, onSubmitted, ope
     promoError,
     requestedRewardAt,
     requestedCardId,
+    requestedPoints,
     rewardError,
     identityValid,
     blockedReason,
@@ -273,6 +292,7 @@ export function usePublicCartSubmit({ cart, token, pickedTable, onSubmitted, ope
     handleRemovePromo,
     handleRemoveReward,
     handlePickCard,
+    handlePickPoints,
     handleSubmit,
   };
 }

@@ -104,6 +104,12 @@ export const createPublicOrderRequestSchema = z
     // requestedRewardAt above; the route checks identity / promo / open tab,
     // the accept claims it keyed on the orderId that lands.
     requestedCardId: z.string().regex(REWARD_CARD_ID_RE).optional(),
+    // CB-7 S6 session 2 (owner O2) — "Use my points": the diner ASKS for their
+    // points on this order. A HINT, never money: no number rides it (staff
+    // spend all usable points up to the food total, at payment). The route
+    // checks identity / promo / one reward / open tab / a balance; nothing is
+    // spent at submit or accept.
+    requestedPoints: z.literal(true).optional(),
     name: z.string().trim().min(1).max(PUBLIC_NAME_MAX_LEN),
     mobile: z
       .string()

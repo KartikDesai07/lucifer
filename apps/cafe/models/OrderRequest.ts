@@ -88,6 +88,10 @@ export interface IOrderRequest extends Document {
   // claimed while it sits here; the accept claims it against the orderId that
   // lands. Omit-empty.
   requestedCardId?: string;
+  // CB-7 S6 session 2 (owner O2) — the diner asked to use their points. A
+  // HINT, not money: the accept copies it onto the Order as pointsRequested
+  // and spends nothing; staff spend the points at payment. Omit-empty.
+  requestedPoints?: true;
   // `mobile` must NEVER appear in any public (unauthenticated) response —
   // lib/customer-privacy.ts owns masking on staff-facing surfaces; this field
   // exists so staff can reach a diner, not so a diner can be looked up by
@@ -160,6 +164,8 @@ export const orderRequestSchema = new Schema<IOrderRequest>(
     requestedRewardAt: { type: Number },
     // CB-7 S5 — no default, omit-empty, a top-level path (same reasons).
     requestedCardId: { type: String },
+    // CB-7 S6 session 2 — no default, omit-empty, a top-level path (same reasons).
+    requestedPoints: { type: Boolean },
     mobile: { type: String, required: true },
     name: { type: String, required: true },
     acceptedOrderId: { type: String },

@@ -23,7 +23,16 @@ test("PIN: the hook shares the reward picker's one request, tags the switch with
   const s = code(HOOK);
   assert.ok(s.includes("useCustomerRewards(customerId).data?.points"), "landmark: the balance comes from the shared customer-rewards query");
   assert.ok(s.includes("pick.customerId === customerId && pick.tabKey === tabKey"), "the switch is tagged with the customer and the tab");
-  assert.ok(/if \(pick !== null && \(!open \|\| \(!frozen && !on\)\)\) setPick\(null\);/.test(s), "it clears when the popup closes or the pick no longer stands — never while a send is frozen");
+  // Session 2 (O2): an OFF flip is a real choice that stands while the popup is open (the diner's ask cannot undo it); an
+  // ON with nothing left to offer still clears, exactly as before.
+  assert.ok(
+    s.includes("if (pick !== null && (!open || (!frozen && (!pickStands || (pick.on && !on))))) setPick(null);"),
+    "it clears when the popup closes or the pick no longer stands — never while a send is frozen",
+  );
+  assert.ok(s.includes("const asked = resumedOrder?.pointsRequested === true;"), "the ask is the resumed TAB's own hint");
+  assert.ok(s.includes("const on = pointsSwitchOn(pickStands ? pick.on : null, asked, row.amount);"), "an untouched switch follows the ask");
+  assert.ok(s.includes("setPick({ customerId, tabKey, on: next });"), "the operator's flip (on OR off) is stored, tagged");
+  assert.equal(count(s, "pointsRequested"), 1, "the hook reads the ask once and never writes it");
   assert.ok(s.includes("const live = on && open ? row.amount : 0;"), "nothing is spent while the popup is closed (Send to Kitchen can never carry points)");
   // Review F1: a frozen Pay Now keeps the amount it carried, latched DURING render so no refetch can land first.
   assert.ok(s.includes("const nextHold = stepPointsHold(hold, frozen, live);") && s.includes("if (nextHold !== hold) setHold(nextHold);"), "the latch is stored by a guarded setState during render");
@@ -42,6 +51,7 @@ test("PIN: the row is one shadcn switch in a >=44px row, disabled while the popu
   assert.ok(s.includes("{row.reason && ("), "one plain reason line");
   assert.ok(/Use \$\{row\.amount\} points \(−\$\{inr\(row\.amount\)\}\)/.test(s), "the copy: Use N points (−₹N)");
   assert.ok(!/<input|type="number"/.test(s), "no typed amount (owner O3)");
+  assert.ok(s.includes("{asked && ("), "session 2 (O2): the 'Customer asked to use points' line shows only on an ask");
 });
 
 test("PIN: PaymentModal shows the row only when told to, locks it with the rest, and confirms the ticked points", () => {

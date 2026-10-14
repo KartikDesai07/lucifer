@@ -13,15 +13,10 @@ import { mintUniquePublicCode } from "@/lib/public-token";
 import { hitRateLimit, pruneRateWindows, refundRateLimit } from "@/lib/public-rate-limit";
 import { PUBLIC_PRODUCT_FILTER } from "@/lib/public-menu";
 import { priceRequestItems, type PricedProductSource } from "@/lib/public-pricing";
-import {
-  buildRequestDoc,
-  quoteRequestTotals,
-  pruneOrderRequests,
-  tableChargeAppliesNow,
-  type IntakeTable,
-} from "@/lib/order-request-intake";
+import { buildRequestDoc, quoteRequestTotals, pruneOrderRequests, tableChargeAppliesNow, type IntakeTable } from "@/lib/order-request-intake";
 import { resolveRequestReward } from "@/lib/order-request-reward";
 import { resolveRequestCard } from "@/lib/order-request-card";
+import { resolveRequestPoints } from "@/lib/order-request-points";
 import { resolveRequestPromo, resolveAutoAcceptStatus, TABLE_NOT_FOUND_MESSAGE, RATE_LIMITED_MESSAGE, ORDER_REQUEST_FAILED_MESSAGE, SELF_ORDER_DISABLED_MESSAGE } from "@/lib/order-request-create";
 import { intakePublicOrderRequest, noStore } from "@/lib/public-order-intake";
 import { notifyRequestEvent, telegramSummaryOfCreate } from "@/lib/telegram/notify";
@@ -226,6 +221,14 @@ export async function POST(req: Request) {
       return noStore(failure(card.error, 422));
     }
 
+    // 9.8. Points ask (CB-7 S6 s2) — a read-only gate on the diner's own session + balance; the order carries only the
+    // ASK (staff spend at payment), every refusal is the caller's own fact so the slot is refunded.
+    const points = await resolveRequestPoints(data, settings);
+    if ("error" in points) {
+      await refundRateLimit(bucket, now);
+      return noStore(failure(points.error, 422));
+    }
+
     const doc = buildRequestDoc(
       data, priced.lines, table, settings, chargeApplies, promo.discount, promo.code,
       reward.requestedRewardAt,
@@ -233,8 +236,8 @@ export async function POST(req: Request) {
     const shortCode = await mintUniquePublicCode((code) =>
       OrderRequest.exists({ shortCode: code }).then(Boolean),
     );
-    // `card` is `{}` or `{ requestedCardId }` — the intent only, omit-empty.
-    const request = await OrderRequest.create({ ...doc, ...card, shortCode });
+    // `card` / `points` are `{}` or the intent only (`requestedCardId` / `requestedPoints`), omit-empty.
+    const request = await OrderRequest.create({ ...doc, ...card, ...points, shortCode });
 
     // 10. Auto-accept — settings.selfOrderMode === "auto" (the branch itself
     // moved to lib/order-request-create.ts's resolveAutoAcceptStatus to keep

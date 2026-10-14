@@ -6,6 +6,7 @@ import {
   NO_POINTS_HOLD,
   carriedPoints,
   pointsRowState,
+  pointsSwitchOn,
   rowWithHold,
   stepPointsHold,
   type PointsRowState,
@@ -25,6 +26,8 @@ export interface SettlePointsView {
   row: PointsRowState;
   // The switch position; the figure it spends is `row.amount`.
   on: boolean;
+  // The diner asked for points in the QR cart (owner O2): the row says so.
+  asked: boolean;
   // Referentially stable, so the popup's memo keeps working.
   onToggle: (on: boolean) => void;
 }
@@ -76,21 +79,24 @@ export function useSettlePoints(input: SettlePointsInput): SettlePoints {
     [customerId, balance, subtotal, resumedOrder, promo, rewardPending, manualDiscount, frozen],
   );
 
-  // The switch, tagged with the customer and tab it was flipped for (the card-pick pattern in use-customer-rewards.ts)
-  // so it can never ride onto another bill.
-  const [pick, setPick] = useState<{ customerId: string | undefined; tabKey: string | null } | null>(null);
+  // The operator's flip, tagged with the customer and tab it was made for (the card-pick pattern in
+  // use-customer-rewards.ts) so it can never ride onto another bill.
+  const [pick, setPick] = useState<{ customerId: string | undefined; tabKey: string | null; on: boolean } | null>(null);
   const pickStands = pick !== null && pick.customerId === customerId && pick.tabKey === tabKey;
-  const on = pickStands && row.amount > 0;
-  // Clears with the popup, and whenever the pick no longer stands (another customer or tab, nothing left to offer) —
-  // but never while a send is frozen: its replay still carries these points.
+  // Session 2 (owner O2): a QR tab whose diner asked for points starts ON until the operator flips it.
+  const asked = resumedOrder?.pointsRequested === true;
+  const on = pointsSwitchOn(pickStands ? pick.on : null, asked, row.amount);
+  // Clears with the popup, and whenever the pick no longer stands (another customer or tab, an ON with nothing left to
+  // offer) — but never while a send is frozen: its replay still carries these points. An OFF stands while the popup is
+  // open, so the diner's ask cannot switch it back on.
   useEffect(() => {
-    if (pick !== null && (!open || (!frozen && !on))) setPick(null);
-  }, [pick, open, frozen, on]);
+    if (pick !== null && (!open || (!frozen && (!pickStands || (pick.on && !on))))) setPick(null);
+  }, [pick, open, frozen, pickStands, on]);
 
   const onToggle = useCallback(
     (next: boolean) => {
       if (!row.usable) return;
-      setPick(next ? { customerId, tabKey } : null);
+      setPick({ customerId, tabKey, on: next });
     },
     [row.usable, customerId, tabKey],
   );
@@ -106,6 +112,9 @@ export function useSettlePoints(input: SettlePointsInput): SettlePoints {
   const shown = useMemo(() => rowWithHold(row, frozen, amount), [row, frozen, amount]);
   const reward = useMemo(() => (amount > 0 ? pointsRedeemedReward(amount) : undefined), [amount]);
   const show = customerId !== undefined && (shown.amount > 0 || shown.reason !== null);
-  const view = useMemo(() => ({ show, row: shown, on: amount > 0, onToggle }), [show, shown, amount, onToggle]);
+  const view = useMemo(
+    () => ({ show, row: shown, on: amount > 0, asked, onToggle }),
+    [show, shown, amount, asked, onToggle],
+  );
   return { view, amount, reward };
 }

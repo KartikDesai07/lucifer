@@ -97,7 +97,7 @@ test("submit: the route and the honeypot BOTH run resolveRequestCard, and answer
     /if \("error" in card\) \{\s*\n?\s*await refundRateLimit\(bucket, now\);\s*\n?\s*return noStore\(failure\(card\.error, 422\)\);/,
     "a card refusal refunds the slot and answers 422 (the caller's own fact, not an oracle)",
   );
-  assert.match(route, /OrderRequest\.create\(\{ \.\.\.doc, \.\.\.card, shortCode \}\)/, "the intent is stored, omit-empty");
+  assert.match(route, /OrderRequest\.create\(\{ \.\.\.doc, \.\.\.card, \.\.\.points, shortCode \}\)/, "the intent is stored, omit-empty");
 
   const create = read(CREATE);
   const mimic = create.slice(at(create, "export async function buildHoneypotResponse", "the mimic"));

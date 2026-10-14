@@ -133,6 +133,17 @@ export const CARD_TERMS =
 export const POINTS_RULE = "1 point = ₹1 off a later bill.";
 // The cart's card picker heading (CB-7 S5): says what the diner can DO with a revealed card.
 export const CART_CARDS_HEADING = "Use a scratch card on this order";
+// CB-7 S6 session 2 (owner O2) — the cart's "Use my points" row. Points are an ASK: the counter takes them off when the
+// bill is paid (all usable points, up to the food total), so the cart never shows a rupee figure or a lower total.
+export const CART_POINTS_LABEL = "Use my points";
+export const CART_POINTS_SELECTED = "Points selected — the cafe takes them off when you pay";
+export const POINTS_NEED_SIGN_IN = "Sign in to use your points";
+export const POINTS_NONE_TO_USE = "You have no points to use right now";
+
+/** The points row's detail line: the balance and when it is used. */
+export function cartPointsDetail(balance: number): string {
+  return `${balance} ${balance === 1 ? "point" : "points"} · taken off the bill when you pay`;
+}
 
 export const CARD_STATE_WORDS: Readonly<Record<CardState | "locked", string>> = {
   locked: "Locked",

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createElement } from "react";
+import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { ONE_REWARD_PER_BILL } from "@pos/shared/reward-card-use";
@@ -192,4 +192,34 @@ test("F1: stepPointsHold settles — an unchanged render returns the same object
   assert.equal(a, NO_POINTS_HOLD);
   const b = stepPointsHold({ last: 5, held: 5 }, true, 9);
   assert.deepEqual(b, { last: 5, held: 5 });
+});
+
+// CB-7 S6 session 2 (owner O2) — a QR diner's "Use my points" ask starts the switch ON; the operator's flip always wins.
+import { POINTS_ASKED_HINT, pointsSwitchOn } from "./settle-points-view";
+import { PaymentPoints } from "@/components/pos/PaymentPoints";
+
+// The component compiles with the classic JSX runtime under tsx, so React must be a global for it.
+(globalThis as { React?: typeof React }).React = React;
+
+test("O2: an untouched switch follows the diner's ask; the operator's own flip always wins", () => {
+  assert.equal(pointsSwitchOn(null, true, 80), true, "asked + something to spend: starts ON");
+  assert.equal(pointsSwitchOn(null, false, 80), false, "not asked: starts OFF, as before");
+  assert.equal(pointsSwitchOn(false, true, 80), false, "switched off by the operator: the ask cannot turn it back on");
+  assert.equal(pointsSwitchOn(true, false, 80), true, "switched on by the operator");
+});
+
+test("O2: never ON with nothing to spend — a blocked row stays off even when the diner asked", () => {
+  for (const choice of [null, true, false]) assert.equal(pointsSwitchOn(choice, true, 0), false);
+  assert.equal(pointsSwitchOn(null, true, row({ promo: true }).amount), false, "a promo on the bill blocks the ask");
+  assert.equal(pointsSwitchOn(null, true, row({ resumed: { rewardCardId: "a1b2c3d4e5f6" } }).amount), false, "so does a reward on the tab");
+});
+
+test("O2: the row says the customer asked, and the switch is described by that line", () => {
+  const view = { show: true, row: row({}), on: true, asked: true, onToggle: () => {} };
+  const html = renderToStaticMarkup(createElement(PaymentPoints, { points: view, disabled: false }));
+  assert.ok(html.includes(POINTS_ASKED_HINT), "the hint line shows");
+  assert.match(html, /aria-describedby="use-points-asked"/, "the switch is described by the hint");
+  const plain = renderToStaticMarkup(createElement(PaymentPoints, { points: { ...view, asked: false }, disabled: false }));
+  assert.ok(plain.includes("Use 80 points"), "landmark: the row itself renders");
+  assert.ok(!plain.includes(POINTS_ASKED_HINT), "no ask, no hint line");
 });

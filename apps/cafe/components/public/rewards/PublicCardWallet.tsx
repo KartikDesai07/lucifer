@@ -11,6 +11,7 @@ import {
   PUB_TONAL_CARD_CLASS,
 } from "@/components/public/public-ui";
 import { PUBLIC_TOUCH_TARGET_CLASS } from "@/components/public/public-shell-layout";
+import { PublicCardDetailSheet } from "@/components/public/rewards/PublicCardDetailSheet";
 import { PublicScratchSheet } from "@/components/public/rewards/PublicScratchSheet";
 import { freezeOpenCard } from "@/components/public/rewards/wallet-view";
 import { deadlineLine } from "@/components/public/rewards/reward-clock";
@@ -85,17 +86,25 @@ function ReadyTile({ card, earning, onScratch }: { card: DinerReadyCardDto; earn
   );
 }
 
-function RevealedTile({ card }: { card: DinerRevealedCardDto }) {
+// A revealed tile opens the card's detail sheet (condition, chances, terms) — a button, so it is a real 44 px+ target.
+function RevealedTile({ card, onOpen }: { card: DinerRevealedCardDto; onOpen: () => void }) {
   const { outcome } = card;
   const detail = outcome.pointsLeft !== undefined ? `${outcome.pointsLeft} points left` : outcome.condition;
   return (
-    <div className={cn(TILE_CLASS, PUB_TONAL_CARD_CLASS, "flex flex-col justify-between gap-2 p-3")}>
-      <p className="line-clamp-2 break-words font-pub-display text-xl font-semibold leading-tight">{outcome.label}</p>
-      <div className="shrink-0 space-y-0.5 text-xs text-muted-foreground">
-        {detail !== null && <p className="line-clamp-2">{detail}</p>}
-        {card.validUntil !== undefined && <p>{deadlineLine("use", card.validUntil, Date.now())}</p>}
-      </div>
-    </div>
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`${outcome.label}. See card details`}
+      className={cn(TILE_CLASS, PUB_TONAL_CARD_CLASS, PUB_PRESS_CLASS, "flex flex-col justify-between gap-2 p-3")}
+    >
+      <span className="line-clamp-2 block break-words font-pub-display text-xl font-semibold leading-tight">
+        {outcome.label}
+      </span>
+      <span className="block shrink-0 space-y-0.5 text-xs text-muted-foreground">
+        {detail !== null && <span className="line-clamp-2 block">{detail}</span>}
+        {card.validUntil !== undefined && <span className="block">{deadlineLine("use", card.validUntil, Date.now())}</span>}
+      </span>
+    </button>
   );
 }
 
@@ -114,6 +123,7 @@ function PastTile({ card }: { card: DinerCardDto }) {
 export function PublicCardWallet({ cards, earning, identity, part = "active", onSheetChange }: PublicCardWalletProps) {
   const [sheetCard, setSheetCard] = useState<DinerReadyCardDto | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [detailCard, setDetailCard] = useState<DinerRevealedCardDto | null>(null);
   const [pastOpen, setPastOpen] = useState(false);
 
   function changeSheet(open: boolean): void {
@@ -161,7 +171,7 @@ export function PublicCardWallet({ cards, earning, identity, part = "active", on
         <div className={cn(TILE_GRID_CLASS, "mt-3")}>
           {active.map((card) =>
             "outcome" in card ? (
-              <RevealedTile key={card.id} card={card} />
+              <RevealedTile key={card.id} card={card} onOpen={() => setDetailCard(card)} />
             ) : (
               <ReadyTile
                 key={card.id}
@@ -177,6 +187,7 @@ export function PublicCardWallet({ cards, earning, identity, part = "active", on
         </div>
       )}
       <PublicScratchSheet card={sheetCard} open={sheetOpen} identity={identity} onOpenChange={changeSheet} />
+      <PublicCardDetailSheet card={detailCard} open={detailCard !== null} onOpenChange={(open) => !open && setDetailCard(null)} />
     </div>
   );
 }

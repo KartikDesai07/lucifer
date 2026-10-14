@@ -11,6 +11,16 @@ import { hasOrderReward, type OrderRewardState } from "@/lib/order-reward-fence"
 
 export const POINTS_BLOCK_DISCOUNT = "Remove the discount to use points";
 export const POINTS_BLOCK_FROZEN = "Finish sending this bill first, then use points";
+// Session 2 (owner O2): the diner tapped "Use my points" in the QR cart, so the switch starts ON; staff still confirm.
+export const POINTS_ASKED_HINT = "Customer asked to use points";
+
+/**
+ * The switch position. `choice` = the operator's own flip for this bill (null = untouched): it always wins. Untouched,
+ * the switch follows the diner's ask (O2). Never on with nothing to spend.
+ */
+export function pointsSwitchOn(choice: boolean | null, asked: boolean, amount: number): boolean {
+  return (choice ?? asked) && amount > 0;
+}
 
 export interface PointsRowInput {
   hasCustomer: boolean;

@@ -11,8 +11,10 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { PublicPromoField, type AssignedRewardOffer } from "@/components/public/PublicPromoField";
+import { CART_POINTS_SELECTED } from "@pos/shared/public-diner-cards";
 import { PublicCartLine } from "@/components/public/PublicCartLine";
 import { PublicCardPicker } from "@/components/public/rewards/PublicCardPicker";
+import { PublicPointsPicker } from "@/components/public/rewards/PublicPointsPicker";
 import { PublicCartBill } from "@/components/public/PublicCartBill";
 import { PublicSuggestionChips } from "@/components/public/PublicSuggestionChips";
 import type { TablePick } from "@/components/public/TableChooser";
@@ -93,12 +95,14 @@ export function PublicCart({
     promoError,
     requestedRewardAt,
     requestedCardId,
+    requestedPoints,
     rewardError,
     blockedReason,
     handleApplyPromo,
     handleRemovePromo,
     handleRemoveReward,
     handlePickCard,
+    handlePickPoints,
     handleSubmit,
   } = usePublicCartSubmit({ cart, token, pickedTable, onSubmitted, open });
 
@@ -160,9 +164,11 @@ export function PublicCart({
                 ever interactable at a time. A reward selected on the Rewards
                 tab takes the promo field's place here entirely (never just
                 visually disabled) so there is nothing left to tap into. */}
-            {requestedRewardAt !== null || requestedCardId !== null ? (
+            {requestedRewardAt !== null || requestedCardId !== null || requestedPoints ? (
               <div className="flex items-center justify-between gap-2 text-sm">
-                <span>Reward selected — applied when the cafe accepts this order</span>
+                <span>
+                  {requestedPoints ? CART_POINTS_SELECTED : "Reward selected — applied when the cafe accepts this order"}
+                </span>
                 <button
                   type="button"
                   onClick={handleRemoveReward}
@@ -200,6 +206,15 @@ export function PublicCart({
                 identity={cardsIdentity}
                 selectedId={requestedCardId}
                 onSelect={handlePickCard}
+                disabled={isSubmitting}
+              />
+            )}
+            {/* CB-7 S6 — the points ask follows the card picker's rule exactly (it too is a reward: one at a time). */}
+            {chargeApplies && !promoCode && requestedRewardAt === null && (
+              <PublicPointsPicker
+                identity={cardsIdentity}
+                selected={requestedPoints}
+                onSelect={handlePickPoints}
                 disabled={isSubmitting}
               />
             )}

@@ -29,6 +29,7 @@ import {
 import { acceptOrderRequest } from "@/lib/order-request-accept";
 import { resolveRequestReward } from "@/lib/order-request-reward";
 import { resolveRequestCard } from "@/lib/order-request-card";
+import { resolveRequestPoints } from "@/lib/order-request-points";
 
 // Sibling of app/api/public/order-request/route.ts (CR2.2d split) — split out
 // purely to keep the route file under the ~300-line budget while POST's full
@@ -193,6 +194,9 @@ export async function buildHoneypotResponse(
     // CB-7 S5 — scratch-card parity, same reason: a refused card answers 422 on the real path.
     const card = await resolveRequestCard(data, settings, rewardQuote.quotedTotal, priced.lines);
     if ("error" in card) return { promoError: card.error };
+    // CB-7 S6 s2 — points-ask parity, same reason: a refused ask answers 422 on the real path.
+    const points = await resolveRequestPoints(data, settings);
+    if ("error" in points) return { promoError: points.error };
     const doc = buildRequestDoc(
       data, priced.lines, table, settings, chargeApplies, promo.discount, promo.code,
       reward.requestedRewardAt,

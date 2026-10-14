@@ -15,6 +15,8 @@ import {
   REWARD_ON_OPEN_TAB,
 } from "@pos/shared/public";
 import { PROMO_BLOCKS_REWARD } from "@pos/shared/public-promo";
+import { POINTS_NEED_SIGN_IN, POINTS_NONE_TO_USE } from "@pos/shared/public-diner-cards";
+import { POINTS_REWARD_EXCLUSIVE } from "@pos/shared/reward-points";
 import {
   CARD_BILL_TOO_SMALL,
   CARD_CATEGORY_TOO_BIG,
@@ -75,7 +77,11 @@ export function isRewardErrorMessage(message: string): boolean {
     message === CARD_NEEDS_SIGN_IN ||
     message === CARD_CATEGORY_TOO_BIG ||
     message === CARD_REWARD_EXCLUSIVE ||
-    message === PROMO_BLOCKS_REWARD
+    message === PROMO_BLOCKS_REWARD ||
+    // CB-7 S6 — the "use my points" refusals ride the same path: the ask is dropped and the diner can retry.
+    message === POINTS_NEED_SIGN_IN ||
+    message === POINTS_NONE_TO_USE ||
+    message === POINTS_REWARD_EXCLUSIVE
   );
 }
 
@@ -150,8 +156,9 @@ export function classifySubmitFailure(
 // rejection (no reward was sent, or the text doesn't match).
 export function classifyRewardFailure(
   status: number,
-  // The reward intent that rode this submit: a stamp rung (number), a scratch card id (string), or null for none.
-  requestedReward: number | string | null,
+  // The reward intent that rode this submit: a stamp rung (number), a scratch card id (string), a points ask (true),
+  // or null for none.
+  requestedReward: number | string | true | null,
   envelopeError: string | undefined,
 ): string | null {
   if (status !== 422) return null;
@@ -184,13 +191,16 @@ export interface BuildOrderRequestBodyInput {
   // CB-7 S5 — a revealed scratch card's id, INTENT ONLY. Optional so callers with no card keep today's shape; when
   // set it WINS and requestedRewardAt is never sent (the schema allows one reward intent per order).
   requestedCardId?: string | null;
+  // CB-7 S6 — the diner's ask to use their points, a hint never a number. Sent only with no card and no rung.
+  requestedPoints?: boolean;
 }
 
 // Builds EXACTLY createPublicOrderRequestSchema's .strict() shape — items
 // carry no price/name, the server derives both from the live product.
 export function buildOrderRequestBody(input: BuildOrderRequestBodyInput): CreatePublicOrderRequestInput {
-  const { target, cart, note, promoCode, name, mobile, requestedRewardAt, requestedCardId } = input;
+  const { target, cart, note, promoCode, name, mobile, requestedRewardAt, requestedCardId, requestedPoints } = input;
   const cardPicked = requestedCardId !== undefined && requestedCardId !== null;
+  const pointsPicked = requestedPoints === true && !cardPicked && requestedRewardAt === null;
   return {
     target,
     items: cart.map((line) => ({
@@ -207,6 +217,7 @@ export function buildOrderRequestBody(input: BuildOrderRequestBodyInput): Create
     promoCode: promoCode ?? undefined,
     requestedRewardAt: cardPicked ? undefined : (requestedRewardAt ?? undefined),
     ...(cardPicked ? { requestedCardId } : {}),
+    ...(pointsPicked ? { requestedPoints: true as const } : {}),
     name: name.trim(),
     mobile: mobile.trim(),
   };

@@ -15,7 +15,7 @@ import { PublicLevelLadder } from "@/components/public/rewards/PublicLevelLadder
 import { cardsLoadCanRetry, cardsLoadErrorCopy, DINER_CARDS_KEY, useDinerCards } from "@/components/public/rewards/use-diner-cards";
 import type { AssignedRewardOffer } from "@/components/public/PublicPromoField";
 import type { DinerStampCard } from "@/lib/diner-loyalty";
-import { SCRATCH_PAUSED, type DinerCardsData } from "@pos/shared/public-diner-cards";
+import { POINTS_RULE, SCRATCH_PAUSED, type DinerCardsData } from "@pos/shared/public-diner-cards";
 
 // CB-7 S4 — the Rewards tab for a cafe that has Reward Levels. The shell (Slice D2) renders this instead of
 // PublicRewardsTab when `cardsOn`; everything the old tab needed (`loading`, `card`, `rewards`, `onSignIn`) comes
@@ -61,6 +61,15 @@ export function PublicLevelsTab({
   // Re-reads the wallet through an invalidation (the hook owns every network call).
   const reload = () => void queryClient.invalidateQueries({ queryKey: DINER_CARDS_KEY });
 
+  // Points the diner already holds always show (plan §2.11 predicate 3): the hero carries them while there is a level,
+  // otherwise this line — in BOTH branches, so a cafe that switched Reward Levels off still shows the balance.
+  const pointsLine =
+    view && !view.progress && view.pointsBalance > 0 ? (
+      <p className="text-sm text-muted-foreground">
+        {view.pointsBalance} {view.pointsBalance === 1 ? "point" : "points"} · {POINTS_RULE}
+      </p>
+    ) : null;
+
   const stampsTab = (embedded: boolean) => (
     <PublicRewardsTab
       loading={loading}
@@ -79,6 +88,7 @@ export function PublicLevelsTab({
         {loyaltyEnabled && stampsTab(false)}
         {cards.length > 0 && view && (
           <div className="space-y-6 px-pub-pad pb-2">
+            {pointsLine}
             <PublicCardWallet cards={cards} earning={view.earning} identity={identity} onSheetChange={onSheetChange} />
             <PublicCardWallet cards={cards} earning={view.earning} identity={identity} part="history" />
           </div>
@@ -132,6 +142,7 @@ export function PublicLevelsTab({
       {view && (
         <>
           {!view.earning && <p className="text-sm text-muted-foreground">{SCRATCH_PAUSED}</p>}
+          {pointsLine}
           {view.progress && <PublicLevelHero progress={view.progress} pointsBalance={view.pointsBalance} />}
           <PublicCardWallet cards={view.cards} earning={view.earning} identity={identity} onSheetChange={onSheetChange} />
           {view.ladder && <PublicLevelLadder ladder={view.ladder} progress={view.progress} />}

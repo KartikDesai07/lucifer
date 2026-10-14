@@ -37,6 +37,9 @@ export interface IOrderRewardFields {
   // CB-7 S6 (§2.7) — the points SPENT on this bill = its discount (1 point = ₹1), the cost stored like rewardStamps. The
   // lot plan is NOT here: it only exists after the spend CAS, so Customer.pointsSpends is the one record a return reads.
   rewardPoints?: number;
+  // CB-7 S6 session 2 (owner O2) — the diner asked for points in the QR cart (copied from the request at accept). A HINT,
+  // not money and not a snapshot key: nothing re-prices from it; the payment popup only starts its points switch ON.
+  pointsRequested?: true;
   // s86 P2 — the promo code the bill opened with (counter create, QR accept, QR add-round). Never $unset: its
   // presence refuses every reward claim on the bill, inside the claim's CAS.
   promoCode?: string;
@@ -70,5 +73,7 @@ export const orderRewardPaths = {
     rewardCapRupees: { type: Number },
     // CB-7 S6 — no `default:` (omit-empty), like rewardStamps.
     rewardPoints: { type: Number },
+    // CB-7 S6 session 2 — no `default:` (omit-empty): only a QR order whose diner asked carries it.
+    pointsRequested: { type: Boolean },
     promoCode: { type: String },
 };

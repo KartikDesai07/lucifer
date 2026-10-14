@@ -5,6 +5,7 @@ import {
   isCartLineArray,
   isIdentity,
   isCardPick,
+  isPointsPick,
   isStringArray,
   isRefreshMap,
   isMenuCacheEntry,
@@ -163,15 +164,22 @@ export function readRequestedRewardAt(): number | null {
   return safeRead(REQUESTED_REWARD_KEY, (v): v is number => typeof v === "number");
 }
 
-// CB-7 S5 — a scratch-card pick lives under the SAME key as `{card: "<id>"}`, so one reward at a time holds by
-// construction (a write of either shape replaces the other) and every existing clear point wipes it. A stored
-// object reads null above (a stamp rung is a number); a stored number reads null here.
+// CB-7 S5/S6 — a card pick `{card: "<id>"}` and a points ask `{points: true}` share the SAME key as the stamp rung, so
+// one reward at a time holds by construction and every clear point wipes it. Each reader accepts only its own shape.
 export function readRequestedCardId(): string | null {
   return safeRead(REQUESTED_REWARD_KEY, isCardPick)?.card ?? null;
 }
 
 export function writeRequestedCardId(cardId: string): void {
   safeWrite(REQUESTED_REWARD_KEY, { card: cardId });
+}
+
+export function readRequestedPoints(): boolean {
+  return safeRead(REQUESTED_REWARD_KEY, isPointsPick) !== null;
+}
+
+export function writeRequestedPoints(): void {
+  safeWrite(REQUESTED_REWARD_KEY, { points: true });
 }
 
 export function writeRequestedRewardAt(at: number): void {

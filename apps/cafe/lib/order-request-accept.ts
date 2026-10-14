@@ -33,12 +33,7 @@ import {
   resolveOpenTabState,
   createTotalsMatchQuote,
 } from "@/lib/order-request-accept-core";
-import {
-  guardedReject,
-  createOrFindCustomer,
-  recoverOrderCreate,
-  gstConfigDrifted,
-} from "@/lib/order-request-accept-write";
+import { guardedReject, createOrFindCustomer, recoverOrderCreate, gstConfigDrifted } from "@/lib/order-request-accept-write";
 import { acceptAddRoundBranch } from "@/lib/order-request-accept-addround";
 import { runAcceptFollowUps } from "@/lib/order-request-accept-followups";
 import {
@@ -346,6 +341,8 @@ export async function acceptOrderRequest(
     // that cost is STORED on the issued row, never re-derived from a ladder
     // the owner may since have retuned.
     ...acceptRewardSnapshot(rewardResolution),
+    // A HINT copied from the request (the diner asked to use points); nothing is spent here, staff spend at payment.
+    ...(request.requestedPoints ? { pointsRequested: true as const } : {}),
     ...promoMarkerFields(promoIsClaimable(promo.discount, request.promoCode, promo.kind) ? request.promoCode : undefined),
     gstAmount: totals.gstAmount,
     gstRate: gstCfg.gstEnabled ? gstCfg.gstRate : 0,

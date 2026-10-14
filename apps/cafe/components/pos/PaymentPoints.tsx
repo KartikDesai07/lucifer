@@ -3,6 +3,7 @@
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import type { SettlePointsView } from "@/hooks/use-settle-points";
+import { POINTS_ASKED_HINT } from "@/lib/settle-points-view";
 import { inr } from "@/lib/utils";
 
 // CB-7 S6 (§2.7, owner O3) — the payment popup's one points row: ONE switch that uses ALL the customer's usable points,
@@ -10,6 +11,8 @@ import { inr } from "@/lib/utils";
 // says why. The row is at least 44px tall so it is an easy tap.
 const POINTS_SWITCH_ID = "use-points";
 const POINTS_REASON_ID = "use-points-reason";
+// Session 2 (owner O2): the QR diner asked for points, so the switch started ON — this line says why.
+const POINTS_ASKED_ID = "use-points-asked";
 
 interface PaymentPointsProps {
   points: SettlePointsView;
@@ -18,7 +21,8 @@ interface PaymentPointsProps {
 }
 
 export function PaymentPoints({ points, disabled }: PaymentPointsProps) {
-  const { row, on, onToggle } = points;
+  const { row, on, asked, onToggle } = points;
+  const describedBy = [asked ? POINTS_ASKED_ID : null, row.reason ? POINTS_REASON_ID : null].filter(Boolean).join(" ");
   return (
     <div className="rounded-lg border px-3 text-sm">
       <div className="flex min-h-11 items-center justify-between gap-3">
@@ -30,9 +34,14 @@ export function PaymentPoints({ points, disabled }: PaymentPointsProps) {
           checked={on}
           disabled={disabled || !row.usable}
           onCheckedChange={onToggle}
-          aria-describedby={row.reason ? POINTS_REASON_ID : undefined}
+          aria-describedby={describedBy || undefined}
         />
       </div>
+      {asked && (
+        <p id={POINTS_ASKED_ID} className="pb-2 text-xs font-medium text-primary">
+          {POINTS_ASKED_HINT}
+        </p>
+      )}
       {row.reason && (
         <p id={POINTS_REASON_ID} className="pb-2 text-xs text-muted-foreground">
           {row.reason}

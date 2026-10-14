@@ -472,7 +472,10 @@
     "lib/reward-levels-unlock.test.ts",
     "lib/reward-cards-clear.test.ts",
     "lib/settle-points-view.test.ts",
-    "lib/settle-points-paths.test.ts"
+    "lib/settle-points-paths.test.ts",
+    "lib/order-request-points.test.ts",
+    "lib/public-points-picker-paths.test.ts",
+    "components/public/rewards/card-detail-view.test.ts"
   ],
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

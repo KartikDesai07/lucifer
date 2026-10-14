@@ -86,6 +86,11 @@ export function isCardPick(v: unknown): v is { card: string } {
   );
 }
 
+// CB-7 S6 — the stored shape of a "use my points" ask, `{points: true}` (a hint, never a number). Strictly `true`.
+export function isPointsPick(v: unknown): v is { points: true } {
+  return typeof v === "object" && v !== null && (v as { points?: unknown }).points === true;
+}
+
 export interface MenuCacheEntry {
   at: number;
   payload: unknown;

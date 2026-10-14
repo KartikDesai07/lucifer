@@ -8,6 +8,8 @@ import { stripComments } from "@/lib/source-pin-utils";
 import { buildOrderRequestBody, classifyRewardFailure, isRewardErrorMessage } from "@/components/public/public-submit";
 import { usableCards } from "@/components/public/rewards/usable-cards";
 import { PROMO_BLOCKS_REWARD } from "@pos/shared/public-promo";
+import { POINTS_NEED_SIGN_IN, POINTS_NONE_TO_USE } from "@pos/shared/public-diner-cards";
+import { POINTS_REWARD_EXCLUSIVE } from "@pos/shared/reward-points";
 import {
   CARD_BILL_TOO_SMALL,
   CARD_NEEDS_SIGN_IN,
@@ -35,7 +37,7 @@ const PICKER = "components/public/rewards/PublicCardPicker.tsx";
 
 const CARD_ID = "0123456789ab";
 
-function body(over: { requestedRewardAt: number | null; requestedCardId?: string | null }) {
+function body(over: { requestedRewardAt: number | null; requestedCardId?: string | null; requestedPoints?: boolean }) {
   return buildOrderRequestBody({
     target: { kind: "parcel" },
     cart: [],
@@ -104,6 +106,26 @@ test("submit: a picked card sends requestedCardId and never also requestedReward
   assert.equal(none.requestedRewardAt, undefined);
   assert.ok(!("requestedCardId" in none));
   assert.match(read(SUBMIT), /requestedRewardAt: cardPicked \? undefined/, "source: the stamp intent is dropped");
+});
+
+test("submit: a points ask is sent only with no card and no rung, and omitted otherwise (CB-7 S6)", () => {
+  assert.equal(body({ requestedRewardAt: null, requestedPoints: true }).requestedPoints, true);
+  assert.ok(!("requestedPoints" in body({ requestedRewardAt: null, requestedPoints: true, requestedCardId: CARD_ID })));
+  assert.ok(!("requestedPoints" in body({ requestedRewardAt: 5, requestedPoints: true })), "never beside a rung");
+  assert.ok(!("requestedPoints" in body({ requestedRewardAt: null, requestedPoints: false })));
+  assert.ok(!("requestedPoints" in body({ requestedRewardAt: null })), "omitted when absent");
+  const withCard = body({ requestedRewardAt: null, requestedPoints: true, requestedCardId: CARD_ID });
+  assert.equal(withCard.requestedCardId, CARD_ID, "landmark: the card still wins");
+});
+
+test("submit: the three points refusals are reward errors that a points ask classifies (CB-7 S6)", () => {
+  const refusals = [POINTS_NEED_SIGN_IN, POINTS_NONE_TO_USE, POINTS_REWARD_EXCLUSIVE];
+  assert.equal(new Set(refusals).size, 3, "landmark: three distinct strings");
+  for (const message of refusals) {
+    assert.ok(isRewardErrorMessage(message), message);
+    assert.equal(classifyRewardFailure(422, true, message), message);
+    assert.equal(classifyRewardFailure(422, null, message), null, "no ask sent -> not a reward failure");
+  }
 });
 
 test("submit: every card refusal (and the promo / exclusive ones) is a reward error that drops the pick", () => {

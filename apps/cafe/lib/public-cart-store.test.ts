@@ -18,8 +18,10 @@ import {
   readMyCodes,
   readLastMenuPath,
   readRequestedCardId,
+  readRequestedPoints,
   readRequestedRewardAt,
   writeRequestedCardId,
+  writeRequestedPoints,
   writeRequestedRewardAt,
   clearRequestedRewardAt,
   writeLastMenuPath,
@@ -367,6 +369,55 @@ test("clearRequestedRewardAt, clearCart (a submit) and clearDinerData (sign-out)
     writeRequestedCardId(CARD_ID);
     clearDinerData();
     assert.equal(readRequestedCardId(), null);
+  });
+});
+
+// CB-7 S6 — "use my points" is {points: true} under the same key: one reward at a time, same clear points.
+test("a points ask round-trips as {points: true} and is no card pick and no stamp rung", () => {
+  withWindow((storage) => {
+    assert.equal(readRequestedPoints(), false, "nothing stored reads false");
+    writeRequestedPoints();
+    assert.equal(readRequestedPoints(), true);
+    assert.equal(readRequestedCardId(), null);
+    assert.equal(readRequestedRewardAt(), null);
+    assert.equal(storage.getItem(REWARD_KEY), JSON.stringify({ points: true }));
+  });
+});
+
+test("a card or rung written after a points ask replaces it", () => {
+  withWindow(() => {
+    writeRequestedPoints();
+    writeRequestedCardId(CARD_ID);
+    assert.equal(readRequestedPoints(), false);
+    writeRequestedPoints();
+    writeRequestedRewardAt(5);
+    assert.equal(readRequestedPoints(), false);
+    writeRequestedRewardAt(5);
+    writeRequestedPoints();
+    assert.equal(readRequestedRewardAt(), null, "and the ask replaces a rung");
+  });
+});
+
+test("clearRequestedRewardAt, clearCart and clearDinerData each wipe a points ask", () => {
+  withWindow(() => {
+    writeRequestedPoints();
+    clearRequestedRewardAt();
+    assert.equal(readRequestedPoints(), false);
+    writeRequestedPoints();
+    clearCart();
+    assert.equal(readRequestedPoints(), false);
+    writeRequestedPoints();
+    clearDinerData();
+    assert.equal(readRequestedPoints(), false);
+  });
+});
+
+test("a corrupt points ask reads false", () => {
+  withWindow((storage) => {
+    for (const raw of ['{"points":"yes"}', '{"points":1}', '{"points":false}', "true", "{bad json"]) {
+      storage.setItem(REWARD_KEY, raw);
+      assert.equal(readRequestedPoints(), false, raw);
+    }
   });
 });
 
