@@ -386,6 +386,8 @@
     "lib/printer/escpos-parity.test.ts",
     "lib/printer/raster.test.ts",
     "lib/printer/kot-text/text-chars.test.ts",
+    "lib/printer/kot-text/text-layout.test.ts",
+    "lib/printer/kot-text/text-escpos.test.ts",
     "lib/printer/device-printer-store.test.ts",
     "lib/printer/device-printer.test.ts",
     "lib/printer/device-printer-owner.test.ts",
