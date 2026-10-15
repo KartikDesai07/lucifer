@@ -2515,3 +2515,106 @@ Made exact at the 4C review gate. Tasks are numbered 30–34.
   every suite on `main`, a push only on the owner's word, with the token). Then the owner's deploy, upload and the
   measurement.
 
+## Session 4A Results (filled in by the implementer)
+
+Executed on 2026-10-15 with superpowers:executing-plans, task by task, Tasks 0 → 7, in `D:\kd\lucifer` on
+`feat/printing-phase-4` (start `3083eff`). No push, no merge, no deploy, no download, no web request.
+
+### Commits (`3083eff..HEAD`)
+
+| Commit | Task |
+|---|---|
+| `6d4d12b` | 1: the characters a text KOT may send (`text-chars.ts`) |
+| `f655c19` | 2: lines and their ESC/POS bytes (`text-layout.ts`, `text-escpos.ts`) |
+| `cab1ecd` | 3: Classic as text, and the gate (`kot-text-design.ts`, `kot-text-classic.ts`, `kot-text.ts`, the fixtures) |
+| `9987965` | 4: Kitchen Bold as text (`kot-text-bold.ts`) |
+| `e92c64b` | 5: the text test slip (`text-test-slip.ts`) |
+| `dee2640` | 6: the parity test (8,800 cells) and `kotTextRows` |
+| `85d6124` | 7, the review's I-1 by TDD: the legacy ticket has no locks; the parity test sweeps the legacy ticket over every `kot*` flag combination (20,480 cells) |
+| `8770645` | 7, the review's I-2 by TDD: the text test slip shows Classic's `#12` and Kitchen Bold's `[1]` |
+| (this commit) | 7: Results |
+
+### Start
+
+- Branch `feat/printing-phase-4` at `3083eff`, working tree clean; disks: D: 9.7 GB free, C: 75 GB free.
+- Baseline (Task 0): the cafe chain `# tests 5984`, `# pass 5983`, `# fail 0`, `# skipped 1` (54 s); `npx tsc --noEmit`
+  clean; lint `✖ 2 problems (0 errors, 2 warnings)`. All as Expected.
+
+### How the code was applied
+
+Every block went verbatim into the real repo through `D:\kd\pos-dev-keep\phase3-final-gate\apply_blocks_clone.py`
+(`--dry` first, then for real), one step range at a time, so each RED was seen before its code went in: Task 1 2 + 1
+ops, Task 2 3 + 2, Task 3 3 + 3, Task 4 2 + 3, Task 5 2 + 1, Task 6 2 + 3 (**27**). Each find matched exactly once.
+After every task, `git rev-parse HEAD:apps/cafe` equalled the gold commit's: Task 1 `585796b` = `684223d`, Task 2
+`56c926f` = `107c8ff`, Task 3 `b682846` = `e636523`, Task 4 `3521010` = `5dfc872`, Task 5 `4da996c` = `48a9608`,
+Task 6 `dd67217` = `892ba66`. The whole tree after Task 6 differed from the gold tree `33375e2` only in the two docs the
+plan commit `3083eff` carries (this plan and the spec's amendment): `git diff --name-only 892ba66 dee2640` listed only
+those two files. Every commit message of Tasks 1–6 came from the plan's block, written to a scratch file and committed
+with `git commit -F`. After the review's two fixes `apps/cafe`'s tree is `a5a2516` (gold + 4 files, +51 −12).
+
+### Per-task RED → GREEN (every Expected line compared; all matched)
+
+| Task | RED (as seen) | GREEN (as seen) |
+|---|---|---|
+| 1 | `# Error: Cannot find module './text-chars'`; tests 1, pass 0, **fail 1** | **4/4**; typecheck and lint clean |
+| 2 | `Cannot find module './text-escpos'` and `'./text-layout'`; tests 2, pass 0, **fail 2** | **13/13**; typecheck and lint clean |
+| 3 | `# Error: Cannot find module './kot-text-classic'`; tests 1, pass 0, **fail 1** | **10/10**; typecheck and lint clean |
+| 4 | `not ok 1`–`4`, each on `the slip prints as text (design)` (Kitchen Bold was still an unknown design); tests 4, pass 0, **fail 4** | both KOT suites **14/14**; typecheck and lint clean |
+| 5 | `# Error: Cannot find module './text-test-slip'`; tests 1, pass 0, **fail 1** | **4/4**; typecheck and lint clean |
+| 6 | `not ok 1 - every golden KOT shape prints the picture's words, in its order, in every design` (`TypeError: kotTextRows is not a function`: not exported yet); tests 1, pass 0, **fail 1** | parity + KOT **11/11**; typecheck and lint clean |
+
+### Task 7: verification
+
+At `dee2640` (before the review):
+- Step 1: `17 files changed, 1458 insertions(+)` outside `docs/`; `only kot-text and the test chain`; `nothing imports
+  kot-text` (and no file in `apps/` or `packages/` outside the folder names `kot-text` at all).
+- Step 2: the cafe chain `# tests 6020`, `# pass 6019`, `# fail 0`, `# skipped 1`; `typecheck clean`;
+  `✖ 2 problems (0 errors, 2 warnings)`. All as Expected.
+
+At `8770645` (after the review's fix pass; Steps 1–2 again):
+- Step 1: `17 files changed, 1497 insertions(+)` (the 1458 and the fixes' net 39); `only kot-text and the test chain`;
+  `nothing imports kot-text`.
+- Step 2: the cafe chain **`# tests 6022`, `# pass 6021`, `# fail 0`, `# skipped 1`** (57 s; the two new tests of the
+  fixes); `typecheck clean`; `✖ 2 problems (0 errors, 2 warnings)`. The seven kot-text files: **38/38**.
+
+### Step 3: the fresh review (Claude Fable 5.1)
+
+A fresh reviewer on Claude Fable 5.1 (read-only on the repo; its probes in a detached worktree in this session's
+scratchpad, removed afterwards; no 429) reviewed `d21ee37..dee2640` against spec §2.1, §4, §5.1–5.2 and this section. It
+ran the seven suites (36/36), the typecheck, 13 real-input probes, a byte-grammar validator over 6,000 jobs (only `ESC @`
+once, `ESC a`, `ESC E`, `GS ! 00/01/11`, `GS B`, `LF`, `ESC J`, printable ASCII and the exact tail `ESC J 16, GS V 66 0`;
+no line ever reached the columns: at most 47/41/31, 46/40/30 double width), a legacy-ticket sweep over every `kot*` flag
+mask (20,480 cells) and 8 mutation probes (6 caught). **Verdict: "With fixes"; 0 Critical, 2 Important, 4 Minor.**
+
+| Finding | Ruling |
+|---|---|
+| **I-1** With no stored kitchen-ticket template the picture is `KOTReceipt`'s own legacy ticket, which has no locks (`cfg.showTable && <Line Table>`), but the text applied the engine's banner-slip locks (title, table, items) there too: a cafe with "Show table" off got a `Table` line on every text VOID, TABLE MOVED and cancel notice that today's picture does not print (6,144 of 20,480 cells; the parity test's settings never turned the table off) | **Fixed by TDD, `85d6124`.** RED: a new parity test, "the legacy ticket prints the picture's words under every combination of its settings" (every `kot*` flag mask × the 20 golden slips, the cafe without a logo), failed at `[flags=0 / void-reason-by-at]` with the text's extra `'table', 't4'`; GREEN after locks bite only when a template is stored (`kot-text.ts`: `locked(block)` is false on the legacy path, for visibility and for the locked-size rule alike); the seven suites 37/37. A mutation that drops the lock on the stored path (`return block.on;`) still fails two tests. |
+| **I-2** The S2 text test slip printed none of `#`, `[`, `]`, the characters a printer's own international character set changes (`ESC @` keeps the printer's default; UK prints `#` as a pound sign, the European sets print `[ ]` as letters), while every Classic ticket prints `#7` and every Kitchen Bold item `[2]`: such a printer would pass its text test and garble every ticket | **Fixed by TDD, `8770645`.** RED: a new test ("the sample prints the characters a printer's international set can change…") and the 80 mm line-for-line golden failed (`32 columns: the sample prints #`); GREEN after the sample gained `#12` (big, bold, centred, under KITCHEN ORDER, as Classic prints its number) and its second item became `[1] Paneer Tikka` (hang 4, as Kitchen Bold); the seven suites 38/38. Content only: no command is added. **Not taken:** the reviewer's stronger option `ESC R 0` after `ESC @` adds a command to the plan's fixed list, which is the owner's call (Global Constraints, "Commands"). |
+| m-1 a lone carriage return is dropped, so `"no onion\rno garlic"` prints `no onionno garlic` (the picture shows a space; CRLF is fine) | Deferred to the 4A gate (a textarea's value is LF-normalised, so a lone CR is rare) |
+| m-2 test strength: no fixture has a no-KOT line (dropping `kitchenOrderOf`/`kitchenLinesOf` fails nothing; production is correct), and Classic's meta `groupRatio` and Kitchen Bold's upper-case restaurant name are unpinned (cosmetic) | Deferred to the 4A gate |
+| m-3 a Classic label / value row whose block is aligned centre or left keeps the value flush right in text; the picture centres it | Deferred to the 4A gate (spec §4.3 defines the split row's shape; a spec note would close it) |
+| m-4 an amount or value wider than the line (`Rs 1,00,00,00,000` at xl on 58 mm) refuses as `"error"` instead of wrapping | Deferred to the 4A gate (harmless by S3; unrealistic; 4B should not read `"error"` as a bug alone) |
+
+What the reviewer set aside, and the ruling on each:
+- Classic's italic instruction has no text form: stands (no portable ESC/POS italic; spec §4.3 lists bold, size and
+  alignment; the words match).
+- Invisible characters (U+200B/200C/200D/FEFF, the soft hyphen) make a slip a picture: stands (rule 6's safe direction).
+- A 58 mm printer with fewer than 32 columns has no narrower choice: stands (P4-5; its ruler wraps, staff answer No).
+- The planning review's m-5, m-6, m-7 and m-12: stand as ruled there (no new evidence).
+- Rule 7 (the bytes under the picture's limit) is not checked in 4A: stands; the 4A gate puts it in Task 11's code.
+- I-4 (the lazy slip chunk) and the gate's rules 1–2 (kind, switch, writer): stand for 4B Task 11.
+- `textTestJob` throws on a bug (documented): stands in 4A; **4B's caller must catch it** and keep the switch off with the
+  printer's message (a note for the gate).
+- Kitchen Bold's KOT band (big and white on black at once) is not on the test slip as one line: stands (each is shown;
+  a printer failing only the pair is exotic).
+- A centred block over indented modifier lines centres their four leading spaces too: stands (cosmetic).
+
+### Differences from this plan
+
+1. **The review's two fixes** (above) add two commits after Task 6: the counts at the end are the cafe chain **6022**
+   (6021 pass, 0 fail, 1 skipped) instead of 6020, and `17 files changed, 1497 insertions(+)` instead of 1458. The
+   parity file now holds two tests (8,800 + 20,480 cells, about 10 s with the KOT suite). The text test slip's content
+   differs from Task 5's block (the `#12` line and `[1] Paneer Tikka`): **the 4A gate makes 4B exact against
+   `8770645`, not against the gold tree `33375e2`**.
+2. Process only: the harness refused one `bash -c` test command given to `task-done` (as noted in the memory), so the
+   kot-text suites ran through a wrapper script in the scratchpad; Task 2's commit was then made once, separately.
