@@ -42,6 +42,7 @@ export interface KotTextInput {
   columns: TextColumns;
 }
 
+export type KotTextRows = { ok: true; rows: TextRow[] } | { ok: false; refusal: KotTextRefusal };
 export type KotTextPlan = { ok: true; pieces: TextPiece[] } | { ok: false; refusal: KotTextRefusal };
 export type KotTextResult = { ok: true; bytes: Uint8Array } | { ok: false; refusal: KotTextRefusal };
 
@@ -69,8 +70,9 @@ function styled(rows: TextRow[], block: KotBlock, locked: boolean, groupRatio: n
   });
 }
 
-/** The slip's printed pieces, or why it prints as a picture. Throws only on a bug (kotTextJob catches it). */
-export function kotTextPlan({ slip, settings, columns }: KotTextInput): KotTextPlan {
+/** The rows the slip's design prints, in the picture's order, before their characters are checked and their lines
+ *  laid out; or why it prints as a picture. Throws only on a bug (kotTextJob catches it). */
+export function kotTextRows({ slip, settings }: Pick<KotTextInput, "slip" | "settings">): KotTextRows {
   const template = kotTemplateOf(settings) ?? classicKotTemplate(settings);
   const design = Object.hasOwn(KOT_TEXT_DESIGNS, template.design) ? KOT_TEXT_DESIGNS[template.design] : undefined;
   if (design === undefined) return { ok: false, refusal: "design" };
@@ -100,7 +102,14 @@ export function kotTextPlan({ slip, settings, columns }: KotTextInput): KotTextP
     if (out === PICTURE_ONLY) return { ok: false, refusal: "picture" };
     rows.push(...styled(out, block, kotBlockLocked(block.type, lockCtx), design.groupRatio[block.type] ?? 1, baseRatio));
   }
-  const pieces = layoutRows(rows, columns);
+  return { ok: true, rows };
+}
+
+/** The slip's printed pieces, or why it prints as a picture. Throws only on a bug (kotTextJob catches it). */
+export function kotTextPlan({ slip, settings, columns }: KotTextInput): KotTextPlan {
+  const planned = kotTextRows({ slip, settings });
+  if (!planned.ok) return planned;
+  const pieces = layoutRows(planned.rows, columns);
   if (pieces === null) return { ok: false, refusal: "characters" };
   if (!pieces.some((piece) => "text" in piece && piece.text.trim() !== "")) return { ok: false, refusal: "empty" };
   return { ok: true, pieces };

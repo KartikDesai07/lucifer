@@ -391,6 +391,7 @@
     "lib/printer/kot-text/kot-text.test.ts",
     "lib/printer/kot-text/kot-text-bold.test.ts",
     "lib/printer/kot-text/text-test-slip.test.ts",
+    "lib/printer/kot-text/kot-text-parity.test.ts",
     "lib/printer/device-printer-store.test.ts",
     "lib/printer/device-printer.test.ts",
     "lib/printer/device-printer-owner.test.ts",
