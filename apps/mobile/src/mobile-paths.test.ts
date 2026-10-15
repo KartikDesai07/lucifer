@@ -2845,15 +2845,19 @@ test('pin 27: one version for both apps, the Android versionCode computed from i
 test('pin 27 mutation: either version drifting or a literal versionCode is caught', () => {
   const base = versionSources();
   const run = (key: keyof VersionSources) => (text: string) => versionProblems({ ...base, [key]: text });
+  // Native apps 2.0.1 (the final review's m-1): the needles follow the current version, so raising it for a release
+  // never breaks this pin.
+  const current = /^def posVersionRelease = "([^"]+)"$/m.exec(base.gradle)?.[1] ?? '(no version)';
+  const drifted = current === '9.9.9' ? '9.9.8' : '9.9.9';
   everyMutationCaught(run('gradle'), base.gradle, [
-    ['def posVersionRelease = "2.0.0"', 'def posVersionRelease = "2.0.1"'],
-    ['def posVersionRelease = "2.0.0"', 'def posVersionRelease = "2.100.0"'],
+    [`def posVersionRelease = "${current}"`, `def posVersionRelease = "${drifted}"`],
+    [`def posVersionRelease = "${current}"`, 'def posVersionRelease = "2.100.0"'],
     ["(findProperty('posVersion') ?: posVersionRelease)", '(posVersionRelease)'],
     ['\\d{1,3}\\.\\d{1,2}\\.\\d{1,2}/))', '.+/))'],
     ['posVersionParts[1] * 100', 'posVersionParts[1] * 1000'],
     ['versionCode posVersionCode', 'versionCode 20000'],
   ]);
-  everyMutationCaught(run('desktop'), base.desktop, [['"version": "2.0.0"', '"version": "2.0.1"']]);
+  everyMutationCaught(run('desktop'), base.desktop, [[`"version": "${current}"`, `"version": "${drifted}"`]]);
 });
 
 // ── pin 28: native apps 2.0, the private release key (2026-10-12) ───────────

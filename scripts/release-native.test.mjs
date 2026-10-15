@@ -229,6 +229,8 @@ test("the upload steps put the versioned files first and latest.json and latest.
   assert.ok(at("max-age=60", last) < check, "the latest files' cache header");
   assert.ok(at("sha256sum -c SHA256SUMS.txt") < first, "check the files first");
   assert.ok(at("Get-FileHash -Algorithm SHA256") < first, "... in PowerShell too (the N3 gate's review, m-5)");
+  assert.ok(at("Properties → Metadata") < first, "how to set the headers in the S3 console (native apps 2.0.1)");
+  assert.ok(at("upload each group on its own") < first, "... one upload per group of headers: the console applies one metadata set to a whole upload");
   assert.ok(at("https://files.sandbee.in/pos/android/latest.json", check) > check, "the check from a phone");
 });
 

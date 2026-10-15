@@ -373,7 +373,9 @@ every later version arrives by itself. **No web change and no Worker change.**
 
 - [ ] **First, the owner's upload.** The release folder `D:\kd\pos-apk-release\Sandbee-POS-2.0.0\` is uploaded as its
       `UPLOAD-STEPS.txt` says (the APKs, the installer and its blockmap first, `latest.json` and `latest.yml` last),
-      and `https://files.sandbee.in/pos/android/latest.json` opens from a phone.
+      and `https://files.sandbee.in/pos/android/latest.json` opens from a phone. The files go to the private S3 bucket
+      `sandbee-files` (Mumbai), which CloudFront serves at `files.sandbee.in` (set up with the owner on 2026-10-15,
+      spec §10); a later release is uploaded the same way.
 - [ ] **Each printing phone or tablet, once:** uninstall the old POS app (Android puts no app over one signed with
       another key), install `Sandbee-POS-2.0.0-arm64-v8a.apk` (`Sandbee-POS-2.0.0-armeabi-v7a.apk` for an old 32-bit
       phone; check its SHA-256 against the release's `SHA256SUMS.txt` before you send it), open it, type the cafe's
@@ -860,7 +862,8 @@ another program is in front.
       Orders. Each successful print is logged with its text length and the
       printer it went to, so a blank sheet can be traced in the log.
 - [ ] Closing the window keeps the app running in the tray, still printing.
-      The tray icon has **Open POS** and **Quit**.
+      The tray icon has **Open POS**, **Change POS address…** and **Quit**,
+      and **Restart to update** once an update has downloaded.
 - [ ] After the first successful load the app starts hidden with Windows.
       **Help → Start with Windows** turns that off and on.
 - [ ] **Help → Change POS address…** if the address ever changes.

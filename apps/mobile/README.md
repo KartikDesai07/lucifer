@@ -171,6 +171,11 @@ release folder by hand.
 5. **The owner uploads** the folder as its `UPLOAD-STEPS.txt` says: the APKs,
    the installer and its blockmap first, `latest.json` and `latest.yml` last,
    then opens `https://files.sandbee.in/pos/android/latest.json` from a phone.
+   The files go to the private S3 bucket `sandbee-files`, which CloudFront
+   serves at `files.sandbee.in`; in the S3 console each group of files is one
+   upload, with its Content-Type and Cache-Control under Properties → Metadata.
+   Admin → Printer setup → "Sandbee POS apps" shows the new version within
+   10 minutes.
 
 Never raise `minSdkVersion` while older devices are in use: the manifest names no
 minimum Android version, so such a device would download every new version and

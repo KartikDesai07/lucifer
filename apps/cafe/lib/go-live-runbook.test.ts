@@ -1401,9 +1401,15 @@ test("PIN §1 (printing Phase 2): the existing-cafe release step keeps the go-li
   // Phase 3 Session 3E deliberately changed: the Windows app is 1.12.0 now, and this step stays the Phase 2 release's
   // (its installer, 1.11.0); the Phase 3 release step (Session 3G) names 1.12.0.
   // Native apps 2.0 Session N1 deliberately changed: both apps are 2.0.0 now (spec §5); this step still names the Phase 2
-  // release's installer, the Phase 3 step 1.12.0, and the native apps 2.0 release step (Session N4) will name 2.0.0.
+  // release's installer, the Phase 3 step 1.12.0, and the native apps 2.0 release step (Session N4) names 2.0.0.
+  // Native apps 2.0.1 deliberately changed (the final review's m-1): the version follows each release, so this pin
+  // checks a 2.x version equal to the Android app's (pin 27's rule), never a literal that each release would break.
   const desktop = JSON.parse(readFileSync(path.join(REPO_ROOT, "apps/desktop/package.json"), "utf8")) as { version: string };
-  assert.equal(desktop.version, "2.0.0", "the Windows app of native apps 2.0");
+  const android = /def posVersionRelease = "([^"]+)"/.exec(
+    readFileSync(path.join(REPO_ROOT, "apps/mobile/android/app/build.gradle"), "utf8"),
+  )?.[1];
+  assert.match(desktop.version, /^2\.\d{1,2}\.\d{1,2}$/, "the Windows app of native apps 2.x");
+  assert.equal(desktop.version, android, "one version for both apps (spec §5)");
   assert.ok(step.includes("POS-Software-Setup-1.11.0.exe"), "the step names the Phase 2 release's desktop installer");
   assert.ok(step.includes("apps/mobile/TEST-CHECKLIST.md"), "the step sends the deployer to the real-printer checks");
 });

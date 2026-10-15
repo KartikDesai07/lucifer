@@ -88,7 +88,7 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
  * patch stay below 100 and a version only ever goes up. A test build may pass -PposVersion=2.0.1; the release packaging
  * (scripts/release-native.mjs) refuses an APK whose version is not the Windows app's.
  */
-def posVersionRelease = "2.0.0"
+def posVersionRelease = "2.0.1"
 def posVersionName = (findProperty('posVersion') ?: posVersionRelease).toString()
 if (!(posVersionName ==~ /\d{1,3}\.\d{1,2}\.\d{1,2}/)) {
     throw new GradleException("posVersion must look like 2.0.0, minor and patch below 100: ${posVersionName}")
