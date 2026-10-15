@@ -37,7 +37,7 @@ app's 60 s job watchdog. Phase 4 adds three things:
 
 | # | Rule |
 |---|---|
-| S1 | **A deploy changes no paper.** Every text switch starts off. With every switch off, every slip's bytes are byte-for-byte today's: the raster code (`lib/printer/escpos.ts`, `lib/printer/raster.ts`, `lib/printer/lane-print.ts`'s raster path, the React slips) is not changed, and a golden test pins the bytes of every slip kind with the switch off. |
+| S1 | **A deploy changes no paper.** Every text switch starts off. With every switch off, every slip's bytes are byte-for-byte today's: the picture code (`lib/printer/escpos.ts`, `lib/printer/raster.ts`, `lib/printer/lane-print.ts`'s raster path, the React slips, the apps' raster and raw paths) is not changed, which a source pin holds (each file's hash as of the spec commit); the bridge's text step answers nothing and calls no writer for a printer whose switch is off (unit tests); and an end-to-end run prints the same orders with every switch off on a build of today's code and on the new one, comparing the bytes file for file. |
 | S2 | **A printer goes to text only after it proved it.** Turning the switch on first prints a text test slip on that printer; the switch turns on only when staff answer "Yes, it printed clearly". |
 | S3 | **Text never loses a slip.** The decision and the text bytes are made before a single byte is sent. When the gate says no, or the text renderer throws for any reason, that same slip prints as a picture at once: never a failed slip, never a second paper. |
 | S4 | **The same write, the same rules.** Text bytes go through the same writer the picture goes through (the POS app's `printer.print`, v1 or v2; the Windows app's `printRaw`; a browser's serial or Bluetooth printer; for a Windows printer the new `printRawOn`), so the lease, the ack, REPRINT / DUPLICATE / BACKUP PRINTER, copies and the network job's DLE EOT check are exactly as today. |
@@ -111,7 +111,9 @@ break is a space). Nothing else is mapped.
 ### 4.3 Layout
 
 - **Font and width.** The printer's built-in Font A (12 × 24 dots), which every ESC/POS printer selects after `ESC @`.
-  Columns: 58 mm → 32; 80 mm → 48, or 42 when the printer's switch says so (P4-5). A double-width line has half.
+  Columns: 58 mm → 32; 80 mm → 48, or 42 when the printer's switch says so (P4-5). A line holds at most one character
+  less than the columns (47 on 48), so a printer that moves to the next line by itself when a line is exactly full
+  never adds a blank line; a double-width line holds half of that (23 on 48).
 - **Sizes.** Each line's size is its block's size in the picture: the template's base size (small 12 px, normal 14 px,
   large 16 px, relative to 14 px) × the line's own em in the design × the block's size choice (xs 0.75, sm 0.875,
   md 1, lg 1.25, xl 1.5). That ratio maps to the printer's character size: below 1.2 → normal; 1.2 up to 1.5 → double
@@ -120,22 +122,26 @@ break is a space). Nothing else is mapped.
 - **Weight and alignment.** Bold (and semibold) → `ESC E 1`; a design's regular or medium weight → not bold; a block's
   own bold choice wins, as in the picture. Left / centre / right → `ESC a`; a block's own alignment wins.
 - **White on black.** The REPRINT / DUPLICATE / BACKUP PRINTER banner and Kitchen Bold's bands (VOID, TABLE MOVED, the
-  note) → `GS B 1`, each line padded to the full width so the band spans the paper.
+  note) → `GS B 1`, each line padded to the full width so the band spans the paper. Two things are expected, not
+  defects: a band leaves the line's last column white (the columns-less-one rule), and two band lines in a row may
+  show a thin white gap between them on a printer that does not print white on black across its line spacing.
 - **Rules.** A dashed divider → `- - - -` across the width; solid → `------`; double → `======`; blank → an empty line;
   ornament → a centred `* * * * *`. A design's default divider is its own (Classic dashed, Kitchen Bold double).
 - **Rows.** A label / value row (Order, Table, Time, Staff) prints the label left and the value right; when the pair does
   not fit, the value goes to the next line, right-aligned (the picture's wrap). An item line prints `‹qty› x ‹name›`
-  left and its amount right; a long name wraps under its own start; modifier lines are indented four spaces; an
+  left and its amount right; a long name wraps (Classic from the line's start, as the picture does; Kitchen Bold under
+  the name, after its quantity); modifier lines are indented four spaces; an
   instruction is indented, bold, with `> ` (Classic) or `>> ` (Kitchen Bold). Words wrap at spaces; a word longer than a
   line is split.
-- **Spacing.** A small feed between items (`ESC J 12`, about half a line, like the picture's gap); a blank line where
+- **Spacing.** A small feed between items (`ESC J 12`: twelve of the printer's vertical motion units, a dot on most
+  receipt printers and finer on some, so about the picture's gap); a blank line where
   the picture has a divider's margin is not added (the rule line itself separates).
 - **Kitchen Bold specifics.** Upper-case restaurant name and item names; the KOT number's box prints as a white-on-black
   `KOT 12` line at double size (the box cannot float beside the meta lines in text; the lines follow under it); the
   table line double size; items `[2] PANEER TIKKA` double height and bold; modifier and instruction lines bold.
 - **The job's bytes.** `ESC @`, then each line as only the state changes it needs (`ESC a`, `ESC E`, `GS !`, `GS B`)
   and its text and `LF`; then every style reset (`GS B 0`, `GS ! 0`, `ESC E 0`, `ESC a 0`, never a second `ESC @`, which
-  on some printers discards buffered text); then `ESC J 16` (the picture's 16-dot bottom pad) and the picture's own cut
+  on some printers discards buffered text); then `ESC J 16` (about the picture's 16-row bottom pad) and the picture's own cut
   `GS V 66 0`.
 - **Size.** A typical KOT is about 0.5–1.5 KB, against about 44 KB as a picture.
 
@@ -145,7 +151,8 @@ The text renderer prints the same words, in the same order, as the design's Reac
 titles, "Order", "Table", "Time", "Staff", "Reason:", "Note:", "‹n› item(s)", " VOIDED", "Round total:", "TOKEN ‹n›",
 the station line, the round label, `#‹number›` (Classic) / `KOT` (Kitchen Bold). A parity test renders each design's
 React slip for a set of fixture orders (every variant, a banner, a station line, prices on and off, modifiers,
-instructions, notes, a token, a moved and a void slip, each block's size / align / bold choices) and compares its text
+instructions, notes, a token, a moved and a void slip, each block's size / align / bold choices, the ticket number's
+block off and "Show ticket number" off) and compares its text
 words with the text renderer's words after the §4.2 map; any change on one side without the other fails it.
 
 ## 5. Text KOTs: the switch and where it plugs in
@@ -159,14 +166,19 @@ words with the text renderer's words after the §4.2 map; any change on one side
   kitchen tickets as text in the printer's own font: much faster on Bluetooth. Tickets with Hindi, Gujarati or any other
   script, a logo or a QR code still print as now."
 - **Where it is kept:** the page's storage on that device, under its own key `pos.text-kot.v1` (never inside
-  `pos.device-printer.v1`, whose strict schema an open older page would then fail to read), keyed by the printer:
-  `printer:‹setup printer id›` for a printers-mode printer, `device:‹the device printer's identity›` for this device's
-  own printer in simple mode (a changed printer is a new key, so the switch is off for it). An unreadable store reads as
-  every switch off.
+  `pos.device-printer.v1`, whose strict schema an open older page would then fail to read), keyed by the printer and
+  how it is reached: `printer:‹setup printer id›:‹its connection›` for a printers-mode printer (the connection's kind,
+  transport and address or host and port, lower-cased), `device:‹the device printer's identity›` for this device's own
+  printer in simple mode. A printer changed in either place (another printer, another address) is a new key, so its
+  switch is off until its own text test printed. The store keeps only whether the 80 mm "42" choice is made; the
+  columns themselves come from the printer's paper at each print (Printer setup's paper for a printers-mode printer,
+  the device printer's paper in simple mode, the kitchen ticket's paper setting for the Windows app's chosen printer,
+  which Direct mode draws at), so a printer whose paper is changed later prints at its new width. An
+  unreadable store reads as every switch off.
 - **Turning it on (S2):** the switch's tap prints a text test slip on that printer (no job, no server request; the
-  bridge's busy window is respected, so it never interleaves with a slip): the cafe's name, "Text test", a sample
-  kitchen ticket with a price in `Rs`, double-height and white-on-black lines, and a ruler line of exactly the chosen
-  columns. Then: "Did it print clearly, with the ruler on one line?" **Yes** → on; **No** → stays off (with "Keep it off,
+  bridge's busy window is respected, so it never interleaves with a slip): the cafe's name, "TEXT TEST", a sample
+  kitchen ticket with a price in `Rs`, double-height and white-on-black lines, and a ruler as long as a text line may be
+  (the columns less one). Then: "Did it print clearly, with the ruler on one line?" **Yes** → on; **No** → stays off (with "Keep it off,
   or try Characters per line: 42" on 80 mm). A failed print says the printer's own error and stays off.
 - **Turning it off** is immediate.
 
@@ -177,6 +189,13 @@ and react-to-print. Right before it fires the kitchen surface, it asks the text 
 writes them through the printer's writer (§5.4) and settles the slip with that write's outcome; with none (the gate, or
 an error: S3) it fires the kitchen surface exactly as today. The bridge's busy window, watchdog and outcome order are
 unchanged; a copy (`PrintJob.copies`) is one more pass through the bridge, so each copy decides the same way.
+
+The text step runs only for a job's slip on the kitchen surface: never for the attestation slip or a printer's Test
+print, which also ride that surface. It keeps the picture path's own rules before a write (a printer another tab of
+this browser owns says so, as today; an app with no printer prints nothing as text). And it answers nothing when the
+slip's design needs the lazy slip code that is not loaded on this device (a Kitchen Bold ticket, or one with a QR
+line, right after a deploy while offline): the picture then prints the legacy ticket, and text must not print
+something else.
 
 Printing that does not go through the bridge (a device with no identity printing its own slip) stays a picture.
 
@@ -206,8 +225,9 @@ Printing that does not go through the bridge (a device with no identity printing
 - Preload: `printRawOn(printerName: string, data: Uint8Array) → Promise<void>`; IPC `pos-desktop:print-raw-on`.
 - Main process: the same caller gate as every print channel (the main window, the saved origin), the printer name one
   Windows reports now (as `printHtmlOn`), `data` a `Uint8Array` of 1 byte to `RAW_TCP_DATA_MAX_BYTES`, the print method
-  Direct; then the existing `writeRawJob(name, "POS slip", data)` on the existing print queue. Its failures answer the
-  existing raw spool sentences, which the page already classifies (spec §7.5).
+  Direct; then the existing `writeRawJob(name, "POS slip", data)` on the existing print queue. A printer Windows does
+  not report answers the shell's "That printer is not on this PC…" sentence (as `printHtmlOn`); every other failure
+  answers the existing raw spool sentences, which the page already classifies (spec §7.5).
 - The page feature-detects `typeof printRawOn === "function"`.
 
 ## 7. Network printer discovery
@@ -217,19 +237,28 @@ Printing that does not go through the bridge (a device with no identity printing
 - A bridge method `network.findPrinters` (no params) → `{ found: [{ host, port: 9100 }], subnet: "192.168.1.0/24" }` or
   `{ found: [], reason: "no-network" }`; the app's `features` gains `lanScan`, so a page shows the button only on an app
   that has it (an older app is never asked; an older page never asks).
-- A new `LanScan.kt`, apart from the printer manager: the active network's link properties (`ACCESS_NETWORK_STATE`,
-  already granted) only when it is Wi-Fi or Ethernet (not mobile data, not a VPN); its private IPv4 addresses
-  (10/8, 172.16/12, 192.168/16); the /24 around each (at most two, 508 addresses), never its own address; a TCP connect
-  to port 9100 with a 500 ms timeout, 32 at a time on the scan's own threads (never a printer's io thread), at most
-  10 s in all; **no byte is sent**; each socket is closed at once. The list is sorted by address and holds at most 64.
+- A new `LanScan.kt`, apart from the printer manager: it looks through every network the phone has
+  (`ACCESS_NETWORK_STATE`, already granted) for the Wi-Fi or Ethernet one that is not a VPN (Wi-Fi first when both are
+  there), whether or not it is the default (a cafe Wi-Fi with no internet leaves mobile data as the default, and the
+  printer is still on the Wi-Fi);
+  that network's private IPv4 addresses (10/8, 172.16/12, 192.168/16); the /24 around each (inside the network's own
+  prefix when it is longer; at most two, 508 addresses), never its own address; a TCP connect to port 9100 through a
+  socket bound to that network, with a 500 ms timeout, 32 at a time on the scan's own threads (never a printer's io
+  thread), at most 10 s in all; **no byte is sent**; each socket is closed at once. The list is sorted by address and
+  holds at most 64.
 - No new Android permission. JUnit covers the subnet arithmetic, the limits and the answer.
 
 ### 7.2 Windows (2.0.2)
 
 - `findLanPrinters() → { found, subnet } | { found: [], reason }` over IPC `pos-desktop:find-lan-printers`, in a new
   `lan-scan.ts` (the raw TCP printing module is not changed): `os.networkInterfaces()`'s non-internal private IPv4
-  addresses, the same /24, limits and connect-only rule; the same caller gate as the print channels. Outgoing TCP only,
-  so no firewall prompt. Unit tests inject the interface list and the connector.
+  addresses, leaving out link-local 169.254/16 and virtual adapters (WSL, Hyper-V's vEthernet, VirtualBox, VMware, VPN
+  and TAP adapters, Tailscale, ZeroTier), 192.168 networks first; the same /24, limits and connect-only rule; the same
+  caller gate as the print channels. Outgoing TCP only, so no firewall prompt. Unit tests inject the interface list
+  (with such adapters among them) and the connector.
+
+A connect-only probe holds a printer that takes one connection at a time for a moment; another device's print in that
+instant is refused and asked again a second later (both apps already retry a refused connect). Accepted.
 
 ### 7.3 The page
 
@@ -287,8 +316,8 @@ Printing that does not go through the bridge (a device with no identity printing
    instruction), the same phone, printer and app; five "Send to Kitchen" with the switch off, then five with it on,
    each filmed from the tap to the cut; the record is the median of each and their ratio, written into the plan's
    Results by the next session.
-3. **No paper changes with the switch off** (S1): the golden byte test for every slip kind, and the emulator's
-   picture KOT byte count equal to before.
+3. **No paper changes with the switch off** (S1): the source pin, the bridge's unit tests, the end-to-end byte
+   comparison against today's build, and the emulator's picture KOT byte count equal to before.
 4. **Fallbacks:** a KOT with a Hindi or Gujarati item, with the logo on, with a QR line, prints as a picture with the
    switch on (unit tests and the emulator).
 5. **Discovery:** the emulator app finds a fake printer on the host (`10.0.2.2:9100`); the Windows scan's unit tests.
