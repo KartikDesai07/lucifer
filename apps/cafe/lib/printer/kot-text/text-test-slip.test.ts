@@ -6,7 +6,8 @@ import { shownPieces } from "./kot-text.fixtures";
 import { TEXT_TEST_RULER_DIGITS, textTestJob, textTestPieces } from "./text-test-slip";
 
 // Printing Phase 4 (spec 2026-10-15 §5.1, S2): the slip a printer prints before its text switch turns on: a sample
-// kitchen ticket with a price in Rs, double-height and white-on-black lines, and a ruler as long as a text line may be.
+// kitchen ticket with a price in Rs, Classic's #number and Kitchen Bold's [quantity], double-height and white-on-black
+// lines, and a ruler as long as a text line may be.
 
 test("the text test slip on 80 mm, line for line", () => {
   assert.deepEqual(shownPieces(textTestPieces({ cafeName: "Test Cafe", columns: 48 })), [
@@ -14,16 +15,26 @@ test("the text test slip on 80 mm, line for line", () => {
     "big   B c|TEXT TEST|",
     "normal  l|- - - - - - - - - - - - - - - - - - - - - - - -|",
     "tall  B c|KITCHEN ORDER|",
+    "big   B c|#12|",
     "normalB l|2 x Masala Chai                           Rs 80|",
     "normal  l|    + Less sugar|",
     "normalB l|    > Hot please|",
     "feed 12",
-    "normalB l|1 x Paneer Tikka                         Rs 240|",
+    "normalB l|[1] Paneer Tikka                         Rs 240|",
     "normal  l|- - - - - - - - - - - - - - - - - - - - - - - -|",
     `tall  BIl|${" ".repeat(16)}WHITE ON BLACK${" ".repeat(17)}|`,
     "normal  l|12345678901234567890123456789012345678901234567|",
     "normal  c|The numbers above fit on one line.|",
   ], "the whole sample");
+});
+
+test("the sample prints the characters a printer's international set can change: Classic's number sign, Kitchen Bold's brackets", () => {
+  // ESC @ leaves a printer in its own default international character set; a set other than USA prints # as a pound
+  // sign or [ ] as letters, and every text KOT prints them (#7, [2] PANEER TIKKA), so the test slip must show them.
+  for (const columns of [32, 42, 48] as const) {
+    const text = shownPieces(textTestPieces({ cafeName: "Cafe", columns })).join("");
+    for (const char of ["#", "[", "]"]) assert.ok(text.includes(char), `${columns} columns: the sample prints ${char}`);
+  }
 });
 
 test("the ruler is exactly one text line long at each width", () => {
