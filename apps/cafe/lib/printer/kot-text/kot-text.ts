@@ -6,6 +6,7 @@ import type { HostKotSlip } from "@/lib/print-host-slips";
 import { kotTemplateOf } from "@/lib/print-template-resolve";
 import { classicKotTemplate } from "@/lib/print-template-legacy";
 import type { Settings } from "@/types";
+import { KOT_TEXT_BOLD } from "./kot-text-bold";
 import { KOT_TEXT_CLASSIC } from "./kot-text-classic";
 import {
   PICTURE_ONLY,
@@ -28,6 +29,7 @@ import { layoutRows, type TextColumns, type TextPiece, type TextRow } from "./te
 /** The text renderer of each design it knows. A design not listed prints as a picture. */
 export const KOT_TEXT_DESIGNS: Partial<Record<KotDesign, KotTextDesign>> = {
   classic: KOT_TEXT_CLASSIC,
+  kitchenBold: KOT_TEXT_BOLD,
 };
 
 /** Why a slip prints as a picture: an unknown design or block, a logo or QR code, a character text cannot print, nothing
