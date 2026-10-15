@@ -481,7 +481,8 @@
     "lib/reward-campaigns-paths.test.ts",
     "lib/reward-campaign-form.test.ts",
     "lib/festival-cards-view.test.ts",
-    "lib/festival-cards-ui-paths.test.ts"
+    "lib/festival-cards-ui-paths.test.ts",
+    "lib/native-apps.test.ts"
   ],
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

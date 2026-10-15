@@ -4,12 +4,17 @@
 // shell (middleware's ADMIN_ROUTES is the first fence, this the second), and
 // the column width matches the settings section pages. Phase 2 Session 2D
 // (spec §11, plan decision 11): the outlet's Printers, Kitchen stations and
-// Devices follow the panel.
+// Devices follow the panel. Native apps 2.0 (the owner, 2026-10-15): then the
+// apps to download, streamed so the page never waits on files.sandbee.in.
+import { Suspense } from "react";
 import { AdminGuard } from "@/components/shared/AdminGuard";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { MenuPageShell } from "@/components/menu/MenuPageShell";
 import { PrinterPanel } from "@/components/print/PrinterPanel";
 import { PrintSetupSections } from "@/components/print/setup/PrintSetupSections";
+import { NativeAppsSection } from "@/components/print/setup/NativeAppsSection";
+
+const APPS_LOADING = "Loading the apps…";
 
 export default function PrinterSetupPage() {
   return (
@@ -23,6 +28,9 @@ export default function PrinterSetupPage() {
           />
           <PrinterPanel />
           <PrintSetupSections />
+          <Suspense fallback={<p role="status" className="text-brand-muted">{APPS_LOADING}</p>}>
+            <NativeAppsSection />
+          </Suspense>
         </div>
       </MenuPageShell>
     </AdminGuard>

@@ -385,6 +385,9 @@ every later version arrives by itself. **No web change and no Worker change.**
       2.0.0 start sets Start with Windows again). From 2.0.0 the address window checks a typed address once: if it
       says "Couldn't reach <name>.sandbee.in. Check the name and the internet connection.", check the spelling of the
       workspace name first; a POS that was asleep may need **Open POS** once more.
+- [ ] **Where each device gets its app:** sign in to the POS in the device's browser as an admin and open Admin →
+      Printer setup → "Sandbee POS apps": the latest POS app and Windows app, read from `files.sandbee.in` (the
+      links open in the browser, which downloads the file). The same section offers every later version by hand.
 - [ ] **Tell the staff what they will see from now on.** Nothing ever blocks work.
   - **The POS app:** when a new version is ready, a card "Update available" when the app is opened, with
     **Install** and **Later** (Later hides it until the next app open). An app open is a start, or coming back to the
