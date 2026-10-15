@@ -1,4 +1,4 @@
-import { KOT_PROP_SETS, KOT_SETTINGS_VARIANTS, settingsOf } from "../../print-template-golden.fixtures"; // FIRST: React's production build
+import { KOT_FLAG_KEYS, KOT_PROP_SETS, KOT_SETTINGS_VARIANTS, flagsOf, settingsOf } from "../../print-template-golden.fixtures"; // FIRST: React's production build
 import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import React, { createElement } from "react";
@@ -175,4 +175,25 @@ test("every golden KOT shape prints the picture's words, in its order, in every 
   }
   // 5 settings x 11 designs x 20 slips x 2 extras x 2 tokens x 2 widths.
   assert.equal(compared, 5 * 11 * 20 * 2 * 2 * 2, `${compared} cells compared`);
+});
+
+test("the legacy ticket prints the picture's words under every combination of its settings", () => {
+  // With no stored template the picture is KOTReceipt's own legacy ticket, where each setting alone decides its line (no
+  // locks: a void or moved slip with "Show table" off names no table). Every kot* flag combination, as the golden does;
+  // the cafe has no logo, so the logo flag prints nothing on either side.
+  let compared = 0;
+  const base = settingsOf({ logo: "" });
+  for (let mask = 0; mask < 1 << KOT_FLAG_KEYS.length; mask++) {
+    const settings = { ...base, ...flagsOf(KOT_FLAG_KEYS, mask) } as Settings;
+    for (const set of KOT_PROP_SETS) {
+      if (set.order === null) continue;
+      const slip = slipOf(set.id);
+      const cell = `flags=${mask} / ${set.id}`;
+      const rows = kotTextRows({ slip, settings });
+      assert.ok(rows.ok, `[${cell}] has rows (${rows.ok ? "" : rows.refusal})`);
+      assert.deepEqual(rowWords(rows.rows), pictureWords(slip, settings), `[${cell}] the picture's words, in its order`);
+      compared++;
+    }
+  }
+  assert.equal(compared, 1024 * 20, `${compared} cells compared`);
 });

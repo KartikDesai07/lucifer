@@ -51,9 +51,9 @@ const BANNER_RATIO = 1.29;
 
 // SlipEngine's kotBlockVisible: "Show ticket number" alone decides the number; every other block prints when it is on
 // or its lock forces it.
-function blockVisible(block: KotBlock, ctx: ReturnType<typeof kotLockContext>, showNumber: boolean): boolean {
+function blockVisible(block: KotBlock, locked: boolean, showNumber: boolean): boolean {
   if (block.type === "kotNo") return showNumber;
-  return block.on || kotBlockLocked(block.type, ctx);
+  return block.on || locked;
 }
 
 // A block's own size / alignment / weight (slip-style.ts), on top of its design's group size and the template's base
@@ -73,7 +73,8 @@ function styled(rows: TextRow[], block: KotBlock, locked: boolean, groupRatio: n
 /** The rows the slip's design prints, in the picture's order, before their characters are checked and their lines
  *  laid out; or why it prints as a picture. Throws only on a bug (kotTextJob catches it). */
 export function kotTextRows({ slip, settings }: Pick<KotTextInput, "slip" | "settings">): KotTextRows {
-  const template = kotTemplateOf(settings) ?? classicKotTemplate(settings);
+  const stored = kotTemplateOf(settings);
+  const template = stored ?? classicKotTemplate(settings);
   const design = Object.hasOwn(KOT_TEXT_DESIGNS, template.design) ? KOT_TEXT_DESIGNS[template.design] : undefined;
   if (design === undefined) return { ok: false, refusal: "design" };
   const base = kotSlipContext(kitchenOrderOf(slip.order), settings, {
@@ -90,7 +91,10 @@ export function kotTextRows({ slip, settings }: Pick<KotTextInput, "slip" | "set
     stationLine: slip.stationLine,
   });
   const lockCtx = kotLockContext(base);
-  const visible = template.blocks.filter((block) => blockVisible(block, lockCtx, printConfigOf(settings).kot.showNumber));
+  // Locks bite on the engine path only: with no stored template the picture is KOTReceipt's own legacy ticket, where each
+  // setting alone decides its line (a void with "Show table" off names no table).
+  const locked = (block: KotBlock): boolean => stored !== null && kotBlockLocked(block.type, lockCtx);
+  const visible = template.blocks.filter((block) => blockVisible(block, locked(block), printConfigOf(settings).kot.showNumber));
   const ctx: KotTextContext = { ...base, showsPrices: visible.some((block) => block.type === "items" && block.options.prices) };
   const baseRatio = TEXT_BASE_RATIO[template.size];
   const rows: TextRow[] = slip.banner ? [textRow(slip.banner, BANNER_RATIO * baseRatio, true, "center", { invert: true })] : [];
@@ -100,7 +104,7 @@ export function kotTextRows({ slip, settings }: Pick<KotTextInput, "slip" | "set
     const render = design.rows[block.type] as (b: KotBlock, c: KotTextContext) => TextRow[] | PictureOnly;
     const out = render(block, ctx);
     if (out === PICTURE_ONLY) return { ok: false, refusal: "picture" };
-    rows.push(...styled(out, block, kotBlockLocked(block.type, lockCtx), design.groupRatio[block.type] ?? 1, baseRatio));
+    rows.push(...styled(out, block, locked(block), design.groupRatio[block.type] ?? 1, baseRatio));
   }
   return { ok: true, rows };
 }
