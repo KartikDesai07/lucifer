@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 // Print customization S9 - the two inbound links to the Now Serving screen: a button beside the Kitchen header's
 // freshness chip, and a hint under the token settings. Both show only while tokens are on (the same gate as the
 // top-bar Tokens button); with tokens off it renders just its children, so the Kitchen chip never disappears.
-const NOW_SERVING_PATH = "/now-serving";
+export const NOW_SERVING_PATH = "/now-serving";
 const BUTTON_LABEL = "Now Serving";
 const HINT_TEXT = "Show token numbers on a TV for your customers.";
 const HINT_LINK_LABEL = "Open Now Serving";
