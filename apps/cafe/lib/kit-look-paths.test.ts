@@ -221,3 +221,11 @@ test("the look: sonner cancel button reads on the dark toast", () => {
     `cancel button must not pair bg-muted with text-background (light on light): "${cancel}"`,
   );
 });
+
+test("the dialog, alert dialog, sheet and drawer panels are white (bg-card on the page's grey), as in the mock-up", () => {
+  for (const f of ["dialog", "alert-dialog", "sheet", "drawer"]) {
+    const s = read(`components/ui/${f}.tsx`);
+    assert.ok(/\bbg-card\b/.test(s), `${f}.tsx panel is bg-card (the mock-up's panels are --surface, white, on --bg grey)`);
+    assert.ok(!/\bbg-background\b/.test(s), `${f}.tsx no longer paints its panel bg-background`);
+  }
+});
