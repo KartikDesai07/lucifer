@@ -13,6 +13,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FindNetworkPrinters } from "@/components/print/FindNetworkPrinters";
 import { NATIVE_TYPE_ICONS, NATIVE_TYPE_LABELS } from "@/components/print/printer-type";
 import type { PaperWidth } from "@/lib/constants";
 import { devicePrinter, type ConnectOutcome } from "@/lib/printer/device-printer";
@@ -273,6 +274,7 @@ export function NativePrinterPicker({ paper, busy, onAttempt, add }: NativePrint
           </label>
         </div>
         {formError !== null && <p role="alert" className="text-xs text-brand-danger">{formError}</p>}
+        <FindNetworkPrinters disabled={locked} onPick={(host, picked) => { setAddress(host); setPort(String(picked)); setFormError(null); }} />
         <Button type="submit" className={ROW_BUTTON_CLASS} variant="outline" disabled={locked}>
           Use this network printer
         </Button>

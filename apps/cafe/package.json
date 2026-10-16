@@ -398,6 +398,8 @@
     "lib/printer/kot-text/text-kot-printers.test.ts",
     "lib/print-text-kot-paths.test.ts",
     "lib/print-text-kot-hook.test.ts",
+    "lib/printer/lan-discovery.test.ts",
+    "lib/print-find-network-paths.test.ts",
     "lib/printer/device-printer-store.test.ts",
     "lib/printer/device-printer.test.ts",
     "lib/printer/device-printer-owner.test.ts",

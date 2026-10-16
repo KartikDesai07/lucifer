@@ -68,6 +68,9 @@ export interface DesktopLanBridge {
    *  through the raw spool its Direct method already uses. Optional and feature-detected like the rest: an older app has
    *  none, so its Windows printers print pictures. */
   printRawOn?(printerName: string, data: Uint8Array): Promise<void>;
+  /** Printing Phase 4 (spec §7.2): the Windows app 2.0.2 lists the network printers on this PC's own network (port 9100
+   *  accepted a connection; nothing sent). Feature-detected; the page validates the answer (lib/printer/lan-discovery.ts). */
+  findLanPrinters?(): Promise<unknown>;
 }
 
 /** Printing Phase 4 (spec §5.3, §6): the Windows app writes raw bytes to a Windows printer (printRawOn, 2.0.2). */

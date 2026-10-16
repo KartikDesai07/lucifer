@@ -913,6 +913,9 @@ test("(13) parity: apps/cafe/lib/desktop-shell.ts carries the expected bridge su
   const cafePrinterSeamSrc = readFileSync(path.join(ROOT, "..", "cafe", "lib", "desktop-shell-printer.ts"), "utf8");
   assert.ok(cafePrinterSeamSrc.includes("printRaw?(printer: { host: string; port: number }, data: Uint8Array): Promise<unknown>;"));
   assert.ok(cafePrinterSeamSrc.includes("lanStatus?(printers: { host: string; port: number }[]): Promise<unknown>;"));
+  // Printing Phase 4 (spec §6, §7.2): the page feature-detects the two methods of the app 2.0.2 the same way.
+  assert.ok(cafePrinterSeamSrc.includes("printRawOn?(printerName: string, data: Uint8Array): Promise<void>;"));
+  assert.ok(cafePrinterSeamSrc.includes("findLanPrinters?(): Promise<unknown>;"));
 });
 
 test("(13) vision-guard: cafe/lib/desktop-shell.ts stays capability-keyed (no UA sniffing)", () => {
