@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -51,6 +51,8 @@ export function StaffFormSheet({
   const revealPin = useRevealStaffPin();
   const isEdit = !!staff;
   const [shownPin, setShownPin] = useState<string | null | undefined>(undefined);
+  // The member the sheet shows now: a reveal answering after the sheet closed or moved on is dropped.
+  const shownFor = useRef<string | undefined>(undefined);
 
   const {
     register,
@@ -65,6 +67,8 @@ export function StaffFormSheet({
   });
 
   useEffect(() => {
+    shownFor.current = open ? staff?._id : undefined;
+    setShownPin(undefined);
     if (!open) return;
     reset(
       staff
@@ -78,7 +82,6 @@ export function StaffFormSheet({
           }
                 : { name: "", mobile: "", username: "", password: "", pin: "", role: "staff" },
     );
-    setShownPin(undefined);
   }, [open, staff, reset]);
 
   const onSubmit = async (values: StaffFormData) => {
@@ -223,9 +226,14 @@ export function StaffFormSheet({
               variant="outline"
               className={BRAND_CONTROL_CLASS}
               disabled={revealPin.isPending}
-              onClick={() =>
-                revealPin.mutate(staff._id, { onSuccess: (r) => setShownPin(r.pin) })
-              }
+              onClick={() => {
+                const askedFor = staff._id;
+                revealPin.mutate(askedFor, {
+                  onSuccess: (r) => {
+                    if (shownFor.current === askedFor) setShownPin(r.pin);
+                  },
+                });
+              }}
             >
               Show
             </Button>

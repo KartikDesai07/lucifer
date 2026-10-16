@@ -78,3 +78,15 @@ test("PIN UI: the Settings model, type and form defaults carry screenLockMinutes
     "form default",
   );
 });
+
+test("PIN UI: Show only reveals for the member the sheet still shows, and the shown PIN resets on close or member change", () => {
+  const s = src(FORM);
+  assert.match(s, /shownFor\s*=\s*useRef/, "a ref tracks which member the sheet shows");
+  assert.match(s, /shownFor\.current\s*=\s*open \? staff\?\._id : undefined/, "the ref follows the current member");
+  assert.match(s, /const askedFor = staff\._id/, "the id the call was made with is kept");
+  assert.match(s, /if \(shownFor\.current === askedFor\) setShownPin\(r\.pin\)/, "a late answer for another member is dropped");
+  const effect = s.slice(s.indexOf("useEffect(() => {"));
+  const reset = effect.indexOf("setShownPin(undefined)");
+  const guard = effect.indexOf("if (!open) return");
+  assert.ok(reset >= 0 && reset < guard, "the shown PIN resets before the closed-sheet early return (on close too)");
+});
