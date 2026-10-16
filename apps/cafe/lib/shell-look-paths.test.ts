@@ -37,7 +37,7 @@ test("a nav row is the soft nav text, lifts to the nav-hover fill, and the activ
     "pointer-coarse:h-11",
     "h-9",
   ]) {
-    assert.ok(all.includes(needle), `the nav row classes must carry ${needle}`);
+    assert.ok(all.split(/\s+/).includes(needle), `the nav row classes must carry the exact token ${needle}`);
   }
 });
 
@@ -51,7 +51,7 @@ test("the section heading is a small uppercase muted label that folds away in th
     "group-data-[collapsible=icon]:-mt-6",
     "group-data-[collapsible=icon]:pointer-events-none",
   ]) {
-    assert.ok(label.includes(needle), `BRAND_NAV_LABEL_CLASS must carry ${needle}`);
+    assert.ok(label.split(/\s+/).includes(needle), `BRAND_NAV_LABEL_CLASS must carry the exact token ${needle}`);
   }
 });
 
@@ -80,7 +80,7 @@ test("the top bar is a white 56px bar with a bottom rule, sticky", () => {
 test("a quick tab keeps min-w-0 and shrink and lights with the accent tint when active", () => {
   const cls = TABS.match(/const TAB_CLASS =\s*([\s\S]*?);\n/)?.[1] ?? "";
   for (const needle of ["min-w-0", "shrink", "data-[active=true]:bg-accent", "data-[active=true]:text-accent-foreground"]) {
-    assert.ok(cls.includes(needle), `TAB_CLASS must carry ${needle}`);
+    assert.ok(cls.split(/\s+/).includes(needle), `TAB_CLASS must carry the exact token ${needle}`);
   }
   assert.ok(!/brand-primary-soft/.test(cls), "TAB_CLASS must not keep the old brand tint");
 });

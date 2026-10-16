@@ -51,7 +51,7 @@ export const BRAND_CHECKBOX_SQUARE_CLASS = "size-5 rounded-[4px]";
 // label and aria-current carry the state, never the fill alone.
 
 const NAV_ACTIVE =
-  "data-[active=true]:bg-brand-nav-hover data-[active=true]:font-semibolddata-[active=true]:text-white data-[active=true]:shadow-[inset_3px_0_0_var(--color-brand-accent)]";
+  "data-[active=true]:bg-brand-nav-hover data-[active=true]:font-semibold data-[active=true]:text-white data-[active=true]:shadow-[inset_3px_0_0_var(--color-brand-accent)]";
 
 /** A top-level nav row: 36px on a mouse (17 rows and four headings still fit a
  *  768px-tall laptop screen), 44px on touch (tablet / phone). */
