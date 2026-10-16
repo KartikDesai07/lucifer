@@ -21,6 +21,7 @@ import { SCREEN_LOCK_DEFAULT_MINUTES } from "@pos/shared/staff-pin";
 
 import { APP_NAME } from "@/lib/constants";
 import { brandingUrl, productImageUrl } from "@/lib/images";
+import { clearMastersBlob } from "@/lib/masters-blob";
 import { fetchKnownPeople, rememberThisDevice, type KnownPerson } from "@/lib/pin-sign-in-client";
 import {
   LOCK_ATTR,
@@ -203,6 +204,8 @@ export function ScreenLock() {
   const unlocked = async (person: UnlockedPerson) => {
     const plan = unlockPlan({ before: openRef.current?.as.id ?? null, next: person, pathname: latest.current.pathname });
     if (plan.switched) {
+      // The blob holds the last person's staff list; the next person must not read it (as on sign-out/sign-in).
+      clearMastersBlob();
       if (person !== null && latest.current.user?.id !== person.id) {
         // A PIN: the new session has not rendered yet. Its data goes now, with no request, so the page renders the
         // new person with nothing of the last one's (not even as a placeholder); the cover closes at once, the

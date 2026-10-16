@@ -482,3 +482,14 @@ test("a password switch: the cover lifts only once the page holds the staff memb
   assert.equal(r.weekLeft, undefined, "the admin's 7-day figures are gone from the cache");
   assert.equal(r.ordersLeft, "orders", "a query that is not person-scoped is left alone");
 });
+
+test("PIN: a user switch clears the device's masters blob (the next person must not read the last person's staff list)", () => {
+  const src = read(COVER);
+  assert.match(src, /import \{ clearMastersBlob \} from "@\/lib\/masters-blob"/, "the cover imports clearMastersBlob");
+  const body = arrowBody(src, "unlocked");
+  const sw = body.indexOf("if (plan.switched) {");
+  const clear = body.indexOf("clearMastersBlob();", sw);
+  const pinBranch = body.indexOf("if (person !== null && latest.current.user?.id !== person.id)");
+  assert.ok(sw >= 0 && clear > sw, "a switch calls clearMastersBlob()");
+  assert.ok(clear < pinBranch, "the blob goes before the PIN/password split, so both branches clear it");
+});
