@@ -27,12 +27,12 @@ export function ErrorState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-destructive/40 p-8 text-center",
+        "flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-destructive/40 bg-card p-8 text-center",
         className,
       )}
     >
       <div className="text-destructive">{icon}</div>
-      <p className="text-sm font-medium">{title}</p>
+      <p className="text-[15px] font-semibold text-foreground">{title}</p>
       <p className="max-w-xs text-sm text-muted-foreground">{description}</p>
       {onRetry && (
         <Button type="button" variant="outline" size="sm" className="mt-2" onClick={onRetry}>
