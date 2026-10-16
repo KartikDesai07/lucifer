@@ -12,7 +12,7 @@
 // understand ESC/POS; on it the driver's own paper form decides the length.
 import { ipcMain, type IpcMainInvokeEvent } from "electron";
 import type { Logger } from "./log";
-import { warmDirectPrint } from "./print-direct";
+import { PRINT_DOC_NAME, warmDirectPrint } from "./print-direct";
 import { runJob, type JobResult } from "./print-job";
 import {
   PRINT_NO_ORIGIN_MESSAGE,
@@ -21,6 +21,8 @@ import {
   PRINT_PRINTER_NOT_HERE_MESSAGE,
   PRINT_REJECTED_MESSAGE,
 } from "./print-messages";
+import { rawOnRefusal, rawOnRequest } from "./print-raw-on";
+import { writeRawJob } from "./raw-spool";
 import { isSameOrigin } from "./server-url";
 import {
   DEFAULT_PRINT_MODE,
@@ -28,6 +30,7 @@ import {
   PRINT_HTML_MAX_CHARS,
   PRINT_MODE_SAVE_CHANNEL,
   PRINT_ON_CHANNEL,
+  PRINT_RAW_ON_CHANNEL,
   PRINTER_NAME_MAX_CHARS,
   PRINTER_SAVE_CHANNEL,
   PRINTERS_CHANNEL,
@@ -215,5 +218,33 @@ export function registerPrintHandler(deps: PrintHandlerDeps): void {
     if (typeof name !== "string" || name.length === 0 || name.length > PRINTER_NAME_MAX_CHARS) throw new Error(PRINT_REJECTED_MESSAGE);
     const printers = await event.sender.getPrintersAsync();
     await printOn(request.html, request.origin, name, printers.some((p) => p.name === name));
+  });
+
+  // Printing Phase 4 (spec §6): a text slip's ESC/POS bytes to the Windows printer the page names, through the raw spool
+  // the Direct method already uses, on the same one-job queue. The name must be a device Windows reports at this moment
+  // and never a virtual one, and the method Direct; each refusal goes through the job promise like any other failure.
+  ipcMain.handle(PRINT_RAW_ON_CHANNEL, async (event: IpcMainInvokeEvent, name: unknown, data: unknown) => {
+    rejectForeignCaller(event);
+    const request = rawOnRequest(name, data);
+    if (request === null) throw new Error(PRINT_REJECTED_MESSAGE);
+    const printers = await event.sender.getPrintersAsync();
+    const refusal = rawOnRefusal(request.name, printers.some((p) => p.name === request.name), effectiveMode());
+    const job =
+      refusal !== null
+        ? queue.then((): void => {
+            throw new Error(refusal);
+          })
+        : queue.then(() => writeRawJob(request.name, PRINT_DOC_NAME, request.data));
+    queue = job.catch(() => undefined);
+    try {
+      await job;
+      // What went to paper, for the field log: never the bytes themselves.
+      deps.log.info(`raw slip sent (${request.data.length} bytes, printer=${request.name})`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : PRINT_REJECTED_MESSAGE;
+      deps.log.error(`raw slip failed (${request.data.length} bytes): ${message}`);
+      deps.onJobFailed(message);
+      throw new Error(message);
+    }
   });
 }

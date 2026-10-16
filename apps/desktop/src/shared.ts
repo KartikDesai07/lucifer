@@ -41,6 +41,9 @@ export const LAN_STATUS_MAX_PRINTERS = 16;
 // Printing Phase 4 (spec 2026-10-15 §7.2): "Find network printers": a connect-only scan of port 9100 on this PC's own
 // network (lan-scan.ts), only when the page asks.
 export const FIND_LAN_PRINTERS_CHANNEL = "pos-desktop:find-lan-printers";
+// Printing Phase 4 (spec §6): a text slip's ESC/POS bytes to a Windows printer the page names (print-raw-on.ts), through
+// the raw spool the Direct method already uses.
+export const PRINT_RAW_ON_CHANNEL = "pos-desktop:print-raw-on";
 export const PRINT_MODES = ["direct", "driver"] as const;
 export type PrintMode = (typeof PRINT_MODES)[number];
 export const DEFAULT_PRINT_MODE: PrintMode = "direct";
