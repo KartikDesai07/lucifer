@@ -67,6 +67,7 @@
   },
   "testChain": [
     "lib/staff-pin-paths.test.ts",
+    "lib/pin-device.test.ts",
     "lib/tenant.test.ts",
     "models/order.ledger.test.ts",
     "models/daily-rollup.ledger.test.ts",
