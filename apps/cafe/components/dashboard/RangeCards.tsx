@@ -1,7 +1,9 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { inr } from "@/lib/utils";
+import { QrCode, ShoppingBag, Store, Utensils, type LucideIcon } from "lucide-react";
+import { cn, inr } from "@/lib/utils";
+import { CHANNEL_KIND, PAYMENT_KIND, STATUS_CLASSES, type StatusKind } from "@/lib/ui";
 import { deltaRatio } from "@/lib/dashboard/fold";
 import { plural, sharePercent } from "@/lib/dashboard/format";
 import { chartNames, insightPeriod, kpiCompareText, noCompareText } from "@/lib/dashboard/labels";
@@ -12,7 +14,7 @@ import { RankedList, RANKED_ROW_PX, barsOf } from "@/components/dashboard/Ranked
 import { BusyHours } from "@/components/dashboard/BusyHours";
 import { MoneyLeaks, MONEY_LEAK_ROWS } from "@/components/dashboard/MoneyLeaks";
 import { SALES_CHART_BODY_PX } from "@/components/dashboard/chart-size";
-import type { DashboardData } from "@/types/dashboard";
+import type { DashboardChannel, DashboardData } from "@/types/dashboard";
 
 // The Dashboard's range-driven cards. Each reads the DashboardData actually on
 // screen and says which period it covers; `status` is the query's (loading =
@@ -133,6 +135,15 @@ export function SalesCard(p: RangeCardProps & { className?: string }) {
   );
 }
 
+const kindOf = <K extends string>(map: Record<K, StatusKind>, key: string): StatusKind => map[key as K] ?? "neutral";
+
+const CHANNEL_ICONS: Record<DashboardChannel, LucideIcon> = {
+  "dine-in": Utensils,
+  takeaway: ShoppingBag,
+  qr: QrCode,
+  counter: Store,
+};
+
 export function PaymentMixCard(p: RangeCardProps) {
   const rows = p.data?.payments ?? [];
   const bars = barsOf(rows, (r) => r.amount);
@@ -146,8 +157,23 @@ export function PaymentMixCard(p: RangeCardProps) {
       empty={{ title: "No payments yet", description: "Money taken on completed orders shows here by payment mode." }}
       bodyMinHeight={PAYMENT_ROWS * RANKED_ROW_PX}
     >
+      <p className="mb-3 text-[26px] font-semibold leading-8 tracking-[-0.01em] text-brand-ink">{inr(rows.reduce((sum, r) => sum + r.amount, 0))}</p>
+      {/* One segment per mode, as wide as its share; the dots below name them. */}
+      <div className="mb-2 flex h-2 gap-px overflow-hidden rounded-full bg-track" aria-hidden>
+        {rows.filter((r) => r.share > 0).map((r) => (
+          <div key={r.key} className={STATUS_CLASSES[kindOf(PAYMENT_KIND, r.key)].dot} style={{ width: `${Math.round(r.share * 1000) / 10}%` }} />
+        ))}
+      </div>
       <RankedList
-        rows={rows.map((r, i) => ({ key: r.key, label: `${r.label} · ${plural(r.count, "order")}`, value: inr(r.amount), detail: sharePercent(r.share), bar: bars[i] }))}
+        rows={rows.map((r, i) => ({
+          key: r.key,
+          label: `${r.label} · ${plural(r.count, "order")}`,
+          value: inr(r.amount),
+          detail: sharePercent(r.share),
+          bar: bars[i],
+          dot: kindOf(PAYMENT_KIND, r.key),
+          barClass: STATUS_CLASSES[kindOf(PAYMENT_KIND, r.key)].dot,
+        }))}
       />
       {rows.some((r) => (r.key === "Due" || r.key === "Credit") && r.count > 0) && (
         <p className="mt-2 text-[12px] leading-4 text-brand-muted">
@@ -190,7 +216,23 @@ export function ChannelsCard(p: RangeCardProps) {
       bodyMinHeight={CHANNEL_ROWS * RANKED_ROW_PX}
     >
       <RankedList
-        rows={rows.map((r, i) => ({ key: r.key, label: `${r.label} · ${plural(r.count, "order")}`, value: inr(r.amount), detail: sharePercent(r.share), bar: bars[i] }))}
+        rows={rows.map((r, i) => {
+          const kind = kindOf(CHANNEL_KIND, r.key);
+          const Icon = CHANNEL_ICONS[r.key as DashboardChannel] ?? Store;
+          return {
+            key: r.key,
+            label: `${r.label} · ${plural(r.count, "order")}`,
+            value: inr(r.amount),
+            detail: sharePercent(r.share),
+            bar: bars[i],
+            barClass: STATUS_CLASSES[kind].dot,
+            icon: (
+              <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", STATUS_CLASSES[kind].pill)} aria-hidden>
+                <Icon className="h-4 w-4" />
+              </span>
+            ),
+          };
+        })}
       />
     </DashCard>
   );

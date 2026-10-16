@@ -2,7 +2,9 @@
 
 import { PAY_STYLES } from "@/lib/constants";
 import { inr, timeAgo, cn } from "@/lib/utils";
+import { PAY_PILL_KIND } from "@/lib/ui";
 import { DashCard } from "@/components/dashboard/DashCard";
+import { StatusPill } from "@/components/shared/StatusPill";
 import type { Order } from "@/types";
 
 interface RecentOrdersProps {
@@ -66,14 +68,9 @@ export function RecentOrders({ orders, loading, isError, onRetry, onSelect }: Re
                     {order.customerName} · {timeAgo(order.createdAt)}
                   </div>
                 </div>
-                <span
-                  className={cn(
-                    "shrink-0 rounded-full border border-brand-rule px-2 py-0.5 text-[11.5px] font-medium",
-                    cancelled ? "text-brand-muted" : payStyle?.color,
-                  )}
-                >
+                <StatusPill kind={cancelled ? "neutral" : (PAY_PILL_KIND[order.payment] ?? "neutral")} className="shrink-0 text-[11.5px]">
                   {cancelled ? "Cancelled" : (payStyle?.label ?? order.payment)}
-                </span>
+                </StatusPill>
                 <span
                   className={cn(
                     "w-[4.5rem] shrink-0 text-right text-[13.5px] font-semibold tabular-nums text-brand-ink",

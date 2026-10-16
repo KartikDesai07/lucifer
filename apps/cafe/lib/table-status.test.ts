@@ -96,6 +96,20 @@ test("contrast: every text colour the floor tile prints stays readable on its st
   assert.ok(contrast(danger, occupied) >= TEXT_MIN, `danger ${danger} on ${occupied} = ${contrast(danger, occupied).toFixed(2)}`);
 });
 
+// UI redesign (Task 19): the floor speaks the one status vocabulary (Available ok, Occupied info, Reserved reserved).
+test("the three statuses wear the theme's ok / info / reserved colours, and ink / muted / danger read on those tints", () => {
+  const want = {
+    Available: { mark: "#24a148", fg: "#16733a", bg: "#defbe6" },
+    Occupied: { mark: "#0f62fe", fg: "#0043ce", bg: "#edf5ff", border: "#a6c8ff" },
+    Reserved: { mark: "#8a3ffc", fg: "#6929c4", bg: "#f6f2ff", border: "#d4bbff" },
+  } as const;
+  for (const [status, v] of Object.entries(want)) {
+    const m = TABLE_STATUS_META[status as keyof typeof want];
+    assert.deepEqual({ mark: m.mark, fg: m.fg, bg: m.bg }, { mark: v.mark, fg: v.fg, bg: v.bg }, `${status} colours`);
+    if ("border" in v) assert.ok(m.borderClass.includes(v.border), `${status} border is ${v.border}`);
+  }
+});
+
 test("longStayMinutesOf: missing settings / absent key / out-of-range / non-integer fall back to the default", () => {
   assert.equal(TABLE_LONG_STAY_DEFAULT_MINUTES, 60, "landmark: default is 60");
   assert.equal(longStayMinutesOf(undefined), TABLE_LONG_STAY_DEFAULT_MINUTES);

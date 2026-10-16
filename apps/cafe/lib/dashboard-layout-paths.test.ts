@@ -239,19 +239,30 @@ test("SalesHero: loading keeps the labels with skeletons, updating dims the figu
   assert.ok(!noDues.includes("paid against earlier dues"), "no hint when no earlier dues were paid");
 });
 
-test("KpiChange: the dark tone's up and down colours read at 4.5:1 on the ink card and on their pill tints", async () => {
+test("KpiChange: the dark tone's up and down colours are tokens, and read at 4.5:1 on the ink card and on their pill tints", async () => {
   const { KpiChange, KPI_CHANGE_DARK } = await import("@/components/dashboard/KpiChange");
   const css = readFileSync(path.join(HERE, "..", "app/globals.css"), "utf8");
   const ink = /:root\s*\{[^}]*?--ink:\s*(#[0-9a-f]{6});/i.exec(css)?.[1];
   assert.ok(ink, "landmark: the light theme's --ink in app/globals.css");
+  const darkBlock = /\n\.dark\s*\{([\s\S]*?)\n\}/.exec(css)?.[1] ?? "";
+  const darkInk = /--ink:\s*(#[0-9a-f]{6});/i.exec(darkBlock)?.[1];
+  assert.ok(darkInk, "landmark: the dark theme's --ink");
+  assert.ok(!/#[0-9a-f]{6}/i.test(KPI_CHANGE_DARK.good + KPI_CHANGE_DARK.bad), "no literal hex left in the dark tone's text colours");
+  const tokens = { good: "on-ink-up", bad: "on-ink-down" } as const;
   for (const way of ["good", "bad"] as const) {
-    const text = /text-\[(#[0-9a-f]{6})\]/i.exec(KPI_CHANGE_DARK[way])?.[1];
+    assert.ok(KPI_CHANGE_DARK[way].includes(`text-${tokens[way]}`), `dark ${way} wears text-${tokens[way]}`);
+    assert.ok(themeHas(css, tokens[way]), `--color-${tokens[way]} is registered in @theme inline`);
     const tint = /bg-\[(rgb\([^\]]+\))\]/.exec(KPI_CHANGE_DARK[`${way}Pill`])?.[1];
-    assert.ok(text, `dark ${way} names its text colour as an arbitrary hex value`);
     assert.ok(tint, `dark ${way} pill names its tint as an arbitrary rgb() value with an alpha`);
-    assert.ok(contrast(text, ink) >= 4.5, `${text} on the ink ${ink} is ${contrast(text, ink).toFixed(2)}:1`);
-    const pill = over(tint, ink);
-    assert.ok(contrast(text, pill) >= 4.5, `${text} on its pill ${pill} is ${contrast(text, pill).toFixed(2)}:1`);
+    const lightBlock = /:root\s*\{[^}]*?--on-ink-up:[^}]*\}/.exec(css)?.[0] ?? "";
+    const lightText = new RegExp(`--${tokens[way]}: *(#[0-9a-f]{6});`, "i").exec(lightBlock)?.[1];
+    const darkText = new RegExp(`--${tokens[way]}: *(#[0-9a-f]{6});`, "i").exec(darkBlock)?.[1];
+    assert.ok(lightText && darkText, `--${tokens[way]} is set in :root and in .dark`);
+    for (const [text, card] of [[lightText, ink], [darkText, darkInk]] as const) {
+      assert.ok(contrast(text, card) >= 4.5, `${text} on the ink ${card} is ${contrast(text, card).toFixed(2)}:1`);
+      const pill = over(tint, card);
+      assert.ok(contrast(text, pill) >= 4.5, `${text} on its pill ${pill} is ${contrast(text, pill).toFixed(2)}:1`);
+    }
   }
   const html = renderToStaticMarkup(
     createElement(KpiChange, { delta: 0.124, compareLabel: "vs last Friday", noCompareText: "", upIsGood: true, tone: "dark", pill: true }),
@@ -259,6 +270,10 @@ test("KpiChange: the dark tone's up and down colours read at 4.5:1 on the ink ca
   assert.ok(html.includes(KPI_CHANGE_DARK.good) && html.includes(KPI_CHANGE_DARK.goodPill), "an up change wears the dark good colours");
   assert.ok(html.includes('<span class="sr-only">Up</span>'), "the direction is said in words");
 });
+
+function themeHas(css: string, name: string): boolean {
+  return css.includes(`--color-${name}: var(--${name});`);
+}
 
 // ── Needs attention ─────────────────────────────────────────────────────────
 
@@ -298,8 +313,15 @@ test("AttentionStrip keeps the five chips, their words, links and order; a phone
     assert.ok(at > last, `"${text}" is shown, after the chip before it`);
     const link = html.lastIndexOf("<a ", at);
     assert.ok(html.slice(link, at).includes(`href="${href}"`), `"${text}" links to ${href}`);
+    assert.equal(html.split(`href="${href}"`).length - 1, 2, `${href} is linked twice: the desktop chip and the phone row`);
     last = at;
   }
+  const controls = /aria-controls="([^"]+)"/.exec(html)?.[1];
+  assert.ok(controls, "the disclosure button names the list it opens");
+  assert.ok(html.includes(`<ul id="${controls}"`), "aria-controls equals the list's id");
+  assert.ok(html.includes("pointer-coarse:min-h-11"), "the desktop row grows to the 44 px chips on touch, so the strip does not jump");
+  const skeleton = renderToStaticMarkup(createElement(AttentionStrip, { loading: true, isError: false }));
+  assert.equal((skeleton.match(/h-\[34px\][^"]*pointer-coarse:h-11/g) ?? []).length, 3, "the three chip skeletons are 44 px on touch too");
   assert.ok(html.includes('title="Cold coffee, Brownie and 1 more"'), "the unavailable chip names the items");
   assert.ok(html.includes('aria-expanded="false"'), "the phone's list starts folded");
   assert.match(html, /aria-expanded="false"[^>]*>[\s\S]*?>5<[\s\S]*?Needs attention/, "the phone's row says 5 · Needs attention");
@@ -338,7 +360,7 @@ test("RangeBar: the segmented look keeps the Period group, its words and one pre
   assert.equal((admin.match(/aria-pressed="true"/g) ?? []).length, 1, "one choice pressed");
   assert.match(admin, /aria-pressed="true"[^>]*>7 days</, "the pressed one is 7 days");
   const group = /<div role="group"[^>]*>/.exec(admin)?.[0] ?? "";
-  assert.ok(group.includes("bg-muted"), "the grey track");
+  assert.ok(group.includes("bg-track"), "the track (--track)");
   const chosen = buttons.find((b) => b.includes('aria-pressed="true"')) ?? "";
   assert.ok(chosen.includes("bg-card") && chosen.includes("shadow-sm"), "the chosen segment is white with a small lift");
   assert.ok(buttons.every((b) => b.includes("pointer-coarse:h-11")), "every segment is 44 px on a touch screen");
@@ -377,4 +399,46 @@ test("MoneyBreakdownCard is a receipt: every line with a dotted leader, the net,
   assert.ok(html.includes("-webkit-mask:") && html.includes("conic-gradient") && html.includes("repeat-x"), "the zig-zag edge is a prefixed CSS mask of a repeated gradient");
   const loading = renderToStaticMarkup(createElement(MoneyBreakdownCard, { net: 0, loading: true, caption: "Completed orders · Today" }));
   assert.ok(!loading.includes("₹"), "no amounts while loading");
+});
+
+// ── category and status colours (Task 19) ────────────────────────────────────
+
+test("the cards take their colours from the one palette, with no raw Tailwind palette left", () => {
+  const cards = readSrc("components/dashboard/RangeCards.tsx");
+  assert.ok(cards.includes("PAYMENT_KIND") && cards.includes("CHANNEL_KIND"), "payment mix and channels use PAYMENT_KIND / CHANNEL_KIND");
+  const raw = /-(blue|green|gray|red|yellow|purple|orange|slate)-[0-9]/;
+  for (const f of ["TodayReservations", "RecentOrders"]) {
+    const src = readSrc(`components/dashboard/${f}.tsx`);
+    assert.ok(!raw.test(src), `${f} has no raw palette class`);
+    assert.ok(src.includes("StatusPill"), `${f} uses StatusPill`);
+  }
+  assert.ok(readSrc("components/dashboard/RecentOrders.tsx").includes("PAY_PILL_KIND"), "recent orders pills use PAY_PILL_KIND");
+  assert.ok(readSrc("components/dashboard/TodayReservations.tsx").includes("RESERVATION_KIND"), "reservations use RESERVATION_KIND");
+  assert.ok(readSrc("components/dashboard/RankedList.tsx").includes("bg-brand-primary/85 "), "the default bar class stays (brand-contrast pin)");
+  const floor = readSrc("components/dashboard/LiveFloorPanel.tsx");
+  assert.ok(floor.includes("TABLE_STATUS_META") && !/bg-(green|red|amber)-500/.test(floor), "the floor panel keeps TABLE_STATUS_META");
+});
+
+test("PaymentMixCard: a stacked bar with one segment per mode and a dot per row; ChannelsCard colours each bar by channel", async () => {
+  const { PaymentMixCard, ChannelsCard } = await import("@/components/dashboard/RangeCards");
+  const pay = renderToStaticMarkup(
+    createElement(PaymentMixCard, ready({
+      payments: [
+        { key: "Cash", label: "Cash", count: 3, amount: 600, share: 0.6 },
+        { key: "Online", label: "UPI / Online", count: 2, amount: 400, share: 0.4 },
+      ],
+    })),
+  );
+  assert.ok(pay.includes("bg-status-ok") && pay.includes("bg-status-info"), "Cash is ok-coloured and Online info-coloured");
+  assert.ok(pay.includes("width:60%") && pay.includes("width:40%"), "each segment's width is its share");
+  assert.ok(pay.includes("₹1,000"), "the total shows above the bar");
+  const ch = renderToStaticMarkup(
+    createElement(ChannelsCard, ready({
+      channels: [
+        { key: "dine-in", label: "Dine-in", count: 3, amount: 600, share: 0.6 },
+        { key: "takeaway", label: "Takeaway", count: 2, amount: 400, share: 0.4 },
+      ],
+    })),
+  );
+  assert.ok(ch.includes("bg-status-info") && ch.includes("bg-status-warn"), "dine-in info bar, takeaway warn bar");
 });

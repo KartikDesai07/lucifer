@@ -57,6 +57,9 @@ test("light values of the shadcn tokens", () => {
     "--warning": "#ff832b",
     "--ink": "#18181b",
     "--on-ink": "#ffffff",
+    "--on-ink-up": "#6fdc8c",
+    "--on-ink-down": "#ff8389",
+    "--track": "#e9e9ec",
     "--radius": "0.625rem",
   };
   for (const [name, value] of Object.entries(want)) {
@@ -124,6 +127,9 @@ test("@theme inline registers the new names", () => {
   for (const [color, v] of [
     ["ink", "ink"],
     ["on-ink", "on-ink"],
+    ["on-ink-up", "on-ink-up"],
+    ["on-ink-down", "on-ink-down"],
+    ["track", "track"],
     ["subtle-foreground", "subtle-foreground"],
     ["primary-hover", "primary-hover"],
   ]) {

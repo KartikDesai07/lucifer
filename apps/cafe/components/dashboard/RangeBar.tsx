@@ -80,7 +80,7 @@ export function RangeBar({ value, onChange, isAdmin, maxDays = MAX_DASHBOARD_RAN
         aria-label="Period"
         // inline-size containment on a phone: the five buttons scroll inside the row
         // instead of setting the page's minimum width.
-        className="flex w-full max-w-full gap-0.5 overflow-x-auto rounded-[9px] bg-muted p-[3px] [contain:inline-size] sm:w-auto sm:[contain:none]"
+        className="flex w-full max-w-full gap-0.5 overflow-x-auto rounded-[9px] bg-track p-[3px] [contain:inline-size] sm:w-auto sm:[contain:none]"
       >
         {presets.map((p) => {
           const active = value.preset === p.id;

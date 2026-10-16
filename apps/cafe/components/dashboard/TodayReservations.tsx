@@ -3,9 +3,10 @@
 import { ChefHat } from "lucide-react";
 
 import { useUpdateReservation } from "@/hooks/use-reservations";
-import { type ReservationStatus } from "@/lib/constants";
-import { formatTime, cn } from "@/lib/utils";
+import { RESERVATION_KIND } from "@/lib/ui";
+import { formatTime } from "@/lib/utils";
 import { DashCard } from "@/components/dashboard/DashCard";
+import { StatusPill } from "@/components/shared/StatusPill";
 import type { Reservation } from "@/types";
 
 interface TodayReservationsProps {
@@ -15,12 +16,6 @@ interface TodayReservationsProps {
   onRetry?: () => void;
 }
 
-const STATUS_VARIANTS: Record<ReservationStatus, string> = {
-  Booked: "border-blue-300 text-blue-700",
-  Seated: "border-green-300 text-green-700",
-  Completed: "border-gray-300 text-gray-600",
-  Cancelled: "border-red-300 text-red-700",
-};
 const ROW_PX = 52;
 const MIN_ROWS = 3;
 
@@ -47,16 +42,18 @@ export function TodayReservations({ reservations, loading, isError, onRetry }: T
       <ul className="divide-y divide-brand-rule/70">
         {rows.map((r) => (
           <li key={r._id} className="flex items-center gap-3" style={{ minHeight: ROW_PX }}>
-            <div className="w-[4.75rem] shrink-0 whitespace-nowrap text-[13.5px] font-medium tabular-nums text-brand-ink">{formatTime(r.time)}</div>
+            <div className="w-[4.75rem] shrink-0 whitespace-nowrap rounded-md bg-status-reserved-tint px-1.5 py-1 text-center text-[12.5px] font-semibold tabular-nums text-status-reserved-ink">
+              {formatTime(r.time)}
+            </div>
             <div className="min-w-0 flex-1">
               <div className="truncate text-[13.5px] font-medium text-brand-ink">{r.name}</div>
               <div className="truncate text-[12px] text-brand-muted">
                 {r.guests} guests{r.tableNo ? ` · ${r.tableNo}` : ""}
               </div>
             </div>
-            <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[11.5px] font-medium", STATUS_VARIANTS[r.status])}>
+            <StatusPill kind={RESERVATION_KIND[r.status]} dot className="shrink-0 text-[11.5px]">
               {r.status}
-            </span>
+            </StatusPill>
             {r.status === "Booked" && (
               <button
                 type="button"

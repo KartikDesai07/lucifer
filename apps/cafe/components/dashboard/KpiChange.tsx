@@ -12,13 +12,13 @@ import { STATUS_CLASSES } from "@/lib/ui";
 
 /**
  * The ink card's own up/down colours (the mock-up's dark set): the light page's
- * green and red (#16733a, #a2191f) measure about 3:1 on the ink. Each text
- * colour reads at 4.5:1 or more on the ink and on its pill tint
- * (lib/dashboard-layout-paths.test.ts measures them).
+ * green and red (#16733a, #a2191f) measure about 3:1 on the ink. They are
+ * the --on-ink-up / --on-ink-down tokens, each reading at 4.5:1 or more on the
+ * ink and on its pill tint in both themes (lib/dashboard-layout-paths.test.ts).
  */
 export const KPI_CHANGE_DARK = {
-  good: "text-[#6fdc8c]",
-  bad: "text-[#ff8389]",
+  good: "text-on-ink-up",
+  bad: "text-on-ink-down",
   flat: "text-on-ink/65",
   note: "text-on-ink/65",
   goodPill: "bg-[rgb(66_190_101/0.16)]",

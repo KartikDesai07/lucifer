@@ -91,16 +91,16 @@ export function AttentionStrip({ live, loading, isError }: { live?: DashboardLiv
   return (
     <section aria-label="Needs attention">
       {/* sm and up: the label, then the chips wrapping onto a second line on a tablet. */}
-      <div className="hidden min-h-[34px] flex-wrap items-center gap-2 sm:flex">
+      <div className="hidden min-h-[34px] flex-wrap pointer-coarse:min-h-11 items-center gap-2 sm:flex">
         <h2 className="mr-1 flex shrink-0 items-center gap-[7px] text-[11.5px] font-semibold uppercase tracking-[0.07em] text-brand-muted">
           <StatusDot kind="warn" className="h-[7px] w-[7px]" />
           Needs attention
         </h2>
         {waiting ? (
           <>
-            <BrandSkeleton className="h-[34px] w-36 rounded-full" />
-            <BrandSkeleton className="h-[34px] w-40 rounded-full" />
-            <BrandSkeleton className="h-[34px] w-32 rounded-full" />
+            <BrandSkeleton className="h-[34px] w-36 rounded-full pointer-coarse:h-11" />
+            <BrandSkeleton className="h-[34px] w-40 rounded-full pointer-coarse:h-11" />
+            <BrandSkeleton className="h-[34px] w-32 rounded-full pointer-coarse:h-11" />
           </>
         ) : status ? (
           status
