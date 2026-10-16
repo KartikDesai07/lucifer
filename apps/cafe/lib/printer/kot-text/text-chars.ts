@@ -30,15 +30,16 @@ const MAPPED: ReadonlyArray<readonly [number, string]> = [
 export const TEXT_CHAR_MAP: ReadonlyMap<string, string> = new Map(MAPPED.map(([code, to]) => [String.fromCharCode(code), to]));
 
 /** The text as printable ASCII, or null when it holds a character text mode cannot print. Line breaks are kept (as
- *  LF) for the caller to decide on; a carriage return is dropped and a tab is a space. */
+ *  LF) for the caller to decide on; a carriage return and a tab are spaces, as the picture shows them (a CRLF's space
+ *  ends its line, where the layout trims it; a lone CR never runs two words together: the 4A gate's m-1). */
 export function asciiText(text: string): string | null {
   let out = "";
   for (const char of text) {
     const code = char.codePointAt(0) as number;
     if (code >= PRINTABLE_MIN && code <= PRINTABLE_MAX) out += char;
     else if (char === "\n") out += "\n";
-    else if (char === "\t") out += " ";
-    else if (char !== "\r") {
+    else if (char === "\t" || char === "\r") out += " ";
+    else {
       const mapped = TEXT_CHAR_MAP.get(char);
       if (mapped === undefined) return null;
       out += mapped;

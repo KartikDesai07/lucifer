@@ -57,16 +57,15 @@ function blockVisible(block: KotBlock, locked: boolean, showNumber: boolean): bo
 }
 
 // A block's own size / alignment / weight (slip-style.ts), on top of its design's group size and the template's base
-// size. A rule keeps its line; a feed is a feed.
+// size. A rule keeps its line; a feed is a feed. A label / value row's alignment places its value, as the picture's row
+// does (the 4A gate's m-3); with none it stays right.
 function styled(rows: TextRow[], block: KotBlock, locked: boolean, groupRatio: number, baseRatio: number): TextRow[] {
   const size = locked && block.size === "xs" ? TEXT_LOCKED_MIN_SIZE : block.size;
   const factor = baseRatio * groupRatio * (size === undefined ? 1 : TEXT_BLOCK_SIZE_RATIO[size]);
   return rows.map((row) => {
     if (row.kind === "rule" || row.kind === "feed") return row;
-    return {
-      ...row,
-      style: { ...row.style, ratio: row.style.ratio * factor, align: block.align ?? row.style.align, bold: block.bold ?? row.style.bold },
-    };
+    const style = { ...row.style, ratio: row.style.ratio * factor, align: block.align ?? row.style.align, bold: block.bold ?? row.style.bold };
+    return row.kind === "split" && block.align !== undefined ? { ...row, style, valueAlign: block.align } : { ...row, style };
   });
 }
 

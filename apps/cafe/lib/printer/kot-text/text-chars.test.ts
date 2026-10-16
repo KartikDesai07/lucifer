@@ -35,8 +35,9 @@ test("the mapped characters become their ASCII text", () => {
   assert.equal(TEXT_CHAR_MAP.size, 15, "the map holds exactly the fifteen characters of spec §4.2");
 });
 
-test("line breaks are kept, a carriage return is dropped and a tab is a space", () => {
-  assert.equal(asciiText("one\r\ntwo\nthree"), "one\ntwo\nthree", "CRLF and LF become LF");
+test("line breaks are kept; a carriage return and a tab are spaces, as the picture shows them (the 4A gate's m-1)", () => {
+  assert.equal(asciiText("one\r\ntwo\nthree"), "one \ntwo\nthree", "CRLF: a space, then the line break (the layout trims it)");
+  assert.equal(asciiText("no onion\rno garlic"), "no onion no garlic", "a lone carriage return is a space, never two words run together");
   assert.equal(asciiText("a\tb"), "a b", "a tab is one space");
 });
 

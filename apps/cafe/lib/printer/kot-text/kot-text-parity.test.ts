@@ -109,6 +109,12 @@ const numberBlockOff = (template: KotTemplate): KotTemplate => ({
   ...template,
   blocks: template.blocks.map((b) => (b.type === "kotNo" ? { ...b, on: false } : b)),
 });
+// The engine's locks on a stored template (the 4A gate's review, I-1): title, table and items off, so a void or moved slip
+// prints them by their locks and a plain KOT leaves them off.
+const lockedOff = (template: KotTemplate): KotTemplate => ({
+  ...template,
+  blocks: template.blocks.map((b) => (b.type === "title" || b.type === "table" || b.type === "items" ? { ...b, on: false } : b)),
+});
 // Every block in one size / alignment / weight, cycling through them.
 const styled = (template: KotTemplate): KotTemplate => ({
   ...template,
@@ -130,11 +136,13 @@ function templatesFor(settings: Settings): Array<[string, Settings]> {
     ["classic styled", withKot(settings, styled(allOn(classic)))],
     ["classic small", withKot(settings, { ...allOn(classic), size: "small" })],
     ["classic number block off", withKot(settings, numberBlockOff(allOn(classic)))],
+    ["classic locked off", withKot(settings, lockedOff(allOn(classic)))],
     ["bold default", withKot(settings, bold)],
     ["bold all on", withKot(settings, extras(priced(allOn(bold), true)))],
     ["bold styled", withKot(settings, styled(allOn(bold)))],
     ["bold large", withKot(settings, { ...allOn(bold), size: "large" })],
     ["bold number block off", withKot(settings, numberBlockOff(allOn(bold)))],
+    ["bold locked off", withKot(settings, lockedOff(allOn(bold)))],
   ];
 }
 
@@ -173,8 +181,28 @@ test("every golden KOT shape prints the picture's words, in its order, in every 
       }
     }
   }
-  // 5 settings x 11 designs x 20 slips x 2 extras x 2 tokens x 2 widths.
-  assert.equal(compared, 5 * 11 * 20 * 2 * 2 * 2, `${compared} cells compared`);
+  // 5 settings x 13 designs x 20 slips x 2 extras x 2 tokens x 2 widths.
+  assert.equal(compared, 5 * 13 * 20 * 2 * 2 * 2, `${compared} cells compared`);
+});
+
+test("a line the kitchen never sees (skip-KOT) prints on neither (the 4A gate's m-2)", () => {
+  // PrintSources shows the kitchen view of the order and of the round (kitchenOrderOf, kitchenLinesOf): a water bottle
+  // marked "no kitchen ticket" is on neither the picture nor the text, in a round and on the whole tab.
+  const slip = slipOf("round-label-number");
+  const water = { ...slip.order.items[0], productId: "p-water", name: "Water Bottle", noKot: true as const, kotRound: 1 };
+  const order = { ...slip.order, items: [...slip.order.items, water] };
+  const round: HostKotSlip = { ...slip, order, kotRoundItems: [...(slip.kotRoundItems ?? []), water] };
+  const tab: HostKotSlip = { ...slip, order, kotRoundItems: undefined, kotRoundLabel: undefined, kotRoundNumber: undefined };
+  const settings = settingsOf({ logo: "" });
+  for (const [cell, which] of [["round", round], ["whole tab", tab]] as const) {
+    for (const [design, designSettings] of templatesFor(settings)) {
+      const rows = kotTextRows({ slip: which, settings: designSettings });
+      assert.ok(rows.ok, `[${cell} / ${design}] has rows`);
+      const said = rowWords(rows.rows);
+      assert.ok(!said.includes("water"), `[${cell} / ${design}] no skip-KOT line in the text`);
+      assert.deepEqual(said, pictureWords(which, designSettings), `[${cell} / ${design}] the picture's words, in its order`);
+    }
+  }
 });
 
 test("the legacy ticket prints the picture's words under every combination of its settings", () => {

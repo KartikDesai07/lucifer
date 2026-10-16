@@ -53,6 +53,14 @@ test("a round's KOT on 80 mm, as Classic prints it", () => {
   ], "Classic's round KOT, line for line");
 });
 
+test("a long Classic item wraps from the line's start, its amount on the first line (the 4A gate's review, m-5)", () => {
+  const slip = slipOf("round-label-number");
+  const long = { ...slip.order.items[0], qty: 1, name: "Paneer Butter Masala With Extra Gravy", price: 1240, modifiers: [], instructions: "" };
+  const priced = withTemplate((t) => t.blocks.map((b) => (b.type === "items" ? ({ ...b, options: { ...b.options, prices: true } } as KotBlock) : b)));
+  const lines = shown(kotTextPlan({ slip: { ...slip, kotRoundItems: [long] }, settings: priced, columns: 32 })).filter((line) => line.startsWith("normalB l|"));
+  assert.deepEqual(lines.slice(0, 2), [`normalB l|${"1 x Paneer Butter".padEnd(23)}Rs 1,240|`, "normalB l|Masala With Extra Gravy|"], "the name wraps from the start, never under the quantity");
+});
+
 test("the same KOT on 58 mm wraps inside 31 characters", () => {
   const lines = shown(planOf(slipOf("round-label-number"), plain, 32));
   assert.ok(lines.includes("normal  l|Order          ORD-20261004-042|"), "the meta row fits 31");
@@ -85,8 +93,34 @@ test("a block's own size, alignment and weight, and the template's base size", (
   assert.equal(shown(planOf(slipOf("round-label-number"), big))[0], "big     l|KITCHEN ORDER|", "1.29em x 1.5: double size, left, regular");
   const small = withTemplate((t) => t.blocks, { kotFontSize: "small" });
   assert.equal(shown(planOf(slipOf("round-label-number"), small))[0], "normalB c|KITCHEN ORDER|", "1.29em at 12 px is normal size");
-  const locked = withTemplate((t) => t.blocks.map((b) => (b.type === "title" ? { ...b, size: "xs" } : b)));
-  assert.equal(shown(planOf(slipOf("void-reason-by-at"), locked))[0], "normalB c|*** VOID ***|", "a locked title shrinks to sm, never xs");
+  // At the large base the floor shows (the 4A gate's review, I-1): 16/14 x 1.29 x 0.875 = 1.29 is double height, while
+  // xs (x 0.75 = 1.106) would be normal.
+  const locked = withTemplate((t) => t.blocks.map((b) => (b.type === "title" ? { ...b, size: "xs" } : b)), { kotFontSize: "large" });
+  assert.equal(shown(planOf(slipOf("void-reason-by-at"), locked))[0], "tall  B c|*** VOID ***|", "a locked title shrinks to sm, never xs");
+});
+
+test("Classic's meta lines are 0.93em in the picture, so a block's own size grows them less (the 4A gate's m-2)", () => {
+  const sized = (size: "lg" | "xl") => withTemplate((t) => t.blocks.map((b) => (b.type === "orderId" ? { ...b, size } : b)));
+  const orderLine = (settings: Settings) => shown(planOf(slipOf("round-label-number"), settings)).find((line) => line.includes("Order"));
+  assert.equal(orderLine(sized("xl")), `tall    l|Order${" ".repeat(26)}ORD-20261004-042|`, "xl: 0.93 x 1.5 is double height, never double size");
+  assert.equal(orderLine(sized("lg")), `normal  l|Order${" ".repeat(26)}ORD-20261004-042|`, "lg: 0.93 x 1.25 stays normal");
+});
+
+test("a label / value row's block alignment places its value as the picture does (the 4A gate's m-3)", () => {
+  const aligned = (align: "left" | "center") =>
+    withTemplate((t) => t.blocks.map((b) => (b.type === "orderId" || b.type === "table" ? { ...b, align } : b)));
+  const lines = (settings: Settings) => shown(planOf(slipOf("round-label-number"), settings)).filter((line) => /\|(Order|Table) /.test(line));
+  assert.deepEqual(lines(aligned("center")), [`normal  l|Order${" ".repeat(13)}ORD-20261004-042|`, `normal  l|Table${" ".repeat(20)}T4|`], "centred in the room after the label");
+  assert.deepEqual(lines(aligned("left")), ["normal  l|Order ORD-20261004-042|", "normal  l|Table T4|"], "right after the label");
+  assert.deepEqual(lines(withTemplate((t) => t.blocks)), [`normal  l|Order${" ".repeat(26)}ORD-20261004-042|`, `normal  l|Table${" ".repeat(40)}T4|`], "no alignment: the value right, as before");
+});
+
+test("an amount wider than a line prints as a picture: never cut, never a throw (the 4A gate's m-4)", () => {
+  const xl = withTemplate((t) => t.blocks.map((b) => (b.type === "items" ? ({ ...b, size: "xl", options: { ...b.options, prices: true } } as KotBlock) : b)));
+  const slip = slipOf("round-label-number");
+  const dear = { ...slip, kotRoundItems: (slip.kotRoundItems ?? []).map((item) => ({ ...item, price: 1_00_00_00_000 })) };
+  assert.deepEqual(kotTextJob({ slip: dear, settings: xl, columns: 32 }), { ok: false, refusal: "error" }, "Rs 2,00,00,00,000 at double size on 58 mm: no room, so the picture");
+  assert.ok(kotTextJob({ slip: dear, settings: xl, columns: 48 }).ok, "landmark: on 80 mm the amount fits");
 });
 
 test("Show ticket number alone decides the number, on the legacy ticket and on a saved template (SlipEngine)", () => {
@@ -141,6 +175,8 @@ test("the job's bytes begin and end as a picture's, and are far smaller", () => 
   assert.ok(job.ok, "the cancel notice prints as text");
   const bytes = Array.from(job.bytes);
   assert.deepEqual(bytes.slice(0, 2), Array.from(ESC_INIT), "ESC @ first");
+  assert.deepEqual(bytes.slice(2, 5), [0x1b, 0x52, 0x00], "then ESC R 0: # [ ] @ print as themselves whatever the printer's own set");
+  assert.deepEqual(bytes.slice(5, 8), [0x1b, 0x4d, 0x00], "then ESC M 0: Font A, whatever font the printer starts in");
   assert.deepEqual(bytes.slice(-4), Array.from(CUT_PARTIAL_WITH_FEED), "the picture's cut last");
   assert.ok(bytes.length < 1_500, `a whole-order cancel notice is ${bytes.length} bytes (a picture KOT is about 44,000)`);
 });

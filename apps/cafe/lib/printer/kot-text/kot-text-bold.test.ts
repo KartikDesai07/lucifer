@@ -70,6 +70,11 @@ test("with prices the amount stays as written beside the upper-case name, and th
   assert.equal(lines.at(-1), "normalB l|Round total: Rs 380|", "the round total, left, bold");
 });
 
+test("Kitchen Bold prints the restaurant's name upper case, as its CSS shows it (the 4A gate's m-2)", () => {
+  const named = boldSettings((blocks) => blocks.map((b) => (b.type === "name" ? { ...b, on: true } : b)));
+  assert.equal(shown(planOf("round-label-number", named, 48))[0], "tall  B c|TEST CAFE|", "upper case, double height, bold, centred");
+});
+
 test("a long item name wraps under the name, after its quantity", () => {
   const slip = slipOf("round-label-number");
   const long = { ...slip.order.items[0], name: "Masala Chai With Extra Ginger And Cardamom" };

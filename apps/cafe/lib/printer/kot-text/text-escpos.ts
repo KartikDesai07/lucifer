@@ -4,7 +4,10 @@ import { PRINTABLE_MAX, PRINTABLE_MIN } from "./text-chars";
 import { lineWidth, type TextPiece, type TextSize } from "./text-layout";
 
 // Printing Phase 4 (spec 2026-10-15 §4.3): a text job's bytes. Only standard ESC/POS commands every receipt printer
-// knows: ESC @ (once, first), ESC a (alignment), ESC E (bold), GS ! (character size), GS B (white on black), LF, ESC J
+// knows: ESC @ (once, first), then ESC R 0 (the USA international character set) and ESC M 0 (Font A), the owner's
+// rulings at the 4A gate: # [ ] @ { } ~ print as themselves and lines keep their columns whatever set or font the printer
+// starts in (a memory switch can change both); ESC @ and a power-off clear them again, and a picture uses neither. Then
+// ESC a (alignment), ESC E (bold), GS ! (character size), GS B (white on black), LF, ESC J
 // (a feed) and the picture's own cut. ESC J n feeds n of the printer's vertical motion units: a dot (1/203 inch) on most
 // receipt printers, finer on some (1/360 inch on Epson TM), so a feed is about, not exactly, the picture's gap. No code page command: the text is printable ASCII (text-chars.ts). The
 // raster encoder (escpos.ts) is only read from, for the init, the bottom pad and the cut, so both kinds of slip begin
@@ -14,6 +17,8 @@ const ESC = 0x1b;
 const GS = 0x1d;
 const LF = 0x0a;
 const ALIGN_BYTE: Record<BlockAlign, number> = { left: 0, center: 1, right: 2 };
+/** ESC R 0: the USA international character set; ESC M 0: Font A. */
+const SETUP = [ESC, 0x52, 0x00, ESC, 0x4d, 0x00];
 // GS ! n: width multiplier - 1 in the high nibble, height multiplier - 1 in the low one.
 const SIZE_BYTE: Record<TextSize, number> = { normal: 0x00, tall: 0x01, big: 0x11 };
 /** ESC J n takes one byte. */
@@ -25,7 +30,7 @@ export function escposTextJob(pieces: readonly TextPiece[], columns: number): Ui
   if (!pieces.some((piece) => "text" in piece && piece.text.trim() !== "")) {
     throw new RangeError("escposTextJob: a blank slip is never sent");
   }
-  const out: number[] = Array.from(ESC_INIT);
+  const out: number[] = [...ESC_INIT, ...SETUP];
   let align = ALIGN_BYTE.left;
   let bold = false;
   let size = SIZE_BYTE.normal;

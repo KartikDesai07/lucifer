@@ -68,6 +68,10 @@ test("a text row is mapped, wrapped and styled; a band is padded to the full wid
   assert.deepEqual(textsOf(kept), ["Line one", "", "Line three"], "custom text keeps its line breaks");
   const joined = layoutRows([{ kind: "text", text: "Line one\nLine two", style: plain }], 48);
   assert.deepEqual(textsOf(joined), ["Line one Line two"], "elsewhere a line break is a space");
+  const crlf = layoutRows([{ kind: "text", text: "Thank you\r\nCome again", style: plain, keepBreaks: true }], 48);
+  assert.deepEqual(textsOf(crlf), ["Thank you", "Come again"], "custom text typed with CRLF keeps two clean lines");
+  const lone = layoutRows([{ kind: "text", text: "no onion\rno garlic", style: plain }], 48);
+  assert.deepEqual(textsOf(lone), ["no onion no garlic"], "a lone carriage return is a space (the 4A gate's m-1)");
   assert.deepEqual(textsOf(layoutRows([{ kind: "text", text: "   ", style: plain }], 48)), [], "a blank text prints nothing");
 });
 
@@ -76,6 +80,23 @@ test("a label / value row keeps its ends, and moves the value under the label wh
   assert.deepEqual(textsOf(fits), [`Table${" ".repeat(23)}T-4`], "label left, value right in 31 characters");
   const long = layoutRows([{ kind: "split", label: "Staff", value: "Aishwarya Ramachandran Iyer", style: plain }], 32);
   assert.deepEqual(textsOf(long), ["Staff", "    Aishwarya Ramachandran Iyer"], "the value drops to its own line, right-aligned");
+});
+
+test("a label / value pair exactly one line long stays on one line; one character more moves the value (the 4A gate's review, m-5)", () => {
+  const exact = layoutRows([{ kind: "split", label: "Order", value: "x".repeat(41), style: plain }], 48);
+  assert.deepEqual(textsOf(exact), [`Order ${"x".repeat(41)}`], "5 + 1 + 41 = 47 on 48 columns: one line");
+  const over = layoutRows([{ kind: "split", label: "Order", value: "x".repeat(42), style: plain }], 48);
+  assert.deepEqual(textsOf(over), ["Order", ` ${"x".repeat(42)}`.padStart(47)], "48: the value on its own line, right-aligned");
+});
+
+test("a label / value row whose block is aligned places its value as the picture's row does (the 4A gate's m-3)", () => {
+  const row = (valueAlign: "left" | "center" | "right", value = "T-4") => layoutRows([{ kind: "split", label: "Table", value, style: plain, valueAlign }], 32);
+  assert.deepEqual(textsOf(row("right")), [`Table${" ".repeat(23)}T-4`], "right: as with no alignment");
+  assert.deepEqual(textsOf(row("center")), [`Table${" ".repeat(12)}T-4`], "centre: in the room after the label and its space (25 - 3 = 22, 11 before it)");
+  assert.deepEqual(textsOf(row("left")), ["Table T-4"], "left: right after the label");
+  const long = "Aishwarya Ramachandran Iyer";
+  assert.deepEqual(textsOf(row("center", long)), ["Table", `  ${long}`], "a value on its own line, centred across it");
+  assert.deepEqual(textsOf(row("left", long)), ["Table", long], "a value on its own line, at its start");
 });
 
 test("an item row keeps the amount on its first line; the name wraps from the start or under its hang", () => {

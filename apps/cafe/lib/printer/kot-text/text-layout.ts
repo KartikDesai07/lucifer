@@ -73,8 +73,10 @@ export interface RowStyle {
 export type TextRow =
   /** Free text; `keepBreaks` keeps its line breaks (custom text), elsewhere a break is a space. */
   | { kind: "text"; text: string; style: RowStyle; keepBreaks?: boolean }
-  /** A label left and its value right; a pair that does not fit puts the value under the label, right-aligned. */
-  | { kind: "split"; label: string; value: string; style: RowStyle }
+  /** A label left and its value right; a pair that does not fit puts the value under the label, right-aligned. With
+   *  its block's alignment (`valueAlign`) the value sits where the picture's row puts it: centred in the room after the
+   *  label, or right after it (the 4A gate's m-3). */
+  | { kind: "split"; label: string; value: string; style: RowStyle; valueAlign?: BlockAlign }
   /** An item: its name left and its amount ("" for none) right on the first line; the name wraps, its later lines
    *  starting `hang` columns in. */
   | { kind: "item"; name: string; amount: string; style: RowStyle; hang: number }
@@ -155,11 +157,14 @@ function splitLines(row: Extract<TextRow, { kind: "split" }>, columns: number): 
   const size = textSizeOf(row.style.ratio);
   const width = lineWidth(columns, size);
   const left: RowStyle = { ...row.style, align: "left" };
+  const at = row.valueAlign ?? "right";
+  // The spaces before a value in `room` columns: the picture's value fills the rest of its row, aligned in it.
+  const before = (room: number, text: string): string => " ".repeat(at === "left" ? 0 : at === "center" ? Math.floor((room - text.length) / 2) : room - text.length);
   if (v === "") return wrapWords(l, width).map((part) => lineOf(part, left, size, width));
-  if (l.length + 1 + v.length <= width) return [lineOf(l + " ".repeat(width - l.length - v.length) + v, left, size, width)];
+  if (l.length + 1 + v.length <= width) return [lineOf(`${l} ${before(width - l.length - 1, v)}${v}`, left, size, width)];
   return [
     ...wrapWords(l, width).map((part) => lineOf(part, left, size, width)),
-    ...wrapWords(v, width).map((part) => lineOf(part.padStart(width), left, size, width)),
+    ...wrapWords(v, width).map((part) => lineOf(before(width, part) + part, left, size, width)),
   ];
 }
 
