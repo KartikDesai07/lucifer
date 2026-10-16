@@ -1,16 +1,30 @@
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
+import { PIN_DEVICE_COOKIE, encodePinFailure, type PinSignInFailure } from "@pos/shared/staff-pin";
 import authConfig from "@/auth.config";
 import { connectDB } from "@/lib/db";
 import { Staff } from "@/models/Staff";
 import cache from "@/lib/cache";
 import { loginSchema } from "@/schemas/staff.schema";
 import { SESSION_REVALIDATE_MS } from "@/lib/constants";
+import { cookieValue, pinDeviceKey, readPinDevice } from "@/lib/pin-device";
+import { pruneRateWindows } from "@/lib/public-rate-limit";
+import { verifyStaffPinSignIn } from "@/lib/staff-pin-signin";
 
 // node-cache TTLs are in seconds.
 const REVALIDATE_TTL_SECONDS = Math.ceil(SESSION_REVALIDATE_MS / 1000);
 const revalidatedKey = (id: string) => `auth:revalidated:${id}`;
+
+// A refused PIN try (spec 2026-10-16 §5.4). Auth.js puts `code` in the answer's URL, so
+// signIn("pin", { redirect: false }) on the page resolves with it and lib/pin-sign-in-client.ts
+// parses it back ("wrong:3", "wait:540", "blocked", "device", "nopin"). The codes name no secret.
+export class PinSignInError extends CredentialsSignin {
+  constructor(failure: PinSignInFailure) {
+    super();
+    this.code = encodePinFailure(failure);
+  }
+}
 
 // Full Auth.js instance (Node runtime). Used by API routes and server components.
 // Middleware uses the edge-safe auth.config.ts instead.
@@ -99,6 +113,31 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           name: staff.name,
           role: staff.role,
         };
+      },
+    }),
+    // PIN sign-in (spec 2026-10-16 §5.4): the tile chosen on the page names the person, and only a
+    // device that person signed in on with a password may try their PIN (the signed device cookie,
+    // read from the request Auth.js hands authorize). The user returned is the password provider's
+    // shape, so the jwt callback above stamps it through the same sign-in branch.
+    Credentials({
+      id: "pin",
+      credentials: { staffId: {}, pin: {} },
+      async authorize(credentials, request) {
+        const devicePeople = readPinDevice(
+          cookieValue(request.headers.get("cookie"), PIN_DEVICE_COOKIE),
+          pinDeviceKey(process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET),
+        );
+        const result = await verifyStaffPinSignIn({
+          staffId: credentials.staffId,
+          pin: credentials.pin,
+          devicePeople,
+        });
+        // The staff-PIN windows share publicratelimits with the QR order route, its only other
+        // reaper; a cafe without QR ordering would never prune them. Best-effort: it swallows its
+        // own errors, so it can never fail a sign-in.
+        await pruneRateWindows(Date.now());
+        if (!result.ok) throw new PinSignInError(result.failure);
+        return result.user;
       },
     }),
   ],

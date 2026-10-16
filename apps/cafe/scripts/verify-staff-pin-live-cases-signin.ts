@@ -186,11 +186,11 @@ export async function runPartB(h: Harness): Promise<void> {
   const burstRow = (await windowRow(E)) ?? 0;
   const afterBurst = await staffRow(E);
   check(
-    `8 wrong PINs for E at once -> at most ${STAFF_PIN_RATE_MAX} wrong, the rest wait (got ${wrongs} wrong, ${waits} wait); ` +
-      `window n ${burstRow} <= 8 and equal to the wrongs; day count ${afterBurst?.pinFailCount}`,
-    wrongs <= STAFF_PIN_RATE_MAX &&
-      wrongs + waits === BURST.length &&
-      burstRow <= BURST.length &&
+    `8 wrong PINs for E at once on a fresh window -> exactly ${STAFF_PIN_RATE_MAX} wrong and ` +
+      `${BURST.length - STAFF_PIN_RATE_MAX} wait (got ${wrongs} wrong, ${waits} wait); ` +
+      `window n ${burstRow} and day count ${afterBurst?.pinFailCount} both equal to the wrongs`,
+    wrongs === STAFF_PIN_RATE_MAX &&
+      waits === BURST.length - STAFF_PIN_RATE_MAX &&
       burstRow === wrongs &&
       afterBurst?.pinFailCount === wrongs,
   );

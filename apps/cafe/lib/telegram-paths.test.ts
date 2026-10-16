@@ -112,7 +112,7 @@ test("PIN W2: instrumentation-client.ts's BotID protect list never names the Tel
 
 // ── W3 — the frozen unauthenticated-route inventory ─────────────────────────
 
-test("PIN W3: the app's full unauthenticated-route inventory (guard = requireAuth/requireAdmin/auth( OR imports createCollectionRoute/createItemRoute from @/lib/crud-route) is EXACTLY the frozen sixteen — a route not on this list is a pre-existing hole to REPORT, never to silently freeze", () => {
+test("PIN W3: the app's full unauthenticated-route inventory (guard = requireAuth/requireAdmin/auth( OR imports createCollectionRoute/createItemRoute from @/lib/crud-route) is EXACTLY the frozen seventeen — a route not on this list is a pre-existing hole to REPORT, never to silently freeze", () => {
   const apiDirAbs = path.join(REPO_ROOT, "apps/cafe/app/api");
   const routeFiles: string[] = [];
   walk(apiDirAbs, /^route\.ts$/, routeFiles);
@@ -193,6 +193,20 @@ test("PIN W3: the app's full unauthenticated-route inventory (guard = requireAut
     "apps/cafe/app/api/public/order-request/route.ts",
     "apps/cafe/app/api/public/table/[token]/route.ts",
     "apps/cafe/app/api/public/tables/route.ts",
+    // PIN lock (2026-10-16), REVIEWED — not silently frozen: the login page's
+    // and the lock screen's name tiles (spec 2026-10-16 §5.3). Public by
+    // design: the login page has no session yet. What guards it: the tenant
+    // check (/api is outside the middleware matcher, so it resolves the host
+    // itself, as the diner login does) → the signed device cookie (HMAC with
+    // the auth secret, httpOnly), which lists only the people who signed in
+    // on THIS device with a password; no cookie, a bad signature or no key
+    // answers an empty list before any read → one read by those ids, active
+    // people with a PIN only, names and roles only (never the PIN or its
+    // counts), no-store. Nobody can list the cafe's staff without having
+    // signed in on that device. Its sibling POST /api/sign-in/remember is
+    // session-guarded (requireAuth), so it is not on this list. Own pins:
+    // lib/sign-in-paths.test.ts; live leg verify:staff-pin:live (part C).
+    "apps/cafe/app/api/sign-in/known/route.ts",
     "apps/cafe/app/api/telegram/webhook/route.ts",
   ].sort();
 

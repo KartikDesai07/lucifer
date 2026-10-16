@@ -2,8 +2,9 @@
  * Staff PIN live leg (PIN lock, 2026-10-16). Drives the REAL route handlers against a real mongod
  * with `@/lib/auth` swapped for a signed-in stub whose role is switchable - the
  * verify-expenses-live.ts harness. Part A (set / shown to admins / never listed) is in
- * verify-staff-pin-live-cases.ts, part B (the PIN check itself) in verify-staff-pin-live-cases-signin.ts;
- * later tasks append parts to PARTS.
+ * verify-staff-pin-live-cases.ts, part B (the PIN check itself) in verify-staff-pin-live-cases-signin.ts,
+ * part C (the device's remembered people: the two sign-in routes) in verify-staff-pin-live-cases-device.ts;
+ * later tasks append parts to PARTS. `next/headers` is swapped too (part C's routes use cookies()).
  *
  *   node --import tsx scripts/verify-staff-pin-live.ts
  *
@@ -14,22 +15,36 @@ import Module from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import mongoose from "mongoose";
+import { RequestCookies, ResponseCookies } from "next/dist/server/web/spec-extension/cookies";
 import { connectDB } from "@/lib/db";
 import { Staff } from "@/models/Staff";
 import { runPartA } from "./verify-staff-pin-live-cases";
 import { runPartB } from "./verify-staff-pin-live-cases-signin";
-import { ADMIN_ID, STAFF_ID, type Harness, type Json, type Part, type Res, type Role } from "./verify-staff-pin-live-helpers";
+import { runPartC } from "./verify-staff-pin-live-cases-device";
+import {
+  ADMIN_ID,
+  STAFF_ID,
+  type Harness,
+  type Json,
+  type Part,
+  type Res,
+  type Role,
+  type RouteRes,
+  type StubUser,
+} from "./verify-staff-pin-live-helpers";
 
 const SCRATCH_PREFIX = "pos_scratch_";
 const DB_NAME = `${SCRATCH_PREFIX}staffpin`;
 const DEFAULT_URI = `mongodb://127.0.0.1:27017/${DB_NAME}`;
 const BODY_PRINT_MAX = 150;
 const ROUTE_MISSING_STATUS = 0;
+const KNOWN_HOST = "localhost"; // resolves to the local "dev" tenant (lib/tenant.ts)
 
-// Later tasks append their parts here (C, D).
-const PARTS: Part[] = [runPartA, runPartB];
+// Later tasks append their parts here (D).
+const PARTS: Part[] = [runPartA, runPartB, runPartC];
 
 let currentRole: Role = "admin";
+let signedIn: StubUser | null | undefined; // undefined: the role's fixed user
 
 function stubAuth(): void {
   const file = path.join(__dirname, "..", "lib", "auth.ts");
@@ -37,12 +52,16 @@ function stubAuth(): void {
   stub.filename = file;
   stub.loaded = true;
   stub.exports = {
-    auth: async () => ({
-      user:
-        currentRole === "admin"
-          ? { id: ADMIN_ID, name: "Live leg admin", role: "admin" }
-          : { id: STAFF_ID, name: "Live leg staff", role: "staff" },
-    }),
+    auth: async () => {
+      if (signedIn === null) return null;
+      return {
+        user:
+          signedIn ??
+          (currentRole === "admin"
+            ? { id: ADMIN_ID, name: "Live leg admin", role: "admin" }
+            : { id: STAFF_ID, name: "Live leg staff", role: "staff" }),
+      };
+    },
     handlers: {},
     signIn: async () => undefined,
     signOut: async () => undefined,
@@ -50,6 +69,29 @@ function stubAuth(): void {
   require.cache[file] = stub;
 }
 stubAuth();
+
+// next/headers: cookies() throws outside a Next request scope, so each call gets a jar made of Next's own
+// cookie classes (the ones its request store wraps): reads come from the call's Cookie header, and writes
+// serialize into the Set-Cookie lines Next appends to a route's answer.
+let jar = { read: new RequestCookies(new Headers()), written: new Headers() };
+
+function stubHeaders(): void {
+  const loader = Module as unknown as { _load: (request: string, parent: unknown, isMain: boolean) => unknown };
+  const real = loader._load;
+  loader._load = function (this: unknown, request: string, parent: unknown, isMain: boolean): unknown {
+    if (request !== "next/headers") return real.call(this, request, parent, isMain);
+    return {
+      cookies: async () => {
+        const out = new ResponseCookies(jar.written);
+        return {
+          get: (name: string) => jar.read.get(name),
+          set: (...args: Parameters<ResponseCookies["set"]>) => out.set(...args),
+        };
+      },
+    };
+  };
+}
+stubHeaders();
 
 type Handler = (req: Request, ctx?: { params: Promise<Record<string, string>> }) => Promise<Response>;
 interface RouteModule {
@@ -75,10 +117,12 @@ function check(label: string, ok: boolean, res?: Res): void {
   console.log(`  ${ok ? "PASS" : "FAIL"} ${label}${seen}`);
 }
 
-function req(method: string, url: string, body?: unknown): Request {
+function req(method: string, url: string, body?: unknown, extra: Record<string, string> = {}): Request {
+  const headers: Record<string, string> = { ...extra };
+  if (body !== undefined) headers["content-type"] = "application/json";
   return new Request(`http://live.test${url}`, {
     method,
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }
@@ -87,26 +131,46 @@ async function call(
   handler: Handler | undefined,
   request: Request,
   params: Record<string, string> = {},
-): Promise<Res & { cacheControl: string | null }> {
+): Promise<RouteRes> {
   if (!handler) {
-    return { status: ROUTE_MISSING_STATUS, body: { success: false, error: "route or handler missing" }, cacheControl: null };
+    return {
+      status: ROUTE_MISSING_STATUS,
+      body: { success: false, error: "route or handler missing" },
+      cacheControl: null,
+      setCookie: [],
+    };
   }
+  jar = { read: new RequestCookies(request.headers), written: new Headers() };
   const res = await handler(request, { params: Promise.resolve(params) });
   const body = (await res.json().catch(() => ({ success: false, error: "non-JSON body" }))) as Json;
-  return { status: res.status, body, cacheControl: res.headers.get("Cache-Control") };
+  return {
+    status: res.status,
+    body,
+    cacheControl: res.headers.get("Cache-Control"),
+    setCookie: [...res.headers.getSetCookie(), ...jar.written.getSetCookie()],
+  };
 }
+
+const withCookie = (cookie: string | undefined): Record<string, string> => (cookie ? { cookie } : {});
 
 async function buildHarness(): Promise<Harness> {
   const listRoute = await loadRoute("app/api/staff/route.ts");
   const itemRoute = await loadRoute("app/api/staff/[id]/route.ts");
   const pinRoute = await loadRoute("app/api/staff/[id]/pin/route.ts");
+  const knownRoute = await loadRoute("app/api/sign-in/known/route.ts");
+  const rememberRoute = await loadRoute("app/api/sign-in/remember/route.ts");
   const loaded = (m: RouteModule | null) => (m ? "loaded" : "MISSING");
   console.log(
-    `  routes: /api/staff ${loaded(listRoute)}, /api/staff/[id] ${loaded(itemRoute)}, /api/staff/[id]/pin ${loaded(pinRoute)}`,
+    `  routes: /api/staff ${loaded(listRoute)}, /api/staff/[id] ${loaded(itemRoute)}, /api/staff/[id]/pin ${loaded(pinRoute)}, ` +
+      `/api/sign-in/known ${loaded(knownRoute)}, /api/sign-in/remember ${loaded(rememberRoute)}`,
   );
   return {
     setRole: (role) => {
       currentRole = role;
+      signedIn = undefined;
+    },
+    signInAs: (user) => {
+      signedIn = user;
     },
     check,
     staff: {
@@ -114,6 +178,11 @@ async function buildHarness(): Promise<Harness> {
       create: (body) => call(listRoute?.POST, req("POST", "/api/staff", body)),
       update: (id, body) => call(itemRoute?.PUT, req("PUT", `/api/staff/${id}`, body), { id }),
       pin: (id) => call(pinRoute?.GET, req("GET", `/api/staff/${id}/pin`), { id }),
+    },
+    signInRoutes: {
+      known: ({ cookie, host = KNOWN_HOST } = {}) =>
+        call(knownRoute?.GET, req("GET", "/api/sign-in/known", undefined, { host, ...withCookie(cookie) })),
+      remember: (cookie) => call(rememberRoute?.POST, req("POST", "/api/sign-in/remember", undefined, withCookie(cookie))),
     },
   };
 }
