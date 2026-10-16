@@ -38,6 +38,9 @@ export const PRINT_ON_CHANNEL = "pos-desktop:print-html-on";
 export const PRINT_RAW_CHANNEL = "pos-desktop:print-raw";
 export const LAN_STATUS_CHANNEL = "pos-desktop:lan-status";
 export const LAN_STATUS_MAX_PRINTERS = 16;
+// Printing Phase 4 (spec 2026-10-15 §7.2): "Find network printers": a connect-only scan of port 9100 on this PC's own
+// network (lan-scan.ts), only when the page asks.
+export const FIND_LAN_PRINTERS_CHANNEL = "pos-desktop:find-lan-printers";
 export const PRINT_MODES = ["direct", "driver"] as const;
 export type PrintMode = (typeof PRINT_MODES)[number];
 export const DEFAULT_PRINT_MODE: PrintMode = "direct";
