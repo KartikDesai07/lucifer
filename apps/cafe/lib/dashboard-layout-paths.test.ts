@@ -126,8 +126,8 @@ test("the page lays every card out in the mock-up's order, and no longer renders
   assert.ok(!page.includes("<Kpi" + "Row"), "the four figures moved into the hero: the page must not render the KPI row");
   assert.ok(page.includes("<EndOfDayButton />"), "landmark: the End of day button stays in the head");
   assert.ok(
-    page.includes("lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]"),
-    "the hero row is the dark card beside the receipt on a desktop",
+    page.includes("xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]"),
+    "the hero row is the dark card beside the receipt from xl (at 1024 the content is ~720px: stacked reads better)",
   );
 });
 

@@ -35,15 +35,21 @@ test("a nav row is the soft nav text, lifts to the nav-hover fill, and the activ
     "data-[active=true]:font-semibold",
     "data-[active=true]:shadow-[inset_3px_0_0_var(--color-brand-accent)]",
     "pointer-coarse:h-11",
-    "h-9",
+    "h-8",
   ]) {
     assert.ok(all.split(/\s+/).includes(needle), `the nav row classes must carry the exact token ${needle}`);
+  }
+  // The 17-row list plus four headings must fit a 768px laptop screen (measured on the built app: h-9 rows
+  // scrolled the list at 1366x768, scrollHeight 720 vs clientHeight 647, and hid Settings at 1280x800).
+  for (const taller of ["h-9", "h-[38px]"]) {
+    assert.ok(!all.split(/\s+/).includes(taller), `the nav row must not be ${taller}: the list has to fit 768px`);
   }
 });
 
 test("the section heading is a small uppercase muted label that folds away in the rail", () => {
   const label = literal("BRAND_NAV_LABEL_CLASS");
   for (const needle of [
+    "h-6",
     "uppercase",
     "text-[11px]",
     "tracking-[0.06em]",
@@ -52,6 +58,9 @@ test("the section heading is a small uppercase muted label that folds away in th
     "group-data-[collapsible=icon]:pointer-events-none",
   ]) {
     assert.ok(label.split(/\s+/).includes(needle), `BRAND_NAV_LABEL_CLASS must carry the exact token ${needle}`);
+  }
+  for (const taller of ["h-9", "h-[38px]"]) {
+    assert.ok(!label.split(/\s+/).includes(taller), `the heading must not be ${taller}: the list has to fit 768px`);
   }
 });
 

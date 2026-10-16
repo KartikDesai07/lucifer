@@ -53,10 +53,10 @@ export const BRAND_CHECKBOX_SQUARE_CLASS = "size-5 rounded-[4px]";
 const NAV_ACTIVE =
   "data-[active=true]:bg-brand-nav-hover data-[active=true]:font-semibold data-[active=true]:text-white data-[active=true]:shadow-[inset_3px_0_0_var(--color-brand-accent)]";
 
-/** A top-level nav row: 36px on a mouse (17 rows and four headings still fit a
+/** A top-level nav row: 32px on a mouse (17 rows and four headings still fit a
  *  768px-tall laptop screen), 44px on touch (tablet / phone). */
 export const BRAND_NAV_ITEM_CLASS =
-  "h-9 gap-3 rounded-lg px-2.5 text-[13.5px] font-medium text-brand-nav-text transition-colors duration-150 hover:bg-brand-nav-hover hover:text-white active:bg-brand-nav-hover focus-visible:ring-brand-nav-focus pointer-coarse:h-11 group-data-[collapsible=icon]:justify-center [&>svg]:size-5 [&>svg]:[stroke-width:1.6] [&>svg]:text-brand-nav-muted [&:hover>svg]:text-white [&[data-active=true]>svg]:text-white " +
+  "h-8 gap-3 rounded-lg px-2.5 text-[13.5px] font-medium text-brand-nav-text transition-colors duration-150 hover:bg-brand-nav-hover hover:text-white active:bg-brand-nav-hover focus-visible:ring-brand-nav-focus pointer-coarse:h-11 group-data-[collapsible=icon]:justify-center [&>svg]:size-5 [&>svg]:[stroke-width:1.6] [&>svg]:text-brand-nav-muted [&:hover>svg]:text-white [&[data-active=true]>svg]:text-white " +
   NAV_ACTIVE;
 
 /** A row inside an expanded group (Settings' sections). */

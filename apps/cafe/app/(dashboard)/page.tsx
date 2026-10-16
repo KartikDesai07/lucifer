@@ -156,9 +156,9 @@ export default function DashboardPage() {
         </div>
 
         {/* The hero row: the dark Net sales card beside the bill breakdown receipt
-            (stacked below lg). Then 2/3 + 1/3 rows, then two- and three-up rows;
+            (stacked below xl). Then 2/3 + 1/3 rows, then two- and three-up rows;
             one column on a phone. */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
           <SalesHero {...cards} />
           <MoneyBreakdownCard
             money={d?.money}
@@ -168,8 +168,8 @@ export default function DashboardPage() {
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <SalesCard {...cards} className="lg:col-span-2" />
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+          <SalesCard {...cards} className="xl:col-span-2" />
           <LiveFloorPanel
             tables={tables.data ?? []}
             orders={floorOrders}
