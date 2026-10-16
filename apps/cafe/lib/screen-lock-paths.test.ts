@@ -10,8 +10,10 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { QueryClient, QueryObserver, keepPreviousData, type QueryObserverResult } from "@tanstack/react-query";
 
 import { stripComments } from "./source-pin-utils";
+import { clearPersonScopedQueries, refetchPersonScopedQueries, unlockPlan } from "./screen-lock";
 
 // jsx:"preserve" -> React.createElement, so a global React is needed at render time.
 (globalThis as { React?: typeof React }).React = React;
@@ -177,7 +179,7 @@ test("PIN: the cover never reaches the POS or the cart, never fetches directly, 
   }
 });
 
-test("PIN: locking writes the state and the attribute; unlocking clears both, drops person-scoped queries on a switch, leaves an admin page for a non-admin, says who, and remembers the device", () => {
+test("PIN: locking writes the state and the attribute; unlocking clears both, leaves an admin page for a non-admin, says who, and remembers the device", () => {
   const src = read(COVER);
   assert.match(src, /writeLockState\(/, "a lock is written to storage (it survives a reload)");
   assert.match(src, /setAttribute\(LOCK_ATTR, ""\)/, "a lock sets LOCK_ATTR on <html>");
@@ -185,19 +187,50 @@ test("PIN: locking writes the state and the attribute; unlocking clears both, dr
   assert.match(src, /setAttribute\(LOCK_READY_ATTR, ""\)/, "the cover marks itself ready (the no-flash CSS lets go)");
   assert.match(src, /readLockState\(/, "a reload reads the stored lock");
   assert.match(src, /clearLockState\(/, "an unlock clears the stored lock");
-  assert.match(
-    src,
-    /resetQueries\(\{\s*predicate:\s*\(q\)\s*=>\s*isPersonScopedQuery\(q\.queryKey\)\s*\}\)/,
-    "a switch resets exactly the person-scoped queries",
-  );
-  assert.match(src, /ADMIN_ROUTES\.some\(/, "admin pages are read from ADMIN_ROUTES");
-  assert.match(src, /router\.replace\("\/"\)/, "a non-admin leaves an admin page for the Dashboard");
-  assert.ok(src.includes("toast.success(`Signed in as ${"), "a switch says who is signed in now");
+  assert.match(src, /unlockPlan\(\{/, "what an unlock does comes from the pure unlockPlan");
+  assert.match(src, /if \(plan\.redirectHome\) router\.replace\("\/"\)/, "a non-admin leaves an admin page for the Dashboard");
+  assert.match(src, /if \(plan\.toast\) toast\.success\(plan\.toast\)/, "a switch says who is signed in now");
   assert.match(src, /rememberThisDevice\(\)/, "every unlock remembers this device");
   assert.match(src, /<PinSignIn\b/, "the lock screen is the login page's picker");
   assert.match(src, /<LockPasswordForm\b/, "with the password form beside it");
   assert.match(src, /lockedAgoLabel\(/, 'the locker\'s tile reads "Locked · N min ago"');
   assert.match(src, /key=\{/, "each lock mounts a fresh cover (PinSignIn's pad stays disabled after a success)");
+});
+
+// Fix round 1 (review of 743ecf2..91e88e0): queryClient.resetQueries refetched the ACTIVE person-scoped queries at
+// once, while the page under the cover still observed the last person's keys (an admin's "Last 7 days" dashboard
+// refetched as staff, its figures kept on screen as the placeholder). The reset is now state-only and ordered.
+test("PIN: a switch clears the person-scoped queries with no request, in the order that keeps the last person's data off the next person's screen", () => {
+  const src = read(COVER);
+  assert.ok(!src.includes("resetQueries("), "the cover never calls resetQueries (it refetches the active queries at once)");
+  const body = arrowBody(src, "unlocked");
+  assert.ok(body.length > 0, "landmark: the cover has const unlocked = async (...) => { ... }");
+  const at = (needle: string, from = 0) => body.indexOf(needle, from);
+
+  // A PIN (the new session has not rendered): clear now, close at once, refetch after the commit.
+  const pinBranch = at("if (person !== null && latest.current.user?.id !== person.id)");
+  assert.ok(pinBranch >= 0, "the unlock tells whether the new session has rendered yet");
+  const clearAll = at("clearPersonScopedQueries(queryClient);", pinBranch);
+  const deferred = at("void afterCommit().then(() => refetchPersonScopedQueries(queryClient));", pinBranch);
+  assert.ok(clearAll > pinBranch && deferred > clearAll, "PIN: clear the person-scoped state, then refetch only after the commit");
+
+  // A password (rendered under the cover): wait for the commit, load as the new person, clear the rest, then close.
+  const otherwise = at("} else {", deferred);
+  const waitCommit = at("await afterCommit();", otherwise);
+  const refetch = at("await refetchPersonScopedQueries(queryClient);", waitCommit);
+  const clearOld = at("clearPersonScopedQueries(queryClient, since);", refetch);
+  assert.ok(otherwise > deferred && waitCommit > otherwise, "password: await afterCommit() first");
+  assert.ok(refetch > waitCommit && clearOld > refetch, "password: refetch as the new person, then clear what is older");
+
+  const close = body.lastIndexOf("close();");
+  assert.ok(close > clearOld, "the cover closes last, after either branch");
+  assert.ok(at("rememberThisDevice()") > clearOld && at("rememberThisDevice()") < close, "remember, then close");
+
+  const lib = read(LOCK_MODULE);
+  assert.ok(!lib.includes("resetQueries("), "lib/screen-lock.ts never calls resetQueries");
+  assert.match(lib, /query\.reset\(\);/, "the clear is Query.reset (state only)");
+  assert.match(lib, /refetchQueries\(\{ predicate: \(q\) => isPersonScopedQuery\(q\.queryKey\), type: "active" \}\)/, "the refetch is the active person-scoped queries only");
+  assert.match(lib, /ADMIN_ROUTES\.some\(/, "admin pages are read from ADMIN_ROUTES");
 });
 
 test('PIN: "Sign out" on the cover clears the lock state first, then signs out through useAuth().logout (ruling R15)', () => {
@@ -335,4 +368,117 @@ test("PIN: a sign-in on the login page clears a stale lock before it navigates",
   assert.ok(clear >= 0, "finishSignIn calls clearLockState(window.localStorage)");
   assert.ok(replace > clear, 'clearLockState comes before router.replace("/")');
   assert.equal(count(src, "clearLockState("), 1, "one call");
+});
+
+// ── Unlocking: what it does, and the order of the query clean-up (fix round 1) ──
+
+test("unlockPlan: the same person just continues; anyone else (or an unread session) is a switch", () => {
+  const admin = { id: "a1", name: "Priya Sharma", role: "admin" };
+  const staff = { id: "s1", name: "  Rohan   Kapoor ", role: "staff" };
+  assert.deepEqual(unlockPlan({ before: "a1", next: admin, pathname: "/staff" }), { switched: false, redirectHome: false, toast: null }, "same person");
+  assert.deepEqual(unlockPlan({ before: "s1", next: admin, pathname: "/staff" }), { switched: true, redirectHome: false, toast: "Signed in as Priya" }, "an admin stays on an admin page");
+  assert.deepEqual(unlockPlan({ before: "a1", next: staff, pathname: "/staff/x" }), { switched: true, redirectHome: true, toast: "Signed in as Rohan" }, "staff leave an admin sub-page");
+  assert.equal(unlockPlan({ before: "a1", next: staff, pathname: "/" }).redirectHome, false, "staff stay on the Dashboard");
+  assert.equal(unlockPlan({ before: "a1", next: staff, pathname: "/staffing" }).redirectHome, false, "a prefix lookalike is not an admin page");
+  assert.deepEqual(unlockPlan({ before: "a1", next: null, pathname: "/reports" }), { switched: true, redirectHome: true, toast: null }, "an unread session: a switch, an unknown role is not an admin, no name");
+  assert.equal(unlockPlan({ before: null, next: admin, pathname: "/" }).switched, true, "nobody known at the lock: a switch");
+});
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+type Figures = { total: string };
+
+// The reviewer's case: an admin on "/" with "Last 7 days", the "Needs attention" strip polling, an order list; then a
+// staff member unlocks. The page maps a multi-day choice to Today for staff, and useDashboard keeps the previous
+// figures as the placeholder. `staff` flips when the session cookie names the staff member.
+async function switchScenario(order: "pin" | "password") {
+  const requests: string[] = [];
+  let staff = false;
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  client.mount();
+  const who = () => (staff ? "staff" : "admin");
+  const range = (from: string, to: string) =>
+    client.defaultQueryOptions<Figures, Error, Figures, readonly unknown[]>({
+      queryKey: ["dashboard", "range", from, to],
+      queryFn: async () => {
+        requests.push(`${from === to ? "today" : "7-day"} as ${who()}`);
+        await delay(15);
+        if (staff && from !== to) throw new Error("403");
+        return { total: from === to ? `today for ${who()}` : "ADMIN-7-DAY" };
+      },
+      placeholderData: keepPreviousData,
+      staleTime: 60_000,
+    });
+  const week = range("2026-10-11", "2026-10-17");
+  const today = range("2026-10-17", "2026-10-17");
+  const dash = new QueryObserver(client, week);
+  const live = new QueryObserver(client, {
+    queryKey: ["dashboard", "live"],
+    queryFn: async () => {
+      requests.push(`live as ${who()}`);
+      await delay(15);
+      return { total: `live for ${who()}` };
+    },
+  });
+  const orders = new QueryObserver(client, {
+    queryKey: ["orders", "list"],
+    queryFn: async () => {
+      requests.push(`orders as ${who()}`);
+      return { total: "orders" };
+    },
+    staleTime: 60_000,
+  });
+  const stops = [dash, live, orders].map((o) => o.subscribe(() => {}));
+  await delay(60);
+  requests.length = 0;
+
+  staff = true;
+  const view = (r: QueryObserverResult<Figures>) => `${r.data?.total ?? "-"}${r.isPlaceholderData ? " (placeholder)" : ""}`;
+  let firstPaint: string;
+  if (order === "pin") {
+    clearPersonScopedQueries(client); // before the staff session renders
+    firstPaint = view(dash.getOptimisticResult(today)); // the render with the staff session, the cover gone
+    dash.setOptions(today); // the page's effect moves the observer
+    await refetchPersonScopedQueries(client); // after that commit
+  } else {
+    firstPaint = view(dash.getOptimisticResult(today)); // signIn rendered the staff session under the cover
+    dash.setOptions(today);
+    const since = Date.now();
+    await refetchPersonScopedQueries(client);
+    clearPersonScopedQueries(client, since);
+  }
+  const atClose = view(dash.getCurrentResult());
+  await delay(40);
+  const result = {
+    requests: [...requests],
+    firstPaint,
+    atClose,
+    settled: view(dash.getCurrentResult()),
+    live: live.getCurrentResult().data?.total,
+    weekLeft: client.getQueryData(week.queryKey),
+    ordersLeft: client.getQueryData<Figures>(["orders", "list"])?.total,
+  };
+  stops.forEach((stop) => stop());
+  client.clear();
+  client.unmount();
+  return result;
+}
+
+test("a PIN switch: the staff member's first paint holds nothing of the admin's, and no multi-day request goes as staff", async () => {
+  const r = await switchScenario("pin");
+  assert.equal(r.firstPaint, "-", `the first paint after the switch is empty, never the admin's figures (got ${r.firstPaint})`);
+  assert.deepEqual(r.requests, ["today as staff", "live as staff"], "only the staff member's own requests, once each");
+  assert.equal(r.settled, "today for staff", "the Dashboard settles on today's figures for staff");
+  assert.equal(r.live, "live for staff", "the strip that kept its key loaded again as staff");
+  assert.equal(r.weekLeft, undefined, "the admin's 7-day figures are gone from the cache");
+  assert.equal(r.ordersLeft, "orders", "a query that is not person-scoped is left alone");
+});
+
+test("a password switch: the cover lifts only once the page holds the staff member's figures, and no multi-day request goes as staff", async () => {
+  const r = await switchScenario("password");
+  assert.equal(r.firstPaint, "ADMIN-7-DAY (placeholder)", "landmark: under the cover the staff render briefly holds the placeholder (why the cover waits)");
+  assert.equal(r.atClose, "today for staff", `when the cover closes the page shows staff figures, no placeholder (got ${r.atClose})`);
+  assert.deepEqual(r.requests, ["today as staff", "live as staff"], "the in-flight Today request is reused; no 7-day request as staff");
+  assert.equal(r.live, "live for staff", "the strip loaded again as staff");
+  assert.equal(r.weekLeft, undefined, "the admin's 7-day figures are gone from the cache");
+  assert.equal(r.ordersLeft, "orders", "a query that is not person-scoped is left alone");
 });

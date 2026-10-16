@@ -1,4 +1,6 @@
+import type { QueryClient } from "@tanstack/react-query";
 import { NOW_SERVING_PATH } from "@/components/now-serving/NowServingLink";
+import { ADMIN_ROUTES } from "@/lib/constants";
 import { SCREEN_LOCK_STORAGE_KEY } from "./screen-lock-script";
 
 // The screen lock's pure core: persisted state, the idle clock, the no-flash script and the scoped-query roots.
@@ -102,6 +104,62 @@ export const PERSON_SCOPED_QUERY_ROOTS: readonly string[] = [
 export function isPersonScopedQuery(queryKey: readonly unknown[]): boolean {
   const root = queryKey[0];
   return typeof root === "string" && PERSON_SCOPED_QUERY_ROOTS.includes(root);
+}
+
+// ── Unlocking ───────────────────────────────────────────────────────────────
+
+/** An admin-only page (ADMIN_ROUTES, exact or a sub-path), as the middleware reads it. */
+export function isAdminPath(pathname: string): boolean {
+  return ADMIN_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`));
+}
+
+function firstName(name: string): string {
+  return name.trim().split(/\s+/)[0] || name;
+}
+
+/** Who an unlock signed in; null when the new session could not be read back. */
+export type UnlockedPerson = { id: string; name: string | null; role: string | null } | null;
+
+/**
+ * What an unlock does. The person who was signed in when the cover opened just continues. Anyone else, or a session
+ * that could not be read back, is a switch: the person-scoped data goes, an admin-only page is left for a non-admin
+ * (an unknown role is not an admin), and a toast names the first name when there is one.
+ */
+export function unlockPlan(input: { before: string | null; next: UnlockedPerson; pathname: string }): {
+  switched: boolean;
+  redirectHome: boolean;
+  toast: string | null;
+} {
+  const { before, next, pathname } = input;
+  if (next !== null && next.id === before) return { switched: false, redirectHome: false, toast: null };
+  return {
+    switched: true,
+    redirectHome: isAdminPath(pathname) && next?.role !== "admin",
+    toast: next?.name ? `Signed in as ${firstName(next.name)}` : null,
+  };
+}
+
+/**
+ * A switch: the person-scoped queries go back to empty WITHOUT a request (Query.reset is state-only and cancels a
+ * request in flight, which carries the last person's cookie). queryClient.resetQueries would also refetch the active
+ * ones at once, as whoever the page under the cover still observes (the last person's multi-day dashboard, as the
+ * new person). With `olderThan`, only queries holding data loaded before that time are cleared.
+ */
+export function clearPersonScopedQueries(client: QueryClient, olderThan?: number): void {
+  for (const query of client.getQueryCache().findAll({ predicate: (q) => isPersonScopedQuery(q.queryKey) })) {
+    if (olderThan === undefined || (query.state.data !== undefined && query.state.dataUpdatedAt < olderThan)) {
+      query.reset();
+    }
+  }
+}
+
+/**
+ * After the page's observers are on the new person's keys: the person-scoped queries still on screen load as the new
+ * person. A request already in flight for a query with no data yet (an observer that just changed keys) is reused;
+ * one in flight for a query holding data (a poll that may carry the last person's cookie) is cancelled and sent again.
+ */
+export function refetchPersonScopedQueries(client: QueryClient): Promise<void> {
+  return client.refetchQueries({ predicate: (q) => isPersonScopedQuery(q.queryKey), type: "active" });
 }
 
 export function requestScreenLock(reason: "manual" | "switch"): void {

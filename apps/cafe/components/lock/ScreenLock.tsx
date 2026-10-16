@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import { UtensilsCrossed } from "lucide-react";
 import { SCREEN_LOCK_DEFAULT_MINUTES } from "@pos/shared/staff-pin";
 
-import { ADMIN_ROUTES, APP_NAME } from "@/lib/constants";
+import { APP_NAME } from "@/lib/constants";
 import { brandingUrl, productImageUrl } from "@/lib/images";
 import { fetchKnownPeople, rememberThisDevice, type KnownPerson } from "@/lib/pin-sign-in-client";
 import {
@@ -28,11 +28,14 @@ import {
   SCREEN_LOCK_EVENT,
   autoLockDue,
   clearLockState,
-  isPersonScopedQuery,
+  clearPersonScopedQueries,
   lockedAgoLabel,
   readLockState,
+  refetchPersonScopedQueries,
+  unlockPlan,
   writeLockState,
   type LockState,
+  type UnlockedPerson,
 } from "@/lib/screen-lock";
 import { useAuth } from "@/hooks/use-auth";
 import { useNow } from "@/hooks/use-now";
@@ -62,8 +65,6 @@ const LINK_CLASS =
   "inline-flex h-9 items-center rounded-md px-2 text-[13.5px] font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:h-11";
 
 type LockReason = "auto" | "manual" | "switch";
-/** Who an unlock signed in; null when the new session could not be read back (treated as someone else). */
-type SignedIn = { id: string; name: string | null; role: string | null } | null;
 /** An open cover: the stored state, who was signed in when it opened, and a fresh key per lock. */
 type OpenLock = { state: LockState; as: { id: string | null; name: string | null }; key: number };
 
@@ -74,14 +75,6 @@ function lockStorage(): Storage | null {
     // Storage access itself can throw (site data blocked): the in-memory cover still holds.
     return null;
   }
-}
-
-function isAdminPath(pathname: string): boolean {
-  return ADMIN_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`));
-}
-
-function firstName(name: string): string {
-  return name.trim().split(/\s+/)[0] || name;
 }
 
 export function ScreenLock() {
@@ -96,7 +89,9 @@ export function ScreenLock() {
   const openRef = useRef<OpenLock | null>(null);
   const lastActivityAt = useRef(0);
   const keyRef = useRef(0);
-  const resetPending = useRef(false);
+  // afterCommit(): resolves once React has committed a render and run that commit's effects (see below).
+  const [commitTick, setCommitTick] = useState(0);
+  const commitWaiters = useRef<Array<() => void>>([]);
   // The listeners and the timer read the latest render's values without subscribing again.
   const latest = useRef({ user, minutes, pathname });
   latest.current = { user, minutes, pathname };
@@ -189,27 +184,42 @@ export function ScreenLock() {
     };
   }, [lockNow]);
 
-  // Someone else signed in: what the last person loaded for their role (staff list, reports, the multi-day
-  // dashboard) goes. It runs once the new session has rendered, when an admin page under the cover has already
-  // unmounted its admin-only queries (AdminGuard), so nothing is fetched again as a person who may not see it.
-  const resetPersonScoped = useCallback(() => {
-    resetPending.current = false;
-    void queryClient.resetQueries({ predicate: (q) => isPersonScopedQuery(q.queryKey) });
-  }, [queryClient]);
-  const userId = user?.id;
+  // A state tick commits a render; React first runs every effect still pending from earlier commits, and the timer
+  // waits out this commit's later siblings (the page runs its effects after this layout-level one). By then the
+  // page's query observers sit on the keys of whoever the session now names.
   useEffect(() => {
-    if (resetPending.current) resetPersonScoped();
-  }, [userId, resetPersonScoped]);
+    if (commitWaiters.current.length === 0) return;
+    const waiters = commitWaiters.current.splice(0);
+    window.setTimeout(() => waiters.forEach((resolve) => resolve()), 0);
+  }, [commitTick]);
+  const afterCommit = () =>
+    new Promise<void>((resolve) => {
+      commitWaiters.current.push(resolve);
+      setCommitTick((n) => n + 1);
+    });
 
-  const unlocked = (person: SignedIn) => {
-    const before = openRef.current?.as.id ?? null;
-    if (!person || person.id !== before) {
-      // The new session may not have rendered yet (signIn's update lands on React's next render).
-      if (person && latest.current.user?.id !== person.id) resetPending.current = true;
-      else resetPersonScoped();
-      // An admin-only page is left for a non-admin. The POS cart is not tied to a person and stays.
-      if (isAdminPath(latest.current.pathname) && person?.role !== "admin") router.replace("/");
-      if (person?.name) toast.success(`Signed in as ${firstName(person.name)}`);
+  // Someone else signed in: what the last person loaded (staff list, reports, the multi-day dashboard) must never
+  // paint for, or be fetched again as, the next person. The POS cart is not tied to a person and stays.
+  const unlocked = async (person: UnlockedPerson) => {
+    const plan = unlockPlan({ before: openRef.current?.as.id ?? null, next: person, pathname: latest.current.pathname });
+    if (plan.switched) {
+      if (person !== null && latest.current.user?.id !== person.id) {
+        // A PIN: the new session has not rendered yet. Its data goes now, with no request, so the page renders the
+        // new person with nothing of the last one's (not even as a placeholder); the cover closes at once, the
+        // observers that change keys fetch them themselves, and the rest load after that commit.
+        clearPersonScopedQueries(queryClient);
+        void afterCommit().then(() => refetchPersonScopedQueries(queryClient));
+      } else {
+        // A password (or a session not read back): signIn's own update already rendered the new person under the
+        // cover, where an observer that changed keys may show the last person's figures as a placeholder. The cover
+        // stays until what the page shows has loaded as the new person; whatever the last person loaded goes.
+        await afterCommit();
+        const since = Date.now();
+        await refetchPersonScopedQueries(queryClient);
+        clearPersonScopedQueries(queryClient, since);
+      }
+      if (plan.redirectHome) router.replace("/");
+      if (plan.toast) toast.success(plan.toast);
     }
     void rememberThisDevice();
     close();
@@ -240,7 +250,7 @@ export function ScreenLock() {
 interface LockCoverProps {
   lock: LockState;
   signedInAs: string | null;
-  onUnlocked(person: SignedIn): void;
+  onUnlocked(person: UnlockedPerson): Promise<void>;
   onSignOut(): Promise<void>;
 }
 
@@ -326,7 +336,7 @@ function LockCover({ lock, signedInAs, onUnlocked, onSignOut }: LockCoverProps) 
   const passwordSignedIn = async () => {
     const fresh = await update();
     const u = fresh?.user;
-    onUnlocked(u?.id ? { id: u.id, name: u.name ?? null, role: u.role ?? null } : null);
+    await onUnlocked(u?.id ? { id: u.id, name: u.name ?? null, role: u.role ?? null } : null);
   };
 
   const locker = lock.by;
