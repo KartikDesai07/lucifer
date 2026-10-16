@@ -116,8 +116,8 @@
      resolve only inside an element carrying lib/brand-fonts.ts's variables
      (AuthShell's root today); elsewhere these utilities are simply unused —
      the same scoping the --pub-* tokens above use. */
-  --font-brand-sans: var(--font-brand-schibsted);
-  --font-brand-display: var(--font-brand-fraunces);
+  --font-brand-sans: var(--font-geist-sans);
+  --font-brand-display: var(--font-geist-sans);
   --color-brand-paper: var(--brand-paper);
   --color-brand-wash: var(--brand-wash);
   --color-brand-slip: var(--brand-slip);

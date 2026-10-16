@@ -184,6 +184,7 @@
     "lib/telegram-paths.test.ts",
     "lib/telegram-paths-2.test.ts",
     "lib/appearance-paths.test.ts",
+    "lib/fonts-paths.test.ts",
     "lib/appearance-paths-2.test.ts",
     "components/settings/appearance-fields-utils.test.ts",
     "components/settings/AppearanceAccentInput.test.ts",
