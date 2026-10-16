@@ -9,7 +9,7 @@ import {
 } from "@pos/shared/staff-pin";
 import { connectDB } from "@/lib/db";
 import type { PinDevicePerson } from "@/lib/pin-device";
-import { hitRateLimit, refundRateLimit } from "@/lib/public-rate-limit";
+import { hitRateLimit, pruneRateWindows, refundRateLimit } from "@/lib/public-rate-limit";
 import { cafeDateString } from "@/lib/utils";
 import { Staff } from "@/models/Staff";
 
@@ -104,33 +104,43 @@ export async function verifyStaffPinSignIn(input: {
 
   await connectDB();
 
-  // 3. Take a slot in the person's window before reading or comparing anything. Every answer below
-  // except "wrong" is a definite non-wrong outcome and hands the slot back. A throw keeps it: a
-  // refund is only made on a path that is surely returning (the never-revert-on-write-throw rule).
-  const bucket = staffPinBucket(staffId);
-  const hit = await hitRateLimit(bucket, STAFF_PIN_RATE_MAX, now);
-  const handBack = async (failure: Exclude<PinSignInFailure, { kind: "offline" }>): Promise<PinSignInResult> => {
+  // The staff-PIN windows share publicratelimits with the QR order route, its only other reaper, so a
+  // cafe without QR ordering would never prune them. Only a try that reached the database starts it:
+  // the shape and device refusals above answer before connectDB, where a prune on an instance that
+  // has not connected yet would buffer for 10 s. It runs beside the check and never rejects (it
+  // swallows its own errors); the finally waits for it once the answer is known.
+  const pruned = pruneRateWindows(now);
+  try {
+    // 3. Take a slot in the person's window before reading or comparing anything. Every answer below
+    // except "wrong" is a definite non-wrong outcome and hands the slot back. A throw keeps it: a
+    // refund is only made on a path that is surely returning (the never-revert-on-write-throw rule).
+    const bucket = staffPinBucket(staffId);
+    const hit = await hitRateLimit(bucket, STAFF_PIN_RATE_MAX, now);
+    const handBack = async (failure: Exclude<PinSignInFailure, { kind: "offline" }>): Promise<PinSignInResult> => {
+      await refundRateLimit(bucket, now);
+      return { ok: false, failure };
+    };
+    if (!hit.allowed) return handBack({ kind: "wait", retryAfterSec: hit.retryAfterSec });
+
+    // 4. The person: active, with a PIN, not blocked. A stored PIN the rules refuse counts as none
+    // (the typed one passed them, so it could never match).
+    const staff = await Staff.findOne({ _id: staffId, isActive: true })
+      .select("+pin +pinFailDay +pinFailCount name role hasPin pinBlocked")
+      .lean<PinStaffRow | null>();
+    if (!staff || staff.hasPin !== true || !isValidStaffPin(staff.pin)) return handBack({ kind: "nopin" });
+    if (staff.pinBlocked === true) return handBack({ kind: "blocked" });
+
+    // 5. Constant time: both are exactly 4 ASCII digits here, so the buffers are equal in length.
+    if (!timingSafeEqual(Buffer.from(staff.pin), Buffer.from(pin))) {
+      // 6. Wrong: the slot stays taken, and the day count goes up.
+      await recordWrongPin(staffId, cafeDateString(new Date(now)));
+      return { ok: false, failure: { kind: "wrong", triesLeft: Math.max(0, STAFF_PIN_RATE_MAX - hit.n) } };
+    }
+
+    // 7. Right: the slot is handed back; the same user shape as the password provider.
     await refundRateLimit(bucket, now);
-    return { ok: false, failure };
-  };
-  if (!hit.allowed) return handBack({ kind: "wait", retryAfterSec: hit.retryAfterSec });
-
-  // 4. The person: active, with a PIN, not blocked. A stored PIN the rules refuse counts as none
-  // (the typed one passed them, so it could never match).
-  const staff = await Staff.findOne({ _id: staffId, isActive: true })
-    .select("+pin +pinFailDay +pinFailCount name role hasPin pinBlocked")
-    .lean<PinStaffRow | null>();
-  if (!staff || staff.hasPin !== true || !isValidStaffPin(staff.pin)) return handBack({ kind: "nopin" });
-  if (staff.pinBlocked === true) return handBack({ kind: "blocked" });
-
-  // 5. Constant time: both are exactly 4 ASCII digits here, so the buffers are equal in length.
-  if (!timingSafeEqual(Buffer.from(staff.pin), Buffer.from(pin))) {
-    // 6. Wrong: the slot stays taken, and the day count goes up.
-    await recordWrongPin(staffId, cafeDateString(new Date(now)));
-    return { ok: false, failure: { kind: "wrong", triesLeft: Math.max(0, STAFF_PIN_RATE_MAX - hit.n) } };
+    return { ok: true, user: { id: String(staff._id), name: staff.name, role: staff.role } };
+  } finally {
+    await pruned;
   }
-
-  // 7. Right: the slot is handed back; the same user shape as the password provider.
-  await refundRateLimit(bucket, now);
-  return { ok: true, user: { id: String(staff._id), name: staff.name, role: staff.role } };
 }

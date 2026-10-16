@@ -1,7 +1,27 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { PublicRateLimit } from "@/models/PublicRateLimit";
 import type { PinDevicePerson } from "./pin-device";
 import { nextPinFailState, verifyStaffPinSignIn } from "./staff-pin-signin";
+
+// Counts the rate-window prune's deleteMany calls while `run` runs. A prune on an instance that has
+// not connected yet buffers for 10 s before it fails, so a refusal that answers before connectDB()
+// must never reach it (Task 11 review).
+async function prunesDuring(run: () => Promise<void>): Promise<number> {
+  const model = PublicRateLimit as unknown as { deleteMany: (...args: unknown[]) => unknown };
+  const real = model.deleteMany;
+  let calls = 0;
+  model.deleteMany = () => {
+    calls += 1;
+    return Promise.resolve({ deletedCount: 0 });
+  };
+  try {
+    await run();
+  } finally {
+    model.deleteMany = real;
+  }
+  return calls;
+}
 
 // The pure half of the PIN sign-in check (spec 2026-10-16 §5.4). The database half (the per-person
 // window, the atomic day count, the block) is driven against a real mongod by part B of
@@ -58,10 +78,13 @@ test("verifyStaffPinSignIn: a bad shape answers wrong without touching the datab
     ["a number for a PIN", A, 7391],
     ["no PIN", A, undefined],
   ];
-  for (const [label, staffId, pin] of shapes) {
-    const result = await verifyStaffPinSignIn({ staffId, pin, devicePeople: device });
-    assert.deepEqual(result, { ok: false, failure: { kind: "wrong", triesLeft: 0 } }, `${label} -> wrong, no count shown`);
-  }
+  const prunes = await prunesDuring(async () => {
+    for (const [label, staffId, pin] of shapes) {
+      const result = await verifyStaffPinSignIn({ staffId, pin, devicePeople: device });
+      assert.deepEqual(result, { ok: false, failure: { kind: "wrong", triesLeft: 0 } }, `${label} -> wrong, no count shown`);
+    }
+  });
+  assert.equal(prunes, 0, "a bad shape never runs the rate-window prune (it answers before connectDB)");
 });
 
 test("verifyStaffPinSignIn: a device that never had this person sign in answers device without touching the database", async () => {
@@ -71,8 +94,11 @@ test("verifyStaffPinSignIn: a device that never had this person sign in answers 
     ["an empty device", []],
     ["a device that knows someone else", [{ id: "665f0000000000000000c002", at: 1 }]],
   ];
-  for (const [label, devicePeople] of devices) {
-    const result = await verifyStaffPinSignIn({ staffId: A, pin: "7391", devicePeople });
-    assert.deepEqual(result, { ok: false, failure: { kind: "device" } }, `${label} -> device`);
-  }
+  const prunes = await prunesDuring(async () => {
+    for (const [label, devicePeople] of devices) {
+      const result = await verifyStaffPinSignIn({ staffId: A, pin: "7391", devicePeople });
+      assert.deepEqual(result, { ok: false, failure: { kind: "device" } }, `${label} -> device`);
+    }
+  });
+  assert.equal(prunes, 0, "a device refusal never runs the rate-window prune (it answers before connectDB)");
 });

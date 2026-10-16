@@ -9,7 +9,6 @@ import cache from "@/lib/cache";
 import { loginSchema } from "@/schemas/staff.schema";
 import { SESSION_REVALIDATE_MS } from "@/lib/constants";
 import { cookieValue, pinDeviceKey, readPinDevice } from "@/lib/pin-device";
-import { pruneRateWindows } from "@/lib/public-rate-limit";
 import { verifyStaffPinSignIn } from "@/lib/staff-pin-signin";
 
 // node-cache TTLs are in seconds.
@@ -127,15 +126,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           cookieValue(request.headers.get("cookie"), PIN_DEVICE_COOKIE),
           pinDeviceKey(process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET),
         );
+        // The old-window prune lives inside the check, after its connectDB (a refusal before it
+        // must not touch the database).
         const result = await verifyStaffPinSignIn({
           staffId: credentials.staffId,
           pin: credentials.pin,
           devicePeople,
         });
-        // The staff-PIN windows share publicratelimits with the QR order route, its only other
-        // reaper; a cafe without QR ordering would never prune them. Best-effort: it swallows its
-        // own errors, so it can never fail a sign-in.
-        await pruneRateWindows(Date.now());
         if (!result.ok) throw new PinSignInError(result.failure);
         return result.user;
       },

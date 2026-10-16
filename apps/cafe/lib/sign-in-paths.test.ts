@@ -17,6 +17,7 @@ const AUTH_CONFIG = "apps/cafe/auth.config.ts";
 const KNOWN = "apps/cafe/app/api/sign-in/known/route.ts";
 const REMEMBER = "apps/cafe/app/api/sign-in/remember/route.ts";
 const CLIENT = "apps/cafe/lib/pin-sign-in-client.ts";
+const SIGNIN = "apps/cafe/lib/staff-pin-signin.ts";
 
 test("PIN: lib/auth.ts has the pin provider, reads the device cookie from the request and throws a CredentialsSignin subclass", () => {
   const s = src(AUTH);
@@ -38,11 +39,24 @@ test("PIN: lib/auth.ts has the pin provider, reads the device cookie from the re
     "the signing key comes from AUTH_SECRET ?? NEXTAUTH_SECRET",
   );
   assert.match(s, /throw new PinSignInError\(/, "a failed try throws PinSignInError(");
-  assert.match(s, /pruneRateWindows\(/, "authorize prunes old rate windows (staff-PIN rows have no other reaper on a cafe without QR ordering)");
-  const verify = s.indexOf("verifyStaffPinSignIn(");
+  assert.ok(
+    !/pruneRateWindows/.test(s),
+    "authorize never prunes: a shape or device refusal answers before connectDB, and a prune there buffers 10 s on a cold instance",
+  );
+});
+
+test("PIN: the rate-window prune runs inside verifyStaffPinSignIn only once the try has reached the database", () => {
+  const s = src(SIGNIN);
+  const shape = s.indexOf("return SHAPE_FAILURE");
+  const device = s.indexOf('kind: "device"');
+  const connect = s.indexOf("await connectDB()");
   const prune = s.indexOf("pruneRateWindows(");
-  const thrown = s.indexOf("throw new PinSignInError(");
-  assert.ok(verify >= 0 && prune > verify && thrown > prune, "the prune runs after the check returns and before a failure is thrown");
+  assert.ok(shape >= 0 && device >= 0 && connect >= 0 && prune >= 0, "the shape and device refusals, connectDB() and the prune are all present");
+  assert.ok(shape < connect && device < connect, "the shape and device refusals answer before connectDB()");
+  assert.ok(prune > connect, "pruneRateWindows( comes after await connectDB()");
+  assert.equal((s.match(/pruneRateWindows\(/g) ?? []).length, 1, "exactly one prune call");
+  assert.ok(prune < s.indexOf("hitRateLimit("), "the prune is started before the slot is taken, so it runs beside the check");
+  assert.match(s, /finally\s*\{\s*await pruned;?\s*\}/, "the prune is awaited in a finally, after the answer is known");
 });
 
 test("PIN: lib/auth.ts keeps one sign-in branch in jwt for both providers (the PIN user is stamped like the password user)", () => {

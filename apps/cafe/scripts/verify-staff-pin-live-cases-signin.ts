@@ -33,7 +33,7 @@ function db() {
 const oid = (id: string) => new mongoose.Types.ObjectId(id);
 const show = (r: PinSignInResult) => JSON.stringify(r);
 const failureOf = (r: PinSignInResult) => (r.ok ? null : r.failure);
-const windows = () => db().collection<{ _id: string; n: number }>("publicratelimits");
+const windows = () => db().collection<{ _id: string; n: number; at?: Date }>("publicratelimits");
 
 async function seed(): Promise<void> {
   const base = { mobile: "9876500000", password: "not-a-real-hash", createdAt: new Date(), updatedAt: new Date() };
@@ -193,5 +193,20 @@ export async function runPartB(h: Harness): Promise<void> {
       waits === BURST.length - STAFF_PIN_RATE_MAX &&
       burstRow === wrongs &&
       afterBurst?.pinFailCount === wrongs,
+  );
+
+  // Task 11 review: the old-window prune runs only for a try that reached the database. A shape or a
+  // device refusal answers before connectDB (on a cold instance a prune there would buffer for 10 s).
+  const STALE = "staffpin:stale-probe:1";
+  await windows().insertOne({ _id: STALE, n: 1, at: new Date(now - 3 * PUBLIC_ORDER_RATE_WINDOW_MS) });
+  await tryPin("not-an-id", PIN);
+  await tryPin(D, PIN, []);
+  const keptAfterRefusals = (await windows().countDocuments({ _id: STALE })) === 1;
+  const dAgain = await tryPin(D, PIN);
+  const reaped = (await windows().countDocuments({ _id: STALE })) === 0;
+  check(
+    `a stale window row survives a shape and a device refusal (kept ${keptAfterRefusals}) and is reaped by D's next ` +
+      `real try (reaped ${reaped})`,
+    keptAfterRefusals && dAgain.ok && reaped,
   );
 }
