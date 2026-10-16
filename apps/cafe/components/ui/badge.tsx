@@ -10,11 +10,12 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
-        default: "border-transparent bg-primary/10 text-primary hover:bg-primary/15",
+        // The tint and ink are the token pair itself, not text-primary on a primary/10 wash (3.96:1 on the grey page).
+        default: "border-transparent bg-accent text-accent-foreground",
         secondary:
           "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        destructive:
-          "border-transparent bg-destructive/10 text-destructive hover:bg-destructive/15",
+        // Solid: the presets set no red ink, and red on a red/10 wash fails 4.5:1 on the staff page (3.90:1).
+        destructive: "border-transparent bg-destructive text-destructive-foreground",
         outline: "border-border text-foreground",
       },
     },

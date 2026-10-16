@@ -153,6 +153,19 @@ test("the look: input, card, badge, switch, skeleton, table", () => {
   const badge = read("components/ui/badge.tsx");
   const badgeBase = badge.match(/cva\(\s*"([^"]*)"/)?.[1] ?? "";
   assert.ok(badgeBase.split(/\s+/).includes("rounded-full"), "badge base is a pill");
+  // U0 verification (axe, 2026-10-17): text-primary on bg-primary/10 measured 4.33:1 on a card and 3.96:1 on the page,
+  // and text-destructive on bg-destructive/10 3.90:1, under WCAG 1.4.3's 4.5:1.
+  const variant = (name: string) => badge.match(new RegExp(`\\b${name}:\\s*"([^"]*)"`))?.[1]?.split(/\s+/) ?? [];
+  for (const cls of ["bg-accent", "text-accent-foreground"]) {
+    assert.ok(variant("default").includes(cls), `badge default is the accent pair (blue tint, blue ink, 7.1:1): ${cls}`);
+  }
+  for (const cls of ["bg-destructive", "text-destructive-foreground"]) {
+    assert.ok(variant("destructive").includes(cls), `badge destructive is the solid pair (white on red, 5.0:1): ${cls}`);
+  }
+  assert.ok(
+    !/\b(?:bg-primary|bg-destructive)\/\d+/.test(badge.slice(badge.indexOf("variants:"))),
+    "no badge variant puts coloured text on its own colour's light wash",
+  );
 
   const sw = read("components/ui/switch.tsx");
   assert.match(sw, /data-\[state=checked\]:bg-primary/, "switch on is primary");
