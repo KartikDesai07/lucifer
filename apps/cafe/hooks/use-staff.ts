@@ -2,7 +2,7 @@
 
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { apiSend } from "@/lib/api-client";
+import { apiGet, apiSend } from "@/lib/api-client";
 import { createCrudHooks } from "@/hooks/create-crud-hooks";
 import { STALE_TIMES, GC_TIMES } from "@/lib/query";
 import type {
@@ -57,5 +57,14 @@ export function useResetStaffPassword() {
     onSuccess: () => toast.success("Password reset"),
     onError: (err: Error) =>
       toast.error(err.message || "Could not reset password"),
+  });
+}
+
+// Admin only: reads one staff member's PIN on demand (the Show button). A
+// mutation, not a query, so the PIN is never held in the query cache.
+export function useRevealStaffPin() {
+  return useMutation({
+    mutationFn: (id: string) => apiGet<{ pin: string | null }>(`/api/staff/${id}/pin`),
+    onError: (err: Error) => toast.error(err.message || "Could not show the PIN"),
   });
 }

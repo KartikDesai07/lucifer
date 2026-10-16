@@ -27,6 +27,11 @@ export interface Harness {
     update(id: string, body: unknown): Promise<Res>;
     pin(id: string): Promise<Res & { cacheControl: string | null }>;
   };
+  /** Part D: GET and PUT /api/settings. */
+  settings: {
+    get(): Promise<Res>;
+    update(body: unknown): Promise<Res>;
+  };
   /** Part C: GET /api/sign-in/known and POST /api/sign-in/remember, carrying `cookie` as the Cookie header. */
   signInRoutes: {
     known(opts?: { cookie?: string; host?: string }): Promise<RouteRes>;

@@ -158,6 +158,9 @@ export interface ISettings extends Document {
   // Stored default 60 (models/Settings.ts); a lean pre-existing doc may lack it.
   tableLongStayMinutes: number;
 
+  // PIN lock - minutes idle before the screen locks (0 = off). Stored default 60.
+  screenLockMinutes: number;
+
   createdAt: Date;
   updatedAt: Date;
 }

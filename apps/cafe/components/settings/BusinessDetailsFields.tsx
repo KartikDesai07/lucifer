@@ -12,7 +12,15 @@ import {
 import { cn } from "@/lib/utils";
 import { settingsSectionPath } from "@/lib/settings-sections";
 import type { Settings } from "@/types";
+import { SCREEN_LOCK_DEFAULT_MINUTES, SCREEN_LOCK_MINUTES } from "@pos/shared/staff-pin";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ImageUpload } from "@/components/shared/ImageUpload";
 import { Field, SettingsGroup } from "@/components/settings/SettingsFields";
 import { BillHeaderPreview } from "@/components/settings/BillHeaderPreview";
@@ -20,6 +28,14 @@ import { PosLayoutPicker } from "@/components/settings/PosLayoutPicker";
 import { PayQrFields } from "@/components/settings/PayQrFields";
 import { UpiRulesFields } from "@/components/settings/UpiRulesFields";
 import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
+
+const SCREEN_LOCK_LABELS: Record<(typeof SCREEN_LOCK_MINUTES)[number], string> = {
+  0: "Off",
+  30: "30 minutes",
+  60: "1 hour",
+  120: "2 hours",
+};
+const SCREEN_LOCK_OPTIONS = SCREEN_LOCK_MINUTES.map((minutes) => ({ minutes, label: SCREEN_LOCK_LABELS[minutes] }));
 
 interface BusinessDetailsFieldsProps {
   control: Control<SettingsInput>;
@@ -169,6 +185,41 @@ export function BusinessDetailsFields({
             />
             <span className="text-sm text-brand-muted">minutes</span>
           </div>
+        </Field>
+      </SettingsGroup>
+
+      {/* Screen lock - idle time before the screen asks for a PIN again. */}
+      <SettingsGroup
+        id="screen-lock"
+        title="Screen lock"
+        description="The screen locks when nobody has touched it for a while. Staff unlock with their PIN."
+      >
+        <Field
+          label="Lock the screen after no activity for"
+          htmlFor="settings-screen-lock"
+          error={errors.screenLockMinutes?.message}
+        >
+          <Controller
+            control={control}
+            name="screenLockMinutes"
+            render={({ field }) => (
+              <Select
+                value={String(field.value ?? SCREEN_LOCK_DEFAULT_MINUTES)}
+                onValueChange={(v) => field.onChange(Number(v))}
+              >
+                <SelectTrigger id="settings-screen-lock" className={cn(BRAND_CONTROL_CLASS, "w-48")}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SCREEN_LOCK_OPTIONS.map((o) => (
+                    <SelectItem key={o.minutes} value={String(o.minutes)}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
         </Field>
       </SettingsGroup>
 

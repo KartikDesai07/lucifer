@@ -21,6 +21,7 @@ import { Staff } from "@/models/Staff";
 import { runPartA } from "./verify-staff-pin-live-cases";
 import { runPartB } from "./verify-staff-pin-live-cases-signin";
 import { runPartC } from "./verify-staff-pin-live-cases-device";
+import { runPartD } from "./verify-staff-pin-live-cases-settings";
 import {
   ADMIN_ID,
   STAFF_ID,
@@ -40,8 +41,7 @@ const BODY_PRINT_MAX = 150;
 const ROUTE_MISSING_STATUS = 0;
 const KNOWN_HOST = "localhost"; // resolves to the local "dev" tenant (lib/tenant.ts)
 
-// Later tasks append their parts here (D).
-const PARTS: Part[] = [runPartA, runPartB, runPartC];
+const PARTS: Part[] = [runPartA, runPartB, runPartC, runPartD];
 
 let currentRole: Role = "admin";
 let signedIn: StubUser | null | undefined; // undefined: the role's fixed user
@@ -157,6 +157,7 @@ async function buildHarness(): Promise<Harness> {
   const listRoute = await loadRoute("app/api/staff/route.ts");
   const itemRoute = await loadRoute("app/api/staff/[id]/route.ts");
   const pinRoute = await loadRoute("app/api/staff/[id]/pin/route.ts");
+  const settingsRoute = await loadRoute("app/api/settings/route.ts");
   const knownRoute = await loadRoute("app/api/sign-in/known/route.ts");
   const rememberRoute = await loadRoute("app/api/sign-in/remember/route.ts");
   const loaded = (m: RouteModule | null) => (m ? "loaded" : "MISSING");
@@ -178,6 +179,10 @@ async function buildHarness(): Promise<Harness> {
       create: (body) => call(listRoute?.POST, req("POST", "/api/staff", body)),
       update: (id, body) => call(itemRoute?.PUT, req("PUT", `/api/staff/${id}`, body), { id }),
       pin: (id) => call(pinRoute?.GET, req("GET", `/api/staff/${id}/pin`), { id }),
+    },
+    settings: {
+      get: () => call(settingsRoute?.GET, req("GET", "/api/settings")),
+      update: (body) => call(settingsRoute?.PUT, req("PUT", "/api/settings", body)),
     },
     signInRoutes: {
       known: ({ cookie, host = KNOWN_HOST } = {}) =>

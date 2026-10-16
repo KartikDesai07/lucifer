@@ -10,6 +10,7 @@ import {
 } from "@pos/shared/public-diner";
 import { TABLE_LONG_STAY_DEFAULT_MINUTES } from "@/lib/constants";
 import { payQrMinutesOf, payQrModeOf, upiRulesOf } from "@pos/shared/print-qr";
+import { SCREEN_LOCK_DEFAULT_MINUTES, SCREEN_LOCK_MINUTES } from "@pos/shared/staff-pin";
 import { tokenReadyClearMinutesOf } from "@pos/shared/slip-day";
 import type { Settings } from "@/types";
 
@@ -171,5 +172,8 @@ export function settingsFormDefaults(settings: Settings): SettingsInput {
     // Tables redesign — same lean-doc hazard: a pre-existing Settings document
     // carries no tableLongStayMinutes key at all.
     tableLongStayMinutes: settings.tableLongStayMinutes ?? TABLE_LONG_STAY_DEFAULT_MINUTES,
+
+    // PIN lock - a lean pre-existing document has no screenLockMinutes key either.
+    screenLockMinutes: SCREEN_LOCK_MINUTES.find((m) => m === settings.screenLockMinutes) ?? SCREEN_LOCK_DEFAULT_MINUTES,
   };
 }

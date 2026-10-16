@@ -1,8 +1,9 @@
-import { KeyRound, Pencil, UserCheck, UserX } from "lucide-react";
+import { KeyRound, LockOpen, Pencil, UserCheck, UserX } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusPill } from "@/components/shared/StatusPill";
 import { BRAND_PANEL_CLASS, BRAND_ROW_ACTION_CLASS } from "@/components/brand/brand-classes";
 import type { Staff } from "@/types";
 
@@ -15,6 +16,7 @@ interface StaffRowCardProps {
   onResetPassword: (member: Staff) => void;
   onDeactivate: (member: Staff) => void;
   onReactivate: (member: Staff) => void;
+  onUnblockPin: (member: Staff) => void;
 }
 
 /** Card layout for one staff row — mirrors the table row exactly (same handlers, same conditions). */
@@ -27,6 +29,7 @@ export function StaffRowCard({
   onResetPassword,
   onDeactivate,
   onReactivate,
+  onUnblockPin,
 }: StaffRowCardProps) {
   return (
     <div className={cn("rounded-lg border p-3", BRAND_PANEL_CLASS)}>
@@ -57,7 +60,26 @@ export function StaffRowCard({
         </Badge>
       </div>
 
+      {(member.pinBlocked || !member.hasPin) && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {member.pinBlocked && <StatusPill kind="bad">PIN blocked</StatusPill>}
+          {!member.hasPin && <StatusPill kind="neutral">No PIN</StatusPill>}
+        </div>
+      )}
+
       <div className="mt-2 flex justify-end gap-1">
+        {member.pinBlocked && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className={BRAND_ROW_ACTION_CLASS}
+            onClick={() => onUnblockPin(member)}
+            aria-label="Unblock PIN"
+            title="Unblock PIN"
+          >
+            <LockOpen className="h-4 w-4" />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon"
