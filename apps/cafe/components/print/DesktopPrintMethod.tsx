@@ -13,6 +13,7 @@ import {
   type DesktopPrintMode,
   type DesktopPrinterApi,
 } from "@/lib/desktop-shell-printer";
+import { refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
 
 const SAVE_MODE_FAILED_MESSAGE = "Could not save the print method — try again.";
 const SAVE_MODE_SUCCESS_MESSAGE = "Print method saved.";
@@ -44,6 +45,8 @@ export function DesktopPrintMethod({ savePrintMode, printMode }: DesktopPrintMet
     try {
       const result = await savePrintMode(next);
       setMode(result.printMode);
+      // Printing Phase 4 (spec §5.3): the next slip follows the new method (text KOTs only with Direct).
+      void refreshDesktopPrinterChosen();
       toast.success(SAVE_MODE_SUCCESS_MESSAGE);
     } catch {
       toast.error(SAVE_MODE_FAILED_MESSAGE);

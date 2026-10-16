@@ -227,6 +227,7 @@
     "lib/print-wake.test.ts",
     "lib/session-rolling.test.ts",
     "lib/desktop-shell.test.ts",
+    "lib/desktop-shell-raw-on.test.ts",
     "lib/desktop-shell-paths.test.ts",
     "lib/gst-discount.test.ts",
     "lib/reward-wiring.test.ts",
