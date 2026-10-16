@@ -14,7 +14,7 @@ function SegmentedControl<T extends string>({ label, value, options, onChange, c
     <div
       role="group"
       aria-label={label}
-      className={cn("inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground", className)}
+      className={cn("inline-flex h-9 items-center justify-center rounded-lg pointer-coarse:h-11 bg-muted p-1 text-muted-foreground", className)}
     >
       {options.map((o) => {
         const on = o.value === value;
@@ -25,7 +25,7 @@ function SegmentedControl<T extends string>({ label, value, options, onChange, c
             aria-pressed={on}
             onClick={() => onChange(o.value)}
             className={cn(
-              "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 pointer-coarse:h-11 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
               on && "bg-card text-foreground shadow-sm",
             )}
           >

@@ -87,3 +87,19 @@ test("shared states render title, description, action and keep their structure",
   );
   assert.ok(head.includes("<h2") && head.includes(">Menu</h2>") && head.includes("Catalogue") && head.includes("All items"), "header content");
 });
+
+test("SegmentedControl: 44 px on touch (the group and each segment grow with pointer-coarse:h-11)", () => {
+  const html = renderToStaticMarkup(
+    createElement(SegmentedControl<"a" | "b">, {
+      label: "Range",
+      value: "a",
+      options: [{ value: "a", label: "Today" }, { value: "b", label: "Week" }],
+      onChange: noop,
+    }),
+  );
+  const group = html.match(/<div[^>]*role="group"[^>]*>/)?.[0] ?? "";
+  assert.ok(group.includes("h-9") && group.includes("pointer-coarse:h-11"), "the group is h-9 and pointer-coarse:h-11");
+  const buttons = html.match(/<button[^>]*>/g) ?? [];
+  assert.equal(buttons.length, 2, "two segments");
+  assert.ok(buttons.every((b) => b.includes("pointer-coarse:h-11")), "each segment is pointer-coarse:h-11 too (RangeBar's way)");
+});
