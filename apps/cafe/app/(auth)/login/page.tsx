@@ -9,13 +9,16 @@ import Image from "next/image";
 import { AlertCircle, ArrowRight, Eye, EyeOff, Loader2, UtensilsCrossed } from "lucide-react";
 
 import { clearMastersBlob } from "@/lib/masters-blob";
+import { fetchKnownPeople, rememberThisDevice, type KnownPerson } from "@/lib/pin-sign-in-client";
 import { loginSchema, type LoginInput } from "@/schemas/staff.schema";
 import { APP_NAME } from "@/lib/constants";
 import { brandingUrl } from "@/lib/images";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { AuthShell } from "@/components/auth/AuthShell";
+import { PinSignIn } from "@/components/auth/PinSignIn";
 import {
   BRAND_BUTTON_CLASS,
   BRAND_FIELD_ERROR_CLASS,
@@ -23,11 +26,14 @@ import {
   BRAND_LABEL_CLASS,
 } from "@/components/brand/brand-classes";
 
-// Staff sign-in. The screen's FRAME (greeting, painting, logo lockup, responsive
-// layout) lives in components/auth/AuthShell and its styles in
-// components/brand; this file keeps everything that decides whether sign-in
-// works — the form, the credentials call, the shared-device wipe, the
-// masked-by-default password and the logo's failure fallback.
+// Staff sign-in. The screen's FRAME (header, card, "Powered by") lives in components/auth/AuthShell and the name
+// tiles + PIN pad in components/auth/PinSignIn; this file keeps everything that decides whether sign-in works: which
+// way in this device offers, the form, the credentials call, the shared-device wipe, the masked-by-default password,
+// the device memory after a sign-in and the logo's failure fallback.
+
+// "loading" until the device's remembered people are known (one neutral card, no flash of either form); then the
+// tiles when there is anyone to pick, else the username and password form (spec 2026-10-16 §5.3).
+type LoginMode = "loading" | "pin" | "password";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -44,6 +50,8 @@ export default function LoginPage() {
   // persisted: a counter PC is a SHARED screen, so the next operator must
   // always start from a masked field, whatever the last one left on.
   const [passwordShown, setPasswordShown] = useState(false);
+  const [mode, setMode] = useState<LoginMode>("loading");
+  const [people, setPeople] = useState<KnownPerson[]>([]);
 
   // A tab that reaches /login (expired session, or a sign-out) must not hand
   // the previous operator's master copy — including an admin's staff list — to
@@ -52,14 +60,36 @@ export default function LoginPage() {
     clearMastersBlob();
   }, []);
 
+  // One look-up per page load: who this device remembers with a PIN (any failure reads as nobody).
+  useEffect(() => {
+    let live = true;
+    void fetchKnownPeople().then((known) => {
+      if (!live) return;
+      setPeople(known);
+      setMode(known.length > 0 ? "pin" : "password");
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors, isSubmitting },
   } = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
     defaultValues: { username: "", password: "" },
   });
+
+  // Both ways in end here: the device remembers the signed-in person (it needs the new session, so it runs after the
+  // sign-in, once), then the dashboard; refresh so the server picks up the new session.
+  const finishSignIn = async () => {
+    await rememberThisDevice();
+    router.replace("/");
+    router.refresh();
+  };
 
   const onSubmit = async (values: LoginInput) => {
     setAuthError(null);
@@ -70,19 +100,24 @@ export default function LoginPage() {
       return;
     }
 
-    // Land on the dashboard; refresh so the server picks up the new session.
-    router.replace("/");
-    router.refresh();
+    await finishSignIn();
   };
 
-  // One element, handed to the shell for its logo slot. It takes the slot's
+  // Back to the tiles: the form starts empty and masked again next time it opens.
+  const showPinSignIn = () => {
+    reset();
+    setPasswordShown(false);
+    setAuthError(null);
+    setMode("pin");
+  };
+
+  // One element, handed to the shell for its logo tile. It takes the tile's
   // height and its OWN width (a wide wordmark reads at its real size, not
   // shrunk into a square); multiply lets a logo saved on a white background
-  // sit on the card's paper without a white box. The fallback glyph takes
-  // over if the image fails. No coloured tile behind either — an icon in a
-  // filled square is the stock template look this screen is built to avoid.
+  // sit on the white tile without a box of its own. The fallback glyph takes
+  // over if the image fails.
   const logo = iconFailed ? (
-    <UtensilsCrossed className="h-6 w-6 text-brand-ink" aria-hidden="true" />
+    <UtensilsCrossed className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
   ) : (
     <Image
       src={productLogoSrc}
@@ -95,107 +130,135 @@ export default function LoginPage() {
     />
   );
 
+  const passwordMode = mode === "password";
+
   return (
     <AuthShell
       brandName={APP_NAME}
       logo={logo}
-      title="Welcome back."
-      intro={`Sign in to continue to ${APP_NAME}.`}
-      footer="Forgot your password? Ask an admin to reset it."
+      title={passwordMode ? "Welcome back." : undefined}
+      intro={passwordMode ? `Sign in to continue to ${APP_NAME}.` : undefined}
+      footer={passwordMode ? "Forgot your password? Ask an admin to reset it." : undefined}
     >
-      {/* method="post": a submit that lands before hydration (slow network,
-          quick typist) is a NATIVE form submit — without this the browser
-          GETs /login?username=…&password=… and the password lands in the
-          URL, the history and the request logs. */}
-      <form method="post" className="space-y-5" onSubmit={handleSubmit(onSubmit)} noValidate>
-        <div className="space-y-2">
-          <Label htmlFor="username" className={BRAND_LABEL_CLASS}>
-            Username
-          </Label>
-          <Input
-            id="username"
-            placeholder="Your username"
-            autoComplete="username"
-            autoCapitalize="none"
-            spellCheck={false}
-            aria-invalid={!!errors.username}
-            className={BRAND_INPUT_CLASS}
-            {...register("username")}
-          />
-          {errors.username && (
-            <p className={BRAND_FIELD_ERROR_CLASS}>{errors.username.message}</p>
-          )}
+      {mode === "loading" && (
+        <div role="status" aria-label="Loading sign-in" className="flex flex-col gap-3">
+          <Skeleton className="h-7 w-48" />
+          <Skeleton className="h-4 w-72 max-w-full" />
+          <Skeleton className="mt-3 h-[150px] w-full md:h-[160px]" />
         </div>
+      )}
 
-        <div className="space-y-2">
-          <Label htmlFor="password" className={BRAND_LABEL_CLASS}>
-            Password
-          </Label>
-          <div className="relative">
-            <Input
-              id="password"
-              type={passwordShown ? "text" : "password"}
-              autoComplete="current-password"
-              aria-invalid={!!errors.password}
-              className={`${BRAND_INPUT_CLASS} pr-12`}
-              {...register("password")}
-            />
-            {/* Inside the field's own box (pr-12 keeps the text clear of
-                it) so the form layout is unchanged. type="button" is
-                load-bearing: a bare <button> inside a <form> submits. */}
+      {mode === "pin" && (
+        <PinSignIn people={people} onUsePassword={() => setMode("password")} onSignedIn={finishSignIn} />
+      )}
+
+      {passwordMode && (
+        <div className="mx-auto w-full max-w-sm">
+          {/* method="post": a submit that lands before hydration (slow network,
+              quick typist) is a NATIVE form submit — without this the browser
+              GETs /login?username=…&password=… and the password lands in the
+              URL, the history and the request logs. */}
+          <form method="post" className="space-y-5" onSubmit={handleSubmit(onSubmit)} noValidate>
+            <div className="space-y-2">
+              <Label htmlFor="username" className={BRAND_LABEL_CLASS}>
+                Username
+              </Label>
+              <Input
+                id="username"
+                placeholder="Your username"
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
+                aria-invalid={!!errors.username}
+                className={BRAND_INPUT_CLASS}
+                {...register("username")}
+              />
+              {errors.username && (
+                <p className={BRAND_FIELD_ERROR_CLASS}>{errors.username.message}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="password" className={BRAND_LABEL_CLASS}>
+                Password
+              </Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={passwordShown ? "text" : "password"}
+                  autoComplete="current-password"
+                  aria-invalid={!!errors.password}
+                  className={`${BRAND_INPUT_CLASS} pr-12`}
+                  {...register("password")}
+                />
+                {/* Inside the field's own box (pr-12 keeps the text clear of
+                    it) so the form layout is unchanged. type="button" is
+                    load-bearing: a bare <button> inside a <form> submits. */}
+                <button
+                  type="button"
+                  onClick={() => setPasswordShown((shown) => !shown)}
+                  aria-label={passwordShown ? "Hide password" : "Show password"}
+                  aria-pressed={passwordShown}
+                  className="absolute inset-y-0 right-0 grid w-12 place-items-center rounded-r-md text-brand-muted hover:text-brand-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent"
+                >
+                  {passwordShown ? (
+                    <EyeOff className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <Eye className="h-4 w-4" aria-hidden="true" />
+                  )}
+                </button>
+              </div>
+              {errors.password && (
+                <p className={BRAND_FIELD_ERROR_CLASS}>{errors.password.message}</p>
+              )}
+            </div>
+
+            {authError && (
+              // Icon + text, never colour alone; role="alert" so a screen reader
+              // announces a failed attempt without the operator hunting for it.
+              // The one-off shake replays on EVERY failure: onSubmit clears the
+              // error before the network call, so each failed attempt mounts this
+              // box afresh.
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-md border border-brand-danger/25 bg-brand-danger/5 px-3 py-2.5 text-sm text-brand-danger motion-safe:animate-brand-shake"
+              >
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>{authError}</span>
+              </div>
+            )}
+
+            <Button type="submit" className={BRAND_BUTTON_CLASS} disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  Signing in…
+                </>
+              ) : (
+                <>
+                  Sign in
+                  {/* A small forward nudge on hover — the one bit of motion on
+                      the screen, and it points at what happens next. */}
+                  <ArrowRight
+                    className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5"
+                    aria-hidden="true"
+                  />
+                </>
+              )}
+            </Button>
+          </form>
+
+          {people.length > 0 && (
             <button
               type="button"
-              onClick={() => setPasswordShown((shown) => !shown)}
-              aria-label={passwordShown ? "Hide password" : "Show password"}
-              aria-pressed={passwordShown}
-              className="absolute inset-y-0 right-0 grid w-12 place-items-center rounded-r-md text-brand-muted hover:text-brand-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent"
+              onClick={showPinSignIn}
+              className="mx-auto mt-3 flex h-11 items-center rounded-md px-2 text-[13.5px] font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              {passwordShown ? (
-                <EyeOff className="h-4 w-4" aria-hidden="true" />
-              ) : (
-                <Eye className="h-4 w-4" aria-hidden="true" />
-              )}
+              Sign in with PIN
             </button>
-          </div>
-          {errors.password && (
-            <p className={BRAND_FIELD_ERROR_CLASS}>{errors.password.message}</p>
           )}
         </div>
-
-        {authError && (
-          // Icon + text, never colour alone; role="alert" so a screen reader
-          // announces a failed attempt without the operator hunting for it.
-          // The one-off shake replays on EVERY failure: onSubmit clears the
-          // error before the network call, so each failed attempt mounts this
-          // box afresh.
-          <div
-            role="alert"
-            className="flex items-start gap-2 rounded-md border border-brand-danger/25 bg-brand-danger/5 px-3 py-2.5 text-sm text-brand-danger motion-safe:animate-brand-shake"
-          >
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            <span>{authError}</span>
-          </div>
-        )}
-
-        <Button type="submit" className={BRAND_BUTTON_CLASS} disabled={isSubmitting}>
-          {isSubmitting ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              Signing in…
-            </>
-          ) : (
-            <>
-              Sign in
-              {/* A small forward nudge on hover — the one bit of motion on
-                  the screen, and it points at what happens next. */}
-              <ArrowRight
-                className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5"
-                aria-hidden="true"
-              />
-            </>
-          )}
-        </Button>
-      </form>
+      )}
     </AuthShell>
   );
 }

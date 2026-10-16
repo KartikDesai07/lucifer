@@ -5,10 +5,12 @@ import { staffInitials } from "@/lib/staff-display";
 const SIZES = {
   sm: "h-8 w-8 text-xs",
   md: "h-10 w-10 text-sm",
+  // A sign-in name tile (components/auth/PinSignIn): 52 px on a phone, 60 px from a tablet up.
+  tile: "h-[52px] w-[52px] text-[17px] md:h-[60px] md:w-[60px] md:text-xl",
   lg: "h-20 w-20 text-2xl",
 } as const;
 
-const DOT_SIZES = { sm: "h-2 w-2", md: "h-2.5 w-2.5", lg: "h-4 w-4" } as const;
+const DOT_SIZES = { sm: "h-2 w-2", md: "h-2.5 w-2.5", tile: "h-3 w-3", lg: "h-4 w-4" } as const;
 
 export function StaffAvatar({
   name,
