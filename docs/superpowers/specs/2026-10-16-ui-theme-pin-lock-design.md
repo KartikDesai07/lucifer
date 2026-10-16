@@ -24,7 +24,8 @@ In scope, in this build order:
 
 1. **Theme and kit (app-wide, light only):** new token values in `apps/cafe/app/globals.css`, the font tokens, the shared
    kit `components/ui/*` restyled with the same exports, props and variant names, the shared class constants
-   (`components/brand/brand-classes.ts`, `components/print/printer-classes.ts` colours only), the chart palette.
+   (`components/brand/brand-classes.ts`), the chart palette. The sidebar turns dark in step 3, with its row classes and
+   its pinned contrast pairs together, so step 1 keeps a light sidebar value.
 2. **Staff PIN sign-in and screen lock** (section 5): a feature, with data, API and auth changes the owner asked for.
 3. **The app shell's look:** the sidebar (dark), the top bar, the request alert bar, the account menu (section 6).
 4. **The dashboard page** (`/`): its layout re-arranged after the mock-up, every card and figure it has today kept
@@ -180,8 +181,14 @@ their own session (my call). The palette:
 
 - the current period's bars: `#0F62FE` (the current hour / the peak: full; earlier hours: `#78A9FF`);
 - the comparison line: `#8B8B93`, dashed;
-- payment methods: UPI `#0F62FE`, Cash `#24A148`, Card `#8A3FFC`, Due `#B28600`;
-- channels: Dine-in `#0F62FE`, Takeaway `#FF832B`, Delivery `#8A3FFC`;
+- payment methods (our modes, `SETTLEMENT_PAY_MODES`): Online `#0F62FE`, Cash `#24A148`, Split `#8A3FFC`, Due `#B28600`,
+  Credit `#FF832B` (the mock-up's UPI / Cash / Card / Due idea on our five modes);
+- channels (our four, `lib/dashboard/fold.ts`): Dine-in `#0F62FE`, Takeaway `#FF832B`, QR self-order `#8A3FFC`,
+  Counter `#24A148`;
+- the table states on the dashboard's Live tables and the Floor page (`lib/table-status.ts` `TABLE_STATUS_META`, the one
+  shared table-state vocabulary): Available = ok (green), Occupied = info (blue, the mock-up's "Eating"), Reserved =
+  reserved (purple); our app has only these three states, so the mock-up's "bill printed" and "KOT pending" tiles are not
+  added;
 - the busy-hours heat map: five steps from `#EDF5FF` to `#0F62FE`.
 
 Checked with the dataviz skill's method (distinct in hue and lightness, readable for the common colour-vision
@@ -212,9 +219,11 @@ deficiencies, never colour alone: every series has a legend word).
 
 ### 4.6 One place for UI constants
 
-A new `apps/cafe/lib/ui/` module holds what is today spread across files: the touch sizes (`TOUCH_CONTROL_CLASS` =
-`h-11` and friends), the chart palette (4.3) and the status class map (4.2). `brand-classes.ts` and `printer-classes.ts`
-keep their exports (pages import them) but take their values from it, so nothing is defined twice.
+A new `apps/cafe/lib/ui/` module holds the new shared constants: the status class map (4.2), the chart and category
+palette (4.3), the avatar colours and the PIN pad's key size. `brand-classes.ts` and `printer-classes.ts` stay the homes
+of their existing constants (tests pin their literal strings, so they cannot be re-derived from another module), and no
+new file redefines one of them; a test holds that the new palette and status classes are defined only in `lib/ui/`.
+`printer-classes.ts` is not changed (its colours are pinned and already read the brand tokens).
 
 ### 4.7 The kit's look (same exports, props and variant names; new variants only added)
 
@@ -378,7 +387,8 @@ username and password again). A person is dropped from it when the server finds 
   as the login page and a "Sign out" link. The password sign-in there runs in place (`signIn("credentials",
   { redirect: false })`, then `POST /api/sign-in/remember`), so it switches or confirms the person exactly like a PIN
   does and printing goes on. If the person who locked has no PIN, or is not yet remembered by this device (a session
-  from before this release), the lock screen opens on the password form with their username filled in; if the device
+  from before this release), the lock screen opens on the password form under the line "Signed in as <name>" (the
+  session carries no username, so the field is not pre-filled; planning finding); if the device
   remembers nobody with a PIN, it opens on the password form. So the 1-hour default is safe on the day this ships,
   before any admin has set a PIN.
 - **No internet at unlock:** the PIN can only be checked by the server. If it cannot be reached, the pad says "No
