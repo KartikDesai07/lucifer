@@ -512,7 +512,8 @@
     "lib/festival-cards-view.test.ts",
     "lib/festival-cards-ui-paths.test.ts",
     "lib/native-apps.test.ts",
-    "lib/screen-lock.test.ts"
+    "lib/screen-lock.test.ts",
+    "lib/screen-lock-paths.test.ts"
   ],
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

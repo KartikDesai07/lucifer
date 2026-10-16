@@ -1,12 +1,13 @@
 import { NOW_SERVING_PATH } from "@/components/now-serving/NowServingLink";
+import { SCREEN_LOCK_STORAGE_KEY } from "./screen-lock-script";
 
 // The screen lock's pure core: persisted state, the idle clock, the no-flash script and the scoped-query roots.
 // The lock is a cover over the dashboard, never a sign-out; it survives a reload through localStorage.
+// The storage key, the two <html> attributes and the no-flash script live in the import-free screen-lock-script.ts
+// (the server layout reads that file alone) and are re-exported here.
+export { SCREEN_LOCK_STORAGE_KEY, LOCK_ATTR, LOCK_READY_ATTR, SCREEN_LOCK_SCRIPT } from "./screen-lock-script";
 
-export const SCREEN_LOCK_STORAGE_KEY = "pos.lock.v1";
 export const SCREEN_LOCK_EVENT = "pos:screen-lock";
-export const LOCK_ATTR = "data-pos-locked";
-export const LOCK_READY_ATTR = "data-pos-lock-ready";
 
 export type LockState = { locked: true; by: string | null; byName: string | null; at: number };
 
@@ -54,20 +55,6 @@ export function clearLockState(storage: RemovableStorage | null): void {
     // nothing to do
   }
 }
-
-// A CONSTANT STRING (no interpolation) run in a plain script before first paint, so a reload never flashes the
-// dashboard: it sets LOCK_ATTR on <html> when the stored state says locked. It has none of the three characters
-// React escapes in a script child, and uses nested ifs rather than a logical-and. localStorage and document are
-// free names so a test can run it with fakes.
-export const SCREEN_LOCK_SCRIPT =
-  "try{" +
-  'var s=JSON.parse(localStorage.getItem("pos.lock.v1"));' +
-  "if(s){" +
-  "if(s.locked===true){" +
-  'document.documentElement.setAttribute("data-pos-locked","");' +
-  "}" +
-  "}" +
-  "}catch(e){}";
 
 // The wall-display pages never auto-lock: a kitchen or customer screen has nobody touching it.
 const DISPLAY_PATHS: readonly string[] = ["/kitchen", NOW_SERVING_PATH];

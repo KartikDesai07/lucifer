@@ -7,6 +7,7 @@ import {
   MANIFEST_THEME_COLOR,
 } from "@/lib/pos-install";
 import { brandingUrl, productImageUrl } from "@/lib/images";
+import { SCREEN_LOCK_SCRIPT } from "@/lib/screen-lock-script";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Header } from "@/components/layout/Header";
@@ -14,6 +15,7 @@ import { MasterDataProvider } from "@/components/layout/MasterDataProvider";
 import { PosPulseProvider } from "@/components/layout/PosPulseProvider";
 import { PrintHostProvider } from "@/components/layout/PrintHostProvider";
 import { SessionKeepalive } from "@/components/layout/SessionKeepalive";
+import { ScreenLock } from "@/components/lock/ScreenLock";
 import { RequestAlertBar } from "@/components/orders/RequestAlertBar";
 import { PrintHostPrintSources } from "@/components/print/PrintHostPrintSources";
 import { TouchFeel } from "@/components/shared/TouchFeel";
@@ -75,33 +77,42 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <SidebarProvider>
-      <PosPulseProvider>
-        {/* Print-host plan §B5 (PH-5): the host bridge lives in the shell so a
-            designated PC prints from ANY screen (owner Q7). PrintHostPrintSources
-            sits inside SidebarInset after <main> — absolute, zero in-flow height,
-            null while idle — so the height-chain matrix is untouched. */}
-        <PrintHostProvider>
-          {/* CB-DL-1: one master-data call per page load. Seeds the five master
-              query keys from this tab's stored copy synchronously (before any
-              screen renders) and fetches GET /api/bootstrap once; a fresh tab
-              waits behind a placeholder so the mounted screens cannot each fire
-              their own master fetch first. */}
-          <MasterDataProvider>
-            {/* CB-U1: the session keepalive rolls the 90-day cookie for a tab
-                that never navigates — staff screens only, never /login or /m. */}
-            <SessionKeepalive />
-            <AppSidebar />
-            <SidebarInset>
-              <Header />
-              <RequestAlertBar />
-              <TouchFeel />
-              <main className="flex-1 p-4 md:p-6">{children}</main>
-              <PrintHostPrintSources />
-            </SidebarInset>
-          </MasterDataProvider>
-        </PrintHostProvider>
-      </PosPulseProvider>
-    </SidebarProvider>
+    <>
+      {/* Screen lock (spec 2026-10-16 §5.6): a plain script child, an imported CONSTANT string, that marks <html>
+          locked before the first paint when the stored lock says so, so a reload never flashes the page; the
+          ScreenLock cover below takes over once it mounts. The sidebar provider after it stays bare. */}
+      <script>{SCREEN_LOCK_SCRIPT}</script>
+      <SidebarProvider>
+        <PosPulseProvider>
+          {/* Print-host plan §B5 (PH-5): the host bridge lives in the shell so a
+              designated PC prints from ANY screen (owner Q7). PrintHostPrintSources
+              sits inside SidebarInset after <main> — absolute, zero in-flow height,
+              null while idle — so the height-chain matrix is untouched. */}
+          <PrintHostProvider>
+            {/* CB-DL-1: one master-data call per page load. Seeds the five master
+                query keys from this tab's stored copy synchronously (before any
+                screen renders) and fetches GET /api/bootstrap once; a fresh tab
+                waits behind a placeholder so the mounted screens cannot each fire
+                their own master fetch first. */}
+            <MasterDataProvider>
+              {/* CB-U1: the session keepalive rolls the 90-day cookie for a tab
+                  that never navigates — staff screens only, never /login or /m. */}
+              <SessionKeepalive />
+              {/* The screen lock: a cover over this running page (never a sign-out, so printing, the pulse, the alarm
+                  and realtime go on under it). Inside the master-data provider, so it reads the seeded settings. */}
+              <ScreenLock />
+              <AppSidebar />
+              <SidebarInset>
+                <Header />
+                <RequestAlertBar />
+                <TouchFeel />
+                <main className="flex-1 p-4 md:p-6">{children}</main>
+                <PrintHostPrintSources />
+              </SidebarInset>
+            </MasterDataProvider>
+          </PrintHostProvider>
+        </PosPulseProvider>
+      </SidebarProvider>
+    </>
   );
 }

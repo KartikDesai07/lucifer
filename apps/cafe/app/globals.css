@@ -416,3 +416,17 @@
     }
   }
 }
+
+/* Screen lock (spec 2026-10-16 §5.6): while the dashboard layout's no-flash script has marked a reloaded page locked
+   and the cover (components/lock/ScreenLock.tsx) has not yet marked itself ready, nothing on the page paints. The
+   failsafe (ruling R13): ten seconds on, the page shows anyway, so a cover that never mounts can never leave a blank
+   screen for good. Unlayered on purpose, so no utility class outranks it. */
+html[data-pos-locked]:not([data-pos-lock-ready]) body > * {
+  visibility: hidden;
+  animation: pos-lock-failsafe 0s linear 10s forwards;
+}
+@keyframes pos-lock-failsafe {
+  to {
+    visibility: visible;
+  }
+}

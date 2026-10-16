@@ -10,6 +10,7 @@ import { AlertCircle, ArrowRight, Eye, EyeOff, Loader2, UtensilsCrossed } from "
 
 import { clearMastersBlob } from "@/lib/masters-blob";
 import { fetchKnownPeople, rememberThisDevice, type KnownPerson } from "@/lib/pin-sign-in-client";
+import { clearLockState } from "@/lib/screen-lock";
 import { loginSchema, type LoginInput } from "@/schemas/staff.schema";
 import { APP_NAME } from "@/lib/constants";
 import { brandingUrl } from "@/lib/images";
@@ -84,8 +85,15 @@ export default function LoginPage() {
   });
 
   // Both ways in end here: the device remembers the signed-in person (it needs the new session, so it runs after the
-  // sign-in, once), then the dashboard; refresh so the server picks up the new session.
+  // sign-in, once), then the dashboard; refresh so the server picks up the new session. A screen lock left stored on
+  // this device (a sign-out from the lock, a session that ran out while locked) goes first: a fresh sign-in never
+  // lands on a stale lock screen (ruling R15).
   const finishSignIn = async () => {
+    try {
+      clearLockState(window.localStorage);
+    } catch {
+      // Storage itself can be blocked; then nothing was stored either.
+    }
     await rememberThisDevice();
     router.replace("/");
     router.refresh();
