@@ -290,6 +290,7 @@
     "lib/brand-art.test.ts",
     "lib/brand-steam.test.ts",
     "lib/brand-contrast.test.ts",
+    "lib/ui-constants.test.ts",
     "lib/nav-active.test.ts",
     "lib/sidebar-paths.test.ts",
     "lib/sidebar-order-paths.test.ts",
