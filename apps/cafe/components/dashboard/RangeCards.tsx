@@ -144,6 +144,20 @@ const CHANNEL_ICONS: Record<DashboardChannel, LucideIcon> = {
   counter: Store,
 };
 
+/** The mix header's height: the total line (leading-8 = 32 px + mb-3 = 12 px) and the stacked bar (h-2 = 8 px + mb-2 = 8 px).
+ *  The loaded layout and the reserved body height both use these, so the card never jumps when data arrives. */
+const MIX_TOTAL_PX = 32;
+const MIX_TOTAL_GAP_PX = 12;
+const MIX_BAR_PX = 8;
+const MIX_BAR_GAP_PX = 8;
+export const MIX_HEADER_PX = MIX_TOTAL_PX + MIX_TOTAL_GAP_PX + MIX_BAR_PX + MIX_BAR_GAP_PX;
+export const PAYMENT_BODY_MIN_PX = PAYMENT_ROWS * RANKED_ROW_PX + MIX_HEADER_PX;
+
+/** The stacked bar's segments: one per row with a share, width in percent to one decimal; none when nothing was collected. */
+export function mixSegments<R extends { key: string; share: number }>(rows: R[]): Array<{ key: string; pct: number }> {
+  return rows.filter((r) => r.share > 0).map((r) => ({ key: r.key, pct: Math.round(r.share * 1000) / 10 }));
+}
+
 export function PaymentMixCard(p: RangeCardProps) {
   const rows = p.data?.payments ?? [];
   const bars = barsOf(rows, (r) => r.amount);
@@ -155,13 +169,13 @@ export function PaymentMixCard(p: RangeCardProps) {
       updating={p.updating}
       onRetry={p.onRetry}
       empty={{ title: "No payments yet", description: "Money taken on completed orders shows here by payment mode." }}
-      bodyMinHeight={PAYMENT_ROWS * RANKED_ROW_PX}
+      bodyMinHeight={PAYMENT_BODY_MIN_PX}
     >
-      <p className="mb-3 text-[26px] font-semibold leading-8 tracking-[-0.01em] text-brand-ink">{inr(rows.reduce((sum, r) => sum + r.amount, 0))}</p>
+      <p className="mb-3 text-[26px] font-semibold leading-8 tracking-[-0.01em] text-brand-ink" style={{ height: MIX_TOTAL_PX }}>{inr(rows.reduce((sum, r) => sum + r.amount, 0))}</p>
       {/* One segment per mode, as wide as its share; the dots below name them. */}
       <div className="mb-2 flex h-2 gap-px overflow-hidden rounded-full bg-track" aria-hidden>
-        {rows.filter((r) => r.share > 0).map((r) => (
-          <div key={r.key} className={STATUS_CLASSES[kindOf(PAYMENT_KIND, r.key)].dot} style={{ width: `${Math.round(r.share * 1000) / 10}%` }} />
+        {mixSegments(rows).map((s) => (
+          <div key={s.key} className={STATUS_CLASSES[kindOf(PAYMENT_KIND, s.key)].dot} style={{ width: `${s.pct}%` }} />
         ))}
       </div>
       <RankedList

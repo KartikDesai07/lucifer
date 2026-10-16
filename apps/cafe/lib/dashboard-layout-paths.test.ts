@@ -442,3 +442,19 @@ test("PaymentMixCard: a stacked bar with one segment per mode and a dot per row;
   );
   assert.ok(ch.includes("bg-status-info") && ch.includes("bg-status-warn"), "dine-in info bar, takeaway warn bar");
 });
+
+test("PaymentMixCard reserves its header's height, and mixSegments handles zero, one mode and rounding", async () => {
+  const { MIX_HEADER_PX, PAYMENT_BODY_MIN_PX, mixSegments } = await import("@/components/dashboard/RangeCards");
+  const { RANKED_ROW_PX } = await import("@/components/dashboard/RankedList");
+  assert.ok(MIX_HEADER_PX >= 60, "the total line and the bar take about 60 px");
+  assert.equal(PAYMENT_BODY_MIN_PX, 3 * RANKED_ROW_PX + MIX_HEADER_PX, "the reserved body height includes the header, so loading and empty hold the loaded height");
+  assert.ok(readSrc("components/dashboard/RangeCards.tsx").includes("bodyMinHeight={PAYMENT_BODY_MIN_PX}"), "the card passes the reserved height");
+  assert.deepEqual(mixSegments([]), [], "no rows, no segments");
+  assert.deepEqual(mixSegments([{ key: "Cash", share: 0 }, { key: "Online", share: 0 }]), [], "a zero total draws no segment");
+  assert.deepEqual(mixSegments([{ key: "Cash", share: 1 }]), [{ key: "Cash", pct: 100 }], "a single mode fills the bar");
+  assert.deepEqual(
+    mixSegments([{ key: "Cash", share: 1 / 3 }, { key: "Online", share: 2 / 3 }, { key: "Due", share: 0 }]),
+    [{ key: "Cash", pct: 33.3 }, { key: "Online", pct: 66.7 }],
+    "widths round to one decimal and a zero share is dropped",
+  );
+});
