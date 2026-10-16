@@ -53,8 +53,12 @@ export default async function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const session = await auth();
 
+  // suppressHydrationWarning covers <html>'s OWN attributes only (React applies it one level deep): the pre-paint
+  // scripts set an attribute on <html> before React hydrates it (the dashboard's screen lock, data-pos-locked; the
+  // diner's stored theme, data-pub-theme), which React's dev build would otherwise report as a mismatch. Nothing
+  // below <html> is affected.
   return (
-    <html lang="en" className={fontVariables}>
+    <html lang="en" className={fontVariables} suppressHydrationWarning>
       {/* min-h-screen = 100vh = the LARGEST mobile viewport (URL bar retracted),
           which made the document scroll by the toolbar height on staff devices.
           Where `dvh` exists the floor becomes the VISIBLE viewport instead; on

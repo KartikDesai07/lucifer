@@ -96,6 +96,7 @@ export function ScreenLock() {
   const openRef = useRef<OpenLock | null>(null);
   const lastActivityAt = useRef(0);
   const keyRef = useRef(0);
+  const resetPending = useRef(false);
   // The listeners and the timer read the latest render's values without subscribing again.
   const latest = useRef({ user, minutes, pathname });
   latest.current = { user, minutes, pathname };
@@ -188,12 +189,25 @@ export function ScreenLock() {
     };
   }, [lockNow]);
 
+  // Someone else signed in: what the last person loaded for their role (staff list, reports, the multi-day
+  // dashboard) goes. It runs once the new session has rendered, when an admin page under the cover has already
+  // unmounted its admin-only queries (AdminGuard), so nothing is fetched again as a person who may not see it.
+  const resetPersonScoped = useCallback(() => {
+    resetPending.current = false;
+    void queryClient.resetQueries({ predicate: (q) => isPersonScopedQuery(q.queryKey) });
+  }, [queryClient]);
+  const userId = user?.id;
+  useEffect(() => {
+    if (resetPending.current) resetPersonScoped();
+  }, [userId, resetPersonScoped]);
+
   const unlocked = (person: SignedIn) => {
     const before = openRef.current?.as.id ?? null;
     if (!person || person.id !== before) {
-      // Someone else: what the last person loaded for their role (staff list, reports, the multi-day dashboard)
-      // goes, and an admin-only page is left for a non-admin. The POS cart is not tied to a person and stays.
-      void queryClient.resetQueries({ predicate: (q) => isPersonScopedQuery(q.queryKey) });
+      // The new session may not have rendered yet (signIn's update lands on React's next render).
+      if (person && latest.current.user?.id !== person.id) resetPending.current = true;
+      else resetPersonScoped();
+      // An admin-only page is left for a non-admin. The POS cart is not tied to a person and stays.
       if (isAdminPath(latest.current.pathname) && person?.role !== "admin") router.replace("/");
       if (person?.name) toast.success(`Signed in as ${firstName(person.name)}`);
     }

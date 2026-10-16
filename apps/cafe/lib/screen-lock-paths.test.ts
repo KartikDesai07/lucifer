@@ -93,6 +93,14 @@ test("PIN: the server layout imports the script only from the dependency-free li
   assert.match(read(LOCK_MODULE), /from "\.\/screen-lock-script"/, "lib/screen-lock.ts re-exports the script module");
 });
 
+test("PIN: the root <html> carries suppressHydrationWarning (the no-flash script sets data-pos-locked on it before React hydrates)", () => {
+  const src = read("app/layout.tsx");
+  const html = src.match(/<html\b[^>]*>/);
+  assert.ok(html, "landmark: the root layout renders <html>");
+  assert.match(html![0], /\bsuppressHydrationWarning\b/, "the root <html> tag has suppressHydrationWarning");
+  assert.equal(count(src, "suppressHydrationWarning"), 1, "only on <html>: nothing below it is excused");
+});
+
 test("the script module and lib/screen-lock.ts agree: one storage key, one attribute, and the script reads that key", async () => {
   const script = await import("@/lib/screen-lock-script");
   const lock = await import("@/lib/screen-lock");
