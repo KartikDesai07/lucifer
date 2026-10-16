@@ -2,7 +2,8 @@
  * Staff PIN live leg (PIN lock, 2026-10-16). Drives the REAL route handlers against a real mongod
  * with `@/lib/auth` swapped for a signed-in stub whose role is switchable - the
  * verify-expenses-live.ts harness. Part A (set / shown to admins / never listed) is in
- * verify-staff-pin-live-cases.ts; later tasks append parts to PARTS.
+ * verify-staff-pin-live-cases.ts, part B (the PIN check itself) in verify-staff-pin-live-cases-signin.ts;
+ * later tasks append parts to PARTS.
  *
  *   node --import tsx scripts/verify-staff-pin-live.ts
  *
@@ -16,6 +17,7 @@ import mongoose from "mongoose";
 import { connectDB } from "@/lib/db";
 import { Staff } from "@/models/Staff";
 import { runPartA } from "./verify-staff-pin-live-cases";
+import { runPartB } from "./verify-staff-pin-live-cases-signin";
 import { ADMIN_ID, STAFF_ID, type Harness, type Json, type Part, type Res, type Role } from "./verify-staff-pin-live-helpers";
 
 const SCRATCH_PREFIX = "pos_scratch_";
@@ -24,8 +26,8 @@ const DEFAULT_URI = `mongodb://127.0.0.1:27017/${DB_NAME}`;
 const BODY_PRINT_MAX = 150;
 const ROUTE_MISSING_STATUS = 0;
 
-// Later tasks append their parts here (B, C, D).
-const PARTS: Part[] = [runPartA];
+// Later tasks append their parts here (C, D).
+const PARTS: Part[] = [runPartA, runPartB];
 
 let currentRole: Role = "admin";
 
