@@ -94,7 +94,7 @@ export function RequestAlertBar() {
   return (
     <div
       ref={bandRef}
-      className="flex flex-wrap items-center gap-3 border-b bg-amber-50 px-4 py-2 text-sm dark:bg-amber-950/40"
+      className="flex flex-wrap items-center gap-3 border-b bg-status-warn-tint px-4 py-2 text-sm text-status-warn-ink"
     >
       {openCount > 0 && (
         <Link href={REQUESTS_PATH} className="font-medium underline-offset-2 hover:underline">

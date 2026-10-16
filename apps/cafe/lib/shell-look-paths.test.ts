@@ -14,6 +14,10 @@ const CLASSES = read("components/brand/brand-classes.ts");
 const BRAND = read("components/layout/SidebarBrand.tsx");
 const SIDEBAR = read("components/layout/AppSidebar.tsx");
 const ACCOUNT = read("components/layout/SidebarAccount.tsx");
+const HEADER = read("components/layout/Header.tsx");
+const TABS = read("components/layout/HeaderQuickTabs.tsx");
+const BAND = read("components/orders/RequestAlertBar.tsx");
+const PRINTER = read("components/print/PrinterStatusButton.tsx");
 
 function literal(name: string): string {
   const m = CLASSES.match(new RegExp(`export const ${name} =\\s*"([^"]*)"`));
@@ -28,6 +32,7 @@ test("a nav row is the soft nav text, lifts to the nav-hover fill, and the activ
     "hover:bg-brand-nav-hover",
     "data-[active=true]:bg-brand-nav-hover",
     "data-[active=true]:text-white",
+    "data-[active=true]:font-semibold",
     "data-[active=true]:shadow-[inset_3px_0_0_var(--color-brand-accent)]",
     "pointer-coarse:h-11",
     "h-9",
@@ -57,6 +62,36 @@ test("the sidebar brand has no multiply blend (it misrenders on dark) and puts t
 
 test("the sidebar's scrollbar colour reads the nav rule token", () => {
   assert.match(SIDEBAR, /scrollbar-color:var\(--brand-nav-rule\)/, "AppSidebar's scrollbar must use --brand-nav-rule");
+});
+
+test("the active sidebar row is weight 600 and never repeats font-medium in NAV_ACTIVE", () => {
+  const active = CLASSES.match(/const NAV_ACTIVE =\s*"([^"]*)"/)?.[1] ?? "";
+  assert.ok(!active.includes("font-medium"), "NAV_ACTIVE must not repeat font-medium (a no-op)");
+});
+
+test("the top bar is a white 56px bar with a bottom rule, sticky", () => {
+  const tag = HEADER.match(/<header className="([^"]*)"/)?.[1] ?? "";
+  for (const needle of ["sticky", "top-0", "h-14", "border-b", "bg-card"]) {
+    assert.ok(tag.split(/\s+/).includes(needle), `the header tag must carry ${needle}`);
+  }
+  assert.ok(!/bg-background/.test(tag), "the header must not be the translucent page colour any more");
+});
+
+test("a quick tab keeps min-w-0 and shrink and lights with the accent tint when active", () => {
+  const cls = TABS.match(/const TAB_CLASS =\s*([\s\S]*?);\n/)?.[1] ?? "";
+  for (const needle of ["min-w-0", "shrink", "data-[active=true]:bg-accent", "data-[active=true]:text-accent-foreground"]) {
+    assert.ok(cls.includes(needle), `TAB_CLASS must carry ${needle}`);
+  }
+  assert.ok(!/brand-primary-soft/.test(cls), "TAB_CLASS must not keep the old brand tint");
+});
+
+test("the request band is the warn tint with warn ink, on the observed element", () => {
+  assert.match(BAND, /<div[^>]*ref=\{bandRef\}[^>]*bg-status-warn-tint[^>]*text-status-warn-ink/, "band tag colours");
+  assert.ok(!/amber/.test(BAND), "no amber palette class may remain in the band");
+});
+
+test("the printer button is the outline square", () => {
+  assert.match(PRINTER, /variant="outline"/, "PrinterStatusButton must use the outline variant");
 });
 
 test("the account row reads on dark: white name, muted role, and an avatar with the online dot", () => {

@@ -476,14 +476,13 @@ test("PIN: RequestAlertBar publishes its own height on --pos-alert-h via a synch
     "the ResizeObserver cleanup must disconnect AND removeProperty(POS_ALERT_HEIGHT_VAR) in the same closure",
   );
   // The band's own div carries BOTH the ref the observer watches and the
-  // amber styling, in the SAME opening tag (not two different divs) — read
-  // the real attribute order rather than guessing.
+  // warn-tint styling (the status token since the 2026-10 look), in the SAME opening tag (not two different divs).
   assert.match(
     src,
-    /<div[^>]*ref=\{bandRef\}[^>]*bg-amber-50/,
-    "the band's <div ref={bandRef} ...> must be the SAME element that carries bg-amber-50",
+    /<div[^>]*ref=\{bandRef\}[^>]*bg-status-warn-tint/,
+    "the band's <div ref={bandRef} ...> must be the SAME element that carries bg-status-warn-tint",
   );
-  assert.match(src, /bg-amber-50/, "landmark: RequestAlertBar.tsx must still carry bg-amber-50");
+  assert.match(src, /bg-status-warn-tint/, "landmark: RequestAlertBar.tsx must still carry bg-status-warn-tint");
 });
 
 test("PIN: CategorySidebar.tsx's CategoryChips keeps the selected chip in view via a scrollIntoView effect keyed on the aria-current chip", () => {

@@ -72,6 +72,7 @@ const PAIRS: ReadonlyArray<readonly [string, string, number, string]> = [
   ["accent", "slip", NON_TEXT_MIN, "the active nav icon, focus rings on cards"],
   ["accent", "paper", NON_TEXT_MIN, "focus rings on paper"],
   ["accent", "sidebar", NON_TEXT_MIN, "the active row's 3px blue bar on the dark sidebar"],
+  ["accent", "nav-hover", NON_TEXT_MIN, "the active row's 3px blue bar, which sits on the nav-hover fill"],
   ["nav-focus", "sidebar", NON_TEXT_MIN, "focus rings on the dark sidebar"],
   // Dashboard (screen 3).
   ["up", "slip", TEXT_MIN, "a dashboard figure's better-direction change (▲ 6% vs …) on a card"],

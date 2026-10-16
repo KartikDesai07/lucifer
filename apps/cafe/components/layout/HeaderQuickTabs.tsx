@@ -30,8 +30,8 @@ const TAB_CLASS =
   "inline-flex h-9 min-w-0 shrink items-center gap-1.5 rounded-md px-2 text-[13.5px] font-medium text-brand-ink/80 sm:px-2.5 sm:text-[14px] " +
   "transition-colors duration-150 hover:bg-brand-wash hover:text-brand-ink focus-visible:outline-none focus-visible:ring-2 " +
   "focus-visible:ring-brand-accent pointer-coarse:h-11 [&>svg]:hidden [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-brand-muted " +
-  "sm:[&>svg]:block data-[active=true]:bg-brand-primary-soft data-[active=true]:font-semibold data-[active=true]:text-brand-ink " +
-  "[&[data-active=true]>svg]:text-brand-primary";
+  "sm:[&>svg]:block data-[active=true]:bg-accent data-[active=true]:font-semibold data-[active=true]:text-accent-foreground " +
+  "[&[data-active=true]>svg]:text-accent-foreground";
 
 export function HeaderQuickTabs() {
   const pathname = usePathname() ?? "";

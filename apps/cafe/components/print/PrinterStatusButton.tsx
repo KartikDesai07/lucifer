@@ -54,7 +54,7 @@ export function PrinterStatusButton() {
       <SheetTrigger asChild>
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
           size="icon"
           className={PRINTER_ICON_BUTTON_CLASS}
           aria-label={name}
