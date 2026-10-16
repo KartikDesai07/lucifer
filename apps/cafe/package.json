@@ -62,9 +62,11 @@
     "verify:slips:live": "node --import tsx scripts/verify-slip-numbers-live.ts",
     "verify:orders:idem:live": "node --import tsx scripts/verify-order-idem-live.ts",
     "verify:skip-kot:live": "node --import tsx scripts/verify-skip-kot-live.ts",
-    "verify:expenses:live": "node --import tsx scripts/verify-expenses-live.ts"
+    "verify:expenses:live": "node --import tsx scripts/verify-expenses-live.ts",
+    "verify:staff-pin:live": "node --import tsx scripts/verify-staff-pin-live.ts"
   },
   "testChain": [
+    "lib/staff-pin-paths.test.ts",
     "lib/tenant.test.ts",
     "models/order.ledger.test.ts",
     "models/daily-rollup.ledger.test.ts",
