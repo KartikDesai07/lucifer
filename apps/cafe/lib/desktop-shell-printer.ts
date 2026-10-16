@@ -73,6 +73,18 @@ export interface DesktopLanBridge {
   findLanPrinters?(): Promise<unknown>;
 }
 
+/** Printing Phase 4 (spec §7.2): the Windows app lists the network printers on this PC's own network (2.0.2). */
+export function desktopFindsLanPrinters(): boolean {
+  return typeof desktopShell()?.findLanPrinters === "function";
+}
+
+/** One scan through the Windows app (lib/printer/lan-discovery.ts validates its answer). */
+export async function desktopFindLanPrinters(): Promise<unknown> {
+  const shell = desktopShell();
+  if (typeof shell?.findLanPrinters !== "function") throw new Error(DESKTOP_PRINT_FAILED_MESSAGE);
+  return shell.findLanPrinters();
+}
+
 /** Printing Phase 4 (spec §5.3, §6): the Windows app writes raw bytes to a Windows printer (printRawOn, 2.0.2). */
 export function desktopPrintsRaw(): boolean {
   return typeof desktopShell()?.printRawOn === "function";

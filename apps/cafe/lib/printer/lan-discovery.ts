@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import type { PrinterConfig } from "@pos/shared/print-printers";
-import { desktopShell } from "@/lib/desktop-shell";
+import { desktopFindLanPrinters, desktopFindsLanPrinters } from "@/lib/desktop-shell-printer";
 import { nativeHasFeature, nativeRequest } from "@/lib/printer/native-bridge";
 
 // Printing Phase 4 (spec 2026-10-15 §7.3): "Find network printers" on the page. Only where this device's app can scan
@@ -35,8 +35,7 @@ const answerSchema = z.object({
 
 /** This device's app can list the network printers on its own network. */
 export function lanScanAvailable(): boolean {
-  if (nativeHasFeature("lanScan")) return true;
-  return typeof desktopShell()?.findLanPrinters === "function";
+  return nativeHasFeature("lanScan") || desktopFindsLanPrinters();
 }
 
 function ipv4Key(host: string): number | null {
@@ -73,8 +72,7 @@ export function lanOutcomeOf(raw: unknown): LanScanOutcome {
 export async function scanNetworkPrinters(): Promise<LanScanOutcome> {
   try {
     if (nativeHasFeature("lanScan")) return lanOutcomeOf(await nativeRequest("network.findPrinters"));
-    const shell = desktopShell();
-    if (typeof shell?.findLanPrinters === "function") return lanOutcomeOf(await shell.findLanPrinters());
+    if (desktopFindsLanPrinters()) return lanOutcomeOf(await desktopFindLanPrinters());
     return { kind: "none" };
   } catch {
     return { kind: "none" };
