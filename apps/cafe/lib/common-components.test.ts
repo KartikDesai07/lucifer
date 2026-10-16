@@ -52,7 +52,7 @@ test("StaffAvatar shows initials; the status dot is optional", () => {
 });
 
 test("StatusPill and StatusDot use the status classes", () => {
-  const pill = renderToStaticMarkup(createElement(StatusPill, { kind: "bill", dot: true, children: "Billed" }));
+  const pill = renderToStaticMarkup(createElement(StatusPill, { kind: "bill", dot: true } as React.ComponentProps<typeof StatusPill>, "Billed"));
   assert.ok(pill.includes("bg-status-bill-tint text-status-bill-ink"), "bill pill classes");
   assert.ok(pill.includes("bg-status-bill"), "dot class");
   assert.ok(pill.includes("Billed"), "label");
