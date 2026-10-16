@@ -12,12 +12,30 @@ printing** and **multiple-printer printing**, each with its own spec and phases 
 the same requests, the same words where the design keeps them, the same printing, the same paper.
 
 **Base:** `main` `4388752` (printing Phase 4 merged). Branch `feat/ui-redesign`; each page lands on it test first, is
-reviewed, and is merged into `main` only with the owner's OK (one page per merge is recommended: each page then ships, or
-waits, on its own).
+reviewed, and is merged into `main` only with the owner's OK, one phase (U0, or one page) per merge (the owner's decision,
+below): each then ships, or waits, on its own.
+
+## The owner's decisions (2026-10-16, later)
+
+- **The common look comes first (U0):** "poore app ka common look base karna hai, proper new theme so proper reusable":
+  a proper new theme, and every reusable piece (components, patterns, styles, UI constants) managed in one common place,
+  so the code base stays clean and clear. The owner gives U0's design (what changes where) in U0's own session prompt.
+- **Then the pages, one per session, each merged once it is properly done** ("merge me one page jitna proper implement ho
+  utna karte jana hai"). Nothing starts before the owner gives that phase's design.
+- **Proposed U0 split** (the U0 session confirms it with the owner): **U0-A** the theme (tokens, fonts, the cafe's
+  appearance presets on the new tokens, the chart palette), the UI kit and the common components; **U0-B** the app shell
+  (sidebar, header, the printer button and panel), its own phase because it holds 28 own UI files, 13 pins and the
+  printing controls.
+- **The kit keeps its API in U0:** every `components/ui/*` and `components/shared/*` export, prop and variant name stays
+  (new variants are added, none renamed or removed), so U0 changes no page file; each page adopts the new common
+  components in its own session. A U0 merge alone changes the look of every page at once (colours, type, controls) while
+  each page's layout stays until its own session.
+- 31 test files pin class names (for example `h-11`, `bg-brand-…`, `rounded-…`): U0 changes such a pin only on purpose, in
+  the same commit, with the reason.
 
 ## How this runs
 
-- **U0, the foundation (only if the owner's designs change the common look):** the design tokens (colours, radii,
+- **U0, the foundation:** the design tokens (colours, radii,
   shadows, spacing) in `apps/cafe/app/globals.css`, the fonts (`apps/cafe/lib/fonts.ts`), the UI kit
   (`apps/cafe/components/ui/*`, shadcn), and the app shell (`app/(dashboard)/layout.tsx`: `components/layout/*`, the
   header, the sidebar, `components/shared/PageHeader.tsx`, `EmptyState`, `ErrorState`). These reach every page (see "UI
@@ -31,7 +49,8 @@ waits, on its own).
 
 ## Global constraints (each one is held by a test or a check)
 
-1. **UI only.** No change to `apps/cafe/app/api`, `apps/cafe/models`, `workers`, `packages`, the data a page reads or
+1. **UI only.** No change to `apps/cafe/app/api`, `apps/cafe/models`, `workers`, `packages` (in U0 only
+   `packages/shared/src/appearance*.ts`, the cafe's theme presets, and only as the owner's design says), the data a page reads or
    writes, its requests, its route, who may open it (`ADMIN_ROUTES`, the staff/admin rules), or any `lib`/`hooks` logic.
    Words the design changes are changed where they are defined (the page's own constants), with their tests.
 2. **Free tier, ₹0 forever:** no new request of any kind (no polling, no prefetch, no new query observer that refetches);
@@ -51,7 +70,10 @@ waits, on its own).
 6. **The cafe's own theme.** The six appearance presets and the accent colour (Settings → Appearance,
    `packages/shared/src/appearance.ts`) keep working: colours come from the tokens (`:root` / `.dark` and `@theme inline`
    in `globals.css`, OKLCH with the RGB fallbacks), never a hard-coded colour that ignores the cafe's theme, unless the
-   owner's design replaces the theme model (a U0 decision).
+   owner's design replaces the theme model (a U0 decision). The presets set the colour tokens at run time
+   (`packages/shared/src/appearance.ts`: `--primary`, `--background` … and their `-rgb` twins for WebView 109), so a new
+   theme keeps those names working (a new token is set by the presets too, or derived), and `appearance-contrast` keeps
+   every preset readable.
 7. **Touch and sizes.** Controls at least 44 px tall on touch pages (`PRINTER_ACTION_CLASS` is `h-11`); a phone at 390 px
    wide with no sideways scroll, a tablet, and a desktop at 1280 px.
 8. **Names the tests and the device scripts use** (button labels, `aria-label`s such as "Refresh", "Toggle Sidebar",
