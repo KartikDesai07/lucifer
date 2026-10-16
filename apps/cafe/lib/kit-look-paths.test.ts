@@ -195,5 +195,16 @@ test("the look: dialog, alert-dialog, sheet, drawer, menus, tooltip, toast", () 
     /group-\[\.toaster\]:bg-foreground group-\[\.toaster\]:text-background/,
     "sonner toast is dark (bg-foreground text-background)",
   );
-  assert.ok(!/\bbg-background\b/.test(sonner), "sonner toast has no bg-background");
+  const toastClass = sonner.match(/\btoast:\s*"([^"]*)"/)?.[1] ?? "";
+  assert.ok(toastClass.length > 0 && !/\bbg-background\b/.test(toastClass), "sonner toast class has no bg-background");
+});
+
+test("the look: sonner cancel button reads on the dark toast", () => {
+  const sonner = read("components/ui/sonner.tsx");
+  const cancel = sonner.match(/cancelButton:\s*"([^"]*)"/)?.[1] ?? "";
+  assert.ok(cancel.length > 0, "sonner has a cancelButton class");
+  assert.ok(
+    !(/\bbg-muted\b/.test(cancel) && /text-background/.test(cancel)),
+    `cancel button must not pair bg-muted with text-background (light on light): "${cancel}"`,
+  );
 });
