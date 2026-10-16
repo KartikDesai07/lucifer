@@ -52,9 +52,9 @@ export const DEMO_CUSTOMERS: DemoCustomer[] = [
 ];
 
 export const DEMO_STAFF: DemoStaffMember[] = [
-  { name: "Priya Shah", username: "priya", mobile: "9825199001", weight: 45 },
-  { name: "Rahul Mehta", username: "rahul", mobile: "9898199002", weight: 30 },
-  { name: "Amit Patel", username: "amit", mobile: "9909199003", weight: 15 },
+  { name: "Priya Shah", username: "priya", mobile: "9825199001", weight: 45, pin: "2468" },
+  { name: "Rahul Mehta", username: "rahul", mobile: "9898199002", weight: 30, pin: "1357" },
+  { name: "Amit Patel", username: "amit", mobile: "9909199003", weight: 15, pin: "8642" },
 ];
 
 /** Event booking templates: payable range (rupees) + a sample notes line. */

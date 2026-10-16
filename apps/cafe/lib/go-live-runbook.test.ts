@@ -1249,6 +1249,13 @@ test("PIN §6: the staff-accounts section states the 90-day signed-in lifetime a
   assert.match(section, /Log out when handing it over/, "the §6 section must tell the operator to Log out when handing a shared device over");
 });
 
+test("PIN §6: the staff-accounts section explains the PIN, the first sign-in on each device and the screen lock", () => {
+  const section = norm(sectionSlice("## §6 Staff accounts (CAFE ADMIN, `Staff`, admin only)"));
+  assert.match(section, /PIN/, "the §6 section must mention the staff PIN");
+  assert.match(section, /first time on each device/, "the §6 section must say a person signs in with the password the first time on each device");
+  assert.match(section, /Screen lock/, "the §6 section must name the Screen lock setting");
+});
+
 // New §6 bullet (CB-U1 review round 1, F2 doc/pin-only fix): the owner decided
 // CB-U1 only raises the session TTL — a password reset does NOT end an
 // already-signed-in device's session. An operator must be told the actual

@@ -4,12 +4,14 @@
  * Also called by the combined seeder (npm run seed).
  *
  * Override defaults via env: SEED_ADMIN_USERNAME, SEED_ADMIN_PASSWORD
+ * Optional: SEED_ADMIN_PIN (4 digits, not an easy one) gives the admin a PIN.
  * (console output is intentional — this is an ops CLI script, not app code).
  */
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import { connectDB } from "@/lib/db";
 import { Staff } from "@/models/Staff";
+import { staffPinProblem, STAFF_PIN_MESSAGES } from "@pos/shared/staff-pin";
 
 export async function seedAdmin() {
   const username = (process.env.SEED_ADMIN_USERNAME ?? "admin").toLowerCase();
@@ -30,6 +32,12 @@ export async function seedAdmin() {
     );
   }
 
+  const pin = process.env.SEED_ADMIN_PIN || undefined;
+  if (pin !== undefined) {
+    const problem = staffPinProblem(pin);
+    if (problem) throw new Error(`SEED_ADMIN_PIN: ${STAFF_PIN_MESSAGES[problem]}`);
+  }
+
   await connectDB();
 
   const existing = await Staff.findOne({ role: "admin" });
@@ -46,6 +54,7 @@ export async function seedAdmin() {
     password: hashedPassword,
     role: "admin",
     isActive: true,
+    ...(pin ? { pin, hasPin: true } : {}),
   });
 
   console.log("Admin account created.");

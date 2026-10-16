@@ -464,6 +464,24 @@ The order matters: the web first, then the 2.0.2 upload, then the demo cafe, the
 - [ ] **Before telling a client its printers are on text:** that printer's own text test, and the cafe's real
       printers through "Phase 4 checks (text KOTs, Find network printers)".
 
+
+### Existing cafes: the PIN sign-in and new-look release
+
+This release adds a 4-digit PIN sign-in for staff, a screen lock, and the new look of the POS (colours, top bar,
+dashboard). The Worker, the printing and the data are not changed; the staff list gains a PIN per person.
+
+- [ ] **Deploy** (re-run the go-live run for the cafe). `GET /api/health` answers 200. Reload every open POS screen.
+- [ ] **The cafe's admin signs in once** with username and password (the PIN sign-in has nobody remembered yet).
+- [ ] **Set a PIN for each staff member** on the Staff page (*Edit staff* → *New PIN*), the admin's own included.
+      Until a person has a PIN they keep signing in with the password.
+- [ ] **Each person signs in once on each device** with their password; after that the device shows their name and a
+      PIN pad, on the login page and on the lock screen.
+- [ ] **Optional: set the Screen lock time** under Settings → Business details → Screen lock (default 1 hour).
+- [ ] **What staff will notice:** the new look; a login page with name tiles and a PIN pad on a device that remembers
+      them; the screen lock after the idle time, and *Lock screen* / *Switch user* in the account menu. The Kitchen
+      and Now Serving screens never lock, and printing, the alarm and new order requests go on while locked.
+- [ ] **Sign-in lasts 90 days** without use (renewing while in use), so devices already signed in stay signed in.
+
 ---
 
 ## §2 First run, and the admin handover (DEPLOYER → CAFE ADMIN)
@@ -782,7 +800,7 @@ Two routes: type it in, or import a CSV. For more than ~30 items, import.
 - [ ] One login per person. Attribution on receipts, void slips and the void
       trail uses the account's display name — shared logins destroy the trail.
 - [ ] Add staff: *Name*, *Mobile* (≥10 digits), *Username* (≥3 characters,
-      stored lowercase), *Role*, *Password* (≥8 characters).
+      stored lowercase), *Role*, *Password* (≥8 characters) and a 4-digit *PIN*.
 - [ ] Roles understood:
       - **admin** — everything, including Staff, Reports, Printer setup, Settings,
         Categories, Tables Setup, Tables QR codes and Expense categories, plus
@@ -837,6 +855,27 @@ Two routes: type it in, or import a CSV. For more than ~30 items, import.
 - [ ] Leavers get **deactivated**, not deleted, so their history keeps its name.
 - [ ] Staff stay signed in for 90 days of use on a device; on a shared device
       use Log out when handing it over.
+- [ ] **PINs.** An admin sets a 4-digit PIN for each person on the Staff page: *Add
+      staff* needs one; *Edit staff* has *New PIN*, and *Show* reveals the
+      current one. Easy PINs are refused (0000, 1111 … 9999, 1234, 4321, 0123,
+      1122, 2580, 1212). A person signs in with username and password the first
+      time on each device; that device then remembers them (up to 30 people
+      per device, kept 400 days and renewed on each sign-in), and from then on
+      its login page and lock screen show their name and a PIN pad. A new
+      device, or one whose browser or app data was cleared, starts with
+      username and password again. "Sign in with username and password" is
+      always there on the login page and the lock screen.
+- [ ] **Wrong PINs.** 5 wrong in 10 minutes: wait a little. 20 wrong in one
+      cafe-day: that PIN is **blocked** (a "PIN blocked" pill on the Staff
+      row) until an admin taps *Unblock PIN* or sets a new PIN. There is no
+      network rule: the PIN works from any device that remembers the person.
+- [ ] **Screen lock.** After no activity for the time set under **Settings →
+      Business details → Screen lock** (Off / 30 minutes / 1 hour (default) /
+      2 hours), and from the account menu's *Lock screen* or *Switch user*,
+      the screen locks. Never on the Kitchen or Now Serving screens; printing,
+      the alarm and new order requests carry on under the lock. A person the
+      device does not remember (or who has no PIN) unlocks with the password
+      form on the lock screen.
 - [ ] A password reset does not sign out devices that are already signed in.
       To cut off a lost or stolen device, deactivate that staff account (it
       is signed out within about a minute), then reactivate it after the
