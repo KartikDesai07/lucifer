@@ -6,7 +6,7 @@
 import mongoose from "mongoose";
 import { PUBLIC_ORDER_RATE_WINDOW_MS } from "@pos/shared/public";
 import { STAFF_PIN_RATE_MAX, staffPinBucket } from "@pos/shared/staff-pin";
-import { peekRateLimit } from "@/lib/public-rate-limit";
+import { rateWindowKey } from "@/lib/public-rate-limit";
 import { verifyStaffPinSignIn, type PinSignInResult } from "@/lib/staff-pin-signin";
 import { cafeDateString } from "@/lib/utils";
 import type { Harness } from "./verify-staff-pin-live-helpers";
@@ -15,41 +15,48 @@ const A = "665f0000000000000000c001"; // active, PIN 7391, staff
 const B = "665f0000000000000000c002"; // inactive, PIN 5820
 const C = "665f0000000000000000c003"; // active, no PIN (a row from before this release: no PIN keys at all)
 const D = "665f0000000000000000c004"; // active, the same PIN as A, admin; no pinBlocked / pinFailCount keys
+const E = "665f0000000000000000c005"; // active, PIN 6142: the parallel burst
 const PIN = "7391";
 const B_PIN = "5820";
+const E_PIN = "6142";
 const WRONG = ["0001", "0002", "0003", "0004", "0005"];
+const BURST = ["1001", "1002", "1003", "1004", "1005", "1006", "1007", "1008"];
 const WINDOW_SECONDS = PUBLIC_ORDER_RATE_WINDOW_MS / 1000;
 const BLOCK_EDGE = 19;
 
-function col(name: string) {
-  const db = mongoose.connection.db;
-  if (!db) throw new Error("not connected");
-  return db.collection(name);
+function db() {
+  const conn = mongoose.connection.db;
+  if (!conn) throw new Error("not connected");
+  return conn;
 }
 
 const oid = (id: string) => new mongoose.Types.ObjectId(id);
 const show = (r: PinSignInResult) => JSON.stringify(r);
 const failureOf = (r: PinSignInResult) => (r.ok ? null : r.failure);
+const windows = () => db().collection<{ _id: string; n: number }>("publicratelimits");
 
 async function seed(): Promise<void> {
   const base = { mobile: "9876500000", password: "not-a-real-hash", createdAt: new Date(), updatedAt: new Date() };
   const pinned = { hasPin: true, pinBlocked: false, pinFailCount: 0 };
-  await col("staffs").insertMany([
+  await db().collection("staffs").insertMany([
     { ...base, _id: oid(A), name: "Asha Rao", username: "pinb-a", role: "staff", isActive: true, pin: PIN, ...pinned },
     { ...base, _id: oid(B), name: "Bala Iyer", username: "pinb-b", role: "staff", isActive: false, pin: B_PIN, ...pinned },
     { ...base, _id: oid(C), name: "Chitra Das", username: "pinb-c", role: "staff", isActive: true },
     { ...base, _id: oid(D), name: "Dev Shah", username: "pinb-d", role: "admin", isActive: true, pin: PIN, hasPin: true },
+    { ...base, _id: oid(E), name: "Esha Nair", username: "pinb-e", role: "staff", isActive: true, pin: E_PIN, ...pinned },
   ]);
 }
 
 async function staffRow(id: string) {
-  return col("staffs").findOne({ _id: oid(id) });
+  return db().collection("staffs").findOne({ _id: oid(id) });
+}
+
+async function setStaff(id: string, fields: Record<string, unknown>): Promise<void> {
+  await db().collection("staffs").updateOne({ _id: oid(id) }, { $set: fields });
 }
 
 async function resetBucket(id: string): Promise<void> {
-  const db = mongoose.connection.db;
-  if (!db) throw new Error("not connected");
-  await db.collection<{ _id: string }>("publicratelimits").deleteMany({ _id: { $regex: `^staffpin:${id}:` } });
+  await windows().deleteMany({ _id: { $regex: `^staffpin:${id}:` } });
 }
 
 export async function runPartB(h: Harness): Promise<void> {
@@ -58,14 +65,18 @@ export async function runPartB(h: Harness): Promise<void> {
   await seed();
   const now = Date.now(); // one instant for the whole part: no window or day can roll mid-way
   const today = cafeDateString(new Date(now));
-  const device = [A, B, C, D].map((id, i) => ({ id, at: now - i }));
+  const device = [A, B, C, D, E].map((id, i) => ({ id, at: now - i }));
   const tryPin = (staffId: unknown, pin: unknown, devicePeople = device) =>
     verifyStaffPinSignIn({ staffId, pin, devicePeople, now });
+  // The raw window row's n for this person (no row: null), read beside the module, not through it.
+  const windowRow = async (id: string) => (await windows().findOne({ _id: rateWindowKey(staffPinBucket(id), now) }))?.n ?? null;
+  const used = async (id: string) => (await windowRow(id)) ?? 0;
 
   const ok = await tryPin(A, PIN);
+  const okRow = await windowRow(A);
   check(
-    "A with the right PIN -> ok with A's id, name and role",
-    ok.ok && ok.user.id === A && ok.user.name === "Asha Rao" && ok.user.role === "staff",
+    `A with the right PIN on a fresh window -> ok with A's id, name and role; the success hands its slot back (row n ${okRow})`,
+    ok.ok && ok.user.id === A && ok.user.name === "Asha Rao" && ok.user.role === "staff" && okRow === 0,
   );
   if (!ok.ok) console.log(`    got ${show(ok)}`);
 
@@ -76,7 +87,7 @@ export async function runPartB(h: Harness): Promise<void> {
     "A on a device without A (right PIN, and a wrong PIN with no cookie) -> device; bucket and day count untouched",
     failureOf(foreign)?.kind === "device" &&
       failureOf(foreignWrong)?.kind === "device" &&
-      (await peekRateLimit(staffPinBucket(A), now)) === 0 &&
+      (await used(A)) === 0 &&
       afterForeign?.pinFailCount === 0 &&
       afterForeign?.pinFailDay === undefined,
   );
@@ -85,8 +96,12 @@ export async function runPartB(h: Harness): Promise<void> {
   const noPin = await tryPin(C, PIN);
   const badId = await tryPin("not-an-id", PIN);
   check(
-    "B (inactive, right PIN) -> nopin; C (no PIN) -> nopin; a bad id string -> wrong",
-    failureOf(inactive)?.kind === "nopin" && failureOf(noPin)?.kind === "nopin" && failureOf(badId)?.kind === "wrong",
+    "B (inactive, right PIN) -> nopin; C (no PIN) -> nopin, both slots handed back; a bad id string -> wrong",
+    failureOf(inactive)?.kind === "nopin" &&
+      failureOf(noPin)?.kind === "nopin" &&
+      (await used(B)) === 0 &&
+      (await used(C)) === 0 &&
+      failureOf(badId)?.kind === "wrong",
   );
   if (failureOf(inactive)?.kind !== "nopin" || failureOf(noPin)?.kind !== "nopin") {
     console.log(`    got B ${show(inactive)}, C ${show(noPin)}`);
@@ -114,14 +129,14 @@ export async function runPartB(h: Harness): Promise<void> {
     sixth?.kind === "wait" &&
       sixth.retryAfterSec >= 1 &&
       sixth.retryAfterSec <= WINDOW_SECONDS &&
-      (await peekRateLimit(staffPinBucket(A), now)) === STAFF_PIN_RATE_MAX &&
+      (await used(A)) === STAFF_PIN_RATE_MAX &&
       afterSix?.pinFailCount === WRONG.length &&
       afterSix?.pinFailDay === today,
   );
   if (sixth?.kind !== "wait") console.log(`    got ${JSON.stringify(sixth)}`);
 
   await resetBucket(A);
-  await col("staffs").updateOne({ _id: oid(A) }, { $set: { pinFailDay: today, pinFailCount: BLOCK_EDGE } });
+  await setStaff(A, { pinFailDay: today, pinFailCount: BLOCK_EDGE });
   const twentieth = failureOf(await tryPin(A, WRONG[0]));
   const afterBlock = await staffRow(A);
   check(
@@ -129,7 +144,10 @@ export async function runPartB(h: Harness): Promise<void> {
     twentieth?.kind === "wrong" && afterBlock?.pinBlocked === true && afterBlock?.pinFailCount === BLOCK_EDGE + 1,
   );
   const blocked = failureOf(await tryPin(A, PIN));
-  check("the next try for A, even the right PIN -> blocked", blocked?.kind === "blocked");
+  check(
+    "the next try for A, even the right PIN -> blocked, its slot handed back (the window keeps the 1 wrong)",
+    blocked?.kind === "blocked" && (await used(A)) === 1,
+  );
 
   // The atomic update on a row with no count or block keys: missing reads as 0 / false.
   const firstD = failureOf(await tryPin(D, WRONG[0]));
@@ -145,16 +163,35 @@ export async function runPartB(h: Harness): Promise<void> {
 
   // The atomic update's day rule (the same as nextPinFailState): an old day's count does not carry over.
   await resetBucket(D);
-  await col("staffs").updateOne({ _id: oid(D) }, { $set: { pinFailDay: "2000-01-01", pinFailCount: BLOCK_EDGE } });
+  await setStaff(D, { pinFailDay: "2000-01-01", pinFailCount: BLOCK_EDGE });
   const newDay = failureOf(await tryPin(D, WRONG[0]));
   const afterNewDay = await staffRow(D);
   const dStill = await tryPin(D, PIN);
   check(
-    "D at 19 on an old day, one wrong PIN -> today, count 1, not blocked; D's right PIN still signs in",
+    "D at 19 on an old day, one wrong PIN -> today, count 1, not blocked; D's right PIN still signs in, the window keeps 1",
     newDay?.kind === "wrong" &&
       afterNewDay?.pinFailDay === today &&
       afterNewDay?.pinFailCount === 1 &&
       afterNewDay?.pinBlocked === false &&
-      dStill.ok,
+      dStill.ok &&
+      (await used(D)) === 1,
+  );
+
+  // Ruling R7: every try takes its slot before the compare, so a parallel burst (a script on a counter
+  // device that remembers a colleague) gets at most 5 guesses into a window, never 8.
+  const burst = await Promise.all(BURST.map((pin) => tryPin(E, pin)));
+  const kinds = burst.map((r) => failureOf(r)?.kind ?? "ok");
+  const wrongs = kinds.filter((k) => k === "wrong").length;
+  const waits = kinds.filter((k) => k === "wait").length;
+  const burstRow = (await windowRow(E)) ?? 0;
+  const afterBurst = await staffRow(E);
+  check(
+    `8 wrong PINs for E at once -> at most ${STAFF_PIN_RATE_MAX} wrong, the rest wait (got ${wrongs} wrong, ${waits} wait); ` +
+      `window n ${burstRow} <= 8 and equal to the wrongs; day count ${afterBurst?.pinFailCount}`,
+    wrongs <= STAFF_PIN_RATE_MAX &&
+      wrongs + waits === BURST.length &&
+      burstRow <= BURST.length &&
+      burstRow === wrongs &&
+      afterBurst?.pinFailCount === wrongs,
   );
 }

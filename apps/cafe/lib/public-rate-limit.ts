@@ -51,18 +51,20 @@ export function rateLimitDecision(n: number, max: number, now: number): RateLimi
 // Records one hit against `bucket` and reports whether it's within `max` for
 // the window containing `now`. ONE atomic upsert — no separate read, so two
 // concurrent hits against the same fresh bucket can never both observe n=0
-// and both believe they created the row.
+// and both believe they created the row. `n` is the window's count after this
+// hit (staff PIN sign-in shows the tries left from it); other callers ignore it.
 export async function hitRateLimit(
   bucket: string,
   max: number,
   now: number,
-): Promise<RateLimitDecision> {
+): Promise<RateLimitDecision & { n: number }> {
   const doc = await PublicRateLimit.findOneAndUpdate(
     { _id: rateWindowKey(bucket, now) },
     { $inc: { n: 1 }, $setOnInsert: { at: new Date(now) } },
     { upsert: true, new: true },
   ).lean();
-  return rateLimitDecision(doc?.n ?? 1, max, now);
+  const n = doc?.n ?? 1;
+  return { ...rateLimitDecision(n, max, now), n };
 }
 
 // Hands one hit back to `bucket`'s CURRENT window. CR2.2c: a mistyped promo

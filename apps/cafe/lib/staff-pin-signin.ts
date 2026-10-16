@@ -9,14 +9,22 @@ import {
 } from "@pos/shared/staff-pin";
 import { connectDB } from "@/lib/db";
 import type { PinDevicePerson } from "@/lib/pin-device";
-import { hitRateLimit, peekRateLimit, rateLimitDecision } from "@/lib/public-rate-limit";
+import { hitRateLimit, refundRateLimit } from "@/lib/public-rate-limit";
 import { cafeDateString } from "@/lib/utils";
 import { Staff } from "@/models/Staff";
 
 // The PIN sign-in check on the server (spec 2026-10-16 §5.4), called by the "pin" Credentials
 // provider in lib/auth.ts. Server-only (Mongoose models, node:crypto): never import from a
 // "use client" file. Limits are per selected person only, never per network (the owner's rule),
-// and only a wrong PIN is counted.
+// and only a wrong PIN stays counted.
+//
+// The order (controller ruling R7): the shape and the device are checked first and count nothing.
+// Every try that passes them then takes a slot in the person's window with ONE atomic hit, BEFORE
+// anything is read or compared, so a burst of parallel tries can never get more than 5 guesses
+// into a window. A try the hit finds over the limit answers "wait"; then the staff row is read
+// (nopin / blocked) and the PIN compared. Every answer but "wrong" hands its slot back
+// (refundRateLimit), so the window ends up counting wrong PINs only; a wrong PIN keeps its slot
+// and adds one to the person's day count (20 blocks).
 
 export type PinSignInResult =
   | { ok: true; user: { id: string; name: string; role: "admin" | "staff" } }
@@ -78,7 +86,7 @@ type PinStaffRow = {
   pinBlocked?: boolean;
 };
 
-/** Checks one PIN try for the person whose tile was chosen, in the spec's order. */
+/** Checks one PIN try for the person whose tile was chosen, in the order the header describes. */
 export async function verifyStaffPinSignIn(input: {
   staffId: unknown;
   pin: unknown;
@@ -96,32 +104,33 @@ export async function verifyStaffPinSignIn(input: {
 
   await connectDB();
 
-  // 3. A full window waits, whatever PIN was typed.
+  // 3. Take a slot in the person's window before reading or comparing anything. Every answer below
+  // except "wrong" is a definite non-wrong outcome and hands the slot back. A throw keeps it: a
+  // refund is only made on a path that is surely returning (the never-revert-on-write-throw rule).
   const bucket = staffPinBucket(staffId);
-  const used = await peekRateLimit(bucket, now);
-  if (used >= STAFF_PIN_RATE_MAX) {
-    const { retryAfterSec } = rateLimitDecision(STAFF_PIN_RATE_MAX + 1, STAFF_PIN_RATE_MAX, now);
-    return { ok: false, failure: { kind: "wait", retryAfterSec } };
-  }
+  const hit = await hitRateLimit(bucket, STAFF_PIN_RATE_MAX, now);
+  const handBack = async (failure: Exclude<PinSignInFailure, { kind: "offline" }>): Promise<PinSignInResult> => {
+    await refundRateLimit(bucket, now);
+    return { ok: false, failure };
+  };
+  if (!hit.allowed) return handBack({ kind: "wait", retryAfterSec: hit.retryAfterSec });
 
   // 4. The person: active, with a PIN, not blocked. A stored PIN the rules refuse counts as none
   // (the typed one passed them, so it could never match).
   const staff = await Staff.findOne({ _id: staffId, isActive: true })
     .select("+pin +pinFailDay +pinFailCount name role hasPin pinBlocked")
     .lean<PinStaffRow | null>();
-  if (!staff || staff.hasPin !== true || !isValidStaffPin(staff.pin)) return { ok: false, failure: { kind: "nopin" } };
-  if (staff.pinBlocked === true) return { ok: false, failure: { kind: "blocked" } };
+  if (!staff || staff.hasPin !== true || !isValidStaffPin(staff.pin)) return handBack({ kind: "nopin" });
+  if (staff.pinBlocked === true) return handBack({ kind: "blocked" });
 
   // 5. Constant time: both are exactly 4 ASCII digits here, so the buffers are equal in length.
   if (!timingSafeEqual(Buffer.from(staff.pin), Buffer.from(pin))) {
-    // 6. Wrong: the window and the day count. hitRateLimit gives no count back, so the count after
-    // this hit is the peeked one plus this hit (or over the limit when concurrent tries filled it).
-    const { allowed } = await hitRateLimit(bucket, STAFF_PIN_RATE_MAX, now);
+    // 6. Wrong: the slot stays taken, and the day count goes up.
     await recordWrongPin(staffId, cafeDateString(new Date(now)));
-    const n = allowed ? used + 1 : STAFF_PIN_RATE_MAX + 1;
-    return { ok: false, failure: { kind: "wrong", triesLeft: Math.max(0, STAFF_PIN_RATE_MAX - n) } };
+    return { ok: false, failure: { kind: "wrong", triesLeft: Math.max(0, STAFF_PIN_RATE_MAX - hit.n) } };
   }
 
-  // 7. Right: the same user shape as the password provider.
+  // 7. Right: the slot is handed back; the same user shape as the password provider.
+  await refundRateLimit(bucket, now);
   return { ok: true, user: { id: String(staff._id), name: staff.name, role: staff.role } };
 }
