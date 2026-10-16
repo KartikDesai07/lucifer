@@ -25,9 +25,10 @@ section). Read it with this plan; section numbers below (§n, S1–S6, P4-n) are
 
 The owner's workflow (one phase per session): four sessions, **4A → 4B → 4C → 4D**, each started from a prompt the
 orchestrator gives and each followed by a review gate. **Session 4A is exact below** (code, commands, expected output),
-pre-validated in the planning session. Sessions 4B–4D are task specs with fixed interfaces, test lists and acceptance
-checks; each is made exact (full code, pre-validated) at the gate before it, as in printing Phases 2 and 3 and native
-apps 2.0. A gate may change a later session's spec; it records why.
+pre-validated in the planning session, and so is **Session 4B** (made exact at the 4A review gate, 2026-10-16). Sessions
+4C–4D are task specs with fixed interfaces, test lists and acceptance checks; each is made exact (full code,
+pre-validated) at the gate before it, as in printing Phases 2 and 3 and native apps 2.0. A gate may change a later
+session's spec; it records why.
 
 | Session | Delivers | Gate before the next |
 |---|---|---|
@@ -58,13 +59,15 @@ come out identical to gold. Every Expected line in an exact section is that run'
 - **Characters:** only printable ASCII 0x20–0x7E reaches a printer; the fifteen mapped characters of §4.2 (`₹` → `Rs `);
   any other character makes the whole slip a picture.
 - **Columns:** 58 mm → 32, 80 mm → 48 or 42 (P4-5); a line holds at most columns − 1 characters (double width: half).
-- **Commands:** `ESC @` once at the start, `ESC a`, `ESC E`, `GS !`, `GS B`, `LF`, `ESC J`, and the picture's
-  `GS V 66 0`; no code page or Kanji command, never a second `ESC @`.
+- **Commands:** `ESC @` once at the start, then `ESC R 0` and `ESC M 0` once (the owner's rulings at the 4A gate,
+  2026-10-16), `ESC a`, `ESC E`, `GS !`, `GS B`, `LF`, `ESC J`, and the picture's `GS V 66 0`; no code page or Kanji
+  command, never a second `ESC @`.
 - **S3:** a refusal or any error in the text path is decided before a byte is sent and prints the slip as a picture;
   `kotTextJob` never throws.
 - **The switch** lives only in the printing device's storage (`pos.text-kot.v1`, never inside `pos.device-printer.v1`),
-  keyed `printer:<setup printer id>` or `device:<this device's printer identity>`; on only after the printer's text test
-  printed and staff answered Yes (S2).
+  keyed `printer:<setup printer id>:<how this device reaches it>` or `device:<how it reaches its own printer>` (the 4A
+  gate, spec §5.1); on only after the printer's text test printed and staff answered Yes (S2); a printer this device only
+  takes over for another device prints pictures (spec §5.3).
 - **Discovery:** TCP port 9100 connect-only on the device's own private IPv4 /24 (at most two), 500 ms per address, 32 at
   a time, at most 10 s, at most 64 results, no byte sent, only on a tap; Wi-Fi or Ethernet only on Android; no new
   Android permission.
@@ -152,10 +155,12 @@ name `PRINTABLE_MIN/MAX`.
 | `apps/cafe/lib/printer/kot-text/kot-text.ts` | 4A | the gate and the entry: `kotTextRows`, `kotTextPlan`, `kotTextJob` (§4.1, S3) |
 | `apps/cafe/lib/printer/kot-text/text-test-slip.ts` | 4A | the text test slip (§5.1, S2) |
 | `apps/cafe/lib/printer/kot-text/*.test.ts`, `kot-text.fixtures.ts` | 4A | unit, golden and parity tests |
-| `apps/cafe/lib/printer/kot-text/text-kot-store.ts` | 4B | the switch's storage (`pos.text-kot.v1`) |
-| `apps/cafe/lib/printer/kot-text/text-kot-print.ts` | 4B | the bridge's text step: the key, the writer, the bytes or none |
-| `apps/cafe/hooks/use-print-host-bridge.ts` | 4B | asks the text step before the kitchen surface; the text test |
-| `apps/cafe/components/print/TextKotSection.tsx` | 4B | "Fast text KOTs (English only)" in the printer panel |
+| `apps/cafe/lib/printer/kot-text/text-kot-store.ts` | 4B | the switch's storage (`pos.text-kot.v1`) and its keys |
+| `apps/cafe/lib/printer/kot-text/text-kot-print.ts` | 4B | the bridge's text step: the route the picture takes, the switch, the bytes or none; the real env |
+| `apps/cafe/lib/printer/kot-text/text-kot-printers.ts`, `hooks/use-text-kot-printers.ts` | 4B | the printers the panel lists, each by its route; `useTextKot` |
+| `apps/cafe/lib/desktop-shell-printer.ts`, `lib/printer/desktop-printer-state.ts` | 4B | `printRawOn` (feature-detected), `desktopPrintRawOn`, the Windows app's print method |
+| `apps/cafe/hooks/use-print-host-bridge.ts`, `lib/print-host-slips.ts`, `lib/print-agent-slip.ts` | 4B | asks the text step before the kitchen surface; `queueTestSlip(write)`; a job slip's `printerId` |
+| `apps/cafe/components/print/TextKotSection.tsx`, `PrinterSetupCard.tsx`, `components/layout/PrintHostProvider.tsx` | 4B | "Fast text KOTs (English only)" in the printer panel |
 | `apps/cafe/lib/print-routing.ts`, `hooks/use-host-routing.ts` | 4B | the not-routed words by kind |
 | `apps/mobile/android/.../printer/LanScan.kt`, `PosPrinterModule.kt`, `apps/mobile/src/bridge/*` | 4C | `network.findPrinters` |
 | `apps/mobile/android/.../printer/PrinterDiscovery.kt` | 4C | the network printer's display name (m-2) |
@@ -2316,100 +2321,3552 @@ Steps 1–2; record every finding and its ruling in the Results.
 
 ---
 
-# Session 4B (spec): the page: the switch, the bridge's text step, the not-routed words
+# Session 4B (exact): the page: the switch, the bridge's text step, the not-routed words
 
-Made exact at the 4A review gate, against the code 4A landed. Tasks are numbered 10–16. Acceptance: with a printer's
-switch on (after its text test printed and staff said Yes), a kitchen-surface slip that passes the gate prints as text
-through that printer's own writer, and every other slip exactly as today; with every switch off the page prints byte
-for byte as before (S1); the not-routed toast says the right thing by kind. Expected: the cafe chain grows by this
-session's tests; no app, Worker, model or API change (`git diff -- apps/mobile apps/desktop workers apps/cafe/models apps/cafe/app/api` empty).
+Made exact at the 4A review gate (2026-10-16), against the code 4A landed (`f46600e`, apps/cafe tree `a5a2516`). Every
+code block below was written and run in the gold worktree `D:\kd\p4g` (branch `g4b-v5` from `f46600e`, the section
+review's fixes and its re-check's folded in): Tasks 9–14 as
+six commits (`3205036`, `86a4b5f`, `8f6dac0`, `3589c08`, `4c2f359`, `f4ef670`), the last whole tree `a792641851e439a4d1b772ed454573dd3b7337e4`; the
+blocks were generated from those commits, then applied step by step on a fresh worktree `D:\kd\p4v` at `f46600e` (each
+find matched exactly once, every task's whole tree came out identical to gold, and every Expected below is that run's
+output). Task 15 was pre-run end to end on builds of `d21ee37` and of the gold head (headless Chrome as the POS app, and
+the emulator with the release APK); its Expected lines are that run's.
+
+Acceptance: with a printer's switch on (after its text test printed and staff said Yes), a kitchen-surface slip that
+passes the gate prints as text through that printer's own writer, and every other slip exactly as today; with every
+switch off the page prints byte for byte as before (S1: the source pin, the bridge's tests, the end-to-end comparison);
+the not-routed toast says the right thing by kind. No app, Worker, model or API change.
+
+**What the gate changed in this session's spec** (the owner approved the rulings and the interface changes on 2026-10-16;
+the last row carries out spec §5.3 as approved; spec amended in the gate's commit):
+
+| Was (4B spec) | Now | Why |
+|---|---|---|
+| Tasks 10–16 | **Task 9** first: the 4A gate's rulings in the 4A files | The owner's rulings (`ESC R 0`, `ESC M 0`, m-3) and the gate's (m-1, m-2, m-4, the review's I-1, m-5) change 4A's code and tests; a task of its own, as earlier gates did |
+| Task 11 the bridge's step, Task 12 the Windows page side | **Task 11** the Windows printer's raw write (page side), **Task 12** the bridge's text step | The step's writers need `desktopPrintsRaw()`, `desktopPrintRawOn` and the print method first |
+| key `printer:<id>:<connection>` | `printer:<setup printer id>:<how this device reaches it>`: `app:<the POS app's printer id>`, `lan:<host>:<port>` (the Windows app's network printer), `windows:<name>`, or this device's own printer (`native:<id>`, `serial:<usb ids or name>`, `ble:<device id>`); `device:<the same>` in simple mode | The bridge holds no printer setup (and the hook harness has no React Query); the route the picture takes is in hand at print time, and a printer pointed elsewhere still reads off (I-2 holds) |
+| `textKotKeyForPrinter(printer: PrinterConfig)` | `textKotKeyForPrinter(printerId, reach)`, `textKotKeyForDevice(reach)`, `type TextKotReach` | the same |
+| `queueTextTest(key, bytes)` | `queueTestSlip(write?)`: with `write`, the bridge writes those bytes in the test slip's own busy window (watchdog, settle, outcome) instead of firing the KOT surface | One busy window, no second copy of the test-slip rules |
+| `useTextKot(key)` in the store | in `hooks/use-text-kot-printers.ts` | The store stays React-free (the hook harness loads it under a fake React) |
+| the paper of a Windows chosen printer | the kitchen ticket's paper setting, and only with the app's print method Direct, now kept in `DesktopPrinterSnapshot.printMode` (re-read after a save) | The text step decides synchronously, before any byte |
+| rule 7 "smaller than the picture's limit" | `textKotFitsPicture(length, paper)`: at most `dotsForPaper(paper) / 8 × RASTER_MAX_ROWS` bytes | The picture's own ceiling at that paper |
+| the S1 pin: the Global Constraints' files | those 41 plus `components/pos/PrintSources.tsx` and `PrintBanner.tsx` (43 files) | Both draw every kitchen picture |
+| the bridge's line budget 255 | 265 (262 after Task 12, 263 after Task 13) | The text step and the text test's write |
+| (not in the 4B spec) | a slip of a printer this device only takes over for another device carries `takeover: true` (`hooks/use-print-agent.ts`) and prints a picture | Spec §5.3 says a failover writer has no switch; a switch stored on this device for a printer later re-pointed to another device would otherwise print text during a takeover, and its panel no longer lists that printer to turn it off (the section review's I-2); spec §5.3 now says how |
+
+**Expected counts** (baseline = `f46600e`): the cafe chain 6022 (6021 pass, 0 fail, 1 skipped) → **6080** (6079 pass,
+0 fail, 1 skipped); cafe typecheck clean; cafe lint 0 errors (the 2 old warnings). No other workspace changes.
+
+Work in `D:\kd\lucifer` on `feat/printing-phase-4`; `$SP` is the session's scratchpad. Tasks are numbered 0 and 9–16, so
+`task-start <plan> 12` brings only that task. Apply a step's blocks with `D:\kd\pos-dev-keep\phase3-final-gate\apply_blocks_clone.py`
+(first argument the repo, then the plan, the first and the last line of the step; a `--dry` run first). Every commit
+message goes in a scratch file and is committed with `git commit -F`; the messages below end with Claude Opus 5.5's
+Co-Authored-By line; if the session's prompt gives another, its line wins. The harness refuses `bash -c` inside
+`task-done`: run test commands through a wrapper script in `$SP`.
+
+### Task 0: Baseline
+
+**Files:** none (Results only).
+
+- [ ] **Step 1: Check the branch, the disks and the cafe chain**
+
+```bash
+cd /d/kd/lucifer && git status --short && git branch --show-current && git log --oneline -3 && df -h /c /d
+for b in tsc eslint next tsx; do test -f /d/kd/lucifer/node_modules/.bin/$b && echo $b; done | wc -l
+cd /d/kd/lucifer/apps/cafe && npm test > "$SP/cafe-base.log" 2>&1; grep -E "^# (tests|pass|fail|skipped)" "$SP/cafe-base.log"
+cd /d/kd/lucifer/apps/cafe && npx tsc --noEmit && npm run lint 2>&1 | tail -2
+```
+Expected: clean, `feat/printing-phase-4`, the 4A gate's commit on top of `f46600e`; `4` (the `.bin` shims are there;
+if not, `npm rebuild --ignore-scripts` at the root, offline; a bare `ls` in this Bash is `ls -F`, which prints `tsc*`);
+cafe `# tests 6022`, `# pass 6021`, `# fail 0`, `# skipped 1` (about 60 s: run it in the background and wait for its
+log with an until-loop); typecheck clean; `✖ 2 problems (0 errors, 2 warnings)`.
+
+### Task 9: The 4A gate's rulings (§4.2, §4.3)
+
+**Files:**
+- Modify: `apps/cafe/lib/printer/kot-text/text-chars.ts`, `text-layout.ts`, `text-escpos.ts`, `kot-text.ts`
+- Test: `text-chars.test.ts`, `text-layout.test.ts`, `text-escpos.test.ts`, `kot-text.test.ts`, `kot-text-bold.test.ts`,
+  `kot-text-parity.test.ts` (same folder)
+
+**Interfaces:**
+- Produces: `escposTextJob` starts every job `ESC @`, `ESC R 0`, `ESC M 0` (the owner's rulings, 2026-10-16);
+  `asciiText` maps a carriage return to a space (m-1); `TextRow`'s `split` gains `valueAlign?: BlockAlign`, set by
+  `kotTextRows` from the block's alignment (m-3: centred in the room after the label, or right after it; none = right).
+- Tests only: a skip-KOT line on neither side, Classic's meta size, Kitchen Bold's upper-case name (m-2); an over-wide
+  amount is a picture (m-4); a long Classic item, a pair exactly one line long (the gate review's m-5); the locked-size
+  floor at the large base and the engine's locks on a stored template in the parity (the gate review's I-1: 13 designs,
+  10,400 cells).
+
+- [ ] **Step 1: Write the failing tests**
+
+In `apps/cafe/lib/printer/kot-text/kot-text-bold.test.ts`, find:
+
+```ts
+});
+
+test("a long item name wraps under the name, after its quantity", () => {
+  const slip = slipOf("round-label-number");
+```
+
+Replace it with:
+
+```ts
+});
+
+test("Kitchen Bold prints the restaurant's name upper case, as its CSS shows it (the 4A gate's m-2)", () => {
+  const named = boldSettings((blocks) => blocks.map((b) => (b.type === "name" ? { ...b, on: true } : b)));
+  assert.equal(shown(planOf("round-label-number", named, 48))[0], "tall  B c|TEST CAFE|", "upper case, double height, bold, centred");
+});
+
+test("a long item name wraps under the name, after its quantity", () => {
+  const slip = slipOf("round-label-number");
+```
+
+In `apps/cafe/lib/printer/kot-text/kot-text-parity.test.ts`, find:
+
+```ts
+  blocks: template.blocks.map((b) => (b.type === "kotNo" ? { ...b, on: false } : b)),
+});
+// Every block in one size / alignment / weight, cycling through them.
+const styled = (template: KotTemplate): KotTemplate => ({
+```
+
+Replace it with:
+
+```ts
+  blocks: template.blocks.map((b) => (b.type === "kotNo" ? { ...b, on: false } : b)),
+});
+// The engine's locks on a stored template (the 4A gate's review, I-1): title, table and items off, so a void or moved slip
+// prints them by their locks and a plain KOT leaves them off.
+const lockedOff = (template: KotTemplate): KotTemplate => ({
+  ...template,
+  blocks: template.blocks.map((b) => (b.type === "title" || b.type === "table" || b.type === "items" ? { ...b, on: false } : b)),
+});
+// Every block in one size / alignment / weight, cycling through them.
+const styled = (template: KotTemplate): KotTemplate => ({
+```
+
+In `apps/cafe/lib/printer/kot-text/kot-text-parity.test.ts`, find:
+
+```ts
+    ["classic small", withKot(settings, { ...allOn(classic), size: "small" })],
+    ["classic number block off", withKot(settings, numberBlockOff(allOn(classic)))],
+    ["bold default", withKot(settings, bold)],
+    ["bold all on", withKot(settings, extras(priced(allOn(bold), true)))],
+```
+
+Replace it with:
+
+```ts
+    ["classic small", withKot(settings, { ...allOn(classic), size: "small" })],
+    ["classic number block off", withKot(settings, numberBlockOff(allOn(classic)))],
+    ["classic locked off", withKot(settings, lockedOff(allOn(classic)))],
+    ["bold default", withKot(settings, bold)],
+    ["bold all on", withKot(settings, extras(priced(allOn(bold), true)))],
+```
+
+In `apps/cafe/lib/printer/kot-text/kot-text-parity.test.ts`, find:
+
+```ts
+    ["bold large", withKot(settings, { ...allOn(bold), size: "large" })],
+    ["bold number block off", withKot(settings, numberBlockOff(allOn(bold)))],
+  ];
+}
+```
+
+Replace it with:
+
+```ts
+    ["bold large", withKot(settings, { ...allOn(bold), size: "large" })],
+    ["bold number block off", withKot(settings, numberBlockOff(allOn(bold)))],
+    ["bold locked off", withKot(settings, lockedOff(allOn(bold)))],
+  ];
+}
+```
+
+In `apps/cafe/lib/printer/kot-text/kot-text-parity.test.ts`, find:
+
+```ts
+    }
+  }
+  // 5 settings x 11 designs x 20 slips x 2 extras x 2 tokens x 2 widths.
+  assert.equal(compared, 5 * 11 * 20 * 2 * 2 * 2, `${compared} cells compared`);
+});
+
+```
+
+Replace it with:
+
+```ts
+    }
+  }
+  // 5 settings x 13 designs x 20 slips x 2 extras x 2 tokens x 2 widths.
+  assert.equal(compared, 5 * 13 * 20 * 2 * 2 * 2, `${compared} cells compared`);
+});
+
+test("a line the kitchen never sees (skip-KOT) prints on neither (the 4A gate's m-2)", () => {
+  // PrintSources shows the kitchen view of the order and of the round (kitchenOrderOf, kitchenLinesOf): a water bottle
+  // marked "no kitchen ticket" is on neither the picture nor the text, in a round and on the whole tab.
+  const slip = slipOf("round-label-number");
+  const water = { ...slip.order.items[0], productId: "p-water", name: "Water Bottle", noKot: true as const, kotRound: 1 };
+  const order = { ...slip.order, items: [...slip.order.items, water] };
+  const round: HostKotSlip = { ...slip, order, kotRoundItems: [...(slip.kotRoundItems ?? []), water] };
+  const tab: HostKotSlip = { ...slip, order, kotRoundItems: undefined, kotRoundLabel: undefined, kotRoundNumber: undefined };
+  const settings = settingsOf({ logo: "" });
+  for (const [cell, which] of [["round", round], ["whole tab", tab]] as const) {
+    for (const [design, designSettings] of templatesFor(settings)) {
+      const rows = kotTextRows({ slip: which, settings: designSettings });
+      assert.ok(rows.ok, `[${cell} / ${design}] has rows`);
+      const said = rowWords(rows.rows);
+      assert.ok(!said.includes("water"), `[${cell} / ${design}] no skip-KOT line in the text`);
+      assert.deepEqual(said, pictureWords(which, designSettings), `[${cell} / ${design}] the picture's words, in its order`);
+    }
+  }
+});
+
+```
+
+In `apps/cafe/lib/printer/kot-text/kot-text.test.ts`, find:
+
+```ts
+});
+
+test("the same KOT on 58 mm wraps inside 31 characters", () => {
+  const lines = shown(planOf(slipOf("round-label-number"), plain, 32));
+```
+
+Replace it with:
+
+```ts
+});
+
+test("a long Classic item wraps from the line's start, its amount on the first line (the 4A gate's review, m-5)", () => {
+  const slip = slipOf("round-label-number");
+  const long = { ...slip.order.items[0], qty: 1, name: "Paneer Butter Masala With Extra Gravy", price: 1240, modifiers: [], instructions: "" };
+  const priced = withTemplate((t) => t.blocks.map((b) => (b.type === "items" ? ({ ...b, options: { ...b.options, prices: true } } as KotBlock) : b)));
+  const lines = shown(kotTextPlan({ slip: { ...slip, kotRoundItems: [long] }, settings: priced, columns: 32 })).filter((line) => line.startsWith("normalB l|"));
+  assert.deepEqual(lines.slice(0, 2), [`normalB l|${"1 x Paneer Butter".padEnd(23)}Rs 1,240|`, "normalB l|Masala With Extra Gravy|"], "the name wraps from the start, never under the quantity");
+});
+
+test("the same KOT on 58 mm wraps inside 31 characters", () => {
+  const lines = shown(planOf(slipOf("round-label-number"), plain, 32));
+```
+
+In `apps/cafe/lib/printer/kot-text/kot-text.test.ts`, find:
+
+```ts
+  const small = withTemplate((t) => t.blocks, { kotFontSize: "small" });
+  assert.equal(shown(planOf(slipOf("round-label-number"), small))[0], "normalB c|KITCHEN ORDER|", "1.29em at 12 px is normal size");
+  const locked = withTemplate((t) => t.blocks.map((b) => (b.type === "title" ? { ...b, size: "xs" } : b)));
+  assert.equal(shown(planOf(slipOf("void-reason-by-at"), locked))[0], "normalB c|*** VOID ***|", "a locked title shrinks to sm, never xs");
+});
+
+```
+
+Replace it with:
+
+```ts
+  const small = withTemplate((t) => t.blocks, { kotFontSize: "small" });
+  assert.equal(shown(planOf(slipOf("round-label-number"), small))[0], "normalB c|KITCHEN ORDER|", "1.29em at 12 px is normal size");
+  // At the large base the floor shows (the 4A gate's review, I-1): 16/14 x 1.29 x 0.875 = 1.29 is double height, while
+  // xs (x 0.75 = 1.106) would be normal.
+  const locked = withTemplate((t) => t.blocks.map((b) => (b.type === "title" ? { ...b, size: "xs" } : b)), { kotFontSize: "large" });
+  assert.equal(shown(planOf(slipOf("void-reason-by-at"), locked))[0], "tall  B c|*** VOID ***|", "a locked title shrinks to sm, never xs");
+});
+
+test("Classic's meta lines are 0.93em in the picture, so a block's own size grows them less (the 4A gate's m-2)", () => {
+  const sized = (size: "lg" | "xl") => withTemplate((t) => t.blocks.map((b) => (b.type === "orderId" ? { ...b, size } : b)));
+  const orderLine = (settings: Settings) => shown(planOf(slipOf("round-label-number"), settings)).find((line) => line.includes("Order"));
+  assert.equal(orderLine(sized("xl")), `tall    l|Order${" ".repeat(26)}ORD-20261004-042|`, "xl: 0.93 x 1.5 is double height, never double size");
+  assert.equal(orderLine(sized("lg")), `normal  l|Order${" ".repeat(26)}ORD-20261004-042|`, "lg: 0.93 x 1.25 stays normal");
+});
+
+test("a label / value row's block alignment places its value as the picture does (the 4A gate's m-3)", () => {
+  const aligned = (align: "left" | "center") =>
+    withTemplate((t) => t.blocks.map((b) => (b.type === "orderId" || b.type === "table" ? { ...b, align } : b)));
+  const lines = (settings: Settings) => shown(planOf(slipOf("round-label-number"), settings)).filter((line) => /\|(Order|Table) /.test(line));
+  assert.deepEqual(lines(aligned("center")), [`normal  l|Order${" ".repeat(13)}ORD-20261004-042|`, `normal  l|Table${" ".repeat(20)}T4|`], "centred in the room after the label");
+  assert.deepEqual(lines(aligned("left")), ["normal  l|Order ORD-20261004-042|", "normal  l|Table T4|"], "right after the label");
+  assert.deepEqual(lines(withTemplate((t) => t.blocks)), [`normal  l|Order${" ".repeat(26)}ORD-20261004-042|`, `normal  l|Table${" ".repeat(40)}T4|`], "no alignment: the value right, as before");
+});
+
+test("an amount wider than a line prints as a picture: never cut, never a throw (the 4A gate's m-4)", () => {
+  const xl = withTemplate((t) => t.blocks.map((b) => (b.type === "items" ? ({ ...b, size: "xl", options: { ...b.options, prices: true } } as KotBlock) : b)));
+  const slip = slipOf("round-label-number");
+  const dear = { ...slip, kotRoundItems: (slip.kotRoundItems ?? []).map((item) => ({ ...item, price: 1_00_00_00_000 })) };
+  assert.deepEqual(kotTextJob({ slip: dear, settings: xl, columns: 32 }), { ok: false, refusal: "error" }, "Rs 2,00,00,00,000 at double size on 58 mm: no room, so the picture");
+  assert.ok(kotTextJob({ slip: dear, settings: xl, columns: 48 }).ok, "landmark: on 80 mm the amount fits");
+});
+
+```
+
+In `apps/cafe/lib/printer/kot-text/kot-text.test.ts`, find:
+
+```ts
+  const bytes = Array.from(job.bytes);
+  assert.deepEqual(bytes.slice(0, 2), Array.from(ESC_INIT), "ESC @ first");
+  assert.deepEqual(bytes.slice(-4), Array.from(CUT_PARTIAL_WITH_FEED), "the picture's cut last");
+  assert.ok(bytes.length < 1_500, `a whole-order cancel notice is ${bytes.length} bytes (a picture KOT is about 44,000)`);
+```
+
+Replace it with:
+
+```ts
+  const bytes = Array.from(job.bytes);
+  assert.deepEqual(bytes.slice(0, 2), Array.from(ESC_INIT), "ESC @ first");
+  assert.deepEqual(bytes.slice(2, 5), [0x1b, 0x52, 0x00], "then ESC R 0: # [ ] @ print as themselves whatever the printer's own set");
+  assert.deepEqual(bytes.slice(5, 8), [0x1b, 0x4d, 0x00], "then ESC M 0: Font A, whatever font the printer starts in");
+  assert.deepEqual(bytes.slice(-4), Array.from(CUT_PARTIAL_WITH_FEED), "the picture's cut last");
+  assert.ok(bytes.length < 1_500, `a whole-order cancel notice is ${bytes.length} bytes (a picture KOT is about 44,000)`);
+```
+
+In `apps/cafe/lib/printer/kot-text/text-chars.test.ts`, find:
+
+```ts
+});
+
+test("line breaks are kept, a carriage return is dropped and a tab is a space", () => {
+  assert.equal(asciiText("one\r\ntwo\nthree"), "one\ntwo\nthree", "CRLF and LF become LF");
+  assert.equal(asciiText("a\tb"), "a b", "a tab is one space");
+});
+```
+
+Replace it with:
+
+```ts
+});
+
+test("line breaks are kept; a carriage return and a tab are spaces, as the picture shows them (the 4A gate's m-1)", () => {
+  assert.equal(asciiText("one\r\ntwo\nthree"), "one \ntwo\nthree", "CRLF: a space, then the line break (the layout trims it)");
+  assert.equal(asciiText("no onion\rno garlic"), "no onion no garlic", "a lone carriage return is a space, never two words run together");
+  assert.equal(asciiText("a\tb"), "a b", "a tab is one space");
+});
+```
+
+In `apps/cafe/lib/printer/kot-text/text-escpos.test.ts`, find:
+
+```ts
+const line = (text: string, over: Partial<TextLine> = {}): TextLine => ({ text, align: "left", bold: false, size: "normal", invert: false, ...over });
+const END = [0x1b, 0x4a, RASTER_BOTTOM_PAD_ROWS, ...CUT_PARTIAL_WITH_FEED];
+
+test("a plain line: init, its text, LF, the pad and the cut", () => {
+  assert.deepEqual(Array.from(escposTextJob([line("Order 42")], 48)), [...ESC_INIT, ...ascii("Order 42"), 0x0a, ...END], "the smallest job");
+});
+
+```
+
+Replace it with:
+
+```ts
+const line = (text: string, over: Partial<TextLine> = {}): TextLine => ({ text, align: "left", bold: false, size: "normal", invert: false, ...over });
+const END = [0x1b, 0x4a, RASTER_BOTTOM_PAD_ROWS, ...CUT_PARTIAL_WITH_FEED];
+/** ESC R 0 (the USA international character set) and ESC M 0 (Font A), right after ESC @ (the owner's rulings at the
+ *  4A gate). */
+const START = [...ESC_INIT, 0x1b, 0x52, 0x00, 0x1b, 0x4d, 0x00];
+
+test("a plain line: init, its text, LF, the pad and the cut", () => {
+  assert.deepEqual(Array.from(escposTextJob([line("Order 42")], 48)), [...START, ...ascii("Order 42"), 0x0a, ...END], "the smallest job");
+});
+
+```
+
+In `apps/cafe/lib/printer/kot-text/text-escpos.test.ts`, find:
+
+```ts
+  ];
+  const expected = [
+    ...ESC_INIT,
+    0x1b, 0x61, 1, 0x1b, 0x45, 1, 0x1d, 0x21, 0x01, ...ascii("KITCHEN ORDER"), 0x0a,
+    0x1d, 0x21, 0x11, ...ascii("#12"), 0x0a,
+```
+
+Replace it with:
+
+```ts
+  ];
+  const expected = [
+    ...START,
+    0x1b, 0x61, 1, 0x1b, 0x45, 1, 0x1d, 0x21, 0x01, ...ascii("KITCHEN ORDER"), 0x0a,
+    0x1d, 0x21, 0x11, ...ascii("#12"), 0x0a,
+```
+
+In `apps/cafe/lib/printer/kot-text/text-escpos.test.ts`, find:
+
+```ts
+  const bytes = Array.from(escposTextJob(pieces, 48));
+  assert.equal(bytes.filter((b, i) => b === 0x1b && bytes[i + 1] === 0x40).length, 1, "ESC @ is sent once, at the start");
+});
+
+test("an empty line is a bare LF", () => {
+  assert.deepEqual(Array.from(escposTextJob([line("Note"), line("")], 32)), [...ESC_INIT, ...ascii("Note"), 0x0a, 0x0a, ...END], "LF alone");
+});
+
+```
+
+Replace it with:
+
+```ts
+  const bytes = Array.from(escposTextJob(pieces, 48));
+  assert.equal(bytes.filter((b, i) => b === 0x1b && bytes[i + 1] === 0x40).length, 1, "ESC @ is sent once, at the start");
+  assert.equal(bytes.filter((b, i) => b === 0x1b && bytes[i + 1] === 0x52).length, 1, "ESC R is sent once, right after it");
+  assert.equal(bytes.filter((b, i) => b === 0x1b && bytes[i + 1] === 0x4d).length, 1, "ESC M is sent once, right after that");
+});
+
+test("an empty line is a bare LF", () => {
+  assert.deepEqual(Array.from(escposTextJob([line("Note"), line("")], 32)), [...START, ...ascii("Note"), 0x0a, 0x0a, ...END], "LF alone");
+});
+
+```
+
+In `apps/cafe/lib/printer/kot-text/text-layout.test.ts`, find:
+
+```ts
+  const joined = layoutRows([{ kind: "text", text: "Line one\nLine two", style: plain }], 48);
+  assert.deepEqual(textsOf(joined), ["Line one Line two"], "elsewhere a line break is a space");
+  assert.deepEqual(textsOf(layoutRows([{ kind: "text", text: "   ", style: plain }], 48)), [], "a blank text prints nothing");
+});
+```
+
+Replace it with:
+
+```ts
+  const joined = layoutRows([{ kind: "text", text: "Line one\nLine two", style: plain }], 48);
+  assert.deepEqual(textsOf(joined), ["Line one Line two"], "elsewhere a line break is a space");
+  const crlf = layoutRows([{ kind: "text", text: "Thank you\r\nCome again", style: plain, keepBreaks: true }], 48);
+  assert.deepEqual(textsOf(crlf), ["Thank you", "Come again"], "custom text typed with CRLF keeps two clean lines");
+  const lone = layoutRows([{ kind: "text", text: "no onion\rno garlic", style: plain }], 48);
+  assert.deepEqual(textsOf(lone), ["no onion no garlic"], "a lone carriage return is a space (the 4A gate's m-1)");
+  assert.deepEqual(textsOf(layoutRows([{ kind: "text", text: "   ", style: plain }], 48)), [], "a blank text prints nothing");
+});
+```
+
+In `apps/cafe/lib/printer/kot-text/text-layout.test.ts`, find:
+
+```ts
+  const long = layoutRows([{ kind: "split", label: "Staff", value: "Aishwarya Ramachandran Iyer", style: plain }], 32);
+  assert.deepEqual(textsOf(long), ["Staff", "    Aishwarya Ramachandran Iyer"], "the value drops to its own line, right-aligned");
+});
+
+```
+
+Replace it with:
+
+```ts
+  const long = layoutRows([{ kind: "split", label: "Staff", value: "Aishwarya Ramachandran Iyer", style: plain }], 32);
+  assert.deepEqual(textsOf(long), ["Staff", "    Aishwarya Ramachandran Iyer"], "the value drops to its own line, right-aligned");
+});
+
+test("a label / value pair exactly one line long stays on one line; one character more moves the value (the 4A gate's review, m-5)", () => {
+  const exact = layoutRows([{ kind: "split", label: "Order", value: "x".repeat(41), style: plain }], 48);
+  assert.deepEqual(textsOf(exact), [`Order ${"x".repeat(41)}`], "5 + 1 + 41 = 47 on 48 columns: one line");
+  const over = layoutRows([{ kind: "split", label: "Order", value: "x".repeat(42), style: plain }], 48);
+  assert.deepEqual(textsOf(over), ["Order", ` ${"x".repeat(42)}`.padStart(47)], "48: the value on its own line, right-aligned");
+});
+
+test("a label / value row whose block is aligned places its value as the picture's row does (the 4A gate's m-3)", () => {
+  const row = (valueAlign: "left" | "center" | "right", value = "T-4") => layoutRows([{ kind: "split", label: "Table", value, style: plain, valueAlign }], 32);
+  assert.deepEqual(textsOf(row("right")), [`Table${" ".repeat(23)}T-4`], "right: as with no alignment");
+  assert.deepEqual(textsOf(row("center")), [`Table${" ".repeat(12)}T-4`], "centre: in the room after the label and its space (25 - 3 = 22, 11 before it)");
+  assert.deepEqual(textsOf(row("left")), ["Table T-4"], "left: right after the label");
+  const long = "Aishwarya Ramachandran Iyer";
+  assert.deepEqual(textsOf(row("center", long)), ["Table", `  ${long}`], "a value on its own line, centred across it");
+  assert.deepEqual(textsOf(row("left", long)), ["Table", long], "a value on its own line, at its start");
+});
+
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+```bash
+cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/printer/kot-text/text-chars.test.ts lib/printer/kot-text/text-layout.test.ts lib/printer/kot-text/text-escpos.test.ts lib/printer/kot-text/kot-text.test.ts lib/printer/kot-text/kot-text-bold.test.ts lib/printer/kot-text/text-test-slip.test.ts lib/printer/kot-text/kot-text-parity.test.ts 2>&1 | grep -E "^not ok|^# (tests|pass|fail)|Cannot find module|does not provide an export"
+```
+Expected:
+```text
+not ok 16 - a label / value row's block alignment places its value as the picture does (the 4A gate's m-3)
+not ok 22 - the job's bytes begin and end as a picture's, and are far smaller
+not ok 25 - line breaks are kept; a carriage return and a tab are spaces, as the picture shows them (the 4A gate's m-1)
+not ok 27 - a plain line: init, its text, LF, the pad and the cut
+not ok 28 - each style is sent when it changes, and reset once at the end
+not ok 29 - an empty line is a bare LF
+not ok 35 - a text row is mapped, wrapped and styled; a band is padded to the full width
+not ok 38 - a label / value row whose block is aligned places its value as the picture's row does (the 4A gate's m-3)
+# tests 46
+# pass 38
+# fail 8
+```
+
+- [ ] **Step 3: Implement**
+
+In `apps/cafe/lib/printer/kot-text/kot-text.ts`, find:
+
+```ts
+
+// A block's own size / alignment / weight (slip-style.ts), on top of its design's group size and the template's base
+// size. A rule keeps its line; a feed is a feed.
+function styled(rows: TextRow[], block: KotBlock, locked: boolean, groupRatio: number, baseRatio: number): TextRow[] {
+  const size = locked && block.size === "xs" ? TEXT_LOCKED_MIN_SIZE : block.size;
+```
+
+Replace it with:
+
+```ts
+
+// A block's own size / alignment / weight (slip-style.ts), on top of its design's group size and the template's base
+// size. A rule keeps its line; a feed is a feed. A label / value row's alignment places its value, as the picture's row
+// does (the 4A gate's m-3); with none it stays right.
+function styled(rows: TextRow[], block: KotBlock, locked: boolean, groupRatio: number, baseRatio: number): TextRow[] {
+  const size = locked && block.size === "xs" ? TEXT_LOCKED_MIN_SIZE : block.size;
+```
+
+In `apps/cafe/lib/printer/kot-text/kot-text.ts`, find:
+
+```ts
+  return rows.map((row) => {
+    if (row.kind === "rule" || row.kind === "feed") return row;
+    return {
+      ...row,
+      style: { ...row.style, ratio: row.style.ratio * factor, align: block.align ?? row.style.align, bold: block.bold ?? row.style.bold },
+    };
+  });
+}
+```
+
+Replace it with:
+
+```ts
+  return rows.map((row) => {
+    if (row.kind === "rule" || row.kind === "feed") return row;
+    const style = { ...row.style, ratio: row.style.ratio * factor, align: block.align ?? row.style.align, bold: block.bold ?? row.style.bold };
+    return row.kind === "split" && block.align !== undefined ? { ...row, style, valueAlign: block.align } : { ...row, style };
+  });
+}
+```
+
+In `apps/cafe/lib/printer/kot-text/text-chars.ts`, find:
+
+```ts
+
+/** The text as printable ASCII, or null when it holds a character text mode cannot print. Line breaks are kept (as
+ *  LF) for the caller to decide on; a carriage return is dropped and a tab is a space. */
+export function asciiText(text: string): string | null {
+  let out = "";
+```
+
+Replace it with:
+
+```ts
+
+/** The text as printable ASCII, or null when it holds a character text mode cannot print. Line breaks are kept (as
+ *  LF) for the caller to decide on; a carriage return and a tab are spaces, as the picture shows them (a CRLF's space
+ *  ends its line, where the layout trims it; a lone CR never runs two words together: the 4A gate's m-1). */
+export function asciiText(text: string): string | null {
+  let out = "";
+```
+
+In `apps/cafe/lib/printer/kot-text/text-chars.ts`, find:
+
+```ts
+    if (code >= PRINTABLE_MIN && code <= PRINTABLE_MAX) out += char;
+    else if (char === "\n") out += "\n";
+    else if (char === "\t") out += " ";
+    else if (char !== "\r") {
+      const mapped = TEXT_CHAR_MAP.get(char);
+      if (mapped === undefined) return null;
+```
+
+Replace it with:
+
+```ts
+    if (code >= PRINTABLE_MIN && code <= PRINTABLE_MAX) out += char;
+    else if (char === "\n") out += "\n";
+    else if (char === "\t" || char === "\r") out += " ";
+    else {
+      const mapped = TEXT_CHAR_MAP.get(char);
+      if (mapped === undefined) return null;
+```
+
+In `apps/cafe/lib/printer/kot-text/text-escpos.ts`, find:
+
+```ts
+
+// Printing Phase 4 (spec 2026-10-15 §4.3): a text job's bytes. Only standard ESC/POS commands every receipt printer
+// knows: ESC @ (once, first), ESC a (alignment), ESC E (bold), GS ! (character size), GS B (white on black), LF, ESC J
+// (a feed) and the picture's own cut. ESC J n feeds n of the printer's vertical motion units: a dot (1/203 inch) on most
+// receipt printers, finer on some (1/360 inch on Epson TM), so a feed is about, not exactly, the picture's gap. No code page command: the text is printable ASCII (text-chars.ts). The
+```
+
+Replace it with:
+
+```ts
+
+// Printing Phase 4 (spec 2026-10-15 §4.3): a text job's bytes. Only standard ESC/POS commands every receipt printer
+// knows: ESC @ (once, first), then ESC R 0 (the USA international character set) and ESC M 0 (Font A), the owner's
+// rulings at the 4A gate: # [ ] @ { } ~ print as themselves and lines keep their columns whatever set or font the printer
+// starts in (a memory switch can change both); ESC @ and a power-off clear them again, and a picture uses neither. Then
+// ESC a (alignment), ESC E (bold), GS ! (character size), GS B (white on black), LF, ESC J
+// (a feed) and the picture's own cut. ESC J n feeds n of the printer's vertical motion units: a dot (1/203 inch) on most
+// receipt printers, finer on some (1/360 inch on Epson TM), so a feed is about, not exactly, the picture's gap. No code page command: the text is printable ASCII (text-chars.ts). The
+```
+
+In `apps/cafe/lib/printer/kot-text/text-escpos.ts`, find:
+
+```ts
+const LF = 0x0a;
+const ALIGN_BYTE: Record<BlockAlign, number> = { left: 0, center: 1, right: 2 };
+// GS ! n: width multiplier - 1 in the high nibble, height multiplier - 1 in the low one.
+const SIZE_BYTE: Record<TextSize, number> = { normal: 0x00, tall: 0x01, big: 0x11 };
+```
+
+Replace it with:
+
+```ts
+const LF = 0x0a;
+const ALIGN_BYTE: Record<BlockAlign, number> = { left: 0, center: 1, right: 2 };
+/** ESC R 0: the USA international character set; ESC M 0: Font A. */
+const SETUP = [ESC, 0x52, 0x00, ESC, 0x4d, 0x00];
+// GS ! n: width multiplier - 1 in the high nibble, height multiplier - 1 in the low one.
+const SIZE_BYTE: Record<TextSize, number> = { normal: 0x00, tall: 0x01, big: 0x11 };
+```
+
+In `apps/cafe/lib/printer/kot-text/text-escpos.ts`, find:
+
+```ts
+    throw new RangeError("escposTextJob: a blank slip is never sent");
+  }
+  const out: number[] = Array.from(ESC_INIT);
+  let align = ALIGN_BYTE.left;
+  let bold = false;
+```
+
+Replace it with:
+
+```ts
+    throw new RangeError("escposTextJob: a blank slip is never sent");
+  }
+  const out: number[] = [...ESC_INIT, ...SETUP];
+  let align = ALIGN_BYTE.left;
+  let bold = false;
+```
+
+In `apps/cafe/lib/printer/kot-text/text-layout.ts`, find:
+
+```ts
+  /** Free text; `keepBreaks` keeps its line breaks (custom text), elsewhere a break is a space. */
+  | { kind: "text"; text: string; style: RowStyle; keepBreaks?: boolean }
+  /** A label left and its value right; a pair that does not fit puts the value under the label, right-aligned. */
+  | { kind: "split"; label: string; value: string; style: RowStyle }
+  /** An item: its name left and its amount ("" for none) right on the first line; the name wraps, its later lines
+   *  starting `hang` columns in. */
+```
+
+Replace it with:
+
+```ts
+  /** Free text; `keepBreaks` keeps its line breaks (custom text), elsewhere a break is a space. */
+  | { kind: "text"; text: string; style: RowStyle; keepBreaks?: boolean }
+  /** A label left and its value right; a pair that does not fit puts the value under the label, right-aligned. With
+   *  its block's alignment (`valueAlign`) the value sits where the picture's row puts it: centred in the room after the
+   *  label, or right after it (the 4A gate's m-3). */
+  | { kind: "split"; label: string; value: string; style: RowStyle; valueAlign?: BlockAlign }
+  /** An item: its name left and its amount ("" for none) right on the first line; the name wraps, its later lines
+   *  starting `hang` columns in. */
+```
+
+In `apps/cafe/lib/printer/kot-text/text-layout.ts`, find:
+
+```ts
+  const width = lineWidth(columns, size);
+  const left: RowStyle = { ...row.style, align: "left" };
+  if (v === "") return wrapWords(l, width).map((part) => lineOf(part, left, size, width));
+  if (l.length + 1 + v.length <= width) return [lineOf(l + " ".repeat(width - l.length - v.length) + v, left, size, width)];
+  return [
+    ...wrapWords(l, width).map((part) => lineOf(part, left, size, width)),
+    ...wrapWords(v, width).map((part) => lineOf(part.padStart(width), left, size, width)),
+  ];
+}
+```
+
+Replace it with:
+
+```ts
+  const width = lineWidth(columns, size);
+  const left: RowStyle = { ...row.style, align: "left" };
+  const at = row.valueAlign ?? "right";
+  // The spaces before a value in `room` columns: the picture's value fills the rest of its row, aligned in it.
+  const before = (room: number, text: string): string => " ".repeat(at === "left" ? 0 : at === "center" ? Math.floor((room - text.length) / 2) : room - text.length);
+  if (v === "") return wrapWords(l, width).map((part) => lineOf(part, left, size, width));
+  if (l.length + 1 + v.length <= width) return [lineOf(`${l} ${before(width - l.length - 1, v)}${v}`, left, size, width)];
+  return [
+    ...wrapWords(l, width).map((part) => lineOf(part, left, size, width)),
+    ...wrapWords(v, width).map((part) => lineOf(before(width, part) + part, left, size, width)),
+  ];
+}
+```
+
+- [ ] **Step 4: Run them, the typecheck and the lint**
+
+```bash
+cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/printer/kot-text/text-chars.test.ts lib/printer/kot-text/text-layout.test.ts lib/printer/kot-text/text-escpos.test.ts lib/printer/kot-text/kot-text.test.ts lib/printer/kot-text/kot-text-bold.test.ts lib/printer/kot-text/text-test-slip.test.ts lib/printer/kot-text/kot-text-parity.test.ts 2>&1 | grep -E "^not ok|^# (tests|pass|fail)|Cannot find module|does not provide an export"
+cd /d/kd/lucifer/apps/cafe && npx tsc --noEmit && npx eslint lib/printer/kot-text && echo "typecheck and lint clean"
+```
+Expected:
+```text
+# tests 46
+# pass 46
+# fail 0
+typecheck and lint clean
+```
+
+- [ ] **Step 5: Commit.** Write the message to `$SP/msg-4b-9.txt`, then `git add apps/cafe/lib/printer/kot-text && git commit -F "$SP/msg-4b-9.txt"`:
+
+```text
+fix(cafe): printing Phase 4 Session 4B, the 4A review gate's rulings in the text renderer: every text job starts ESC @, ESC R 0 (the USA international character set) and ESC M 0 (Font A), the owner's rulings, so # [ ] @ { } ~ print as themselves and lines keep their columns whatever a printer's memory switches say; a carriage return is a space, as the picture shows it (m-1); a Classic label / value row whose block is aligned centre or left places its value as the picture's row does (m-3, the owner's ruling); tests for a skip-KOT line, Classic's meta size, Kitchen Bold's upper-case name, an over-wide amount, a long Classic item, a pair exactly one line long, the locked-size floor and the engine's locks on a stored template (the gate review's I-1, m-2, m-4, m-5) (spec §4.2, §4.3)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+```
 
 ### Task 10: The switch's storage (§5.1)
 
-- **Files:** Create `apps/cafe/lib/printer/kot-text/text-kot-store.ts` (+ `text-kot-store.test.ts`).
-- **Interfaces (fixed):** `TEXT_KOT_KEY = "pos.text-kot.v1"`; a stored record `{ v: 1, printers: Record<string, {
-  narrow80: boolean }> }` (a key present = on; only the 80 mm "42" choice is kept, never the columns: the review's I-1;
-  zod-checked on read, anything else reads as every switch off; every access in try/catch, as `device-printer-store.ts`);
-  `textKotKeyForPrinter(printer: PrinterConfig): string` → `printer:<id>:<connection>` with the connection's kind,
-  transport and address or host:port lower-cased, so a printer re-pointed in Printer setup reads off (I-2);
-  `textKotKeyForDevice(printer: DevicePrinter | { kind: "windows"; name: string }): string` → `device:native:<printerId>`,
-  `device:serial:<vendor>:<product>` (or `device:serial:<name>` with no USB ids: m-8), `device:ble:<deviceId>`,
-  `device:windows:<name lower-cased>`; `readTextKot(key): { narrow80: boolean } | null`; `writeTextKot(key, value | null)`;
-  `subscribeTextKot(onChange)` (the `storage` event and in-page writes); a hook `useTextKot(key)`.
-- **Tests:** an absent, unreadable or foreign record reads off; a write round-trips; `null` removes one key only; the v1
-  device-printer record is never read or written (a pin over the file's text); keys per printer kind; a printer whose
-  connection changed has a new key.
+**Files:**
+- Create: `apps/cafe/lib/printer/kot-text/text-kot-store.ts`
+- Test: `apps/cafe/lib/printer/kot-text/text-kot-store.test.ts`; `apps/cafe/package.json` (`testChain`)
 
-### Task 11: The bridge's text step (§5.2, §5.4, S1, S3, S4)
+**Interfaces:**
+- Produces: `TEXT_KOT_KEY = "pos.text-kot.v1"`; `interface TextKotChoice { narrow80: boolean }`; the record
+  `{ v: 1, printers: Record<key, { narrow80 }> }` (zod-strict; anything else reads as every switch off; every access in
+  try/catch); `type TextKotReach = DevicePrinter | { kind: "app"; nativeId } | { kind: "lan"; host; port } | { kind:
+  "windows"; name }`; `textKotKeyForPrinter(printerId, reach)` → `printer:<id>:<reach>` and `textKotKeyForDevice(reach)`
+  → `device:<reach>`, lower-cased; `readTextKot(key)`, `writeTextKot(key, choice | null)`, `subscribeTextKot(onChange)`.
+  The store never reads or writes `pos.device-printer.v1`.
 
-- **Files:** Create `apps/cafe/lib/printer/kot-text/text-kot-print.ts` (+ test); Modify `apps/cafe/hooks/use-print-host-bridge.ts`.
-- **Interfaces (fixed):** `textKotWriteFor(input: { slip: HostPrintSlip; settings; target: SlipPrintTarget | undefined;
-  env: TextKotEnv }): { bytes: Uint8Array; write: () => Promise<void> } | null`, where `TextKotEnv` gives (as seams for
-  tests) the device printer snapshot, the desktop chosen printer and print mode, `desktopPrintsRaw()`, the store's
-  `readTextKot`, and the writers (`devicePrinter().write`, `printerWriter(nativeId)`, `desktopLan().write`,
-  `printRawOn`, `slipCodeStatus`). Null unless: the bridge's current item is a job slip (`current.kind === "slip"`, never
-  the attestation or a printer's Test print, which `surfaceOf` also puts on the kitchen surface) whose `surface === "kot"`;
-  the printer's key resolves (the job's printer → `printer:<id>:<connection>`, else this device's own printer →
-  `device:…`); that key is on; the writer exists for that printer here (a Windows printer only with `printRawOn` and the
-  Direct method) and the picture path's pre-write rules allow it (a printer another tab owns, or an app with no printer:
-  null, and the picture path then refuses with its own sentence, as today: no second refusal path); the slip's template needs no lazy slip code, or it is ready
-  (`templateNeedsSlipCode`, `slipCodeStatus() === "ready"`: else the picture prints the legacy ticket and text must not
-  differ, the review's I-4); and `kotTextJob` answered ok at `textColumnsOf(paper, narrow80)`, the paper being the job
-  target's (printers mode), else the device printer's (simple mode on the app or a browser), else the KOT's paper setting
-  (the Windows chosen printer, as Direct mode draws it) (I-1). The bridge's dispatch effect, for a `kot` surface, calls it before `printKot()`; with a result
-  it arms the same watchdog, awaits `write()` and settles with `null` or `hostPrintFailureMessage(error)`; with null it
-  calls `printKot()` exactly as before. A job slip carries its printer's id: `HostPrintSlip` gains `printerId?: string`,
-  set by `printAgentSlipOf` from the leased job (a printers-mode job printed on a bridge v1 app or a browser's printer
-  has a printer but no target).
-- **Tests:** a slip with its switch off, an unknown key, a bill, a token, a test slip, the attestation slip, an End of
-  day, a refused gate, a renderer error and a Kitchen Bold slip while the slip code is not ready all answer null and call
-  no writer (S1, S3); the columns follow the paper (80 → 48, the 42 choice, 58 → 32 even with the 42 choice stored); each writer row of §5.4 is called with the text bytes;
-  a Windows printer without `printRawOn`, or with the driver method, answers null; a write that rejects settles with the
-  same message the picture path would show; copies print text each time. A source pin: the picture files of the Global
-  Constraints are byte-identical to `d21ee37` (their SHA-256 pinned).
+- [ ] **Step 1: Write the failing test**
 
-### Task 12: The Windows printer's raw write, page side (§6)
+Create `apps/cafe/lib/printer/kot-text/text-kot-store.test.ts`:
 
-- **Files:** Modify `apps/cafe/lib/desktop-shell-printer.ts` (`desktopPrintsRaw()`, the `printRawOn` type), its tests.
-- **Interfaces (fixed):** `printRawOn(printerName: string, data: Uint8Array): Promise<void>` on `window.posDesktop`
-  (2.0.2, Session 4C); feature-detected by `typeof printRawOn === "function"`; its refusals are the shell's own sentences
-  (`lib/desktop-shell-messages.ts`, parity-pinned in 4C).
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
-### Task 13: "Fast text KOTs (English only)" in the printer panel (§5.1)
+import { DEVICE_PRINTER_KEY } from "@/lib/printer/device-printer-store";
+import {
+  TEXT_KOT_KEY,
+  readTextKot,
+  subscribeTextKot,
+  textKotKeyForDevice,
+  textKotKeyForPrinter,
+  writeTextKot,
+} from "./text-kot-store";
 
-- **Files:** Create `apps/cafe/components/print/TextKotSection.tsx`, `apps/cafe/hooks/use-text-kot-printers.ts`
-  (+ a pure `lib/printer/kot-text/text-kot-printers.ts` with its test); Modify `components/print/PrinterSetupCard.tsx`
-  (the section after `DevicePrinterSection`), `hooks/use-print-host-bridge.ts` (`queueTextTest(key, bytes)`: the text
-  test rides the bridge's busy window like `queueTestSlip`).
-- **Behaviour (fixed):** lists each printer this device prints KOTs on (simple mode: its own printer; printers mode: each
-  routable printer of the setup this device writes that takes KOTs: stations, a full copy or notices), with its name and
-  paper; a switch; on 80 mm "Characters per line: Automatic / 42". Turning on prints `textTestJob` on that printer and
-  asks "Did it print clearly, with the ruler on one line?" (Yes → on; No → stays off, with "Keep it off, or try
-  Characters per line: 42" on 80 mm); a failed print shows the printer's own error and stays off; turning off is
-  immediate. The section's words: the spec §5.1 line. Hidden on a device with no printer it could write raw bytes to.
-- **Tests:** the pure list (modes, KOT-taking printers only, a Windows printer only with `printRawOn` and Direct); the
-  section's pins (words, the confirm states) in a `*-paths.test.ts` like the other print UI pins.
+// Printing Phase 4 (spec 2026-10-15 §5.1, S1, S2): the "Fast text KOTs" switch per printer, kept only in this device's
+// storage under its own key. Anything absent, unreadable or foreign reads as every switch off (today's pictures).
 
-### Task 14: The not-routed words (§8)
+type FakeStorage = { map: Map<string, string>; getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void };
 
-- **Files:** Modify `apps/cafe/lib/print-routing.ts` (`PRINT_JOB_NOT_ROUTED_KOT_MESSAGE = "Nothing to print: every item
-  in this round was cancelled."`, `notRoutedMessageOf(kind)`), `hooks/use-host-routing.ts` (both call sites),
-  `lib/print-bill-printer.test.ts` (the pin).
+function memoryStorage(): FakeStorage {
+  const map = new Map<string, string>();
+  return { map, getItem: (k) => map.get(k) ?? null, setItem: (k, v) => void map.set(k, v), removeItem: (k) => void map.delete(k) };
+}
 
-### Task 15: End to end on fakes and the emulator
+function installWindow(t: { after(fn: () => void): void }, win: unknown): void {
+  const holder = globalThis as unknown as { window?: unknown };
+  const had = Object.prototype.hasOwnProperty.call(holder, "window");
+  const before = holder.window;
+  holder.window = win;
+  t.after(() => {
+    if (had) holder.window = before;
+    else delete holder.window;
+  });
+}
 
-- Headless Chrome with a fake POS app (the Phase 3 harness `pw-3g.mjs` adapted, from `D:\kd\pos-dev-keep`) and the fake
-  printer on 9100: (1) every switch off: the same orders print the same bytes as a build of `d21ee37` (the `.bin` files
-  compared byte for byte; S1); (2) the switch on through the panel (the text test printed, Yes): a round's KOT, a VOID,
-  a TABLE MOVED and a cancel notice arrive as text (`ESC @`, the words, the cut; about 1 KB each); a Hindi item, the logo
-  on, a QR line: the same slip as a picture; (3) the size ratio of the same KOT, picture over text, recorded (≥ 10×).
-- The emulator (the release APK `29115bdf` from `D:\kd\pos-dev-keep\apk-release`, bridge v1, and the 2.0.1 APK if the
-  gate decides): the page on `http://localhost:3110`, the fake printer through `adb reverse tcp:9100 tcp:9100`: the
-  switch on, a KOT as text, a reprint labelled REPRINT as text, then off: a picture again; put back as found.
+const KITCHEN = "printer:6710aa00000000000000000a:app:tcp:192.168.1.50:9100";
+const BAR = "device:native:bt-classic:aa:bb:cc:dd:ee:ff";
 
-### Task 16: Verification, the fresh review, the Results
+test("the switch's own storage key, never the device printer's", () => {
+  assert.equal(TEXT_KOT_KEY, "pos.text-kot.v1", "the documented key");
+  assert.notEqual(TEXT_KOT_KEY, DEVICE_PRINTER_KEY, "a key of its own");
+  const source = readFileSync(path.join(process.cwd(), "lib/printer/kot-text/text-kot-store.ts"), "utf8");
+  for (const name of ["pos.device-printer", "DEVICE_PRINTER_KEY", "readDevicePrinter", "writeDevicePrinter", "watchDevicePrinter"]) {
+    assert.ok(!source.includes(name), `the store never reads or writes the device printer's record (${name})`);
+  }
+});
 
-As 4A's Task 7, plus: `git diff d21ee37..HEAD -- apps/mobile apps/desktop workers apps/cafe/models apps/cafe/app/api` empty.
+test("an absent, unreadable or foreign record reads as every switch off", (t) => {
+  const storage = memoryStorage();
+  installWindow(t, { localStorage: storage });
+  assert.equal(readTextKot(KITCHEN), null, "absent");
+  for (const raw of ["", "{", "null", "[]", '"on"', "{}", '{"v":2,"printers":{}}', '{"v":1}', `{"v":1,"printers":{"${KITCHEN}":true}}`, `{"v":1,"printers":{"${KITCHEN}":{"narrow80":"yes"}}}`, `{"v":1,"printers":{"${KITCHEN}":{"narrow80":false,"columns":48}}}`, `{"v":1,"printers":{"${KITCHEN}":{"narrow80":false}},"extra":1}`]) {
+    storage.map.set(TEXT_KOT_KEY, raw);
+    assert.equal(readTextKot(KITCHEN), null, `unreadable: ${raw}`);
+  }
+});
+
+test("a storage that throws reads as off, and a write does not throw", (t) => {
+  const blocked = (): never => {
+    throw new Error("blocked");
+  };
+  installWindow(t, { localStorage: { getItem: blocked, setItem: blocked, removeItem: blocked } });
+  assert.equal(readTextKot(KITCHEN), null, "a blocked read is off");
+  assert.doesNotThrow(() => writeTextKot(KITCHEN, { narrow80: false }), "a blocked write is swallowed");
+});
+
+test("with no window at all (the server render) every switch is off", (t) => {
+  installWindow(t, undefined);
+  assert.equal(readTextKot(KITCHEN), null, "no window is off");
+  assert.doesNotThrow(() => writeTextKot(KITCHEN, null), "no window: nothing to write");
+});
+
+test("a write round-trips; null removes that printer only; the last one gone removes the record", (t) => {
+  const storage = memoryStorage();
+  installWindow(t, { localStorage: storage });
+  writeTextKot(KITCHEN, { narrow80: false });
+  writeTextKot(BAR, { narrow80: true });
+  assert.deepEqual(readTextKot(KITCHEN), { narrow80: false }, "the kitchen printer is on, Automatic");
+  assert.deepEqual(readTextKot(BAR), { narrow80: true }, "the bar printer is on, 42 characters");
+  assert.deepEqual(JSON.parse(storage.map.get(TEXT_KOT_KEY) ?? ""), { v: 1, printers: { [KITCHEN]: { narrow80: false }, [BAR]: { narrow80: true } } }, "only the 42 choice is kept, never the columns");
+  writeTextKot(KITCHEN, null);
+  assert.equal(readTextKot(KITCHEN), null, "the kitchen printer is off");
+  assert.deepEqual(readTextKot(BAR), { narrow80: true }, "the bar printer stays on");
+  writeTextKot(BAR, null);
+  assert.equal(storage.map.has(TEXT_KOT_KEY), false, "no printer on: no record at all");
+});
+
+test("a write never touches the device printer's record", (t) => {
+  const storage = memoryStorage();
+  installWindow(t, { localStorage: storage });
+  const device = '{"kind":"native","name":"Counter","paper":"80mm","printerId":"AA:BB","transport":"bt-classic"}';
+  storage.map.set(DEVICE_PRINTER_KEY, device);
+  writeTextKot(BAR, { narrow80: false });
+  writeTextKot(BAR, null);
+  assert.equal(storage.map.get(DEVICE_PRINTER_KEY), device, "pos.device-printer.v1 is exactly as it was");
+});
+
+const ID = "6710AA00000000000000000A";
+
+test("a setup printer's key: its id and how this device reaches it, lower-cased", () => {
+  assert.equal(textKotKeyForPrinter(ID, { kind: "app", nativeId: "tcp:192.168.1.50:9100" }), "printer:6710aa00000000000000000a:app:tcp:192.168.1.50:9100", "one of the POS app's printers, by the app's id");
+  assert.equal(textKotKeyForPrinter(ID, { kind: "app", nativeId: "bt-classic:AA:BB:CC:DD:EE:FF" }), "printer:6710aa00000000000000000a:app:bt-classic:aa:bb:cc:dd:ee:ff", "a Bluetooth printer of the app");
+  assert.equal(textKotKeyForPrinter(ID, { kind: "lan", host: "192.168.1.50", port: 9100 }), "printer:6710aa00000000000000000a:lan:192.168.1.50:9100", "a network printer of the Windows app");
+  assert.equal(textKotKeyForPrinter(ID, { kind: "windows", name: "POS-80 Printer" }), "printer:6710aa00000000000000000a:windows:pos-80 printer", "a Windows printer by name");
+  assert.equal(
+    textKotKeyForPrinter(ID, { kind: "native", name: "Counter", paper: "80mm", printerId: "bt-classic:AA:BB:CC:DD:EE:FF", transport: "bt-classic" }),
+    "printer:6710aa00000000000000000a:native:bt-classic:aa:bb:cc:dd:ee:ff",
+    "printed on this device's own printer (an app on bridge v1)",
+  );
+});
+
+test("a setup printer reached another way has a new key, so its switch reads off until its own text test", () => {
+  const base = textKotKeyForPrinter(ID, { kind: "app", nativeId: "tcp:192.168.1.50:9100" });
+  assert.equal(textKotKeyForPrinter(ID.toLowerCase(), { kind: "app", nativeId: "TCP:192.168.1.50:9100" }), base, "the same printer: the same key, whatever the case");
+  for (const [why, key] of [
+    ["another address", textKotKeyForPrinter(ID, { kind: "app", nativeId: "tcp:192.168.1.51:9100" })],
+    ["another port", textKotKeyForPrinter(ID, { kind: "app", nativeId: "tcp:192.168.1.50:9101" })],
+    ["another Bluetooth printer", textKotKeyForPrinter(ID, { kind: "app", nativeId: "bt-classic:aa:bb:cc:dd:ee:01" })],
+    ["reached as the Windows app's network printer", textKotKeyForPrinter(ID, { kind: "lan", host: "192.168.1.50", port: 9100 })],
+    ["another setup printer", textKotKeyForPrinter("6710aa00000000000000000b", { kind: "app", nativeId: "tcp:192.168.1.50:9100" })],
+    ["this device's own printer in simple mode", textKotKeyForDevice({ kind: "native", name: "N", paper: "80mm", printerId: "tcp:192.168.1.50:9100", transport: "tcp" })],
+  ] as const) {
+    assert.notEqual(key, base, why);
+  }
+});
+
+test("this device's own printer's key, per kind", () => {
+  assert.equal(textKotKeyForDevice({ kind: "native", name: "Counter", paper: "80mm", printerId: "bt-classic:AA:BB:CC:DD:EE:FF", transport: "bt-classic" }), BAR, "the POS app's printer, by the app's id");
+  assert.equal(textKotKeyForDevice({ kind: "native", name: "Network printer 10.0.2.2", paper: "58mm", printerId: "tcp:10.0.2.2:9100", transport: "tcp" }), "device:native:tcp:10.0.2.2:9100", "the POS app's network printer");
+  assert.equal(textKotKeyForDevice({ kind: "serial", name: "USB printer", paper: "58mm", usbVendorId: 1208, usbProductId: 514 }), "device:serial:1208:514", "a USB serial printer by its ids");
+  assert.equal(textKotKeyForDevice({ kind: "serial", name: "Bluetooth Printer", paper: "80mm", bluetoothServiceClassId: "00001101-0000-1000-8000-00805f9b34fb" }), "device:serial:bluetooth printer", "a serial printer with no USB ids, by its name (the planning review's m-8)");
+  assert.equal(textKotKeyForDevice({ kind: "ble", name: "Kitchen", paper: "58mm", deviceId: "Abc123==", serviceUuid: "s", characteristicUuid: "c" }), "device:ble:abc123==", "a Bluetooth LE printer by its device id");
+  assert.equal(textKotKeyForDevice({ kind: "windows", name: "POS-80 Printer" }), "device:windows:pos-80 printer", "the Windows app's chosen printer, by its name");
+  assert.notEqual(textKotKeyForDevice({ kind: "windows", name: "POS-58" }), textKotKeyForDevice({ kind: "windows", name: "POS-80 Printer" }), "another Windows printer");
+});
+
+test("a change in this page or another tab tells the subscribers; another key does not", (t) => {
+  const storage = memoryStorage();
+  const handlers: Array<(event: { key: string | null }) => void> = [];
+  installWindow(t, {
+    localStorage: storage,
+    addEventListener: (type: string, fn: (event: { key: string | null }) => void) => {
+      if (type === "storage") handlers.push(fn);
+    },
+    removeEventListener: (type: string, fn: (event: { key: string | null }) => void) => {
+      if (type === "storage") handlers.splice(handlers.indexOf(fn), 1);
+    },
+  });
+  let heard = 0;
+  const stop = subscribeTextKot(() => heard++);
+  writeTextKot(KITCHEN, { narrow80: false });
+  assert.equal(heard, 1, "an in-page write");
+  for (const fn of [...handlers]) fn({ key: TEXT_KOT_KEY });
+  assert.equal(heard, 2, "another tab's write");
+  for (const fn of [...handlers]) fn({ key: DEVICE_PRINTER_KEY });
+  assert.equal(heard, 2, "another record's change is not this one");
+  for (const fn of [...handlers]) fn({ key: null });
+  assert.equal(heard, 3, "storage cleared");
+  stop();
+  writeTextKot(KITCHEN, null);
+  assert.equal(heard, 3, "unsubscribed");
+  assert.equal(handlers.length, 0, "the storage listener is removed");
+});
+```
+
+In `apps/cafe/package.json`, find:
+
+```json
+    "lib/printer/kot-text/text-test-slip.test.ts",
+    "lib/printer/kot-text/kot-text-parity.test.ts",
+    "lib/printer/device-printer-store.test.ts",
+    "lib/printer/device-printer.test.ts",
+```
+
+Replace it with:
+
+```json
+    "lib/printer/kot-text/text-test-slip.test.ts",
+    "lib/printer/kot-text/kot-text-parity.test.ts",
+    "lib/printer/kot-text/text-kot-store.test.ts",
+    "lib/printer/device-printer-store.test.ts",
+    "lib/printer/device-printer.test.ts",
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+```bash
+cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/printer/kot-text/text-kot-store.test.ts 2>&1 | grep -E "^not ok|^# (tests|pass|fail)|Cannot find module|does not provide an export"
+```
+Expected:
+```text
+# Error: Cannot find module './text-kot-store'
+not ok 1 - lib\\printer\\kot-text\\text-kot-store.test.ts
+# tests 1
+# pass 0
+# fail 1
+```
+
+- [ ] **Step 3: Implement**
+
+Create `apps/cafe/lib/printer/kot-text/text-kot-store.ts`:
+
+```ts
+import { z } from "zod";
+
+import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+
+// Printing Phase 4 (spec 2026-10-15 §5.1, P4-3, S1, S2): the "Fast text KOTs" switch of each printer this device prints,
+// kept only in this device's storage, under its own key (never inside the device printer's strict record, which an open
+// older page would then fail to read). A printer is on when its key is here; only the 80 mm "42 characters per line"
+// choice is kept, never the columns (they come from the printer's paper at each print). Like the device printer's store,
+// every access is try/caught and anything absent, unreadable or foreign reads as every switch off: today's pictures.
+
+export const TEXT_KOT_KEY = "pos.text-kot.v1";
+
+/** A printer whose switch is on: whether its 80 mm paper prints 42 characters per line instead of 48. */
+export interface TextKotChoice {
+  narrow80: boolean;
+}
+
+const KEY_MAX_CHARS = 400;
+const choiceSchema = z.object({ narrow80: z.boolean() }).strict();
+const recordSchema = z.object({ v: z.literal(1), printers: z.record(z.string().min(1).max(KEY_MAX_CHARS), choiceSchema) }).strict();
+type TextKotRecord = z.infer<typeof recordSchema>;
+
+/** How this device reaches a printer, exactly as the picture's writer does: this device's own printer (the POS app's, a
+ *  serial or a Bluetooth LE printer), one of the POS app's printers by the app's id (bridge v2), a network printer of the
+ *  Windows app by its address, or a Windows printer by its name. */
+export type TextKotReach =
+  | DevicePrinter
+  | { kind: "app"; nativeId: string }
+  | { kind: "lan"; host: string; port: number }
+  | { kind: "windows"; name: string };
+
+function reachOf(reach: TextKotReach): string {
+  switch (reach.kind) {
+    case "native":
+      return `native:${reach.printerId}`;
+    case "serial":
+      // A serial printer with no USB ids (a Bluetooth serial port) by its name: the planning review's m-8.
+      return reach.usbVendorId !== undefined && reach.usbProductId !== undefined ? `serial:${reach.usbVendorId}:${reach.usbProductId}` : `serial:${reach.name}`;
+    case "ble":
+      return `ble:${reach.deviceId}`;
+    case "app":
+      return `app:${reach.nativeId}`;
+    case "lan":
+      return `lan:${reach.host}:${reach.port}`;
+    case "windows":
+      return `windows:${reach.name}`;
+  }
+}
+
+/** A setup printer's key (printers mode): its id and how this device reaches it, so a printer pointed elsewhere in Printer
+ *  setup, or reached here through another printer, is a new key, off until its own text test printed (the planning
+ *  review's I-2). Lower-cased: the app spells a MAC upper-case, the setup may not. */
+export function textKotKeyForPrinter(printerId: string, reach: TextKotReach): string {
+  return `printer:${printerId}:${reachOf(reach)}`.toLowerCase();
+}
+
+/** This device's own printer's key (simple mode). */
+export function textKotKeyForDevice(reach: TextKotReach): string {
+  return `device:${reachOf(reach)}`.toLowerCase();
+}
+
+function readRecord(): TextKotRecord | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(TEXT_KOT_KEY);
+    if (raw === null) return null;
+    const parsed = recordSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** That printer's switch: its choice when on, null when off (or when nothing can be read). */
+export function readTextKot(key: string): TextKotChoice | null {
+  const record = readRecord();
+  return record !== null && Object.hasOwn(record.printers, key) ? { narrow80: record.printers[key].narrow80 } : null;
+}
+
+const listeners = new Set<() => void>();
+let unwatch: (() => void) | null = null;
+
+function notify(): void {
+  for (const listener of [...listeners]) listener();
+}
+
+/** Turns that printer on (with its choice) or off (null); every other printer's switch stays as it is. A blocked storage
+ *  keeps nothing: the printer then prints pictures. */
+export function writeTextKot(key: string, choice: TextKotChoice | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    const printers = { ...(readRecord()?.printers ?? {}) };
+    if (choice === null) delete printers[key];
+    else printers[key] = { narrow80: choice.narrow80 };
+    if (Object.keys(printers).length === 0) window.localStorage.removeItem(TEXT_KOT_KEY);
+    else window.localStorage.setItem(TEXT_KOT_KEY, JSON.stringify({ v: 1, printers }));
+  } catch {
+    // Nothing kept, nothing crashed.
+  }
+  notify();
+}
+
+/** A switch changed on this page or in another tab of this browser (the `storage` event never fires in the tab that
+ *  wrote). Returns the remover. */
+export function subscribeTextKot(onChange: () => void): () => void {
+  listeners.add(onChange);
+  if (unwatch === null && typeof window !== "undefined" && typeof window.addEventListener === "function") {
+    const handler = (event: StorageEvent): void => {
+      if (event.key === null || event.key === TEXT_KOT_KEY) notify();
+    };
+    window.addEventListener("storage", handler);
+    unwatch = () => window.removeEventListener("storage", handler);
+  }
+  return () => {
+    listeners.delete(onChange);
+    if (listeners.size === 0 && unwatch !== null) {
+      unwatch();
+      unwatch = null;
+    }
+  };
+}
+```
+
+- [ ] **Step 4: Run it, the typecheck and the lint**
+
+```bash
+cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/printer/kot-text/text-kot-store.test.ts 2>&1 | grep -E "^not ok|^# (tests|pass|fail)|Cannot find module|does not provide an export"
+cd /d/kd/lucifer/apps/cafe && npx tsc --noEmit && npx eslint lib/printer/kot-text && echo "typecheck and lint clean"
+```
+Expected:
+```text
+# tests 10
+# pass 10
+# fail 0
+typecheck and lint clean
+```
+
+- [ ] **Step 5: Commit.** Write the message to `$SP/msg-4b-10.txt`, then `git add apps/cafe/lib/printer/kot-text apps/cafe/package.json && git commit -F "$SP/msg-4b-10.txt"`:
+
+```text
+feat(cafe): printing Phase 4 Session 4B, the Fast text KOTs switch's storage: pos.text-kot.v1 on this device only, never inside the device printer's record; a printer is on when its key is there, and only its 80 mm 42-characters choice is kept; a key names the printer and how this device reaches it (the POS app's printer id, the Windows app's network address, a Windows printer's name, or this device's own printer), so a printer pointed elsewhere reads off until its own text test; anything unreadable reads as every switch off (spec §5.1, S1, S2)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+```
+
+### Task 11: The Windows printer's raw write, page side (§5.3, §6)
+
+**Files:**
+- Modify: `apps/cafe/lib/desktop-shell-printer.ts`, `apps/cafe/lib/printer/desktop-printer-state.ts`,
+  `apps/cafe/components/print/DesktopPrintMethod.tsx`
+- Test: `apps/cafe/lib/desktop-shell-raw-on.test.ts`; `apps/cafe/package.json` (`testChain`)
+
+**Interfaces:**
+- Produces: `DesktopLanBridge.printRawOn?(printerName: string, data: Uint8Array): Promise<void>` (on `window.posDesktop`:
+  the Windows app 2.0.2, Session 4C); `desktopPrintsRaw()` (`typeof printRawOn === "function"`);
+  `desktopPrintRawOn(printerName, data)` (the app's own sentences on a refusal, the picture's `DESKTOP_PRINT_TIMEOUT_MS`
+  no-reply bound); `DesktopPrinterSnapshot.printMode?: DesktopPrintMode` (from `listPrinters`, absent when the app does
+  not say); `DesktopPrintMethod` reads the store again after a save. `lib/desktop-shell.ts` is not changed (S1 pin).
+
+- [ ] **Step 1: Write the failing test**
+
+Create `apps/cafe/lib/desktop-shell-raw-on.test.ts`:
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+import { DESKTOP_PRINT_NO_REPLY_MESSAGE, DESKTOP_PRINT_TIMEOUT_MS, shellErrorMessage, type PosDesktopBridge } from "@/lib/desktop-shell";
+import { desktopPrintRawOn, desktopPrintsRaw } from "@/lib/desktop-shell-printer";
+import { desktopPrinterSnapshot, refreshDesktopPrinterChosen, resetDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import { stripComments } from "@/lib/source-pin-utils";
+
+// Printing Phase 4 (spec 2026-10-15 §6, §5.3, §5.4): the page side of the Windows app's raw write to a Windows printer
+// (printRawOn, the app 2.0.2): feature-detected, its refusals the app's own sentences, the picture's no-reply bound; and
+// the app's print method kept with its printers, since text goes to a Windows printer only with "Direct to printer".
+
+type FakeWindow = { posDesktop?: PosDesktopBridge };
+function installWindow(t: { after(fn: () => void): void }, win: FakeWindow): void {
+  (globalThis as unknown as { window: FakeWindow }).window = win;
+  t.after(() => delete (globalThis as unknown as { window?: unknown }).window);
+}
+
+const SLIP = Uint8Array.from([0x1b, 0x40, 0x41, 0x0a]);
+
+test("printRawOn is feature-detected: only an app that has it writes raw bytes to a Windows printer", (t) => {
+  installWindow(t, { posDesktop: { version: "2.0.1", printHtml: async () => undefined, printHtmlOn: async () => undefined } });
+  assert.equal(desktopPrintsRaw(), false, "an app before 2.0.2: its Windows printers print pictures");
+  installWindow(t, { posDesktop: { version: "2.0.2", printHtml: async () => undefined, printRawOn: async () => undefined } });
+  assert.equal(desktopPrintsRaw(), true, "the app 2.0.2");
+  installWindow(t, {});
+  assert.equal(desktopPrintsRaw(), false, "not the Windows app");
+});
+
+test("the bytes go to the named Windows printer, unchanged", async (t) => {
+  const calls: Array<[string, number[]]> = [];
+  installWindow(t, {
+    posDesktop: {
+      version: "2.0.2",
+      printHtml: async () => undefined,
+      printRawOn: async (name: string, data: Uint8Array) => void calls.push([name, [...data]]),
+    },
+  });
+  await desktopPrintRawOn("POS-80 Printer", SLIP);
+  assert.deepEqual(calls, [["POS-80 Printer", [...SLIP]]], "one call, the printer's name and the slip's bytes");
+});
+
+test("a refusal carries the app's own sentence, which the bridge reads as it reads a picture's", async (t) => {
+  const sentence = "That printer is not on this PC. Choose it again in printer setup.";
+  installWindow(t, {
+    posDesktop: {
+      version: "2.0.2",
+      printHtml: async () => undefined,
+      printRawOn: async () => {
+        throw new Error(`Error invoking remote method 'pos-desktop:print-raw-on': Error: ${sentence}`);
+      },
+    },
+  });
+  await assert.rejects(desktopPrintRawOn("Gone", SLIP), (error: unknown) => {
+    assert.equal(shellErrorMessage(error), sentence, "the shell's sentence, unwrapped");
+    return true;
+  });
+});
+
+test("an app that never answers is given up after the picture's own bound", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  installWindow(t, { posDesktop: { version: "2.0.2", printHtml: async () => undefined, printRawOn: () => new Promise<void>(() => undefined) } });
+  const pending = desktopPrintRawOn("POS-80 Printer", SLIP);
+  t.mock.timers.tick(DESKTOP_PRINT_TIMEOUT_MS);
+  await assert.rejects(pending, new Error(DESKTOP_PRINT_NO_REPLY_MESSAGE), "the no-reply sentence, as a picture's");
+});
+
+test("the Windows printers' store keeps the app's print method; an app that does not say leaves it out", async (t) => {
+  resetDesktopPrinterChosen();
+  t.after(resetDesktopPrinterChosen);
+  let mode: string | undefined = "direct";
+  installWindow(t, {
+    posDesktop: {
+      version: "2.0.2",
+      printHtml: async () => undefined,
+      listPrinters: async () => ({ selected: "POS-80", printers: [{ name: "POS-80", displayName: "POS-80" }], ...(mode === undefined ? {} : { printMode: mode as "direct" }) }),
+      savePrinter: async (name: string | null) => ({ selected: name }),
+    },
+  });
+  await refreshDesktopPrinterChosen();
+  assert.deepEqual(desktopPrinterSnapshot(), { chosen: "chosen", selected: "POS-80", names: ["POS-80"], printMode: "direct" }, "Direct to printer");
+  mode = "driver";
+  await refreshDesktopPrinterChosen();
+  assert.equal(desktopPrinterSnapshot().printMode, "driver", "Through the Windows driver: a change of method is a change of the store");
+  mode = undefined;
+  await refreshDesktopPrinterChosen();
+  assert.equal("printMode" in desktopPrinterSnapshot(), false, "an app that does not say: no method");
+  mode = "sideways";
+  await refreshDesktopPrinterChosen();
+  assert.equal("printMode" in desktopPrinterSnapshot(), false, "a method the page does not know: none");
+});
+
+test("PIN: a saved print method is read back into the store at once, so the next slip follows it", () => {
+  const method = stripComments(readFileSync(path.join(process.cwd(), "components/print/DesktopPrintMethod.tsx"), "utf8"));
+  const save = method.indexOf("const result = await savePrintMode(next);");
+  const refresh = method.indexOf("void refreshDesktopPrinterChosen();");
+  assert.ok(save >= 0 && refresh > save, "after the save, the store reads the app's printers and method again");
+  assert.ok(method.includes('import { refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";'), "from the Windows printers' store");
+});
+```
+
+In `apps/cafe/package.json`, find:
+
+```json
+    "lib/session-rolling.test.ts",
+    "lib/desktop-shell.test.ts",
+    "lib/desktop-shell-paths.test.ts",
+    "lib/gst-discount.test.ts",
+```
+
+Replace it with:
+
+```json
+    "lib/session-rolling.test.ts",
+    "lib/desktop-shell.test.ts",
+    "lib/desktop-shell-raw-on.test.ts",
+    "lib/desktop-shell-paths.test.ts",
+    "lib/gst-discount.test.ts",
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+```bash
+cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/desktop-shell-raw-on.test.ts 2>&1 | grep -E "^not ok|^# (tests|pass|fail)|Cannot find module|does not provide an export"
+```
+Expected:
+```text
+not ok 1 - printRawOn is feature-detected: only an app that has it writes raw bytes to a Windows printer
+not ok 2 - the bytes go to the named Windows printer, unchanged
+not ok 3 - a refusal carries the app's own sentence, which the bridge reads as it reads a picture's
+not ok 4 - an app that never answers is given up after the picture's own bound
+not ok 5 - the Windows printers' store keeps the app's print method; an app that does not say leaves it out
+not ok 6 - PIN: a saved print method is read back into the store at once, so the next slip follows it
+# tests 6
+# pass 0
+# fail 6
+```
+
+- [ ] **Step 3: Implement**
+
+In `apps/cafe/components/print/DesktopPrintMethod.tsx`, find:
+
+```tsx
+  type DesktopPrinterApi,
+} from "@/lib/desktop-shell-printer";
+
+const SAVE_MODE_FAILED_MESSAGE = "Could not save the print method — try again.";
+```
+
+Replace it with:
+
+```tsx
+  type DesktopPrinterApi,
+} from "@/lib/desktop-shell-printer";
+import { refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+
+const SAVE_MODE_FAILED_MESSAGE = "Could not save the print method — try again.";
+```
+
+In `apps/cafe/components/print/DesktopPrintMethod.tsx`, find:
+
+```tsx
+      const result = await savePrintMode(next);
+      setMode(result.printMode);
+      toast.success(SAVE_MODE_SUCCESS_MESSAGE);
+    } catch {
+```
+
+Replace it with:
+
+```tsx
+      const result = await savePrintMode(next);
+      setMode(result.printMode);
+      // Printing Phase 4 (spec §5.3): the next slip follows the new method (text KOTs only with Direct).
+      void refreshDesktopPrinterChosen();
+      toast.success(SAVE_MODE_SUCCESS_MESSAGE);
+    } catch {
+```
+
+In `apps/cafe/lib/desktop-shell-printer.ts`, find:
+
+```ts
+// the browser print dialog kept working, because the operator picks the
+// printer there. This is that choice, made once and stored by the shell.
+import { desktopShell } from "@/lib/desktop-shell";
+import type { PaperWidth } from "@/lib/constants";
+
+```
+
+Replace it with:
+
+```ts
+// the browser print dialog kept working, because the operator picks the
+// printer there. This is that choice, made once and stored by the shell.
+import { DESKTOP_PRINT_FAILED_MESSAGE, DESKTOP_PRINT_NO_REPLY_MESSAGE, DESKTOP_PRINT_TIMEOUT_MS, desktopShell } from "@/lib/desktop-shell";
+import type { PaperWidth } from "@/lib/constants";
+
+```
+
+In `apps/cafe/lib/desktop-shell-printer.ts`, find:
+
+```ts
+  printRaw?(printer: { host: string; port: number }, data: Uint8Array): Promise<unknown>;
+  lanStatus?(printers: { host: string; port: number }[]): Promise<unknown>;
+}
+
+```
+
+Replace it with:
+
+```ts
+  printRaw?(printer: { host: string; port: number }, data: Uint8Array): Promise<unknown>;
+  lanStatus?(printers: { host: string; port: number }[]): Promise<unknown>;
+  /** Printing Phase 4 (spec §6): the Windows app 2.0.2 writes a slip's ESC/POS bytes to a Windows printer by its name,
+   *  through the raw spool its Direct method already uses. Optional and feature-detected like the rest: an older app has
+   *  none, so its Windows printers print pictures. */
+  printRawOn?(printerName: string, data: Uint8Array): Promise<void>;
+}
+
+/** Printing Phase 4 (spec §5.3, §6): the Windows app writes raw bytes to a Windows printer (printRawOn, 2.0.2). */
+export function desktopPrintsRaw(): boolean {
+  return typeof desktopShell()?.printRawOn === "function";
+}
+
+/** Printing Phase 4 (spec §5.4): one text slip's bytes to a Windows printer. A refusal carries the app's own sentence (the
+ *  bridge reads it with shellErrorMessage, as a picture's), and an app that never answers is given up after the picture's
+ *  own bound (DESKTOP_PRINT_TIMEOUT_MS). */
+export async function desktopPrintRawOn(printerName: string, data: Uint8Array): Promise<void> {
+  const shell = desktopShell();
+  if (typeof shell?.printRawOn !== "function") throw new Error(DESKTOP_PRINT_FAILED_MESSAGE);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const noReply = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(DESKTOP_PRINT_NO_REPLY_MESSAGE)), DESKTOP_PRINT_TIMEOUT_MS);
+  });
+  try {
+    await Promise.race([shell.printRawOn(printerName, data), noReply]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+```
+
+In `apps/cafe/lib/printer/desktop-printer-state.ts`, find:
+
+```ts
+import { desktopPrinterApi } from "@/lib/desktop-shell-printer";
+
+// Whether the Windows desktop shell has a printer CHOSEN. The shell refuses
+```
+
+Replace it with:
+
+```ts
+import { DESKTOP_PRINT_MODES, desktopPrinterApi, type DesktopPrintMode } from "@/lib/desktop-shell-printer";
+
+// Whether the Windows desktop shell has a printer CHOSEN. The shell refuses
+```
+
+In `apps/cafe/lib/printer/desktop-printer-state.ts`, find:
+
+```ts
+  /** Every printer Windows reports on this PC, by name; null until read. */
+  names: readonly string[] | null;
+}
+
+```
+
+Replace it with:
+
+```ts
+  /** Every printer Windows reports on this PC, by name; null until read. */
+  names: readonly string[] | null;
+  /** Printing Phase 4 (spec §5.3): the app's print method as it last said; absent before a read and on an app that does
+   *  not say. Text KOTs go to a Windows printer only with "direct". */
+  printMode?: DesktopPrintMode;
+}
+
+```
+
+In `apps/cafe/lib/printer/desktop-printer-state.ts`, find:
+
+```ts
+}
+
+function sameNames(a: readonly string[] | null, b: readonly string[] | null): boolean {
+  if (a === null || b === null) return a === b;
+```
+
+Replace it with:
+
+```ts
+}
+
+function printModeOf(mode: unknown): { printMode?: DesktopPrintMode } {
+  return DESKTOP_PRINT_MODES.find((known) => known === mode) === undefined ? {} : { printMode: mode as DesktopPrintMode };
+}
+
+function sameNames(a: readonly string[] | null, b: readonly string[] | null): boolean {
+  if (a === null || b === null) return a === b;
+```
+
+In `apps/cafe/lib/printer/desktop-printer-state.ts`, find:
+
+```ts
+
+function publish(next: DesktopPrinterSnapshot): void {
+  if (next.chosen === current.chosen && next.selected === current.selected && sameNames(next.names, current.names)) return;
+  current = next;
+  for (const listener of [...listeners]) listener();
+```
+
+Replace it with:
+
+```ts
+
+function publish(next: DesktopPrinterSnapshot): void {
+  if (next.chosen === current.chosen && next.selected === current.selected && sameNames(next.names, current.names) && next.printMode === current.printMode) return;
+  current = next;
+  for (const listener of [...listeners]) listener();
+```
+
+In `apps/cafe/lib/printer/desktop-printer-state.ts`, find:
+
+```ts
+  }
+  try {
+    const { selected, printers } = await api.listPrinters();
+    if (ticket !== readTicket) return current.chosen;
+    publish({ chosen: chosenOf(selected), selected: selectedOf(selected), names: namesOf(printers) });
+  } catch {
+    // Unreadable right now: keep what we knew rather than flip the dot.
+```
+
+Replace it with:
+
+```ts
+  }
+  try {
+    const { selected, printers, printMode } = await api.listPrinters();
+    if (ticket !== readTicket) return current.chosen;
+    publish({ chosen: chosenOf(selected), selected: selectedOf(selected), names: namesOf(printers), ...printModeOf(printMode) });
+  } catch {
+    // Unreadable right now: keep what we knew rather than flip the dot.
+```
+
+- [ ] **Step 4: Run it with the Windows suites, the typecheck and the lint**
+
+```bash
+cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/desktop-shell-raw-on.test.ts lib/printer/print-lane.test.ts lib/desktop-shell.test.ts lib/desktop-shell-paths.test.ts lib/print-windows-printers.test.ts 2>&1 | grep -E "^not ok|^# (tests|pass|fail)|Cannot find module|does not provide an export"
+cd /d/kd/lucifer/apps/cafe && npx tsc --noEmit && npx eslint lib/desktop-shell-printer.ts lib/printer/desktop-printer-state.ts components/print/DesktopPrintMethod.tsx lib/desktop-shell-raw-on.test.ts && echo "typecheck and lint clean"
+```
+Expected:
+```text
+# tests 77
+# pass 77
+# fail 0
+typecheck and lint clean
+```
+
+- [ ] **Step 5: Commit.** Write the message to `$SP/msg-4b-11.txt`, then `git add apps/cafe && git commit -F "$SP/msg-4b-11.txt"`:
+
+```text
+feat(cafe): printing Phase 4 Session 4B, the Windows printer's raw write, page side: printRawOn on window.posDesktop (the Windows app 2.0.2), feature-detected; one text slip to a Windows printer with the picture's no-reply bound and the app's own sentences; the app's print method kept in the Windows printers' store and read again after a save, since text goes to a Windows printer only with Direct to printer (spec §5.3, §6)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+```
+
+### Task 12: The bridge's text step (§5.2, §5.4, S1, S3, S4)
+
+**Files:**
+- Create: `apps/cafe/lib/printer/kot-text/text-kot-print.ts`
+- Modify: `apps/cafe/hooks/use-print-host-bridge.ts`, `apps/cafe/lib/print-host-slips.ts` (`HostPrintSlip.printerId`,
+  `takeover`), `apps/cafe/lib/print-agent-slip.ts`, `apps/cafe/hooks/use-print-agent.ts` (a takeover's slip)
+- Test: `apps/cafe/lib/printer/kot-text/text-kot-print.test.ts` (with the S1 source pin), `apps/cafe/lib/print-host-text-kot.test.ts`
+  (the real bridge under the hook harness); `lib/print-host-paths.test.ts` and `lib/printer/print-gating-fx-paths.test.ts`
+  (the bridge's line budget 255 → 265); `apps/cafe/package.json` (`testChain`)
+
+**Interfaces:**
+- Produces: `interface TextKotEnv` (the device printer's snapshot; the Windows app's chosen printer and print method;
+  `desktopPrintsRaw()`; `rasterCapable()`; `readTextKot`; `slipCodeStatus`; the writers `writeDevice`, `writeNative`,
+  `writeLan`, `writeRawOn`) and `textKotEnv()` (the real ones); `interface TextKotRoute { key; paper; write(bytes) }` and
+  `textKotRouteOf({ printerId, target, settings, env })`: the writer the picture takes (a Windows app network printer by
+  its raw TCP; on the Windows app a Windows printer only with `printRawOn` and Direct, the job's or, in simple mode, the
+  chosen one at the kitchen ticket's paper; one of the POS app's printers by its id; else this device's own printer,
+  never on a plain browser, never with none saved or another tab owning it); `textKotFitsPicture(length, paper)`;
+  `textKotWriteFor({ slip, settings, target, env }): { bytes; write() } | null`: null unless the slip is a job's
+  kitchen slip (`surface === "kot"`), not a takeover (`slip.takeover`, spec §5.3), its route exists, its switch is on, its design needs no lazy code that is not
+  `"ready"` (I-4), `kotTextJob` answers ok at `textColumnsOf(route.paper, narrow80)` with the picture's own settings
+  (`settingsForPaper` with a target) and the bytes fit (rule 7); never throws.
+- The bridge: for the KOT surface, `textKotWriteFor` right before `printKot()`; with an answer it writes under the same
+  watchdog and settles with `null` or `hostPrintFailureMessage(error)`; with none it calls `printKot()` exactly as before.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `apps/cafe/lib/print-host-paths.test.ts`, find:
+
+```ts
+// onHost hook that lets a host answer trigger the offline follow-up (W-O) are 7 unavoidable lines.
+// Phase 2 Session 2E: use-print-host-bridge.ts 250 -> 255 (measured 252): a slip's own Windows printer and paper.
+test("PIN (P): line budgets — PrintHostProvider.tsx <= 200, use-print-host-bridge.ts <= 255, use-print-host-drain.ts <= 150, use-print-host-beat.ts <= 90, PrintHostPrintSources.tsx <= 110, PrintHostEodSource.tsx <= 90, PosPulseProvider.tsx <= 300, use-self-order-auto-print.ts <= 300", () => {
+  const budgets: [string, number][] = [
+    [PRINT_HOST_PROVIDER, 200],
+    [USE_PRINT_HOST_BRIDGE, 255],
+    [USE_PRINT_HOST_DRAIN, 150],
+    [USE_PRINT_HOST_BEAT, 90],
+```
+
+Replace it with:
+
+```ts
+// onHost hook that lets a host answer trigger the offline follow-up (W-O) are 7 unavoidable lines.
+// Phase 2 Session 2E: use-print-host-bridge.ts 250 -> 255 (measured 252): a slip's own Windows printer and paper.
+// Printing Phase 4 Session 4B: use-print-host-bridge.ts 255 -> 265 (measured 262): the text step before the KOT surface.
+test("PIN (P): line budgets — PrintHostProvider.tsx <= 200, use-print-host-bridge.ts <= 265, use-print-host-drain.ts <= 150, use-print-host-beat.ts <= 90, PrintHostPrintSources.tsx <= 110, PrintHostEodSource.tsx <= 90, PosPulseProvider.tsx <= 300, use-self-order-auto-print.ts <= 300", () => {
+  const budgets: [string, number][] = [
+    [PRINT_HOST_PROVIDER, 200],
+    [USE_PRINT_HOST_BRIDGE, 265],
+    [USE_PRINT_HOST_DRAIN, 150],
+    [USE_PRINT_HOST_BEAT, 90],
+```
+
+Create `apps/cafe/lib/print-host-text-kot.test.ts`:
+
+```ts
+import "@/lib/hook-harness"; // installs the react / react-to-print / sonner stubs: MUST stay the first import
+import { test, type TestContext } from "node:test";
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+
+import { mountHook, resetStubs, stubModule, stubs, type MountedHook } from "@/lib/hook-harness";
+import type { HostPrintDone } from "@/lib/print-host-outcomes";
+import { PRINT_HOST_DISPATCH_TIMEOUT_MS, PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print-host-slips";
+import type { TextKotWrite, TextKotWriteInput } from "@/lib/printer/kot-text/text-kot-print";
+import { PRINTER_NOT_CONNECTED_MESSAGE } from "@/lib/printer/web-printer-types";
+
+// Printing Phase 4 (spec 2026-10-15 §5.2, S1, S3, S4): the print bridge's text step, driven through the REAL hook body
+// (lib/hook-harness.ts) with the text step stubbed. A kitchen slip the text step answers goes through that write, never
+// the picture, under the same busy window, watchdog and outcome; one it answers null for fires the picture as before.
+
+const world: { answer: (input: TextKotWriteInput) => TextKotWrite | null; asked: string[] } = { answer: () => null, asked: [] };
+stubModule("@/lib/printer/kot-text/text-kot-print", {
+  textKotEnv: () => ({}),
+  textKotWriteFor: (input: TextKotWriteInput) => {
+    world.asked.push(input.slip.documentTitle);
+    return world.answer(input);
+  },
+}); // BEFORE the bridge loads
+const load = createRequire(__filename);
+const { usePrintHostBridge } = load("@/hooks/use-print-host-bridge") as typeof import("@/hooks/use-print-host-bridge");
+
+type Bridge = ReturnType<typeof usePrintHostBridge>;
+const BYTES = Uint8Array.from([0x1b, 0x40, 0x41, 0x0a]);
+const slipOf = (surface: HostPrintSlip["surface"], title: string): HostPrintSlip => ({ surface, documentTitle: title, kotVariant: "kot", order: {} }) as unknown as HostPrintSlip;
+
+interface Held {
+  calls: number;
+  resolve(): void;
+  reject(error: Error): void;
+}
+/** A text write the test settles by hand. */
+function heldWrite(): Held & { answer: TextKotWrite } {
+  const held = { calls: 0, resolve: () => undefined, reject: (_error: Error) => undefined } as Held;
+  const answer: TextKotWrite = {
+    bytes: BYTES,
+    write: () => {
+      held.calls += 1;
+      return new Promise<void>((resolve, reject) => {
+        held.resolve = resolve;
+        held.reject = reject;
+      });
+    },
+  };
+  return Object.assign(held, { answer });
+}
+
+function scene(t: TestContext) {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  resetStubs();
+  world.asked = [];
+  world.answer = () => null;
+  const hook: MountedHook<Bridge> = mountHook(() => usePrintHostBridge({ surfacesMounted: true }));
+  for (const ref of [hook.result().kotRef, hook.result().receiptRef, hook.result().eodRef]) ref.current = { textContent: "A SLIP" } as HTMLDivElement;
+  const outcomes: string[] = [];
+  const done: HostPrintDone = (result) => void outcomes.push(result.ok ? "printed" : `failed: ${result.error instanceof Error ? result.error.message : String(result.error)}`);
+  return {
+    hook,
+    outcomes,
+    queue: (surface: HostPrintSlip["surface"], title: string) => hook.act(() => hook.result().queueSlip(slipOf(surface, title), done)),
+    /** react-to-print reports the picture done (the KOT surface's onAfterPrint). */
+    finish: () => hook.act(() => stubs.options[0]?.onAfterPrint?.()),
+    settled: async () => {
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      hook.rerender();
+    },
+  };
+}
+
+test("S1: a kitchen slip the text step answers nothing for fires the picture, exactly as before", async (t) => {
+  const s = scene(t);
+  s.queue("kot", "KOT-1");
+  assert.deepEqual(world.asked, ["KOT-1"], "the text step was asked, once");
+  assert.deepEqual(stubs.printed, ["kot"], "the picture: the KOT surface fired");
+  s.finish();
+  assert.deepEqual(s.outcomes, ["printed"], "the picture's own outcome");
+  assert.equal(s.hook.result().current, null, "the bridge is free");
+});
+
+test("text: the slip's bytes go through its printer's writer, never the picture, and the slip settles with the write", async (t) => {
+  const s = scene(t);
+  const held = heldWrite();
+  world.answer = () => held.answer;
+  s.queue("kot", "KOT-1");
+  assert.equal(held.calls, 1, "one write");
+  assert.deepEqual(stubs.printed, [], "the KOT surface never fired");
+  assert.equal(s.hook.result().busy, true, "the busy window holds while the write is out");
+  held.resolve();
+  await s.settled();
+  assert.deepEqual(s.outcomes, ["printed"], "printed when the write is done");
+  assert.equal(s.hook.result().current, null, "the bridge is free");
+  assert.deepEqual(stubs.toasts, [], "no message");
+});
+
+test("a text write that fails settles with the writer's own sentence, as the picture's failure does", async (t) => {
+  const s = scene(t);
+  const held = heldWrite();
+  world.answer = () => held.answer;
+  s.queue("kot", "KOT-1");
+  held.reject(new Error(PRINTER_NOT_CONNECTED_MESSAGE));
+  await s.settled();
+  assert.deepEqual(s.outcomes, [`failed: ${PRINTER_NOT_CONNECTED_MESSAGE}`], "the agent hears the printer's sentence (sent: no, never counted)");
+  assert.deepEqual(stubs.toasts, [PRINTER_NOT_CONNECTED_MESSAGE], "and staff see it, as for a picture");
+});
+
+test("the watchdog bounds a text write as it bounds a picture", async (t) => {
+  const s = scene(t);
+  const held = heldWrite();
+  world.answer = () => held.answer;
+  s.queue("kot", "KOT-1");
+  s.hook.act(() => t.mock.timers.tick(PRINT_HOST_DISPATCH_TIMEOUT_MS));
+  assert.deepEqual(stubs.toasts, [PRINT_HOST_PRINT_FAILED_MESSAGE], "given up and said so");
+  s.queue("kot", "KOT-2");
+  assert.equal(held.calls, 1, "the next slip waits while the abandoned write may still be printing");
+  held.resolve();
+  await s.settled();
+  assert.equal(held.calls, 2, "the late completion released the bridge: the next slip went (as text: the same answer)");
+});
+
+test("slips print in order: the next waits for the text write", async (t) => {
+  const s = scene(t);
+  const held = heldWrite();
+  world.answer = (input) => (input.slip.documentTitle === "KOT-1" ? held.answer : null);
+  s.queue("kot", "KOT-1");
+  s.queue("kot", "KOT-2");
+  assert.deepEqual(world.asked, ["KOT-1"], "the second slip waits");
+  assert.deepEqual(stubs.printed, [], "nothing fired yet");
+  held.resolve();
+  await s.settled();
+  assert.deepEqual(world.asked, ["KOT-1", "KOT-2"], "then the second is asked");
+  assert.deepEqual(stubs.printed, ["kot"], "and prints as a picture (its answer was null)");
+  s.finish();
+  assert.deepEqual(s.outcomes, ["printed", "printed"], "each slip's own outcome, in order");
+});
+
+test("a bill, a token, End of day and the attestation test slip never ask the text step", async (t) => {
+  const s = scene(t);
+  world.answer = () => {
+    throw new Error("never asked");
+  };
+  s.queue("receipt", "BILL-1");
+  assert.deepEqual(stubs.printed, ["receipt"], "the bill's picture");
+  s.hook.act(() => stubs.options[1]?.onAfterPrint?.());
+  s.queue("token", "TOKEN-1");
+  assert.deepEqual(stubs.printed, ["receipt", "receipt"], "the token's picture");
+  s.hook.act(() => stubs.options[1]?.onAfterPrint?.());
+  const test = s.hook.result().queueTestSlip();
+  assert.deepEqual(stubs.printed, ["receipt", "receipt", "kot"], "the attestation test slip's picture");
+  s.finish();
+  await test;
+  assert.deepEqual(world.asked, [], "the text step was never asked");
+});
+```
+
+Create `apps/cafe/lib/printer/kot-text/text-kot-print.test.ts`:
+
+```ts
+import { settingsOf } from "../../print-template-golden.fixtures"; // FIRST: React's production build
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+import type { KotBlock, KotTemplate } from "@pos/shared/print-template";
+import type { LeasedPrintJob } from "@pos/shared/print-agent-wire";
+import type { SlipCodeStatus } from "@/components/print/slip/slip-code";
+import { printAgentSlipOf } from "@/lib/print-agent-slip";
+import type { HostPrintSlip, SlipPrintTarget } from "@/lib/print-host-slips";
+import { defaultKotTemplate } from "@/lib/print-template-designs";
+import { classicKotTemplate } from "@/lib/print-template-legacy";
+import { DOTS_58MM, DOTS_80MM, RASTER_MAX_ROWS } from "@/lib/printer/escpos";
+import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+import type { PrinterSnapshot } from "@/lib/printer/web-printer-types";
+import type { Settings } from "@/types";
+import { kotTextJob } from "./kot-text";
+import { slipOf } from "./kot-text.fixtures";
+import { textKotFitsPicture, textKotRouteOf, textKotWriteFor, type TextKotEnv } from "./text-kot-print";
+import { textKotKeyForDevice, textKotKeyForPrinter, type TextKotChoice } from "./text-kot-store";
+
+// Printing Phase 4 (spec 2026-10-15 §5.2, §5.4, S1, S3, S4): the print bridge's text step. With a printer's switch off,
+// or anything text cannot print exactly, it answers null and calls no writer: the bridge then fires the picture as today.
+
+const APP_80: DevicePrinter = { kind: "native", name: "Counter", paper: "80mm", printerId: "bt-classic:AA:BB:CC:DD:EE:FF", transport: "bt-classic" };
+const APP_58: DevicePrinter = { kind: "native", name: "Kitchen 58", paper: "58mm", printerId: "tcp:10.0.2.2:9100", transport: "tcp" };
+const PLAIN = settingsOf({ logo: "" });
+const PRINTER = "6710aa00000000000000000a";
+
+function fakeEnv(over: Partial<TextKotEnv> = {}) {
+  const writes: string[] = [];
+  const on = new Map<string, TextKotChoice>();
+  let device: PrinterSnapshot = { status: "connected", printer: APP_80, message: null };
+  const env: TextKotEnv = {
+    devicePrinter: () => device,
+    desktop: () => null,
+    desktopPrintsRaw: () => false,
+    rasterCapable: () => true,
+    readTextKot: (key) => on.get(key) ?? null,
+    slipCodeStatus: () => "idle",
+    writeDevice: async (bytes) => void writes.push(`device ${bytes.length}`),
+    writeNative: async (nativeId, bytes) => void writes.push(`app ${nativeId} ${bytes.length}`),
+    writeLan: async (target, bytes) => void writes.push(`lan ${target.host}:${target.port} ${bytes.length}`),
+    writeRawOn: async (name, bytes) => void writes.push(`windows ${name} ${bytes.length}`),
+    ...over,
+  };
+  return {
+    env,
+    writes,
+    on: (key: string, narrow80 = false) => on.set(key, { narrow80 }),
+    setDevice: (next: PrinterSnapshot) => void (device = next),
+  };
+}
+
+const KOTS = ["round-label-number", "void-reason-by-at", "moved-from-by-at", "cancel-notice-reason"] as const;
+const ask = (env: TextKotEnv, slip: HostPrintSlip, target?: SlipPrintTarget, settings: Settings = PLAIN) => textKotWriteFor({ slip, settings, target, env });
+const columnsJob = (slip: HostPrintSlip, columns: 32 | 42 | 48, settings: Settings = PLAIN) => {
+  const job = kotTextJob({ slip: slip as Parameters<typeof kotTextJob>[0]["slip"], settings, columns });
+  assert.ok(job.ok, "the slip prints as text");
+  return job.bytes;
+};
+
+test("S1: with every switch off no slip answers text and no writer is called, on every route", async () => {
+  const routes: Array<[string, Partial<TextKotEnv>, SlipPrintTarget | undefined, string | undefined]> = [
+    ["the POS app's own printer", {}, undefined, undefined],
+    ["one of the app's printers", {}, { nativeId: "tcp:192.168.1.50:9100", paper: "80mm" }, PRINTER],
+    ["a network printer of the Windows app", { desktop: () => ({ chosen: "POS-80", printMode: "direct" }) }, { lan: { host: "192.168.1.50", port: 9100 }, paper: "80mm" }, PRINTER],
+    ["a Windows printer", { desktop: () => ({ chosen: "POS-80", printMode: "direct" }), desktopPrintsRaw: () => true }, { printerName: "Kitchen TVS", paper: "80mm" }, PRINTER],
+    ["the Windows app's chosen printer", { desktop: () => ({ chosen: "POS-80", printMode: "direct" }), desktopPrintsRaw: () => true }, undefined, undefined],
+  ];
+  for (const [name, over, target, printerId] of routes) {
+    const f = fakeEnv(over);
+    for (const id of KOTS) {
+      const slip: HostPrintSlip = { ...slipOf(id), ...(printerId === undefined ? {} : { printerId }) };
+      assert.equal(ask(f.env, slip, target), null, `${name} / ${id}: off is a picture`);
+    }
+    assert.deepEqual(f.writes, [], `${name}: no writer called`);
+  }
+});
+
+test("only a job's kitchen slip: a bill, a token, End of day and a printer's Test print answer nothing with the switch on", () => {
+  const f = fakeEnv();
+  f.on(textKotKeyForDevice(APP_80));
+  const order = slipOf("round-label-number").order;
+  const others: HostPrintSlip[] = [
+    { surface: "receipt", order, documentTitle: "bill" },
+    { surface: "token", order, documentTitle: "token" },
+    { surface: "eod", dateKey: "2026-10-15", dateLabel: "15 Oct", isToday: true, documentTitle: "eod" },
+    { surface: "test", printerName: "Kitchen", lines: ["Kitchen"], requestedBy: "Asha", requestedAt: "2026-10-15T10:00:00.000Z", documentTitle: "test" },
+  ];
+  for (const slip of others) assert.equal(ask(f.env, slip), null, `${slip.surface}: a picture`);
+  assert.notEqual(ask(f.env, slipOf("round-label-number")), null, "landmark: the KOT itself prints as text");
+  assert.deepEqual(f.writes, [], "asking writes nothing");
+});
+
+test("S3: a slip text cannot print exactly answers nothing, so the picture prints it", () => {
+  const f = fakeEnv();
+  f.on(textKotKeyForDevice(APP_80));
+  const kot = slipOf("round-label-number");
+  const items = kot.kotRoundItems ?? [];
+  const hindi = { ...kot, kotRoundItems: items.map((item, i) => (i === 0 ? { ...item, name: "पनीर टिक्का" } : item)) };
+  assert.equal(ask(f.env, hindi), null, "a Hindi dish");
+  assert.equal(ask(f.env, { ...kot, order: { ...kot.order, receiver: "આશા" } }), null, "a staff name in Gujarati");
+  assert.equal(ask(f.env, kot, undefined, settingsOf({ kotShowLogo: true })), null, "the logo on, with a logo");
+  assert.notEqual(ask(f.env, kot, undefined, settingsOf({ logo: "", kotShowLogo: true })), null, "landmark: the logo on with no logo prints text");
+  const qr = (template: KotTemplate): KotBlock[] => [...template.blocks, { id: "qr-1", type: "qr", on: true, options: { content: "link", url: "https://example.com/menu" } } as KotBlock];
+  const withQr = { ...PLAIN, kotTemplate: { ...classicKotTemplate(PLAIN), blocks: qr(classicKotTemplate(PLAIN)) } } as Settings;
+  assert.equal(ask({ ...f.env, slipCodeStatus: () => "ready" }, kot, undefined, withQr), null, "a QR line with a usable link");
+  assert.equal(ask(f.env, { ...kot, order: { ...kot.order, items: undefined } as never, kotRoundItems: undefined }), null, "an error in the text renderer");
+  const throwing = { ...f.env, readTextKot: (): never => { throw new Error("storage"); } };
+  assert.equal(ask(throwing, kot), null, "an error anywhere in the step");
+  assert.deepEqual(f.writes, [], "no writer called");
+});
+
+test("the planning review's I-4: a design whose lazy code is not loaded answers nothing (the picture prints the legacy ticket)", () => {
+  const f = fakeEnv();
+  f.on(textKotKeyForDevice(APP_80));
+  const bold = { ...PLAIN, kotTemplate: defaultKotTemplate("kitchenBold", PLAIN) } as Settings;
+  const kot = slipOf("round-label-number");
+  for (const status of ["idle", "loading", "failed"] as const satisfies readonly SlipCodeStatus[]) {
+    assert.equal(ask({ ...f.env, slipCodeStatus: () => status }, kot, undefined, bold), null, `Kitchen Bold while the code is ${status}`);
+  }
+  assert.notEqual(ask({ ...f.env, slipCodeStatus: () => "ready" }, kot, undefined, bold), null, "Kitchen Bold once the code is in");
+  const classic = { ...PLAIN, kotTemplate: classicKotTemplate(PLAIN) } as Settings;
+  assert.notEqual(ask({ ...f.env, slipCodeStatus: () => "failed" }, kot, undefined, classic), null, "a stored Classic ticket needs no lazy code");
+});
+
+test("the columns come from the printer's paper at each print: 80 mm 48 or the 42 choice, 58 mm 32 whatever is stored", () => {
+  const kot = slipOf("round-label-number");
+  const f = fakeEnv();
+  f.on(textKotKeyForDevice(APP_80));
+  assert.deepEqual(ask(f.env, kot)?.bytes, columnsJob(kot, 48), "80 mm, Automatic: 48");
+  f.on(textKotKeyForDevice(APP_80), true);
+  assert.deepEqual(ask(f.env, kot)?.bytes, columnsJob(kot, 42), "80 mm, 42 chosen: 42");
+  f.on(textKotKeyForDevice(APP_58), true);
+  f.setDevice({ status: "connected", printer: APP_58, message: null });
+  assert.deepEqual(ask(f.env, kot)?.bytes, columnsJob(kot, 32), "the paper changed to 58 mm: 32, the stored 42 choice does not apply");
+  const target: SlipPrintTarget = { nativeId: "tcp:192.168.1.50:9100", paper: "58mm" };
+  f.on(textKotKeyForPrinter(PRINTER, { kind: "app", nativeId: target.nativeId ?? "" }));
+  assert.deepEqual(ask(f.env, { ...kot, printerId: PRINTER }, target)?.bytes, columnsJob(kot, 32), "a printer job: its printer's paper");
+});
+
+test("spec §5.4: each writer gets the text bytes, through the route the picture takes", async () => {
+  const kot = slipOf("round-label-number");
+  const bytes = columnsJob(kot, 48);
+  const cases: Array<[string, Partial<TextKotEnv>, SlipPrintTarget | undefined, string | undefined, string, string]> = [
+    ["this device's own printer (simple mode)", {}, undefined, undefined, textKotKeyForDevice(APP_80), `device ${bytes.length}`],
+    ["a printer job on the device's one printer (an app on bridge v1, a browser's printer)", {}, undefined, PRINTER, textKotKeyForPrinter(PRINTER, APP_80), `device ${bytes.length}`],
+    ["one of the POS app's printers (bridge v2)", {}, { nativeId: "tcp:192.168.1.50:9100", paper: "80mm" }, PRINTER, textKotKeyForPrinter(PRINTER, { kind: "app", nativeId: "tcp:192.168.1.50:9100" }), `app tcp:192.168.1.50:9100 ${bytes.length}`],
+    ["a network printer of the Windows app (1.12.0)", { desktop: () => ({ chosen: null, printMode: undefined }) }, { lan: { host: "192.168.1.50", port: 9100 }, paper: "80mm" }, PRINTER, textKotKeyForPrinter(PRINTER, { kind: "lan", host: "192.168.1.50", port: 9100 }), `lan 192.168.1.50:9100 ${bytes.length}`],
+    ["a Windows printer of the setup (2.0.2, Direct)", { desktop: () => ({ chosen: "POS-80", printMode: "direct" }), desktopPrintsRaw: () => true }, { printerName: "Kitchen TVS", paper: "80mm" }, PRINTER, textKotKeyForPrinter(PRINTER, { kind: "windows", name: "Kitchen TVS" }), `windows Kitchen TVS ${bytes.length}`],
+    ["the Windows app's chosen printer (simple mode, 2.0.2, Direct)", { desktop: () => ({ chosen: "POS-80", printMode: "direct" }), desktopPrintsRaw: () => true }, undefined, undefined, textKotKeyForDevice({ kind: "windows", name: "POS-80" }), `windows POS-80 ${bytes.length}`],
+  ];
+  for (const [name, over, target, printerId, key, wrote] of cases) {
+    const f = fakeEnv(over);
+    f.on(key);
+    const text = ask(f.env, { ...kot, ...(printerId === undefined ? {} : { printerId }) }, target);
+    assert.ok(text !== null, `${name}: text`);
+    assert.deepEqual(text.bytes, bytes, `${name}: the slip's text bytes`);
+    assert.deepEqual(f.writes, [], `${name}: nothing written before the bridge writes`);
+    await text.write();
+    assert.deepEqual(f.writes, [wrote], `${name}: one write, through its own writer`);
+  }
+});
+
+test("a Windows printer prints text only through printRawOn and the Direct method, and only a printer it names", () => {
+  const kot = { ...slipOf("round-label-number"), printerId: PRINTER };
+  const target: SlipPrintTarget = { printerName: "Kitchen TVS", paper: "80mm" };
+  const key = textKotKeyForPrinter(PRINTER, { kind: "windows", name: "Kitchen TVS" });
+  const answer = (over: Partial<TextKotEnv>, slip: HostPrintSlip, to: SlipPrintTarget | undefined) => {
+    const f = fakeEnv(over);
+    f.on(key);
+    f.on(textKotKeyForDevice({ kind: "windows", name: "POS-80" }));
+    return ask(f.env, slip, to);
+  };
+  assert.equal(answer({ desktop: () => ({ chosen: "POS-80", printMode: "direct" }), desktopPrintsRaw: () => false }, kot, target), null, "an app before 2.0.2 (no printRawOn)");
+  assert.equal(answer({ desktop: () => ({ chosen: "POS-80", printMode: "driver" }), desktopPrintsRaw: () => true }, kot, target), null, "Through the Windows driver");
+  assert.equal(answer({ desktop: () => ({ chosen: "POS-80", printMode: undefined }), desktopPrintsRaw: () => true }, kot, target), null, "an app that does not say its method");
+  assert.equal(answer({ desktop: () => ({ chosen: null, printMode: "direct" }), desktopPrintsRaw: () => true }, slipOf("round-label-number"), undefined), null, "simple mode with no printer chosen (the Windows default)");
+  assert.equal(answer({ desktop: () => ({ chosen: "POS-80", printMode: "direct" }), desktopPrintsRaw: () => true }, kot, undefined), null, "a printer job with no Windows printer named (an older app prints its chosen one)");
+  assert.notEqual(answer({ desktop: () => ({ chosen: "POS-80", printMode: "direct" }), desktopPrintsRaw: () => true }, kot, target), null, "landmark: 2.0.2 and Direct");
+});
+
+test("this device's own printer as the picture's lane: none saved, another tab's, or a plain browser answer nothing", () => {
+  const kot = slipOf("round-label-number");
+  const f = fakeEnv();
+  f.on(textKotKeyForDevice(APP_80));
+  f.setDevice({ status: "none", printer: null, message: null });
+  assert.equal(ask(f.env, kot), null, "no printer on this device");
+  f.setDevice({ status: "elsewhere", printer: APP_80, message: "another tab" });
+  assert.equal(ask(f.env, kot), null, "another tab of this browser owns it (the picture refuses with its own sentence)");
+  f.setDevice({ status: "connected", printer: APP_80, message: null });
+  assert.equal(ask({ ...f.env, rasterCapable: () => false }, kot), null, "a plain browser: the print window");
+  assert.notEqual(ask(f.env, kot), null, "landmark: the printer, connected");
+  f.setDevice({ status: "connecting", printer: APP_80, message: null });
+  assert.notEqual(ask(f.env, kot), null, "a printer still connecting is written as the picture is (the write reconnects once)");
+});
+
+test("a printer pointed elsewhere, or another printer, reads off until its own text test", () => {
+  const kot = { ...slipOf("round-label-number"), printerId: PRINTER };
+  const f = fakeEnv();
+  f.on(textKotKeyForPrinter(PRINTER, { kind: "app", nativeId: "tcp:192.168.1.50:9100" }));
+  assert.notEqual(ask(f.env, kot, { nativeId: "tcp:192.168.1.50:9100", paper: "80mm" }), null, "landmark: the printer that passed its test");
+  assert.equal(ask(f.env, kot, { nativeId: "tcp:192.168.1.51:9100", paper: "80mm" }), null, "re-pointed to another address");
+  assert.equal(ask(f.env, { ...kot, printerId: "6710aa00000000000000000b" }, { nativeId: "tcp:192.168.1.50:9100", paper: "80mm" }), null, "another setup printer at that address");
+  assert.equal(ask(f.env, slipOf("round-label-number")), null, "this device's own printer in simple mode");
+});
+
+test("spec §5.3: a printer this device only takes over for another device prints pictures, its stored switch or not", () => {
+  const target: SlipPrintTarget = { nativeId: "tcp:192.168.1.50:9100", paper: "80mm" };
+  const f = fakeEnv();
+  f.on(textKotKeyForPrinter(PRINTER, { kind: "app", nativeId: "tcp:192.168.1.50:9100" }));
+  const kot: HostPrintSlip = { ...slipOf("round-label-number"), printerId: PRINTER };
+  assert.notEqual(ask(f.env, kot, target), null, "landmark: its own printer, switch on: text");
+  assert.equal(ask(f.env, { ...kot, takeover: true }, target), null, "taken over for another device: a picture");
+  assert.deepEqual(f.writes, [], "no writer called");
+});
+
+test("PIN (spec §5.3): the agent marks a slip of a printer it only takes over", () => {
+  const agent = readFileSync(path.join(process.cwd(), "hooks/use-print-agent.ts"), "utf8");
+  assert.ok(agent.includes("const takeoverRef = useRef(printers.takeoverIds);"), "the printers it may take over, read at print time");
+  assert.ok(agent.includes("job.printerId !== undefined && takeoverRef.current.includes(job.printerId) ? { ...slip, takeover: true } : slip"), "such a job's slip says so");
+});
+
+test("spec §4.1 rule 7 in the step: a slip whose text would pass the picture's limit at its paper prints as a picture", () => {
+  // The review's m-1 (M5): the same slip fits 80 mm's limit and passes 58 mm's.
+  const kot = slipOf("round-label-number");
+  const line = { ...(kot.kotRoundItems ?? [])[0], qty: 1, name: "Masala Chai", modifiers: [], instructions: "" };
+  const big: HostPrintSlip = { ...kot, kotRoundItems: Array.from({ length: 22_300 }, () => line) };
+  const narrow = kotTextJob({ slip: big as Parameters<typeof kotTextJob>[0]["slip"], settings: PLAIN, columns: 32 });
+  const wide = kotTextJob({ slip: big as Parameters<typeof kotTextJob>[0]["slip"], settings: PLAIN, columns: 48 });
+  assert.ok(narrow.ok && narrow.bytes.length > (DOTS_58MM / 8) * RASTER_MAX_ROWS, "landmark: on 58 mm the text is past the picture's limit");
+  assert.ok(wide.ok && wide.bytes.length <= (DOTS_80MM / 8) * RASTER_MAX_ROWS, "landmark: on 80 mm it is within it");
+  const f58 = fakeEnv();
+  f58.setDevice({ status: "connected", printer: APP_58, message: null });
+  f58.on(textKotKeyForDevice(APP_58));
+  // A boolean, not the answer: a failing equal would diff a ~780 KB job and run node out of memory (the review's m-9).
+  assert.equal(ask(f58.env, big) === null, true, "58 mm: a picture (rule 7)");
+  const f80 = fakeEnv();
+  f80.on(textKotKeyForDevice(APP_80));
+  assert.equal(ask(f80.env, big) !== null, true, "80 mm: text");
+});
+
+test("spec §4.1 rule 7: text larger than the largest picture of that paper answers nothing", () => {
+  assert.equal(textKotFitsPicture((DOTS_80MM / 8) * RASTER_MAX_ROWS, "80mm"), true, "80 mm: up to the picture's own limit");
+  assert.equal(textKotFitsPicture((DOTS_80MM / 8) * RASTER_MAX_ROWS + 1, "80mm"), false, "80 mm: one byte more");
+  assert.equal(textKotFitsPicture((DOTS_58MM / 8) * RASTER_MAX_ROWS + 1, "58mm"), false, "58 mm: one byte more");
+  assert.equal(textKotFitsPicture(1200, "58mm"), true, "a real kitchen ticket");
+  const route = textKotRouteOf({ printerId: undefined, target: undefined, settings: PLAIN, env: fakeEnv().env });
+  assert.equal(route?.paper, "80mm", "landmark: the route names the paper the limit is measured at");
+});
+
+test("copies: each pass through the bridge decides alike and writes once", async () => {
+  const f = fakeEnv();
+  f.on(textKotKeyForDevice(APP_80));
+  const kot = slipOf("round-label-number");
+  const first = ask(f.env, kot);
+  const second = ask(f.env, kot);
+  assert.ok(first !== null && second !== null, "both copies are text");
+  assert.deepEqual(first.bytes, second.bytes, "the same bytes");
+  await first.write();
+  await second.write();
+  assert.equal(f.writes.length, 2, "one write per copy");
+});
+
+test("a printer job's slip names its printer; a simple-mode job's slip names none", () => {
+  const base = { id: "j1", kind: "kot", labels: [], copies: 1, payload: { kind: "kot", snapshot: slipOf("round-label-number").order, round: 1 } } as unknown as LeasedPrintJob;
+  assert.equal(printAgentSlipOf({ ...base, printerId: PRINTER } as LeasedPrintJob, "2026-10-15").printerId, PRINTER, "the job's printer");
+  assert.equal("printerId" in printAgentSlipOf(base, "2026-10-15"), false, "no printer: as before");
+});
+
+// S1's source pin: the picture's code is not changed in Phase 4 (spec §2.1 S1, the plan's Global Constraints). Each file's
+// SHA-256 as of the spec commit d21ee37 (the repo checks out LF everywhere: .gitattributes).
+const PICTURE_FILES: ReadonlyArray<readonly [string, string]> = [
+  ["apps/cafe/lib/printer/escpos.ts", "a0ebdf99560951b26ab030fe2c063e32c39e2348b8267dea4ca630aa98bbacb7"],
+  ["apps/cafe/lib/printer/raster.ts", "a8e28e7255671fde55fc67bcbfcfc4179a356190ff52d42db48403f4c9917a55"],
+  ["apps/cafe/lib/printer/raster-assets.ts", "890fa950970a301991f5e6cad7a4c8ac944d86640242f162d69cce11df3c5282"],
+  ["apps/cafe/lib/printer/lane-print.ts", "85c2fbfe90c4ace49714f4eca7dab38ea71f518aa2e85c046f7411eab041f631"],
+  ["apps/cafe/lib/desktop-shell.ts", "6500105e629eab187c941973bdf2efefb9527a864ed3c7a4344ec31ff65002a9"],
+  ["apps/cafe/components/pos/KOTReceipt.tsx", "8cf5b916d92dfb849cebfc706e5092ae64a32f5543c32c3881280b75a2cc6a6c"],
+  ["apps/cafe/components/pos/OrderReceipt.tsx", "0b5403aae20c88068bad01301de7f252110e34c249a390be0927d8b9ef2a27b0"],
+  ["apps/cafe/components/pos/PrintSources.tsx", "9e48741a302e346676ab3d5743f33b71186f2ab263ada641486713e562391626"],
+  ["apps/cafe/components/pos/PrintBanner.tsx", "ae64381a09a8756e96e5a8ff354dd30929ffe69157023b88d5eff34d7ac8adbb"],
+  ["apps/cafe/components/print/slip/SlipEngine.tsx", "7dadadca482d807afe61af08fa5251fe6700c10b44d5e0742441c8532d0efa48"],
+  ["apps/cafe/components/print/slip/SlipSkeleton.tsx", "f611392cca061ecbd578917e498bc6c2b22f9b6d82574d47377d28fee4065350"],
+  ["apps/cafe/components/print/slip/TokenSlip.tsx", "dc61cf11886300c5fb1f67e25633fa81c56526944936445e12685019c8194e14"],
+  ["apps/cafe/components/print/slip/bill-cafe-blocks.tsx", "52bfa8cdd7d34e936f07afe17c952417eb9cb101dc760b1d1e72b7aa0afb4edf"],
+  ["apps/cafe/components/print/slip/bill-classic-blocks.tsx", "e65be3f269183afd0ced7d2f18fb7b445d7f59c460aaa095fe8d33405739c203"],
+  ["apps/cafe/components/print/slip/bill-express-blocks.tsx", "cea92172ce8a542c8caec96488124b3f55a0df52bae05e273e2bb65522f5268f"],
+  ["apps/cafe/components/print/slip/bill-modern-blocks.tsx", "309fba301f66402263b8495772b4f7577b70effb097718ba1f0bfb873c7e1f2c"],
+  ["apps/cafe/components/print/slip/bill-themed-blocks.tsx", "acf359519cb9d63beb624fa18be9d9b1b88ce1a460bd8f682e6a43e034f675cd"],
+  ["apps/cafe/components/print/slip/generic-blocks.tsx", "caf0b117be2497bb9b089ec0f2f890e1b182d84a9d828a94ea27c752fc32b5ab"],
+  ["apps/cafe/components/print/slip/kot-bold-blocks.tsx", "f8cf55c4e5ad8d3b38a13ff09f79921d6954c948374c9c9ff584f80815db4957"],
+  ["apps/cafe/components/print/slip/kot-classic-blocks.tsx", "398dcaff958c617b564ff4f31f10bab9722bcd5345bcd3db17610d18b9d22c9f"],
+  ["apps/cafe/components/print/slip/slip-code-lazy.ts", "c9b5ee58ab7c1b4b7667286f5a0f004f8a771d12b00c731801c401a0763e1082"],
+  ["apps/cafe/components/print/slip/slip-code.ts", "57233d57b60d16bf006e708456ddbcdd5ffbca6a949c94ec8cfa8ea49355e857"],
+  ["apps/cafe/components/print/slip/slip-context.ts", "4877169aca7bff0e6e709d5ea1ddfcd449e39e78dd8fa417492da37a8ba28ccd"],
+  ["apps/cafe/components/print/slip/slip-designs.ts", "de65eccd2cdfa92760c785c7759c720acc02d51858c09e707c18fffafaea8c87"],
+  ["apps/cafe/components/print/slip/slip-format.ts", "0d2a327a80178b1aa4f76f3ed49915499bfa19f4a630183e8e5ec33972534263"],
+  ["apps/cafe/components/print/slip/slip-groups.ts", "326e115f246eacb022d19da2613f9d7f4e430e6f3df6a522155daf6ce908c0ea"],
+  ["apps/cafe/components/print/slip/slip-rows.tsx", "b50c240dd1e57a5a314a8da3fe52edaea9cbc66ce7bbf99ed21dbd3a3b2f0da2"],
+  ["apps/cafe/components/print/slip/slip-style.ts", "e6d4fcf11a7e054694526589dcce269a2e2fe1162deca18505faf64c51d5a626"],
+  ["apps/cafe/components/print/slip/slip-view.ts", "c0820bb0952f8e2cfb65edb7870fc5913bd2a84e88b5c0c075ebd4f85cec18d3"],
+  ["apps/cafe/components/print/slip/token-blocks.tsx", "9784facf66ec6774eda7234384407dcf8c0f35d6d5f6ca5e6fab0a63e53ee875"],
+  ["apps/cafe/components/print/slip/token-designs.tsx", "c79f13e5dca0e26b327f028338315945794f7f6fa7c190f56dc4377931906ed4"],
+  ["apps/desktop/src/print-direct.ts", "2b0c34fac5bad5fa9f4feb685505e1655eb23d3ba8a409fb1dc2c555630e7db0"],
+  ["apps/desktop/src/escpos.ts", "d4e61dc6ad244e3fe7dc6881e9608ab966af0eee64b40be74e428330e57e4a62"],
+  ["apps/desktop/src/raw-spool.ts", "f9f30989801d1404435160e34c1f9cac30cad05f0d1599fe4b48870150630267"],
+  ["apps/desktop/src/raw-tcp.ts", "0e393ddc0cd0f39e875f55c1168cfd78b572101dade45eeed4f250e9554d13e0"],
+  ["apps/desktop/src/print-job.ts", "aa8784291abf6da80efcad1ac0b5a494a3055f301b696c59a22729000e4107d2"],
+  ["apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterManager.kt", "2528f235b7b1d29ecd81ac9645d232b628348855a0ef05c5a29a4b39928cd635"],
+  ["apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterPool.kt", "d17d127edcbdfdfd707cdaf63f4d49e242cc781d05e0d67ee6d98a6fd647d179"],
+  ["apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/BleTransport.kt", "c672736fdfc7a01e8042b16c29de8e90425672d1fcdba055dc6178e84c490e66"],
+  ["apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/ClassicTransport.kt", "6c433670f0eb600d176a3a42811b522ab254e8da53bed24ac074c575bea34661"],
+  ["apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/TcpTransport.kt", "907f9360cc400bef578b390950ef58aaf4179cf5fa090521ad50a33b7afcf059"],
+  ["apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/UsbTransport.kt", "2b72a9b30b55d0ba30ef5ad7fe8a77bc28a0a8a3fd39d47aca925f70d534a297"],
+  ["apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/TransportFactory.kt", "b64898010ea7b10b94911b367659b1b61d077d06309072f8fda5462da908c4bc"],
+];
+
+test("PIN (S1): the picture's files are byte for byte as at the spec commit d21ee37", () => {
+  const root = path.join(process.cwd(), "..", "..");
+  for (const [file, sha256] of PICTURE_FILES) {
+    const actual = createHash("sha256").update(readFileSync(path.join(root, file))).digest("hex");
+    assert.equal(actual, sha256, `${file} is unchanged`);
+  }
+  assert.equal(PICTURE_FILES.length, 43, "every picture file is pinned");
+});
+```
+
+In `apps/cafe/lib/printer/print-gating-fx-paths.test.ts`, find:
+
+```ts
+      check(p, s.includes("window.setTimeout(abandon, PRINT_HOST_DISPATCH_TIMEOUT_MS)"), "the watchdog abandons (it no longer settles)");
+      check(p, !abandon.includes("occupiedRef") && !abandon.includes("setCurrent"), "abandon must NOT free the slot itself");
+      check(p, lines(r) <= 255, "stays <= 255 lines (Phase 2 Session 2E: a slip's own Windows printer and paper)");
+      return p;
+    },
+```
+
+Replace it with:
+
+```ts
+      check(p, s.includes("window.setTimeout(abandon, PRINT_HOST_DISPATCH_TIMEOUT_MS)"), "the watchdog abandons (it no longer settles)");
+      check(p, !abandon.includes("occupiedRef") && !abandon.includes("setCurrent"), "abandon must NOT free the slot itself");
+      check(p, lines(r) <= 265, "stays <= 265 lines (Phase 2 Session 2E: a slip's own Windows printer and paper; printing Phase 4 Session 4B: the text step)");
+      return p;
+    },
+```
+
+In `apps/cafe/package.json`, find:
+
+```json
+    "lib/printer/kot-text/kot-text-parity.test.ts",
+    "lib/printer/kot-text/text-kot-store.test.ts",
+    "lib/printer/device-printer-store.test.ts",
+    "lib/printer/device-printer.test.ts",
+```
+
+Replace it with:
+
+```json
+    "lib/printer/kot-text/kot-text-parity.test.ts",
+    "lib/printer/kot-text/text-kot-store.test.ts",
+    "lib/printer/kot-text/text-kot-print.test.ts",
+    "lib/printer/device-printer-store.test.ts",
+    "lib/printer/device-printer.test.ts",
+```
+
+In `apps/cafe/package.json`, find:
+
+```json
+    "lib/printer-ui-paths.test.ts",
+    "lib/print-host-bridge-late.test.ts",
+    "lib/print-host-hooks.test.ts",
+    "lib/printer/device-printer-deadline.test.ts",
+```
+
+Replace it with:
+
+```json
+    "lib/printer-ui-paths.test.ts",
+    "lib/print-host-bridge-late.test.ts",
+    "lib/print-host-text-kot.test.ts",
+    "lib/print-host-hooks.test.ts",
+    "lib/printer/device-printer-deadline.test.ts",
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+```bash
+cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/printer/kot-text/text-kot-print.test.ts lib/print-host-text-kot.test.ts 2>&1 | grep -E "^not ok|^# (tests|pass|fail)|Cannot find module|does not provide an export"
+```
+Expected:
+```text
+not ok 1 - S1: a kitchen slip the text step answers nothing for fires the picture, exactly as before
+not ok 2 - text: the slip's bytes go through its printer's writer, never the picture, and the slip settles with the write
+not ok 3 - a text write that fails settles with the writer's own sentence, as the picture's failure does
+not ok 4 - the watchdog bounds a text write as it bounds a picture
+not ok 5 - slips print in order: the next waits for the text write
+# Error: Cannot find module './text-kot-print'
+not ok 2 - lib\\printer\\kot-text\\text-kot-print.test.ts
+# tests 7
+# pass 1
+# fail 6
+```
+
+- [ ] **Step 3: Implement**
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+    targetsRef.current = printers.targets;
+  }, [printers.targets]);
+  // Session 2C (the 2C gate's review, I-2): a printer job aimed at this device that it does not print on means its
+  // printer list is stale (a missed print-setup frame, a printer just re-saved onto it): read it again, at most once
+```
+
+Replace it with:
+
+```ts
+    targetsRef.current = printers.targets;
+  }, [printers.targets]);
+  // Printing Phase 4 (spec §5.3): the network printers it prints only for another device (a takeover) print pictures.
+  const takeoverRef = useRef(printers.takeoverIds);
+  useEffect(() => {
+    takeoverRef.current = printers.takeoverIds;
+  }, [printers.takeoverIds]);
+  // Session 2C (the 2C gate's review, I-2): a printer job aimed at this device that it does not print on means its
+  // printer list is stale (a missed print-setup frame, a printer just re-saved onto it): read it again, at most once
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+        };
+        try {
+          queueRef.current(printAgentSlipOf(job, cafeDateString(), job.printerId === undefined ? undefined : targetsRef.current[job.printerId]), done);
+        } catch {
+          // A payload this page cannot turn into a slip (deploy skew): nothing was sent, and never will be.
+```
+
+Replace it with:
+
+```ts
+        };
+        try {
+          const slip = printAgentSlipOf(job, cafeDateString(), job.printerId === undefined ? undefined : targetsRef.current[job.printerId]);
+          queueRef.current(job.printerId !== undefined && takeoverRef.current.includes(job.printerId) ? { ...slip, takeover: true } : slip, done);
+        } catch {
+          // A payload this page cannot turn into a slip (deploy skew): nothing was sent, and never will be.
+```
+
+In `apps/cafe/hooks/use-print-host-bridge.ts`, find:
+
+```ts
+import { hostPrintFailureMessage } from "@/lib/print-write-outcome";
+import { createHostSlipOutcomes, type HostPrintDone } from "@/lib/print-host-outcomes";
+import type { Order } from "@/types";
+
+```
+
+Replace it with:
+
+```ts
+import { hostPrintFailureMessage } from "@/lib/print-write-outcome";
+import { createHostSlipOutcomes, type HostPrintDone } from "@/lib/print-host-outcomes";
+import { textKotEnv, textKotWriteFor } from "@/lib/printer/kot-text/text-kot-print";
+import type { Order } from "@/types";
+
+```
+
+In `apps/cafe/hooks/use-print-host-bridge.ts`, find:
+
+```ts
+    if (surface === "receipt" || surface === "token") printReceipt();
+    else if (surface === "eod") printEod();
+    else printKot();
+  }, [current, eodReady, slipCodePending, surfacesMounted, printKot, printReceipt, printEod, settle, abandon]);
+
+  // The eod wait is bounded: an aggregate that never loads (host offline from
+```
+
+Replace it with:
+
+```ts
+    if (surface === "receipt" || surface === "token") printReceipt();
+    else if (surface === "eod") printEod();
+    else {
+      // Printing Phase 4 (spec §5.2, S1, S3, S4): a job's kitchen slip whose printer's text switch is on, and that text
+      // can print exactly, goes as text through that printer's own writer, under the same watchdog and outcome; else the
+      // picture, exactly as before.
+      const text = current.kind === "slip" ? textKotWriteFor({ slip: current.slip, settings: settings.data, target, env: textKotEnv() }) : null;
+      if (text === null) printKot();
+      else void text.write().then(finish, (error: unknown) => settle(hostPrintFailureMessage(error)));
+    }
+  }, [current, eodReady, slipCodePending, surfacesMounted, printKot, printReceipt, printEod, settle, abandon, settings.data, target, finish]);
+
+  // The eod wait is bounded: an aggregate that never loads (host offline from
+```
+
+In `apps/cafe/lib/print-agent-slip.ts`, find:
+
+```ts
+ *  plus the job's labels as the one banner on top (spec §7.7). An end-of-day summary takes none. Session 2E: a job
+ *  on a Windows printer this PC prints by name carries that printer's target; Session 2F1: one on one of the POS app's
+ *  printers (bridge v2) carries that printer's id. */
+export function printAgentSlipOf(job: LeasedPrintJob, todayKey: string, target?: SlipPrintTarget): HostPrintSlip {
+  const slip = hostPrintSlipOf(job.payload, todayKey);
+  const banner = printBannerText(job.labels);
+  const labelled: HostPrintSlip = banner === "" || slip.surface === "eod" ? slip : { ...slip, banner };
+  return target === undefined ? labelled : { ...labelled, target };
+}
+
+```
+
+Replace it with:
+
+```ts
+ *  plus the job's labels as the one banner on top (spec §7.7). An end-of-day summary takes none. Session 2E: a job
+ *  on a Windows printer this PC prints by name carries that printer's target; Session 2F1: one on one of the POS app's
+ *  printers (bridge v2) carries that printer's id. Printing Phase 4: a printer job carries its printer's id. */
+export function printAgentSlipOf(job: LeasedPrintJob, todayKey: string, target?: SlipPrintTarget): HostPrintSlip {
+  const slip = hostPrintSlipOf(job.payload, todayKey);
+  const banner = printBannerText(job.labels);
+  const labelled: HostPrintSlip = banner === "" || slip.surface === "eod" ? slip : { ...slip, banner };
+  // Printing Phase 4 (spec §5.2): a printer job names its printer, whose text switch the bridge reads.
+  const named: HostPrintSlip = job.printerId === undefined ? labelled : { ...labelled, printerId: job.printerId };
+  return target === undefined ? named : { ...named, target };
+}
+
+```
+
+In `apps/cafe/lib/print-host-slips.ts`, find:
+
+```ts
+}
+
+export type HostPrintSlip = (HostKotSlip | HostReceiptSlip | HostTokenSlip | HostEodSlip | HostTestSlip) & { target?: SlipPrintTarget };
+
+export const ROUND_LABEL_PREFIX = "Round ";
+```
+
+Replace it with:
+
+```ts
+}
+
+/** Printing Phase 4 (spec §5.2): a printer job's slip also names its printer (`printerId`), whose text switch the bridge's
+ *  text step reads (lib/printer/kot-text/text-kot-print.ts); absent in simple mode and on every other slip. `takeover`:
+ *  this device prints that printer only for another device (Phase 3's failover), so it prints pictures (spec §5.3). */
+export type HostPrintSlip = (HostKotSlip | HostReceiptSlip | HostTokenSlip | HostEodSlip | HostTestSlip) & {
+  target?: SlipPrintTarget;
+  printerId?: string;
+  takeover?: true;
+};
+
+export const ROUND_LABEL_PREFIX = "Round ";
+```
+
+Create `apps/cafe/lib/printer/kot-text/text-kot-print.ts`:
+
+```ts
+import { slipCodeStatus, templateNeedsSlipCode, type SlipCodeStatus } from "@/components/print/slip/slip-code";
+import type { PaperWidth } from "@/lib/constants";
+import { desktopShell } from "@/lib/desktop-shell";
+import { desktopPrintRawOn, desktopPrintsRaw, type DesktopPrintMode } from "@/lib/desktop-shell-printer";
+import { printConfigOf, settingsForPaper } from "@/lib/print";
+import type { HostPrintSlip, SlipPrintTarget } from "@/lib/print-host-slips";
+import { kotTemplateOf } from "@/lib/print-template-resolve";
+import { rasterCapable } from "@/lib/printer/capabilities";
+import { desktopLan, type DesktopLanTarget } from "@/lib/printer/desktop-lan";
+import { desktopPrinterSnapshot } from "@/lib/printer/desktop-printer-state";
+import { devicePrinter } from "@/lib/printer/device-printer";
+import { RASTER_MAX_ROWS, dotsForPaper } from "@/lib/printer/escpos";
+import { printerWriter } from "@/lib/printer/printer-registry";
+import type { PrinterSnapshot } from "@/lib/printer/web-printer-types";
+import type { Settings } from "@/types";
+import { kotTextJob } from "./kot-text";
+import { textColumnsOf } from "./text-layout";
+import { readTextKot, textKotKeyForDevice, textKotKeyForPrinter, type TextKotChoice, type TextKotReach } from "./text-kot-store";
+
+// Printing Phase 4 (spec 2026-10-15 §5.2, §5.4, S1, S3, S4): the print bridge's text step. Right before the bridge fires
+// its kitchen surface it asks here; the answer is the slip's text bytes and the write that sends them through the very
+// writer the picture would use, or null, and then the picture prints exactly as today. Null unless all of these hold: a
+// job's slip on the kitchen surface; a printer this device reaches the way the picture would, which can take raw bytes;
+// that printer's switch on in this device's storage; no lazy slip code missing (the picture would print the legacy ticket);
+// and the text renderer answering at the printer's columns, within the picture's own size limit. Never throws: any error
+// is a null, decided before a single byte is sent.
+
+/** What the text step reads and writes through: the real device (textKotEnv) or a test's fakes. */
+export interface TextKotEnv {
+  /** This device's own printer (lib/printer/device-printer.ts). */
+  devicePrinter(): PrinterSnapshot;
+  /** The Windows app: null on any other runtime; else its chosen printer (null: none) and its print method (undefined: the
+   *  app does not say). */
+  desktop(): { chosen: string | null; printMode: DesktopPrintMode | undefined } | null;
+  /** The Windows app writes raw bytes to a Windows printer (printRawOn, 2.0.2). */
+  desktopPrintsRaw(): boolean;
+  /** This runtime reaches a printer of its own (the POS app, Web Serial, Web Bluetooth); else the picture opens the
+   *  browser's print window. */
+  rasterCapable(): boolean;
+  readTextKot(key: string): TextKotChoice | null;
+  slipCodeStatus(): SlipCodeStatus;
+  writeDevice(bytes: Uint8Array): Promise<void>;
+  writeNative(nativeId: string, bytes: Uint8Array): Promise<void>;
+  writeLan(target: DesktopLanTarget, bytes: Uint8Array): Promise<void>;
+  writeRawOn(printerName: string, bytes: Uint8Array): Promise<void>;
+}
+
+/** The real device. */
+export function textKotEnv(): TextKotEnv {
+  return {
+    devicePrinter: () => devicePrinter().getSnapshot(),
+    desktop: () => {
+      if (desktopShell() === null) return null;
+      const snapshot = desktopPrinterSnapshot();
+      return { chosen: snapshot.selected, printMode: snapshot.printMode };
+    },
+    desktopPrintsRaw,
+    rasterCapable,
+    readTextKot,
+    slipCodeStatus,
+    writeDevice: (bytes) => devicePrinter().write(bytes),
+    writeNative: (nativeId, bytes) => printerWriter(nativeId)(bytes),
+    writeLan: (target, bytes) => desktopLan().write(target, bytes),
+    writeRawOn: desktopPrintRawOn,
+  };
+}
+
+/** Where a printer's text goes on this device: its switch's key, the paper its columns come from, and its writer. */
+export interface TextKotRoute {
+  key: string;
+  paper: PaperWidth;
+  write(bytes: Uint8Array): Promise<void>;
+}
+
+interface RouteInput {
+  /** The job's printer (printers mode); undefined for this device's own printer (simple mode). */
+  printerId: string | undefined;
+  target: SlipPrintTarget | undefined;
+  settings: Settings | null | undefined;
+  env: TextKotEnv;
+}
+
+/** The writer the picture would use for this printer here (lib/desktop-shell.ts slipPrintOptions, lib/printer/lane-print.ts),
+ *  when it can take raw bytes; null where the picture prints another way (the browser's print window, the Windows driver,
+ *  an app before 2.0.2's printRawOn) or would refuse (no printer, another tab owns it). */
+export function textKotRouteOf({ printerId, target, settings, env }: RouteInput): TextKotRoute | null {
+  const keyOf = (reach: TextKotReach): string => (printerId === undefined ? textKotKeyForDevice(reach) : textKotKeyForPrinter(printerId, reach));
+  // A network printer of the Windows app 1.12.0: its raw TCP, whatever else this runtime has.
+  if (target?.lan !== undefined) {
+    const lan = target.lan;
+    return { key: keyOf({ kind: "lan", host: lan.host, port: lan.port }), paper: target.paper, write: (bytes) => env.writeLan(lan, bytes) };
+  }
+  const desktop = env.desktop();
+  if (desktop !== null) {
+    // Every other slip of the Windows app goes to a Windows printer: the job's, or this PC's chosen one (simple mode, drawn
+    // at the kitchen ticket's paper setting); as text only through printRawOn and the Direct method (spec §5.3).
+    const name = target?.printerName ?? (printerId === undefined ? desktop.chosen : null);
+    if (name === null || !env.desktopPrintsRaw() || desktop.printMode !== "direct") return null;
+    return { key: keyOf({ kind: "windows", name }), paper: target?.paper ?? printConfigOf(settings).kot.paperWidth, write: (bytes) => env.writeRawOn(name, bytes) };
+  }
+  // One of the POS app's printers on bridge v2, by the app's id.
+  if (target?.nativeId !== undefined) {
+    const nativeId = target.nativeId;
+    return { key: keyOf({ kind: "app", nativeId }), paper: target.paper, write: (bytes) => env.writeNative(nativeId, bytes) };
+  }
+  // This device's own printer, as the picture's lane: none on a plain browser (the print window), none while no printer is
+  // saved or another tab of this browser owns it (the picture then refuses with its own sentence, as today).
+  if (!env.rasterCapable()) return null;
+  const snapshot = env.devicePrinter();
+  if (snapshot.printer === null || snapshot.status === "elsewhere") return null;
+  return { key: keyOf(snapshot.printer), paper: snapshot.printer.paper, write: (bytes) => env.writeDevice(bytes) };
+}
+
+/** Spec §4.1 rule 7: text is never larger than the largest picture the same paper may print (RASTER_MAX_ROWS rows of
+ *  the paper's dots). A kitchen ticket's text is about 1 KB; this only bounds a pathological one. */
+export function textKotFitsPicture(length: number, paper: PaperWidth): boolean {
+  return length <= (dotsForPaper(paper) / 8) * RASTER_MAX_ROWS;
+}
+
+export interface TextKotWrite {
+  bytes: Uint8Array;
+  write(): Promise<void>;
+}
+
+export interface TextKotWriteInput {
+  slip: HostPrintSlip;
+  settings: Settings | null | undefined;
+  target: SlipPrintTarget | undefined;
+  env: TextKotEnv;
+}
+
+/** The slip's text bytes and their write, or null: the bridge then fires the picture exactly as before (S1, S3). */
+export function textKotWriteFor({ slip, settings, target, env }: TextKotWriteInput): TextKotWrite | null {
+  try {
+    // Only a job's slip on the kitchen surface (spec P4-1): never a bill, a token, End of day or a printer's Test print.
+    if (slip.surface !== "kot") return null;
+    // Spec §5.3: a printer this device only takes over for another device has no switch here (the panel never lists it,
+    // so staff could not turn it off from here): pictures, whatever this device's storage holds for it.
+    if (slip.takeover === true) return null;
+    const route = textKotRouteOf({ printerId: slip.printerId, target, settings, env });
+    if (route === null) return null;
+    const choice = env.readTextKot(route.key);
+    if (choice === null) return null;
+    // The slip as the picture draws it: for the printer's own paper when the job has a target (PrintHostPrintSources).
+    const printSettings = target === undefined ? settings : settingsForPaper(settings, target.paper);
+    // The planning review's I-4: while the design's lazy code is not loaded the picture prints the legacy ticket instead,
+    // and text must not print something else.
+    const template = kotTemplateOf(printSettings);
+    if (template !== null && templateNeedsSlipCode(template) && env.slipCodeStatus() !== "ready") return null;
+    const job = kotTextJob({ slip, settings: printSettings, columns: textColumnsOf(route.paper, choice.narrow80) });
+    if (!job.ok || !textKotFitsPicture(job.bytes.length, route.paper)) return null;
+    const bytes = job.bytes;
+    return { bytes, write: () => route.write(bytes) };
+  } catch {
+    return null;
+  }
+}
+```
+
+- [ ] **Step 4: Run them with the bridge's suites, the typecheck and the lint**
+
+```bash
+cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/printer/kot-text/text-kot-print.test.ts lib/print-host-text-kot.test.ts lib/print-host-paths.test.ts lib/print-slip-host.test.ts lib/print-host-bridge-late.test.ts lib/print-slip-code-pins.test.ts lib/print-windows-printers.test.ts lib/print-agent-paths.test.ts lib/print-write-outcome.test.ts lib/print-token-lanes-paths.test.ts lib/print-printer-test.test.ts lib/print-agent.test.ts lib/desktop-shell-paths.test.ts lib/printer/print-gating-paths.test.ts lib/printer/print-gating-fx-paths.test.ts lib/print-paths.test.ts lib/print-design-editor-paths.test.ts 2>&1 | grep -E "^not ok|^# (tests|pass|fail)|Cannot find module|does not provide an export"
+cd /d/kd/lucifer/apps/cafe && npx tsc --noEmit && npx eslint hooks/use-print-host-bridge.ts hooks/use-print-agent.ts lib/printer/kot-text lib/print-agent-slip.ts lib/print-host-slips.ts lib/print-host-text-kot.test.ts && echo "typecheck and lint clean"
+```
+Expected:
+```text
+# tests 243
+# pass 243
+# fail 0
+typecheck and lint clean
+```
+
+- [ ] **Step 5: Commit.** Write the message to `$SP/msg-4b-12.txt`, then `git add apps/cafe && git commit -F "$SP/msg-4b-12.txt"`:
+
+```text
+feat(cafe): printing Phase 4 Session 4B, the bridge's text step: right before the kitchen surface fires, a job's kitchen slip whose printer's switch is on in this device's storage, that this device reaches the way the picture would with a writer that takes raw bytes, whose design needs no lazy code that is missing, and that text prints exactly within the picture's size limit, goes as ESC/POS text through that same writer under the same watchdog and outcome; anything else, any error, and every slip with every switch off fires the picture exactly as before; a printer job's slip names its printer, and a slip this device prints only while it takes over for another device stays a picture; the picture's 43 files pinned by their SHA-256 as at d21ee37 (spec §5.2, §5.4, S1, S3, S4)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+```
+
+### Task 13: "Fast text KOTs (English only)" in the printer panel (§5.1, S2)
+
+**Files:**
+- Create: `apps/cafe/lib/printer/kot-text/text-kot-printers.ts`, `apps/cafe/hooks/use-text-kot-printers.ts`,
+  `apps/cafe/components/print/TextKotSection.tsx`
+- Modify: `apps/cafe/hooks/use-print-host-bridge.ts` (`queueTestSlip(write?)`), `apps/cafe/components/layout/PrintHostProvider.tsx`
+  (its type), `apps/cafe/components/print/PrinterSetupCard.tsx` (the section after `DevicePrinterSection`)
+- Test: `apps/cafe/lib/printer/kot-text/text-kot-printers.test.ts`, `apps/cafe/lib/print-text-kot-paths.test.ts`,
+  `apps/cafe/lib/print-host-text-kot.test.ts` (the text test's window); `apps/cafe/package.json` (`testChain`)
+
+**Interfaces:**
+- Produces: `printerTakesKots(printer)`; `interface TextKotPrinter extends TextKotRoute { name }`;
+  `textKotPrintersOf({ printers, agent, settings, env })`: simple mode this device's own printer, printers mode each
+  printer of the setup it writes that takes kitchen slips (stations, a full copy or notices), never one it only takes
+  over, each by its route here; `useTextKotPrinters()`, `useTextKot(key)`; the section; `HostPrintCurrent`'s `test` gains
+  `write?: () => Promise<void>`.
+- Behaviour: the switch's tap makes the text test slip (`textTestJob` inside a try: a slip that cannot be made leaves it
+  off), writes it through `queueTestSlip(() => printer.write(bytes))`, then asks "Did it print clearly, with the ruler on
+  one line?"; Yes → `writeTextKot(key, { narrow80 })`; No → off ("Keep it off, or try Characters per line: 42" on 80 mm
+  Automatic); a failed print → off with the printer's own sentence; off is immediate; the 80 mm choice is made while the
+  switch is off (and off keeps the choice the printer was proven at); a test the bridge's watchdog gave up on says the
+  section's own words; the whole row is the switch's label (a 44 px tap target).
+
+- [ ] **Step 1: Write the failing tests**
+
+In `apps/cafe/lib/print-host-text-kot.test.ts`, find:
+
+```ts
+import { mountHook, resetStubs, stubModule, stubs, type MountedHook } from "@/lib/hook-harness";
+import type { HostPrintDone } from "@/lib/print-host-outcomes";
+import { PRINT_HOST_DISPATCH_TIMEOUT_MS, PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print-host-slips";
+import type { TextKotWrite, TextKotWriteInput } from "@/lib/printer/kot-text/text-kot-print";
+import { PRINTER_NOT_CONNECTED_MESSAGE } from "@/lib/printer/web-printer-types";
+```
+
+Replace it with:
+
+```ts
+import { mountHook, resetStubs, stubModule, stubs, type MountedHook } from "@/lib/hook-harness";
+import type { HostPrintDone } from "@/lib/print-host-outcomes";
+import { PRINT_HOST_BUSY_MESSAGE, PRINT_HOST_DISPATCH_TIMEOUT_MS, PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print-host-slips";
+import type { TextKotWrite, TextKotWriteInput } from "@/lib/printer/kot-text/text-kot-print";
+import { PRINTER_NOT_CONNECTED_MESSAGE } from "@/lib/printer/web-printer-types";
+```
+
+In `apps/cafe/lib/print-host-text-kot.test.ts`, find:
+
+```ts
+  assert.deepEqual(world.asked, [], "the text step was never asked");
+});
+
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual(world.asked, [], "the text step was never asked");
+});
+
+test("spec §5.1: a printer's text test rides the test slip's busy window, written through its own writer", async (t) => {
+  const s = scene(t);
+  const held = heldWrite();
+  let answered: string | null = null;
+  void s.hook.result().queueTestSlip(held.answer.write).then(
+    () => (answered = "printed"),
+    (error: Error) => (answered = error.message),
+  );
+  assert.equal(held.calls, 1, "the test's bytes went to the printer's writer");
+  assert.deepEqual(stubs.printed, [], "the attestation slip's picture never fired");
+  assert.deepEqual(world.asked, [], "a test is not a job's slip: the text step is not asked");
+  s.queue("kot", "KOT-1");
+  assert.deepEqual(world.asked, [], "a slip that arrives meanwhile waits");
+  held.resolve();
+  await s.settled();
+  assert.equal(answered, "printed", "the section hears it printed");
+  assert.deepEqual(world.asked, ["KOT-1"], "then the waiting slip goes");
+  assert.deepEqual(s.outcomes, [], "the test's end is never the waiting slip's outcome (the review's m-1)");
+  s.finish();
+  assert.deepEqual(s.outcomes, ["printed"], "the slip's own outcome when its picture is done");
+});
+
+test("a text test that fails, or a busy device, leaves the section the printer's own sentence", async (t) => {
+  const s = scene(t);
+  const held = heldWrite();
+  const failed = s.hook.result().queueTestSlip(held.answer.write).catch((error: Error) => error.message);
+  const busy = s.hook.result().queueTestSlip(held.answer.write).catch((error: Error) => error.message);
+  assert.equal(await busy, PRINT_HOST_BUSY_MESSAGE, "a second test is refused, never queued");
+  held.reject(new Error(PRINTER_NOT_CONNECTED_MESSAGE));
+  await s.settled();
+  assert.equal(await failed, PRINTER_NOT_CONNECTED_MESSAGE, "the printer's sentence");
+  assert.equal(s.hook.result().current, null, "the bridge is free");
+});
+
+```
+
+Create `apps/cafe/lib/print-text-kot-paths.test.ts`:
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+import { stripComments } from "@/lib/source-pin-utils";
+
+// Printing Phase 4 (spec 2026-10-15 §5.1, S2, §12): "Fast text KOTs (English only)" in the printer panel. Its words, its
+// confirm states, the rule that only "Yes" after a printed text test turns a printer on, and that it reads nothing new
+// from the server.
+
+const CAFE = process.cwd();
+const src = (rel: string): string => stripComments(readFileSync(path.join(CAFE, rel), "utf8"));
+const SECTION = "components/print/TextKotSection.tsx";
+
+test("PIN: the section's words, as the spec says them", () => {
+  const section = src(SECTION);
+  for (const words of [
+    'const TITLE = "Fast text KOTs (English only)";',
+    "\"Prints English-only kitchen tickets as text in the printer's own font: much faster on Bluetooth. Tickets with Hindi, Gujarati or any other script, a logo or a QR code still print as now.\";",
+    'const QUESTION = "Did it print clearly, with the ruler on one line?";',
+    'const TRY_42 = "Keep it off, or try Characters per line: 42";',
+    'const COLUMNS_LABEL = "Characters per line";',
+  ]) {
+    assert.ok(section.includes(words), `the section says: ${words}`);
+  }
+  assert.ok(section.includes('{narrow ? "42" : "Automatic"}'), "the 80 mm choice: Automatic or 42");
+});
+
+test("PIN (S2): turning a printer on prints its text test first; only Yes keeps it on; No and a failure leave it off", () => {
+  const section = src(SECTION);
+  const turnOn = section.slice(section.indexOf("const turnOn = async () => {"), section.indexOf("const answer = (clear: boolean) => {"));
+  const made = turnOn.indexOf("bytes = textTestJob({ cafeName: settings.data?.restaurantName, columns: textColumnsOf(printer.paper, narrow80) });");
+  const queued = turnOn.indexOf("await queueTestSlip(() => printer.write(bytes));");
+  assert.ok(made > 0 && queued > made, "the test slip is made, then written to that printer inside the bridge's busy window");
+  assert.ok(turnOn.indexOf("try {") < made && turnOn.indexOf("} catch {") > made && turnOn.indexOf("} catch {") < queued, "a test slip that cannot be made leaves the switch off (the 4A gate's note)");
+  assert.ok(!turnOn.includes("writeTextKot("), "printing the test never turns the switch on by itself");
+  const answer = section.slice(section.indexOf("const answer = (clear: boolean) => {"), section.indexOf("const turnOff = () => {"));
+  assert.ok(answer.includes("if (clear) {\n      writeTextKot(printer.key, { narrow80: wide && narrow80 });"), "Yes turns it on, with the 42 choice on 80 mm only");
+  assert.ok(answer.includes('} else setPhase("kept-off");'), "No keeps it off");
+  assert.equal((section.match(/writeTextKot\(/g) ?? []).length, 2, "the switch is written in two places only: Yes, and Off");
+  assert.ok(section.includes("writeTextKot(printer.key, null);"), "turning it off is immediate");
+  assert.ok(section.includes("if (choice !== null) setNarrow80(choice.narrow80);"), "off keeps the 42 choice it was proven at for its next test");
+  assert.ok(section.includes("message === PRINT_HOST_PRINT_FAILED_MESSAGE ? TEST_FAILED_MESSAGE : message"), "a test the watchdog gave up on says the section's own words");
+  assert.ok(section.includes("disabled={on || busy}"), "the characters per line are chosen while the switch is off, before its test");
+  assert.ok(section.includes("disabled={!on && (busy || current !== null)}"), "turning on waits for a free bridge; turning off never waits");
+  assert.ok(section.includes("if (printers.length === 0) return null;"), "hidden on a device with no printer it can write text to");
+  assert.ok(section.includes("<label htmlFor={switchId}") && section.includes("id={switchId}"), "the printer's whole row is the switch's label: a 44 px tap target on a phone");
+});
+
+test("PIN: the section sits right after this device's printer, in every printer panel", () => {
+  const card = src("components/print/PrinterSetupCard.tsx");
+  assert.ok(card.includes("      <DevicePrinterSection />\n      <TextKotSection />\n"), "after DevicePrinterSection");
+  const provider = src("components/layout/PrintHostProvider.tsx");
+  assert.ok(provider.includes("queueTestSlip: (write?: () => Promise<void>) => Promise<number>;"), "the provider hands the section the bridge's test window");
+});
+
+test("PIN (spec §12): the switch costs no request: its reads are this device's and the agent's one printers read", () => {
+  const hook = src("hooks/use-text-kot-printers.ts");
+  assert.ok(hook.includes('const { printers } = usePrintersRead(deviceId !== "");'), "the agent's printers read (one cache entry)");
+  for (const file of [SECTION, "hooks/use-text-kot-printers.ts", "lib/printer/kot-text/text-kot-store.ts", "lib/printer/kot-text/text-kot-print.ts", "lib/printer/kot-text/text-kot-printers.ts"]) {
+    const text = src(file);
+    for (const needle of ["api-client", "apiGet", "apiSend", "fetch(", "useQuery("]) assert.ok(!text.includes(needle), `${file} makes no request (${needle})`);
+  }
+});
+```
+
+Create `apps/cafe/lib/printer/kot-text/text-kot-printers.test.ts`:
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+import type { PrinterConfig, PrinterSlips } from "@pos/shared/print-printers";
+import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+import type { Settings } from "@/types";
+import type { TextKotEnv } from "./text-kot-print";
+import { printerTakesKots, textKotPrintersOf } from "./text-kot-printers";
+import { textKotKeyForDevice, textKotKeyForPrinter } from "./text-kot-store";
+
+// Printing Phase 4 (spec 2026-10-15 §5.1): the printers the "Fast text KOTs" section lists on this device: in simple mode
+// this device's own printer; in printers mode each printer of the setup it writes that takes kitchen slips. Only one that
+// can take raw bytes here is listed, with the same key, paper and writer its slips use (text-kot-print.ts).
+
+const APP: DevicePrinter = { kind: "native", name: "Counter BT", paper: "58mm", printerId: "bt-classic:AA:BB:CC:DD:EE:FF", transport: "bt-classic" };
+const SETTINGS = { kotPaperWidth: "80mm" } as unknown as Settings;
+const NONE: PrinterSlips = { bill: false, kotStations: [], kotAll: false, notices: false, eod: false };
+
+function env(over: Partial<TextKotEnv> = {}): TextKotEnv {
+  return {
+    devicePrinter: () => ({ status: "connected", printer: APP, message: null }),
+    desktop: () => null,
+    desktopPrintsRaw: () => false,
+    rasterCapable: () => true,
+    readTextKot: () => null,
+    slipCodeStatus: () => "idle",
+    writeDevice: async () => undefined,
+    writeNative: async () => undefined,
+    writeLan: async () => undefined,
+    writeRawOn: async () => undefined,
+    ...over,
+  };
+}
+
+const printer = (id: string, name: string, slips: Partial<PrinterSlips>, connection: PrinterConfig["connection"] = { kind: "lan", host: "192.168.1.50", port: 9100 }): PrinterConfig =>
+  ({ id, name, connection, order: 0, paper: 80, slips: { ...NONE, ...slips }, copies: { kot: 1, bill: 1 }, enabled: true, primaryDeviceId: "dev-a" }) as PrinterConfig;
+
+const shown = (list: ReturnType<typeof textKotPrintersOf>) => list.map((p) => `${p.name} ${p.paper} ${p.key}`);
+const SIMPLE = { printersMode: false, localIds: [], takeoverIds: [], targets: {} };
+
+test("a printer takes kitchen slips through its stations, a full copy or the notices", () => {
+  assert.equal(printerTakesKots(printer("a", "A", { kotStations: ["s1"] })), true, "its stations' KOTs");
+  assert.equal(printerTakesKots(printer("a", "A", { kotAll: true })), true, "a full copy");
+  assert.equal(printerTakesKots(printer("a", "A", { notices: true })), true, "the notices (void, moved, cancel)");
+  assert.equal(printerTakesKots(printer("a", "A", { bill: true, eod: true })), false, "bills and End of day only");
+});
+
+test("simple mode: this device's own printer, as its slips print", () => {
+  assert.deepEqual(shown(textKotPrintersOf({ printers: [], agent: SIMPLE, settings: SETTINGS, env: env() })), [`Counter BT 58mm ${textKotKeyForDevice(APP)}`], "the POS app's printer, at its paper");
+  assert.deepEqual(textKotPrintersOf({ printers: [], agent: SIMPLE, settings: SETTINGS, env: env({ devicePrinter: () => ({ status: "none", printer: null, message: null }) }) }), [], "no printer: no section");
+  assert.deepEqual(textKotPrintersOf({ printers: [], agent: SIMPLE, settings: SETTINGS, env: env({ rasterCapable: () => false }) }), [], "a plain browser (the print window): no section");
+  const windows = env({ desktop: () => ({ chosen: "POS-80", printMode: "direct" }), desktopPrintsRaw: () => true });
+  assert.deepEqual(shown(textKotPrintersOf({ printers: [], agent: SIMPLE, settings: SETTINGS, env: windows })), [`POS-80 80mm ${textKotKeyForDevice({ kind: "windows", name: "POS-80" })}`], "the Windows app's chosen printer, at the kitchen ticket's paper");
+  assert.deepEqual(textKotPrintersOf({ printers: [], agent: SIMPLE, settings: SETTINGS, env: { ...windows, desktop: () => ({ chosen: "POS-80", printMode: "driver" }) } }), [], "Through the Windows driver: not offered");
+  assert.deepEqual(textKotPrintersOf({ printers: [], agent: SIMPLE, settings: SETTINGS, env: { ...windows, desktopPrintsRaw: () => false } }), [], "an app before 2.0.2: not offered");
+});
+
+test("printers mode: each printer of the setup this device writes that takes kitchen slips, by its route here", () => {
+  const kitchen = printer("p-kitchen", "Kitchen", { kotStations: ["s1"] });
+  const bar = printer("p-bar", "Bar", { kotAll: true }, { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "AA:BB:CC:DD:EE:01" });
+  const notices = printer("p-notices", "Pass", { notices: true });
+  const counter = printer("p-counter", "Counter", { bill: true, eod: true });
+  const taken = printer("p-taken", "Upstairs", { kotStations: ["s2"] });
+  const agent = {
+    printersMode: true,
+    localIds: ["p-kitchen", "p-bar", "p-notices", "p-counter", "p-taken"],
+    takeoverIds: ["p-taken"],
+    targets: {
+      "p-kitchen": { nativeId: "tcp:192.168.1.50:9100", paper: "80mm" as const },
+      "p-bar": { nativeId: "bt-classic:AA:BB:CC:DD:EE:01", paper: "58mm" as const },
+      "p-notices": { nativeId: "tcp:192.168.1.50:9100", paper: "80mm" as const },
+      "p-counter": { nativeId: "tcp:192.168.1.60:9100", paper: "80mm" as const },
+      "p-taken": { nativeId: "tcp:192.168.1.70:9100", paper: "80mm" as const },
+    },
+  };
+  assert.deepEqual(shown(textKotPrintersOf({ printers: [kitchen, bar, notices, counter, taken], agent, settings: SETTINGS, env: env() })), [
+    `Kitchen 80mm ${textKotKeyForPrinter("p-kitchen", { kind: "app", nativeId: "tcp:192.168.1.50:9100" })}`,
+    `Bar 58mm ${textKotKeyForPrinter("p-bar", { kind: "app", nativeId: "bt-classic:AA:BB:CC:DD:EE:01" })}`,
+    `Pass 80mm ${textKotKeyForPrinter("p-notices", { kind: "app", nativeId: "tcp:192.168.1.50:9100" })}`,
+  ], "the KOT printers, not the bill-only one, not one it only takes over for another device (spec §5.3)");
+  const none = { printersMode: true, localIds: [], takeoverIds: [], targets: {} };
+  assert.deepEqual(textKotPrintersOf({ printers: [kitchen], agent: none, settings: SETTINGS, env: env() }), [], "printers mode with no printer of its own here: none, never this device's own printer (the review's m-1)");
+});
+
+test("printers mode: a printer whose slips print as pictures here is not offered", () => {
+  const win = printer("p-win", "Kitchen TVS", { kotAll: true }, { kind: "device", deviceId: "dev-a", transport: "windows", address: "Kitchen TVS" });
+  const agent = { printersMode: true, localIds: ["p-win"], takeoverIds: [], targets: { "p-win": { printerName: "Kitchen TVS", paper: "80mm" as const } } };
+  const windows = (printMode: "direct" | "driver", raw: boolean) => env({ desktop: () => ({ chosen: "POS-80", printMode }), desktopPrintsRaw: () => raw });
+  assert.equal(textKotPrintersOf({ printers: [win], agent, settings: SETTINGS, env: windows("direct", true) }).length, 1, "landmark: 2.0.2 and Direct");
+  assert.deepEqual(textKotPrintersOf({ printers: [win], agent, settings: SETTINGS, env: windows("driver", true) }), [], "the Windows driver");
+  assert.deepEqual(textKotPrintersOf({ printers: [win], agent, settings: SETTINGS, env: windows("direct", false) }), [], "an app before 2.0.2");
+  assert.deepEqual(textKotPrintersOf({ printers: [], agent, settings: SETTINGS, env: windows("direct", true) }), [], "a printer the read does not have (yet)");
+});
+
+test("printers mode on an app on bridge v1 or a browser: the job prints on the device's one printer, so its route does", () => {
+  const kitchen = printer("p-kitchen", "Kitchen", { kotStations: ["s1"] }, { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "AA:BB:CC:DD:EE:FF" });
+  const agent = { printersMode: true, localIds: ["p-kitchen"], takeoverIds: [], targets: {} };
+  assert.deepEqual(shown(textKotPrintersOf({ printers: [kitchen], agent, settings: SETTINGS, env: env() })), [`Kitchen 58mm ${textKotKeyForPrinter("p-kitchen", APP)}`], "its key and paper are the device printer's");
+});
+```
+
+In `apps/cafe/package.json`, find:
+
+```json
+    "lib/printer/kot-text/text-kot-store.test.ts",
+    "lib/printer/kot-text/text-kot-print.test.ts",
+    "lib/printer/device-printer-store.test.ts",
+    "lib/printer/device-printer.test.ts",
+```
+
+Replace it with:
+
+```json
+    "lib/printer/kot-text/text-kot-store.test.ts",
+    "lib/printer/kot-text/text-kot-print.test.ts",
+    "lib/printer/kot-text/text-kot-printers.test.ts",
+    "lib/print-text-kot-paths.test.ts",
+    "lib/printer/device-printer-store.test.ts",
+    "lib/printer/device-printer.test.ts",
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+```bash
+cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/printer/kot-text/text-kot-printers.test.ts lib/print-text-kot-paths.test.ts lib/print-host-text-kot.test.ts 2>&1 | grep -E "^not ok|^# (tests|pass|fail)|Cannot find module|does not provide an export"
+```
+Expected:
+```text
+not ok 7 - spec §5.1: a printer's text test rides the test slip's busy window, written through its own writer
+not ok 8 - a text test that fails, or a busy device, leaves the section the printer's own sentence
+not ok 9 - PIN: the section's words, as the spec says them
+not ok 10 - PIN (S2): turning a printer on prints its text test first; only Yes keeps it on; No and a failure leave it off
+not ok 11 - PIN: the section sits right after this device's printer, in every printer panel
+not ok 12 - PIN (spec §12): the switch costs no request: its reads are this device's and the agent's one printers read
+# Error: Cannot find module './text-kot-printers'
+not ok 3 - lib\\printer\\kot-text\\text-kot-printers.test.ts
+# tests 13
+# pass 6
+# fail 6
+```
+
+- [ ] **Step 3: Implement**
+
+In `apps/cafe/components/layout/PrintHostProvider.tsx`, find:
+
+```tsx
+  /** PrintHostEodSource's readiness report for the current eod slip. */
+  setEodReady: (ready: boolean) => void;
+  /** PH-7's "Test print": resolves with trigger→onAfterPrint ms (§B7). */
+  queueTestSlip: () => Promise<number>;
+  /** PH-7 calls this after writing the `printHost` pref so the lanes arm
+   *  without a reload; the beat's demotion path clears it the same way. */
+```
+
+Replace it with:
+
+```tsx
+  /** PrintHostEodSource's readiness report for the current eod slip. */
+  setEodReady: (ready: boolean) => void;
+  /** PH-7's "Test print": resolves with trigger→onAfterPrint ms (§B7). Printing Phase 4: with `write`, a printer's text
+   *  test, written in the same busy window (components/print/TextKotSection.tsx). */
+  queueTestSlip: (write?: () => Promise<void>) => Promise<number>;
+  /** PH-7 calls this after writing the `printHost` pref so the lanes arm
+   *  without a reload; the beat's demotion path clears it the same way. */
+```
+
+In `apps/cafe/components/print/PrinterSetupCard.tsx`, find:
+
+```tsx
+import { PrinterAdvanced } from "@/components/print/PrinterAdvanced";
+import { PrinterTestTips } from "@/components/print/PrinterTestTips";
+import { printersModeOn } from "@pos/shared/print-printers";
+import { usePrintersRead } from "@/hooks/use-agent-printers";
+```
+
+Replace it with:
+
+```tsx
+import { PrinterAdvanced } from "@/components/print/PrinterAdvanced";
+import { PrinterTestTips } from "@/components/print/PrinterTestTips";
+import { TextKotSection } from "@/components/print/TextKotSection";
+import { printersModeOn } from "@pos/shared/print-printers";
+import { usePrintersRead } from "@/hooks/use-agent-printers";
+```
+
+In `apps/cafe/components/print/PrinterSetupCard.tsx`, find:
+
+```tsx
+      />
+      <DevicePrinterSection />
+
+      {testable && (
+```
+
+Replace it with:
+
+```tsx
+      />
+      <DevicePrinterSection />
+      <TextKotSection />
+
+      {testable && (
+```
+
+Create `apps/cafe/components/print/TextKotSection.tsx`:
+
+```tsx
+"use client";
+
+// Printing Phase 4 (spec 2026-10-15 §5.1, S2): "Fast text KOTs (English only)" in the printer panel of the device that
+// prints. One row per printer this device prints kitchen slips on (hooks/use-text-kot-printers.ts), each with its switch.
+// Turning it on prints the text test slip on that very printer, through the bridge's busy window (never between two
+// slips), then asks staff; only "Yes" turns it on, kept in this device's storage. Turning it off is immediate. The 80 mm
+// "Characters per line" choice is made while the switch is off, so the printer proves the width it will print at.
+import { useId, useState } from "react";
+import { Zap } from "lucide-react";
+
+import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
+import { InlineConfirm } from "@/components/print/PrintHostCardParts";
+import { PrinterSection } from "@/components/print/PrinterSection";
+import { PRINTER_ACTION_CLASS } from "@/components/print/printer-classes";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { useSettings } from "@/hooks/use-settings";
+import { useTextKot, useTextKotPrinters } from "@/hooks/use-text-kot-printers";
+import { PRINT_HOST_BUSY_MESSAGE, PRINT_HOST_PRINT_FAILED_MESSAGE } from "@/lib/print-host-slips";
+import { textColumnsOf } from "@/lib/printer/kot-text/text-layout";
+import type { TextKotPrinter } from "@/lib/printer/kot-text/text-kot-printers";
+import { writeTextKot } from "@/lib/printer/kot-text/text-kot-store";
+import { textTestJob } from "@/lib/printer/kot-text/text-test-slip";
+
+const TITLE = "Fast text KOTs (English only)";
+const DESCRIPTION =
+  "Prints English-only kitchen tickets as text in the printer's own font: much faster on Bluetooth. Tickets with Hindi, Gujarati or any other script, a logo or a QR code still print as now.";
+const SWITCH_LABEL = "Fast text KOTs";
+const COLUMNS_LABEL = "Characters per line";
+const QUESTION = "Did it print clearly, with the ruler on one line?";
+const KEPT_OFF = "Kept off: kitchen tickets print as now.";
+const TRY_42 = "Keep it off, or try Characters per line: 42";
+const ON_MESSAGE = "On: English-only kitchen tickets print as text on this printer.";
+const PRINTING = "Printing the text test…";
+const BUSY_MESSAGE = "This device is busy with another slip — try again in a moment.";
+const TEST_FAILED_MESSAGE = "Could not print the text test. The switch stays off.";
+
+type Phase = "idle" | "printing" | "confirm" | "kept-off";
+
+export function TextKotSection() {
+  const printers = useTextKotPrinters();
+  if (printers.length === 0) return null;
+  return (
+    <PrinterSection icon={Zap} title={TITLE} description={DESCRIPTION}>
+      {printers.map((printer) => (
+        <TextKotRow key={printer.key} printer={printer} />
+      ))}
+    </PrinterSection>
+  );
+}
+
+function TextKotRow({ printer }: { printer: TextKotPrinter }) {
+  const { queueTestSlip, current } = usePrintHostContext();
+  const settings = useSettings();
+  const choice = useTextKot(printer.key);
+  const switchId = useId();
+  const [narrow80, setNarrow80] = useState(false);
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [error, setError] = useState<string | null>(null);
+  const on = choice !== null;
+  const wide = printer.paper === "80mm";
+
+  const turnOn = async () => {
+    setError(null);
+    // The test slip is made before anything is queued: a slip that cannot be made leaves the switch off (never a throw).
+    let bytes: Uint8Array;
+    try {
+      bytes = textTestJob({ cafeName: settings.data?.restaurantName, columns: textColumnsOf(printer.paper, narrow80) });
+    } catch {
+      setError(TEST_FAILED_MESSAGE);
+      return;
+    }
+    setPhase("printing");
+    try {
+      await queueTestSlip(() => printer.write(bytes));
+      setPhase("confirm");
+    } catch (err) {
+      // The printer's own sentence (the bridge also shows it); a busy device is a refusal, never a queue; a test the
+      // bridge gave up on (its watchdog) is this section's own sentence, never "reprint it from Orders" (the review's m-4).
+      const message = err instanceof Error ? err.message : TEST_FAILED_MESSAGE;
+      setError(message === PRINT_HOST_BUSY_MESSAGE ? BUSY_MESSAGE : message === PRINT_HOST_PRINT_FAILED_MESSAGE ? TEST_FAILED_MESSAGE : message);
+      setPhase("idle");
+    }
+  };
+
+  const answer = (clear: boolean) => {
+    if (clear) {
+      writeTextKot(printer.key, { narrow80: wide && narrow80 });
+      setPhase("idle");
+    } else setPhase("kept-off");
+  };
+
+  const turnOff = () => {
+    // The choice it was proven at stays chosen for its next test (the review's m-3).
+    if (choice !== null) setNarrow80(choice.narrow80);
+    writeTextKot(printer.key, null);
+    setPhase("idle");
+    setError(null);
+  };
+
+  const busy = phase === "printing" || phase === "confirm";
+  return (
+    <div className="space-y-2 rounded-md border border-brand-rule p-3">
+      <div className="flex min-h-11 items-center gap-3">
+        <label htmlFor={switchId} className="min-w-0 flex-1 cursor-pointer">
+          <span className="block font-medium text-brand-ink">{printer.name}</span>
+          <span className="block text-xs text-brand-muted">{printer.paper === "80mm" ? "80 mm" : "58 mm"}</span>
+        </label>
+        <Switch
+          id={switchId}
+          checked={on}
+          aria-label={`${SWITCH_LABEL}: ${printer.name}`}
+          disabled={!on && (busy || current !== null)}
+          onCheckedChange={(next) => (next ? void turnOn() : turnOff())}
+        />
+      </div>
+      {wide && (
+        <div role="group" aria-label={COLUMNS_LABEL} className="space-y-1">
+          <p className="text-xs font-medium text-brand-ink">{COLUMNS_LABEL}</p>
+          <div className="grid grid-cols-2 gap-2">
+            {[false, true].map((narrow) => {
+              const chosen = choice !== null ? choice.narrow80 === narrow : narrow80 === narrow;
+              return (
+                <Button
+                  key={narrow ? "42" : "auto"}
+                  type="button"
+                  variant={chosen ? "default" : "outline"}
+                  aria-pressed={chosen}
+                  disabled={on || busy}
+                  onClick={() => setNarrow80(narrow)}
+                  className={PRINTER_ACTION_CLASS}
+                >
+                  {narrow ? "42" : "Automatic"}
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {phase === "printing" && <p className="text-xs text-brand-muted">{PRINTING}</p>}
+      {phase === "confirm" && <InlineConfirm question={QUESTION} yes="Yes" no="No" disabled={false} onYes={() => answer(true)} onNo={() => answer(false)} />}
+      {phase === "kept-off" && <p className="text-xs text-brand-muted">{wide && !narrow80 ? TRY_42 : KEPT_OFF}</p>}
+      {on && phase === "idle" && <p className="text-xs text-brand-muted">{ON_MESSAGE}</p>}
+      {error !== null && <p role="alert" className="text-xs text-brand-danger">{error}</p>}
+    </div>
+  );
+}
+```
+
+In `apps/cafe/hooks/use-print-host-bridge.ts`, find:
+
+```ts
+
+/** What the bridge is printing: a claimed job's slip, or PH-7's attestation test slip
+ *  (`PrintHostTestSlip`); it and a printer's Test print (Session 2D) use the KOT surface. */
+export type HostPrintCurrent = { kind: "slip"; slip: HostPrintSlip } | { kind: "test" };
+
+interface TestSlipWaiter {
+```
+
+Replace it with:
+
+```ts
+
+/** What the bridge is printing: a claimed job's slip, or PH-7's attestation test slip
+ *  (`PrintHostTestSlip`); it and a printer's Test print (Session 2D) use the KOT surface. Printing Phase 4 (spec §5.1):
+ *  a printer's text test rides the test slip's window, its bytes written by `write` instead of the KOT surface. */
+export type HostPrintCurrent = { kind: "slip"; slip: HostPrintSlip } | { kind: "test"; write?: () => Promise<void> };
+
+interface TestSlipWaiter {
+```
+
+In `apps/cafe/hooks/use-print-host-bridge.ts`, find:
+
+```ts
+    else {
+      // Printing Phase 4 (spec §5.2, S1, S3, S4): a job's kitchen slip whose printer's text switch is on, and that text
+      // can print exactly, goes as text through that printer's own writer, under the same watchdog and outcome; else the
+      // picture, exactly as before.
+      const text = current.kind === "slip" ? textKotWriteFor({ slip: current.slip, settings: settings.data, target, env: textKotEnv() }) : null;
+      if (text === null) printKot();
+      else void text.write().then(finish, (error: unknown) => settle(hostPrintFailureMessage(error)));
+    }
+  }, [current, eodReady, slipCodePending, surfacesMounted, printKot, printReceipt, printEod, settle, abandon, settings.data, target, finish]);
+```
+
+Replace it with:
+
+```ts
+    else {
+      // Printing Phase 4 (spec §5.2, S1, S3, S4): a job's kitchen slip whose printer's text switch is on, and that text
+      // can print exactly, goes as text through that printer's own writer, under the same watchdog and outcome; so does a
+      // printer's text test (§5.1); else the picture, exactly as before.
+      const write = current.kind === "test" ? current.write : textKotWriteFor({ slip: current.slip, settings: settings.data, target, env: textKotEnv() })?.write;
+      if (write === undefined) printKot();
+      else void write().then(finish, (error: unknown) => settle(hostPrintFailureMessage(error)));
+    }
+  }, [current, eodReady, slipCodePending, surfacesMounted, printKot, printReceipt, printEod, settle, abandon, settings.data, target, finish]);
+```
+
+In `apps/cafe/hooks/use-print-host-bridge.ts`, find:
+
+```ts
+  // that waited on a KOT would measure the wrong thing).
+  const queueTestSlip = useCallback(
+    () =>
+      new Promise<number>((resolve, reject) => {
+        if (occupiedRef.current) {
+```
+
+Replace it with:
+
+```ts
+  // that waited on a KOT would measure the wrong thing).
+  const queueTestSlip = useCallback(
+    (write?: () => Promise<void>) =>
+      new Promise<number>((resolve, reject) => {
+        if (occupiedRef.current) {
+```
+
+In `apps/cafe/hooks/use-print-host-bridge.ts`, find:
+
+```ts
+        outcomesRef.current.track(null);
+        testRef.current = { resolve, reject, startedAt: performance.now() };
+        setCurrent({ kind: "test" });
+      }),
+    [],
+```
+
+Replace it with:
+
+```ts
+        outcomesRef.current.track(null);
+        testRef.current = { resolve, reject, startedAt: performance.now() };
+        setCurrent({ kind: "test", write });
+      }),
+    [],
+```
+
+Create `apps/cafe/hooks/use-text-kot-printers.ts`:
+
+```ts
+"use client";
+
+import { useMemo, useSyncExternalStore } from "react";
+
+import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
+import { useDesktopPrinters, usePoolView, usePrintersRead } from "@/hooks/use-agent-printers";
+import { useDevicePrinter } from "@/hooks/use-device-printer";
+import { useSettings } from "@/hooks/use-settings";
+import { agentPrintersOf } from "@/lib/print-agent-printers";
+import { textKotEnv } from "@/lib/printer/kot-text/text-kot-print";
+import { textKotPrintersOf, type TextKotPrinter } from "@/lib/printer/kot-text/text-kot-printers";
+import { readTextKot, subscribeTextKot, type TextKotChoice } from "@/lib/printer/kot-text/text-kot-store";
+
+// Printing Phase 4 (spec 2026-10-15 §5.1): the "Fast text KOTs" section's reads. The printers come from the same printers
+// read as the agent's (one cache entry, no request of its own) and this device's printers' live state; a switch from this
+// device's storage, followed across tabs.
+
+/** The printers this device prints kitchen slips on, each with its text key, paper and writer. */
+export function useTextKotPrinters(): TextKotPrinter[] {
+  const { deviceId } = usePrintHostContext();
+  const { printers } = usePrintersRead(deviceId !== "");
+  const local = useDevicePrinter();
+  const desktop = useDesktopPrinters();
+  const pool = usePoolView();
+  const settings = useSettings().data;
+  return useMemo(
+    () => textKotPrintersOf({ printers, agent: agentPrintersOf(printers, deviceId, local.printer, desktop, pool), settings, env: textKotEnv() }),
+    [printers, deviceId, local, desktop, pool, settings],
+  );
+}
+
+type TextKotState = "off" | "auto" | "narrow";
+
+function stateOf(key: string): TextKotState {
+  const choice = readTextKot(key);
+  return choice === null ? "off" : choice.narrow80 ? "narrow" : "auto";
+}
+
+/** That printer's switch: its choice when on, null when off. */
+export function useTextKot(key: string): TextKotChoice | null {
+  const state = useSyncExternalStore(subscribeTextKot, () => stateOf(key), (): TextKotState => "off");
+  return useMemo(() => (state === "off" ? null : { narrow80: state === "narrow" }), [state]);
+}
+```
+
+Create `apps/cafe/lib/printer/kot-text/text-kot-printers.ts`:
+
+```ts
+import type { PrinterConfig } from "@pos/shared/print-printers";
+import type { AgentPrinters } from "@/lib/print-agent-printers";
+import type { Settings } from "@/types";
+import { textKotRouteOf, type TextKotEnv, type TextKotRoute } from "./text-kot-print";
+
+// Printing Phase 4 (spec 2026-10-15 §5.1): the printers the "Fast text KOTs (English only)" section lists on this device,
+// each with the same key, paper and writer its kitchen slips use (text-kot-print.ts), so the text test prints where the
+// slips will. In simple mode: this device's own printer. In printers mode: each printer of the setup this device writes
+// that takes kitchen slips (its stations, a full copy or the notices); never one it only takes over for another device
+// (spec §5.3: a failover writer prints pictures). A printer whose slips print here another way (the browser's print
+// window, the Windows driver, an app before 2.0.2) is not listed; with none, the section is not shown.
+
+export interface TextKotPrinter extends TextKotRoute {
+  /** The printer's name as staff know it. */
+  name: string;
+}
+
+/** The printer takes kitchen slips: its stations' KOTs, a full copy of every KOT, or the void, moved and cancel notices. */
+export function printerTakesKots(printer: Pick<PrinterConfig, "slips">): boolean {
+  return printer.slips.kotAll || printer.slips.kotStations.length > 0 || printer.slips.notices;
+}
+
+export interface TextKotPrintersInput {
+  printers: readonly PrinterConfig[];
+  agent: Pick<AgentPrinters, "printersMode" | "localIds" | "takeoverIds" | "targets">;
+  settings: Settings | null | undefined;
+  env: TextKotEnv;
+}
+
+export function textKotPrintersOf({ printers, agent, settings, env }: TextKotPrintersInput): TextKotPrinter[] {
+  if (!agent.printersMode) {
+    const route = textKotRouteOf({ printerId: undefined, target: undefined, settings, env });
+    if (route === null) return [];
+    return [{ ...route, name: env.desktop()?.chosen ?? env.devicePrinter().printer?.name ?? "" }];
+  }
+  const out: TextKotPrinter[] = [];
+  for (const id of agent.localIds) {
+    const printer = printers.find((entry) => entry.id === id);
+    if (printer === undefined || agent.takeoverIds.includes(id) || !printerTakesKots(printer)) continue;
+    const route = textKotRouteOf({ printerId: id, target: agent.targets[id], settings, env });
+    if (route !== null) out.push({ ...route, name: printer.name });
+  }
+  return out;
+}
+```
+
+- [ ] **Step 4: Run them with the panel's and the bridge's suites, the typecheck and the lint**
+
+```bash
+cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/printer/kot-text/text-kot-printers.test.ts lib/print-text-kot-paths.test.ts lib/print-host-text-kot.test.ts lib/print-host-card-paths.test.ts lib/printer-ui-paths.test.ts lib/print-host-paths.test.ts lib/print-slip-host.test.ts lib/print-host-bridge-late.test.ts lib/print-slip-code-pins.test.ts lib/print-windows-printers.test.ts lib/print-agent-paths.test.ts lib/print-write-outcome.test.ts lib/print-token-lanes-paths.test.ts lib/print-printer-test.test.ts lib/print-agent.test.ts lib/desktop-shell-paths.test.ts lib/printer/print-gating-paths.test.ts lib/printer/print-gating-fx-paths.test.ts lib/print-paths.test.ts lib/print-design-editor-paths.test.ts 2>&1 | grep -E "^not ok|^# (tests|pass|fail)|Cannot find module|does not provide an export"
+cd /d/kd/lucifer/apps/cafe && npx tsc --noEmit && npx eslint components/print/TextKotSection.tsx components/print/PrinterSetupCard.tsx components/layout/PrintHostProvider.tsx hooks/use-text-kot-printers.ts hooks/use-print-host-bridge.ts lib/printer/kot-text lib/print-text-kot-paths.test.ts lib/print-host-text-kot.test.ts && echo "typecheck and lint clean"
+```
+Expected:
+```text
+# tests 280
+# pass 280
+# fail 0
+typecheck and lint clean
+```
+
+- [ ] **Step 5: Commit.** Write the message to `$SP/msg-4b-13.txt`, then `git add apps/cafe && git commit -F "$SP/msg-4b-13.txt"`:
+
+```text
+feat(cafe): printing Phase 4 Session 4B, Fast text KOTs (English only) in the printer panel: each printer this device prints kitchen slips on, with its paper and, on 80 mm, Characters per line Automatic or 42; turning it on prints the text test slip on that very printer inside the bridge's test window, then asks Did it print clearly, with the ruler on one line?; only Yes turns it on; No or a failed print leaves it off, with the printer's own words (the section's own when the bridge gives up on the test); off is immediate and keeps the characters per line the printer was proven at; the whole row is the switch's label (spec §5.1, S2)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+```
+
+### Task 14: The not-routed words (§8, P4-9)
+
+**Files:**
+- Modify: `apps/cafe/lib/print-routing.ts`, `apps/cafe/hooks/use-host-routing.ts`
+- Test: `apps/cafe/lib/print-bill-printer.test.ts` (the pin, changed deliberately)
+
+**Interfaces:**
+- Produces: `PRINT_JOB_NOT_ROUTED_KOT_MESSAGE = "Nothing to print: every item in this round was cancelled."`;
+  `notRoutedMessageOf(kind)`; both call sites toast `notRoutedMessageOf(job.payload.kind)`.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `apps/cafe/lib/print-bill-printer.test.ts`, find:
+
+```ts
+import { routablePrinterOf, type PrinterConfig } from "@pos/shared/print-printers";
+import { BILL_PRINTER_DEFAULT, BILL_PRINTER_KEY, billPrinterChoiceOf, billPrinterIdOf, readBillPrinterId, writeBillPrinterId } from "@/lib/print-bill-printer";
+
+// Printing redesign, Phase 2 Session 2D (plan decision 7): this device's own bill printer, kept on the device and
+```
+
+Replace it with:
+
+```ts
+import { routablePrinterOf, type PrinterConfig } from "@pos/shared/print-printers";
+import { BILL_PRINTER_DEFAULT, BILL_PRINTER_KEY, billPrinterChoiceOf, billPrinterIdOf, readBillPrinterId, writeBillPrinterId } from "@/lib/print-bill-printer";
+import { PRINT_JOB_NOT_ROUTED_KOT_MESSAGE, PRINT_JOB_NOT_ROUTED_MESSAGE, notRoutedMessageOf } from "@/lib/print-routing";
+
+// Printing redesign, Phase 2 Session 2D (plan decision 7): this device's own bill printer, kept on the device and
+```
+
+In `apps/cafe/lib/print-bill-printer.test.ts`, find:
+
+```ts
+const src = (rel: string): string => stripComments(readFileSync(path.join(CAFE, rel), "utf8"));
+
+test("PIN (2D, the 2C review gate's M-5): a slip no printer takes says so instead of doing nothing", () => {
+  const hook = src("hooks/use-host-routing.ts");
+  assert.equal((hook.match(/if \(result\.outcome === "not-routed"\) toast\(PRINT_JOB_NOT_ROUTED_MESSAGE\);/g) ?? []).length, 2, "the routed print and the moved slip both say it");
+  assert.match(src("lib/print-routing.ts"), /export const PRINT_JOB_NOT_ROUTED_MESSAGE =\s*"No printer takes this slip\. To print notices, switch Notices on for a printer in Printer setup\.";/);
+});
+
+```
+
+Replace it with:
+
+```ts
+const src = (rel: string): string => stripComments(readFileSync(path.join(CAFE, rel), "utf8"));
+
+// Printing Phase 4 (spec 2026-10-15 §8, P4-9), a deliberate change: the words follow the slip's kind. A KOT round with
+// nothing left to print (every line cancelled) says so; a notice no printer takes keeps the 2D words.
+test("PIN (2D, the 2C review gate's M-5): a slip no printer takes says so instead of doing nothing", () => {
+  const hook = src("hooks/use-host-routing.ts");
+  assert.equal((hook.match(/if \(result\.outcome === "not-routed"\) toast\(notRoutedMessageOf\(job\.payload\.kind\)\);/g) ?? []).length, 2, "the routed print and the moved slip both say it, by the slip's kind");
+  assert.ok(!hook.includes("toast(PRINT_JOB_NOT_ROUTED_MESSAGE)"), "no call site says the notice words whatever the slip");
+  assert.match(src("lib/print-routing.ts"), /export const PRINT_JOB_NOT_ROUTED_MESSAGE =\s*"No printer takes this slip\. To print notices, switch Notices on for a printer in Printer setup\.";/);
+  assert.match(src("lib/print-routing.ts"), /export const PRINT_JOB_NOT_ROUTED_KOT_MESSAGE =\s*"Nothing to print: every item in this round was cancelled\.";/);
+});
+
+test("Phase 4 (spec §8): a KOT that routes nowhere has nothing left to print; any other slip keeps the notice words", () => {
+  assert.equal(notRoutedMessageOf("kot"), PRINT_JOB_NOT_ROUTED_KOT_MESSAGE, "a KOT round with every item cancelled");
+  for (const kind of ["void", "moved", "cancel-notice", "bill", "token", "eod"] as const) {
+    assert.equal(notRoutedMessageOf(kind), PRINT_JOB_NOT_ROUTED_MESSAGE, `${kind}: today's words`);
+  }
+});
+
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+```bash
+cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-bill-printer.test.ts 2>&1 | grep -E "^not ok|^# (tests|pass|fail)|Cannot find module|does not provide an export"
+```
+Expected:
+```text
+not ok 4 - PIN (2D, the 2C review gate's M-5): a slip no printer takes says so instead of doing nothing
+not ok 5 - Phase 4 (spec §8): a KOT that routes nowhere has nothing left to print; any other slip keeps the notice words
+# tests 8
+# pass 6
+# fail 2
+```
+
+- [ ] **Step 3: Implement**
+
+In `apps/cafe/hooks/use-host-routing.ts`, find:
+
+```ts
+  shouldRoutePrint,
+  PRINT_JOB_BUILD_FAILED_MESSAGE,
+  PRINT_JOB_NOT_ROUTED_MESSAGE,
+  PRINT_JOB_TOO_LARGE_MESSAGE,
+  type PrintHostRouting,
+  type PrintJobRequest,
+```
+
+Replace it with:
+
+```ts
+  shouldRoutePrint,
+  PRINT_JOB_BUILD_FAILED_MESSAGE,
+  PRINT_JOB_TOO_LARGE_MESSAGE,
+  notRoutedMessageOf,
+  type PrintHostRouting,
+  type PrintJobRequest,
+```
+
+In `apps/cafe/hooks/use-host-routing.ts`, find:
+
+```ts
+            // is reachable only if that edge check ever goes away.
+            else if (result.outcome === "too-large") toast.error(PRINT_JOB_TOO_LARGE_MESSAGE);
+            if (result.outcome === "not-routed") toast(PRINT_JOB_NOT_ROUTED_MESSAGE);
+          } finally {
+            setRoutedInFlight((count) => count - 1);
+```
+
+Replace it with:
+
+```ts
+            // is reachable only if that edge check ever goes away.
+            else if (result.outcome === "too-large") toast.error(PRINT_JOB_TOO_LARGE_MESSAGE);
+            if (result.outcome === "not-routed") toast(notRoutedMessageOf(job.payload.kind));
+          } finally {
+            setRoutedInFlight((count) => count - 1);
+```
+
+In `apps/cafe/hooks/use-host-routing.ts`, find:
+
+```ts
+      if (result === null) return true;
+      if (result.outcome === "too-large") toast.error(PRINT_JOB_TOO_LARGE_MESSAGE);
+      if (result.outcome === "not-routed") toast(PRINT_JOB_NOT_ROUTED_MESSAGE);
+      return !printJobEnqueueAllowsLocalPrint(result.outcome);
+    },
+```
+
+Replace it with:
+
+```ts
+      if (result === null) return true;
+      if (result.outcome === "too-large") toast.error(PRINT_JOB_TOO_LARGE_MESSAGE);
+      if (result.outcome === "not-routed") toast(notRoutedMessageOf(job.payload.kind));
+      return !printJobEnqueueAllowsLocalPrint(result.outcome);
+    },
+```
+
+In `apps/cafe/lib/print-routing.ts`, find:
+
+```ts
+export const PRINT_JOB_NOT_ROUTED_MESSAGE =
+  "No printer takes this slip. To print notices, switch Notices on for a printer in Printer setup.";
+
+/** A payload the renderer's own snapshot could not be built from. Nothing was
+```
+
+Replace it with:
+
+```ts
+export const PRINT_JOB_NOT_ROUTED_MESSAGE =
+  "No printer takes this slip. To print notices, switch Notices on for a printer in Printer setup.";
+
+/** Printing Phase 4 (spec §8, P4-9): a KOT that routes nowhere has nothing left to print: the server routes a round's
+ *  kitchen lines, and a round whose every line was cancelled has none. */
+export const PRINT_JOB_NOT_ROUTED_KOT_MESSAGE = "Nothing to print: every item in this round was cancelled.";
+
+/** The not-routed notice by the slip's kind: a KOT has nothing left to print; any other slip keeps the 2D words. */
+export function notRoutedMessageOf(kind: PrintJobPayload["kind"]): string {
+  return kind === "kot" ? PRINT_JOB_NOT_ROUTED_KOT_MESSAGE : PRINT_JOB_NOT_ROUTED_MESSAGE;
+}
+
+/** A payload the renderer's own snapshot could not be built from. Nothing was
+```
+
+- [ ] **Step 4: Run them, the typecheck and the lint**
+
+```bash
+cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-bill-printer.test.ts lib/print-routing.test.ts 2>&1 | grep -E "^not ok|^# (tests|pass|fail)|Cannot find module|does not provide an export"
+cd /d/kd/lucifer/apps/cafe && npx tsc --noEmit && npx eslint lib/print-routing.ts hooks/use-host-routing.ts lib/print-bill-printer.test.ts && echo "typecheck and lint clean"
+```
+Expected:
+```text
+# tests 77
+# pass 77
+# fail 0
+typecheck and lint clean
+```
+
+- [ ] **Step 5: Commit.** Write the message to `$SP/msg-4b-14.txt`, then `git add apps/cafe && git commit -F "$SP/msg-4b-14.txt"`:
+
+```text
+feat(cafe): printing Phase 4 Session 4B, the not-routed words by kind: a KOT that routes nowhere says "Nothing to print: every item in this round was cancelled."; a notice no printer takes keeps today's words, on both call sites (spec §8, P4-9)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+```
+
+### Task 15: End to end on fakes and the emulator (S1, S2, S3, spec §11 items 1, 3, 4)
+
+**Files:** none in the repo (the tools are the gate's, in `D:\kd\pos-dev-keep\phase4\gate-4a\e2e\`; outputs in `$SP/e2e`).
+
+The tools (scratch only, never in the repo): `pw-4b.mjs` (headless desktop Chrome AS the POS app: a fake
+`window.PosNative`, v1 like the release APK or v2 like the app 2.0.x, whose prints go over real TCP to the repo's
+`scripts/fake-escpos-printer.mjs` on 127.0.0.1:9100, so its `.bin` files are the paper; slips come from fixed payloads
+posted to `POST /api/print-jobs` as the page's own, so every build prints the very same slips), `payloads.json` (made
+once by `mkpayloads.ts` from the repo's own builders over the golden orders), `e2e-final.sh` (the whole headless run),
+`serve.sh`, `pw.sh`, `stop3110.ps1`, `mkenv4.py`, `nocache4.py`, `kot-template-qr.json`, `dec.cjs` (a text slip's
+lines), `raster2png.mjs` (a picture slip as a PNG), `ui.py`, `type-secret.py`. Databases are fresh
+`pos_scratch_e2e_4g*` ones (the tools refuse any other); the server is `next start` on :3110, stopped by
+`stop3110.ps1` (only this run's server, by its command line).
+
+- [ ] **Step 1: Tools, ports, disks**
+
+```bash
+mkdir -p "$SP/e2e" && cp -r /d/kd/pos-dev-keep/phase4/gate-4a/e2e/. "$SP/e2e/" && ls "$SP/e2e" | wc -l
+netstat -ano | grep LISTENING | grep -E ":(3110|9100) " || echo "3110 and 9100 free"
+df -h /c /d | tail -2
+```
+Expected: the tools are there; `3110 and 9100 free`; D: at least 1.5 GB free for the build.
+
+- [ ] **Step 2: The two builds.** Today's code is `D:\kd\p4b-base` (a worktree at `d21ee37` the gate built: its
+`apps/cafe/.next/BUILD_ID` exists; if it does not, `git worktree add --detach D:/kd/p4b-base d21ee37`, then
+`powershell -File D:\kd\pos-dev-keep\phase3-final-gate\link-modules.ps1 -Copy D:\kd\p4b-base`, `python "$SP/e2e/nocache4.py"
+D:/kd/p4b-base` and `npm run build` in its `apps/cafe`). This session's code is `D:\kd\p4b-new` moved to this branch's
+head (its `next.config.ts` keeps the gate's uncommitted cache-off line; nothing serves from it while it builds):
+
+```bash
+ls /d/kd/p4b-base/apps/cafe/.next/BUILD_ID && git -C /d/kd/p4b-base log --oneline -1 | cut -c1-8
+git -C /d/kd/p4b-new checkout -q --detach "$(git -C /d/kd/lucifer rev-parse HEAD)" && git -C /d/kd/p4b-new status --short
+cd /d/kd/p4b-new/apps/cafe && npm run build > "$SP/e2e/build-new.log" 2>&1; echo "EXIT $?" >> "$SP/e2e/build-new.log"
+```
+Expected: `d21ee37`; ` M apps/cafe/next.config.ts` only; the build's `EXIT 0` (about 2–4 min: in the background, an
+until-loop on `^EXIT`).
+
+- [ ] **Step 3: The headless run** (about 25 min; in the background, an until-loop on `^EXIT` in its log):
+
+```bash
+cd "$SP/e2e" && bash e2e-final.sh s > e2e-s.log 2>&1; echo "EXIT $?" >> e2e-s.log
+sed -E 's/^\[[0-9.]+s\] //' "$SP/e2e/e2e-s.log" | awk '/^#### Text on/{t=1} /^(SAME|DIFF)|byte for byte|^####|^the text test|^after (Yes|off)|^storage|^reprint of/ || (t && /^(kot-|void|moved|cancel|bill|token)/)'
+```
+Expected (the gate's final run on 2026-10-16, `D:\kd\pos-dev-keep\phase4\gate-4a\evidence\e2e-final-h.log` with its prefix `h` read as `s`; the picture
+bytes and their hashes are this PC's Chrome, so they must equal between the two builds, not necessarily these numbers;
+the text bytes and their hashes are the code's own and must be exactly these; the saved printer's id is new in each run):
+```text
+#### S1, simple mode, the POS app on bridge v1
+SAME kot-round-1      sa1: picture 56414 B d1dcb3087eec  sb1: picture 56414 B d1dcb3087eec
+SAME kot-round-2      sa1: picture 46686 B 3be67aaa1276  sb1: picture 46686 B 3be67aaa1276
+SAME kot-whole-tab    sa1: picture 60662 B b5da9a285c66  sb1: picture 60662 B b5da9a285c66
+SAME void             sa1: picture 53310 B f2b6a8aa0144  sb1: picture 53310 B f2b6a8aa0144
+SAME moved            sa1: picture 34150 B a615fd4e605a  sb1: picture 34150 B a615fd4e605a
+SAME cancel-notice    sa1: picture 61022 B 201164c6a846  sb1: picture 61022 B 201164c6a846
+SAME bill             sa1: picture 51654 B 5da0fda3c625  sb1: picture 51654 B 5da0fda3c625
+SAME token            sa1: picture 31414 B 1a0124b759e6  sb1: picture 31414 B 1a0124b759e6
+SAME kot-hindi        sa1: picture 56414 B cfdf526ec41f  sb1: picture 56414 B cfdf526ec41f
+9/9 slips byte for byte equal (sa1 vs sb1); counts 9/9
+#### S1, printers mode, the POS app on bridge v2 (a network printer of the setup on this device)
+SAME kot-round-1      spa: picture 56414 B d1dcb3087eec  spb: picture 56414 B d1dcb3087eec
+SAME kot-round-2      spa: picture 46686 B 3be67aaa1276  spb: picture 46686 B 3be67aaa1276
+SAME kot-whole-tab    spa: picture 60662 B b5da9a285c66  spb: picture 60662 B b5da9a285c66
+SAME void             spa: picture 53310 B f2b6a8aa0144  spb: picture 53310 B f2b6a8aa0144
+SAME moved            spa: picture 34150 B a615fd4e605a  spb: picture 34150 B a615fd4e605a
+SAME cancel-notice    spa: picture 61022 B 201164c6a846  spb: picture 61022 B 201164c6a846
+SAME bill             spa: picture 51654 B 5da0fda3c625  spb: picture 51654 B 5da0fda3c625
+SAME token            spa: picture 31414 B 1a0124b759e6  spb: picture 31414 B 1a0124b759e6
+SAME kot-hindi        spa: picture 56414 B cfdf526ec41f  spb: picture 56414 B cfdf526ec41f
+9/9 slips byte for byte equal (spa vs spb); counts 9/9
+#### Text on, simple mode (bridge v1), the new build
+the text test: text 472 B; says TEXT TEST: true; ruler: 12345678901234567890123456789012345678901234567
+after Yes: checked=true; on line shown: 1
+storage pos.text-kot.v1: {"v":1,"printers":{"device:native:tcp:127.0.0.1:9100":{"narrow80":false}}}
+kot-round-1      text        698 B  9a1f3f65951f
+kot-round-2      text        596 B  d81b147e4985
+kot-whole-tab    text        811 B  c76c15a895a3
+void             text        668 B  72d2c3407b11
+moved            text        517 B  9b56db6bbfbd
+cancel-notice    text        800 B  36fa96505dac
+bill             picture   51654 B  5da0fda3c625
+token            picture   31414 B  1a0124b759e6
+kot-hindi        picture   56414 B  cfdf526ec41f
+reprint of kot-round-1: text 752 B; first line: "                    REPRINT                    "; job printed
+reprint of kot-hindi: picture 62030 B; first line: ""; job printed
+kot-logo         picture   61382 B  565c31181ded
+kot-qr-only      picture   65486 B  88ace052aa07
+kot-text-again   text        698 B  eff0b165ec1c
+after off: checked=false; storage text=null
+kot-off          picture   56414 B  e85b31ac9116
+#### Text on, printers mode (bridge v2), the new build
+the text test: text 472 B; says TEXT TEST: true; ruler: 12345678901234567890123456789012345678901234567
+after Yes: checked=true; on line shown: 1
+storage pos.text-kot.v1: {"v":1,"printers":{"printer:<the saved printer's id>:app:tcp:127.0.0.1:9100":{"narrow80":false}}}
+kot-printers     text        698 B  167437195b96
+void-printers    text        647 B  b01a607c9384
+after off: checked=false; storage text=null
+kot-printers-off picture   56414 B  9028873d2801
+#### done
+```
+The size ratio (spec §11 item 1, the same slip as a picture over text, this run): KOT round 1 56,414 / 698 = **80.8×**,
+round 2 78.3×, whole tab 74.8×, VOID 79.8×, TABLE MOVED 66.1×, cancel notice 76.3× (all ≥ 10×). Known and not this
+session's: headless desktop Chrome draws a picture slip's last lines below its measured height (the KOT's "3 item(s)"
+and round total are cut); it is the same in both builds (the comparison above), so the picture bytes are a lower bound.
+
+- [ ] **Step 4: The emulator** (the release APK `29115bdf`, bridge v1, WebView 109). `adb reverse tcp:9100` loses a
+small job's bytes when the app half-closes right after writing (the gate measured it: a 30-byte `nc` through the reverse
+arrived as 0 bytes, the same through `10.0.2.2` all 18 of 18), so the app's network printer is the host's fake printer
+at **`10.0.2.2:9100`**, and only the page goes through `adb reverse tcp:3110 tcp:3110`.
+
+```bash
+df -h /c | tail -1   # C: at least 3 GB, or boot -no-snapshot -memory 2048
+"/c/Users/Kartik.desai/AppData/Local/Android/Sdk/emulator/emulator.exe" -avd Pixel_7_API_33 -no-snapshot -memory 4096 -no-audio   # background, timeout 2 h
+until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep 3; done
+MSYS_NO_PATHCONV=1 adb shell pm path com.possoftware.pos
+MSYS_NO_PATHCONV=1 adb shell sha256sum <that path> | cut -c1-8
+cd "$SP/e2e" && python mkenv4.py pos_scratch_e2e_4g_semu "$SP/e2e/e2e4g-semu.env" && cp e2e4g-semu.env e2e.env
+cd /d/kd/lucifer/apps/cafe && for s in seed-admin seed-tables seed-menu; do npx tsx --env-file="$SP/e2e/e2e4g-semu.env" scripts/$s.ts | tail -1; done
+bash "$SP/e2e/serve.sh" /d/kd/p4b-new semu   # background, timeout 2 h
+mkdir -p "$SP/e2e/fp-emu" && cd /d/kd/lucifer && node scripts/fake-escpos-printer.mjs --port 9100 --out "$SP/e2e/fp-emu"   # background
+adb reverse tcp:3110 tcp:3110
+```
+Expected: the app's `base.apk` path; `29115bdf`; the three seed lines. Then, on the app (`python -X utf8 ui.py dump`
+before every tap; tap by text with `ui.py tap <text>` or by a dump's coordinates; never on the live demo: the start
+screen must be the app's own):
+1. The start screen (empty POS address, as the gate left it): tap the address, `adb shell input text "http://localhost:3110"`,
+   Back, Open POS; sign in: the username `e2eadmin`, TAB (`keyevent 61`), `python -X utf8 type-secret.py`, Enter.
+   Expected: the dashboard of "POS Software".
+2. The printer icon (top bar) → swipe up → "Network printer (Wi-Fi or Ethernet)": address `10.0.2.2`, port 9100, "Use
+   this network printer". Expected: `Network printer 10.0.2.2 is connected.`; the panel lists "Fast text KOTs (English
+   only)" with `Network printer 10.0.2.2`, `80 mm`, its switch off.
+3. Close the panel; New Order → Masala Chai, Cheesecake → View cart → Send to Kitchen. Expected: one slip in
+   `fp-emu/jobs.log` with bytes, a picture (`GS v 0`), about 40–45 KB (the app's own idle check adds 0-byte lines once a
+   minute: count only `"bytes":` above 0).
+4. The panel → tap the printer's row (the whole row is the switch's label). Expected: a 472-byte slip whose first bytes
+   are `1b 40 1b 52 00 1b 4d 00` (`od -An -tx1 -N8`), and "Did it print clearly, with the ruler on one line?"; Yes →
+   "On: English-only kitchen tickets print as text on this printer."
+5. Close; New Order → Masala Chai, Cheesecake → Send to Kitchen. Expected: a text slip, `node dec.cjs <its file>` shows
+   `KITCHEN ORDER`, `#2`, `Round 1`, the Order / Table / Time / Staff rows, `1 x Masala Chai  Rs 40`,
+   `1 x Cheesecake  Rs 220`, `2 item(s)`, `Round total: Rs 260` (the gate's: 544 B).
+6. `cd "$SP/e2e" && FAKE_APP=v1 bash pw.sh /d/kd/p4b-new semu reprint-latest` (that KOT may have printed: failed with one
+   uncertain attempt, then Print again). Expected: `labels ["REPRINT"]`; within ~25 s a text slip whose first line is the
+   centred `REPRINT` band (`GS B 1`), no raster (the gate's: 598 B).
+7. The panel → the switch off → New Order → Masala Chai → Send to Kitchen. Expected: a picture again (the gate's:
+   40,494 B).
+8. Put it back as found: the panel → Remove → "Yes, remove" (`Printer removed from this device.`); More options →
+   Change POS address → "Clear POS address" → Back: the empty start screen. Then:
+```bash
+adb reverse --remove-all; MSYS_NO_PATHCONV=1 adb shell sync; MSYS_NO_PATHCONV=1 adb logcat -b crash -d | tail -3; adb emu kill
+powershell -NoProfile -File "$SP/e2e/stop3110.ps1"
+```
+and stop this run's fake printer by its PID (its command line names `fp-emu`). Expected: no crash lines; `stopped <pid>`.
+
+**The app 2.0.1 is not run** (the gate's decision): its printing is the 2.0.0 code (2.0.1 changed only the version), and
+a text slip is bytes through the same `printer.print` v1/v2 as a picture (spec §5.3); bridge v2 is covered by the
+headless run's printers mode, and installing 2.0.1 would replace the emulator's as-found debug-key 1.0 (a new signing
+key: an uninstall). The owner's real devices run 2.0.1, and 4D's exit smoke runs the release build.
+
+### Task 16: Verification, the fresh review and the Results
+
+**Files:** this plan's "Session 4B Results" section (append).
+
+- [ ] **Step 1: Only the page changed, and the picture's files did not**
+
+```bash
+cd /d/kd/lucifer && git diff --stat f46600e..HEAD -- . ':!docs' | tail -1
+git diff d21ee37..HEAD -- apps/mobile apps/desktop workers apps/cafe/models apps/cafe/app/api packages | wc -c
+git diff --name-only d21ee37..HEAD -- . ':!docs' | grep -v -E '^apps/cafe/(lib|hooks|components)/' || echo "only the page"
+cd /d/kd/lucifer/apps/cafe && node --import tsx --test --test-name-pattern="PIN \(S1\)" lib/printer/kot-text/text-kot-print.test.ts 2>&1 | grep -E "^not ok|^# (pass|fail)"
+```
+Expected: `36 files changed, 1704 insertions(+), 47 deletions(-)`; `0`; `apps/cafe/package.json` only (the test chain); `# pass 1`, `# fail 0`.
+
+- [ ] **Step 2: Every cafe check**
+
+```bash
+cd /d/kd/lucifer/apps/cafe && npm test > "$SP/cafe-4b.log" 2>&1; grep -E "^# (tests|pass|fail|skipped)" "$SP/cafe-4b.log"
+cd /d/kd/lucifer/apps/cafe && npx tsc --noEmit && echo "typecheck clean" && npm run lint 2>&1 | tail -2
+```
+Expected: `# tests 6080`, `# pass 6079`, `# fail 0`, `# skipped 1` (in the background, with an until-loop); `typecheck
+clean`; `✖ 2 problems (0 errors, 2 warnings)`.
+
+- [ ] **Step 3: A fresh review.** A fresh reviewer on **Claude Fable 5.1** (read-only; scratch only in `$SP`; on an HTTP
+429 limit wait for the reset and tell the owner, never switch models silently) reviews `f46600e..HEAD` against spec
+§4–§5, §8 and this section: the gate's rules in the text step (S1, S3, I-4, rule 7), the routes against the picture's
+writers, the store and its keys, the bridge's window and outcomes, the panel's states, the words. If it makes a probe
+worktree: before `git worktree remove`, remove every junction in it first, **dot-entries included** (`node_modules/.bin`):
+Git for Windows deletes through a junction and emptied the real repo's `.bin` at the 4A gate. Fix a Critical or
+Important finding by TDD (RED seen first) in its own commit, re-run Steps 1–2 (and Task 15's S1 comparison if the fix
+touches the bridge or a writer); record every finding and its ruling in the Results.
+
+- [ ] **Step 4: The Results.** Append "## Session 4B Results" at the end of this plan: the commits, the counts (Steps
+1–2), every RED and GREEN as seen, Task 15's runs (every line compared with its Expected), differences from this plan and
+why, the review and its rulings. Commit it (`docs(printing): Session 4B Results …`). No push unless the session's prompt
+says so.
 
 ---
 
@@ -2618,3 +6075,165 @@ What the reviewer set aside, and the ruling on each:
    `8770645`, not against the gold tree `33375e2`**.
 2. Process only: the harness refused one `bash -c` test command given to `task-done` (as noted in the memory), so the
    kot-text suites ran through a wrapper script in the scratchpad; Task 2's commit was then made once, separately.
+## The 4A review gate (2026-10-15/16)
+
+Its own session (`d0437015…`), from the owner's prompt `D:\kd\pos-dev-keep\phase4\prompt-4a-gate.md`. No push, no merge,
+no deploy, no upload. Tools and evidence: `D:\kd\pos-dev-keep\phase4\gate-4a\` (`e2e\` the end-to-end tools Task 15 uses,
+`gen4b\` the generator, `evidence\` the logs, mutation runs and screenshots, `gold-4b-v5.bundle` the gold, with the
+drafts' `gold-4b-v3.bundle` and `gold-4b-v4.bundle`).
+
+### Session 4A, verified
+
+- Disks: D: 9.7 GB, C: 75 GB free. Every commit `d21ee37..f46600e` read (the spec, the plan, Tasks 1–6, the two fixes, the
+  Results).
+- Each task's `apps/cafe` tree equals its gold commit's: Task 1 `585796b` = `684223d`, Task 2 `56c926f` = `107c8ff`,
+  Task 3 `b682846` = `e636523`, Task 4 `3521010` = `5dfc872`, Task 5 `4da996c` = `48a9608`, Task 6 `dd67217` =
+  `892ba66`; after the fixes `a5a2516`. `git diff --name-only 892ba66 dee2640`: only the plan and the spec.
+- The fixes against the spec: **I-1** (`85d6124`) is spec §4.1 rule 3 exactly: with no stored template the picture is
+  `KOTReceipt`'s own legacy branch, where each line follows its own setting, so the engine's locks bite only on a stored
+  template, for visibility and for the locked-size floor. **I-2** (`8770645`) adds content only (Classic's `#12`, Kitchen
+  Bold's `[1]`) within §5.1's test slip; spec §5.1 now names them.
+- Each fix's RED reproduced in `D:\kd\p4v` at `f46600e`, putting back only its production file: I-1 (`kot-text.ts` as
+  at `dee2640`): `not ok 2 - the legacy ticket prints the picture's words under every combination of its settings`,
+  `[flags=0 / void-reason-by-at] the picture's words, in its order` with `+ 'table', + 't4'`; `# tests 2`, `# pass 1`,
+  `# fail 1`. I-2 (`text-test-slip.ts` as at `dee2640`): `not ok 1 - the text test slip on 80 mm, line for line`,
+  `not ok 2 - the sample prints the characters a printer's international set can change…` (`'32 columns: the sample
+  prints #'`); `# tests 5`, `# pass 3`, `# fail 2`. Both files restored.
+- Re-runs at `f46600e`: the seven kot-text suites **38/38**; the cafe chain **`# tests 6022`, `# pass 6021`, `# fail 0`,
+  `# skipped 1`** (52.8 s); typecheck clean; `✖ 2 problems (0 errors, 2 warnings)`; Task 7 Step 1: `17 files changed,
+  1497 insertions(+)`, `only kot-text and the test chain`, `nothing imports kot-text`; `git diff d21ee37..HEAD -- apps/mobile
+  apps/desktop workers apps/cafe/models apps/cafe/app/api packages`: empty (0 bytes); `print-budget.test.ts` unchanged.
+
+Verdict: Session 4A landed as the plan and its Results say.
+
+### The fresh review of 4A (Claude Fable 5.1)
+
+Read-only, no 429. It ran the suites, a byte-grammar validator over 2,400 jobs and the three test slips (only the fixed
+commands, no line reaching its columns), ten real-input probes, 18 mutations (11 caught) and a public look at Epson's
+`ESC R` entry. **Verdict: "Ready for 4B: With fixes"; 0 Critical, 1 Important (test strength), 7 Minor.** No wrong
+line, lost line or wrong byte on any real input; the 4B interfaces hold.
+
+| Finding | Ruling |
+|---|---|
+| **I-1** two goldens do not pin their rule: the locked-size floor (`xs` → `sm`) cannot show at the normal base (both `normal`); the locks' scope is exercised only for Kitchen Bold's title | **4B Task 9:** the locked-title golden at the large base (`tall`, vs `normal` without the floor); parity designs "classic locked off" and "bold locked off" (title, table and items off on a stored template): 13 designs, 10,400 cells |
+| m-1 a lone CR is dropped (`no onionno garlic`) | **Task 9:** a CR is a space, as CSS shows it (spec §4.2) |
+| m-2 a skip-KOT line, Classic's meta ratio and Kitchen Bold's upper-case name unpinned (M6, M7, M8) | **Task 9:** a parity test with a `noKot` line (in a round and on the whole tab), a Classic meta block at `lg`/`xl`, a Kitchen Bold name golden |
+| m-3 a Classic label / value row ignores its block's alignment | **The owner: follow the picture** (2026-10-16). Task 9: `valueAlign`: centred in the room after the label and its space, or right after it; on its own line centred or at its start (spec §4.3) |
+| m-4 an over-wide amount refuses as `"error"` | Stands (S3 prints it as a picture; only an `xl` items block on 58 mm with an amount of Rs 10 crore or more); Task 9 pins the refusal; 4B reads no refusal reason |
+| m-5 a long Classic item and a pair exactly one line long unpinned (M9, M15) | **Task 9:** both goldens |
+| `ESC R 0` (the reviewer's evidence: `ESC @` returns a printer to its memory-switch set, not to USA; every ESC/POS family knows `ESC R`; volatile; a printer that ignores it shows the stray byte on the test slip) | **The owner: yes** (2026-10-16). Task 9 |
+| `ESC M 0` (optional: a Font-B default prints smaller text the ruler cannot catch) | **The owner: yes** (2026-10-16). Task 9; spec §4.3, Global Constraints |
+| Rule 7: the real caps (the app bridge 1,500,000 bytes, `printRaw` 1,500,000, the picture 16,000 rows) | **Task 12:** `textKotFitsPicture` (the picture's own ceiling at the paper) |
+| `textTestJob` throws only on a bug | **Task 13:** made inside a try before anything is queued; the switch stays off |
+| `useSlipCodePending` gives up after 8 s while the chunk may still be loading | **Task 12:** only `"ready"` counts |
+| `TEXT_TEST_CHECK` wraps at 32 columns | Stands (cosmetic) |
+
+After Task 9, the gate re-ran the review's seven uncaught mutations (and M6b, the round's kitchen lines): **all 8 caught**
+(`evidence\mutate9.log`).
+
+**A side effect of the review:** its `git worktree remove --force` deleted through the one junction its own cleanup missed
+(`node_modules/.bin`, a dot-entry) and emptied `D:\kd\lucifer\node_modules\.bin` (every package intact). Restored
+offline with `npm rebuild --ignore-scripts` at the root: 17 bins, exactly the top-level `bin` entries of
+`package-lock.json` (the apps' own `node_modules` were untouched); the lock unchanged, `git status` clean, typecheck and
+lint run again. Task 16 Step 3 tells the next reviewer; the gate's 4B reviewer worked in a prepared worktree and removed
+nothing.
+
+### The owner's rulings (2026-10-16)
+
+1. `ESC R 0` right after `ESC @` in every text job: **yes**.
+2. m-3: **follow the picture**.
+3. The 4B interface changes (the key by the route, `queueTestSlip(write)`, Tasks 11 and 12 swapped): **OK**.
+4. `ESC M 0` (Font A) as well: **yes**.
+
+### Session 4B made exact
+
+Gold `D:\kd\p4g`, branch `g4b-v5` from `f46600e` (the drafts `g4b-v1`..`g4b-v4` kept; v4 = v3 with the section review's
+fixes folded into Tasks 10, 12 and 13, v5 = v4 with its re-check's m-9 in Task 12's tests; below):
+
+| Task | Commit | Whole tree (`apps/cafe`) | Ops (tests + code) |
+|---|---|---|---|
+| 9 the 4A gate's rulings | `3205036` | `2630b79` (`f585076`) | 14 + 9 |
+| 10 the switch's storage | `86a4b5f` | `8aa060e` (`dd4dca1`) | 2 + 1 |
+| 11 the Windows printer's raw write, page side | `8f6dac0` | `ca9ff34` (`3f74d9d`) | 2 + 9 |
+| 12 the bridge's text step | `3589c08` | `1737273` (`f6c682b`) | 6 + 7 |
+| 13 the panel's section | `4c2f359` | `302ac29` (`cefd5b6`) | 5 + 10 |
+| 14 the not-routed words | `f4ef670` | `a792641` (`49db995`) | 2 + 4 |
+
+The blocks were generated from these commits (`gen4b\gen_ops.py`) and applied step by step
+on `D:\kd\p4v` at `f46600e` (`gen4b\val.py`): every find matched once, every RED and GREEN ran (`gen4b\val6b\t9.txt` …
+`t14.txt`), and **every task's whole tree came out identical to gold** (the column above). Then the plan file's own
+Session 4B section (its 71 ops, applied at once on a reset `D:\kd\p4v`) rebuilt the gold tree `a7926418` exactly.
+There: the cafe chain **6080** (6079 pass, 0 fail, 1 skipped), typecheck clean, lint 0 errors (2 old warnings).
+
+### The end-to-end pre-run (Task 15)
+
+On builds of `d21ee37` (`D:\kd\p4b-base`) and of the gold head (`D:\kd\p4b-new` at `7f3f723`; v5 differs only in a
+test file, which no build includes), each with webpack's cache off, fresh `pos_scratch_e2e_4g_h*` databases
+(`evidence\e2e-final-h.log`):
+- **S1, simple mode (the POS app v1):** the same nine slips (KOT rounds 1 and 2, the whole tab, VOID, TABLE MOVED, cancel
+  notice, bill, token, a Hindi KOT) with every switch off: **9/9 byte for byte equal**; the base build against itself
+  9/9 too (the comparison is deterministic). **S1, printers mode (v2, a network printer of the setup): 9/9 equal.**
+- **Text on** (the panel's switch, the text test 472 B with `#12` and `[1]`, the ruler 47 characters, Yes): KOT 698 B,
+  round 2 596 B, the whole tab 811 B, VOID 668 B, TABLE MOVED 517 B, cancel notice 800 B, all text; the bill, the token
+  and the Hindi KOT the very S1 picture bytes; a REPRINT 752 B text with its band; the Hindi REPRINT a picture; the logo
+  on, a QR line: pictures; the switch off: the picture again. Printers mode (v2): the printer's own switch, KOT 698 B and
+  VOID 647 B as text through the app's printer by its id, off: a picture. **Ratio 66–81×** (KOT 56,414 / 698 = 80.8×).
+- **The emulator** (the release APK `29115bdf`, WebView 109, the page on `http://localhost:3110`): the panel's section on
+  the real app; the text test 472 B (`1b 40 1b 52 00 1b 4d 00`); Yes; a KOT as text (544 B); "Print again" on it: REPRINT
+  as text (598 B, `GS B 1`); the switch off: a picture (40,494 B); put back as found (printer removed, the empty start
+  screen, reverses removed, `sync`, `emu kill`; crash buffer empty). The 2.0.1 APK not run (Task 15 says why).
+- **Found on the way (harness):** `adb reverse tcp:9100` loses a small job's bytes when the app half-closes at once: a
+  30-byte `nc` through it arrived as 0 bytes, through `10.0.2.2:9100` 18 of 18; the app's own picture "Print test slip"
+  arrived empty too, and the app read every such write as printed. A real printer is reached directly, never through
+  adb: Task 15 uses `10.0.2.2:9100`.
+- **Found on the way (today's picture, not Phase 4):** a picture KOT's last line is cut at its bottom: on the emulator's
+  WebView the round total's lower half (`evidence\shots\emu-kot-picture.png`), in headless Chrome its last two lines. The
+  same bytes come from `d21ee37`, so Phase 4 leaves it alone (S1); reported to the owner (a fix would be its own branch
+  from `main`, after a look at a real printer's paper).
+
+### The fresh review of Session 4B's exact section (Claude Fable 5.1)
+
+Read-only, no 429; its probes in a worktree the gate prepared (`D:\kd\p4r`), which it left clean (no worktree made or
+removed). It replayed the plan's blocks on an export of `f46600e` (69 ops, identical to gold), ran the 4B suites
+(130/130), the typecheck and the lint, recomputed the 43 pinned hashes at both commits, checked the routes against
+`slipPrintOptions` and the lane on every runtime, rendered the aligned Classic row, and ran 20 mutations (14 caught).
+**Verdict: "Ready to run as written: With fixes"; 0 Critical, 2 Important, 8 Minor.** With every switch off the picture
+path is byte for byte today's; the routes mirror the picture's writers; the store and the bridge's test window hold.
+
+| Finding | Ruling |
+|---|---|
+| **I-1** Task 15's two reprint Expected lines were not the kept log's (that log's `reprint` picked the job by its label, which several payloads share, and so reprinted the Hindi KOT, a picture: correct behaviour, a harness bug) | **Fixed in the harness:** `reprint` picks the job by its job key (a KOT's order and round: an order also has its whole-tab KOT, which a pick by order and kind took in a later run), and the Hindi reprint is its own line; the whole headless run was made again on the final gold and its log kept (`evidence\e2e-final-h.log`); every Expected line of Task 15 is that log's |
+| **I-2** a switch stored on device A for printer P outlives P's re-assignment to device B: during a takeover A would print P's KOTs as text, against spec §5.3, and A's panel no longer lists P to turn it off | **Fixed in gold Task 12:** `printOnce` marks a slip whose printer is one of the agent's `takeoverIds` (`takeover: true`), and the text step answers null for it; a unit test (RED without the fix: `not ok … taken over for another device: a picture`) and a source pin |
+| m-1 four mutations not caught: the step's rule-7 call, the record-level strictness, the test window's `track(null)`, the printers-mode-with-no-printer branch | **Folded:** a 22,300-item slip that fits 80 mm's limit and passes 58 mm's (a picture on 58 mm, text on 80 mm); the strict record with a printer that would read on; the waiting slip's outcome after the text test; `textKotPrintersOf` in printers mode with no printer of its own |
+| m-2 the Global Constraints' key bullet still read `printer:<setup printer id>` | Fixed (the reach, and a takeover prints pictures) |
+| m-3 off left the row's choice at Automatic, so a printer proven at 42 would print its next test at 48 | **Folded (Task 13):** off seeds the choice it was proven at; pinned |
+| m-4 a text test the watchdog gave up on showed "reprint it from Orders" under the switch | **Folded (Task 13):** the section's own "Could not print the text test. The switch stays off."; pinned |
+| m-5 the step reads the device printer's state at dispatch, the lane after its raster | Stands: S3-safe (a printer null or in another tab for a moment prints a picture, never a lost slip) |
+| m-6 keys of printers no longer on this device are never removed | Stands: bounded by staff taps; a printer re-pointed away prints pictures (I-2) |
+| m-7 Task 0 expects the gate's commit, the edits were uncommitted | Committed before the prompt was given |
+| m-8 the budget comment says 262, the table 263 | The table names both (262 after Task 12, 263 after Task 13) |
+
+The section after the fixes: gold `g4b-v4` (`3205036` `86a4b5f` `8f6dac0` `9a3aef2` `2d94e9e` `7f3f723`, the drafts
+`g4b-v1`..`g4b-v3` kept); the blocks generated again (71 ops) and validated on a reset `D:\kd\p4v` (`gen4b\val4\`: every
+task's whole tree identical to gold); the headless run again on a build of `7f3f723` (`evidence\e2e-final-h.log`: S1 9/9
+in both modes; every text slip, its size and its hash as Task 15 says).
+
+**The reviewer's re-check of v4** (the same Claude Fable 5.1 reviewer, read-only, `D:\kd\p4r` at `7f3f723`, left clean;
+no 429): **"v4 ready to run as written: Yes"**, 0 Critical, 0 Important. The diff from v3 is 9 files, +65 −7, and the
+bridge is byte for byte v3's. A slip that is no takeover reaches the bridge as the very same object; a takeover slip is
+that slip plus `takeover: true`, which only the text step reads, so it takes the very path a slip with its switch off
+takes (S1, S3). The 43 pinned hashes equal `d21ee37`'s; the print suites 235/235, typecheck and lint clean; 8 mutations
+(the four v3 left, the takeover guard, the agent's mark, the m-3 seed, the m-4 mapping), all caught. A residual it
+accepts: `takeoverIds` is this device's own setup read, as stale as every other list the agent uses. Two new minors:
+
+| Finding | Ruling |
+|---|---|
+| m-9 the rule-7 step test compares the whole answer (a job of about 780 KB) with null: if rule 7 broke, the failing assertion's diff would run node out of memory and take the whole file, the S1 pin with it, down with no name | **Folded (Task 12's tests, gold `g4b-v5`):** both checks compare a boolean; with the rule-7 call removed the file reads `not ok 12 - spec §4.1 rule 7 in the step …` with `58 mm: a picture (rule 7)` |
+| m-10 the plan file still held the v3 section when it re-checked | The plan's Session 4B section is generated from `g4b-v5` (Files, blocks, lint lists, messages, counts, the line budget, the key bullet) and replayed from the plan file itself |
+
+Gold `g4b-v5` is v4 with m-9: Task 12 `3589c08`, Task 13 `4c2f359`, Task 14 `f4ef670`. Only a test file differs from
+v4, and no build includes it, so the builds Task 15 ran are this code. The blocks were generated again (71 ops; only
+Task 12's test ops changed, and its lint list gained `hooks/use-print-agent.ts`) and validated again on a reset
+`D:\kd\p4v` (`gen4b\val6b\`: every RED and GREEN as written, every task's whole tree identical to gold);
+the plan file's own section rebuilt the gold tree `a7926418`; the cafe chain there **6080** (6079 pass, 0 fail,
+1 skipped).

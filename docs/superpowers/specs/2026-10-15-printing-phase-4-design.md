@@ -106,11 +106,13 @@ every code page. A fixed map, applied before the check:
 | U+00A0, U+202F (no-break spaces) | a space | time strings on newer ICU ("02:35 pm") |
 
 Tabs and line breaks in typed text follow the picture's rules (custom text keeps its line breaks; elsewhere a line
-break is a space). Nothing else is mapped.
+break is a space; a tab or a carriage return is a space, as the picture shows it: the 4A gate's m-1). Nothing else is
+mapped.
 
 ### 4.3 Layout
 
-- **Font and width.** The printer's built-in Font A (12 × 24 dots), which every ESC/POS printer selects after `ESC @`.
+- **Font and width.** The printer's built-in Font A (12 × 24 dots), selected by `ESC M 0` at the start of every job
+  (a memory switch can make Font B a printer's default after `ESC @`: the owner's ruling at the 4A gate, 2026-10-16).
   Columns: 58 mm → 32; 80 mm → 48, or 42 when the printer's switch says so (P4-5). A line holds at most one character
   less than the columns (47 on 48), so a printer that moves to the next line by itself when a line is exactly full
   never adds a blank line; a double-width line holds half of that (23 on 48).
@@ -128,7 +130,9 @@ break is a space). Nothing else is mapped.
 - **Rules.** A dashed divider → `- - - -` across the width; solid → `------`; double → `======`; blank → an empty line;
   ornament → a centred `* * * * *`. A design's default divider is its own (Classic dashed, Kitchen Bold double).
 - **Rows.** A label / value row (Order, Table, Time, Staff) prints the label left and the value right; when the pair does
-  not fit, the value goes to the next line, right-aligned (the picture's wrap). An item line prints `‹qty› x ‹name›`
+  not fit, the value goes to the next line, right-aligned (the picture's wrap). A block aligned centre or left places the
+  value as the picture's row does: centred in the room after the label and its space, or right after it (on its own
+  line: centred, or at the line's start); the owner's ruling at the 4A gate (m-3). An item line prints `‹qty› x ‹name›`
   left and its amount right; a long name wraps (Classic from the line's start, as the picture does; Kitchen Bold under
   the name, after its quantity); modifier lines are indented four spaces; an
   instruction is indented, bold, with `> ` (Classic) or `>> ` (Kitchen Bold). Words wrap at spaces; a word longer than a
@@ -139,7 +143,10 @@ break is a space). Nothing else is mapped.
 - **Kitchen Bold specifics.** Upper-case restaurant name and item names; the KOT number's box prints as a white-on-black
   `KOT 12` line at double size (the box cannot float beside the meta lines in text; the lines follow under it); the
   table line double size; items `[2] PANEER TIKKA` double height and bold; modifier and instruction lines bold.
-- **The job's bytes.** `ESC @`, then each line as only the state changes it needs (`ESC a`, `ESC E`, `GS !`, `GS B`)
+- **The job's bytes.** `ESC @`, `ESC R 0` (the USA international character set, so `#`, `[`, `]`, `@`, `{`, `}`, `~` and
+  the rest print as themselves whatever set a printer starts in) and `ESC M 0` (Font A): the owner's rulings at the 4A
+  gate, 2026-10-16; both are cleared again by `ESC @` and a power-off, and a picture sends neither. Then each line as only
+  the state changes it needs (`ESC a`, `ESC E`, `GS !`, `GS B`)
   and its text and `LF`; then every style reset (`GS B 0`, `GS ! 0`, `ESC E 0`, `ESC a 0`, never a second `ESC @`, which
   on some printers discards buffered text); then `ESC J 16` (about the picture's 16-row bottom pad) and the picture's own cut
   `GS V 66 0`.
@@ -167,9 +174,12 @@ words with the text renderer's words after the §4.2 map; any change on one side
   script, a logo or a QR code still print as now."
 - **Where it is kept:** the page's storage on that device, under its own key `pos.text-kot.v1` (never inside
   `pos.device-printer.v1`, whose strict schema an open older page would then fail to read), keyed by the printer and
-  how it is reached: `printer:‹setup printer id›:‹its connection›` for a printers-mode printer (the connection's kind,
-  transport and address or host and port, lower-cased), `device:‹the device printer's identity›` for this device's own
-  printer in simple mode. A printer changed in either place (another printer, another address) is a new key, so its
+  how this device reaches it, lower-cased: `printer:‹setup printer id›:‹reach›` for a printers-mode printer and
+  `device:‹reach›` for this device's own printer in simple mode, where ‹reach› is the writer the picture takes there
+  (`app:‹the POS app's printer id›`, `lan:‹host›:‹port›` for the Windows app's network printer, `windows:‹name›`, or this
+  device's own printer: `native:‹id›`, `serial:‹USB ids, or the name›`, `ble:‹device id›`). The 4A gate chose the reach
+  over the setup's connection (the owner's OK, 2026-10-16): the print bridge holds no printer setup, while the route is
+  in hand at each print. A printer changed in either place (another printer, another address) is a new key, so its
   switch is off until its own text test printed. The store keeps only whether the 80 mm "42" choice is made; the
   columns themselves come from the printer's paper at each print (Printer setup's paper for a printers-mode printer,
   the device printer's paper in simple mode, the kitchen ticket's paper setting for the Windows app's chosen printer,
@@ -177,8 +187,8 @@ words with the text renderer's words after the §4.2 map; any change on one side
   unreadable store reads as every switch off.
 - **Turning it on (S2):** the switch's tap prints a text test slip on that printer (no job, no server request; the
   bridge's busy window is respected, so it never interleaves with a slip): the cafe's name, "TEXT TEST", a sample
-  kitchen ticket with a price in `Rs`, double-height and white-on-black lines, and a ruler as long as a text line may be
-  (the columns less one). Then: "Did it print clearly, with the ruler on one line?" **Yes** → on; **No** → stays off (with "Keep it off,
+  kitchen ticket with a price in `Rs`, Classic's `#12` and Kitchen Bold's `[1]` (Session 4A's review, I-2), double-height
+  and white-on-black lines, and a ruler as long as a text line may be (the columns less one). Then: "Did it print clearly, with the ruler on one line?" **Yes** → on; **No** → stays off (with "Keep it off,
   or try Characters per line: 42" on 80 mm). A failed print says the printer's own error and stays off.
 - **Turning it off** is immediate.
 
@@ -209,7 +219,9 @@ Printing that does not go through the bridge (a device with no identity printing
   whose raw path misbehaves).
 - **A browser tab** with a serial or Bluetooth printer: the page alone.
 - **An older page** knows nothing of text and prints pictures; it never reads `pos.text-kot.v1`.
-- **A failover writer** (Phase 3) that took a printer over has no switch for it → pictures.
+- **A failover writer** (Phase 3) that took a printer over has no switch for it → pictures. A switch this device stored
+  for that printer while it was this device's own counts only while it is again (the 4A gate: a slip of one of the
+  agent's taken-over printers is marked, and the text step answers nothing for it).
 
 ### 5.4 The writers
 
