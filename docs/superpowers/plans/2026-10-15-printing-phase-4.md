@@ -37,6 +37,12 @@ session's spec; it records why.
 | 4C | The apps 2.0.2 code: Android `network.findPrinters` and the network printer's name (m-2); Windows `findLanPrinters` and `printRawOn`; the page's "Find network printers"; JUnit, desktop tests, pins; the emulator finding a fake printer | review; 4D made exact |
 | 4D | The exit: both apps 2.0.2, GO-LIVE and TEST-CHECKLIST (with the owner's Bluetooth measurement), every suite, the release set `Sandbee-POS-2.0.2`, the final review | the owner's merge OK |
 
+**The owner's decision of 2026-10-16 (after 4B): two sessions instead of four.** Session 1 verified 4B and built 4C
+directly on the branch (test first, one commit per task; the 4B gate's rulings as Task 19; no gold worktree, no
+generated blocks, no separate execution session; one fresh review at the end): see "The 4B review gate (fast)" and
+"Session 4C Results" at the end. Session 2 verifies 4C independently, then runs 4D from its spec below, then asks the
+owner for the merge OK. No rule is loosened by the speed.
+
 **How a session's exact code was made (the native apps N3/N4 gate method):** the code is written test first in a gold
 worktree, one commit per task; the plan's blocks are generated from those commits (whole files as `Create`, every other
 change as an exact `find` / `Replace it with`, tests first); the blocks are then applied step by step on a fresh worktree
@@ -6373,3 +6379,170 @@ no request); `printRawOn` itself and the real-printer run (4C, 4D).
 4. **Order of work (process only):** Task 16 Step 1 and the fresh review ran while Task 15's headless run was in the
    background (the reviewer kept off ports 3110 and 9100, mongod, adb and builds); Steps 1–2 were run again at the end
    on the same `HEAD` (no code changed after Task 14).
+
+## The 4B review gate (fast, 2026-10-16)
+
+The owner's decisions (2026-10-16): Phase 4 is finished fast, so it runs in **two sessions instead of four**: session 1
+verifies 4B and builds 4C directly on `feat/printing-phase-4` (test first, one commit per task; no gold worktree, no
+generated blocks, no separate execution session; one fresh review at the end); session 2 verifies 4C independently, then
+4D. Speed loosens no rule (S1–S6, TDD with RED seen first, the pins, the emulator and Windows checks, the put-back). The
+4B minors: **m-1 fix** (the "Fast text KOTs" section shows nothing until the printers read has answered), **m-2 harden**
+(a writer that throws synchronously settles the slip as a normal failure), **m-3** a comment.
+
+4B verified (session 1 of the fast path, Part A):
+- Disks: D: 9.5 GB, C: 73 GB free; the `.bin` check `4`.
+- Each 4B task's `apps/cafe` tree equals gold: `c4964b3` = `3205036` (`f585076`), `35e7920` = `86a4b5f` (`dd4dca1`),
+  `f42c830` = `8f6dac0` (`3f74d9d`), `f3931fb` = `3589c08` (`f6c682b`), `928c065` = `4c2f359` (`cefd5b6`), `2e3fa26` =
+  `f4ef670` (`49db995`).
+- The cafe chain `6080` (`6079` pass, `0` fail, `1` skipped); typecheck clean; lint `✖ 2 problems (0 errors, 2 warnings)`;
+  Task 16 Step 1: `36 files changed, 1704 insertions(+), 47 deletions(-)`, `0`, `apps/cafe/package.json`.
+- The S1 end-to-end comparison was run once, on a build of session 1's final page code (below), since the rulings touch
+  the bridge.
+
+## Session 4C Results (fast path, session 1 of 2)
+
+Executed on 2026-10-16 in `D:\kd\lucifer` on `feat/printing-phase-4` (start `5743907`), test first, one commit per task.
+No push, no merge, no deploy, no upload, no download, no web request; no real network was scanned and no real printer
+printed to.
+
+### Commits (`5743907..HEAD`)
+
+| Commit | Task |
+|---|---|
+| `73cb2f7` | 19: the 4B gate's rulings: m-1 (the section waits for the printers read), m-2 (a sync writer throw settles as a failure), m-3 (a comment) |
+| `02b6df1` | 20: Android `network.findPrinters` (`LanScan.kt`, feature `lanScan`), the RN bridge, the page's protocol copy, pins 4 and 33 |
+| `8d918f2` | 21: the network printer's name (m-2): "Network printer ‹host›:‹port›" off 9100; saved printers shown by their id |
+| `751a064` | 22: Windows `findLanPrinters` (`lan-scan.ts`), behind the print channels' gate; the test-only interface list |
+| `7da0d1e` | 23: Windows `printRawOn` (`print-raw-on.ts`, `print.ts` on the one queue) |
+| `c4a2426` | 24: "Find network printers" on the page (`lan-discovery.ts`, `FindNetworkPrinters.tsx`, both forms) |
+| `4207a7c` | 24 fix: the page reaches the Windows scan through the desktop printer seam (the print lane's pin) |
+| `a6c4778` | the review's m-1 (graded Important by its effect): the scan thread answers on any failure, never ends the app |
+| (this commit) | the gate section, these Results, "How this plan runs" |
+
+### Counts (before → after)
+
+| Suite | `5743907` (the apps: native apps N3's counts; no app file changed since) | `HEAD` |
+|---|---|---|
+| cafe chain | 6080 (6079 pass, 0 fail, 1 skipped) | **6095 (6094 pass, 0 fail, 1 skipped)** |
+| cafe typecheck / lint | clean / 0 errors (2 old warnings) | clean / 0 errors (2 old warnings) |
+| mobile `npm test` / Jest / typecheck / lint | 168 / 8 / clean / clean | **173** / 8 / clean / clean |
+| JUnit (`:app:testDebugUnitTest --rerun`) | 94 | **109** (LanScanTest 11, PrinterNamesTest 4) |
+| desktop `npm test` / typecheck / lint | 211 / clean / clean | **223** / clean / clean |
+
+Scope: `git diff --stat 5743907..HEAD -- . ':!docs'` = `45 files changed, 1734 insertions(+), 37 deletions(-)`
+(`f46600e..HEAD`: 74 files, +3431 −77); the diff from `d21ee37` to `workers`, `apps/cafe/models`, `apps/cafe/app/api` and
+`packages` is empty (0 bytes); `print-budget.test.ts` unchanged; the S1 pin (43 files) passes unchanged, so S5 holds: the
+Android printer manager, pool, transports and TransportFactory and the Windows print-direct, escpos, raw-spool, raw-tcp
+and print-job are byte for byte `d21ee37`'s. Production files changed in the apps: Android `LanScan.kt` (new),
+`PosPrinterModule.kt`, `Prefs.kt` (one line), `PrinterDiscovery.kt`; Windows `lan-scan.ts`, `print-raw-on.ts` (new),
+`print.ts`, `print-raw.ts`, `main.ts`, `preload.ts`, `shared.ts`.
+
+### Per-task RED → GREEN
+
+| Task | RED (as seen) | GREEN |
+|---|---|---|
+| 19 | 4 fail: m-2 a sync throw escaped the dispatch effect; the text test left the bridge busy; m-1 an unanswered read listed `device:native:bt-classic:…`; the m-1 pin | the bridge and section suites 160/160 |
+| 20 | mobile 8 fail (protocol, injected, router, pins 4 and 33), cafe 6 fail (protocol, parity, timeouts, schemas), JUnit `compileDebugUnitTestKotlin FAILED` (`Unresolved reference 'LanScanPlan'`) | mobile 124/124, cafe 54/54, JUnit 104 |
+| 21 | JUnit `compileDebugUnitTestKotlin FAILED` (`Unresolved reference 'shown'`), pin 34 | JUnit 108, mobile 126/126 |
+| 22 | desktop 5 fail (pins (6), (7), L1, W1; `Cannot find module './lan-scan'`) | desktop 220/220 |
+| 23 | desktop 4 fail (pins (6), (7), W2; `Cannot find module './print-raw-on'`) | desktop 223/223 |
+| 24 | 4 fail (`Cannot find module './lan-discovery'`, the component missing); then the full chain's print-lane seam pin (1 fail) | 107/107, the chain 6095/6094/0/1 |
+| review m-1 | JUnit `Unresolved reference 'answerOrNone'`, pin 33 | JUnit 109, mobile 70/70 |
+
+### Task 25: the emulator
+
+- As found: `pm path` `…/base.apk`, `29115bdf`, versionName 1.0, the crash buffer empty, the app's own empty start screen.
+- The branch's x86_64 release APK (`:app:compileReleaseKotlin --rerun`, then `aR -PreactNativeArchitectures=x86_64`) is
+  signed with the release key, unlike the as-found app (the debug key), so: `adb uninstall`, `adb install` of the branch
+  APK `22a2057a` (versionName 2.0.1; `adb install` answered Success), the crash buffer 0 lines after the launch; after the
+  review's fix the rebuilt APK `99b5b763` went on with `install -r` (crash buffer 0).
+- The page from a build of `4207a7c` on `http://localhost:3110` (`adb reverse tcp:3110 tcp:3110`; fresh database
+  `pos_scratch_e2e_4g_vemu`, signed in as `e2eadmin`); fake printers on the PC at 9100 and 9101.
+- **The panel's network form:** "Find network printers" → "Looking for printers on this Wi-Fi…" → after about 6 s one row,
+  `10.0.2.2 · port 9100` (the host's loopback as the emulator sees it; nothing else on the emulator's virtual network, and
+  9101 not asked); the fake printer at 9100 logged one connection of **0 bytes**. A tap filled the address `10.0.2.2` and
+  the port `9100`; nothing was added until "Use this network printer" (`Network printer 10.0.2.2 is connected.`).
+- **Already added:** the "Add another printer" form's scan listed `10.0.2.2 · port 9100 Already added: Network printer
+  10.0.2.2`; the setup form (Printer setup → Set up printers → Add printer → Network (LAN)) listed `10.0.2.2 · port 9100
+  Already added: Printer 1` (Set up printers had made this device's printer the setup's "Printer 1" in the test
+  database); a tap filled `10.0.2.2` / `9100`; the form was closed without saving.
+- **m-2:** a second network printer `10.0.2.2:9101` (typed) is listed as `Network printer 10.0.2.2:9101`, the first as
+  `Network printer 10.0.2.2`. With this device printing all slips and notifications granted (`pm grant`), the host
+  notification read "Printing is on — 2 printers"; the 9101 fake stopped, about 35 s later it read **"Printing is on —
+  Network printer 10.0.2.2:9101 not connected"**: the right printer, by its port.
+- On the fixed APK `99b5b763`: the scan again (`10.0.2.2 · port 9100 Already added: Printer 1`, one 0-byte connection),
+  the crash buffer 0.
+- **Put back as found:** `adb reverse --remove-all`; `adb uninstall` of the branch app; `adb install` of
+  `D:\kd\pos-dev-keep\apk-release\pos-emulator-x86_64-release.apk` (`29115bdf`, versionName 1.0); the app's empty start
+  screen (no address, so no printer); the crash buffer 0; `adb shell sync` (`pm path` still there); `adb emu kill`. The
+  server (`stop3110.ps1`: `stopped 1212`) and both fake printers stopped by PID.
+
+### Task 26: the Windows app's IPC smoke
+
+The built main process (`apps/desktop/out`, `npm run build`) ran **unpackaged** through a scratch bootstrap that sets
+`userData` to a scratch folder before the app's code loads (so the owner's installed app, running on this PC since
+2026-10-15 16:18 with its data in `%APPDATA%\POS Software by sandbee`, was never read, written or signalled: a separate
+single-instance lock), with a scratch store whose saved address is `http://localhost:3110`, and
+`POS_DESKTOP_TEST_LAN` = an interface `192.168.77.10/24` and the fake printer address `192.168.77.50` (mapped to this PC's
+loopback, where the fake printer listened on 9100). Playwright `_electron`, `ELECTRON_RUN_AS_NODE` unset:
+- the window on `http://localhost:3110/login`; `posDesktop` = `findLanPrinters, lanStatus, listPrinters, printHtml,
+  printHtmlOn, printRaw, printRawOn, savePrintMode, savePrinter, version`;
+- `findLanPrinters()` → `{"found":[{"host":"192.168.77.50","port":9100}],"subnet":"192.168.77.0/24"}` in 15 ms; the fake
+  printer logged exactly one connection of 0 bytes (every other test address answered no without a socket);
+- `printRawOn("Sandbee Smoke No Such Printer", …)` → `That printer is not on this PC. Open Printer setup in the POS and
+  choose a printer this PC has.`; `printRawOn("", …)` → `This print request was refused.`
+
+### S1 end to end on the final page code
+
+`D:\kd\p4b-new` moved to `4207a7c` (its cache-off line kept) and rebuilt (`EXIT 0`); the gate's `e2e-final.sh v` (fresh
+databases `pos_scratch_e2e_4g_v*`): **identical, line for line, to Task 15's Expected** (51 lines; only the database
+prefix and the saved printer's id differ): S1 **9/9** byte for byte equal in simple mode (va1 vs vb1) and **9/9** in
+printers mode (vpa vs vpb); the text test 472 B; KOT 698 B (`9a1f3f65951f`), round 2 596, whole tab 811, VOID 668, TABLE
+MOVED 517, cancel notice 800, REPRINT 752 B; printers mode 698/647 B. The later review fix changes only the Android app.
+
+### The fresh review (Claude Fable 5.1)
+
+Read-only on the repo; its probes in a prepared worktree `D:\kd\p4rv4c` (left clean; this session removed it after
+deleting its 383 junctions, `.bin` included); no 429. It reviewed `f46600e..4207a7c` (4B and 4C), checked S5 by git blob
+ids, ran the suites (cafe chain 6095/6094/0/1, desktop 223, mobile 126), four Windows scan probes (508 hosts at the
+500 ms worst case in 7.5–10 s; nothing probed after the deadline; public, CGNAT and link-local addresses plan nothing)
+and 13 mutations (all caught; one only by its own probe). **Verdict: "Ready to merge: Yes"; 0 Critical, 0 Important,
+4 Minor.**
+
+| Finding | Ruling |
+|---|---|
+| m-1 the Android scan thread had no catch-all: an unexpected exception would end the whole app (the print host with it) and leave the page's request unanswered | **Re-graded Important by its effect and fixed by TDD, `a6c4778`:** `LanScanRun.answerOrNone` (any failure answers no network) and a refusal when the answer cannot be sent; RED `Unresolved reference 'answerOrNone'` + pin 33, GREEN JUnit 109, pins 70/70; the emulator checked on the rebuilt APK |
+| m-2 `Prefs.kt`'s comment and Task 21's message say storage is not rewritten, but `PrinterPool.init` (unchanged) saves right after the load, so 2.0.2's first start persists the shown names | Deferred to session 2 (harmless: ids drive every route, key and lease; the comment should say so) |
+| m-3 the page's Windows scan has no page-side time bound (the POS app path has 20 s) | Deferred to session 2 (the app's own scan always answers within about 10.5 s) |
+| m-4 no test pins that no host is probed after the Windows deadline (removing `open = false` passes the suite) | Deferred to session 2 (a test-strength gap; the code is right) |
+
+What the reviewer set aside, ruled "stands" as it reasoned: a renamed VPN adapter (the accepted residual m-D); "Already
+added" by hostname vs IP (the spec says by address and port); the button for a LAN printer another device prints (spec
+§7.3); a probe briefly holding a one-connection printer and an isolated Wi-Fi (spec §7, §14); hooks before the early
+return (no request); the driver-mode refusal's sentence (the page never offers text there); the failure log without the
+printer name (as `printOn`); the `allNetworks` deprecation (m-C); the page's stored device-printer name following the app;
+`writeRawJob` blocking (as the Direct lane).
+
+### Differences from the plan's 4C spec, and why
+
+1. **The fast path** (the owner's decision): built directly on the branch, no gold or blocks; the rulings task is Task 19.
+2. **m-2's form:** `new Promise<void>((resolve) => resolve(write()))` rather than `Promise.resolve().then(write)`: the same
+   effect for a synchronous throw, while the write still starts at once (the existing order and busy-window tests check a
+   write right after a queue).
+3. **The m-1 pin** (`print-text-kot-paths.test.ts`) now names the read's `answered` flag too: the same one cache entry.
+4. **Task 20:** `validate.ts` is not changed: its default branch already refuses any parameter for a method that takes
+   none (the router test covers `network.findPrinters`).
+5. **Task 21:** the shown name is applied when the saved printers load (`Prefs.savedPrinters`), not at each display, so
+   `PrinterPool`, `PrinterManager` (S5) and `StatusJson` stay unchanged; pin 19's restore needle moved deliberately.
+6. **Task 22:** the handler sits in `print-raw.ts` (the print channels' gate), wired in `main.ts`; the test-only setting is
+   `POS_DESKTOP_TEST_LAN` (an interface list and one fake printer address mapped to the loopback), read once, only when
+   `!app.isPackaged`; pins (6), (7), L1 (widened) and the new W1.
+7. **Task 23:** `printRawOn` lives in `print.ts` on its one print queue; its log lines say "raw slip" (the older pins tie
+   every "print job" log line to `html.length`); a driver-method request is refused with the shell's "This print request
+   was refused." (no new sentence).
+8. **Task 24:** the page's Windows call goes through `lib/desktop-shell-printer.ts` (`desktopFindsLanPrinters`,
+   `desktopFindLanPrinters`), as the print lane's source pin requires; a failed scan reads as "none found" (the spec's own
+   words tell staff to type the address).
+9. **Task 25** ran on the branch build after an uninstall (the release key) and put the as-found app back by a fresh
+   install of `29115bdf`; **Task 26** ran on the built main process unpackaged with a scratch `userData` (not a packaged
+   test build), so the owner's installed app was not touched.
