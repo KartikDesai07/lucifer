@@ -78,11 +78,24 @@ export function desktopFindsLanPrinters(): boolean {
   return typeof desktopShell()?.findLanPrinters === "function";
 }
 
-/** One scan through the Windows app (lib/printer/lan-discovery.ts validates its answer). */
+/** The 4C review's m-3: the page gives the Windows app's scan the POS app's bound (NATIVE_LAN_SCAN_TIMEOUT_MS): the
+ *  app's own 10 s limit plus a request's. */
+export const DESKTOP_LAN_SCAN_TIMEOUT_MS = 20_000;
+
+/** One scan through the Windows app (lib/printer/lan-discovery.ts validates its answer); an app that never answers is
+ *  given up after DESKTOP_LAN_SCAN_TIMEOUT_MS, which the page reads as none found. */
 export async function desktopFindLanPrinters(): Promise<unknown> {
   const shell = desktopShell();
   if (typeof shell?.findLanPrinters !== "function") throw new Error(DESKTOP_PRINT_FAILED_MESSAGE);
-  return shell.findLanPrinters();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const noReply = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(DESKTOP_PRINT_NO_REPLY_MESSAGE)), DESKTOP_LAN_SCAN_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([shell.findLanPrinters(), noReply]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Printing Phase 4 (spec §5.3, §6): the Windows app writes raw bytes to a Windows printer (printRawOn, 2.0.2). */

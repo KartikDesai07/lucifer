@@ -101,6 +101,21 @@ test("the run stops at its time limit and answers what accepted by then", async 
   assert.deepEqual(found, ["10.0.0.1"], "only the probe done in time");
 });
 
+test("no host is probed after the time limit: a probe still out then starts no other (the 4C review's m-4)", async () => {
+  let returned = false;
+  let late = 0;
+  const slow: LanConnect = async () => {
+    if (returned) late++;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    return false;
+  };
+  const hosts = Array.from({ length: 200 }, (_, i) => `10.0.0.${i + 1}`);
+  await runLanScan(hosts, slow, { maxMs: 100 });
+  returned = true;
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  assert.equal(late, 0, `no probe starts after the limit (saw ${late})`);
+});
+
 test("a probe connects, sends nothing and closes at once; a closed port is not found", async () => {
   const server = net.createServer();
   const received: number[] = [];

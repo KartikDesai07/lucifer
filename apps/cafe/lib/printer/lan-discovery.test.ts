@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import type { PrinterConfig } from "@pos/shared/print-printers";
+import { DESKTOP_LAN_SCAN_TIMEOUT_MS } from "@/lib/desktop-shell-printer";
+import { NATIVE_LAN_SCAN_TIMEOUT_MS } from "@/lib/printer/native-bridge";
 import {
   LAN_NONE_FOUND_MESSAGE,
   LAN_NO_NETWORK_MESSAGE,
@@ -76,6 +78,25 @@ test("the printers already added: the setup's network printers and the POS app's
     { host: "192.168.1.50", port: 9100, name: "Kitchen" },
     { host: "192.168.1.70", port: 9100, name: "Network printer 192.168.1.70" },
   ], "a Bluetooth printer has no address on the network");
+});
+
+test("a Windows scan that never answers reads as none found after the page's own bound, the POS app's (the 4C review's m-3)", async (t) => {
+  assert.equal(DESKTOP_LAN_SCAN_TIMEOUT_MS, NATIVE_LAN_SCAN_TIMEOUT_MS, "the same bound as the POS app's scan: its own 10 s limit plus a request's");
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  installWindow(t, { posDesktop: { version: "2.0.2", printHtml: async () => undefined, findLanPrinters: () => new Promise(() => undefined) } });
+  let outcome: unknown = "scanning";
+  void scanNetworkPrinters().then((value) => {
+    outcome = value;
+  });
+  const settle = async (): Promise<void> => {
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+  };
+  t.mock.timers.tick(DESKTOP_LAN_SCAN_TIMEOUT_MS - 1);
+  await settle();
+  assert.equal(outcome, "scanning", "still looking before the bound");
+  t.mock.timers.tick(1);
+  await settle();
+  assert.deepEqual(outcome, { kind: "none" }, "a scan that never answers reads as none found");
 });
 
 test("a scan through the Windows app; a failed scan reads as none found (staff type the address, as today)", async (t) => {

@@ -3321,11 +3321,13 @@ test('pin 33 mutation: every scan needle can fail', () => {
 
 // ---------------------------------------------------------------- pin 34
 // Printing Phase 4 (spec 2026-10-15 §8, Phase 2's m-2): a network printer is named by its address and, when not 9100,
-// its port; the app shows every saved printer by its id (nothing rewritten), so the printer list and the print-host
-// notification tell two printers on one address apart.
+// its port; the app shows every saved printer by its id, so the printer list and the print-host notification tell two
+// printers on one address apart. The read (Prefs.savedPrinters) rewrites nothing; PrinterPool.init's existing save right
+// after it then keeps the shown names in storage (the 4C review's m-2): harmless, every route, key and lease reads the id.
 interface PrinterNameSources {
   discovery: string;
   prefs: string;
+  pool: string;
 }
 function printerNameProblems(s: PrinterNameSources): string[] {
   const out: string[] = [];
@@ -3340,9 +3342,14 @@ function printerNameProblems(s: PrinterNameSources): string[] {
   need(d, 'PrinterNames.network(ctx, host, port),', 'a new network printer is not named by its port');
   need(d, 'val target = PrinterIds.tcpOf(info.id) ?: return info', 'a shown name does not come from the id');
   need(strip(s.prefs), 'return PoolList.restore(PrinterNames.shownAll(ctx, listed), p.getString(KEY_PRINTER_DEFAULT, null), savedPrinter(ctx)?.let { PrinterNames.shown(ctx, it) })', 'a saved printer is not shown by its id');
+  // The 4C review's m-2: the read rewrites nothing; PrinterPool.init's own save right after it (unchanged, S5) keeps the
+  // shown names, which is harmless: every route, key and lease reads the id.
+  const pool = strip(s.pool);
+  need(pool, '    val saved = Prefs.savedPrinters(ctx)\n', 'init does not load the saved printers (shown by their ids)');
+  need(pool, '    save()\n    for (manager in managers) manager.connectAsync(manager.begin()) {}', 'init no longer saves the list it loaded (the comments say the shown names are kept)');
   return out;
 }
-const printerNameSources = (): PrinterNameSources => ({ discovery: kt('PrinterDiscovery.kt'), prefs: kt('Prefs.kt') });
+const printerNameSources = (): PrinterNameSources => ({ discovery: kt('PrinterDiscovery.kt'), prefs: kt('Prefs.kt'), pool: kt('PrinterPool.kt') });
 
 test('pin 34: a network printer is named by its port when it is not 9100, and every saved printer by its id (m-2)', () => {
   assert.deepEqual(printerNameProblems(printerNameSources()), []);
@@ -3360,5 +3367,9 @@ test('pin 34 mutation: every name needle can fail', () => {
   everyMutationCaught(run('prefs'), base.prefs, [
     ['PoolList.restore(PrinterNames.shownAll(ctx, listed), ', 'PoolList.restore(listed, '],
     ['savedPrinter(ctx)?.let { PrinterNames.shown(ctx, it) })', 'savedPrinter(ctx))'],
+  ]);
+  everyMutationCaught(run('pool'), base.pool, [
+    ['    val saved = Prefs.savedPrinters(ctx)\n', '    val saved = PoolList.restore(null, null, null)\n'],
+    ['    save()\n    for (manager in managers) manager.connectAsync(manager.begin()) {}', '    for (manager in managers) manager.connectAsync(manager.begin()) {}'],
   ]);
 });

@@ -54,7 +54,8 @@ object Prefs {
 
   /** The app's printers as saved, the one v1 printer migrated into the list as the default. Printing Phase 4 (m-2):
    *  each shown by its id (a network printer by its address and port), so ones saved under the older name are named
-   *  apart too; storage is not rewritten here. */
+   *  apart too. This read rewrites nothing; PrinterPool.init's save right after it (unchanged) then keeps the shown
+   *  names in storage, which is harmless: every route, key and lease reads the id (the 4C review's m-2). */
   fun savedPrinters(ctx: Context): PoolList<PrinterInfo> {
     val p = prefs(ctx)
     val listed = p.getString(KEY_PRINTERS, null)?.let { parsePrinters(it) }
