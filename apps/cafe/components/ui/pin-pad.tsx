@@ -70,7 +70,13 @@ function PinPad({ value, length = 4, onChange, onComplete, error, disabled = fal
           <span
             key={i}
             data-filled={i < value.length ? "true" : "false"}
-            className={cn("h-3 w-3 rounded-full border border-foreground/50", i < value.length && "border-primary bg-primary")}
+            className={cn(
+              "h-3 w-3 rounded-full border border-foreground/50",
+              i < value.length && "border-primary bg-primary",
+              // A wrong PIN turns the dots red with the error line (the shake stays on the line).
+              error && "border-destructive",
+              error && i < value.length && "bg-destructive",
+            )}
           />
         ))}
       </div>

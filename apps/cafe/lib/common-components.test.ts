@@ -103,3 +103,23 @@ test("SegmentedControl: 44 px on touch (the group and each segment grow with poi
   assert.equal(buttons.length, 2, "two segments");
   assert.ok(buttons.every((b) => b.includes("pointer-coarse:h-11")), "each segment is pointer-coarse:h-11 too (RangeBar's way)");
 });
+
+test("PinPad: the four dots turn red while an error shows (spec 5.3), filled or not", () => {
+  const dots = (html: string) => html.match(/<span[^>]*data-filled[^>]*>/g) ?? [];
+  const bad = dots(pad({ error: "Wrong PIN" }));
+  assert.equal(bad.length, 4, "four dots");
+  assert.ok(bad.every((d) => d.includes("border-destructive")), "every dot has border-destructive while the error shows");
+  assert.ok(bad.filter((d) => d.includes('data-filled="true"')).every((d) => d.includes("bg-destructive")), "a filled dot is bg-destructive");
+  assert.ok(!bad.some((d) => d.includes("bg-primary")), "no primary fill while the error shows");
+  const ok = dots(pad());
+  assert.ok(!ok.some((d) => d.includes("destructive")), "no destructive dots without an error");
+});
+
+test("PinPad: the one pad caller (PinSignIn, which the lock cover renders too) passes the error line, so the dots follow it", async () => {
+  const { readFileSync } = await import("node:fs");
+  const sign = readFileSync("components/auth/PinSignIn.tsx", "utf8");
+  assert.match(sign, /<PinPad[^>]*error=\{pad\.message\}/, "PinSignIn passes pad.message as the PinPad error");
+  const lock = readFileSync("components/lock/ScreenLock.tsx", "utf8");
+  assert.match(lock, /<PinSignIn\b/, "the lock cover shows the pad through PinSignIn");
+  assert.ok(!/<PinPad\b/.test(lock), "the lock cover has no PinPad of its own that would miss the error");
+});
