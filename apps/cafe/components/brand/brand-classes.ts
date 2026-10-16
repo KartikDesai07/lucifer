@@ -44,35 +44,35 @@ export const BRAND_CHECKBOX_SQUARE_CLASS = "size-5 rounded-[4px]";
 // SidebarGroupLabel via className; tailwind-merge replaces each primitive
 // default they name. The icon-collapsed rail keeps the primitive's own
 // important 32px square, so nothing here can push an icon out of the 3rem
-// rail. The active row sits on the soft blue tint with its icon in the blue:
-// the blue icon (4.5:1 on the tint), the heavier ink label (15.6:1) and
-// aria-current carry the state, never the pale fill alone (White & Blue,
-// 2026-09-29 — it replaced Paper & Ink's raised slip-of-paper row).
+// rail. The sidebar is dark (owner's mock-up, 2026-10-16): a resting row is the
+// soft grey nav text, a hovered or active row lifts to the nav-hover fill with
+// white text, and the active row also carries a 3px blue bar on its left edge
+// (an inset shadow, so it follows the row's own corners). The bar, the white
+// label and aria-current carry the state, never the fill alone.
 
 const NAV_ACTIVE =
-  "data-[active=true]:bg-brand-primary-soft data-[active=true]:font-semibold data-[active=true]:text-brand-ink";
+  "data-[active=true]:bg-brand-nav-hover data-[active=true]:font-medium data-[active=true]:text-white data-[active=true]:shadow-[inset_3px_0_0_var(--color-brand-accent)]";
 
-/** A top-level nav row: 32px on a mouse (the whole list fits a 768px-tall
- *  laptop screen without scrolling), 44px on touch (tablet / phone). */
+/** A top-level nav row: 36px on a mouse (17 rows and four headings still fit a
+ *  768px-tall laptop screen), 44px on touch (tablet / phone). */
 export const BRAND_NAV_ITEM_CLASS =
-  "h-8 gap-3 rounded-lg px-2.5 text-[14px] font-medium text-brand-ink/80 transition-colors duration-150 hover:bg-brand-wash hover:text-brand-ink active:bg-brand-wash focus-visible:ring-brand-accent pointer-coarse:h-11 group-data-[collapsible=icon]:justify-center [&>svg]:size-[18px] [&>svg]:text-brand-muted [&:hover>svg]:text-brand-ink [&[data-active=true]>svg]:text-brand-primary " +
+  "h-9 gap-3 rounded-lg px-2.5 text-[13.5px] font-medium text-brand-nav-text transition-colors duration-150 hover:bg-brand-nav-hover hover:text-white active:bg-brand-nav-hover focus-visible:ring-brand-nav-focus pointer-coarse:h-11 group-data-[collapsible=icon]:justify-center [&>svg]:size-5 [&>svg]:[stroke-width:1.6] [&>svg]:text-brand-nav-muted [&:hover>svg]:text-white [&[data-active=true]>svg]:text-white " +
   NAV_ACTIVE;
 
 /** A row inside an expanded group (Settings' sections). */
 export const BRAND_NAV_SUB_ITEM_CLASS =
-  "h-7 rounded-md px-2.5 text-[13.5px] text-brand-ink/75 transition-colors duration-150 hover:bg-brand-wash hover:text-brand-ink active:bg-brand-wash focus-visible:ring-brand-accent pointer-coarse:h-10 " +
+  "h-7 rounded-md px-2.5 text-[13px] text-brand-nav-text transition-colors duration-150 hover:bg-brand-nav-hover hover:text-white active:bg-brand-nav-hover focus-visible:ring-brand-nav-focus pointer-coarse:h-10 " +
   NAV_ACTIVE;
 
-/** A section heading in the nav: small, sentence case, muted (5.5:1 on the
- *  sidebar). In the icon rail the primitive fades it out (opacity-0) and pulls
- *  it up over the row above (the -mt below), and each SidebarGroup is
- *  `relative`, so the next group paints — and takes clicks — on top of the
- *  previous one: the invisible "Service" heading sat over the lower half of
- *  the Dashboard icon and swallowed the click (UI batch 1 C, measured in a real
- *  browser 2026-09-29). pointer-events-none makes the folded heading click-
- *  through, so the whole icon above it answers. */
+/** A section heading in the nav: small, uppercase, muted. In the icon rail the
+ *  primitive fades it out (opacity-0) and pulls it up over the row above (the
+ *  -mt below), and each SidebarGroup is `relative`, so the next group paints —
+ *  and takes clicks — on top of the previous one: the invisible heading sat
+ *  over the lower half of the Dashboard icon and swallowed the click (UI batch
+ *  1 C, measured in a real browser 2026-09-29). pointer-events-none makes the
+ *  folded heading click-through, so the whole icon above it answers. */
 export const BRAND_NAV_LABEL_CLASS =
-  "h-6 px-2.5 text-[12px] font-medium tracking-[0.01em] text-brand-muted group-data-[collapsible=icon]:-mt-6 group-data-[collapsible=icon]:pointer-events-none";
+  "h-6 px-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-brand-nav-muted group-data-[collapsible=icon]:-mt-6 group-data-[collapsible=icon]:pointer-events-none";
 
 // ── List screens (Orders, Order Requests, Kitchen, Reservations, Customers,
 // Events, Staff — the polish pass of 2026-10-01) ────────────────────────────

@@ -166,11 +166,12 @@ test("PIN: the sidebar's colours come from the brand palette on :root (the phone
   assert.ok(root, "a :root block must declare --sidebar");
   for (const [name, token] of [
     ["sidebar", "brand-sidebar"],
-    ["sidebar-foreground", "brand-ink"],
-    ["sidebar-accent", "brand-wash"],
-    ["sidebar-accent-foreground", "brand-ink"],
-    ["sidebar-border", "brand-rule"],
-    ["sidebar-ring", "brand-accent"],
+    ["sidebar-foreground", "brand-nav-text"],
+    ["sidebar-accent", "brand-nav-hover"],
+    ["sidebar-accent-foreground", "brand-slip"],
+    ["sidebar-border", "brand-nav-rule"],
+    ["sidebar-ring", "brand-nav-focus"],
+    ["sidebar-muted", "brand-nav-muted"],
   ] as const) {
     assert.match(root!, new RegExp(`--${name}:\\s*var\\(--${token}\\);`), `--${name} must be var(--${token})`);
   }

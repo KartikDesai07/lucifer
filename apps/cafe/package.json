@@ -300,6 +300,7 @@
     "lib/kitchen-cards.test.ts",
     "lib/brand-time.test.ts",
     "lib/brand-contrast.test.ts",
+    "lib/shell-look-paths.test.ts",
     "lib/ui-constants.test.ts",
     "lib/nav-active.test.ts",
     "lib/sidebar-paths.test.ts",

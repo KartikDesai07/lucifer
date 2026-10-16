@@ -19,8 +19,8 @@ import { cn } from "@/lib/utils";
 //
 // In the 3rem icon rail the real logo shows, scaled down to fit the 32px
 // square (object-contain: a wide wordmark shrinks to the square's width
-// rather than being cropped). A monogram tile — the name's first letter, ink
-// on paper — stands in only when the logo fails to load.
+// rather than being cropped). A monogram tile — the name's first letter, white
+// on blue — stands in only when the logo fails to load.
 
 interface SidebarBrandProps {
   brandName: string;
@@ -40,7 +40,7 @@ export function SidebarBrand({ brandName, logoUrl, collapsed, onNavigate }: Side
       prefetch={false}
       onClick={onNavigate}
       aria-label={`${brandName}, go to Dashboard`}
-      className="flex h-9 min-w-0 items-center gap-2.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+      className="flex h-9 min-w-0 items-center gap-2.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand-nav-focus focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
     >
       {failed ? (
         <span
@@ -57,20 +57,20 @@ export function SidebarBrand({ brandName, logoUrl, collapsed, onNavigate }: Side
           height={32}
           unoptimized
           onError={() => setFailed(true)}
-          // multiply: a logo saved on a white background sits on the paper
-          // without a white box around it.
+          // A white rounded tile: a logo drawn for a white page (dark ink, or a
+          // white box of its own) stays readable on the dark sidebar.
           className={cn(
-            "h-8 w-auto max-w-[6.5rem] shrink-0 object-contain mix-blend-multiply",
+            "h-8 w-auto max-w-[6.5rem] shrink-0 rounded-lg bg-white object-contain p-0.5",
             collapsed && "w-8 max-w-8",
           )}
         />
       )}
       {!collapsed && (
         <div className="min-w-0 leading-tight">
-          <div className="truncate text-[15px] font-semibold tracking-[-0.01em] text-brand-ink">{brandName}</div>
+          <div className="truncate text-[15px] font-semibold tracking-[-0.01em] text-brand-slip">{brandName}</div>
           {/* The product name, unless the cafe has no name of its own yet —
               then the line above already says it. */}
-          {brandName !== APP_NAME && <div className="truncate text-[12px] text-brand-muted">{APP_NAME}</div>}
+          {brandName !== APP_NAME && <div className="truncate text-[12px] text-brand-nav-muted">{APP_NAME}</div>}
         </div>
       )}
     </Link>

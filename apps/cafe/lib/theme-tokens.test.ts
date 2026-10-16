@@ -86,7 +86,7 @@ test("status set", () => {
 test("brand values", () => {
   const want: Record<string, string> = {
     paper: "#f4f4f5",
-    sidebar: "#fafafa",
+    sidebar: "#111113",
     wash: "#f2f2f4",
     slip: "#ffffff",
     ink: "#18181b",

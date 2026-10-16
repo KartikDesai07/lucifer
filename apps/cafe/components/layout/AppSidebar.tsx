@@ -279,7 +279,7 @@ export function AppSidebar() {
           />
         </SidebarHeader>
 
-        <SidebarContent className="gap-0 py-2 [scrollbar-color:var(--brand-rule)_transparent] [scrollbar-width:thin]">
+        <SidebarContent className="gap-0 py-2 [scrollbar-color:var(--brand-nav-rule)_transparent] [scrollbar-width:thin]">
           <nav ref={navRef} aria-label="Main">
             {visibleSections.map((section, index) => {
               const id = `${labelId}-${index}`;

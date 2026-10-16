@@ -19,13 +19,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { StaffAvatar } from "@/components/shared/StaffAvatar";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 
 // The sidebar's foot: who is signed in, and what they can do about it (lock
 // the screen, let a teammate sign in, change password, sign out). Extracted
 // from AppSidebar to keep that file small. The role is plain muted text — the
 // old filled badge was the primary GREEN, which in this app means a
-// "Completed" status, not a role.
+// "Completed" status, not a role. The row sits on the dark sidebar (white name,
+// muted role); the menu it opens stays a light card.
 //
 // Lock screen and Switch user only ask the dashboard's screen-lock cover to
 // show (components/lock/ScreenLock.tsx): nobody is signed out, so printing and
@@ -42,7 +44,6 @@ export function SidebarAccount({ collapsed }: { collapsed: boolean }) {
   const lockMinutes = settings.data?.screenLockMinutes ?? SCREEN_LOCK_DEFAULT_MINUTES;
   const [pwdOpen, setPwdOpen] = useState(false);
   const name = user?.name ?? "Account";
-  const initial = (user?.name ?? "?").charAt(0).toUpperCase();
   const role = isAdmin ? "Admin" : "Staff";
 
   return (
@@ -54,21 +55,17 @@ export function SidebarAccount({ collapsed }: { collapsed: boolean }) {
               <SidebarMenuButton
                 size="lg"
                 tooltip={brandTooltip(name)}
-                className="h-12 gap-2.5 rounded-lg px-2 hover:bg-brand-wash data-[state=open]:bg-brand-slip data-[state=open]:shadow-[0_0_0_1px_rgb(29_27_24/0.12)]"
+                className="h-12 gap-2.5 rounded-[10px] px-2 text-brand-slip hover:bg-brand-nav-hover hover:text-brand-slip data-[state=open]:bg-brand-nav-hover data-[state=open]:text-brand-slip"
               >
-                <span
-                  aria-hidden="true"
-                  className="grid size-8 shrink-0 place-items-center rounded-full bg-brand-primary text-[13px] font-semibold text-brand-slip"
-                >
-                  {initial}
-                </span>
+                {/* The online dot is ringed in the sidebar colour, not the card's. */}
+                <StaffAvatar name={name} size="sm" status="online" className="[&_[data-status]]:border-sidebar" />
                 {!collapsed && (
                   <>
                     <span className="grid min-w-0 flex-1 text-left leading-tight">
-                      <span className="truncate text-[14px] font-semibold text-brand-ink">{name}</span>
-                      <span className="truncate text-[12px] text-brand-muted">{role}</span>
+                      <span className="truncate text-[13.5px] font-semibold text-brand-slip">{name}</span>
+                      <span className="truncate text-[12px] text-brand-nav-muted">{role}</span>
                     </span>
-                    <ChevronsUpDown className="ml-auto size-4 text-brand-muted" aria-hidden="true" />
+                    <ChevronsUpDown className="ml-auto size-4 text-brand-nav-muted" aria-hidden="true" />
                   </>
                 )}
               </SidebarMenuButton>
