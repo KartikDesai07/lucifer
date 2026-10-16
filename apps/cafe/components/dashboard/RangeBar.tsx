@@ -73,12 +73,14 @@ export function RangeBar({ value, onChange, isAdmin, maxDays = MAX_DASHBOARD_RAN
 
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:justify-end">
+      {/* The segmented look (owner's mock-up): a grey track, the chosen segment
+          white with a small lift; 44 px segments on a touch screen. */}
       <div
         role="group"
         aria-label="Period"
         // inline-size containment on a phone: the five buttons scroll inside the row
         // instead of setting the page's minimum width.
-        className="flex w-full max-w-full overflow-x-auto rounded-lg border border-brand-rule bg-brand-slip p-0.5 [contain:inline-size] sm:w-auto sm:[contain:none]"
+        className="flex w-full max-w-full gap-0.5 overflow-x-auto rounded-[9px] bg-muted p-[3px] [contain:inline-size] sm:w-auto sm:[contain:none]"
       >
         {presets.map((p) => {
           const active = value.preset === p.id;
@@ -89,9 +91,9 @@ export function RangeBar({ value, onChange, isAdmin, maxDays = MAX_DASHBOARD_RAN
               aria-pressed={active}
               onClick={() => pick(p.id)}
               className={cn(
-                "h-9 flex-1 whitespace-nowrap rounded-md px-3 text-[13px] font-medium transition-colors sm:h-8 sm:flex-none",
+                "h-[30px] flex-1 whitespace-nowrap rounded-[7px] px-3 text-[13px] transition-colors pointer-coarse:h-11 sm:flex-none",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent",
-                active ? "bg-brand-primary text-brand-slip" : "text-brand-muted hover:bg-brand-wash hover:text-brand-ink",
+                active ? "bg-card font-semibold text-brand-ink shadow-sm" : "font-medium text-brand-muted hover:text-brand-ink",
               )}
             >
               {p.label}
@@ -107,7 +109,7 @@ export function RangeBar({ value, onChange, isAdmin, maxDays = MAX_DASHBOARD_RAN
             min={earliest}
             max={isAdmin ? value.range.to : today}
             aria-label={isAdmin ? "From date" : "Day"}
-            className="h-9 border-brand-rule bg-brand-slip text-[13px] text-brand-ink sm:h-8 sm:w-[150px]"
+            className="h-9 border-brand-rule bg-brand-slip text-[13px] text-brand-ink pointer-coarse:h-11 sm:w-[150px]"
           />
           {isAdmin && (
             <>
@@ -118,7 +120,7 @@ export function RangeBar({ value, onChange, isAdmin, maxDays = MAX_DASHBOARD_RAN
                 min={value.range.from}
                 max={toMax}
                 aria-label="To date"
-                className="h-9 border-brand-rule bg-brand-slip text-[13px] text-brand-ink sm:h-8 sm:w-[150px]"
+                className="h-9 border-brand-rule bg-brand-slip text-[13px] text-brand-ink pointer-coarse:h-11 sm:w-[150px]"
               />
             </>
           )}

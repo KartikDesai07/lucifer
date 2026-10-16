@@ -52,31 +52,54 @@ const BUSY_HOURS_BODY_CLASS = "min-h-[500px] sm:min-h-[290px]";
 
 const statusOf = (p: RangeCardProps, empty: boolean): DashCardStatus => (p.status !== "ready" ? p.status : empty ? "empty" : "ready");
 
-export function KpiRow(p: RangeCardProps) {
-  const d = p.data;
-  const loading = p.status !== "ready" || !d;
+/** One headline figure, as the hero and KpiRow show it. */
+export interface KpiFigure {
+  label: string;
+  value: string;
+  delta: number | null;
+  compareLabel: string;
+  noCompareText: string;
+  hint?: string;
+  upIsGood: boolean;
+}
+
+/**
+ * The four headline figures — Net sales, Orders, Average order, Collected —
+ * against the comparison period. With no data yet (loading) the labels are
+ * still named, so the cards hold their place.
+ */
+export function kpiFigures(d: DashboardData | undefined): KpiFigure[] {
   const cur = d?.kpis.current;
   const prev = d?.kpis.previous;
   const compare = d ? kpiCompareText(d) : "";
   const none = d ? noCompareText(d) : "";
-  const common = { compareLabel: compare, noCompareText: none, loading, updating: p.updating };
+  const common = { compareLabel: compare, noCompareText: none, upIsGood: true };
+  return [
+    { label: "Net sales", value: inr(cur?.sales ?? 0), delta: deltaRatio(cur?.sales ?? 0, prev?.sales ?? 0), ...common },
+    { label: "Orders", value: String(cur?.orders ?? 0), delta: deltaRatio(cur?.orders ?? 0, prev?.orders ?? 0), ...common },
+    {
+      label: "Average order",
+      value: inr(cur?.averageOrder ?? 0),
+      delta: deltaRatio(cur?.averageOrder ?? 0, prev?.averageOrder ?? 0),
+      ...common,
+    },
+    {
+      label: "Collected",
+      value: inr(cur?.collected ?? 0),
+      delta: deltaRatio(cur?.collected ?? 0, prev?.collected ?? 0),
+      hint: d && d.duesCollected > 0 ? `+ ${inr(d.duesCollected)} paid against earlier dues` : undefined,
+      ...common,
+    },
+  ];
+}
+
+export function KpiRow(p: RangeCardProps) {
+  const loading = p.status !== "ready" || !p.data;
   return (
     <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-      <KpiCard label="Net sales" value={inr(cur?.sales ?? 0)} delta={deltaRatio(cur?.sales ?? 0, prev?.sales ?? 0)} {...common} />
-      <KpiCard label="Orders" value={String(cur?.orders ?? 0)} delta={deltaRatio(cur?.orders ?? 0, prev?.orders ?? 0)} {...common} />
-      <KpiCard
-        label="Average order"
-        value={inr(cur?.averageOrder ?? 0)}
-        delta={deltaRatio(cur?.averageOrder ?? 0, prev?.averageOrder ?? 0)}
-        {...common}
-      />
-      <KpiCard
-        label="Collected"
-        value={inr(cur?.collected ?? 0)}
-        delta={deltaRatio(cur?.collected ?? 0, prev?.collected ?? 0)}
-        hint={d && d.duesCollected > 0 ? `+ ${inr(d.duesCollected)} paid against earlier dues` : undefined}
-        {...common}
-      />
+      {kpiFigures(p.data).map((f) => (
+        <KpiCard key={f.label} {...f} loading={loading} updating={p.updating} />
+      ))}
     </div>
   );
 }

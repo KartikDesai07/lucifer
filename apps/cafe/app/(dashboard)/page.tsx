@@ -23,7 +23,6 @@ import {
   BusyHoursCard,
   CategoriesCard,
   ChannelsCard,
-  KpiRow,
   LeaksCard,
   PaymentMixCard,
   SalesCard,
@@ -31,6 +30,7 @@ import {
   TopItemsCard,
   type RangeCardProps,
 } from "@/components/dashboard/RangeCards";
+import { SalesHero } from "@/components/dashboard/SalesHero";
 import { LiveFloorPanel } from "@/components/dashboard/LiveFloorPanel";
 import { RecentOrders } from "@/components/dashboard/RecentOrders";
 import { TodayReservations } from "@/components/dashboard/TodayReservations";
@@ -39,13 +39,14 @@ import { MoneyBreakdownCard } from "@/components/reports/MoneyBreakdownCard";
 import { OrderDetailSheet } from "@/components/orders/OrderDetailSheet";
 import type { Order } from "@/types";
 
-// The Dashboard (owner's page-by-page programme, screen 3 — Paper & Ink,
-// "Stripe-style calm + a Needs attention strip"). Top: what needs acting on
-// right now. Then the chosen period (Today by default) against its comparison:
-// headline figures, sales by hour/day, payment mix, best sellers, and the live
-// floor beside them; below, busy hours, channels, slow movers, categories,
-// money leaks and the bill breakdown. Every range number comes from ONE server
-// aggregate (GET /api/dashboard) — never from a capped client list.
+// The Dashboard, in the owner's mock-up arrangement (UI redesign 2026-10).
+// Top: what needs acting on right now. Then the chosen period (Today by
+// default) against its comparison: the dark Net sales hero beside the bill
+// breakdown receipt; sales by hour/day beside the live floor; recent orders
+// beside today's reservations; payment mix beside channels; then top items,
+// slow movers, categories, money leaks and busy hours. Every card, figure and
+// link it had stays. Every range number comes from ONE server aggregate
+// (GET /api/dashboard) — never from a capped client list.
 
 // Per-viewer convenience only (the period picked on this tab); never state
 // that matters — a blocked or empty storage just means "Today".
@@ -127,7 +128,7 @@ export default function DashboardPage() {
 
   return (
     <div className={`${brandFontVariables} -m-4 min-h-[calc(100svh-3.5rem)] bg-brand-paper p-4 font-brand-sans text-brand-ink md:-m-6 md:p-6`}>
-      <div className="mx-auto flex max-w-[1440px] flex-col gap-4 sm:gap-5">
+      <div className="mx-auto flex max-w-[1440px] flex-col gap-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
             <h1 className="text-[24px] font-semibold leading-8 tracking-[-0.015em]">Dashboard</h1>
@@ -154,59 +155,66 @@ export default function DashboardPage() {
           <RangeBar value={selection} onChange={onSelect} isAdmin={isAdmin} />
         </div>
 
-        <KpiRow {...cards} />
-
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <SalesCard {...cards} className="lg:col-span-2" />
-          <PaymentMixCard {...cards} />
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <TopItemsCard {...cards} />
-          <RecentOrders
-            orders={todayOrders.data ?? []}
-            loading={todayOrders.isLoading}
-            isError={todayOrders.isError}
-            onRetry={() => void todayOrders.refetch()}
-            onSelect={setDetail}
-          />
-          <div className="md:col-span-2 xl:col-span-1">
-            <LiveFloorPanel
-              tables={tables.data ?? []}
-              orders={floorOrders}
-              loading={tables.isLoading}
-              isError={tables.isError}
-              onRetry={() => void tables.refetch()}
-              onSelectOrder={setDetail}
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <BusyHoursCard {...cards} className="lg:col-span-2" />
-          <ChannelsCard {...cards} />
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <SlowItemsCard {...cards} />
-          <CategoriesCard {...cards} />
-          <LeaksCard {...cards} className="md:col-span-2 xl:col-span-1" />
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {/* The hero row: the dark Net sales card beside the bill breakdown receipt
+            (stacked below lg). Then 2/3 + 1/3 rows, then two- and three-up rows;
+            one column on a phone. */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+          <SalesHero {...cards} />
           <MoneyBreakdownCard
             money={d?.money}
             net={d?.kpis.current.sales ?? 0}
             loading={!d}
             caption={`Completed orders · ${periodName}`}
-            className="gap-4 rounded-xl border-brand-rule bg-brand-slip py-5 text-brand-ink shadow-none"
           />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <SalesCard {...cards} className="lg:col-span-2" />
+          <LiveFloorPanel
+            tables={tables.data ?? []}
+            orders={floorOrders}
+            loading={tables.isLoading}
+            isError={tables.isError}
+            onRetry={() => void tables.refetch()}
+            onSelectOrder={setDetail}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          {/* A one-cell grid, so the card inside stretches to the row's height. */}
+          <div className="grid min-w-0 grid-cols-1 lg:col-span-2">
+            <RecentOrders
+              orders={todayOrders.data ?? []}
+              loading={todayOrders.isLoading}
+              isError={todayOrders.isError}
+              onRetry={() => void todayOrders.refetch()}
+              onSelect={setDetail}
+            />
+          </div>
           <TodayReservations
             reservations={reservations.data ?? []}
             loading={reservations.isLoading}
             isError={reservations.isError}
             onRetry={() => void reservations.refetch()}
           />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <PaymentMixCard {...cards} />
+          <ChannelsCard {...cards} />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <TopItemsCard {...cards} />
+          <SlowItemsCard {...cards} />
+          <div className="grid min-w-0 grid-cols-1 md:col-span-2 xl:col-span-1">
+            <CategoriesCard {...cards} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <LeaksCard {...cards} />
+          <BusyHoursCard {...cards} className="lg:col-span-2" />
         </div>
       </div>
 
