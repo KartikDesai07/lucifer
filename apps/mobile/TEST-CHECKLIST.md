@@ -408,6 +408,56 @@ The Windows app 1.12.0 (with "Network printers on the Windows app (Phase 3)" abo
       minute: the first slip finishes and one more prints labelled **REPRINT**; never a silent single, never a silent
       double.
 
+## Phase 4 checks (text KOTs, Find network printers) (added 2026-10-16)
+
+Needs the POS with printing Phase 4, the POS app 2.0.2 on a printing phone or tablet, the Windows app 2.0.2 on the
+counter PC, and a Bluetooth, a USB and a network (LAN) printer, a 58 mm and an 80 mm one among them. "The switch"
+below is **Fast text KOTs (English only)** in the printer panel of the device that prints that printer. Run the
+text checks on each of the three printers.
+
+Text KOTs:
+- [ ] Before the switch: a KOT prints as before (a picture), exactly as on the day before the deploy.
+- [ ] Turn the switch on: the text test prints (the cafe's name, TEXT TEST, a sample ticket with a price in `Rs`,
+      `#12` and `[1] Paneer Tikka`, double-height and white-on-black lines, a ruler); the panel asks "Did it print
+      clearly, with the ruler on one line?". **Yes**: "On: English-only kitchen tickets print as text on this
+      printer." Turn it off and on again, answer **No**: it stays off (on 80 mm: "Keep it off, or try Characters per
+      line: 42").
+- [ ] With the switch on: a KOT, a VOID, a TABLE MOVED, a cancel notice and a REPRINT, each as text: every word the
+      picture had, in the same order, nothing cut at the right edge, the amounts on the right, `Rs` where the picture
+      has ₹, the REPRINT banner white on black.
+- [ ] The same slips with **Kitchen Bold** chosen for the kitchen ticket.
+- [ ] 58 mm and 80 mm; on the 80 mm printer, switch off, choose **Characters per line: 42**, switch on (a new text
+      test), then a KOT: the ruler and every line fit.
+- [ ] With the switch on, a KOT with a Hindi or Gujarati item, a KOT with the logo on and a KOT with a QR line each
+      print as a picture, as today.
+- [ ] A bill, a token slip and End of day print as pictures, as today.
+- [ ] Switch it off: the next KOT is a picture again.
+- [ ] Print a KOT from a second device that takes the printer over (the printer's own device switched off, as in
+      the Phase 3 checks): it prints as a picture (that device's switch for it is off).
+- [ ] On the counter PC with the Windows app 2.0.2 and **Direct to printer**: the switch is offered for a Windows
+      printer (the PC's USB printer through Windows), the text test prints, and a KOT prints as text. With
+      **Through the Windows driver** chosen the switch is not offered.
+
+**Find network printers**:
+- [ ] On a phone (the POS app 2.0.2) on the cafe's Wi-Fi: the printer panel → **Network printer (Wi-Fi or
+      Ethernet)** → **Find network printers**: "Looking for printers on this Wi-Fi…", then within about 10 seconds
+      the network printer's address with `· port 9100`. No printer prints anything or changes. A tap fills the address
+      and the port; **Use this network printer**, then Test print.
+- [ ] On the counter PC (the Windows app 2.0.2): **Admin → Printer setup** → **Add printer** → **Network (LAN)** →
+      **Find network printers**: the same list; a printer the setup already has says "Already added: ‹its name›".
+- [ ] The phone on mobile data only (Wi-Fi off): "This device is not on a Wi-Fi or wired network."
+- [ ] Two network printers on one address with two ports (a print server with two ports, if the cafe has one): the
+      POS app's printer list and its "Printing is on" notification name them apart, such as "Network printer
+      192.168.1.50" (port 9100) and "Network printer 192.168.1.50:9101".
+
+The Bluetooth time (on the owner's Bluetooth printer, at the demo cafe):
+- [ ] One fixed order of 6 items with modifiers and one instruction; the same phone, printer and app throughout.
+      Tap **Send to Kitchen** five times with the switch off, then five times with it on (a new round of the same
+      order each time), and film each one from the tap to the cut.
+- [ ] Write down the ten times, the median of the five with the switch off, the median of the five with it on, and
+      their ratio (off ÷ on). The next session writes them into the plan's Results
+      (`docs/superpowers/plans/2026-10-15-printing-phase-4.md`).
+
 ## Result
 
 Date: ________  Device and Android version: ________________________

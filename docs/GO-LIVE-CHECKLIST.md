@@ -408,6 +408,62 @@ every later version arrives by itself. **No web change and no Worker change.**
       app's `minSdkVersion` while older devices are in use: the manifest names no minimum Android version, so such a
       device would download every new version and fail to install it.
 
+### Existing cafes: the printing Phase 4 release
+
+Printing Phase 4 adds **Fast text KOTs (English only)**: a switch per printer, off by default, in the printer panel of
+the device that prints that printer. With it on, a kitchen ticket whose every printed character is plain English
+prints as text in the printer's own font (about 1 KB instead of a 44 KB picture: much faster on Bluetooth). A ticket
+with Hindi, Gujarati or any other script, a logo or a QR code still prints as a picture, and so do bills, token slips
+and End of day. It also adds **Find network printers** beside a network printer's address on the POS app and the
+Windows app 2.0.2, gives two network printers on one address their own names in the POS app 2.0.2 ("Network printer
+192.168.1.50" and "Network printer 192.168.1.50:9101"), and a KOT round with nothing left to print says "Nothing to
+print: every item in this round was cancelled." No data migration, no new request to the cafe's server. **No Worker
+change.**
+
+The order matters: the web first, then the 2.0.2 upload, then the demo cafe, then the clients printer by printer.
+
+- [ ] **The web first.** Re-run the go-live run for the cafe (not `npm run deploy` alone). `GET /api/health`
+      answers 200. On that day no paper changes: every printer's switch starts off, and with it off every slip prints
+      exactly as before (a picture).
+- [ ] **Reload every POS screen** that was open before the deploy: Refresh in the POS app, reload each browser tab,
+      quit and reopen the Windows app. A page from before the deploy prints pictures, as before.
+- [ ] **Then the 2.0.2 upload** (the owner, once for every cafe): the release folder
+      `D:\kd\pos-apk-release\Sandbee-POS-2.0.2\` as its `UPLOAD-STEPS.txt` says (the APKs, the installer and its
+      blockmap first, `latest.json` and `latest.yml` last); the apps then update themselves ("the native apps 2.0
+      release" above says what staff see). Text KOTs on an Android printer need no app update (every POS app prints
+      the text bytes as it prints a picture's); 2.0.2 brings Find network printers on both apps, the network printer
+      names on Android, and Fast text KOTs for a Windows printer (one the PC prints through Windows, such as its USB
+      printer) on the Windows app, with **Direct to printer** chosen. A network printer that the Windows app 1.12.0 or
+      later prints takes text without 2.0.2.
+- [ ] **Then the demo cafe**, before any client (the release gate): on the device that prints the owner's Bluetooth
+      printer, open the printer panel → **Fast text KOTs (English only)** → that printer's switch. The text test
+      prints (the cafe's name, TEXT TEST, a sample ticket and a ruler), and the panel asks "Did it print clearly, with
+      the ruler on one line?": **Yes** only if it did. Then run the measurement and the real-printer checks in
+      `apps/mobile/TEST-CHECKLIST.md` → "Phase 4 checks (text KOTs, Find network printers)", and leave the switch on
+      for some days of the demo cafe's use.
+- [ ] **Then the clients, printer by printer**, only after the demo cafe's days and the Phase 4 checks passed: on
+      each printing device whose printer is Bluetooth (where it gains most), turn **Fast text KOTs** on for that
+      printer, each one only after its own text test printed clearly. On an 80 mm printer whose ruler did not fit on
+      one line, answer **No**, choose **Characters per line: 42** and test again. A printer whose test prints badly
+      stays off: it keeps printing pictures, as today. One tap turns a switch off again.
+- [ ] **The switch lives on each printing device**, not on the server: a new device, the app installed again, its
+      data cleared, or a device that takes a printer over for another one prints pictures; each starts off until its
+      own text test on that device. A printer changed in the setup (another printer or another address) starts off
+      too.
+- [ ] **Find network printers** (the POS app 2.0.2 and the Windows app 2.0.2 only; an older app shows no button):
+      beside the network printer's address in the POS app's printer panel (**Network printer (Wi-Fi or Ethernet)**)
+      and in **Admin → Printer setup** → **Add printer** → **Network (LAN)**. While it looks (up to about 10 seconds):
+      "Looking for printers on this Wi-Fi…"; then each printer found, such as `192.168.1.50 · port 9100`, with
+      "Already added: Kitchen" for one the setup or the app already has. A tap only fills the address and port: then
+      Use or Save and Test print, as before. Nothing found: "No network printer found on this Wi-Fi. Check that the
+      printer is on and on the same Wi-Fi, or type its address."; a device on mobile data only: "This device is not on
+      a Wi-Fi or wired network." Typing the address works as before; keep giving each network printer a fixed address
+      on the router.
+- [ ] **If you roll the web back** to a release from before printing Phase 4, every slip prints as a picture again
+      (the switches stay stored on the devices, unused); reload every POS screen.
+- [ ] **Before telling a client its printers are on text:** that printer's own text test, and the cafe's real
+      printers through "Phase 4 checks (text KOTs, Find network printers)".
+
 ---
 
 ## §2 First run, and the admin handover (DEPLOYER → CAFE ADMIN)
