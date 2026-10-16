@@ -1,4 +1,4 @@
-import { desktopPrinterApi } from "@/lib/desktop-shell-printer";
+import { DESKTOP_PRINT_MODES, desktopPrinterApi, type DesktopPrintMode } from "@/lib/desktop-shell-printer";
 
 // Whether the Windows desktop shell has a printer CHOSEN. The shell refuses
 // every job while none is chosen (apps/desktop/src/print.ts), so a PC in that
@@ -24,6 +24,9 @@ export interface DesktopPrinterSnapshot {
   selected: string | null;
   /** Every printer Windows reports on this PC, by name; null until read. */
   names: readonly string[] | null;
+  /** Printing Phase 4 (spec §5.3): the app's print method as it last said; absent before a read and on an app that does
+   *  not say. Text KOTs go to a Windows printer only with "direct". */
+  printMode?: DesktopPrintMode;
 }
 
 export const SERVER_DESKTOP_SNAPSHOT: DesktopPrinterSnapshot = { chosen: SERVER_DESKTOP_CHOSEN, selected: null, names: null };
@@ -48,13 +51,17 @@ function namesOf(printers: unknown): readonly string[] | null {
   return printers.map((printer: unknown) => (printer as { name?: unknown } | null)?.name).filter((name): name is string => typeof name === "string" && name !== "");
 }
 
+function printModeOf(mode: unknown): { printMode?: DesktopPrintMode } {
+  return DESKTOP_PRINT_MODES.find((known) => known === mode) === undefined ? {} : { printMode: mode as DesktopPrintMode };
+}
+
 function sameNames(a: readonly string[] | null, b: readonly string[] | null): boolean {
   if (a === null || b === null) return a === b;
   return a.length === b.length && a.every((name, i) => name === b[i]);
 }
 
 function publish(next: DesktopPrinterSnapshot): void {
-  if (next.chosen === current.chosen && next.selected === current.selected && sameNames(next.names, current.names)) return;
+  if (next.chosen === current.chosen && next.selected === current.selected && sameNames(next.names, current.names) && next.printMode === current.printMode) return;
   current = next;
   for (const listener of [...listeners]) listener();
 }
@@ -77,9 +84,9 @@ export async function refreshDesktopPrinterChosen(): Promise<DesktopChosen> {
     return current.chosen;
   }
   try {
-    const { selected, printers } = await api.listPrinters();
+    const { selected, printers, printMode } = await api.listPrinters();
     if (ticket !== readTicket) return current.chosen;
-    publish({ chosen: chosenOf(selected), selected: selectedOf(selected), names: namesOf(printers) });
+    publish({ chosen: chosenOf(selected), selected: selectedOf(selected), names: namesOf(printers), ...printModeOf(printMode) });
   } catch {
     // Unreadable right now: keep what we knew rather than flip the dot.
   }

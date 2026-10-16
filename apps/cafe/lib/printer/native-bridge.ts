@@ -29,6 +29,8 @@ export const NATIVE_REQUEST_TIMEOUT_MS = 10_000; // info, status, host.backgroun
 export const NATIVE_CONNECT_TIMEOUT_MS = 75_000; // select, reconnect, forget
 export const NATIVE_PROMPT_TIMEOUT_MS = 60_000; // permissions.request, bluetooth.enable
 export const NATIVE_SCAN_TIMEOUT_MS = PRINTER_SCAN_MS + NATIVE_REQUEST_TIMEOUT_MS;
+// Printing Phase 4 (spec §7.1): the app's network scan answers within its own 10 s limit.
+export const NATIVE_LAN_SCAN_TIMEOUT_MS = 10_000 + NATIVE_REQUEST_TIMEOUT_MS;
 // Above the app's own 60 s print limit, below the device write deadline.
 export const NATIVE_PRINT_TIMEOUT_MS = 65_000;
 
@@ -74,6 +76,12 @@ const RESULT_SCHEMAS = {
   "app.changeUrl": z.unknown(),
   // Phase 3 Session 3D: the app shows its battery checklist after the answer.
   "app.battery": z.unknown(),
+  // Printing Phase 4 (spec §7.1): the network printers on the app's own Wi-Fi or Ethernet (port 9100 answered).
+  "network.findPrinters": z.object({
+    found: z.array(z.object({ host: z.string().min(1).max(64), port: z.literal(9100) })).max(64),
+    subnet: z.string().max(200).optional(),
+    reason: z.literal("no-network").optional(),
+  }),
 } as const satisfies Record<NativeMethod, z.ZodTypeAny>;
 
 const EVENT_SCHEMAS = {
@@ -97,6 +105,7 @@ const TIMEOUT_BY_METHOD: Record<NativeMethod, number> = {
   "host.background": NATIVE_REQUEST_TIMEOUT_MS,
   "app.changeUrl": NATIVE_REQUEST_TIMEOUT_MS,
   "app.battery": NATIVE_REQUEST_TIMEOUT_MS,
+  "network.findPrinters": NATIVE_LAN_SCAN_TIMEOUT_MS,
 };
 
 function timeoutOf(method: NativeMethod, params: unknown): number {

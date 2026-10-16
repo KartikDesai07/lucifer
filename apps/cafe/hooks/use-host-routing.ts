@@ -20,8 +20,8 @@ import {
   movedPrintJob,
   shouldRoutePrint,
   PRINT_JOB_BUILD_FAILED_MESSAGE,
-  PRINT_JOB_NOT_ROUTED_MESSAGE,
   PRINT_JOB_TOO_LARGE_MESSAGE,
+  notRoutedMessageOf,
   type PrintHostRouting,
   type PrintJobRequest,
 } from "@/lib/print-routing";
@@ -244,7 +244,7 @@ export function useHostRouting(): PrintRoutingHost {
             // its own edge (a 400, i.e. a throw handled above), so this branch
             // is reachable only if that edge check ever goes away.
             else if (result.outcome === "too-large") toast.error(PRINT_JOB_TOO_LARGE_MESSAGE);
-            if (result.outcome === "not-routed") toast(PRINT_JOB_NOT_ROUTED_MESSAGE);
+            if (result.outcome === "not-routed") toast(notRoutedMessageOf(job.payload.kind));
           } finally {
             setRoutedInFlight((count) => count - 1);
           }
@@ -284,7 +284,7 @@ export function useHostRouting(): PrintRoutingHost {
       // printerless non-host device is the §B7 hazard — claim the slip.
       if (result === null) return true;
       if (result.outcome === "too-large") toast.error(PRINT_JOB_TOO_LARGE_MESSAGE);
-      if (result.outcome === "not-routed") toast(PRINT_JOB_NOT_ROUTED_MESSAGE);
+      if (result.outcome === "not-routed") toast(notRoutedMessageOf(job.payload.kind));
       return !printJobEnqueueAllowsLocalPrint(result.outcome);
     },
     [shouldRoute, enqueue, followPrintJob],

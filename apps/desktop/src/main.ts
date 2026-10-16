@@ -17,6 +17,7 @@ import { schedulePrinterCheck } from "./printer-check";
 import { installPermissionHandlers } from "./permissions";
 import { registerPrintHandler } from "./print";
 import { registerRawPrintHandler } from "./print-raw";
+import { lanScanDeps, testLanSetting } from "./lan-scan";
 import { createMainWindow } from "./shell-window";
 import { openUrlWindow, registerUrlHandlers } from "./url-window";
 import { buildAppMenu, createTray, setTrayUpdateItem, showAboutDialog } from "./menu";
@@ -144,6 +145,9 @@ if (!app.requestSingleInstanceLock()) {
       getOrigin: () => store.serverOrigin,
       log,
       onJobFailed: notifyPrintFailure,
+      // Printing Phase 4 (spec §7.2): a test-only interface list (and its one fake printer on the loopback) in an
+      // unpackaged app only; an installed app always scans its own interfaces.
+      lanScan: lanScanDeps(app.isPackaged ? null : testLanSetting(process.env.POS_DESKTOP_TEST_LAN)),
     });
 
     const openMain = (): void => {

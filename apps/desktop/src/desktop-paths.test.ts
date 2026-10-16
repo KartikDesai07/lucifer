@@ -33,6 +33,8 @@ import {
   PRINT_RAW_CHANNEL,
   LAN_STATUS_CHANNEL,
   LAN_STATUS_MAX_PRINTERS,
+  FIND_LAN_PRINTERS_CHANNEL,
+  PRINT_RAW_ON_CHANNEL,
   PRINT_MODES,
   DEFAULT_PRINT_MODE,
   isNonPaperPrinter,
@@ -273,7 +275,7 @@ function extractExposedKeys(source: string, bridgeKeyLiteral: string): string[] 
   return keys;
 }
 
-test("(6) preload.ts exposes exactly ['version', 'printHtml', 'printHtmlOn', 'listPrinters', 'savePrinter', 'savePrintMode', 'printRaw', 'lanStatus'] on posDesktop", () => {
+test("(6) preload.ts exposes exactly ['version', 'printHtml', 'printHtmlOn', 'listPrinters', 'savePrinter', 'savePrintMode', 'printRaw', 'lanStatus', 'findLanPrinters', 'printRawOn'] on posDesktop", () => {
   // WIDENED 2026-09-17 and again 2026-09-19, deliberately — this stays a
   // CLOSED set, which is the point of the pin: the renderer's whole privileged
   // surface is these five and nothing else (never ipcRenderer, never a node
@@ -294,8 +296,13 @@ test("(6) preload.ts exposes exactly ['version', 'printHtml', 'printHtmlOn', 'li
   // WIDENED again in Phase 3 Session 3E (spec §9.6): printRaw sends a network printer's slip as ESC/POS bytes to its
   // address, and lanStatus asks the network printers the page prints whether they answer. The main process vets the
   // caller, the address (a private one only) and the size, and answers with a plain result: no socket, no handle.
+  //
+  // WIDENED again in printing Phase 4 (spec §7.2): findLanPrinters lists the network printers on this PC's own network
+  // (port 9100 accepted a connection; nothing is sent). It takes nothing and answers addresses only. printRawOn (spec §6)
+  // sends a text slip's ESC/POS bytes to a Windows printer by name: the main process vets the caller, the name (one Windows
+  // reports now), the size and the print method, and answers nothing privileged.
   const keys = extractExposedKeys(preloadSrc, '"posDesktop"');
-  assert.deepEqual(keys.sort(), ["lanStatus", "listPrinters", "printHtml", "printHtmlOn", "printRaw", "savePrintMode", "savePrinter", "version"]);
+  assert.deepEqual(keys.sort(), ["findLanPrinters", "lanStatus", "listPrinters", "printHtml", "printHtmlOn", "printRaw", "printRawOn", "savePrintMode", "savePrinter", "version"]);
 });
 
 test("(6) preload.ts: exactly one require('electron'), no other require, no ipcRenderer exposure, no posDesktopSetup", () => {
@@ -331,6 +338,14 @@ test("(7) preload.ts duplicated literals equal shared.ts (PRINT_CHANNEL, BRIDGE_
   assert.match(preloadSrc, /lanStatus: \(printers: unknown\): Promise<unknown> =>\s*electron\.ipcRenderer\.invoke\(LAN_STATUS_CHANNEL, printers\)/);
   assert.equal(PRINT_RAW_CHANNEL, "pos-desktop:print-raw");
   assert.equal(LAN_STATUS_CHANNEL, "pos-desktop:lan-status");
+  // Printing Phase 4: the network scan, which takes nothing.
+  assert.ok(preloadSrc.includes(JSON.stringify(FIND_LAN_PRINTERS_CHANNEL)));
+  assert.match(preloadSrc, /findLanPrinters: \(\): Promise<unknown> => electron\.ipcRenderer\.invoke\(FIND_LAN_PRINTERS_CHANNEL\)/);
+  assert.equal(FIND_LAN_PRINTERS_CHANNEL, "pos-desktop:find-lan-printers");
+  // Printing Phase 4 (spec §6): the printer's name and the bytes, nothing else.
+  assert.ok(preloadSrc.includes(JSON.stringify(PRINT_RAW_ON_CHANNEL)));
+  assert.match(preloadSrc, /printRawOn: \(printerName: string, data: Uint8Array\): Promise<void> =>\s*electron\.ipcRenderer\.invoke\(PRINT_RAW_ON_CHANNEL, printerName, data\)/);
+  assert.equal(PRINT_RAW_ON_CHANNEL, "pos-desktop:print-raw-on");
 });
 
 // -- Phase 3 Session 3E (spec §9.6): network printers over raw TCP ------------
@@ -353,7 +368,8 @@ test("(L1) print-raw.ts: the caller gate, a vetted address and size, a plain res
   const statusHandler = printRawSrc.slice(printRawSrc.indexOf("ipcMain.handle(LAN_STATUS_CHANNEL"));
   assert.match(statusHandler, /rejectForeignCaller\(event\);\s*if \(!Array\.isArray\(printers\) \|\| printers\.length > LAN_STATUS_MAX_PRINTERS \|\| !printers\.every\(validTarget\)\) throw new Error\(PRINT_REJECTED_MESSAGE\);/, "the check's list is vetted too");
   assert.equal(LAN_STATUS_MAX_PRINTERS, 16);
-  assert.match(mainSrc, /registerRawPrintHandler\(\{\s*getMainWebContentsId: \(\) =>\s*mainWindow && !mainWindow\.isDestroyed\(\) \? mainWindow\.webContents\.id : null,\s*getOrigin: \(\) => store\.serverOrigin,\s*log,\s*onJobFailed: notifyPrintFailure,\s*\}\);/, "main.ts wires it like the print handler");
+  // Printing Phase 4 (spec §7.2) deliberately widened: the call also hands over the network scan's dependencies.
+  assert.match(mainSrc, /registerRawPrintHandler\(\{\s*getMainWebContentsId: \(\) =>\s*mainWindow && !mainWindow\.isDestroyed\(\) \? mainWindow\.webContents\.id : null,\s*getOrigin: \(\) => store\.serverOrigin,\s*log,\s*onJobFailed: notifyPrintFailure,\s*(\/\/[^\n]*\n\s*)*lanScan: lanScanDeps\(app\.isPackaged \? null : testLanSetting\(process\.env\.POS_DESKTOP_TEST_LAN\)\),\s*\}\);/, "main.ts wires it like the print handler");
 });
 
 test("(L2) purity: raw-tcp.ts never imports electron, and connects only to a private address", () => {
@@ -366,6 +382,46 @@ test("(L2) purity: raw-tcp.ts never imports electron, and connects only to a pri
   // Landmarks.
   assert.ok(rawTcpSrc.includes("export function printRawTcp("));
   assert.ok(rawTcpSrc.includes("export async function probeRawTcp("));
+});
+
+// -- Printing Phase 4 (spec 2026-10-15 §7.2): "Find network printers" ----------
+// A connect-only scan of port 9100 on this PC's own private IPv4 networks, only when the page asks: the same caller gate
+// as every print channel, new code apart from the raw TCP printing (raw-tcp.ts keeps its one connection), no byte sent,
+// and a test-only interface list that a packaged app never reads.
+test("(W1) lan-scan.ts and its channel: the caller gate, electron-free, connect-only, the test list only in an unpackaged app", () => {
+  const lanScanSrc = read("src/lan-scan.ts");
+  assert.ok(!/from "electron"/.test(lanScanSrc) && !/require\("electron"\)/.test(lanScanSrc), "lan-scan.ts stays electron-free");
+  assert.equal((lanScanSrc.match(/new net\.Socket\(/g) ?? []).length, 1, "one place opens a probe");
+  assert.ok(!/\.write\(/.test(lanScanSrc), "a probe never writes a byte");
+  assert.ok(!/createConnection/.test(lanScanSrc), "the scan never uses the printing module's connection");
+  for (const [name, value] of [["LAN_SCAN_PORT", "9100"], ["LAN_SCAN_CONNECT_MS", "500"], ["LAN_SCAN_PARALLEL", "32"], ["LAN_SCAN_MAX_MS", "10_000"], ["LAN_SCAN_MAX_FOUND", "64"], ["LAN_SCAN_MAX_SUBNETS", "2"]]) {
+    assert.ok(lanScanSrc.includes(`export const ${name} = ${value};`), `${name} is ${value}`);
+  }
+  const handler = printRawSrc.slice(printRawSrc.indexOf("ipcMain.handle(FIND_LAN_PRINTERS_CHANNEL"));
+  assert.match(handler, /ipcMain\.handle\(FIND_LAN_PRINTERS_CHANNEL, async \(event: IpcMainInvokeEvent\): Promise<LanScanAnswer> => \{\s*rejectForeignCaller\(event\);\s*return findLanPrinters\(deps\.lanScan\);/, "the gate, then the scan");
+  assert.ok(!/LAN_STATUS_CHANNEL|PRINT_RAW_CHANNEL/.test(handler.slice(handler.indexOf("{"))), "landmark: the scan's handler is the last one");
+  assert.ok(mainSrc.includes("app.isPackaged ? null : testLanSetting(process.env.POS_DESKTOP_TEST_LAN)"), "the test list only in an unpackaged app");
+  assert.equal((mainSrc.match(/POS_DESKTOP_TEST_LAN/g) ?? []).length, 1, "read in one place");
+  assert.ok(String((pkg.scripts as Record<string, string>).test).includes("src/lan-scan.test.ts"), "its tests run with the desktop suite");
+});
+
+// -- Printing Phase 4 (spec 2026-10-15 §6): printRawOn -------------------------
+// A text slip's ESC/POS bytes to a Windows printer the page names: the print channels' gate, a vetted name and size, a
+// name Windows reports right now, the Direct method only, then the existing raw spool on the one print queue, its
+// refusals and failures through the job promise (the tray notice fires), and a log line with the size, never the bytes.
+test("(W2) print.ts: printRawOn writes the page's bytes to a Windows printer it names, vetted, on the one queue, by the existing raw spool", () => {
+  assert.match(printSrc, /ipcMain\.handle\(PRINT_RAW_ON_CHANNEL, async \(event: IpcMainInvokeEvent, name: unknown, data: unknown\) => \{/);
+  const handler = printSrc.slice(printSrc.indexOf("ipcMain.handle(PRINT_RAW_ON_CHANNEL"));
+  assert.match(handler, /rejectForeignCaller\(event\);\s*const request = rawOnRequest\(name, data\);\s*if \(request === null\) throw new Error\(PRINT_REJECTED_MESSAGE\);/, "the gate, then the name and the size");
+  assert.match(handler, /const printers = await event\.sender\.getPrintersAsync\(\);\s*const refusal = rawOnRefusal\(request\.name, printers\.some\(\(p\) => p\.name === request\.name\), effectiveMode\(\)\);/, "a name Windows reports right now, and the print method");
+  assert.match(handler, /queue\.then\(\(\) => writeRawJob\(request\.name, PRINT_DOC_NAME, request\.data\)\)/, "the existing raw spool, on the one queue");
+  assert.match(handler, /queue = job\.catch\(\(\) => undefined\);/, "the queue lives on after a failure");
+  assert.match(handler, /deps\.onJobFailed\(message\);\s*throw new Error\(message\);/, "a failure reaches the tray and the page");
+  const logs = handler.match(/log\.(info|error)\(`[^`]*`\)/g) ?? [];
+  assert.equal(logs.length, 2, "one line sent, one failed");
+  for (const line of logs) assert.ok(/\$\{request\.data\.length\} bytes/.test(line) && !/\$\{request\.data\}/.test(line), `the size, never the bytes: ${line}`);
+  assert.equal((printSrc.match(/let queue: Promise<unknown> = Promise\.resolve\(\);/g) ?? []).length, 1, "still one queue");
+  assert.ok(String((pkg.scripts as Record<string, string>).test).includes("src/print-raw-on.test.ts"), "its tests run with the desktop suite");
 });
 
 // -- Phase 2 Session 2E (spec §9.2): several printers per PC ------------------
@@ -857,6 +913,9 @@ test("(13) parity: apps/cafe/lib/desktop-shell.ts carries the expected bridge su
   const cafePrinterSeamSrc = readFileSync(path.join(ROOT, "..", "cafe", "lib", "desktop-shell-printer.ts"), "utf8");
   assert.ok(cafePrinterSeamSrc.includes("printRaw?(printer: { host: string; port: number }, data: Uint8Array): Promise<unknown>;"));
   assert.ok(cafePrinterSeamSrc.includes("lanStatus?(printers: { host: string; port: number }[]): Promise<unknown>;"));
+  // Printing Phase 4 (spec §6, §7.2): the page feature-detects the two methods of the app 2.0.2 the same way.
+  assert.ok(cafePrinterSeamSrc.includes("printRawOn?(printerName: string, data: Uint8Array): Promise<void>;"));
+  assert.ok(cafePrinterSeamSrc.includes("findLanPrinters?(): Promise<unknown>;"));
 });
 
 test("(13) vision-guard: cafe/lib/desktop-shell.ts stays capability-keyed (no UA sniffing)", () => {

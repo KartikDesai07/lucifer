@@ -147,8 +147,9 @@ class FakeEnv : PrinterEnv {
   }
 }
 
+// Printing Phase 4 (m-2): each network fixture has the name the app shows for it, so two on one address differ.
 fun tcpPrinter(port: Int = 9100): PrinterInfo =
-    PrinterInfo("tcp:10.0.2.2:$port", "Network printer 10.0.2.2", BridgeCodes.TRANSPORT_TCP, "10.0.2.2:$port")
+    PrinterInfo("tcp:10.0.2.2:$port", if (port == 9100) "Network printer 10.0.2.2" else "Network printer 10.0.2.2:$port", BridgeCodes.TRANSPORT_TCP, "10.0.2.2:$port")
 
 fun btPrinter(): PrinterInfo =
     PrinterInfo("bt-classic:00:11:22:33:44:55", "RPP02N", BridgeCodes.TRANSPORT_BT_CLASSIC, "00:11:22:33:44:55")

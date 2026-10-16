@@ -22,6 +22,7 @@ import { PrintWhereSection } from "@/components/print/PrintWhereSection";
 import { PrinterSection } from "@/components/print/PrinterSection";
 import { PrinterAdvanced } from "@/components/print/PrinterAdvanced";
 import { PrinterTestTips } from "@/components/print/PrinterTestTips";
+import { TextKotSection } from "@/components/print/TextKotSection";
 import { printersModeOn } from "@pos/shared/print-printers";
 import { usePrintersRead } from "@/hooks/use-agent-printers";
 import { useDeviceOnline, usePrintLane } from "@/hooks/use-device-printer";
@@ -214,6 +215,7 @@ export function PrinterSetupCard() {
         printersMode={printersMode}
       />
       <DevicePrinterSection />
+      <TextKotSection />
 
       {testable && (
         <PrinterSection icon={ReceiptText} title="Test print" description={TEST_DESCRIPTION}>

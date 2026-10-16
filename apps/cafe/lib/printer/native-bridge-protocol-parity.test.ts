@@ -32,7 +32,7 @@ const LIST_ORACLE: Record<string, readonly string[]> = {
   NATIVE_METHODS: [
     "app.info", "printer.status", "printer.list", "printer.select", "printer.reconnect",
     "printer.forget", "printer.print", "permissions.request", "bluetooth.enable",
-    "host.background", "app.changeUrl", "app.battery",
+    "host.background", "app.changeUrl", "app.battery", "network.findPrinters",
   ],
   NATIVE_EVENTS: ["printer.status", "app.wake"],
   NATIVE_TRANSPORTS: ["bt-classic", "ble", "tcp", "usb"],
@@ -44,7 +44,7 @@ const LIST_ORACLE: Record<string, readonly string[]> = {
   ],
   NATIVE_PERMISSION_KINDS: ["bluetooth", "notifications"],
   NATIVE_PLATFORMS: ["android", "ios"],
-  NATIVE_FEATURES: ["battery"],
+  NATIVE_FEATURES: ["battery", "lanScan"],
 };
 const LIST_NAMES = Object.keys(LIST_ORACLE);
 

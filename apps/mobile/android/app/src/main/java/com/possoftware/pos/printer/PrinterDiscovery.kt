@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /** Plain-English fallback names for printers that report none. */
 object PrinterNames {
   private const val MAC_TAIL_CHARS = 5
+  private const val TCP_DEFAULT_PORT = 9100
 
   fun bluetooth(ctx: Context, deviceName: String?, address: String): String =
       if (!deviceName.isNullOrBlank()) {
@@ -21,7 +22,26 @@ object PrinterNames {
   fun usb(ctx: Context, productName: String?): String =
       if (!productName.isNullOrBlank()) productName else ctx.getString(R.string.printer_name_usb)
 
-  fun network(ctx: Context, host: String): String = ctx.getString(R.string.printer_name_network, host)
+  /** Printing Phase 4 (m-2): what follows "Network printer": the address, and the port when it is not 9100, so two
+   *  printers on one address are told apart. */
+  fun networkLabel(host: String, port: Int): String = if (port == TCP_DEFAULT_PORT) host else "$host:$port"
+
+  fun network(ctx: Context, host: String, port: Int): String = ctx.getString(R.string.printer_name_network, networkLabel(host, port))
+
+  /** The name the app shows (the printer list, the print-host notification): a network printer's comes from its id, so
+   *  one saved under the older name (no port) is named apart too, with nothing rewritten; any other keeps its own. */
+  fun shown(info: PrinterInfo, words: (String) -> String): PrinterInfo {
+    if (info.transport != BridgeCodes.TRANSPORT_TCP) return info
+    val target = PrinterIds.tcpOf(info.id) ?: return info
+    val name = words(networkLabel(target.first, target.second))
+    return if (name == info.name) info else info.copy(name = name)
+  }
+
+  fun shown(ctx: Context, info: PrinterInfo): PrinterInfo = shown(info) { label -> ctx.getString(R.string.printer_name_network, label) }
+
+  fun shownAll(infos: List<PrinterInfo>, words: (String) -> String): List<PrinterInfo> = infos.map { shown(it, words) }
+
+  fun shownAll(ctx: Context, infos: List<PrinterInfo>?): List<PrinterInfo>? = infos?.map { shown(ctx, it) }
 }
 
 /** Paired devices, attached USB printers and the bounded Bluetooth scan. */
@@ -105,7 +125,7 @@ object PrinterDiscovery {
   fun tcpInfo(ctx: Context, host: String, port: Int): PrinterInfo =
       PrinterInfo(
           PrinterIds.tcp(host, port),
-          PrinterNames.network(ctx, host),
+          PrinterNames.network(ctx, host, port),
           BridgeCodes.TRANSPORT_TCP,
           host + ":" + port,
       )

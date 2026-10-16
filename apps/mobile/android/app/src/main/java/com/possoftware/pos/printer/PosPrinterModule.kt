@@ -325,6 +325,38 @@ class PosPrinterModule(private val reactContext: ReactApplicationContext) :
     promise.resolve(null)
   }
 
+  // ---- "Find network printers" (printing Phase 4, spec §7.1): only the phone's own network, only when asked ----
+
+  @ReactMethod
+  fun findNetworkPrinters(promise: Promise) {
+    guarded(promise, BridgeCodes.UNSUPPORTED) {
+      LanScan.findPrinters(reactContext) { answer ->
+        // On the scan's own thread: an answer that cannot be sent is a refusal, never an exception that ends the app.
+        try {
+          promise.resolve(lanScanMap(answer))
+        } catch (e: Exception) {
+          fail(promise, BridgeCodes.UNSUPPORTED)
+        }
+      }
+    }
+  }
+
+  private fun lanScanMap(answer: LanScanAnswer): Any =
+      Arguments.createMap().apply {
+        val found = Arguments.createArray()
+        for (host in answer.found) {
+          found.pushMap(
+              Arguments.createMap().apply {
+                putString("host", host)
+                putInt("port", LanScanPlan.LAN_SCAN_PORT)
+              }
+          )
+        }
+        putArray("found", found)
+        answer.subnet?.let { putString("subnet", it) }
+        answer.reason?.let { putString("reason", it) }
+      }
+
   // ---- the battery checklist (Session 3D, spec §9.5): local only, no request ----
 
   @ReactMethod

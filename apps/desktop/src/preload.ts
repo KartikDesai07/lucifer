@@ -14,6 +14,8 @@ const PRINT_MODE_SAVE_CHANNEL = "pos-desktop:print-mode-save";
 const PRINT_ON_CHANNEL = "pos-desktop:print-html-on";
 const PRINT_RAW_CHANNEL = "pos-desktop:print-raw";
 const LAN_STATUS_CHANNEL = "pos-desktop:lan-status";
+const FIND_LAN_PRINTERS_CHANNEL = "pos-desktop:find-lan-printers";
+const PRINT_RAW_ON_CHANNEL = "pos-desktop:print-raw-on";
 const VERSION_ARG_PREFIX = "--pos-desktop-version=";
 
 const versionArg = process.argv.find((arg: string) => arg.startsWith(VERSION_ARG_PREFIX));
@@ -38,6 +40,11 @@ contextBridge.exposeInMainWorld("posDesktop", {
     electron.ipcRenderer.invoke(PRINT_RAW_CHANNEL, printer, data),
   lanStatus: (printers: unknown): Promise<unknown> =>
     electron.ipcRenderer.invoke(LAN_STATUS_CHANNEL, printers),
+  // Printing Phase 4 (spec §7.2): the network printers on this PC's own network (it takes nothing and answers addresses).
+  findLanPrinters: (): Promise<unknown> => electron.ipcRenderer.invoke(FIND_LAN_PRINTERS_CHANNEL),
+  // Printing Phase 4 (spec §6): a text slip's bytes to the Windows printer named (the main process vets it).
+  printRawOn: (printerName: string, data: Uint8Array): Promise<void> =>
+    electron.ipcRenderer.invoke(PRINT_RAW_ON_CHANNEL, printerName, data),
 });
 
 // Forces module scope so this file's top-level names never collide with

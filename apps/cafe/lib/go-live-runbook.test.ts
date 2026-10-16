@@ -82,6 +82,8 @@ import { SESSION_MAX_AGE_SECONDS, SESSION_REVALIDATE_MS } from "@pos/shared/cons
 import { DEVICE_TAKES_OVER_TEXT, PRINTER_NO_TAKEOVER_TEXT } from "@/lib/print-setup-text";
 import { BACKUP_PRINTER_NOTE } from "@/lib/print-setup-form";
 import { TOKENS_RELOAD_HINT } from "@/lib/token-settings-notes";
+import { PRINT_JOB_NOT_ROUTED_KOT_MESSAGE } from "@/lib/print-routing";
+import { FIND_NETWORK_PRINTERS_LABEL, LAN_NONE_FOUND_MESSAGE, LAN_NO_NETWORK_MESSAGE, LAN_SCANNING_MESSAGE, alreadyAddedText } from "@/lib/printer/lan-discovery";
 
 // Doc<->source parity for docs/GO-LIVE-CHECKLIST.md §A "Pinned facts" — an
 // operator following a stale runbook does the wrong thing on a client's live
@@ -1598,4 +1600,90 @@ test("PIN (native apps 2.0): the READMEs say how a release is built and packaged
   }
   const deploy = norm(readFileSync(path.join(REPO_ROOT, "apps/cafe/DEPLOY.md"), "utf8"));
   assert.ok(deploy.includes("The native apps are not part of a web deploy.") && deploy.includes("files.sandbee.in"), "DEPLOY.md's native apps line");
+});
+
+// ── Printing Phase 4 Session 4D: the Phase 4 release step and its real-printer checks ────────────────────────────
+// Spec 2026-10-15 §9 and S1/S2/S6: the web first (no paper changes that day: every switch starts off), then the 2.0.2
+// upload (the versioned files first, latest.* last), then the demo cafe (the owner's Bluetooth printer and the
+// measurement), then the clients printer by printer, each only after its own text test printed clearly; the switch
+// lives on each printing device, so a new or reset device starts off.
+
+const PHASE4_STEP = "### Existing cafes: the printing Phase 4 release";
+const PHASE4_CHECKS = "## Phase 4 checks (text KOTs, Find network printers)";
+
+test("PIN §1 (printing Phase 4): the release step keeps its order (the web with no paper change, the 2.0.2 upload with latest.* last, the demo cafe's Bluetooth printer and the measurement, then the clients printer by printer after each one's text test), changes no Worker and sends the deployer to the Phase 4 checks", () => {
+  const step = norm(sectionSlice(PHASE4_STEP));
+  let at = -1;
+  for (const landmark of [
+    "**The web first.**",
+    "no paper changes",
+    "**Reload every POS screen**",
+    "**Then the 2.0.2 upload**",
+    "Sandbee-POS-2.0.2",
+    "UPLOAD-STEPS.txt",
+    "`latest.json` and `latest.yml` last",
+    "**Then the demo cafe**",
+    "Bluetooth printer",
+    "Phase 4 checks (text KOTs, Find network printers)",
+    "**Then the clients, printer by printer**",
+    "only after its own text test printed clearly",
+  ]) {
+    const next = step.indexOf(landmark);
+    assert.ok(next > at, `the Phase 4 release step names "${landmark}" after the one before it`);
+    at = next;
+  }
+  assert.ok(step.includes("No Worker change"), "this release changes no Worker");
+  assert.ok(step.includes("**The switch lives on each printing device**") && step.includes("starts off"), "a new or reset device starts off");
+  assert.ok(step.includes("If you roll the web back"), "a rollback says what prints");
+  const checklist = readFileSync(path.join(REPO_ROOT, "apps/mobile/TEST-CHECKLIST.md"), "utf8");
+  assert.ok(checklist.includes(PHASE4_CHECKS), "... which TEST-CHECKLIST holds");
+});
+
+test("PIN §1 (printing Phase 4): the step quotes the page's own words: the switch's section, its question and the 42 choice, Find network printers and its lines, and the not-routed words", () => {
+  const step = norm(sectionSlice(PHASE4_STEP));
+  const section = readFileSync(path.join(REPO_ROOT, "apps/cafe/components/print/TextKotSection.tsx"), "utf8");
+  for (const words of ["Fast text KOTs (English only)", "Did it print clearly, with the ruler on one line?", "Characters per line"]) {
+    assert.ok(section.includes(`"${words}"`), `TextKotSection.tsx says "${words}"`);
+    assert.ok(step.includes(words), `the step quotes "${words}"`);
+  }
+  assert.ok(section.includes('{narrow ? "42" : "Automatic"}') && step.includes("**Characters per line: 42**"), "the 80 mm choice, as the section offers it");
+  const picker = readFileSync(path.join(REPO_ROOT, "apps/cafe/components/print/NativePrinterPicker.tsx"), "utf8");
+  assert.ok(picker.includes('const NETWORK_TITLE = "Network printer (Wi-Fi or Ethernet)";') && step.includes("**Network printer (Wi-Fi or Ethernet)**"), "the POS app panel's network form, by its title");
+  for (const words of [FIND_NETWORK_PRINTERS_LABEL, LAN_SCANNING_MESSAGE, LAN_NONE_FOUND_MESSAGE, LAN_NO_NETWORK_MESSAGE, alreadyAddedText("Kitchen"), PRINT_JOB_NOT_ROUTED_KOT_MESSAGE]) {
+    assert.ok(step.includes(words), `the step quotes "${words}"`);
+  }
+});
+
+test("PIN (printing Phase 4, spec §11 items 2 and 6): TEST-CHECKLIST's Phase 4 checks hold the owner's real-printer checks and the Bluetooth measurement (one fixed order, five off then five on, each filmed from the tap to the cut, the medians and their ratio)", () => {
+  const checklist = norm(readFileSync(path.join(REPO_ROOT, "apps/mobile/TEST-CHECKLIST.md"), "utf8"));
+  const start = checklist.indexOf(PHASE4_CHECKS);
+  const end = checklist.indexOf("## Result");
+  assert.ok(start >= 0 && end > start, "the Phase 4 checks come before the Result block");
+  const checks = checklist.slice(start, end);
+  for (const phrase of [
+    "a Bluetooth, a USB and a network (LAN) printer",
+    "a KOT, a VOID, a TABLE MOVED, a cancel notice and a REPRINT",
+    "Kitchen Bold",
+    "58 mm",
+    "80 mm",
+    "**Characters per line: 42**",
+    "Hindi or Gujarati",
+    "a Windows printer",
+    "Windows app 2.0.2",
+    "**Find network printers**",
+    "On a phone (the POS app 2.0.2)",
+    "On the counter PC (the Windows app 2.0.2)",
+    "Network printer 192.168.1.50:9101",
+    "6 items with modifiers and one instruction",
+    "the same phone, printer and app",
+    "five times with the switch off, then five times with it on",
+    "from the tap to the cut",
+    "the median of the five",
+    "their ratio",
+    "the plan's Results",
+  ]) {
+    assert.ok(checks.includes(phrase), `the Phase 4 checks name ${phrase}`);
+  }
+  const strings = readFileSync(path.join(REPO_ROOT, "apps/mobile/android/app/src/main/res/values/strings.xml"), "utf8");
+  assert.ok(strings.includes('<string name="printer_name_network">Network printer %1$s</string>'), "the app's network printer name, which 2.0.2 gives the port when it is not 9100");
 });

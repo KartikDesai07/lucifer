@@ -8,8 +8,9 @@ import { ipcMain, type IpcMainInvokeEvent } from "electron";
 import type { Logger } from "./log";
 import { PRINT_REJECTED_MESSAGE } from "./print-messages";
 import { RAW_TCP_DATA_MAX_BYTES, RawTcpError, keyOf, printRawTcp, probeRawTcp, validTarget, type RawTcpFailure, type RawTcpHealth, type RawTcpTarget } from "./raw-tcp";
+import { findLanPrinters, type LanScanAnswer, type LanScanDeps } from "./lan-scan";
 import { isSameOrigin } from "./server-url";
-import { LAN_STATUS_CHANNEL, LAN_STATUS_MAX_PRINTERS, PRINT_RAW_CHANNEL } from "./shared";
+import { FIND_LAN_PRINTERS_CHANNEL, LAN_STATUS_CHANNEL, LAN_STATUS_MAX_PRINTERS, PRINT_RAW_CHANNEL } from "./shared";
 
 /** What one raw print answers: printed (with what the printer said of itself), or not, and whether any byte went out. */
 export type RawPrintResult =
@@ -30,6 +31,8 @@ interface RawPrintDeps {
   log: Logger;
   // A failed slip in a tray-hidden window has no visible surface (its toast is inside the hidden window).
   onJobFailed(message: string): void;
+  // Printing Phase 4 (spec §7.2): this PC's interfaces and the probe (lan-scan.ts lanScanDeps).
+  lanScan: LanScanDeps;
 }
 
 export function registerRawPrintHandler(deps: RawPrintDeps): void {
@@ -67,5 +70,11 @@ export function registerRawPrintHandler(deps: RawPrintDeps): void {
         return { host: printer.host, port: printer.port, link: status?.link ?? null, health: status?.health ?? null };
       }),
     );
+  });
+
+  // Printing Phase 4 (spec §7.2): "Find network printers": only the main window on the saved origin may ask.
+  ipcMain.handle(FIND_LAN_PRINTERS_CHANNEL, async (event: IpcMainInvokeEvent): Promise<LanScanAnswer> => {
+    rejectForeignCaller(event);
+    return findLanPrinters(deps.lanScan);
   });
 }

@@ -30,11 +30,13 @@ import {
 import { createWindowLateCompletionGuard } from "@/lib/print-host-late-completion";
 import { hostPrintFailureMessage } from "@/lib/print-write-outcome";
 import { createHostSlipOutcomes, type HostPrintDone } from "@/lib/print-host-outcomes";
+import { textKotEnv, textKotWriteFor } from "@/lib/printer/kot-text/text-kot-print";
 import type { Order } from "@/types";
 
 /** What the bridge is printing: a claimed job's slip, or PH-7's attestation test slip
- *  (`PrintHostTestSlip`); it and a printer's Test print (Session 2D) use the KOT surface. */
-export type HostPrintCurrent = { kind: "slip"; slip: HostPrintSlip } | { kind: "test" };
+ *  (`PrintHostTestSlip`); it and a printer's Test print (Session 2D) use the KOT surface. Printing Phase 4 (spec §5.1):
+ *  a printer's text test rides the test slip's window, its bytes written by `write` instead of the KOT surface. */
+export type HostPrintCurrent = { kind: "slip"; slip: HostPrintSlip } | { kind: "test"; write?: () => Promise<void> };
 
 interface TestSlipWaiter {
   resolve: (dtMs: number) => void;
@@ -188,8 +190,16 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
     watchdogRef.current = window.setTimeout(abandon, PRINT_HOST_DISPATCH_TIMEOUT_MS);
     if (surface === "receipt" || surface === "token") printReceipt();
     else if (surface === "eod") printEod();
-    else printKot();
-  }, [current, eodReady, slipCodePending, surfacesMounted, printKot, printReceipt, printEod, settle, abandon]);
+    else {
+      // Printing Phase 4 (spec §5.2, S1, S3, S4): a job's kitchen slip whose printer's text switch is on, and that text
+      // can print exactly, goes as text through that printer's own writer, under the same watchdog and outcome; so does a
+      // printer's text test (§5.1); else the picture, exactly as before. The write starts at once, and one that throws
+      // at once settles as a failed write, like any other (the 4B gate's m-2).
+      const write = current.kind === "test" ? current.write : textKotWriteFor({ slip: current.slip, settings: settings.data, target, env: textKotEnv() })?.write;
+      if (write === undefined) printKot();
+      else void new Promise<void>((resolve) => resolve(write())).then(finish, (error: unknown) => settle(hostPrintFailureMessage(error)));
+    }
+  }, [current, eodReady, slipCodePending, surfacesMounted, printKot, printReceipt, printEod, settle, abandon, settings.data, target, finish]);
 
   // The eod wait is bounded: an aggregate that never loads (host offline from
   // the API, a deploy in flight) must not hold every KOT behind it. The claim
@@ -226,7 +236,7 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
   // KOT's iframe, and it is never queued behind real slips (a timing probe
   // that waited on a KOT would measure the wrong thing).
   const queueTestSlip = useCallback(
-    () =>
+    (write?: () => Promise<void>) =>
       new Promise<number>((resolve, reject) => {
         if (occupiedRef.current) {
           reject(new Error(PRINT_HOST_BUSY_MESSAGE));
@@ -235,7 +245,7 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
         occupiedRef.current = true;
         outcomesRef.current.track(null);
         testRef.current = { resolve, reject, startedAt: performance.now() };
-        setCurrent({ kind: "test" });
+        setCurrent({ kind: "test", write });
       }),
     [],
   );

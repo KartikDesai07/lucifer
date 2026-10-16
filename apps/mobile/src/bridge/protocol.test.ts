@@ -29,6 +29,7 @@ const LISTS: Record<string, string[]> = {
     'host.background',
     'app.changeUrl',
     'app.battery',
+    'network.findPrinters',
   ],
   NATIVE_EVENTS: ['printer.status', 'app.wake'],
   NATIVE_TRANSPORTS: ['bt-classic', 'ble', 'tcp', 'usb'],
@@ -48,7 +49,7 @@ const LISTS: Record<string, string[]> = {
   ],
   NATIVE_PERMISSION_KINDS: ['bluetooth', 'notifications'],
   NATIVE_PLATFORMS: ['android', 'ios'],
-  NATIVE_FEATURES: ['battery'],
+  NATIVE_FEATURES: ['battery', 'lanScan'],
 };
 
 const SCALARS: Record<string, string | number> = {

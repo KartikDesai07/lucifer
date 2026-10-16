@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { FindNetworkPrinters } from "@/components/print/FindNetworkPrinters";
 import { BackupPrinterSelect } from "@/components/print/setup/BackupPrinterSelect";
 import { NativePrinterSelect } from "@/components/print/setup/NativePrinterSelect";
 import { WindowsPrinterSelect } from "@/components/print/setup/WindowsPrinterSelect";
@@ -121,6 +122,7 @@ export function PrinterFormDialog({ printer, printers, stations, devices, device
                   <Input aria-label="Printer address" className={`${PRINTER_INPUT_CLASS} col-span-2`} value={draft.host} onChange={(e) => set({ host: e.target.value })} placeholder="192.168.1.60" />
                   <Input aria-label="Port" className={PRINTER_INPUT_CLASS} inputMode="numeric" value={draft.port} onChange={(e) => set({ port: e.target.value })} />
                 </div>
+                <FindNetworkPrinters onPick={(host, picked) => set({ host, port: String(picked) })} />
                 <p className="text-xs text-brand-muted">{LAN_TIP}</p>
                 <Select value={draft.primaryDeviceId} onValueChange={(value) => set({ primaryDeviceId: value })}>
                   <SelectTrigger aria-label="Printing device" className={PRINTER_INPUT_CLASS}>

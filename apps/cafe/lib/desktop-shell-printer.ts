@@ -8,7 +8,7 @@
 // OneNote, XPS, Fax) every slip vanished into it — no error, no paper — while
 // the browser print dialog kept working, because the operator picks the
 // printer there. This is that choice, made once and stored by the shell.
-import { desktopShell } from "@/lib/desktop-shell";
+import { DESKTOP_PRINT_FAILED_MESSAGE, DESKTOP_PRINT_NO_REPLY_MESSAGE, DESKTOP_PRINT_TIMEOUT_MS, desktopShell } from "@/lib/desktop-shell";
 import type { PaperWidth } from "@/lib/constants";
 
 export interface DesktopPrinter {
@@ -64,6 +64,60 @@ export function desktopPrintsOnNamed(): boolean {
 export interface DesktopLanBridge {
   printRaw?(printer: { host: string; port: number }, data: Uint8Array): Promise<unknown>;
   lanStatus?(printers: { host: string; port: number }[]): Promise<unknown>;
+  /** Printing Phase 4 (spec §6): the Windows app 2.0.2 writes a slip's ESC/POS bytes to a Windows printer by its name,
+   *  through the raw spool its Direct method already uses. Optional and feature-detected like the rest: an older app has
+   *  none, so its Windows printers print pictures. */
+  printRawOn?(printerName: string, data: Uint8Array): Promise<void>;
+  /** Printing Phase 4 (spec §7.2): the Windows app 2.0.2 lists the network printers on this PC's own network (port 9100
+   *  accepted a connection; nothing sent). Feature-detected; the page validates the answer (lib/printer/lan-discovery.ts). */
+  findLanPrinters?(): Promise<unknown>;
+}
+
+/** Printing Phase 4 (spec §7.2): the Windows app lists the network printers on this PC's own network (2.0.2). */
+export function desktopFindsLanPrinters(): boolean {
+  return typeof desktopShell()?.findLanPrinters === "function";
+}
+
+/** The 4C review's m-3: the page gives the Windows app's scan the POS app's bound (NATIVE_LAN_SCAN_TIMEOUT_MS): the
+ *  app's own 10 s limit plus a request's. */
+export const DESKTOP_LAN_SCAN_TIMEOUT_MS = 20_000;
+
+/** One scan through the Windows app (lib/printer/lan-discovery.ts validates its answer); an app that never answers is
+ *  given up after DESKTOP_LAN_SCAN_TIMEOUT_MS, which the page reads as none found. */
+export async function desktopFindLanPrinters(): Promise<unknown> {
+  const shell = desktopShell();
+  if (typeof shell?.findLanPrinters !== "function") throw new Error(DESKTOP_PRINT_FAILED_MESSAGE);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const noReply = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(DESKTOP_PRINT_NO_REPLY_MESSAGE)), DESKTOP_LAN_SCAN_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([shell.findLanPrinters(), noReply]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Printing Phase 4 (spec §5.3, §6): the Windows app writes raw bytes to a Windows printer (printRawOn, 2.0.2). */
+export function desktopPrintsRaw(): boolean {
+  return typeof desktopShell()?.printRawOn === "function";
+}
+
+/** Printing Phase 4 (spec §5.4): one text slip's bytes to a Windows printer. A refusal carries the app's own sentence (the
+ *  bridge reads it with shellErrorMessage, as a picture's), and an app that never answers is given up after the picture's
+ *  own bound (DESKTOP_PRINT_TIMEOUT_MS). */
+export async function desktopPrintRawOn(printerName: string, data: Uint8Array): Promise<void> {
+  const shell = desktopShell();
+  if (typeof shell?.printRawOn !== "function") throw new Error(DESKTOP_PRINT_FAILED_MESSAGE);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const noReply = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(DESKTOP_PRINT_NO_REPLY_MESSAGE)), DESKTOP_PRINT_TIMEOUT_MS);
+  });
+  try {
+    await Promise.race([shell.printRawOn(printerName, data), noReply]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Phase 2 Session 2E: where a printer job prints on the Windows app: its Windows printer, drawn for its paper. */

@@ -16,6 +16,7 @@ export const NATIVE_METHODS = [
   "host.background",
   "app.changeUrl",
   "app.battery",
+  "network.findPrinters",
 ] as const;
 export type NativeMethod = (typeof NATIVE_METHODS)[number];
 
@@ -52,8 +53,8 @@ export const NATIVE_PLATFORMS = ["android", "ios"] as const;
 export type NativePlatform = (typeof NATIVE_PLATFORMS)[number];
 
 // Phase 3 Session 3D: what the POS app can do beyond the method list (window.PosNative.features); a control is shown
-// only when the app says it (an older app says nothing).
-export const NATIVE_FEATURES = ["battery"] as const;
+// only when the app says it (an older app says nothing). Printing Phase 4: lanScan, "Find network printers".
+export const NATIVE_FEATURES = ["battery", "lanScan"] as const;
 export type NativeFeature = (typeof NATIVE_FEATURES)[number];
 
 export const NATIVE_BRIDGE_VERSION = 1;

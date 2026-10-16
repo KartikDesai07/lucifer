@@ -30,6 +30,15 @@ export const PRINT_JOB_TOO_LARGE_MESSAGE =
 export const PRINT_JOB_NOT_ROUTED_MESSAGE =
   "No printer takes this slip. To print notices, switch Notices on for a printer in Printer setup.";
 
+/** Printing Phase 4 (spec §8, P4-9): a KOT that routes nowhere has nothing left to print: the server routes a round's
+ *  kitchen lines, and a round whose every line was cancelled has none. */
+export const PRINT_JOB_NOT_ROUTED_KOT_MESSAGE = "Nothing to print: every item in this round was cancelled.";
+
+/** The not-routed notice by the slip's kind: a KOT has nothing left to print; any other slip keeps the 2D words. */
+export function notRoutedMessageOf(kind: PrintJobPayload["kind"]): string {
+  return kind === "kot" ? PRINT_JOB_NOT_ROUTED_KOT_MESSAGE : PRINT_JOB_NOT_ROUTED_MESSAGE;
+}
+
 /** A payload the renderer's own snapshot could not be built from. Nothing was
  *  enqueued and nothing printed locally, so this must be said out loud. */
 export const PRINT_JOB_BUILD_FAILED_MESSAGE =

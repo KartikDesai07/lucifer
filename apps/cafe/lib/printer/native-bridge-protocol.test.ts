@@ -9,7 +9,7 @@ import * as protocol from "@/lib/printer/native-bridge-protocol";
 // ---- the protocol file ------------------------------------------------------
 
 test("protocol: every list and scalar is exactly the contract (the Android file mirrors these)", () => {
-  assert.deepEqual([...protocol.NATIVE_METHODS], ["app.info", "printer.status", "printer.list", "printer.select", "printer.reconnect", "printer.forget", "printer.print", "permissions.request", "bluetooth.enable", "host.background", "app.changeUrl", "app.battery"]);
+  assert.deepEqual([...protocol.NATIVE_METHODS], ["app.info", "printer.status", "printer.list", "printer.select", "printer.reconnect", "printer.forget", "printer.print", "permissions.request", "bluetooth.enable", "host.background", "app.changeUrl", "app.battery", "network.findPrinters"]);
   assert.deepEqual([...protocol.NATIVE_EVENTS], ["printer.status", "app.wake"]);
   assert.deepEqual([...protocol.NATIVE_TRANSPORTS], ["bt-classic", "ble", "tcp", "usb"]);
   assert.deepEqual([...protocol.NATIVE_PRINTER_STATES], ["none", "connecting", "connected", "disconnected"]);
@@ -17,7 +17,7 @@ test("protocol: every list and scalar is exactly the contract (the Android file 
   assert.deepEqual([...protocol.NATIVE_ERROR_CODES], ["NOT_CONNECTED", "WRITE_FAILED", "TOO_LARGE", "BUSY", "TIMEOUT", "UNAUTHORIZED", "BLUETOOTH_OFF", "UNSUPPORTED", "BAD_REQUEST", "LOCATION_OFF"]);
   assert.deepEqual([...protocol.NATIVE_PERMISSION_KINDS], ["bluetooth", "notifications"]);
   assert.deepEqual([...protocol.NATIVE_PLATFORMS], ["android", "ios"]);
-  assert.deepEqual([...protocol.NATIVE_FEATURES], ["battery"]);
+  assert.deepEqual([...protocol.NATIVE_FEATURES], ["battery", "lanScan"]);
   assert.equal(protocol.NATIVE_BRIDGE_VERSION, 1);
   assert.equal(protocol.PRINTER_SCAN_MS, 8_000);
   assert.equal(protocol.PRINT_DATA_MAX_BASE64_CHARS, 2_000_000);
