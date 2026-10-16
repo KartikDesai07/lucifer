@@ -668,3 +668,19 @@ test("updateSettingsSchema (the PUT partial) accepts tokenReadyClearMinutes ALON
   const section = updateSettingsSchema.safeParse({ tokenEnabled: true, tokenNumberStart: 101, numberResetMinutes: 240, tokenReadyClearMinutes: 30 });
   assert.ok(section.success && section.data.tokenReadyClearMinutes === 30, "the tokens section's four fields parse together");
 });
+
+// ── screenLockMinutes (staff PIN sign-in, 2026-10-16) ───────────────────────
+
+test("screenLockMinutes accepts 0, 30, 60, 120 and no key at all", () => {
+  for (const v of [0, 30, 60, 120, undefined]) {
+    const r = settingsSchema.safeParse({ ...validPrintPayload(), screenLockMinutes: v });
+    assert.equal(r.success, true, `must accept ${String(v)}`);
+  }
+});
+
+test("screenLockMinutes refuses 45 and the string 60", () => {
+  for (const bad of [45, "60"]) {
+    const r = settingsSchema.safeParse({ ...validPrintPayload(), screenLockMinutes: bad });
+    assert.equal(r.success, false, `must refuse ${String(bad)}`);
+  }
+});

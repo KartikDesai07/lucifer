@@ -8,7 +8,7 @@ import { stripComments } from "@/lib/source-pin-utils";
 import { SESSION_MAX_AGE_SECONDS, SESSION_KEEPALIVE_SECONDS } from "@pos/shared/constants";
 
 // CB-U1 (.claude/plan/v2/cb-u1-wake-and-session-plan.md, Slice B) — the
-// 30-day rolling login: constant values, apps/cafe/app/layout.tsx's
+// 90-day rolling login: constant values, apps/cafe/app/layout.tsx's
 // SessionProvider wiring, the apps/hub parity pin (hub deliberately NOT
 // rolled), and an installed-dist pin over @auth/core's session.js proving
 // the JWT branch actually re-signs the cookie's expiry on every session
@@ -29,8 +29,8 @@ const AUTH_CORE_PKG_JSON = "node_modules/@auth/core/package.json";
 
 // ── 1. Constant values ──────────────────────────────────────────────────────
 
-test("SESSION_MAX_AGE_SECONDS is exactly 30 days in seconds", () => {
-  assert.equal(SESSION_MAX_AGE_SECONDS, 30 * 24 * 60 * 60);
+test("SESSION_MAX_AGE_SECONDS is exactly 90 days in seconds", () => {
+  assert.equal(SESSION_MAX_AGE_SECONDS, 90 * 24 * 60 * 60);
 });
 
 test("SESSION_KEEPALIVE_SECONDS is exactly 30 minutes in seconds", () => {
@@ -40,19 +40,19 @@ test("SESSION_KEEPALIVE_SECONDS is exactly 30 minutes in seconds", () => {
 test("SESSION_KEEPALIVE_SECONDS is far below SESSION_MAX_AGE_SECONDS — 48 keepalive ticks (1 cafe-day at 30-min cadence) still land comfortably inside one maxAge window, which is the whole point of a keepalive: it must fire often enough that a tab left open all day never approaches expiry", () => {
   assert.ok(
     SESSION_KEEPALIVE_SECONDS * 48 <= SESSION_MAX_AGE_SECONDS,
-    "48 keepalive intervals (a full day at the 30-minute cadence) must still fit inside the 30-day maxAge many times over, or the keepalive would not meaningfully extend a daily-use session",
+    "48 keepalive intervals (a full day at the 30-minute cadence) must still fit inside the 90-day maxAge many times over, or the keepalive would not meaningfully extend a daily-use session",
   );
 });
 
 // Tightened per CB-U1 review round 1 (F2): the ORIGINAL bound above only
-// checks the cadence against the 30-day maxAge, which a badly-misconfigured
-// hour-plus interval could still satisfy (e.g. 20 hours * 48 << 30 days) while
+// checks the cadence against the 90-day maxAge, which a badly-misconfigured
+// hour-plus interval could still satisfy (e.g. 20 hours * 48 << 90 days) while
 // being useless in practice — a tab closed and reopened between two such
 // ticks could still roll past the session's OWN visible-use window. The
 // keepalive's whole job is to beat a staff member's typical AWAY-from-the-
 // tab gap, which is minutes, not hours: bounding it at one hour keeps the
 // cadence meaningfully tied to how often a counter PC is actually glanced at,
-// not just "eventually smaller than 30 days."
+// not just "eventually smaller than 90 days."
 test("SESSION_KEEPALIVE_SECONDS is at most one hour (60 * 60 seconds) — a keepalive cadence looser than an hour would still pass the maxAge-ratio check above while being too infrequent to reliably beat a staff member's away-from-the-tab gap", () => {
   assert.ok(
     SESSION_KEEPALIVE_SECONDS <= 60 * 60,
@@ -178,12 +178,12 @@ test('PIN: apps/cafe/auth.config.ts still passes maxAge: SESSION_MAX_AGE_SECONDS
 
 // ── 4. apps/hub parity: hub is deliberately NOT rolled ─────────────────────
 
-test("PIN: apps/hub/lib/constants.ts still declares its OWN SESSION_MAX_AGE_SECONDS = 8 * 60 * 60 — the Hub's short 8h owner-session lifetime is a deliberate, SEPARATE constant from the cafe's 30-day one; CB-U1 must never touch it", () => {
+test("PIN: apps/hub/lib/constants.ts still declares its OWN SESSION_MAX_AGE_SECONDS = 8 * 60 * 60 — the Hub's short 8h owner-session lifetime is a deliberate, SEPARATE constant from the cafe.s 90-day one; CB-U1 must never touch it", () => {
   const hubSrc = stripComments(readSrc(HUB_CONSTANTS));
   assert.match(hubSrc, /export const SESSION_MAX_AGE_SECONDS = 8 \* 60 \* 60;/, "apps/hub/lib/constants.ts must still declare SESSION_MAX_AGE_SECONDS = 8 * 60 * 60 — untouched by the cafe's rolling-login change");
   // Positive cross-check that the two really are different values, so this
   // pin cannot pass vacuously if the two constants were ever unified.
-  assert.notEqual(8 * 60 * 60, SESSION_MAX_AGE_SECONDS, "the hub's 8h session and the cafe's 30-day session must remain genuinely different constants");
+  assert.notEqual(8 * 60 * 60, SESSION_MAX_AGE_SECONDS, "the hub's 8h session and the cafe.s 90-day session must remain genuinely different constants");
 });
 
 // ── 5. Installed-dist pin: @auth/core's session.js JWT branch ─────────────

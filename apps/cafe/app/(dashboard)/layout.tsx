@@ -88,7 +88,7 @@ export default function DashboardLayout({
               waits behind a placeholder so the mounted screens cannot each fire
               their own master fetch first. */}
           <MasterDataProvider>
-            {/* CB-U1: the session keepalive rolls the 30-day cookie for a tab
+            {/* CB-U1: the session keepalive rolls the 90-day cookie for a tab
                 that never navigates — staff screens only, never /login or /m. */}
             <SessionKeepalive />
             <AppSidebar />

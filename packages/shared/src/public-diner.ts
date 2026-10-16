@@ -21,8 +21,8 @@ export const DINER_COOKIE_NAME = "pos_diner";
 // the routes that resolve it, whereas this value IS the bearer of an account.
 export const DINER_SESSION_TOKEN_LENGTH = 24;
 
-// 30 days, matching the staff session's own rolling window (CB-U1) so a cafe
-// never has to explain two different "you were signed out" behaviours.
+// 30 days, rolling. Separate from the staff session (SESSION_MAX_AGE_SECONDS,
+// 90 days since 2026-10-16): the diner session is its own constant.
 export const DINER_SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 
 // ── Diner PIN ───────────────────────────────────────────────────────────────

@@ -835,7 +835,7 @@ Two routes: type it in, or import a CSV. For more than ~30 items, import.
 - [ ] Password resets: admin resets any other account from the Staff row; each
       person can change their own from the sidebar account menu.
 - [ ] Leavers get **deactivated**, not deleted, so their history keeps its name.
-- [ ] Staff stay signed in for 30 days of use on a device; on a shared device
+- [ ] Staff stay signed in for 90 days of use on a device; on a shared device
       use Log out when handing it over.
 - [ ] A password reset does not sign out devices that are already signed in.
       To cut off a lost or stolen device, deactivate that staff account (it
@@ -879,7 +879,7 @@ another program is in front.
 - [ ] First run asks for the **POS address** — type the cafe's workspace name
       (for example `yourcafe`) or the full address, and choose **Open POS**. The
       app checks the address once before saving it.
-- [ ] Log in once as a real staff account. The sign-in lasts 30 days and renews
+- [ ] Log in once as a real staff account. The sign-in lasts 90 days and renews
       with use, so the PC stays signed in.
 - [ ] **Admin → Printer setup** → **Print all slips on this device** (this PC becomes the print
       host), then pick the thermal printer under **Printer for this PC**, then
@@ -1510,7 +1510,7 @@ the test fails — fix the code or this file, never just this file.
 | Desktop app installer | `POS-Software-Setup-${version}.exe` | `apps/desktop/package.json` (`build.nsis.artifactName`) |
 | Print host silent-off warning | `Print host shows a dialog for every slip.` | `PRINT_HOST_SILENT_OFF_WARNING` |
 | Print host active note | `Slips print at <label>.` | `PRINT_HOST_ACTIVE_NOTE` |
-| Staff session lifetime | 30 days, rolling with use | `SESSION_MAX_AGE_SECONDS` |
+| Staff session lifetime | 90 days, rolling with use | `SESSION_MAX_AGE_SECONDS` |
 | Print-job wake poll (counter PC) | every 3 seconds while busy, every 15 seconds when idle | `PRINT_WAKE_FAST_MS` / `PRINT_WAKE_SLOW_MS` |
 | Print-job wake poll daily cap (per counter PC) | 14,400 quick checks per cafe-day, then every 15 seconds until the next day | `PRINT_WAKE_DAILY_CAP` |
 | Printers-mode wake poll daily cap (all printing devices together) | 14,000 quick checks per cafe-day, split by the printing devices Printer setup names | `PRINT_WAKE_PRINTERS_DAILY_CAP` |

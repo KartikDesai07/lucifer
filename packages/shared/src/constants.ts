@@ -291,10 +291,13 @@ export const BCRYPT_ROUNDS = 12;
 // Rolling = this maxAge plus anything that hits the session endpoint
 // (components/layout/SessionKeepalive.tsx's raw fetch on the cadence below,
 // window focus, middleware auth()): a device in daily use never expires; one
-// untouched for 30 days does.
+// untouched for 90 days does.
 // lib/auth.ts's DB re-validation (SESSION_REVALIDATE_MS) remains what locks
 // out a deactivated account within ~a minute. apps/hub keeps its OWN 8h.
-export const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60; // 30 days
+// 90 days is the owner's 2026-10-16 decision ("session lamba rakhna hai, minimum 90 din"),
+// rolling through the 30-minute keepalive below. The diner session
+// (DINER_SESSION_MAX_AGE_SECONDS in public-diner.ts) is a separate constant and stays 30 days.
+export const SESSION_MAX_AGE_SECONDS = 90 * 24 * 60 * 60; // 90 days
 
 // Throttle for re-checking a session's account against the DB (role/isActive).
 // The Node auth instance re-validates at most this often (per account, per

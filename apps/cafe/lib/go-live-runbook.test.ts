@@ -1174,10 +1174,10 @@ test("PIN: §11's print-host bullet states BOTH that a configured host prints fr
 
 // ── §A row parity: CB-U1 staff session lifetime + print-job wake poll ─────
 
-test("PIN §A: SESSION_MAX_AGE_SECONDS (30 days) matches the doc's staff-session-lifetime row, which also states the session is ROLLING (not a fixed 30-day countdown from login) — scoped to the §A Pinned facts section (review round 1: factRow() alone scans the whole doc, and §3/§A share one row-label namespace)", () => {
-  assert.equal(SESSION_MAX_AGE_SECONDS, 30 * 24 * 60 * 60);
+test("PIN §A: SESSION_MAX_AGE_SECONDS (90 days) matches the doc's staff-session-lifetime row, which also states the session is ROLLING (not a fixed 90-day countdown from login) — scoped to the §A Pinned facts section (review round 1: factRow() alone scans the whole doc, and §3/§A share one row-label namespace)", () => {
+  assert.equal(SESSION_MAX_AGE_SECONDS, 90 * 24 * 60 * 60);
   const cell = factRowIn(SECTION_A_HEADING, "Staff session lifetime");
-  assert.match(cell, /30 days/, "the row must state the 30-day figure with its unit word");
+  assert.match(cell, /90 days/, "the row must state the 90-day figure with its unit word");
   assert.match(cell, /rolling/i, "the row must state the session is rolling with use, not a fixed countdown");
 });
 
@@ -1241,7 +1241,7 @@ test("PIN §7: the self-order alerts device step's counter-PC wake-poll bullet s
   );
 });
 
-test("PIN §6: the staff-accounts section states the 30-day signed-in lifetime and tells the operator to Log out on a shared device", () => {
+test("PIN §6: the staff-accounts section states the 90-day signed-in lifetime and tells the operator to Log out on a shared device", () => {
   const section = norm(sectionSlice("## §6 Staff accounts (CAFE ADMIN, `Staff`, admin only)"));
 
   const staySignedInDays = SESSION_MAX_AGE_SECONDS / (24 * 60 * 60);

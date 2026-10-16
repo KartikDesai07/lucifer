@@ -52,6 +52,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
       "payQrValidMinutes",
       "posLayout",
       "tableLongStayMinutes",
+      "screenLockMinutes",
     ],
   },
   {

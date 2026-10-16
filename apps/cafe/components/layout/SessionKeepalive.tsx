@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { SESSION_KEEPALIVE_SECONDS } from "@/lib/constants";
 
-// CB-U1 — the 30-day session is ROLLING (@auth/core 0.41.2 re-signs on every
+// CB-U1 — the 90-day session is ROLLING (@auth/core 0.41.2 re-signs on every
 // GET /api/auth/session); a POS tab parked on /pos never navigates and /api
 // is outside the middleware matcher, so nothing else rolls it. This raw fetch
 // lets the response's Set-Cookie do the roll WITHOUT touching next-auth's

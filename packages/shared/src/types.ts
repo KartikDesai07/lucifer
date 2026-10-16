@@ -344,6 +344,9 @@ export interface Staff {
   username: string;
   role: StaffRole;
   isActive: boolean;
+  // Never the PIN itself: whether one is set, and whether wrong tries blocked it.
+  hasPin?: boolean;
+  pinBlocked?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -498,6 +501,9 @@ export interface Settings {
   // Tables redesign — minutes before "Long stay" shows on the live floor.
   // Absent on documents written before the field (lean read) = the default.
   tableLongStayMinutes?: number;
+
+  // Staff PIN sign-in: idle minutes before the lock screen (0 = never).
+  screenLockMinutes?: number;
 
   createdAt: string;
   updatedAt: string;
