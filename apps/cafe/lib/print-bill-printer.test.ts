@@ -6,6 +6,7 @@ import { stripComments } from "@/lib/source-pin-utils";
 import { printAgentHeaders } from "@/lib/print-agent-calls";
 import { routablePrinterOf, type PrinterConfig } from "@pos/shared/print-printers";
 import { BILL_PRINTER_DEFAULT, BILL_PRINTER_KEY, billPrinterChoiceOf, billPrinterIdOf, readBillPrinterId, writeBillPrinterId } from "@/lib/print-bill-printer";
+import { PRINT_JOB_NOT_ROUTED_KOT_MESSAGE, PRINT_JOB_NOT_ROUTED_MESSAGE, notRoutedMessageOf } from "@/lib/print-routing";
 
 // Printing redesign, Phase 2 Session 2D (plan decision 7): this device's own bill printer, kept on the device and
 // sent with every print request; and the two page signals 2D adds (the not-routed notice, the dot in printers mode).
@@ -77,10 +78,21 @@ test("2D final review (M-6), as changed at the 2D review gate: the bill picker s
 const CAFE = process.cwd();
 const src = (rel: string): string => stripComments(readFileSync(path.join(CAFE, rel), "utf8"));
 
+// Printing Phase 4 (spec 2026-10-15 §8, P4-9), a deliberate change: the words follow the slip's kind. A KOT round with
+// nothing left to print (every line cancelled) says so; a notice no printer takes keeps the 2D words.
 test("PIN (2D, the 2C review gate's M-5): a slip no printer takes says so instead of doing nothing", () => {
   const hook = src("hooks/use-host-routing.ts");
-  assert.equal((hook.match(/if \(result\.outcome === "not-routed"\) toast\(PRINT_JOB_NOT_ROUTED_MESSAGE\);/g) ?? []).length, 2, "the routed print and the moved slip both say it");
+  assert.equal((hook.match(/if \(result\.outcome === "not-routed"\) toast\(notRoutedMessageOf\(job\.payload\.kind\)\);/g) ?? []).length, 2, "the routed print and the moved slip both say it, by the slip's kind");
+  assert.ok(!hook.includes("toast(PRINT_JOB_NOT_ROUTED_MESSAGE)"), "no call site says the notice words whatever the slip");
   assert.match(src("lib/print-routing.ts"), /export const PRINT_JOB_NOT_ROUTED_MESSAGE =\s*"No printer takes this slip\. To print notices, switch Notices on for a printer in Printer setup\.";/);
+  assert.match(src("lib/print-routing.ts"), /export const PRINT_JOB_NOT_ROUTED_KOT_MESSAGE =\s*"Nothing to print: every item in this round was cancelled\.";/);
+});
+
+test("Phase 4 (spec §8): a KOT that routes nowhere has nothing left to print; any other slip keeps the notice words", () => {
+  assert.equal(notRoutedMessageOf("kot"), PRINT_JOB_NOT_ROUTED_KOT_MESSAGE, "a KOT round with every item cancelled");
+  for (const kind of ["void", "moved", "cancel-notice", "bill", "token", "eod"] as const) {
+    assert.equal(notRoutedMessageOf(kind), PRINT_JOB_NOT_ROUTED_MESSAGE, `${kind}: today's words`);
+  }
 });
 
 test("PIN (2D, spec §6.6): in printers mode Where slips print says each slip prints at its printer, and offers no printing device", () => {
