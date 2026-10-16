@@ -105,15 +105,19 @@ class LanScanTest {
     ServerSocket(0, 8, InetAddress.getLoopbackAddress()).use { server ->
       server.soTimeout = 5_000
       val connector = SocketConnector()
+      // Session 4D's review (m-C): what the printer's side read is asserted on the test thread (an assertion on the
+      // helper thread would only be printed); Int.MIN_VALUE means the probe never reached the read.
+      val firstRead = AtomicInteger(Int.MIN_VALUE)
       val accepted = Thread {
         server.accept().use { peer ->
           peer.soTimeout = 5_000
-          assertEquals("no byte, then the probe's close (EOF)", -1, peer.getInputStream().read())
+          firstRead.set(peer.getInputStream().read())
         }
       }
       accepted.start()
       assertTrue("a listening port is found", connector.reachable("127.0.0.1", server.localPort, LanScanPlan.LAN_SCAN_CONNECT_MS))
       accepted.join(5_000)
+      assertEquals("no byte, then the probe's close (EOF)", -1, firstRead.get())
     }
     val closed = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
     assertTrue("a closed port is not", !SocketConnector().reachable("127.0.0.1", closed, LanScanPlan.LAN_SCAN_CONNECT_MS))

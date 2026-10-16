@@ -3,14 +3,15 @@
 // Printing Phase 4 (spec 2026-10-15 §7.3): "Find network printers" beside a network printer's address. Only where this
 // device's app can scan; up to about 10 s; then the printers found, each marked when the setup or this device's POS app
 // already has it. A tap only fills the address and port: staff go on exactly as today (Use or Save, then Test print).
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Search } from "lucide-react";
 
-import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
+import type { PrinterConfig } from "@pos/shared/print-printers";
 import { PRINTER_ACTION_CLASS } from "@/components/print/printer-classes";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { usePrintersRead } from "@/hooks/use-agent-printers";
+import { PRINTERS_KEYS } from "@/hooks/use-agent-printers";
 import { useNativePool } from "@/hooks/use-device-printer";
 import {
   FIND_NETWORK_PRINTERS_LABEL,
@@ -31,13 +32,13 @@ interface FindNetworkPrintersProps {
   disabled?: boolean;
 }
 
+const NO_SETUP_PRINTERS: PrinterConfig[] = [];
+
 export function FindNetworkPrinters({ onPick, disabled = false }: FindNetworkPrintersProps) {
-  const { deviceId } = usePrintHostContext();
-  const { printers } = usePrintersRead(deviceId !== "");
+  const qc = useQueryClient();
   const pool = useNativePool();
   const [scanning, setScanning] = useState(false);
   const [outcome, setOutcome] = useState<LanScanOutcome | null>(null);
-  const known = useMemo(() => knownLanPrinters(printers, pool.printers.map((printer) => ({ id: printer.id, name: printer.printer.name }))), [printers, pool]);
 
   if (!lanScanAvailable()) return null;
 
@@ -49,6 +50,10 @@ export function FindNetworkPrinters({ onPick, disabled = false }: FindNetworkPri
     setScanning(false);
   };
 
+  // The setup's printers as the page's cache already holds them (Session 4D's review, m-B): no query observer of its own,
+  // so opening a form never refetches the printers list.
+  const setup = qc.getQueryData<PrinterConfig[]>(PRINTERS_KEYS.all) ?? NO_SETUP_PRINTERS;
+  const known = knownLanPrinters(setup, pool.printers.map((printer) => ({ id: printer.id, name: printer.printer.name })));
   const rows = outcome?.kind === "found" ? lanFoundRows(outcome.printers, known) : [];
   return (
     <div className="space-y-2">

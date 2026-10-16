@@ -25,6 +25,10 @@ test("PIN: the button and its list show only where the app can scan, and a tap o
     assert.ok(find.includes(words), `the list says ${words}`);
   }
   assert.ok(find.includes("PRINTER_ACTION_CLASS"), "44 px controls");
+  // Session 4D's review (m-A): the panel's network form is a <form onSubmit>, and the shared Button sets no type, so a
+  // button without type="button" would submit it: a tap would add the address typed before.
+  assert.ok(find.includes('<Button type="button" variant="outline"'), "the Find button never submits the form around it");
+  assert.ok(find.includes('<Button type="button" variant="ghost"'), "a found printer's row never submits the form around it");
 });
 
 test("PIN: beside the network printer address, in the POS app's panel and the setup form", () => {
@@ -42,5 +46,8 @@ test("PIN (spec §12): the scan costs no request: the app's own local scan and t
     const text = src(file);
     for (const needle of ["api-client", "apiGet", "apiSend", "fetch(", "useQuery("]) assert.ok(!text.includes(needle), `${file} makes no request (${needle})`);
   }
-  assert.ok(src(FIND).includes('usePrintersRead(deviceId !== "")'), "the setup's printers from the agent's one printers read");
+  // Session 4D's review (m-B): the setup's printers are read from the page's cache, with no query observer of its own, so
+  // opening a form never refetches the printers list (a stale list would refetch on mount).
+  assert.ok(!src(FIND).includes("usePrintersRead("), "no printers query observer of its own");
+  assert.ok(src(FIND).includes("qc.getQueryData<PrinterConfig[]>(PRINTERS_KEYS.all) ?? NO_SETUP_PRINTERS"), "the setup's printers from the page's cache");
 });
