@@ -36,10 +36,15 @@ class PoolStatusTest {
     val k = BridgeCodes.STATE_CONNECTING
     val third = tcpPrinter(9102)
     assertEquals("no printer", HostTitle.NotConnected, HostTitle.of(all(null)))
-    assertEquals("the only printer, connected: its name, as before", HostTitle.Printer(kitchen.name), HostTitle.of(all(kitchen.id, kitchen to c)))
+    assertEquals("the only printer, connected: its name, as before", HostTitle.Printer("Network printer 10.0.2.2"), HostTitle.of(all(kitchen.id, kitchen to c)))
     assertEquals("the only printer, down: the words of one printer", HostTitle.NotConnected, HostTitle.of(all(kitchen.id, kitchen to d)))
     assertEquals("every printer connected", HostTitle.AllConnected(2), HostTitle.of(all(kitchen.id, kitchen to c, bar to c)))
-    assertEquals("one of several down, connecting counted as down", HostTitle.OneDown(bar.name), HostTitle.of(all(kitchen.id, kitchen to c, bar to k)))
+    assertEquals("one of several down, connecting counted as down: the bar printer, by its port (m-2)", HostTitle.OneDown("Network printer 10.0.2.2:9101"), HostTitle.of(all(kitchen.id, kitchen to c, bar to k)))
+    assertEquals("the kitchen printer down instead: named apart", HostTitle.OneDown("Network printer 10.0.2.2"), HostTitle.of(all(kitchen.id, kitchen to k, bar to c)))
+    // A printer saved before (the older name for every port) is shown by its id, so the title names the right one.
+    val savedBar = bar.copy(name = "Network printer 10.0.2.2")
+    val shownBar = PrinterNames.shown(savedBar) { label -> "Network printer $label" }
+    assertEquals("an older saved name: the title still names the bar printer", HostTitle.OneDown("Network printer 10.0.2.2:9101"), HostTitle.of(all(kitchen.id, kitchen to c, shownBar to k)))
     assertEquals("several down", HostTitle.SomeDown(2), HostTitle.of(all(kitchen.id, kitchen to d, bar to c, third to d)))
   }
 
@@ -53,8 +58,10 @@ class PoolStatusTest {
     dedupe.next(one(c, kitchen), all(kitchen.id, kitchen to c))
     val empty = PoolSnapshot(listOf(PoolEntry(c, kitchen, out)), kitchen.id, BridgeCodes.BT_ON)
     assertEquals("paper out: v2 only", StatusDedupe.Changes(v1 = false, v2 = true), dedupe.next(one(c, kitchen), empty))
-    assertEquals("the only printer, out of paper", HostTitle.PaperOut(kitchen.name), HostTitle.of(empty))
+    assertEquals("the only printer, out of paper", HostTitle.PaperOut("Network printer 10.0.2.2"), HostTitle.of(empty))
     val two = PoolSnapshot(listOf(PoolEntry(BridgeCodes.STATE_DISCONNECTED, bar), PoolEntry(c, kitchen, out)), kitchen.id, BridgeCodes.BT_ON)
-    assertEquals("worse than a printer down", HostTitle.PaperOut(kitchen.name), HostTitle.of(two))
+    assertEquals("worse than a printer down: the kitchen printer, not the bar one", HostTitle.PaperOut("Network printer 10.0.2.2"), HostTitle.of(two))
+    val barOut = PoolSnapshot(listOf(PoolEntry(c, kitchen), PoolEntry(c, bar, out)), kitchen.id, BridgeCodes.BT_ON)
+    assertEquals("the bar printer out of paper: named by its port (m-2)", HostTitle.PaperOut("Network printer 10.0.2.2:9101"), HostTitle.of(barOut))
   }
 }

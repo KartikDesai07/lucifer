@@ -2247,7 +2247,8 @@ function poolProblems(s: PoolSources): string[] {
     out.push('a shared io thread is back');
   }
   const prefs = strip(s.prefs);
-  need(prefs, 'PoolList.restore(listed, p.getString(KEY_PRINTER_DEFAULT, null), savedPrinter(ctx))', 'the saved list does not migrate the v1 printer');
+  // Printing Phase 4 (m-2) deliberately changed: each saved printer is shown by its id; the v1 printer still migrates.
+  need(prefs, 'p.getString(KEY_PRINTER_DEFAULT, null), savedPrinter(ctx)?.let { PrinterNames.shown(ctx, it) })', 'the saved list does not migrate the v1 printer');
   need(prefs, '.putString(KEY_PRINTER_ID, default.id)', 'the v1 keys do not name the default printer');
   need(strip(s.service), 'HostTitle.of(PrinterPool.poolStatus())', 'the notification does not say the worst state across printers');
   // Session 3C (the 2G review's m-3): a v1 select of a printer already listed only moves the default, and waits for the
@@ -2303,7 +2304,7 @@ test('pin 19 mutation: every pool needle can fail', () => {
     ['  private val ioCount', '  val io: ExecutorService = newIo()\n  private val ioCount'],
   ]);
   everyMutationCaught(run('prefs'), base.prefs, [
-    ['savedPrinter(ctx))\n', 'null)\n'],
+    ['savedPrinter(ctx)?.let { PrinterNames.shown(ctx, it) })\n', 'null)\n'],
     ['.putString(KEY_PRINTER_ID, default.id)', '.remove(KEY_PRINTER_ID)'],
   ]);
   everyMutationCaught(run('service'), base.service, [['HostTitle.of(PrinterPool.poolStatus())', 'HostTitle.of(PoolSnapshot(emptyList(), null, "on"))']]);
@@ -3310,5 +3311,49 @@ test('pin 33 mutation: every scan needle can fail', () => {
   everyMutationCaught(run('protocol'), base.protocol, [
     ["  'network.findPrinters',\n", ''],
     ["'battery', 'lanScan'", "'battery'"],
+  ]);
+});
+
+// ---------------------------------------------------------------- pin 34
+// Printing Phase 4 (spec 2026-10-15 §8, Phase 2's m-2): a network printer is named by its address and, when not 9100,
+// its port; the app shows every saved printer by its id (nothing rewritten), so the printer list and the print-host
+// notification tell two printers on one address apart.
+interface PrinterNameSources {
+  discovery: string;
+  prefs: string;
+}
+function printerNameProblems(s: PrinterNameSources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!text.includes(needle)) {
+      out.push(why);
+    }
+  };
+  const d = strip(s.discovery);
+  need(d, 'fun networkLabel(host: String, port: Int): String = if (port == TCP_DEFAULT_PORT) host else "$host:$port"', 'the port is not in a network printer\'s name');
+  need(d, 'private const val TCP_DEFAULT_PORT = 9100\n', 'the port is left out for a port other than 9100');
+  need(d, 'PrinterNames.network(ctx, host, port),', 'a new network printer is not named by its port');
+  need(d, 'val target = PrinterIds.tcpOf(info.id) ?: return info', 'a shown name does not come from the id');
+  need(strip(s.prefs), 'return PoolList.restore(PrinterNames.shownAll(ctx, listed), p.getString(KEY_PRINTER_DEFAULT, null), savedPrinter(ctx)?.let { PrinterNames.shown(ctx, it) })', 'a saved printer is not shown by its id');
+  return out;
+}
+const printerNameSources = (): PrinterNameSources => ({ discovery: kt('PrinterDiscovery.kt'), prefs: kt('Prefs.kt') });
+
+test('pin 34: a network printer is named by its port when it is not 9100, and every saved printer by its id (m-2)', () => {
+  assert.deepEqual(printerNameProblems(printerNameSources()), []);
+});
+
+test('pin 34 mutation: every name needle can fail', () => {
+  const base = printerNameSources();
+  const run = (key: keyof PrinterNameSources) => (text: string) => printerNameProblems({ ...base, [key]: text });
+  everyMutationCaught(run('discovery'), base.discovery, [
+    ['if (port == TCP_DEFAULT_PORT) host else "$host:$port"', 'host'],
+    ['private const val TCP_DEFAULT_PORT = 9100\n', 'private const val TCP_DEFAULT_PORT = 91000\n'],
+    ['PrinterNames.network(ctx, host, port),', 'PrinterNames.network(ctx, host, 9100),'],
+    ['val target = PrinterIds.tcpOf(info.id) ?: return info', 'val target = null ?: return info'],
+  ]);
+  everyMutationCaught(run('prefs'), base.prefs, [
+    ['PoolList.restore(PrinterNames.shownAll(ctx, listed), ', 'PoolList.restore(listed, '],
+    ['savedPrinter(ctx)?.let { PrinterNames.shown(ctx, it) })', 'savedPrinter(ctx))'],
   ]);
 });

@@ -52,11 +52,13 @@ object Prefs {
     return PrinterInfo(id, name, transport, p.getString(KEY_PRINTER_ADDRESS, null))
   }
 
-  /** The app's printers as saved, the one v1 printer migrated into the list as the default. */
+  /** The app's printers as saved, the one v1 printer migrated into the list as the default. Printing Phase 4 (m-2):
+   *  each shown by its id (a network printer by its address and port), so ones saved under the older name are named
+   *  apart too; storage is not rewritten here. */
   fun savedPrinters(ctx: Context): PoolList<PrinterInfo> {
     val p = prefs(ctx)
     val listed = p.getString(KEY_PRINTERS, null)?.let { parsePrinters(it) }
-    return PoolList.restore(listed, p.getString(KEY_PRINTER_DEFAULT, null), savedPrinter(ctx))
+    return PoolList.restore(PrinterNames.shownAll(ctx, listed), p.getString(KEY_PRINTER_DEFAULT, null), savedPrinter(ctx)?.let { PrinterNames.shown(ctx, it) })
   }
 
   /** Saves the list and its default; the v1 keys name the default printer (or nothing, with no printer). */
