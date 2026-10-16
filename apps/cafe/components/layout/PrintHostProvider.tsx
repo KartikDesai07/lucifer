@@ -48,8 +48,9 @@ export interface PrintHostContextValue {
   eodRef: RefObject<HTMLDivElement | null>;
   /** PrintHostEodSource's readiness report for the current eod slip. */
   setEodReady: (ready: boolean) => void;
-  /** PH-7's "Test print": resolves with trigger→onAfterPrint ms (§B7). */
-  queueTestSlip: () => Promise<number>;
+  /** PH-7's "Test print": resolves with trigger→onAfterPrint ms (§B7). Printing Phase 4: with `write`, a printer's text
+   *  test, written in the same busy window (components/print/TextKotSection.tsx). */
+  queueTestSlip: (write?: () => Promise<void>) => Promise<number>;
   /** PH-7 calls this after writing the `printHost` pref so the lanes arm
    *  without a reload; the beat's demotion path clears it the same way. */
   syncHostPref: () => void;

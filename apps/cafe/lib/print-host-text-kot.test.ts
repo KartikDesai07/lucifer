@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 
 import { mountHook, resetStubs, stubModule, stubs, type MountedHook } from "@/lib/hook-harness";
 import type { HostPrintDone } from "@/lib/print-host-outcomes";
-import { PRINT_HOST_DISPATCH_TIMEOUT_MS, PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print-host-slips";
+import { PRINT_HOST_BUSY_MESSAGE, PRINT_HOST_DISPATCH_TIMEOUT_MS, PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print-host-slips";
 import type { TextKotWrite, TextKotWriteInput } from "@/lib/printer/kot-text/text-kot-print";
 import { PRINTER_NOT_CONNECTED_MESSAGE } from "@/lib/printer/web-printer-types";
 
@@ -153,4 +153,38 @@ test("a bill, a token, End of day and the attestation test slip never ask the te
   s.finish();
   await test;
   assert.deepEqual(world.asked, [], "the text step was never asked");
+});
+
+test("spec §5.1: a printer's text test rides the test slip's busy window, written through its own writer", async (t) => {
+  const s = scene(t);
+  const held = heldWrite();
+  let answered: string | null = null;
+  void s.hook.result().queueTestSlip(held.answer.write).then(
+    () => (answered = "printed"),
+    (error: Error) => (answered = error.message),
+  );
+  assert.equal(held.calls, 1, "the test's bytes went to the printer's writer");
+  assert.deepEqual(stubs.printed, [], "the attestation slip's picture never fired");
+  assert.deepEqual(world.asked, [], "a test is not a job's slip: the text step is not asked");
+  s.queue("kot", "KOT-1");
+  assert.deepEqual(world.asked, [], "a slip that arrives meanwhile waits");
+  held.resolve();
+  await s.settled();
+  assert.equal(answered, "printed", "the section hears it printed");
+  assert.deepEqual(world.asked, ["KOT-1"], "then the waiting slip goes");
+  assert.deepEqual(s.outcomes, [], "the test's end is never the waiting slip's outcome (the review's m-1)");
+  s.finish();
+  assert.deepEqual(s.outcomes, ["printed"], "the slip's own outcome when its picture is done");
+});
+
+test("a text test that fails, or a busy device, leaves the section the printer's own sentence", async (t) => {
+  const s = scene(t);
+  const held = heldWrite();
+  const failed = s.hook.result().queueTestSlip(held.answer.write).catch((error: Error) => error.message);
+  const busy = s.hook.result().queueTestSlip(held.answer.write).catch((error: Error) => error.message);
+  assert.equal(await busy, PRINT_HOST_BUSY_MESSAGE, "a second test is refused, never queued");
+  held.reject(new Error(PRINTER_NOT_CONNECTED_MESSAGE));
+  await s.settled();
+  assert.equal(await failed, PRINTER_NOT_CONNECTED_MESSAGE, "the printer's sentence");
+  assert.equal(s.hook.result().current, null, "the bridge is free");
 });

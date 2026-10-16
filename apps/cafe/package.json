@@ -395,6 +395,8 @@
     "lib/printer/kot-text/kot-text-parity.test.ts",
     "lib/printer/kot-text/text-kot-store.test.ts",
     "lib/printer/kot-text/text-kot-print.test.ts",
+    "lib/printer/kot-text/text-kot-printers.test.ts",
+    "lib/print-text-kot-paths.test.ts",
     "lib/printer/device-printer-store.test.ts",
     "lib/printer/device-printer.test.ts",
     "lib/printer/device-printer-owner.test.ts",
