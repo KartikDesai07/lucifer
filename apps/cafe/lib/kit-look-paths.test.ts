@@ -164,3 +164,36 @@ test("the look: input, card, badge, switch, skeleton, table", () => {
   const head = table.slice(table.indexOf("const TableHead"), table.indexOf("const TableCell"));
   assert.match(head, /\btext-muted-foreground\b/, "table header cells are muted");
 });
+
+test("the look: tabs (segmented and underline variants)", () => {
+  const tabs = read("components/ui/tabs.tsx");
+  assert.match(tabs, /\bbg-muted rounded-lg p-1\b|\brounded-lg bg-muted p-1\b/, "segmented list is bg-muted rounded-lg p-1");
+  assert.match(tabs, /data-\[state=active\]:bg-card/, "active segment is white (bg-card)");
+  assert.match(tabs, /data-\[state=active\]:shadow-sm/, "active segment has the small lift");
+  assert.equal((tabs.match(/\bunderline:/g) ?? []).length, 2, "underline variant exists in both cva maps (list and trigger)");
+  assert.match(tabs, /variant\?:|VariantProps/, "TabsList and TabsTrigger take a variant prop");
+  assert.match(tabs, /bg-primary/, "underline bar is bg-primary");
+});
+
+test("the look: dialog, alert-dialog, sheet, drawer, menus, tooltip, toast", () => {
+  for (const f of ["dialog", "alert-dialog", "sheet"]) {
+    const src = read(`components/ui/${f}.tsx`);
+    assert.match(src, /\bshadow-pop\b/, `${f} content carries shadow-pop`);
+    assert.match(src, /\bbg-black\/40\b/, `${f} overlay is bg-black/40`);
+    assert.ok(!/\bbg-black\/80\b/.test(src), `${f} has no bg-black/80 scrim`);
+  }
+  assert.match(read("components/ui/drawer.tsx"), /\bbg-black\/40\b/, "drawer overlay is bg-black/40");
+  assert.match(read("components/ui/dialog.tsx"), /\brounded-2xl\b/, "dialog content is rounded-2xl");
+  for (const f of ["dropdown-menu", "popover"]) {
+    const src = read(`components/ui/${f}.tsx`);
+    assert.match(src, /\brounded-xl\b[^"]*\bshadow-pop\b/, `${f} content is rounded-xl ... shadow-pop`);
+  }
+  assert.match(read("components/ui/tooltip.tsx"), /\bbg-foreground text-background\b/, "tooltip is dark");
+  const sonner = read("components/ui/sonner.tsx");
+  assert.match(
+    sonner,
+    /group-\[\.toaster\]:bg-foreground group-\[\.toaster\]:text-background/,
+    "sonner toast is dark (bg-foreground text-background)",
+  );
+  assert.ok(!/\bbg-background\b/.test(sonner), "sonner toast has no bg-background");
+});
