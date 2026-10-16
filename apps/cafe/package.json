@@ -427,6 +427,7 @@
     "lib/printer/print-gating-fx-paths.test.ts",
     "lib/printer/device-printer-teardown.test.ts",
     "lib/css-compat.test.ts",
+    "lib/theme-tokens.test.ts",
     "lib/appearance-settings-paths.test.ts",
     "lib/appearance-settings-paths-2.test.ts",
     "lib/print-slip-code.test.ts",

@@ -21,8 +21,9 @@
  * The @theme inline block maps CSS custom properties to Tailwind utility
  * classes (e.g. --color-primary -> bg-primary, text-primary).
  *
- * The :root and .dark blocks define the actual color values using oklch.
- * All colors MUST use oklch format.
+ * The :root and .dark blocks define the actual color values (hex for the new
+ * theme, oklch for the older tokens: charts, shadows, the dark sidebar).
+ * Plain sRGB (hex) lets a token get a tint fallback (postcss-tint-fallback).
  *
  * To add a new semantic color:
  * 1. Add the variable to :root (light value) and .dark (dark value)
@@ -64,6 +65,33 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  /* The new theme's status set, ink pair, quiet text and popover shadow. */
+  --color-status-ok: var(--status-ok);
+  --color-status-ok-ink: var(--status-ok-ink);
+  --color-status-ok-tint: var(--status-ok-tint);
+  --color-status-warn: var(--status-warn);
+  --color-status-warn-ink: var(--status-warn-ink);
+  --color-status-warn-tint: var(--status-warn-tint);
+  --color-status-bad: var(--status-bad);
+  --color-status-bad-ink: var(--status-bad-ink);
+  --color-status-bad-tint: var(--status-bad-tint);
+  --color-status-info: var(--status-info);
+  --color-status-info-ink: var(--status-info-ink);
+  --color-status-info-tint: var(--status-info-tint);
+  --color-status-bill: var(--status-bill);
+  --color-status-bill-ink: var(--status-bill-ink);
+  --color-status-bill-tint: var(--status-bill-tint);
+  --color-status-reserved: var(--status-reserved);
+  --color-status-reserved-ink: var(--status-reserved-ink);
+  --color-status-reserved-tint: var(--status-reserved-tint);
+  --color-status-info-border: var(--status-info-border);
+  --color-status-bill-border: var(--status-bill-border);
+  --color-status-reserved-border: var(--status-reserved-border);
+  --color-ink: var(--ink);
+  --color-on-ink: var(--on-ink);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --shadow-pop: 0 24px 60px rgb(0 0 0 / 0.18), 0 0 0 1px rgb(0 0 0 / 0.04);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -166,77 +194,101 @@
   }
 }
 
-/* White & Blue values (owner, 2026-09-29: "full sab proper White and blue theme
-   base" — replaces the Paper & Ink beige/terracotta; the token NAMES are kept so
-   every screen already on the brand system moves together). Every text pairing
-   is WCAG-AA measured by lib/brand-contrast.test.ts (relative-luminance formula):
-   ink on white 17.9:1, white on the blue action 5.2:1 (hover 6.7:1), blue on
-   white 5.2:1, muted on white 6.4:1 / on paper 5.9:1. The active nav row keeps
-   INK text on the soft tint (blue text there is only 4.5:1 — no margin) and
-   carries the state in its blue icon + weight. Field borders are 3.1:1 on white (WCAG 1.4.11 needs 3:1 for a control's
-   edge); --brand-rule is DECORATIVE only (dividers), never a field.
+/* The new light theme (owner's mock-up, 2026-10-16): zinc neutrals and the
+   IBM-blue action; the token NAMES are kept so every screen on the brand system
+   moves together. Every text pairing is WCAG-AA measured by
+   lib/brand-contrast.test.ts. Field borders (--brand-field) are 3:1 on white
+   (WCAG 1.4.11); --brand-rule is DECORATIVE only (dividers), never a field.
    The action colour is BLUE (--brand-primary), never green: green already
    means "Completed" in the status vocabulary. --brand-accent is the same blue,
-   for focus rings, chart marks and small marks — never a status. */
+   for focus rings, chart marks and small marks — never a status.
+   --brand-up and --status-ok-ink are #16733a, not the mock-up's #198038: on its
+   own 10% tint (the Tally card) that green measures 4.38:1, under the pinned 4.5. */
 :root {
-  /* The page behind the cards: white a hair toward blue-grey, so white cards read. */
-  --brand-paper: #f5f7fb;
-  /* The staff sidebar's surface — near-white; rows hover on --brand-wash and the
-     active row is the soft blue tint below. */
-  --brand-sidebar: #f8fafc;
+  /* The page behind the cards. */
+  --brand-paper: #f4f4f5;
+  /* The staff sidebar's surface (light for now; the shell task makes it dark). */
+  --brand-sidebar: #fafafa;
   /* One step down from the surfaces: hover / pressed. */
-  --brand-wash: #eaeff6;
+  --brand-wash: #f2f2f4;
   /* Cards, fields, the header. */
   --brand-slip: #ffffff;
-  /* Text (never an action fill any more — the action is --brand-primary). */
-  --brand-ink: #0f172a;
-  --brand-ink-hover: #1e293b;
-  --brand-muted: #556070;
-  --brand-rule: #e2e8f0;
-  --brand-field: #8a94a6;
-  --brand-accent: #2563eb;
+  /* Text (never an action fill — the action is --brand-primary). */
+  --brand-ink: #18181b;
+  --brand-ink-hover: #27272a;
+  --brand-muted: #52525b;
+  --brand-rule: #e2e2e6;
+  --brand-field: #8b8b93;
+  --brand-accent: #0f62fe;
   /* The action colour: primary buttons, the chosen period, the active nav row. */
-  --brand-primary: #2563eb;
-  --brand-primary-hover: #1d4ed8;
+  --brand-primary: #0f62fe;
+  --brand-primary-hover: #0043ce;
   /* A soft blue tint: the active nav row's fill (ink text on it, blue icon). */
-  --brand-primary-soft: #e8f0fe;
-  --brand-danger: #b42318;
+  --brand-primary-soft: #edf5ff;
+  --brand-danger: #a2191f;
   /* A change for the better on a dashboard figure ("▲ 6% vs Tue, 22 Sep") — text
      only, always beside an arrow and words, never a fill or a status. The
      worse direction reuses --brand-danger. */
-  --brand-up: #1d7a46;
+  --brand-up: #16733a;
 }
 
 :root {
-  --radius: 0.75rem;
-  --background: oklch(0.985 0.005 240);
-  --foreground: oklch(0.18 0.03 250);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.03 250);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.03 250);
-  /* White & Blue (owner, 2026-09-29: "full sab" — every staff screen, not only the
-     ones already on the brand classes): the shadcn action colour IS the brand
-     blue, one source. --success stays green (a status, never an action). */
+  --radius: 0.625rem;
+  --background: #f4f4f5;
+  --foreground: #18181b;
+  --card: #ffffff;
+  --card-foreground: #18181b;
+  --popover: #ffffff;
+  --popover-foreground: #18181b;
+  /* The shadcn action colour IS the brand blue, one source. --success stays
+     green (a status, never an action). */
   --primary: var(--brand-primary);
-  --primary-foreground: var(--brand-slip);
+  --primary-hover: #0043ce;
+  --primary-foreground: #ffffff;
   --primary-soft: var(--brand-primary-soft);
-  --secondary: oklch(0.96 0.01 240);
-  --secondary-foreground: oklch(0.25 0.03 250);
-  --muted: oklch(0.96 0.01 240);
-  --muted-foreground: oklch(0.5 0.02 250);
-  --accent: var(--brand-primary-soft);
-  --accent-foreground: var(--brand-primary-hover);
-  --destructive: oklch(0.6 0.22 25);
-  --destructive-foreground: oklch(0.99 0.01 150);
-  --success: oklch(0.62 0.17 155);
-  --warning: oklch(0.78 0.16 75);
-  --border: oklch(0.92 0.01 240);
-  --input: oklch(0.92 0.01 240);
+  --secondary: #f2f2f4;
+  --secondary-foreground: #52525b;
+  --muted: #f2f2f4;
+  --muted-foreground: #52525b;
+  /* Quieter than muted: hints and meta text. */
+  --subtle-foreground: #6b6b74;
+  --accent: #edf5ff;
+  --accent-foreground: #0043ce;
+  --destructive: #da1e28;
+  --destructive-foreground: #ffffff;
+  --success: #24a148;
+  --warning: #ff832b;
+  --border: #e2e2e6;
+  --input: #8b8b93;
   --ring: var(--brand-accent);
+  --ink: #18181b;
+  --on-ink: #ffffff;
+  /* Status colours: base (dots, fills), -ink (text on the tint), -tint (soft
+     fill), -border (outlined chips). */
+  --status-ok: #24a148;
+  --status-ok-ink: #16733a;
+  --status-ok-tint: #defbe6;
+  --status-warn: #ff832b;
+  --status-warn-ink: #ba4e00;
+  --status-warn-tint: #fff2e8;
+  --status-bad: #da1e28;
+  --status-bad-ink: #a2191f;
+  --status-bad-tint: #fff1f1;
+  --status-info: #0f62fe;
+  --status-info-ink: #0043ce;
+  --status-info-tint: #edf5ff;
+  --status-info-border: #a6c8ff;
+  --status-bill: #b28600;
+  --status-bill-ink: #8e6a00;
+  --status-bill-tint: #fcf4d6;
+  --status-bill-border: #f1c21b;
+  --status-reserved: #8a3ffc;
+  --status-reserved-ink: #6929c4;
+  --status-reserved-tint: #f6f2ff;
+  --status-reserved-border: #d4bbff;
   --gradient-primary: linear-gradient(135deg, var(--brand-primary), var(--brand-primary-hover));
   --shadow-card: 0 1px 3px oklch(0.18 0.03 250 / 0.06), 0 1px 2px oklch(0.18 0.03 250 / 0.04);
-  --shadow-elevated: 0 10px 30px -10px rgb(37 99 235 / 0.25);
+  --shadow-elevated: 0 10px 30px -10px rgb(15 98 254 / 0.25);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -246,8 +298,7 @@
      are read only by the shadcn sidebar primitive — the desktop rail AND the
      phone sheet, which is portaled out of the sidebar's own tree, so they
      have to be set here rather than on a wrapper. Ink on the sidebar surface
-     16.1:1, muted 5.5:1, the accent focus ring 4.6:1 (pinned in
-     lib/brand-contrast.test.ts). */
+     and the accent focus ring are pinned in lib/brand-contrast.test.ts. */
   --sidebar: var(--brand-sidebar);
   --sidebar-foreground: var(--brand-ink);
   --sidebar-primary: var(--brand-ink);
@@ -258,26 +309,57 @@
   --sidebar-ring: var(--brand-accent);
 }
 
+/* The mock-up's dark set on our names (no switch yet). Opaque values only, so
+   every colour keeps its -rgb tint twin (postcss-tint-fallback); the three
+   borders keep an alpha on purpose (lib/css-compat.test.ts expects it). The
+   mock-up's translucent tints are flattened over its surface #17171a. */
 .dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
+  --background: #0e0e10;
+  --foreground: #f4f4f5;
+  --card: #17171a;
+  --card-foreground: #f4f4f5;
+  --popover: #17171a;
+  --popover-foreground: #f4f4f5;
+  --primary: #0f62fe;
+  --primary-hover: #4589ff;
+  --primary-foreground: #ffffff;
+  --secondary: #1c1c20;
+  --secondary-foreground: #a9a9b2;
+  --muted: #1c1c20;
+  --muted-foreground: #a9a9b2;
+  --subtle-foreground: #80808a;
+  --accent: #1e293f;
+  --accent-foreground: #a6c8ff;
+  --destructive: #fa4d56;
+  --destructive-foreground: #ffffff;
+  --success: #42be65;
+  --warning: #ff832b;
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: #4589ff;
+  --ink: #f4f4f5;
+  --on-ink: #0e0e10;
+  --status-ok: #42be65;
+  --status-ok-ink: #6fdc8c;
+  --status-ok-tint: #1d2e25;
+  --status-warn: #ff832b;
+  --status-warn-ink: #ffb784;
+  --status-warn-tint: #37261c;
+  --status-bad: #fa4d56;
+  --status-bad-ink: #ff8389;
+  --status-bad-tint: #371f22;
+  --status-info: #4589ff;
+  --status-info-ink: #a6c8ff;
+  --status-info-tint: #1d2638;
+  --status-info-border: #2c4a81;
+  --status-bill: #f1c21b;
+  --status-bill-ink: #f1c21b;
+  --status-bill-tint: #2d281a;
+  --status-bill-border: #79641a;
+  --status-reserved: #a56eff;
+  --status-reserved-ink: #be95ff;
+  --status-reserved-tint: #292238;
+  --status-reserved-border: #573e81;
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
