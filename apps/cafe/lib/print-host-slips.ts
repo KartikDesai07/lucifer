@@ -125,7 +125,14 @@ export interface SlipPrintTarget {
   lan?: { host: string; port: number };
 }
 
-export type HostPrintSlip = (HostKotSlip | HostReceiptSlip | HostTokenSlip | HostEodSlip | HostTestSlip) & { target?: SlipPrintTarget };
+/** Printing Phase 4 (spec §5.2): a printer job's slip also names its printer (`printerId`), whose text switch the bridge's
+ *  text step reads (lib/printer/kot-text/text-kot-print.ts); absent in simple mode and on every other slip. `takeover`:
+ *  this device prints that printer only for another device (Phase 3's failover), so it prints pictures (spec §5.3). */
+export type HostPrintSlip = (HostKotSlip | HostReceiptSlip | HostTokenSlip | HostEodSlip | HostTestSlip) & {
+  target?: SlipPrintTarget;
+  printerId?: string;
+  takeover?: true;
+};
 
 export const ROUND_LABEL_PREFIX = "Round ";
 const KOT_TITLE_PREFIX = "KOT-";

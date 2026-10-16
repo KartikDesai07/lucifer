@@ -657,10 +657,11 @@ test("INVENTORY: files containing the needle useReactToPrint( under app/componen
 // s63 fix round: use-print-host-beat.ts 80 -> 90 (measured 86) -- the shared mutation scope (W-H) and the
 // onHost hook that lets a host answer trigger the offline follow-up (W-O) are 7 unavoidable lines.
 // Phase 2 Session 2E: use-print-host-bridge.ts 250 -> 255 (measured 252): a slip's own Windows printer and paper.
-test("PIN (P): line budgets — PrintHostProvider.tsx <= 200, use-print-host-bridge.ts <= 255, use-print-host-drain.ts <= 150, use-print-host-beat.ts <= 90, PrintHostPrintSources.tsx <= 110, PrintHostEodSource.tsx <= 90, PosPulseProvider.tsx <= 300, use-self-order-auto-print.ts <= 300", () => {
+// Printing Phase 4 Session 4B: use-print-host-bridge.ts 255 -> 265 (measured 262): the text step before the KOT surface.
+test("PIN (P): line budgets — PrintHostProvider.tsx <= 200, use-print-host-bridge.ts <= 265, use-print-host-drain.ts <= 150, use-print-host-beat.ts <= 90, PrintHostPrintSources.tsx <= 110, PrintHostEodSource.tsx <= 90, PosPulseProvider.tsx <= 300, use-self-order-auto-print.ts <= 300", () => {
   const budgets: [string, number][] = [
     [PRINT_HOST_PROVIDER, 200],
-    [USE_PRINT_HOST_BRIDGE, 255],
+    [USE_PRINT_HOST_BRIDGE, 265],
     [USE_PRINT_HOST_DRAIN, 150],
     [USE_PRINT_HOST_BEAT, 90],
     [PRINT_HOST_PRINT_SOURCES, 110],

@@ -130,6 +130,11 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
   useEffect(() => {
     targetsRef.current = printers.targets;
   }, [printers.targets]);
+  // Printing Phase 4 (spec §5.3): the network printers it prints only for another device (a takeover) print pictures.
+  const takeoverRef = useRef(printers.takeoverIds);
+  useEffect(() => {
+    takeoverRef.current = printers.takeoverIds;
+  }, [printers.takeoverIds]);
   // Session 2C (the 2C gate's review, I-2): a printer job aimed at this device that it does not print on means its
   // printer list is stale (a missed print-setup frame, a printer just re-saved onto it): read it again, at most once
   // a minute, and the agent leases it as soon as it knows. A device that writes a printer which is not its local
@@ -162,7 +167,8 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
           resolve(result);
         };
         try {
-          queueRef.current(printAgentSlipOf(job, cafeDateString(), job.printerId === undefined ? undefined : targetsRef.current[job.printerId]), done);
+          const slip = printAgentSlipOf(job, cafeDateString(), job.printerId === undefined ? undefined : targetsRef.current[job.printerId]);
+          queueRef.current(job.printerId !== undefined && takeoverRef.current.includes(job.printerId) ? { ...slip, takeover: true } : slip, done);
         } catch {
           // A payload this page cannot turn into a slip (deploy skew): nothing was sent, and never will be.
           done({ ok: false, error: new PrintWriteError(PRINT_HOST_PRINT_FAILED_MESSAGE, "no", true) });

@@ -35,10 +35,12 @@ export function failedAckBody(deviceId: string, epoch: number, outcome: PrintWri
 /** The slip the host bridge prints for one leased job: today's renderer props (print-host-slips.ts),
  *  plus the job's labels as the one banner on top (spec §7.7). An end-of-day summary takes none. Session 2E: a job
  *  on a Windows printer this PC prints by name carries that printer's target; Session 2F1: one on one of the POS app's
- *  printers (bridge v2) carries that printer's id. */
+ *  printers (bridge v2) carries that printer's id. Printing Phase 4: a printer job carries its printer's id. */
 export function printAgentSlipOf(job: LeasedPrintJob, todayKey: string, target?: SlipPrintTarget): HostPrintSlip {
   const slip = hostPrintSlipOf(job.payload, todayKey);
   const banner = printBannerText(job.labels);
   const labelled: HostPrintSlip = banner === "" || slip.surface === "eod" ? slip : { ...slip, banner };
-  return target === undefined ? labelled : { ...labelled, target };
+  // Printing Phase 4 (spec §5.2): a printer job names its printer, whose text switch the bridge reads.
+  const named: HostPrintSlip = job.printerId === undefined ? labelled : { ...labelled, printerId: job.printerId };
+  return target === undefined ? named : { ...named, target };
 }

@@ -30,6 +30,7 @@ import {
 import { createWindowLateCompletionGuard } from "@/lib/print-host-late-completion";
 import { hostPrintFailureMessage } from "@/lib/print-write-outcome";
 import { createHostSlipOutcomes, type HostPrintDone } from "@/lib/print-host-outcomes";
+import { textKotEnv, textKotWriteFor } from "@/lib/printer/kot-text/text-kot-print";
 import type { Order } from "@/types";
 
 /** What the bridge is printing: a claimed job's slip, or PH-7's attestation test slip
@@ -188,8 +189,15 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
     watchdogRef.current = window.setTimeout(abandon, PRINT_HOST_DISPATCH_TIMEOUT_MS);
     if (surface === "receipt" || surface === "token") printReceipt();
     else if (surface === "eod") printEod();
-    else printKot();
-  }, [current, eodReady, slipCodePending, surfacesMounted, printKot, printReceipt, printEod, settle, abandon]);
+    else {
+      // Printing Phase 4 (spec §5.2, S1, S3, S4): a job's kitchen slip whose printer's text switch is on, and that text
+      // can print exactly, goes as text through that printer's own writer, under the same watchdog and outcome; else the
+      // picture, exactly as before.
+      const text = current.kind === "slip" ? textKotWriteFor({ slip: current.slip, settings: settings.data, target, env: textKotEnv() }) : null;
+      if (text === null) printKot();
+      else void text.write().then(finish, (error: unknown) => settle(hostPrintFailureMessage(error)));
+    }
+  }, [current, eodReady, slipCodePending, surfacesMounted, printKot, printReceipt, printEod, settle, abandon, settings.data, target, finish]);
 
   // The eod wait is bounded: an aggregate that never loads (host offline from
   // the API, a deploy in flight) must not hold every KOT behind it. The claim
