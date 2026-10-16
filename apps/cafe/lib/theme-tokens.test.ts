@@ -155,3 +155,8 @@ test("no CSS the Android WebView 109 cannot read", () => {
     assert.ok(!css.includes(needle), `globals.css contains ${needle}`);
   }
 });
+
+test("radius steps: cards 12 px (xl) and dialogs/sheets 16 px (2xl), as spec 4.5 says", () => {
+  assert.equal(declOf(themeInline, "--radius-xl"), "calc(var(--radius) + 2px)", "--radius-xl is 10 + 2 = 12 px (spec 4.5 cards)");
+  assert.equal(declOf(themeInline, "--radius-2xl"), "calc(var(--radius) + 6px)", "--radius-2xl is 10 + 6 = 16 px (spec 4.5 dialogs and sheets)");
+});
