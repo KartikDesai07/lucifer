@@ -120,6 +120,15 @@ class LanScanTest {
   }
 
   @Test
+  fun aScanThatFailsForAnyReasonAnswersNoNetworkNeverACrash() {
+    // The 4C review's m-1: the scan runs on a plain thread, where an uncaught exception would end the whole app (the
+    // print host with it) and the page's request would never be answered.
+    assertEquals("a throw is no network", LanScanAnswer(emptyList(), null, LanScanAnswer.NO_NETWORK), LanScanRun.answerOrNone { throw IllegalStateException("boom") })
+    val found = LanScanAnswer.of(listOf("192.168.1.0/24"), listOf("192.168.1.50"))
+    assertEquals("an answer passes through", found, LanScanRun.answerOrNone { found })
+  }
+
+  @Test
   fun theAnswerNamesTheNetworksOrSaysThereIsNone() {
     val answer = LanScanAnswer.of(listOf("192.168.1.0/24"), listOf("192.168.1.50"))
     assertEquals(listOf("192.168.1.50"), answer.found)

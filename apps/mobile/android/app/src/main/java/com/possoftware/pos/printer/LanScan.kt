@@ -152,6 +152,15 @@ object LanScanRun {
         .map { LanScanPlan.dotted(it) }
   }
 
+  /** The 4C review's m-1: an answer whatever happens. The scan runs on a plain thread, where an uncaught exception would
+   *  end the whole app (the print host with it); any failure answers no network instead. */
+  fun answerOrNone(scan: () -> LanScanAnswer): LanScanAnswer =
+      try {
+        scan()
+      } catch (e: Exception) {
+        LanScanAnswer.of(emptyList(), emptyList())
+      }
+
   private fun probe(connector: LanConnector, host: Int): Boolean =
       try {
         connector.reachable(LanScanPlan.dotted(host), LanScanPlan.LAN_SCAN_PORT, LanScanPlan.LAN_SCAN_CONNECT_MS)
@@ -183,7 +192,7 @@ object LanScan {
 
   /** One scan on a thread of its own (never a printer's io thread); [done] is called once, with the answer. */
   fun findPrinters(context: Context, done: (LanScanAnswer) -> Unit) {
-    val thread = Thread({ done(scan(context)) }, "pos-lan-scan")
+    val thread = Thread({ done(LanScanRun.answerOrNone { scan(context) }) }, "pos-lan-scan")
     thread.isDaemon = true
     thread.start()
   }

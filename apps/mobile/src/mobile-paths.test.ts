@@ -3261,6 +3261,8 @@ function lanScanProblems(s: LanScanSources): string[] {
   need(k, 'cm.allNetworks', 'only the default network is looked at');
   need(k, 'NetworkCapabilities.TRANSPORT_VPN', 'a VPN is not left out');
   need(k, 'network.socketFactory', 'a probe socket is not bound to the chosen network');
+  // The 4C review's m-1: the scan thread never ends the app, and the page always hears an answer.
+  need(k, 'Thread({ done(LanScanRun.answerOrNone { scan(context) }) }, "pos-lan-scan")', 'an exception on the scan thread can end the app');
   for (const banned of ['getOutputStream', 'outputStream', 'PrinterThreads', 'PrinterPool', 'PrinterManager']) {
     if (k.includes(banned)) {
       out.push('the scan uses ' + banned);
@@ -3269,6 +3271,7 @@ function lanScanProblems(s: LanScanSources): string[] {
   const m = strip(s.module);
   need(m, '@ReactMethod\n  fun findNetworkPrinters(promise: Promise) {', 'the module has no findNetworkPrinters');
   need(m, 'LanScan.findPrinters(reactContext)', 'findNetworkPrinters does not run the scan');
+  need(m, 'promise.resolve(lanScanMap(answer))\n        } catch (e: Exception) {\n          fail(promise, BridgeCodes.UNSUPPORTED)', 'an answer that cannot be sent is never a crash');
   const t = strip(s.protocol);
   if (!tsList(t, 'NATIVE_METHODS').includes('network.findPrinters')) {
     out.push('network.findPrinters is not a bridge method');
@@ -3303,10 +3306,12 @@ test('pin 33 mutation: every scan needle can fail', () => {
     ['network.socketFactory', 'javax.net.SocketFactory.getDefault()'],
     ['object LanScan {', 'object LanScan {\n  fun send(socket: java.net.Socket) = socket.getOutputStream()'],
     ['object LanScan {', 'object LanScan {\n  private val threads = PrinterThreads.dns'],
+    ['done(LanScanRun.answerOrNone { scan(context) })', 'done(scan(context))'],
   ]);
   everyMutationCaught(run('module'), base.module, [
     ['@ReactMethod\n  fun findNetworkPrinters(', 'fun findNetworkPrinters('],
     ['LanScan.findPrinters(reactContext)', 'LanScan.nothing(reactContext)'],
+    ['} catch (e: Exception) {\n          fail(promise, BridgeCodes.UNSUPPORTED)', '} finally {\n          Unit'],
   ]);
   everyMutationCaught(run('protocol'), base.protocol, [
     ["  'network.findPrinters',\n", ''],

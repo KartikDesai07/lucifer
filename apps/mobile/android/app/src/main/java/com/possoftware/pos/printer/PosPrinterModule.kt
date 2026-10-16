@@ -330,7 +330,14 @@ class PosPrinterModule(private val reactContext: ReactApplicationContext) :
   @ReactMethod
   fun findNetworkPrinters(promise: Promise) {
     guarded(promise, BridgeCodes.UNSUPPORTED) {
-      LanScan.findPrinters(reactContext) { answer -> promise.resolve(lanScanMap(answer)) }
+      LanScan.findPrinters(reactContext) { answer ->
+        // On the scan's own thread: an answer that cannot be sent is a refusal, never an exception that ends the app.
+        try {
+          promise.resolve(lanScanMap(answer))
+        } catch (e: Exception) {
+          fail(promise, BridgeCodes.UNSUPPORTED)
+        }
+      }
     }
   }
 
