@@ -6237,3 +6237,139 @@ Task 12's test ops changed, and its lint list gained `hooks/use-print-agent.ts`)
 `D:\kd\p4v` (`gen4b\val6b\`: every RED and GREEN as written, every task's whole tree identical to gold);
 the plan file's own section rebuilt the gold tree `a7926418`; the cafe chain there **6080** (6079 pass, 0 fail,
 1 skipped).
+
+## Session 4B Results (filled in by the implementer)
+
+Executed on 2026-10-16 with superpowers:executing-plans, task by task, Tasks 0 and 9 → 16, in `D:\kd\lucifer` on
+`feat/printing-phase-4` (start `c6f3f2a`, the 4A gate's commit). No push, no merge, no deploy, no download, no web
+request, no upload.
+
+### Commits (`c6f3f2a..HEAD`)
+
+| Commit | Task | `apps/cafe` tree | Gold (`D:\kd\p4g`, `g4b-v5`) |
+|---|---|---|---|
+| `c4964b3` | 9: the 4A gate's rulings in the text renderer | `f585076` | `3205036` → `f585076` |
+| `35e7920` | 10: the switch's storage (`text-kot-store.ts`) | `dd4dca1` | `86a4b5f` → `dd4dca1` |
+| `f42c830` | 11: the Windows printer's raw write, page side | `3f74d9d` | `8f6dac0` → `3f74d9d` |
+| `f3931fb` | 12: the bridge's text step (`text-kot-print.ts`) | `f6c682b` | `3589c08` → `f6c682b` |
+| `928c065` | 13: "Fast text KOTs (English only)" in the printer panel | `cefd5b6` | `4c2f359` → `cefd5b6` |
+| `2e3fa26` | 14: the not-routed words by kind | `49db995` | `f4ef670` → `49db995` |
+| (this commit) | 16: Results | | |
+
+Every task's `apps/cafe` tree equals its gold commit's. After Task 14, `git diff --stat f4ef670 HEAD` lists only this plan
+and the spec (the gate's own commit `c6f3f2a` carries them); the code is the gold tree `a7926418` exactly.
+
+### Start (Task 0)
+
+- Branch `feat/printing-phase-4` at `c6f3f2a` on top of `f46600e`, working tree clean; D: 9.5 GB free, C: 74 GB free; the
+  `.bin` check `4`.
+- The cafe chain `# tests 6022`, `# pass 6021`, `# fail 0`, `# skipped 1` (65 s, in the background); `npx tsc --noEmit`
+  clean; lint `✖ 2 problems (0 errors, 2 warnings)`. All as Expected.
+
+### How the code was applied
+
+Every block went verbatim into the real repo through `D:\kd\pos-dev-keep\phase3-final-gate\apply_blocks_clone.py`, a
+`--dry` run first, then for real, one step's line range at a time, so each RED was seen before its code went in:
+Task 9 14 + 9 ops, Task 10 2 + 1, Task 11 2 + 9, Task 12 6 + 7, Task 13 5 + 10, Task 14 2 + 4 (**71**). Each find
+matched exactly once. Every commit message was copied from the plan's block (its lines, by `sed -n`) into a scratch file
+and committed with `git commit -F`. The test commands for `task-done` ran through scratchpad wrapper scripts.
+
+### Per-task RED → GREEN (every Expected line compared; all matched)
+
+| Task | RED (as seen) | GREEN (as seen) |
+|---|---|---|
+| 9 | `not ok 16, 22, 25, 27, 28, 29, 35, 38` (the eight the plan names); tests 46, pass 38, **fail 8** | **46/46**; typecheck and lint clean |
+| 10 | `# Error: Cannot find module './text-kot-store'`, `not ok 1 - lib\\printer\\kot-text\\text-kot-store.test.ts`; tests 1, pass 0, **fail 1** | **10/10**; typecheck and lint clean |
+| 11 | `not ok 1`–`6` (the six the plan names); tests 6, pass 0, **fail 6** | with the Windows suites **77/77**; typecheck and lint clean |
+| 12 | `not ok 1`–`5` of `print-host-text-kot.test.ts`, `# Error: Cannot find module './text-kot-print'`, `not ok 2 - lib\\printer\\kot-text\\text-kot-print.test.ts`; tests 7, pass 1, **fail 6** | with the bridge's suites **243/243**; typecheck and lint clean |
+| 13 | `not ok 7`–`12`, `# Error: Cannot find module './text-kot-printers'`, `not ok 3 - lib\\printer\\kot-text\\text-kot-printers.test.ts`; tests 13, pass 6, **fail 6** | with the panel's and the bridge's suites **280/280**; typecheck and lint clean |
+| 14 | `not ok 4`, `not ok 5`; tests 8, pass 6, **fail 2** | **77/77**; typecheck and lint clean |
+
+### Task 15: end to end
+
+- **Step 1:** the gate's tools copied from `D:\kd\pos-dev-keep\phase4\gate-4a\e2e\` into the scratchpad (15 files);
+  `3110 and 9100 free`; D: 9.5 GB free.
+- **Step 2:** `D:\kd\p4b-base` at `d21ee37` with its `BUILD_ID` (not rebuilt); `D:\kd\p4b-new` moved with
+  `git checkout --detach` to `2e3fa26` (` M apps/cafe/next.config.ts` only, the gate's cache-off line; its `apps/cafe`
+  tree `49db995`); its build `EXIT 0` (compiled in 42 s, the 2 old lint warnings; `.next` 26 MB).
+- **Step 3, the headless run** (`e2e-final.sh s`, fresh databases `pos_scratch_e2e_4g_sa1`, `sb1`, `spa`, `spb`, `st`;
+  `EXIT 0`): the filtered output is **identical, line for line, to the plan's Expected** (51 lines; only the saved
+  printer's id differs, as the plan says): **S1 simple mode 9/9 byte for byte equal (sa1 vs sb1); S1 printers mode 9/9
+  (spa vs spb)**, with the very picture sizes and hashes the gate recorded (this PC's Chrome); text on: the text test
+  472 B with TEXT TEST and the 47-character ruler; KOT 698 B, round 2 596 B, the whole tab 811 B, VOID 668 B, TABLE MOVED
+  517 B, cancel notice 800 B, each with the plan's hash; the bill, the token and the Hindi KOT their S1 picture bytes; the
+  REPRINT 752 B text with its centred band, the Hindi REPRINT a 62,030 B picture; the logo on and the QR line pictures;
+  text again 698 B; off: a picture. Printers mode (v2): KOT 698 B and VOID 647 B text by the printer's own switch
+  (`printer:6ad1d98d6f22a1712cde51f1:app:tcp:127.0.0.1:9100`), off: a picture. **The ratio** (spec §11 item 1): KOT round 1
+  56,414 / 698 = 80.8×, round 2 78.3×, whole tab 74.8×, VOID 79.8×, TABLE MOVED 66.1×, cancel notice 76.3×.
+- **Step 4, the emulator** (C: 74 GB free; `-no-snapshot -memory 4096 -no-audio`; the app `base.apk` `29115bdf`, the
+  release APK; the crash buffer empty at boot; the app on its own empty start screen; database `pos_scratch_e2e_4g_semu`,
+  the three seed lines; `next start` of `p4b-new` on 3110 through `adb reverse tcp:3110 tcp:3110` only; the fake printer
+  on the host, the app's network printer at `10.0.2.2:9100`):
+  1. `http://localhost:3110` typed on the start screen, Open POS. The app opened signed in with a session cookie left by
+     an earlier run (the menu looked right); to be sure it was this database's, Account → Sign out, then sign in as
+     `e2eadmin` (TAB, `type-secret.py`, Enter): the dashboard of "POS Software".
+  2. "Network printer (Wi-Fi or Ethernet)" `10.0.2.2`, 9100, "Use this network printer": `Network printer 10.0.2.2 is
+     connected.`; the panel lists "Fast text KOTs (English only)" with `Network printer 10.0.2.2`, `80 mm`, the switch off.
+  3. Masala Chai + Cheesecake → Send to Kitchen: one slip of **44,454 B**, a picture (`1b 40 1d 76 30 …`).
+  4. A tap on the printer's row: a **472-byte** slip starting **`1b 40 1b 52 00 1b 4d 00`** (TEXT TEST, the sample with
+     `#12` and `[1] Paneer Tikka`, the white-on-black line, the 47-character ruler), then "Did it print clearly, with the
+     ruler on one line?"; Yes → "On: English-only kitchen tickets print as text on this printer."
+  5. Masala Chai + Cheesecake → Send to Kitchen: a **544 B** text slip (`KITCHEN ORDER`, `#2`, `Round 1`, Order / Table /
+     Time / Staff, `1 x Masala Chai  Rs 40`, `1 x Cheesecake  Rs 220`, `2 item(s)`, `Round total: Rs 260`).
+  6. `reprint-latest`: `labels ["REPRINT"]`; 13 s later a **598 B** text slip, its first line the centred `REPRINT`
+     band (`GS B 1` once), no raster.
+  7. The switch off (immediate, no slip) → Masala Chai → Send to Kitchen: a **40,494 B** picture again.
+  8. Put back as found: Remove → "Yes, remove" (`Printer removed from this device.`; the section is gone with the
+     printer); More options → Change POS address → "Clear POS address" → Back: the empty start screen.
+     `adb reverse --remove-all`, `adb shell sync`, the crash buffer **0 lines**, `adb emu kill`; `stopped 22076` (the
+     3110 server, by `stop3110.ps1`); the fake printer `stopped 11708` (its command line names `fp-emu`).
+  Every emulator size equals the gate's pre-run (472, 544, 598, 40,494 B).
+- **The app 2.0.1 was not run** (the plan's reason).
+
+### Task 16: verification
+
+- **Step 1:** `36 files changed, 1704 insertions(+), 47 deletions(-)`; `0`; `apps/cafe/package.json` (the only path
+  outside `apps/cafe/{lib,hooks,components}`); the S1 pin `# pass 1`, `# fail 0`. `print-budget.test.ts` unchanged.
+- **Step 2:** the cafe chain **`# tests 6080`, `# pass 6079`, `# fail 0`, `# skipped 1`** (61 s); `typecheck clean`;
+  `✖ 2 problems (0 errors, 2 warnings)`. All as Expected.
+
+### Step 3: the fresh review (Claude Fable 5.1)
+
+A fresh reviewer on Claude Fable 5.1 (no 429), read-only on the repo, its probes in a worktree this session prepared
+(`D:\kd\p4rv4b` at `2e3fa26`, junctioned `node_modules`), which it left clean (no worktree made or removed). It read the
+spec, the plan's Session 4B and the 4A gate, every production diff and test, and the picture's writers; ran the cafe
+chain (6080/6079/0/1) and the seven 4B files (57/57); four hook-harness probes through the real bridge body; three
+mutations (two caught). **Verdict: "Ready to merge: Yes"; 0 Critical, 0 Important, 3 Minor.** With every switch off the
+bridge takes exactly today's path and calls no writer; with a switch on, text goes through the very writer and window the
+picture would use; the routes, keys, panel states and not-routed words check out against the picture's code and the
+router. No fix pass was needed.
+
+| Finding | Ruling |
+|---|---|
+| m-1 `hooks/use-text-kot-printers.ts` decides simple vs printers mode from a printers read that has not answered yet (`NO_PRINTERS` → `printersModeOn([])` false): on a printers-mode cafe the section can list this device's own printer for a moment under a `device:` key no printers-mode job uses; a tap then prints a test slip and shows "On", and the row goes when the read lands | Deferred to the 4B gate (no wrong paper: a printer job's key is `printer:…`, off → picture; the reviewer's fix: return `[]` while the read has not answered) |
+| m-2 `hooks/use-print-host-bridge.ts`: `void write().then(…)` lets a writer that throws synchronously escape the dispatch effect (the bridge would stay busy) | Deferred to the 4B gate (not reachable: every writer the routes use returns a promise before doing anything; the hardening is `Promise.resolve().then(write)`) |
+| m-3 `settingsForPaper(settings, target.paper)` in `textKotWriteFor` is inert for text (the columns come from the route's paper) | Deferred to the 4B gate (harmless and faithful to `PrintHostPrintSources`; a comment would say so) |
+
+What the reviewer set aside, and the ruling on each (each stands, as it reasoned: none changes paper with every switch
+off, and each is the picture's own behaviour or an owner ruling): the picture KOT's bottom cut (pre-existing, reported
+at the gate); a bill-only printer that takes a station's KOT as the no-printer fallback is not listed (pictures there);
+the late-completion window (the picture's, unreachable for text since every writer's deadline is under the watchdog);
+the m-3 centring rounding (the owner's "follow the picture"); the microtask between the lazy slip code turning "ready"
+and the dispatch (both the order's correct content); a whole-tab KOT routed nowhere also says "every item in this round
+was cancelled" (the owner's P4-9 words); a BLE device id lower-cased in its key (a case-only collision is not real);
+`desktopPrintRawOn`'s constant timeout (the picture's test seam only); the text renderer in the page bundle (a few KB,
+no request); `printRawOn` itself and the real-printer run (4C, 4D).
+
+### Differences from this plan
+
+1. **None in the code or the counts.** Every block, RED, GREEN, count and size is the plan's.
+2. **Task 15 Step 4, item 1:** the app opened already signed in (a session cookie from an earlier run with the same
+   test secret); the session signed out and in again so the run used this database's own admin, as the plan's sign-in
+   step intends.
+3. **Task 15 Step 4 (harness):** uiautomator reports the panel's switch as `checkable="false" checked="false"` even when
+   it is on (WebView 109's accessibility tree); the switch's state was read from screenshots (on after Yes, off after
+   the tap) and from the "On: …" line; the headless run reads the DOM (`checked=true` / `false`).
+4. **Order of work (process only):** Task 16 Step 1 and the fresh review ran while Task 15's headless run was in the
+   background (the reviewer kept off ports 3110 and 9100, mongod, adb and builds); Steps 1–2 were run again at the end
+   on the same `HEAD` (no code changed after Task 14).
