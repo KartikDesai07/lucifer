@@ -219,7 +219,8 @@ export function ScreenLock() {
     // Ruling R15: the stored lock goes first, so the next sign-in never lands on a stale cover.
     clearLockState(lockStorage());
     await logout();
-    // Still here: the sign-out did not go through (logout has said so). The cover stays, and holds a reload again.
+    // logout reports a failed sign-out itself and leaves this page up: the cover stays, so the lock is stored again
+    // and holds a reload. After a successful one the page is already leaving for /login, whose sign-in clears it.
     const still = openRef.current;
     if (still) writeLockState(lockStorage(), still.state);
   };
