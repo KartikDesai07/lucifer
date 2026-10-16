@@ -6546,3 +6546,170 @@ printer name (as `printOn`); the `allNetworks` deprecation (m-C); the page's sto
 9. **Task 25** ran on the branch build after an uninstall (the release key) and put the as-found app back by a fresh
    install of `29115bdf`; **Task 26** ran on the built main process unpackaged with a scratch `userData` (not a packaged
    test build), so the owner's installed app was not touched.
+
+## Session 4D Results (fast path, session 2 of 2)
+
+Executed on 2026-10-16 in `D:\kd\lucifer` on `feat/printing-phase-4` (start `330cac8`), test first, one commit per task.
+No push, no merge, no deploy, no upload, no download; nothing was sent to files.sandbee.in (the emulator's update came
+from a local test base); no real network was scanned and no real printer printed to.
+
+### Part A: Session 4C verified independently
+
+- Disks: D: 9.7 GB, C: 73 GB free; the `.bin` check `4`.
+- The code diff `5743907..330cac8 -- . ':!docs'` read in full (45 files, +1734 −37).
+- Every suite at `330cac8`: shared 1004; the cafe chain **6095 (6094 pass, 0 fail, 1 skipped)**; cafe typecheck clean,
+  lint 0 errors (2 old warnings); mobile 173, Jest 8, typecheck and lint clean; desktop 223, typecheck and lint clean;
+  release-native 12; print-tools 11; JUnit (`:app:testDebugUnitTest --rerun`, fresh XMLs) **109**, 0 failures: equal
+  to the 4C Results.
+- Scope: the diff from `d21ee37` to `workers`, `apps/cafe/models`, `apps/cafe/app/api` and `packages` is 0 bytes;
+  `print-budget.test.ts` is unchanged against `3fe1439`; S5 by git blob ids against `d21ee37`: PrinterManager,
+  PrinterPool, TransportFactory, the four transports and the Windows print-direct, escpos, raw-spool, raw-tcp and
+  print-job are the same blobs; the Android app's main changes are only `LanScan.kt` (new), `PosPrinterModule.kt`,
+  `Prefs.kt` and `PrinterDiscovery.kt`; the manifest is unchanged; the S1 pin ("the picture's files are byte for byte as
+  at the spec commit d21ee37") and "S1: with every switch off no slip answers text and no writer is called" pass.
+- A fresh review of 4C as landed (Claude Fable 5.1, read-only, probes in `D:\kd\p4rv4d`; no 429): **"Ready to merge:
+  Yes", 0 Critical, 0 Important, 3 Minor** (below). It ran the suites (cafe 6095/6094/0/1, desktop 223, mobile 173,
+  typecheck and lint), 22 mutation probes (19 caught outright; `open = false` removed = the deferred m-4, confirmed;
+  `type="button"` removed = its m-A; `socket.destroy()` removed hangs the file, never green), and read the Kotlin.
+
+### Commits (`330cac8..HEAD`)
+
+| Commit | Task |
+|---|---|
+| `0318637` | 30: the 4C review's minors: m-2 the Prefs.kt comment and pin 34 say what happens (the read rewrites nothing; `PrinterPool.init`'s existing save keeps the shown names); m-3 the page's Windows scan bound (`DESKTOP_LAN_SCAN_TIMEOUT_MS` = `NATIVE_LAN_SCAN_TIMEOUT_MS`, 20 s; a hung scan reads as none found); m-4 no host probed after the deadline (pinned) |
+| `e48a145` | 31: both apps 2.0.2 (`posVersionRelease`, `apps/desktop/package.json` and its lock's root version) |
+| `4a060b9` | 32: GO-LIVE-CHECKLIST "Existing cafes: the printing Phase 4 release", TEST-CHECKLIST "Phase 4 checks (text KOTs, Find network printers)", three runbook pins |
+| `484e0ff` | 30 (this session's review of 4C): m-A both buttons' `type="button"` pinned; m-B Find network printers reads the setup's printers from the page's cache (no query observer of its own: opening a form never refetches the list); m-C LanScanTest asserts the printer side's read on the test thread |
+| (this commit) | these Results |
+
+### Per-task RED → GREEN
+
+| Task | RED (as seen) | GREEN |
+|---|---|---|
+| 30 m-2 | pin 34's new mutations not caught ("mutation not caught: val saved = Prefs.savedPrinters(ctx)") | mobile-paths 70/70 |
+| 30 m-3 | the missing constant ("the same bound as the POS app's scan"), then with the constant alone "scanning" after 20 s instead of none found | lan-discovery 7/7 |
+| 30 m-4 | with `open = false` removed: "no probe starts after the limit (saw 64)" | lan-scan 9/9 |
+| 31 | the Android version alone at 2.0.2: pin 27 and its mutation test, and the cafe runbook pin (Windows version = Android's) | mobile-paths 70/70, go-live-runbook 102/102, desktop 224, release-native 12 |
+| 32 | the three new runbook pins (the step and the checks missing): go-live-runbook 102/105 | 105/105; the other checklist readers 59 pass, 0 fail |
+| 30 review m-A / m-B | m-A with `type="button"` removed from the row: "a found printer's row never submits the form around it"; m-B the pin on the observer | print-find-network-paths 3/3 |
+| 30 review m-C | a probe that writes one byte after the connect (temporary, restored byte for byte): `LanScanTest > aProbeConnectsSendsNothingAndClosesAtOnce FAILED` | JUnit 109/0/0 |
+
+### Counts (before → after)
+
+| Suite | `330cac8` | `HEAD` (`484e0ff` code) |
+|---|---|---|
+| cafe chain | 6095 (6094 pass, 0 fail, 1 skipped) | **6099 (6098 pass, 0 fail, 1 skipped)** |
+| cafe typecheck / lint | clean / 0 errors (2 old warnings) | clean / 0 errors (2 old warnings) |
+| packages/shared | 1004 | 1004 |
+| mobile `npm test` / Jest / typecheck / lint | 173 / 8 / clean / clean | 173 / 8 / clean / clean |
+| JUnit (`--rerun`) | 109 | 109 |
+| desktop `npm test` / typecheck / lint | 223 / clean / clean | **224** / clean / clean |
+| release-native / print-tools | 12 / 11 | 12 / 11 |
+| live legs (`verify:print:live`) | (not run in 4C) | 473 passed, 0 failed |
+| Next build (the build worktree `D:\kd\p4b-new` at `484e0ff`, webpack cache off) | | exit 0, 147 routes |
+
+### Task 33: the release set 2.0.2
+
+- Built from the repo at `484e0ff` (`n4d-builds.sh`, the N4 tool adapted): `:app:compileReleaseKotlin --rerun`, then
+  `assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a`, then `aR -PreactNativeArchitectures=x86_64`; the
+  test APKs for the emulator only (the local test base `http://127.0.0.1:8765/pos`, 1-minute times; each after its own
+  `:app:compileReleaseKotlin --rerun`); the repo's release classes compiled back to the real base at the end; then
+  `npm run dist` with `ELECTRON_RUN_AS_NODE` unset. Every APK: signer `5bd06ef3…3e40`, release key, not debuggable.
+
+| File | Size | SHA-256 |
+|---|---|---|
+| `Sandbee-POS-2.0.2-arm64-v8a.apk` (20002, real base, 720/30) | 7,365,798 | `85a05679f83514c0f0384b29b95a52d286f5e2da2e725a20999d75c6535a48d1` |
+| `Sandbee-POS-2.0.2-armeabi-v7a.apk` | 6,773,636 | `6f9b94ee4659dfb9a93a329389aaf8668f1e87380e020fc6b7ba3e87295cf105` |
+| `POS-Software-Setup-2.0.2.exe` (feed `https://files.sandbee.in/pos/windows`) | 112,545,633 | `15769771fee51b86d51d2dcd3dbf0a12b56e6eeaad7ee0e2d809625f51462191` |
+| `POS-Software-Setup-2.0.2.exe.blockmap` | 119,973 | `832ce565cfbce14df8f3904de4859e3389417b71eac9801afdacfa55d6227c63` |
+| `latest.json` (released 2026-10-16, the owner's notes) | 637 | `7297a3b84c85e8a910c751773dd4e2992e0458935ea8056494c025607a5a28e6` |
+| `latest.yml` | 353 | `cb9559ac75d56b5605d63cd8e3d95e5f19cbb0756cc65430d907a86db8399559` |
+| x86_64, real base (read back only; never installed: it would look at files.sandbee.in) | 7,497,525 | `d1b828e0…` |
+| test A 2.0.1 x86_64 (test base) / test B 2.0.2 x86_64 (test base) | 7,497,517 / 7,497,521 | `1ba9a6fc…` / `b884db4c…` |
+
+- `scripts/release-native.mjs` wrote `D:\kd\pos-apk-release\Sandbee-POS-2.0.2\` once (`upload\pos\android`,
+  `upload\pos\windows`, `SHA256SUMS.txt`, `UPLOAD-STEPS.txt`); `sha256sum -c SHA256SUMS.txt`: 6/6 OK. The release notes
+  are the owner's words (2026-10-16): "You can now find network printers on your Wi-Fi from the printer setup. Nothing
+  changes in how your slips print."
+
+### Task 33: the emulator smoke (the release code, test base)
+
+- As found: `pm path` present, the pulled `base.apk` `29115bdf…`, versionName 1.0, the crash buffer empty, the app's own
+  empty start screen.
+- `adb uninstall`, `adb install` of test A (2.0.1, release key, test base through `adb reverse tcp:8765`; the local fake
+  files server `n4d-files.mjs` served test B as 2.0.2 with the owner's notes); the POS address `http://localhost:3110`
+  (`adb reverse tcp:3110`; the build worktree's server, fresh database `pos_scratch_e2e_4g_demu`) → Open POS:
+  `PosUpdate: open`, the manifest and the APK fetched once from the local base, `download: 2.0.2 verified (7497521
+  bytes)`; signed in as `e2eadmin`.
+- HOME, 75 s, the app opened again: `check: 2.0.2 is ready`, `card: 2.0.2`: **"Update available", "Sandbee POS 2.0.2 is
+  ready to install."** with the notes; **Install** → Android's "Install unknown apps" (allowed: `REQUEST_INSTALL_PACKAGES:
+  allow`) → back on the card "Allow Sandbee POS to install apps, then tap Install again." → **Install** → "Do you want to
+  update this app?" → **Update** → Play Protect "App scan recommended" → **More details → Install without scanning** →
+  `install: done`, versionCode 20002 / 2.0.2, the home screen (no Open button, as GO-LIVE says), the crash buffer 0.
+  Opened from its icon: `check: ignored (not newer)`, still signed in.
+- **Find network printers** (the printer panel → "Network printer (Wi-Fi or Ethernet)"): "Looking for printers on this
+  Wi-Fi…", then one row `10.0.2.2 · port 9100` (nothing else on the emulator's virtual network); the fake printer logged
+  one connection of **0 bytes**. A tap filled `10.0.2.2` and `9100` and added nothing; **Use this network printer** →
+  "Network printer 10.0.2.2 is connected."
+- **Fast text KOTs (English only)**: the switch → the text test reached the fake printer: 484 bytes (the 472-byte text
+  test of Task 15 and the app's 12 bytes of DLE EOT), beginning `1b 40 1b 52 00 1b 4d 00`, the 47-character ruler on 80
+  mm → "Did it print clearly, with the ruler on one line?" **Yes** → "On: English-only kitchen tickets print as text on
+  this printer." **Send to Kitchen** (2 × Masala Chai): one text KOT of 504 bytes (492 of text and 12 of DLE EOT), `ESC @`,
+  `ESC R 0`, `ESC M 0`, the ticket in plain text with `Rs 80`, the cut `GS V 66 0`.
+- **Put back as found:** `adb reverse --remove-all`; `adb uninstall`; `adb install` of
+  `D:\kd\pos-dev-keep\apk-release\pos-emulator-x86_64-release.apk` (pulled back: `29115bdf…`, versionName 1.0); its empty
+  start screen; the crash buffer 0; `adb shell sync` (`pm path` present); `adb emu kill`. The server, the fake printer and
+  the files server stopped by PID after checking their command lines.
+
+### The reviews and their rulings
+
+**The review of 4C (Part A, Claude Fable 5.1, `5743907..330cac8`): "Ready to merge: Yes", 0 Critical, 0 Important.**
+
+| Finding | Ruling |
+|---|---|
+| m-A the Find network printers pin did not hold the two buttons' `type="button"` (the panel's network form is a `<form onSubmit>`; without it a row tap would also submit the address typed before) | **Fixed by TDD, `484e0ff`:** both needles pinned; RED with the attribute removed |
+| m-B `FindNetworkPrinters` mounted a printers query observer of its own: on the Printer setup page a form opened on a list older than 30 minutes would refetch `/api/printers` once | **Fixed by TDD, `484e0ff`:** it reads the page's cache (`getQueryData`), no observer; spec §12's "no request of any kind" holds exactly |
+| m-C `LanScanTest`'s "no byte, then EOF" assertion ran on a helper thread (a failure was only printed; pin 33's output-stream ban compensated) | **Fixed by TDD, `484e0ff`:** the read is asserted on the test thread; RED with a probe that writes one byte |
+| The earlier review's m-2, m-3, m-4 (its view: each Minor, graded right; m-4 confirmed by its own probe) | Fixed in Task 30, `0318637` |
+| Set aside: a Hyper-V host whose LAN address sits on "vEthernet (External)" reads as no network (spec §7.2 leaves vEthernet out; typing the address works); `answerOrNone` catches `Exception`, not `Throwable` | Stand (spec §7.2; an `Error` such as out-of-memory ends any process) |
+
+**The final review (Task 34, Claude Fable 5.1, `3fe1439..484e0ff`, read-only, probes in `D:\kd\p4rv4d`; no 429):
+"Ready to merge: Yes", 0 Critical, 0 Important, 2 Minor.** It re-checked S1 with every switch off (the text step answers
+nothing before any writer; the attestation slip, a Test print, bills, tokens and End of day never ask it; the 43-file pin
+names the right files and `git diff d21ee37..484e0ff` on them and on the manifest is empty), S3/S4 (bytes before the
+write, one settle under the same watchdog, the routes mirror the picture's), the renderer, the store and keys, both apps,
+the page's discovery, the free-tier scope and the docs; ran the cafe chain (6099/6098/0/1), shared 1004, desktop 224,
+mobile 173, typecheck and lint for the three apps; 16 mutation probes on the safety-critical lines, 16 caught.
+
+| Finding | Ruling |
+|---|---|
+| m-1 in simple mode the section offers the switch on a device whose KOTs would print through the page's own lane (no print host), where text never applies | **Not taken: the scenario does not occur.** `shouldRoute` is `agentDeviceId !== "" \|\| …` (`hooks/use-host-routing.ts`), and `readDeviceId()` always answers an id (it mints one, in memory when storage is blocked), so every KOT is a job and reaches the bridge's text step. Shown on the emulator in this session: no print host ("Each device prints its own slips"), the switch on, Send to Kitchen printed the KOT as text (504 B) |
+| m-2 a stale print method on the Windows app: the page's cached method says Direct while the app's is "Through the Windows driver", so `printRawOn` is refused ("This print request was refused."), read as "maybe", one REPRINT, then failed, instead of a picture | **Stands (no change).** The method is set only through the page and refreshed right after a save; a stale one needs a second window of one Windows app, which runs one main window (single-instance lock). Even then the slip is visible (failed, with the alarm) and reprints, never silent. The suggested fix would touch the print agent, which Phase 4 keeps unchanged, for a case the app cannot reach |
+
+No fix pass was needed after the final review, so the release folder `Sandbee-POS-2.0.2` is built from the head's code
+(`484e0ff`; this commit changes only the plan).
+
+### Differences from the plan's 4D spec, and why
+
+1. **The fast path** (the owner's decision): Part A's verification and review of 4C ran in this session; the review's
+   three minors were taken into Task 30 as a second commit (`484e0ff`) rather than folded into `0318637`, so each RED stays
+   visible.
+2. **m-B taken although the reviewer called it a budget nit** (an extra GET `/api/printers` only when a form opens on a
+   list older than 30 minutes): it was cheap, and the owner's free-tier rule and spec §12 say no request of any kind. The
+   fix reads the page's cache instead of mounting an observer; "Already added" reads the same printers the panel and the
+   setup page already hold.
+3. **The emulator smoke** installed only test-base builds (2.0.1 → 2.0.2 from the local base): the real-base x86_64 APK
+   would look at the live files.sandbee.in, so it was built and read back but never installed (the prompt: never
+   files.sandbee.in for a test install). Its code is the release pair's; only the update base and the times differ.
+4. **The page** for the smoke was the build worktree `D:\kd\p4b-new` moved to `484e0ff` (its uncommitted cache-off line
+   kept), as in Session 4C; the repo's own `.next` was not rebuilt.
+5. `n4d-builds.sh` read back the real-base and the test-base x86_64 APKs under one file name, so the second readback file
+   replaced the first; both builds' lines (signer, version, base and times) are in its `build.txt`.
+
+### Next
+
+The owner's merge OK (then `git merge --no-ff feat/printing-phase-4` into `main`, every suite on `main`, a push only on
+the owner's word, with the token store). Then the owner's own steps, in GO-LIVE-CHECKLIST's "Existing cafes: the
+printing Phase 4 release" order: the web deploy (no paper changes that day), the 2.0.2 upload (the versioned files
+first, `latest.json` and `latest.yml` last), the demo cafe's Bluetooth printer with the measurement and TEST-CHECKLIST's
+"Phase 4 checks" (the medians and their ratio go into this plan's Results), then the clients printer by printer.
