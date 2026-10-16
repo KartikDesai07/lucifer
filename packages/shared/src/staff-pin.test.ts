@@ -114,6 +114,11 @@ test("failure messages are exact", () => {
     "No internet. The PIN can't be checked right now. Printing goes on.",
     "offline",
   );
+  assert.equal(
+    pinFailureMessage({ kind: "error" }),
+    "The PIN couldn't be checked just now. Please try again.",
+    "error",
+  );
 });
 
 test("staff schemas carry the optional pin", () => {

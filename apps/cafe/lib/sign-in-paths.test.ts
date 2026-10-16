@@ -106,8 +106,27 @@ test("PIN: lib/pin-sign-in-client.ts is client-safe and maps every answer to a P
   assert.ok(!/from\s*"mongoose"/.test(s), "pin-sign-in-client.ts must not import mongoose");
   assert.ok(!/from\s*"@\/lib\/(pin-device|staff-pin-signin|auth)"/.test(s), "pin-sign-in-client.ts must not import a server-only sign-in module");
   assert.match(s, /signIn\(\s*"pin",\s*\{\s*staffId,\s*pin,\s*redirect:\s*false\s*\}\s*\)/, 'signInWithPin calls signIn("pin", { staffId, pin, redirect: false })');
+  assert.match(
+    s,
+    /signIn\(\s*"credentials",\s*\{\s*username,\s*password,\s*redirect:\s*false\s*\}\s*\)/,
+    'signInWithPassword calls signIn("credentials", { username, password, redirect: false })',
+  );
   assert.match(s, /navigator\.onLine === false/, "an offline device answers offline before the call");
   assert.match(s, /parsePinFailure\(\s*result\.code\s*\)/, "a refused try is parsed from result.code");
   assert.match(s, /"\/api\/sign-in\/known"/, "fetchKnownPeople reads /api/sign-in/known");
   assert.match(s, /"\/api\/sign-in\/remember",\s*"POST"/, "rememberThisDevice POSTs /api/sign-in/remember");
+  assert.ok(!/window\.location/.test(s), "the helpers never navigate");
+});
+
+test("PIN (ruling R8): both sign-ins ask getProviders() first and never call signIn when it finds no server", () => {
+  const s = src(CLIENT);
+  assert.match(s, /import \{[^}]*\bgetProviders\b[^}]*\} from "next-auth\/react"/, "getProviders is imported from next-auth/react");
+  const guard = s.indexOf("getProviders()");
+  assert.ok(guard >= 0, "the helper calls getProviders()");
+  for (const call of ['signIn("pin"', 'signIn("credentials"']) {
+    const at = s.indexOf(call);
+    assert.ok(at > guard, `${call} comes after the getProviders() guard`);
+  }
+  assert.equal((s.match(/await reachServer\(/g) ?? []).length, 2, "both signInWithPin and signInWithPassword await the reachServer( guard");
+  assert.match(s, /if \(!providers\) return "offline"/, "no provider list (the server cannot be reached) -> offline, before signIn");
 });

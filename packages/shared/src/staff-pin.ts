@@ -55,7 +55,9 @@ export type PinSignInFailure =
   | { kind: "blocked" }
   | { kind: "device" }
   | { kind: "nopin" }
-  | { kind: "offline" };
+  | { kind: "offline" }
+  // The server answered but could not check the PIN (a database blip): page-side only, never a code.
+  | { kind: "error" };
 
 export function encodePinFailure(f: PinSignInFailure): string {
   switch (f.kind) {
@@ -98,5 +100,7 @@ export function pinFailureMessage(f: PinSignInFailure): string {
       return "Sign in with your username and password.";
     case "offline":
       return "No internet. The PIN can't be checked right now. Printing goes on.";
+    case "error":
+      return "The PIN couldn't be checked just now. Please try again.";
   }
 }
