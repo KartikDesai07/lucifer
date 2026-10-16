@@ -107,6 +107,27 @@ test("a text write that fails settles with the writer's own sentence, as the pic
   assert.deepEqual(stubs.toasts, [PRINTER_NOT_CONNECTED_MESSAGE], "and staff see it, as for a picture");
 });
 
+test("m-2: a writer that throws at once settles the slip as a failed write, and the next slip goes (the 4B gate)", async (t) => {
+  const s = scene(t);
+  let calls = 0;
+  const throwing: TextKotWrite = {
+    bytes: BYTES,
+    write: () => {
+      calls += 1;
+      throw new Error(PRINTER_NOT_CONNECTED_MESSAGE);
+    },
+  };
+  world.answer = (input) => (input.slip.documentTitle === "KOT-1" ? throwing : null);
+  s.queue("kot", "KOT-1");
+  s.queue("kot", "KOT-2");
+  await s.settled();
+  assert.equal(calls, 1, "the write was tried once, right away");
+  assert.deepEqual(s.outcomes, [`failed: ${PRINTER_NOT_CONNECTED_MESSAGE}`], "the slip settles with the printer's sentence, as a failed write");
+  assert.deepEqual(stubs.toasts, [PRINTER_NOT_CONNECTED_MESSAGE], "staff see it, as for a picture");
+  assert.deepEqual(world.asked, ["KOT-1", "KOT-2"], "the bridge was freed: the next slip was asked");
+  assert.deepEqual(stubs.printed, ["kot"], "and printed as its picture");
+});
+
 test("the watchdog bounds a text write as it bounds a picture", async (t) => {
   const s = scene(t);
   const held = heldWrite();
@@ -186,5 +207,23 @@ test("a text test that fails, or a busy device, leaves the section the printer's
   held.reject(new Error(PRINTER_NOT_CONNECTED_MESSAGE));
   await s.settled();
   assert.equal(await failed, PRINTER_NOT_CONNECTED_MESSAGE, "the printer's sentence");
+  assert.equal(s.hook.result().current, null, "the bridge is free");
+});
+
+test("m-2: a text test whose writer throws at once is refused with the printer's sentence, and frees the bridge (the 4B gate)", async (t) => {
+  const s = scene(t);
+  let failed: Promise<string> = Promise.resolve("never queued");
+  try {
+    failed = s.hook.result().queueTestSlip(() => {
+      throw new Error(PRINTER_NOT_CONNECTED_MESSAGE);
+    }).then(
+      () => "printed",
+      (error: Error) => error.message,
+    );
+  } catch (error) {
+    failed = Promise.resolve(`escaped: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  await s.settled();
+  assert.equal(await failed, PRINTER_NOT_CONNECTED_MESSAGE, "the section hears the printer's sentence");
   assert.equal(s.hook.result().current, null, "the bridge is free");
 });

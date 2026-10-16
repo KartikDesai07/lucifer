@@ -142,6 +142,8 @@ export function textKotWriteFor({ slip, settings, target, env }: TextKotWriteInp
     const choice = env.readTextKot(route.key);
     if (choice === null) return null;
     // The slip as the picture draws it: for the printer's own paper when the job has a target (PrintHostPrintSources).
+    // The text's columns come from the route's paper (below), never from these settings: they are the picture's own, so
+    // text reads every other setting exactly as the picture does (the 4B gate's m-3).
     const printSettings = target === undefined ? settings : settingsForPaper(settings, target.paper);
     // The planning review's I-4: while the design's lazy code is not loaded the picture prints the legacy ticket instead,
     // and text must not print something else.

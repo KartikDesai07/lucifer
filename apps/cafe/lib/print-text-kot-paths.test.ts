@@ -57,7 +57,8 @@ test("PIN: the section sits right after this device's printer, in every printer 
 
 test("PIN (spec §12): the switch costs no request: its reads are this device's and the agent's one printers read", () => {
   const hook = src("hooks/use-text-kot-printers.ts");
-  assert.ok(hook.includes('const { printers } = usePrintersRead(deviceId !== "");'), "the agent's printers read (one cache entry)");
+  // The 4B gate's m-1 reads the same query's `answered` flag too: still the agent's one cache entry.
+  assert.ok(hook.includes('const { printers, answered } = usePrintersRead(deviceId !== "");'), "the agent's printers read (one cache entry)");
   for (const file of [SECTION, "hooks/use-text-kot-printers.ts", "lib/printer/kot-text/text-kot-store.ts", "lib/printer/kot-text/text-kot-print.ts", "lib/printer/kot-text/text-kot-printers.ts"]) {
     const text = src(file);
     for (const needle of ["api-client", "apiGet", "apiSend", "fetch(", "useQuery("]) assert.ok(!text.includes(needle), `${file} makes no request (${needle})`);

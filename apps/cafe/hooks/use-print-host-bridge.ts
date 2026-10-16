@@ -193,10 +193,11 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
     else {
       // Printing Phase 4 (spec §5.2, S1, S3, S4): a job's kitchen slip whose printer's text switch is on, and that text
       // can print exactly, goes as text through that printer's own writer, under the same watchdog and outcome; so does a
-      // printer's text test (§5.1); else the picture, exactly as before.
+      // printer's text test (§5.1); else the picture, exactly as before. The write starts at once, and one that throws
+      // at once settles as a failed write, like any other (the 4B gate's m-2).
       const write = current.kind === "test" ? current.write : textKotWriteFor({ slip: current.slip, settings: settings.data, target, env: textKotEnv() })?.write;
       if (write === undefined) printKot();
-      else void write().then(finish, (error: unknown) => settle(hostPrintFailureMessage(error)));
+      else void new Promise<void>((resolve) => resolve(write())).then(finish, (error: unknown) => settle(hostPrintFailureMessage(error)));
     }
   }, [current, eodReady, slipCodePending, surfacesMounted, printKot, printReceipt, printEod, settle, abandon, settings.data, target, finish]);
 

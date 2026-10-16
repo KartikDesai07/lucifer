@@ -15,17 +15,22 @@ import { readTextKot, subscribeTextKot, type TextKotChoice } from "@/lib/printer
 // read as the agent's (one cache entry, no request of its own) and this device's printers' live state; a switch from this
 // device's storage, followed across tabs.
 
-/** The printers this device prints kitchen slips on, each with its text key, paper and writer. */
+const NO_TEXT_KOT_PRINTERS: TextKotPrinter[] = [];
+
+/** The printers this device prints kitchen slips on, each with its text key, paper and writer. None until this device's
+ *  printers read has answered (the 4B gate's m-1): before it, an empty read looks like simple mode, and a printers-mode
+ *  cafe would list this device's own printer under a key none of its printer jobs uses. */
 export function useTextKotPrinters(): TextKotPrinter[] {
   const { deviceId } = usePrintHostContext();
-  const { printers } = usePrintersRead(deviceId !== "");
+  const { printers, answered } = usePrintersRead(deviceId !== "");
   const local = useDevicePrinter();
   const desktop = useDesktopPrinters();
   const pool = usePoolView();
   const settings = useSettings().data;
   return useMemo(
-    () => textKotPrintersOf({ printers, agent: agentPrintersOf(printers, deviceId, local.printer, desktop, pool), settings, env: textKotEnv() }),
-    [printers, deviceId, local, desktop, pool, settings],
+    () =>
+      deviceId !== "" && !answered ? NO_TEXT_KOT_PRINTERS : textKotPrintersOf({ printers, agent: agentPrintersOf(printers, deviceId, local.printer, desktop, pool), settings, env: textKotEnv() }),
+    [printers, answered, deviceId, local, desktop, pool, settings],
   );
 }
 
