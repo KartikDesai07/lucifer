@@ -64,6 +64,8 @@ const NATIVE_METHOD_ORACLE = [
   // Phase 3 Session 3D (deliberate change): the battery checklist.
   'batteryInfo',
   'openBatterySettings',
+  // Printing Phase 4 (deliberate change): "Find network printers".
+  'findNetworkPrinters',
 ];
 
 type Files = Record<string, string>;
@@ -451,8 +453,9 @@ function moduleNameProblems(ktModule: string, jsWrapper: string): string[] {
 test('pin 4: JS wrapper and Kotlin @ReactMethod list equal the oracle', () => {
   const module = kt('PosPrinterModule.kt');
   const js = read(join(SRC, 'native', 'PosPrinter.ts'));
-  // Phase 3 Session 3D deliberately changed: + mountWhileHidden, batteryInfo, openBatterySettings.
-  assert.equal(NATIVE_METHOD_ORACLE.length, 27, '18 v1 methods, 6 of bridge v2, the hidden mount and the battery checklist');
+  // Phase 3 Session 3D deliberately changed: + mountWhileHidden, batteryInfo, openBatterySettings. Printing Phase 4: +
+  // findNetworkPrinters.
+  assert.equal(NATIVE_METHOD_ORACLE.length, 28, '18 v1 methods, 6 of bridge v2, the hidden mount, the battery checklist and the network scan');
   assert.ok(strip(module).includes('@ReactMethod'), 'landmark');
   assert.deepEqual(methodProblems(module, js), []);
   assert.deepEqual(moduleNameProblems(module, js), []);
@@ -3228,4 +3231,84 @@ test('pin 32 mutation: every module needle can fail', () => {
   everyMutationCaught(run('pool'), base.pool, [['managers().any { it.isPrinting() }', 'false']]);
   everyMutationCaught(run('manager'), base.manager, [['= printing.get()', '= false']]);
   everyMutationCaught(run('updateKt'), base.updateKt, [['const val TAG = "PosUpdate"', 'const val TAG = "PosUpdate"\n  const val HOST = "https://files.sandbee.in"']]);
+});
+
+// ---------------------------------------------------------------- pin 33
+// Printing Phase 4 (spec 2026-10-15 §7.1): "Find network printers": a connect-only scan of port 9100 on the phone's own
+// Wi-Fi or Ethernet network (never a VPN, whether or not it is the default), each probe bound to that network, only when
+// the page asks; new code apart from the printer manager, pool and io threads; no byte sent; no new permission (pin 6).
+interface LanScanSources {
+  scan: string;
+  module: string;
+  protocol: string;
+}
+function lanScanProblems(s: LanScanSources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!text.includes(needle)) {
+      out.push(why);
+    }
+  };
+  const k = strip(s.scan);
+  // Each constant as its whole line (a longer number must not pass as a prefix).
+  need(k, 'const val LAN_SCAN_PORT = 9100\n', 'the scan port is not 9100');
+  need(k, 'const val LAN_SCAN_CONNECT_MS = 500\n', 'a probe is not bounded by 500 ms');
+  need(k, 'const val LAN_SCAN_PARALLEL = 32\n', 'more than 32 probes at a time');
+  need(k, 'const val LAN_SCAN_MAX_MS = 10_000L\n', 'the scan is not bounded by 10 s');
+  need(k, 'const val LAN_SCAN_MAX_FOUND = 64\n', 'more than 64 results');
+  need(k, 'const val LAN_SCAN_MAX_SUBNETS = 2\n', 'more than two networks');
+  need(k, 'cm.allNetworks', 'only the default network is looked at');
+  need(k, 'NetworkCapabilities.TRANSPORT_VPN', 'a VPN is not left out');
+  need(k, 'network.socketFactory', 'a probe socket is not bound to the chosen network');
+  for (const banned of ['getOutputStream', 'outputStream', 'PrinterThreads', 'PrinterPool', 'PrinterManager']) {
+    if (k.includes(banned)) {
+      out.push('the scan uses ' + banned);
+    }
+  }
+  const m = strip(s.module);
+  need(m, '@ReactMethod\n  fun findNetworkPrinters(promise: Promise) {', 'the module has no findNetworkPrinters');
+  need(m, 'LanScan.findPrinters(reactContext)', 'findNetworkPrinters does not run the scan');
+  const t = strip(s.protocol);
+  if (!tsList(t, 'NATIVE_METHODS').includes('network.findPrinters')) {
+    out.push('network.findPrinters is not a bridge method');
+  }
+  if (!tsList(t, 'NATIVE_FEATURES').includes('lanScan')) {
+    out.push('the app does not say lanScan');
+  }
+  return out;
+}
+const lanScanSources = (): LanScanSources => ({
+  scan: kt('LanScan.kt'),
+  module: kt('PosPrinterModule.kt'),
+  protocol: read(join(SRC, 'bridge', 'protocol.ts')),
+});
+
+test('pin 33: Find network printers: port 9100 connect-only, the Wi-Fi or Ethernet network, bounded, apart from printing', () => {
+  assert.deepEqual(lanScanProblems(lanScanSources()), []);
+});
+
+test('pin 33 mutation: every scan needle can fail', () => {
+  const base = lanScanSources();
+  const run = (key: keyof LanScanSources) => (text: string) => lanScanProblems({ ...base, [key]: text });
+  everyMutationCaught(run('scan'), base.scan, [
+    ['const val LAN_SCAN_PORT = 9100', 'const val LAN_SCAN_PORT = 9101'],
+    ['const val LAN_SCAN_CONNECT_MS = 500', 'const val LAN_SCAN_CONNECT_MS = 5000'],
+    ['const val LAN_SCAN_PARALLEL = 32', 'const val LAN_SCAN_PARALLEL = 256'],
+    ['const val LAN_SCAN_MAX_MS = 10_000L', 'const val LAN_SCAN_MAX_MS = 60_000L'],
+    ['const val LAN_SCAN_MAX_FOUND = 64', 'const val LAN_SCAN_MAX_FOUND = 1000'],
+    ['const val LAN_SCAN_MAX_SUBNETS = 2', 'const val LAN_SCAN_MAX_SUBNETS = 8'],
+    ['cm.allNetworks', 'listOfNotNull(cm.activeNetwork)'],
+    ['NetworkCapabilities.TRANSPORT_VPN', 'NetworkCapabilities.TRANSPORT_CELLULAR'],
+    ['network.socketFactory', 'javax.net.SocketFactory.getDefault()'],
+    ['object LanScan {', 'object LanScan {\n  fun send(socket: java.net.Socket) = socket.getOutputStream()'],
+    ['object LanScan {', 'object LanScan {\n  private val threads = PrinterThreads.dns'],
+  ]);
+  everyMutationCaught(run('module'), base.module, [
+    ['@ReactMethod\n  fun findNetworkPrinters(', 'fun findNetworkPrinters('],
+    ['LanScan.findPrinters(reactContext)', 'LanScan.nothing(reactContext)'],
+  ]);
+  everyMutationCaught(run('protocol'), base.protocol, [
+    ["  'network.findPrinters',\n", ''],
+    ["'battery', 'lanScan'", "'battery'"],
+  ]);
 });

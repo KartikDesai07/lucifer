@@ -14,6 +14,7 @@ import {
   NATIVE_ERROR_CODES,
   NATIVE_METHODS,
   PRINT_DATA_MAX_BASE64_CHARS,
+  type LanScanAnswer,
   type PrinterStatus,
 } from './protocol';
 import type { PoolStatus } from './protocol-v2';
@@ -34,6 +35,12 @@ const POOL_STATUS: PoolStatus = {
   bluetooth: 'on',
 };
 
+// Printing Phase 4: what the fake app's scan answers (network.findPrinters).
+const LAN_ANSWER: LanScanAnswer = {
+  found: [{ host: '192.168.1.50', port: 9100 }],
+  subnet: '192.168.1.0/24',
+};
+
 type Reply = {
   v: number;
   id: string;
@@ -46,6 +53,7 @@ function setup(
   options: {
     reject?: unknown;
     deliver?: (s: string) => void | Promise<unknown>;
+    lan?: LanScanAnswer;
   } = {},
 ) {
   const log: string[] = [];
@@ -88,6 +96,7 @@ function setup(
     poolReconnect: record('poolReconnect', POOL_STATUS),
     poolForget: record('poolForget', POOL_STATUS),
     poolPrint: record('poolPrint', { bytes: 12 }),
+    findNetworkPrinters: record('findNetworkPrinters', options.lan ?? LAN_ANSWER),
   };
   const router = createRouter({
     port,
@@ -340,6 +349,7 @@ test('each method calls the port once with the right arguments and replies with 
       ['setHostActive', false, ''],
       { active: true },
     ],
+    ['network.findPrinters', undefined, ['findNetworkPrinters'], LAN_ANSWER],
   ];
   for (const [method, params, call, result] of cases) {
     const s = setup();
@@ -490,6 +500,7 @@ test('methods without params refuse extra data', async () => {
     'bluetooth.enable',
     'app.changeUrl',
     'app.battery',
+    'network.findPrinters',
   ]) {
     await bad(method, { x: 1 });
     await bad(method, [1]);
@@ -615,6 +626,18 @@ test('app.battery (Session 3D): reply first, then onBattery; never onChangeUrl',
   assert.deepEqual(s.log, ['deliver', 'battery']);
   assert.deepEqual(s.calls, []);
   assert.deepEqual(s.replies(), [{ v: 1, id: 'q1', ok: true, result: null }]);
+});
+
+test('network.findPrinters (printing Phase 4): the scan answer as the app gives it, only its own fields', async () => {
+  const none = setup({ lan: { found: [], reason: 'no-network' } });
+  await none.router.handle(msg('network.findPrinters'), FRAME);
+  assert.deepEqual(none.replies(), [{ v: 1, id: 'q1', ok: true, result: { found: [], reason: 'no-network' } }], 'not on a Wi-Fi or wired network');
+  const extra = setup({ lan: { ...LAN_ANSWER, debug: 'x' } as LanScanAnswer });
+  await extra.router.handle(msg('network.findPrinters'), FRAME);
+  assert.deepEqual(extra.replies()[0].result, LAN_ANSWER, 'nothing but found, subnet and reason reaches the page');
+  const failed = setup({ reject: Object.assign(new Error('x'), { code: 'NOPE' }) });
+  await failed.router.handle(msg('network.findPrinters'), FRAME);
+  assert.equal(failed.replies()[0].error?.code, 'UNSUPPORTED', 'a scan that fails is UNSUPPORTED');
 });
 
 test('other methods never trigger onChangeUrl; a throwing deliver never throws out of handle', async () => {

@@ -15,6 +15,7 @@ export const NATIVE_METHODS = [
   'host.background',
   'app.changeUrl',
   'app.battery',
+  'network.findPrinters',
 ] as const;
 export type NativeMethod = (typeof NATIVE_METHODS)[number];
 
@@ -61,8 +62,8 @@ export const NATIVE_PLATFORMS = ['android', 'ios'] as const;
 export type NativePlatform = (typeof NATIVE_PLATFORMS)[number];
 
 // Phase 3 Session 3D: what this app can do beyond the method list (window.PosNative.features); a page shows a control
-// only when the app says it (an older app says nothing).
-export const NATIVE_FEATURES = ['battery'] as const;
+// only when the app says it (an older app says nothing). Printing Phase 4: lanScan, "Find network printers".
+export const NATIVE_FEATURES = ['battery', 'lanScan'] as const;
 export type NativeFeature = (typeof NATIVE_FEATURES)[number];
 
 export const NATIVE_BRIDGE_VERSION = 1;
@@ -79,6 +80,15 @@ export type NativePrinter = {
   transport: NativeTransport;
   address?: string;
   paired?: boolean;
+};
+
+// Printing Phase 4 (spec 2026-10-15 §7.1): network.findPrinters' answer: the network printers on this phone's own
+// Wi-Fi or Ethernet network (port 9100 accepted a connection; nothing was sent), or why there is none to look at.
+export type LanPrinter = { host: string; port: 9100 };
+export type LanScanAnswer = {
+  found: LanPrinter[];
+  subnet?: string;
+  reason?: 'no-network';
 };
 
 export type PrinterStatus = {

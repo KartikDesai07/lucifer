@@ -106,8 +106,8 @@ test('PosNative is frozen, non-writable, non-configurable; platform and version 
       writable: false,
       enumerable: false,
       configurable: false,
-      // Phase 3 Session 3D deliberately changed: + features.
-      value: { version: 1, versions: [1, 2], features: ['battery'], platform: 'android' },
+      // Phase 3 Session 3D deliberately changed: + features. Printing Phase 4: + lanScan.
+      value: { version: 1, versions: [1, 2], features: ['battery', 'lanScan'], platform: 'android' },
     },
   );
   const deliverDesc = f.plain(

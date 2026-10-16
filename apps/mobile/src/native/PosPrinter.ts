@@ -5,6 +5,7 @@
 import { NativeModules } from 'react-native';
 import type { NativePort } from '../bridge/router';
 import type {
+  LanScanAnswer,
   NativePermissionKind,
   NativePlatform,
   NativePrinter,
@@ -53,6 +54,8 @@ export interface PosPrinterModule {
   // run with no battery limit, and a link into the settings.
   batteryInfo(): Promise<{ brand: string; unrestricted: boolean }>;
   openBatterySettings(kind: BatterySettingsKind): Promise<{ opened: boolean }>;
+  // Printing Phase 4 (spec 2026-10-15 §7.1): a connect-only scan of port 9100 on this phone's own Wi-Fi or Ethernet.
+  findNetworkPrinters(): Promise<LanScanAnswer>;
 }
 
 export type BatterySettingsKind = 'battery' | 'autostart' | 'app';
@@ -120,6 +123,7 @@ export const PosPrinter: PosPrinterModule = {
   mountWhileHidden: () => call('mountWhileHidden'),
   batteryInfo: () => call('batteryInfo'),
   openBatterySettings: kind => call('openBatterySettings', kind),
+  findNetworkPrinters: () => call('findNetworkPrinters'),
 };
 
 // Asks Android for the permission, then has the module re-read its status.
@@ -151,4 +155,5 @@ export const nativePort: NativePort = {
   poolReconnect: printerId => PosPrinter.poolReconnect(printerId),
   poolForget: printerId => PosPrinter.poolForget(printerId),
   poolPrint: (printerId, base64) => PosPrinter.poolPrint(printerId, base64),
+  findNetworkPrinters: () => PosPrinter.findNetworkPrinters(),
 };

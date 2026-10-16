@@ -22,6 +22,7 @@ import {
   type NativeMethod,
   type NativePermissionKind,
   type NativePlatform,
+  type LanScanAnswer,
   type NativePrinter,
   type PrinterStatus,
 } from './protocol';
@@ -63,6 +64,8 @@ export interface NativePort {
   poolReconnect(printerId: string): Promise<PoolStatus>;
   poolForget(printerId: string): Promise<PoolStatus>;
   poolPrint(printerId: string, base64: string): Promise<{ bytes: number }>;
+  // Printing Phase 4: the network printers on this phone's own Wi-Fi or Ethernet network.
+  findNetworkPrinters(): Promise<LanScanAnswer>;
 }
 
 export type RouterDeps = {
@@ -139,6 +142,15 @@ async function callPort(
         params.label as string,
       );
       return { active };
+    }
+    case 'network.findPrinters': {
+      // Only the answer's own fields reach the page.
+      const { found, subnet, reason } = await port.findNetworkPrinters();
+      return {
+        found,
+        ...(subnet === undefined ? {} : { subnet }),
+        ...(reason === undefined ? {} : { reason }),
+      };
     }
     default:
       return null; // app.changeUrl, app.battery: the router itself acts after the reply

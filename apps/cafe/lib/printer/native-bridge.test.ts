@@ -7,6 +7,7 @@ import { stripComments } from "@/lib/source-pin-utils";
 import { DEVICE_WRITE_DEADLINE_MS } from "@/lib/printer/device-printer-write";
 import {
   NATIVE_CONNECT_TIMEOUT_MS,
+  NATIVE_LAN_SCAN_TIMEOUT_MS,
   NATIVE_PRINT_TIMEOUT_MS,
   NATIVE_PROMPT_TIMEOUT_MS,
   NATIVE_READY_EVENT,
@@ -121,6 +122,8 @@ test("timeout constants honour the rulings and nest under the write deadline", (
   assert.equal(NATIVE_SCAN_TIMEOUT_MS, protocol.PRINTER_SCAN_MS + NATIVE_REQUEST_TIMEOUT_MS);
   assert.ok(NATIVE_PRINT_TIMEOUT_MS > 60_000, "above the app's own print limit");
   assert.ok(NATIVE_PRINT_TIMEOUT_MS < DEVICE_WRITE_DEADLINE_MS, "below the whole-write deadline");
+  // Printing Phase 4 (spec §7.1): the app's network scan takes at most 10 s, then its answer.
+  assert.equal(NATIVE_LAN_SCAN_TIMEOUT_MS, 10_000 + NATIVE_REQUEST_TIMEOUT_MS, "the scan's own limit plus a request's");
 });
 
 test("a request that never answers rejects with code TIMEOUT at that method's limit", async (t) => {
@@ -138,6 +141,7 @@ test("a request that never answers rejects with code TIMEOUT at that method's li
     ["permissions.request", { kind: "bluetooth" }, NATIVE_PROMPT_TIMEOUT_MS],
     ["bluetooth.enable", undefined, NATIVE_PROMPT_TIMEOUT_MS],
     ["printer.print", { data: "AA==" }, NATIVE_PRINT_TIMEOUT_MS],
+    ["network.findPrinters", undefined, NATIVE_LAN_SCAN_TIMEOUT_MS],
   ];
   for (const [method, params, limit] of table) {
     let outcome: unknown = "pending";
@@ -170,6 +174,7 @@ test("every method's well-formed answer passes; a mismatched one is BAD_REQUEST"
     "host.background": { active: true },
     "app.changeUrl": undefined,
     "app.battery": undefined,
+    "network.findPrinters": { found: [{ host: "192.168.1.50", port: 9100 }], subnet: "192.168.1.0/24" },
   };
   installWindow(t, { PosNative: makeBridge(async (method) => answers[method]).bridge });
   for (const method of protocol.NATIVE_METHODS) {
@@ -186,6 +191,7 @@ test("every method's well-formed answer passes; a mismatched one is BAD_REQUEST"
     "permissions.request": { granted: "yes" },
     "bluetooth.enable": {},
     "host.background": { active: 1 },
+    "network.findPrinters": { found: [{ host: "192.168.1.50", port: 9101 }] },
   };
   for (const [method, answer] of Object.entries(wrong) as [NativeMethod, unknown][]) {
     installWindow(t, { PosNative: makeBridge(async () => answer).bridge });
