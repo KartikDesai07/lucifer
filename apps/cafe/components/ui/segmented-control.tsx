@@ -14,7 +14,7 @@ function SegmentedControl<T extends string>({ label, value, options, onChange, c
     <div
       role="group"
       aria-label={label}
-      className={cn("inline-flex h-9 items-center justify-center rounded-lg pointer-coarse:h-11 bg-muted p-1 text-muted-foreground", className)}
+      className={cn("inline-flex h-9 items-center justify-center rounded-lg pointer-coarse:h-auto bg-muted p-1 text-muted-foreground", className)}
     >
       {options.map((o) => {
         const on = o.value === value;

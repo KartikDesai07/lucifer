@@ -73,9 +73,9 @@ function PinPad({ value, length = 4, onChange, onComplete, error, disabled = fal
             className={cn(
               "h-3 w-3 rounded-full border border-foreground/50",
               i < value.length && "border-primary bg-primary",
-              // A wrong PIN turns the dots red with the error line (the shake stays on the line).
-              error && "border-destructive",
-              error && i < value.length && "bg-destructive",
+              // A wrong PIN empties the pad and turns its dots red (the shake stays on the line); the next
+              // try's digits fill in the usual colour while the error line stays above them.
+              error && value.length === 0 && "border-destructive",
             )}
           />
         ))}

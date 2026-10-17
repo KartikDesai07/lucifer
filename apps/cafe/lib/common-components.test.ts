@@ -88,7 +88,7 @@ test("shared states render title, description, action and keep their structure",
   assert.ok(head.includes("<h2") && head.includes(">Menu</h2>") && head.includes("Catalogue") && head.includes("All items"), "header content");
 });
 
-test("SegmentedControl: 44 px on touch (the group and each segment grow with pointer-coarse:h-11)", () => {
+test("SegmentedControl: 44 px on touch (each segment pointer-coarse:h-11, the track grows around them)", () => {
   const html = renderToStaticMarkup(
     createElement(SegmentedControl<"a" | "b">, {
       label: "Range",
@@ -98,20 +98,25 @@ test("SegmentedControl: 44 px on touch (the group and each segment grow with poi
     }),
   );
   const group = html.match(/<div[^>]*role="group"[^>]*>/)?.[0] ?? "";
-  assert.ok(group.includes("h-9") && group.includes("pointer-coarse:h-11"), "the group is h-9 and pointer-coarse:h-11");
+  // A fixed 44 px track with p-1 would leave 36 px inside, and the 44 px segments would spill over its inset.
+  assert.ok(group.includes("h-9") && group.includes("pointer-coarse:h-auto"), "the group is h-9, and h-auto on touch (RangeBar's way)");
+  assert.ok(!group.includes("pointer-coarse:h-11"), "the group has no fixed 44 px height on touch");
   const buttons = html.match(/<button[^>]*>/g) ?? [];
   assert.equal(buttons.length, 2, "two segments");
   assert.ok(buttons.every((b) => b.includes("pointer-coarse:h-11")), "each segment is pointer-coarse:h-11 too (RangeBar's way)");
 });
 
-test("PinPad: the four dots turn red while an error shows (spec 5.3), filled or not", () => {
+test("PinPad: the four dots turn red after a wrong answer (spec 5.3) until the next PIN is typed", () => {
   const dots = (html: string) => html.match(/<span[^>]*data-filled[^>]*>/g) ?? [];
-  const bad = dots(pad({ error: "Wrong PIN" }));
+  // The pad empties itself on a wrong answer: that is when the dots are red.
+  const bad = dots(pad({ value: "", error: "Wrong PIN" }));
   assert.equal(bad.length, 4, "four dots");
-  assert.ok(bad.every((d) => d.includes("border-destructive")), "every dot has border-destructive while the error shows");
-  assert.ok(bad.filter((d) => d.includes('data-filled="true"')).every((d) => d.includes("bg-destructive")), "a filled dot is bg-destructive");
-  assert.ok(!bad.some((d) => d.includes("bg-primary")), "no primary fill while the error shows");
-  const ok = dots(pad());
+  assert.ok(bad.every((d) => d.includes("border-destructive")), "every empty dot has border-destructive right after the error");
+  // The next try's digits fill in the normal colour, the error line still above them.
+  const typing = dots(pad({ value: "12", error: "Wrong PIN" }));
+  assert.ok(!typing.some((d) => d.includes("destructive")), "no red dots once the next PIN is being typed");
+  assert.equal(typing.filter((d) => d.includes("bg-primary")).length, 2, "the two typed digits fill blue as usual");
+  const ok = dots(pad({ value: "" }));
   assert.ok(!ok.some((d) => d.includes("destructive")), "no destructive dots without an error");
 });
 
