@@ -43,6 +43,9 @@ export async function seedAdmin() {
   const existing = await Staff.findOne({ role: "admin" });
   if (existing) {
     console.log(`Admin already exists: ${existing.username}`);
+    if (pin !== undefined) {
+      console.log("SEED_ADMIN_PIN ignored: an admin already exists. Set the PIN on the Staff page.");
+    }
     return;
   }
 
