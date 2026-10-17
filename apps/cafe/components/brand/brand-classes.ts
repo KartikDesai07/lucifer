@@ -27,9 +27,10 @@ export const BRAND_BUTTON_CLASS =
 export const BRAND_FIELD_ERROR_CLASS = "text-xs text-brand-danger";
 
 /** components/ui/checkbox.tsx's own box is `h-4 w-4 rounded-sm` — 16px, and
- *  globals.css's `--radius: 0.75rem` makes `--radius-sm` resolve to 8px, so
- *  a "square" with a border-radius equal to half its side renders as a
- *  CIRCLE (owner: a checkbox reads like the app's round radio buttons).
+ *  globals.css's `--radius` (0.75rem until U0, 0.625rem since) made
+ *  `--radius-sm` resolve to 8px (6px since), so a "square" with a
+ *  border-radius equal to half its side rendered as a CIRCLE (owner: a
+ *  checkbox read like the app's round radio buttons).
  *  `--radius` is never touched here — it also shapes every card and button.
  *  `size-5` (20px, up from 16px) gives the kitchen tablet a bigger target
  *  while `rounded-[4px]` stays a visibly small corner, never a circle at any

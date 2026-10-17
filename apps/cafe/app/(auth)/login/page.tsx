@@ -55,8 +55,9 @@ export default function LoginPage() {
   const [people, setPeople] = useState<KnownPerson[]>([]);
 
   // A tab that reaches /login (expired session, or a sign-out) must not hand
-  // the previous operator's master copy — including an admin's staff list — to
-  // whoever signs in next on this shared device.
+  // the previous operator's master copy to whoever signs in next on this
+  // shared device. (The admin-only staff list is never in it:
+  // MASTERS_PERSISTED_PART_KEYS keeps it in memory for the tab's life.)
   useEffect(() => {
     clearMastersBlob();
   }, []);
