@@ -81,18 +81,6 @@ function contrast(a: string, b: string): number {
   const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
   return (hi + 0.05) / (lo + 0.05);
 }
-/** An arbitrary rgb() colour with an alpha (Tailwind's underscores for spaces) laid over an opaque hex, flattened to hex. */
-function over(rgba: string, base: string): string {
-  const m = /^rgb\((\d+)_(\d+)_(\d+)\/([\d.]+)\)$/.exec(rgba);
-  assert.ok(m, `"${rgba}" is an arbitrary rgb() value with an alpha`);
-  const a = Number(m[4]);
-  const out = [1, 2, 3].map((i) => {
-    const b = parseInt(base.slice(1 + (i - 1) * 2, 3 + (i - 1) * 2), 16);
-    return Math.round(a * Number(m[i]) + (1 - a) * b).toString(16).padStart(2, "0");
-  });
-  return `#${out.join("")}`;
-}
-
 // ── the arrangement ─────────────────────────────────────────────────────────
 
 test("the page lays every card out in the mock-up's order, and no longer renders the KPI row", () => {
