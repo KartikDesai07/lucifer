@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { passwordSignInOutcome, pinSignInOutcome } from "@/lib/pin-sign-in-client";
+import { KNOWN_PEOPLE_TIMEOUT_MS, fetchKnownPeople, passwordSignInOutcome, pinSignInOutcome, type KnownPerson } from "@/lib/pin-sign-in-client";
 
 const refused = (code?: string, error = "CredentialsSignin") => ({ ok: true, error, code });
 
@@ -41,4 +41,21 @@ test("passwordSignInOutcome: success, no answer, and any refusal reads as wrong 
   assert.deepEqual(passwordSignInOutcome(refused(undefined)), credentials, "an error with no code");
   assert.deepEqual(passwordSignInOutcome({ ok: true, error: "Configuration" }), credentials, "Configuration (as the login page shows it today)");
   assert.deepEqual(passwordSignInOutcome({ ok: false }), credentials, "not ok and no error");
+});
+
+test("fetchKnownPeople: a request that never answers resolves [] after the timeout, and an answer before it wins", async () => {
+  assert.equal(KNOWN_PEOPLE_TIMEOUT_MS, 6000, "the timeout is 6 s");
+  const person = { id: "s1", name: "Asha", role: "staff" } as unknown as KnownPerson;
+  const never = () => new Promise<{ people?: KnownPerson[] }>(() => {});
+  const t0 = Date.now();
+  assert.deepEqual(await fetchKnownPeople({ timeoutMs: 20, get: never }), [], "no answer in time reads as nobody");
+  assert.ok(Date.now() - t0 < 1000, "the test did not wait the real 6 s");
+  assert.deepEqual(await fetchKnownPeople({ timeoutMs: 1000, get: async () => ({ people: [person] }) }), [person], "an answer before the timeout wins");
+  assert.deepEqual(await fetchKnownPeople({ timeoutMs: 1000, get: async () => { throw new Error("down"); } }), [], "a failure is still nobody");
+  // A late answer after the timeout is ignored (the promise has already resolved []).
+  let late!: (v: { people?: KnownPerson[] }) => void;
+  const slow = () => new Promise<{ people?: KnownPerson[] }>((r) => { late = r; });
+  const got = await fetchKnownPeople({ timeoutMs: 10, get: slow });
+  late({ people: [person] });
+  assert.deepEqual(got, [], "a late answer changes nothing");
 });

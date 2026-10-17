@@ -63,13 +63,33 @@ async function reachServer(provider: "pin" | "credentials"): Promise<"ok" | "off
   return providers[provider] ? "ok" : "missing";
 }
 
-/** The people this device remembers who have a PIN, newest sign-in first. Any failure reads as nobody. */
-export async function fetchKnownPeople(): Promise<KnownPerson[]> {
+/** How long the known-people look-up may take before the page stops waiting (any late answer is ignored). */
+export const KNOWN_PEOPLE_TIMEOUT_MS = 6000;
+
+/**
+ * The people this device remembers who have a PIN, newest sign-in first. Any failure, or no answer within
+ * the timeout, reads as nobody (the login page then shows the password form). `opts` is for tests.
+ */
+export async function fetchKnownPeople(
+  opts: { timeoutMs?: number; get?: () => Promise<{ people?: KnownPerson[] }> } = {},
+): Promise<KnownPerson[]> {
+  const { timeoutMs = KNOWN_PEOPLE_TIMEOUT_MS, get = () => apiGet<{ people?: KnownPerson[] }>("/api/sign-in/known") } = opts;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const nobody = new Promise<KnownPerson[]>((resolve) => {
+    timer = setTimeout(() => resolve([]), timeoutMs);
+  });
+  const answer = (async (): Promise<KnownPerson[]> => {
+    try {
+      const data = await get();
+      return Array.isArray(data?.people) ? data.people : [];
+    } catch {
+      return [];
+    }
+  })();
   try {
-    const data = await apiGet<{ people?: KnownPerson[] }>("/api/sign-in/known");
-    return Array.isArray(data?.people) ? data.people : [];
-  } catch {
-    return [];
+    return await Promise.race([answer, nobody]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
