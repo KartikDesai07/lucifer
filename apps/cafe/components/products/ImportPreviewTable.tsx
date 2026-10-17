@@ -40,7 +40,7 @@ export function ImportPreviewTable({ rows }: { rows: ImportRowResult[] }) {
   return (
     <div className="max-h-[45vh] overflow-y-auto rounded-lg border">
       <Table>
-        <TableHeader className="sticky top-0 bg-background">
+        <TableHeader className="sticky top-0 bg-card">
           <TableRow>
             <TableHead className="w-12">#</TableHead>
             <TableHead>Name</TableHead>
