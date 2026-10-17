@@ -91,6 +91,8 @@
   --color-on-ink: var(--on-ink);
   --color-on-ink-up: var(--on-ink-up);
   --color-on-ink-down: var(--on-ink-down);
+  --color-on-ink-up-tint: var(--on-ink-up-tint);
+  --color-on-ink-down-tint: var(--on-ink-down-tint);
   --color-track: var(--track);
   --color-subtle-foreground: var(--subtle-foreground);
   --color-primary-hover: var(--primary-hover);
@@ -259,6 +261,8 @@
   /* Change colours on the ink hero (dark card in light mode). */
   --on-ink-up: #6fdc8c;
   --on-ink-down: #ff8389;
+  --on-ink-up-tint: #1f3327;
+  --on-ink-down-tint: #3c2024;
   /* The segmented picker's track. */
   --track: #e9e9ec;
   /* Status colours: base (dots, fills), -ink (text on the tint), -tint (soft
@@ -340,6 +344,8 @@
   /* The hero is the light card in dark mode: the light page's darker pair. */
   --on-ink-up: #16733a;
   --on-ink-down: #a2191f;
+  --on-ink-up-tint: #d8ebde;
+  --on-ink-down-tint: #f5d9dc;
   --track: #27272b;
   --status-ok: #42be65;
   --status-ok-ink: #6fdc8c;

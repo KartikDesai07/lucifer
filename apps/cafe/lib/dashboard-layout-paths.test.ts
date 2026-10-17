@@ -252,15 +252,16 @@ test("KpiChange: the dark tone's up and down colours are tokens, and read at 4.5
   for (const way of ["good", "bad"] as const) {
     assert.ok(KPI_CHANGE_DARK[way].includes(`text-${tokens[way]}`), `dark ${way} wears text-${tokens[way]}`);
     assert.ok(themeHas(css, tokens[way]), `--color-${tokens[way]} is registered in @theme inline`);
-    const tint = /bg-\[(rgb\([^\]]+\))\]/.exec(KPI_CHANGE_DARK[`${way}Pill`])?.[1];
-    assert.ok(tint, `dark ${way} pill names its tint as an arbitrary rgb() value with an alpha`);
+    assert.equal(KPI_CHANGE_DARK[`${way}Pill`], `bg-${tokens[way]}-tint`, `dark ${way} pill wears the bg-${tokens[way]}-tint token`);
+    assert.ok(themeHas(css, `${tokens[way]}-tint`), `--color-${tokens[way]}-tint is registered in @theme inline`);
     const lightBlock = /:root\s*\{[^}]*?--on-ink-up:[^}]*\}/.exec(css)?.[0] ?? "";
     const lightText = new RegExp(`--${tokens[way]}: *(#[0-9a-f]{6});`, "i").exec(lightBlock)?.[1];
     const darkText = new RegExp(`--${tokens[way]}: *(#[0-9a-f]{6});`, "i").exec(darkBlock)?.[1];
     assert.ok(lightText && darkText, `--${tokens[way]} is set in :root and in .dark`);
     for (const [text, card] of [[lightText, ink], [darkText, darkInk]] as const) {
       assert.ok(contrast(text, card) >= 4.5, `${text} on the ink ${card} is ${contrast(text, card).toFixed(2)}:1`);
-      const pill = over(tint, card);
+      const pill = new RegExp(`--${tokens[way]}-tint: *(#[0-9a-f]{6});`, "i").exec(card === ink ? lightBlock : darkBlock)?.[1] ?? "";
+      assert.ok(pill, `--${tokens[way]}-tint is an opaque hex in this theme`);
       assert.ok(contrast(text, pill) >= 4.5, `${text} on its pill ${pill} is ${contrast(text, pill).toFixed(2)}:1`);
     }
   }

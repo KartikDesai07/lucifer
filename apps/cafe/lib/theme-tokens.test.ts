@@ -160,3 +160,19 @@ test("radius steps: cards 12 px (xl) and dialogs/sheets 16 px (2xl), as spec 4.5
   assert.equal(declOf(themeInline, "--radius-xl"), "calc(var(--radius) + 2px)", "--radius-xl is 10 + 2 = 12 px (spec 4.5 cards)");
   assert.equal(declOf(themeInline, "--radius-2xl"), "calc(var(--radius) + 6px)", "--radius-2xl is 10 + 6 = 16 px (spec 4.5 dialogs and sheets)");
 });
+
+test("the ink hero's change-pill tints are opaque hex tokens (the old 16 % tints flattened), registered in @theme inline", () => {
+  const want = {
+    "--on-ink-up-tint": ["#1f3327", "#d8ebde"],
+    "--on-ink-down-tint": ["#3c2024", "#f5d9dc"],
+  } as const;
+  for (const [name, [light, night]] of Object.entries(want)) {
+    assert.equal(declOf(main, name), light, `${name} in :root is 16 % of the on-ink colour over --ink #18181b`);
+    assert.equal(declOf(dark, name), night, `${name} in .dark is the OLD 16 % tint (#42be65 / #fa4d56) over #f4f4f5 (the .dark on-ink greens over #f4f4f5 fail 4.5:1)`);
+    const key = name.slice(2);
+    assert.ok(themeInline.includes(`--color-${key}: var(--${key});`), `--color-${key} registered`);
+  }
+  const kpi = readFileSync(join(process.cwd(), "components", "dashboard", "KpiChange.tsx"), "utf8");
+  assert.ok(!kpi.includes("bg-[rgb("), "KpiChange has no bg-[rgb( literal");
+  assert.ok(kpi.includes("bg-on-ink-up-tint") && kpi.includes("bg-on-ink-down-tint"), "KpiChange uses the two tint tokens");
+});

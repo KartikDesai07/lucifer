@@ -21,8 +21,8 @@ export const KPI_CHANGE_DARK = {
   bad: "text-on-ink-down",
   flat: "text-on-ink/65",
   note: "text-on-ink/65",
-  goodPill: "bg-[rgb(66_190_101/0.16)]",
-  badPill: "bg-[rgb(250_77_86/0.16)]",
+  goodPill: "bg-on-ink-up-tint",
+  badPill: "bg-on-ink-down-tint",
   flatPill: "bg-on-ink/10",
 } as const;
 
