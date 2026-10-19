@@ -3,6 +3,7 @@ import { cn, inr } from "@/lib/utils";
 import { STATUS_CLASSES } from "@/lib/ui";
 import { plural } from "@/lib/dashboard/format";
 import { DASH_PILL_CLASS } from "@/components/dashboard/DashCard";
+import { DashGlyph } from "@/components/dashboard/DashGlyph";
 import type { DashboardLeaks } from "@/types/dashboard";
 
 // Where money did not come in: cancelled bills, dishes taken back off a tab, discounts and rewards — four separate
@@ -53,11 +54,20 @@ function rowsOf(leaks: DashboardLeaks): LeakRow[] {
   ];
 }
 
-/** The head's pill (values 3.11): "₹X lost" in bad-t / bad-i, or "Nothing lost" in ok-t / ok-i. */
-export function MoneyLeaksTotal({ leaks }: { leaks: DashboardLeaks }) {
+/** The head's pill (values 3.11): "₹X lost" in bad-t / bad-i, or "Nothing lost" in ok-t / ok-i. It sits in the head,
+ *  outside the card's body, so it dims with the body while the next range loads (`updating`). */
+export function MoneyLeaksTotal({ leaks, updating }: { leaks: DashboardLeaks; updating?: boolean }) {
   const total = rowsOf(leaks).reduce((sum, r) => sum + r.amount, 0);
   return (
-    <span data-ui="leak-pill" className={cn(DASH_PILL_CLASS, "whitespace-nowrap", STATUS_CLASSES[total > 0 ? "bad" : "ok"].pill)}>
+    <span
+      data-ui="leak-pill"
+      className={cn(
+        DASH_PILL_CLASS,
+        "whitespace-nowrap transition-opacity duration-200",
+        STATUS_CLASSES[total > 0 ? "bad" : "ok"].pill,
+        updating && "opacity-55",
+      )}
+    >
       {total > 0 ? `${inr(total)} lost` : "Nothing lost"}
     </span>
   );
@@ -80,9 +90,7 @@ export function MoneyLeaks({ leaks }: { leaks: DashboardLeaks }) {
                 lost ? STATUS_CLASSES.bad.pill : "bg-surface-3 text-subtle-foreground",
               )}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d={r.glyph} />
-              </svg>
+              <DashGlyph d={r.glyph} />
             </span>
             <span className="min-w-0 flex-1">
               <span data-ui="leak-label" className={cn("block text-[13.5px] font-medium", r.href && "group-hover:underline")}>

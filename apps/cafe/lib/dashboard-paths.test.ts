@@ -108,3 +108,23 @@ test("no cafe name is written into the dashboard's code", () => {
     assert.ok(!/lucifer/i.test(readSrc(rel)), `${rel} must not hardcode a cafe name`);
   }
 });
+
+// U0 match Task 8, fix round 1: the dashboard's cards read an order's channel from lib/dashboard/channel.ts (the JS twin
+// of CHANNEL_EXPR), never from the server's aggregation module, which no client file may import.
+test("channelOf lives in lib/dashboard/channel.ts; no component, hook or page imports lib/dashboard/pipelines", () => {
+  const root = path.join(HERE, "..");
+  const walk = (dir: string): string[] =>
+    readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((e) => {
+      const rel = path.join(dir, e.name);
+      if (e.isDirectory()) return rel.split(path.sep).includes("api") ? [] : walk(rel);
+      return /\.tsx?$/.test(e.name) && !/\.test\.tsx?$/.test(e.name) ? [rel] : [];
+    });
+  const needle = "@/lib/dashboard/" + "pipelines";
+  const offenders = ["components", "hooks", "app"].flatMap(walk).filter((f) => readSrc(f).includes(needle));
+  assert.deepEqual(offenders, [], "client code reads the channel from lib/dashboard/channel.ts");
+  assert.match(readSrc("components/dashboard/RecentOrders.tsx"), /import \{ channelOf \} from "@\/lib\/dashboard\/channel";/, "Recent orders' channel");
+  const channel = readSrc("lib/dashboard/channel.ts");
+  assert.ok(/export function channelOf\(/.test(channel), "the twin is defined there");
+  assert.ok(!/from "mongoose"|from "@\/models|from "@\/lib\/db/.test(channel), "and imports nothing of the server");
+  assert.ok(readSrc("lib/dashboard/pipelines.ts").includes('export { channelOf } from "@/lib/dashboard/channel";'), "pipelines.ts re-exports it for the scripts and tests");
+});

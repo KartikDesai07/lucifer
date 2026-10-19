@@ -233,13 +233,12 @@ export function DashCard({
           )}
         </div>
       ) : status === "empty" && empty && dashboard ? (
-        // The HTML's empty state (values 3.7: padding 24px 0, centred, 13px text-3) with our words, in the body that
-        // holds the loaded height.
-        <div style={minStyle} className={cn("flex flex-col justify-center", gap, bodyClassName)}>
-          <div data-ui="dash-empty" className="py-6 text-center text-[13px] text-subtle-foreground">
-            <p>{empty.title}</p>
-            <p>{empty.description}</p>
-          </div>
+        // The HTML's empty state (values 3.7): ONE line right under the head (padding 24px 0, centred, 13px text-3), our
+        // title; the body below it holds the loaded height.
+        <div style={minStyle} className={cn(gap, bodyClassName)}>
+          <p data-ui="dash-empty" className="py-6 text-center text-[13px] text-subtle-foreground">
+            {empty.title}
+          </p>
         </div>
       ) : status === "empty" && empty ? (
         <div style={minStyle} className={cn("flex flex-col items-center justify-center gap-1 px-4 text-center", gap, bodyClassName)}>

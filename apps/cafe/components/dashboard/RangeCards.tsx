@@ -1,6 +1,7 @@
 "use client";
 
-import { QrCode, ShoppingBag, Store, Utensils, type LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
+import { QrCode, Store } from "lucide-react";
 import { cafeHourOf, cn, inr } from "@/lib/utils";
 import { CHANNEL_KIND, PAYMENT_KIND, STATUS_CLASSES, type StatusKind } from "@/lib/ui";
 import { deltaRatio } from "@/lib/dashboard/fold";
@@ -14,6 +15,7 @@ import { useNow } from "@/hooks/use-now";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { RankedList, RANKED_ROW_PX, barsOf } from "@/components/dashboard/RankedList";
 import { BusyHours } from "@/components/dashboard/BusyHours";
+import { DashGlyph } from "@/components/dashboard/DashGlyph";
 import { LEAK_ROW_PX, MoneyLeaks, MoneyLeaksTotal, MONEY_LEAK_ROWS } from "@/components/dashboard/MoneyLeaks";
 import type { DashboardChannel, DashboardData } from "@/types/dashboard";
 
@@ -154,11 +156,13 @@ export function SalesCard(p: RangeCardProps & { className?: string }) {
 
 const kindOf = <K extends string>(map: Record<K, StatusKind>, key: string): StatusKind => map[key as K] ?? "neutral";
 
-const CHANNEL_ICONS: Record<DashboardChannel, LucideIcon> = {
-  "dine-in": Utensils,
-  takeaway: ShoppingBag,
-  qr: QrCode,
-  counter: Store,
+/** A source tile's icon (values 3.10, 5): the HTML's own glyphs for Dine-in (a table) and Takeaway (a bag); our QR and
+ *  counter channels, which the HTML has not, keep lucide's QrCode and Store at the same 16px and 1.8 stroke. */
+const CHANNEL_ICONS: Record<DashboardChannel, ReactNode> = {
+  "dine-in": <DashGlyph d="M3 11h18M12 11v9M7 20h10M6 11V5M18 11V5" />,
+  takeaway: <DashGlyph d="M6 7h12l-1 13H7zM9 7a3 3 0 0 1 6 0" />,
+  qr: <QrCode className="size-4" strokeWidth={1.8} />,
+  counter: <Store className="size-4" strokeWidth={1.8} />,
 };
 
 /** The head of How guests paid (values 3.9): the 31px mono total, 12px, the 10px bar, 10px to the rows. The loaded
@@ -279,15 +283,15 @@ export function ChannelsCard(p: RangeCardProps) {
       <ul data-ui="src-list" className="flex flex-col gap-2">
         {rows.map((r) => {
           const look = STATUS_CLASSES[kindOf(CHANNEL_KIND, r.key)];
-          const Icon = CHANNEL_ICONS[r.key as DashboardChannel] ?? Store;
           return (
             <li
               key={r.key}
               data-ui="src-row"
+              data-channel={r.key}
               className="grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-3 rounded-[12px] border border-border-2 px-3 py-2.5"
             >
               <span data-ui="src-tile" aria-hidden className={cn("flex size-[34px] items-center justify-center rounded-[9px]", look.pill)}>
-                <Icon className="size-4" strokeWidth={1.8} />
+                {CHANNEL_ICONS[r.key as DashboardChannel] ?? CHANNEL_ICONS.counter}
               </span>
               <span className="min-w-0">
                 <span data-ui="src-label" className="block text-[13.5px] font-medium">
@@ -394,7 +398,7 @@ export function LeaksCard(p: RangeCardProps & { className?: string }) {
       className={p.className}
       title="Money leaks"
       period="Cancelled, voided and given away"
-      aside={p.data ? <MoneyLeaksTotal leaks={p.data.leaks} /> : undefined}
+      aside={p.data ? <MoneyLeaksTotal leaks={p.data.leaks} updating={p.updating} /> : undefined}
       headGap={10}
       bodyGap={10}
       status={statusOf(p, false)}

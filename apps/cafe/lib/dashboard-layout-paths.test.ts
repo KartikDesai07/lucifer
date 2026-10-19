@@ -867,10 +867,12 @@ test("DashCard variant 'dashboard': the HTML's generic card (values 3.0) and its
   );
   // Task 8: the HTML's one empty state (values 3.7: padding 24px 0, centred, 13px text-3) with our words, in the body
   // that still holds the reserved height.
+  // Fix round 1: ONE line (our title) right under the head, top-aligned; the reserved height stays below it.
   assert.ok(
-    empty.includes('<div style="min-height:120px" class="flex flex-col justify-center mt-3.5"><div data-ui="dash-empty" class="py-6 text-center text-[13px] text-subtle-foreground"><p>None</p><p>Nothing yet.</p></div></div>'),
-    "the empty state: our title and description as the HTML's 13px text-3 line, 24px above and below, centred",
+    empty.includes('<div style="min-height:120px" class="mt-3.5"><p data-ui="dash-empty" class="py-6 text-center text-[13px] text-subtle-foreground">None</p></div>'),
+    "the empty state: our title as the HTML's one 13px text-3 line, 24px above and below, centred, at the top of the reserved body",
   );
+  assert.ok(!empty.includes("Nothing yet."), "no second line on the dashboard (the HTML's empty state is one line)");
   assert.ok(card({ variant: "dashboard", updating: true }).includes("opacity-55"), "the old range's body dims while the new one loads");
   // Fix round 1: each card sets its own space under the head (values 3.5–3.14), 14px unless it says otherwise.
   for (const [gap, cls] of [[8, "mt-2"], [10, "mt-2.5"], [14, "mt-3.5"], [18, "mt-[18px]"]] as const) {
@@ -997,8 +999,19 @@ test("ChannelsCard: the HTML's Where orders came from - bordered rows of a 34px 
   expectAll(tiles[1], ["bg-status-warn-tint", "text-status-warn-ink"], "takeaway: warn-t / warn-i");
   expectAll(tiles[2], ["bg-status-reserved-tint", "text-status-reserved-ink"], "QR: res-t / res-i");
   expectAll(tiles[3], ["bg-status-ok-tint", "text-status-ok-ink"], "counter: ok-t / ok-i");
-  const icons = (ch.match(/<svg[^>]*>/g) ?? []).filter((s) => s.includes('stroke-width="1.8"') && /class="lucide[^"]*\bsize-4\b/.test(s));
-  assert.equal(icons.length, 4, "our icons at 16px, stroke 1.8");
+  // Fix round 1: Dine-in and Takeaway take the HTML's glyphs (values 5, the table and the bag); our QR and counter keep
+  // lucide's QrCode and Store (the HTML has neither), all at 16px with a 1.8 stroke.
+  assert.deepEqual(rows.map((r) => /data-channel="([^"]+)"/.exec(r)?.[1]), ["dine-in", "takeaway", "qr", "counter"], "each row names its channel");
+  const glyphs = (ch.match(/<svg[^>]*>/g) ?? []).filter(
+    (t) => /^<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/.test(t),
+  );
+  assert.equal(glyphs.length, 2, "two of the HTML's inline glyphs, 16px, stroke 1.8, round caps and joins");
+  assert.ok(ch.includes('<path d="M3 11h18M12 11v9M7 20h10M6 11V5M18 11V5"></path>'), "Dine-in: the HTML's table");
+  assert.ok(ch.includes('<path d="M6 7h12l-1 13H7zM9 7a3 3 0 0 1 6 0"></path>'), "Takeaway: the HTML's bag");
+  const icons = (ch.match(/<svg[^>]*>/g) ?? []).filter((t) => t.includes('stroke-width="1.8"') && /class="lucide[^"]*\bsize-4\b/.test(t));
+  assert.equal(icons.length, 2, "QR and counter: our icons at 16px, stroke 1.8");
+  assert.ok(ch.includes("lucide-qr-code") && ch.includes("lucide-store"), "QrCode and Store");
+  assert.ok(!/lucide-utensils|lucide-shopping-bag/.test(ch), "no lucide glyph where the HTML has its own");
   assert.ok(
     ch.includes('<span data-ui="src-label" class="block text-[13.5px] font-medium">Dine-in <span class="font-normal text-subtle-foreground">· 3 orders</span></span>'),
     "'{channel} · {n} orders' in 13.5/500, the count in 400 text-3",
@@ -1326,7 +1339,7 @@ test("RecentOrders: the HTML's rows - the 40px code tile, '#NNN · {table | Walk
   assert.ok(!/brand-|divide-y/.test(html), "no Paper & Ink token or divider list left");
 
   const empty = renderToStaticMarkup(createElement(RecentOrders, { orders: [], onSelect: noop }));
-  assert.ok(empty.includes('data-ui="dash-empty"') && empty.includes("<p>No orders yet today</p>"), "no orders: the HTML's empty line with our words");
+  assert.ok(empty.includes('<p data-ui="dash-empty" class="py-6 text-center text-[13px] text-subtle-foreground">No orders yet today</p>'), "no orders: the HTML's one empty line with our words");
 });
 
 const booking = (id: string, over: Record<string, unknown>): Reservation =>
@@ -1344,7 +1357,12 @@ test("TodayReservations: the HTML's rows - the 64px time pill, who 14/500, '{gue
   const section = tagOf(html, "res-card");
   assert.ok(section.startsWith("<section"), "the card names itself (data-ui res-card)");
   expectAll(section, ["flex", "flex-col", "py-[18px]"], "the generic card as a column (values 3.8)");
-  assert.ok(html.includes(">Today&#x27;s reservations</h2>") && html.includes(">Booked and seated · by time</p>"), "the title and our sub");
+  assert.ok(html.includes(">Today&#x27;s reservations</h2>"), "the title");
+  assert.ok(html.includes(">2 bookings · by time</p>"), "the HTML's sub: '{n} bookings · by time' (a seated booking is still a booking)");
+  const one = renderToStaticMarkup(
+    createElement(QueryClientProvider, { client: new QueryClient() }, createElement(TodayReservations, { reservations: BOOKINGS.slice(1) })),
+  );
+  assert.ok(one.includes(">1 booking · by time</p>"), "one booking is singular");
   assert.match(html, /href="\/reservations"[^>]*>View all →<\/a>/, "the HTML's 'View all →' to our Reservations");
   assert.ok(html.includes('<div style="min-height:165px" class="transition-opacity duration-200 mt-2.5">'), "the list 10px under the head, three 55px rows reserved");
   const rows = allTags(html, "res-row");
@@ -1434,4 +1452,24 @@ test("LeaksCard: the HTML's Money leaks - the lost-total pill, rows of a 32px ti
   assert.deepEqual(textsOf(clean, "leak-pill"), ["Nothing lost"], "the HTML's words");
   const loading = renderToStaticMarkup(createElement(LeaksCard, { ...ready(), data: undefined, status: "loading" }));
   assert.ok(!loading.includes('data-ui="leak-pill"'), "no total until the leaks load");
+  // Fix round 1: the pill sits in the head, outside the dimmed body: it dims with it while the next range loads.
+  expectAll(tagOf(html, "leak-pill"), ["transition-opacity", "duration-200"], "the pill fades like the body");
+  assert.ok(!clsOf(tagOf(html, "leak-pill")).includes("opacity-55"), "full strength when the range is current");
+  const updating = renderToStaticMarkup(createElement(LeaksCard, { ...ready({ leaks: LEAKS }), updating: true }));
+  expectAll(tagOf(updating, "leak-pill"), ["opacity-55"], "the previous range's total dims while the new one loads");
+});
+
+// Fix round 1 (item 6): the code tile takes the FIRST run of digits of the table's name, never more than fits the 40px
+// tile (T + three digits).
+test("recentOrderCode: T + the first digit run of the table name (at most three digits); the name's letters without one", async () => {
+  const { recentOrderCode } = await import("@/components/dashboard/RecentOrders");
+  const at = (tableNo: string) => recentOrderCode(recentOrder("001", { tableNo }));
+  assert.equal(at("T-12"), "T12", "T-12 -> T12");
+  assert.equal(at("Patio 2 seat 4"), "T2", "the first run of digits only");
+  assert.equal(at("Table 104"), "T104", "three digits fit");
+  assert.equal(at("Hall 12345"), "T123", "never more than three digits (the 40px tile)");
+  assert.equal(at("Garden"), "GA", "no digits: the name's first two letters");
+  assert.equal(recentOrderCode(recentOrder("002", { parcel: true, tableNo: "T-4" })), "TA", "a takeaway");
+  assert.equal(recentOrderCode(recentOrder("003", { source: "qr", tableNo: "T-4" })), "QR", "a QR order");
+  assert.equal(recentOrderCode(recentOrder("004", {})), "WI", "a walk-in");
 });

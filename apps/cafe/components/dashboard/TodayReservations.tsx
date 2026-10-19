@@ -26,9 +26,10 @@ const SEAT_CLASS = cn(
 );
 
 /**
- * Today's active bookings (Booked/Seated), sorted by time, as the owner's HTML list (values 3.8, ruling R17): the 64px
- * time pill, the guest's name, "{guests} guests · {table}", and "Seat" (our one-tap seat action) — a seated booking
- * shows our "Seated" status as an ok pill in its place. Cancelled/Completed are filtered out: an "upcoming" panel.
+ * Today's active bookings (Booked/Seated), sorted by time, as the owner's HTML list (values 3.8, ruling R17): the
+ * HTML's "{n} bookings · by time" (a seated booking is still a booking), then rows of the 64px time pill, the guest's
+ * name, "{guests} guests · {table}", and "Seat" (our one-tap seat action) — a seated booking shows our "Seated" status
+ * as an ok pill in its place. Cancelled/Completed are filtered out: an "upcoming" panel.
  */
 export function TodayReservations({ reservations, loading, isError, onRetry }: TodayReservationsProps) {
   const updateReservation = useUpdateReservation();
@@ -45,7 +46,7 @@ export function TodayReservations({ reservations, loading, isError, onRetry }: T
       className="flex flex-col"
       bodyGap={10}
       title="Today's reservations"
-      period="Booked and seated · by time"
+      period={`${plural(rows.length, "booking")} · by time`}
       link={{ href: "/reservations", label: "View all" }}
       status={status}
       onRetry={onRetry}
