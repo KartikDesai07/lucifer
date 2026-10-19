@@ -49,3 +49,17 @@ const HEADER_DATE = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "nu
 export function defaultPageSubtitle(cafeName: string, now: Date): string {
   return `${cafeName} · ${HEADER_DATE.format(now)}`;
 }
+
+/** The header's two lines: what the page's PageHeader registered, else the route's title and the cafe line. */
+export function headerWordsFor(input: {
+  info: { title: string; description?: string } | null;
+  pathname: string;
+  cafeName: string;
+  now: Date;
+}): { title: string; subtitle: string } {
+  const { info, pathname, cafeName, now } = input;
+  return {
+    title: info?.title ?? pageTitleFor(pathname),
+    subtitle: info?.description ?? defaultPageSubtitle(cafeName, now),
+  };
+}

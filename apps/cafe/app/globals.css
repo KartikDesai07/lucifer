@@ -523,3 +523,56 @@ html[data-pos-locked]:not([data-pos-lock-ready]) body > * {
     visibility: visible;
   }
 }
+
+/* The page header's actions (U0 Task 3, values 2.5, ruling R6): a page's own buttons, in the header or in its row at
+   the top of the page (a phone, or no room beside the title), take the HTML's header buttons whatever classes the page
+   gives them. Unlayered on purpose, so it outranks every utility, the touch sizes included (ruling R1). Outline (a
+   control with a border): 36px, radius 8, 1px border, surface, 13.5px/500, a 15px icon 7px from the label, padding
+   0 12px, hover --hover. Filled (the page's primary): its own fill, 13.5px/600, a 14px icon 6px away, padding 0 14px,
+   hover accent-h. An icon-only control (the kit's w-9 or a size-N square) is a 36px square. */
+[data-header-actions] :is(button, a) {
+  box-sizing: border-box;
+  height: 36px;
+  min-height: 36px;
+  border-radius: 8px;
+  padding: 0 12px;
+  gap: 7px;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: normal;
+  letter-spacing: normal;
+  white-space: nowrap;
+}
+[data-header-actions] :is(button, a) svg {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  flex: none;
+  stroke-width: 1.8;
+}
+[data-header-actions] :is(button, a)[class~="border"] {
+  border: 1px solid var(--border);
+  background-color: var(--card);
+  color: var(--foreground);
+}
+[data-header-actions] :is(button, a)[class~="border"]:hover {
+  background-color: var(--hover);
+}
+[data-header-actions] :is(button, a):not([class~="border"]) {
+  padding: 0 14px;
+  gap: 6px;
+  font-weight: 600;
+}
+[data-header-actions] :is(button, a):not([class~="border"]):hover {
+  background-color: var(--primary-hover);
+}
+[data-header-actions] :is(button, a):not([class~="border"]) svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.4;
+}
+[data-header-actions] :is(button, a):is([class~="w-9"], [class~="w-10"], [class~="w-11"], [class~="size-9"], [class~="size-10"], [class~="size-11"]) {
+  width: 36px;
+  min-width: 36px;
+  padding: 0;
+}

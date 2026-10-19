@@ -10,9 +10,9 @@ import { usePrintHostDot } from "@/components/layout/print-host-dot-context";
 import { usePrintWaitingCount } from "@/components/layout/print-waiting-context";
 import { PrinterPanel } from "@/components/print/PrinterPanel";
 import {
-  PRINTER_DOT_BAD_CLASS,
   PRINTER_DOT_CLASS,
   PRINTER_DOT_OK_CLASS,
+  PRINTER_DOT_WARN_CLASS,
   PRINTER_ICON_BUTTON_CLASS,
 } from "@/components/print/printer-classes";
 import { useDotPrinters } from "@/hooks/use-agent-printers";
@@ -67,7 +67,7 @@ export function PrinterStatusButton() {
           {tone !== "none" && (
             <span
               aria-hidden="true"
-              className={cn(PRINTER_DOT_CLASS, tone === "green" ? PRINTER_DOT_OK_CLASS : PRINTER_DOT_BAD_CLASS)}
+              className={cn(PRINTER_DOT_CLASS, tone === "green" ? PRINTER_DOT_OK_CLASS : PRINTER_DOT_WARN_CLASS)}
               data-ui="printer-dot"
             />
           )}

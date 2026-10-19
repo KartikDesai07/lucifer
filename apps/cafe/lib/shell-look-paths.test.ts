@@ -12,6 +12,8 @@ const read = (rel: string) => readFileSync(fileURLToPath(new URL(`../${rel}`, im
 
 const CLASSES = read("components/brand/brand-classes.ts");
 const BRAND = read("components/layout/SidebarBrand.tsx");
+const TILE = read("components/layout/BrandTile.tsx");
+const TITLE = read("components/layout/HeaderTitle.tsx");
 const SIDEBAR = read("components/layout/AppSidebar.tsx");
 const ACCOUNT = read("components/layout/SidebarAccount.tsx");
 const HEADER = read("components/layout/Header.tsx");
@@ -65,9 +67,13 @@ test("the group heading is the HTML's 11px uppercase nav-t2 label, shown in the 
   }
 });
 
-test("the sidebar brand has no multiply blend (it misrenders on dark) and puts the logo on a white tile", () => {
-  assert.ok(!BRAND.includes("mix-blend-multiply"), "mix-blend-multiply must be gone from SidebarBrand");
-  assert.match(BRAND, /bg-white/, "the logo must sit on a white tile");
+// Fix round 1: the nav's brand tile and the phone header's mini logo are one component (BrandTile, size nav / mini).
+test("the brand tile has no multiply blend (it misrenders on dark) and puts the logo on a white tile; the nav uses it", () => {
+  for (const [name, src] of [["SidebarBrand", BRAND], ["BrandTile", TILE]] as const) {
+    assert.ok(!src.includes("mix-blend-multiply"), `mix-blend-multiply must be gone from ${name}`);
+  }
+  assert.match(TILE, /bg-white/, "the logo must sit on a white tile");
+  assert.match(BRAND, /<BrandTile\b[^>]*size="nav"/, "the nav's brand block draws the 34px tile");
 });
 
 test("the nav's scroller carries the HTML's 8px scrollbar (values 1.4)", () => {
@@ -93,14 +99,48 @@ test("the page header is the HTML's: a sticky white 56px bar with a bottom rule,
     assert.ok(tokens.includes(needle), `the header tag must carry ${needle}`);
   }
   assert.ok(!tokens.some((t) => /bg-background|pointer-coarse:/.test(t)), "not the page colour, and no touch enlargement");
-  const title = HEADER.match(/<h1 data-ui="header-title" className="([^"]*)"/)?.[1].split(/\s+/) ?? [];
+  const title = TITLE.match(/<h1 data-ui="header-title" className="([^"]*)"/)?.[1].split(/\s+/) ?? [];
   for (const needle of ["text-[15px]", "font-semibold", "leading-[1.2]"]) assert.ok(title.includes(needle), `the title carries ${needle}`);
-  const sub = HEADER.match(/<p data-ui="header-subtitle" className="([^"]*)"/)?.[1].split(/\s+/) ?? [];
+  const sub = TITLE.match(/<p data-ui="header-subtitle" className="([^"]*)"/)?.[1].split(/\s+/) ?? [];
   for (const needle of ["text-[12px]", "text-muted-foreground", "truncate"]) assert.ok(sub.includes(needle), `the subtitle carries ${needle}`);
-  const logo = HEADER.match(/data-ui="header-mini-logo"[^>]*className="([^"]*)"/)?.[1].split(/\s+/) ?? [];
-  for (const needle of ["tab:hidden", "size-[30px]", "rounded-[8px]", "bg-brand-red", "font-brand-script", "text-[19px]", "pt-0.5"]) {
-    assert.ok(logo.includes(needle), `the phone's mini logo carries ${needle}`);
+  assert.match(HEADER, /<BrandTile\b[^>]*size="mini"[^>]*dataUi="header-mini-logo"[^>]*className="tab:hidden"/, "the phone's mini logo is the brand tile at its mini size");
+  const literal = (name: string): string[] => TILE.match(new RegExp(`const ${name} =\\s*"([^"]*)"`))?.[1].split(/\s+/) ?? [];
+  assert.match(TILE, /mini: \{ px: 30, box: "size-\[30px\] rounded-\[8px\]" \}/, "mini: the HTML's 30px tile, radius 8 (values 2.5)");
+  assert.match(TILE, /nav: \{ px: 34, box: "size-\[34px\] rounded-\[9px\]" \}/, "nav: the HTML's 34px tile, radius 9 (values 2.3)");
+  for (const needle of ["bg-brand-red", "font-brand-script", "text-[19px]", "pt-0.5", "text-white"]) {
+    assert.ok(literal("LETTER_CLASS").includes(needle), `the letter tile carries ${needle}`);
   }
+});
+
+// Fix round 1 (ruling R6): a page's own actions, in the header or in its row on a phone, take the HTML's header
+// buttons whatever classes the page gives them. Unlayered CSS (it outranks every utility, the touch sizes included:
+// ruling R1). Outline: 36px, radius 8, 1px border, surface, 13.5/500, a 15px icon 7px away, padding 0 12px; filled:
+// 13.5/600, a 14px icon 6px away, padding 0 14px, hover accent-h; an icon-only square 36x36.
+test("a page's actions take the header buttons' look: 36px, radius 8, 13.5px, outline or filled, icon-only 36x36", () => {
+  const css = read("app/globals.css");
+  const rule = (selector: string): string => {
+    const at = css.indexOf(`${selector} {`);
+    assert.ok(at >= 0, `globals.css has the rule ${selector}`);
+    return css.slice(at, css.indexOf("}", at));
+  };
+  const base = rule("[data-header-actions] :is(button, a)");
+  for (const decl of ["height: 36px;", "min-height: 36px;", "border-radius: 8px;", "padding: 0 12px;", "gap: 7px;", "font-size: 13.5px;", "font-weight: 500;", "line-height: normal;", "letter-spacing: normal;"]) {
+    assert.ok(base.includes(decl), `every page action: ${decl}`);
+  }
+  assert.ok(rule("[data-header-actions] :is(button, a) svg").includes("width: 15px;"), "a 15px icon");
+  const outline = rule('[data-header-actions] :is(button, a)[class~="border"]');
+  for (const decl of ["border: 1px solid var(--border);", "background-color: var(--card);", "color: var(--foreground);"]) {
+    assert.ok(outline.includes(decl), `an outline action: ${decl}`);
+  }
+  assert.ok(rule('[data-header-actions] :is(button, a)[class~="border"]:hover').includes("background-color: var(--hover);"), "outline hover --hover");
+  const filled = rule('[data-header-actions] :is(button, a):not([class~="border"])');
+  for (const decl of ["padding: 0 14px;", "gap: 6px;", "font-weight: 600;"]) assert.ok(filled.includes(decl), `a filled action: ${decl}`);
+  assert.ok(rule('[data-header-actions] :is(button, a):not([class~="border"]):hover').includes("background-color: var(--primary-hover);"), "filled hover accent-h");
+  assert.ok(rule('[data-header-actions] :is(button, a):not([class~="border"]) svg').includes("width: 14px;"), "a 14px icon on a filled action");
+  assert.ok(/\[class~="size-10"\][^{]*\{[^}]*width: 36px;/.test(css), "an icon-only action is a 36px square");
+  const before = css.slice(0, css.indexOf("[data-header-actions] :is(button, a) {"));
+  // Top level (brace depth 0), not inside an @layer: unlayered CSS outranks every layered utility.
+  assert.equal((before.match(/\{/g) ?? []).length - (before.match(/\}/g) ?? []).length, 0, "the rules sit at the top level, unlayered");
 });
 
 test("the header's buttons are the HTML's 36px outline (13.5/500, gap 7, 15px icon) and primary (13.5/600, gap 6, 14px plus)", () => {

@@ -89,7 +89,7 @@ test("shared states render title, description, action and keep their structure",
   const head = renderToStaticMarkup(
     createElement(
       PageHeaderSlotContext.Provider,
-      { value: { wide: true, inHeader, register: () => () => undefined } },
+      { value: { actionsInHeader: true, renderInHeader: inHeader, register: () => () => undefined, bodyRowRef: () => undefined } },
       createElement(PageHeader, { title: "Menu", eyebrow: "Catalogue", description: "All items", actions: createElement("i", null, "x") }),
     ),
   );

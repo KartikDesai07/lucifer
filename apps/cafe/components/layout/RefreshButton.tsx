@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
-import { PRINTER_ICON_BUTTON_CLASS } from "@/components/print/printer-classes";
+import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/header-classes";
 import {
   REFRESH_CONFIRM_TITLE,
   REFRESH_OFFLINE_MESSAGE,
@@ -64,7 +64,7 @@ export function RefreshButton() {
         type="button"
         variant="outline"
         size="icon"
-        className={PRINTER_ICON_BUTTON_CLASS}
+        className={HEADER_ICON_BUTTON_CLASS}
         aria-label="Refresh"
         title="Refresh"
         data-ui="header-refresh"

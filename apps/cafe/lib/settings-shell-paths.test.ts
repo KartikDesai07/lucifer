@@ -287,5 +287,6 @@ test('PIN: (dashboard)/layout.tsx\'s <main className="flex-1 p-4 md:p-6"> and He
   );
 
   const headerSrc = stripComments(readSrc(HEADER));
-  assert.match(headerSrc, /\bh-14\b/, "Header.tsx must keep its h-14 height class");
+  // U0 Task 3: the HTML's header is min-height 56px (values 2.5): min-h-14, matched as its own token.
+  assert.match(headerSrc, /\smin-h-14\s/, "Header.tsx must keep its 56px min-h-14 height class");
 });

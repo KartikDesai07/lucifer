@@ -632,8 +632,10 @@ test("PIN: DASHBOARD_HEADER_REM parity — parsed from Header.tsx's real <header
   const headerMatch = src.match(/<header className="([^"]*)"/);
   assert.ok(headerMatch, 'Header.tsx must render a <header className="..."> tag');
   assert.ok(headerMatch![1].includes("sticky top-0"), "landmark: Header.tsx's <header> must carry sticky top-0");
-  const heightMatch = headerMatch![1].match(/\bh-(\d+)\b/);
-  assert.ok(heightMatch, `Header.tsx's <header> className ("${headerMatch![1]}") must carry an h-N token`);
+  // U0 Task 3: the HTML's header is min-height 56px (values 2.5), so the token read is min-h-N, on purpose (not a
+  // \bh-N\b match inside it); no page title is long enough to grow it on the POS.
+  const heightMatch = headerMatch![1].match(/(?:^|\s)min-h-(\d+)(?=\s|$)/);
+  assert.ok(heightMatch, `Header.tsx's <header> className ("${headerMatch![1]}") must carry a min-h-N token`);
   assert.equal(
     DASHBOARD_HEADER_REM * 4,
     Number(heightMatch![1]),

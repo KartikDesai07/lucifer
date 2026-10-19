@@ -285,10 +285,14 @@ test("PIN: the brand block is a link to the Dashboard that closes the phone shee
   // Mutation this catches: bringing back the wide-logo rule that swapped a
   // wordmark for the letter in the rail — only a load failure, or no
   // uploaded logo at all (design 5.2: the HTML's letter tile), may.
-  assert.match(brand, /\{failed \|\| logoUrl === null \? \(/, "the initial shows when the logo fails or none was uploaded");
-  assert.ok(!/naturalWidth|WIDE_LOGO/.test(brand), "no logo-shape rule may hide the real logo in the rail");
-  assert.match(brand, /size-\[34px\] flex-none rounded-\[9px\] bg-white object-contain/, "the logo fills the HTML's 34px tile on white");
-  assert.match(brand, /object-contain/, "and scaled, never cropped");
+  // U0 Task 3 fix round 1: the tile is BrandTile (shared with the phone header's 30px mini logo); the nav draws it at 34px.
+  const tile = stripComments(readSrc("apps/cafe/components/layout/BrandTile.tsx"));
+  const tileTag = /<BrandTile\b[^>]*\/>/.exec(brand)?.[0] ?? "";
+  assert.ok(tileTag.includes('size="nav"') && tileTag.includes("logoUrl={logoUrl}"), "the brand block draws the 34px tile with the logo it was given");
+  assert.match(tile, /\{failed \|\| logoUrl === null \? \(/, "the initial shows when the logo fails or none was uploaded");
+  assert.ok(!/naturalWidth|WIDE_LOGO/.test(brand + tile), "no logo-shape rule may hide the real logo in the rail");
+  assert.match(tile, /nav: \{ px: 34, box: "size-\[34px\] rounded-\[9px\]" \}/, "the HTML's 34px tile");
+  assert.match(tile, /LOGO_CLASS = "flex-none bg-white object-contain p-0\.5"/, "the logo fills the tile on white, scaled, never cropped");
   // Ruling R3: only the cafe's own logo reaches the tile (lib/branding-paths.test.ts item 10).
   assert.match(app, /<SidebarBrand[^>]*logoUrl=\{logoUrl\}/, "the tile gets the cafe's logo, or null for the initial");
 });

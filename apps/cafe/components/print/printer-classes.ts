@@ -14,10 +14,12 @@ export const PRINTER_INPUT_CLASS = "h-11 text-base md:text-base";
  *  outline Button; the same size on a touch screen (U0 ruling R1). Refresh, the phone's menu and a back link share it. */
 export const PRINTER_ICON_BUTTON_CLASS = "relative h-9 w-9 flex-none px-1.5 py-px [&_svg]:size-[17px]";
 
-/** The HTML's status dot: 10px on the button's corner (top/right -3px), a 2px ring in the surface colour. Green when
- *  printing works, red when something needs fixing (the theme's ok / bad). */
+/** The HTML's status dot: 10px on the button's corner (top/right -3px), a 2px ring in the surface colour. On the
+ *  header button: the HTML's --ok green when printing works, its --warn orange when it does not (values 2.5). */
 export const PRINTER_DOT_CLASS = "absolute -right-[3px] -top-[3px] size-2.5 rounded-[50%] [box-shadow:0_0_0_2px_var(--card)]";
 export const PRINTER_DOT_OK_CLASS = STATUS_CLASSES.ok.dot;
+export const PRINTER_DOT_WARN_CLASS = STATUS_CLASSES.warn.dot;
+/** The Printer setup page's own dots: green connected, red a problem. */
 export const PRINTER_DOT_BAD_CLASS = STATUS_CLASSES.bad.dot;
 
 /** The 36px icon tile at the start of a panel header, a printer row and the status

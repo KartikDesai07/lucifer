@@ -60,8 +60,8 @@ const PINS: PinCase[] = [
     check: (src) => {
       ascending(src, [
         "<PhoneMenuButton",
-        "<HeaderMiniLogo",
-        'data-ui="header-title-block"',
+        "<BrandTile",
+        "<HeaderTitle",
         "ref={actionsRef}",
         "<HeaderQuickTabs />",
         "<RefreshButton />",
@@ -71,19 +71,20 @@ const PINS: PinCase[] = [
       ascending(read("components/layout/HeaderQuickTabs.tsx"), ['title: "Tables"', 'title: "New order"']);
       // s63 smoke: a 60-char name at 768 px pushed the button off-screen (its min-content widened the page) — the
       // title block is the HTML's flex:1 + min-width:0, so a long title shrinks instead of pushing the buttons off.
-      assert.match(src, /data-ui="header-title-block" className="min-w-0 flex-1"/, "the title block takes the free width and may shrink");
+      assert.match(read("components/layout/HeaderTitle.tsx"), /data-ui="header-title-block" className="min-w-0 flex-1"/, "the title block takes the free width and may shrink");
       assert.match(src, /import \{ PrinterStatusButton \} from "@\/components\/print\/PrinterStatusButton";/);
     },
     mutate: (src) => src.replace("<RefreshButton />", "").replace("</header>", "<RefreshButton /></header>"),
   },
   {
-    name: "Header is the HTML's sticky 56px bar (min-h-14 sticky top-0), its title block shrinking first",
+    // Fix round 1: the actions box is min-w-0, so a page's wide actions never push the printer button off at 720px.
+    name: "Header is the HTML's sticky 56px bar (min-h-14 sticky top-0), its actions box may shrink (min-w-0)",
     file: HEADER,
     check: (src) => {
       assert.match(src, /<header className="sticky top-0 [^"]*\bmin-h-14\b/);
-      assert.ok(src.includes('className="min-w-0 flex-1"'), "the title block is min-w-0 flex-1");
+      assert.match(src, /data-ui="header-actions"[^>]*className="flex min-w-0 /, "the actions box is min-w-0");
     },
-    mutate: (src) => src.replace('className="min-w-0 flex-1"', 'className="flex-1"'),
+    mutate: (src) => src.replace('className="flex min-w-0 ', 'className="flex '),
   },
   {
     name: "button name: aria-label AND title come from printerButtonName( (a variable), never a literal",
@@ -100,13 +101,14 @@ const PINS: PinCase[] = [
   {
     // R2-W7: was "only drawn when dot.show" with the tone computed inline; a checking printer must draw no dot
     // (never red while it only connects), so the tone now comes from printerDotTone( and the dot follows the tone.
+    // U0 Task 3 fix round 1 (values 2.5, design 5.3): the header dot is the HTML's ok green or warn orange.
     name: "button dot span is aria-hidden and only drawn when the tone is not none (a checking printer draws nothing)",
     file: BUTTON,
     check: (src) => {
       assert.match(src, /\{tone !== "none" && \(\s*<span\s+aria-hidden="true"\s+className=\{cn\(PRINTER_DOT_CLASS,/);
       assert.match(src, /data-printer-dot=\{tone\}/);
       assert.ok(src.includes("const tone = printerDotTone(dot);"), "the tone attribute is none / green / red, from the lib's printerDotTone(");
-      assert.ok(src.includes('tone === "green" ? PRINTER_DOT_OK_CLASS : PRINTER_DOT_BAD_CLASS'), "green draws the ok class, anything else drawn the bad one");
+      assert.ok(src.includes('tone === "green" ? PRINTER_DOT_OK_CLASS : PRINTER_DOT_WARN_CLASS'), "green draws the ok class, anything else the warn one");
     },
     mutate: (src) => src.replace('aria-hidden="true"', ""),
   },
@@ -281,7 +283,9 @@ const PINS: PinCase[] = [
         src.includes('PRINTER_DOT_CLASS = "absolute -right-[3px] -top-[3px] size-2.5 rounded-[50%] [box-shadow:0_0_0_2px_var(--card)]"'),
         "the HTML's dot: 10px at top/right -3px, a 2px ring in the surface colour",
       );
-      assert.ok(src.includes("PRINTER_DOT_OK_CLASS = STATUS_CLASSES.ok.dot;") && src.includes("PRINTER_DOT_BAD_CLASS = STATUS_CLASSES.bad.dot;"), "green ok, red bad: the theme's status dots (lib/ui)");
+      assert.ok(src.includes("PRINTER_DOT_OK_CLASS = STATUS_CLASSES.ok.dot;"), "the header dot when printing works: the HTML's --ok green");
+      assert.ok(src.includes("PRINTER_DOT_WARN_CLASS = STATUS_CLASSES.warn.dot;"), "the header dot when it does not: the HTML's --warn orange");
+      assert.ok(src.includes("PRINTER_DOT_BAD_CLASS = STATUS_CLASSES.bad.dot;"), "the Printer setup page's own dots keep red for a problem");
     },
     mutate: (src) => src.replace('[&_svg]:size-[17px]"', '[&_svg]:size-[17px] pointer-coarse:h-11"'),
   },
