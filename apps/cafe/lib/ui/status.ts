@@ -23,7 +23,8 @@ export const PAYMENT_KIND: Record<SettlementPayMode, StatusKind> = {
   Credit: "warn",
 };
 
-export const PAY_PILL_KIND: Record<SettlementPayMode | "Unpaid", StatusKind> = { ...PAYMENT_KIND, Unpaid: "neutral" };
+// The dashboard's recent orders: an open tab ("Open") is warn among the HTML's pill colours (U0 match Task 8).
+export const PAY_PILL_KIND: Record<SettlementPayMode | "Unpaid", StatusKind> = { ...PAYMENT_KIND, Unpaid: "warn" };
 
 // Keyed by the dashboard's channel keys (foldChannels rows carry `key`).
 export const CHANNEL_KIND: Record<DashboardChannel, StatusKind> = {

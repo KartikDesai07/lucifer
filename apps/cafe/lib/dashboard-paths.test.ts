@@ -20,7 +20,8 @@ test("Recent orders shows at most five rows and links to the full Orders list", 
   const src = readSrc("components/dashboard/RecentOrders.tsx");
   assert.match(src, /const MAX_ROWS = 5;/, "MAX_ROWS must be 5 (owner: recent orders max 5)");
   assert.ok(src.includes("orders.slice(0, MAX_ROWS)"), "the rows must be cut to MAX_ROWS");
-  assert.ok(src.includes('link={{ href: "/orders", label: "View all" }}'), "a View all link to /orders");
+  // U0 match Task 8 (ruling R17): the HTML's words for the link, "All orders →".
+  assert.ok(src.includes('link={{ href: "/orders", label: "All orders" }}'), "an All orders link to /orders");
 });
 
 // U0 match Task 7 (values 3.5, design 5.5): the dashboard's sales chart is the owner's HTML bar chart in CSS

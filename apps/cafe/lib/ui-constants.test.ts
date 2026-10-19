@@ -55,7 +55,8 @@ test("payment, channel, table and reservation maps", () => {
     { Online: "info", Cash: "ok", Split: "reserved", Due: "bill", Credit: "warn" },
     "payment kinds",
   );
-  assert.deepEqual(PAY_PILL_KIND, { ...PAYMENT_KIND, Unpaid: "neutral" }, "pill kinds add Unpaid");
+  // U0 match Task 8: an open tab ("Open") on the dashboard's recent orders is warn, in the HTML's pill colours.
+  assert.deepEqual(PAY_PILL_KIND, { ...PAYMENT_KIND, Unpaid: "warn" }, "pill kinds add Unpaid as warn");
   assert.deepEqual(Object.keys(CHANNEL_KIND).sort(), [...CHANNELS].sort(), "CHANNEL_KIND keys are the dashboard channel keys");
   assert.deepEqual(
     CHANNEL_KIND,

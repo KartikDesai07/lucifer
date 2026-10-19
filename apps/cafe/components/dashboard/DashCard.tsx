@@ -44,6 +44,8 @@ interface DashCardProps {
   titleAdornment?: ReactNode;
   /** Dashboard cards: the head wraps (values 3.5's `flex-wrap`). */
   headWrap?: boolean;
+  /** Dashboard cards: the space between the head's words and its right side, in px (values 3.11: 10; default 12). */
+  headGap?: DashCardHeadGap;
   /** Dashboard cards: the section's probe hook (data-ui), "dash-card" unless the card names itself. */
   ui?: string;
   children?: ReactNode;
@@ -54,7 +56,14 @@ interface DashCardProps {
 export type DashCardBodyGap = 8 | 10 | 14 | 18;
 const BODY_GAP_CLASS: Record<DashCardBodyGap, string> = { 8: "mt-2", 10: "mt-2.5", 14: "mt-3.5", 18: "mt-[18px]" };
 
+/** The HTML cards' head gap: 12 (most), 10 (Money leaks, values 3.11). */
+export type DashCardHeadGap = 10 | 12;
+
 export const DASH_CARD_CLASS = "min-w-0 rounded-xl border border-brand-rule bg-brand-slip p-4 sm:p-5";
+
+/** The HTML dashboard's small pill (values 3.7's pay pill, 3.11's total pill): 24px tall, 0 9px, radius 12, 12/600.
+ *  Its colours come from STATUS_CLASSES[kind].pill. */
+export const DASH_PILL_CLASS = "flex h-6 items-center rounded-[12px] px-[9px] text-[12px] font-semibold";
 
 export function BrandSkeleton({ className }: { className?: string }) {
   return <div aria-hidden className={cn("rounded-md bg-brand-wash motion-safe:animate-pulse", className)} />;
@@ -73,8 +82,9 @@ interface Look {
   link: string;
   errorText: string;
   retry: string;
-  emptyTitle: string;
-  emptyText: string;
+  /** The reports' empty state (the dashboard's is the HTML's one line, drawn in DashCard). */
+  emptyTitle?: string;
+  emptyText?: string;
   Skeleton: (p: { className?: string }) => ReactNode;
 }
 
@@ -103,8 +113,6 @@ const LOOKS: Record<DashCardVariant, Look> = {
     // The HTML's small outline button (the reservations' "Seat"): 30px, radius 8, 12.5/500.
     retry:
       "inline-flex h-[30px] items-center gap-1.5 rounded-[8px] border border-border bg-card px-[11px] text-[12.5px] font-medium text-foreground hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-    emptyTitle: "text-[13.5px] font-medium",
-    emptyText: "max-w-xs text-[12.5px] text-subtle-foreground",
     Skeleton: DashSkeleton,
   },
 };
@@ -118,6 +126,7 @@ export function DashCardHeader({
   aside,
   titleAdornment,
   headWrap,
+  headGap = 12,
 }: {
   title: string;
   period?: string;
@@ -127,12 +136,14 @@ export function DashCardHeader({
   aside?: ReactNode;
   titleAdornment?: ReactNode;
   headWrap?: boolean;
+  headGap?: DashCardHeadGap;
 }) {
   const look = LOOKS[variant];
   // Probe hooks (data-ui) on the dashboard's card only; the reports' markup stays as it was.
   const ui = (name: string) => (variant === "dashboard" ? name : undefined);
+  const head = headWrap || headGap !== 12 ? cn(look.head, headWrap && "flex-wrap", headGap === 10 && "gap-2.5") : look.head;
   return (
-    <header data-ui={ui("dash-card-head")} className={headWrap ? cn(look.head, "flex-wrap") : look.head}>
+    <header data-ui={ui("dash-card-head")} className={head}>
       <div className="min-w-0">
         <h2 id={id} data-ui={ui("dash-card-title")} className={titleAdornment ? cn(look.title, "flex items-center gap-2") : look.title}>
           {title}
@@ -179,6 +190,7 @@ export function DashCard({
   aside,
   titleAdornment,
   headWrap,
+  headGap,
   ui = "dash-card",
   children,
 }: DashCardProps) {
@@ -205,6 +217,7 @@ export function DashCard({
         aside={aside}
         titleAdornment={titleAdornment}
         headWrap={headWrap}
+        headGap={headGap}
       />
       {status === "loading" ? (
         <div style={bodyClassName ? undefined : { height: bodyMinHeight }} className={cn("flex", gap, bodyClassName)}>
@@ -218,6 +231,15 @@ export function DashCard({
               <RotateCw className="h-3.5 w-3.5" aria-hidden /> Try again
             </button>
           )}
+        </div>
+      ) : status === "empty" && empty && dashboard ? (
+        // The HTML's empty state (values 3.7: padding 24px 0, centred, 13px text-3) with our words, in the body that
+        // holds the loaded height.
+        <div style={minStyle} className={cn("flex flex-col justify-center", gap, bodyClassName)}>
+          <div data-ui="dash-empty" className="py-6 text-center text-[13px] text-subtle-foreground">
+            <p>{empty.title}</p>
+            <p>{empty.description}</p>
+          </div>
         </div>
       ) : status === "empty" && empty ? (
         <div style={minStyle} className={cn("flex flex-col items-center justify-center gap-1 px-4 text-center", gap, bodyClassName)}>

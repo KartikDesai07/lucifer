@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { stripComments } from "@/lib/source-pin-utils";
 import { MONEY_BREAKDOWN_LINES, MONEY_NET_LABEL } from "@/lib/money-breakdown";
@@ -16,8 +17,10 @@ import { AttentionStrip, attentionItems } from "@/components/dashboard/Attention
 import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { DashCard } from "@/components/dashboard/DashCard";
 import { RangeBar } from "@/components/dashboard/RangeBar";
+import { TodayReservations } from "@/components/dashboard/TodayReservations";
 import { MoneyBreakdownCard } from "@/components/reports/MoneyBreakdownCard";
 import type { DashboardData, DashboardLive } from "@/types/dashboard";
+import type { Order, Reservation } from "@/types";
 
 // The dashboard in the owner's mock-up arrangement (UI redesign, Task 18):
 // every card, figure, word and link it had stays; only the order and the look
@@ -862,8 +865,12 @@ test("DashCard variant 'dashboard': the HTML's generic card (values 3.0) and its
   const empty = renderToStaticMarkup(
     createElement(DashCard, { ...CARD_BASE, variant: "dashboard", status: "empty", empty: { title: "None", description: "Nothing yet." } }),
   );
-  assert.ok(empty.includes('<p class="text-[13.5px] font-medium">None</p>'), "the empty title 13.5/500");
-  assert.ok(empty.includes('<p class="max-w-xs text-[12.5px] text-subtle-foreground">Nothing yet.</p>'), "the empty description 12.5 text-3");
+  // Task 8: the HTML's one empty state (values 3.7: padding 24px 0, centred, 13px text-3) with our words, in the body
+  // that still holds the reserved height.
+  assert.ok(
+    empty.includes('<div style="min-height:120px" class="flex flex-col justify-center mt-3.5"><div data-ui="dash-empty" class="py-6 text-center text-[13px] text-subtle-foreground"><p>None</p><p>Nothing yet.</p></div></div>'),
+    "the empty state: our title and description as the HTML's 13px text-3 line, 24px above and below, centred",
+  );
   assert.ok(card({ variant: "dashboard", updating: true }).includes("opacity-55"), "the old range's body dims while the new one loads");
   // Fix round 1: each card sets its own space under the head (values 3.5–3.14), 14px unless it says otherwise.
   for (const [gap, cls] of [[8, "mt-2"], [10, "mt-2.5"], [14, "mt-3.5"], [18, "mt-[18px]"]] as const) {
@@ -910,10 +917,12 @@ test("the cards take their colours from the one palette, with no raw Tailwind pa
   const cards = readSrc("components/dashboard/RangeCards.tsx");
   assert.ok(cards.includes("PAYMENT_KIND") && cards.includes("CHANNEL_KIND"), "payment mix and channels use PAYMENT_KIND / CHANNEL_KIND");
   const raw = /-(blue|green|gray|red|yellow|purple|orange|slate)-[0-9]/;
+  // U0 match Task 8: their pills are the HTML's (DASH_PILL_CLASS, 24px radius 12 12/600), not StatusPill's look; the
+  // colours still come from the one palette (STATUS_CLASSES).
   for (const f of ["TodayReservations", "RecentOrders"]) {
     const src = readSrc(`components/dashboard/${f}.tsx`);
     assert.ok(!raw.test(src), `${f} has no raw palette class`);
-    assert.ok(src.includes("StatusPill"), `${f} uses StatusPill`);
+    assert.ok(src.includes("DASH_PILL_CLASS") && src.includes("STATUS_CLASSES["), `${f} draws the HTML's pill in the palette's colours`);
   }
   assert.ok(readSrc("components/dashboard/RecentOrders.tsx").includes("PAY_PILL_KIND"), "recent orders pills use PAY_PILL_KIND");
   assert.ok(readSrc("components/dashboard/TodayReservations.tsx").includes("RESERVATION_KIND"), "reservations use RESERVATION_KIND");
@@ -922,35 +931,94 @@ test("the cards take their colours from the one palette, with no raw Tailwind pa
   assert.ok(floor.includes("TABLE_STATUS_META") && !/bg-(green|red|amber)-500/.test(floor), "the floor panel keeps TABLE_STATUS_META");
 });
 
-test("PaymentMixCard: a stacked bar with one segment per mode and a dot per row; ChannelsCard colours each bar by channel", async () => {
-  const { PaymentMixCard, ChannelsCard } = await import("@/components/dashboard/RangeCards");
-  const pay = renderToStaticMarkup(
-    createElement(PaymentMixCard, ready({
-      payments: [
-        { key: "Cash", label: "Cash", count: 3, amount: 600, share: 0.6 },
-        { key: "Online", label: "UPI / Online", count: 2, amount: 400, share: 0.4 },
-      ],
-    })),
+// ── How guests paid, Where orders came from (U0 match Task 8, values 3.9, 3.10, ruling R17) ─────────────────────────
+
+const PAY_ROWS: DashboardData["payments"] = [
+  { key: "Cash", label: "Cash", count: 3, amount: 600, share: 0.6 },
+  { key: "Online", label: "Online", count: 1, amount: 400, share: 0.4 },
+  { key: "Due", label: "Due", count: 2, amount: 0, share: 0 },
+];
+
+test("PaymentMixCard: the HTML's How guests paid - the 24px mono total, the 10px bar on surface-3, swatch rows, the dues note", async () => {
+  const { PaymentMixCard } = await import("@/components/dashboard/RangeCards");
+  const pay = renderToStaticMarkup(createElement(PaymentMixCard, ready({ payments: PAY_ROWS })));
+  assert.ok(tagOf(pay, "pay-card").startsWith("<section"), "the card names itself for the probes (data-ui pay-card)");
+  assert.ok(pay.includes(">How guests paid</h2>") && pay.includes(">Today · money collected</p>"), "the HTML's title, the period's sub (ruling R17)");
+  assert.ok(!pay.includes('data-ui="dash-card-link"'), "no header link (values 3.9)");
+  assert.ok(pay.includes('class="transition-opacity duration-200 mt-3.5"'), "the total 14px under the head");
+  expectAll(tagOf(pay, "pay-total"), ["font-mono", "text-[24px]", "font-medium", "tracking-[-0.03em]"], "the total: Geist Mono 24/500, -0.03em");
+  assert.deepEqual(textsOf(pay, "pay-total"), ["₹1,000"], "the money collected");
+  expectAll(tagOf(pay, "pay-bar"), ["mt-3", "flex", "h-2.5", "gap-0.5", "overflow-hidden", "rounded-[5px]", "bg-surface-3"], "the bar: 10px, radius 5, 2px apart, 12px under the total, on surface-3");
+  const segs = allTags(pay, "pay-seg");
+  assert.equal(segs.length, 2, "one segment per mode with a share (a zero share draws none)");
+  expectAll(segs[0], ["bg-status-ok", "origin-left", "motion-safe:animate-grow-x"], "Cash's segment in --ok, growing from the left");
+  expectAll(segs[1], ["bg-status-info", "origin-left", "motion-safe:animate-grow-x"], "Online's in --info (the HTML's UPI accent)");
+  assert.ok(segs[0].includes('style="width:60%"') && segs[1].includes('style="width:40%"'), "each segment as wide as its share");
+  expectAll(tagOf(pay, "pay-list"), ["mt-2.5", "flex", "flex-col"], "the rows 10px under the bar");
+  const rows = allTags(pay, "pay-row");
+  assert.equal(rows.length, 3, "a row per mode");
+  for (const r of rows) expectAll(r, ["flex", "items-center", "gap-2.5", "border-t", "border-border-2", "py-2", "text-[13.5px]"], "a row: 8px 0 over a border-2 rule, 13.5px, 10 apart");
+  assert.ok(
+    pay.includes('<span data-ui="pay-swatch" aria-hidden="true" class="size-[9px] shrink-0 rounded-[3px] bg-status-ok"></span><span class="flex-1">Cash <span class="text-subtle-foreground">· 3 orders</span></span><span data-ui="pay-amount" class="font-mono font-semibold">₹600</span><span data-ui="pay-pct" class="w-9 text-right text-[12px] text-subtle-foreground">60%</span>'),
+    "the 9px radius-3 swatch, '{mode} · {n} orders', the mono 600 amount, the 36px share in 12px text-3",
   );
-  assert.ok(pay.includes("bg-status-ok") && pay.includes("bg-status-info"), "Cash is ok-coloured and Online info-coloured");
-  assert.ok(pay.includes("width:60%") && pay.includes("width:40%"), "each segment's width is its share");
-  assert.ok(pay.includes("₹1,000"), "the total shows above the bar");
+  assert.ok(pay.includes("Online <span class=\"text-subtle-foreground\">· 1 order</span>"), "one order is singular");
+  expectAll(tagOf(pay, "pay-note"), ["mt-1.5", "text-[12px]", "text-subtle-foreground", "text-pretty"], "the note 6px under the rows, 12px text-3");
+  assert.deepEqual(textsOf(pay, "pay-note"), ["Due bills count only what was paid so far — the rest sits in customer dues."], "the HTML's sentence when a Due row has orders (ruling R17)");
+  const noDue = renderToStaticMarkup(createElement(PaymentMixCard, ready({ payments: PAY_ROWS.slice(0, 2) })));
+  assert.ok(!noDue.includes('data-ui="pay-note"'), "no note without a Due or Credit bill");
+  assert.ok(!/brand-|RankedList|h-1\.5/.test(pay), "no Paper & Ink token or ranked-list bar left");
+});
+
+test("ChannelsCard: the HTML's Where orders came from - bordered rows of a 34px tile, the label and a 4px bar, the amount and share", async () => {
+  const { ChannelsCard } = await import("@/components/dashboard/RangeCards");
   const ch = renderToStaticMarkup(
     createElement(ChannelsCard, ready({
       channels: [
         { key: "dine-in", label: "Dine-in", count: 3, amount: 600, share: 0.6 },
-        { key: "takeaway", label: "Takeaway", count: 2, amount: 400, share: 0.4 },
+        { key: "takeaway", label: "Takeaway", count: 1, amount: 250, share: 0.25 },
+        { key: "qr", label: "QR self-order", count: 1, amount: 100, share: 0.1 },
+        { key: "counter", label: "Counter", count: 1, amount: 50, share: 0.05 },
       ],
     })),
   );
-  assert.ok(ch.includes("bg-status-info") && ch.includes("bg-status-warn"), "dine-in info bar, takeaway warn bar");
+  assert.ok(tagOf(ch, "src-card").startsWith("<section"), "the card names itself (data-ui src-card)");
+  assert.ok(ch.includes(">Where orders came from</h2>") && ch.includes(">Today · completed orders</p>"), "the HTML's title and sub pattern");
+  expectAll(tagOf(ch, "src-list"), ["flex", "flex-col", "gap-2"], "the rows 8px apart");
+  assert.ok(ch.includes('class="transition-opacity duration-200 mt-3.5"'), "the list 14px under the head");
+  const rows = allTags(ch, "src-row");
+  assert.equal(rows.length, 4, "our four channels");
+  for (const r of rows) {
+    expectAll(r, ["grid", "grid-cols-[34px_minmax(0,1fr)_auto]", "items-center", "gap-3", "rounded-[12px]", "border", "border-border-2", "px-3", "py-2.5"], "a row: 34px | 1fr | auto, gap 12, 10px 12px, a border-2 box, radius 12");
+  }
+  const tiles = allTags(ch, "src-tile");
+  for (const t of tiles) expectAll(t, ["flex", "size-[34px]", "items-center", "justify-center", "rounded-[9px]"], "a 34px tile, radius 9");
+  expectAll(tiles[0], ["bg-status-info-tint", "text-status-info-ink"], "dine-in: info-t / info-i");
+  expectAll(tiles[1], ["bg-status-warn-tint", "text-status-warn-ink"], "takeaway: warn-t / warn-i");
+  expectAll(tiles[2], ["bg-status-reserved-tint", "text-status-reserved-ink"], "QR: res-t / res-i");
+  expectAll(tiles[3], ["bg-status-ok-tint", "text-status-ok-ink"], "counter: ok-t / ok-i");
+  const icons = (ch.match(/<svg[^>]*>/g) ?? []).filter((s) => s.includes('stroke-width="1.8"') && /class="lucide[^"]*\bsize-4\b/.test(s));
+  assert.equal(icons.length, 4, "our icons at 16px, stroke 1.8");
+  assert.ok(
+    ch.includes('<span data-ui="src-label" class="block text-[13.5px] font-medium">Dine-in <span class="font-normal text-subtle-foreground">· 3 orders</span></span>'),
+    "'{channel} · {n} orders' in 13.5/500, the count in 400 text-3",
+  );
+  expectAll(tagOf(ch, "src-track"), ["mt-[7px]", "block", "h-1", "overflow-hidden", "rounded-[2px]", "bg-surface-3"], "the 4px track, 7px under the label");
+  const fills = allTags(ch, "src-fill");
+  expectAll(fills[0], ["block", "h-full", "rounded-[2px]", "bg-status-info", "origin-left", "motion-safe:animate-grow-x"], "the fill in the channel's colour, growing in");
+  assert.ok(fills[0].includes('style="width:60%"') && fills[3].includes('style="width:5%"'), "each fill as wide as its share of the sales");
+  expectAll(tagOf(ch, "src-amount"), ["block", "font-mono", "text-[13.5px]", "font-semibold"], "the amount: mono 600 13.5");
+  expectAll(tagOf(ch, "src-pct"), ["block", "text-[11.5px]", "text-subtle-foreground"], "the share: 11.5 text-3");
+  assert.deepEqual(textsOf(ch, "src-amount"), ["₹600", "₹250", "₹100", "₹50"], "the amounts");
+  assert.deepEqual(textsOf(ch, "src-pct"), ["60%", "25%", "10%", "5%"], "the shares");
 });
 
-test("PaymentMixCard reserves its header's height, and mixSegments handles zero, one mode and rounding", async () => {
-  const { MIX_HEADER_PX, PAYMENT_BODY_MIN_PX, mixSegments } = await import("@/components/dashboard/RangeCards");
-  const { RANKED_ROW_PX } = await import("@/components/dashboard/RankedList");
-  assert.ok(MIX_HEADER_PX >= 60, "the total line and the bar take about 60 px");
-  assert.equal(PAYMENT_BODY_MIN_PX, 3 * RANKED_ROW_PX + MIX_HEADER_PX, "the reserved body height includes the header, so loading and empty hold the loaded height");
+test("PaymentMixCard and ChannelsCard reserve their loaded heights, and mixSegments handles zero, one mode and rounding", async () => {
+  const { MIX_HEADER_PX, PAY_ROW_PX, PAYMENT_BODY_MIN_PX, CHANNEL_BODY_PX, mixSegments } = await import("@/components/dashboard/RangeCards");
+  assert.equal(MIX_HEADER_PX, 31 + 12 + 10 + 10, "the 31px total, 12px, the 10px bar, 10px to the rows");
+  assert.equal(PAY_ROW_PX, 35, "a row: 16px of padding, the 18px line, its 1px rule");
+  assert.equal(PAYMENT_BODY_MIN_PX, 3 * PAY_ROW_PX + MIX_HEADER_PX, "the reserved body height includes the header, so loading and empty hold the loaded height");
+  assert.equal(CHANNEL_BODY_PX, 3 * 56 + 2 * 8, "three 56px rows 8px apart");
   assert.ok(readSrc("components/dashboard/RangeCards.tsx").includes("bodyMinHeight={PAYMENT_BODY_MIN_PX}"), "the card passes the reserved height");
   assert.deepEqual(mixSegments([]), [], "no rows, no segments");
   assert.deepEqual(mixSegments([{ key: "Cash", share: 0 }, { key: "Online", share: 0 }]), [], "a zero total draws no segment");
@@ -1173,4 +1241,197 @@ test("DashCard dashboard: an aside at the head's right, a title adornment and a 
   assert.ok(html.includes('<span data-ui="x-aside">legend</span></header>'), "the aside closes the head, at its right");
   const plain = card({ variant: "dashboard" });
   assert.ok(!classesOf(plain, "dash-card-head").includes("flex-wrap") && !classesOf(plain, "dash-card-title").includes("flex"), "without them the head is as before");
+});
+
+// ── Recent orders, Today's reservations, Money leaks (U0 match Task 8, values 3.7, 3.8, 3.11, ruling R17) ─────────────
+
+const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
+const orderLine = (qty: number) => ({ productId: "p", name: "Tea", price: 10, qty, modifiers: [], instructions: "", kotRound: 1 });
+const recentOrder = (seq: string, over: Record<string, unknown>): Order =>
+  ({
+    _id: seq,
+    orderId: `ORD-20261016-${seq}`,
+    customerName: "Walk-in",
+    items: [orderLine(1)],
+    subtotal: 0,
+    discount: 0,
+    total: 100,
+    paidAmount: 100,
+    payment: "Cash",
+    status: "Completed",
+    receiver: "",
+    kotRounds: 1,
+    createdAt: minutesAgo(5),
+    updatedAt: "",
+    ...over,
+  }) as unknown as Order;
+// Newest first, as GET /api/orders sorts them: a dine-in, a takeaway, a QR order at a table (an open tab), a walk-in on
+// due, a cancelled bill at a table named without digits, and a sixth the card leaves out.
+const RECENT = [
+  recentOrder("012", { tableNo: "T-12", payment: "Online", total: 879, items: [orderLine(2), orderLine(1)] }),
+  recentOrder("011", { parcel: true, payment: "Cash", total: 595 }),
+  recentOrder("010", { source: "qr", tableNo: "T-3", payment: "Unpaid", status: "Pending", total: 450, items: [orderLine(2)] }),
+  recentOrder("009", { payment: "Due", total: 1019 }),
+  recentOrder("008", { tableNo: "Garden", payment: "Split", status: "Cancelled", total: 659 }),
+  recentOrder("007", { tableNo: "T-1", total: 300 }),
+];
+
+test("RecentOrders: the HTML's rows - the 40px code tile, '#NNN · {table | Walk-in}', '{type} · {n} items · {ago}', the pay pill, the mono amount", async () => {
+  const { RecentOrders } = await import("@/components/dashboard/RecentOrders");
+  const html = renderToStaticMarkup(createElement(RecentOrders, { orders: RECENT, onSelect: noop }));
+  const section = tagOf(html, "recent-card");
+  assert.ok(section.startsWith("<section"), "the card names itself for the probes (data-ui recent-card)");
+  expectAll(section, ["px-5", "py-[18px]", "pb-2"], "the generic card with the HTML's 8px foot (values 3.7)");
+  assert.ok(html.includes(">Recent orders</h2>") && html.includes(">Today · newest first</p>"), "the title and our sub (every status of today, ruling R17)");
+  assert.match(html, /href="\/orders"[^>]*>All orders →<\/a>/, "the HTML's 'All orders →' to our Orders");
+  assert.ok(html.includes('<div style="min-height:305px" class="transition-opacity duration-200 mt-2.5">'), "the list 10px under the head, five 61px rows reserved");
+  expectAll(tagOf(html, "recent-list"), ["flex", "flex-col"], "the list");
+  const rows = allTags(html, "recent-row");
+  assert.equal(rows.length, 5, "at most five rows, newest first");
+  const rowClasses = [
+    "-mx-2", "grid", "grid-cols-[40px_minmax(0,1fr)_auto]", "@min-[560px]:grid-cols-[40px_minmax(0,1fr)_auto_84px]", "items-center", "gap-3",
+    "rounded-[10px]", "border-t", "border-border-2", "px-2", "py-2.5", "text-left", "text-foreground", "hover:bg-hover", ...HTML_PRESS_CLASS.split(" "),
+  ];
+  for (const r of rows) {
+    assert.ok(r.startsWith('<button type="button"'), "a row is a button (it opens our order detail sheet)");
+    expectAll(r, rowClasses, "a row: the HTML's orderCols, gap 12, 10px 8px with margin 0 -8px, radius 10, a border-2 rule");
+  }
+  for (const t of allTags(html, "recent-code")) {
+    expectAll(t, ["flex", "size-10", "items-center", "justify-center", "rounded-[10px]", "bg-surface-3", "text-[12.5px]", "font-semibold"], "the 40px code tile");
+  }
+  assert.deepEqual(textsOf(html, "recent-code"), ["T12", "TA", "QR", "WI", "GA"], "our codes: T{digits} at a table, TA takeaway, QR self-order, WI walk-in, a name's letters without digits");
+  for (const t of allTags(html, "recent-title")) expectAll(t, ["block", "text-[14px]", "font-semibold"], "the title 14/600");
+  assert.deepEqual(textsOf(html, "recent-title"), ["#012 · T-12", "#011 · Walk-in", "#010 · T-3", "#009 · Walk-in", "#008 · Garden"], "'#NNN · {table | Walk-in}'");
+  for (const t of allTags(html, "recent-meta")) expectAll(t, ["mt-0.5", "block", "truncate", "text-[12.5px]", "text-subtle-foreground"], "the meta 12.5 text-3 on one line");
+  assert.deepEqual(
+    textsOf(html, "recent-meta"),
+    ["Dine-in · 3 items · 5m ago", "Takeaway · 1 item · 5m ago", "QR self-order · 2 items · 5m ago", "Counter · 1 item · 5m ago", "Dine-in · 1 item · 5m ago"],
+    "'{type} · {n} items · {ago}' in our words (our channel names, our time ago)",
+  );
+  const pills = allTags(html, "recent-pay");
+  for (const p of pills) {
+    expectAll(p, ["hidden", "@min-[560px]:flex", "items-center", "[justify-self:start]", "h-6", "rounded-[12px]", "px-[9px]", "text-[12px]", "font-semibold"], "the pay pill: 24px, 0 9px, radius 12, 12/600, gone below cw 560 (wideF)");
+  }
+  expectAll(pills[0], ["bg-status-info-tint", "text-status-info-ink"], "Online: the HTML's UPI blue (accent-t / accent-i)");
+  expectAll(pills[1], ["bg-status-ok-tint", "text-status-ok-ink"], "Cash: ok-t / ok-i as the HTML's");
+  expectAll(pills[2], ["bg-status-warn-tint", "text-status-warn-ink"], "an open tab: warn");
+  expectAll(pills[3], ["bg-status-bill-tint", "text-status-bill-ink"], "Due: bill");
+  expectAll(pills[4], ["bg-status-bad-tint", "text-status-bad-ink"], "Cancelled: bad, as the HTML's Refunded");
+  assert.deepEqual(textsOf(html, "recent-pay"), ["Online", "Cash", "Open", "Due", "Cancelled"], "our payment words");
+  const amounts = allTags(html, "recent-amount");
+  for (const a of amounts) expectAll(a, ["text-right", "font-mono", "text-[14px]", "font-semibold"], "the amount: Geist Mono 600 14, right");
+  assert.deepEqual(textsOf(html, "recent-amount"), ["₹879", "₹595", "₹450", "₹1,019", "₹659"], "the totals");
+  expectAll(amounts[4], ["line-through", "text-subtle-foreground"], "a cancelled bill's amount struck through");
+  assert.ok(!clsOf(amounts[0]).includes("line-through"), "a sale is not struck");
+  assert.ok(!/brand-|divide-y/.test(html), "no Paper & Ink token or divider list left");
+
+  const empty = renderToStaticMarkup(createElement(RecentOrders, { orders: [], onSelect: noop }));
+  assert.ok(empty.includes('data-ui="dash-empty"') && empty.includes("<p>No orders yet today</p>"), "no orders: the HTML's empty line with our words");
+});
+
+const booking = (id: string, over: Record<string, unknown>): Reservation =>
+  ({ _id: id, name: "Guest", mobile: "", date: "2026-10-16", time: "19:00", guests: 2, status: "Booked", createdAt: "", updatedAt: "", ...over }) as unknown as Reservation;
+const BOOKINGS = [
+  booking("r1", { name: "Rahul Mehta", time: "19:30", guests: 4, tableNo: "T-3" }),
+  booking("r2", { name: "Kapoor family", time: "13:00", guests: 1, status: "Seated" }),
+  booking("r3", { name: "Gone", time: "12:00", status: "Cancelled" }),
+];
+
+test("TodayReservations: the HTML's rows - the 64px time pill, who 14/500, '{guests} guests · {table}', the 30px Seat button; seated shows a pill", async () => {
+  const html = renderToStaticMarkup(
+    createElement(QueryClientProvider, { client: new QueryClient() }, createElement(TodayReservations, { reservations: BOOKINGS })),
+  );
+  const section = tagOf(html, "res-card");
+  assert.ok(section.startsWith("<section"), "the card names itself (data-ui res-card)");
+  expectAll(section, ["flex", "flex-col", "py-[18px]"], "the generic card as a column (values 3.8)");
+  assert.ok(html.includes(">Today&#x27;s reservations</h2>") && html.includes(">Booked and seated · by time</p>"), "the title and our sub");
+  assert.match(html, /href="\/reservations"[^>]*>View all →<\/a>/, "the HTML's 'View all →' to our Reservations");
+  assert.ok(html.includes('<div style="min-height:165px" class="transition-opacity duration-200 mt-2.5">'), "the list 10px under the head, three 55px rows reserved");
+  const rows = allTags(html, "res-row");
+  assert.equal(rows.length, 2, "booked and seated only");
+  for (const r of rows) expectAll(r, ["flex", "items-center", "gap-3", "border-t", "border-border-2", "py-2.5"], "a row: 10px 0 over a border-2 rule, gap 12");
+  for (const t of allTags(html, "res-time")) {
+    expectAll(
+      t,
+      ["flex", "h-[30px]", "w-16", "flex-none", "items-center", "justify-center", "whitespace-nowrap", "rounded-[8px]", "bg-status-reserved-tint", "text-[12.5px]", "font-semibold", "text-status-reserved-ink"],
+      "the 64px x 30 time pill in res-t / res-i",
+    );
+  }
+  assert.deepEqual(textsOf(html, "res-time"), ["1:00 PM", "7:30 PM"], "by time");
+  for (const t of allTags(html, "res-who")) expectAll(t, ["block", "truncate", "text-[14px]", "font-medium"], "who: 14/500 on one line");
+  assert.deepEqual(textsOf(html, "res-who"), ["Kapoor family", "Rahul Mehta"], "the names");
+  for (const t of allTags(html, "res-where")) expectAll(t, ["block", "text-[12px]", "text-subtle-foreground"], "where: 12px text-3");
+  assert.deepEqual(textsOf(html, "res-where"), ["1 guest", "4 guests · T-3"], "'{guests} guests · {table}'");
+  const seats = allTags(html, "res-seat");
+  assert.equal(seats.length, 1, "a Seat button on the booked row only");
+  assert.ok(seats[0].startsWith('<button type="button"') && seats[0].includes('aria-label="Seat Rahul Mehta"'), "our seat action, named for the guest");
+  expectAll(
+    seats[0],
+    ["h-[30px]", "rounded-[8px]", "border", "border-border", "bg-card", "px-[11px]", "text-[12.5px]", "font-medium", "text-foreground", "hover:bg-hover", ...HTML_PRESS_CLASS.split(" ")],
+    "Seat: the HTML's 30px outline button",
+  );
+  assert.deepEqual(textsOf(html, "res-seat"), ["Seat"], "the HTML's word");
+  const seated = allTags(html, "res-seated");
+  assert.equal(seated.length, 1, "a seated booking shows a pill instead");
+  expectAll(seated[0], ["flex", "h-6", "items-center", "rounded-[12px]", "px-[9px]", "text-[12px]", "font-semibold", "bg-status-ok-tint", "text-status-ok-ink"], "the ok 'Seated' pill (ruling R17)");
+  assert.deepEqual(textsOf(html, "res-seated"), ["Seated"], "our status");
+  assert.ok(!/brand-|divide-y|lucide-chef-hat/.test(html), "no Paper & Ink token, divider list or chef-hat icon left");
+});
+
+const LEAKS = {
+  cancelled: { count: 2, value: 780 },
+  voids: { lines: 3, qty: 5, value: 1140 },
+  discounts: { orders: 1, amount: 1840 },
+  rewards: { orders: 0, amount: 0 },
+};
+const LEAK_GLYPHS = [
+  "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM5.6 5.6l12.8 12.8",
+  "M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3",
+  "M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01",
+  "M20 12v9H4v-9M2 7h20v5H2zM12 21V7",
+];
+
+test("LeaksCard: the HTML's Money leaks - the lost-total pill, rows of a 32px tile with the HTML's glyphs, label and sub, the coloured mono amount", async () => {
+  const { LeaksCard } = await import("@/components/dashboard/RangeCards");
+  const html = renderToStaticMarkup(createElement(LeaksCard, ready({ leaks: LEAKS })));
+  assert.ok(tagOf(html, "leak-card").startsWith("<section"), "the card names itself (data-ui leak-card)");
+  assert.ok(html.includes(">Money leaks</h2>") && html.includes(">Cancelled, voided and given away</p>"), "the HTML's title and sub (ruling R17)");
+  const head = classesOf(html, "dash-card-head");
+  hasAll(head, ["flex", "items-start", "justify-between", "gap-2.5"], "the head 10px apart (values 3.11)");
+  assert.ok(!head.includes("gap-3"), "not the generic 12px");
+  expectAll(
+    tagOf(html, "leak-pill"),
+    ["flex", "h-6", "items-center", "whitespace-nowrap", "rounded-[12px]", "px-[9px]", "text-[12px]", "font-semibold", "bg-status-bad-tint", "text-status-bad-ink"],
+    "the total pill in bad-t / bad-i",
+  );
+  assert.deepEqual(textsOf(html, "leak-pill"), ["₹3,760 lost"], "the four amounts added up");
+  assert.ok(html.includes('<div style="min-height:212px" class="transition-opacity duration-200 mt-2.5">'), "the rows 10px under the head, four 53px rows reserved");
+  const rows = allTags(html, "leak-row");
+  assert.equal(rows.length, 4, "four rows");
+  for (const r of rows) expectAll(r, ["flex", "items-center", "gap-3", "border-t", "border-border-2", "py-[9px]"], "a row: 9px 0 over a border-2 rule, gap 12");
+  assert.ok(rows[0].startsWith("<a") && rows[0].includes('href="/orders?status=Cancelled"'), "Cancelled orders keeps its link to the cancelled orders");
+  for (const r of rows.slice(1)) assert.ok(r.startsWith("<div"), "the other rows are not links");
+  const tiles = allTags(html, "leak-tile");
+  for (const t of tiles) expectAll(t, ["flex", "size-8", "flex-none", "items-center", "justify-center", "rounded-[9px]"], "the 32px tile, radius 9");
+  for (const t of tiles.slice(0, 3)) expectAll(t, ["bg-status-bad-tint", "text-status-bad-ink"], "money lost: bad-t / bad-i");
+  expectAll(tiles[3], ["bg-surface-3", "text-subtle-foreground"], "nothing lost: surface-3 / text-3");
+  for (const d of LEAK_GLYPHS) assert.ok(html.includes(`<path d="${d}"></path>`), `the HTML's glyph ${d.slice(0, 12)}… (values 5)`);
+  const svgs = (html.match(/<svg[^>]*>/g) ?? []).filter((s) => /width="16" height="16"/.test(s) && s.includes('stroke-width="1.8"') && s.includes('stroke-linecap="round"') && s.includes('stroke-linejoin="round"'));
+  assert.equal(svgs.length, 4, "each glyph at 16px, stroke 1.8, round caps and joins");
+  for (const t of allTags(html, "leak-label")) expectAll(t, ["block", "text-[13.5px]", "font-medium"], "the label 13.5/500");
+  assert.deepEqual(textsOf(html, "leak-label"), ["Cancelled orders", "Voided items", "Discounts given", "Rewards given"], "our four rows");
+  for (const t of allTags(html, "leak-sub")) expectAll(t, ["block", "text-[12px]", "text-subtle-foreground"], "the sub 12px text-3");
+  assert.deepEqual(textsOf(html, "leak-sub"), ["2 orders", "5 items", "1 order", "0 orders"], "our subs");
+  const amounts = allTags(html, "leak-amount");
+  for (const a of amounts) expectAll(a, ["font-mono", "text-[13.5px]", "font-semibold"], "the amount: Geist Mono 600 13.5");
+  for (const a of amounts.slice(0, 3)) expectAll(a, ["text-status-bad-ink"], "money lost in bad-i");
+  expectAll(amounts[3], ["text-subtle-foreground"], "₹0 in text-3");
+  assert.deepEqual(textsOf(html, "leak-amount"), ["− ₹780", "− ₹1,140", "− ₹1,840", "₹0"], "'− ₹X', or ₹0");
+
+  const none = { cancelled: { count: 0, value: 0 }, voids: { lines: 0, qty: 0, value: 0 }, discounts: { orders: 0, amount: 0 }, rewards: { orders: 0, amount: 0 } };
+  const clean = renderToStaticMarkup(createElement(LeaksCard, ready({ leaks: none })));
+  expectAll(tagOf(clean, "leak-pill"), ["bg-status-ok-tint", "text-status-ok-ink"], "nothing lost: ok-t / ok-i");
+  assert.deepEqual(textsOf(clean, "leak-pill"), ["Nothing lost"], "the HTML's words");
+  const loading = renderToStaticMarkup(createElement(LeaksCard, { ...ready(), data: undefined, status: "loading" }));
+  assert.ok(!loading.includes('data-ui="leak-pill"'), "no total until the leaks load");
 });

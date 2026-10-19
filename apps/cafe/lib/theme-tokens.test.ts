@@ -254,6 +254,9 @@ test("the hour chart's 60 % bar tint as a hex token, and the HTML's growY and pu
   assert.ok(css.includes("--animate-grow-y: grow-y 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;"), "the bars' growY, .7s with the HTML's easing");
   assert.match(css, /@keyframes grow-y \{\s*from \{\s*transform: scaleY\(0\);\s*\}\s*to \{\s*transform: scaleY\(1\);\s*\}\s*\}/, "growY verbatim");
   assert.ok(css.includes("--animate-live-pulse: live-pulse 2s infinite;"), "the live dot's pulse, 2s, forever");
+  // U0 match Task 8 (values 1.5, 3.9, 3.10): the payment bar's and the sources' fills grow in from the left.
+  assert.ok(css.includes("--animate-grow-x: grow-x 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;"), "the fills' growX, .8s with the HTML's easing");
+  assert.match(css, /@keyframes grow-x \{\s*from \{\s*transform: scaleX\(0\);\s*\}\s*to \{\s*transform: scaleX\(1\);\s*\}\s*\}/, "growX verbatim");
   assert.match(
     css,
     /@keyframes live-pulse \{\s*0% \{\s*box-shadow: 0 0 0 0 rgba\(36, 161, 72, 0\.45\);\s*\}\s*70% \{\s*box-shadow: 0 0 0 7px rgba\(36, 161, 72, 0\);\s*\}\s*100% \{\s*box-shadow: 0 0 0 0 rgba\(36, 161, 72, 0\);\s*\}\s*\}/,

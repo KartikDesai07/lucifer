@@ -14,7 +14,7 @@ import { useNow } from "@/hooks/use-now";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { RankedList, RANKED_ROW_PX, barsOf } from "@/components/dashboard/RankedList";
 import { BusyHours } from "@/components/dashboard/BusyHours";
-import { MoneyLeaks, MONEY_LEAK_ROWS } from "@/components/dashboard/MoneyLeaks";
+import { LEAK_ROW_PX, MoneyLeaks, MoneyLeaksTotal, MONEY_LEAK_ROWS } from "@/components/dashboard/MoneyLeaks";
 import type { DashboardChannel, DashboardData } from "@/types/dashboard";
 
 // The Dashboard's range-driven cards. Each reads the DashboardData actually on
@@ -37,7 +37,6 @@ const PAYMENT_ROWS = 3;
 const ITEM_ROWS = 5;
 const CHANNEL_ROWS = 3;
 const CATEGORY_ROWS = 6;
-const LEAK_ROW_PX = 52;
 const BUSY_HOURS_BODY_PX = 290;
 // On a phone the grid turns sideways: one row per trading hour (a cafe open
 // ~14 hours ≈ 500px with the readout), so the reservation is taller there.
@@ -162,27 +161,41 @@ const CHANNEL_ICONS: Record<DashboardChannel, LucideIcon> = {
   counter: Store,
 };
 
-/** The mix header's height: the total line (leading-8 = 32 px + mb-3 = 12 px) and the stacked bar (h-2 = 8 px + mb-2 = 8 px).
- *  The loaded layout and the reserved body height both use these, so the card never jumps when data arrives. */
-const MIX_TOTAL_PX = 32;
+/** The head of How guests paid (values 3.9): the 31px mono total, 12px, the 10px bar, 10px to the rows. The loaded
+ *  layout and the reserved body height both use these, so the card never jumps when data arrives. */
+const MIX_TOTAL_PX = 31;
 const MIX_TOTAL_GAP_PX = 12;
-const MIX_BAR_PX = 8;
-const MIX_BAR_GAP_PX = 8;
+const MIX_BAR_PX = 10;
+const MIX_BAR_GAP_PX = 10;
 export const MIX_HEADER_PX = MIX_TOTAL_PX + MIX_TOTAL_GAP_PX + MIX_BAR_PX + MIX_BAR_GAP_PX;
-export const PAYMENT_BODY_MIN_PX = PAYMENT_ROWS * RANKED_ROW_PX + MIX_HEADER_PX;
+/** A payment row: 8px + the 18px line + 8px, over its 1px rule. */
+export const PAY_ROW_PX = 35;
+export const PAYMENT_BODY_MIN_PX = PAYMENT_ROWS * PAY_ROW_PX + MIX_HEADER_PX;
+/** A source row: 10px + the 34px tile + 10px inside its 1px box; the rows 8px apart. */
+const SOURCE_ROW_PX = 56;
+const SOURCE_ROW_GAP_PX = 8;
+export const CHANNEL_BODY_PX = CHANNEL_ROWS * SOURCE_ROW_PX + (CHANNEL_ROWS - 1) * SOURCE_ROW_GAP_PX;
 
 /** The stacked bar's segments: one per row with a share, width in percent to one decimal; none when nothing was collected. */
 export function mixSegments<R extends { key: string; share: number }>(rows: R[]): Array<{ key: string; pct: number }> {
   return rows.filter((r) => r.share > 0).map((r) => ({ key: r.key, pct: Math.round(r.share * 1000) / 10 }));
 }
 
+/** The HTML's growX (values 3.9, 3.10): a fill grows in from its left edge (still with reduced motion). */
+const GROW_X_CLASS = "origin-left motion-safe:animate-grow-x";
+
+/**
+ * How guests paid (values 3.9, ruling R17): the money collected in Geist Mono, a 10px bar of one segment per payment
+ * mode on surface-3, then a row per mode (its swatch, "{mode} · {n} orders", the amount, the share) and, when a Due or
+ * Credit bill is among them, the HTML's note that those count only what was paid so far.
+ */
 export function PaymentMixCard(p: RangeCardProps) {
   const rows = p.data?.payments ?? [];
-  const bars = barsOf(rows, (r) => r.amount);
   return (
     <DashCard
       variant="dashboard"
-      title="Payment mix"
+      ui="pay-card"
+      title="How guests paid"
       period={`${p.period} · money collected`}
       status={statusOf(p, rows.length === 0)}
       updating={p.updating}
@@ -190,27 +203,34 @@ export function PaymentMixCard(p: RangeCardProps) {
       empty={{ title: "No payments yet", description: "Money taken on completed orders shows here by payment mode." }}
       bodyMinHeight={PAYMENT_BODY_MIN_PX}
     >
-      <p className="mb-3 text-[26px] font-semibold leading-8 tracking-[-0.01em] text-brand-ink" style={{ height: MIX_TOTAL_PX }}>{inr(rows.reduce((sum, r) => sum + r.amount, 0))}</p>
-      {/* One segment per mode, as wide as its share; the dots below name them. */}
-      <div className="mb-2 flex h-2 gap-px overflow-hidden rounded-full bg-track" aria-hidden>
+      <p data-ui="pay-total" className="font-mono text-[24px] font-medium tracking-[-0.03em]">
+        {inr(rows.reduce((sum, r) => sum + r.amount, 0))}
+      </p>
+      <div data-ui="pay-bar" aria-hidden className="mt-3 flex h-2.5 gap-0.5 overflow-hidden rounded-[5px] bg-surface-3">
         {mixSegments(rows).map((s) => (
-          <div key={s.key} className={STATUS_CLASSES[kindOf(PAYMENT_KIND, s.key)].dot} style={{ width: `${s.pct}%` }} />
+          <span key={s.key} data-ui="pay-seg" className={cn(STATUS_CLASSES[kindOf(PAYMENT_KIND, s.key)].dot, GROW_X_CLASS)} style={{ width: `${s.pct}%` }} />
         ))}
       </div>
-      <RankedList
-        rows={rows.map((r, i) => ({
-          key: r.key,
-          label: `${r.label} · ${plural(r.count, "order")}`,
-          value: inr(r.amount),
-          detail: sharePercent(r.share),
-          bar: bars[i],
-          dot: kindOf(PAYMENT_KIND, r.key),
-          barClass: STATUS_CLASSES[kindOf(PAYMENT_KIND, r.key)].dot,
-        }))}
-      />
+      <ul data-ui="pay-list" className="mt-2.5 flex flex-col">
+        {rows.map((r) => (
+          <li key={r.key} data-ui="pay-row" className="flex items-center gap-2.5 border-t border-border-2 py-2 text-[13.5px]">
+            <span data-ui="pay-swatch" aria-hidden className={cn("size-[9px] shrink-0 rounded-[3px]", STATUS_CLASSES[kindOf(PAYMENT_KIND, r.key)].dot)} />
+            <span className="flex-1">
+              {`${r.label} `}
+              <span className="text-subtle-foreground">{`· ${plural(r.count, "order")}`}</span>
+            </span>
+            <span data-ui="pay-amount" className="font-mono font-semibold">
+              {inr(r.amount)}
+            </span>
+            <span data-ui="pay-pct" className="w-9 text-right text-[12px] text-subtle-foreground">
+              {sharePercent(r.share)}
+            </span>
+          </li>
+        ))}
+      </ul>
       {rows.some((r) => (r.key === "Due" || r.key === "Credit") && r.count > 0) && (
-        <p className="mt-2 text-[12px] leading-4 text-brand-muted">
-          Due and credit bills show only what was paid so far — the rest is in customer dues.
+        <p data-ui="pay-note" className="mt-1.5 text-[12px] text-subtle-foreground text-pretty">
+          Due bills count only what was paid so far — the rest sits in customer dues.
         </p>
       )}
     </DashCard>
@@ -237,39 +257,63 @@ export function TopItemsCard(p: RangeCardProps) {
   );
 }
 
+/**
+ * Where orders came from (values 3.10, ruling R17): one bordered row per channel of ours (dine-in, takeaway, QR, counter)
+ * with a 34px tile of our icon in the channel's status colours, "{channel} · {n} orders" over a 4px bar as long as its
+ * share of the sales, the amount and the share.
+ */
 export function ChannelsCard(p: RangeCardProps) {
   const rows = p.data?.channels ?? [];
-  const bars = barsOf(rows, (r) => r.amount);
   return (
     <DashCard
       variant="dashboard"
-      title="Where orders come from"
+      ui="src-card"
+      title="Where orders came from"
       period={`${p.period} · completed orders`}
       status={statusOf(p, rows.length === 0)}
       updating={p.updating}
       onRetry={p.onRetry}
       empty={{ title: "No orders yet", description: "Dine-in, takeaway, QR and counter orders are split out here." }}
-      bodyMinHeight={CHANNEL_ROWS * RANKED_ROW_PX}
+      bodyMinHeight={CHANNEL_BODY_PX}
     >
-      <RankedList
-        rows={rows.map((r, i) => {
-          const kind = kindOf(CHANNEL_KIND, r.key);
+      <ul data-ui="src-list" className="flex flex-col gap-2">
+        {rows.map((r) => {
+          const look = STATUS_CLASSES[kindOf(CHANNEL_KIND, r.key)];
           const Icon = CHANNEL_ICONS[r.key as DashboardChannel] ?? Store;
-          return {
-            key: r.key,
-            label: `${r.label} · ${plural(r.count, "order")}`,
-            value: inr(r.amount),
-            detail: sharePercent(r.share),
-            bar: bars[i],
-            barClass: STATUS_CLASSES[kind].dot,
-            icon: (
-              <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", STATUS_CLASSES[kind].pill)} aria-hidden>
-                <Icon className="h-4 w-4" />
+          return (
+            <li
+              key={r.key}
+              data-ui="src-row"
+              className="grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-3 rounded-[12px] border border-border-2 px-3 py-2.5"
+            >
+              <span data-ui="src-tile" aria-hidden className={cn("flex size-[34px] items-center justify-center rounded-[9px]", look.pill)}>
+                <Icon className="size-4" strokeWidth={1.8} />
               </span>
-            ),
-          };
+              <span className="min-w-0">
+                <span data-ui="src-label" className="block text-[13.5px] font-medium">
+                  {`${r.label} `}
+                  <span className="font-normal text-subtle-foreground">{`· ${plural(r.count, "order")}`}</span>
+                </span>
+                <span data-ui="src-track" aria-hidden className="mt-[7px] block h-1 overflow-hidden rounded-[2px] bg-surface-3">
+                  <span
+                    data-ui="src-fill"
+                    className={cn("block h-full rounded-[2px]", look.dot, GROW_X_CLASS)}
+                    style={{ width: `${Math.round(r.share * 100)}%` }}
+                  />
+                </span>
+              </span>
+              <span className="text-right">
+                <span data-ui="src-amount" className="block font-mono text-[13.5px] font-semibold">
+                  {inr(r.amount)}
+                </span>
+                <span data-ui="src-pct" className="block text-[11.5px] text-subtle-foreground">
+                  {sharePercent(r.share)}
+                </span>
+              </span>
+            </li>
+          );
         })}
-      />
+      </ul>
     </DashCard>
   );
 }
@@ -341,13 +385,18 @@ export function CategoriesCard(p: RangeCardProps) {
   );
 }
 
+/** Money leaks (values 3.11, ruling R17): the HTML's head with the lost-total pill, then our four rows. */
 export function LeaksCard(p: RangeCardProps & { className?: string }) {
   return (
     <DashCard
       variant="dashboard"
+      ui="leak-card"
       className={p.className}
       title="Money leaks"
-      period={`${p.period} · cancelled, voided and given away`}
+      period="Cancelled, voided and given away"
+      aside={p.data ? <MoneyLeaksTotal leaks={p.data.leaks} /> : undefined}
+      headGap={10}
+      bodyGap={10}
       status={statusOf(p, false)}
       updating={p.updating}
       onRetry={p.onRetry}

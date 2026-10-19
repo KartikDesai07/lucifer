@@ -190,6 +190,8 @@
   --animate-html-shake: html-shake 0.42s ease;
   /* The HTML's growY (values 1.5, 3.5): the hour chart's bars rise from the floor. */
   --animate-grow-y: grow-y 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* The HTML's growX (values 1.5, 3.9, 3.10): the payment bar's segments and the sources' fills grow from the left. */
+  --animate-grow-x: grow-x 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   /* The HTML's pulse (values 1.5, 3.6): the Live tables dot. */
   --animate-live-pulse: live-pulse 2s infinite;
 }
@@ -201,6 +203,16 @@
   }
   to {
     transform: scaleY(1);
+  }
+}
+
+/* The HTML's growX (values 1.5), verbatim. */
+@keyframes grow-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
   }
 }
 
