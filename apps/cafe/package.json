@@ -347,6 +347,7 @@
     "lib/dashboard/labels.test.ts",
     "lib/dashboard-paths.test.ts",
     "lib/dashboard-layout-paths.test.ts",
+    "lib/html-motion-paths.test.ts",
     "lib/reports/received.test.ts",
     "lib/reports/sales-pipelines.test.ts",
     "lib/reports/sales-fold.test.ts",

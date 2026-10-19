@@ -49,13 +49,20 @@ export const BRAND_CHECKBOX_SQUARE_CLASS = "size-5 rounded-[4px]";
 // --nav-on with the 3px blue bar at the window's edge; aria-current, the bar
 // and the white label carry the state, never the fill alone.
 
-/** The HTML's button feel (values 1.4): colours ease in 160 ms, a press scales to 97 %; the nav's focus ring. */
-export const BRAND_NAV_PRESS_CLASS =
-  "outline-none transition-[background-color,color,transform] duration-[160ms] ease-[ease] focus-visible:ring-2 focus-visible:ring-brand-nav-focus active:scale-[0.97]";
+/** The HTML's button feel, exactly (values 1.4): `transition: background-color .16s ease, border-color .16s ease,
+ *  color .16s ease, box-shadow .22s ease, transform .16s ease, opacity .16s ease`, and a press (never on a disabled
+ *  control) to `transform: scale(.97)`; no transition with reduced motion. On the kit's Button it replaces the kit's
+ *  own `transition-colors` and cancels its `active:scale-[0.97]` (scale-100), so the two presses never stack. The rebuilt
+ *  shell and dashboard controls carry it; other pages' bodies keep theirs until their own session. */
+export const HTML_PRESS_CLASS =
+  "transition-[background-color,border-color,color,box-shadow,transform,opacity] duration-[160ms,160ms,160ms,220ms,160ms,160ms] ease-[ease] motion-reduce:transition-none not-disabled:active:[transform:scale(.97)] motion-safe:active:scale-100";
 
-/** The same feel on the light surfaces (the tab bar, the profile sheet): the app's focus ring instead of the nav's. */
-export const BRAND_PRESS_CLASS =
-  "outline-none transition-[background-color,color,transform] duration-[160ms] ease-[ease] focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97]";
+/** The nav's controls: the HTML's press and the nav's focus ring. */
+export const BRAND_NAV_PRESS_CLASS =
+  "outline-none focus-visible:ring-2 focus-visible:ring-brand-nav-focus " + HTML_PRESS_CLASS;
+
+/** The same on the light surfaces (the tab bar, the profile and More sheets): the app's focus ring instead. */
+export const BRAND_PRESS_CLASS = "outline-none focus-visible:ring-2 focus-visible:ring-ring " + HTML_PRESS_CLASS;
 
 const NAV_ACTIVE = "data-[active=true]:bg-nav-on data-[active=true]:text-white";
 

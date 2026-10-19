@@ -13,6 +13,14 @@ export const PHONE_PAGE_FOOT_PX = 92;
  *  page is exactly as wide as <main> (the HTML's cw: the viewport minus the nav). */
 export const MAIN_PADDING_BLEED_CLASS = "-m-4 -mb-[92px] tab:-mb-4 md:-m-6";
 
+/** The HTML's pageIn (values 1.5 and 3.0, ruling R11): a page fades in from 6px below. */
+export const PAGE_IN_KEYFRAMES: Keyframe[] = [
+  { opacity: 0, transform: "translateY(6px)" },
+  { opacity: 1, transform: "none" },
+];
+/** …over .4s on the HTML's shared easing, held at its start until it runs (`backwards`). */
+export const PAGE_IN_TIMING: KeyframeAnimationOptions = { duration: 400, easing: "cubic-bezier(.2,.8,.2,1)", fill: "backwards" };
+
 /** A sticky bar at a page's foot (Settings' save bar, the menu's bulk bar, the POS cart bar): on a phone it stops on
  *  the tab bar, never under it, however short the screen. */
 export const ABOVE_TAB_BAR_STICKY_CLASS = "max-tab:bottom-[59px]";

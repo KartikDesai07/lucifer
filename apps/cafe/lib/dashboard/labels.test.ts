@@ -2,7 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   chartNames,
-  compareCaption,
   insightPeriod,
   kpiCompareText,
   noCompareText,
@@ -74,26 +73,21 @@ test("chartNames: one day by weekday, a range as the period vs the previous days
   assert.deepEqual(chartNames(week, TODAY), { current: "Last 7 days", compare: "Previous 7 days" });
 });
 
-test("the 'same time' note lives in the caption once, never on each KPI card", () => {
-  const today = data({});
-  assert.equal(kpiCompareText(today), "vs Tue, 22 Sep");
-  assert.equal(compareCaption(today, TODAY), "Compared with Tue, 22 Sep at the same time of day");
-  const past = data({ range: { from: "2026-09-28", to: "2026-09-28" }, compare: { from: "2026-09-21", to: "2026-09-21", label: "vs Mon, 21 Sep" } });
-  assert.equal(compareCaption(past, TODAY), "Compared with Mon, 21 Sep");
-  const week = data({ mode: "day", range: { from: "2026-09-23", to: TODAY }, compare: { from: "2026-09-16", to: "2026-09-22", label: "vs previous 7 days" } });
-  assert.equal(compareCaption(week, TODAY), "Compared with the previous 7 days, up to the same time today");
+test("the KPI delta suffix is the comparison's own short label", () => {
+  assert.equal(kpiCompareText(data({})), "vs Tue, 22 Sep");
 });
 
-// U0 match (Task 5, values 3.2): the HTML's "{range} · compared with {comparison}" under the period's name.
-test("periodSubline: the dates, then 'compared with …' in the HTML's words; the dates alone while the figures load", () => {
-  const today = data({});
-  assert.equal(periodSubline(today.range, today, TODAY), "Tue, 29 Sep · compared with Tue, 22 Sep at the same time of day", "today");
-  const week = data({ mode: "day", range: { from: "2026-09-23", to: TODAY }, compare: { from: "2026-09-16", to: "2026-09-22", label: "vs previous 7 days" } });
-  assert.equal(periodSubline(week.range, week, TODAY), "23 Sep – 29 Sep · compared with the previous 7 days, up to the same time today", "7 days");
-  const past = data({ range: { from: "2026-09-22", to: "2026-09-22" }, compare: { from: "2026-09-15", to: "2026-09-15", label: "vs Tue, 15 Sep" } });
-  assert.equal(periodSubline(past.range, past, TODAY), "Compared with Tue, 15 Sep", "a picked day is its own title: no dates twice");
-  assert.equal(periodSubline(today.range, undefined, TODAY), "Tue, 29 Sep · Loading…", "loading: the dates, then Loading…");
-  assert.equal(periodSubline(past.range, undefined, TODAY), "Loading…", "loading a picked day");
+// U0 match (Task 5, values 3.2, ruling R9): the HTML's "{range} · compared with {comparison}" under the period's name,
+// built from the range alone (our comparison rule: one day against the same weekday a week before, N days against the
+// N days before), so it never waits for the figures and never moves when they arrive.
+test("periodSubline: the dates, then 'compared with …' in the HTML's words, from the range alone", () => {
+  assert.equal(periodSubline({ from: TODAY, to: TODAY }, TODAY), "Tue, 29 Sep · compared with last Tuesday", "today: last {weekday}");
+  assert.equal(periodSubline({ from: "2026-09-28", to: "2026-09-28" }, TODAY), "Mon, 28 Sep · compared with the same day last week", "yesterday");
+  assert.equal(periodSubline({ from: "2026-09-23", to: TODAY }, TODAY), "23 Sep – 29 Sep · compared with the previous 7 days", "7 days");
+  assert.equal(periodSubline({ from: "2026-08-31", to: TODAY }, TODAY), "31 Aug – 29 Sep · compared with the previous 30 days", "30 days");
+  assert.equal(periodSubline({ from: "2026-09-01", to: "2026-09-14" }, TODAY), "Compared with the previous 14 days", "a custom span: its title already is the dates");
+  assert.equal(periodSubline({ from: "2026-09-22", to: "2026-09-22" }, TODAY), "Compared with the same day last week", "a picked day is its own title: no dates twice");
+  assert.equal(periodSubline({ from: "2026-10-19", to: "2026-10-19" }, "2026-10-19"), "Mon, 19 Oct · compared with last Monday", "the HTML's own line (values 3.19)");
 });
 
 test("noCompareText says which period had no orders", () => {

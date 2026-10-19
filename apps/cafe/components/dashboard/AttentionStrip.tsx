@@ -7,6 +7,7 @@ import { cn, inr } from "@/lib/utils";
 import { plural } from "@/lib/dashboard/format";
 import { menuItemsHref } from "@/lib/menu-sections";
 import { STATUS_CLASSES, type StatusKind } from "@/lib/ui";
+import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { DashSkeleton } from "@/components/dashboard/DashCard";
 import { StatusDot } from "@/components/shared/StatusPill";
 import type { DashboardLive } from "@/types/dashboard";
@@ -77,12 +78,17 @@ export function attentionItems(live: DashboardLive): AttentionItem[] {
 const FOCUS_CLASS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 // values 3.1: the chip (34px, padding 0 5px 0 12px, radius 17) and its action pill (24px, padding 0 10px, radius 12).
 const CHIP_CLASS = cn(
-  "flex h-[34px] items-center gap-[9px] whitespace-nowrap rounded-[17px] border border-border bg-card pl-3 pr-[5px] text-[13px] text-foreground transition-colors hover:border-subtle-foreground",
+  "flex h-[34px] items-center gap-[9px] whitespace-nowrap rounded-[17px] border border-border bg-card pl-3 pr-[5px] text-[13px] text-foreground hover:border-subtle-foreground",
   FOCUS_CLASS,
+  HTML_PRESS_CLASS,
 );
 const PILL_CLASS = "flex h-6 items-center rounded-[12px] bg-surface-3 px-2.5 text-[12px] font-semibold";
 // The phone card's rows (46px, padding 8px 12px) and their action (28px, padding 0 11px, radius 8).
-const ITEM_CLASS = cn("flex min-h-[46px] items-center gap-2.5 px-3 py-2 text-left text-[13px] text-foreground focus-visible:ring-inset", FOCUS_CLASS);
+const ITEM_CLASS = cn(
+  "flex min-h-[46px] items-center gap-2.5 px-3 py-2 text-left text-[13px] text-foreground focus-visible:ring-inset",
+  FOCUS_CLASS,
+  HTML_PRESS_CLASS,
+);
 const ITEM_ACTION_CLASS = "flex h-7 flex-none items-center rounded-[8px] bg-surface-3 px-[11px] text-[12px] font-semibold";
 const SAID_CLASS = "text-[13px] text-muted-foreground";
 // The HTML's rise (values 1.5) on the row and the card: 0.4s, from 12px below.
@@ -166,7 +172,7 @@ export function AttentionStrip({ live, loading, isError }: { live?: DashboardLiv
               aria-controls={listId}
               onClick={() => setOpen((o) => !o)}
               data-ui="attention-toggle"
-              className={cn("flex h-12 w-full min-w-0 items-center gap-2.5 px-3 text-left text-foreground", FOCUS_CLASS, "focus-visible:ring-inset")}
+              className={cn("flex h-12 w-full min-w-0 items-center gap-2.5 px-3 text-left text-foreground", FOCUS_CLASS, "focus-visible:ring-inset", HTML_PRESS_CLASS)}
             >
               <span
                 data-ui="attention-count"
@@ -182,7 +188,8 @@ export function AttentionStrip({ live, loading, isError }: { live?: DashboardLiv
               </span>
               <ChevronDown
                 className={cn(
-                  "size-4 shrink-0 text-muted-foreground motion-safe:transition-transform motion-safe:duration-200",
+                  // values 3.1: transition: transform .2s (the default ease).
+                  "size-4 shrink-0 text-muted-foreground motion-safe:[transition:transform_.2s_ease]",
                   open ? "[transform:rotate(180deg)]" : "[transform:rotate(0deg)]",
                 )}
                 aria-hidden

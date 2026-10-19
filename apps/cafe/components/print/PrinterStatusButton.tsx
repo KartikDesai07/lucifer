@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { GlyphPrinter } from "@/components/layout/nav-icons";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
@@ -56,7 +57,7 @@ export function PrinterStatusButton() {
           type="button"
           variant="outline"
           size="icon"
-          className={PRINTER_ICON_BUTTON_CLASS}
+          className={cn(PRINTER_ICON_BUTTON_CLASS, HTML_PRESS_CLASS)}
           aria-label={name}
           title={name}
           data-printer-dot={tone}

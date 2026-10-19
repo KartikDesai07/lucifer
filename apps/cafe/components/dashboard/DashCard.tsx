@@ -36,8 +36,15 @@ interface DashCardProps {
   className?: string;
   /** "report" (default): the reports pages' look. "dashboard": the HTML's generic card. */
   variant?: DashCardVariant;
+  /** The dashboard card's space between its head and its body, in px (values 3.5–3.14; default 14). */
+  bodyGap?: DashCardBodyGap;
   children?: ReactNode;
 }
+
+/** The HTML cards' own space under the head: 8 (Top items), 10 (Recent orders, Today's reservations), 14 (most:
+ *  status bars, totals, lists, the category bar, the busy-hours grid), 18 (the hour chart's plot). */
+export type DashCardBodyGap = 8 | 10 | 14 | 18;
+const BODY_GAP_CLASS: Record<DashCardBodyGap, string> = { 8: "mt-2", 10: "mt-2.5", 14: "mt-3.5", 18: "mt-[18px]" };
 
 export const DASH_CARD_CLASS = "min-w-0 rounded-xl border border-brand-rule bg-brand-slip p-4 sm:p-5";
 
@@ -152,14 +159,14 @@ export function DashCard({
   bodyClassName,
   className,
   variant = "report",
+  bodyGap = 14,
   children,
 }: DashCardProps) {
   const id = slug(title);
   const look = LOOKS[variant];
   const dashboard = variant === "dashboard";
-  // The HTML's cards set their own space under the head (8–18px); 14px is the most common one (status bar, totals,
-  // lists, the category bar, the busy-hours grid). The reports' head carries its own 12px margin instead.
-  const bodyGap = dashboard ? "mt-3.5" : undefined;
+  // The reports' head carries its own 12px margin instead.
+  const gap = dashboard ? BODY_GAP_CLASS[bodyGap] : undefined;
   const minStyle = bodyClassName ? undefined : { minHeight: bodyMinHeight };
   const Skeleton = look.Skeleton;
   return (
@@ -171,11 +178,11 @@ export function DashCard({
     >
       <DashCardHeader id={id} title={title} period={period} link={link} variant={variant} />
       {status === "loading" ? (
-        <div style={bodyClassName ? undefined : { height: bodyMinHeight }} className={cn("flex", bodyGap, bodyClassName)}>
+        <div style={bodyClassName ? undefined : { height: bodyMinHeight }} className={cn("flex", gap, bodyClassName)}>
           <Skeleton className="w-full" />
         </div>
       ) : status === "error" ? (
-        <div style={minStyle} className={cn("flex flex-col items-center justify-center gap-3 text-center", bodyGap, bodyClassName)}>
+        <div style={minStyle} className={cn("flex flex-col items-center justify-center gap-3 text-center", gap, bodyClassName)}>
           <p className={look.errorText}>Couldn&apos;t load this. It will try again on its own.</p>
           {onRetry && (
             <button type="button" onClick={onRetry} data-ui={dashboard ? "dash-card-retry" : undefined} className={look.retry}>
@@ -184,12 +191,12 @@ export function DashCard({
           )}
         </div>
       ) : status === "empty" && empty ? (
-        <div style={minStyle} className={cn("flex flex-col items-center justify-center gap-1 px-4 text-center", bodyGap, bodyClassName)}>
+        <div style={minStyle} className={cn("flex flex-col items-center justify-center gap-1 px-4 text-center", gap, bodyClassName)}>
           <p className={look.emptyTitle}>{empty.title}</p>
           <p className={look.emptyText}>{empty.description}</p>
         </div>
       ) : (
-        <div style={minStyle} className={cn("transition-opacity duration-200", bodyGap, updating && "opacity-55", bodyClassName)}>
+        <div style={minStyle} className={cn("transition-opacity duration-200", gap, updating && "opacity-55", bodyClassName)}>
           {children}
         </div>
       )}

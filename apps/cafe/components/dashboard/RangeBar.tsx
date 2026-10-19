@@ -1,6 +1,8 @@
 "use client";
 
 import { DatePicker } from "@/components/shared/DatePicker";
+import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
+import { NavBookings } from "@/components/layout/nav-icons";
 import { cn, cafeDateString } from "@/lib/utils";
 import {
   MAX_DASHBOARD_RANGE_DAYS,
@@ -69,12 +71,13 @@ const LOOKS: Record<NonNullable<RangeBarProps["variant"]>, RangeBarLook> = {
   },
   // U0 match Task 5 (values 3.2, 1.6): the track surface-3, radius 9, padding 3, gap 2, 36px tall; the buttons stretch
   // to it (30px), radius 7, padding 0 12px, 13px; chosen SEG_ON (seg, seg-sh) in text 600, the rest SEG_OFF in text-2
-  // 500. The same size on touch screens (ruling R1). Our Custom (admin) makes five, about the width of a 390px phone's
-  // content: the track scrolls instead of widening the page if it does not fit.
+  // 500, pressing like the HTML's buttons. The same size on touch screens (ruling R1). Our Custom (admin) makes five:
+  // under cw 560 it is a calendar glyph in 0 10px (ruling R10), so the track fits a 360px phone (332px of content);
+  // should it ever not fit, it scrolls instead of widening the page.
   dashboard: {
     wrap: "flex max-w-full flex-wrap items-center gap-2",
     track: "flex h-9 max-w-full gap-0.5 overflow-x-auto rounded-[9px] bg-surface-3 p-[3px] [scrollbar-width:none]",
-    button: "whitespace-nowrap rounded-[7px] px-3 text-[13px]",
+    button: "whitespace-nowrap rounded-[7px] px-3 text-[13px] " + HTML_PRESS_CLASS,
     // The HTML's exact shadow (Tailwind's shadow utilities add four empty ring layers), so the focus mark is an outline.
     focus: "focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring",
     on: "bg-seg font-semibold text-foreground [box-shadow:var(--seg-sh)]",
@@ -120,20 +123,30 @@ export function RangeBar({ value, onChange, isAdmin, maxDays = MAX_DASHBOARD_RAN
       <div role="group" aria-label="Period" data-ui={dashboard ? "period-track" : undefined} className={look.track}>
         {presets.map((p) => {
           const active = value.preset === p.id;
+          const glyph = dashboard && isAdmin && p.id === "custom";
           return (
             <button
               key={p.id}
               type="button"
               aria-pressed={active}
+              aria-label={glyph ? p.label : undefined}
               onClick={() => pick(p.id)}
               data-ui={dashboard ? "period-button" : undefined}
               className={cn(
                 look.button,
                 look.focus,
                 active ? look.on : look.off,
+                glyph && "px-2.5 @min-[560px]:px-3",
               )}
             >
-              {p.label}
+              {glyph ? (
+                <>
+                  <NavBookings aria-hidden="true" strokeWidth={1.8} className="block size-[15px] @min-[560px]:hidden" />
+                  <span className="hidden @min-[560px]:inline">{p.label}</span>
+                </>
+              ) : (
+                p.label
+              )}
             </button>
           );
         })}

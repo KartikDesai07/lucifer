@@ -13,6 +13,7 @@ import { menuItemsHref } from "@/lib/menu-sections";
 import { presetRange } from "@/lib/dashboard/range";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { AttentionStrip, attentionItems } from "@/components/dashboard/AttentionStrip";
+import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { DashCard } from "@/components/dashboard/DashCard";
 import { RangeBar } from "@/components/dashboard/RangeBar";
 import { MoneyBreakdownCard } from "@/components/reports/MoneyBreakdownCard";
@@ -125,7 +126,7 @@ test("the header names the page: PageHeader 'Dashboard' with the cafe line by de
   const page = readSrc(PAGE);
   assert.match(
     page,
-    /<PageHeader\s+title="Dashboard"\s+className="gap-2\.5"\s+actions=\{<EndOfDayButton variant="header" \/>\}\s*\/>/,
+    /<PageHeader\s+title="Dashboard"\s+className="gap-2\.5"\s+actions=\{<EndOfDayButton \/>\}\s*\/>/,
     "the page's header: its title, the HTML's 10px gap in the phone's body row, and the End of day pair as its actions",
   );
   assert.ok(!/<PageHeader[^>]*\bdescription=/.test(page), "no description: the header's own '{cafe} · {weekday, day month}' line shows");
@@ -166,22 +167,23 @@ test("every row takes the HTML's column template per content width (db.L hero, t
   assert.ok(!/\b(?:sm|md|lg|xl):(?:grid-cols|col-span)/.test(page), "no viewport breakpoints left on the rows: the HTML's rules read the content width");
 });
 
-test("EndOfDayButton variant 'header': End of day then the date, as the HTML's 36px outline header buttons; the default look stays", () => {
+// Fix round 1: the inline look had no consumer (only the dashboard renders it), so the component is the header pair.
+test("EndOfDayButton: End of day then the date, as the HTML's 36px outline header buttons; the chosen day always in words", () => {
   const src = readSrc("components/reports/EndOfDayButton.tsx");
-  assert.match(src, /export function EndOfDayButton\(\{ variant = "inline" \}: \{ variant\?: "inline" \| "header" \}\)/, "a variant prop, today's look by default");
-  // Today's look (its pins live in print-paths, print-routing, date-input): the date, then a small outline button.
-  assert.ok(src.includes('<div className="flex items-center gap-2">'), "the inline pair keeps its row");
-  assert.ok(src.includes('className={header ? "w-auto" : "h-8 w-auto"}'), "the inline date keeps h-8 w-auto");
-  assert.ok(src.includes('size={header ? undefined : "sm"}'), "the inline button keeps size sm");
-  assert.ok(src.includes('<CalendarCheck className="mr-2 h-4 w-4" /> End of day'), "the inline button keeps its icon and words");
-  // The header look (values 2.5): outline, the printer glyph, the HTML's title; the date as a second outline button.
-  assert.ok(src.includes("className={header ? HEADER_OUTLINE_BUTTON_CLASS : undefined}"), "the header's outline button class");
-  assert.ok(src.includes('title={header ? "Print end-of-day report" : undefined}'), "the HTML's title (also the icon-only button's name)");
-  assert.match(src, /<GlyphPrinter aria-hidden="true" strokeWidth=\{1\.8\} \/>/, "the HTML's printer glyph");
-  assert.match(src, /<NavBookings aria-hidden="true" strokeWidth=\{1\.8\} \/>/, "the HTML's calendar glyph on the date");
-  assert.ok(src.includes('const HEADER_LABEL_CLASS = "hidden min-[560px]:inline";'), "labels hidden below 560px (the HTML's wideI: cw < 560)");
+  assert.match(src, /export function EndOfDayButton\(\) \{/, "one look: the header pair");
+  assert.ok(!/CalendarCheck|variant = "inline"|"h-8 w-auto"/.test(src), "the old inline look is gone");
+  // values 2.5: outline, the printer glyph, the HTML's words and title; the label hides below 560px (the HTML's wideI).
+  assert.match(
+    src,
+    /<Button\s+variant="outline"\s+className=\{HEADER_OUTLINE_BUTTON_CLASS\}\s+title="Print end-of-day report"\s+onClick=\{printEod\}\s+disabled=\{!ready \|\| enqueuePending\}\s*>\s*<GlyphPrinter aria-hidden="true" strokeWidth=\{1\.8\} \/>\s*<span className=\{HEADER_LABEL_CLASS\}>End of day<\/span>/,
+    "End of day: outline, the printer glyph, its words hidden below 560px, the HTML's title (the icon-only button's name)",
+  );
+  assert.ok(src.includes('const HEADER_LABEL_CLASS = "hidden min-[560px]:inline";'), "the HTML's wideI: words from 560px");
+  // The date has no HTML twin: its words stay on a phone too, so a picked past day always shows which day will print.
+  assert.match(src, /<NavBookings aria-hidden="true" strokeWidth=\{1\.8\} \/>\s*<span>\{shortDay\}<\/span>/, "the calendar glyph and the day, never hidden");
+  assert.ok(src.includes("aria-label={`End of day date: ${shortDay}`}"), "its name carries the visible day");
   assert.ok(src.includes('{ day: "numeric", month: "short", timeZone: CAFE_TIMEZONE }'), "the date reads '19 Oct'");
-  assert.match(src, /\{header \? \(\s*<>\s*\{button\}\s*\{picker\}\s*<\/>\s*\) : \(/, "in the header: End of day first, then the date");
+  assert.match(src, /<>\s*\{button\}\s*\{picker\}/, "End of day first, then the date");
 });
 
 test("DatePicker: a label replaces the trigger's calendar icon and full date (the dashboard's short header button)", async () => {
@@ -199,8 +201,8 @@ test("the period row: the period's name 18/600, the dates and comparison 12.5 te
   assert.match(page, /<h2 data-ui="period-title" className="text-\[18px\] font-semibold tracking-\[-0\.01em\]">\{periodName\}<\/h2>/, "the title");
   assert.match(
     page,
-    /<p data-ui="period-sub" className="mt-0\.5 text-\[12\.5px\] text-muted-foreground max-tab:min-h-\[32\.5px\]">\s*\{periodSubline\(shownRange, d, today\)\}\s*<\/p>/,
-    "the sub line (two lines held on a phone, where our comparison wraps, so the figures arriving never move the page)",
+    /<p data-ui="period-sub" className="mt-0\.5 text-\[12\.5px\] text-muted-foreground">\s*\{periodSubline\(shownRange, today\)\}\s*<\/p>/,
+    "the sub line: one 17px line, its words from the range alone (ruling R9: never Loading…, never moving)",
   );
   assert.match(page, /<RangeBar variant="dashboard" value=\{selection\} onChange=\{onSelect\} isAdmin=\{isAdmin\} \/>/, "the picker in the HTML's segmented look");
 });
@@ -412,7 +414,7 @@ test("AttentionStrip: the HTML's wide row (label, 34px chips with a 24px action 
   );
   hasAll(
     classesOf(html, "attention-chip"),
-    ["flex", "items-center", "gap-[9px]", "h-[34px]", "pl-3", "pr-[5px]", "border", "border-border", "rounded-[17px]", "bg-card", "text-foreground", "text-[13px]", "whitespace-nowrap", "hover:border-subtle-foreground"],
+    ["flex", "items-center", "gap-[9px]", "h-[34px]", "pl-3", "pr-[5px]", "border", "border-border", "rounded-[17px]", "bg-card", "text-foreground", "text-[13px]", "whitespace-nowrap", "hover:border-subtle-foreground", ...HTML_PRESS_CLASS.split(" ")],
     "a chip",
   );
   hasAll(
@@ -450,7 +452,7 @@ test("AttentionStrip: the HTML's wide row (label, 34px chips with a 24px action 
     ["flex", "@min-[560px]:hidden", "flex-col", "overflow-hidden", "rounded-[12px]", "border", "border-border", "bg-card"],
     "the phone card",
   );
-  hasAll(classesOf(html, "attention-toggle"), ["flex", "h-12", "w-full", "min-w-0", "items-center", "gap-2.5", "px-3", "text-left"], "the card's toggle");
+  hasAll(classesOf(html, "attention-toggle"), ["flex", "h-12", "w-full", "min-w-0", "items-center", "gap-2.5", "px-3", "text-left", ...HTML_PRESS_CLASS.split(" ")], "the card's toggle (with the HTML's press)");
   hasAll(
     classesOf(html, "attention-count"),
     ["flex", "size-7", "shrink-0", "items-center", "justify-center", "rounded-[8px]", "bg-status-warn-tint", "text-status-warn-ink", "text-[13px]", "font-bold"],
@@ -463,7 +465,7 @@ test("AttentionStrip: the HTML's wide row (label, 34px chips with a 24px action 
   assert.ok(controls, "the disclosure button names the list it opens");
   assert.ok(html.includes(`<ul id="${controls}" hidden=""`), "aria-controls equals the list's id, and it starts folded");
   hasAll(classesOf(html, "attention-list"), ["flex", "flex-col", "border-t", "border-border-2"], "the open list");
-  hasAll(classesOf(html, "attention-item"), ["flex", "min-h-[46px]", "items-center", "gap-2.5", "px-3", "py-2", "text-left", "text-[13px]", "text-foreground"], "a row");
+  hasAll(classesOf(html, "attention-item"), ["flex", "min-h-[46px]", "items-center", "gap-2.5", "px-3", "py-2", "text-left", "text-[13px]", "text-foreground", ...HTML_PRESS_CLASS.split(" ")], "a row (with the HTML's press)");
   assert.ok(!classesOf(html, "attention-item", 0).includes("border-t"), "the first row has no rule");
   hasAll(classesOf(html, "attention-item", 1), ["border-t", "border-border-2"], "the next rows' rule");
   hasAll(
@@ -472,6 +474,12 @@ test("AttentionStrip: the HTML's wide row (label, 34px chips with a 24px action 
     "a row's action",
   );
   hasAll(classesOf(html, "attention-item-dot"), ["mx-2.5"], "a row's dot (margin 0 10px)");
+  // values 3.1: the chevron turns with transition: transform .2s (the default ease), as a transform.
+  assert.match(
+    html,
+    /<svg[^>]*class="[^"]*\bmotion-safe:\[transition:transform_\.2s_ease\] \[transform:rotate\(0deg\)\][^"]*"/,
+    "the closed chevron: rotate(0deg), turning in .2s ease",
+  );
 });
 
 test("AttentionStrip: loading, error and all clear in the same language", () => {
@@ -542,28 +550,29 @@ test("RangeBar variant 'dashboard': the HTML's segmented control (values 3.2, SE
   assert.ok(admin.includes('role="group"') && admin.includes('aria-label="Period"'), "the Period group");
   assert.ok(!admin.includes("pointer-coarse"), "ruling R1: the HTML's 36px track on touch screens too");
   hasAll(classesOf(admin, "period-track"), ["flex", "h-9", "gap-0.5", "rounded-[9px]", "bg-surface-3", "p-[3px]", "max-w-full", "overflow-x-auto"], "the track");
-  const buttons = admin.match(/<button[^>]*>[^<]*<\/button>/g) ?? [];
-  assert.deepEqual(
-    buttons.map((b) => />([^<]*)</.exec(b)?.[1]),
-    ["Today", "Yesterday", "7 days", "30 days", "Custom"],
-    "the HTML's four, then our Custom (admin)",
-  );
+  const buttons = admin.match(/<button[\s\S]*?<\/button>/g) ?? [];
+  const words = (b: string) => b.replace(/<[^>]+>/g, "");
+  assert.deepEqual(buttons.map(words), ["Today", "Yesterday", "7 days", "30 days", "Custom"], "the HTML's four, then our Custom (admin)");
   buttons.forEach((b, i) => {
     const classes = /class="([^"]*)"/.exec(b)?.[1].split(" ") ?? [];
     assert.ok(b.includes('data-ui="period-button"'), `button ${i + 1} is a period button`);
-    hasAll(classes, ["rounded-[7px]", "px-3", "text-[13px]", "whitespace-nowrap"], `button ${i + 1}`);
+    hasAll(classes, ["rounded-[7px]", "text-[13px]", "whitespace-nowrap", ...HTML_PRESS_CLASS.split(" ")], `button ${i + 1} (with the HTML's press)`);
     assert.ok(!classes.some((c) => /^h-/.test(c)), `button ${i + 1} stretches to the track (30px) as the HTML's`);
     if (i === 0) hasAll(classes, ["bg-seg", "[box-shadow:var(--seg-sh)]", "text-foreground", "font-semibold"], "the chosen segment (SEG_ON: the HTML's exact seg-sh, text, 600)");
     else hasAll(classes, ["bg-transparent", "text-muted-foreground", "font-medium"], `segment ${i + 1} (SEG_OFF, text-2, 500)`);
+    if (i < 4) hasAll(classes, ["px-3"], `segment ${i + 1}: padding 0 12px`);
   });
+  // Ruling R10: under cw 560 our fifth segment is a calendar glyph in 0 10px, so the admin's track fits a 360px phone.
+  const custom = buttons[4] ?? "";
+  assert.ok(custom.includes('aria-label="Custom"') && custom.includes('aria-pressed="false"'), "Custom keeps its name and state");
+  hasAll(/class="([^"]*)"/.exec(custom)?.[1].split(" ") ?? [], ["px-2.5", "@min-[560px]:px-3"], "Custom: 0 10px as a glyph, 0 12px as a word");
+  assert.match(custom, /<svg[^>]*class="[^"]*\bblock size-\[15px\] @min-\[560px\]:hidden\b[^"]*"/, "the glyph, under cw 560 only");
+  assert.ok(custom.includes('<span class="hidden @min-[560px]:inline">Custom</span>'), "the word, from cw 560");
   const staff = renderToStaticMarkup(
     createElement(RangeBar, { variant: "dashboard", value: { preset: "today", range: presetRange("today") }, onChange: noop, isAdmin: false }),
   );
-  assert.deepEqual(
-    (staff.match(/<button[^>]*>[^<]*<\/button>/g) ?? []).map((b) => />([^<]*)</.exec(b)?.[1]),
-    ["Today", "Yesterday", "Pick a day"],
-    "staff: one day at a time",
-  );
+  assert.deepEqual((staff.match(/<button[\s\S]*?<\/button>/g) ?? []).map(words), ["Today", "Yesterday", "Pick a day"], "staff: one day at a time");
+  assert.ok(!staff.includes("<svg"), "staff's three words fit: no glyph");
 });
 
 // ── the generic card ────────────────────────────────────────────────────────
@@ -623,6 +632,16 @@ test("DashCard variant 'dashboard': the HTML's generic card (values 3.0) and its
   assert.ok(empty.includes('<p class="text-[13.5px] font-medium">None</p>'), "the empty title 13.5/500");
   assert.ok(empty.includes('<p class="max-w-xs text-[12.5px] text-subtle-foreground">Nothing yet.</p>'), "the empty description 12.5 text-3");
   assert.ok(card({ variant: "dashboard", updating: true }).includes("opacity-55"), "the old range's body dims while the new one loads");
+  // Fix round 1: each card sets its own space under the head (values 3.5–3.14), 14px unless it says otherwise.
+  for (const [gap, cls] of [[8, "mt-2"], [10, "mt-2.5"], [14, "mt-3.5"], [18, "mt-[18px]"]] as const) {
+    const body = card({ variant: "dashboard", bodyGap: gap });
+    assert.ok(body.includes(`<div style="min-height:120px" class="transition-opacity duration-200 ${cls}">`), `bodyGap ${gap} puts the body ${gap}px under the head`);
+    const waiting = card({ variant: "dashboard", status: "loading", bodyGap: gap });
+    assert.ok(waiting.includes(`<div style="height:120px" class="flex ${cls}">`), `the skeleton holds the same ${gap}px`);
+  }
+  assert.ok(readSrc("components/dashboard/RecentOrders.tsx").includes("bodyGap={10}"), "Recent orders: the list 10px under the head (values 3.7)");
+  assert.ok(readSrc("components/dashboard/TodayReservations.tsx").includes("bodyGap={10}"), "Today's reservations: 10px (values 3.8)");
+  assert.match(readSrc("components/dashboard/RangeCards.tsx"), /title="Top items"[\s\S]{0,200}bodyGap=\{8\}/, "Top items: 8px (values 3.12)");
 });
 
 // ── the receipt ─────────────────────────────────────────────────────────────

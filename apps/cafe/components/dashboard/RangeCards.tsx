@@ -207,6 +207,7 @@ export function TopItemsCard(p: RangeCardProps) {
     <DashCard
       variant="dashboard"
       title="Top items"
+      bodyGap={8}
       period={`${p.period} · by sales`}
       status={statusOf(p, rows.length === 0)}
       updating={p.updating}

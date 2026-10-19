@@ -13,6 +13,7 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Header } from "@/components/layout/Header";
 import { PageHeaderSlotProvider } from "@/components/layout/page-header-slot";
+import { PageFade } from "@/components/layout/PageFade";
 import { MasterDataProvider } from "@/components/layout/MasterDataProvider";
 import { PosPulseProvider } from "@/components/layout/PosPulseProvider";
 import { PrintHostProvider } from "@/components/layout/PrintHostProvider";
@@ -115,8 +116,12 @@ export default function DashboardLayout({
                   <Header />
                   <RequestAlertBar />
                   <TouchFeel />
-                  {/* Below 720px the page's foot keeps 92px clear (values 2.1 screenPadB): the 59px tab bar plus air. */}
-                  <main className="flex-1 p-4 pb-[92px] tab:pb-4 md:p-6">{children}</main>
+                  {/* Below 720px the page's foot keeps 92px clear (values 2.1 screenPadB): the 59px tab bar plus air.
+                      PageFade replays the HTML's pageIn on this element when the path changes (ruling R11). */}
+                  <main className="flex-1 p-4 pb-[92px] tab:pb-4 md:p-6">
+                    <PageFade />
+                    {children}
+                  </main>
                   <PrintHostPrintSources />
                 </PageHeaderSlotProvider>
               </SidebarInset>

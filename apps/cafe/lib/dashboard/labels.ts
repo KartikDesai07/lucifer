@@ -2,7 +2,7 @@
 // cards and the tests all say the same thing. Every label is derived from the
 // data actually on screen (DashboardData.range), never the picker's pending
 // choice, so a dimmed "updating" view never names a period it is not showing.
-import { INSIGHT_FALLBACK_DAYS, addDays, dayLabel, rangeDays, weekdayDayLabel } from "@/lib/dashboard/range";
+import { INSIGHT_FALLBACK_DAYS, addDays, dayLabel, mondayIndex, rangeDays, weekdayDayLabel } from "@/lib/dashboard/range";
 import type { DashboardData, DashboardRange } from "@/types/dashboard";
 
 const PRESET_SPANS = [7, 30] as const;
@@ -43,26 +43,21 @@ export function kpiCompareText(data: DashboardData): string {
   return data.compare.label;
 }
 
-/**
- * The line under the period title. A range still running today is compared
- * with the same elapsed time, and says so here (once) rather than on every card.
- */
-export function compareCaption(data: DashboardData, today: string): string {
-  const against = data.compare.label.replace(/^vs /, "");
-  const running = data.range.to === today;
-  if (data.mode === "hour") return `Compared with ${against}${running ? " at the same time of day" : ""}`;
-  return `Compared with the ${against}${running ? ", up to the same time today" : ""}`;
-}
+const WEEKDAYS_LONG = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
 
 /**
- * The line under the period's name, in the HTML's words: "{dates} · compared with {comparison}" (values 3.2). The
- * dates are left out when the name already is the date (a picked day), and "Loading…" stands in for the comparison
- * until the figures arrive.
+ * The line under the period's name, in the HTML's words (values 3.2, ruling R9): "{dates} · compared with {last
+ * Monday | the same day last week | the previous N days}". It follows our comparison rule (compareRange: one day
+ * against the same weekday a week before, N days against the N days before) from the range alone, so it never waits
+ * for the figures and never moves when they arrive. The dates are left out when the name already is the date (a
+ * picked day).
  */
-export function periodSubline(range: DashboardRange, data: DashboardData | undefined, today: string): string {
+export function periodSubline(range: DashboardRange, today: string): string {
+  const days = rangeDays(range);
+  const against =
+    days > 1 ? `the previous ${days} days` : range.from === today ? `last ${WEEKDAYS_LONG[mondayIndex(range.from)]}` : "the same day last week";
   const dates = periodLabel(range, today) === periodDates(range) ? "" : periodDates(range);
-  const comparison = data ? compareCaption(data, today) : "Loading…";
-  return dates ? `${dates} · ${comparison.replace(/^Compared with/, "compared with")}` : comparison;
+  return dates ? `${dates} · compared with ${against}` : `Compared with ${against}`;
 }
 
 /** Said instead of a % when the comparison period had no orders. */

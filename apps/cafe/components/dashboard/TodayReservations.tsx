@@ -32,6 +32,7 @@ export function TodayReservations({ reservations, loading, isError, onRetry }: T
   return (
     <DashCard
       variant="dashboard"
+      bodyGap={10}
       title="Today's reservations"
       period="Booked and seated · by time"
       link={{ href: "/reservations", label: "View all" }}

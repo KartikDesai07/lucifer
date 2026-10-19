@@ -122,18 +122,17 @@ export default function DashboardPage() {
       <div data-ui="dash-content" className="flex flex-col gap-4 px-[14px] pt-4 pb-[92px] leading-[normal] text-foreground tab:px-6 tab:pt-5 tab:pb-7">
         {/* The header's title, the cafe line (no description) and its two buttons; on a phone, where the HTML's header
             holds icons only, the buttons sit in a row here. */}
-        <PageHeader title="Dashboard" className="gap-2.5" actions={<EndOfDayButton variant="header" />} />
+        <PageHeader title="Dashboard" className="gap-2.5" actions={<EndOfDayButton />} />
 
         <AttentionStrip live={live.data} loading={live.isLoading} isError={live.isError} />
 
-        {/* values 3.2: the period's name and its dates · comparison, the segmented picker at the right (it wraps
-            under them when they do not fit). The line holds two lines on a phone, where our comparison wraps, so
-            the figures arriving never move the page. */}
+        {/* values 3.2: the period's name and "{dates} · compared with …" in the HTML's words (ruling R9, from the range
+            alone: never "Loading…", never moving), the segmented picker at the right (under them on a phone). */}
         <div data-ui="period-row" className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 data-ui="period-title" className="text-[18px] font-semibold tracking-[-0.01em]">{periodName}</h2>
-            <p data-ui="period-sub" className="mt-0.5 text-[12.5px] text-muted-foreground max-tab:min-h-[32.5px]">
-              {periodSubline(shownRange, d, today)}
+            <p data-ui="period-sub" className="mt-0.5 text-[12.5px] text-muted-foreground">
+              {periodSubline(shownRange, today)}
             </p>
           </div>
           <RangeBar variant="dashboard" value={selection} onChange={onSelect} isAdmin={isAdmin} />

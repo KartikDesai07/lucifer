@@ -34,6 +34,7 @@ export function RecentOrders({ orders, loading, isError, onRetry, onSelect }: Re
   return (
     <DashCard
       variant="dashboard"
+      bodyGap={10}
       title="Recent orders"
       period="Today · newest first"
       link={{ href: "/orders", label: "View all" }}
