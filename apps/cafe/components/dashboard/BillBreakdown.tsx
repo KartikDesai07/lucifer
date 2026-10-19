@@ -1,8 +1,8 @@
 import { cn, inr } from "@/lib/utils";
 import { billPeriodTag } from "@/lib/dashboard/labels";
 import { MONEY_BREAKDOWN_LINES, MONEY_NET_LABEL, type MoneyLine } from "@/lib/money-breakdown";
-import { maskMoney } from "@/lib/sales-reveal";
 import { DashSkeleton } from "@/components/dashboard/DashCard";
+import { MaskedValue } from "@/components/dashboard/SalesReveal";
 import type { RangeCardProps } from "@/components/dashboard/RangeCards";
 import type { MoneyBreakdown } from "@/types";
 
@@ -10,7 +10,8 @@ import type { MoneyBreakdown } from "@/types";
 // border and a torn lower edge, the period tag in Geist Mono, a dashed rule, our five rows in our words (they are our
 // data: Gross bill, Discounts, Rewards given, GST added, Additional charges) in the HTML's colours and its − / + signs,
 // a second dashed rule and the Net sales total. Masked rows read "• • • •" in text-3 and the total "₹ • • • •"
-// (values 3.17). The reports keep their own receipt (components/reports/MoneyBreakdownCard.tsx).
+// (values 3.17); a screen reader hears "{row} hidden" instead of the bullets. It replaced the dashboard's
+// components/reports/MoneyBreakdownCard.tsx, which no page renders now (left for a later clean-up).
 
 // values 3.4: the gross in the text colour, the deductions in --bad-i, the additions in --text-2.
 const ROW_COLOUR: Record<keyof MoneyBreakdown, string> = {
@@ -71,7 +72,9 @@ export function BillBreakdown(p: BillBreakdownProps) {
               className={cn("flex justify-between gap-3 py-[7px] text-[13.5px]", p.shown ? ROW_COLOUR[line.key] : MASKED_COLOUR)}
             >
               <span>{line.label}</span>
-              <span className="font-mono">{maskMoney(`${SIGN[line.sign]}${inr(d.money[line.key])}`, p.shown, "bill")}</span>
+              <span className="font-mono">
+                <MaskedValue text={`${SIGN[line.sign]}${inr(d.money[line.key])}`} shown={p.shown} label="hidden" kind="bill" />
+              </span>
             </div>
           ),
         )}
@@ -86,7 +89,7 @@ export function BillBreakdown(p: BillBreakdownProps) {
             data-ui="bill-total-value"
             className={cn("font-mono text-[22px] font-semibold tracking-[-0.02em]", p.updating && "opacity-55")}
           >
-            {maskMoney(inr(Math.round(d.kpis.current.sales * grow)), p.shown)}
+            <MaskedValue text={inr(Math.round(d.kpis.current.sales * grow))} shown={p.shown} label="hidden" />
           </span>
         )}
       </div>

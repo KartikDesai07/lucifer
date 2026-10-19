@@ -122,12 +122,15 @@ test("the page lays every card out in the HTML's order, and no longer renders th
 
 // ── the frame (U0 match Task 5, values 2.5 and 3.0) ──────────────────────────
 
-test("the header names the page: PageHeader 'Dashboard' with the cafe line by default and End of day + date as its actions", () => {
+// Ruling R13 (Task 6 fix 1): the HTML's phone header holds End of day (logo · title · End of day · + · printer), so End of
+// day is a phoneAction (in the header at every width, icon-only on a phone) and the date the action (the body row on a
+// phone, where it still shows the chosen day).
+test("the header names the page: PageHeader 'Dashboard' with the cafe line by default, End of day in the header at every width, the date beside it", () => {
   const page = readSrc(PAGE);
   assert.match(
     page,
-    /<PageHeader\s+title="Dashboard"\s+className="gap-2\.5"\s+actions=\{<EndOfDayButton \/>\}\s*\/>/,
-    "the page's header: its title, the HTML's 10px gap in the phone's body row, and the End of day pair as its actions",
+    /<EndOfDayButton>\s*\{\(\{ button, picker \}\) => \(\s*<PageHeader\s+title="Dashboard"\s+className="gap-2\.5"\s+phoneActions=\{button\}\s+actions=\{picker\}\s*\/>\s*\)\}\s*<\/EndOfDayButton>/,
+    "the page's header: its title, End of day as its phoneActions, the date as its actions (the HTML's 10px gap in the phone's body row)",
   );
   assert.ok(!/<PageHeader[^>]*\bdescription=/.test(page), "no description: the header's own '{cafe} · {weekday, day month}' line shows");
   assert.ok(!/<h1\b/.test(page), "the page writes no title of its own (the header's h1 is the page's)");
@@ -170,7 +173,7 @@ test("every row takes the HTML's column template per content width (db.L hero, t
 // Fix round 1: the inline look had no consumer (only the dashboard renders it), so the component is the header pair.
 test("EndOfDayButton: End of day then the date, as the HTML's 36px outline header buttons; the chosen day always in words", () => {
   const src = readSrc("components/reports/EndOfDayButton.tsx");
-  assert.match(src, /export function EndOfDayButton\(\) \{/, "one look: the header pair");
+  assert.match(src, /export function EndOfDayButton\(\{ children \}: \{ children: \(parts: EndOfDayParts\) => ReactNode \}\) \{/, "one look: the header pair, handed to the caller (ruling R13)");
   assert.ok(!/CalendarCheck|variant = "inline"|"h-8 w-auto"/.test(src), "the old inline look is gone");
   // values 2.5: outline, the printer glyph, the HTML's words and title; the label hides below 560px (the HTML's wideI).
   assert.match(
@@ -183,7 +186,7 @@ test("EndOfDayButton: End of day then the date, as the HTML's 36px outline heade
   assert.match(src, /<NavBookings aria-hidden="true" strokeWidth=\{1\.8\} \/>\s*<span>\{shortDay\}<\/span>/, "the calendar glyph and the day, never hidden");
   assert.ok(src.includes("aria-label={`End of day date: ${shortDay}`}"), "its name carries the visible day");
   assert.ok(src.includes('{ day: "numeric", month: "short", timeZone: CAFE_TIMEZONE }'), "the date reads '19 Oct'");
-  assert.match(src, /<>\s*\{button\}\s*\{picker\}/, "End of day first, then the date");
+  assert.match(src, /<>\s*\{children\(\{ button, picker \}\)\}/, "End of day and the date go where the caller puts them; the print source stays here");
 });
 
 test("DatePicker: a label replaces the trigger's calendar icon and full date (the dashboard's short header button)", async () => {
@@ -310,9 +313,14 @@ test("SalesHero: the figure in Geist Mono 500, 42 | 60 px from cw 560, -0.04em, 
 
 test("SalesHero masked (the default, values 3.17): '₹ • • • •' for Net sales, Average order and Collected, 'still due hidden'", async () => {
   const html = await hero();
-  assert.match(html, /data-ui="hero-figure"[^>]*>₹ • • • •</, "the hero's figure is masked");
-  const values = [...html.matchAll(/data-ui="hero-mini-value"[^>]*>([^<]*)</g)].map((m) => m[1]);
-  assert.deepEqual(values, ["126", "₹ • • • •", "₹ • • • •"], "Orders shows; Average order and Collected are masked");
+  // Fix 1: the bullets are hidden from a screen reader, which hears "{figure} hidden" instead of each bullet.
+  assert.match(html, /data-ui="hero-figure"[^>]*><span aria-hidden="true">₹ • • • •<\/span><span class="sr-only">Net sales hidden<\/span><\/p>/, "the hero's figure is masked, named for a screen reader");
+  const values = [...html.matchAll(/data-ui="hero-mini-value"[^>]*>(.*?)<\/span>(?:<\/span>)?<div/g)].map((m) => m[1]);
+  assert.deepEqual(
+    values,
+    ["126", '<span aria-hidden="true">₹ • • • •</span><span class="sr-only">Average order hidden', '<span aria-hidden="true">₹ • • • •</span><span class="sr-only">Collected hidden'],
+    "Orders shows; Average order and Collected are masked, each named for a screen reader",
+  );
   assert.ok(html.includes("still due hidden"), "Collected's note while masked");
   assert.ok(!/₹48,250|₹383|₹46,980|₹1,270/.test(html), "no sales figure anywhere while masked");
   assert.ok(html.includes("↑ 12.4%") && html.includes("↑ 6.8%") && html.includes("↑ 5.2%"), "every change % stays visible");
@@ -481,10 +489,10 @@ test("BillBreakdown: the head, the dashed rules 14/6 and 6/12, our rows in our w
 
 test("BillBreakdown masked: every row '• • • •' in text-3, its label too; the total '₹ • • • •'", async () => {
   const html = await bill({}, { shown: false });
-  const rows = [...html.matchAll(/data-ui="bill-row"[^>]*>[\s\S]*?<span class="font-mono">([^<]*)</g)].map((m) => m[1]);
-  assert.deepEqual(rows, ["• • • •", "• • • •", "• • • •", "• • • •", "• • • •"], "five masked rows");
+  const rows = [...html.matchAll(/data-ui="bill-row"[^>]*>[\s\S]*?<span class="font-mono">(.*?)<\/span><\/div>/g)].map((m) => m[1]);
+  assert.deepEqual(rows, Array(5).fill('<span aria-hidden="true">• • • •</span><span class="sr-only">hidden</span>'), "five masked rows, each 'hidden' to a screen reader");
   for (let i = 0; i < 5; i += 1) assert.ok(clsOf(tagOf(html, "bill-row", i)).includes("text-subtle-foreground"), `row ${i + 1} is text-3`);
-  assert.match(html, /data-ui="bill-total"[\s\S]*?>₹ • • • •</, "the total is masked");
+  assert.match(html, /data-ui="bill-total"[\s\S]*?><span aria-hidden="true">₹ • • • •<\/span><span class="sr-only">hidden<\/span>/, "the total is masked, 'Net sales hidden' to a screen reader");
   assert.ok(!/₹[0-9]/.test(html), "no amount anywhere");
 });
 
@@ -539,7 +547,7 @@ test("the reveal dialog's panel (values 3.16): the 38px ink tile with the eye, '
   const { Dialog } = await import("@/components/ui/dialog");
   const panel = (extra: Record<string, unknown> = {}) =>
     renderToStaticMarkup(
-      createElement(Dialog, { open: true }, createElement(RevealPinPanel, { prompt: "Asha, enter your PIN", noPin: null, pin: "", message: null, errorCount: 0, onChange: noop, onComplete: noop, onCancel: noop, ...extra })),
+      createElement(Dialog, { open: true }, createElement(RevealPinPanel, { prompt: "Asha, enter your PIN", notice: null, pin: "", message: null, errorCount: 0, onChange: noop, onComplete: noop, onCancel: noop, ...extra })),
     );
   const html = panel();
   expectAll(tagOf(html, "reveal-head"), ["flex", "items-start", "gap-3"], "the header");
@@ -550,9 +558,13 @@ test("the reveal dialog's panel (values 3.16): the 38px ink tile with the eye, '
   expectAll(tagOf(html, "reveal-prompt"), ["text-[13px]", "text-muted-foreground"], "the prompt 13px text-2");
   const cancel = tagOf(html, "reveal-cancel");
   expectAll(cancel, ["h-10", "bg-transparent", "text-[14px]", "font-medium", "text-link"], "Cancel: a 40px link");
+  assert.ok(!/\brounded-/.test(cancel), "values 3.16 gives Cancel no radius (fix 1)");
   assert.match(html, /data-ui="reveal-cancel"[^>]*>Cancel</, "Cancel");
-  const none = panel({ noPin: "Ask an admin to set your PIN to show sales." });
+  const none = panel({ notice: "Ask an admin to set your PIN to show sales." });
   assert.ok(none.includes("Ask an admin to set your PIN to show sales.") && !none.includes('data-ui="reveal-keys"'), "no PIN: the message instead of the keys");
+  const blocked = panel({ notice: "This PIN is blocked after too many wrong tries. Ask an admin to unblock it." });
+  assert.match(blocked, /data-ui="reveal-notice"[^>]*>This PIN is blocked after too many wrong tries\. Ask an admin to unblock it\.</, "a blocked PIN: its words instead of the keys");
+  assert.ok(!blocked.includes('data-ui="reveal-keys"') && blocked.includes(">Cancel<"), "no keys, Cancel stays");
 });
 
 test("the page masks both cards with one reveal, and the reveal hides on a lock or when the page goes", () => {
@@ -566,7 +578,10 @@ test("the page masks both cards with one reveal, and the reveal hides on a lock 
   assert.ok(src.includes("verifyOwnPin("), "the PIN is checked by the server (lib/pin-sign-in-client.ts verifyOwnPin)");
   assert.ok(src.includes("toast.success(REVEAL_TOAST)"), "the toast after a right PIN");
   assert.ok(src.includes("window.sessionStorage"), "the grant lives in sessionStorage");
-  assert.ok(/useState\(false\)/.test(src), "shown starts false on every mount: leaving the dashboard hides the figures");
+  // Fix 1: the rules are lib/sales-reveal.ts revealReducer (tested there); every mount starts from REVEAL_START (hidden).
+  assert.ok(src.includes("useReducer(revealReducer, REVEAL_START)"), "shown starts false on every mount: leaving the dashboard hides the figures");
+  assert.ok(src.includes('dispatch({ type: "lock" })') && src.includes('dispatch({ type: "expire", now: at })'), "a lock and the hour's end go through the reducer");
+  assert.ok(src.includes("checkOwnPin()") && src.includes("revealNotice(gate, isAdmin)"), "the dialog asks once whether the keys can help, and shows the words instead when not");
   assert.ok(src.includes("HTML_PRESS_CLASS"), "the button, the keys and Cancel press like the HTML's");
 });
 

@@ -4,7 +4,7 @@ import { STAFF_PIN_RATE_MAX } from "@pos/shared/staff-pin";
 import { PublicRateLimit } from "@/models/PublicRateLimit";
 import { Staff } from "@/models/Staff";
 import type { PinDevicePerson } from "./pin-device";
-import { nextPinFailState, verifyOwnStaffPin, verifyStaffPinSignIn } from "./staff-pin-signin";
+import { nextPinFailState, ownStaffPinState, verifyOwnStaffPin, verifyStaffPinSignIn } from "./staff-pin-signin";
 
 // Counts the rate-window prune's deleteMany calls while `run` runs. A prune on an instance that has
 // not connected yet buffers for 10 s before it fails, so a refusal that answers before connectDB()
@@ -257,4 +257,31 @@ test("verifyOwnStaffPin: a bad shape answers wrong without touching the database
     }
   });
   assert.equal(prunes, 0, "a bad shape never runs the rate-window prune (it answers before connectDB)");
+});
+
+// The reveal dialog's up-front look-up (Task 6 fix 1): the session's own row, read only. It takes no slot in the window,
+// compares nothing and counts nothing, so opening the dialog can never cost a try.
+test("ownStaffPinState: ready, nopin or blocked from one read of the person's row; no slot, no compare, no count", async () => {
+  const cases: Array<[string, Row | null, string]> = [
+    ["a PIN set", person(), "ready"],
+    ["no PIN set", person({ hasPin: false, pin: undefined }), "nopin"],
+    ["a stored PIN the rules refuse", person({ pin: "1234" }), "nopin"],
+    ["an inactive person", person({ isActive: false }), "nopin"],
+    ["no such person", null, "nopin"],
+    ["a blocked PIN", person({ pinBlocked: true }), "blocked"],
+  ];
+  for (const [label, row, want] of cases) {
+    await withFakeDb({ window: STAFF_PIN_RATE_MAX, row }, async (db) => {
+      assert.equal(await ownStaffPinState({ staffId: ME }), want, `${label} -> ${want}`);
+      assert.deepEqual(db.calls, ["read"], `${label}: one read, no slot, no refund, no day count`);
+      assert.equal(db.window, STAFF_PIN_RATE_MAX, `${label}: the window is untouched (even full, the look-up still answers)`);
+    });
+  }
+});
+
+test("ownStaffPinState: no valid session id answers nopin without touching the database", async () => {
+  delete process.env.MONGODB_URI;
+  for (const id of [undefined, "not-an-id", 42]) {
+    assert.equal(await ownStaffPinState({ staffId: id }), "nopin", `${String(id)} -> nopin`);
+  }
 });

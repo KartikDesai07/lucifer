@@ -136,6 +136,25 @@ export async function verifyOwnPin(pin: string): Promise<PinSignInAnswer> {
   }
 }
 
+/** What the sales reveal dialog learns as it opens: whether the person can use a PIN ("unknown" if it cannot ask). */
+export type OwnPinCheck = "ready" | "nopin" | "blocked" | "unknown";
+
+/**
+ * The sales reveal dialog's one look-up as it opens (Task 6 fix 1): POST /api/sign-in/verify-pin { check: true }, a
+ * read-only answer about the session's own person that costs no try. Any failure is "unknown" (the keys show, and a
+ * typed PIN still gets the server's answer).
+ */
+export async function checkOwnPin(): Promise<OwnPinCheck> {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return "unknown";
+  try {
+    const data = await apiSend<{ state?: unknown }>("/api/sign-in/verify-pin", "POST", { check: true });
+    const state = data?.state;
+    return state === "ready" || state === "nopin" || state === "blocked" ? state : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 /**
  * The lock screen's password sign-in, in place (no reload), with the same guard as the PIN: it
  * switches or confirms the person exactly like a PIN does, so printing goes on.

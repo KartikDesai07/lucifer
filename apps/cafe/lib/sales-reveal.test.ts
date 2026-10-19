@@ -4,7 +4,9 @@ import assert from "node:assert/strict";
 import {
   MASKED_BILL_VALUE,
   MASKED_MONEY,
+  REVEAL_BLOCKED_MESSAGE,
   REVEAL_NO_PIN_MESSAGE,
+  REVEAL_START,
   REVEAL_SUB,
   REVEAL_TOAST,
   SALES_REVEAL_KEY,
@@ -12,10 +14,14 @@ import {
   grantSalesReveal,
   maskMoney,
   nextRevealTick,
+  pinGateOf,
   readSalesReveal,
+  revealNotice,
   revealPrompt,
+  revealReducer,
   revealState,
   writeSalesReveal,
+  type RevealHookState,
 } from "@/lib/sales-reveal";
 
 // The sales mask (U0 match Task 6; values 3.3, 3.16, 3.17; design 7): the figures stay "₹ • • • •" until the signed-in
@@ -143,7 +149,14 @@ test("the grant round-trips through sessionStorage as { by, until }", () => {
   const store = memoryStorage();
   writeSalesReveal(store, { by: ME, until: NOW + SALES_REVEAL_MS });
   assert.deepEqual(JSON.parse(store.data.get(SALES_REVEAL_KEY) ?? "null"), { by: ME, until: NOW + SALES_REVEAL_MS }, "stored as { by, until }");
-  assert.deepEqual(readSalesReveal(store), { by: ME, until: NOW + SALES_REVEAL_MS }, "read back the same");
+  assert.deepEqual(readSalesReveal(store, NOW), { by: ME, until: NOW + SALES_REVEAL_MS }, "read back the same");
+});
+
+test("readSalesReveal clamps a stored hour: a hand-edited far future never unlocks for longer than an hour from now", () => {
+  const store = memoryStorage({ [SALES_REVEAL_KEY]: JSON.stringify({ by: ME, until: NOW + 365 * 24 * 60 * MIN }) });
+  assert.deepEqual(readSalesReveal(store, NOW), { by: ME, until: NOW + SALES_REVEAL_MS }, "clamped to now + 1 hour");
+  const shorter = memoryStorage({ [SALES_REVEAL_KEY]: JSON.stringify({ by: ME, until: NOW + 5 * MIN }) });
+  assert.deepEqual(readSalesReveal(shorter, NOW), { by: ME, until: NOW + 5 * MIN }, "an earlier end is kept as it is");
 });
 
 test("readSalesReveal: nothing, junk, the wrong shape or a storage that throws read as no grant", () => {
@@ -179,4 +192,51 @@ test("revealPrompt: '{First name}, enter your PIN'", () => {
   assert.equal(revealPrompt("Rohan Kapoor"), "Rohan, enter your PIN", "the first word of the name");
   assert.equal(revealPrompt("  Admin  "), "Admin, enter your PIN", "a one-word name, trimmed");
   assert.equal(revealPrompt(undefined), "Enter your PIN", "no name");
+});
+
+// ── the reveal hook's state, as a pure reducer (Task 6 fix 1) ────────────────
+
+const UNTIL = NOW + SALES_REVEAL_MS;
+const mine = { by: ME, until: UNTIL };
+const at = (over: Partial<RevealHookState> = {}): RevealHookState => ({ ...REVEAL_START, ...over });
+
+test("revealReducer: every visit starts hidden, with no dialog and no grant until it is read back", () => {
+  assert.deepEqual(REVEAL_START, { grant: null, shown: false, pinOpen: false }, "the start");
+  assert.deepEqual(revealReducer(REVEAL_START, { type: "restore", grant: mine }), at({ grant: mine }), "the tab's grant read back: still hidden");
+});
+
+test("revealReducer toggle: without the hour it opens the PIN dialog; within it it shows at once; shown it hides", () => {
+  assert.deepEqual(revealReducer(at(), { type: "toggle", me: ME, now: NOW }), at({ pinOpen: true }), "no grant: the dialog");
+  assert.deepEqual(revealReducer(at({ grant: mine }), { type: "toggle", me: ME, now: NOW + MIN }), at({ grant: mine, shown: true }), "within the hour: shown, no PIN");
+  assert.deepEqual(revealReducer(at({ grant: mine, shown: true }), { type: "toggle", me: ME, now: NOW + MIN }), at({ grant: mine }), "shown: hidden, the hour kept");
+  assert.deepEqual(revealReducer(at({ grant: mine }), { type: "toggle", me: OTHER, now: NOW + MIN }), at({ grant: mine, pinOpen: true }), "another person: their own PIN");
+  assert.deepEqual(revealReducer(at({ grant: mine }), { type: "toggle", me: ME, now: UNTIL }), at({ grant: mine, pinOpen: true }), "the hour over: the PIN again");
+});
+
+test("revealReducer grant / lock / leave / expire / closePin", () => {
+  assert.deepEqual(revealReducer(at({ pinOpen: true }), { type: "grant", grant: mine }), at({ grant: mine, shown: true }), "a right PIN: shown, the dialog closed, the hour kept");
+  assert.deepEqual(revealReducer(at({ grant: mine, shown: true, pinOpen: true }), { type: "lock" }), at({ grant: mine }), "a lock: hidden and the dialog closed; the hour stays");
+  assert.deepEqual(revealReducer(at({ grant: mine, shown: true }), { type: "leave" }), at({ grant: mine }), "leaving the dashboard: hidden; the hour stays");
+  assert.deepEqual(revealReducer(at({ grant: mine, shown: true }), { type: "expire", now: UNTIL - 1 }), at({ grant: mine, shown: true }), "before the end: unchanged");
+  assert.deepEqual(revealReducer(at({ grant: mine, shown: true }), { type: "expire", now: UNTIL }), at({ grant: mine }), "at the end: hidden");
+  assert.deepEqual(revealReducer(at({ pinOpen: true }), { type: "closePin" }), at(), "Cancel, Escape or the scrim");
+});
+
+// ── what the dialog knows before the keys (Task 6 fix 1) ────────────────────
+
+test("pinGateOf: an admin's own cached staff row says up front whether the PIN is set or blocked; no row is unknown", () => {
+  assert.equal(pinGateOf(undefined), "unknown", "no row (staff, or no cached list): ask the server");
+  assert.equal(pinGateOf({ hasPin: false }), "nopin", "no PIN set");
+  assert.equal(pinGateOf({}), "nopin", "a row from before PINs");
+  assert.equal(pinGateOf({ hasPin: true, pinBlocked: true }), "blocked", "a blocked PIN");
+  assert.equal(pinGateOf({ hasPin: true, pinBlocked: false }), "ready", "ready for the keys");
+});
+
+test("revealNotice: the no-PIN words (admin / staff) or the blocked words instead of the keys; none when ready or unknown", () => {
+  assert.equal(revealNotice("nopin", true), REVEAL_NO_PIN_MESSAGE.admin, "an admin without a PIN");
+  assert.equal(revealNotice("nopin", false), REVEAL_NO_PIN_MESSAGE.staff, "a staff member without a PIN");
+  assert.equal(revealNotice("blocked", false), REVEAL_BLOCKED_MESSAGE, "a blocked PIN");
+  assert.equal(REVEAL_BLOCKED_MESSAGE, "This PIN is blocked after too many wrong tries. Ask an admin to unblock it.", "the sign-in's own blocked words");
+  assert.equal(revealNotice("ready", true), null, "the keys");
+  assert.equal(revealNotice("unknown", false), null, "the keys while the server is asked");
 });

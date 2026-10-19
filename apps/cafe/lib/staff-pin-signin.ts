@@ -171,3 +171,23 @@ async function checkStaffPin(staffId: string, pin: string, now: number): Promise
     await pruned;
   }
 }
+
+/** The sales reveal dialog's up-front answer (U0 match Task 6 fix 1). */
+export type OwnPinState = "ready" | "nopin" | "blocked";
+
+/**
+ * Whether the signed-in person can use their PIN for the sales reveal, before any key is pressed (POST
+ * /api/sign-in/verify-pin { check: true }): one read of their own row. Read-only on purpose: it takes no slot in the
+ * window, compares nothing and counts nothing, so opening the dialog never costs a try (the PIN check above is
+ * unchanged). The same rules as the check: no row, no PIN or a stored PIN the rules refuse is "nopin"; then "blocked".
+ */
+export async function ownStaffPinState(input: { staffId: unknown }): Promise<OwnPinState> {
+  const { staffId } = input;
+  if (!isObjectIdString(staffId)) return "nopin";
+  await connectDB();
+  const staff = await Staff.findOne({ _id: staffId, isActive: true })
+    .select("+pin hasPin pinBlocked")
+    .lean<Pick<PinStaffRow, "pin" | "hasPin" | "pinBlocked"> | null>();
+  if (!staff || staff.hasPin !== true || !isValidStaffPin(staff.pin)) return "nopin";
+  return staff.pinBlocked === true ? "blocked" : "ready";
+}

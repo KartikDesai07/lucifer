@@ -10,6 +10,9 @@ interface PageHeaderProps {
   eyebrow?: ReactNode; // the section ("Service"), or a back link to the page above
   description?: string;
   actions?: ReactNode;
+  /** Actions that stay in the header at every width, first (ruling R13: the HTML's phone header keeps the dashboard's
+   *  End of day icon); they never move to the body row. Outside the shell they sit in the body row, first. */
+  phoneActions?: ReactNode;
   className?: string;
 }
 
@@ -20,7 +23,8 @@ interface PageHeaderProps {
 // while they fit beside a readable title (ruling R6) and otherwise (and on a phone, where the HTML's header holds icon
 // buttons only) once in a row at the top of the page body; `className` styles that row. Either way they take the
 // HTML's 36px header-button look (data-header-actions, app/globals.css). Outside the shell they stay in the body.
-export function PageHeader({ title, eyebrow, description, actions, className }: PageHeaderProps) {
+// `phoneActions` (ruling R13) sit in the header at every width, before the actions when those are there too.
+export function PageHeader({ title, eyebrow, description, actions, phoneActions, className }: PageHeaderProps) {
   const slot = usePageHeaderSlot();
   const register = slot?.register;
   const eyebrowText = typeof eyebrow === "string" ? eyebrow : undefined;
@@ -34,11 +38,19 @@ export function PageHeader({ title, eyebrow, description, actions, className }: 
     return register({ title, description, eyebrow: eyebrowText, back });
   }, [register, title, description, eyebrowText, backHref, backLabel]);
 
-  if (!actions) return null;
-  if (slot?.actionsInHeader) return <>{slot.renderInHeader(actions)}</>;
+  const inHeader = !!slot?.actionsInHeader;
+  // One portal with a fixed shape, so the phoneActions stay mounted while the actions move between header and body.
+  const header =
+    slot && (phoneActions || (inHeader && actions)) ? slot.renderInHeader(<>{phoneActions}{inHeader ? actions : null}</>) : null;
+  const bodyActions = slot ? (inHeader ? null : actions) : (phoneActions || actions) && <>{phoneActions}{actions}</>;
   return (
-    <div ref={slot?.bodyRowRef} data-ui="page-actions" data-header-actions="" className={cn("flex flex-wrap items-center gap-2", className)}>
-      {actions}
-    </div>
+    <>
+      {header}
+      {bodyActions ? (
+        <div ref={slot?.bodyRowRef} data-ui="page-actions" data-header-actions="" className={cn("flex flex-wrap items-center gap-2", className)}>
+          {bodyActions}
+        </div>
+      ) : null}
+    </>
   );
 }

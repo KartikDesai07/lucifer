@@ -175,3 +175,17 @@ test("PIN (reveal): verifyOwnStaffPin shares the sign-in's one check (one slot, 
   assert.ok(!/devicePeople|kind: "device"/.test(ownBody), "the own-PIN check has no device step (the person is already signed in)");
   assert.match(ownBody, /isObjectIdString\(staffId\)\s*\|\|\s*!isValidStaffPin\(pin\)/, "the shape is checked first, as in the sign-in");
 });
+
+test("PIN (reveal, Task 6 fix 1): { check: true } is a read-only look-up of the session's own row, answered before any PIN check", () => {
+  const s = src(VERIFY);
+  const check = s.indexOf("check === true");
+  assert.ok(check >= 0, "the route has a check mode (body.check === true)");
+  assert.ok(check > s.indexOf("requireAuth("), "the check mode is behind requireAuth( too");
+  assert.match(s, /ownStaffPinState\(\s*\{\s*staffId:\s*guard\.session\.user\.id\s*\}\s*\)/, "it looks up the session's own person only");
+  assert.ok(check < s.indexOf("verifyOwnStaffPin("), "and answers before the PIN check runs");
+  const lib = src(SIGNIN);
+  const look = lib.slice(lib.indexOf("export async function ownStaffPinState("));
+  const body = look.slice(0, look.indexOf("\n}\n"));
+  assert.ok(body.length > 0, "landmark: lib/staff-pin-signin.ts exports ownStaffPinState");
+  assert.ok(!/hitRateLimit|refundRateLimit|timingSafeEqual|recordWrongPin|pruneRateWindows/.test(body), "the look-up takes no slot, compares nothing and counts nothing");
+});

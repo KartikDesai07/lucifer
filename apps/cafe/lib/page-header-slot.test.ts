@@ -144,6 +144,24 @@ test("PageHeader on a phone, or when its actions do not fit beside the title: on
   }
 });
 
+// Ruling R13 (U0 match Task 6 fix 1): `phoneActions` stay in the header at every width (the HTML's phone header holds
+// the dashboard's End of day icon); from 720px, with room, the actions follow them there; otherwise the actions go to
+// the body row and the phoneActions never move.
+test("PageHeader phoneActions: always in the header, first; the actions after them in the header, or alone in the body row", () => {
+  const phone = createElement("button", { type: "button" }, "Print");
+  const wide = renderWith(true, { ...PROPS, phoneActions: phone });
+  assert.equal(count(wide, ">Print</button>"), 1, "the phoneActions render exactly once");
+  assert.equal(count(wide, ">Today</button>"), 1, "the actions render exactly once");
+  assert.ok(wide.startsWith(`<div ${HEADER_STUB}="">`) && wide.endsWith("</div>"), `both in the header: ${wide}`);
+  assert.ok(wide.indexOf(">Print</button>") < wide.indexOf(">Today</button>"), "the phoneActions first");
+  const narrow = renderWith(false, { ...PROPS, phoneActions: phone, className: "gap-2.5" });
+  assert.match(narrow, new RegExp(`^<div ${HEADER_STUB}=""><button type="button">Print</button></div>`), `the phoneActions stay in the header: ${narrow}`);
+  const row = narrow.slice(narrow.indexOf("</div>") + "</div>".length);
+  assert.match(row, /^<div [^>]*data-ui="page-actions"[^>]*><button type="button">Today<\/button><\/div>$/, `the actions alone in the body row: ${row}`);
+  const alone = renderWith(false, { title: "Dashboard", phoneActions: phone });
+  assert.ok(!alone.includes('data-ui="page-actions"') && alone.includes(">Print</button>"), "phoneActions alone: no body row");
+});
+
 test("PageHeader without actions renders nothing either way (it only names the page)", () => {
   for (const inHeader of [true, false]) {
     assert.equal(renderWith(inHeader, { title: "Settings", eyebrow: "Admin" }), "", `inHeader=${inHeader}: nothing rendered`);
@@ -174,7 +192,10 @@ test("PIN: the provider decides once for the shell — the 720px media query and
   assert.match(src, /new ResizeObserver\(measure\)/, "re-measured as the header or the body row resizes");
   assert.match(src, /setRoom\(\s*actionsFitBesideTitle\(/, "the rule above decides");
   const page = read(path.join(CAFE_ROOT, "components/shared/PageHeader.tsx"));
-  assert.match(page, /if \(slot\?\.actionsInHeader\) return <>\{slot\.renderInHeader\(actions\)\}<\/>;/, "one place or the other, never both");
+  // Ruling R13 (Task 6 fix 1): the header's one portal carries the phoneActions and, from 720px with room, the actions;
+  // the body row carries the actions otherwise.
+  assert.match(page, /slot\.renderInHeader\(<>\{phoneActions\}\{inHeader \? actions : null\}<\/>\)/, "the actions in the header only when they fit");
+  assert.match(page, /const bodyActions = slot \? \(inHeader \? null : actions\)/, "and in the body row only when they do not: one place or the other, never both");
   assert.match(page, /ref=\{slot\?\.bodyRowRef\}/, "the body row is measured too");
 });
 

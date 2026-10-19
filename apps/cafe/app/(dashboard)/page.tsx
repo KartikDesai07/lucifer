@@ -126,9 +126,13 @@ export default function DashboardPage() {
   return (
     <div data-ui="dash-page" className={`@container ${MAIN_PADDING_BLEED_CLASS}`}>
       <div data-ui="dash-content" className="flex flex-col gap-4 px-[14px] pt-4 pb-[92px] leading-[normal] text-foreground tab:px-6 tab:pt-5 tab:pb-7">
-        {/* The header's title, the cafe line (no description) and its two buttons; on a phone, where the HTML's header
-            holds icons only, the buttons sit in a row here. */}
-        <PageHeader title="Dashboard" className="gap-2.5" actions={<EndOfDayButton />} />
+        {/* The header's title and the cafe line (no description). End of day stays in the header at every width, an icon
+            on a phone as the HTML's (ruling R13); the date beside it, and on a phone in a row here, showing the day. */}
+        <EndOfDayButton>
+          {({ button, picker }) => (
+            <PageHeader title="Dashboard" className="gap-2.5" phoneActions={button} actions={picker} />
+          )}
+        </EndOfDayButton>
 
         <AttentionStrip live={live.data} loading={live.isLoading} isError={live.isError} />
 

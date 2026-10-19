@@ -14,12 +14,14 @@ import { dataOf, type Harness, type RouteRes, type StubUser } from "./verify-sta
 const A = "665f0000000000000000e001"; // active staff, PIN 4826
 const B = "665f0000000000000000e002"; // active staff, no PIN
 const C = "665f0000000000000000e003"; // active admin, PIN 3907: a body naming C must never check C
+const D = "665f0000000000000000e004"; // active staff, PIN 5174, blocked
 const A_PIN = "4826";
 const C_PIN = "3907";
 const WRONG = ["0011", "0012", "0013", "0014"];
 
 const ASHA: StubUser = { id: A, name: "Asha Rao", role: "staff" };
 const BALA: StubUser = { id: B, name: "Bala Iyer", role: "staff" };
+const DEV: StubUser = { id: D, name: "Dev Shah", role: "staff" };
 
 function db() {
   const conn = mongoose.connection.db;
@@ -45,10 +47,11 @@ async function seed(): Promise<void> {
     { ...base, _id: oid(A), name: ASHA.name, username: "pine-a", role: "staff", isActive: true, pin: A_PIN, ...pinned },
     { ...base, _id: oid(B), name: BALA.name, username: "pine-b", role: "staff", isActive: true, hasPin: false, pinBlocked: false },
     { ...base, _id: oid(C), name: "Chitra Das", username: "pine-c", role: "admin", isActive: true, pin: C_PIN, ...pinned },
+    { ...base, _id: oid(D), name: DEV.name, username: "pine-d", role: "staff", isActive: true, pin: "5174", ...pinned, pinBlocked: true },
   ]);
 }
 
-const answer = (res: RouteRes) => dataOf(res) as { ok?: unknown; code?: unknown };
+const answer = (res: RouteRes) => dataOf(res) as { ok?: unknown; code?: unknown; state?: unknown };
 
 export async function runPartE(h: Harness): Promise<void> {
   const { check } = h;
@@ -134,4 +137,28 @@ export async function runPartE(h: Harness): Promise<void> {
     shapes.every((r) => r.status === 200 && answer(r).code === "wrong:0") && (await used(B)) === 0 && (await staffRow(B))?.pinFailCount === undefined,
     shapes[2],
   );
+
+  // Task 6 fix 1: the dialog's up-front look-up, { check: true }: read-only, no slot, no compare, no count.
+  h.signInAs(null);
+  const checkedOut = await verify({ check: true });
+  check("check mode signed out -> 401, no-store", checkedOut.status === 401 && checkedOut.cacheControl === "no-store", checkedOut);
+  h.signInAs(ASHA);
+  const asha = await staffRow(A);
+  const ready = await verify({ check: true, pin: A_PIN });
+  check(
+    `check mode for Asha (her window full) -> { state: "ready" }; the window stays ${STAFF_PIN_RATE_MAX} and the day count ${STAFF_PIN_RATE_MAX}, no-store`,
+    ready.status === 200 &&
+      answer(ready).state === "ready" &&
+      answer(ready).ok === undefined &&
+      (await used(A)) === STAFF_PIN_RATE_MAX &&
+      (await staffRow(A))?.pinFailCount === asha?.pinFailCount &&
+      ready.cacheControl === "no-store",
+    ready,
+  );
+  h.signInAs(BALA);
+  const none = await verify({ check: true });
+  check("check mode for Bala (no PIN) -> nopin, nothing counted", answer(none).state === "nopin" && (await used(B)) === 0, none);
+  h.signInAs(DEV);
+  const blocked = await verify({ check: true });
+  check("check mode for Dev (a blocked PIN) -> blocked, nothing counted", answer(blocked).state === "blocked" && (await used(D)) === 0, blocked);
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useReactToPrint } from "react-to-print";
 import { toast } from "sonner";
 
@@ -42,7 +42,15 @@ const SHORT_DAY = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "sho
 // "End of day", title "Print end-of-day report"; its words drop below 560px as the HTML's) followed by the date as a
 // second outline header button (the HTML's calendar glyph and "19 Oct"). The date has no HTML twin: its words stay on a
 // phone too, so a picked past day always shows which day will print.
-export function EndOfDayButton() {
+// Ruling R13 (Task 6 fix 1): the two are handed to the caller, which puts End of day in the header at every width (the
+// HTML's phone header holds it) and the date beside it; the shared day and the print source stay here.
+/** End of day and its date, for the caller to place. */
+export interface EndOfDayParts {
+  button: ReactNode;
+  picker: ReactNode;
+}
+
+export function EndOfDayButton({ children }: { children: (parts: EndOfDayParts) => ReactNode }) {
   const today = cafeDateString();
   const [date, setDate] = useState(today);
   // Clamp a cleared `<input type="date">` (raw "") back to today — the RAW
@@ -160,8 +168,7 @@ export function EndOfDayButton() {
 
   return (
     <>
-      {button}
-      {picker}
+      {children({ button, picker })}
 
       {/* Off-screen print source — cloned by react-to-print. */}
       <div

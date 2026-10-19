@@ -4,6 +4,7 @@
 // and the grant this tab keeps in sessionStorage. Whether the figures are shown right now is the page's own state
 // (it starts hidden on every visit and hides on a lock); the grant only says who may show them again without a PIN,
 // until when.
+import { pinFailureMessage } from "@pos/shared/staff-pin";
 
 /** One hour (the HTML's rvUntil = now + 3600e3). */
 export const SALES_REVEAL_MS = 3_600_000;
@@ -24,6 +25,8 @@ export const REVEAL_NO_PIN_MESSAGE = {
   admin: "Set a PIN on the Staff page to show sales.",
   staff: "Ask an admin to set your PIN to show sales.",
 } as const;
+/** A blocked PIN shows the sign-in's own words instead of the keys. */
+export const REVEAL_BLOCKED_MESSAGE = pinFailureMessage({ kind: "blocked" });
 
 const MINUTE_MS = 60_000;
 
@@ -140,8 +143,11 @@ interface WriteStorage {
   setItem(key: string, value: string): void;
 }
 
-/** The grant this tab holds, or null (nothing, junk, the wrong shape, or a storage that throws). */
-export function readSalesReveal(storage: ReadStorage | null): SalesReveal | null {
+/**
+ * The grant this tab holds, or null (nothing, junk, the wrong shape, or a storage that throws). The end is clamped to
+ * an hour from `now`: a hand-edited far future never unlocks for longer than a right PIN does.
+ */
+export function readSalesReveal(storage: ReadStorage | null, now: number = Date.now()): SalesReveal | null {
   if (!storage) return null;
   try {
     const raw = storage.getItem(SALES_REVEAL_KEY);
@@ -149,7 +155,8 @@ export function readSalesReveal(storage: ReadStorage | null): SalesReveal | null
     const value: unknown = JSON.parse(raw);
     if (!value || typeof value !== "object") return null;
     const { by, until } = value as { by?: unknown; until?: unknown };
-    return typeof by === "string" && typeof until === "number" && Number.isFinite(until) ? { by, until } : null;
+    if (typeof by !== "string" || typeof until !== "number" || !Number.isFinite(until)) return null;
+    return { by, until: Math.min(until, now + SALES_REVEAL_MS) };
   } catch {
     return null;
   }
@@ -163,4 +170,74 @@ export function writeSalesReveal(storage: WriteStorage | null, reveal: SalesReve
   } catch {
     // Blocked or full storage: the figures still show for this visit.
   }
+}
+
+// ── the page's reveal state, as a pure reducer (the hook in components/dashboard/SalesReveal.tsx) ─────────────────────
+
+/** Whether the figures show, whether the PIN dialog is open, and the hour this tab holds. */
+export interface RevealHookState {
+  grant: SalesReveal | null;
+  shown: boolean;
+  pinOpen: boolean;
+}
+
+/** Every visit: hidden, no dialog, the grant not read yet. */
+export const REVEAL_START: RevealHookState = { grant: null, shown: false, pinOpen: false };
+
+export type RevealAction =
+  /** The tab's grant, read back after mount. */
+  | { type: "restore"; grant: SalesReveal | null }
+  /** The reveal button: hide; show again within the hour; else ask for the PIN. */
+  | { type: "toggle"; me: string | null; now: number }
+  /** A right PIN. */
+  | { type: "grant"; grant: SalesReveal }
+  /** Any lock (asked for, or the idle cover). */
+  | { type: "lock" }
+  /** Leaving the dashboard. */
+  | { type: "leave" }
+  /** The timer at the hour's end. */
+  | { type: "expire"; now: number }
+  /** Cancel, Escape or the scrim. */
+  | { type: "closePin" };
+
+export function revealReducer(state: RevealHookState, action: RevealAction): RevealHookState {
+  switch (action.type) {
+    case "restore":
+      return { ...state, grant: action.grant };
+    case "toggle": {
+      const view = revealState({ shown: state.shown, until: state.grant?.until ?? 0, by: state.grant?.by ?? null, me: action.me, now: action.now });
+      if (view.visible) return { ...state, shown: false };
+      if (view.unlocked) return { ...state, shown: true };
+      return { ...state, pinOpen: true };
+    }
+    case "grant":
+      return { grant: action.grant, shown: true, pinOpen: false };
+    case "lock":
+    case "leave":
+      // The figures hide and the dialog closes; the hour stays, so the same person shows them again without a PIN.
+      return { ...state, shown: false, pinOpen: false };
+    case "expire":
+      return state.grant && action.now >= state.grant.until ? { ...state, shown: false } : state;
+    case "closePin":
+      return { ...state, pinOpen: false };
+  }
+}
+
+// ── what the dialog knows before the keys ───────────────────────────────────
+
+/** "ready": the keys; "nopin" / "blocked": words instead of them; "unknown": the keys while the server is asked. */
+export type RevealPinGate = "ready" | "nopin" | "blocked" | "unknown";
+
+/** From an admin's own staff row, when the page already holds it (the bootstrap's list); no row is unknown. */
+export function pinGateOf(row: { hasPin?: boolean; pinBlocked?: boolean } | undefined): RevealPinGate {
+  if (!row) return "unknown";
+  if (row.hasPin !== true) return "nopin";
+  return row.pinBlocked === true ? "blocked" : "ready";
+}
+
+/** The words the dialog shows instead of the keys (design 7), or null for the keys. */
+export function revealNotice(gate: RevealPinGate, isAdmin: boolean): string | null {
+  if (gate === "nopin") return REVEAL_NO_PIN_MESSAGE[isAdmin ? "admin" : "staff"];
+  if (gate === "blocked") return REVEAL_BLOCKED_MESSAGE;
+  return null;
 }

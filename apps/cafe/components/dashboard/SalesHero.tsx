@@ -4,9 +4,9 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { cn, inr } from "@/lib/utils";
 import { deltaRatio } from "@/lib/dashboard/fold";
 import { compareShort, compareWords, noCompareWords } from "@/lib/dashboard/labels";
-import { maskMoney } from "@/lib/sales-reveal";
 import { BrandSkeleton } from "@/components/dashboard/DashCard";
 import { HeroChangeRow, HeroMiniChange } from "@/components/dashboard/KpiChange";
+import { MaskedValue } from "@/components/dashboard/SalesReveal";
 import type { RangeCardProps } from "@/components/dashboard/RangeCards";
 
 // The dashboard's Net sales hero, exactly the owner's HTML (U0 match Task 6, values 3.3): the --nav card, the figure in
@@ -71,7 +71,7 @@ export interface SalesHeroProps extends RangeCardProps {
 
 interface Mini {
   label: string;
-  value: string;
+  value: ReactNode;
   delta: number | null;
   note: string;
   /** Collected's second line (ruling R12): "+ ₹X paid against earlier dues". */
@@ -101,13 +101,13 @@ export function SalesHero(p: SalesHeroProps) {
     },
     {
       label: "Average order",
-      value: maskMoney(inr(cur?.averageOrder ?? 0), p.shown),
+      value: <MaskedValue text={inr(cur?.averageOrder ?? 0)} shown={p.shown} label="Average order hidden" />,
       delta: deltaRatio(cur?.averageOrder ?? 0, prev?.averageOrder ?? 0),
       note: "per bill",
     },
     {
       label: "Collected",
-      value: maskMoney(inr(Math.round((cur?.collected ?? 0) * grow)), p.shown),
+      value: <MaskedValue text={inr(Math.round((cur?.collected ?? 0) * grow))} shown={p.shown} label="Collected hidden" />,
       delta: deltaRatio(cur?.collected ?? 0, prev?.collected ?? 0),
       note: p.shown ? (due > 0 ? `${inr(due)} still due` : "all collected") : "still due hidden",
       // The line is its amount: while the figures are masked it is left out, so the masked hero is the HTML's own.
@@ -140,7 +140,7 @@ export function SalesHero(p: SalesHeroProps) {
                 data-ui="hero-figure"
                 className="mt-2.5 font-mono text-[42px] font-medium leading-none tracking-[-0.04em] @min-[560px]:text-[60px]"
               >
-                {maskMoney(inr(Math.round((cur?.sales ?? 0) * grow)), p.shown)}
+                <MaskedValue text={inr(Math.round((cur?.sales ?? 0) * grow))} shown={p.shown} label="Net sales hidden" />
               </p>
               <HeroChangeRow delta={salesDelta} compareWords={words} noCompareWords={none} />
             </div>

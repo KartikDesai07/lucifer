@@ -1,29 +1,33 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useReducer, useRef, useState, type ReactNode } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { pinFailureMessage } from "@pos/shared/staff-pin";
 
 import { cn } from "@/lib/utils";
-import { verifyOwnPin } from "@/lib/pin-sign-in-client";
+import { checkOwnPin, verifyOwnPin, type OwnPinCheck } from "@/lib/pin-sign-in-client";
 import { LOCK_ATTR, SCREEN_LOCK_EVENT } from "@/lib/screen-lock";
 import {
-  REVEAL_NO_PIN_MESSAGE,
+  REVEAL_START,
   REVEAL_SUB,
   REVEAL_TITLE,
   REVEAL_TOAST,
   grantSalesReveal,
+  maskMoney,
   nextRevealTick,
+  pinGateOf,
   readSalesReveal,
+  revealNotice,
   revealPrompt,
+  revealReducer,
   revealState,
   writeSalesReveal,
   type RevealHintIcon,
   type RevealIcon,
+  type RevealPinGate,
   type RevealView,
-  type SalesReveal as RevealGrant,
 } from "@/lib/sales-reveal";
 import { STAFF_KEYS } from "@/hooks/use-staff";
 import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
@@ -64,34 +68,32 @@ export interface SalesRevealState {
   granted: () => void;
 }
 
-/** The page's one reveal: both the hero and the receipt read `shown`. */
+/** The page's one reveal: both the hero and the receipt read `shown`. The rules are lib/sales-reveal.ts revealReducer;
+ *  this hook adds the clock, the tab's storage, the lock listeners and the toast. */
 export function useSalesReveal(me: string | null): SalesRevealState {
-  const [grant, setGrant] = useState<RevealGrant | null>(null);
-  const [shown, setShown] = useState(false);
-  const [pinOpen, setPinOpen] = useState(false);
+  const [state, dispatch] = useReducer(revealReducer, REVEAL_START);
   const [now, setNow] = useState(() => Date.now());
+  const { grant } = state;
 
   // The hour this tab already holds (sessionStorage exists only after mount).
   useEffect(() => {
-    setGrant(readSalesReveal(sessionStore()));
-    setNow(Date.now());
+    const at = Date.now();
+    dispatch({ type: "restore", grant: readSalesReveal(sessionStore(), at) });
+    setNow(at);
   }, []);
 
   // A lock hides the figures and closes the dialog: one asked for (Lock screen, Switch user, Ctrl/⌘+L) and the idle
   // cover, which marks <html> with LOCK_ATTR without the event.
   useEffect(() => {
-    const hide = () => {
-      setShown(false);
-      setPinOpen(false);
-    };
+    const lock = () => dispatch({ type: "lock" });
     const html = document.documentElement;
     const observer = new MutationObserver(() => {
-      if (html.hasAttribute(LOCK_ATTR)) hide();
+      if (html.hasAttribute(LOCK_ATTR)) lock();
     });
-    window.addEventListener(SCREEN_LOCK_EVENT, hide);
+    window.addEventListener(SCREEN_LOCK_EVENT, lock);
     observer.observe(html, { attributes: true, attributeFilter: [LOCK_ATTR] });
     return () => {
-      window.removeEventListener(SCREEN_LOCK_EVENT, hide);
+      window.removeEventListener(SCREEN_LOCK_EVENT, lock);
       observer.disconnect();
     };
   }, []);
@@ -101,20 +103,20 @@ export function useSalesReveal(me: string | null): SalesRevealState {
   useEffect(() => {
     const wait = nextRevealTick(until, Date.now());
     if (wait === null) return;
-    const timer = window.setTimeout(() => setNow(Date.now()), wait);
+    const timer = window.setTimeout(() => {
+      const at = Date.now();
+      setNow(at);
+      dispatch({ type: "expire", now: at });
+    }, wait);
     return () => window.clearTimeout(timer);
   }, [until, now]);
 
-  const stateAt = (at: number) => revealState({ shown, until: grant?.until ?? 0, by: grant?.by ?? null, me, now: at });
-  const view = stateAt(now);
+  const view = revealState({ shown: state.shown, until: grant?.until ?? 0, by: grant?.by ?? null, me, now });
 
   const toggle = () => {
     const at = Date.now();
-    const fresh = stateAt(at);
     setNow(at);
-    if (fresh.visible) setShown(false);
-    else if (fresh.unlocked) setShown(true);
-    else setPinOpen(true);
+    dispatch({ type: "toggle", me, now: at });
   };
 
   const granted = () => {
@@ -122,14 +124,31 @@ export function useSalesReveal(me: string | null): SalesRevealState {
     const at = Date.now();
     const next = grantSalesReveal(me, at);
     writeSalesReveal(sessionStore(), next);
-    setGrant(next);
     setNow(at);
-    setShown(true);
-    setPinOpen(false);
+    dispatch({ type: "grant", grant: next });
     toast.success(REVEAL_TOAST);
   };
 
-  return { me, view, shown: view.visible, toggle, pinOpen, closePin: () => setPinOpen(false), granted };
+  return {
+    me,
+    view,
+    shown: view.visible,
+    toggle,
+    pinOpen: state.pinOpen,
+    closePin: () => dispatch({ type: "closePin" }),
+    granted,
+  };
+}
+
+/** A masked figure (values 3.17): the bullets are hidden from a screen reader, which hears `label` instead. */
+export function MaskedValue({ text, shown, label, kind = "money" }: { text: string; shown: boolean; label: string; kind?: "money" | "bill" }) {
+  if (shown) return <>{text}</>;
+  return (
+    <>
+      <span aria-hidden="true">{maskMoney(text, false, kind)}</span>
+      <span className="sr-only">{label}</span>
+    </>
+  );
 }
 
 // values 3.3 / 3.16 icons (24x24, round caps and joins).
@@ -220,13 +239,11 @@ const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(re
 /** The dialog's live part: it mounts with each opening, so every opening starts empty. */
 function RevealPin({ reveal, name, isAdmin }: { reveal: SalesRevealState; name?: string | null; isAdmin: boolean }) {
   const queryClient = useQueryClient();
-  // An admin's own row is in the staff list the page already holds (the bootstrap seeds it; nothing is fetched):
-  // without a PIN the dialog says so at once. Anyone else learns it from the server's "nopin".
-  const [noPin, setNoPin] = useState(() => {
-    if (!isAdmin || !reveal.me) return false;
-    const mine = queryClient.getQueryData<Staff[]>(STAFF_KEYS.all)?.find((s) => s._id === reveal.me);
-    return !!mine && mine.hasPin !== true;
-  });
+  // Whether the keys can help (design 7): an admin's own row is in the staff list the page already holds (the bootstrap
+  // seeds it; nothing is fetched); anyone else is asked once as the dialog opens, read-only (no try is spent).
+  const [gate, setGate] = useState<RevealPinGate>(() =>
+    isAdmin && reveal.me ? pinGateOf(queryClient.getQueryData<Staff[]>(STAFF_KEYS.all)?.find((s) => s._id === reveal.me)) : "unknown",
+  );
   const [pin, setPin] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [errorCount, setErrorCount] = useState(0);
@@ -239,6 +256,20 @@ function RevealPin({ reveal, name, isAdmin }: { reveal: SalesRevealState; name?:
       open.current = false;
     };
   }, []);
+
+  // The one look-up, kept in a ref so React's dev double-run never asks twice.
+  const asked = useRef<Promise<OwnPinCheck> | null>(null);
+  useEffect(() => {
+    if (gate !== "unknown") return;
+    asked.current ??= checkOwnPin();
+    let live = true;
+    void asked.current.then((answer) => {
+      if (live && answer !== "unknown") setGate(answer);
+    });
+    return () => {
+      live = false;
+    };
+  }, [gate]);
 
   const onChange = (next: string) => {
     if (busy.current) return;
@@ -257,8 +288,8 @@ function RevealPin({ reveal, name, isAdmin }: { reveal: SalesRevealState; name?:
       reveal.granted();
       return;
     }
-    if (answer.failure.kind === "nopin") {
-      setNoPin(true);
+    if (answer.failure.kind === "nopin" || answer.failure.kind === "blocked") {
+      setGate(answer.failure.kind);
       return;
     }
     setPin("");
@@ -269,7 +300,7 @@ function RevealPin({ reveal, name, isAdmin }: { reveal: SalesRevealState; name?:
   return (
     <RevealPinPanel
       prompt={revealPrompt(name)}
-      noPin={noPin ? REVEAL_NO_PIN_MESSAGE[isAdmin ? "admin" : "staff"] : null}
+      notice={revealNotice(gate, isAdmin)}
       pin={pin}
       message={message}
       errorCount={errorCount}
@@ -283,8 +314,8 @@ function RevealPin({ reveal, name, isAdmin }: { reveal: SalesRevealState; name?:
 
 export interface RevealPinPanelProps {
   prompt: ReactNode;
-  /** A person with no PIN: these words instead of the keys (design 7). */
-  noPin: string | null;
+  /** No PIN set, or a blocked PIN: these words instead of the keys (design 7). */
+  notice: string | null;
   pin: string;
   message: string | null;
   errorCount: number;
@@ -316,9 +347,9 @@ export function RevealPinPanel(p: RevealPinPanelProps) {
           </DialogPrimitive.Description>
         </div>
       </div>
-      {p.noPin ? (
-        <p data-ui="reveal-nopin" role="alert" className="text-center text-[13.5px] leading-[1.45] text-muted-foreground">
-          {p.noPin}
+      {p.notice ? (
+        <p data-ui="reveal-notice" role="alert" className="text-center text-[13.5px] leading-[1.45] text-muted-foreground">
+          {p.notice}
         </p>
       ) : (
         <PinPad
@@ -342,7 +373,7 @@ export function RevealPinPanel(p: RevealPinPanelProps) {
         data-ui="reveal-cancel"
         onClick={p.onCancel}
         className={cn(
-          "h-10 rounded-[8px] border-0 bg-transparent text-[14px] font-medium text-link outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "h-10 border-0 bg-transparent text-[14px] font-medium text-link outline-none focus-visible:ring-2 focus-visible:ring-ring",
           HTML_PRESS_CLASS,
         )}
       >
