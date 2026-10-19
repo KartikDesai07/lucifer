@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import { useNow } from "@/hooks/use-now";
 import { VendorMark } from "@/components/brand/VendorMark";
+import { HtmlRulesScope } from "@/components/layout/HtmlRulesScope";
 
 // The frame every signed-out staff screen sits in: sign-in today, and any later set-password / invite screen, which
 // drops straight into it. The look is the owner's mock-up (spec 2026-10-16 §5.3): the cafe's logo and name top-left
@@ -47,6 +48,8 @@ export function AuthShell({ brandName, logo, title, intro, footer, children }: A
     // min-h-screen is this screen's document floor (the body's own floor is dvh-based; the route-parity pin in
     // lib/pos-layout-paths.test.ts keeps signed-out screens on the full 100vh they have always had).
     <main className="relative flex min-h-screen flex-col bg-background text-foreground">
+      {/* The HTML's global rules (values 1.4, ruling R24) on the sign-in screen too. */}
+      <HtmlRulesScope />
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-linear-to-b from-accent to-transparent"

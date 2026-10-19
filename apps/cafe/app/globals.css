@@ -610,6 +610,29 @@
   }
 }
 
+/* The owner's HTML's global rules on the staff screens (values 1.4, ruling R24): its body stack — Geist, then
+   system-ui, -apple-system, 'Segoe UI' — so a glyph Geist lacks (the "→" of every header link) falls back as the HTML's
+   does instead of to next/font's metric-adjusted Arial ("Geist Fallback"), and its tabular figures on html/body.
+   Scoped by the marker only the staff screens render (components/layout/HtmlRulesScope.tsx: the dashboard shell and
+   the sign-in screen); :has() on <html> also reaches the dialogs and sheets that portal to <body>. The /m diner flow
+   and the print iframes never contain the marker. Unlayered on purpose: next/font's own --font-geist-sans class on
+   <html> is unlayered, and this must outrank it. */
+html:has([data-html-rules]) {
+  --font-geist-sans: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+@layer base {
+  /* The HTML's button,input rule (values 1.4); a utility (normal-nums) still wins on an element. */
+  html:has([data-html-rules]) :is(button, input) {
+    font-variant-numeric: tabular-nums;
+  }
+  /* A slip's root (white paper, black ink, a paper width: lib/print PAPER_WIDTH_CLASS) keeps the figures it had, so
+     the on-screen previews stay what the paper prints (a print iframe never inherits the staff rules). */
+  .bg-white.text-black:is(.w-\[210px\], .w-\[300px\]) {
+    font-variant-numeric: normal;
+  }
+}
+
 /* Screen lock (spec 2026-10-16 §5.6): while the dashboard layout's no-flash script has marked a reloaded page locked
    and the cover (components/lock/ScreenLock.tsx) has not yet marked itself ready, nothing on the page paints. The
    failsafe (ruling R13): ten seconds on, the page shows anyway, so a cover that never mounts can never leave a blank

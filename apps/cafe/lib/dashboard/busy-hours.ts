@@ -62,5 +62,19 @@ export function heatCellLabel(heat: DashboardHeat, cell: HeatCell): string {
   return `${WEEKDAY_NAMES[cell.weekday]}, ${hourLabel(hour)} to ${nextHour(hour)}: ${fmtOrders(valueOf(heat, cell))} on average`;
 }
 
+/** The grid's one tab stop (a roving tabindex): where a key moves the focus from a cell — Left/Right along the hours,
+ *  Up/Down across the days, Home/End to the row's first/last hour; the edges hold. Null for any other key. */
+export function heatKeyTarget(cell: HeatCell, key: string, size: { days: number; hours: number }): HeatCell | null {
+  const clamp = (v: number, n: number) => Math.min(n - 1, Math.max(0, v));
+  const { weekday: w, hourIndex: h } = cell;
+  if (key === "ArrowRight") return { weekday: w, hourIndex: clamp(h + 1, size.hours) };
+  if (key === "ArrowLeft") return { weekday: w, hourIndex: clamp(h - 1, size.hours) };
+  if (key === "ArrowDown") return { weekday: clamp(w + 1, size.days), hourIndex: h };
+  if (key === "ArrowUp") return { weekday: clamp(w - 1, size.days), hourIndex: h };
+  if (key === "Home") return { weekday: w, hourIndex: 0 };
+  if (key === "End") return { weekday: w, hourIndex: size.hours - 1 };
+  return null;
+}
+
 /** The column labels (values 3.15): every other hour as the HTML's "11am", the rest empty. */
 export const heatHourTick = (hour: number, index: number): string => (index % TICK_EVERY === 0 ? hourLabel(hour).replace(" ", "") : "");

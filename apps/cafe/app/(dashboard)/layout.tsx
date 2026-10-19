@@ -23,6 +23,7 @@ import { ScreenLock } from "@/components/lock/ScreenLock";
 import { RequestAlertBar } from "@/components/orders/RequestAlertBar";
 import { PrintHostPrintSources } from "@/components/print/PrintHostPrintSources";
 import { TouchFeel } from "@/components/shared/TouchFeel";
+import { HtmlRulesScope } from "@/components/layout/HtmlRulesScope";
 import "../print-fonts.css";
 
 // Tab title mirrors the cafe's own branding once Settings is configured,
@@ -116,6 +117,8 @@ export default function DashboardLayout({
                   <Header />
                   <RequestAlertBar />
                   <TouchFeel />
+                  {/* The HTML's global rules (values 1.4, ruling R24) for every staff page, its lock and its dialogs. */}
+                  <HtmlRulesScope />
                   {/* Below 720px the page's foot keeps 92px clear (values 2.1 screenPadB): the 59px tab bar plus air.
                       PageFade replays the HTML's pageIn on this element when the path changes (ruling R11). */}
                   <main className="flex-1 p-4 pb-[92px] tab:pb-4 md:p-6">

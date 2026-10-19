@@ -36,7 +36,8 @@ export interface RangeCardProps {
 const PAYMENT_ROWS = 3;
 const ITEM_ROWS = 5;
 const CHANNEL_ROWS = 3;
-const CATEGORY_ROWS = 6;
+// Sales by category holds the HTML's five rows (values 3.13); a sixth (our "Other categories") grows the card.
+const CATEGORY_ROWS = 5;
 /** Busy hours' body (values 3.15): the 14px hour labels, 4px, seven 30px rows 4px apart, 14px, the 17px footer = 283px;
  *  on a phone (cw < 560) the footer wraps the legend under the busiest line (+ 10px + 17px) = 310px. */
 const BUSY_HOURS_BODY_PX = 14 + 4 + 7 * 30 + 6 * 4 + 14 + 17;
@@ -247,10 +248,6 @@ const CATEGORY_BAR_PX = 26 + 10;
 /** A slow mover (values 3.14): 9px + the 18px name, 2px and the 16px line + 9px over its 1px rule. */
 const SLOW_ROW_PX = 55;
 
-/** The HTML sets font-variant-numeric: tabular-nums on its whole page (values 1.4): these cards' digits in Geist ("2
- *  sold", "48%", "11am", "Sat, 8 pm") take the same widths. */
-const HTML_NUMERALS = "tabular-nums";
-
 /** Our top items and slow movers carry no category, so their dot takes the HTML's own fallback hue, text-3. */
 const ITEM_DOT_CLASS = "size-[7px] flex-none rounded-[50%] bg-subtle-foreground";
 /** The name line Top items and Slow movers share (values 3.12, 3.14): the dot, 7px, the name ellipsised, 13.5/500. */
@@ -276,7 +273,6 @@ export function TopItemsCard(p: RangeCardProps) {
       ui="top-card"
       title="Top items"
       bodyGap={8}
-      className={HTML_NUMERALS}
       period={`${p.period} · by sales`}
       status={statusOf(p, rows.length === 0)}
       updating={p.updating}
@@ -392,7 +388,7 @@ export function BusyHoursCard(p: RangeCardProps & { className?: string }) {
     <DashCard
       variant="dashboard"
       ui="busy-card"
-      className={cn(p.className, HTML_NUMERALS)}
+      className={p.className}
       title="Busy hours"
       period={d ? `Orders per hour on an average day · ${insightWords(d, p.today)}` : p.period}
       aside={status === "loading" || status === "ready" ? <BusyHoursCap heat={d?.heat} cell={pick.cell} updating={p.updating} /> : undefined}
@@ -420,7 +416,7 @@ export function SlowItemsCard(p: RangeCardProps & { className?: string }) {
     <DashCard
       variant="dashboard"
       ui="slow-card"
-      className={cn(p.className, HTML_NUMERALS)}
+      className={p.className}
       title="Slow movers"
       period={d ? `Fewest sold · ${insightWords(d, p.today)}` : p.period}
       link={{ href: "/products", label: "Menu" }}
@@ -470,7 +466,6 @@ export function CategoriesCard(p: RangeCardProps) {
     <DashCard
       variant="dashboard"
       ui="cat-card"
-      className={HTML_NUMERALS}
       title="Sales by category"
       period={`${p.period} · share of item sales`}
       status={statusOf(p, rows.length === 0)}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "@/lib/utils";
 import { WEEKDAYS_MONDAY_FIRST, hourLabel, mondayIndex } from "@/lib/dashboard/range";
 import {
@@ -9,6 +9,7 @@ import {
   heatCap,
   heatCellLabel,
   heatHourTick,
+  heatKeyTarget,
   heatLevel,
   type HeatCell,
 } from "@/lib/dashboard/busy-hours";
@@ -71,7 +72,9 @@ export function BusyHoursCap({ heat, cell, updating }: { heat?: DashboardHeat; c
   );
 }
 
-/** The grid (weekdays down, our hours across) and its footer: the busiest hour and the Fewer … More legend. */
+/** The grid (weekdays down, our hours across) and its footer: the busiest hour and the Fewer … More legend. The cells
+ *  are one tab stop (a roving tabindex: the picked cell, else the last focused, else the busiest hour); the arrow keys,
+ *  Home and End move the focus, and the focus picks (fix round 1). */
 export function BusyHoursGrid({
   heat,
   today,
@@ -88,12 +91,25 @@ export function BusyHoursGrid({
 }) {
   const todayIndex = mondayIndex(today);
   const busiest = busiestWords(heat);
+  const cellRefs = useRef(new Map<string, HTMLButtonElement>());
+  const [roving, setRoving] = useState<HeatCell | null>(null);
+  const size = { days: WEEKDAYS_MONDAY_FIRST.length, hours: heat.hours.length };
+  const fits = (c: HeatCell | null) => (c && c.weekday < size.days && c.hourIndex < size.hours ? c : null);
+  const stop = fits(cell) ?? fits(roving) ?? busiestCell(heat) ?? { weekday: 0, hourIndex: 0 };
+  const onCellKey = (e: KeyboardEvent<HTMLButtonElement>, at: HeatCell) => {
+    const to = heatKeyTarget(at, e.key, size);
+    if (!to) return;
+    e.preventDefault();
+    cellRefs.current.get(`${to.weekday}:${to.hourIndex}`)?.focus();
+  };
   return (
     <>
       <div data-ui="heat-scroll" className="overflow-x-auto [&::-webkit-scrollbar]:h-0">
         <div
           data-ui="heat-grid"
-          onMouseLeave={onClear}
+          onMouseLeave={(e) => {
+            if (!e.currentTarget.querySelector(":focus-visible")) onClear();
+          }}
           className="grid min-w-[560px] gap-1"
           style={{ gridTemplateColumns: `40px repeat(${heat.hours.length}, minmax(0, 1fr))` }}
         >
@@ -113,15 +129,25 @@ export function BusyHoursGrid({
               </span>
               {heat.hours.map((_, hourIndex) => {
                 const picked = cell?.weekday === weekday && cell.hourIndex === hourIndex;
+                const at = { weekday, hourIndex };
                 return (
                   <button
                     key={`${weekday}-${hourIndex}`}
+                    ref={(el) => {
+                      if (el) cellRefs.current.set(`${weekday}:${hourIndex}`, el);
+                      else cellRefs.current.delete(`${weekday}:${hourIndex}`);
+                    }}
                     type="button"
                     data-ui="heat-cell"
-                    aria-label={heatCellLabel(heat, { weekday, hourIndex })}
+                    aria-label={heatCellLabel(heat, at)}
+                    tabIndex={stop.weekday === weekday && stop.hourIndex === hourIndex ? 0 : -1}
                     onClick={() => onPick(weekday, hourIndex)}
                     onMouseEnter={() => onPick(weekday, hourIndex)}
-                    onFocus={() => onPick(weekday, hourIndex)}
+                    onFocus={() => {
+                      setRoving(at);
+                      onPick(weekday, hourIndex);
+                    }}
+                    onKeyDown={(e) => onCellKey(e, at)}
                     className={cn(
                       "h-[30px] rounded-[6px] transition-[box-shadow] duration-[120ms] ease-[ease]",
                       FOCUS_RING_CLASS,

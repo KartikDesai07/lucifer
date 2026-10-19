@@ -9,7 +9,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { stripComments } from "@/lib/source-pin-utils";
 import { CATEGORY_HUES, categoryHue } from "@/lib/ui";
 import { DASH_PILL_CLASS } from "@/components/dashboard/DashCard";
-import { busiestCell, busiestWords, heatCap, heatCellLabel, heatHourTick, heatLevel } from "@/lib/dashboard/busy-hours";
+import { busiestCell, busiestWords, heatCap, heatCellLabel, heatHourTick, heatKeyTarget, heatLevel } from "@/lib/dashboard/busy-hours";
 import { insightWords, slowItemLine } from "@/lib/dashboard/labels";
 import {
   CARDS_TODAY,
@@ -370,11 +370,54 @@ test("the heat steps are precomputed hex tokens (no color-mix on WebView 109), l
   assert.ok(/heat-/.test(readSrc("lib/kit-look-paths.test.ts")), "the kit-look guard names the heat steps staff-only");
 });
 
-test("the four cards set the HTML's tabular numerals (its page-wide font-variant-numeric), so '2 sold', '48%', '11am' measure the same", async () => {
+test("the four cards leave the numerals to the root (ruling R24: the HTML's tabular-nums is page-wide, lib/html-global-rules.test.ts)", async () => {
   const data = { topItems: TOP, categories: CATS, slowItems: SLOW, heat: HEAT };
   for (const [card, ui] of [["TopItemsCard", "top-card"], ["CategoriesCard", "cat-card"], ["SlowItemsCard", "slow-card"], ["BusyHoursCard", "busy-card"]] as const) {
-    expectClasses(tagOf(await render(card, data), ui), ["tabular-nums"], card);
+    assert.ok(!classesOf(tagOf(await render(card, data), ui)).includes("tabular-nums"), `${card} sets no numerals of its own`);
   }
+  assert.ok(!readSrc("components/dashboard/RangeCards.tsx").includes("HTML_NUMERALS"), "no per-card numerals class left");
+});
+
+// ── fix round 1 ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+test("CategoriesCard reserves the HTML's five rows (36 + 5 x 35 = 211px), so a sixth row grows the card and five leave no band", async () => {
+  const five = await render("CategoriesCard", { categories: CATS.slice(0, 5) });
+  assert.ok(
+    five.includes('<div style="min-height:211px" class="transition-opacity duration-200 mt-3.5">'),
+    "the loaded body holds 211px: the 26px bar, 10px, five 35px rows (values 3.13: the card 302px on a phone)",
+  );
+  const loading = renderToStaticMarkup(createElement((await import("@/components/dashboard/RangeCards")).CategoriesCard, { ...readyCard(), data: undefined, status: "loading" }));
+  assert.ok(loading.includes('style="height:211px"'), "the skeleton holds the same 211px");
+});
+
+test("Busy hours is one tab stop (a roving tabindex): the arrows move across hours and days, Home and End to a row's ends", async () => {
+  const { BusyHoursGrid } = await import("@/components/dashboard/BusyHours");
+  const grid = renderToStaticMarkup(createElement(BusyHoursGrid, { heat: HEAT, today: CARDS_TODAY, cell: null, onPick: () => {}, onClear: () => {} }));
+  const cells = tagsOf(grid, "heat-cell");
+  const stops = cells.filter((c) => c.includes('tabindex="0"'));
+  assert.equal(stops.length, 1, "one tab stop in the grid");
+  assert.equal(cells.filter((c) => c.includes('tabindex="-1"')).length, cells.length - 1, "every other cell is reached by the arrows");
+  assert.ok(stops[0].includes('aria-label="Saturday, 8 pm to 9 pm: 5.5 orders on average"'), "with nothing picked, the stop is the busiest hour");
+  const picked = renderToStaticMarkup(createElement(BusyHoursGrid, { heat: HEAT, today: CARDS_TODAY, cell: { weekday: 0, hourIndex: 2 }, onPick: () => {}, onClear: () => {} }));
+  assert.ok(tagsOf(picked, "heat-cell").filter((c) => c.includes('tabindex="0"'))[0]?.includes('aria-label="Monday, 1 pm to 2 pm'), "a picked cell is the stop");
+  const at = { weekday: 3, hourIndex: 5 };
+  const size = { days: 7, hours: 12 };
+  assert.deepEqual(heatKeyTarget(at, "ArrowRight", size), { weekday: 3, hourIndex: 6 }, "Right: the next hour");
+  assert.deepEqual(heatKeyTarget(at, "ArrowLeft", size), { weekday: 3, hourIndex: 4 }, "Left: the hour before");
+  assert.deepEqual(heatKeyTarget(at, "ArrowDown", size), { weekday: 4, hourIndex: 5 }, "Down: the next day");
+  assert.deepEqual(heatKeyTarget(at, "ArrowUp", size), { weekday: 2, hourIndex: 5 }, "Up: the day before");
+  assert.deepEqual(heatKeyTarget(at, "Home", size), { weekday: 3, hourIndex: 0 }, "Home: the row's first hour");
+  assert.deepEqual(heatKeyTarget(at, "End", size), { weekday: 3, hourIndex: 11 }, "End: the row's last hour");
+  assert.deepEqual(heatKeyTarget({ weekday: 6, hourIndex: 11 }, "ArrowRight", size), { weekday: 6, hourIndex: 11 }, "the edges hold");
+  assert.deepEqual(heatKeyTarget({ weekday: 0, hourIndex: 0 }, "ArrowUp", size), { weekday: 0, hourIndex: 0 }, "the top edge holds");
+  assert.equal(heatKeyTarget(at, "Enter", size), null, "other keys are left alone");
+  const src = readSrc("components/dashboard/BusyHours.tsx");
+  assert.ok(src.includes("heatKeyTarget(") && src.includes(".focus()"), "the grid moves the focus to the target cell");
+});
+
+test("Busy hours: leaving the grid with the pointer keeps the pick while a cell holds the keyboard focus", () => {
+  const src = readSrc("components/dashboard/BusyHours.tsx");
+  assert.match(src, /onMouseLeave=\{\(e\) => \{\s*if \(!e\.currentTarget\.querySelector\(":focus-visible"\)\) onClear\(\);\s*\}\}/, "the grid clears on leave only when no cell is keyboard-focused");
 });
 
 // ── what goes and what stays ────────────────────────────────────────────────────────────────────────────────────────
