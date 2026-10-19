@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import { useOrders, OPEN_TABS_QUERY_OPTIONS } from "@/hooks/use-orders";
 import { useTables } from "@/hooks/use-tables";
+import { useTableAreas } from "@/hooks/use-table-areas";
 import { useReservations } from "@/hooks/use-reservations";
 import { useAuth } from "@/hooks/use-auth";
 import { useDashboard, useDashboardLive } from "@/hooks/use-dashboard";
@@ -86,6 +87,8 @@ export default function DashboardPage() {
   useDashboardRealtime();
   const todayOrders = useOrders({ date: today }, { refetchInterval: REFETCH_INTERVALS.LIVE_LISTS });
   const tables = useTables();
+  // The floor areas for Live tables' zones: the persisted master (no request of its own), healed like the Floor's.
+  const tableAreas = useTableAreas(tables.data);
   const reservations = useReservations({ date: today });
   // Running tabs that occupy tables — date-independent and tiny (≤ #tables), so
   // the floor panel can resolve an occupied tile even for a cross-day tab or one
@@ -165,6 +168,8 @@ export default function DashboardPage() {
           <LiveFloorPanel
             tables={tables.data ?? []}
             orders={floorOrders}
+            areas={tableAreas.data}
+            reservations={reservations.data}
             loading={tables.isLoading}
             isError={tables.isError}
             onRetry={() => void tables.refetch()}

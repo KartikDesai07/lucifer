@@ -3,8 +3,8 @@
 // floor panel (they used to carry three copies). The POS table picker and the
 // Move table dialog keep their own palette (pinned there; not touched).
 //
-// Colours are literal hex arbitrary classes, not Tailwind palette names: the
-// Tailwind v4 palette is oklch, which the contrast test cannot measure. Every
+// Colours are the theme's status tokens (hex in app/globals.css, never the
+// Tailwind v4 oklch palette, which the contrast test cannot measure). Every
 // class string is written out in full so Tailwind's scanner sees it.
 // Client-safe: no Mongoose import (lib/table-admin imports the model).
 import {
@@ -18,11 +18,13 @@ import type { Settings, Table } from "@/types";
 export interface TableStatusMeta {
   /** Always shown next to the colour — colour is never the only signal. */
   label: string;
-  /** Text colour on `bg` (≥ 4.5:1, pinned). */
+  /** The theme's status token the classes use: --status-{token}, -ink, -tint (and -border where it has one). */
+  token: "ok" | "info" | "reserved";
+  /** Text colour on `bg` (≥ 4.5:1, pinned) — the token's -ink value. */
   fg: string;
-  /** Chip / tint background. */
+  /** Chip / tint background — the token's -tint value. */
   bg: string;
-  /** Dot and legend-swatch colour (≥ 3:1 on white, pinned). */
+  /** Dot and legend-swatch colour (≥ 3:1 on white, pinned) — the token's base value. */
   mark: string;
   chipClass: string;
   dotClass: string;
@@ -33,39 +35,46 @@ export interface TableStatusMeta {
   borderClass: string;
 }
 
+// U0 match Task 7 (Task 1's carry): the classes are the theme's status tokens (the HTML's ok / info / res set, values
+// 1.1), so Available's text is the HTML's --ok-i #198038 (was #16733a). The hex fields mirror the tokens' light values
+// for the contrast maths (lib/table-status.test.ts reads them against app/globals.css). Available's tile border has no
+// HTML token (the HTML's free tile is plain): it keeps the Floor's own #a8e0b8.
 export const TABLE_STATUS_META: Record<TableStatus, TableStatusMeta> = {
   Occupied: {
     label: "Occupied",
+    token: "info",
     fg: "#0043ce",
     bg: "#edf5ff",
     mark: "#0f62fe",
-    chipClass: "bg-[#edf5ff] text-[#0043ce]",
-    dotClass: "bg-[#0f62fe]",
-    tileClass: "border-[#a6c8ff] bg-[#edf5ff]",
-    textClass: "text-[#0043ce]",
-    borderClass: "border-[#a6c8ff]",
+    chipClass: "bg-status-info-tint text-status-info-ink",
+    dotClass: "bg-status-info",
+    tileClass: "border-status-info-border bg-status-info-tint",
+    textClass: "text-status-info-ink",
+    borderClass: "border-status-info-border",
   },
   Available: {
     label: "Available",
-    fg: "#16733a",
+    token: "ok",
+    fg: "#198038",
     bg: "#defbe6",
     mark: "#24a148",
-    chipClass: "bg-[#defbe6] text-[#16733a]",
-    dotClass: "bg-[#24a148]",
-    tileClass: "border-[#a8e0b8] bg-[#defbe6]",
-    textClass: "text-[#16733a]",
+    chipClass: "bg-status-ok-tint text-status-ok-ink",
+    dotClass: "bg-status-ok",
+    tileClass: "border-[#a8e0b8] bg-status-ok-tint",
+    textClass: "text-status-ok-ink",
     borderClass: "border-[#a8e0b8]",
   },
   Reserved: {
     label: "Reserved",
+    token: "reserved",
     fg: "#6929c4",
     bg: "#f6f2ff",
     mark: "#8a3ffc",
-    chipClass: "bg-[#f6f2ff] text-[#6929c4]",
-    dotClass: "bg-[#8a3ffc]",
-    tileClass: "border-[#d4bbff] bg-[#f6f2ff]",
-    textClass: "text-[#6929c4]",
-    borderClass: "border-[#d4bbff]",
+    chipClass: "bg-status-reserved-tint text-status-reserved-ink",
+    dotClass: "bg-status-reserved",
+    tileClass: "border-status-reserved-border bg-status-reserved-tint",
+    textClass: "text-status-reserved-ink",
+    borderClass: "border-status-reserved-border",
   },
 };
 

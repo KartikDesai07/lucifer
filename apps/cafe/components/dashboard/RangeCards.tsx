@@ -1,35 +1,26 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { QrCode, ShoppingBag, Store, Utensils, type LucideIcon } from "lucide-react";
-import { cn, inr } from "@/lib/utils";
+import { cafeHourOf, cn, inr } from "@/lib/utils";
 import { CHANNEL_KIND, PAYMENT_KIND, STATUS_CLASSES, type StatusKind } from "@/lib/ui";
 import { deltaRatio } from "@/lib/dashboard/fold";
 import { plural, sharePercent } from "@/lib/dashboard/format";
-import { chartNames, insightPeriod, kpiCompareText, noCompareText } from "@/lib/dashboard/labels";
+import { compareShort, insightPeriod, kpiCompareText, noCompareText } from "@/lib/dashboard/labels";
+import { chartSubline, salesChart } from "@/lib/dashboard/hour-bars";
 import { dayLabel } from "@/lib/dashboard/range";
-import { DashCard, DashSkeleton, type DashCardStatus } from "@/components/dashboard/DashCard";
+import { DashCard, type DashCardStatus } from "@/components/dashboard/DashCard";
+import { HourBars, HourBarsLegend } from "@/components/dashboard/HourBars";
+import { useNow } from "@/hooks/use-now";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { RankedList, RANKED_ROW_PX, barsOf } from "@/components/dashboard/RankedList";
 import { BusyHours } from "@/components/dashboard/BusyHours";
 import { MoneyLeaks, MONEY_LEAK_ROWS } from "@/components/dashboard/MoneyLeaks";
-import { SALES_CHART_BODY_PX } from "@/components/dashboard/chart-size";
 import type { DashboardChannel, DashboardData } from "@/types/dashboard";
 
 // The Dashboard's range-driven cards. Each reads the DashboardData actually on
 // screen and says which period it covers; `status` is the query's (loading =
 // nothing yet, error = nothing and the fetch failed), `updating` = the old
 // range's numbers are showing, dimmed, while the newly picked range loads.
-
-// Chart.js arrives in its own chunk, after the numbers — never in the first bundle.
-const SalesChart = dynamic(() => import("@/components/dashboard/SalesChart").then((m) => m.SalesChart), {
-  ssr: false,
-  loading: () => (
-    <div style={{ height: SALES_CHART_BODY_PX }}>
-      <DashSkeleton className="h-full w-full" />
-    </div>
-  ),
-});
 
 export interface RangeCardProps {
   data?: DashboardData;
@@ -106,10 +97,27 @@ export function KpiRow(p: RangeCardProps) {
   );
 }
 
+/** The loaded chart's body (values 3.5): the 210px plot, 8px, the 14px x labels, then the footer's 14px + 12px over
+ *  its 1px rule and one 17px line. The skeleton and the empty state hold it, so the card never jumps. */
+const SALES_BODY_PX = 210 + 8 + 14 + 14 + 12 + 1 + 17;
+/** The future hours of today follow the cafe clock; a minute is plenty for an hour boundary. */
+const SALES_CLOCK_MS = 30_000;
+
+/**
+ * Sales by hour (one day) or by day (a span, ruling R15) as the owner's HTML bar chart (values 3.5): one bar per hour
+ * from the first to the last hour with sales in either series (at least eight), today's later hours "not yet", the
+ * peak in the accent, the comparison as a dashed line, Peak / Quietest / the comparison in the footer.
+ */
 export function SalesCard(p: RangeCardProps & { className?: string }) {
   const d = p.data;
+  const now = useNow(SALES_CLOCK_MS);
   const hasSales = !!d && d.series.some((s) => s.sales > 0 || s.compareSales > 0);
-  const names = d ? chartNames(d, p.today) : { current: "", compare: "" };
+  const isToday = !!d && d.range.from === p.today && d.range.to === p.today;
+  const short = d ? compareShort(d.range, p.today) : "";
+  const chart =
+    d && hasSales
+      ? salesChart({ points: d.series, mode: d.mode, isToday, currentHour: now ? cafeHourOf(now) : null, compareShort: short })
+      : null;
   const total = d?.kpis.current.sales ?? 0;
   const peak = d?.series.reduce((best, s) => (s.sales > best.sales ? s : best), d.series[0]);
   const aria = d
@@ -119,8 +127,12 @@ export function SalesCard(p: RangeCardProps & { className?: string }) {
     <DashCard
       variant="dashboard"
       className={p.className}
+      ui="sales-card"
       title={d?.mode === "day" ? "Sales by day" : "Sales by hour"}
-      period={d ? `${p.period} · ${d.compare.label}` : p.period}
+      period={chart && d ? chartSubline(p.period, chart.bars, d.mode) : p.period}
+      aside={chart ? <HourBarsLegend current={p.period} compare={short} /> : undefined}
+      headWrap
+      bodyGap={18}
       status={statusOf(p, !hasSales)}
       updating={p.updating}
       onRetry={p.onRetry}
@@ -129,9 +141,11 @@ export function SalesCard(p: RangeCardProps & { className?: string }) {
           ? { title: "No sales yet", description: "Completed orders appear here as the day goes on." }
           : { title: "No sales in this period", description: "Pick another period, or check the Orders screen." }
       }
-      bodyMinHeight={SALES_CHART_BODY_PX}
+      bodyMinHeight={SALES_BODY_PX}
     >
-      {d && <SalesChart series={d.series} currentName={names.current} compareName={names.compare} ariaLabel={aria} />}
+      {chart && d && (
+        <HourBars model={chart} ariaLabel={aria} currentName={p.period} compareName={short} period={`${d.range.from}:${d.range.to}`} />
+      )}
     </DashCard>
   );
 }

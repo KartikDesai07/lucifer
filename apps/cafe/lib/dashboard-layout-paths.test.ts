@@ -961,3 +961,246 @@ test("PaymentMixCard reserves its header's height, and mixSegments handles zero,
     "widths round to one decimal and a zero share is dropped",
   );
 });
+
+// ── Sales by hour and Live tables (U0 match Task 7, values 3.5, 3.6, ruling R15) ─────────────────────────────────────
+
+// fixture(): Friday 16 Oct (today) against Friday 9 Oct. Three hours with sales in either series grow to the HTML's
+// eight-hour minimum: 9 am – 4 pm. renderToStaticMarkup runs no effect, so the clock is unknown and no hour is "not yet".
+const hourPoint = (h: number, sales: number, compareSales: number) => ({
+  key: String(h),
+  label: `${h % 12 || 12} ${h < 12 ? "am" : "pm"}`,
+  sales,
+  orders: sales > 0 ? 1 : 0,
+  compareLabel: `${h % 12 || 12} ${h < 12 ? "am" : "pm"}`,
+  compareSales,
+});
+const HOUR_SERIES = [hourPoint(11, 1520, 1180), hourPoint(12, 3470, 2630), hourPoint(13, 0, 5360)];
+const salesCard = async (over: Partial<DashboardData> = {}, extra: Partial<ReturnType<typeof ready>> = {}) => {
+  const { SalesCard } = await import("@/components/dashboard/RangeCards");
+  return renderToStaticMarkup(createElement(SalesCard, { ...ready({ series: HOUR_SERIES, ...over }), ...extra }));
+};
+const allTags = (html: string, name: string): string[] => html.match(new RegExp(`<[a-z0-9]+ [^>]*data-ui="${name}"[^>]*>`, "g")) ?? [];
+const textsOf = (html: string, name: string): string[] =>
+  [...html.matchAll(new RegExp(`data-ui="${name}"[^>]*>([^<]*)<`, "g"))].map((m) => m[1]);
+
+test("SalesCard: the HTML's head - 'Sales by hour', '{period} · open hours, …', the legend at the right; the plot 18px under it", async () => {
+  const html = await salesCard();
+  assert.ok(tagOf(html, "sales-card").startsWith("<section"), "the card names itself for the probes (data-ui sales-card)");
+  assert.ok(html.includes(">Sales by hour</h2>"), "the title (values 3.5)");
+  assert.ok(html.includes(">Today · open hours, 9 am – 4 pm</p>"), "the sub: the period, then the window's first and last hour");
+  hasAll(classesOf(html, "dash-card-head"), ["flex", "flex-wrap", "items-start", "justify-between", "gap-3"], "the head wraps (values 3.5)");
+  hasAll(classesOf(html, "sales-legend"), ["flex", "items-center", "gap-3.5", "text-[12px]", "text-muted-foreground"], "the legend 12px text-2, 14 apart");
+  hasAll(classesOf(html, "sales-legend-item"), ["flex", "items-center", "gap-1.5"], "a legend item: its mark 6px before the words");
+  assert.ok(html.includes('<span class="size-2.5 rounded-[3px] bg-primary"></span><span>Today</span>'), "a 10px accent square, radius 3, then the period");
+  assert.ok(
+    html.includes('<span class="w-3.5 border-t-2 border-dashed border-subtle-foreground"></span><span>Last Fri</span>'),
+    "a 14px 2px dashed text-3 rule, then the HTML's cmpShort",
+  );
+  assert.ok(html.includes('class="transition-opacity duration-200 mt-[18px]"'), "the plot row 18px under the head");
+  assert.ok(!html.includes("pointer-coarse"), "ruling R1: no touch enlargement");
+});
+
+test("HourBars: the 210px plot with 70px grid lines, the ticks, eight columns, bars max 34px radius 5 5 2 2, the dashed line", async () => {
+  const html = await salesCard();
+  hasAll(classesOf(html, "sales-plot-row"), ["flex", "gap-2.5"], "the plot row: ticks 10px from the plot");
+  hasAll(
+    classesOf(html, "sales-ticks"),
+    ["-mt-1.5", "flex", "h-[210px]", "flex-col", "justify-between", "text-right", "font-mono", "text-[11px]", "text-subtle-foreground"],
+    "the ticks: Geist Mono 11 text-3, spread over 210px, 6px up",
+  );
+  assert.deepEqual(textsOf(html, "sales-tick"), ["₹6k", "₹4k", "₹2k", "₹0"], "kf of the 3-step scale, top to bottom");
+  hasAll(
+    classesOf(html, "sales-plot"),
+    ["relative", "h-[210px]", "border-b", "border-border", "bg-[repeating-linear-gradient(180deg,var(--border-2)_0_1px,transparent_1px_70px)]"],
+    "the plot: 210px, a border-2 line every 70px, a border foot",
+  );
+  const layer = tagOf(html, "sales-bars");
+  expectAll(layer, ["absolute", "inset-0", "flex", "items-end", "gap-(--bar-gap-xs)", "@min-[560px]:gap-(--bar-gap)"], "the bars layer");
+  assert.ok(layer.includes("--bar-gap-xs:3px;--bar-gap:8px"), "db.L.barGap: 3px on a phone (xs), 8px from cw 560");
+  const cols = allTags(html, "sales-col");
+  assert.equal(cols.length, 8, "one column per hour of the window");
+  for (const col of cols) {
+    assert.ok(col.startsWith("<button"), "a column is a button: it takes focus and a tap");
+    expectAll(col, ["relative", "flex", "h-full", "flex-1", "items-end", "justify-center"], "a column");
+  }
+  assert.ok(cols[3].includes('aria-label="12 pm: ₹3,470. Last Fri: ₹2,630"'), "a column reads its hour and both figures");
+  const bars = allTags(html, "sales-bar");
+  assert.equal(bars.length, 8, "one bar per column");
+  for (const bar of bars) expectAll(bar, ["w-full", "max-w-[34px]", "min-h-[2px]", "rounded-[5px_5px_2px_2px]", "origin-bottom", "motion-safe:animate-grow-y"], "a bar");
+  expectAll(bars[3], ["bg-primary"], "the peak bar is the accent");
+  expectAll(bars[2], ["bg-chart-bar"], "another past bar is the 60 % tint");
+  assert.ok(bars[3].includes("height:57.8%") && bars[3].includes("opacity:1"), "12 pm: ₹3,470 of ₹6,000, nothing hovered");
+  assert.ok(!html.includes("bg-surface-3"), "no clock yet: no hour is 'not yet'");
+  assert.ok(!html.includes('data-ui="sales-tip"'), "the tooltip shows only on a hovered or focused column");
+  assert.ok(html.includes('viewBox="0 0 100 100" preserveAspectRatio="none"'), "the line's 0..100 box, stretched to the plot");
+  assert.ok(
+    html.includes('fill="none" stroke="var(--subtle-foreground)" stroke-width="1.6" stroke-dasharray="4 4" vector-effect="non-scaling-stroke" stroke-linejoin="round"'),
+    "the comparison: a 1.6 text-3 dashed line that never scales",
+  );
+  expectAll(tagOf(html, "sales-line"), ["pointer-events-none", "absolute", "inset-0", "h-full", "w-full", "overflow-visible"], "the line's svg");
+  assert.ok(html.includes('<div class="sr-only"><table><caption>'), "the screen-reader table stays");
+});
+
+test("HourBars: the x labels - 11px text-3 centred, every 2nd hour from cw 560, every 3rd on a phone", async () => {
+  const html = await salesCard();
+  const row = tagOf(html, "sales-xlabels");
+  expectAll(row, ["mt-2", "flex", "gap-(--bar-gap-xs)", "@min-[560px]:gap-(--bar-gap)"], "the label row 8px under the plot, the bars' gap");
+  const labels = allTags(html, "sales-xlabel");
+  assert.equal(labels.length, 8, "one label cell per column");
+  expectAll(labels[0], ["flex-1", "text-center", "text-[11px]", "text-subtle-foreground", "whitespace-nowrap"], "a label cell");
+  const cells = [...html.matchAll(/data-ui="sales-xlabel"[^>]*>((?:<span[^>]*>[^<]*<\/span>)?)<\/span>/g)].map((m) => m[1]);
+  assert.equal(cells[0], "<span>9am</span>", "9 am: every 2nd and every 3rd");
+  assert.equal(cells[1], "", "10 am: neither");
+  assert.equal(cells[2], '<span class="hidden @min-[560px]:inline">11am</span>', "11 am: every 2nd only");
+  assert.equal(cells[3], '<span class="@min-[560px]:hidden">12pm</span>', "12 pm: every 3rd only (a phone)");
+});
+
+test("HourBars: the footer - 14px over a border-2 rule, Peak / Quietest / the comparison in 12.5 text-2 with 600 values", async () => {
+  const html = await salesCard();
+  hasAll(
+    classesOf(html, "sales-footer"),
+    ["mt-3.5", "flex", "flex-wrap", "gap-x-6", "gap-y-2", "border-t", "border-border-2", "pt-3", "text-[12.5px]", "text-muted-foreground"],
+    "the footer",
+  );
+  assert.ok(html.includes('<span>Peak <b class="font-semibold text-foreground">12 pm · ₹3,470</b></span>'), "the peak hour");
+  assert.ok(html.includes('<span>Quietest <b class="font-semibold text-foreground">9 am · ₹0</b></span>'), "the quietest past hour of the window");
+  assert.ok(html.includes('<span>So far vs last fri <b class="font-semibold text-status-bad-ink">-46%</b></span>'), "today: so far, a fall in the bad ink");
+});
+
+test("SalesCard: a span of days draws the same bars per day, 'Sales by day', the HTML's span words; empty and loading keep 276px", async () => {
+  const week = await salesCard({
+    range: { from: "2026-10-10", to: TODAY },
+    mode: "day",
+    compare: { from: "2026-10-03", to: "2026-10-09", label: "vs previous 7 days" },
+    series: ["10", "11", "12", "13", "14", "15", "16"].map((dd, i) => ({ key: `2026-10-${dd}`, label: `${dd} Oct`, sales: 1000 * (i + 1), orders: 1, compareLabel: `${Number(dd) - 7} Oct`, compareSales: 900 })),
+  }, { period: "Last 7 days" });
+  assert.ok(week.includes(">Sales by day</h2>"), "ruling R15: our per-day series, titled by day");
+  assert.ok(week.includes(">Last 7 days · 10 Oct – 16 Oct</p>"), "the span's dates");
+  assert.ok(week.includes("<span>Last 7 days</span>") && week.includes("<span>Previous 7 days</span>"), "the legend: the period and the HTML's cmpShort");
+  assert.equal(allTags(week, "sales-bar").length, 7, "one bar per day");
+  assert.ok(week.includes('<span>vs previous 7 days <b class="font-semibold text-status-ok-ink">+344%</b></span>'), "a span: 'vs …', no 'so far'");
+  assert.ok(allTags(week, "sales-col")[6].includes('aria-label="16 Oct: ₹7,000. Previous 7 days: ₹900"'), "a day's column reads its date");
+  const empty = await salesCard({ series: [] });
+  assert.ok(empty.includes("No sales yet") && !empty.includes('data-ui="sales-legend"'), "today with no sales keeps our empty state, no legend");
+  assert.ok(empty.includes('style="min-height:276px"'), "the empty body holds the loaded body's 276px");
+  const { SalesCard } = await import("@/components/dashboard/RangeCards");
+  const loading = renderToStaticMarkup(createElement(SalesCard, { ...ready(), data: undefined, status: "loading" }));
+  assert.ok(loading.includes('<div style="height:276px" class="flex mt-[18px]">'), "loading: a 276px skeleton 18px under the head");
+});
+
+// Our three table states (ruling R15): Free = Available, Eating = Occupied, Reserved = Reserved. We have no "Bill
+// printed" or "KOT pending" table state, so that segment and legend item are left out.
+const area = (id: string, name: string, displayOrder: number) => ({ _id: id, name, displayOrder, createdAt: "", updatedAt: "" });
+const AREAS = [area("a1", "AC Hall", 0), area("a2", "Garden", 1)];
+const floorTable = (tableNo: string, status: "Available" | "Occupied" | "Reserved", capacity: number, areaId?: string, currentOrderId?: string) => ({
+  _id: tableNo,
+  tableNo,
+  status,
+  capacity,
+  areaId,
+  currentOrderId,
+  createdAt: "",
+  updatedAt: "",
+});
+const TABLES = [
+  floorTable("T-1", "Reserved", 2, "a1"),
+  floorTable("T-2", "Available", 4, "a1"),
+  floorTable("T-4", "Occupied", 6, "a1", "ORD-5"),
+  floorTable("T-5", "Available", 4, "a2"),
+  floorTable("T-7", "Occupied", 8, "a2", "ORD-4"),
+  floorTable("T-9", "Available", 2),
+];
+const floorOrder = (orderId: string, status: "Pending" | "Completed", total: number) =>
+  ({ _id: orderId, orderId, status, total, createdAt: "2026-10-16T06:00:00.000Z", tableNo: "", items: [] }) as unknown as import("@/types").Order;
+const FLOOR_ORDERS = [floorOrder("ORD-5", "Pending", 768), floorOrder("ORD-4", "Completed", 439)];
+const RESERVATIONS = [
+  { _id: "r1", name: "Meera Vyas", mobile: "", date: TODAY, time: "19:00", guests: 2, tableNo: "T-1", status: "Booked", createdAt: "", updatedAt: "" },
+] as unknown as import("@/types").Reservation[];
+
+test("liveTablesModel: the sub line, the Free / Eating / Reserved counts, our areas as zones, each tile's second line", async () => {
+  const { liveTablesModel } = await import("@/components/dashboard/LiveFloorPanel");
+  const m = liveTablesModel({ tables: TABLES, orders: FLOOR_ORDERS, areas: AREAS, reservations: RESERVATIONS, nowMs: Date.parse("2026-10-16T06:41:30.000Z") });
+  assert.equal(m.sub, "2 of 6 in use · 1 reserved", "the HTML's '{inUse} of {total} in use · {reserved} reserved'");
+  assert.deepEqual(m.segments.map((s) => [s.label, s.n]), [["Free", 3], ["Eating", 2], ["Reserved", 1]], "our three states in the HTML's order, no Bill printed");
+  assert.deepEqual(m.zones.map((z) => z.label), ["AC Hall", "Garden", "Tables"], "our areas in their order, then the tables with none under 'Tables'");
+  assert.deepEqual(m.zones.map((z) => z.tiles.map((t) => t.table.tableNo)), [["T-1", "T-2", "T-4"], ["T-5", "T-7"], ["T-9"]], "each zone holds its tables in our order");
+  const tiles = m.zones.flatMap((z) => z.tiles);
+  assert.deepEqual(
+    tiles.map((t) => t.line),
+    ["7:00 PM", "4 seats", "₹768 · 41m", "4 seats", "Occupied", "2 seats"],
+    "free: seats; eating: the running bill and its minutes (a settled order is not running); reserved: the booking's time",
+  );
+  assert.equal(tiles[2].title, "T-4 · 6 seats · Occupied", "the HTML's tile title: name · seats · status");
+  assert.equal(tiles[2].order?.orderId, "ORD-5", "an occupied tile carries its order (it opens the detail sheet)");
+  assert.equal(tiles[4].order?.orderId, "ORD-4", "…a settled one too, as today");
+  assert.equal(tiles[1].order, undefined, "a free tile has no order");
+  const noClock = liveTablesModel({ tables: TABLES, orders: FLOOR_ORDERS, areas: AREAS, reservations: [], nowMs: null });
+  const flat = noClock.zones.flatMap((z) => z.tiles);
+  assert.equal(flat[2].line, "₹768", "before the clock is known: the bill alone");
+  assert.equal(flat[0].line, "Reserved", "a reserved table with no booking today says Reserved");
+  const noAreas = liveTablesModel({ tables: TABLES, orders: [], areas: undefined, reservations: undefined, nowMs: null });
+  assert.deepEqual(noAreas.zones.map((z) => [z.label, z.tiles.length]), [["Tables", 6]], "no areas loaded: one 'Tables' zone");
+});
+
+test("LiveFloorPanel: the HTML's card - the pulsing dot, the 8px status bar, the legend, zone labels and 52px tiles per state", async () => {
+  const { LiveFloorPanel } = await import("@/components/dashboard/LiveFloorPanel");
+  const html = renderToStaticMarkup(
+    createElement(LiveFloorPanel, { tables: TABLES, orders: FLOOR_ORDERS, areas: AREAS, reservations: RESERVATIONS, onSelectOrder: noop }),
+  );
+  assert.ok(tagOf(html, "tables-card").startsWith("<section"), "the card names itself for the probes (data-ui tables-card)");
+  hasAll(classesOf(html, "dash-card-title"), ["flex", "items-center", "gap-2", "text-[15px]", "font-semibold"], "the title row holds the dot 8px after the words");
+  hasAll(classesOf(html, "tables-live-dot"), ["size-[7px]", "rounded-[50%]", "bg-status-ok", "motion-safe:animate-live-pulse"], "the 7px ok dot (the HTML's 50% radius), pulsing (motion-safe)");
+  assert.ok(html.includes(">2 of 6 in use · 1 reserved</p>"), "the sub line");
+  assert.match(html, /href="\/tables"[^>]*>Floor →<\/a>/, "the HTML's 'Floor →' link to our floor");
+  hasAll(classesOf(html, "tables-bar"), ["flex", "h-2", "gap-0.5", "overflow-hidden", "rounded-[4px]"], "the status bar: 8px, radius 4, 2px apart");
+  assert.ok(
+    html.includes('<span class="bg-status-ok" style="flex:3"></span><span class="bg-status-info" style="flex:2"></span><span class="bg-status-reserved" style="flex:1"></span>'),
+    "one segment per state, as wide as its count",
+  );
+  hasAll(classesOf(html, "tables-legend"), ["mt-2.5", "flex", "flex-wrap", "gap-x-3.5", "gap-y-1.5", "text-[12px]", "text-muted-foreground"], "the legend");
+  hasAll(classesOf(html, "tables-legend-item"), ["flex", "items-center", "gap-1.5"], "a legend item");
+  assert.ok(
+    html.includes('<span aria-hidden="true" class="size-2 rounded-[2px] bg-status-ok"></span><span>Free</span><b class="font-semibold text-foreground">3</b>'),
+    "an 8px radius-2 swatch, the state, its count in 600",
+  );
+  assert.ok(!html.includes("Bill printed") && !html.includes("bg-status-bill"), "no Bill printed state in our data");
+  hasAll(
+    classesOf(html, "tables-zone"),
+    ["mt-4", "mb-[7px]", "text-[11px]", "font-semibold", "uppercase", "tracking-[0.06em]", "text-subtle-foreground"],
+    "a zone label",
+  );
+  assert.deepEqual(textsOf(html, "tables-zone"), ["AC Hall", "Garden", "Tables"], "the zones in order");
+  hasAll(classesOf(html, "tables-grid"), ["grid", "grid-cols-[repeat(auto-fill,minmax(92px,1fr))]", "gap-1.5"], "92px tiles, 6px apart");
+  const tiles = allTags(html, "table-tile");
+  assert.equal(tiles.length, 6, "every table is a tile");
+  const base = ["flex", "h-[52px]", "min-w-0", "flex-col", "items-start", "gap-0.5", "rounded-[9px]", "border", "px-2", "py-[7px]", "text-left", "text-foreground", "hover:border-subtle-foreground", ...HTML_PRESS_CLASS.split(" ")];
+  for (const t of tiles) expectAll(t, base, "a tile");
+  expectAll(tiles[0], ["border-status-reserved-border", "bg-status-reserved-tint"], "reserved: res-t on res-b");
+  expectAll(tiles[1], ["border-border", "bg-card"], "free: the surface on the border");
+  expectAll(tiles[2], ["border-status-info-border", "bg-status-info-tint"], "eating: info-t on info-b");
+  assert.ok(tiles[2].startsWith("<button") && tiles[4].startsWith("<button"), "an occupied tile with an order opens it (our detail sheet)");
+  for (const i of [0, 1, 3, 5]) assert.ok(tiles[i].startsWith("<a") && tiles[i].includes('href="/tables"'), `tile ${i + 1} goes to the floor`);
+  assert.ok(tiles[2].includes('title="T-4 · 6 seats · Occupied"'), "the tile's title");
+  hasAll(classesOf(html, "table-tile-name"), ["flex", "max-w-full", "items-center", "gap-[5px]", "text-[12.5px]", "font-semibold"], "line 1: 12.5/600, the dot 5px before the name");
+  assert.ok(html.includes('<span aria-hidden="true" class="size-1.5 shrink-0 rounded-[50%] bg-status-reserved"></span><span class="truncate">T-1</span>'), "a 6px dot in the state's colour, then the name");
+  const lines = allTags(html, "table-tile-line");
+  for (const l of lines) expectAll(l, ["max-w-full", "truncate", "text-[10.5px]", "font-medium"], "line 2: 10.5/500, one line");
+  expectAll(lines[0], ["text-status-reserved-ink"], "reserved line in res-i");
+  expectAll(lines[1], ["text-subtle-foreground"], "free line in text-3");
+  expectAll(lines[2], ["text-status-info-ink"], "eating line in info-i");
+  assert.deepEqual(textsOf(html, "table-tile-line"), ["7:00 PM", "4 seats", "₹768", "4 seats", "Occupied", "2 seats"], "no clock in a static render: the bill alone");
+  assert.ok(!html.includes("pointer-coarse"), "ruling R1");
+  const page = readSrc(PAGE);
+  assert.match(page, /const tableAreas = useTableAreas\(tables\.data\);/, "the page reads our areas (the persisted master, healed like the Floor's)");
+  assert.match(page, /<LiveFloorPanel[\s\S]*?areas=\{tableAreas\.data\}[\s\S]*?reservations=\{reservations\.data\}[\s\S]*?\/>/, "…and gives the panel the areas and today's bookings");
+});
+
+test("DashCard dashboard: an aside at the head's right, a title adornment and a wrapping head (Task 7's cards)", () => {
+  const html = card({ variant: "dashboard", link: undefined, aside: createElement("span", { "data-ui": "x-aside" }, "legend"), titleAdornment: createElement("i", null), headWrap: true });
+  hasAll(classesOf(html, "dash-card-head"), ["flex", "flex-wrap", "items-start", "justify-between", "gap-3"], "headWrap: the HTML's flex-wrap head");
+  hasAll(classesOf(html, "dash-card-title"), ["flex", "items-center", "gap-2", "text-[15px]", "font-semibold"], "a title with an adornment lays it 8px after the words");
+  assert.ok(html.includes('Sales<i></i></h2>'), "the adornment follows the title's words");
+  assert.ok(html.includes('<span data-ui="x-aside">legend</span></header>'), "the aside closes the head, at its right");
+  const plain = card({ variant: "dashboard" });
+  assert.ok(!classesOf(plain, "dash-card-head").includes("flex-wrap") && !classesOf(plain, "dash-card-title").includes("flex"), "without them the head is as before");
+});

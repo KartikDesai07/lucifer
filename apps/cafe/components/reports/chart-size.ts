@@ -2,8 +2,8 @@
 // (its canvas). A module of its own so a page can reserve the chart's exact
 // height and type its `bars`/`line` props WITHOUT any import — value or type
 // — from ReportChart.tsx itself, which would pull Chart.js into the first
-// bundle (same reasoning as components/dashboard/chart-size.ts; the Dashboard
-// avoids the same trap by never importing a SalesChart type either).
+// bundle. (The Dashboard's own chart is CSS since U0 match Task 7, so this is
+// the one chart module left that guards Chart.js.)
 export const REPORT_CHART_HEIGHT_PX = 240;
 const LEGEND_ROW_PX = 28;
 /** The chart card's body: legend row + canvas (desktop height; the canvas itself is shorter on a phone). */

@@ -243,3 +243,20 @@ test("breakpoints tab 45rem (720 px) and desk 68.75rem (1100 px) are declared in
   assert.equal(declOf(themeInline, "--breakpoint-tab"), "45rem", "--breakpoint-tab is 720 px (values 0.1)");
   assert.equal(declOf(themeInline, "--breakpoint-desk"), "68.75rem", "--breakpoint-desk is 1100 px (values 0.1)");
 });
+
+// U0 match Task 7 (values 3.5, 1.5): the hour chart's bars are color-mix(in oklab, var(--accent) 60%, var(--surface))
+// precomputed (no runtime color-mix on WebView 109), they grow in with the HTML's growY, and the Live tables dot pulses
+// with the HTML's pulse.
+test("the hour chart's 60 % bar tint as a hex token, and the HTML's growY and pulse motions", () => {
+  assert.equal(declOf(main, "--chart-bar"), "#75a7ff", "--chart-bar in :root: #0F62FE 60 % over #FFFFFF in oklab");
+  assert.equal(declOf(dark, "--chart-bar"), "#1b459b", "--chart-bar in .dark: #0F62FE 60 % over #17171A in oklab");
+  assert.ok(themeInline.includes("--color-chart-bar: var(--chart-bar);"), "--color-chart-bar registered");
+  assert.ok(css.includes("--animate-grow-y: grow-y 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;"), "the bars' growY, .7s with the HTML's easing");
+  assert.match(css, /@keyframes grow-y \{\s*from \{\s*transform: scaleY\(0\);\s*\}\s*to \{\s*transform: scaleY\(1\);\s*\}\s*\}/, "growY verbatim");
+  assert.ok(css.includes("--animate-live-pulse: live-pulse 2s infinite;"), "the live dot's pulse, 2s, forever");
+  assert.match(
+    css,
+    /@keyframes live-pulse \{\s*0% \{\s*box-shadow: 0 0 0 0 rgba\(36, 161, 72, 0\.45\);\s*\}\s*70% \{\s*box-shadow: 0 0 0 7px rgba\(36, 161, 72, 0\);\s*\}\s*100% \{\s*box-shadow: 0 0 0 0 rgba\(36, 161, 72, 0\);\s*\}\s*\}/,
+    "pulse verbatim (values 1.5)",
+  );
+});

@@ -117,6 +117,7 @@
   /* The HTML's own names (values 1.1), staff screens only. */
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);
+  --color-chart-bar: var(--chart-bar);
   --color-border-2: var(--border-2);
   --color-hover: var(--hover);
   --color-seg: var(--seg);
@@ -187,6 +188,33 @@
   --animate-scrim-in: brand-fade 0.2s ease both;
   /* The HTML's shake (values 1.5): the reveal dialog's PIN dots after a wrong PIN (values 3.16). */
   --animate-html-shake: html-shake 0.42s ease;
+  /* The HTML's growY (values 1.5, 3.5): the hour chart's bars rise from the floor. */
+  --animate-grow-y: grow-y 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* The HTML's pulse (values 1.5, 3.6): the Live tables dot. */
+  --animate-live-pulse: live-pulse 2s infinite;
+}
+
+/* The HTML's growY (values 1.5), verbatim. */
+@keyframes grow-y {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/* The HTML's pulse (values 1.5), verbatim: a ring of --ok (#24A148) that grows 7px and fades. */
+@keyframes live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(36, 161, 72, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(36, 161, 72, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(36, 161, 72, 0);
+  }
 }
 
 /* The HTML's shake (values 1.5), verbatim. */
@@ -346,6 +374,8 @@
      modifier, so it gets no tint twin). */
   --surface-2: #fafafa;
   --surface-3: #e9e9ec;
+  /* The hour chart's bars (values 3.5): color-mix(in oklab, var(--accent) 60%, var(--surface)) precomputed. */
+  --chart-bar: #75a7ff;
   --border-2: #ececef;
   --hover: #f2f2f4;
   --seg: #ffffff;
@@ -450,6 +480,8 @@
   --track: #27272b;
   --surface-2: #1c1c20;
   --surface-3: #27272b;
+  /* #0f62fe 60 % over the dark surface #17171a, in oklab */
+  --chart-bar: #1b459b;
   --border-2: #242428;
   --hover: #222226;
   --seg: #3a3a40;
