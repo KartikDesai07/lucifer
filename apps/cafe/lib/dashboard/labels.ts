@@ -34,18 +34,6 @@ export function periodDates(range: DashboardRange): string {
   return `${dayLabel(range.from)} – ${dayLabel(range.to)}`;
 }
 
-/** Legend names for the main chart: the period vs its comparison. */
-export function chartNames(data: DashboardData, today: string): { current: string; compare: string } {
-  if (data.mode === "hour") {
-    return {
-      current: data.range.from === today ? "Today" : weekdayDayLabel(data.range.from),
-      compare: weekdayDayLabel(data.compare.from),
-    };
-  }
-  const days = rangeDays(data.range);
-  return { current: periodLabel(data.range, today), compare: `Previous ${days} days` };
-}
-
 /** The KPI delta suffix — kept short so it stays on one line in a four-up row. */
 export function kpiCompareText(data: DashboardData): string {
   return data.compare.label;

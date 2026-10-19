@@ -3,22 +3,21 @@
 import { Fragment } from "react";
 import Link from "next/link";
 
-import { cn, formatTime, inr } from "@/lib/utils";
-import type { TableStatus } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 import { TABLE_STATUS_META } from "@/lib/table-status";
-import { FLOOR_CLOCK_TICK_MS, minutesOpen, reservationForTable } from "@/lib/floor-tiles";
-import { NO_AREA_KEY, groupTablesByArea } from "@/lib/table-areas";
+import { STATUS_CLASSES } from "@/lib/ui";
+import { FLOOR_CLOCK_TICK_MS } from "@/lib/floor-tiles";
+import { liveTablesModel, type LiveState } from "@/lib/dashboard/live-tables";
 import { useNow } from "@/hooks/use-now";
 import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { DashCard } from "@/components/dashboard/DashCard";
 import type { Area, Order, Reservation, Table } from "@/types";
 
-// The owner's Live tables card (values 3.6, U0 match Task 7, ruling R15): the pulsing dot, "{in use} of {all} in use ·
-// {reserved} reserved", the 8px status bar and its legend, then our areas as zone labels over 92px tiles. Our three
-// table states take the HTML's: Free = Available, Eating = Occupied, Reserved = Reserved. We have no "Bill printed" or
-// "KOT pending" table state, so that segment and legend item are left out. Read-only, with one affordance kept from
-// before: an occupied tile whose order we can resolve opens it in the page's detail sheet; every other tile goes to the
-// Floor, as the HTML's "Floor →".
+// The owner's Live tables card (values 3.6, U0 match Task 7, rulings R15 and R16): the pulsing dot, "{in use} of {all}
+// in use · {reserved} reserved", the 8px status bar and its legend, then our areas as zone labels over 92px tiles.
+// lib/dashboard/live-tables.ts maps our tables onto the HTML's Free / Eating / Bill printed / Reserved. Read-only,
+// with one affordance kept from before: an occupied tile whose order we can resolve opens it in the page's detail
+// sheet; every other tile goes to the Floor, as the HTML's "Floor →".
 
 interface LiveFloorPanelProps {
   tables: Table[];
@@ -33,82 +32,39 @@ interface LiveFloorPanelProps {
   onSelectOrder: (order: Order) => void;
 }
 
-/** The HTML's legend words for our states, in its order (Free, Eating, [Bill printed,] Reserved). */
-export const LIVE_TABLE_LEGEND: ReadonlyArray<{ status: TableStatus; label: string }> = [
-  { status: "Available", label: "Free" },
-  { status: "Occupied", label: "Eating" },
-  { status: "Reserved", label: "Reserved" },
-];
-/** The zone label for tables in no area (or an area this device does not hold). */
-export const NO_AREA_ZONE_LABEL = "Tables";
-
-/** A tile's look per state (values 3.6 table): the tile, its dot and its second line. Eating and Reserved are the
- *  shared vocabulary's tint and ink; the HTML's free tile is the plain surface with a text-3 line. */
-function tileLook(status: TableStatus): { tile: string; dot: string; line: string } {
-  const meta = TABLE_STATUS_META[status];
-  if (status === "Available") return { tile: "border-border bg-card", dot: meta.dotClass, line: "text-subtle-foreground" };
-  return { tile: meta.tileClass, dot: meta.dotClass, line: meta.textClass };
-}
-
-export interface LiveTile {
-  table: Table;
-  /** Line 2: "{seats} seats", "₹{bill} · {minutes}m", the booking's time, or the state's word. */
+interface StateLook {
+  /** The status bar's segment and the legend's swatch. */
+  mark: string;
+  /** The tile's surface and border. */
+  tile: string;
+  dot: string;
+  /** Line 2's colour. */
   line: string;
-  /** The HTML's tile title: "{name} · {seats} seats · {status}". */
-  title: string;
-  /** An occupied table's order, when we can resolve it (a tap opens it). */
-  order?: Order;
 }
 
-export interface LiveTablesModel {
-  sub: string;
-  segments: Array<{ status: TableStatus; label: string; n: number }>;
-  zones: Array<{ key: string; label: string; tiles: LiveTile[] }>;
-}
-
-export function liveTablesModel(input: {
-  tables: readonly Table[];
-  orders: readonly Order[];
-  areas: readonly Area[] | undefined;
-  reservations: readonly Reservation[] | undefined;
-  nowMs: number | null;
-}): LiveTablesModel {
-  const { tables, areas, reservations, nowMs } = input;
-  const ordersById = new Map(input.orders.map((o) => [o.orderId, o]));
-  const count = (status: TableStatus) => tables.filter((t) => t.status === status).length;
-  const segments = LIVE_TABLE_LEGEND.map((s) => ({ ...s, n: count(s.status) }));
-  const inUse = count("Occupied");
-
-  const tileOf = (table: Table): LiveTile => {
-    const order = table.status === "Occupied" && table.currentOrderId ? ordersById.get(table.currentOrderId) : undefined;
-    let line = `${table.capacity} seats`;
-    if (table.status === "Occupied") {
-      // Only a running bill has an amount and a stay; a settled order (a Pay Now sale) still opens, but says Occupied.
-      const running = order?.status === "Pending" ? order : undefined;
-      const minutes = running && nowMs !== null ? minutesOpen(running.createdAt, nowMs) : null;
-      line = running ? (minutes === null ? inr(running.total) : `${inr(running.total)} · ${minutes}m`) : "Occupied";
-    } else if (table.status === "Reserved") {
-      const booking = reservationForTable(table.tableNo, reservations);
-      line = booking ? formatTime(booking.time) : "Reserved";
-    }
-    return {
-      table,
-      line,
-      title: `${table.tableNo} · ${table.capacity} seats · ${TABLE_STATUS_META[table.status].label}`,
-      order,
-    };
-  };
-
-  return {
-    sub: `${inUse} of ${tables.length} in use · ${count("Reserved")} reserved`,
-    segments,
-    zones: groupTablesByArea(tables, areas).map((g) => ({
-      key: g.key,
-      label: g.key === NO_AREA_KEY ? NO_AREA_ZONE_LABEL : g.name,
-      tiles: g.items.map(tileOf),
-    })),
-  };
-}
+/** The HTML's state table (values 3.6). Eating and Reserved are the shared vocabulary's tint and ink; the free tile is
+ *  the plain surface with a text-3 line; Bill printed is the theme's bill set (STATUS_CLASSES). */
+const LOOK: Record<LiveState, StateLook> = {
+  free: { mark: TABLE_STATUS_META.Available.dotClass, tile: "border-border bg-card", dot: TABLE_STATUS_META.Available.dotClass, line: "text-subtle-foreground" },
+  eating: {
+    mark: TABLE_STATUS_META.Occupied.dotClass,
+    tile: TABLE_STATUS_META.Occupied.tileClass,
+    dot: TABLE_STATUS_META.Occupied.dotClass,
+    line: TABLE_STATUS_META.Occupied.textClass,
+  },
+  billed: {
+    mark: STATUS_CLASSES.bill.dot,
+    tile: `${STATUS_CLASSES.bill.border} ${STATUS_CLASSES.bill.tint}`,
+    dot: STATUS_CLASSES.bill.dot,
+    line: STATUS_CLASSES.bill.ink,
+  },
+  reserved: {
+    mark: TABLE_STATUS_META.Reserved.dotClass,
+    tile: TABLE_STATUS_META.Reserved.tileClass,
+    dot: TABLE_STATUS_META.Reserved.dotClass,
+    line: TABLE_STATUS_META.Reserved.textClass,
+  },
+};
 
 // The bar, the legend, one zone label and one row of tiles: what the skeleton and the empty state hold.
 const TABLES_BODY_PX = 8 + 10 + 16 + 16 + 14 + 7 + 52;
@@ -122,7 +78,6 @@ export function LiveFloorPanel({ tables, orders, areas, reservations, loading, i
   const now = useNow(FLOOR_CLOCK_TICK_MS);
   const status = loading ? "loading" : isError && tables.length === 0 ? "error" : tables.length === 0 ? "empty" : "ready";
   const model = liveTablesModel({ tables, orders, areas, reservations, nowMs: now ? now.getTime() : null });
-  const seg = (s: TableStatus) => TABLE_STATUS_META[s].dotClass;
 
   return (
     <DashCard
@@ -131,7 +86,7 @@ export function LiveFloorPanel({ tables, orders, areas, reservations, loading, i
       className="flex flex-col"
       title="Live tables"
       titleAdornment={
-        <span data-ui="tables-live-dot" aria-hidden className="size-[7px] rounded-[50%] bg-status-ok motion-safe:animate-live-pulse" />
+        <span data-ui="tables-live-dot" aria-hidden className={cn("size-[7px] rounded-[50%] motion-safe:animate-live-pulse", STATUS_CLASSES.ok.dot)} />
       }
       period={tables.length > 0 ? model.sub : "Right now"}
       link={{ href: "/tables", label: "Floor" }}
@@ -142,13 +97,13 @@ export function LiveFloorPanel({ tables, orders, areas, reservations, loading, i
     >
       <div data-ui="tables-bar" aria-hidden className="flex h-2 gap-0.5 overflow-hidden rounded-[4px]">
         {model.segments.map((s) => (
-          <span key={s.status} className={seg(s.status)} style={{ flex: s.n }} />
+          <span key={s.state} className={LOOK[s.state].mark} style={{ flex: s.n }} />
         ))}
       </div>
       <div data-ui="tables-legend" className="mt-2.5 flex flex-wrap gap-x-3.5 gap-y-1.5 text-[12px] text-muted-foreground">
         {model.segments.map((s) => (
-          <span key={s.status} data-ui="tables-legend-item" className="flex items-center gap-1.5">
-            <span aria-hidden className={cn("size-2 rounded-[2px]", seg(s.status))} />
+          <span key={s.state} data-ui="tables-legend-item" className="flex items-center gap-1.5">
+            <span aria-hidden className={cn("size-2 rounded-[2px]", LOOK[s.state].mark)} />
             <span>{s.label}</span>
             <b className="font-semibold text-foreground">{s.n}</b>
           </span>
@@ -164,7 +119,7 @@ export function LiveFloorPanel({ tables, orders, areas, reservations, loading, i
           </div>
           <div data-ui="tables-grid" className="grid grid-cols-[repeat(auto-fill,minmax(92px,1fr))] gap-1.5">
             {zone.tiles.map((tile) => {
-              const look = tileLook(tile.table.status);
+              const look = LOOK[tile.state];
               const body = (
                 <>
                   <span data-ui="table-tile-name" className="flex max-w-full items-center gap-[5px] text-[12.5px] font-semibold">

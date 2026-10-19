@@ -2,7 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   billPeriodTag,
-  chartNames,
   compareShort,
   compareWords,
   insightPeriod,
@@ -61,20 +60,6 @@ test("periodLabel names today, yesterday, a past day, the 7/30-day presets and a
 test("periodDates spells the dates behind a named period", () => {
   assert.equal(periodDates({ from: TODAY, to: TODAY }), "Tue, 29 Sep");
   assert.equal(periodDates({ from: "2026-09-23", to: TODAY }), "23 Sep – 29 Sep");
-});
-
-test("chartNames: one day by weekday, a range as the period vs the previous days", () => {
-  assert.deepEqual(chartNames(data({}), TODAY), { current: "Today", compare: "Tue, 22 Sep" });
-  assert.deepEqual(
-    chartNames(data({ range: { from: "2026-09-28", to: "2026-09-28" }, compare: { from: "2026-09-21", to: "2026-09-21", label: "vs Mon, 21 Sep" } }), TODAY),
-    { current: "Mon, 28 Sep", compare: "Mon, 21 Sep" }, // the chart legend names the day, not "Yesterday"
-  );
-  const week = data({
-    mode: "day",
-    range: { from: "2026-09-23", to: TODAY },
-    compare: { from: "2026-09-16", to: "2026-09-22", label: "vs previous 7 days" },
-  });
-  assert.deepEqual(chartNames(week, TODAY), { current: "Last 7 days", compare: "Previous 7 days" });
 });
 
 test("the KPI delta suffix is the comparison's own short label", () => {

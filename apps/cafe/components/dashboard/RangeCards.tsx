@@ -98,8 +98,10 @@ export function KpiRow(p: RangeCardProps) {
 }
 
 /** The loaded chart's body (values 3.5): the 210px plot, 8px, the 14px x labels, then the footer's 14px + 12px over
- *  its 1px rule and one 17px line. The skeleton and the empty state hold it, so the card never jumps. */
+ *  its 1px rule and one 17px line = 276px; on a phone (cw < 560) the footer takes two lines (+ 8px gap + 17px) = 301px.
+ *  The skeleton and the empty state hold it, so the card never jumps. */
 const SALES_BODY_PX = 210 + 8 + 14 + 14 + 12 + 1 + 17;
+const SALES_BODY_CLASS = "min-h-[301px] @min-[560px]:min-h-[276px]";
 /** The future hours of today follow the cafe clock; a minute is plenty for an hour boundary. */
 const SALES_CLOCK_MS = 30_000;
 
@@ -142,6 +144,7 @@ export function SalesCard(p: RangeCardProps & { className?: string }) {
           : { title: "No sales in this period", description: "Pick another period, or check the Orders screen." }
       }
       bodyMinHeight={SALES_BODY_PX}
+      bodyClassName={SALES_BODY_CLASS}
     >
       {chart && d && (
         <HourBars model={chart} ariaLabel={aria} currentName={p.period} compareName={short} period={`${d.range.from}:${d.range.to}`} />

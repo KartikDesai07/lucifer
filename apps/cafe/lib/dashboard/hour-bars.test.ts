@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { barGapPx, chartSubline, hourWindow, kf, salesChart, xLabelStep, yStep } from "@/lib/dashboard/hour-bars";
+import { barGapPx, chartSubline, hourWindow, kf, salesChart, tipShift, xLabelStep, yStep } from "@/lib/dashboard/hour-bars";
 import type { DashboardSeriesPoint } from "@/types/dashboard";
 
 const hourLabel = (h: number) => `${h % 12 || 12} ${h < 12 ? "am" : "pm"}`;
@@ -16,12 +16,12 @@ const pt = (h: number, sales: number, compareSales: number): DashboardSeriesPoin
   compareLabel: hourLabel(h),
   compareSales,
 });
-const day = (key: string, label: string, sales: number, compareSales: number): DashboardSeriesPoint => ({
+const day = (key: string, label: string, sales: number, compareSales: number, compareLabel = label): DashboardSeriesPoint => ({
   key,
   label,
   sales,
   orders: 1,
-  compareLabel: label,
+  compareLabel,
   compareSales,
 });
 
@@ -96,8 +96,16 @@ test("salesChart: the tooltip and aria words, the HTML's '12 pm · ₹3,470' / '
   assert.deepEqual(c.bars[2].tip, ["1 pm · not yet", "₹5,360 · last mon"], "a future hour: not yet");
   assert.equal(c.bars[1].aria, "12 pm: ₹3,470. Last Mon: ₹2,630", "the column's label reads the hour and both figures");
   assert.equal(c.bars[2].aria, "1 pm: not yet. Last Mon: ₹5,360", "a future column says not yet");
-  const week = salesChart({ points: [day("2026-10-13", "13 Oct", 45000, 41000), day("2026-10-14", "14 Oct", 30000, 32000)], mode: "day", isToday: false, currentHour: 12, compareShort: "Previous 7 days" });
-  assert.deepEqual(week.bars[0].tip, ["13 Oct · ₹45,000", "₹41,000 · previous 7 days"], "a day: '{day} · ₹X' / '₹Y · {cmpShort}'");
+  const week = salesChart({
+    points: [day("2026-10-13", "13 Oct", 45000, 41000, "6 Oct"), day("2026-10-14", "14 Oct", 30000, 32000, "7 Oct")],
+    mode: "day",
+    isToday: false,
+    currentHour: 12,
+    compareShort: "Previous 7 days",
+  });
+  // Fix round 1: a day's comparison is ONE aligned day, so it is named by its own date, never 'previous 7 days'.
+  assert.deepEqual(week.bars[0].tip, ["13 Oct · ₹45,000", "₹41,000 · 6 Oct"], "a day: '{day} · ₹X' / '₹Y · {its comparison day}'");
+  assert.equal(week.bars[0].aria, "13 Oct: ₹45,000. 6 Oct: ₹41,000", "…and its column's label too");
   assert.equal(week.bars[0].tick, "13 Oct", "a day's x label is its date");
 });
 
@@ -128,6 +136,10 @@ test("salesChart: the footer - Peak, Quietest (past hours only), 'So far vs last
   assert.equal(none.vsTone, "none", "…in the plain text colour");
   const quiet = salesChart({ points: [pt(11, 0, 200), pt(12, 0, 100)], mode: "hour", isToday: false, currentHour: 12, compareShort: "Week before" });
   assert.equal(quiet.peak, "—", "no sales: no peak");
+  assert.ok(quiet.bars.every((b) => b.tone !== "peak"), "…and no accent bar when every value is 0");
+  const padded = salesChart({ points: [pt(12, 100, 0), pt(13, 50, 0), pt(14, 0, 30)], mode: "hour", isToday: false, currentHour: 12, compareShort: "Week before" });
+  assert.equal(padded.bars[0].key, "10", "landmark: the window is padded from 10 am");
+  assert.equal(padded.low, "2 pm · ₹0", "Quietest is an hour of the span with sales, never a padded hour");
   const morning = salesChart({ points: [pt(15, 0, 200)], mode: "hour", isToday: true, currentHour: 8, compareShort: "Last Mon" });
   assert.equal(morning.low, "—", "before the first hour: no past hour, no quietest");
 });
@@ -153,4 +165,11 @@ test("xLabelStep and barGapPx: the HTML's every 2nd (every 3rd on a phone), more
   assert.equal(barGapPx(30, false), 8, "30 days keep the HTML's gap");
   assert.equal(barGapPx(92, false), 3, "a 92-day range narrows the gap so every bar keeps a width");
   assert.equal(barGapPx(92, true), 1, "…on a phone to 1px");
+});
+
+test("tipShift: a tooltip that would leave the card moves back inside it, one that fits stays centred", () => {
+  assert.equal(tipShift(40, 155, 14, 376), 0, "inside the card: no shift");
+  assert.equal(tipShift(290, 405, 14, 376), -29, "past the right edge: back by the overflow");
+  assert.equal(tipShift(2, 117, 14, 376), 12, "past the left edge: forward by the overflow");
+  assert.equal(tipShift(0, 500, 14, 376), 14, "wider than the card: its left edge stays inside");
 });

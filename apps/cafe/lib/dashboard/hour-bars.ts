@@ -35,6 +35,8 @@ export interface ChartBar {
   tip: [string, string];
   /** The column's accessible name. */
   aria: string;
+  /** Inside the span our series has (not a padded hour). */
+  inSpan: boolean;
 }
 
 export interface ChartModel {
@@ -121,12 +123,20 @@ export function salesChart(input: ChartInput): ChartModel {
   const cmps = points.map((p) => p.compareSales);
   const step = yStep(Math.max(0, ...vals, ...cmps));
   const top = step * STEP_COUNT;
-  const peakAt = vals.indexOf(Math.max(...vals));
+  // The accent marks the peak only when something sold (fix round 1: never a 2px accent floor on an empty day).
+  const peakAt = Math.max(...vals) > 0 ? vals.indexOf(Math.max(...vals)) : -1;
   const lower = input.compareShort.toLowerCase();
+  // The hours our series spans (first to last with sales in either series); the padding around them never counts as
+  // the quietest hour.
+  const spanHours = input.points.map((p) => Number(p.key));
+  const inSpan = (p: DashboardSeriesPoint) =>
+    !hour || (Number(p.key) >= Math.min(...spanHours) && Number(p.key) <= Math.max(...spanHours));
 
   const bars: ChartBar[] = points.map((p, i) => {
     const label = hour ? hourLabel(Number(p.key)) : p.label;
     const shown = future[i] ? "not yet" : inr(vals[i]);
+    // An hour is compared with the comparison day's same hour ("last mon"); a day with ONE aligned day, named by its date.
+    const against = hour ? lower : p.compareLabel;
     return {
       key: p.key,
       label,
@@ -136,8 +146,9 @@ export function salesChart(input: ChartInput): ChartModel {
       future: future[i],
       height: ((vals[i] / top) * PERCENT).toFixed(1),
       tone: future[i] ? "future" : i === peakAt ? "peak" : "bar",
-      tip: [`${label} · ${shown}`, `${inr(cmps[i])} · ${lower}`],
-      aria: `${label}: ${shown}. ${input.compareShort}: ${inr(cmps[i])}`,
+      tip: [`${label} · ${shown}`, `${inr(cmps[i])} · ${against}`],
+      aria: `${label}: ${shown}. ${hour ? input.compareShort : p.compareLabel}: ${inr(cmps[i])}`,
+      inSpan: inSpan(p),
     };
   });
 
@@ -146,7 +157,9 @@ export function salesChart(input: ChartInput): ChartModel {
     .join(" ");
 
   const past = bars.filter((b) => !b.future);
-  const low = past.reduce<ChartBar | undefined>((m, b) => (m === undefined || b.value < m.value ? b : m), undefined);
+  const low = past
+    .filter((b) => b.inSpan)
+    .reduce<ChartBar | undefined>((m, b) => (m === undefined || b.value < m.value ? b : m), undefined);
   const sumValues = vals.reduce((s, v) => s + v, 0);
   const sumCompare = past.reduce((s, b) => s + b.compare, 0);
   // Nothing to compare with: a dash, never the HTML's `sumC ? … : 0` "+0%" (our cafe may have no such day).
@@ -156,7 +169,7 @@ export function salesChart(input: ChartInput): ChartModel {
     bars,
     ticks: [3, 2, 1, 0].map((k) => kf(step * k)),
     line,
-    peak: n > 0 && vals[peakAt] ? `${bars[peakAt].label} · ${inr(vals[peakAt])}` : NONE,
+    peak: peakAt >= 0 ? `${bars[peakAt].label} · ${inr(vals[peakAt])}` : NONE,
     low: low ? `${low.label} · ${inr(low.value)}` : NONE,
     vsLabel: input.isToday ? `So far vs ${lower}` : `vs ${lower}`,
     vs: change === null ? NONE : `${change >= 0 ? "+" : ""}${change}%`,
@@ -191,4 +204,14 @@ const GAP_KEPT_UP_TO = 31;
 export function barGapPx(count: number, xs: boolean): number {
   const base = xs ? 3 : 8;
   return count <= GAP_KEPT_UP_TO ? base : Math.max(1, Math.round((base * GAP_KEPT_UP_TO) / count));
+}
+
+/**
+ * How far a tooltip moves to stay inside the card (fix round 1): 0 when it fits, back by its overflow at the right,
+ * forward by it at the left; a tooltip wider than the card keeps its left edge inside.
+ */
+export function tipShift(left: number, right: number, boxLeft: number, boxRight: number): number {
+  let dx = right > boxRight ? boxRight - right : 0;
+  if (left + dx < boxLeft) dx = boxLeft - left;
+  return dx;
 }

@@ -21,11 +21,11 @@ import { inrCompact } from "@/lib/dashboard/format";
 import { REPORT_CHART_LABEL_MAX_CHARS, type ReportChartBar, type ReportChartLine } from "@/components/reports/chart-size";
 
 // The Reports screens' own chart (Batch 1 — Sales/Payments day-by-day; Batch 2
-// adds a horizontal "Top 10 items" mode + a plain-count format). Same
-// Chart.js kit as the Dashboard's SalesChart (only that file and this one may
-// import chart.js — lib/dashboard-paths.test.ts's allow-list), loaded through
-// next/dynamic(ssr:false) by every page that uses it. Unlike SalesChart this
-// one can draw MORE THAN ONE bar series stacked (Payments' cash+online tally)
+// adds a horizontal "Top 10 items" mode + a plain-count format), on Chart.js —
+// the one file that may import chart.js (lib/dashboard-paths.test.ts's
+// allow-list; the Dashboard's own chart is CSS since U0 match Task 7), loaded
+// through next/dynamic(ssr:false) by every page that uses it. It can draw MORE
+// THAN ONE bar series stacked (Payments' cash+online tally)
 // and reports a click as a day/category index, so the page can open that
 // day's DaySheet or that item's ItemSheet — "a tap anywhere in a bar's row
 // selects it" (bars are too thin to hit precisely on a phone), matched with
@@ -268,7 +268,7 @@ export function ReportChart({ labels, bars, line, selected, onSelect, ariaLabel,
       </div>
       {/* The screen-reader copy of the chart, clipped to 1px (a <table> cannot
           be narrower than its cells, so sr-only on the table alone would still
-          widen the page — same fix as SalesChart's). */}
+          widen the page — the same fix as the Dashboard chart's). */}
       <div className="sr-only">
         <table>
           <caption>{ariaLabel}</caption>

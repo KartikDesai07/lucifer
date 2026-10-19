@@ -996,7 +996,7 @@ test("SalesCard: the HTML's head - 'Sales by hour', '{period} · open hours, …
     html.includes('<span class="w-3.5 border-t-2 border-dashed border-subtle-foreground"></span><span>Last Fri</span>'),
     "a 14px 2px dashed text-3 rule, then the HTML's cmpShort",
   );
-  assert.ok(html.includes('class="transition-opacity duration-200 mt-[18px]"'), "the plot row 18px under the head");
+  assert.ok(html.includes('class="transition-opacity duration-200 mt-[18px] min-h-[301px] @min-[560px]:min-h-[276px]"'), "the plot row 18px under the head, the body as tall as loading and empty hold");
   assert.ok(!html.includes("pointer-coarse"), "ruling R1: no touch enlargement");
 });
 
@@ -1024,6 +1024,12 @@ test("HourBars: the 210px plot with 70px grid lines, the ticks, eight columns, b
     expectAll(col, ["relative", "flex", "h-full", "flex-1", "items-end", "justify-center"], "a column");
   }
   assert.ok(cols[3].includes('aria-label="12 pm: ₹3,470. Last Fri: ₹2,630"'), "a column reads its hour and both figures");
+  // Fix round 1: one tab stop for the whole chart (a roving tabindex); the arrow keys, Home and End move along it and
+  // Escape hides the tooltip (WCAG 1.4.13).
+  assert.ok(cols[0].includes('tabindex="0"') && cols.slice(1).every((c) => c.includes('tabindex="-1"')), "only the first column is in the tab order");
+  const barsSrc = readSrc("components/dashboard/HourBars.tsx");
+  for (const key of ["ArrowRight", "ArrowLeft", "Home", "End", "Escape"]) assert.ok(barsSrc.includes(`"${key}"`), `the chart handles ${key}`);
+  assert.ok(barsSrc.includes("tipShift("), "the tooltip is kept inside the card (tipShift)");
   const bars = allTags(html, "sales-bar");
   assert.equal(bars.length, 8, "one bar per column");
   for (const bar of bars) expectAll(bar, ["w-full", "max-w-[34px]", "min-h-[2px]", "rounded-[5px_5px_2px_2px]", "origin-bottom", "motion-safe:animate-grow-y"], "a bar");
@@ -1063,11 +1069,11 @@ test("HourBars: the footer - 14px over a border-2 rule, Peak / Quietest / the co
     "the footer",
   );
   assert.ok(html.includes('<span>Peak <b class="font-semibold text-foreground">12 pm · ₹3,470</b></span>'), "the peak hour");
-  assert.ok(html.includes('<span>Quietest <b class="font-semibold text-foreground">9 am · ₹0</b></span>'), "the quietest past hour of the window");
+  assert.ok(html.includes('<span>Quietest <b class="font-semibold text-foreground">1 pm · ₹0</b></span>'), "the quietest past hour of the span with sales (never a padded hour)");
   assert.ok(html.includes('<span>So far vs last fri <b class="font-semibold text-status-bad-ink">-46%</b></span>'), "today: so far, a fall in the bad ink");
 });
 
-test("SalesCard: a span of days draws the same bars per day, 'Sales by day', the HTML's span words; empty and loading keep 276px", async () => {
+test("SalesCard: a span of days draws the same bars per day, 'Sales by day', the HTML's span words; empty and loading keep the body's height", async () => {
   const week = await salesCard({
     range: { from: "2026-10-10", to: TODAY },
     mode: "day",
@@ -1079,83 +1085,37 @@ test("SalesCard: a span of days draws the same bars per day, 'Sales by day', the
   assert.ok(week.includes("<span>Last 7 days</span>") && week.includes("<span>Previous 7 days</span>"), "the legend: the period and the HTML's cmpShort");
   assert.equal(allTags(week, "sales-bar").length, 7, "one bar per day");
   assert.ok(week.includes('<span>vs previous 7 days <b class="font-semibold text-status-ok-ink">+344%</b></span>'), "a span: 'vs …', no 'so far'");
-  assert.ok(allTags(week, "sales-col")[6].includes('aria-label="16 Oct: ₹7,000. Previous 7 days: ₹900"'), "a day's column reads its date");
+  // Fix round 1: a day's comparison is one aligned day, named by its own date (16 Oct against 9 Oct).
+  assert.ok(allTags(week, "sales-col")[6].includes('aria-label="16 Oct: ₹7,000. 9 Oct: ₹900"'), "a day's column reads its date and its comparison day");
   const empty = await salesCard({ series: [] });
   assert.ok(empty.includes("No sales yet") && !empty.includes('data-ui="sales-legend"'), "today with no sales keeps our empty state, no legend");
-  assert.ok(empty.includes('style="min-height:276px"'), "the empty body holds the loaded body's 276px");
+  // Fix round 1: the reserved body covers the phone's two-line footer (301px below cw 560) and the one-line 276px.
+  assert.ok(empty.includes("min-h-[301px] @min-[560px]:min-h-[276px]"), "the empty body holds the loaded body's height at every width");
   const { SalesCard } = await import("@/components/dashboard/RangeCards");
   const loading = renderToStaticMarkup(createElement(SalesCard, { ...ready(), data: undefined, status: "loading" }));
-  assert.ok(loading.includes('<div style="height:276px" class="flex mt-[18px]">'), "loading: a 276px skeleton 18px under the head");
+  assert.ok(loading.includes('<div class="flex mt-[18px] min-h-[301px] @min-[560px]:min-h-[276px]">'), "loading: the skeleton holds the same, 18px under the head");
 });
 
-// Our three table states (ruling R15): Free = Available, Eating = Occupied, Reserved = Reserved. We have no "Bill
-// printed" or "KOT pending" table state, so that segment and legend item are left out.
-const area = (id: string, name: string, displayOrder: number) => ({ _id: id, name, displayOrder, createdAt: "", updatedAt: "" });
-const AREAS = [area("a1", "AC Hall", 0), area("a2", "Garden", 1)];
-const floorTable = (tableNo: string, status: "Available" | "Occupied" | "Reserved", capacity: number, areaId?: string, currentOrderId?: string) => ({
-  _id: tableNo,
-  tableNo,
-  status,
-  capacity,
-  areaId,
-  currentOrderId,
-  createdAt: "",
-  updatedAt: "",
-});
-const TABLES = [
-  floorTable("T-1", "Reserved", 2, "a1"),
-  floorTable("T-2", "Available", 4, "a1"),
-  floorTable("T-4", "Occupied", 6, "a1", "ORD-5"),
-  floorTable("T-5", "Available", 4, "a2"),
-  floorTable("T-7", "Occupied", 8, "a2", "ORD-4"),
-  floorTable("T-9", "Available", 2),
-];
-const floorOrder = (orderId: string, status: "Pending" | "Completed", total: number) =>
-  ({ _id: orderId, orderId, status, total, createdAt: "2026-10-16T06:00:00.000Z", tableNo: "", items: [] }) as unknown as import("@/types").Order;
-const FLOOR_ORDERS = [floorOrder("ORD-5", "Pending", 768), floorOrder("ORD-4", "Completed", 439)];
-const RESERVATIONS = [
-  { _id: "r1", name: "Meera Vyas", mobile: "", date: TODAY, time: "19:00", guests: 2, tableNo: "T-1", status: "Booked", createdAt: "", updatedAt: "" },
-] as unknown as import("@/types").Reservation[];
-
-test("liveTablesModel: the sub line, the Free / Eating / Reserved counts, our areas as zones, each tile's second line", async () => {
-  const { liveTablesModel } = await import("@/components/dashboard/LiveFloorPanel");
-  const m = liveTablesModel({ tables: TABLES, orders: FLOOR_ORDERS, areas: AREAS, reservations: RESERVATIONS, nowMs: Date.parse("2026-10-16T06:41:30.000Z") });
-  assert.equal(m.sub, "2 of 6 in use · 1 reserved", "the HTML's '{inUse} of {total} in use · {reserved} reserved'");
-  assert.deepEqual(m.segments.map((s) => [s.label, s.n]), [["Free", 3], ["Eating", 2], ["Reserved", 1]], "our three states in the HTML's order, no Bill printed");
-  assert.deepEqual(m.zones.map((z) => z.label), ["AC Hall", "Garden", "Tables"], "our areas in their order, then the tables with none under 'Tables'");
-  assert.deepEqual(m.zones.map((z) => z.tiles.map((t) => t.table.tableNo)), [["T-1", "T-2", "T-4"], ["T-5", "T-7"], ["T-9"]], "each zone holds its tables in our order");
-  const tiles = m.zones.flatMap((z) => z.tiles);
-  assert.deepEqual(
-    tiles.map((t) => t.line),
-    ["7:00 PM", "4 seats", "₹768 · 41m", "4 seats", "Occupied", "2 seats"],
-    "free: seats; eating: the running bill and its minutes (a settled order is not running); reserved: the booking's time",
-  );
-  assert.equal(tiles[2].title, "T-4 · 6 seats · Occupied", "the HTML's tile title: name · seats · status");
-  assert.equal(tiles[2].order?.orderId, "ORD-5", "an occupied tile carries its order (it opens the detail sheet)");
-  assert.equal(tiles[4].order?.orderId, "ORD-4", "…a settled one too, as today");
-  assert.equal(tiles[1].order, undefined, "a free tile has no order");
-  const noClock = liveTablesModel({ tables: TABLES, orders: FLOOR_ORDERS, areas: AREAS, reservations: [], nowMs: null });
-  const flat = noClock.zones.flatMap((z) => z.tiles);
-  assert.equal(flat[2].line, "₹768", "before the clock is known: the bill alone");
-  assert.equal(flat[0].line, "Reserved", "a reserved table with no booking today says Reserved");
-  const noAreas = liveTablesModel({ tables: TABLES, orders: [], areas: undefined, reservations: undefined, nowMs: null });
-  assert.deepEqual(noAreas.zones.map((z) => [z.label, z.tiles.length]), [["Tables", 6]], "no areas loaded: one 'Tables' zone");
-});
-
+// Our table states onto the HTML's four (rulings R15, fix round 1): Free = Available, Eating = Occupied, Bill printed =
+// Occupied with a fresh first bill print on its running order, Reserved = Reserved (lib/dashboard/live-tables.ts, whose
+// own tests pin the mapping). We have no "KOT pending" state.
 test("LiveFloorPanel: the HTML's card - the pulsing dot, the 8px status bar, the legend, zone labels and 52px tiles per state", async () => {
   const { LiveFloorPanel } = await import("@/components/dashboard/LiveFloorPanel");
+  const { LIVE_AREAS, LIVE_ORDERS, LIVE_RESERVATIONS, LIVE_TABLES } = await import("@/lib/dashboard/live-tables.fixtures");
   const html = renderToStaticMarkup(
-    createElement(LiveFloorPanel, { tables: TABLES, orders: FLOOR_ORDERS, areas: AREAS, reservations: RESERVATIONS, onSelectOrder: noop }),
+    createElement(LiveFloorPanel, { tables: LIVE_TABLES, orders: LIVE_ORDERS, areas: LIVE_AREAS, reservations: LIVE_RESERVATIONS, onSelectOrder: noop }),
   );
   assert.ok(tagOf(html, "tables-card").startsWith("<section"), "the card names itself for the probes (data-ui tables-card)");
   hasAll(classesOf(html, "dash-card-title"), ["flex", "items-center", "gap-2", "text-[15px]", "font-semibold"], "the title row holds the dot 8px after the words");
   hasAll(classesOf(html, "tables-live-dot"), ["size-[7px]", "rounded-[50%]", "bg-status-ok", "motion-safe:animate-live-pulse"], "the 7px ok dot (the HTML's 50% radius), pulsing (motion-safe)");
-  assert.ok(html.includes(">2 of 6 in use · 1 reserved</p>"), "the sub line");
+  assert.ok(html.includes(">3 of 7 in use · 1 reserved</p>"), "the sub line (in use = eating + bill printed)");
   assert.match(html, /href="\/tables"[^>]*>Floor →<\/a>/, "the HTML's 'Floor →' link to our floor");
   hasAll(classesOf(html, "tables-bar"), ["flex", "h-2", "gap-0.5", "overflow-hidden", "rounded-[4px]"], "the status bar: 8px, radius 4, 2px apart");
   assert.ok(
-    html.includes('<span class="bg-status-ok" style="flex:3"></span><span class="bg-status-info" style="flex:2"></span><span class="bg-status-reserved" style="flex:1"></span>'),
-    "one segment per state, as wide as its count",
+    html.includes(
+      '<span class="bg-status-ok" style="flex:3"></span><span class="bg-status-info" style="flex:2"></span><span class="bg-status-bill" style="flex:1"></span><span class="bg-status-reserved" style="flex:1"></span>',
+    ),
+    "one segment per state, as wide as its count, in the HTML's order",
   );
   hasAll(classesOf(html, "tables-legend"), ["mt-2.5", "flex", "flex-wrap", "gap-x-3.5", "gap-y-1.5", "text-[12px]", "text-muted-foreground"], "the legend");
   hasAll(classesOf(html, "tables-legend-item"), ["flex", "items-center", "gap-1.5"], "a legend item");
@@ -1163,32 +1123,42 @@ test("LiveFloorPanel: the HTML's card - the pulsing dot, the 8px status bar, the
     html.includes('<span aria-hidden="true" class="size-2 rounded-[2px] bg-status-ok"></span><span>Free</span><b class="font-semibold text-foreground">3</b>'),
     "an 8px radius-2 swatch, the state, its count in 600",
   );
-  assert.ok(!html.includes("Bill printed") && !html.includes("bg-status-bill"), "no Bill printed state in our data");
+  assert.ok(
+    html.includes('<span aria-hidden="true" class="size-2 rounded-[2px] bg-status-bill"></span><span>Bill printed</span><b class="font-semibold text-foreground">1</b>'),
+    "the HTML's Bill printed item, from our first-print stamp",
+  );
   hasAll(
     classesOf(html, "tables-zone"),
     ["mt-4", "mb-[7px]", "text-[11px]", "font-semibold", "uppercase", "tracking-[0.06em]", "text-subtle-foreground"],
     "a zone label",
   );
-  assert.deepEqual(textsOf(html, "tables-zone"), ["AC Hall", "Garden", "Tables"], "the zones in order");
+  assert.deepEqual(textsOf(html, "tables-zone"), ["AC Hall", "Garden", "Other tables"], "the zones in order; the tables in no area as the Floor names them");
   hasAll(classesOf(html, "tables-grid"), ["grid", "grid-cols-[repeat(auto-fill,minmax(92px,1fr))]", "gap-1.5"], "92px tiles, 6px apart");
   const tiles = allTags(html, "table-tile");
-  assert.equal(tiles.length, 6, "every table is a tile");
+  assert.equal(tiles.length, 7, "every table is a tile");
   const base = ["flex", "h-[52px]", "min-w-0", "flex-col", "items-start", "gap-0.5", "rounded-[9px]", "border", "px-2", "py-[7px]", "text-left", "text-foreground", "hover:border-subtle-foreground", ...HTML_PRESS_CLASS.split(" ")];
   for (const t of tiles) expectAll(t, base, "a tile");
   expectAll(tiles[0], ["border-status-reserved-border", "bg-status-reserved-tint"], "reserved: res-t on res-b");
   expectAll(tiles[1], ["border-border", "bg-card"], "free: the surface on the border");
   expectAll(tiles[2], ["border-status-info-border", "bg-status-info-tint"], "eating: info-t on info-b");
-  assert.ok(tiles[2].startsWith("<button") && tiles[4].startsWith("<button"), "an occupied tile with an order opens it (our detail sheet)");
-  for (const i of [0, 1, 3, 5]) assert.ok(tiles[i].startsWith("<a") && tiles[i].includes('href="/tables"'), `tile ${i + 1} goes to the floor`);
+  expectAll(tiles[5], ["border-status-bill-border", "bg-status-bill-tint"], "bill printed: bill-t on bill-b");
+  for (const i of [2, 4, 5]) assert.ok(tiles[i].startsWith("<button"), `tile ${i + 1}: an occupied tile with an order opens it (our detail sheet)`);
+  for (const i of [0, 1, 3, 6]) assert.ok(tiles[i].startsWith("<a") && tiles[i].includes('href="/tables"'), `tile ${i + 1} goes to the floor`);
   assert.ok(tiles[2].includes('title="T-4 · 6 seats · Occupied"'), "the tile's title");
   hasAll(classesOf(html, "table-tile-name"), ["flex", "max-w-full", "items-center", "gap-[5px]", "text-[12.5px]", "font-semibold"], "line 1: 12.5/600, the dot 5px before the name");
   assert.ok(html.includes('<span aria-hidden="true" class="size-1.5 shrink-0 rounded-[50%] bg-status-reserved"></span><span class="truncate">T-1</span>'), "a 6px dot in the state's colour, then the name");
+  assert.ok(html.includes('<span aria-hidden="true" class="size-1.5 shrink-0 rounded-[50%] bg-status-bill"></span><span class="truncate">T-8</span>'), "bill printed: the bill dot");
   const lines = allTags(html, "table-tile-line");
   for (const l of lines) expectAll(l, ["max-w-full", "truncate", "text-[10.5px]", "font-medium"], "line 2: 10.5/500, one line");
   expectAll(lines[0], ["text-status-reserved-ink"], "reserved line in res-i");
   expectAll(lines[1], ["text-subtle-foreground"], "free line in text-3");
   expectAll(lines[2], ["text-status-info-ink"], "eating line in info-i");
-  assert.deepEqual(textsOf(html, "table-tile-line"), ["7:00 PM", "4 seats", "₹768", "4 seats", "Occupied", "2 seats"], "no clock in a static render: the bill alone");
+  expectAll(lines[5], ["text-status-bill-ink"], "bill printed line in bill-i");
+  assert.deepEqual(
+    textsOf(html, "table-tile-line"),
+    ["7:00 PM", "4 seats", "₹768", "4 seats", "Occupied", "Bill printed", "2 seats"],
+    "no clock in a static render: the bill alone",
+  );
   assert.ok(!html.includes("pointer-coarse"), "ruling R1");
   const page = readSrc(PAGE);
   assert.match(page, /const tableAreas = useTableAreas\(tables\.data\);/, "the page reads our areas (the persisted master, healed like the Floor's)");

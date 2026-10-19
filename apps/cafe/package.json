@@ -347,6 +347,7 @@
     "lib/dashboard/fold.test.ts",
     "lib/dashboard/labels.test.ts",
     "lib/dashboard/hour-bars.test.ts",
+    "lib/dashboard/live-tables.test.ts",
     "lib/dashboard-paths.test.ts",
     "lib/dashboard-layout-paths.test.ts",
     "lib/html-motion-paths.test.ts",

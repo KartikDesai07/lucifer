@@ -107,7 +107,9 @@ test("PIN: area headings appear ONLY on New Order, Move table and the dashboard'
 });
 
 test("PIN: the dashboard's Live tables group their tiles by area through the shared groupTablesByArea, fed by useTableAreas", () => {
-  const panel = code("apps/cafe/components/dashboard/LiveFloorPanel.tsx");
+  // Fix round 1: the model moved to lib/dashboard/live-tables.ts; the panel draws it.
+  assert.ok(code("apps/cafe/components/dashboard/LiveFloorPanel.tsx").includes("liveTablesModel("), "landmark: the panel draws the Live tables model");
+  const panel = code("apps/cafe/lib/dashboard/live-tables.ts");
   assert.match(panel, /groupTablesByArea\(tables, areas\)/, "the panel groups through the one grouping helper");
   assert.ok(panel.includes("NO_AREA_KEY"), "the no-area group is recognised by its shared key");
   const page = code("apps/cafe/app/(dashboard)/page.tsx");

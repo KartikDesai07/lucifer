@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { cn, inr } from "@/lib/utils";
-import { barGapPx, xLabelStep, type BarTone, type ChartModel } from "@/lib/dashboard/hour-bars";
+import { barGapPx, tipShift, xLabelStep, type BarTone, type ChartModel } from "@/lib/dashboard/hour-bars";
 
 // The owner's HTML bar chart (values 3.5, U0 match Task 7), drawn in CSS: no chart.js on the dashboard. A 210px plot
 // with a --border-2 line every 70px, Geist Mono ticks at its left, one column per hour (per day for a span) holding a
 // bar of at most 34px, the dashed comparison line over them, the x labels, then the footer. lib/dashboard/hour-bars
 // computes every number. A column is a button: hovering it, focusing it or tapping it (the cafe's touch tablets) shows
 // its tooltip and dims the other bars, as the HTML's hover does; the screen-reader table carries the whole series.
+// Fix round 1: the columns are one tab stop (a roving tabindex: the arrow keys, Home and End move along them), Escape
+// hides the tooltip (WCAG 1.4.13), and a tooltip that would leave the card is moved back inside it.
 
 const TONE_CLASS: Record<BarTone, string> = {
   peak: "bg-primary",
@@ -63,6 +65,32 @@ export function HourBars({ model, ariaLabel, currentName, compareName, period }:
   const [hovered, setHovered] = useState({ period, at: -1 });
   const hover = hovered.period === period ? hovered.at : -1;
   const setHover = (at: number) => setHovered({ period, at });
+  // The one column in the tab order: the last one focused (the first to begin with).
+  const [roving, setRoving] = useState(0);
+  const colRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const tipRef = useRef<HTMLSpanElement>(null);
+
+  // Escape hides the tooltip, whether the pointer or the focus opened it.
+  useEffect(() => {
+    if (hover < 0) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") setHovered({ period, at: -1 });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [hover, period]);
+
+  // The tooltip is laid out centred on its column (the HTML's), then moved back inside the card if it overflows it (the
+  // last column on a phone), so the page never grows wider than the screen.
+  useLayoutEffect(() => {
+    const tip = tipRef.current;
+    const card = tip?.closest("section");
+    if (!tip || !card) return;
+    tip.style.setProperty("--tip-dx", "0px");
+    const t = tip.getBoundingClientRect();
+    const c = card.getBoundingClientRect();
+    tip.style.setProperty("--tip-dx", `${tipShift(t.left, t.right, c.left, c.right)}px`);
+  }, [hover, period]);
   // The label row's width, so a month of days writes only as many dates as fit (hours always fit the HTML's rule).
   const rowRef = useRef<HTMLDivElement>(null);
   const [rowPx, setRowPx] = useState(0);
@@ -82,6 +110,13 @@ export function HourBars({ model, ariaLabel, currentName, compareName, period }:
   const chars = Math.max(0, ...model.bars.map((b) => b.tick.length));
   const stepWide = xLabelStep(n, rowPx, gapWide, chars, LABEL_STEP_WIDE);
   const stepXs = xLabelStep(n, rowPx, gapXs, chars, LABEL_STEP_XS);
+  const tabAt = Math.min(roving, n - 1);
+  const onColumnKey = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
+    const to = e.key === "ArrowRight" ? Math.min(n - 1, i + 1) : e.key === "ArrowLeft" ? Math.max(0, i - 1) : e.key === "Home" ? 0 : e.key === "End" ? n - 1 : null;
+    if (to === null) return;
+    e.preventDefault();
+    colRefs.current[to]?.focus();
+  };
 
   return (
     <div data-ui="sales-chart">
@@ -114,11 +149,19 @@ export function HourBars({ model, ariaLabel, currentName, compareName, period }:
                 <button
                   key={b.key}
                   type="button"
+                  ref={(el) => {
+                    colRefs.current[i] = el;
+                  }}
                   data-ui="sales-col"
                   aria-label={b.aria}
+                  tabIndex={i === tabAt ? 0 : -1}
                   className="relative flex h-full flex-1 items-end justify-center outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   onMouseEnter={() => setHover(i)}
-                  onFocus={() => setHover(i)}
+                  onFocus={() => {
+                    setHover(i);
+                    setRoving(i);
+                  }}
+                  onKeyDown={(e) => onColumnKey(e, i)}
                   onClick={() => setHover(i)}
                   onBlur={() => setHovered((h) => (h.period === period && h.at === i ? { period, at: -1 } : h))}
                 >
@@ -133,10 +176,11 @@ export function HourBars({ model, ariaLabel, currentName, compareName, period }:
                   />
                   {hover === i && (
                     <span
+                      ref={tipRef}
                       data-ui="sales-tip"
                       aria-hidden
-                      className="pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-[8px] bg-ink px-2.5 py-[7px] text-start text-[12px] leading-[1.45] text-on-ink"
-                      style={{ bottom: `calc(${b.height}% + 8px)` }}
+                      className="pointer-events-none absolute left-1/2 z-[2] whitespace-nowrap rounded-[8px] bg-ink px-2.5 py-[7px] text-start text-[12px] leading-[1.45] text-on-ink"
+                      style={{ bottom: `calc(${b.height}% + 8px)`, transform: "translateX(calc(-50% + var(--tip-dx, 0px)))" }}
                     >
                       <span data-ui="sales-tip-head" className="block font-semibold">
                         {b.tip[0]}
