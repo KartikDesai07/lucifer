@@ -9,6 +9,7 @@ import { useSettings } from "@/hooks/use-settings";
 import { brandFontVariables } from "@/lib/brand-fonts";
 import { requestScreenLock, screenLockLine } from "@/lib/screen-lock";
 import { cn } from "@/lib/utils";
+import { BRAND_NAV_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { NavDeviceLine } from "@/components/layout/NavDeviceLine";
 import { ChangePasswordDialog } from "@/components/shared/ChangePasswordDialog";
 import {
@@ -53,7 +54,10 @@ export function SidebarAccount() {
             type="button"
             title={name}
             data-ui="nav-user"
-            className="flex w-full flex-none items-center justify-center gap-2.5 rounded-[10px] px-0 py-1.5 text-left text-white outline-none transition-[background-color,color,transform] duration-[160ms] ease-[ease] hover:bg-nav-on focus-visible:ring-2 focus-visible:ring-brand-nav-focus active:scale-[0.97] data-[state=open]:bg-nav-on wide:justify-start wide:p-2"
+            className={cn(
+              "flex w-full flex-none items-center justify-center gap-2.5 rounded-[10px] px-0 py-1.5 text-left text-white hover:bg-nav-on data-[state=open]:bg-nav-on wide:justify-start wide:p-2",
+              BRAND_NAV_PRESS_CLASS,
+            )}
           >
             {/* The HTML's 34px avatar, 13px initials; its 11px online dot ringed in the nav colour. */}
             <StaffAvatar
@@ -66,7 +70,7 @@ export function SidebarAccount() {
               <span data-ui="nav-user-name" className="truncate text-[13.5px] font-semibold">
                 {name}
               </span>
-              <NavDeviceLine lead={role} dataUi="nav-user-line" className="whitespace-nowrap text-[12px] text-nav-t2" />
+              <NavDeviceLine lead={role} dataUi="nav-user-line" className="truncate text-[12px] text-nav-t2" />
             </span>
           </button>
         </DropdownMenuTrigger>

@@ -212,7 +212,7 @@ test('PIN: SettingsSaveBar.tsx early-returns on !isDirty, both its buttons carry
 
 // ── 8. AppSidebar / SidebarSettingsGroup: collapsible sub-menu wiring ──────
 
-test("PIN: AppSidebar.tsx (+ the extracted SidebarSettingsGroup.tsx) import SidebarMenuSub + SETTINGS_SECTIONS, contain setOpenMobile(false), and the Collapsible's chevron carries group-data-[state=open]/collapsible:rotate-90 — the sidebar Settings entry expands in place instead of navigating away", () => {
+test("PIN: the nav's Settings row (AppSidebar + SidebarSettingsGroup + nav-parts) is a NavGroupRow of NavSubItem rows over VISIBLE_SETTINGS_SECTIONS, contains setOpenMobile(false), and its chevron carries group-data-[state=open]/collapsible:rotate-90 — the Settings entry expands in place instead of navigating away", () => {
   const appSidebarSrc = stripComments(readSrc(APP_SIDEBAR));
   const groupFileExists = existsSync(absOf(SIDEBAR_SETTINGS_GROUP));
   const groupSrc = groupFileExists ? stripComments(readSrc(SIDEBAR_SETTINGS_GROUP)) : "";

@@ -4,7 +4,7 @@
 // the label), a flat row and a sub-page row (each lends its look and lit state to the Link inside it), and a row with
 // sub-pages, which opens its sub-rows under it in the wide form and a flyout to its right in the rail (design 5.2).
 // Which form shows is CSS (the `wide` variant); JS only needs it to decide what a tap on a row with sub-pages does.
-import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { ChevronRight } from "lucide-react";
 
@@ -106,8 +106,8 @@ interface NavGroupRowProps {
   wide: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** The sub-page rows, for either place. */
-  children: (place: NavSubPlace) => ReactNode;
+  /** Renders the sub-page rows, for either place. */
+  subRows: (place: NavSubPlace) => ReactNode;
 }
 
 /** A row with sub-pages (Menu, Tables, Reports, Settings). The row is a button, never a Link: in the phone's sheet a
@@ -120,38 +120,43 @@ export function NavGroupRow({
   wide,
   open,
   onOpenChange,
-  children,
+  subRows,
 }: NavGroupRowProps) {
   const [flyOpen, setFlyOpen] = useState(false);
+  // The flyout belongs to the rail: a nav that turns wide (a wider window, Expand) closes it.
+  useEffect(() => {
+    if (wide) setFlyOpen(false);
+  }, [wide]);
+
+  // One row: in the wide form a plain disclosure for the sub-rows under it; in the rail the flyout's trigger (the
+  // Popover trigger adds aria-haspopup and its own aria-expanded there only). The server and the first client render
+  // know no form, so they render the rail's; the visuals are CSS either way.
+  const row = (
+    <button
+      type="button"
+      title={title}
+      data-ui="nav-item"
+      data-active={isActive}
+      data-sub-current={isActive && ariaCurrent !== "page"}
+      aria-current={ariaCurrent}
+      aria-expanded={wide ? open : flyOpen}
+      className={BRAND_NAV_GROUP_ROW_CLASS}
+      onClick={wide ? () => onOpenChange(!open) : undefined}
+    >
+      <NavRowContent icon={icon} title={title}>
+        <ChevronRight
+          aria-hidden="true"
+          className="hidden size-4 flex-none text-nav-t2 transition-transform duration-200 wide:block group-data-[state=open]/collapsible:rotate-90"
+        />
+      </NavRowContent>
+    </button>
+  );
 
   return (
     <li className="relative">
       <Collapsible open={open} onOpenChange={onOpenChange} className="group/collapsible">
         <Popover open={flyOpen} onOpenChange={setFlyOpen}>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              title={title}
-              data-ui="nav-item"
-              data-active={isActive}
-              data-sub-current={isActive && ariaCurrent !== "page"}
-              aria-current={ariaCurrent}
-              aria-expanded={wide ? open : flyOpen}
-              className={BRAND_NAV_GROUP_ROW_CLASS}
-              onClick={(event) => {
-                if (!wide) return; // the rail: the trigger opens the flyout
-                event.preventDefault();
-                onOpenChange(!open);
-              }}
-            >
-              <NavRowContent icon={icon} title={title}>
-                <ChevronRight
-                  aria-hidden="true"
-                  className="hidden size-4 flex-none text-nav-t2 transition-transform duration-200 wide:block group-data-[state=open]/collapsible:rotate-90"
-                />
-              </NavRowContent>
-            </button>
-          </PopoverTrigger>
+          {wide ? row : <PopoverTrigger asChild>{row}</PopoverTrigger>}
           <PopoverContent
             side="right"
             align="start"
@@ -162,7 +167,7 @@ export function NavGroupRow({
             }}
           >
             <p className="px-2.5 pb-1 pt-1.5 text-[12px] font-semibold text-muted-foreground">{title}</p>
-            <ul className="flex flex-col">{children("fly")}</ul>
+            <ul className="flex flex-col">{subRows("fly")}</ul>
           </PopoverContent>
         </Popover>
         <CollapsibleContent
@@ -171,7 +176,7 @@ export function NavGroupRow({
             "motion-safe:data-[state=closed]:animate-collapsible-up motion-safe:data-[state=open]:animate-collapsible-down",
           )}
         >
-          <ul className="mt-0.5 flex flex-col gap-0.5">{children("rows")}</ul>
+          <ul className="mt-0.5 flex flex-col gap-0.5">{subRows("rows")}</ul>
         </CollapsibleContent>
       </Collapsible>
     </li>

@@ -33,8 +33,14 @@ export function SidebarReportsGroup({
   onNavigate,
 }: SidebarReportsGroupProps) {
   return (
-    <NavGroupRow title={title} icon={icon} wide={wide} isActive={onReports} open={reportsOpen} onOpenChange={onReportsOpenChange}>
-      {(place) =>
+    <NavGroupRow
+      title={title}
+      icon={icon}
+      wide={wide}
+      isActive={onReports}
+      open={reportsOpen}
+      onOpenChange={onReportsOpenChange}
+      subRows={(place) =>
         REPORT_SECTIONS.map((section) => {
           const href = reportSectionPath(section.slug);
           const active = pathname === href;
@@ -45,8 +51,7 @@ export function SidebarReportsGroup({
               </Link>
             </NavSubItem>
           );
-        })
-      }
-    </NavGroupRow>
+        })}
+    />
   );
 }

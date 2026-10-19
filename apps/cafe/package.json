@@ -306,6 +306,7 @@
     "lib/sidebar-paths.test.ts",
     "lib/sidebar-order-paths.test.ts",
     "lib/nav-device-name.test.ts",
+    "lib/nav-shell.test.ts",
     "lib/warm-routes.test.ts",
     "lib/pending-writes.test.ts",
     "lib/settle-flow.test.ts",

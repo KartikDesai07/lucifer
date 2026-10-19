@@ -53,8 +53,14 @@ export function SidebarMenuGroup({
   }
 
   return (
-    <NavGroupRow title={title} icon={icon} wide={wide} isActive={onMenu} open={menuOpen} onOpenChange={onMenuOpenChange}>
-      {(place) =>
+    <NavGroupRow
+      title={title}
+      icon={icon}
+      wide={wide}
+      isActive={onMenu}
+      open={menuOpen}
+      onOpenChange={onMenuOpenChange}
+      subRows={(place) =>
         MENU_SECTIONS.filter((section) => sections.includes(section)).map((section) => {
           const active = isActivePath(pathname, section.href);
           return (
@@ -64,8 +70,7 @@ export function SidebarMenuGroup({
               </Link>
             </NavSubItem>
           );
-        })
-      }
-    </NavGroupRow>
+        })}
+    />
   );
 }

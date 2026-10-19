@@ -30,8 +30,14 @@ export function SidebarTablesGroup({ title, icon, wide, pathname, onNavigate }: 
 
   // Lit on ANY manage page (never on the Floor, which has its own row).
   return (
-    <NavGroupRow title={title} icon={icon} wide={wide} isActive={onManage} open={open} onOpenChange={setOpen}>
-      {(place) =>
+    <NavGroupRow
+      title={title}
+      icon={icon}
+      wide={wide}
+      isActive={onManage}
+      open={open}
+      onOpenChange={setOpen}
+      subRows={(place) =>
         TABLES_MANAGE_SECTIONS.map((section) => {
           const active = isTableSectionActive(pathname, section.href);
           return (
@@ -41,8 +47,7 @@ export function SidebarTablesGroup({ title, icon, wide, pathname, onNavigate }: 
               </Link>
             </NavSubItem>
           );
-        })
-      }
-    </NavGroupRow>
+        })}
+    />
   );
 }

@@ -289,11 +289,8 @@ test("PIN: the brand block is a link to the Dashboard that closes the phone shee
   assert.ok(!/naturalWidth|WIDE_LOGO/.test(brand), "no logo-shape rule may hide the real logo in the rail");
   assert.match(brand, /size-\[34px\] flex-none rounded-\[9px\] bg-white object-contain/, "the logo fills the HTML's 34px tile on white");
   assert.match(brand, /object-contain/, "and scaled, never cropped");
-  assert.match(
-    app,
-    /const tileLogoUrl = logoUrl !== null \|\| productLogoUrl !== null \? displayLogoUrl : null;/,
-    "the tile shows the logo chain's pick only when a logo was uploaded",
-  );
+  // Ruling R3: only the cafe's own logo reaches the tile (lib/branding-paths.test.ts item 10).
+  assert.match(app, /<SidebarBrand[^>]*logoUrl=\{logoUrl\}/, "the tile gets the cafe's logo, or null for the initial");
 });
 
 // UI batch 1 C (2026-09-29) — "the Dashboard link sometimes does not respond".

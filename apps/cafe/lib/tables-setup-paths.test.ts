@@ -225,7 +225,7 @@ function checkTablesGroup(src: string): void {
   );
 }
 
-test("PIN: the Tables sidebar group renders from TABLE_SECTIONS, lights and announces each sub-row, and the collapsed Link lights on any Tables page", () => {
+test("PIN: the Tables nav group renders its sub-rows from TABLES_MANAGE_SECTIONS, lights and announces each, and its row lights on any manage page (never the Floor)", () => {
   checkTablesGroup(readSrc(TABLES_GROUP));
 });
 

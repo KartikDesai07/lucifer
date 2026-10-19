@@ -109,6 +109,31 @@ test("the printer button is the outline square", () => {
   assert.match(PRINTER, /variant="outline"/, "PrinterStatusButton must use the outline variant");
 });
 
+// Fix round 1: the device name in "{product} · {device}" / "{role} · {device}" is free text, so both second lines
+// cut a long one with an ellipsis instead of running out of the nav.
+test("the brand and user second lines truncate a long device name", () => {
+  const brand = read("components/layout/SidebarBrand.tsx");
+  const line = (src: string, ui: string): string[] =>
+    src.match(new RegExp(`dataUi="${ui}" className="([^"]*)"`))?.[1].split(/\s+/) ?? [];
+  for (const [src, ui] of [[brand, "nav-brand-line"], [ACCOUNT, "nav-user-line"]] as const) {
+    const tokens = line(src, ui);
+    assert.ok(tokens.length > 0, `landmark: the ${ui} class string was read`);
+    assert.ok(tokens.includes("truncate"), `${ui} must truncate (overflow hidden + ellipsis)`);
+  }
+});
+
+test("the Collapse button and the user card share the nav's press string; the Collapse class lives with the nav classes", () => {
+  assert.match(CLASSES, /export const BRAND_NAV_PRESS_CLASS =/, "the press/transition string is exported");
+  const collapse = CLASSES.match(/export const BRAND_NAV_COLLAPSE_CLASS =\s*"([^"]*)"/)?.[1].split(/\s+/) ?? [];
+  for (const token of ["hidden", "xl:flex", "h-[34px]", "rounded-[8px]", "px-2.5", "gap-2.5", "text-[12.5px]", "text-nav-t2", "wide:justify-start"]) {
+    assert.ok(collapse.includes(token), `BRAND_NAV_COLLAPSE_CLASS must carry the HTML's ${token}`);
+  }
+  assert.match(CLASSES, /export const BRAND_NAV_COLLAPSE_CLASS =[^;]*BRAND_NAV_PRESS_CLASS/, "Collapse uses the press string");
+  assert.match(SIDEBAR, /className=\{BRAND_NAV_COLLAPSE_CLASS\}/, "AppSidebar's Collapse button uses the shared class");
+  assert.match(ACCOUNT, /BRAND_NAV_PRESS_CLASS/, "the user card uses the press string");
+  assert.ok(!SIDEBAR.includes("active:scale-[0.97]") && !ACCOUNT.includes("active:scale-[0.97]"), "no inline copy of the press string");
+});
+
 test("the user card reads on dark: white name, the nav-t2 role line, and an avatar with the online dot", () => {
   assert.match(ACCOUNT, /data-ui="nav-user"[^>]*text-white/, "the user card's text is white");
   assert.match(ACCOUNT, /text-nav-t2/, "the role line must be text-nav-t2");

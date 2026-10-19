@@ -49,8 +49,8 @@ export const BRAND_CHECKBOX_SQUARE_CLASS = "size-5 rounded-[4px]";
 // --nav-on with the 3px blue bar at the window's edge; aria-current, the bar
 // and the white label carry the state, never the fill alone.
 
-/** The HTML's button feel (values 1.4): colours ease in 160 ms, a press scales to 97 %. */
-const NAV_PRESS =
+/** The HTML's button feel (values 1.4): colours ease in 160 ms, a press scales to 97 %; the nav's focus ring. */
+export const BRAND_NAV_PRESS_CLASS =
   "outline-none transition-[background-color,color,transform] duration-[160ms] ease-[ease] focus-visible:ring-2 focus-visible:ring-brand-nav-focus active:scale-[0.97]";
 
 const NAV_ACTIVE = "data-[active=true]:bg-nav-on data-[active=true]:text-white";
@@ -67,7 +67,7 @@ export const BRAND_NAV_SCROLL_CLASS =
 /** A top-level row: 60x52 in the rail (the icon over a 10.5px label), 38px tall at 13.5px in the wide form. */
 export const BRAND_NAV_ITEM_CLASS =
   "group/item relative flex w-full flex-none flex-col items-center gap-1 rounded-[8px] px-0 pb-1.5 pt-2 text-left text-[10.5px] font-medium text-nav-t hover:bg-nav-on hover:text-white wide:min-h-[38px] wide:flex-row wide:gap-2.5 wide:px-2.5 wide:py-0 wide:text-[13.5px] " +
-  NAV_PRESS +
+  BRAND_NAV_PRESS_CLASS +
   " " +
   NAV_ACTIVE;
 
@@ -98,13 +98,18 @@ export const BRAND_NAV_SEPARATOR_CLASS = "mx-3.5 my-2 h-px flex-none bg-nav-2 wi
 /** A sub-page row under an expanded row (wide form): 34px, 13px, its text at the parent label's x. */
 export const BRAND_NAV_SUB_ITEM_CLASS =
   "peer/sub relative ml-[30px] flex h-[34px] min-w-0 items-center rounded-[8px] px-2.5 text-[13px] font-medium text-nav-t hover:bg-nav-on hover:text-white " +
-  NAV_PRESS +
+  BRAND_NAV_PRESS_CLASS +
   " " +
   NAV_ACTIVE;
 
 /** The active sub-row's bar, at the window's edge like a row's. */
 export const BRAND_NAV_SUB_BAR_CLASS =
   "pointer-events-none absolute -left-2.5 top-[9px] bottom-[9px] w-[3px] rounded-r-[3px] bg-brand-accent opacity-0 [transition:opacity_.25s] peer-data-[active=true]/sub:opacity-100";
+
+/** Collapse / Expand: 1280 px and up only, 34px, 12.5px nav-t2; the chevron alone when collapsed. */
+export const BRAND_NAV_COLLAPSE_CLASS =
+  "hidden h-[34px] w-full flex-none items-center justify-center gap-2.5 rounded-[8px] px-2.5 text-[12.5px] text-nav-t2 hover:bg-nav-on hover:text-white xl:flex wide:justify-start " +
+  BRAND_NAV_PRESS_CLASS;
 
 /** The rail's flyout: the profile sheet's panel (values 2.7: surface, 1px border, radius 14, the pop shadow). */
 export const BRAND_NAV_FLYOUT_CLASS =

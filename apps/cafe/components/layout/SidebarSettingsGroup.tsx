@@ -49,8 +49,7 @@ export function SidebarSettingsGroup({
       aria-current={onHub ? "page" : undefined}
       open={settingsOpen}
       onOpenChange={onSettingsOpenChange}
-    >
-      {(place) =>
+      subRows={(place) =>
         VISIBLE_SETTINGS_SECTIONS.map((section) => {
           const href = settingsSectionPath(section.slug);
           const active = pathname === href;
@@ -61,8 +60,7 @@ export function SidebarSettingsGroup({
               </Link>
             </NavSubItem>
           );
-        })
-      }
-    </NavGroupRow>
+        })}
+    />
   );
 }

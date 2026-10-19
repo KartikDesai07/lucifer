@@ -9,15 +9,17 @@ import { useAuth } from "@/hooks/use-auth";
 import { useWarmRoutes } from "@/hooks/use-warm-routes";
 import { useSettings } from "@/hooks/use-settings";
 import { brandFontVariables } from "@/lib/brand-fonts";
-import { brandingUrl, productImageUrl } from "@/lib/images";
+import { productImageUrl } from "@/lib/images";
 import { APP_NAME } from "@/lib/constants";
 import { isActivePath } from "@/lib/nav-active";
+import { litNavRow } from "@/lib/nav-lit-row";
 import { printConfigOf } from "@/lib/print";
 import { SETTINGS_BASE_PATH } from "@/lib/settings-sections";
 import { REPORTS_BASE_PATH } from "@/lib/report-sections";
 import { isMenuPath } from "@/lib/menu-sections";
 import {
   BRAND_NAV_CLASS,
+  BRAND_NAV_COLLAPSE_CLASS,
   BRAND_NAV_LABEL_CLASS,
   BRAND_NAV_SCROLL_CLASS,
   BRAND_NAV_SEPARATOR_CLASS,
@@ -153,9 +155,11 @@ export function AppSidebar() {
 
   // Keep the lit row in view: on a short screen (or with Settings'/Reports'
   // list open) it can sit below the fold. Waits out the list's open animation.
+  // In the rail a sub-page's own row is not rendered, so litNavRow falls back
+  // to the lit group row (lib/nav-lit-row.ts).
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      navRef.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest" });
+      if (navRef.current) litNavRow(navRef.current)?.scrollIntoView({ block: "nearest" });
     }, SCROLL_AFTER_OPEN_MS);
     return () => window.clearTimeout(timer);
   }, [pathname, settingsOpen, reportsOpen, menuOpen]);
@@ -165,15 +169,10 @@ export function AppSidebar() {
   const settings = useSettings();
   const brandName = settings.data?.restaurantName?.trim() || APP_NAME;
   const tokensOn = printConfigOf(settings.data).token.enabled;
+  // The brand tile shows the cafe's own uploaded logo, else the cafe's initial
+  // on the brand red (design 5.2, ruling R3). The product's logo stays the tab
+  // icon and the login page's mark; it never stands in for the cafe here.
   const logoUrl = productImageUrl(settings.data?.logo, undefined, { fit: true });
-  // The restaurant logo takes priority, then the saved product logo, then the
-  // unversioned branding URL (the route answers with the product's built-in
-  // mark) — the same chain the login screen renders. The brand tile shows it
-  // only when a logo was uploaded; otherwise it shows the cafe's initial on
-  // the brand red, the HTML's tile (design 5.2).
-  const productLogoUrl = productImageUrl(settings.data?.productLogo, undefined, { fit: true });
-  const displayLogoUrl = logoUrl ?? productLogoUrl ?? brandingUrl("productLogo");
-  const tileLogoUrl = logoUrl !== null || productLogoUrl !== null ? displayLogoUrl : null;
 
   const visibleSections = sections
     .map((section) => ({
@@ -246,7 +245,7 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <div className={`${brandFontVariables} flex min-h-0 flex-1 flex-col`}>
         <nav ref={navRef} aria-label="Main" data-ui="nav" className={BRAND_NAV_CLASS}>
-          <SidebarBrand key={tileLogoUrl ?? "initial"} brandName={brandName} logoUrl={tileLogoUrl} onNavigate={closeMobile} />
+          <SidebarBrand key={logoUrl ?? "initial"} brandName={brandName} logoUrl={logoUrl} onNavigate={closeMobile} />
 
           <div className={BRAND_NAV_SCROLL_CLASS}>
             {visibleSections.map((section, index) => {
@@ -274,7 +273,7 @@ export function AppSidebar() {
             aria-label={collapsed ? "Expand the menu" : "Collapse the menu"}
             data-ui="nav-collapse"
             onClick={toggleSidebar}
-            className="hidden h-[34px] w-full flex-none items-center justify-center gap-2.5 rounded-[8px] px-2.5 text-[12.5px] text-nav-t2 outline-none transition-[background-color,color,transform] duration-[160ms] ease-[ease] hover:bg-nav-on hover:text-white focus-visible:ring-2 focus-visible:ring-brand-nav-focus active:scale-[0.97] xl:flex wide:justify-start"
+            className={BRAND_NAV_COLLAPSE_CLASS}
           >
             <ChevronRight aria-hidden="true" strokeWidth={1.8} className="size-[18px] flex-none wide:rotate-180" />
             <span className="hidden wide:inline">Collapse</span>

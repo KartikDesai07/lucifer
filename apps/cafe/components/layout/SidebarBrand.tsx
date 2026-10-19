@@ -66,7 +66,7 @@ export function SidebarBrand({ brandName, logoUrl, onNavigate }: SidebarBrandPro
         >
           {brandName}
         </span>
-        <NavDeviceLine lead={VENDOR_PRODUCT_NAME} dataUi="nav-brand-line" className="whitespace-nowrap text-[12px] text-nav-t2" />
+        <NavDeviceLine lead={VENDOR_PRODUCT_NAME} dataUi="nav-brand-line" className="truncate text-[12px] text-nav-t2" />
       </span>
     </Link>
   );
