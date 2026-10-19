@@ -14,9 +14,10 @@ import { APP_NAME } from "@/lib/constants";
 import { isActivePath } from "@/lib/nav-active";
 import { litNavRow } from "@/lib/nav-lit-row";
 import { printConfigOf } from "@/lib/print";
-import { SETTINGS_BASE_PATH } from "@/lib/settings-sections";
-import { REPORTS_BASE_PATH } from "@/lib/report-sections";
-import { isMenuPath } from "@/lib/menu-sections";
+import { SETTINGS_BASE_PATH, VISIBLE_SETTINGS_SECTIONS, settingsSectionPath } from "@/lib/settings-sections";
+import { REPORTS_BASE_PATH, REPORT_SECTIONS, reportSectionPath } from "@/lib/report-sections";
+import { MENU_ITEMS_PATH, isMenuPath, visibleMenuSections } from "@/lib/menu-sections";
+import { TABLES_MANAGE_SECTIONS, TABLES_SETUP_PATH } from "@/lib/table-sections";
 import {
   BRAND_NAV_CLASS,
   BRAND_NAV_COLLAPSE_CLASS,
@@ -48,14 +49,15 @@ import { Sidebar, useSidebar } from "@/components/ui/sidebar";
 
 // The staff nav, the owner's HTML (values 2.3, design 5.2; U0 Task 2): the
 // 232px sidebar from 1280px (collapsible to the rail), the 76px rail from
-// 720px, and on a phone the nav sheet (until the tab bar). Its classes are in
+// 720px, and nothing on a phone, where the tab bar and its More sheet take
+// over (components/layout/TabBar.tsx, from NAV_SECTIONS). Its classes are in
 // components/brand/brand-classes.ts; which form shows is CSS (the `wide`
 // variant in app/globals.css), so the server and the first paint already
 // agree with the screen. The two groups are the HTML's Operate and Manage,
 // with the HTML's words where it has the screen ("Home", "Order", and
 // "Bookings" for Reservations in the rail).
 
-type NavItemDef = {
+export type NavItemDef = {
   title: string;
   url: string;
   icon: NavIcon;
@@ -71,9 +73,10 @@ type NavItemDef = {
 /** `warm`: the service screens staff hop between all shift — kept fully
  *  prefetched (hooks/use-warm-routes.ts) so opening one never waits for the
  *  network. Setup and admin screens load on click as before. */
-type NavSection = { label: string; warm?: boolean; items: NavItemDef[] };
+export type NavSection = { label: string; warm?: boolean; items: NavItemDef[] };
 
-const sections: NavSection[] = [
+/** The nav's rows: the one list the sidebar, the rail and the phone's tab bar and More sheet (TabBar.tsx) read. */
+export const NAV_SECTIONS: NavSection[] = [
   {
     label: "Operate",
     warm: true,
@@ -106,22 +109,54 @@ const sections: NavSection[] = [
   },
 ];
 
+/** The rows this person sees: the admin-only ones for an admin, Now Serving while tokens are on; empty groups go. */
+export function visibleNavSections(isAdmin: boolean, tokensOn: boolean): NavSection[] {
+  return NAV_SECTIONS
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => !item.adminOnly || isAdmin).filter((item) => !item.tokensOnly || tokensOn),
+    }))
+    .filter((section) => section.items.length > 0);
+}
+
+/** A sub-page of a row with sub-pages. */
+export type NavSubPage = { title: string; href: string };
+
+/** The sub-pages of a row with sub-pages (Menu, Tables, Reports, Settings), from the lists their nav rows render;
+ *  none for a plain row, or for Menu when staff see only Items (that row is then a plain link). */
+export function navSubPages(url: string, isAdmin: boolean): NavSubPage[] {
+  switch (url) {
+    case MENU_ITEMS_PATH: {
+      const sections = visibleMenuSections(isAdmin);
+      return sections.length <= 1 ? [] : sections.map((s) => ({ title: s.title, href: s.href }));
+    }
+    case TABLES_SETUP_PATH:
+      return TABLES_MANAGE_SECTIONS.filter((s) => isAdmin || !s.adminOnly).map((s) => ({ title: s.title, href: s.href }));
+    case REPORTS_BASE_PATH:
+      return REPORT_SECTIONS.map((s) => ({ title: s.title, href: reportSectionPath(s.slug) }));
+    case SETTINGS_BASE_PATH:
+      return VISIBLE_SETTINGS_SECTIONS.map((s) => ({ title: s.title, href: settingsSectionPath(s.slug) }));
+    default:
+      return [];
+  }
+}
+
 /** Just longer than the Settings list's open animation (0.2s). */
 const SCROLL_AFTER_OPEN_MS = 250;
 
 export function AppSidebar() {
   const { state, isMobile, setOpenMobile, toggleSidebar } = useSidebar();
-  // The phone sheet always shows the wide form, whatever the desktop nav was
-  // last left as (the collapsed state is remembered on this device).
+  // The collapsed state is remembered on this device; a phone has no nav.
   const collapsed = state === "collapsed" && !isMobile;
-  const wide = useNavWide(collapsed, isMobile);
+  const wide = useNavWide(collapsed);
   const pathname = usePathname();
   const { isAdmin } = useAuth();
   const labelId = useId();
   const navRef = useRef<HTMLElement>(null);
 
-  // Closes the phone Sheet after any nav tap — shadcn/ui's sidebar primitive
-  // leaves this to the consumer (research brief, PR #8402).
+  // The rows' tap hook. It closed the phone's nav sheet; a phone has no nav
+  // since the tab bar (U0 Task 4: components/ui/sidebar.tsx renders nothing
+  // below 720px), so it never finds one open now.
   const closeMobile = () => {
     if (isMobile) setOpenMobile(false);
   };
@@ -174,12 +209,7 @@ export function AppSidebar() {
   // icon and the login page's mark; it never stands in for the cafe here.
   const logoUrl = productImageUrl(settings.data?.logo, undefined, { fit: true });
 
-  const visibleSections = sections
-    .map((section) => ({
-      ...section,
-      items: section.items.filter((item) => !item.adminOnly || isAdmin).filter((item) => !item.tokensOnly || tokensOn),
-    }))
-    .filter((section) => section.items.length > 0);
+  const visibleSections = visibleNavSections(isAdmin, tokensOn);
   const warmHrefs = visibleSections
     .filter((section) => section.warm)
     .flatMap((section) => section.items.map((item) => item.url));

@@ -55,11 +55,12 @@ const PINS: PinCase[] = [
     // U0 Task 3 (values 2.5, design 5.3): the HTML's page header. On a phone the menu button (ruling R5, until the tab
     // bar) and the mini logo come first; then the title block, the page's own actions, and our global buttons in the
     // design's order: Tables, New order, Refresh, Tokens, the printer button last (where the HTML has it).
-    name: "Header order: (phone) menu + mini logo, title block, page actions, Tables, New order, Refresh, Tokens, printer",
+    // U0 Task 4: the phone's menu button went with the tab bar (the phone's nav); the mini logo leads.
+    name: "Header order: (phone) mini logo, title block, page actions, Tables, New order, Refresh, Tokens, printer",
     file: HEADER,
     check: (src) => {
+      assert.ok(!src.includes("PhoneMenuButton"), "no phone menu button (the tab bar is the phone's nav)");
       ascending(src, [
-        "<PhoneMenuButton",
         "<BrandTile",
         "<HeaderTitle",
         "ref={actionsRef}",

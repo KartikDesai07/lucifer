@@ -125,11 +125,12 @@ describe("labels", () => {
     assert.equal(lockedAgoLabel(0, 150 * MIN), "Locked · 2 h ago", "floor hours");
   });
 
+  // U0 Task 4: the profile sheet's footer takes the owner's HTML words (values 2.7) with our setting in minutes.
   it("screenLockLine", () => {
-    assert.equal(screenLockLine(0), "Screen lock is off", "off");
-    assert.equal(screenLockLine(30), "Locks after 30 minutes without activity", "30");
-    assert.equal(screenLockLine(60), "Locks after 1 hour without activity", "60");
-    assert.equal(screenLockLine(120), "Locks after 2 hours without activity", "120");
+    assert.equal(screenLockLine(0), "Auto-lock is off", "off");
+    assert.equal(screenLockLine(30), "Auto-locks after 30 min without activity", "30");
+    assert.equal(screenLockLine(60), "Auto-locks after 60 min without activity", "60");
+    assert.equal(screenLockLine(120), "Auto-locks after 120 min without activity", "120");
   });
 });
 

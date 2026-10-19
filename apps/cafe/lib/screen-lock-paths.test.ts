@@ -302,28 +302,136 @@ test('render: without anyone to pick there is no "Sign in with PIN"', async () =
   assert.ok(text.includes("Sign in"), "landmark: the submit button");
 });
 
-// ── The account menu ────────────────────────────────────────────────────────
+// ── The profile sheet (U0 Task 4: the account menu became the HTML's profile sheet, values 2.7) ─────────────────────
 
-test("PIN: the account menu offers Lock screen and Switch user above Change password and Sign out, and ends with the lock-time line", () => {
-  const src = read(ACCOUNT);
-  assert.ok(src.length > 0, "landmark: SidebarAccount exists");
-  const lockAt = src.indexOf("Lock screen");
-  const switchAt = src.indexOf("Switch user");
-  const passwordAt = src.indexOf("Change password");
-  const signOutAt = src.indexOf("Sign out");
-  const lineAt = src.indexOf("screenLockLine(");
-  assert.ok(lockAt >= 0, '"Lock screen" is in the menu');
-  assert.ok(switchAt >= 0, '"Switch user" is in the menu');
-  assert.ok(passwordAt >= 0, '"Change password" is still in the menu');
-  assert.ok(signOutAt >= 0, '"Sign out" is still in the menu');
-  assert.ok(lineAt >= 0, "the menu ends with screenLockLine(...)");
-  assert.ok(lockAt < switchAt && switchAt < passwordAt && passwordAt < signOutAt && signOutAt < lineAt, "the order");
-  assert.ok(src.includes("Your open orders stay as they are"), "Lock screen's description");
-  assert.ok(src.includes("Lock and let a teammate sign in"), "Switch user's description");
+const SHEET = "components/layout/ProfileSheet.tsx";
+
+async function renderSheetBody(props: Record<string, unknown>): Promise<string> {
+  const { ProfileSheetBody } = await import("@/components/layout/ProfileSheet");
+  return renderToStaticMarkup(
+    createElement(ProfileSheetBody, {
+      name: "Asha Rao",
+      roleLabel: "Admin",
+      lockMinutes: 60,
+      shortcutLabel: "Ctrl L",
+      pathname: "/",
+      onLock: () => {},
+      onSwitch: () => {},
+      onChangePassword: () => {},
+      onSignOut: () => {},
+      onNavigate: () => {},
+      ...props,
+    } as React.ComponentProps<typeof ProfileSheetBody>),
+  );
+}
+
+test("render: the profile sheet's rows are Lock screen, Switch user, Change password, Sign out (today's copy), then the auto-lock line", async () => {
+  const text = textOf(await renderSheetBody({}));
+  const at = (needle: string) => text.indexOf(needle);
+  const order = [
+    "Asha Rao",
+    "Lock screen",
+    "Your open orders stay as they are",
+    "Switch user",
+    "Lock and let a teammate sign in",
+    "Change password",
+    "Sign out",
+    "Auto-locks after 60 min without activity",
+  ];
+  for (const needle of order) assert.ok(at(needle) >= 0, `the sheet shows "${needle}" (got: ${text})`);
+  for (let i = 1; i < order.length; i++) {
+    assert.ok(at(order[i - 1]) < at(order[i]), `"${order[i - 1]}" comes before "${order[i]}"`);
+  }
+  assert.ok(!text.includes("Theme"), "no Theme block (light only for now)");
+});
+
+test("render: the footer is the HTML's words with our setting; off reads Auto-lock is off", async () => {
+  assert.ok(textOf(await renderSheetBody({ lockMinutes: 15 })).includes("Auto-locks after 15 min without activity"), "15 minutes");
+  assert.ok(textOf(await renderSheetBody({ lockMinutes: 0 })).includes("Auto-lock is off"), "off");
+});
+
+test("render: the Lock screen row carries the shortcut chip (desk only), the user block the role beside the ok dot", async () => {
+  const html = await renderSheetBody({ shortcutLabel: "⌘L" });
+  const chip = /<kbd\b[^>]*data-ui="profile-kbd"[^>]*>([^<]*)<\/kbd>/.exec(html);
+  assert.ok(chip, "the Lock screen row has a <kbd> chip");
+  assert.equal(chip![1], "⌘L", "it shows the platform's shortcut");
+  assert.match(chip![0], /\bhidden\b[^"]*\bdesk:inline\b/, "shown from 1100px only (the HTML's desk)");
+  assert.equal((html.match(/data-ui="profile-kbd"/g) ?? []).length, 1, "only Lock screen has a chip");
+  const user = /<div\b[^>]*data-ui="profile-user"[^>]*>[\s\S]*?Admin/.exec(html);
+  assert.ok(user, "the user block names the role");
+});
+
+test("PIN: the sheet's rows do what the menu did: a manual lock, a switch, the password dialog, sign out", () => {
+  const src = read(SHEET);
+  assert.ok(src.length > 0, "landmark: components/layout/ProfileSheet.tsx exists");
   assert.match(src, /requestScreenLock\("manual"\)/, "Lock screen requests a manual lock");
   assert.match(src, /requestScreenLock\("switch"\)/, "Switch user requests a switch");
+  assert.match(src, /<ChangePasswordDialog\b/, "Change password opens the dialog");
+  assert.match(src, /void logout\(\)/, "Sign out signs out through useAuth().logout, as today");
   assert.match(src, /screenLockMinutes \?\? SCREEN_LOCK_DEFAULT_MINUTES/, "the line reads the seeded setting, 60 by default");
-  assert.match(src, /onSelect=\{\(\) => logout\(\)\}/, "Sign out works as today");
+  assert.match(src, /screenLockLine\(lockMinutes\)/, "the footer is screenLockLine(...)");
+});
+
+test("PIN: the nav's user card opens the profile sheet; the dropdown menu is gone", () => {
+  const src = read(ACCOUNT);
+  assert.ok(src.length > 0, "landmark: SidebarAccount exists");
+  assert.match(src, /<ProfileSheet open=\{open\} onOpenChange=\{setOpen\} \/>/, "the card's sheet");
+  assert.match(src, /onClick=\{\(\) => setOpen\(true\)\}/, "a tap on the card opens it");
+  assert.ok(!src.includes("DropdownMenu"), "no dropdown menu any more");
+});
+
+// ── Ctrl/⌘+L (values 2.9) ───────────────────────────────────────────────────
+
+type FakeKey = { key: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean; target?: object };
+const keyEvent = (k: FakeKey) => {
+  const e = { ctrlKey: false, metaKey: false, altKey: false, ...k, target: (k.target ?? { tagName: "BODY" }) as EventTarget, prevented: false };
+  return Object.assign(e, { preventDefault: () => void (e.prevented = true) });
+};
+
+test("Ctrl+L and ⌘L request a manual lock and keep the browser's own Ctrl+L; never from a field", async () => {
+  const { handleLockShortcut, SCREEN_LOCK_EVENT } = await import("./screen-lock");
+  const g = globalThis as unknown as { window?: unknown };
+  const got: Array<{ type: string; detail: unknown }> = [];
+  g.window = { dispatchEvent: (e: { type: string; detail: unknown }) => void got.push({ type: e.type, detail: e.detail }) };
+  try {
+    const ctrl = keyEvent({ key: "l", ctrlKey: true });
+    assert.equal(handleLockShortcut(ctrl), true, "Ctrl+L is the shortcut");
+    assert.equal(ctrl.prevented, true, "the address bar does not take it");
+    const cmd = keyEvent({ key: "L", metaKey: true });
+    assert.equal(handleLockShortcut(cmd), true, "⌘L (and ⌘⇧L) too");
+    assert.deepEqual(
+      got,
+      [
+        { type: SCREEN_LOCK_EVENT, detail: { reason: "manual" } },
+        { type: SCREEN_LOCK_EVENT, detail: { reason: "manual" } },
+      ],
+      "each one asks the cover for a manual lock",
+    );
+    got.length = 0;
+    for (const target of [{ tagName: "INPUT" }, { tagName: "TEXTAREA" }, { tagName: "DIV", isContentEditable: true }]) {
+      const e = keyEvent({ key: "l", ctrlKey: true, target });
+      assert.equal(handleLockShortcut(e), false, `not while typing in ${JSON.stringify(target)}`);
+      assert.equal(e.prevented, false, "the field keeps its own Ctrl+L");
+    }
+    for (const k of [{ key: "l" }, { key: "k", ctrlKey: true }, { key: "l", ctrlKey: true, altKey: true }]) {
+      assert.equal(handleLockShortcut(keyEvent(k)), false, `not ${JSON.stringify(k)}`);
+    }
+    assert.deepEqual(got, [], "nothing else locks");
+  } finally {
+    delete g.window;
+  }
+});
+
+test("the chip names the shortcut for the platform: ⌘L on Apple devices, Ctrl L elsewhere", async () => {
+  const { lockShortcutLabel } = await import("./screen-lock");
+  for (const p of ["MacIntel", "iPhone", "iPad", "macOS"]) assert.equal(lockShortcutLabel(p), "⌘L", p);
+  for (const p of ["Win32", "Linux x86_64", "Linux armv8l", "", "Android"]) assert.equal(lockShortcutLabel(p), "Ctrl L", p || "(empty)");
+});
+
+test("PIN: the cover's key listener handles Ctrl/⌘+L only while no cover is up", () => {
+  const src = read(COVER);
+  assert.match(src, /if \(!openRef\.current\) handleLockShortcut\(e\);/, "the shortcut, gated on the cover being down");
+  assert.match(src, /import \{[^}]*\bhandleLockShortcut\b[^}]*\} from "@\/lib\/screen-lock";/, "from lib/screen-lock");
 });
 
 // ── The no-flash CSS ────────────────────────────────────────────────────────

@@ -415,7 +415,9 @@ test("PIN: (dashboard)/layout.tsx renders a BARE <SidebarProvider>, and DASHBOAR
     `(dashboard)/layout.tsx must not reference ${shellClassIdentifier} — the constant no longer exists in lib/pos-layout.ts`,
   );
   assert.match(dashboardSrc, /<RequestAlertBar\s*\/>/, "landmark: (dashboard)/layout.tsx must still render <RequestAlertBar />");
-  assert.match(dashboardSrc, /<main className="flex-1 p-4 md:p-6">/, "landmark: (dashboard)/layout.tsx's <main> must keep its unchanged flex-1 p-4 md:p-6 padding — the height-chain matrix pin depends on this figure");
+  // U0 Task 4: below 720px the page's foot keeps 92px clear of the tab bar (values 2.1 screenPadB); the POS root bleeds
+  // over it there (POS_ROOT_CLASS max-tab:-mb-[92px]), so the height chain's top padding (p-4 / md:p-6) is unchanged.
+  assert.match(dashboardSrc, /<main className="flex-1 p-4 pb-\[92px\] tab:pb-4 md:p-6">/, "landmark: (dashboard)/layout.tsx's <main> keeps its flex-1 p-4 md:p-6 padding, 92px at the foot on a phone — the height-chain matrix pin depends on this figure");
 
   const layoutTsSrc = stripComments(readSrc(POS_LAYOUT_TS));
   assert.ok(
@@ -662,10 +664,10 @@ test("PIN: (dashboard)/layout.tsx renders Header, then RequestAlertBar, then <ma
   assert.match(src, /<SidebarInset>/, "landmark: (dashboard)/layout.tsx must render <SidebarInset>");
   const headerIdx = src.indexOf("<Header");
   const alertIdx = src.indexOf("<RequestAlertBar");
-  const mainIdx = src.indexOf('<main className="flex-1 p-4 md:p-6">');
+  const mainIdx = src.indexOf('<main className="flex-1 p-4 pb-[92px] tab:pb-4 md:p-6">');
   assert.ok(headerIdx >= 0, "(dashboard)/layout.tsx must render <Header");
   assert.ok(alertIdx >= 0, "(dashboard)/layout.tsx must render <RequestAlertBar");
-  assert.ok(mainIdx >= 0, '(dashboard)/layout.tsx must render <main className="flex-1 p-4 md:p-6">');
+  assert.ok(mainIdx >= 0, '(dashboard)/layout.tsx must render <main className="flex-1 p-4 pb-[92px] tab:pb-4 md:p-6">');
   assert.ok(headerIdx < alertIdx, "<Header must be rendered before <RequestAlertBar");
   assert.ok(alertIdx < mainIdx, "<RequestAlertBar must be rendered before <main — it is main's sibling, not its child");
 });

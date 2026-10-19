@@ -67,7 +67,7 @@ export default async function RootLayout({
       <body className="font-sans antialiased min-h-screen supports-[height:1dvh]:min-h-dvh bg-background text-foreground">
         <SessionProvider session={session}>
           <Providers>{children}</Providers>
-          <Toaster richColors position="top-right" />
+          <Toaster />
         </SessionProvider>
       </body>
     </html>

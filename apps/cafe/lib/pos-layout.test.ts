@@ -49,6 +49,8 @@ import {
   POS_TILE_MIN_REM,
   POS_ALERT_HEIGHT_VAR,
   POS_ROOT_CLASS,
+  TAB_BAR_HEIGHT_PX,
+  PHONE_PAGE_FOOT_PX,
   POS_INSET_CLASS,
   POS_SPLIT_CLASS,
   POS_DESKTOP_CART_CLASS,
@@ -355,6 +357,23 @@ test("PIN: POS_ROOT_CLASS is a DEFINITE vh/dvh chain (CB-1c round 2) — every b
   }
 });
 
+// U0 Task 4: on a phone the tab bar (59px, values 2.6) is fixed at the foot and <main> keeps 92px clear there (values
+// 2.1 screenPadB). The POS root ends where the bar starts, so the sticky cart bar sits right on it (the HTML's order
+// screen keeps its bar 60px up) and nothing scrolls: the root's height subtracts the bar, and its negative bottom
+// margin bleeds over main's 92px foot instead of 16px.
+test("PIN: on a phone the POS root stops on the tab bar — its height subtracts the 59px bar and it bleeds over main's 92px foot", () => {
+  assert.equal(TAB_BAR_HEIGHT_PX, 1 + 2 + 56, "the bar: a 1px rule, 2px top padding, 56px tabs");
+  assert.equal(PHONE_PAGE_FOOT_PX, 92, "values 2.1 screenPadB on a phone");
+  const phoneH = "max-tab:h-[calc(100vh-" + POS_ROOT_CHROME_REM_BASE + "rem-" + TAB_BAR_HEIGHT_PX + "px-var(" + POS_ALERT_HEIGHT_VAR + ",0px))]";
+  const phoneDvh =
+    "max-tab:supports-[height:1dvh]:h-[calc(100dvh-" + POS_ROOT_CHROME_REM_BASE + "rem-" + TAB_BAR_HEIGHT_PX + "px-var(" + POS_ALERT_HEIGHT_VAR + ",0px))]";
+  const phoneBleed = "max-tab:-mb-[" + PHONE_PAGE_FOOT_PX + "px]";
+  for (const needle of [phoneH, phoneDvh, phoneBleed]) {
+    assert.ok(POS_ROOT_CLASS.split(/\s+/).includes(needle), `POS_ROOT_CLASS must include "${needle}"`);
+  }
+  // The layout's own pb-[92px] is pinned in lib/tab-bar-paths.test.ts and lib/pos-layout-paths.test.ts.
+});
+
 // ── C2. height-chain matrix (CB-1c round 2 — the min-content stack vs. the
 // DEFINITE vh/dvh root, alert-bar budget included; plan §H0's headless-
 // -Chrome arbiter probe validated this formula against the real chain) ─────
@@ -376,11 +395,13 @@ interface DeviceRow {
   readonly label: string;
   readonly visibleH: number;
   readonly mdPlus: boolean;
+  /** Narrower than 720 px: the phone's tab bar (U0 Task 4) sits under the root. */
+  readonly tabBar?: boolean;
 }
 
 const DEVICE_MATRIX_BASE: ReadonlyArray<DeviceRow> = [
-  { label: "360x640 phone portrait", visibleH: 560, mdPlus: false },
-  { label: "412x915 phone portrait", visibleH: 800, mdPlus: false },
+  { label: "360x640 phone portrait", visibleH: 560, mdPlus: false, tabBar: true },
+  { label: "412x915 phone portrait", visibleH: 800, mdPlus: false, tabBar: true },
   { label: "740x360 phone landscape (full viewport, arbiter probe value)", visibleH: 360, mdPlus: false },
   { label: "740x300 phone landscape (toolbar showing)", visibleH: 300, mdPlus: false },
   { label: "768x1024 tablet portrait", visibleH: 904, mdPlus: true },
@@ -411,7 +432,7 @@ function chromePxFor(row: DeviceRow): number {
 }
 
 function rootRawPxFor(row: DeviceMatrixRow): number {
-  return row.visibleH - chromePxFor(row) - row.bandPx;
+  return row.visibleH - chromePxFor(row) - row.bandPx - (row.tabBar ? TAB_BAR_HEIGHT_PX : 0);
 }
 
 function rootPxFor(row: DeviceMatrixRow): number {

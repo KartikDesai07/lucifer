@@ -83,11 +83,10 @@ export function lockedAgoLabel(at: number, now: number): string {
   return `Locked · ${Math.floor(minutes / 60)} h ago`;
 }
 
+/** The profile sheet's footer: the owner's HTML words (values 2.7) with the cafe's setting in minutes. */
 export function screenLockLine(minutes: number): string {
-  if (!(minutes > 0)) return "Screen lock is off";
-  if (minutes < 60) return `Locks after ${minutes} minutes without activity`;
-  const hours = Math.floor(minutes / 60);
-  return `Locks after ${hours} ${hours === 1 ? "hour" : "hours"} without activity`;
+  if (!(minutes > 0)) return "Auto-lock is off";
+  return `Auto-locks after ${minutes} min without activity`;
 }
 
 // The first key segment of each person-scoped query family (STAFF_KEYS, REPORT_KEYS, DASHBOARD_KEYS, EXPENSE_KEYS,
@@ -165,4 +164,43 @@ export function refetchPersonScopedQueries(client: QueryClient): Promise<void> {
 export function requestScreenLock(reason: "manual" | "switch"): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(SCREEN_LOCK_EVENT, { detail: { reason } }));
+}
+
+// ── The shortcut (values 2.9: Ctrl/⌘+L locks the screen) ────────────────────
+
+/** A key press, as much of one as the shortcut reads (a DOM KeyboardEvent fits). */
+export interface LockShortcutEvent {
+  key: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  target: EventTarget | null;
+  preventDefault(): void;
+}
+
+/** Typing in a field (an input, a text area, an editable block): Ctrl+L there belongs to the field. */
+function isTypingTarget(target: EventTarget | null): boolean {
+  const el = target as { tagName?: unknown; isContentEditable?: unknown } | null;
+  if (!el) return false;
+  if (el.isContentEditable === true) return true;
+  const tag = typeof el.tagName === "string" ? el.tagName.toUpperCase() : "";
+  return tag === "INPUT" || tag === "TEXTAREA";
+}
+
+/** Ctrl+L or ⌘L (with or without Shift, never with Alt) pressed outside a field. */
+export function isLockShortcut(e: Omit<LockShortcutEvent, "preventDefault">): boolean {
+  return (e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "l" || e.key === "L") && !isTypingTarget(e.target);
+}
+
+/** Asks the cover for a manual lock on Ctrl/⌘+L, and keeps the browser's own Ctrl+L (the address bar) from firing. */
+export function handleLockShortcut(e: LockShortcutEvent): boolean {
+  if (!isLockShortcut(e)) return false;
+  e.preventDefault();
+  requestScreenLock("manual");
+  return true;
+}
+
+/** The shortcut chip on the profile sheet's Lock screen row: ⌘L on Apple devices (the HTML's chip), Ctrl L elsewhere. */
+export function lockShortcutLabel(platform: string): string {
+  return /mac|iphone|ipad|ipod/i.test(platform) ? "⌘L" : "Ctrl L";
 }

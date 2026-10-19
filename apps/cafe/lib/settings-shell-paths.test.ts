@@ -278,12 +278,13 @@ test("PIN: every SETTINGS_SECTIONS entry renders <SettingsSectionPage and <Setti
 
 // ── 10. the height-chain shell stays byte-identical (parity, not replacement) ─
 
-test('PIN: (dashboard)/layout.tsx\'s <main className="flex-1 p-4 md:p-6"> and Header.tsx\'s h-14 are UNTOUCHED by the Settings redesign — parity with pos-layout-paths.test.ts\'s own pin, not a new claim replacing it', () => {
+test('PIN: (dashboard)/layout.tsx\'s <main> padding (flex-1 p-4 md:p-6) and Header.tsx\'s h-14 are UNTOUCHED by the Settings redesign — parity with pos-layout-paths.test.ts\'s own pin, not a new claim replacing it', () => {
   const dashboardSrc = stripComments(readSrc(DASHBOARD_LAYOUT));
+  // U0 Task 4 added the phone's 92px foot (the tab bar); the p-4 / md:p-6 padding is unchanged.
   assert.match(
     dashboardSrc,
-    /<main className="flex-1 p-4 md:p-6">/,
-    "(dashboard)/layout.tsx's <main> must keep its unchanged flex-1 p-4 md:p-6 padding",
+    /<main className="flex-1 p-4 pb-\[92px\] tab:pb-4 md:p-6">/,
+    "(dashboard)/layout.tsx's <main> must keep its flex-1 p-4 md:p-6 padding (92px at the foot on a phone)",
   );
 
   const headerSrc = stripComments(readSrc(HEADER));

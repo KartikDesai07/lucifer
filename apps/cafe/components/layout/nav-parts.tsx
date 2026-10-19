@@ -32,11 +32,11 @@ function subscribeWide(onChange: () => void): () => void {
   return () => mql.removeEventListener("change", onChange);
 }
 
-/** Whether the nav shows its wide form now: always in the phone's sheet, else at 1280 px and up unless collapsed.
+/** Whether the nav shows its wide form now: at 1280 px and up unless collapsed.
  *  The server and the first client render say "rail" (no media query there); nothing visual reads this. */
-export function useNavWide(collapsed: boolean, inSheet: boolean): boolean {
+export function useNavWide(collapsed: boolean): boolean {
   const xl = useSyncExternalStore(subscribeWide, () => window.matchMedia(WIDE_QUERY).matches, () => false);
-  return inSheet || (!collapsed && xl);
+  return !collapsed && xl;
 }
 
 /** A row's inside: the active bar, the 20px icon, and the label ("Bookings"-style rail label when it has one). */
@@ -110,8 +110,8 @@ interface NavGroupRowProps {
   subRows: (place: NavSubPlace) => ReactNode;
 }
 
-/** A row with sub-pages (Menu, Tables, Reports, Settings). The row is a button, never a Link: in the phone's sheet a
- *  tap must open the sub-rows, not close the sheet. */
+/** A row with sub-pages (Menu, Tables, Reports, Settings). The row is a button, never a Link: a tap opens the
+ *  sub-rows (wide) or the flyout (rail). */
 export function NavGroupRow({
   title,
   icon,

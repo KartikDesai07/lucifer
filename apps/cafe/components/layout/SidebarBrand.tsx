@@ -12,14 +12,14 @@ import { NavDeviceLine } from "@/components/layout/NavDeviceLine";
 // the name's first letter in Shrikhand on the brand red; a logo that fails to load falls back to the letter too.
 //
 // The block is a link to the Dashboard (owner, 2026-09-29), like the home link in any app's header. It never
-// prefetches on its own (the nav's only warmer is useWarmRoutes, which keeps "/" warm) and it closes the phone sheet
+// prefetches on its own (the nav's only warmer is useWarmRoutes, which keeps "/" warm) and it calls the rows' tap hook
 // exactly like a nav row does.
 
 interface SidebarBrandProps {
   brandName: string;
   /** The uploaded logo to show in the tile, or null for the letter. */
   logoUrl: string | null;
-  /** Called on a tap: AppSidebar closes the phone sheet with it. */
+  /** Called on a tap: AppSidebar's rows' tap hook (closeMobile). */
   onNavigate: () => void;
 }
 

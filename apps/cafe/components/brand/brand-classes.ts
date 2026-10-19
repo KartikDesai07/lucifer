@@ -43,8 +43,8 @@ export const BRAND_CHECKBOX_SQUARE_CLASS = "size-5 rounded-[4px]";
 // ── Navigation (the staff nav: the owner's HTML, values 2.3) ─────────────────
 // Plain class strings for the nav's own elements (no shadcn menu primitive).
 // The bare classes are the 76 px rail (720 px up); `wide:` is the HTML's wide
-// form (1280 px up while the nav is not collapsed, and the phone's nav sheet;
-// the variant is in app/globals.css). The HTML's sizes on touch screens too:
+// form (1280 px up while the nav is not collapsed; the variant is in
+// app/globals.css). The HTML's sizes on touch screens too:
 // no pointer-coarse enlargement (plan ruling R1). The active row is white on
 // --nav-on with the 3px blue bar at the window's edge; aria-current, the bar
 // and the white label carry the state, never the fill alone.
@@ -52,6 +52,10 @@ export const BRAND_CHECKBOX_SQUARE_CLASS = "size-5 rounded-[4px]";
 /** The HTML's button feel (values 1.4): colours ease in 160 ms, a press scales to 97 %; the nav's focus ring. */
 export const BRAND_NAV_PRESS_CLASS =
   "outline-none transition-[background-color,color,transform] duration-[160ms] ease-[ease] focus-visible:ring-2 focus-visible:ring-brand-nav-focus active:scale-[0.97]";
+
+/** The same feel on the light surfaces (the tab bar, the profile sheet): the app's focus ring instead of the nav's. */
+export const BRAND_PRESS_CLASS =
+  "outline-none transition-[background-color,color,transform] duration-[160ms] ease-[ease] focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97]";
 
 const NAV_ACTIVE = "data-[active=true]:bg-nav-on data-[active=true]:text-white";
 

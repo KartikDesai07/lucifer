@@ -341,5 +341,6 @@ test("PIN: Reservations reads \"Bookings\" in the rail (below 1280 px, or collap
   assert.ok(variant, "globals.css defines the `wide` variant");
   assert.match(variant![1], /@media \(width >= 80rem\)/, "the wide form needs 1280 px (80rem)");
   assert.match(variant![1], /:not\(\[data-nav-collapsed\]\)/, "and a nav that is not collapsed");
-  assert.match(variant![1], /\[data-nav-form="wide"\]/, "the phone's nav sheet is always the wide form");
+  // U0 Task 4: a phone has no nav sheet any more (the tab bar and its More sheet), so nothing else turns wide.
+  assert.ok(!/data-nav-form/.test(variant![1]), "no phone nav sheet to force the wide form");
 });

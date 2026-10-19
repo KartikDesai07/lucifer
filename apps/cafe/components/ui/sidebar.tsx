@@ -12,23 +12,15 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // U0 Task 2 (the owner's HTML, values 2.1-2.3): the 232 px sidebar from 1280 px unless collapsed, the 76 px rail from
-// 720 px, and below 720 px the nav sheet (the phone, until the tab bar), which shows the nav in its wide form. The
-// collapse choice is remembered on this device: the cookie, mirrored on <html> for the `wide` CSS variant.
+// 720 px, and below 720 px no nav at all: the phone's tab bar and its More sheet take over (U0 Task 4). The collapse
+// choice is remembered on this device: the cookie, mirrored on <html> for the `wide` CSS variant.
 const SIDEBAR_COOKIE_NAME = NAV_STATE_COOKIE;
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 const SIDEBAR_WIDTH = "14.5rem";
-const SIDEBAR_WIDTH_MOBILE = "14.5rem";
 const SIDEBAR_WIDTH_ICON = "4.75rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
@@ -183,7 +175,7 @@ const Sidebar = React.forwardRef<
     },
     ref,
   ) => {
-    const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
+    const { isMobile, state } = useSidebar();
 
     if (collapsible === "none") {
       return (
@@ -200,30 +192,8 @@ const Sidebar = React.forwardRef<
       );
     }
 
-    if (isMobile) {
-      return (
-        <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
-          <SheetContent
-            data-sidebar="sidebar"
-            data-mobile="true"
-            data-nav-form="wide"
-            className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
-            style={
-              {
-                "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
-              } as React.CSSProperties
-            }
-            side={side}
-          >
-            <SheetHeader className="sr-only">
-              <SheetTitle>Sidebar</SheetTitle>
-              <SheetDescription>Displays the mobile sidebar.</SheetDescription>
-            </SheetHeader>
-            <div className="flex h-full w-full flex-col">{children}</div>
-          </SheetContent>
-        </Sheet>
-      );
-    }
+    // A phone (below 720 px) has no nav: the tab bar and its More sheet (components/layout/TabBar.tsx) take over.
+    if (isMobile) return null;
 
     // The nav column: the rail's width from 720 px, the sidebar's in the wide form; the panel stays in view while the
     // page scrolls (the HTML's 100dvh grid column, with the document still the scroller).

@@ -3,17 +3,14 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* The nav's wide form (the HTML's `wide`, values 0.1): 1280 px and up while the nav is not collapsed, and always in
-   the phone's nav sheet. Below it the nav is the 76 px rail (720 px up) or hidden. The collapse choice lives on
+/* The nav's wide form (the HTML's `wide`, values 0.1): 1280 px and up while the nav is not collapsed. Below it the
+   nav is the 76 px rail (720 px up) or, on a phone, gone (the tab bar takes over). The collapse choice lives on
    <html data-nav-collapsed>, set before the first paint from the sidebar cookie (lib/nav-state-script.ts). */
 @custom-variant wide {
   @media (width >= 80rem) {
     &:where(html:not([data-nav-collapsed]) *) {
       @slot;
     }
-  }
-  &:where([data-nav-form="wide"], [data-nav-form="wide"] *) {
-    @slot;
   }
 }
 
@@ -136,6 +133,7 @@
   --color-toast-t: var(--toast-t);
   --color-toast-a: var(--toast-a);
   --color-glass: var(--glass);
+  --color-scrim: var(--scrim);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -184,6 +182,21 @@
   --animate-brand-rise: brand-rise 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-brand-fade: brand-fade 400ms ease-out both;
   --animate-brand-shake: brand-shake 360ms ease-in-out;
+  /* The HTML's sheet motion (values 1.5, 2.7): the panel rises in, its scrim fades in. */
+  --animate-sheet-in: sheet-in 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-scrim-in: brand-fade 0.2s ease both;
+}
+
+/* The HTML's sheetIn (values 1.5). */
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* A card settling into place on load. */
@@ -326,6 +339,8 @@
   --toast-t: #ffffff;
   --toast-a: #a9c8b2;
   --glass: rgba(255, 255, 255, 0.9);
+  /* The phone's More sheet scrim (values 1.1, 2.7); keeps its alpha like --glass. */
+  --scrim: rgba(17, 17, 19, 0.42);
   --seg-sh: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
   --pop: 0 24px 60px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.04);
   /* Status colours: base (dots, fills), -ink (text on the tint), -tint (soft
@@ -430,6 +445,7 @@
   --toast-t: #0f0f10;
   --toast-a: #6faf85;
   --glass: rgba(23, 23, 26, 0.9);
+  --scrim: rgba(0, 0, 0, 0.62);
   --seg-sh: 0 1px 2px rgba(0, 0, 0, 0.5);
   --pop: 0 24px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
   --status-ok: #42be65;

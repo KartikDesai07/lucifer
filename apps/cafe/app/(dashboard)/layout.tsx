@@ -17,6 +17,7 @@ import { MasterDataProvider } from "@/components/layout/MasterDataProvider";
 import { PosPulseProvider } from "@/components/layout/PosPulseProvider";
 import { PrintHostProvider } from "@/components/layout/PrintHostProvider";
 import { SessionKeepalive } from "@/components/layout/SessionKeepalive";
+import { TabBar } from "@/components/layout/TabBar";
 import { ScreenLock } from "@/components/lock/ScreenLock";
 import { RequestAlertBar } from "@/components/orders/RequestAlertBar";
 import { PrintHostPrintSources } from "@/components/print/PrintHostPrintSources";
@@ -114,10 +115,13 @@ export default function DashboardLayout({
                   <Header />
                   <RequestAlertBar />
                   <TouchFeel />
-                  <main className="flex-1 p-4 md:p-6">{children}</main>
+                  {/* Below 720px the page's foot keeps 92px clear (values 2.1 screenPadB): the 59px tab bar plus air. */}
+                  <main className="flex-1 p-4 pb-[92px] tab:pb-4 md:p-6">{children}</main>
                   <PrintHostPrintSources />
                 </PageHeaderSlotProvider>
               </SidebarInset>
+              {/* The phone's nav (values 2.6, U0 Task 4): the tab bar and its More sheet, fixed, below 720px only. */}
+              <TabBar />
             </MasterDataProvider>
           </PrintHostProvider>
         </PosPulseProvider>

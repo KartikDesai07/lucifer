@@ -308,6 +308,7 @@
     "lib/nav-device-name.test.ts",
     "lib/nav-shell.test.ts",
     "lib/page-header-slot.test.ts",
+    "lib/tab-bar-paths.test.ts",
     "lib/warm-routes.test.ts",
     "lib/pending-writes.test.ts",
     "lib/settle-flow.test.ts",

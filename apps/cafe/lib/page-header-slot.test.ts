@@ -283,12 +283,13 @@ test("PIN: the header composes the registered words, the actions box (min-w-0, t
   assert.match(page, /register\(\{ title, description, eyebrow: eyebrowText, back \}\)/, "it registers its title, subtitle and eyebrow");
 });
 
-test("ruling R5: until the tab bar, a phone's header has one menu button that opens the nav sheet; from 720px none", () => {
+// U0 Task 4 retired ruling R5's interim menu button: a phone's nav is the tab bar now (lib/tab-bar-paths.test.ts), so
+// the header starts with the cafe's mini logo at every width below 720px, as the HTML's.
+test("the header has no nav toggle at any width: no sidebar trigger, no phone menu button", () => {
   const header = read(path.join(CAFE_ROOT, "components/layout/Header.tsx"));
   assert.ok(!header.includes("<SidebarTrigger"), "no sidebar toggle in the header (the nav is always on screen from 720px)");
-  assert.equal(count(header, "<PhoneMenuButton />"), 1, "one menu button");
-  assert.match(header, /onClick=\{\(\) => setOpenMobile\(true\)\}/, "it opens the nav sheet");
-  assert.match(header, /className=\{cn\(HEADER_ICON_BUTTON_CLASS, "tab:hidden"\)\}/, "a 36px outline square, phone only");
+  assert.ok(!header.includes("PhoneMenuButton") && !header.includes("setOpenMobile"), "no phone menu button (the tab bar is the phone's nav)");
+  assert.match(header, /<BrandTile\b[^>]*size="mini"[^>]*className="tab:hidden"/, "landmark: the phone's mini logo leads the header");
 });
 
 test("ruling R4: no page shows its title twice — POS, Items and every report name their page through PageHeader", () => {
@@ -316,5 +317,7 @@ test("PIN: the shell renders one slot provider around the header, the strip and 
   assert.equal(count(layout, "<PageHeaderSlotProvider>"), 1, "one provider");
   const at = layout.indexOf("<PageHeaderSlotProvider>");
   assert.ok(at < layout.indexOf("<Header />") && layout.indexOf("<Header />") < layout.indexOf("<RequestAlertBar />"), "the provider wraps the header and the strip");
-  assert.ok(layout.indexOf('<main className="flex-1 p-4 md:p-6">') < layout.indexOf("</PageHeaderSlotProvider>"), "and the page");
+  // U0 Task 4: the page keeps 92px clear at its foot on a phone (the tab bar, values 2.1 screenPadB).
+  const main = layout.indexOf('<main className="flex-1 p-4 pb-[92px] tab:pb-4 md:p-6">');
+  assert.ok(main >= 0 && main < layout.indexOf("</PageHeaderSlotProvider>"), "and the page");
 });

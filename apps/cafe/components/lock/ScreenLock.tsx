@@ -29,6 +29,7 @@ import {
   autoLockDue,
   clearLockState,
   clearPersonScopedQueries,
+  handleLockShortcut,
   lockedAgoLabel,
   readLockState,
   refetchPersonScopedQueries,
@@ -48,9 +49,9 @@ import { LockPasswordForm } from "@/components/lock/LockPasswordForm";
 // The screen lock (spec 2026-10-16 §5.6). A COVER over the running dashboard, never a sign-out: signing out would
 // unmount this layout and with it the print host, the pulse, the alarm and realtime, so the page keeps running under
 // the cover and only the people at the counter are kept out. While it shows, every other child of <body> is inert.
-// It locks from the account menu (requestScreenLock) or after the cafe's idle minutes, measured by the clock against
-// the last tap or key (no request, no state per keystroke); it survives a reload through lib/screen-lock's stored
-// state and the layout's no-flash script. Whoever enters a correct PIN (or password) continues: the same person just
+// It locks from the profile sheet or Ctrl/⌘+L (requestScreenLock), or after the cafe's idle minutes, measured by the
+// clock against the last tap or key (no request, no state per keystroke); it survives a reload through lib/screen-lock's
+// stored state and the layout's no-flash script. Whoever enters a correct PIN (or password) continues: the same person just
 // closes the cover; someone else switches the session in place, and the last person's admin-only data goes with them.
 
 /** The idle check's tick: a clock read against the last tap or key, never a request. */
@@ -158,6 +159,8 @@ export function ScreenLock() {
       lastActivityAt.current = Date.now();
       // A sheet or menu left open under the cover closes on Escape from a document listener; this one runs first.
       if (openRef.current && e.key === "Escape") e.stopImmediatePropagation();
+      // Ctrl/⌘+L locks the screen (the owner's HTML), never from a field and never again while the cover is up.
+      if (!openRef.current) handleLockShortcut(e);
     };
     const check = () => {
       if (openRef.current) return;

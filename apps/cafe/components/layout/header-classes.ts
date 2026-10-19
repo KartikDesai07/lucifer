@@ -4,8 +4,7 @@
 // same look from app/globals.css ([data-header-actions], ruling R6), whatever classes the page gives them.
 import { PRINTER_ICON_BUTTON_CLASS } from "@/components/print/printer-classes";
 
-/** The header's 36px outline icon square (the HTML's printer button): the printer, Refresh, the phone's menu and a
- *  back link. The printer's own pinned name for it stays PRINTER_ICON_BUTTON_CLASS. */
+/** The header's 36px outline icon square (the HTML's printer button): the printer, Refresh and a back link. The printer's own pinned name for it stays PRINTER_ICON_BUTTON_CLASS. */
 export const HEADER_ICON_BUTTON_CLASS = PRINTER_ICON_BUTTON_CLASS;
 
 /** An outline button with a label (the HTML's End of day): 36px, padding 0 12px, 13.5px/500, a 15px icon 7px away. */
