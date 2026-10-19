@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
-import { PRINTER_ICON_BUTTON_CLASS } from "@/components/print/printer-classes";
+import { HEADER_OUTLINE_BUTTON_CLASS } from "@/components/layout/header-classes";
 import { TokenList } from "@/components/pos/TokenSheetRows";
 import { useSettings } from "@/hooks/use-settings";
 import { useTokenAction, useTokenBoard } from "@/hooks/use-tokens";
@@ -17,11 +17,11 @@ import { useTokenRealtime } from "@/hooks/use-realtime";
 import { printConfigOf } from "@/lib/print";
 import { tokenLabelOf, type TokenAction, type TokenBoardEntry } from "@/lib/token-view";
 import { KITCHEN_FRESHNESS_TICK_MS } from "@pos/shared/query";
-import { cn } from "@/lib/utils";
 
-// Print customization S8 — the top-bar Tokens button and its sheet: every token being prepared or ready to hand
-// over, with Mark ready / Collected / Not ready. It shows only while tokens are on. The sheet's body mounts only
-// while open, so the board fetch, its poll and the realtime connection exist only then (never in the button).
+// Print customization S8 — the header's Tokens button (U0 Task 3: the HTML's outline header button, its label from
+// 1100px) and its sheet: every token being prepared or ready to hand over, with Mark ready / Collected / Not ready.
+// It shows only while tokens are on. The sheet's body mounts only while open, so the board fetch, its poll and the
+// realtime connection exist only then (never in the button).
 const SHEET_TITLE = "Tokens";
 const SHEET_DESCRIPTION = "Orders waiting for the customer. Mark a token ready when the order is done.";
 const SKELETON_ROWS = 4;
@@ -48,14 +48,14 @@ export function TokenSheet() {
       <SheetTrigger asChild>
         <Button
           type="button"
-          variant="ghost"
-          size="icon"
-          className={cn(PRINTER_ICON_BUTTON_CLASS, "xl:w-auto xl:gap-2 xl:px-3")}
+          variant="outline"
+          className={HEADER_OUTLINE_BUTTON_CLASS}
           aria-label="Tokens"
           title="Tokens"
+          data-ui="header-tokens"
         >
-          <Ticket aria-hidden="true" />
-          <span className="hidden text-sm xl:inline">Tokens</span>
+          <Ticket aria-hidden="true" strokeWidth={1.8} />
+          <span className="hidden desk:inline">Tokens</span>
         </Button>
       </SheetTrigger>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md" onInteractOutside={keepOpenForToasts}>

@@ -31,6 +31,7 @@ import {
 import type { ProductBulkAction } from "@pos/shared/schemas";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { PageHeader } from "@/components/shared/PageHeader";
 import { MenuPageShell } from "@/components/menu/MenuPageShell";
 import { ItemsToolbar } from "@/components/menu/ItemsToolbar";
 import { ItemsListSection } from "@/components/menu/ItemsListSection";
@@ -191,16 +192,13 @@ export default function ProductsPage() {
 
   return (
     <MenuPageShell>
-      {/* flex-wrap: at 360px the admin buttons wrap below the title (measured 6px overflow). */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-xs text-muted-foreground">Menu</p>
-          <h1 className="text-2xl font-bold tracking-tight">Items</h1>
-          <p className="text-sm text-muted-foreground">
-            {countLabel(products.data?.length ?? 0, "item")} · {countLabel(categories.length, "category", "categories")}
-          </p>
-        </div>
-        {isAdmin && (
+      {/* U0 Task 3 (ruling R4): the title and the count line are the page header's; the admin buttons are its
+          actions (in the header from 720px, in a row at the top of the page on a phone). */}
+      <PageHeader
+        eyebrow="Menu"
+        title="Items"
+        description={`${countLabel(products.data?.length ?? 0, "item")} · ${countLabel(categories.length, "category", "categories")}`}
+        actions={isAdmin && (
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => setImportOpen(true)}>
               <Upload className="mr-2 h-4 w-4" /> Import CSV
@@ -210,7 +208,7 @@ export default function ProductsPage() {
             </Button>
           </div>
         )}
-      </div>
+      />
 
       <ItemsToolbar
         search={search}

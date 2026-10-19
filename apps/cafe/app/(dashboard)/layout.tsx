@@ -12,6 +12,7 @@ import { NAV_STATE_SCRIPT } from "@/lib/nav-state-script";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Header } from "@/components/layout/Header";
+import { PageHeaderSlotProvider } from "@/components/layout/page-header-slot";
 import { MasterDataProvider } from "@/components/layout/MasterDataProvider";
 import { PosPulseProvider } from "@/components/layout/PosPulseProvider";
 import { PrintHostProvider } from "@/components/layout/PrintHostProvider";
@@ -107,11 +108,15 @@ export default function DashboardLayout({
               <ScreenLock />
               <AppSidebar />
               <SidebarInset>
-                <Header />
-                <RequestAlertBar />
-                <TouchFeel />
-                <main className="flex-1 p-4 md:p-6">{children}</main>
-                <PrintHostPrintSources />
+                {/* U0 Task 3: the page header's slot. Every page's PageHeader fills the one header (its title,
+                    subtitle and, from 720px, its actions), so the provider wraps the header and the page. */}
+                <PageHeaderSlotProvider>
+                  <Header />
+                  <RequestAlertBar />
+                  <TouchFeel />
+                  <main className="flex-1 p-4 md:p-6">{children}</main>
+                  <PrintHostPrintSources />
+                </PageHeaderSlotProvider>
               </SidebarInset>
             </MasterDataProvider>
           </PrintHostProvider>

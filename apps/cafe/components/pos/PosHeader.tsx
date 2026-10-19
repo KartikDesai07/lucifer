@@ -12,6 +12,7 @@ import {
   POS_HEADER_CHIP_ICON_CLASS,
 } from "@/lib/pos-layout";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/shared/PageHeader";
 import { OpenTabsButton } from "@/components/pos/OpenTabsButton";
 import { TableSelector } from "@/components/pos/TableSelector";
 import { CustomerSearch } from "@/components/pos/CustomerSearch";
@@ -52,11 +53,10 @@ export const PosHeader = memo(function PosHeader({
   onCustomerChange,
 }: PosHeaderProps) {
   return (
-    // One row that never wraps below xl; compact desktop row at xl+.
+    // One row that never wraps below xl; compact desktop row at xl+. The page's title is the page header's (U0 Task 3,
+    // ruling R4), so the row holds only the controls.
     <div className="flex items-center justify-between gap-2 xl:flex-wrap">
-      <h2 className="hidden text-xl font-bold tracking-tight md:block">
-        POS Terminal
-      </h2>
+      <PageHeader title="POS Terminal" />
       <div className="flex min-w-0 flex-1 items-center gap-2 xl:flex-none xl:flex-wrap">
         {lastOrder && (
           <Button

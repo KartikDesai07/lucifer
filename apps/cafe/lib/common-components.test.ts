@@ -10,6 +10,7 @@ import { StatusPill, StatusDot } from "@/components/shared/StatusPill";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { PageHeaderSlotContext } from "@/components/layout/page-header-slot";
 
 // jsx:"preserve" -> React.createElement, so a global React is needed at render time.
 (globalThis as { React?: typeof React }).React = React;
@@ -82,10 +83,17 @@ test("shared states render title, description, action and keep their structure",
   assert.ok(empty.includes("Nothing yet") && empty.includes("Add one") && empty.includes(">Add<"), "empty state content");
   const err = renderToStaticMarkup(createElement(ErrorState, { onRetry: noop }));
   assert.ok(err.includes("Couldn&#x27;t load this") && err.includes(">Retry<"), "error state content");
+  // U0 Task 3: PageHeader fills the shell's 56px header (lib/page-header-slot.test.ts): its title is the header's h1,
+  // so the page body shows no <h2> block any more; from 720px its actions are portaled into the header, once.
+  const inHeader = (node: React.ReactNode) => createElement("header", null, node);
   const head = renderToStaticMarkup(
-    createElement(PageHeader, { title: "Menu", eyebrow: "Catalogue", description: "All items", actions: createElement("i", null, "x") }),
+    createElement(
+      PageHeaderSlotContext.Provider,
+      { value: { wide: true, inHeader, register: () => () => undefined } },
+      createElement(PageHeader, { title: "Menu", eyebrow: "Catalogue", description: "All items", actions: createElement("i", null, "x") }),
+    ),
   );
-  assert.ok(head.includes("<h2") && head.includes(">Menu</h2>") && head.includes("Catalogue") && head.includes("All items"), "header content");
+  assert.equal(head, "<header><i>x</i></header>", "the body keeps nothing; the actions go to the header once");
 });
 
 test("SegmentedControl: 44 px on touch (each segment pointer-coarse:h-11, the track grows around them)", () => {

@@ -22,12 +22,12 @@ const TABLE_SELECTOR = "apps/cafe/components/pos/TableSelector.tsx";
 const CUSTOMER_SEARCH = "apps/cafe/components/pos/CustomerSearch.tsx";
 const OPEN_TABS_BUTTON = "apps/cafe/components/pos/OpenTabsButton.tsx";
 
-test("PIN: PosHeader hides its title below md, and reuses POS_HEADER_CONTROL_CLASS on its controls", () => {
+// U0 Task 3 (ruling R4): "POS Terminal" is the page header's title now (the shell's 56px header, values 2.5), so the
+// row keeps only its controls and no page shows its title twice.
+test("PIN: PosHeader names the page through the header slot (no title of its own), and reuses POS_HEADER_CONTROL_CLASS on its controls", () => {
   const src = stripComments(readSrc(POS_HEADER));
-  const h2Match = src.match(/<h2[^>]*className="([^"]*)"/);
-  assert.ok(h2Match, "PosHeader must render an <h2> with a className");
-  assert.ok(h2Match![1].includes("hidden"), 'the <h2> className must include "hidden" (hidden below md)');
-  assert.ok(h2Match![1].includes("md:block"), 'the <h2> className must include "md:block"');
+  assert.match(src, /<PageHeader title="POS Terminal" \/>/, "the page's title goes to the shell header");
+  assert.ok(!/<h[12]\b/.test(src), "no heading of its own in the row");
   const occurrences = (src.match(/POS_HEADER_CONTROL_CLASS/g) ?? []).length;
   assert.ok(occurrences >= 4, `expected POS_HEADER_CONTROL_CLASS referenced (import + usages) >=4 times, found ${occurrences}`);
 });

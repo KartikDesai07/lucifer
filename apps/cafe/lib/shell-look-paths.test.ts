@@ -84,25 +84,57 @@ test("the active nav row keeps the HTML's weight 500: NAV_ACTIVE sets no font we
   assert.ok(!/font-(medium|semibold|bold)/.test(active), "NAV_ACTIVE must not change the weight (the HTML's active row is 500)");
 });
 
-test("the top bar is a white 56px bar with a bottom rule, sticky", () => {
-  const tag = HEADER.match(/<header className="([^"]*)"/)?.[1] ?? "";
-  for (const needle of ["sticky", "top-0", "h-14", "border-b", "bg-card"]) {
-    assert.ok(tag.split(/\s+/).includes(needle), `the header tag must carry ${needle}`);
+// U0 Task 3 (values 2.5): the HTML's page header. 56px tall at least, white, a 1px border-colour rule under it,
+// sticky at z-index 3, padding 0 20px (0 12px on a phone), 10px between its items, line-height normal; the title
+// 15px/600 at 1.2, the subtitle 12px text-2 cut with an ellipsis; the same sizes on touch (ruling R1).
+test("the page header is the HTML's: a sticky white 56px bar with a bottom rule, padding 0 20px / 0 12px, gap 10px", () => {
+  const tokens = HEADER.match(/<header className="([^"]*)"/)?.[1].split(/\s+/) ?? [];
+  for (const needle of ["sticky", "top-0", "z-[3]", "flex", "min-h-14", "items-center", "gap-2.5", "border-b", "border-border", "bg-card", "px-3", "tab:px-5", "leading-[normal]"]) {
+    assert.ok(tokens.includes(needle), `the header tag must carry ${needle}`);
   }
-  assert.ok(!/bg-background/.test(tag), "the header must not be the translucent page colour any more");
+  assert.ok(!tokens.some((t) => /bg-background|pointer-coarse:/.test(t)), "not the page colour, and no touch enlargement");
+  const title = HEADER.match(/<h1 data-ui="header-title" className="([^"]*)"/)?.[1].split(/\s+/) ?? [];
+  for (const needle of ["text-[15px]", "font-semibold", "leading-[1.2]"]) assert.ok(title.includes(needle), `the title carries ${needle}`);
+  const sub = HEADER.match(/<p data-ui="header-subtitle" className="([^"]*)"/)?.[1].split(/\s+/) ?? [];
+  for (const needle of ["text-[12px]", "text-muted-foreground", "truncate"]) assert.ok(sub.includes(needle), `the subtitle carries ${needle}`);
+  const logo = HEADER.match(/data-ui="header-mini-logo"[^>]*className="([^"]*)"/)?.[1].split(/\s+/) ?? [];
+  for (const needle of ["tab:hidden", "size-[30px]", "rounded-[8px]", "bg-brand-red", "font-brand-script", "text-[19px]", "pt-0.5"]) {
+    assert.ok(logo.includes(needle), `the phone's mini logo carries ${needle}`);
+  }
 });
 
-test("a quick tab keeps min-w-0 and shrink and lights with the accent tint when active", () => {
-  const cls = TABS.match(/const TAB_CLASS =\s*([\s\S]*?);\n/)?.[1] ?? "";
-  for (const needle of ["min-w-0", "shrink", "data-[active=true]:bg-accent", "data-[active=true]:text-accent-foreground"]) {
-    assert.ok(cls.split(/\s+/).includes(needle), `TAB_CLASS must carry the exact token ${needle}`);
+test("the header's buttons are the HTML's 36px outline (13.5/500, gap 7, 15px icon) and primary (13.5/600, gap 6, 14px plus)", () => {
+  const classes = read("components/layout/header-classes.ts");
+  const literal = (name: string): string[] => classes.match(new RegExp(`export const ${name} =\\s*"([^"]*)"`))?.[1].split(/\s+/) ?? [];
+  const outline = literal("HEADER_OUTLINE_BUTTON_CLASS");
+  for (const needle of ["h-9", "px-3", "gap-[7px]", "text-[13.5px]", "font-medium", "[&_svg]:size-[15px]"]) {
+    assert.ok(outline.includes(needle), `HEADER_OUTLINE_BUTTON_CLASS carries ${needle}`);
   }
-  assert.ok(!/brand-primary-soft/.test(cls), "TAB_CLASS must not keep the old brand tint");
+  const primary = literal("HEADER_PRIMARY_BUTTON_CLASS");
+  for (const needle of ["h-9", "px-3.5", "gap-1.5", "text-[13.5px]", "font-semibold", "hover:bg-primary-hover", "[&_svg]:size-[14px]"]) {
+    assert.ok(primary.includes(needle), `HEADER_PRIMARY_BUTTON_CLASS carries ${needle}`);
+  }
+  assert.ok(![...outline, ...primary].some((t) => t.startsWith("pointer-coarse:")), "the HTML's sizes on touch too (R1)");
+  assert.match(TABS, /buttonVariants\(\{ variant: tab\.primary \? "default" : "outline" \}\)/, "the tabs draw the kit's outline / primary look under those sizes");
 });
 
-test("the request band is the warn tint with warn ink, on the observed element", () => {
+// Design 5.3: the order-request strip under the header, in the HTML's warn colours: one 40px line on wide screens
+// (wrapping on a phone), the count 13px/600 warn-ink, "Enable sound" a 30px outline button, the note 12.5px text-2.
+test("the request strip is the warn tint with warn ink, on the observed element, with design 5.3's sizes", () => {
   assert.match(BAND, /<div[^>]*ref=\{bandRef\}[^>]*bg-status-warn-tint[^>]*text-status-warn-ink/, "band tag colours");
   assert.ok(!/amber/.test(BAND), "no amber palette class may remain in the band");
+  const root = BAND.match(/ref=\{bandRef\}\s+data-ui="request-strip"\s+className="([^"]*)"/)?.[1].split(/\s+/) ?? [];
+  for (const needle of ["flex", "min-h-10", "flex-wrap", "items-center", "border-b", "border-border", "px-3", "tab:px-5", "text-[13px]", "leading-[normal]"]) {
+    assert.ok(root.includes(needle), `the strip carries ${needle}`);
+  }
+  const count = BAND.match(/data-ui="request-strip-count"\s+className="([^"]*)"/)?.[1].split(/\s+/) ?? [];
+  for (const needle of ["text-[13px]", "font-semibold", "text-status-warn-ink"]) assert.ok(count.includes(needle), `the count carries ${needle}`);
+  const sound = BAND.match(/data-ui="request-strip-sound"\s+className="([^"]*)"/)?.[1].split(/\s+/) ?? [];
+  for (const needle of ["h-[30px]", "rounded-[8px]", "border", "border-border", "bg-card", "text-foreground"]) {
+    assert.ok(sound.includes(needle), `Enable sound carries ${needle}`);
+  }
+  const note = BAND.match(/data-ui="request-strip-note"\s+className="([^"]*)"/)?.[1].split(/\s+/) ?? [];
+  for (const needle of ["text-[12.5px]", "text-muted-foreground"]) assert.ok(note.includes(needle), `the note carries ${needle}`);
 });
 
 test("the printer button is the outline square", () => {

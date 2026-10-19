@@ -149,12 +149,14 @@ test("TokenSheet: Skeleton while loading, a guided empty state, an error with Tr
 
 // ── The header wiring ──────────────────────────────────────────────────────────────────────────────────────────────
 
-test("Header: exactly one <TokenSheet />, imported from the POS component, placed before <RefreshButton", () => {
+// U0 Task 3 (design 5.3): the header's global buttons run Tables, New order, Refresh, Tokens, then the printer button,
+// so Tokens now sits after Refresh (it sat before it in the old top bar).
+test("Header: exactly one <TokenSheet />, imported from the POS component, between <RefreshButton and <PrinterStatusButton", () => {
   const src = read(HEADER);
   assert.equal(count(src, "<TokenSheet"), 1);
   assert.match(src, /import \{ TokenSheet \} from "@\/components\/pos\/TokenSheet"/);
-  assert.ok(src.indexOf("<TokenSheet") < src.indexOf("<RefreshButton"), "before the refresh button");
-  assert.ok(src.indexOf("<RefreshButton") < src.indexOf("<PrinterStatusButton"), "landmark: the existing order of the other two is intact");
+  assert.ok(src.indexOf("<RefreshButton") < src.indexOf("<TokenSheet"), "after the refresh button");
+  assert.ok(src.indexOf("<TokenSheet") < src.indexOf("<PrinterStatusButton"), "before the printer button, which stays last");
   const elsewhere = ["components/pos/PosHeader.tsx", "app/(dashboard)/pos/page.tsx", "app/(dashboard)/layout.tsx"];
   for (const rel of elsewhere) assert.ok(!read(rel).includes("<TokenSheet"), `${rel} does not also render it`);
 });

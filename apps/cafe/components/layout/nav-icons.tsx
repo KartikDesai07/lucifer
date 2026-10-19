@@ -41,3 +41,8 @@ export const NavSettings = glyph(
   "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM4 12h2M18 12h2M12 4v2M12 18v2M6.3 6.3l1.4 1.4M16.3 16.3l1.4 1.4M6.3 17.7l1.4-1.4M16.3 7.7l1.4-1.4",
   "NavSettings",
 );
+
+// The page header's glyphs (values 2.5 and 5): New order's plus (14px, stroke 2.4) and the printer (17px on the
+// printer button, 15px on End of day; stroke 1.8). The size and stroke come from where they are drawn.
+export const GlyphPlus = glyph("M12 5v14M5 12h14", "GlyphPlus");
+export const GlyphPrinter = glyph("M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z", "GlyphPrinter");

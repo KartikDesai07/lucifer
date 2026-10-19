@@ -298,14 +298,16 @@ function sourceFilesUnder(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-test("INVENTORY: the quoted /now-serving path appears only in AppSidebar and NowServingLink", () => {
+// U0 Task 3: lib/page-titles.ts maps every route to its page header's title (lib/page-header-slot.test.ts checks the
+// map against each page), so the route also appears there; still never a third link to the board.
+test("INVENTORY: the quoted /now-serving path appears only in AppSidebar, NowServingLink and the page-title map", () => {
   const quoted = ['"', "'", "`"].map((q) => q + "/now-serving" + q);
   const hits = ["app", "components", "hooks", "lib"]
     .flatMap((dir) => sourceFilesUnder(path.join(CAFE_ROOT, dir)))
     .filter((file) => quoted.some((needle) => readFileSync(file, "utf8").includes(needle)))
     .map((file) => path.relative(CAFE_ROOT, file).split(path.sep).join("/"))
     .sort();
-  assert.deepEqual(hits, [SIDEBAR, LINK].sort());
+  assert.deepEqual(hits, [SIDEBAR, LINK, "lib/page-titles.ts"].sort(), "only the nav row, the link and the title map name the route");
 });
 
 test("access: /now-serving is not an admin route, and the middleware still gates every page on a session", () => {
