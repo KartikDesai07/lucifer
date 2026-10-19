@@ -14,9 +14,10 @@ import { cafeDateString } from "@/lib/utils";
 import { Staff } from "@/models/Staff";
 
 // The PIN sign-in check on the server (spec 2026-10-16 §5.4), called by the "pin" Credentials
-// provider in lib/auth.ts. Server-only (Mongoose models, node:crypto): never import from a
-// "use client" file. Limits are per selected person only, never per network (the owner's rule),
-// and only a wrong PIN stays counted.
+// provider in lib/auth.ts, and the sales reveal's own-PIN check (verifyOwnStaffPin, U0 match Task 6,
+// POST /api/sign-in/verify-pin): the same steps without the device, in the same window. Server-only
+// (Mongoose models, node:crypto): never import from a "use client" file. Limits are per selected
+// person only, never per network (the owner's rule), and only a wrong PIN stays counted.
 //
 // The order (controller ruling R7): the shape and the device are checked first and count nothing.
 // Every try that passes them then takes a slot in the person's window with ONE atomic hit, BEFORE
@@ -26,14 +27,16 @@ import { Staff } from "@/models/Staff";
 // (refundRateLimit), so the window ends up counting wrong PINs only; a wrong PIN keeps its slot
 // and adds one to the person's day count (20 blocks).
 
+type PinFailure = Exclude<PinSignInFailure, { kind: "offline" }>;
+
 export type PinSignInResult =
   | { ok: true; user: { id: string; name: string; role: "admin" | "staff" } }
-  | { ok: false; failure: Exclude<PinSignInFailure, { kind: "offline" }> };
+  | { ok: false; failure: PinFailure };
 
 export type PinFailState = { day: string; count: number; block: boolean };
 
 // A shape failure is not counted and may carry no valid id, so it shows no count ("Incorrect PIN").
-const SHAPE_FAILURE: PinSignInResult = { ok: false, failure: { kind: "wrong", triesLeft: 0 } };
+const SHAPE_FAILURE: { ok: false; failure: PinFailure } = { ok: false, failure: { kind: "wrong", triesLeft: 0 } };
 
 /**
  * The day count after one more wrong PIN: a new cafe day starts again at 1; reaching `blockAt`
@@ -102,6 +105,30 @@ export async function verifyStaffPinSignIn(input: {
   // 2. The device must have had this person sign in with a password: nothing counted.
   if (!devicePeople?.some((person) => person.id === staffId)) return { ok: false, failure: { kind: "device" } };
 
+  return checkStaffPin(staffId, pin, now);
+}
+
+/** The sales reveal's answer (U0 match Task 6): nobody signs in, so no user. */
+export type OwnPinResult = { ok: true } | { ok: false; failure: PinFailure };
+
+/**
+ * The sales reveal's own-PIN check (design 7, POST /api/sign-in/verify-pin): the signed-in person's own PIN, with the
+ * same steps as the sign-in above except the device (the person is already signed in on it, and the id comes from
+ * the session). It is counted in the SAME per-person window and day count, so a wrong PIN here is a wrong PIN there.
+ */
+export async function verifyOwnStaffPin(input: { staffId: unknown; pin: unknown; now?: number }): Promise<OwnPinResult> {
+  const { staffId, pin } = input;
+  const now = input.now ?? Date.now();
+
+  // 1. Shape: nothing counted.
+  if (!isObjectIdString(staffId) || !isValidStaffPin(pin)) return SHAPE_FAILURE;
+
+  const result = await checkStaffPin(staffId, pin, now);
+  return result.ok ? { ok: true } : result;
+}
+
+/** Steps 3-7 of the header, shared by both checks: one slot, one read, one constant-time compare. */
+async function checkStaffPin(staffId: string, pin: string, now: number): Promise<PinSignInResult> {
   await connectDB();
 
   // The staff-PIN windows share publicratelimits with the QR order route, its only other reaper, so a
@@ -116,7 +143,7 @@ export async function verifyStaffPinSignIn(input: {
     // refund is only made on a path that is surely returning (the never-revert-on-write-throw rule).
     const bucket = staffPinBucket(staffId);
     const hit = await hitRateLimit(bucket, STAFF_PIN_RATE_MAX, now);
-    const handBack = async (failure: Exclude<PinSignInFailure, { kind: "offline" }>): Promise<PinSignInResult> => {
+    const handBack = async (failure: PinFailure): Promise<PinSignInResult> => {
       await refundRateLimit(bucket, now);
       return { ok: false, failure };
     };

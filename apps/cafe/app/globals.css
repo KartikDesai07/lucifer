@@ -185,6 +185,28 @@
   /* The HTML's sheet motion (values 1.5, 2.7): the panel rises in, its scrim fades in. */
   --animate-sheet-in: sheet-in 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   --animate-scrim-in: brand-fade 0.2s ease both;
+  /* The HTML's shake (values 1.5): the reveal dialog's PIN dots after a wrong PIN (values 3.16). */
+  --animate-html-shake: html-shake 0.42s ease;
+}
+
+/* The HTML's shake (values 1.5), verbatim. */
+@keyframes html-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-9px);
+  }
+  40% {
+    transform: translateX(8px);
+  }
+  60% {
+    transform: translateX(-5px);
+  }
+  80% {
+    transform: translateX(3px);
+  }
 }
 
 /* The HTML's sheetIn (values 1.5). */
@@ -311,11 +333,12 @@
   --ring: var(--brand-accent);
   --ink: #18181b;
   --on-ink: #ffffff;
-  /* Change colours on the ink hero (dark card in light mode). */
+  /* Change colours on the dark Net sales hero (values 3.3: the HTML's #6FDC8C / #FF8389, and its 16 % pills
+     rgba(66,190,101,.16) / rgba(250,77,86,.16) flattened over the hero's --nav #111113). */
   --on-ink-up: #6fdc8c;
   --on-ink-down: #ff8389;
-  --on-ink-up-tint: #1f3327;
-  --on-ink-down-tint: #3c2024;
+  --on-ink-up-tint: #192d20;
+  --on-ink-down-tint: #361b1e;
   /* The segmented picker's track. */
   --track: #e9e9ec;
   /* The HTML's own tokens (values 1.1). --nav-on is rgba(255,255,255,.09)

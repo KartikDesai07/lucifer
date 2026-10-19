@@ -2,7 +2,15 @@
 // cards and the tests all say the same thing. Every label is derived from the
 // data actually on screen (DashboardData.range), never the picker's pending
 // choice, so a dimmed "updating" view never names a period it is not showing.
-import { INSIGHT_FALLBACK_DAYS, addDays, dayLabel, mondayIndex, rangeDays, weekdayDayLabel } from "@/lib/dashboard/range";
+import {
+  INSIGHT_FALLBACK_DAYS,
+  WEEKDAYS_MONDAY_FIRST,
+  addDays,
+  dayLabel,
+  mondayIndex,
+  rangeDays,
+  weekdayDayLabel,
+} from "@/lib/dashboard/range";
 import type { DashboardData, DashboardRange } from "@/types/dashboard";
 
 const PRESET_SPANS = [7, 30] as const;
@@ -53,11 +61,38 @@ const WEEKDAYS_LONG = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "
  * picked day).
  */
 export function periodSubline(range: DashboardRange, today: string): string {
-  const days = rangeDays(range);
-  const against =
-    days > 1 ? `the previous ${days} days` : range.from === today ? `last ${WEEKDAYS_LONG[mondayIndex(range.from)]}` : "the same day last week";
+  const against = compareWords(range, today);
   const dates = periodLabel(range, today) === periodDates(range) ? "" : periodDates(range);
   return dates ? `${dates} · compared with ${against}` : `Compared with ${against}`;
+}
+
+/**
+ * The HTML's db.P.cmp for our comparison (values 3.2, 3.3): "last Monday" (today, against the same weekday a week
+ * before), "the same day last week" (another day), "the previous N days" (a span). The hero says "vs {this}".
+ */
+export function compareWords(range: DashboardRange, today: string): string {
+  const days = rangeDays(range);
+  if (days > 1) return `the previous ${days} days`;
+  return range.from === today ? `last ${WEEKDAYS_LONG[mondayIndex(range.from)]}` : "the same day last week";
+}
+
+/** The HTML's db.P.cmpShort: "Last Mon" · "Week before" · "Previous N days" (the minis say "vs {this, lower-cased}"). */
+export function compareShort(range: DashboardRange, today: string): string {
+  const days = rangeDays(range);
+  if (days > 1) return `Previous ${days} days`;
+  return range.from === today ? `Last ${WEEKDAYS_MONDAY_FIRST[mondayIndex(range.from)]}` : "Week before";
+}
+
+/** Ruling R12: the hero's line when the comparison had no orders ("No orders last Monday" / "… in the previous 7 days"). */
+export function noCompareWords(range: DashboardRange, today: string): string {
+  const days = rangeDays(range);
+  return days > 1 ? `No orders in the previous ${days} days` : `No orders ${compareWords(range, today)}`;
+}
+
+/** The receipt's period tag, the HTML's db.P.short (shown upper-cased): "Today" · "18 Oct" · "7 days" · "N days". */
+export function billPeriodTag(range: DashboardRange, today: string): string {
+  if (range.from !== range.to) return `${rangeDays(range)} days`;
+  return range.from === today ? "Today" : dayLabel(range.from);
 }
 
 /** Said instead of a % when the comparison period had no orders. */

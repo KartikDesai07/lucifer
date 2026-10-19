@@ -1,8 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  billPeriodTag,
   chartNames,
+  compareShort,
+  compareWords,
   insightPeriod,
+  noCompareWords,
   kpiCompareText,
   noCompareText,
   periodDates,
@@ -88,6 +92,35 @@ test("periodSubline: the dates, then 'compared with …' in the HTML's words, fr
   assert.equal(periodSubline({ from: "2026-09-01", to: "2026-09-14" }, TODAY), "Compared with the previous 14 days", "a custom span: its title already is the dates");
   assert.equal(periodSubline({ from: "2026-09-22", to: "2026-09-22" }, TODAY), "Compared with the same day last week", "a picked day is its own title: no dates twice");
   assert.equal(periodSubline({ from: "2026-10-19", to: "2026-10-19" }, "2026-10-19"), "Mon, 19 Oct · compared with last Monday", "the HTML's own line (values 3.19)");
+});
+
+// U0 match Task 6 (values 3.3, 3.4, ruling R12): the hero's "vs {db.P.cmp}", the minis' "vs {cmpShort}", the line when
+// the comparison had no orders, and the receipt's period tag ({db.P.short}, shown upper-cased) - from the range alone.
+test("compareWords / compareShort: the HTML's cmp and cmpShort for our comparison", () => {
+  assert.equal(compareWords({ from: TODAY, to: TODAY }, TODAY), "last Tuesday", "today: last {weekday}");
+  assert.equal(compareShort({ from: TODAY, to: TODAY }, TODAY), "Last Tue", "today: Last {wkd}");
+  assert.equal(compareWords({ from: "2026-09-28", to: "2026-09-28" }, TODAY), "the same day last week", "yesterday");
+  assert.equal(compareShort({ from: "2026-09-28", to: "2026-09-28" }, TODAY), "Week before", "yesterday, short");
+  assert.equal(compareWords({ from: "2026-09-23", to: TODAY }, TODAY), "the previous 7 days", "7 days");
+  assert.equal(compareShort({ from: "2026-09-23", to: TODAY }, TODAY), "Previous 7 days", "7 days, short");
+  assert.equal(compareShort({ from: "2026-09-01", to: "2026-09-14" }, TODAY), "Previous 14 days", "a custom span");
+  assert.equal(compareWords({ from: "2026-10-19", to: "2026-10-19" }, "2026-10-19"), "last Monday", "the HTML's own (values 3.19)");
+  assert.equal(compareShort({ from: "2026-10-19", to: "2026-10-19" }, "2026-10-19"), "Last Mon", "the HTML's own short");
+});
+
+test("noCompareWords: 'No orders {last Monday | the same day last week | in the previous N days}' (ruling R12)", () => {
+  assert.equal(noCompareWords({ from: TODAY, to: TODAY }, TODAY), "No orders last Tuesday", "today");
+  assert.equal(noCompareWords({ from: "2026-09-28", to: "2026-09-28" }, TODAY), "No orders the same day last week", "yesterday");
+  assert.equal(noCompareWords({ from: "2026-09-23", to: TODAY }, TODAY), "No orders in the previous 7 days", "7 days");
+});
+
+test("billPeriodTag: Today, a day as '28 Sep', a span as 'N days' (the receipt upper-cases it)", () => {
+  assert.equal(billPeriodTag({ from: TODAY, to: TODAY }, TODAY), "Today", "today");
+  assert.equal(billPeriodTag({ from: "2026-09-28", to: "2026-09-28" }, TODAY), "28 Sep", "yesterday: its date, as the HTML's short");
+  assert.equal(billPeriodTag({ from: "2026-09-22", to: "2026-09-22" }, TODAY), "22 Sep", "a picked day");
+  assert.equal(billPeriodTag({ from: "2026-09-23", to: TODAY }, TODAY), "7 days", "7 days");
+  assert.equal(billPeriodTag({ from: "2026-08-31", to: TODAY }, TODAY), "30 days", "30 days");
+  assert.equal(billPeriodTag({ from: "2026-09-01", to: "2026-09-14" }, TODAY), "14 days", "a custom span");
 });
 
 test("noCompareText says which period had no orders", () => {

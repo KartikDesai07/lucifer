@@ -144,3 +144,34 @@ test("PIN (ruling R8): both sign-ins ask getProviders() first and never call sig
   assert.equal((s.match(/await reachServer\(/g) ?? []).length, 2, "both signInWithPin and signInWithPassword await the reachServer( guard");
   assert.match(s, /if \(!providers\) return "offline"/, "no provider list (the server cannot be reached) -> offline, before signIn");
 });
+
+// U0 match Task 6 (design 7): the sales reveal checks the signed-in person's own PIN on the server. The behaviour (a
+// signed-out caller refused, the right PIN ok, a wrong PIN in the same window as a PIN sign-in) is proved by part E of
+// scripts/verify-staff-pin-live.ts; these pins keep the shapes that carry it.
+const VERIFY = "apps/cafe/app/api/sign-in/verify-pin/route.ts";
+
+test("PIN (reveal): POST /api/sign-in/verify-pin calls requireAuth( first and checks only the session's own person, no-store", () => {
+  const s = src(VERIFY);
+  assert.match(s, /export async function POST\(/, "the route exports POST");
+  assert.ok(!/export async function (GET|PUT|PATCH|DELETE)\(/.test(s), "the route exports no other verb");
+  const guard = s.indexOf("requireAuth(");
+  assert.ok(guard >= 0, "the route calls requireAuth(");
+  assert.ok(guard < s.indexOf("req.json("), "requireAuth( comes before the body is read");
+  assert.ok(guard < s.indexOf("verifyOwnStaffPin("), "requireAuth( comes before the PIN check");
+  assert.match(s, /verifyOwnStaffPin\(\s*\{\s*staffId:\s*guard\.session\.user\.id,/, "the staff id is the session's own (guard.session.user.id)");
+  assert.ok(!/body[^;\n]*\.staffId|\bstaffId\s*\}\s*=\s*body/.test(s), "the body's staffId is never read");
+  assert.match(s, /encodePinFailure\(/, "a refusal answers the PIN sign-in's own code (encodePinFailure()");
+  assert.match(s, /no-store/, "the answer is no-store");
+  assert.ok(!/\+pin|Staff\.|connectDB\(/.test(s), "the route reads nothing itself: the check lives in lib/staff-pin-signin.ts");
+});
+
+test("PIN (reveal): verifyOwnStaffPin shares the sign-in's one check (one slot, one compare, one prune) without the device step", () => {
+  const s = src(SIGNIN);
+  assert.match(s, /export async function verifyOwnStaffPin\(/, "lib/staff-pin-signin.ts exports verifyOwnStaffPin");
+  assert.equal((s.match(/hitRateLimit\(/g) ?? []).length, 1, "one hitRateLimit( call serves both checks");
+  assert.equal((s.match(/timingSafeEqual\(/g) ?? []).length, 1, "one constant-time compare serves both checks");
+  const own = s.slice(s.indexOf("export async function verifyOwnStaffPin("));
+  const ownBody = own.slice(0, own.indexOf("\n}\n"));
+  assert.ok(!/devicePeople|kind: "device"/.test(ownBody), "the own-PIN check has no device step (the person is already signed in)");
+  assert.match(ownBody, /isObjectIdString\(staffId\)\s*\|\|\s*!isValidStaffPin\(pin\)/, "the shape is checked first, as in the sign-in");
+});

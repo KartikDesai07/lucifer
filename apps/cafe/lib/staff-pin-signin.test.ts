@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { STAFF_PIN_RATE_MAX } from "@pos/shared/staff-pin";
 import { PublicRateLimit } from "@/models/PublicRateLimit";
+import { Staff } from "@/models/Staff";
 import type { PinDevicePerson } from "./pin-device";
-import { nextPinFailState, verifyStaffPinSignIn } from "./staff-pin-signin";
+import { nextPinFailState, verifyOwnStaffPin, verifyStaffPinSignIn } from "./staff-pin-signin";
 
 // Counts the rate-window prune's deleteMany calls while `run` runs. A prune on an instance that has
 // not connected yet buffers for 10 s before it fails, so a refusal that answers before connectDB()
@@ -101,4 +103,158 @@ test("verifyStaffPinSignIn: a device that never had this person sign in answers 
     }
   });
   assert.equal(prunes, 0, "a device refusal never runs the rate-window prune (it answers before connectDB)");
+});
+
+// ── verifyOwnStaffPin: the sales reveal's own-PIN check (U0 match Task 6, design 7) ─────────────────────────────────
+// The signed-in person's own PIN, counted in the SAME per-person window and day count as a PIN sign-in, in the same
+// order without the device check: shape -> a slot in the window -> the person -> a constant-time compare -> a wrong
+// PIN keeps its slot and counts the day, every other answer hands the slot back. The database is a small in-memory
+// stand-in here (the model calls the check makes), so the order of the calls is visible; part E of
+// scripts/verify-staff-pin-live.ts drives the same check through the route against a real mongod.
+
+type Row = { _id: string; name: string; role: "admin" | "staff"; isActive: boolean; pin?: string; hasPin?: boolean; pinBlocked?: boolean; pinFailCount?: number };
+
+interface FakeDb {
+  calls: string[];
+  window: number;
+  row: Row | null;
+}
+
+async function withFakeDb(start: { window?: number; row: Row | null }, run: (db: FakeDb) => Promise<void>): Promise<void> {
+  const db: FakeDb = { calls: [], window: start.window ?? 0, row: start.row };
+  const rate = PublicRateLimit as unknown as Record<string, unknown>;
+  const staff = Staff as unknown as Record<string, unknown>;
+  const saved = {
+    findOneAndUpdate: rate.findOneAndUpdate,
+    updateOne: rate.updateOne,
+    deleteMany: rate.deleteMany,
+    staffFindOne: staff.findOne,
+    staffFindOneAndUpdate: staff.findOneAndUpdate,
+  };
+  rate.findOneAndUpdate = () => ({
+    lean: async () => {
+      db.calls.push("slot");
+      db.window += 1;
+      return { n: db.window };
+    },
+  });
+  rate.updateOne = async () => {
+    db.calls.push("refund");
+    if (db.window > 0) db.window -= 1;
+    return { modifiedCount: 1 };
+  };
+  rate.deleteMany = async () => ({ deletedCount: 0 });
+  staff.findOne = (filter: { _id: string; isActive: boolean }) => ({
+    select: () => ({
+      lean: async () => {
+        db.calls.push("read");
+        const r = db.row;
+        return r && r._id === filter._id && r.isActive === filter.isActive ? { ...r } : null;
+      },
+    }),
+  });
+  staff.findOneAndUpdate = () => ({
+    lean: async () => {
+      db.calls.push("count-day");
+      if (db.row) db.row.pinFailCount = (db.row.pinFailCount ?? 0) + 1;
+      return {};
+    },
+  });
+  // connectDB() answers at once from its cached connection.
+  const cache = (globalThis as { _mongoose?: { conn: unknown } })._mongoose;
+  assert.ok(cache, "landmark: lib/db.ts keeps its connection cache on globalThis._mongoose");
+  const savedConn = cache.conn;
+  const savedUri = process.env.MONGODB_URI;
+  process.env.MONGODB_URI = "mongodb://in-memory-stand-in/unit";
+  cache.conn = {};
+  try {
+    await run(db);
+  } finally {
+    cache.conn = savedConn;
+    if (savedUri === undefined) delete process.env.MONGODB_URI;
+    else process.env.MONGODB_URI = savedUri;
+    Object.assign(rate, { findOneAndUpdate: saved.findOneAndUpdate, updateOne: saved.updateOne, deleteMany: saved.deleteMany });
+    Object.assign(staff, { findOne: saved.staffFindOne, findOneAndUpdate: saved.staffFindOneAndUpdate });
+  }
+}
+
+const ME = "665f0000000000000000c0a1";
+const person = (over: Partial<Row> = {}): Row => ({
+  _id: ME,
+  name: "Asha Rao",
+  role: "staff",
+  isActive: true,
+  pin: "7391",
+  hasPin: true,
+  pinBlocked: false,
+  pinFailCount: 0,
+  ...over,
+});
+
+test("verifyOwnStaffPin: the right PIN takes a slot before the person is read, and hands it back", async () => {
+  await withFakeDb({ row: person() }, async (db) => {
+    const result = await verifyOwnStaffPin({ staffId: ME, pin: "7391" });
+    assert.deepEqual(result, { ok: true }, "the right PIN answers ok (no user: nobody signs in)");
+    assert.deepEqual(db.calls, ["slot", "read", "refund"], "slot first, then the read and the compare, then the refund");
+    assert.equal(db.window, 0, "the window counts nothing for a right PIN");
+    assert.equal(db.row?.pinFailCount, 0, "the day count is untouched");
+  });
+});
+
+test("verifyOwnStaffPin: a wrong PIN keeps its slot and counts the cafe-day, with the tries left from the window", async () => {
+  await withFakeDb({ window: 1, row: person({ pinFailCount: 3 }) }, async (db) => {
+    const result = await verifyOwnStaffPin({ staffId: ME, pin: "0001" });
+    assert.deepEqual(result, { ok: false, failure: { kind: "wrong", triesLeft: STAFF_PIN_RATE_MAX - 2 } }, "wrong, 3 tries left after the window's 2nd");
+    assert.deepEqual(db.calls, ["slot", "read", "count-day"], "the slot is kept (no refund) and the day count goes up");
+    assert.equal(db.window, 2, "the wrong PIN stays in the window");
+    assert.equal(db.row?.pinFailCount, 4, "the day count is one higher");
+  });
+});
+
+test("verifyOwnStaffPin: a full window answers wait before reading anyone, its slot handed back", async () => {
+  await withFakeDb({ window: STAFF_PIN_RATE_MAX, row: person() }, async (db) => {
+    const result = await verifyOwnStaffPin({ staffId: ME, pin: "7391" });
+    assert.equal(result.ok, false, "even the right PIN waits");
+    const failure = result.ok ? null : result.failure;
+    assert.equal(failure?.kind, "wait", "the answer is wait");
+    assert.ok(failure?.kind === "wait" && failure.retryAfterSec >= 1, "with a positive retry-after");
+    assert.deepEqual(db.calls, ["slot", "refund"], "nobody is read: the slot goes straight back");
+    assert.equal(db.window, STAFF_PIN_RATE_MAX, "the window keeps only its earlier wrongs");
+  });
+});
+
+test("verifyOwnStaffPin: no PIN, an inactive person or a blocked PIN hand the slot back", async () => {
+  const cases: Array<[string, Row | null, string]> = [
+    ["no PIN set", person({ hasPin: false, pin: undefined }), "nopin"],
+    ["a stored PIN the rules refuse", person({ pin: "1234" }), "nopin"],
+    ["an inactive person", person({ isActive: false }), "nopin"],
+    ["no such person", null, "nopin"],
+    ["a blocked PIN", person({ pinBlocked: true }), "blocked"],
+  ];
+  for (const [label, row, kind] of cases) {
+    await withFakeDb({ row }, async (db) => {
+      const result = await verifyOwnStaffPin({ staffId: ME, pin: "7391" });
+      assert.equal(result.ok ? "ok" : result.failure.kind, kind, `${label} -> ${kind}`);
+      assert.deepEqual(db.calls, ["slot", "read", "refund"], `${label}: the slot is handed back`);
+      assert.equal(db.window, 0, `${label}: the window counts nothing`);
+    });
+  }
+});
+
+test("verifyOwnStaffPin: a bad shape answers wrong without touching the database", async () => {
+  delete process.env.MONGODB_URI;
+  const shapes: Array<[string, unknown, unknown]> = [
+    ["no session id", undefined, "7391"],
+    ["an id that is not 24 hex", "not-an-id", "7391"],
+    ["three digits", ME, "739"],
+    ["a number for a PIN", ME, 7391],
+    ["no PIN", ME, undefined],
+  ];
+  const prunes = await prunesDuring(async () => {
+    for (const [label, staffId, pin] of shapes) {
+      const result = await verifyOwnStaffPin({ staffId, pin });
+      assert.deepEqual(result, { ok: false, failure: { kind: "wrong", triesLeft: 0 } }, `${label} -> wrong, no count shown`);
+    }
+  });
+  assert.equal(prunes, 0, "a bad shape never runs the rate-window prune (it answers before connectDB)");
 });

@@ -2,7 +2,7 @@
 
 import { getProviders, signIn, type SignInResponse } from "next-auth/react";
 import { parsePinFailure, type PinSignInFailure } from "@pos/shared/staff-pin";
-import { apiGet, apiSend } from "@/lib/api-client";
+import { ApiError, apiGet, apiSend } from "@/lib/api-client";
 
 // The page side of PIN sign-in (spec 2026-10-16 §5.3, §5.6), shared by the login page and the lock
 // screen. Client-safe on purpose: only next-auth/react, the shared PIN rules and the fetch helpers
@@ -118,6 +118,22 @@ export async function signInWithPin(staffId: string, pin: string): Promise<PinSi
     return OFFLINE;
   }
   return pinSignInOutcome(result);
+}
+
+/**
+ * The dashboard's sales reveal (U0 match Task 6, design 7): is this the signed-in person's own PIN? The server checks
+ * it in the same per-person window as a PIN sign-in and answers the same codes; nobody is signed in or out. An offline
+ * device, or a request that never got an answer, reads as "offline"; a server error as "error" (try again).
+ */
+export async function verifyOwnPin(pin: string): Promise<PinSignInAnswer> {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return OFFLINE;
+  try {
+    const data = await apiSend<{ ok?: unknown; code?: unknown }>("/api/sign-in/verify-pin", "POST", { pin });
+    if (data?.ok === true) return { ok: true };
+    return pinSignInOutcome({ ok: false, code: typeof data?.code === "string" ? data.code : undefined });
+  } catch (error) {
+    return error instanceof ApiError && error.kind === "http" ? ERROR : OFFLINE;
+  }
 }
 
 /**

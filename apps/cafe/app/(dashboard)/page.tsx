@@ -29,21 +29,23 @@ import {
   TopItemsCard,
   type RangeCardProps,
 } from "@/components/dashboard/RangeCards";
-import { SalesHero } from "@/components/dashboard/SalesHero";
+import { SalesHero, useCountUp } from "@/components/dashboard/SalesHero";
+import { BillBreakdown } from "@/components/dashboard/BillBreakdown";
+import { SalesReveal, useSalesReveal } from "@/components/dashboard/SalesReveal";
 import { LiveFloorPanel } from "@/components/dashboard/LiveFloorPanel";
 import { RecentOrders } from "@/components/dashboard/RecentOrders";
 import { TodayReservations } from "@/components/dashboard/TodayReservations";
 import { EndOfDayButton } from "@/components/reports/EndOfDayButton";
-import { MoneyBreakdownCard } from "@/components/reports/MoneyBreakdownCard";
 import { OrderDetailSheet } from "@/components/orders/OrderDetailSheet";
 import type { Order } from "@/types";
 
 // The Dashboard, in the owner's HTML arrangement (U0 match, values 3.0). The shell's header names it ("Dashboard"
 // over the cafe and the date) with End of day and the date picker as its actions. Then: what needs acting on right
 // now; the chosen period (Today by default) against its comparison; the dark Net sales hero beside the bill breakdown
-// receipt; sales by hour/day beside the live floor; recent orders beside today's reservations; payment mix, channels
-// and money leaks; top items, categories and slow movers; busy hours. Every card, figure and link it had stays. Every
-// range number comes from ONE server aggregate (GET /api/dashboard) — never from a capped client list.
+// receipt (both masked until the signed-in person's own PIN); sales by hour/day beside the live floor; recent orders
+// beside today's reservations; payment mix, channels and money leaks; top items, categories and slow movers; busy
+// hours. Every card, figure and link it had stays. Every range number comes from ONE server aggregate
+// (GET /api/dashboard) — never from a capped client list.
 //
 // The rows follow the HTML's content width `cw` (the viewport minus the nav), not the viewport: the page is the query
 // container, as wide as <main> (it bleeds over main's padding and lays out the HTML's own: 20px 24px 28px, on a phone
@@ -55,7 +57,7 @@ const PERIOD_STORAGE_KEY = "pos.dashboard.period";
 
 export default function DashboardPage() {
   const today = cafeDateString();
-  const { isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
 
   // The stored choice is read after mount (sessionStorage does not exist during
   // the server render); the range query waits for that one tick so a remembered
@@ -106,6 +108,10 @@ export default function DashboardPage() {
   }, [todayOrders.data, openTabs.data]);
 
   const d = dash.data;
+  // The sales mask (values 3.17, design 7): the hero's and the receipt's figures show only after this person's own
+  // PIN, for an hour on this tab; every visit starts masked. The two share the count-up the HTML plays on arrival.
+  const reveal = useSalesReveal(user?.id ?? null);
+  const grow = useCountUp(!!d);
   const shownRange = d?.range ?? range;
   const periodName = periodLabel(shownRange, today);
   const cards: RangeCardProps = {
@@ -141,13 +147,13 @@ export default function DashboardPage() {
         {/* The rows' column templates are the HTML's db.L rules on the content width (cw): hero and twoOne split
             from 1000, three goes two-up from 680 and three-up from 1080, where span3 cards fill the two-up row. */}
         <div className="grid grid-cols-1 gap-4 @min-[1000px]:grid-cols-[minmax(0,1.7fr)_minmax(300px,1fr)]">
-          <SalesHero {...cards} />
-          <MoneyBreakdownCard
-            money={d?.money}
-            net={d?.kpis.current.sales ?? 0}
-            loading={!d}
-            caption={`Completed orders · ${periodName}`}
+          <SalesHero
+            {...cards}
+            shown={reveal.shown}
+            grow={grow}
+            reveal={<SalesReveal reveal={reveal} name={user?.name} isAdmin={isAdmin} />}
           />
+          <BillBreakdown {...cards} shown={reveal.shown} grow={grow} />
         </div>
 
         <div className="grid grid-cols-1 gap-4 @min-[1000px]:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">

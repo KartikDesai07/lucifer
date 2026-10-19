@@ -71,6 +71,7 @@
     "lib/pin-device.test.ts",
     "lib/staff-pin-signin.test.ts",
     "lib/sign-in-paths.test.ts",
+    "lib/sales-reveal.test.ts",
     "lib/pin-sign-in-client.test.ts",
     "lib/login-pin-paths.test.ts",
     "lib/tenant.test.ts",

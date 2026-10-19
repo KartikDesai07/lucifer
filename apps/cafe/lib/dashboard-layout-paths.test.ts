@@ -23,7 +23,7 @@ import type { DashboardData, DashboardLive } from "@/types/dashboard";
 // every card, figure, word and link it had stays; only the order and the look
 // change. The KPI row becomes the dark Net sales hero, the bill breakdown a
 // receipt, the strip folds on a phone, the period picker is segmented.
-// SalesHero and KpiChange are new modules, imported inside their tests.
+// SalesHero, KpiChange, BillBreakdown, SalesReveal and the PinPad are imported inside their tests.
 
 // jsx:"preserve" -> React.createElement, so a global React is needed at render time.
 (globalThis as { React?: typeof React }).React = React;
@@ -94,7 +94,7 @@ test("the page lays every card out in the HTML's order, and no longer renders th
     "<AttentionStrip",
     "<RangeBar",
     "<SalesHero",
-    "<MoneyBreakdownCard",
+    "<BillBreakdown",
     "<SalesCard",
     "<LiveFloorPanel",
     "<RecentOrders",
@@ -276,81 +276,299 @@ test("KpiRow maps kpiFigures with its output unchanged; kpiFigures gives the fou
   assert.ok(figures.every((f) => f.compareLabel === "vs Fri, 9 Oct" && f.upIsGood), "same compare label, up is good");
 });
 
-// ── the Net sales hero ──────────────────────────────────────────────────────
+// ── the Net sales hero (U0 match Task 6, values 3.3, 3.17, ruling R12) ────────
 
-test("SalesHero: a dark card with Net sales big and its change as a pill, then Orders, Average order and Collected with the dues hint", async () => {
+// fixture(): Friday 16 Oct against Friday 9 Oct. Net sales +12.4 %, Orders +6.8 %, Average order +5.2 %, Collected flat.
+const hero = async (over: Partial<DashboardData> = {}, extra: Record<string, unknown> = {}) => {
   const { SalesHero } = await import("@/components/dashboard/SalesHero");
-  const html = renderToStaticMarkup(createElement(SalesHero, ready()));
-  assert.ok(html.includes("bg-ink") && html.includes("text-on-ink"), "the dark ink card");
-  const inOrder = ["Net sales", "₹48,250", "Orders", "126", "Average order", "₹383", "Collected", "₹46,980", "+ ₹100 paid against earlier dues"];
-  let last = -1;
-  for (const text of inOrder) {
-    const at = html.indexOf(text, last + 1);
-    assert.ok(at > last, `"${text}" is on the hero, after the one before it`);
-    last = at;
-  }
-  assert.ok(html.includes("rounded-full"), "the Net sales change sits in a pill");
-  assert.equal((html.match(/<span class="sr-only">Up<\/span>/g) ?? []).length, 3, "three figures went up (Collected is flat) and say so in words");
-  assert.ok(html.includes("No change,"), "Collected's flat change is said in words");
-  assert.ok(html.includes("vs Fri, 9 Oct"), "the comparison wording stays");
-  assert.ok(!html.includes("text-brand-up"), "the light page's green (#16733a) is about 3:1 on the ink card: the hero uses its own lighter green");
-  assert.ok(!html.includes('aria-busy="true"'), "a ready hero is not busy");
+  return renderToStaticMarkup(createElement(SalesHero, { ...ready(over), shown: false, ...extra }));
+};
+/** The opening tag of the first element carrying data-ui="name" (nth = which one). */
+const tagOf = (html: string, name: string, nth = 0): string => (html.match(new RegExp(`<[a-z0-9]+ [^>]*data-ui="${name}"[^>]*>`, "g")) ?? [])[nth] ?? "";
+const clsOf = (tag: string): string[] => (/class="([^"]*)"/.exec(tag)?.[1] ?? "").split(" ");
+const expectAll = (tag: string, classes: string[], label: string) => {
+  for (const c of classes) assert.ok(clsOf(tag).includes(c), `${label} has ${c} (got "${clsOf(tag).join(" ")}")`);
+};
+
+test("SalesHero: the HTML's dark card - --nav, a 1px --nav-2 border, radius 16, padding 20 | 24px 26px from cw 560, a 22px column gap", async () => {
+  const html = await hero();
+  const section = tagOf(html, "hero");
+  assert.ok(section.startsWith("<section"), "the hero is a section");
+  expectAll(section, ["flex", "min-w-0", "flex-col", "gap-[22px]", "rounded-[16px]", "border", "border-nav-2", "bg-nav", "p-5", "@min-[560px]:px-[26px]", "@min-[560px]:py-6", "text-white"], "the hero");
+  assert.ok(section.includes("motion-safe:animate-[brand-rise_0.5s_cubic-bezier(0.2,0.8,0.2,1)_both]"), "the HTML's rise .5s");
+  assert.ok(!/\bbg-ink(?![\w-])|\btext-on-ink(?![\w-])|\bsm:/.test(html), "no ink card, no on-ink text, no viewport breakpoint left");
+  expectAll(tagOf(html, "hero-top"), ["flex", "flex-wrap", "items-start", "justify-between", "gap-3"], "the top row");
+  const label = tagOf(html, "hero-label");
+  expectAll(label, ["text-[13px]", "text-[#a1a1aa]"], "the label");
+  assert.ok(html.includes(">Net sales · Today<"), "the label reads 'Net sales · {period}'");
 });
 
-test("SalesHero: loading keeps the labels with skeletons, updating dims the figures, no hint without earlier dues", async () => {
+test("SalesHero: the figure in Geist Mono 500, 42 | 60 px from cw 560, -0.04em, line-height 1, 10px under the label", async () => {
+  const figure = tagOf(await hero({}, { shown: true }), "hero-figure");
+  expectAll(figure, ["mt-2.5", "font-mono", "font-medium", "text-[42px]", "@min-[560px]:text-[60px]", "tracking-[-0.04em]", "leading-none"], "the figure");
+});
+
+test("SalesHero masked (the default, values 3.17): '₹ • • • •' for Net sales, Average order and Collected, 'still due hidden'", async () => {
+  const html = await hero();
+  assert.match(html, /data-ui="hero-figure"[^>]*>₹ • • • •</, "the hero's figure is masked");
+  const values = [...html.matchAll(/data-ui="hero-mini-value"[^>]*>([^<]*)</g)].map((m) => m[1]);
+  assert.deepEqual(values, ["126", "₹ • • • •", "₹ • • • •"], "Orders shows; Average order and Collected are masked");
+  assert.ok(html.includes("still due hidden"), "Collected's note while masked");
+  assert.ok(!/₹48,250|₹383|₹46,980|₹1,270/.test(html), "no sales figure anywhere while masked");
+  assert.ok(html.includes("↑ 12.4%") && html.includes("↑ 6.8%") && html.includes("↑ 5.2%"), "every change % stays visible");
+  assert.ok(!html.includes("earlier dues") && !html.includes('data-ui="hero-dues"'), "our earlier-dues line (ruling R12) is its amount: masked, it is left out");
+});
+
+test("SalesHero shown: the figures, '₹1,270 still due' (sales - collected) and our earlier-dues line", async () => {
+  const html = await hero({}, { shown: true });
+  assert.match(html, /data-ui="hero-figure"[^>]*>₹48,250</, "Net sales");
+  const values = [...html.matchAll(/data-ui="hero-mini-value"[^>]*>([^<]*)</g)].map((m) => m[1]);
+  assert.deepEqual(values, ["126", "₹383", "₹46,980"], "the three minis");
+  const labels = [...html.matchAll(/data-ui="hero-mini-label"[^>]*>([^<]*)</g)].map((m) => m[1]);
+  assert.deepEqual(labels, ["Orders", "Average order", "Collected"], "the minis' labels");
+  const notes = [...html.matchAll(/data-ui="hero-mini-note"[^>]*>([^<]*)</g)].map((m) => m[1]);
+  assert.deepEqual(notes, ["vs last fri", "per bill", "₹1,270 still due"], "the notes: vs {cmpShort}, per bill, still due");
+  assert.ok(html.includes("+ ₹100 paid against earlier dues"), "the earlier-dues line (ruling R12)");
+  expectAll(tagOf(html, "hero-dues"), ["text-[12px]", "text-[#a1a1aa]"], "the dues line: 12px #A1A1AA");
+  const allCollected = await hero({ kpis: { current: { sales: 500, orders: 2, averageOrder: 250, collected: 500 }, previous: { sales: 400, orders: 2, averageOrder: 200, collected: 400 } } }, { shown: true });
+  assert.ok(allCollected.includes("all collected"), "nothing due: 'all collected'");
+  const noDues = await hero({ duesCollected: 0 }, { shown: true });
+  assert.ok(!noDues.includes("earlier dues") && !noDues.includes('data-ui="hero-dues"'), "no earlier-dues line without earlier dues");
+});
+
+test("SalesHero: the delta row - the pill '↑ 12.4%' (24px, 0 9px, radius 12, 600, the hero's green), then 'vs' and the comparison as their own items, gap 8", async () => {
+  const html = await hero();
+  expectAll(tagOf(html, "hero-delta"), ["mt-3", "flex", "items-center", "gap-2", "text-[13px]", "text-[#a1a1aa]"], "the delta row");
+  const pill = tagOf(html, "hero-pill");
+  expectAll(pill, ["flex", "h-6", "items-center", "rounded-[12px]", "px-[9px]", "font-semibold", "text-on-ink-up", "bg-on-ink-up-tint"], "the pill");
+  assert.match(html, /data-ui="hero-delta"[^>]*><span [^>]*data-ui="hero-pill"[^>]*><span class="sr-only">Up<\/span>↑ 12\.4%<\/span><span>vs<\/span><span>last Friday<\/span>/, "pill, 'vs', 'last Friday': three flex items (values 0.2)");
+  const down = await hero({ kpis: { current: { sales: 900, orders: 3, averageOrder: 300, collected: 900 }, previous: { sales: 1000, orders: 3, averageOrder: 300, collected: 900 } } });
+  expectAll(tagOf(down, "hero-pill"), ["text-on-ink-down", "bg-on-ink-down-tint"], "a fall wears the hero's red");
+  assert.match(down, /<span class="sr-only">Down<\/span>↓ 10%</, "'↓ 10%' (the HTML's one decimal, a whole number without one)");
+});
+
+test("SalesHero (ruling R12): a flat change is a grey '0%' pill; no comparison data -> no pill, 'No orders last Friday'", async () => {
+  const flat = await hero({ kpis: { current: { sales: 500, orders: 2, averageOrder: 250, collected: 500 }, previous: { sales: 500, orders: 2, averageOrder: 250, collected: 500 } } });
+  expectAll(tagOf(flat, "hero-pill"), ["bg-on-ink/10", "text-[#a1a1aa]"], "the flat pill");
+  assert.match(flat, /<span class="sr-only">No change,<\/span>0%</, "'0%', said as no change");
+  const none = await hero({ kpis: { current: { sales: 500, orders: 2, averageOrder: 250, collected: 500 }, previous: { sales: 0, orders: 0, averageOrder: 0, collected: 0 } } });
+  assert.ok(!none.includes('data-ui="hero-pill"'), "no pill without a comparison");
+  assert.match(none, /data-ui="hero-delta"[^>]*><span>No orders last Friday<\/span>/, "the line says the comparison had no orders");
+  const minis = [...none.matchAll(/data-ui="hero-mini-delta"[^>]*>([\s\S]*?)<\/span><\/span>/g)].map((m) => m[1]);
+  assert.equal(minis.length, 3, "three mini change lines");
+  assert.ok(!/[↑↓]/.test(minis.join("")), "no arrow on a mini without a comparison");
+  const notes = [...none.matchAll(/data-ui="hero-mini-note"[^>]*>([^<]*)</g)].map((m) => m[1]);
+  assert.deepEqual(notes, ["No orders last Friday", "per bill", "still due hidden"], "Orders says why; the other notes stay");
+});
+
+test("SalesHero: the minis - 1 | 3 columns from cw 560, gap 16, 18px over a --nav-2 rule; 12.5 label, mono 24/500 value, 12/500 change + a 400 note", async () => {
+  const html = await hero();
+  expectAll(tagOf(html, "hero-minis"), ["grid", "grid-cols-1", "@min-[560px]:grid-cols-3", "gap-4", "border-t", "border-nav-2", "pt-[18px]"], "the minis grid");
+  expectAll(tagOf(html, "hero-mini"), ["flex", "min-w-0", "flex-col", "gap-1.5"], "a mini");
+  expectAll(tagOf(html, "hero-mini-label"), ["text-[12.5px]", "text-[#a1a1aa]"], "a mini's label");
+  expectAll(tagOf(html, "hero-mini-value"), ["font-mono", "text-[24px]", "font-medium", "tracking-[-0.03em]", "whitespace-nowrap"], "a mini's value");
+  expectAll(tagOf(html, "hero-mini-delta"), ["text-[12px]", "font-medium", "text-on-ink-up"], "a mini's change");
+  expectAll(tagOf(html, "hero-mini-note"), ["font-normal", "text-[#a1a1aa]"], "a mini's note");
+  assert.match(html, /data-ui="hero-mini-delta"[^>]*><span class="sr-only">Up<\/span>↑ 6\.8% <span [^>]*data-ui="hero-mini-note"/, "'↑ 6.8% ' then the note, inline");
+  assert.match(tagOf(html, "hero-mini-delta", 2), /text-\[#a1a1aa\]/, "Collected's flat change is grey (ruling R12)");
+});
+
+test("SalesHero: the reveal controls sit in the right column; loading keeps the labels with skeletons; updating dims", async () => {
+  const slot = createElement("span", { "data-probe": "reveal" }, "the reveal");
+  const html = await hero({}, { reveal: slot });
+  assert.ok(html.indexOf('data-probe="reveal"') > html.indexOf('data-ui="hero-delta"'), "the reveal controls come after the figure block");
+  assert.ok(html.indexOf('data-probe="reveal"') < html.indexOf('data-ui="hero-minis"'), "and before the minis (the top row's right column)");
   const { SalesHero } = await import("@/components/dashboard/SalesHero");
-  const loading = renderToStaticMarkup(createElement(SalesHero, { ...ready(), data: undefined, status: "loading" as const }));
-  for (const label of ["Net sales", "Orders", "Average order", "Collected"]) {
-    assert.ok(loading.includes(label), `loading still names ${label}`);
-  }
+  const loading = renderToStaticMarkup(createElement(SalesHero, { ...ready(), data: undefined, status: "loading" as const, shown: true }));
+  for (const label of ["Net sales", "Orders", "Average order", "Collected"]) assert.ok(loading.includes(label), `loading still names ${label}`);
   assert.ok(loading.includes('aria-busy="true"'), "loading is busy");
   assert.ok(!loading.includes("₹"), "no figure while loading");
   assert.ok(loading.includes("animate-pulse"), "skeletons while loading");
-  const error = renderToStaticMarkup(createElement(SalesHero, { ...ready(), data: undefined, status: "error" as const }));
-  assert.ok(error.includes("animate-pulse") && !error.includes("₹"), "an error with no data keeps the skeletons, as the KPI row did");
-  const updating = renderToStaticMarkup(createElement(SalesHero, { ...ready(), updating: true }));
-  assert.ok(updating.includes("opacity-55"), "the old range's figures dim while the new one loads");
-  assert.ok(updating.includes('aria-busy="true"'), "updating is busy");
-  const noDues = renderToStaticMarkup(createElement(SalesHero, ready({ duesCollected: 0 })));
-  assert.ok(!noDues.includes("paid against earlier dues"), "no hint when no earlier dues were paid");
+  const updating = await hero({}, { updating: true });
+  assert.ok(updating.includes("opacity-55") && updating.includes('aria-busy="true"'), "the old range's figures dim while the new one loads");
+  const ready0 = await hero();
+  assert.ok(!ready0.includes('aria-busy="true"'), "a ready hero is not busy");
 });
 
-test("KpiChange: the dark tone's up and down colours are tokens, and read at 4.5:1 on the ink card and on their pill tints", async () => {
-  const { KpiChange, KPI_CHANGE_DARK } = await import("@/components/dashboard/KpiChange");
+test("SalesHero: the count-up (values 3.2) scales Net sales, Orders and Collected by grow; Average order never counts", async () => {
+  const html = await hero({}, { shown: true, grow: 0.5 });
+  assert.match(html, /data-ui="hero-figure"[^>]*>₹24,125</, "half of ₹48,250");
+  const values = [...html.matchAll(/data-ui="hero-mini-value"[^>]*>([^<]*)</g)].map((m) => m[1]);
+  assert.deepEqual(values, ["63", "₹383", "₹23,490"], "Orders and Collected count, Average order does not");
+  assert.ok(html.includes("₹1,270 still due"), "the still-due note never counts");
+});
+
+test("KpiChange's hero set: the HTML's #6FDC8C / #FF8389 as tokens, the 16 % pills flattened over --nav, 4.5:1 on the card and the pill", async () => {
+  const { KPI_CHANGE_DARK, heroChange } = await import("@/components/dashboard/KpiChange");
   const css = readFileSync(path.join(HERE, "..", "app/globals.css"), "utf8");
-  const ink = /:root\s*\{[^}]*?--ink:\s*(#[0-9a-f]{6});/i.exec(css)?.[1];
-  assert.ok(ink, "landmark: the light theme's --ink in app/globals.css");
-  const darkBlock = /\n\.dark\s*\{([\s\S]*?)\n\}/.exec(css)?.[1] ?? "";
-  const darkInk = /--ink:\s*(#[0-9a-f]{6});/i.exec(darkBlock)?.[1];
-  assert.ok(darkInk, "landmark: the dark theme's --ink");
-  assert.ok(!/#[0-9a-f]{6}/i.test(KPI_CHANGE_DARK.good + KPI_CHANGE_DARK.bad), "no literal hex left in the dark tone's text colours");
-  const tokens = { good: "on-ink-up", bad: "on-ink-down" } as const;
+  const lightBlock = /:root\s*\{[^}]*?--on-ink-up:[^}]*\}/.exec(css)?.[0] ?? "";
+  const nav = /--nav:\s*(#[0-9a-f]{6});/i.exec(lightBlock)?.[1];
+  assert.equal(nav, "#111113", "landmark: the hero's card is --nav #111113");
+  assert.ok(!/#[0-9a-f]{6}/i.test(KPI_CHANGE_DARK.good + KPI_CHANGE_DARK.bad), "no literal hex in the hero's up and down text colours");
+  const want = { good: ["on-ink-up", "#6fdc8c", "#192d20"], bad: ["on-ink-down", "#ff8389", "#361b1e"] } as const;
   for (const way of ["good", "bad"] as const) {
-    assert.ok(KPI_CHANGE_DARK[way].includes(`text-${tokens[way]}`), `dark ${way} wears text-${tokens[way]}`);
-    assert.ok(themeHas(css, tokens[way]), `--color-${tokens[way]} is registered in @theme inline`);
-    assert.equal(KPI_CHANGE_DARK[`${way}Pill`], `bg-${tokens[way]}-tint`, `dark ${way} pill wears the bg-${tokens[way]}-tint token`);
-    assert.ok(themeHas(css, `${tokens[way]}-tint`), `--color-${tokens[way]}-tint is registered in @theme inline`);
-    const lightBlock = /:root\s*\{[^}]*?--on-ink-up:[^}]*\}/.exec(css)?.[0] ?? "";
-    const lightText = new RegExp(`--${tokens[way]}: *(#[0-9a-f]{6});`, "i").exec(lightBlock)?.[1];
-    const darkText = new RegExp(`--${tokens[way]}: *(#[0-9a-f]{6});`, "i").exec(darkBlock)?.[1];
-    assert.ok(lightText && darkText, `--${tokens[way]} is set in :root and in .dark`);
-    for (const [text, card] of [[lightText, ink], [darkText, darkInk]] as const) {
-      assert.ok(contrast(text, card) >= 4.5, `${text} on the ink ${card} is ${contrast(text, card).toFixed(2)}:1`);
-      const pill = new RegExp(`--${tokens[way]}-tint: *(#[0-9a-f]{6});`, "i").exec(card === ink ? lightBlock : darkBlock)?.[1] ?? "";
-      assert.ok(pill, `--${tokens[way]}-tint is an opaque hex in this theme`);
-      assert.ok(contrast(text, pill) >= 4.5, `${text} on its pill ${pill} is ${contrast(text, pill).toFixed(2)}:1`);
-    }
+    const [token, text, tint] = want[way];
+    assert.equal(KPI_CHANGE_DARK[way], `text-${token}`, `the hero's ${way} text is text-${token}`);
+    assert.equal(KPI_CHANGE_DARK[`${way}Pill`], `bg-${token}-tint`, `the hero's ${way} pill is bg-${token}-tint`);
+    assert.ok(themeHas(css, token) && themeHas(css, `${token}-tint`), `--color-${token} and its tint are registered in @theme inline`);
+    assert.equal(new RegExp(`--${token}: *(#[0-9a-f]{6});`, "i").exec(lightBlock)?.[1], text, `--${token} is the HTML's ${text}`);
+    assert.equal(new RegExp(`--${token}-tint: *(#[0-9a-f]{6});`, "i").exec(lightBlock)?.[1], tint, `--${token}-tint is the HTML's 16 % tint flattened over --nav (${tint})`);
+    assert.ok(contrast(text, nav) >= 4.5, `${text} on the card ${nav} is ${contrast(text, nav).toFixed(2)}:1`);
+    assert.ok(contrast(text, tint) >= 4.5, `${text} on its pill ${tint} is ${contrast(text, tint).toFixed(2)}:1`);
   }
-  const html = renderToStaticMarkup(
-    createElement(KpiChange, { delta: 0.124, compareLabel: "vs last Friday", noCompareText: "", upIsGood: true, tone: "dark", pill: true }),
-  );
-  assert.ok(html.includes(KPI_CHANGE_DARK.good) && html.includes(KPI_CHANGE_DARK.goodPill), "an up change wears the dark good colours");
-  assert.ok(html.includes('<span class="sr-only">Up</span>'), "the direction is said in words");
+  assert.equal(KPI_CHANGE_DARK.flat, "text-[#a1a1aa]", "a flat change and the notes are the HTML's #A1A1AA");
+  assert.equal(KPI_CHANGE_DARK.flatPill, "bg-on-ink/10", "the flat pill (ruling R12)");
+  assert.ok(contrast("#a1a1aa", nav) >= 4.5, "#A1A1AA on the card reads at 4.5:1");
+  assert.deepEqual(heroChange(0.124), { text: "↑ 12.4%", said: "Up", way: "good" }, "dl(12.4): one decimal");
+  assert.deepEqual(heroChange(-0.021), { text: "↓ 2.1%", said: "Down", way: "bad" }, "dl(-2.1)");
+  assert.deepEqual(heroChange(0.2), { text: "↑ 20%", said: "Up", way: "good" }, "a whole number shows no decimal, as the HTML's own number");
+  assert.deepEqual(heroChange(0), { text: "0%", said: "No change,", way: "flat" }, "flat: '0%' (ruling R12)");
+  assert.deepEqual(heroChange(0.0004), { text: "0%", said: "No change,", way: "flat" }, "under 0.05 % reads as no change");
+  assert.equal(heroChange(null), null, "no comparison");
 });
 
 function themeHas(css: string, name: string): boolean {
   return css.includes(`--color-${name}: var(--${name});`);
 }
+
+// ── the bill breakdown (U0 match Task 6, values 3.4, 3.17) ───────────────────
+
+const bill = async (over: Partial<DashboardData> = {}, extra: Record<string, unknown> = {}) => {
+  const { BillBreakdown } = await import("@/components/dashboard/BillBreakdown");
+  const money = { gross: 47120, discount: 1840, reward: 260, gst: 2480, charges: 750 };
+  return renderToStaticMarkup(createElement(BillBreakdown, { ...ready({ money, ...over }), shown: true, ...extra }));
+};
+
+test("BillBreakdown: the HTML receipt - surface, a border with no foot, radius 16 16 0 0, padding 20 22 26, 8px below, the torn edge", async () => {
+  const html = await bill();
+  const section = tagOf(html, "bill");
+  assert.ok(section.startsWith("<section"), "the receipt is a section");
+  expectAll(section, ["relative", "mb-2", "min-w-0", "rounded-t-[16px]", "border", "border-b-0", "border-border", "bg-card", "px-[22px]", "pt-5", "pb-[26px]"], "the receipt");
+  assert.ok(section.includes("motion-safe:animate-[brand-rise_0.5s_0.06s_cubic-bezier(0.2,0.8,0.2,1)_both]"), "the HTML's rise .5s, .06s late");
+  const edge = tagOf(html, "bill-edge");
+  expectAll(edge, ["absolute", "-left-px", "-right-px", "-bottom-2", "h-[9px]"], "the torn edge");
+  assert.ok(edge.includes("radial-gradient(circle at 7px 9px,transparent 5px,var(--color-card) 5.5px) 0 0/14px 9px repeat-x"), "the HTML's radial gradient, verbatim");
+  assert.ok(!html.includes("mask") && !html.includes("border-dotted"), "no mask and no dotted leaders (the reports' receipt keeps those)");
+});
+
+test("BillBreakdown: the head, the dashed rules 14/6 and 6/12, our rows in our words with the HTML's colours and − / + signs", async () => {
+  const html = await bill();
+  expectAll(tagOf(html, "bill-head"), ["flex", "items-baseline", "justify-between", "gap-2"], "the head");
+  assert.match(html, /<h2 [^>]*class="text-\[15px\] font-semibold"[^>]*>Bill breakdown<\/h2>/, "the title 15/600");
+  expectAll(tagOf(html, "bill-tag"), ["font-mono", "text-[11px]", "uppercase", "tracking-[0.06em]", "text-subtle-foreground"], "the period tag");
+  assert.match(html, /data-ui="bill-tag"[^>]*>Today</, "the tag is the period's short name (upper-cased by CSS)");
+  expectAll(tagOf(html, "bill-rule", 0), ["mt-3.5", "mb-1.5", "border-t-[1.5px]", "border-dashed", "border-border"], "the first rule");
+  expectAll(tagOf(html, "bill-rule", 1), ["mt-1.5", "mb-3", "border-t-[1.5px]", "border-dashed", "border-border"], "the second rule");
+  const rows = [...html.matchAll(/<div [^>]*data-ui="bill-row"[^>]*><span>([^<]*)<\/span><span class="font-mono">([^<]*)<\/span><\/div>/g)].map((m) => [m[1], m[2]]);
+  assert.deepEqual(
+    rows,
+    [
+      ["Gross bill", "₹47,120"],
+      ["Discounts", "− ₹1,840"],
+      ["Rewards given", "− ₹260"],
+      ["GST added", "+ ₹2,480"],
+      ["Additional charges", "+ ₹750"],
+    ],
+    "our five rows in MONEY_BREAKDOWN_LINES order, our words, the HTML's U+2212 minus",
+  );
+  assert.deepEqual(MONEY_BREAKDOWN_LINES.map((l) => l.label), rows.map((r) => r[0]), "the rows follow the shared label table");
+  const colours = [0, 1, 2, 3, 4].map((i) => clsOf(tagOf(html, "bill-row", i)).find((c) => c.startsWith("text-") && c !== "text-[13.5px]"));
+  assert.deepEqual(colours, ["text-foreground", "text-status-bad-ink", "text-status-bad-ink", "text-muted-foreground", "text-muted-foreground"], "text, bad-i, bad-i, text-2, text-2");
+  expectAll(tagOf(html, "bill-row"), ["flex", "justify-between", "gap-3", "py-[7px]", "text-[13.5px]"], "a row");
+  expectAll(tagOf(html, "bill-total"), ["flex", "items-baseline", "justify-between"], "the total");
+  assert.match(html, /data-ui="bill-total"[^>]*><span class="text-\[15px\] font-semibold">Net sales<\/span><span [^>]*class="font-mono text-\[22px\] font-semibold tracking-\[-0\.02em\]"[^>]*>₹48,250<\/span>/, "Net sales 15/600, its value mono 22/600 -0.02em");
+});
+
+test("BillBreakdown masked: every row '• • • •' in text-3, its label too; the total '₹ • • • •'", async () => {
+  const html = await bill({}, { shown: false });
+  const rows = [...html.matchAll(/data-ui="bill-row"[^>]*>[\s\S]*?<span class="font-mono">([^<]*)</g)].map((m) => m[1]);
+  assert.deepEqual(rows, ["• • • •", "• • • •", "• • • •", "• • • •", "• • • •"], "five masked rows");
+  for (let i = 0; i < 5; i += 1) assert.ok(clsOf(tagOf(html, "bill-row", i)).includes("text-subtle-foreground"), `row ${i + 1} is text-3`);
+  assert.match(html, /data-ui="bill-total"[\s\S]*?>₹ • • • •</, "the total is masked");
+  assert.ok(!/₹[0-9]/.test(html), "no amount anywhere");
+});
+
+test("BillBreakdown: the period tag is the HTML's short name - a day as its date, a span as N days; loading keeps the frame", async () => {
+  const tag = (range: { from: string; to: string }) => bill({ range });
+  assert.match(await tag({ from: "2026-10-15", to: "2026-10-15" }), /data-ui="bill-tag"[^>]*>15 Oct</, "yesterday: its date");
+  assert.match(await tag({ from: "2026-10-10", to: TODAY }), /data-ui="bill-tag"[^>]*>7 days</, "7 days");
+  const { BillBreakdown } = await import("@/components/dashboard/BillBreakdown");
+  const loading = renderToStaticMarkup(createElement(BillBreakdown, { ...ready(), data: undefined, status: "loading" as const, shown: true }));
+  assert.ok(loading.includes("Bill breakdown") && loading.includes('aria-busy="true"'), "the title stays, busy");
+  assert.ok(!loading.includes("₹") && loading.includes("animate-pulse"), "skeleton rows, no amount");
+});
+
+// ── the reveal (U0 match Task 6, values 3.16, design 7) ──────────────────────
+
+test("PinPad size 'reveal': 50px keys, radius 14, digits 24/500, Clear 14, ⌫ 20 on no fill, gap 8; 14px dots 16 apart; an error rings and fills them", async () => {
+  const { PinPad } = await import("@/components/ui/pin-pad");
+  const tones = { dotEmpty: "border-subtle-foreground", dotErrorFill: "bg-status-bad-tint", message: "text-status-bad-ink", key: "active:bg-surface-3" };
+  const html = renderToStaticMarkup(createElement(PinPad, { value: "12", onChange: noop, onComplete: noop, size: "reveal", tones, prompt: "Asha, enter your PIN" }));
+  const keys = html.match(/<button[^>]*>[^<]*<\/button>/g) ?? [];
+  assert.equal(keys.length, 12, "twelve keys");
+  assert.deepEqual(keys.map((k) => />([^<]*)<\/button>$/.exec(k)?.[1]), ["1", "2", "3", "4", "5", "6", "7", "8", "9", "Clear", "0", "⌫"], "1-9, Clear, 0, ⌫ (U+232B, a glyph)");
+  for (const k of keys) {
+    expectAll(k, ["h-[50px]", "rounded-[14px]", "border", "font-medium", "text-foreground", "hover:bg-muted", "active:bg-surface-3"], "a key");
+  }
+  expectAll(keys[0], ["text-[24px]", "border-border", "bg-card"], "a digit");
+  expectAll(keys[9], ["text-[14px]", "border-transparent", "bg-transparent"], "Clear");
+  expectAll(keys[11], ["text-[20px]", "border-transparent", "bg-transparent"], "⌫");
+  assert.ok(keys[11].includes('aria-label="Delete last digit"'), "⌫ is named for a screen reader");
+  expectAll(tagOf(html, "reveal-keys"), ["grid", "grid-cols-3", "gap-2"], "the key grid");
+  expectAll(tagOf(html, "reveal-pin"), ["flex", "flex-col", "items-center", "gap-2.5"], "the PIN block");
+  assert.ok(html.indexOf("Asha, enter your PIN") < html.indexOf('data-ui="reveal-dots"'), "the prompt above the dots");
+  expectAll(tagOf(html, "reveal-dots"), ["flex", "justify-center", "gap-4"], "the dots row");
+  const dots = html.match(/<span[^>]*data-filled[^>]*>/g) ?? [];
+  assert.equal(dots.length, 4, "four dots");
+  for (const d of dots) expectAll(d, ["size-3.5", "rounded-[50%]", "border-[1.5px]"], "a dot (the HTML's 50 %, not a 9999px pill)");
+  expectAll(dots[0], ["border-foreground", "bg-foreground"], "a typed dot is ink");
+  expectAll(dots[3], ["border-subtle-foreground"], "an empty dot rings in text-3");
+  expectAll(tagOf(html, "reveal-message"), ["min-h-[18px]", "text-[13px]", "font-medium", "text-status-bad-ink"], "the message line");
+  const wrong = renderToStaticMarkup(createElement(PinPad, { value: "", onChange: noop, onComplete: noop, size: "reveal", tones, error: "Incorrect PIN", errorCount: 1 }));
+  for (const d of wrong.match(/<span[^>]*data-filled[^>]*>/g) ?? []) expectAll(d, ["border-destructive", "bg-status-bad-tint"], "a dot after a wrong PIN");
+  expectAll(tagOf(wrong, "reveal-dots"), ["motion-safe:animate-html-shake"], "the dots shake after a wrong PIN");
+  assert.match(wrong, /role="alert"[^>]*>Incorrect PIN</, "the message is an alert");
+  assert.ok(!tagOf(html, "reveal-dots").includes("animate-html-shake"), "no shake before the first error");
+  const css = readFileSync(path.join(HERE, "..", "app/globals.css"), "utf8");
+  assert.ok(css.includes("--animate-html-shake: html-shake 0.42s ease;"), "the HTML's shake .42s ease");
+  assert.match(css, /@keyframes html-shake \{[\s\S]*?20% \{\s*transform: translateX\(-9px\);[\s\S]*?40% \{\s*transform: translateX\(8px\);[\s\S]*?60% \{\s*transform: translateX\(-5px\);[\s\S]*?80% \{\s*transform: translateX\(3px\);/, "the HTML's shake keyframes");
+});
+
+test("the reveal dialog's panel (values 3.16): the 38px ink tile with the eye, 'Show sales figures' 17/600, the sub, the pad, Cancel", async () => {
+  const { RevealPinPanel } = await import("@/components/dashboard/SalesReveal");
+  const { Dialog } = await import("@/components/ui/dialog");
+  const panel = (extra: Record<string, unknown> = {}) =>
+    renderToStaticMarkup(
+      createElement(Dialog, { open: true }, createElement(RevealPinPanel, { prompt: "Asha, enter your PIN", noPin: null, pin: "", message: null, errorCount: 0, onChange: noop, onComplete: noop, onCancel: noop, ...extra })),
+    );
+  const html = panel();
+  expectAll(tagOf(html, "reveal-head"), ["flex", "items-start", "gap-3"], "the header");
+  expectAll(tagOf(html, "reveal-icon"), ["flex", "size-[38px]", "flex-none", "items-center", "justify-center", "rounded-[10px]", "bg-ink", "text-on-ink"], "the icon tile");
+  assert.match(html, /<h2 [^>]*class="text-\[17px\] font-semibold"[^>]*>Show sales figures<\/h2>/, "the title");
+  assert.match(html, /<p [^>]*class="mt-\[3px\] text-\[13\.5px\] leading-\[1\.45\] text-pretty text-muted-foreground"[^>]*>Sales stay visible on this device for 1 hour\. They hide again when the screen locks or you leave Dashboard\.<\/p>/, "the sub");
+  assert.ok(html.includes('data-ui="reveal-keys"') && html.includes("Asha, enter your PIN"), "the pad and its prompt");
+  expectAll(tagOf(html, "reveal-prompt"), ["text-[13px]", "text-muted-foreground"], "the prompt 13px text-2");
+  const cancel = tagOf(html, "reveal-cancel");
+  expectAll(cancel, ["h-10", "bg-transparent", "text-[14px]", "font-medium", "text-link"], "Cancel: a 40px link");
+  assert.match(html, /data-ui="reveal-cancel"[^>]*>Cancel</, "Cancel");
+  const none = panel({ noPin: "Ask an admin to set your PIN to show sales." });
+  assert.ok(none.includes("Ask an admin to set your PIN to show sales.") && !none.includes('data-ui="reveal-keys"'), "no PIN: the message instead of the keys");
+});
+
+test("the page masks both cards with one reveal, and the reveal hides on a lock or when the page goes", () => {
+  const page = readSrc(PAGE);
+  assert.match(page, /const reveal = useSalesReveal\(user\?\.id \?\? null\);/, "one reveal for the signed-in person");
+  assert.match(page, /<SalesHero\s+\{\.\.\.cards\}\s+shown=\{reveal\.shown\}\s+grow=\{grow\}\s+reveal=\{<SalesReveal reveal=\{reveal\} name=\{user\?\.name\} isAdmin=\{isAdmin\} \/>\}\s*\/>/, "the hero, masked by the reveal, with its controls");
+  assert.match(page, /<BillBreakdown \{\.\.\.cards\} shown=\{reveal\.shown\} grow=\{grow\} \/>/, "the receipt, masked by the same reveal");
+  assert.ok(!page.includes("<MoneyBreakdownCard"), "the reports' receipt is no longer on the dashboard");
+  const src = readSrc("components/dashboard/SalesReveal.tsx");
+  assert.ok(src.includes("SCREEN_LOCK_EVENT") && src.includes("LOCK_ATTR"), "a lock (asked for, or the idle cover) hides the figures and closes the dialog");
+  assert.ok(src.includes("verifyOwnPin("), "the PIN is checked by the server (lib/pin-sign-in-client.ts verifyOwnPin)");
+  assert.ok(src.includes("toast.success(REVEAL_TOAST)"), "the toast after a right PIN");
+  assert.ok(src.includes("window.sessionStorage"), "the grant lives in sessionStorage");
+  assert.ok(/useState\(false\)/.test(src), "shown starts false on every mount: leaving the dashboard hides the figures");
+  assert.ok(src.includes("HTML_PRESS_CLASS"), "the button, the keys and Cancel press like the HTML's");
+});
 
 // ── Needs attention ─────────────────────────────────────────────────────────
 

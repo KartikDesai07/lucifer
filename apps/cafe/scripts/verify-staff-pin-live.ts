@@ -3,8 +3,8 @@
  * with `@/lib/auth` swapped for a signed-in stub whose role is switchable - the
  * verify-expenses-live.ts harness. Part A (set / shown to admins / never listed) is in
  * verify-staff-pin-live-cases.ts, part B (the PIN check itself) in verify-staff-pin-live-cases-signin.ts,
- * part C (the device's remembered people: the two sign-in routes) in verify-staff-pin-live-cases-device.ts;
- * later tasks append parts to PARTS. `next/headers` is swapped too (part C's routes use cookies()).
+ * part C (the device's remembered people: the two sign-in routes) in verify-staff-pin-live-cases-device.ts,
+ * part E (the sales reveal's own-PIN route) in verify-staff-pin-live-cases-reveal.ts; later tasks append parts to PARTS. `next/headers` is swapped too (part C's routes use cookies()).
  *
  *   node --import tsx scripts/verify-staff-pin-live.ts
  *
@@ -22,6 +22,7 @@ import { runPartA } from "./verify-staff-pin-live-cases";
 import { runPartB } from "./verify-staff-pin-live-cases-signin";
 import { runPartC } from "./verify-staff-pin-live-cases-device";
 import { runPartD } from "./verify-staff-pin-live-cases-settings";
+import { runPartE } from "./verify-staff-pin-live-cases-reveal";
 import {
   ADMIN_ID,
   STAFF_ID,
@@ -41,7 +42,7 @@ const BODY_PRINT_MAX = 150;
 const ROUTE_MISSING_STATUS = 0;
 const KNOWN_HOST = "localhost"; // resolves to the local "dev" tenant (lib/tenant.ts)
 
-const PARTS: Part[] = [runPartA, runPartB, runPartC, runPartD];
+const PARTS: Part[] = [runPartA, runPartB, runPartC, runPartD, runPartE];
 
 let currentRole: Role = "admin";
 let signedIn: StubUser | null | undefined; // undefined: the role's fixed user
@@ -160,10 +161,12 @@ async function buildHarness(): Promise<Harness> {
   const settingsRoute = await loadRoute("app/api/settings/route.ts");
   const knownRoute = await loadRoute("app/api/sign-in/known/route.ts");
   const rememberRoute = await loadRoute("app/api/sign-in/remember/route.ts");
+  const verifyRoute = await loadRoute("app/api/sign-in/verify-pin/route.ts");
   const loaded = (m: RouteModule | null) => (m ? "loaded" : "MISSING");
   console.log(
     `  routes: /api/staff ${loaded(listRoute)}, /api/staff/[id] ${loaded(itemRoute)}, /api/staff/[id]/pin ${loaded(pinRoute)}, ` +
-      `/api/sign-in/known ${loaded(knownRoute)}, /api/sign-in/remember ${loaded(rememberRoute)}`,
+      `/api/sign-in/known ${loaded(knownRoute)}, /api/sign-in/remember ${loaded(rememberRoute)}, ` +
+      `/api/sign-in/verify-pin ${loaded(verifyRoute)}`,
   );
   return {
     setRole: (role) => {
@@ -188,6 +191,7 @@ async function buildHarness(): Promise<Harness> {
       known: ({ cookie, host = KNOWN_HOST } = {}) =>
         call(knownRoute?.GET, req("GET", "/api/sign-in/known", undefined, { host, ...withCookie(cookie) })),
       remember: (cookie) => call(rememberRoute?.POST, req("POST", "/api/sign-in/remember", undefined, withCookie(cookie))),
+      verifyPin: (body) => call(verifyRoute?.POST, req("POST", "/api/sign-in/verify-pin", body)),
     },
   };
 }

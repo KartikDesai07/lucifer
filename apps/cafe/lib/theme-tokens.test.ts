@@ -162,13 +162,15 @@ test("radius steps: cards 12 px (xl) and dialogs/sheets 16 px (2xl), as spec 4.5
   assert.equal(declOf(themeInline, "--radius-2xl"), "calc(var(--radius) + 6px)", "--radius-2xl is 10 + 6 = 16 px (spec 4.5 dialogs and sheets)");
 });
 
-test("the ink hero's change-pill tints are opaque hex tokens (the old 16 % tints flattened), registered in @theme inline", () => {
+// U0 match Task 6 (values 3.3): the hero is the HTML's --nav card now, so its pills are the HTML's 16 % tints flattened
+// over --nav #111113 (rgba(66,190,101,.16) -> #192d20, rgba(250,77,86,.16) -> #361b1e).
+test("the hero's change-pill tints are opaque hex tokens (the HTML's 16 % tints flattened), registered in @theme inline", () => {
   const want = {
-    "--on-ink-up-tint": ["#1f3327", "#d8ebde"],
-    "--on-ink-down-tint": ["#3c2024", "#f5d9dc"],
+    "--on-ink-up-tint": ["#192d20", "#d8ebde"],
+    "--on-ink-down-tint": ["#361b1e", "#f5d9dc"],
   } as const;
   for (const [name, [light, night]] of Object.entries(want)) {
-    assert.equal(declOf(main, name), light, `${name} in :root is 16 % of the on-ink colour over --ink #18181b`);
+    assert.equal(declOf(main, name), light, `${name} in :root is the HTML's 16 % tint flattened over --nav #111113`);
     assert.equal(declOf(dark, name), night, `${name} in .dark is the OLD 16 % tint (#42be65 / #fa4d56) over #f4f4f5 (the .dark on-ink greens over #f4f4f5 fail 4.5:1)`);
     const key = name.slice(2);
     assert.ok(themeInline.includes(`--color-${key}: var(--${key});`), `--color-${key} registered`);

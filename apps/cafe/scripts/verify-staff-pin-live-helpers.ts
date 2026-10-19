@@ -32,14 +32,16 @@ export interface Harness {
     get(): Promise<Res>;
     update(body: unknown): Promise<Res>;
   };
-  /** Part C: GET /api/sign-in/known and POST /api/sign-in/remember, carrying `cookie` as the Cookie header. */
+  /** Part C: GET /api/sign-in/known and POST /api/sign-in/remember, carrying `cookie` as the Cookie header.
+   *  Part E: POST /api/sign-in/verify-pin with `body` as JSON (none: no body at all). */
   signInRoutes: {
     known(opts?: { cookie?: string; host?: string }): Promise<RouteRes>;
     remember(cookie?: string): Promise<RouteRes>;
+    verifyPin(body?: unknown): Promise<RouteRes>;
   };
 }
 
-/** One part of the leg; later tasks append parts B, C, D to the list in verify-staff-pin-live.ts. */
+/** One part of the leg; later tasks append parts B, C, D, E to the list in verify-staff-pin-live.ts. */
 export type Part = (h: Harness) => Promise<void>;
 
 export const dataOf = (res: Res): Body =>
