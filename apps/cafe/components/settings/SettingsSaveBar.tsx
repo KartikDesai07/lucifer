@@ -2,7 +2,7 @@ import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
-import { ABOVE_TAB_BAR_STICKY_CLASS } from "@/lib/pos-layout";
+import { ABOVE_TAB_BAR_STICKY_CLASS } from "@/lib/shell-layout";
 import { cn } from "@/lib/utils";
 
 interface SettingsSaveBarProps {

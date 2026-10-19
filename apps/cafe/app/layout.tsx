@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SessionProvider } from "next-auth/react";
 import { auth } from "@/lib/auth";
 import { fontVariables } from "@/lib/fonts";
-import { Toaster } from "@/components/ui/sonner";
+import { AppToaster } from "@/components/layout/AppToaster";
 import { Providers } from "@/components/providers";
 import { readSettings } from "@/lib/settings";
 import { APP_NAME } from "@/lib/constants";
@@ -67,7 +67,7 @@ export default async function RootLayout({
       <body className="font-sans antialiased min-h-screen supports-[height:1dvh]:min-h-dvh bg-background text-foreground">
         <SessionProvider session={session}>
           <Providers>{children}</Providers>
-          <Toaster />
+          <AppToaster />
         </SessionProvider>
       </body>
     </html>

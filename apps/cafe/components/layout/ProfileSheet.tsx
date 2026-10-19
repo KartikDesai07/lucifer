@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
@@ -10,7 +10,7 @@ import { SCREEN_LOCK_DEFAULT_MINUTES } from "@pos/shared/staff-pin";
 import { useAuth } from "@/hooks/use-auth";
 import { useSettings } from "@/hooks/use-settings";
 import { isActivePath } from "@/lib/nav-active";
-import { lockShortcutLabel, requestScreenLock, screenLockLine } from "@/lib/screen-lock";
+import { currentPlatform, lockShortcutLabel, requestScreenLock, screenLockLine } from "@/lib/screen-lock";
 import { cn } from "@/lib/utils";
 import { BRAND_NAV_FLYOUT_ITEM_CLASS, BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { GlyphLock, GlyphSwitch, type NavIcon } from "@/components/layout/nav-icons";
@@ -97,7 +97,7 @@ export interface ProfileSheetBodyProps {
   /** "Admin" or "Staff", beside the ok dot (our session carries no sign-in time, so no "signed in at"). */
   roleLabel: string;
   lockMinutes: number;
-  /** The Lock screen chip: ⌘L on Apple devices, Ctrl L elsewhere (lockShortcutLabel). */
+  /** The Lock screen chip: the platform's real key, ⌘L on Apple devices, Ctrl L elsewhere (ruling R7). */
   shortcutLabel: string;
   pathname: string;
   /** The phone's More grid (the tab bar's sheet only); below 720px. */
@@ -128,6 +128,31 @@ export function ProfileSheetBody({
   const [groupUrl, setGroupUrl] = useState<string | null>(null);
   const group = more?.find((m) => m.url === groupUrl && m.sub.length > 0) ?? null;
 
+  // The keyboard's place survives the switch: a group's view focuses its back link, the way back the group's tile.
+  const backRef = useRef<HTMLButtonElement>(null);
+  const tileRefs = useRef(new Map<string, HTMLButtonElement>());
+  const switched = useRef(false);
+  const leftGroup = useRef<string | null>(null);
+  useEffect(() => {
+    if (!switched.current) return;
+    switched.current = false;
+    if (groupUrl) {
+      backRef.current?.focus();
+      return;
+    }
+    const left = leftGroup.current;
+    if (left) tileRefs.current.get(left)?.focus();
+  }, [groupUrl]);
+  const openGroup = (url: string) => {
+    switched.current = true;
+    setGroupUrl(url);
+  };
+  const closeGroup = () => {
+    switched.current = true;
+    leftGroup.current = groupUrl;
+    setGroupUrl(null);
+  };
+
   return (
     <>
       <div data-ui="profile-user" className="flex items-center gap-3 p-4">
@@ -149,8 +174,9 @@ export function ProfileSheetBody({
             <div data-ui="more-group">
               {/* The HTML's back link (the PIN pad's "All staff"), then the group's name as a section label. */}
               <button
+                ref={backRef}
                 type="button"
-                onClick={() => setGroupUrl(null)}
+                onClick={closeGroup}
                 className={cn("flex items-center gap-1 rounded-[8px] px-1 py-1 text-[14px] font-medium text-link", BRAND_PRESS_CLASS)}
               >
                 <ChevronLeft aria-hidden="true" strokeWidth={2.2} className="size-4 flex-none" />
@@ -192,10 +218,14 @@ export function ProfileSheetBody({
                 return item.sub.length > 0 ? (
                   <button
                     key={item.url}
+                    ref={(el) => {
+                      if (el) tileRefs.current.set(item.url, el);
+                      else tileRefs.current.delete(item.url);
+                    }}
                     type="button"
                     data-ui="more-tile"
                     data-active={active}
-                    onClick={() => setGroupUrl(item.url)}
+                    onClick={() => openGroup(item.url)}
                     className={TILE_CLASS}
                   >
                     {inside}
@@ -278,8 +308,8 @@ export function ProfileSheet({ open, onOpenChange, more }: ProfileSheetProps) {
                 name={name}
                 roleLabel={isAdmin ? "Admin" : "Staff"}
                 lockMinutes={lockMinutes}
-                // The sheet's content renders only while it is open, in the browser.
-                shortcutLabel={lockShortcutLabel(navigator.platform)}
+                // Read on every render, the server's too (no navigator there: "Ctrl L"); only shown once open.
+                shortcutLabel={lockShortcutLabel(currentPlatform())}
                 pathname={pathname}
                 more={more}
                 onLock={() => {

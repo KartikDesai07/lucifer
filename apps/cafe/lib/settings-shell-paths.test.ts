@@ -242,12 +242,13 @@ test("PIN: the nav's Settings row (AppSidebar + SidebarSettingsGroup + nav-parts
     "the sidebar must not iterate the raw SETTINGS_SECTIONS (it includes hidden sections)",
   );
 
-  // setOpenMobile(false) specifically — not merely "setOpenMobile" — since a
-  // call with any other argument would not actually close the phone Sheet.
+  // The rows' tap hook stays setOpenMobile(false) (AppSidebar's closeMobile). Since U0 Task 4 a phone renders no nav
+  // at all (the tab bar and its More sheet replace the old sheet), so it never has a sheet to close; the pin keeps the
+  // rows' onNavigate hook whole rather than half-removed.
   assert.match(
     combined,
     /setOpenMobile\(false\)/,
-    "setOpenMobile(false) must appear — shadcn's sidebar primitive does not auto-close the phone Sheet on nav (research brief, PR #8402)",
+    "setOpenMobile(false) must appear — the rows' onNavigate hook (a no-op since a phone renders no nav)",
   );
 
   assert.match(

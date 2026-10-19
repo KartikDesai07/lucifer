@@ -4,7 +4,7 @@ import { X } from "lucide-react";
 
 import { PRODUCT_BULK_MAX } from "@pos/shared/constants";
 import type { ProductBulkAction } from "@pos/shared/schemas";
-import { ABOVE_TAB_BAR_STICKY_CLASS } from "@/lib/pos-layout";
+import { ABOVE_TAB_BAR_STICKY_CLASS } from "@/lib/shell-layout";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {

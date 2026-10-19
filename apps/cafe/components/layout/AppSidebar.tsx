@@ -154,9 +154,11 @@ export function AppSidebar() {
   const labelId = useId();
   const navRef = useRef<HTMLElement>(null);
 
-  // The rows' tap hook. It closed the phone's nav sheet; a phone has no nav
-  // since the tab bar (U0 Task 4: components/ui/sidebar.tsx renders nothing
-  // below 720px), so it never finds one open now.
+  // The rows' tap hook (onNavigate on every row's Link). Below 720px the nav
+  // renders nothing (components/ui/sidebar.tsx; the tab bar and its More sheet
+  // take over, U0 Task 4), so no row can be tapped while isMobile is true and
+  // this does nothing; it stays as the rows' hook (sidebar-paths and
+  // settings-shell-paths pin it).
   const closeMobile = () => {
     if (isMobile) setOpenMobile(false);
   };

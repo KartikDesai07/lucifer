@@ -22,6 +22,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { ABOVE_TAB_BAR_STICKY_CLASS, PHONE_PAGE_FOOT_PX, TAB_BAR_HEIGHT_PX } from "./shell-layout";
+
 import {
   BREAKPOINT_SM_PX,
   BREAKPOINT_MD_PX,
@@ -49,8 +51,6 @@ import {
   POS_TILE_MIN_REM,
   POS_ALERT_HEIGHT_VAR,
   POS_ROOT_CLASS,
-  TAB_BAR_HEIGHT_PX,
-  PHONE_PAGE_FOOT_PX,
   POS_INSET_CLASS,
   POS_SPLIT_CLASS,
   POS_DESKTOP_CART_CLASS,
@@ -374,6 +374,14 @@ test("PIN: on a phone the POS root stops on the tab bar — its height subtracts
   // The layout's own pb-[92px] is pinned in lib/tab-bar-paths.test.ts and lib/pos-layout-paths.test.ts.
 });
 
+// Fix round 1: on a phone too short for the root's floor (360x400, 640x360) the document scrolls and the sticky cart bar
+// stuck at bottom 0 sat over the tab bar. It sticks above the bar instead, whatever the height.
+test("PIN: on a phone the POS cart bar always sticks above the tab bar (the shell's 59px sticky offset)", () => {
+  assert.equal(ABOVE_TAB_BAR_STICKY_CLASS, "max-tab:bottom-[" + TAB_BAR_HEIGHT_PX + "px]", "the offset is the tab bar's height");
+  assert.ok(POS_MOBILE_BAR_CLASS.split(/\s+/).includes(ABOVE_TAB_BAR_STICKY_CLASS), "POS_MOBILE_BAR_CLASS carries it");
+  assert.ok(POS_MOBILE_BAR_CLASS.split(/\s+/).includes("bottom-0"), "landmark: from 720px it still sticks to the screen's foot");
+});
+
 // ── C2. height-chain matrix (CB-1c round 2 — the min-content stack vs. the
 // DEFINITE vh/dvh root, alert-bar budget included; plan §H0's headless-
 // -Chrome arbiter probe validated this formula against the real chain) ─────
@@ -402,6 +410,9 @@ interface DeviceRow {
 const DEVICE_MATRIX_BASE: ReadonlyArray<DeviceRow> = [
   { label: "360x640 phone portrait", visibleH: 560, mdPlus: false, tabBar: true },
   { label: "412x915 phone portrait", visibleH: 800, mdPlus: false, tabBar: true },
+  // Fix round 1: short phones under the tab bar (narrower than 720px), where the root's floor bites.
+  { label: "640x360 phone landscape (tab bar)", visibleH: 360, mdPlus: false, tabBar: true },
+  { label: "360x400 short phone (tab bar)", visibleH: 400, mdPlus: false, tabBar: true },
   { label: "740x360 phone landscape (full viewport, arbiter probe value)", visibleH: 360, mdPlus: false },
   { label: "740x300 phone landscape (toolbar showing)", visibleH: 300, mdPlus: false },
   { label: "768x1024 tablet portrait", visibleH: 904, mdPlus: true },
@@ -421,6 +432,8 @@ const DEVICE_MATRIX: ReadonlyArray<DeviceMatrixRow> = DEVICE_MATRIX_BASE.flatMap
 const LANDSCAPE_LABELS = new Set([
   "740x360 phone landscape (full viewport, arbiter probe value)",
   "740x300 phone landscape (toolbar showing)",
+  "640x360 phone landscape (tab bar)",
+  "360x400 short phone (tab bar)",
 ]);
 
 // chromePx: the header plus the TOP HALF of main's own vertical padding only
@@ -459,7 +472,7 @@ test("PIN: every non-landscape device in the matrix (either alert-band value) ne
   }
 });
 
-test("PIN: both phone-landscape rows hit the root floor at every alert-band value — accepted Q1 deficit (the floor keeps one tile row and the sticky bar in view, rather than a header/strip/search with NO products)", () => {
+test("PIN: the short and landscape phone rows hit the root floor at every alert-band value — accepted Q1 deficit (the floor keeps one tile row and the sticky bar in view, rather than a header/strip/search with NO products)", () => {
   for (const row of DEVICE_MATRIX) {
     if (!LANDSCAPE_LABELS.has(row.label)) continue;
     const docScroll = docScrollPxFor(row);

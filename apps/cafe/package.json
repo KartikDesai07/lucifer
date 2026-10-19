@@ -309,6 +309,7 @@
     "lib/nav-shell.test.ts",
     "lib/page-header-slot.test.ts",
     "lib/tab-bar-paths.test.ts",
+    "lib/app-toaster-paths.test.ts",
     "lib/warm-routes.test.ts",
     "lib/pending-writes.test.ts",
     "lib/settle-flow.test.ts",

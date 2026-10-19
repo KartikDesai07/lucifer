@@ -1,9 +1,10 @@
 // Source pins for the staff sidebar's 2026-09-26 redesign (components/layout/
 // AppSidebar.tsx + its extracted pieces). The sidebar is chrome on EVERY
 // staff screen, so the behaviours a restyle could silently drop are pinned:
-// who sees which row, the "you are here" announcement, the phone sheet's
-// labels, a waiting request staying visible in the folded rail, and the
-// brand fonts/colours reaching the portaled phone sheet. Same readSrc +
+// who sees which row, the "you are here" announcement, the remembered fold
+// staying a desktop choice, a waiting request staying visible in the folded
+// rail, and the brand fonts/colours. (Since U0 Task 4 a phone renders no nav:
+// the tab bar and its More sheet replaced the old phone sheet.) Same readSrc +
 // stripComments idiom as lib/kitchen-paths.test.ts.
 
 import { test } from "node:test";
@@ -133,11 +134,11 @@ test("PIN: the Menu group's single-section Link lights on ANY menu page (onMenu)
   assert.match(branch, /aria-current=\{exact \? "page" : undefined\}/, "aria-current must still announce only the exact Items match");
 });
 
-test("PIN: the phone sheet always shows row labels, whatever the desktop rail was last folded to", () => {
+test("PIN: the remembered fold is a desktop choice — it never applies below 720px, whatever the rail was last folded to", () => {
   const src = stripComments(readSrc(APP_SIDEBAR));
-  // Mutation this catches: `collapsed = state === "collapsed"` alone — a
-  // tablet folded in landscape then turned to portrait would open a sheet of
-  // bare icons (the folded state is remembered per browser).
+  // Mutation this catches: `collapsed = state === "collapsed"` alone — the
+  // folded state is remembered per browser, so a phone-width window would
+  // carry a desktop fold it cannot show (it renders no nav since U0 Task 4).
   assert.match(src, /const collapsed = state === "collapsed" && !isMobile;/);
 });
 
@@ -160,7 +161,7 @@ test("PIN: a waiting order request stays visible in the rail — a dot on the ic
   assert.ok(classes.includes("bg-status-warn"), "the dot is the request strip's warn colour");
 });
 
-test("PIN: the brand fonts sit on a child of <Sidebar>, not its className — the phone sheet renders the children but drops the className", () => {
+test("PIN: the brand fonts sit on a child of <Sidebar>, not its className (the old phone sheet rendered the children but dropped the className)", () => {
   const src = stripComments(readSrc(APP_SIDEBAR));
   const open = src.indexOf('<Sidebar collapsible="icon"');
   assert.ok(open >= 0, 'landmark: AppSidebar renders <Sidebar collapsible="icon"');
@@ -175,7 +176,7 @@ test("PIN: the brand fonts sit on a child of <Sidebar>, not its className — th
   );
 });
 
-test("PIN: the sidebar's colours come from the brand palette on :root (the phone sheet is portaled, so a wrapper could not reach it)", () => {
+test("PIN: the sidebar's colours come from the brand palette on :root (a portaled piece, like the rail's flyout, still reaches them)", () => {
   const css = readSrc(GLOBALS_CSS);
   const root = [...css.matchAll(/:root\s*\{([^}]*)\}/g)].map((m) => m[1]).find((body) => body.includes("--sidebar:"));
   assert.ok(root, "a :root block must declare --sidebar");

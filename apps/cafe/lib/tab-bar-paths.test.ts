@@ -184,6 +184,25 @@ test("PIN: the dashboard layout mounts one tab bar, and a phone's page keeps 92p
   assert.match(layout, /<main className="flex-1 p-4 pb-\[92px\] tab:pb-4 md:p-6">/, "the page's foot clears the 59px bar by 33px on a phone");
 });
 
+test("PIN: every sticky bar at a page's foot stops on the tab bar on a phone (Settings' save bar, the menu's bulk bar, the POS cart bar)", async () => {
+  const { ABOVE_TAB_BAR_STICKY_CLASS, TAB_BAR_HEIGHT_PX } = await import("@/lib/shell-layout");
+  assert.equal(ABOVE_TAB_BAR_STICKY_CLASS, `max-tab:bottom-[${TAB_BAR_HEIGHT_PX}px]`, "the offset is the bar's 59px");
+  for (const file of ["components/settings/SettingsSaveBar.tsx", "components/menu/BulkBar.tsx"]) {
+    const src = read(file);
+    assert.match(src, /import \{ ABOVE_TAB_BAR_STICKY_CLASS \} from "@\/lib\/shell-layout";/, `${file} reads the shell's offset`);
+    assert.match(src, /ABOVE_TAB_BAR_STICKY_CLASS,\s*\)\}/, `${file} applies it to its sticky bar`);
+  }
+  const { POS_MOBILE_BAR_CLASS } = await import("@/lib/pos-layout");
+  assert.ok(POS_MOBILE_BAR_CLASS.split(/\s+/).includes(ABOVE_TAB_BAR_STICKY_CLASS), "the POS cart bar too");
+});
+
+test("PIN: the More grid keeps the keyboard's place: a group's view focuses its back link, the way back the group's tile", () => {
+  const src = read("components/layout/ProfileSheet.tsx");
+  assert.match(src, /backRef\.current\?\.focus\(\)/, "opening a group's view moves focus to “‹ More”");
+  assert.match(src, /tileRefs\.current\.get\(left\)\?\.focus\(\)/, "going back moves focus to the group's tile");
+  assert.match(src, /ref=\{backRef\}/, "the back link carries the ref");
+});
+
 test("PIN: nothing on a phone opens the old nav sheet any more (the header's menu button and the sheet are gone)", () => {
   const header = read("components/layout/Header.tsx");
   assert.ok(!header.includes("PhoneMenuButton"), "no menu button in the header");

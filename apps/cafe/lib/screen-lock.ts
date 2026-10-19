@@ -200,7 +200,13 @@ export function handleLockShortcut(e: LockShortcutEvent): boolean {
   return true;
 }
 
-/** The shortcut chip on the profile sheet's Lock screen row: ⌘L on Apple devices (the HTML's chip), Ctrl L elsewhere. */
+/** The browser's platform name, or "" where there is no navigator (a server render). */
+export function currentPlatform(): string {
+  return typeof navigator === "undefined" || !navigator ? "" : (navigator.platform ?? "");
+}
+
+/** The shortcut chip on the profile sheet's Lock screen row: the platform's real key (ruling R7) — ⌘L on Apple devices
+ *  (the HTML's chip), Ctrl L elsewhere (the cafe's Windows desks have no ⌘ key). */
 export function lockShortcutLabel(platform: string): string {
   return /mac|iphone|ipad|ipod/i.test(platform) ? "⌘L" : "Ctrl L";
 }

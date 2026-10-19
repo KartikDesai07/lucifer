@@ -104,7 +104,16 @@ test("preset-token rule: kit files the diner menu reaches use only preset-set co
 test("no staff-only colour token in any kit file (sidebar may use sidebar-*)", () => {
   const files: string[] = [];
   walk(path.join(CAFE_ROOT, "components/ui"), files);
-  const staffOnly = /^(status-|brand-|ink$|on-ink$|subtle-foreground$|primary-hover$)/;
+  // U0 Task 4 (ruling R8): the owner's HTML names Task 1 added for the staff screens are staff-only too (the toast set,
+  // the nav set, the segmented control, glass, link, the extra surfaces and rule, hover, the accent border, the scrim).
+  const staffOnly =
+    /^(status-|brand-|ink$|on-ink$|subtle-foreground$|primary-hover$|toast(-|$)|nav(-|$)|seg$|glass$|link$|surface-[23]$|border-2$|hover$|accent-b$|scrim$)/;
+  for (const name of ["toast", "toast-t", "toast-a", "nav", "nav-t2", "nav-on", "seg", "glass", "link", "surface-2", "border-2", "hover", "accent-b", "scrim"]) {
+    assert.ok(staffOnly.test(name), `vision guard: ${name} is a staff-only name`);
+  }
+  for (const name of ["primary", "accent", "accent-foreground", "border", "card", "muted-foreground", "background"]) {
+    assert.ok(!staffOnly.test(name), `vision guard: ${name} is a preset name, allowed in the kit`);
+  }
   for (const abs of files) {
     const rel = path.relative(CAFE_ROOT, abs).replace(/\\/g, "/");
     const src = stripComments(readFileSync(abs, "utf8"));
@@ -202,17 +211,16 @@ test("the look: dialog, alert-dialog, sheet, drawer, menus, tooltip, toast", () 
     assert.match(src, /\brounded-xl\b[^"]*\bshadow-pop\b/, `${f} content is rounded-xl ... shadow-pop`);
   }
   assert.match(read("components/ui/tooltip.tsx"), /\bbg-foreground text-background\b/, "tooltip is dark");
-  // U0 Task 4: the toast is the owner's HTML toast (values 2.8): --toast (#18181B) with --toast-t (#FFFFFF) words,
-  // not foreground/background (the HTML's text is white; our --background is #F4F4F5), radius 10, padding 10px 14px.
+  // The kit toast keeps the preset-driven look (the diner menu's toasts follow the cafe's Appearance); the staff
+  // screens' HTML toast lives outside the kit (components/layout/AppToaster.tsx, U0 Task 4 ruling R8).
   const sonner = read("components/ui/sonner.tsx");
+  assert.match(
+    sonner,
+    /group-\[\.toaster\]:bg-foreground group-\[\.toaster\]:text-background/,
+    "sonner toast is dark (bg-foreground text-background)",
+  );
   const toastClass = sonner.match(/\btoast:\s*"([^"]*)"/)?.[1] ?? "";
-  for (const cls of ["bg-toast", "text-toast-t", "rounded-[10px]", "px-[14px]", "py-[10px]", "text-[13.5px]", "gap-[14px]"]) {
-    assert.ok(toastClass.split(/\s+/).includes(cls), `sonner toast is the HTML's toast: ${cls}`);
-  }
   assert.ok(toastClass.length > 0 && !/\bbg-background\b/.test(toastClass), "sonner toast class has no bg-background");
-  assert.match(sonner, /unstyled: true/, "sonner's own look is off, so only the HTML's classes paint the toast");
-  const action = (sonner.match(/actionButton:\s*"([^"]*)"/)?.[1] ?? "").split(/\s+/);
-  assert.ok(action.includes("text-toast-a") && action.includes("font-semibold"), "an action (Undo) is --toast-a, 600");
 });
 
 test("the look: sonner cancel button reads on the dark toast", () => {
@@ -223,7 +231,6 @@ test("the look: sonner cancel button reads on the dark toast", () => {
     !(/\bbg-muted\b/.test(cancel) && /text-background/.test(cancel)),
     `cancel button must not pair bg-muted with text-background (light on light): "${cancel}"`,
   );
-  assert.match(cancel, /\btext-toast-t\b/, "the cancel words are the toast's white");
 });
 
 test("the dialog, alert dialog, sheet and drawer panels are white (bg-card on the page's grey), as in the mock-up", () => {

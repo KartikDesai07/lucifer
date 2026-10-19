@@ -422,10 +422,32 @@ test("Ctrl+L and ⌘L request a manual lock and keep the browser's own Ctrl+L; n
   }
 });
 
+// Ruling R7: the chip names the platform's real key (the cafe's Windows desks have no ⌘ key).
 test("the chip names the shortcut for the platform: ⌘L on Apple devices, Ctrl L elsewhere", async () => {
   const { lockShortcutLabel } = await import("./screen-lock");
   for (const p of ["MacIntel", "iPhone", "iPad", "macOS"]) assert.equal(lockShortcutLabel(p), "⌘L", p);
   for (const p of ["Win32", "Linux x86_64", "Linux armv8l", "", "Android"]) assert.equal(lockShortcutLabel(p), "Ctrl L", p || "(empty)");
+});
+
+test("the platform read is safe where there is no navigator (a server render): it reads as Ctrl L", async () => {
+  const { currentPlatform, lockShortcutLabel } = await import("./screen-lock");
+  const own = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  Object.defineProperty(globalThis, "navigator", { value: undefined, configurable: true, writable: true });
+  try {
+    assert.equal(currentPlatform(), "", "no navigator: an empty platform, no throw");
+    assert.equal(lockShortcutLabel(currentPlatform()), "Ctrl L", "and the chip falls back to Ctrl L");
+  } finally {
+    if (own) Object.defineProperty(globalThis, "navigator", own);
+    else delete (globalThis as { navigator?: unknown }).navigator;
+  }
+  Object.defineProperty(globalThis, "navigator", { value: { platform: "MacIntel" }, configurable: true, writable: true });
+  try {
+    assert.equal(currentPlatform(), "MacIntel", "the browser's platform when there is one");
+  } finally {
+    if (own) Object.defineProperty(globalThis, "navigator", own);
+    else delete (globalThis as { navigator?: unknown }).navigator;
+  }
+  assert.match(read(SHEET), /shortcutLabel=\{lockShortcutLabel\(currentPlatform\(\)\)\}/, "the sheet reads the platform through it");
 });
 
 test("PIN: the cover's key listener handles Ctrl/⌘+L only while no cover is up", () => {

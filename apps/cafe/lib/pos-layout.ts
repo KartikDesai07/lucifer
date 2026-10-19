@@ -158,17 +158,12 @@ export const POS_MOBILE_STACK_REM =
 // — parity-pinned) — the smallest grid worth showing.
 export const POS_TILE_MIN_REM = 6.5;
 export const POS_ROOT_FLOOR_REM_BASE = POS_MOBILE_STACK_REM + POS_TILE_MIN_REM; // 21.5
-// The phone's tab bar (U0 Task 4; values 2.6): fixed at the foot below 720 px (Tailwind `max-tab:`), 59 px tall
-// (a 1px top rule, 2px top padding, 56px tabs; env(safe-area-inset-bottom) is 0 without viewport-fit=cover). The
-// dashboard's <main> keeps 92 px clear at a phone's foot for it (values 2.1 screenPadB). On a phone the POS root
-// ends where the bar starts: its height also subtracts the bar, and its negative bottom margin bleeds over the 92 px
+// The phone's tab bar (U0 Task 4; lib/shell-layout.ts: TAB_BAR_HEIGHT_PX 59, PHONE_PAGE_FOOT_PX 92) is fixed at the
+// foot below 720 px (Tailwind `max-tab:`), and the dashboard's <main> keeps 92 px clear there. On a phone the POS root
+// ends where the bar starts: its height also subtracts the 59 px, and its negative bottom margin bleeds over the 92 px
 // instead of main's 16 px, so the cart bar sits right on the tab bar (the HTML's order screen: bottom 60px).
-export const TAB_BAR_HEIGHT_PX = 59;
-export const PHONE_PAGE_FOOT_PX = 92;
 export const POS_ROOT_CLASS =
   "-mx-4 -mb-4 flex min-h-[21.5rem] h-[calc(100vh-4.5rem-var(--pos-alert-h,0px))] flex-col gap-3 supports-[height:1dvh]:h-[calc(100dvh-4.5rem-var(--pos-alert-h,0px))] max-tab:-mb-[92px] max-tab:h-[calc(100vh-4.5rem-59px-var(--pos-alert-h,0px))] max-tab:supports-[height:1dvh]:h-[calc(100dvh-4.5rem-59px-var(--pos-alert-h,0px))] md:-mx-6 md:-mb-6 md:h-[calc(100vh-5rem-var(--pos-alert-h,0px))] md:supports-[height:1dvh]:h-[calc(100dvh-5rem-var(--pos-alert-h,0px))] xl:mx-0 xl:mb-0 xl:min-h-[30rem] xl:h-[calc(100vh-6.5rem)] xl:supports-[height:1dvh]:h-[calc(100dvh-6.5rem)]";
-/** A sticky bar at a page's foot (Settings' save bar, the menu's bulk bar): on a phone it stops on the tab bar. */
-export const ABOVE_TAB_BAR_STICKY_CLASS = "max-tab:bottom-[59px]";
 // Re-insets the header row and the rail|grid split inside the full-bleed root
 // below xl; a no-op at xl+ where the root itself sits inside main's padding.
 export const POS_INSET_CLASS = "px-4 md:px-6 xl:px-0";
@@ -203,8 +198,10 @@ export const POS_DESKTOP_ONLY_CLASS = "hidden xl:flex";
 // floor, a browser whose 100vh exceeds the visible area). It carries NO
 // margins: the root's own full-bleed puts its bottom edge on the screen edge
 // — the white strip the owner saw was <main>'s padding under a reserved gap.
+// On a phone it sticks 59px up (lib/shell-layout.ts ABOVE_TAB_BAR_STICKY_CLASS), on the tab bar: where the root's
+// floor makes the document scroll (a short phone), it would otherwise stick over the tab bar.
 export const POS_MOBILE_BAR_CLASS =
-  "sticky bottom-0 z-20 shrink-0 border-t bg-background p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]";
+  "sticky bottom-0 max-tab:bottom-[59px] z-20 shrink-0 border-t bg-background p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]";
 export const POS_MOBILE_BAR_BUTTON_CLASS =
   "flex h-12 w-full items-center justify-between touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
 

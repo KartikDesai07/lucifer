@@ -3,7 +3,8 @@ import * as React from "react";
 const MOBILE_BREAKPOINT = 768;
 
 /** Below `breakpointPx` (768 by default: the report sheets open from the bottom there). The dashboard nav passes the
- *  HTML's 720 px (U0 Task 2): the nav is a sheet only on a phone, the rail from 720 px up. */
+ *  HTML's 720 px (U0 Task 2): below it the nav renders nothing (the phone's tab bar takes over, U0 Task 4), the rail
+ *  from 720 px up. */
 export function useIsMobile(breakpointPx: number = MOBILE_BREAKPOINT) {
   const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined);
 
