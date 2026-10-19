@@ -38,6 +38,7 @@ export function LiveFloorPanel({ tables, orders, loading, isError, onRetry, onSe
 
   return (
     <DashCard
+      variant="dashboard"
       title="Live tables"
       period={tables.length > 0 ? `${occupied} of ${tables.length} occupied · right now` : "Right now"}
       link={{ href: "/tables", label: "Manage" }}

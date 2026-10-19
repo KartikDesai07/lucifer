@@ -8,7 +8,7 @@ import { deltaRatio } from "@/lib/dashboard/fold";
 import { plural, sharePercent } from "@/lib/dashboard/format";
 import { chartNames, insightPeriod, kpiCompareText, noCompareText } from "@/lib/dashboard/labels";
 import { dayLabel } from "@/lib/dashboard/range";
-import { BrandSkeleton, DashCard, type DashCardStatus } from "@/components/dashboard/DashCard";
+import { DashCard, DashSkeleton, type DashCardStatus } from "@/components/dashboard/DashCard";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { RankedList, RANKED_ROW_PX, barsOf } from "@/components/dashboard/RankedList";
 import { BusyHours } from "@/components/dashboard/BusyHours";
@@ -26,7 +26,7 @@ const SalesChart = dynamic(() => import("@/components/dashboard/SalesChart").the
   ssr: false,
   loading: () => (
     <div style={{ height: SALES_CHART_BODY_PX }}>
-      <BrandSkeleton className="h-full w-full" />
+      <DashSkeleton className="h-full w-full" />
     </div>
   ),
 });
@@ -117,6 +117,7 @@ export function SalesCard(p: RangeCardProps & { className?: string }) {
     : "";
   return (
     <DashCard
+      variant="dashboard"
       className={p.className}
       title={d?.mode === "day" ? "Sales by day" : "Sales by hour"}
       period={d ? `${p.period} · ${d.compare.label}` : p.period}
@@ -163,6 +164,7 @@ export function PaymentMixCard(p: RangeCardProps) {
   const bars = barsOf(rows, (r) => r.amount);
   return (
     <DashCard
+      variant="dashboard"
       title="Payment mix"
       period={`${p.period} · money collected`}
       status={statusOf(p, rows.length === 0)}
@@ -203,6 +205,7 @@ export function TopItemsCard(p: RangeCardProps) {
   const bars = barsOf(rows, (r) => r.revenue);
   return (
     <DashCard
+      variant="dashboard"
       title="Top items"
       period={`${p.period} · by sales`}
       status={statusOf(p, rows.length === 0)}
@@ -221,6 +224,7 @@ export function ChannelsCard(p: RangeCardProps) {
   const bars = barsOf(rows, (r) => r.amount);
   return (
     <DashCard
+      variant="dashboard"
       title="Where orders come from"
       period={`${p.period} · completed orders`}
       status={statusOf(p, rows.length === 0)}
@@ -256,6 +260,7 @@ export function BusyHoursCard(p: RangeCardProps & { className?: string }) {
   const d = p.data;
   return (
     <DashCard
+      variant="dashboard"
       className={p.className}
       title="Busy hours"
       period={d ? `Orders per hour on an average day · ${insightPeriod(d, p.today)}` : p.period}
@@ -271,11 +276,13 @@ export function BusyHoursCard(p: RangeCardProps & { className?: string }) {
   );
 }
 
-export function SlowItemsCard(p: RangeCardProps) {
+export function SlowItemsCard(p: RangeCardProps & { className?: string }) {
   const d = p.data;
   const rows = d?.slowItems ?? [];
   return (
     <DashCard
+      variant="dashboard"
+      className={p.className}
       title="Slow movers"
       period={d ? `Fewest sold · ${insightPeriod(d, p.today)}` : p.period}
       link={{ href: "/products", label: "Menu" }}
@@ -302,6 +309,7 @@ export function CategoriesCard(p: RangeCardProps) {
   const bars = barsOf(rows, (r) => r.amount);
   return (
     <DashCard
+      variant="dashboard"
       title="Sales by category"
       period={`${p.period} · share of item sales`}
       status={statusOf(p, rows.length === 0)}
@@ -318,6 +326,7 @@ export function CategoriesCard(p: RangeCardProps) {
 export function LeaksCard(p: RangeCardProps & { className?: string }) {
   return (
     <DashCard
+      variant="dashboard"
       className={p.className}
       title="Money leaks"
       period={`${p.period} · cancelled, voided and given away`}

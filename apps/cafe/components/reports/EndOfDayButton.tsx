@@ -17,6 +17,8 @@ import { useHostRouting } from "@/hooks/use-print-routing";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/shared/DatePicker";
 import { EndOfDaySummary } from "@/components/reports/EndOfDaySummary";
+import { HEADER_OUTLINE_BUTTON_CLASS } from "@/components/layout/header-classes";
+import { GlyphPrinter, NavBookings } from "@/components/layout/nav-icons";
 
 // A routed print's local fallback fires only once the enqueue has answered, and
 // the off-screen summary it clones always shows whatever the CURRENT date's
@@ -27,12 +29,21 @@ import { EndOfDaySummary } from "@/components/reports/EndOfDaySummary";
 const PRINT_DAY_CHANGED_MESSAGE =
   "The date moved on before that slip could print here — pick the day again and print.";
 
+/** The header pair's labels show from 560px (the HTML's wideI: hidden while the content is under 560px wide). */
+const HEADER_LABEL_CLASS = "hidden min-[560px]:inline";
+/** The date button's words: "19 Oct". */
+const SHORT_DAY = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", timeZone: CAFE_TIMEZONE });
+
 // "End of Day" print action for the dashboard — staff-accessible (CR1.5 Slice
 // 5): the cashier who took cash during the shift needs to reconcile the
 // drawer too, not just an admin. Defaults to today; a past date can be picked
 // to reprint an earlier day's closing slip. Self-fetches its own data so the
 // dashboard page stays lean.
-export function EndOfDayButton() {
+// U0 match Task 5: `variant="header"` draws it as the HTML's header button (values 2.5: outline, the printer glyph,
+// "End of day", title "Print end-of-day report") followed by the date as a second outline header button (the HTML's
+// calendar glyph and "19 Oct"); both drop their words below 560px. The default keeps today's inline look.
+export function EndOfDayButton({ variant = "inline" }: { variant?: "inline" | "header" }) {
+  const header = variant === "header";
   const today = cafeDateString();
   const [date, setDate] = useState(today);
   // Clamp a cleared `<input type="date">` (raw "") back to today — the RAW
@@ -119,25 +130,59 @@ export function EndOfDayButton() {
     routePrint(() => eodPrintJob({ dateKey: effectiveDate, dateLabel }), localPrint);
   };
 
+  const shortDay = SHORT_DAY.format(new Date(effectiveDate));
+  const picker = (
+    <DatePicker
+      value={date}
+      max={today}
+      onChange={setDate}
+      className={header ? "w-auto" : "h-8 w-auto"}
+      aria-label={header ? `End of day date: ${shortDay}` : "End of day date"}
+      label={
+        header ? (
+          <>
+            <NavBookings aria-hidden="true" strokeWidth={1.8} />
+            <span className={HEADER_LABEL_CLASS}>{shortDay}</span>
+          </>
+        ) : undefined
+      }
+    />
+  );
+  const button = (
+    <Button
+      variant="outline"
+      size={header ? undefined : "sm"}
+      className={header ? HEADER_OUTLINE_BUTTON_CLASS : undefined}
+      title={header ? "Print end-of-day report" : undefined}
+      onClick={printEod}
+      disabled={!ready || enqueuePending}
+    >
+      {header ? (
+        <>
+          <GlyphPrinter aria-hidden="true" strokeWidth={1.8} />
+          <span className={HEADER_LABEL_CLASS}>End of day</span>
+        </>
+      ) : (
+        <>
+          <CalendarCheck className="mr-2 h-4 w-4" /> End of day
+        </>
+      )}
+    </Button>
+  );
+
   return (
     <>
-      <div className="flex items-center gap-2">
-        <DatePicker
-          value={date}
-          max={today}
-          onChange={setDate}
-          className="h-8 w-auto"
-          aria-label="End of day date"
-        />
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={printEod}
-          disabled={!ready || enqueuePending}
-        >
-          <CalendarCheck className="mr-2 h-4 w-4" /> End of day
-        </Button>
-      </div>
+      {header ? (
+        <>
+          {button}
+          {picker}
+        </>
+      ) : (
+        <div className="flex items-center gap-2">
+          {picker}
+          {button}
+        </div>
+      )}
 
       {/* Off-screen print source — cloned by react-to-print. */}
       <div

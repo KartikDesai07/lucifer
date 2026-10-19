@@ -12,7 +12,8 @@ import { MONEY_BREAKDOWN_LINES, MONEY_NET_LABEL } from "@/lib/money-breakdown";
 import { menuItemsHref } from "@/lib/menu-sections";
 import { presetRange } from "@/lib/dashboard/range";
 import { KpiCard } from "@/components/dashboard/KpiCard";
-import { AttentionStrip } from "@/components/dashboard/AttentionStrip";
+import { AttentionStrip, attentionItems } from "@/components/dashboard/AttentionStrip";
+import { DashCard } from "@/components/dashboard/DashCard";
 import { RangeBar } from "@/components/dashboard/RangeBar";
 import { MoneyBreakdownCard } from "@/components/reports/MoneyBreakdownCard";
 import type { DashboardData, DashboardLive } from "@/types/dashboard";
@@ -83,9 +84,12 @@ function contrast(a: string, b: string): number {
 }
 // ── the arrangement ─────────────────────────────────────────────────────────
 
-test("the page lays every card out in the mock-up's order, and no longer renders the KPI row", () => {
+// U0 match (Task 5, values 3.0): the HTML's section order — the two three-up rows are [how guests paid | where orders
+// came from | money leaks] and [top items | sales by category | slow movers], then busy hours on its own.
+test("the page lays every card out in the HTML's order, and no longer renders the KPI row", () => {
   const page = readSrc(PAGE);
   const ORDER = [
+    "<PageHeader",
     "<AttentionStrip",
     "<RangeBar",
     "<SalesHero",
@@ -96,10 +100,10 @@ test("the page lays every card out in the mock-up's order, and no longer renders
     "<TodayReservations",
     "<PaymentMixCard",
     "<ChannelsCard",
-    "<TopItemsCard",
-    "<SlowItemsCard",
-    "<CategoriesCard",
     "<LeaksCard",
+    "<TopItemsCard",
+    "<CategoriesCard",
+    "<SlowItemsCard",
     "<BusyHoursCard",
   ];
   let last = -1;
@@ -112,11 +116,93 @@ test("the page lays every card out in the mock-up's order, and no longer renders
     lastName = needle;
   }
   assert.ok(!page.includes("<Kpi" + "Row"), "the four figures moved into the hero: the page must not render the KPI row");
-  assert.ok(page.includes("<EndOfDayButton />"), "landmark: the End of day button stays in the head");
-  assert.ok(
-    page.includes("xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]"),
-    "the hero row is the dark card beside the receipt from xl (at 1024 the content is ~720px: stacked reads better)",
+  assert.match(page, /<BusyHoursCard \{\.\.\.cards\} \/>\s*<\/div>/, "busy hours closes the content, full width, on no row of its own grid");
+});
+
+// ── the frame (U0 match Task 5, values 2.5 and 3.0) ──────────────────────────
+
+test("the header names the page: PageHeader 'Dashboard' with the cafe line by default and End of day + date as its actions", () => {
+  const page = readSrc(PAGE);
+  assert.match(
+    page,
+    /<PageHeader\s+title="Dashboard"\s+className="gap-2\.5"\s+actions=\{<EndOfDayButton variant="header" \/>\}\s*\/>/,
+    "the page's header: its title, the HTML's 10px gap in the phone's body row, and the End of day pair as its actions",
   );
+  assert.ok(!/<PageHeader[^>]*\bdescription=/.test(page), "no description: the header's own '{cafe} · {weekday, day month}' line shows");
+  assert.ok(!/<h1\b/.test(page), "the page writes no title of its own (the header's h1 is the page's)");
+});
+
+test("the content measures as values 3.0: an @container as wide as cw, then 20px 24px 28px (16px 14px 92px on a phone), gap 16, no max-width", async () => {
+  const page = readSrc(PAGE);
+  const { MAIN_PADDING_BLEED_CLASS } = await import("@/lib/shell-layout");
+  const pageBox = /<div data-ui="dash-page" className=\{`([^`]*)`\}>/.exec(page)?.[1] ?? "";
+  assert.ok(pageBox.includes("@container"), "the dashboard page is the query container for the HTML's cw rules");
+  assert.ok(pageBox.includes("${MAIN_PADDING_BLEED_CLASS}"), "it bleeds over <main>'s padding, so it is exactly cw wide (the HTML's viewport minus the nav)");
+  const content = /<div data-ui="dash-content" className="([^"]*)">/.exec(page)?.[1] ?? "";
+  for (const cls of ["flex", "flex-col", "gap-4", "px-[14px]", "pt-4", "pb-[92px]", "tab:px-6", "tab:pt-5", "tab:pb-7", "leading-[normal]", "text-foreground"]) {
+    assert.ok(content.split(" ").includes(cls), `the content box has ${cls}`);
+  }
+  assert.ok(!/\bmax-w-|\bmx-auto\b/.test(content), "max-width:none (the HTML's content is as wide as the page)");
+  for (const gone of ["bg-brand-paper", "min-h-[calc(100svh-3.5rem)]", "max-w-[1440px]"]) {
+    assert.ok(!page.includes(gone), `the old Paper & Ink wrapper's ${gone} is gone`);
+  }
+  // The bleed mirrors <main>'s own padding (pinned in lib/pos-layout-paths.test.ts), class for class.
+  const layout = readSrc("app/(dashboard)/layout.tsx");
+  const mainPad = /<main className="flex-1 ([^"]*)">/.exec(layout)?.[1] ?? "";
+  assert.equal(mainPad, "p-4 pb-[92px] tab:pb-4 md:p-6", "landmark: <main>'s padding");
+  const mirrored = mainPad.split(" ").map((t) => t.replace(/^((?:[a-z]+:)?)p/, "$1-m")).join(" ");
+  assert.equal(MAIN_PADDING_BLEED_CLASS, mirrored, "the bleed negates <main>'s padding at every width, no more and no less");
+});
+
+test("every row takes the HTML's column template per content width (db.L hero, twoOne, three, span3)", () => {
+  const page = readSrc(PAGE);
+  const count = (needle: string) => page.split(needle).length - 1;
+  assert.equal(count('className="grid grid-cols-1 gap-4 @min-[1000px]:grid-cols-[minmax(0,1.7fr)_minmax(300px,1fr)]"'), 1, "hero: 1.7fr | minmax(300px,1fr) from cw 1000");
+  assert.equal(count('className="grid grid-cols-1 gap-4 @min-[1000px]:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"'), 2, "twoOne (chart | tables, orders | reservations): 2fr | 1fr from cw 1000");
+  assert.equal(count('className="grid grid-cols-1 gap-4 @min-[680px]:grid-cols-2 @min-[1080px]:grid-cols-3"'), 2, "three: two columns from cw 680, three from 1080");
+  assert.equal(count('className="@min-[680px]:col-span-full @min-[1080px]:col-auto"'), 2, "span3: Money leaks and Slow movers span the row from 680 to 1079");
+  assert.match(page, /<LeaksCard \{\.\.\.cards\} className="@min-\[680px\]:col-span-full/, "Money leaks spans");
+  assert.match(page, /<SlowItemsCard \{\.\.\.cards\} className="@min-\[680px\]:col-span-full/, "Slow movers spans");
+  assert.ok(!/\b(?:sm|md|lg|xl):(?:grid-cols|col-span)/.test(page), "no viewport breakpoints left on the rows: the HTML's rules read the content width");
+});
+
+test("EndOfDayButton variant 'header': End of day then the date, as the HTML's 36px outline header buttons; the default look stays", () => {
+  const src = readSrc("components/reports/EndOfDayButton.tsx");
+  assert.match(src, /export function EndOfDayButton\(\{ variant = "inline" \}: \{ variant\?: "inline" \| "header" \}\)/, "a variant prop, today's look by default");
+  // Today's look (its pins live in print-paths, print-routing, date-input): the date, then a small outline button.
+  assert.ok(src.includes('<div className="flex items-center gap-2">'), "the inline pair keeps its row");
+  assert.ok(src.includes('className={header ? "w-auto" : "h-8 w-auto"}'), "the inline date keeps h-8 w-auto");
+  assert.ok(src.includes('size={header ? undefined : "sm"}'), "the inline button keeps size sm");
+  assert.ok(src.includes('<CalendarCheck className="mr-2 h-4 w-4" /> End of day'), "the inline button keeps its icon and words");
+  // The header look (values 2.5): outline, the printer glyph, the HTML's title; the date as a second outline button.
+  assert.ok(src.includes("className={header ? HEADER_OUTLINE_BUTTON_CLASS : undefined}"), "the header's outline button class");
+  assert.ok(src.includes('title={header ? "Print end-of-day report" : undefined}'), "the HTML's title (also the icon-only button's name)");
+  assert.match(src, /<GlyphPrinter aria-hidden="true" strokeWidth=\{1\.8\} \/>/, "the HTML's printer glyph");
+  assert.match(src, /<NavBookings aria-hidden="true" strokeWidth=\{1\.8\} \/>/, "the HTML's calendar glyph on the date");
+  assert.ok(src.includes('const HEADER_LABEL_CLASS = "hidden min-[560px]:inline";'), "labels hidden below 560px (the HTML's wideI: cw < 560)");
+  assert.ok(src.includes('{ day: "numeric", month: "short", timeZone: CAFE_TIMEZONE }'), "the date reads '19 Oct'");
+  assert.match(src, /\{header \? \(\s*<>\s*\{button\}\s*\{picker\}\s*<\/>\s*\) : \(/, "in the header: End of day first, then the date");
+});
+
+test("DatePicker: a label replaces the trigger's calendar icon and full date (the dashboard's short header button)", async () => {
+  const { DatePicker } = await import("@/components/shared/DatePicker");
+  const plain = renderToStaticMarkup(createElement(DatePicker, { value: "2026-10-19", onChange: noop }));
+  assert.ok(plain.includes("19 Oct 2026") && plain.includes("lucide-calendar"), "landmark: the default trigger shows the icon and the full date");
+  const custom = renderToStaticMarkup(createElement(DatePicker, { value: "2026-10-19", onChange: noop, label: createElement("span", null, "19 Oct") }));
+  assert.ok(custom.includes("<span>19 Oct</span>"), "the label is the trigger's content");
+  assert.ok(!custom.includes("19 Oct 2026") && !custom.includes("lucide-calendar"), "instead of the icon and the full date");
+});
+
+test("the period row: the period's name 18/600, the dates and comparison 12.5 text-2, the segmented picker at the right", () => {
+  const page = readSrc(PAGE);
+  assert.match(page, /<div data-ui="period-row" className="flex flex-wrap items-end justify-between gap-3">/, "flex, wrap, align end, space-between, gap 12");
+  assert.match(page, /<h2 data-ui="period-title" className="text-\[18px\] font-semibold tracking-\[-0\.01em\]">\{periodName\}<\/h2>/, "the title");
+  assert.match(
+    page,
+    /<p data-ui="period-sub" className="mt-0\.5 text-\[12\.5px\] text-muted-foreground max-tab:min-h-\[32\.5px\]">\s*\{periodSubline\(shownRange, d, today\)\}\s*<\/p>/,
+    "the sub line (two lines held on a phone, where our comparison wraps, so the figures arriving never move the page)",
+  );
+  assert.match(page, /<RangeBar variant="dashboard" value=\{selection\} onChange=\{onSelect\} isAdmin=\{isAdmin\} \/>/, "the picker in the HTML's segmented look");
 });
 
 // ── KpiCard, byte for byte (golden captured from the code before KpiChange) ──
@@ -274,49 +360,128 @@ const LIVE: DashboardLive = {
   bookingsToday: 4,
 };
 
-test("AttentionStrip keeps the five chips, their words, links and order; a phone folds them behind one button", () => {
-  const src = readSrc("components/dashboard/AttentionStrip.tsx");
-  for (const needle of [
-    '`${plural(live.pendingRequests, "QR order")} waiting`',
-    '`${plural(live.openTabs.count, "open tab")} · ${inr(live.openTabs.value)}`',
-    '`${plural(live.bookingsToday, "booking")} today`',
-    '`${plural(live.unavailable.count, "item")} unavailable`',
-    '`${inr(live.dues.total)} due from ${plural(live.dues.customers, "customer")}`',
-  ]) {
-    assert.ok(src.includes(needle), `the strip still builds ${needle}`);
-  }
-  assert.ok(src.includes("aria-expanded"), "the phone's summary row is a disclosure button");
+// U0 match (Task 5, design 5.5): our five live items in the HTML's chip — a bold part, the rest, an action pill and a
+// status dot — in our order (requests first).
+test("attentionItems maps our five live counts onto the HTML's chip: strong, rest, action, dot and link", () => {
+  const items = attentionItems(LIVE);
+  const expected = [
+    { key: "requests", kind: "warn", strong: "1 QR order", rest: "waiting", action: "View", href: "/requests" },
+    { key: "tabs", kind: "info", strong: "2 open tabs", rest: "· ₹1,450", action: "Open", href: "/orders?payment=Unpaid&status=Pending" },
+    { key: "bookings", kind: "reserved", strong: "4 bookings", rest: "today", action: "View", href: "/reservations" },
+    {
+      key: "unavailable",
+      kind: "bad",
+      strong: "3 items",
+      rest: "unavailable",
+      action: "View",
+      href: menuItemsHref({ status: "out-of-stock" }),
+      title: "Cold coffee, Brownie and 1 more",
+    },
+    { key: "dues", kind: "bill", strong: "₹8,450 due", rest: "from 6 customers", action: "Collect", href: "/customers" },
+  ];
+  assert.equal(items.length, expected.length, "five items when every count is non-zero");
+  expected.forEach((want, i) => assert.deepEqual(items[i], want, `item ${i + 1}: ${want.strong} ${want.rest} · ${want.action}`));
+  const none = attentionItems({ openTabs: { count: 0, value: 0 }, pendingRequests: 0, dues: { total: 0, customers: 0 }, unavailable: { count: 0, names: [] }, bookingsToday: 0 });
+  assert.deepEqual(none, [], "nothing at zero");
+  assert.deepEqual(
+    attentionItems({ ...LIVE, pendingRequests: 2, unavailable: { count: 2, names: ["Tea", "Cake"] } }).map((i) => [i.strong, i.title]),
+    [["2 QR orders", undefined], ["2 open tabs", undefined], ["4 bookings", undefined], ["2 items", "Tea, Cake"], ["₹8,450 due", undefined]],
+    "plurals, and no 'and N more' when every name is listed",
+  );
+});
 
+const classesOf = (html: string, dataUi: string, nth = 0): string[] => {
+  const tags = html.match(new RegExp(`<[a-z0-9]+ [^>]*data-ui="${dataUi}"[^>]*>`, "g")) ?? [];
+  return (/class="([^"]*)"/.exec(tags[nth] ?? "")?.[1] ?? "").split(" ");
+};
+const hasAll = (classes: string[], wanted: string[], what: string) => {
+  for (const c of wanted) assert.ok(classes.includes(c), `${what} has ${c} (got: ${classes.join(" ")})`);
+};
+
+test("AttentionStrip: the HTML's wide row (label, 34px chips with a 24px action pill) and phone card, as links in our order", () => {
   const html = renderToStaticMarkup(createElement(AttentionStrip, { live: LIVE, loading: false, isError: false }));
   assert.ok(html.includes('aria-label="Needs attention"'), "the section keeps its name");
-  const chips: Array<[string, string]> = [
-    ["1 QR order waiting", "/requests"],
-    ["2 open tabs · ₹1,450", "/orders?payment=Unpaid&amp;status=Pending"],
-    ["4 bookings today", "/reservations"],
-    ["3 items unavailable", menuItemsHref({ status: "out-of-stock" }).replace(/&/g, "&amp;")],
-    ["₹8,450 due from 6 customers", "/customers"],
+  assert.ok(!html.includes("pointer-coarse"), "ruling R1: the HTML's sizes on touch screens too");
+
+  // values 3.1 wide row: shown from cw 560 (the HTML's attWide), a label, then the chips.
+  hasAll(classesOf(html, "attention-wide"), ["hidden", "@min-[560px]:flex", "flex-wrap", "items-center", "gap-2"], "the wide row");
+  hasAll(
+    classesOf(html, "attention-label"),
+    ["flex", "items-center", "gap-[7px]", "text-[11.5px]", "font-semibold", "tracking-[0.07em]", "uppercase", "text-muted-foreground", "mr-1"],
+    "the Needs attention label",
+  );
+  hasAll(
+    classesOf(html, "attention-chip"),
+    ["flex", "items-center", "gap-[9px]", "h-[34px]", "pl-3", "pr-[5px]", "border", "border-border", "rounded-[17px]", "bg-card", "text-foreground", "text-[13px]", "whitespace-nowrap", "hover:border-subtle-foreground"],
+    "a chip",
+  );
+  hasAll(
+    classesOf(html, "attention-pill"),
+    ["flex", "items-center", "h-6", "px-2.5", "rounded-[12px]", "bg-surface-3", "text-[12px]", "font-semibold"],
+    "a chip's action pill",
+  );
+  assert.ok(html.includes('<b class="font-semibold">1 QR order</b> waiting'), "the bold part, a space, the rest");
+
+  const chips: Array<[string, string, string]> = [
+    ["1 QR order", "/requests", "View"],
+    ["2 open tabs", "/orders?payment=Unpaid&amp;status=Pending", "Open"],
+    ["4 bookings", "/reservations", "View"],
+    ["3 items", menuItemsHref({ status: "out-of-stock" }).replace(/&/g, "&amp;"), "View"],
+    ["₹8,450 due", "/customers", "Collect"],
   ];
   let last = -1;
-  for (const [text, href] of chips) {
-    const at = html.indexOf(text);
-    assert.ok(at > last, `"${text}" is shown, after the chip before it`);
+  for (const [strong, href, action] of chips) {
+    const at = html.indexOf(`>${strong}</b>`);
+    assert.ok(at > last, `"${strong}" is shown, after the chip before it`);
     const link = html.lastIndexOf("<a ", at);
-    assert.ok(html.slice(link, at).includes(`href="${href}"`), `"${text}" links to ${href}`);
-    assert.equal(html.split(`href="${href}"`).length - 1, 2, `${href} is linked twice: the desktop chip and the phone row`);
+    assert.ok(html.slice(link, at).includes(`href="${href}"`), `"${strong}" links to ${href}`);
+    assert.ok(html.slice(at, html.indexOf("</a>", at)).includes(`>${action}</span>`), `"${strong}" carries its ${action} pill`);
+    assert.equal(html.split(`href="${href}"`).length - 1, 2, `${href} is linked twice: the wide chip and the phone row`);
     last = at;
   }
-  const controls = /aria-controls="([^"]+)"/.exec(html)?.[1];
-  assert.ok(controls, "the disclosure button names the list it opens");
-  assert.ok(html.includes(`<ul id="${controls}"`), "aria-controls equals the list's id");
-  assert.ok(html.includes("pointer-coarse:min-h-11"), "the desktop row grows to the 44 px chips on touch, so the strip does not jump");
-  const skeleton = renderToStaticMarkup(createElement(AttentionStrip, { loading: true, isError: false }));
-  assert.equal((skeleton.match(/h-\[34px\][^"]*pointer-coarse:h-11/g) ?? []).length, 3, "the three chip skeletons are 44 px on touch too");
   assert.ok(html.includes('title="Cold coffee, Brownie and 1 more"'), "the unavailable chip names the items");
-  assert.ok(html.includes('aria-expanded="false"'), "the phone's list starts folded");
-  assert.match(html, /aria-expanded="false"[^>]*>[\s\S]*?>5<[\s\S]*?Needs attention/, "the phone's row says 5 · Needs attention");
   for (const dot of ["bg-status-warn", "bg-status-info", "bg-status-reserved", "bg-status-bad", "bg-status-bill"]) {
     assert.ok(html.includes(dot), `a ${dot} dot marks its chip`);
   }
+
+  // values 3.1 phone card: below cw 560 (attMob), closed by default.
+  hasAll(
+    classesOf(html, "attention-card"),
+    ["flex", "@min-[560px]:hidden", "flex-col", "overflow-hidden", "rounded-[12px]", "border", "border-border", "bg-card"],
+    "the phone card",
+  );
+  hasAll(classesOf(html, "attention-toggle"), ["flex", "h-12", "w-full", "min-w-0", "items-center", "gap-2.5", "px-3", "text-left"], "the card's toggle");
+  hasAll(
+    classesOf(html, "attention-count"),
+    ["flex", "size-7", "shrink-0", "items-center", "justify-center", "rounded-[8px]", "bg-status-warn-tint", "text-status-warn-ink", "text-[13px]", "font-bold"],
+    "the count tile",
+  );
+  assert.match(html, /aria-expanded="false"[^>]*>[\s\S]*?>5<[\s\S]*?Needs attention/, "the phone's row says 5 · Needs attention");
+  assert.ok(html.includes(">1 QR order · 2 open tabs · 4 bookings · 3 items · ₹8,450 due</span>"), "the peek joins the bold parts with ' · '");
+  hasAll(classesOf(html, "attention-peek"), ["block", "truncate", "text-[12px]", "text-muted-foreground"], "the peek line");
+  const controls = /aria-controls="([^"]+)"/.exec(html)?.[1];
+  assert.ok(controls, "the disclosure button names the list it opens");
+  assert.ok(html.includes(`<ul id="${controls}" hidden=""`), "aria-controls equals the list's id, and it starts folded");
+  hasAll(classesOf(html, "attention-list"), ["flex", "flex-col", "border-t", "border-border-2"], "the open list");
+  hasAll(classesOf(html, "attention-item"), ["flex", "min-h-[46px]", "items-center", "gap-2.5", "px-3", "py-2", "text-left", "text-[13px]", "text-foreground"], "a row");
+  assert.ok(!classesOf(html, "attention-item", 0).includes("border-t"), "the first row has no rule");
+  hasAll(classesOf(html, "attention-item", 1), ["border-t", "border-border-2"], "the next rows' rule");
+  hasAll(
+    classesOf(html, "attention-item-action"),
+    ["flex", "h-7", "flex-none", "items-center", "rounded-[8px]", "px-[11px]", "bg-surface-3", "text-[12px]", "font-semibold"],
+    "a row's action",
+  );
+  hasAll(classesOf(html, "attention-item-dot"), ["mx-2.5"], "a row's dot (margin 0 10px)");
+});
+
+test("AttentionStrip: loading, error and all clear in the same language", () => {
+  const loading = renderToStaticMarkup(createElement(AttentionStrip, { loading: true, isError: false }));
+  const chips = loading.match(/<div aria-hidden="true" class="[^"]*h-\[34px\][^"]*"/g) ?? [];
+  assert.equal(chips.length, 3, "three chip skeletons");
+  for (const chip of chips) {
+    for (const cls of ["rounded-[17px]", "bg-surface-3", "motion-safe:animate-pulse"]) assert.ok(chip.includes(cls), `a chip skeleton has ${cls}`);
+  }
+  assert.ok(!loading.includes("All clear") && !loading.includes("pointer-coarse"), "skeletons while the counts load, the HTML's size on touch");
 
   const clear = renderToStaticMarkup(
     createElement(AttentionStrip, {
@@ -325,17 +490,21 @@ test("AttentionStrip keeps the five chips, their words, links and order; a phone
       isError: false,
     }),
   );
-  assert.ok(clear.includes("All clear — nothing needs attention right now."), "the all-clear line stays");
+  assert.match(clear, /<p class="[^"]*text-\[13px\] text-muted-foreground[^"]*">[\s\S]*?All clear — nothing needs attention right now\.<\/p>/, "the all-clear line, 13px text-2");
   assert.ok(!clear.includes("aria-expanded"), "nothing to fold when nothing needs attention");
-  const loading = renderToStaticMarkup(createElement(AttentionStrip, { loading: true, isError: false }));
-  assert.ok(loading.includes("animate-pulse") && !loading.includes("All clear"), "skeletons while the counts load");
   const failed = renderToStaticMarkup(createElement(AttentionStrip, { loading: false, isError: true }));
-  assert.ok(failed.includes("load the live counts. Trying again…"), "the error line stays");
+  assert.match(failed, /<p class="text-\[13px\] text-muted-foreground">Couldn(?:&#x27;|')t load the live counts\. Trying again…<\/p>/, "the error line, 13px text-2");
 });
 
 // ── the period picker ───────────────────────────────────────────────────────
 
-test("RangeBar: the segmented look keeps the Period group, its words and one pressed choice, 44 px on touch", () => {
+// sha256 of the default RangeBar's markup, captured from the code before U0 match Task 5.
+const RANGE_BAR_SHA256 = {
+  admin7d: "15cf5e4db57c503e5f7b9fa79abe732bbbb412a7b71111dac02e825b2b651550",
+  staffToday: "65e3b5003093e38ad3479688417aee529163f166b5b7c421f24987c495fba0b9",
+};
+
+test("RangeBar's default look (reports, expenses): the Period group, its words and one pressed choice, 44 px on touch", () => {
   const admin = renderToStaticMarkup(
     createElement(RangeBar, { value: { preset: "7d", range: presetRange("7d") }, onChange: noop, isAdmin: true }),
   );
@@ -361,6 +530,99 @@ test("RangeBar: the segmented look keeps the Period group, its words and one pre
     ["Today", "Yesterday", "Pick a day"],
     "staff see one day at a time",
   );
+  // The reports and expenses keep this look byte for byte (U0 match Task 5 gave the dashboard its own variant).
+  assert.equal(sha256(admin), RANGE_BAR_SHA256.admin7d, "the default RangeBar (admin, 7 days) renders exactly what it rendered before Task 5");
+  assert.equal(sha256(staff), RANGE_BAR_SHA256.staffToday, "the default RangeBar (staff, today) renders exactly what it rendered before Task 5");
+});
+
+test("RangeBar variant 'dashboard': the HTML's segmented control (values 3.2, SEG_ON / SEG_OFF), our presets", () => {
+  const admin = renderToStaticMarkup(
+    createElement(RangeBar, { variant: "dashboard", value: { preset: "today", range: presetRange("today") }, onChange: noop, isAdmin: true }),
+  );
+  assert.ok(admin.includes('role="group"') && admin.includes('aria-label="Period"'), "the Period group");
+  assert.ok(!admin.includes("pointer-coarse"), "ruling R1: the HTML's 36px track on touch screens too");
+  hasAll(classesOf(admin, "period-track"), ["flex", "h-9", "gap-0.5", "rounded-[9px]", "bg-surface-3", "p-[3px]", "max-w-full", "overflow-x-auto"], "the track");
+  const buttons = admin.match(/<button[^>]*>[^<]*<\/button>/g) ?? [];
+  assert.deepEqual(
+    buttons.map((b) => />([^<]*)</.exec(b)?.[1]),
+    ["Today", "Yesterday", "7 days", "30 days", "Custom"],
+    "the HTML's four, then our Custom (admin)",
+  );
+  buttons.forEach((b, i) => {
+    const classes = /class="([^"]*)"/.exec(b)?.[1].split(" ") ?? [];
+    assert.ok(b.includes('data-ui="period-button"'), `button ${i + 1} is a period button`);
+    hasAll(classes, ["rounded-[7px]", "px-3", "text-[13px]", "whitespace-nowrap"], `button ${i + 1}`);
+    assert.ok(!classes.some((c) => /^h-/.test(c)), `button ${i + 1} stretches to the track (30px) as the HTML's`);
+    if (i === 0) hasAll(classes, ["bg-seg", "[box-shadow:var(--seg-sh)]", "text-foreground", "font-semibold"], "the chosen segment (SEG_ON: the HTML's exact seg-sh, text, 600)");
+    else hasAll(classes, ["bg-transparent", "text-muted-foreground", "font-medium"], `segment ${i + 1} (SEG_OFF, text-2, 500)`);
+  });
+  const staff = renderToStaticMarkup(
+    createElement(RangeBar, { variant: "dashboard", value: { preset: "today", range: presetRange("today") }, onChange: noop, isAdmin: false }),
+  );
+  assert.deepEqual(
+    (staff.match(/<button[^>]*>[^<]*<\/button>/g) ?? []).map((b) => />([^<]*)</.exec(b)?.[1]),
+    ["Today", "Yesterday", "Pick a day"],
+    "staff: one day at a time",
+  );
+});
+
+// ── the generic card ────────────────────────────────────────────────────────
+
+// sha256 of DashCard's default (reports) markup, captured from the code before U0 match Task 5.
+const DASH_CARD_SHA256: Record<string, string> = {
+  loading: "959100ed443468bfb0fa3578a0ada35e396cbff1f96566182321ef54f41ebae7",
+  error: "24dee05bd4dfb69d63ae920c34fbf71a625ee6086ecd54b82fa1c7302d76ffb6",
+  ready: "a04a0c06232857ec9ea0961b5264b397cfc997f041525b6908b12b10b69d814e",
+  empty: "9ec7b81e5d564dc45d015671675358b4e5016654ef8bf4f81369a118dc17045f",
+  updating: "e477d737edc6e590bc6cfc9d776262e841047496cd4a49828739b3e69961f3c7",
+};
+const CARD_BASE = { title: "Sales", period: "Today · vs Mon", link: { href: "/x", label: "View all" }, bodyMinHeight: 120, onRetry: noop };
+const card = (props: Partial<React.ComponentProps<typeof DashCard>>) =>
+  renderToStaticMarkup(createElement(DashCard, { ...CARD_BASE, status: "ready", ...props }, createElement("p", null, "body")));
+
+test("DashCard's default look (the reports pages) renders exactly what it rendered before Task 5", () => {
+  assert.equal(sha256(card({ status: "loading" })), DASH_CARD_SHA256.loading, "loading");
+  assert.equal(sha256(card({ status: "error" })), DASH_CARD_SHA256.error, "error");
+  assert.equal(sha256(card({ status: "ready" })), DASH_CARD_SHA256.ready, "ready");
+  assert.equal(
+    sha256(renderToStaticMarkup(createElement(DashCard, { ...CARD_BASE, status: "empty", empty: { title: "None", description: "Nothing yet." } }))),
+    DASH_CARD_SHA256.empty,
+    "empty",
+  );
+  assert.equal(sha256(card({ updating: true, bodyClassName: "min-h-[500px]", className: "lg:col-span-2" })), DASH_CARD_SHA256.updating, "updating");
+});
+
+test("DashCard variant 'dashboard': the HTML's generic card (values 3.0) and its states in the same language", () => {
+  const ready = card({ variant: "dashboard", className: "@min-[680px]:col-span-full" });
+  hasAll(
+    classesOf(ready, "dash-card"),
+    ["min-w-0", "rounded-[14px]", "border", "border-border", "bg-card", "px-5", "py-[18px]", "leading-[normal]", "text-foreground", "@min-[680px]:col-span-full"],
+    "the card (surface, 1px border, radius 14, padding 18px 20px)",
+  );
+  assert.ok(ready.startsWith('<section aria-labelledby="dash-sales"'), "a section named by its title");
+  hasAll(classesOf(ready, "dash-card-head"), ["flex", "items-start", "justify-between", "gap-3"], "the head");
+  hasAll(classesOf(ready, "dash-card-title"), ["text-[15px]", "font-semibold"], "the title 15/600");
+  hasAll(classesOf(ready, "dash-card-sub"), ["mt-[3px]", "text-[12.5px]", "text-subtle-foreground"], "the subtitle 12.5 text-3, 3px under");
+  hasAll(classesOf(ready, "dash-card-link"), ["shrink-0", "whitespace-nowrap", "text-[13px]", "font-medium", "text-link"], "the header link 13/500 link");
+  assert.match(ready, /data-ui="dash-card-link"[^>]*href="\/x"[^>]*>View all →<\/a>|href="\/x"[^>]*data-ui="dash-card-link"[^>]*>View all →<\/a>/, "the link reads 'View all →'");
+  assert.ok(!/brand-|leading-tight/.test(ready), "no Paper & Ink token or tight leading left in the dashboard card");
+
+  const loading = card({ variant: "dashboard", status: "loading" });
+  assert.match(
+    loading,
+    /<div style="height:120px" class="flex mt-3\.5"><div aria-hidden="true" class="rounded-md bg-surface-3 motion-safe:animate-pulse w-full"><\/div><\/div>/,
+    "the skeleton keeps the reserved height, 14px under the head, on surface-3",
+  );
+  assert.ok(ready.includes('<div style="min-height:120px" class="transition-opacity duration-200 mt-3.5">'), "the body sits 14px under the head (the HTML's most common gap)");
+  const error = card({ variant: "dashboard", status: "error" });
+  assert.ok(error.includes('<p class="text-[13px] text-muted-foreground">Couldn&#x27;t load this. It will try again on its own.</p>'), "the error line 13px text-2");
+  hasAll(classesOf(error, "dash-card-retry"), ["h-[30px]", "rounded-[8px]", "border", "border-border", "bg-card", "px-[11px]", "text-[12.5px]", "font-medium"], "Try again as the HTML's small outline button");
+  const empty = renderToStaticMarkup(
+    createElement(DashCard, { ...CARD_BASE, variant: "dashboard", status: "empty", empty: { title: "None", description: "Nothing yet." } }),
+  );
+  assert.ok(empty.includes('<p class="text-[13.5px] font-medium">None</p>'), "the empty title 13.5/500");
+  assert.ok(empty.includes('<p class="max-w-xs text-[12.5px] text-subtle-foreground">Nothing yet.</p>'), "the empty description 12.5 text-3");
+  assert.ok(card({ variant: "dashboard", updating: true }).includes("opacity-55"), "the old range's body dims while the new one loads");
 });
 
 // ── the receipt ─────────────────────────────────────────────────────────────

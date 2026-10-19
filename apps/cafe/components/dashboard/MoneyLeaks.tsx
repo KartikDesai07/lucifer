@@ -45,7 +45,7 @@ function rowsOf(leaks: DashboardLeaks): LeakRow[] {
 
 export function MoneyLeaks({ leaks }: { leaks: DashboardLeaks }) {
   return (
-    <ul className="flex flex-col divide-y divide-brand-rule/70">
+    <ul className="flex flex-col divide-y divide-border-2">
       {rowsOf(leaks).map((r) => {
         const body = (
           <>

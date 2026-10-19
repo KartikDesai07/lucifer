@@ -31,6 +31,7 @@ export function TodayReservations({ reservations, loading, isError, onRetry }: T
 
   return (
     <DashCard
+      variant="dashboard"
       title="Today's reservations"
       period="Booked and seated · by time"
       link={{ href: "/reservations", label: "View all" }}
@@ -39,7 +40,7 @@ export function TodayReservations({ reservations, loading, isError, onRetry }: T
       empty={{ title: "No bookings left today", description: "New bookings made on the Reservations screen appear here." }}
       bodyMinHeight={MIN_ROWS * ROW_PX}
     >
-      <ul className="divide-y divide-brand-rule/70">
+      <ul className="divide-y divide-border-2">
         {rows.map((r) => (
           <li key={r._id} className="flex items-center gap-3" style={{ minHeight: ROW_PX }}>
             <div className="w-[4.75rem] shrink-0 whitespace-nowrap rounded-md bg-status-reserved-tint px-1.5 py-1 text-center text-[12.5px] font-semibold tabular-nums text-status-reserved-ink">

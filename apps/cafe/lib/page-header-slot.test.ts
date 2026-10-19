@@ -62,7 +62,7 @@ function dashboardRoutes(): { route: string; file: string }[] {
 const TITLE_CONSTANTS: Record<string, string> = { FESTIVAL_CARDS_TITLE };
 
 /** The title a source file gives its page: the last PageHeader / ReportHeader's title, a settings section's title, or
- *  (the Dashboard until Task 5) its own hand-written <h1>. */
+ *  a hand-written <h1> (none left since the Dashboard's moved to its PageHeader in Task 5). */
 function titleIn(src: string): string | undefined {
   const at = Math.max(src.lastIndexOf("<PageHeader"), src.lastIndexOf("<ReportHeader"));
   if (at >= 0) {
@@ -298,8 +298,8 @@ test("ruling R4: no page shows its title twice — POS, Items and every report n
   assert.ok(report.includes("Download CSV") && report.includes("<RangeBar"), "Download CSV stays its action; the range row stays in the body");
   const items = read(path.join(CAFE_ROOT, "app/(dashboard)/products/page.tsx"));
   assert.match(items, /<PageHeader\s+eyebrow="Menu"\s+title="Items"\s+description=\{/, "the Items page's title block goes to the header");
-  // Only the shell's header writes an <h1> on a staff page (the Dashboard keeps its own title row until Task 5).
-  const allowed = new Set(["components/layout/HeaderTitle.tsx", "app/(dashboard)/page.tsx"]);
+  // Only the shell's header writes an <h1> on a staff page (the Dashboard's own title row moved there in Task 5).
+  const allowed = new Set(["components/layout/HeaderTitle.tsx"]);
   const offenders: string[] = [];
   const scan = (dir: string) => {
     for (const entry of readdirSync(path.join(CAFE_ROOT, dir), { withFileTypes: true })) {

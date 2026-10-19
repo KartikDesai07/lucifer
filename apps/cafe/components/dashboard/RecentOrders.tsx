@@ -33,6 +33,7 @@ export function RecentOrders({ orders, loading, isError, onRetry, onSelect }: Re
 
   return (
     <DashCard
+      variant="dashboard"
       title="Recent orders"
       period="Today · newest first"
       link={{ href: "/orders", label: "View all" }}
@@ -41,7 +42,7 @@ export function RecentOrders({ orders, loading, isError, onRetry, onSelect }: Re
       empty={{ title: "No orders yet today", description: "Orders taken on the POS show up here as they are placed." }}
       bodyMinHeight={MAX_ROWS * ROW_PX}
     >
-      <ul className="divide-y divide-brand-rule/70">
+      <ul className="divide-y divide-border-2">
         {rows.map((order) => {
           const payStyle = PAY_STYLES[order.payment];
           // A cancelled bill keeps its historical payment mode and total, but the

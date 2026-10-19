@@ -5,7 +5,6 @@ import { useMemo, useState } from "react";
 import { useOrders, OPEN_TABS_QUERY_OPTIONS } from "@/hooks/use-orders";
 import { useTables } from "@/hooks/use-tables";
 import { useReservations } from "@/hooks/use-reservations";
-import { useSettings } from "@/hooks/use-settings";
 import { useAuth } from "@/hooks/use-auth";
 import { useDashboard, useDashboardLive } from "@/hooks/use-dashboard";
 import { useDashboardRealtime } from "@/hooks/use-realtime";
@@ -13,10 +12,10 @@ import { useStoredPeriod, rangeOfPeriod } from "@/hooks/use-stored-period";
 import { cafeDateString } from "@/lib/utils";
 import { REFETCH_INTERVALS } from "@/lib/query";
 import { liveOrderOf } from "@/lib/order-query";
-import { APP_NAME, CAFE_TIMEZONE } from "@/lib/constants";
-import { brandFontVariables } from "@/lib/brand-fonts";
+import { MAIN_PADDING_BLEED_CLASS } from "@/lib/shell-layout";
 import { MAX_DASHBOARD_RANGE_DAYS, presetRange } from "@/lib/dashboard/range";
-import { compareCaption, periodDates, periodLabel } from "@/lib/dashboard/labels";
+import { periodLabel, periodSubline } from "@/lib/dashboard/labels";
+import { PageHeader } from "@/components/shared/PageHeader";
 import { AttentionStrip } from "@/components/dashboard/AttentionStrip";
 import { RangeBar, type DashboardSelection } from "@/components/dashboard/RangeBar";
 import {
@@ -39,32 +38,24 @@ import { MoneyBreakdownCard } from "@/components/reports/MoneyBreakdownCard";
 import { OrderDetailSheet } from "@/components/orders/OrderDetailSheet";
 import type { Order } from "@/types";
 
-// The Dashboard, in the owner's mock-up arrangement (UI redesign 2026-10).
-// Top: what needs acting on right now. Then the chosen period (Today by
-// default) against its comparison: the dark Net sales hero beside the bill
-// breakdown receipt; sales by hour/day beside the live floor; recent orders
-// beside today's reservations; payment mix beside channels; then top items,
-// slow movers, categories, money leaks and busy hours. Every card, figure and
-// link it had stays. Every range number comes from ONE server aggregate
-// (GET /api/dashboard) — never from a capped client list.
+// The Dashboard, in the owner's HTML arrangement (U0 match, values 3.0). The shell's header names it ("Dashboard"
+// over the cafe and the date) with End of day and the date picker as its actions. Then: what needs acting on right
+// now; the chosen period (Today by default) against its comparison; the dark Net sales hero beside the bill breakdown
+// receipt; sales by hour/day beside the live floor; recent orders beside today's reservations; payment mix, channels
+// and money leaks; top items, categories and slow movers; busy hours. Every card, figure and link it had stays. Every
+// range number comes from ONE server aggregate (GET /api/dashboard) — never from a capped client list.
+//
+// The rows follow the HTML's content width `cw` (the viewport minus the nav), not the viewport: the page is the query
+// container, as wide as <main> (it bleeds over main's padding and lays out the HTML's own: 20px 24px 28px, on a phone
+// 16px 14px and the 92px foot over the tab bar).
 
 // Per-viewer convenience only (the period picked on this tab); never state
 // that matters — a blocked or empty storage just means "Today".
 const PERIOD_STORAGE_KEY = "pos.dashboard.period";
 
-const DATE_LINE = new Intl.DateTimeFormat("en-IN", {
-  weekday: "long",
-  day: "numeric",
-  month: "long",
-  year: "numeric",
-  timeZone: CAFE_TIMEZONE,
-});
-
 export default function DashboardPage() {
   const today = cafeDateString();
   const { isAdmin } = useAuth();
-  const settings = useSettings();
-  const restaurantName = settings.data?.restaurantName?.trim() || APP_NAME;
 
   // The stored choice is read after mount (sessionStorage does not exist during
   // the server render); the range query waits for that one tick so a remembered
@@ -127,38 +118,30 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className={`${brandFontVariables} -m-4 min-h-[calc(100svh-3.5rem)] bg-brand-paper p-4 font-brand-sans text-brand-ink md:-m-6 md:p-6`}>
-      <div className="mx-auto flex max-w-[1440px] flex-col gap-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-[24px] font-semibold leading-8 tracking-[-0.015em]">Dashboard</h1>
-            <p className="truncate text-[13.5px] text-brand-muted" suppressHydrationWarning>
-              {restaurantName} · {DATE_LINE.format(new Date())}
-            </p>
-          </div>
-          <EndOfDayButton />
-        </div>
+    <div data-ui="dash-page" className={`@container ${MAIN_PADDING_BLEED_CLASS}`}>
+      <div data-ui="dash-content" className="flex flex-col gap-4 px-[14px] pt-4 pb-[92px] leading-[normal] text-foreground tab:px-6 tab:pt-5 tab:pb-7">
+        {/* The header's title, the cafe line (no description) and its two buttons; on a phone, where the HTML's header
+            holds icons only, the buttons sit in a row here. */}
+        <PageHeader title="Dashboard" className="gap-2.5" actions={<EndOfDayButton variant="header" />} />
 
         <AttentionStrip live={live.data} loading={live.isLoading} isError={live.isError} />
 
-        {/* The picker sits beside the title only when there is room for the caption on
-            one line (lg+); the caption reserves its phone height (two lines) so the
-            figures arriving never move the page. */}
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0">
-            <h2 className="text-[17px] font-semibold leading-6">{periodName}</h2>
-            <p className="min-h-9 text-[12.5px] leading-[18px] text-brand-muted sm:min-h-[18px]">
-              {periodName === periodDates(shownRange) ? "" : `${periodDates(shownRange)} · `}
-              {d ? compareCaption(d, today) : "Loading…"}
+        {/* values 3.2: the period's name and its dates · comparison, the segmented picker at the right (it wraps
+            under them when they do not fit). The line holds two lines on a phone, where our comparison wraps, so
+            the figures arriving never move the page. */}
+        <div data-ui="period-row" className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 data-ui="period-title" className="text-[18px] font-semibold tracking-[-0.01em]">{periodName}</h2>
+            <p data-ui="period-sub" className="mt-0.5 text-[12.5px] text-muted-foreground max-tab:min-h-[32.5px]">
+              {periodSubline(shownRange, d, today)}
             </p>
           </div>
-          <RangeBar value={selection} onChange={onSelect} isAdmin={isAdmin} />
+          <RangeBar variant="dashboard" value={selection} onChange={onSelect} isAdmin={isAdmin} />
         </div>
 
-        {/* The hero row: the dark Net sales card beside the bill breakdown receipt
-            (stacked below xl). Then 2/3 + 1/3 rows, then two- and three-up rows;
-            one column on a phone. */}
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        {/* The rows' column templates are the HTML's db.L rules on the content width (cw): hero and twoOne split
+            from 1000, three goes two-up from 680 and three-up from 1080, where span3 cards fill the two-up row. */}
+        <div className="grid grid-cols-1 gap-4 @min-[1000px]:grid-cols-[minmax(0,1.7fr)_minmax(300px,1fr)]">
           <SalesHero {...cards} />
           <MoneyBreakdownCard
             money={d?.money}
@@ -168,8 +151,8 @@ export default function DashboardPage() {
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-          <SalesCard {...cards} className="xl:col-span-2" />
+        <div className="grid grid-cols-1 gap-4 @min-[1000px]:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <SalesCard {...cards} />
           <LiveFloorPanel
             tables={tables.data ?? []}
             orders={floorOrders}
@@ -180,17 +163,14 @@ export default function DashboardPage() {
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          {/* A one-cell grid, so the card inside stretches to the row's height. */}
-          <div className="grid min-w-0 grid-cols-1 lg:col-span-2">
-            <RecentOrders
-              orders={todayOrders.data ?? []}
-              loading={todayOrders.isLoading}
-              isError={todayOrders.isError}
-              onRetry={() => void todayOrders.refetch()}
-              onSelect={setDetail}
-            />
-          </div>
+        <div className="grid grid-cols-1 gap-4 @min-[1000px]:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <RecentOrders
+            orders={todayOrders.data ?? []}
+            loading={todayOrders.isLoading}
+            isError={todayOrders.isError}
+            onRetry={() => void todayOrders.refetch()}
+            onSelect={setDetail}
+          />
           <TodayReservations
             reservations={reservations.data ?? []}
             loading={reservations.isLoading}
@@ -199,23 +179,19 @@ export default function DashboardPage() {
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 @min-[680px]:grid-cols-2 @min-[1080px]:grid-cols-3">
           <PaymentMixCard {...cards} />
           <ChannelsCard {...cards} />
+          <LeaksCard {...cards} className="@min-[680px]:col-span-full @min-[1080px]:col-auto" />
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 @min-[680px]:grid-cols-2 @min-[1080px]:grid-cols-3">
           <TopItemsCard {...cards} />
-          <SlowItemsCard {...cards} />
-          <div className="grid min-w-0 grid-cols-1 md:col-span-2 xl:col-span-1">
-            <CategoriesCard {...cards} />
-          </div>
+          <CategoriesCard {...cards} />
+          <SlowItemsCard {...cards} className="@min-[680px]:col-span-full @min-[1080px]:col-auto" />
         </div>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <LeaksCard {...cards} />
-          <BusyHoursCard {...cards} className="lg:col-span-2" />
-        </div>
+        <BusyHoursCard {...cards} />
       </div>
 
       {/* The sheet follows the live row (a tab another device grew or settled);

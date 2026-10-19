@@ -54,6 +54,17 @@ export function compareCaption(data: DashboardData, today: string): string {
   return `Compared with the ${against}${running ? ", up to the same time today" : ""}`;
 }
 
+/**
+ * The line under the period's name, in the HTML's words: "{dates} · compared with {comparison}" (values 3.2). The
+ * dates are left out when the name already is the date (a picked day), and "Loading…" stands in for the comparison
+ * until the figures arrive.
+ */
+export function periodSubline(range: DashboardRange, data: DashboardData | undefined, today: string): string {
+  const dates = periodLabel(range, today) === periodDates(range) ? "" : periodDates(range);
+  const comparison = data ? compareCaption(data, today) : "Loading…";
+  return dates ? `${dates} · ${comparison.replace(/^Compared with/, "compared with")}` : comparison;
+}
+
 /** Said instead of a % when the comparison period had no orders. */
 export function noCompareText(data: DashboardData): string {
   return data.mode === "hour"

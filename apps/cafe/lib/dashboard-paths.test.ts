@@ -103,7 +103,11 @@ test("no cafe name is written into the dashboard's code", () => {
     CARDS,
     ...readdirSync(path.join(HERE, "..", "components/dashboard")).map((f) => `components/dashboard/${f}`),
   ];
-  assert.ok(readSrc(PAGE).includes("restaurantName"), "landmark: the page names the cafe from Settings");
+  // U0 match Task 5: the page's title row moved into the shell's header, whose second line names the cafe from
+  // Settings when the page gives no description (the HTML's "{cafe} · {weekday, day month}").
+  assert.ok(/<PageHeader\s+title="Dashboard"/.test(readSrc(PAGE)), "landmark: the page names itself through PageHeader");
+  assert.ok(!/<PageHeader[^>]*\bdescription=/.test(readSrc(PAGE)), "with no description, so the header's cafe line shows");
+  assert.ok(readSrc("components/layout/Header.tsx").includes("settings.data?.restaurantName"), "landmark: the header names the cafe from Settings");
   for (const rel of files) {
     assert.ok(!/lucifer/i.test(readSrc(rel)), `${rel} must not hardcode a cafe name`);
   }

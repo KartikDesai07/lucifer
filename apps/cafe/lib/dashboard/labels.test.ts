@@ -8,6 +8,7 @@ import {
   noCompareText,
   periodDates,
   periodLabel,
+  periodSubline,
 } from "@/lib/dashboard/labels";
 import type { DashboardData } from "@/types/dashboard";
 
@@ -81,6 +82,18 @@ test("the 'same time' note lives in the caption once, never on each KPI card", (
   assert.equal(compareCaption(past, TODAY), "Compared with Mon, 21 Sep");
   const week = data({ mode: "day", range: { from: "2026-09-23", to: TODAY }, compare: { from: "2026-09-16", to: "2026-09-22", label: "vs previous 7 days" } });
   assert.equal(compareCaption(week, TODAY), "Compared with the previous 7 days, up to the same time today");
+});
+
+// U0 match (Task 5, values 3.2): the HTML's "{range} · compared with {comparison}" under the period's name.
+test("periodSubline: the dates, then 'compared with …' in the HTML's words; the dates alone while the figures load", () => {
+  const today = data({});
+  assert.equal(periodSubline(today.range, today, TODAY), "Tue, 29 Sep · compared with Tue, 22 Sep at the same time of day", "today");
+  const week = data({ mode: "day", range: { from: "2026-09-23", to: TODAY }, compare: { from: "2026-09-16", to: "2026-09-22", label: "vs previous 7 days" } });
+  assert.equal(periodSubline(week.range, week, TODAY), "23 Sep – 29 Sep · compared with the previous 7 days, up to the same time today", "7 days");
+  const past = data({ range: { from: "2026-09-22", to: "2026-09-22" }, compare: { from: "2026-09-15", to: "2026-09-15", label: "vs Tue, 15 Sep" } });
+  assert.equal(periodSubline(past.range, past, TODAY), "Compared with Tue, 15 Sep", "a picked day is its own title: no dates twice");
+  assert.equal(periodSubline(today.range, undefined, TODAY), "Tue, 29 Sep · Loading…", "loading: the dates, then Loading…");
+  assert.equal(periodSubline(past.range, undefined, TODAY), "Loading…", "loading a picked day");
 });
 
 test("noCompareText says which period had no orders", () => {
