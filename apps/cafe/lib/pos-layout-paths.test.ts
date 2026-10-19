@@ -24,6 +24,16 @@ import { stripComments } from "@/lib/source-pin-utils";
 import {
   SIDEBAR_WIDTH_REM,
   SIDEBAR_WIDTH_ICON_REM,
+  NAV_WIDTH_WIDE_PX,
+  NAV_WIDTH_RAIL_PX,
+  NAV_RAIL_MIN_PX,
+  NAV_WIDE_MIN_PX,
+  navWidthPx,
+  isWideNav,
+  posGridColumns,
+  posGridPaneWidthPx,
+  POS_MIN_TILE_PX,
+  POS_GRID_GAP_REM,
   POS_HEADER_ROW_REM,
   POS_SEARCH_ROW_REM,
   POS_MOBILE_BAR_REM,
@@ -1281,4 +1291,55 @@ test("PIN: D9.8c — on mobile, a surviving adjustment keeps the cart bar OPENAB
     /pos\.cart\.length === 0 && !pendingAdjustment/,
     "the POS page must not force-close the mobile sheet while an adjustment survives",
   );
+});
+
+// ── U0 Task 2 (2026-10-19): the HTML's nav widths drive the POS grid ─────────
+// The owner's HTML (values 2.1 rootCols): no nav on a phone (< 720 px), the 76 px rail from 720 px and on a collapsed
+// desktop, the 232 px sidebar at 1280 px and up. The POS grid pane is the viewport minus that nav, minus <main>'s side
+// padding, minus the two-pane rail + cart at xl.
+
+test("navWidthPx: 0 on a phone, the 76 px rail on a tablet or a collapsed desktop, the 232 px sidebar from 1280 px", () => {
+  assert.equal(NAV_WIDTH_WIDE_PX, 232, "the wide sidebar is the HTML's 232 px");
+  assert.equal(NAV_WIDTH_RAIL_PX, 76, "the rail is the HTML's 76 px");
+  assert.equal(NAV_RAIL_MIN_PX, 720, "the rail starts at the HTML's 720 px (values 0.1 ph)");
+  assert.equal(NAV_WIDE_MIN_PX, 1280, "the wide sidebar starts at the HTML's 1280 px (values 0.1 wide)");
+  assert.equal(SIDEBAR_WIDTH_REM * 16, NAV_WIDTH_WIDE_PX, "the primitive's --sidebar-width is the same 232 px");
+  assert.equal(SIDEBAR_WIDTH_ICON_REM * 16, NAV_WIDTH_RAIL_PX, "the primitive's --sidebar-width-icon is the same 76 px");
+  const cases: Array<[number, boolean, number]> = [
+    [390, false, 0],
+    [390, true, 0],
+    [719, false, 0],
+    [720, false, 76],
+    [820, false, 76],
+    [1024, false, 76],
+    [1279, false, 76],
+    [1280, false, 232],
+    [1280, true, 76],
+    [1920, false, 232],
+  ];
+  for (const [viewportWidth, collapsed, expected] of cases) {
+    assert.equal(navWidthPx({ viewportWidth, collapsed }), expected, `navWidthPx at ${viewportWidth} px (collapsed ${collapsed}) must be ${expected}`);
+  }
+  assert.equal(isWideNav({ viewportWidth: 1280, collapsed: false }), true, "1280 px, not collapsed: the wide form");
+  assert.equal(isWideNav({ viewportWidth: 1280, collapsed: true }), false, "1280 px, collapsed: the rail");
+  assert.equal(isWideNav({ viewportWidth: 1279, collapsed: false }), false, "below 1280 px: the rail");
+});
+
+test("the POS product grid gets at least one column and fits beside the nav at the plan's five viewports", () => {
+  const viewports: Array<[string, number, boolean]> = [
+    ["1280", 1280, false],
+    ["1280 collapsed", 1280, true],
+    ["1024", 1024, false],
+    ["820", 820, false],
+    ["390", 390, false],
+  ];
+  for (const [label, viewportWidth, collapsed] of viewports) {
+    const cols = posGridColumns({ viewportWidth, collapsed });
+    const pane = posGridPaneWidthPx({ viewportWidth, collapsed });
+    const room = viewportWidth - navWidthPx({ viewportWidth, collapsed });
+    const gridMin = cols * POS_MIN_TILE_PX + (cols - 1) * POS_GRID_GAP_REM * 16;
+    assert.ok(cols >= 1, `${label}: the POS grid must have at least one column, got ${cols}`);
+    assert.ok(pane > 0 && pane <= room, `${label}: the grid pane (${pane} px) must fit the ${room} px beside the nav`);
+    assert.ok(gridMin <= pane, `${label}: ${cols} columns of at least ${POS_MIN_TILE_PX} px need ${gridMin} px, the pane is ${pane} px`);
+  }
 });

@@ -8,6 +8,7 @@ import {
 } from "@/lib/pos-install";
 import { brandingUrl, productImageUrl } from "@/lib/images";
 import { SCREEN_LOCK_SCRIPT } from "@/lib/screen-lock-script";
+import { NAV_STATE_SCRIPT } from "@/lib/nav-state-script";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Header } from "@/components/layout/Header";
@@ -82,6 +83,9 @@ export default function DashboardLayout({
           locked before the first paint when the stored lock says so, so a reload never flashes the page; the
           ScreenLock cover below takes over once it mounts. The sidebar provider after it stays bare. */}
       <script>{SCREEN_LOCK_SCRIPT}</script>
+      {/* The nav's remembered collapse (U0 Task 2): marks <html> collapsed before the first paint, from the sidebar
+          cookie, so the CSS shows the rail at once instead of flashing the wide sidebar. */}
+      <script>{NAV_STATE_SCRIPT}</script>
       <SidebarProvider>
         <PosPulseProvider>
           {/* Print-host plan §B5 (PH-5): the host bridge lives in the shell so a

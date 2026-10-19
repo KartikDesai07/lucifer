@@ -6,6 +6,8 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { PanelLeft } from "lucide-react";
 
 import { useIsMobile } from "@/hooks/use-mobile";
+import { NAV_COLLAPSED_ATTR, NAV_STATE_COOKIE } from "@/lib/nav-state-script";
+import { NAV_RAIL_MIN_PX } from "@/lib/pos-layout";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,11 +22,14 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-const SIDEBAR_COOKIE_NAME = "sidebar_state";
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
-const SIDEBAR_WIDTH = "16rem";
-const SIDEBAR_WIDTH_MOBILE = "18rem";
-const SIDEBAR_WIDTH_ICON = "3rem";
+// U0 Task 2 (the owner's HTML, values 2.1-2.3): the 232 px sidebar from 1280 px unless collapsed, the 76 px rail from
+// 720 px, and below 720 px the nav sheet (the phone, until the tab bar), which shows the nav in its wide form. The
+// collapse choice is remembered on this device: the cookie, mirrored on <html> for the `wide` CSS variant.
+const SIDEBAR_COOKIE_NAME = NAV_STATE_COOKIE;
+const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+const SIDEBAR_WIDTH = "14.5rem";
+const SIDEBAR_WIDTH_MOBILE = "14.5rem";
+const SIDEBAR_WIDTH_ICON = "4.75rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
 type SidebarContextProps = {
@@ -68,7 +73,7 @@ const SidebarProvider = React.forwardRef<
     },
     ref,
   ) => {
-    const isMobile = useIsMobile();
+    const isMobile = useIsMobile(NAV_RAIL_MIN_PX);
     const [openMobile, setOpenMobile] = React.useState(false);
 
     // This is the internal state of the sidebar.
@@ -84,11 +89,18 @@ const SidebarProvider = React.forwardRef<
           _setOpen(openState);
         }
 
-        // This sets the cookie to keep the sidebar state.
+        // This sets the cookie to keep the sidebar state, and mirrors it on <html> for the `wide` variant.
         document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
+        document.documentElement.toggleAttribute(NAV_COLLAPSED_ATTR, !openState);
       },
       [setOpenProp, open],
     );
+
+    // The remembered choice: the layout's no-flash script set the attribute from the cookie before the first paint
+    // (so the CSS already shows the right form); the state follows it once mounted.
+    React.useEffect(() => {
+      if (openProp === undefined && document.documentElement.hasAttribute(NAV_COLLAPSED_ATTR)) _setOpen(false);
+    }, [openProp]);
 
     // Helper to toggle the sidebar.
     const toggleSidebar = React.useCallback(() => {
@@ -194,6 +206,7 @@ const Sidebar = React.forwardRef<
           <SheetContent
             data-sidebar="sidebar"
             data-mobile="true"
+            data-nav-form="wide"
             className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
             style={
               {
@@ -212,46 +225,23 @@ const Sidebar = React.forwardRef<
       );
     }
 
+    // The nav column: the rail's width from 720 px, the sidebar's in the wide form; the panel stays in view while the
+    // page scrolls (the HTML's 100dvh grid column, with the document still the scroller).
     return (
       <div
         ref={ref}
-        className="group peer hidden text-sidebar-foreground md:block"
+        className="group peer hidden w-(--sidebar-width-icon) shrink-0 text-sidebar-foreground tab:block wide:w-(--sidebar-width)"
         data-state={state}
         data-collapsible={state === "collapsed" ? collapsible : ""}
         data-variant={variant}
         data-side={side}
       >
-        {/* This is what handles the sidebar gap on desktop */}
         <div
-          className={cn(
-            "relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
-            "group-data-[collapsible=offcanvas]:w-0",
-            "group-data-[side=right]:rotate-180",
-            variant === "floating" || variant === "inset"
-              ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4))]"
-              : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
-          )}
-        />
-        <div
-          className={cn(
-            "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear md:flex",
-            side === "left"
-              ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
-              : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
-            // Adjust the padding for floating and inset variants.
-            variant === "floating" || variant === "inset"
-              ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4)_+2px)]"
-              : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
-            className,
-          )}
+          data-sidebar="sidebar"
+          className={cn("sticky top-0 flex h-svh w-full flex-col bg-sidebar", className)}
           {...props}
         >
-          <div
-            data-sidebar="sidebar"
-            className="flex h-full w-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow"
-          >
-            {children}
-          </div>
+          {children}
         </div>
       </div>
     );
@@ -319,7 +309,7 @@ const SidebarInset = React.forwardRef<HTMLDivElement, React.ComponentProps<"main
       <main
         ref={ref}
         className={cn(
-          "relative flex w-full flex-1 flex-col bg-background",
+          "relative flex w-full min-w-0 flex-1 flex-col bg-background",
           "md:peer-data-[variant=inset]:m-2 md:peer-data-[state=collapsed]:peer-data-[variant=inset]:ml-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow",
           className,
         )}

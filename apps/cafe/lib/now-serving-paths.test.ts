@@ -253,7 +253,8 @@ test("sidebar: the Now Serving row sits right after Kitchen, is tokens-only, and
   const src = read(SIDEBAR);
   assert.match(
     src,
-    /\{ title: "Kitchen", url: "\/kitchen", icon: ChefHat \},\s*\{ title: "Now Serving", url: "\/now-serving", icon: Tv, tokensOnly: true \},/,
+    // U0 Task 2: the HTML's cloche glyph for Kitchen, and "Serving" as the rail's short label.
+    /\{ title: "Kitchen", url: "\/kitchen", icon: NavKitchen \},\s*\{ title: "Now Serving", url: "\/now-serving", icon: Tv, tokensOnly: true, railTitle: "Serving" \},/,
   );
   assert.equal(count(src, 'url: "/now-serving"'), 1);
   assert.equal(count(src, "const tokensOn = printConfigOf(settings.data).token.enabled;"), 1);

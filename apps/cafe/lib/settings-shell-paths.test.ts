@@ -43,6 +43,8 @@ const USE_SETTINGS_SECTION_FORM = `${CAFE}/hooks/use-settings-section-form.ts`;
 const SETTINGS_SAVE_BAR = `${CAFE}/components/settings/SettingsSaveBar.tsx`;
 const APP_SIDEBAR = `${CAFE}/components/layout/AppSidebar.tsx`;
 const SIDEBAR_SETTINGS_GROUP = `${CAFE}/components/layout/SidebarSettingsGroup.tsx`;
+// U0 Task 2: the nav's shared row with sub-pages (sub-rows in the wide form, a flyout in the rail).
+const NAV_PARTS = `${CAFE}/components/layout/nav-parts.tsx`;
 const DASHBOARD_LAYOUT = `${CAFE}/app/(dashboard)/layout.tsx`;
 const HEADER = `${CAFE}/components/layout/Header.tsx`;
 const RETIRED_SETTINGS_FORM = `${CAFE}/components/settings/SettingsForm.tsx`;
@@ -220,20 +222,23 @@ test("PIN: AppSidebar.tsx (+ the extracted SidebarSettingsGroup.tsx) import Side
   // AppSidebar.tsx, but S5's own text explicitly allows this extraction.
   // Every assertion below is checked against the UNION of both files' source
   // so either layout satisfies the pin.
-  const combined = appSidebarSrc + "\n" + groupSrc;
+  // U0 Task 2: the row, its sub-rows and the rail's flyout are the shared nav-parts.tsx pieces (NavGroupRow,
+  // NavSubItem), replacing the shadcn SidebarMenuSub.
+  const combined = appSidebarSrc + "\n" + groupSrc + "\n" + stripComments(readSrc(NAV_PARTS));
 
   assert.match(
     combined,
-    /\bSidebarMenuSub\b/,
-    "SidebarMenuSub must be imported somewhere in the sidebar Settings wiring (AppSidebar.tsx or its extracted group file)",
+    /<NavGroupRow\b/,
+    "the Settings group renders the nav's row with sub-pages (NavGroupRow)",
   );
+  assert.match(combined, /<NavSubItem\b/, "each section is a NavSubItem sub-row");
   assert.match(
     combined,
-    /\{VISIBLE_SETTINGS_SECTIONS\.map\(/,
+    /\bVISIBLE_SETTINGS_SECTIONS\.map\(/,
     "VISIBLE_SETTINGS_SECTIONS must be iterated to render one sub-item per visible section",
   );
   assert.ok(
-    !/\{SETTINGS_SECTIONS\.map\(/.test(combined),
+    !/(?<!\w)SETTINGS_SECTIONS\.map\(/.test(combined),
     "the sidebar must not iterate the raw SETTINGS_SECTIONS (it includes hidden sections)",
   );
 

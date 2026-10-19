@@ -114,7 +114,7 @@ test("PIN: PosPulseProvider.tsx declares PrintHostRoutingContext<PrintHostRoutin
   assert.match(src, /usePosPulse\(\)/, "positive landmark: PosPulseProvider.tsx must still call usePosPulse()");
 });
 
-test("INVENTORY: usePosPulseContext( call sites are exactly the seven deliberate consumers — a new one under the POS screen must be a deliberate decision, not an accident", () => {
+test("INVENTORY: usePosPulseContext( call sites are exactly the eight deliberate consumers — a new one under the POS screen must be a deliberate decision, not an accident", () => {
   const NEEDLE = "usePosPulseContext" + "(";
   const roots = ["app", "components", "hooks"].map((d) => path.join(REPO_ROOT, "apps/cafe", d));
   const hits: string[] = [];
@@ -139,6 +139,10 @@ test("INVENTORY: usePosPulseContext( call sites are exactly the seven deliberate
   hits.sort();
 
   const expected = [
+    // U0 Task 2: the deliberate EIGHTH. The nav's brand and user lines read this device's print name off
+    // pulse.printHost (the only place it lives); a two-line leaf, so only its text re-renders per tick, like
+    // RequestCountBadge, never the nav around it.
+    "components/layout/NavDeviceLine.tsx",
     "components/layout/PosPulseProvider.tsx",
     "components/orders/DeviceAlertSettings.tsx",
     "components/orders/RequestAlertBar.tsx",
@@ -159,7 +163,7 @@ test("INVENTORY: usePosPulseContext( call sites are exactly the seven deliberate
     "hooks/use-self-order-auto-print.ts",
   ].sort();
 
-  assert.deepEqual(hits, expected, `usePosPulseContext( call sites must be exactly the seven deliberate consumers; found: ${hits.join(", ")}`);
+  assert.deepEqual(hits, expected, `usePosPulseContext( call sites must be exactly the eight deliberate consumers; found: ${hits.join(", ")}`);
 });
 
 test("PIN: use-host-routing.ts, use-print-routing.ts, and PosPulseProvider.tsx each stay <= 300 lines (the split's own reason for existing)", () => {

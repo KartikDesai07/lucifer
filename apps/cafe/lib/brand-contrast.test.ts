@@ -115,11 +115,17 @@ test("every brand pairing in use meets its WCAG contrast minimum", () => {
   }
 });
 
-test("the sidebar's resting row label is the nav text token, solid (no translucent ink to measure)", () => {
+// U0 Task 2: the nav row paints the owner's HTML token --nav-t; it must stay the colour measured above as
+// --brand-nav-text (4.5:1 on the dark nav), so the pairing still covers it.
+test("the nav's resting row label is the HTML's --nav-t, solid, the same colour as the measured --brand-nav-text", () => {
   const classes = readFileSync(fileURLToPath(new URL("../components/brand/brand-classes.ts", import.meta.url)), "utf8");
   const m = classes.match(/export const BRAND_NAV_ITEM_CLASS =\s*"([^"]*)"/);
-  assert.ok(m, "BRAND_NAV_ITEM_CLASS must be one string literal");
-  assert.ok(m![1].includes("text-brand-nav-text"), "a resting row must paint text-brand-nav-text");
+  assert.ok(m, "BRAND_NAV_ITEM_CLASS must open with one string literal");
+  assert.ok(m![1].split(/\s+/).includes("text-nav-t"), "a resting row must paint text-nav-t");
+  const root = [...CSS.matchAll(/:root\s*\{([^}]*)\}/g)].map((b) => b[1]).join("\n");
+  const navT = root.match(/--nav-t:\s*(#[0-9a-fA-F]{6})\s*;/)?.[1];
+  assert.ok(navT, "landmark: --nav-t is a hex colour on :root");
+  assert.equal(navT!.toLowerCase(), brandTokens().get("nav-text")?.toLowerCase(), "--nav-t is the measured --brand-nav-text colour");
 });
 
 // A translucent FILL (not text): components/dashboard/RankedList.tsx paints its

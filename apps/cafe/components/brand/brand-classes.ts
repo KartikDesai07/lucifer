@@ -40,40 +40,79 @@ export const BRAND_FIELD_ERROR_CLASS = "text-xs text-brand-danger";
  *  component's own `grid place-content-center`, independent of box size. */
 export const BRAND_CHECKBOX_SQUARE_CLASS = "size-5 rounded-[4px]";
 
-// ── Navigation (the staff sidebar; any later nav list reuses these) ─────────
-// Passed to the stock shadcn SidebarMenuButton / SidebarMenuSubButton /
-// SidebarGroupLabel via className; tailwind-merge replaces each primitive
-// default they name. The icon-collapsed rail keeps the primitive's own
-// important 32px square, so nothing here can push an icon out of the 3rem
-// rail. The sidebar is dark (owner's mock-up, 2026-10-16): a resting row is the
-// soft grey nav text, a hovered or active row lifts to the nav-hover fill with
-// white text, and the active row also carries a 3px blue bar on its left edge
-// (an inset shadow, so it follows the row's own corners). The bar, the white
-// label and aria-current carry the state, never the fill alone.
+// ── Navigation (the staff nav: the owner's HTML, values 2.3) ─────────────────
+// Plain class strings for the nav's own elements (no shadcn menu primitive).
+// The bare classes are the 76 px rail (720 px up); `wide:` is the HTML's wide
+// form (1280 px up while the nav is not collapsed, and the phone's nav sheet;
+// the variant is in app/globals.css). The HTML's sizes on touch screens too:
+// no pointer-coarse enlargement (plan ruling R1). The active row is white on
+// --nav-on with the 3px blue bar at the window's edge; aria-current, the bar
+// and the white label carry the state, never the fill alone.
 
-const NAV_ACTIVE =
-  "data-[active=true]:bg-brand-nav-hover data-[active=true]:font-semibold data-[active=true]:text-white data-[active=true]:shadow-[inset_3px_0_0_var(--color-brand-accent)]";
+/** The HTML's button feel (values 1.4): colours ease in 160 ms, a press scales to 97 %. */
+const NAV_PRESS =
+  "outline-none transition-[background-color,color,transform] duration-[160ms] ease-[ease] focus-visible:ring-2 focus-visible:ring-brand-nav-focus active:scale-[0.97]";
 
-/** A top-level nav row: 32px on a mouse (17 rows and four headings still fit a
- *  768px-tall laptop screen), 44px on touch (tablet / phone). */
+const NAV_ACTIVE = "data-[active=true]:bg-nav-on data-[active=true]:text-white";
+
+/** The nav column: 12px 8px padding in the rail, 12px 10px wide, a 2px gap between its rows. */
+export const BRAND_NAV_CLASS =
+  "flex min-h-0 flex-1 flex-col gap-0.5 bg-nav px-2 py-3 font-sans leading-[normal] text-nav-t wide:px-2.5";
+
+/** The groups' scroller: it bleeds to the nav's edges so the active bar at the window's edge is never clipped, and
+ *  carries the HTML's 8px scrollbar (values 1.4). */
+export const BRAND_NAV_SCROLL_CLASS =
+  "-mx-2 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-2 wide:-mx-2.5 wide:px-2.5 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-[8px] [&::-webkit-scrollbar-thumb]:bg-border";
+
+/** A top-level row: 60x52 in the rail (the icon over a 10.5px label), 38px tall at 13.5px in the wide form. */
 export const BRAND_NAV_ITEM_CLASS =
-  "h-8 gap-3 rounded-lg px-2.5 text-[13.5px] font-medium text-brand-nav-text transition-colors duration-150 hover:bg-brand-nav-hover hover:text-white active:bg-brand-nav-hover focus-visible:ring-brand-nav-focus pointer-coarse:h-11 group-data-[collapsible=icon]:justify-center [&>svg]:size-5 [&>svg]:[stroke-width:1.6] [&>svg]:text-brand-nav-muted [&:hover>svg]:text-white [&[data-active=true]>svg]:text-white " +
+  "group/item relative flex w-full flex-none flex-col items-center gap-1 rounded-[8px] px-0 pb-1.5 pt-2 text-left text-[10.5px] font-medium text-nav-t hover:bg-nav-on hover:text-white wide:min-h-[38px] wide:flex-row wide:gap-2.5 wide:px-2.5 wide:py-0 wide:text-[13.5px] " +
+  NAV_PRESS +
+  " " +
   NAV_ACTIVE;
 
-/** A row inside an expanded group (Settings' sections). */
-export const BRAND_NAV_SUB_ITEM_CLASS =
-  "h-7 rounded-md px-2.5 text-[13px] text-brand-nav-text transition-colors duration-150 hover:bg-brand-nav-hover hover:text-white active:bg-brand-nav-hover focus-visible:ring-brand-nav-focus pointer-coarse:h-10 " +
-  NAV_ACTIVE;
+/** A row with sub-pages: lit (data-active) on any of its pages, as in the rail; in the wide form, while its sub-rows
+ *  are open and the current page is one of them (data-sub-current), the lit sub-row shows instead. */
+export const BRAND_NAV_GROUP_ROW_CLASS =
+  BRAND_NAV_ITEM_CLASS +
+  " wide:group-data-[state=open]/collapsible:data-[sub-current=true]:bg-transparent wide:group-data-[state=open]/collapsible:data-[sub-current=true]:text-nav-t wide:group-data-[state=open]/collapsible:data-[sub-current=true]:hover:bg-nav-on wide:group-data-[state=open]/collapsible:data-[sub-current=true]:hover:text-white";
 
-/** A section heading in the nav: small, uppercase, muted. In the icon rail the
- *  primitive fades it out (opacity-0) and pulls it up over the row above (the
- *  -mt below), and each SidebarGroup is `relative`, so the next group paints —
- *  and takes clicks — on top of the previous one: the invisible heading sat
- *  over the lower half of the Dashboard icon and swallowed the click (UI batch
- *  1 C, measured in a real browser 2026-09-29). pointer-events-none makes the
- *  folded heading click-through, so the whole icon above it answers. */
+/** The 3px blue bar on the active row, flush with the window's left edge. */
+export const BRAND_NAV_BAR_CLASS =
+  "pointer-events-none absolute -left-2 top-[9px] bottom-[9px] w-[3px] rounded-r-[3px] bg-brand-accent opacity-0 [transform:scaleY(0)] [transition:opacity_.25s,transform_.3s] group-data-[active=true]/item:opacity-100 group-data-[active=true]/item:[transform:scaleY(1)] wide:-left-2.5 wide:group-data-[state=open]/collapsible:group-data-[sub-current=true]/item:opacity-0";
+
+/** A row's label: under the icon in the rail, filling the row in the wide form. */
+export const BRAND_NAV_TEXT_CLASS = "whitespace-nowrap wide:flex-1";
+
+/** A count on a row (Order Requests): the HTML's grey pill, wide form only. */
+export const BRAND_NAV_BADGE_CLASS =
+  "hidden h-5 min-w-5 flex-none items-center justify-center rounded-[10px] bg-nav-2 px-1.5 text-[11.5px] font-semibold text-nav-t wide:inline-flex";
+
+/** A group's heading (Operate, Manage): wide form only. */
 export const BRAND_NAV_LABEL_CLASS =
-  "h-6 px-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-brand-nav-muted group-data-[collapsible=icon]:-mt-6 group-data-[collapsible=icon]:pointer-events-none";
+  "hidden px-2.5 pb-1.5 pt-3.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-nav-t2 wide:block";
+
+/** The rule before every group after the first: rail only. */
+export const BRAND_NAV_SEPARATOR_CLASS = "mx-3.5 my-2 h-px flex-none bg-nav-2 wide:hidden";
+
+/** A sub-page row under an expanded row (wide form): 34px, 13px, its text at the parent label's x. */
+export const BRAND_NAV_SUB_ITEM_CLASS =
+  "peer/sub relative ml-[30px] flex h-[34px] min-w-0 items-center rounded-[8px] px-2.5 text-[13px] font-medium text-nav-t hover:bg-nav-on hover:text-white " +
+  NAV_PRESS +
+  " " +
+  NAV_ACTIVE;
+
+/** The active sub-row's bar, at the window's edge like a row's. */
+export const BRAND_NAV_SUB_BAR_CLASS =
+  "pointer-events-none absolute -left-2.5 top-[9px] bottom-[9px] w-[3px] rounded-r-[3px] bg-brand-accent opacity-0 [transition:opacity_.25s] peer-data-[active=true]/sub:opacity-100";
+
+/** The rail's flyout: the profile sheet's panel (values 2.7: surface, 1px border, radius 14, the pop shadow). */
+export const BRAND_NAV_FLYOUT_CLASS =
+  "w-60 rounded-[14px] border border-border bg-card p-1.5 font-sans leading-[normal] text-foreground shadow-pop";
+
+/** A flyout row: the profile sheet's row (9px 10px, 14px 500, hover --hover); the current page on the accent tint. */
+export const BRAND_NAV_FLYOUT_ITEM_CLASS =
+  "flex w-full items-center rounded-[8px] px-2.5 py-[9px] text-[14px] font-medium text-foreground outline-none hover:bg-hover focus-visible:ring-2 focus-visible:ring-ring data-[active=true]:bg-accent data-[active=true]:text-accent-foreground";
 
 // ── List screens (Orders, Order Requests, Kitchen, Reservations, Customers,
 // Events, Staff — the polish pass of 2026-10-01) ────────────────────────────

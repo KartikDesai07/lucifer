@@ -3,6 +3,20 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* The nav's wide form (the HTML's `wide`, values 0.1): 1280 px and up while the nav is not collapsed, and always in
+   the phone's nav sheet. Below it the nav is the 76 px rail (720 px up) or hidden. The collapse choice lives on
+   <html data-nav-collapsed>, set before the first paint from the sidebar cookie (lib/nav-state-script.ts). */
+@custom-variant wide {
+  @media (width >= 80rem) {
+    &:where(html:not([data-nav-collapsed]) *) {
+      @slot;
+    }
+  }
+  &:where([data-nav-form="wide"], [data-nav-form="wide"] *) {
+    @slot;
+  }
+}
+
 /* Installed Android shell: contain viewport rubber-banding without altering
    individual POS scrollers or blocking pinch zoom / selection in fields. */
 @layer base {

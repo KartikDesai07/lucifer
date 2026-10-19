@@ -17,8 +17,9 @@ const HEADER = "components/layout/Header.tsx";
 
 const NEW_ORDER_TAB = '{ title: "New Order", url: "/pos", icon: ShoppingCart }';
 const TABLES_TAB = '{ title: "Tables", url: "/tables", icon: LayoutGrid, exact: true }';
-const SIDEBAR_NEW_ORDER = '{ title: "New Order", url: "/pos", icon: ShoppingCart }';
-const SIDEBAR_FLOOR = '{ title: "Floor", url: "/tables", icon: LayoutGrid, exact: true }';
+// U0 Task 2: the nav takes the owner's HTML words and glyphs ("Order", the HTML's floor grid); the targets are the same.
+const SIDEBAR_NEW_ORDER = '{ title: "Order", url: "/pos", icon: NavOrder }';
+const SIDEBAR_FLOOR = '{ title: "Floor", url: "/tables", icon: NavFloor, exact: true }';
 
 function tabsMatchSidebar(tabs: string, sidebar: string): boolean {
   return tabs.includes(NEW_ORDER_TAB) && tabs.includes(TABLES_TAB) && sidebar.includes(SIDEBAR_NEW_ORDER) && sidebar.includes(SIDEBAR_FLOOR);

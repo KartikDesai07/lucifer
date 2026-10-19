@@ -3,25 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  LayoutDashboard,
-  ShoppingCart,
-  Inbox,
-  Coffee,
-  Users,
-  CalendarClock,
-  PartyPopper,
-  UserCog,
-  Receipt,
-  LayoutGrid,
-  Armchair,
-  BarChart3,
-  Printer,
-  Settings,
-  ChefHat,
-  Tv,
-  Wallet,
-} from "lucide-react";
+import { ChevronRight, Inbox, Users, PartyPopper, UserCog, Armchair, Printer, Tv, Wallet } from "lucide-react";
 
 import { useAuth } from "@/hooks/use-auth";
 import { useWarmRoutes } from "@/hooks/use-warm-routes";
@@ -34,43 +16,49 @@ import { printConfigOf } from "@/lib/print";
 import { SETTINGS_BASE_PATH } from "@/lib/settings-sections";
 import { REPORTS_BASE_PATH } from "@/lib/report-sections";
 import { isMenuPath } from "@/lib/menu-sections";
-import { BRAND_NAV_ITEM_CLASS, BRAND_NAV_LABEL_CLASS } from "@/components/brand/brand-classes";
-import { brandTooltip } from "@/components/brand/brand-tooltip";
+import {
+  BRAND_NAV_CLASS,
+  BRAND_NAV_LABEL_CLASS,
+  BRAND_NAV_SCROLL_CLASS,
+  BRAND_NAV_SEPARATOR_CLASS,
+} from "@/components/brand/brand-classes";
 import { RequestCountBadge } from "@/components/orders/RequestCountBadge";
+import {
+  NavBookings,
+  NavFloor,
+  NavHome,
+  NavKitchen,
+  NavMenu,
+  NavOrder,
+  NavOrders,
+  NavReports,
+  NavSettings,
+  type NavIcon,
+} from "@/components/layout/nav-icons";
+import { NavItem, NavRowContent, useNavWide } from "@/components/layout/nav-parts";
 import { SidebarAccount } from "@/components/layout/SidebarAccount";
 import { SidebarBrand } from "@/components/layout/SidebarBrand";
 import { SidebarSettingsGroup } from "@/components/layout/SidebarSettingsGroup";
 import { SidebarReportsGroup } from "@/components/layout/SidebarReportsGroup";
 import { SidebarMenuGroup } from "@/components/layout/SidebarMenuGroup";
 import { SidebarTablesGroup } from "@/components/layout/SidebarTablesGroup";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarHeader,
-  useSidebar,
-} from "@/components/ui/sidebar";
+import { Sidebar, useSidebar } from "@/components/ui/sidebar";
 
-// The staff sidebar, on the "Paper & Ink" brand system (tokens in
-// app/globals.css — the primitive's --sidebar-* values point at them — row
-// styles in components/brand/brand-classes.ts). Widths are the primitive's
-// own 16rem / 3rem, which the POS layout matrix depends on: never widen it.
-//
-// The rows are grouped the way the day runs — taking orders, then the things
-// set up behind them, then the owner's tools — each group under a short
-// sentence-case heading (Shopify's navigation guidance: group related items
-// into sections, and let a title say what the section is).
+// The staff nav, the owner's HTML (values 2.3, design 5.2; U0 Task 2): the
+// 232px sidebar from 1280px (collapsible to the rail), the 76px rail from
+// 720px, and on a phone the nav sheet (until the tab bar). Its classes are in
+// components/brand/brand-classes.ts; which form shows is CSS (the `wide`
+// variant in app/globals.css), so the server and the first paint already
+// agree with the screen. The two groups are the HTML's Operate and Manage,
+// with the HTML's words where it has the screen ("Home", "Order", and
+// "Bookings" for Reservations in the rail).
 
-type NavItem = {
+type NavItemDef = {
   title: string;
   url: string;
-  icon: typeof LayoutDashboard;
+  icon: NavIcon;
+  /** The label in the 76px rail when the full one does not fit (the HTML's "Bookings"). */
+  railTitle?: string;
   adminOnly?: boolean;
   /** Shown only while tokens are on (Settings -> Tokens & numbering). */
   tokensOnly?: boolean;
@@ -81,46 +69,37 @@ type NavItem = {
 /** `warm`: the service screens staff hop between all shift — kept fully
  *  prefetched (hooks/use-warm-routes.ts) so opening one never waits for the
  *  network. Setup and admin screens load on click as before. */
-type NavSection = { label?: string; warm?: boolean; items: NavItem[] };
+type NavSection = { label: string; warm?: boolean; items: NavItemDef[] };
 
 const sections: NavSection[] = [
-  { warm: true, items: [{ title: "Dashboard", url: "/", icon: LayoutDashboard }] },
   {
-    label: "Service",
+    label: "Operate",
     warm: true,
     items: [
-      { title: "New Order", url: "/pos", icon: ShoppingCart },
-      // Orders sits right under New Order (owner, 2026-09-29): the two are
-      // used back to back — take an order, then find or settle one.
-      { title: "Orders", url: "/orders", icon: Receipt },
-      // Floor sits right under New Order and Orders (owner, 2026-10-02): the
-      // live table view is used with them all shift.
-      { title: "Floor", url: "/tables", icon: LayoutGrid, exact: true },
-      { title: "Order Requests", url: "/requests", icon: Inbox },
-      { title: "Kitchen", url: "/kitchen", icon: ChefHat },
-      { title: "Now Serving", url: "/now-serving", icon: Tv, tokensOnly: true },
-      { title: "Reservations", url: "/reservations", icon: CalendarClock },
+      { title: "Home", url: "/", icon: NavHome },
+      { title: "Floor", url: "/tables", icon: NavFloor, exact: true },
+      { title: "Order", url: "/pos", icon: NavOrder },
+      { title: "Orders", url: "/orders", icon: NavOrders },
+      { title: "Order Requests", url: "/requests", icon: Inbox, railTitle: "Requests" },
+      { title: "Kitchen", url: "/kitchen", icon: NavKitchen },
+      { title: "Now Serving", url: "/now-serving", icon: Tv, tokensOnly: true, railTitle: "Serving" },
+      { title: "Reservations", url: "/reservations", icon: NavBookings, railTitle: "Bookings" },
     ],
   },
   {
     label: "Manage",
     items: [
-      { title: "Menu", url: "/products", icon: Coffee },
+      { title: "Menu", url: "/products", icon: NavMenu },
       { title: "Tables", url: "/tables/setup", icon: Armchair, adminOnly: true },
       { title: "Customers", url: "/customers", icon: Users },
       // Open to every role: staff add an expense and see their own from today;
       // the full list, categories and the report stay admin-only inside the page.
       { title: "Expenses", url: "/expenses", icon: Wallet },
       { title: "Events", url: "/events", icon: PartyPopper },
-    ],
-  },
-  {
-    label: "Admin",
-    items: [
       { title: "Staff", url: "/staff", icon: UserCog, adminOnly: true },
-      { title: "Reports", url: "/reports", icon: BarChart3, adminOnly: true },
-      { title: "Printer setup", url: "/printers", icon: Printer, adminOnly: true },
-      { title: "Settings", url: "/settings", icon: Settings, adminOnly: true },
+      { title: "Reports", url: "/reports", icon: NavReports, adminOnly: true },
+      { title: "Printer setup", url: "/printers", icon: Printer, adminOnly: true, railTitle: "Printers" },
+      { title: "Settings", url: "/settings", icon: NavSettings, adminOnly: true },
     ],
   },
 ];
@@ -129,10 +108,11 @@ const sections: NavSection[] = [
 const SCROLL_AFTER_OPEN_MS = 250;
 
 export function AppSidebar() {
-  const { state, isMobile, setOpenMobile } = useSidebar();
-  // The phone sheet always shows full rows, whatever the desktop rail was
-  // last left as (the collapsed state is remembered per browser).
+  const { state, isMobile, setOpenMobile, toggleSidebar } = useSidebar();
+  // The phone sheet always shows the wide form, whatever the desktop nav was
+  // last left as (the collapsed state is remembered on this device).
   const collapsed = state === "collapsed" && !isMobile;
+  const wide = useNavWide(collapsed, isMobile);
   const pathname = usePathname();
   const { isAdmin } = useAuth();
   const labelId = useId();
@@ -186,13 +166,14 @@ export function AppSidebar() {
   const brandName = settings.data?.restaurantName?.trim() || APP_NAME;
   const tokensOn = printConfigOf(settings.data).token.enabled;
   const logoUrl = productImageUrl(settings.data?.logo, undefined, { fit: true });
-  // A cafe that hasn't uploaded its own mark yet should see the PRODUCT's mark
-  // rather than a generic glyph — restaurant logo takes priority, then the saved
-  // product logo, then the unversioned branding URL, which the route answers with
-  // the product's built-in mark. Same chain the login screen renders, so the two
-  // never disagree about what an unbranded cafe looks like.
+  // The restaurant logo takes priority, then the saved product logo, then the
+  // unversioned branding URL (the route answers with the product's built-in
+  // mark) — the same chain the login screen renders. The brand tile shows it
+  // only when a logo was uploaded; otherwise it shows the cafe's initial on
+  // the brand red, the HTML's tile (design 5.2).
   const productLogoUrl = productImageUrl(settings.data?.productLogo, undefined, { fit: true });
   const displayLogoUrl = logoUrl ?? productLogoUrl ?? brandingUrl("productLogo");
+  const tileLogoUrl = logoUrl !== null || productLogoUrl !== null ? displayLogoUrl : null;
 
   const visibleSections = sections
     .map((section) => ({
@@ -205,105 +186,102 @@ export function AppSidebar() {
     .flatMap((section) => section.items.map((item) => item.url));
   useWarmRoutes(warmHrefs);
 
-  // No sidebar Link prefetches on its own: a warm row's ONLY warmer is the
+  // No nav Link prefetches on its own: a warm row's ONLY warmer is the
   // hook above, which waits for a working line. A Link prefetch fires on sight
   // and on hover — on a line still waking up it can fail, and a failed
   // prefetch turns the next click on that row into a full page load.
-  const renderItem = (item: NavItem) => {
+  const renderItem = (item: NavItemDef) => {
     switch (item.url) {
       case "/settings":
         return (
           <SidebarSettingsGroup
-            key={item.url} url={item.url} title={item.title} icon={item.icon} collapsed={collapsed}
+            key={item.url} url={item.url} title={item.title} icon={item.icon} wide={wide}
             pathname={pathname} onSettings={onSettings} settingsOpen={settingsOpen}
-            onSettingsOpenChange={setSettingsOpen} onNavigate={closeMobile} tooltip={brandTooltip(item.title)}
+            onSettingsOpenChange={setSettingsOpen} onNavigate={closeMobile}
           />
         );
       case "/reports":
         return (
           <SidebarReportsGroup
-            key={item.url} title={item.title} icon={item.icon} collapsed={collapsed} pathname={pathname}
+            key={item.url} title={item.title} icon={item.icon} wide={wide} pathname={pathname}
             onReports={onReports} reportsOpen={reportsOpen} onReportsOpenChange={setReportsOpen}
-            onNavigate={closeMobile} tooltip={brandTooltip(item.title)}
+            onNavigate={closeMobile}
           />
         );
       case "/products":
         return (
           <SidebarMenuGroup
-            key={item.url} title={item.title} icon={item.icon} collapsed={collapsed} pathname={pathname}
+            key={item.url} title={item.title} icon={item.icon} wide={wide} pathname={pathname}
             isAdmin={isAdmin} menuOpen={menuOpen} onMenuOpenChange={setMenuOpen} onNavigate={closeMobile}
-            tooltip={brandTooltip(item.title)}
           />
         );
       case "/tables/setup":
         return (
           <SidebarTablesGroup
-            key={item.url} title={item.title} icon={item.icon} collapsed={collapsed} pathname={pathname}
-            onNavigate={closeMobile} tooltip={brandTooltip(item.title)}
+            key={item.url} title={item.title} icon={item.icon} wide={wide} pathname={pathname}
+            onNavigate={closeMobile}
           />
         );
     }
 
     const active = item.exact ? pathname === item.url : isActivePath(pathname, item.url);
     return (
-      <SidebarMenuItem key={item.url}>
-        <SidebarMenuButton asChild isActive={active} tooltip={brandTooltip(item.title)} className={BRAND_NAV_ITEM_CLASS}>
-          <Link
-            href={item.url}
-            prefetch={false}
-            aria-current={active ? "page" : undefined}
-            onClick={closeMobile}
-          >
-            <item.icon aria-hidden="true" />
-            {!collapsed && <span>{item.title}</span>}
-          </Link>
-        </SidebarMenuButton>
-        {item.url === "/requests" && <RequestCountBadge />}
-      </SidebarMenuItem>
+      <NavItem key={item.url} isActive={active}>
+        <Link
+          href={item.url}
+          prefetch={false}
+          title={item.title}
+          aria-current={active ? "page" : undefined}
+          onClick={closeMobile}
+        >
+          <NavRowContent icon={item.icon} title={item.title} railTitle={item.railTitle}>
+            {item.url === "/requests" && <RequestCountBadge />}
+          </NavRowContent>
+        </Link>
+      </NavItem>
     );
   };
 
   return (
-    <Sidebar collapsible="icon" className="border-sidebar-border">
-      {/* Brand fonts for everything in the sidebar — on desktop AND in the
-          phone sheet, which renders these children but not this className. */}
-      <div className={`${brandFontVariables} flex min-h-0 flex-1 flex-col font-brand-sans`}>
-        {/* h-14 lines its bottom rule up with the page header's. */}
-        <SidebarHeader className="h-14 shrink-0 justify-center border-b border-sidebar-border px-3 py-0 group-data-[collapsible=icon]:px-2">
-          <SidebarBrand
-            key={displayLogoUrl}
-            brandName={brandName}
-            logoUrl={displayLogoUrl}
-            collapsed={collapsed}
-            onNavigate={closeMobile}
-          />
-        </SidebarHeader>
+    <Sidebar collapsible="icon">
+      <div className={`${brandFontVariables} flex min-h-0 flex-1 flex-col`}>
+        <nav ref={navRef} aria-label="Main" data-ui="nav" className={BRAND_NAV_CLASS}>
+          <SidebarBrand key={tileLogoUrl ?? "initial"} brandName={brandName} logoUrl={tileLogoUrl} onNavigate={closeMobile} />
 
-        <SidebarContent className="gap-0 py-2 [scrollbar-color:var(--brand-nav-rule)_transparent] [scrollbar-width:thin]">
-          <nav ref={navRef} aria-label="Main">
+          <div className={BRAND_NAV_SCROLL_CLASS}>
             {visibleSections.map((section, index) => {
               const id = `${labelId}-${index}`;
               return (
-                <SidebarGroup key={section.label ?? "home"} className="px-3 py-1 group-data-[collapsible=icon]:px-2">
-                  {section.label && (
-                    <SidebarGroupLabel id={id} className={BRAND_NAV_LABEL_CLASS}>
-                      {section.label}
-                    </SidebarGroupLabel>
-                  )}
-                  <SidebarGroupContent>
-                    <SidebarMenu className="gap-0.5" aria-labelledby={section.label ? id : undefined}>
-                      {section.items.map((item) => renderItem(item))}
-                    </SidebarMenu>
-                  </SidebarGroupContent>
-                </SidebarGroup>
+                <div key={section.label} className="flex flex-none flex-col gap-0.5">
+                  <div id={id} data-ui="nav-group-label" className={BRAND_NAV_LABEL_CLASS}>
+                    {section.label}
+                  </div>
+                  {index > 0 && <div aria-hidden="true" data-ui="nav-separator" className={BRAND_NAV_SEPARATOR_CLASS} />}
+                  <ul className="flex flex-col gap-0.5" aria-labelledby={id}>
+                    {section.items.map((item) => renderItem(item))}
+                  </ul>
+                </div>
               );
             })}
-          </nav>
-        </SidebarContent>
+            {/* The HTML's spacer: at least 16px between the last row and Collapse. */}
+            <div aria-hidden="true" className="h-4 flex-none" />
+          </div>
 
-        <SidebarFooter className="shrink-0 border-t border-sidebar-border px-3 py-2 group-data-[collapsible=icon]:px-2">
-          <SidebarAccount collapsed={collapsed} />
-        </SidebarFooter>
+          {/* Collapse / Expand: 1280px and up only; the choice is remembered on this device. */}
+          <button
+            type="button"
+            title={collapsed ? "Expand" : "Collapse"}
+            aria-label={collapsed ? "Expand the menu" : "Collapse the menu"}
+            data-ui="nav-collapse"
+            onClick={toggleSidebar}
+            className="hidden h-[34px] w-full flex-none items-center justify-center gap-2.5 rounded-[8px] px-2.5 text-[12.5px] text-nav-t2 outline-none transition-[background-color,color,transform] duration-[160ms] ease-[ease] hover:bg-nav-on hover:text-white focus-visible:ring-2 focus-visible:ring-brand-nav-focus active:scale-[0.97] xl:flex wide:justify-start"
+          >
+            <ChevronRight aria-hidden="true" strokeWidth={1.8} className="size-[18px] flex-none wide:rotate-180" />
+            <span className="hidden wide:inline">Collapse</span>
+          </button>
+          <div aria-hidden="true" data-ui="nav-divider" className="mx-1 my-1.5 h-px flex-none bg-nav-2" />
+          <SidebarAccount />
+        </nav>
       </div>
     </Sidebar>
   );

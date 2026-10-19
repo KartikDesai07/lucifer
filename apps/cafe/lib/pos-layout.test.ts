@@ -29,8 +29,7 @@ import {
   BREAKPOINT_XL_PX,
   BREAKPOINT_2XL_PX,
   POS_TWO_PANE_MIN_PX,
-  SIDEBAR_WIDTH_REM,
-  SIDEBAR_WIDTH_ICON_REM,
+  navWidthPx,
   DASHBOARD_HEADER_REM,
   MAIN_PADDING_Y_REM_BASE,
   MAIN_PADDING_Y_REM_MD,
@@ -92,11 +91,12 @@ const GRID_TIERS: Record<SidebarState, ReadonlyArray<{ minPx: number; cols: numb
 // Pane width is unchanged by CB-1b/CB-1c (still viewport minus sidebar minus
 // main padding minus the two-pane cart+rail gap) — only COLUMN COUNT stopped
 // reading it (that's now a plain viewport breakpoint, see colsFor below).
+// U0 Task 2: the nav's width is the HTML's (navWidthPx: 0 below 720 px, the 76 px rail, the 232 px sidebar from
+// 1280 px unless collapsed), no longer the old 16rem/3rem sidebar from md up.
 function paneWidthPx(viewportPx: number, sidebarState: SidebarState = "expanded"): number {
-  const sidebarRem =
-    viewportPx >= BREAKPOINT_MD_PX ? (sidebarState === "expanded" ? SIDEBAR_WIDTH_REM : SIDEBAR_WIDTH_ICON_REM) : 0;
+  const navPx = navWidthPx({ viewportWidth: viewportPx, collapsed: sidebarState === "collapsed" });
   const paddingXRem = viewportPx >= BREAKPOINT_MD_PX ? MAIN_PADDING_X_REM_MD : MAIN_PADDING_X_REM_BASE;
-  let pane = viewportPx - sidebarRem * REM_PX - 2 * paddingXRem * REM_PX;
+  let pane = viewportPx - navPx - 2 * paddingXRem * REM_PX;
   if (viewportPx >= POS_TWO_PANE_MIN_PX) {
     pane -= (POS_PANE_GAP_REM + POS_CART_COLUMN_REM + POS_RAIL_REM + POS_PANE_GAP_REM) * REM_PX;
   }
@@ -158,6 +158,10 @@ test("PIN: desktop two-pane column counts cap at 3 everywhere (owner decision 20
   assert.equal(colsFor(1280, "collapsed"), 3, "1280px two-pane grid (sidebar collapsed) must give AT MOST 3 columns, not the old 4");
 });
 
+// The 16rem sidebar those two retired choices were measured against (frozen historical fact; U0 Task 2 made the nav
+// the HTML's 232 px / 76 px).
+const RETIRED_SIDEBAR_WIDTH_REM = 16;
+
 test("PIN: regression oracles — two retired breakpoint/tiering choices starved the grid; the shipped xl-switch does not", () => {
   // OLD v1 md-switch (retired): two-pane from md (768px) — once the sidebar
   // is counted the pane goes NEGATIVE, so the two-pane literally did not fit.
@@ -165,7 +169,7 @@ test("PIN: regression oracles — two retired breakpoint/tiering choices starved
   // retired container-query one, or today's viewport one) was in play.
   const OLD_MD_PANE_768 =
     768 -
-    SIDEBAR_WIDTH_REM * REM_PX -
+    RETIRED_SIDEBAR_WIDTH_REM * REM_PX -
     2 * MAIN_PADDING_X_REM_MD * REM_PX -
     POS_PANE_GAP_REM * REM_PX -
     POS_CART_COLUMN_REM * REM_PX -
@@ -182,7 +186,7 @@ test("PIN: regression oracles — two retired breakpoint/tiering choices starved
   // that no longer exists.
   const DRAFT_LG_PANE_1024 =
     1024 -
-    SIDEBAR_WIDTH_REM * REM_PX -
+    RETIRED_SIDEBAR_WIDTH_REM * REM_PX -
     2 * MAIN_PADDING_X_REM_MD * REM_PX -
     POS_PANE_GAP_REM * REM_PX -
     POS_CART_COLUMN_REM * REM_PX -
