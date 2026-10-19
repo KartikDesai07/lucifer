@@ -1,4 +1,4 @@
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Shrikhand } from "next/font/google";
 
 // Shared font instances. Both the root layout AND the global-error boundary use
 // these: global-error replaces the root layout entirely, so it must set the same
@@ -12,5 +12,12 @@ export const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// Convenience: the className that defines both font variables on an element.
-export const fontVariables = `${geistSans.variable} ${geistMono.variable}`;
+// The HTML's brand script (the cafe's name and initial): Shrikhand 400.
+export const shrikhand = Shrikhand({
+  variable: "--font-shrikhand",
+  weight: "400",
+  subsets: ["latin"],
+});
+
+// Convenience: the className that defines the font variables on an element.
+export const fontVariables = `${geistSans.variable} ${geistMono.variable} ${shrikhand.variable}`;

@@ -42,3 +42,15 @@ test("lib/fonts.ts still declares the Geist sans variable", () => {
     "fonts.ts declares --font-geist-sans",
   );
 });
+
+test("Shrikhand 400 loads through next/font/google and is registered as font-brand-script", () => {
+  const src = read("lib/fonts.ts");
+  assert.ok(/Shrikhand/.test(src) && src.includes("next/font/google"), "fonts.ts imports Shrikhand from next/font/google");
+  assert.match(src, /Shrikhand\(\{[^}]*weight:\s*"400"/, "Shrikhand loads weight 400 (values 1.3)");
+  assert.match(src, /Shrikhand\(\{[^}]*variable:\s*"--font-shrikhand"/, "Shrikhand sets a CSS variable");
+  assert.ok(/fontVariables\s*=[^;]*shrikhand\.variable/.test(src), "fontVariables carries the Shrikhand variable (root layout and global-error)");
+  assert.ok(
+    themeInline.includes("--font-brand-script: var(--font-shrikhand)"),
+    "--font-brand-script resolves to Shrikhand in @theme inline",
+  );
+});

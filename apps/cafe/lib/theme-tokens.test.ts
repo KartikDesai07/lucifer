@@ -69,7 +69,8 @@ test("light values of the shadcn tokens", () => {
 
 test("status set", () => {
   const want: Record<string, [string, string, string, string | null]> = {
-    ok: ["#24a148", "#16733a", "#defbe6", null],
+    // owner's HTML value (values 1.1 --ok-i, design 9): was #16733a for contrast
+    ok: ["#24a148", "#198038", "#defbe6", null],
     warn: ["#ff832b", "#ba4e00", "#fff2e8", null],
     bad: ["#da1e28", "#a2191f", "#fff1f1", null],
     info: ["#0f62fe", "#0043ce", "#edf5ff", "#a6c8ff"],
@@ -136,8 +137,8 @@ test("@theme inline registers the new names", () => {
     assert.ok(themeInline.includes(`--color-${color}: var(--${v});`), `--color-${color} registered`);
   }
   assert.ok(
-    themeInline.includes("--shadow-pop: 0 24px 60px rgb(0 0 0 / 0.18), 0 0 0 1px rgb(0 0 0 / 0.04);"),
-    "--shadow-pop registered",
+    themeInline.includes("--shadow-pop: var(--pop);"),
+    "--shadow-pop registered (the value lives in --pop, values 1.1)",
   );
 });
 
@@ -175,4 +176,68 @@ test("the ink hero's change-pill tints are opaque hex tokens (the old 16 % tints
   const kpi = readFileSync(join(process.cwd(), "components", "dashboard", "KpiChange.tsx"), "utf8");
   assert.ok(!kpi.includes("bg-[rgb("), "KpiChange has no bg-[rgb( literal");
   assert.ok(kpi.includes("bg-on-ink-up-tint") && kpi.includes("bg-on-ink-down-tint"), "KpiChange uses the two tint tokens");
+});
+
+test("the HTML's new light tokens (values 1.1), on :root", () => {
+  const want: Record<string, string> = {
+    "--surface-2": "#fafafa",
+    "--surface-3": "#e9e9ec",
+    "--border-2": "#ececef",
+    "--hover": "#f2f2f4",
+    "--seg": "#ffffff",
+    "--link": "#0f62fe",
+    "--accent-b": "#a6c8ff",
+    "--nav": "#111113",
+    "--nav-2": "#27272a",
+    "--nav-t": "#c8c8cc",
+    "--nav-t2": "#8b8b93",
+    "--nav-on": "#262628",
+    "--brand-red": "#c8381f",
+    "--brand-nav-name": "#ff6b4a",
+    "--toast": "#18181b",
+    "--toast-t": "#ffffff",
+    "--toast-a": "#a9c8b2",
+    "--glass": "rgba(255, 255, 255, 0.9)",
+    "--seg-sh": "0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.04)",
+    "--pop": "0 24px 60px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.04)",
+  };
+  for (const [name, value] of Object.entries(want)) {
+    assert.equal(declOf(main, name), value, `${name} in :root (values 1.1; nav-on is rgba(255,255,255,.09) flattened over #111113)`);
+    const key = name.slice(2);
+    if (name === "--seg-sh") assert.ok(themeInline.includes("--shadow-seg: var(--seg-sh);"), "--shadow-seg registered");
+    else if (name === "--pop") continue;
+    else assert.ok(themeInline.includes(`--color-${key}: var(--${key});`), `--color-${key} registered`);
+  }
+});
+
+test("the HTML's dark values for the new names (values 1.1; translucent ones flattened where a twin is needed)", () => {
+  const want: Record<string, string> = {
+    "--surface-2": "#1c1c20",
+    "--surface-3": "#27272b",
+    "--border-2": "#242428",
+    "--hover": "#222226",
+    "--seg": "#3a3a40",
+    "--link": "#78a9ff",
+    "--accent-b": "#305698",
+    "--nav": "#08080a",
+    "--nav-2": "#202024",
+    "--nav-t": "#a9a9b2",
+    "--nav-t2": "#73737c",
+    "--nav-on": "#1c1c1e",
+    "--brand-red": "#ff7b5e",
+    "--toast": "#f2f2f3",
+    "--toast-t": "#0f0f10",
+    "--toast-a": "#6faf85",
+    "--glass": "rgba(23, 23, 26, 0.9)",
+    "--seg-sh": "0 1px 2px rgba(0, 0, 0, 0.5)",
+    "--pop": "0 24px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06)",
+  };
+  for (const [name, value] of Object.entries(want)) {
+    assert.equal(declOf(dark, name), value, `${name} in .dark (values 1.1 dark column)`);
+  }
+});
+
+test("breakpoints tab 45rem (720 px) and desk 68.75rem (1100 px) are declared in @theme inline", () => {
+  assert.equal(declOf(themeInline, "--breakpoint-tab"), "45rem", "--breakpoint-tab is 720 px (values 0.1)");
+  assert.equal(declOf(themeInline, "--breakpoint-desk"), "68.75rem", "--breakpoint-desk is 1100 px (values 0.1)");
 });

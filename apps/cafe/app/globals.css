@@ -33,6 +33,11 @@
 @theme inline {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  /* The HTML's brand script (the cafe's name and initial): Shrikhand 400. */
+  --font-brand-script: var(--font-shrikhand), Georgia, serif;
+  /* The HTML's breakpoints (values 0.1): tablet from 720 px, desktop from 1100 px. */
+  --breakpoint-tab: 45rem;
+  --breakpoint-desk: 68.75rem;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -96,7 +101,27 @@
   --color-track: var(--track);
   --color-subtle-foreground: var(--subtle-foreground);
   --color-primary-hover: var(--primary-hover);
-  --shadow-pop: 0 24px 60px rgb(0 0 0 / 0.18), 0 0 0 1px rgb(0 0 0 / 0.04);
+  --shadow-pop: var(--pop);
+  --shadow-seg: var(--seg-sh);
+  /* The HTML's own names (values 1.1), staff screens only. */
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border-2: var(--border-2);
+  --color-hover: var(--hover);
+  --color-seg: var(--seg);
+  --color-link: var(--link);
+  --color-accent-b: var(--accent-b);
+  --color-nav: var(--nav);
+  --color-nav-2: var(--nav-2);
+  --color-nav-t: var(--nav-t);
+  --color-nav-t2: var(--nav-t2);
+  --color-nav-on: var(--nav-on);
+  --color-brand-red: var(--brand-red);
+  --color-brand-nav-name: var(--brand-nav-name);
+  --color-toast: var(--toast);
+  --color-toast-t: var(--toast-t);
+  --color-toast-a: var(--toast-a);
+  --color-glass: var(--glass);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -190,8 +215,9 @@
    The action colour is BLUE (--brand-primary), never green: green already
    means "Completed" in the status vocabulary. --brand-accent is the same blue,
    for focus rings, chart marks and small marks — never a status.
-   --brand-up and --status-ok-ink are #16733a, not the mock-up's #198038: on its
-   own 10% tint (the Tally card) that green measures 4.38:1, under the pinned 4.5. */
+   --brand-up is #16733a, not the mock-up's #198038: on its own 10% tint (the
+   Tally card) that green measures 4.38:1, under the pinned 4.5. --status-ok-ink
+   is the HTML's #198038 (owner's value, design 9). */
 :root {
   /* The page behind the cards. */
   --brand-paper: #f4f4f5;
@@ -265,10 +291,33 @@
   --on-ink-down-tint: #3c2024;
   /* The segmented picker's track. */
   --track: #e9e9ec;
+  /* The HTML's own tokens (values 1.1). --nav-on is rgba(255,255,255,.09)
+     flattened over --nav; --glass keeps its alpha (never used with an opacity
+     modifier, so it gets no tint twin). */
+  --surface-2: #fafafa;
+  --surface-3: #e9e9ec;
+  --border-2: #ececef;
+  --hover: #f2f2f4;
+  --seg: #ffffff;
+  --link: #0f62fe;
+  --accent-b: #a6c8ff;
+  --nav: #111113;
+  --nav-2: #27272a;
+  --nav-t: #c8c8cc;
+  --nav-t2: #8b8b93;
+  --nav-on: #262628;
+  --brand-red: #c8381f;
+  --brand-nav-name: #ff6b4a;
+  --toast: #18181b;
+  --toast-t: #ffffff;
+  --toast-a: #a9c8b2;
+  --glass: rgba(255, 255, 255, 0.9);
+  --seg-sh: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+  --pop: 0 24px 60px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.04);
   /* Status colours: base (dots, fills), -ink (text on the tint), -tint (soft
      fill), -border (outlined chips). */
   --status-ok: #24a148;
-  --status-ok-ink: #16733a;
+  --status-ok-ink: #198038;
   --status-ok-tint: #defbe6;
   --status-warn: #ff832b;
   --status-warn-ink: #ba4e00;
@@ -347,6 +396,28 @@
   --on-ink-up-tint: #d8ebde;
   --on-ink-down-tint: #f5d9dc;
   --track: #27272b;
+  --surface-2: #1c1c20;
+  --surface-3: #27272b;
+  --border-2: #242428;
+  --hover: #222226;
+  --seg: #3a3a40;
+  --link: #78a9ff;
+  /* rgba(69,137,255,.55) flattened over the card #17171a */
+  --accent-b: #305698;
+  --nav: #08080a;
+  --nav-2: #202024;
+  --nav-t: #a9a9b2;
+  --nav-t2: #73737c;
+  /* rgba(255,255,255,.08) flattened over --nav */
+  --nav-on: #1c1c1e;
+  --brand-red: #ff7b5e;
+  --brand-nav-name: #ff6b4a;
+  --toast: #f2f2f3;
+  --toast-t: #0f0f10;
+  --toast-a: #6faf85;
+  --glass: rgba(23, 23, 26, 0.9);
+  --seg-sh: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --pop: 0 24px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
   --status-ok: #42be65;
   --status-ok-ink: #6fdc8c;
   --status-ok-tint: #1d2e25;
