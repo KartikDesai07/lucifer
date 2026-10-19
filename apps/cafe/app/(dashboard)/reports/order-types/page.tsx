@@ -36,9 +36,9 @@ const ORDER_TYPES_TALLY_RESERVE_LINES = 5;
 // Keeps "9" with its "pm" in the half-width Busiest hour card on a phone
 // ("8 pm – / 9 pm", never "8 pm – 9 / pm").
 const NO_BREAK_SPACE = "\u00a0";
-// Same reservation as RangeCards' BusyHoursCard (components/dashboard/RangeCards.tsx
-// BUSY_HOURS_BODY_PX / BUSY_HOURS_BODY_CLASS) — re-declared here rather than
-// imported so this page never pulls in the Dashboard's range-card bundle.
+// The body height BusyHours' reports look needs (its phone grid turns sideways:
+// one row per trading hour, ~500px with the read-out). The Dashboard's card
+// (the owner's HTML grid, U0 match Task 9) reserves its own in RangeCards.tsx.
 const BUSY_HOURS_BODY_PX = 290;
 const BUSY_HOURS_BODY_CLASS = "min-h-[500px] sm:min-h-[290px]";
 

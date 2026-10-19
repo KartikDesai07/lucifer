@@ -128,18 +128,6 @@ test("the nav's resting row label is the HTML's --nav-t, solid, the same colour 
   assert.equal(navT!.toLowerCase(), brandTokens().get("nav-text")?.toLowerCase(), "--nav-t is the measured --brand-nav-text colour");
 });
 
-// A translucent FILL (not text): components/dashboard/RankedList.tsx paints its
-// bars bg-brand-primary/85 over a paper track — a graphical object, so 3:1.
-const RANKED_BAR_ALPHA = 0.85;
-
-test("the dashboard's ranked-list bars stand out from their track (non-text 3:1), at the alpha RankedList really paints", () => {
-  const tokens = brandTokens();
-  const src = readFileSync(fileURLToPath(new URL("../components/dashboard/RankedList.tsx", import.meta.url)), "utf8");
-  assert.ok(src.includes(`bg-brand-primary/${Math.round(RANKED_BAR_ALPHA * 100)} `), "RankedList must paint bg-brand-primary/85");
-  const ratio = contrast(over(tokens.get("primary")!, tokens.get("paper")!, RANKED_BAR_ALPHA), tokens.get("paper")!);
-  assert.ok(ratio >= NON_TEXT_MIN, `primary/0.85 on paper is ${ratio.toFixed(2)}:1, needs ${NON_TEXT_MIN}:1`);
-});
-
 test("the sidebar surface is its own token, darker than paper and the slip — the primitive's --sidebar reads it", () => {
   const tokens = brandTokens();
   assert.ok(tokens.has("sidebar") && tokens.has("paper") && tokens.has("slip"), "landmark: --brand-sidebar, paper and slip are declared");

@@ -3,18 +3,16 @@
 import type { ReactNode } from "react";
 import { QrCode, Store } from "lucide-react";
 import { cafeHourOf, cn, inr } from "@/lib/utils";
-import { CHANNEL_KIND, PAYMENT_KIND, STATUS_CLASSES, type StatusKind } from "@/lib/ui";
+import { CHANNEL_KIND, PAYMENT_KIND, STATUS_CLASSES, categoryHue, type StatusKind } from "@/lib/ui";
 import { deltaRatio } from "@/lib/dashboard/fold";
 import { plural, sharePercent } from "@/lib/dashboard/format";
-import { compareShort, insightPeriod, kpiCompareText, noCompareText } from "@/lib/dashboard/labels";
+import { compareShort, insightWords, kpiCompareText, noCompareText, slowItemLine } from "@/lib/dashboard/labels";
 import { chartSubline, salesChart } from "@/lib/dashboard/hour-bars";
-import { dayLabel } from "@/lib/dashboard/range";
-import { DashCard, type DashCardStatus } from "@/components/dashboard/DashCard";
+import { DASH_PILL_CLASS, DashCard, type DashCardStatus } from "@/components/dashboard/DashCard";
 import { HourBars, HourBarsLegend } from "@/components/dashboard/HourBars";
 import { useNow } from "@/hooks/use-now";
 import { KpiCard } from "@/components/dashboard/KpiCard";
-import { RankedList, RANKED_ROW_PX, barsOf } from "@/components/dashboard/RankedList";
-import { BusyHours } from "@/components/dashboard/BusyHours";
+import { BusyHoursCap, BusyHoursGrid, useHeatPick } from "@/components/dashboard/BusyHours";
 import { DashGlyph } from "@/components/dashboard/DashGlyph";
 import { LEAK_ROW_PX, MoneyLeaks, MoneyLeaksTotal, MONEY_LEAK_ROWS } from "@/components/dashboard/MoneyLeaks";
 import type { DashboardChannel, DashboardData } from "@/types/dashboard";
@@ -39,10 +37,10 @@ const PAYMENT_ROWS = 3;
 const ITEM_ROWS = 5;
 const CHANNEL_ROWS = 3;
 const CATEGORY_ROWS = 6;
-const BUSY_HOURS_BODY_PX = 290;
-// On a phone the grid turns sideways: one row per trading hour (a cafe open
-// ~14 hours ≈ 500px with the readout), so the reservation is taller there.
-const BUSY_HOURS_BODY_CLASS = "min-h-[500px] sm:min-h-[290px]";
+/** Busy hours' body (values 3.15): the 14px hour labels, 4px, seven 30px rows 4px apart, 14px, the 17px footer = 283px;
+ *  on a phone (cw < 560) the footer wraps the legend under the busiest line (+ 10px + 17px) = 310px. */
+const BUSY_HOURS_BODY_PX = 14 + 4 + 7 * 30 + 6 * 4 + 14 + 17;
+const BUSY_HOURS_BODY_CLASS = "min-h-[310px] @min-[560px]:min-h-[283px]";
 
 const statusOf = (p: RangeCardProps, empty: boolean): DashCardStatus => (p.status !== "ready" ? p.status : empty ? "empty" : "ready");
 
@@ -241,22 +239,81 @@ export function PaymentMixCard(p: RangeCardProps) {
   );
 }
 
+/** A Top items row (values 3.12): 8px + the 18px amount and the 15px "n sold" + 8px. */
+const TOP_ROW_PX = 49;
+/** A category row (values 3.13): 8px + the 18px line + 8px over its 1px rule; above the rows, the 26px bar and 10px. */
+const CATEGORY_ROW_PX = 35;
+const CATEGORY_BAR_PX = 26 + 10;
+/** A slow mover (values 3.14): 9px + the 18px name, 2px and the 16px line + 9px over its 1px rule. */
+const SLOW_ROW_PX = 55;
+
+/** The HTML sets font-variant-numeric: tabular-nums on its whole page (values 1.4): these cards' digits in Geist ("2
+ *  sold", "48%", "11am", "Sat, 8 pm") take the same widths. */
+const HTML_NUMERALS = "tabular-nums";
+
+/** Our top items and slow movers carry no category, so their dot takes the HTML's own fallback hue, text-3. */
+const ITEM_DOT_CLASS = "size-[7px] flex-none rounded-[50%] bg-subtle-foreground";
+/** The name line Top items and Slow movers share (values 3.12, 3.14): the dot, 7px, the name ellipsised, 13.5/500. */
+const ITEM_NAME_CLASS = "flex items-center gap-[7px] overflow-hidden whitespace-nowrap text-[13.5px] font-medium";
+
+/** Bars relative to the longest row, in whole percent (the HTML's round(a / top * 100)). */
+const barPercents = <T,>(rows: T[], amount: (row: T) => number): number[] => {
+  const max = Math.max(0, ...rows.map(amount));
+  return rows.map((r) => (max > 0 ? Math.round((amount(r) / max) * 100) : 0));
+};
+
+/**
+ * Top items (values 3.12): a ranked row per item of ours (the best five by sales): the two-digit rank in Geist Mono
+ * (01 in the brand red), a 7px dot and the name over a 4px accent bar as long as its sales against the first, the
+ * amount and "{qty} sold".
+ */
 export function TopItemsCard(p: RangeCardProps) {
   const rows = p.data?.topItems ?? [];
-  const bars = barsOf(rows, (r) => r.revenue);
+  const bars = barPercents(rows, (r) => r.revenue);
   return (
     <DashCard
       variant="dashboard"
+      ui="top-card"
       title="Top items"
       bodyGap={8}
+      className={HTML_NUMERALS}
       period={`${p.period} · by sales`}
       status={statusOf(p, rows.length === 0)}
       updating={p.updating}
       onRetry={p.onRetry}
       empty={{ title: "Nothing sold yet", description: "Your best sellers show here once orders are completed." }}
-      bodyMinHeight={ITEM_ROWS * RANKED_ROW_PX}
+      bodyMinHeight={ITEM_ROWS * TOP_ROW_PX}
     >
-      <RankedList rows={rows.map((r, i) => ({ key: r.label, label: r.label, value: inr(r.revenue), detail: `${r.qty} sold`, bar: bars[i] }))} />
+      <ol data-ui="top-list" className="flex flex-col">
+        {rows.map((r, i) => (
+          <li key={r.label} data-ui="top-row" className="grid grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2.5 py-2">
+            <span data-ui="top-rank" className={cn("font-mono text-[13px] font-semibold", i === 0 ? "text-brand-red" : "text-subtle-foreground")}>
+              {String(i + 1).padStart(2, "0")}
+            </span>
+            <span className="min-w-0">
+              <span data-ui="top-name" className={ITEM_NAME_CLASS} title={r.label}>
+                <span data-ui="top-dot" aria-hidden className={ITEM_DOT_CLASS} />
+                <span className="truncate">{r.label}</span>
+              </span>
+              <span data-ui="top-bar" aria-hidden className="mt-[7px] block h-1 overflow-hidden rounded-[2px] bg-surface-3">
+                <span
+                  data-ui="top-fill"
+                  className="block h-full rounded-[2px] bg-primary origin-left motion-safe:animate-grow-x-slow"
+                  style={{ width: `${bars[i]}%` }}
+                />
+              </span>
+            </span>
+            <span data-ui="top-right" className="text-right">
+              <span data-ui="top-amount" className="block font-mono text-[13.5px] font-semibold">
+                {inr(r.revenue)}
+              </span>
+              <span data-ui="top-sold" className="block text-[11.5px] text-subtle-foreground">
+                {`${r.qty} sold`}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ol>
     </DashCard>
   );
 }
@@ -322,69 +379,125 @@ export function ChannelsCard(p: RangeCardProps) {
   );
 }
 
+/**
+ * Busy hours (values 3.15, ruling R19): orders per hour on an average day of each weekday over our insight window, the
+ * HTML's grid at every width (a phone scrolls it sideways), the head's cap box reading out the hovered, tapped or
+ * focused hour, the busiest hour and the legend below.
+ */
 export function BusyHoursCard(p: RangeCardProps & { className?: string }) {
   const d = p.data;
+  const status = statusOf(p, !d || d.heat.hours.length === 0);
+  const pick = useHeatPick(d?.heat);
   return (
     <DashCard
       variant="dashboard"
-      className={p.className}
+      ui="busy-card"
+      className={cn(p.className, HTML_NUMERALS)}
       title="Busy hours"
-      period={d ? `Orders per hour on an average day · ${insightPeriod(d, p.today)}` : p.period}
-      status={statusOf(p, !d || d.heat.hours.length === 0)}
+      period={d ? `Orders per hour on an average day · ${insightWords(d, p.today)}` : p.period}
+      aside={status === "loading" || status === "ready" ? <BusyHoursCap heat={d?.heat} cell={pick.cell} updating={p.updating} /> : undefined}
+      headWrap
+      status={status}
       updating={p.updating}
       onRetry={p.onRetry}
       empty={{ title: "Not enough orders yet", description: "Busy hours show once a few days of orders are in." }}
       bodyMinHeight={BUSY_HOURS_BODY_PX}
       bodyClassName={BUSY_HOURS_BODY_CLASS}
     >
-      {d && <BusyHours heat={d.heat} />}
+      {d && <BusyHoursGrid heat={d.heat} today={p.today} cell={pick.cell} onPick={pick.pick} onClear={pick.clear} />}
     </DashCard>
   );
 }
 
+/**
+ * Slow movers (values 3.14, ruling R21): our five slowest dishes on sale, each with a 7px dot, the name and the HTML's
+ * line under it from our data, and the tag pill ("Not sold" in warn, "{qty} sold" in surface-3); "Menu →" to our menu.
+ */
 export function SlowItemsCard(p: RangeCardProps & { className?: string }) {
   const d = p.data;
   const rows = d?.slowItems ?? [];
   return (
     <DashCard
       variant="dashboard"
-      className={p.className}
+      ui="slow-card"
+      className={cn(p.className, HTML_NUMERALS)}
       title="Slow movers"
-      period={d ? `Fewest sold · ${insightPeriod(d, p.today)}` : p.period}
+      period={d ? `Fewest sold · ${insightWords(d, p.today)}` : p.period}
       link={{ href: "/products", label: "Menu" }}
+      headGap={10}
+      bodyGap={10}
       status={statusOf(p, rows.length === 0)}
       updating={p.updating}
       onRetry={p.onRetry}
       empty={{ title: "Nothing to flag", description: "Items that sell least over the period show here." }}
-      bodyMinHeight={ITEM_ROWS * RANKED_ROW_PX}
+      bodyMinHeight={ITEM_ROWS * SLOW_ROW_PX}
     >
-      <RankedList
-        rows={rows.map((r) => ({
-          key: r.productId,
-          label: r.name,
-          value: r.qty === 0 ? "Not sold" : `${r.qty} sold`,
-          detail: r.since ? `since ${dayLabel(r.since)}` : undefined,
-        }))}
-      />
+      {d && (
+        <ul data-ui="slow-list" className="flex flex-col">
+          {rows.map((r) => (
+            <li key={r.productId} data-ui="slow-row" className="flex items-center gap-2.5 border-t border-border-2 py-[9px]">
+              <span className="min-w-0 flex-1">
+                <span data-ui="slow-name" className={ITEM_NAME_CLASS} title={r.name}>
+                  <span data-ui="slow-dot" aria-hidden className={ITEM_DOT_CLASS} />
+                  <span className="truncate">{r.name}</span>
+                </span>
+                <span data-ui="slow-since" className="mt-0.5 block pl-3.5 text-[12px] text-subtle-foreground">
+                  {slowItemLine(r, d, p.today)}
+                </span>
+              </span>
+              <span
+                data-ui="slow-tag"
+                className={cn(DASH_PILL_CLASS, "whitespace-nowrap", r.qty === 0 ? STATUS_CLASSES.warn.pill : "bg-surface-3 text-muted-foreground")}
+              >
+                {r.qty === 0 ? "Not sold" : `${r.qty} sold`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </DashCard>
   );
 }
 
+/**
+ * Sales by category (values 3.13, ruling R20): a 26px bar of one segment per category in the HTML's section hues by
+ * rank (our sixth row, "Other categories", in text-3), then a row per category: its dot, the name, the amount, the share.
+ */
 export function CategoriesCard(p: RangeCardProps) {
   const rows = p.data?.categories ?? [];
-  const bars = barsOf(rows, (r) => r.amount);
+  const hueOf = new Map(rows.map((r, i) => [r.key, categoryHue(i)]));
   return (
     <DashCard
       variant="dashboard"
+      ui="cat-card"
+      className={HTML_NUMERALS}
       title="Sales by category"
       period={`${p.period} · share of item sales`}
       status={statusOf(p, rows.length === 0)}
       updating={p.updating}
       onRetry={p.onRetry}
       empty={{ title: "No item sales yet", description: "Each menu category's share of sales shows here." }}
-      bodyMinHeight={CATEGORY_ROWS * RANKED_ROW_PX}
+      bodyMinHeight={CATEGORY_BAR_PX + CATEGORY_ROWS * CATEGORY_ROW_PX}
     >
-      <RankedList rows={rows.map((r, i) => ({ key: r.key, label: r.label, value: inr(r.amount), detail: sharePercent(r.share), bar: bars[i] }))} />
+      <div data-ui="cat-bar" aria-hidden className="flex h-[26px] gap-0.5 overflow-hidden rounded-[7px]">
+        {mixSegments(rows).map((s) => (
+          <span key={s.key} data-ui="cat-seg" title={rows.find((r) => r.key === s.key)?.label} style={{ width: `${s.pct}%`, background: hueOf.get(s.key) }} />
+        ))}
+      </div>
+      <ul data-ui="cat-list" className="mt-2.5 flex flex-col">
+        {rows.map((r) => (
+          <li key={r.key} data-ui="cat-row" className="flex items-center gap-2.5 border-t border-border-2 py-2 text-[13.5px]">
+            <span data-ui="cat-dot" aria-hidden className="size-[9px] shrink-0 rounded-[50%]" style={{ background: hueOf.get(r.key) }} />
+            <span className="flex-1">{r.label}</span>
+            <span data-ui="cat-amount" className="font-mono font-semibold">
+              {inr(r.amount)}
+            </span>
+            <span data-ui="cat-pct" className="w-9 text-right text-[12px] text-subtle-foreground">
+              {sharePercent(r.share)}
+            </span>
+          </li>
+        ))}
+      </ul>
     </DashCard>
   );
 }

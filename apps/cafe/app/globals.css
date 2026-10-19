@@ -118,6 +118,10 @@
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);
   --color-chart-bar: var(--chart-bar);
+  --color-heat-1: var(--heat-1);
+  --color-heat-2: var(--heat-2);
+  --color-heat-3: var(--heat-3);
+  --color-heat-4: var(--heat-4);
   --color-border-2: var(--border-2);
   --color-hover: var(--hover);
   --color-seg: var(--seg);
@@ -192,6 +196,8 @@
   --animate-grow-y: grow-y 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   /* The HTML's growX (values 1.5, 3.9, 3.10): the payment bar's segments and the sources' fills grow from the left. */
   --animate-grow-x: grow-x 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* The same growX at .9s (values 3.12): the Top items bars. */
+  --animate-grow-x-slow: grow-x 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   /* The HTML's pulse (values 1.5, 3.6): the Live tables dot. */
   --animate-live-pulse: live-pulse 2s infinite;
 }
@@ -388,6 +394,12 @@
   --surface-3: #e9e9ec;
   /* The hour chart's bars (values 3.5): color-mix(in oklab, var(--accent) 60%, var(--surface)) precomputed. */
   --chart-bar: #75a7ff;
+  /* Busy hours' steps 1-4 (values 3.15 LV): color-mix(in oklab, var(--accent) 16 / 30 / 48 / 70 %, var(--surface))
+     precomputed; step 0 is --surface-2, step 5 the accent itself. */
+  --heat-1: #dae8ff;
+  --heat-2: #b9d4ff;
+  --heat-3: #90baff;
+  --heat-4: #5e97ff;
   --border-2: #ececef;
   --hover: #f2f2f4;
   --seg: #ffffff;
@@ -494,6 +506,11 @@
   --surface-3: #27272b;
   /* #0f62fe 60 % over the dark surface #17171a, in oklab */
   --chart-bar: #1b459b;
+  /* #0f62fe 16 / 30 / 48 / 70 % over the dark surface #17171a, in oklab */
+  --heat-1: #1a243a;
+  --heat-2: #1b2f57;
+  --heat-3: #1c3c7f;
+  --heat-4: #1a4cb3;
   --border-2: #242428;
   --hover: #222226;
   --seg: #3a3a40;

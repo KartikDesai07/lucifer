@@ -106,10 +106,10 @@ test("no staff-only colour token in any kit file (sidebar may use sidebar-*)", (
   walk(path.join(CAFE_ROOT, "components/ui"), files);
   // U0 Task 4 (ruling R8): the owner's HTML names Task 1 added for the staff screens are staff-only too (the toast set,
   // the nav set, the segmented control, glass, link, the extra surfaces and rule, hover, the accent border, the scrim;
-  // U0 match Task 7: the hour chart's 60 % bar tint).
+  // U0 match Task 7: the hour chart's 60 % bar tint; Task 9: the busy-hours steps).
   const staffOnly =
-    /^(status-|brand-|ink$|on-ink$|subtle-foreground$|primary-hover$|toast(-|$)|nav(-|$)|seg$|glass$|link$|surface-[23]$|border-2$|hover$|accent-b$|scrim$|chart-bar$)/;
-  for (const name of ["toast", "toast-t", "toast-a", "nav", "nav-t2", "nav-on", "seg", "glass", "link", "surface-2", "border-2", "hover", "accent-b", "scrim", "chart-bar"]) {
+    /^(status-|brand-|ink$|on-ink$|subtle-foreground$|primary-hover$|toast(-|$)|nav(-|$)|seg$|glass$|link$|surface-[23]$|border-2$|hover$|accent-b$|scrim$|chart-bar$|heat-[1-4]$)/;
+  for (const name of ["toast", "toast-t", "toast-a", "nav", "nav-t2", "nav-on", "seg", "glass", "link", "surface-2", "border-2", "hover", "accent-b", "scrim", "chart-bar", "heat-1", "heat-4"]) {
     assert.ok(staffOnly.test(name), `vision guard: ${name} is a staff-only name`);
   }
   for (const name of ["primary", "accent", "accent-foreground", "border", "card", "muted-foreground", "background"]) {

@@ -11,7 +11,7 @@ import {
   rangeDays,
   weekdayDayLabel,
 } from "@/lib/dashboard/range";
-import type { DashboardData, DashboardRange } from "@/types/dashboard";
+import type { DashboardData, DashboardRange, DashboardSlowItem } from "@/types/dashboard";
 
 const PRESET_SPANS = [7, 30] as const;
 const DAYS_PER_WEEK = 7;
@@ -96,4 +96,24 @@ export function insightPeriod(data: DashboardData, today: string): string {
   if (from === data.range.from && to === data.range.to) return periodLabel(data.range, today);
   const weeks = INSIGHT_FALLBACK_DAYS / DAYS_PER_WEEK;
   return to === today ? `Last ${weeks} weeks` : `${weeks} weeks to ${dayLabel(to)}`;
+}
+
+/** The insight period inside a sentence, as the HTML's subs ("· last 4 weeks"): "last 4 weeks", "last 7 days",
+ *  "4 weeks to 12 Oct", "1 Sep – 14 Sep". */
+export function insightWords(data: DashboardData, today: string): string {
+  const period = insightPeriod(data, today);
+  return period.startsWith("Last ") ? `l${period.slice(1)}` : period;
+}
+
+/**
+ * The line under a slow mover (values 3.14, ruling R21), in the HTML's pattern from our data: unsold, "Added {2 Oct} ·
+ * never ordered" (on the menu since that day) or "No orders in the last 4 weeks"; sold, "Added {2 Oct}" or the period
+ * itself ("Last 4 weeks"). We keep no last-sold day, so the HTML's "Last sold 9 days ago" has no twin.
+ */
+export function slowItemLine(item: DashboardSlowItem, data: DashboardData, today: string): string {
+  if (item.since) return item.qty === 0 ? `Added ${dayLabel(item.since)} · never ordered` : `Added ${dayLabel(item.since)}`;
+  if (item.qty > 0) return insightPeriod(data, today);
+  const words = insightWords(data, today);
+  // A picked span reads as its dates ("No orders in 1 Sep – 14 Sep"); a named period takes "the".
+  return `No orders in ${words.includes(" – ") ? words : `the ${words}`}`;
 }

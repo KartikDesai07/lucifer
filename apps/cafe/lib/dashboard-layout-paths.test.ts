@@ -928,7 +928,6 @@ test("the cards take their colours from the one palette, with no raw Tailwind pa
   }
   assert.ok(readSrc("components/dashboard/RecentOrders.tsx").includes("PAY_PILL_KIND"), "recent orders pills use PAY_PILL_KIND");
   assert.ok(readSrc("components/dashboard/TodayReservations.tsx").includes("RESERVATION_KIND"), "reservations use RESERVATION_KIND");
-  assert.ok(readSrc("components/dashboard/RankedList.tsx").includes("bg-brand-primary/85 "), "the default bar class stays (brand-contrast pin)");
   const floor = readSrc("components/dashboard/LiveFloorPanel.tsx");
   assert.ok(floor.includes("TABLE_STATUS_META") && !/bg-(green|red|amber)-500/.test(floor), "the floor panel keeps TABLE_STATUS_META");
 });
