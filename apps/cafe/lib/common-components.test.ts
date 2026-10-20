@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { PageHeaderSlotContext } from "@/components/layout/page-header-slot";
+import { classesOf, expectAll, tagOf } from "./class-tags.fixtures";
 
 // jsx:"preserve" -> React.createElement, so a global React is needed at render time.
 (globalThis as { React?: typeof React }).React = React;
@@ -37,15 +38,6 @@ test("PinPad: 12 named keys, two of four dots filled, a live line", () => {
   assert.ok(!html.includes('role="alert"') || !html.includes("Incorrect"), "no error by default");
 });
 
-/** The opening tag of the nth element with data-ui="<name>". */
-const tagOf = (html: string, name: string, nth = 0): string =>
-  (html.match(new RegExp(`<[a-z0-9]+ [^>]*data-ui="${name}"[^>]*>`, "g")) ?? [])[nth] ?? "";
-const classesOf = (tag: string): string[] => (tag.match(/class="([^"]*)"/)?.[1] ?? "").split(/\s+/);
-const expectAll = (tag: string, classes: string[], label: string) => {
-  assert.ok(tag.length > 0, `landmark: ${label} renders`);
-  const have = classesOf(tag);
-  for (const c of classes) assert.ok(have.includes(c), `${label} carries ${c} (got "${have.join(" ")}")`);
-};
 const SIGN_IN_TONES = {
   dotEmpty: "border-subtle-foreground",
   dotSuccess: "border-status-ok bg-status-ok",

@@ -28,6 +28,8 @@ import {
   AUTH_LABEL_CLASS,
   AUTH_LINK_CLASS,
   AUTH_REVEAL_CLASS,
+  isWideLogo,
+  loginLogoClasses,
 } from "@/components/auth/auth-classes";
 import { cn } from "@/lib/utils";
 
@@ -52,6 +54,8 @@ export default function LoginPage() {
   // from a broken image on, and this route can legitimately fail (e.g. the
   // database is down) — fall back to the generic icon tile if it does.
   const [iconFailed, setIconFailed] = useState(false);
+  // A wide wordmark keeps its own width in the tile; read from the image once it loads (review m4).
+  const [logoWide, setLogoWide] = useState(false);
   // Reveal-while-typing for the password. Defaults to hidden and is never
   // persisted: a counter PC is a SHARED screen, so the next operator must
   // always start from a masked field, whatever the last one left on.
@@ -125,24 +129,23 @@ export default function LoginPage() {
     setMode("pin");
   };
 
-  // The shell's 34px brand tile (values 4.2: radius 9). The login page has no session, so its mark is the product's
-  // logo (ruling R3), on white like the nav's logo tile, scaled to fit, never cropped; the fallback glyph takes over if
-  // the image fails.
+  // The shell's brand tile (values 4.2: 34px, radius 9). The login page has no session, so its mark is the product's
+  // logo (ruling R3): a square mark in the 34px tile on white, a wide wordmark at its own width (up to 136px), never
+  // cropped; the fallback glyph takes over if the image fails.
+  const logoLook = loginLogoClasses(logoWide);
   const logo = (
-    <span
-      data-ui="auth-logo"
-      className="flex size-[34px] flex-none items-center justify-center overflow-hidden rounded-[9px] bg-white p-0.5"
-    >
+    <span data-ui="auth-logo" className={logoLook.tile}>
       {iconFailed ? (
         <UtensilsCrossed className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
       ) : (
         <Image
           src={productLogoSrc}
           alt={APP_NAME}
-          width={34}
-          height={34}
+          width={48}
+          height={48}
           unoptimized
-          className="h-full w-full object-contain"
+          className={logoLook.image}
+          onLoad={(e) => setLogoWide(isWideLogo(e.currentTarget))}
           onError={() => setIconFailed(true)}
         />
       )}

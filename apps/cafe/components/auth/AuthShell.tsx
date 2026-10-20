@@ -42,16 +42,18 @@ export function clockLabel(now: Date): string {
   return `${hour % 12 || 12}:${String(now.getMinutes()).padStart(2, "0")} ${hour < 12 ? "AM" : "PM"}`;
 }
 
-/** The Online chip's words (the HTML's, ruling R28). */
+/** The Online chip's words (the HTML's "Online", ruling R28). Offline reads "Offline" only (ruling R32): the HTML's
+ *  "· PINs still work" is untrue here, where the PIN is checked on the server. */
 export function onlineChipLabel(online: boolean): string {
-  return online ? "Online" : "Offline · PINs still work";
+  return online ? "Online" : "Offline";
 }
 
-// Its own component so the once-a-second tick re-renders only the clock, never the card's content.
+// Its own component so the once-a-second tick re-renders only the clock, never the card's content. Until the first
+// tick (useNow is null) it holds the HTML's measured clock width, so the chip and divider never jump (review m6).
 function HeaderClock() {
   const now = useNow();
   return (
-    <span data-ui="auth-clock" className="whitespace-nowrap text-[13.5px] font-medium">
+    <span data-ui="auth-clock" className={cn("whitespace-nowrap text-[13.5px] font-medium", now === null && "min-w-[61px]")}>
       {now ? clockLabel(now) : null}
     </span>
   );

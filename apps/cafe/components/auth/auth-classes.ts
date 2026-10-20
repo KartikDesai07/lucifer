@@ -11,11 +11,12 @@ import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
 /** A field label: 13px / 600 in the text colour. */
 export const AUTH_LABEL_CLASS = "text-[13px] font-semibold leading-[normal] text-foreground";
 
-/** A field: 44px, radius 10, 15px text, the border colour; focus = the accent border and a 4px accent-t ring; an
- *  invalid field = the bad border. A browser-filled field stays the card colour (an inset shadow is the one thing
- *  drawn over the browser's own autofill background). */
+/** A field: 44px, radius 10, the border colour; focus = the accent border and a 4px accent-t ring; an invalid field =
+ *  the bad border. Text 16px below 720px (iPhone Safari zooms a field under 16px on focus, ruling R33), the HTML's
+ *  15px from 720px; md:15px replaces the kit Input's own md:text-sm so 720-767px reads 15px too. A browser-filled
+ *  field stays the card colour (an inset shadow is the one thing drawn over the browser's own autofill background). */
 export const AUTH_INPUT_CLASS =
-  "h-11 rounded-[10px] border border-border bg-card px-3 py-0 text-[15px] md:text-[15px] leading-[normal] text-foreground shadow-none placeholder:text-subtle-foreground focus-visible:border-primary focus-visible:ring-4 focus-visible:ring-accent aria-invalid:border-status-bad [&:-webkit-autofill]:shadow-[inset_0_0_0_100px_var(--color-card)] [&:-webkit-autofill]:[-webkit-text-fill-color:var(--color-foreground)]";
+  "h-11 rounded-[10px] border border-border bg-card px-3 py-0 text-base tab:text-[15px] md:text-[15px] leading-[normal] text-foreground shadow-none placeholder:text-subtle-foreground focus-visible:border-primary focus-visible:ring-4 focus-visible:ring-accent aria-invalid:border-status-bad [&:-webkit-autofill]:shadow-[inset_0_0_0_100px_var(--color-card)] [&:-webkit-autofill]:[-webkit-text-fill-color:var(--color-foreground)]";
 
 /** The show/hide password control inside a field's right edge (pr-11 on the field keeps the text clear of it). */
 export const AUTH_REVEAL_CLASS =
@@ -38,3 +39,23 @@ export const AUTH_BUTTON_CLASS =
 export const AUTH_LINK_CLASS =
   "rounded-[6px] p-1 text-[13.5px] font-medium leading-[normal] text-link outline-none focus-visible:ring-2 focus-visible:ring-ring " +
   HTML_PRESS_CLASS;
+
+/** The login page's product logo (ruling R3: the login's mark; review m4). A square mark sits in the HTML's 34px tile
+ *  on white; a wide wordmark keeps the login's own wide tile (34px tall, its own width up to 136px, bordered, the
+ *  logo multiplied onto the card) so it never shrinks into a square. */
+export function loginLogoClasses(wide: boolean): { tile: string; image: string } {
+  return wide
+    ? {
+        tile: "flex h-[34px] min-w-[34px] max-w-[8.5rem] shrink-0 items-center justify-center overflow-hidden rounded-[9px] border border-border bg-card p-1",
+        image: "h-full w-auto max-w-full object-contain mix-blend-multiply",
+      }
+    : {
+        tile: "flex size-[34px] flex-none items-center justify-center overflow-hidden rounded-[9px] bg-white p-0.5",
+        image: "h-full w-full object-contain",
+      };
+}
+
+/** A loaded logo wider than it is tall (a wordmark); an image not read yet is not. */
+export function isWideLogo(img: { naturalWidth: number; naturalHeight: number }): boolean {
+  return img.naturalHeight > 0 && img.naturalWidth > img.naturalHeight;
+}

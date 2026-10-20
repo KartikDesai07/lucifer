@@ -1,125 +1,50 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { pinFailureMessage, type PinSignInFailure } from "@pos/shared/staff-pin";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import type { PinSignInFailure } from "@pos/shared/staff-pin";
 
 import { cn } from "@/lib/utils";
-import { pickerGreeting } from "@/lib/brand-time";
 import { signInWithPin, type KnownPerson } from "@/lib/pin-sign-in-client";
 import { tileNames } from "@/lib/staff-display";
+import {
+  ROLE_LABEL,
+  escapeGoesBack,
+  noStaffLine,
+  pickerDateLabel,
+  pinGreeting,
+  pinPadView,
+  roleTabs,
+  tileSub,
+  visiblePeople,
+  type StaffFilter,
+  type TileSub,
+} from "@/lib/staff-picker";
 import { useNow } from "@/hooks/use-now";
 import { PinPad, type PinPadTones } from "@/components/ui/pin-pad";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StaffAvatar } from "@/components/shared/StaffAvatar";
 import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { AUTH_LINK_CLASS } from "@/components/auth/auth-classes";
+import { BackGlyph, PadlockGlyph, SearchGlyph } from "@/components/auth/auth-glyphs";
 
 // Sign in by name and PIN: the tiles of the people this device remembers, then the PIN pad for the one tapped. Shared
 // by the login page and the lock screen; the caller fetches the people once and decides what a successful sign-in does
 // next. The PIN is only ever checked by the server (signInWithPin). The look is the owner's HTML lock (values 4.3–4.4,
-// design 5.6): the greeting, the search and the role tabs (always shown), the 6/4/3-column tile grid, then the pad.
-
-export type StaffFilter = "all" | "admin" | "staff";
+// design 5.6): the greeting, the search and the role tabs (always shown), the 6/4/3-column tile grid, then the pad. The
+// pure rules (tabs, filter, tile lines, the pad's words, Escape) live in lib/staff-picker.
 
 /** The wait countdown's tick: a local timer, never a request. */
 const WAIT_TICK_MS = 1_000;
 
-const ROLE_LABEL: Record<KnownPerson["role"], string> = { admin: "Admin", staff: "Staff" };
-const FILTER_TABS: { value: StaffFilter; label: string }[] = [
-  { value: "all", label: "All staff" },
-  { value: "admin", label: "Admin" },
-  { value: "staff", label: "Staff" },
-];
-
 /** A right PIN's line while our own sign-in completes (the HTML's word, ruling R30). */
 const UNLOCKING = "Unlocking…";
 
-// Fixed English tables, not toLocaleString, so a device set to another language never changes the line.
-const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
-const MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-] as const;
-
-/** "Friday, 16 October": the picker's date, in the counter's own local time. */
-export function pickerDateLabel(now: Date): string {
-  return `${WEEKDAYS[now.getDay()]}, ${now.getDate()} ${MONTHS[now.getMonth()]}`;
-}
-
-/** "Good evening": the picker's headline, by the HTML's hours (ruling R28). */
-export function pinGreeting(now: Date): string {
-  return pickerGreeting(now);
-}
-
-/** The tiles for a role tab and a search (trimmed, any case, the full name or the short one). */
-export function visiblePeople(people: KnownPerson[], filter: StaffFilter, query: string): KnownPerson[] {
-  const q = query.trim().toLowerCase();
-  return people.filter(
-    (p) =>
-      (filter === "all" || p.role === filter) &&
-      (q === "" || p.name.toLowerCase().includes(q) || p.shortName.toLowerCase().includes(q)),
-  );
-}
-
-/** The role tabs with their counts: everyone this device remembers, the admins, the staff (design 5.6, our roles). */
-export function roleTabs(people: KnownPerson[]): { value: StaffFilter; label: string; count: number }[] {
-  return FILTER_TABS.map((tab) => ({
-    ...tab,
-    count: tab.value === "all" ? people.length : people.filter((p) => p.role === tab.value).length,
-  }));
-}
-
-export type TileSub = { text: string; tone: "locked" | "blocked" | "role" };
-
-/** The line under a tile's name (values 4.3, design 5.6): the locker's "Locked · {ago}", "PIN blocked" for a PIN this
- *  screen has been told is blocked, else the role. */
-export function tileSub(
-  person: KnownPerson,
-  highlight: { id: string; label: string } | null,
-  blocked: ReadonlySet<string>,
-): TileSub {
-  if (highlight?.id === person.id) return { text: highlight.label, tone: "locked" };
-  if (blocked.has(person.id)) return { text: "PIN blocked", tone: "blocked" };
-  return { text: ROLE_LABEL[person.role], tone: "role" };
-}
-
-/** An empty search's line (the HTML's words, values 4.3). */
-export function noStaffLine(query: string): string {
-  return `No staff found for “${query.trim()}”.`;
-}
-
-/**
- * What the pad shows: a wait (seconds left on the local countdown) disables it and words the minutes left; a block
- * disables it; a try in flight disables it; any other refusal (a wrong PIN included) leaves it enabled to try again.
- */
-export function pinPadView(input: {
-  failure: PinSignInFailure | null;
-  waitLeftSec: number;
-  busy: boolean;
-}): { message: string | null; disabled: boolean } {
-  if (input.waitLeftSec > 0) {
-    return { message: pinFailureMessage({ kind: "wait", retryAfterSec: input.waitLeftSec }), disabled: true };
-  }
-  return {
-    message: input.failure ? pinFailureMessage(input.failure) : null,
-    disabled: input.busy || input.failure?.kind === "blocked",
-  };
-}
-
-// The tile's sub line colour per state (values 4.3): accent-i for the locker, bad-i for a blocked PIN, else text-2.
+// The tile's sub line colour per state (values 4.3): accent-i for the locker, bad-i for a blocked PIN and for a person
+// in our wait (the HTML's locked-out tile, ruling R37), else text-2.
 const SUB_TONE: Record<TileSub["tone"], string> = {
   locked: "text-accent-foreground",
   blocked: "text-status-bad-ink",
+  out: "text-status-bad-ink",
   role: "text-muted-foreground",
 };
 
@@ -139,7 +64,7 @@ const TAB_CLASS = cn(
 
 // The pad's back link (values 4.4): link colour, 14/500, 4px 0, a 16px chevron 4px from the words.
 const BACK_CLASS = cn(
-  "flex items-center gap-1 self-start rounded-[6px] px-0 py-1 text-[14px] font-medium leading-[normal] text-link outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+  "flex items-center gap-1 self-start rounded-[6px] px-0 py-1 text-[14px] font-medium leading-[normal] text-link outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none",
   HTML_PRESS_CLASS,
 );
 
@@ -156,42 +81,6 @@ const PAD_TONES: PinPadTones = {
   messageSuccess: "text-status-ok-ink",
   key: cn("active:bg-surface-3", HTML_PRESS_CLASS),
 };
-
-// The HTML's glyphs (values 5): the search magnifier, the tile's padlock, the back chevron.
-function SearchGlyph() {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      aria-hidden="true"
-      className="flex-none text-subtle-foreground"
-    >
-      <circle cx="11" cy="11" r="7" />
-      <path d="m20 20-3.5-3.5" />
-    </svg>
-  );
-}
-
-function PadlockGlyph() {
-  return (
-    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M6 11h12v10H6zM8 11V8a4 4 0 0 1 8 0v3" />
-    </svg>
-  );
-}
-
-function BackGlyph() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="m15 18-6-6 6-6" />
-    </svg>
-  );
-}
 
 interface PinSignInProps {
   people: KnownPerson[];
@@ -218,7 +107,8 @@ export function PinSignIn({ people, highlight = null, onUsePassword, onSignedIn 
   const [waitLeftSec, setWaitLeftSec] = useState(0);
   const [filter, setFilter] = useState<StaffFilter>("all");
   const [query, setQuery] = useState("");
-  const backRef = useRef<HTMLButtonElement>(null);
+  const padRef = useRef<HTMLDivElement>(null);
+  const nameId = useId();
   // The greeting and the date change at most once a minute.
   const now = useNow(60_000);
 
@@ -237,9 +127,11 @@ export function PinSignIn({ people, highlight = null, onUsePassword, onSignedIn 
     return () => clearInterval(timer);
   }, [wait]);
 
-  // The tile that was tapped is gone; the keyboard user lands on the way back.
+  // The tile that was tapped is gone: focus lands on the pad's own region (ruling R34), which a screen reader announces
+  // as the person and the PIN line. Not on "All staff": typed digits would paint its ring there, and a habitual Enter
+  // after a digit or two would drop the person back to the picker.
   useEffect(() => {
-    if (chosen) backRef.current?.focus();
+    if (chosen) padRef.current?.focus();
   }, [chosen]);
 
   const choose = (person: KnownPerson) => {
@@ -251,12 +143,24 @@ export function PinSignIn({ people, highlight = null, onUsePassword, onSignedIn 
     setErrorCount(0);
   };
 
-  const backToTiles = () => {
+  const backToTiles = useCallback(() => {
     setChosen(null);
     setPin("");
     setFailure(null);
     setForgotShown(false);
-  };
+  }, []);
+
+  // Ruling R34 (values 4.4): Escape goes back to the picker, never from a field and never while a try is in flight.
+  // Heard on key-up: the lock cover swallows Escape's key-down at the window (so a sheet left open under it stays as it
+  // was), and the key-up reaches here the same on the login page and the lock.
+  useEffect(() => {
+    if (!chosen) return;
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (escapeGoesBack({ key: e.key, activeTag: document.activeElement?.tagName, busy })) backToTiles();
+    };
+    window.addEventListener("keyup", onKeyUp);
+    return () => window.removeEventListener("keyup", onKeyUp);
+  }, [chosen, busy, backToTiles]);
 
   const submit = async (value: string) => {
     if (!chosen || busy) return;
@@ -299,9 +203,16 @@ export function PinSignIn({ people, highlight = null, onUsePassword, onSignedIn 
     // The HTML dims the keypad while a person is locked out: our wait and a blocked PIN.
     const lockedOut = waiting > 0 || failure?.kind === "blocked";
     return (
-      <div data-ui="pin-view" className="flex flex-col items-center gap-[18px] motion-safe:animate-html-fade-fast tab:pb-2 tab:pt-1">
+      <div
+        ref={padRef}
+        data-ui="pin-view"
+        tabIndex={-1}
+        role="group"
+        aria-labelledby={nameId}
+        className="flex flex-col items-center gap-[18px] outline-none motion-safe:animate-html-fade-fast tab:pb-2 tab:pt-1"
+      >
         {/* Not while a try is in flight: its answer belongs to this pad. */}
-        <button ref={backRef} type="button" data-ui="pin-back" onClick={backToTiles} disabled={busy} className={BACK_CLASS}>
+        <button type="button" data-ui="pin-back" onClick={backToTiles} disabled={busy} className={BACK_CLASS}>
           <BackGlyph />
           All staff
         </button>
@@ -311,7 +222,7 @@ export function PinSignIn({ people, highlight = null, onUsePassword, onSignedIn 
           size="lg"
           className={cn(AVATAR_RING_EASE, succeeded && AVATAR_RING)}
         />
-        <div data-ui="pin-name" className="text-center">
+        <div data-ui="pin-name" id={nameId} className="text-center">
           <h1 className="text-[20px] font-semibold">{chosen.name}</h1>
           <p className="mt-[3px] text-[13.5px] text-muted-foreground">{ROLE_LABEL[chosen.role]} · Enter your 4-digit PIN</p>
         </div>
@@ -353,11 +264,13 @@ export function PinSignIn({ people, highlight = null, onUsePassword, onSignedIn 
   const tabs = roleTabs(people);
   const tiles = visiblePeople(people, filter, query);
   const names = tileNames(tiles);
+  // Ruling R37: the person our local wait runs for reads the HTML's "Try again soon" on their tile.
+  const waitingId = wait !== null && waitLeftSec > 0 ? wait.id : null;
   const grid = (
     <>
       <div data-ui="pick-grid" className="grid grid-cols-3 gap-1.5 tab:grid-cols-4 tab:gap-2 desk:grid-cols-6">
         {tiles.map((person, index) => {
-          const sub = tileSub(person, highlight, blockedIds);
+          const sub = tileSub(person, highlight, blockedIds, waitingId);
           const marked = sub.tone === "locked";
           return (
             <button
@@ -420,7 +333,7 @@ export function PinSignIn({ people, highlight = null, onUsePassword, onSignedIn 
         >
           <SearchGlyph />
           {/* type="search" for the phone keyboard's search key; Chrome's own clear button is hidden (the HTML's input has
-              none). */}
+              none). 16px below 720px so iPhone Safari does not zoom on focus, the HTML's 14px from there (ruling R36). */}
           <input
             data-ui="pick-search-input"
             type="search"
@@ -429,7 +342,7 @@ export function PinSignIn({ people, highlight = null, onUsePassword, onSignedIn 
             placeholder="Search staff"
             aria-label="Search staff"
             autoComplete="off"
-            className="min-w-0 flex-1 border-0 bg-transparent px-0.5 py-px text-[14px] text-foreground outline-none placeholder:text-subtle-foreground [&::-webkit-search-cancel-button]:appearance-none"
+            className="min-w-0 flex-1 border-0 bg-transparent px-0.5 py-px text-base leading-[normal] text-foreground outline-none placeholder:text-subtle-foreground tab:text-[14px] [&::-webkit-search-cancel-button]:appearance-none"
           />
         </label>
       </div>

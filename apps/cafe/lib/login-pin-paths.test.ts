@@ -11,6 +11,7 @@ import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { stripComments } from "./source-pin-utils";
+import { classesOf, expectAll, tagOf } from "./class-tags.fixtures";
 import type { KnownPerson } from "@/lib/pin-sign-in-client";
 
 // jsx:"preserve" -> React.createElement, so a global React is needed at render time.
@@ -42,16 +43,9 @@ function arrowBody(src: string, name: string): string {
 /** Visible text: tags dropped, whitespace collapsed. */
 const textOf = (html: string): string => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
-/** The opening tag of the nth element carrying data-ui="<name>" ("" when there is none). */
-const tagOf = (html: string, name: string, nth = 0): string =>
-  (html.match(new RegExp(`<[a-z0-9]+ [^>]*data-ui="${name}"[^>]*>`, "g")) ?? [])[nth] ?? "";
-
-/** Every class token is on the tag (U0 match Task 10: the owner's HTML values 4.2–4.5). */
-const expectAll = (tag: string, classes: string[], label: string) => {
-  assert.ok(tag.length > 0, `landmark: ${label} renders`);
-  const have = (tag.match(/class="([^"]*)"/)?.[1] ?? "").replace(/&amp;/g, "&").split(/\s+/);
-  for (const c of classes) assert.ok(have.includes(c), `${label} carries ${c} (got "${have.join(" ")}")`);
-};
+// U0 match Task 10: the class-token helpers are shared (lib/class-tags.fixtures.ts, review m8); the picker's pure
+// helpers live in lib/staff-picker.ts (review m9), PinSignIn keeps the component.
+const PICKER = "lib/staff-picker.ts";
 
 /** Each name tile's id and visible text. */
 function tilesOf(html: string): { id: string; text: string; tag: string }[] {
@@ -166,7 +160,9 @@ test("the password form classes are the HTML's form style: 44px fields radius 10
     const have = cls.split(/\s+/);
     for (const t of tokens) assert.ok(have.includes(t), `${label} carries ${t} (got "${cls}")`);
   };
-  has(AUTH_INPUT_CLASS, ["h-11", "rounded-[10px]", "border", "border-border", "bg-card", "px-3", "text-[15px]", "md:text-[15px]", "text-foreground", "placeholder:text-subtle-foreground", "focus-visible:border-primary", "focus-visible:ring-4", "focus-visible:ring-accent", "aria-invalid:border-status-bad"], "a field");
+  // Ruling R33: 16px below 720px (iPhone Safari zooms a smaller field on focus), the HTML's 15px from 720px; md:15px
+  // replaces the kit Input's own md:text-sm, so 720-767px gets 15px too.
+  has(AUTH_INPUT_CLASS, ["h-11", "rounded-[10px]", "border", "border-border", "bg-card", "px-3", "text-base", "tab:text-[15px]", "md:text-[15px]", "text-foreground", "placeholder:text-subtle-foreground", "focus-visible:border-primary", "focus-visible:ring-4", "focus-visible:ring-accent", "aria-invalid:border-status-bad"], "a field");
   has(AUTH_LABEL_CLASS, ["text-[13px]", "font-semibold", "text-foreground"], "a label");
   has(AUTH_BUTTON_CLASS, ["h-12", "w-full", "rounded-[10px]", "bg-primary", "text-[15px]", "font-semibold", "text-primary-foreground", "hover:bg-primary-hover"], "the primary button");
   assert.ok(AUTH_BUTTON_CLASS.endsWith(HTML_PRESS_CLASS), "the button presses like the HTML's");
@@ -179,6 +175,27 @@ test("the password form classes are the HTML's form style: 44px fields radius 10
   assert.ok(!/BRAND_(INPUT|LABEL|BUTTON)_CLASS/.test(page), "no older brand form classes on the login page");
 });
 
+test("the login's product logo (review m4): a wide logo keeps its own width (34px tall, up to 136px), a square one the 34px tile", async () => {
+  const { loginLogoClasses } = await import("@/components/auth/auth-classes");
+  const has = (cls: string, tokens: string[], label: string) => {
+    const have = cls.split(/\s+/);
+    for (const t of tokens) assert.ok(have.includes(t), `${label} carries ${t} (got "${cls}")`);
+  };
+  const square = loginLogoClasses(false);
+  has(square.tile, ["size-[34px]", "rounded-[9px]", "bg-white", "p-0.5"], "the square tile");
+  has(square.image, ["h-full", "w-full", "object-contain"], "the square logo");
+  const wide = loginLogoClasses(true);
+  has(wide.tile, ["h-[34px]", "min-w-[34px]", "max-w-[8.5rem]", "rounded-[9px]", "border", "border-border", "bg-card", "p-1"], "the wide tile (the login's old wordmark tile)");
+  has(wide.image, ["h-full", "w-auto", "max-w-full", "object-contain", "mix-blend-multiply"], "the wide logo at its own width");
+  const page = read(PAGE);
+  assert.match(page, /onLoad=\{\(e\) => setLogoWide\(isWideLogo\(e\.currentTarget\)\)\}/, "the page reads the logo's shape once it loads");
+  assert.match(page, /loginLogoClasses\(logoWide\)/, "and draws the tile for that shape");
+  const { isWideLogo } = await import("@/components/auth/auth-classes");
+  assert.equal(isWideLogo({ naturalWidth: 300, naturalHeight: 100 }), true, "a 3:1 wordmark is wide");
+  assert.equal(isWideLogo({ naturalWidth: 120, naturalHeight: 120 }), false, "a square mark is not");
+  assert.equal(isWideLogo({ naturalWidth: 0, naturalHeight: 0 }), false, "an unread image is not");
+});
+
 test("the lock's password form renders the same form style", async () => {
   const { LockPasswordForm } = await import("@/components/lock/LockPasswordForm");
   const html = renderToStaticMarkup(
@@ -187,7 +204,8 @@ test("the lock's password form renders the same form style", async () => {
   const label = html.match(/<label[^>]*for="lock-username"[^>]*>/)?.[0] ?? "";
   expectAll(label, ["text-[13px]", "font-semibold"], "the Username label");
   const field = html.match(/<input[^>]*id="lock-password"[^>]*>/)?.[0] ?? "";
-  expectAll(field, ["h-11", "rounded-[10px]", "text-[15px]"], "the password field");
+  expectAll(field, ["h-11", "rounded-[10px]", "text-base", "tab:text-[15px]", "md:text-[15px]"], "the password field");
+  assert.ok(!classesOf(field).includes("md:text-sm"), "the kit Input's md:text-sm gives way (720-767px reads 15px)");
   const submit = html.match(/<button[^>]*type="submit"[^>]*>/)?.[0] ?? "";
   expectAll(submit, ["h-12", "rounded-[10px]", "bg-primary"], "the submit button");
   expectAll(tagOf(html, "lock-use-pin"), ["p-1", "text-[13.5px]", "text-link"], "Sign in with PIN");
@@ -195,10 +213,10 @@ test("the lock's password form renders the same form style", async () => {
 
 // ── The shell ───────────────────────────────────────────────────────────────
 
-test("the Online chip's words (ruling R28): Online, or Offline · PINs still work", async () => {
+test("the Online chip's words (rulings R28, R32): Online, or Offline (our PIN is checked on the server)", async () => {
   const { onlineChipLabel } = await import("@/components/auth/AuthShell");
   assert.equal(onlineChipLabel(true), "Online", "online");
-  assert.equal(onlineChipLabel(false), "Offline · PINs still work", "offline");
+  assert.equal(onlineChipLabel(false), "Offline", "offline: the HTML's \"PINs still work\" is untrue for us (R32)");
 });
 
 test("the online state comes from navigator.onLine and the online/offline events, never a request", () => {
@@ -244,7 +262,7 @@ test("AuthShell is the HTML's lock root (values 4.2, ruling R27): fixed full scr
   expectAll(tagOf(html, "auth-net-dot"), ["size-[7px]", "rounded-[50%]", "bg-status-ok"], "the chip's dot");
   assert.ok(textOf(html).includes("Online"), "the chip reads Online (a server render is online)");
   expectAll(tagOf(html, "auth-divider"), ["hidden", "tab:block", "h-5", "w-px", "bg-border"], "the divider");
-  expectAll(tagOf(html, "auth-clock"), ["whitespace-nowrap", "text-[13.5px]", "font-medium"], "the clock");
+  expectAll(tagOf(html, "auth-clock"), ["whitespace-nowrap", "text-[13.5px]", "font-medium", "min-w-[61px]"], "the clock, holding its width until the first tick (review m6)");
   expectAll(tagOf(html, "auth-main"), ["relative", "flex", "min-h-0", "flex-1", "flex-col", "items-center", "overflow-auto", "px-3", "pt-1", "pb-2", "tab:px-6", "tab:py-2"], "the main area");
   expectAll(
     tagOf(html, "auth-card"),
@@ -312,10 +330,14 @@ test("PIN: AuthShell is the new card (no painting, postmark, stamp or brand card
 
 test("PIN: PinSignIn signs in through the shared client and words every refusal with pinFailureMessage, with no fetch of its own", () => {
   const src = read(PIN);
-  assert.ok(src.length > 0, "landmark: PinSignIn exists");
+  // U0 match Task 10 fix 1 (review m9): the pure helpers (the pad's words, the tile lines, the tabs, the dates) moved to
+  // lib/staff-picker.ts; PinSignIn calls them, so the refusal words and the copy are checked across both files.
+  const helpers = read(PICKER);
+  assert.ok(src.length > 0 && helpers.length > 0, "landmark: PinSignIn and lib/staff-picker exist");
   assert.match(src, /signInWithPin\(/, "PinSignIn calls signInWithPin(");
-  assert.match(src, /pinFailureMessage\(/, "PinSignIn calls pinFailureMessage(");
-  assert.equal(count(src, "fetch("), 0, "PinSignIn makes no fetch( of its own");
+  assert.match(src, /pinPadView\(/, "PinSignIn words the pad through pinPadView(");
+  assert.match(helpers, /pinFailureMessage\(/, "pinPadView calls pinFailureMessage(");
+  assert.equal(count(src, "fetch(") + count(helpers, "fetch("), 0, "no fetch( of its own");
   for (const copy of [
     "Select your name to sign in",
     "Sign in with username and password",
@@ -324,11 +346,13 @@ test("PIN: PinSignIn signs in through the shared client and words every refusal 
     "All staff",
     "· Enter your 4-digit PIN",
     "Search staff",
-    // U0 match Task 10 (rulings R28, R30, design 5.6): the HTML's words for a blocked tile and a right PIN.
+    // U0 match Task 10 (rulings R28, R30, R37, design 5.6): the HTML's words for a blocked tile, a waiting person's
+    // tile and a right PIN.
     "PIN blocked",
+    "Try again soon",
     "Unlocking…",
   ]) {
-    assert.ok(src.includes(copy), `PinSignIn holds the copy "${copy}"`);
+    assert.ok(src.includes(copy) || helpers.includes(copy), `PinSignIn (or its helpers) holds the copy "${copy}"`);
   }
   // Ruling R30: a right PIN shows the HTML's success look while our own sign-in completes, with no wait added.
   const submitAt = src.indexOf("const submit = async");
@@ -337,7 +361,9 @@ test("PIN: PinSignIn signs in through the shared client and words every refusal 
   const ok = submit.indexOf("setSucceeded(true)");
   const signedIn = submit.indexOf("await onSignedIn(person)");
   assert.ok(ok >= 0 && signedIn > ok, "the success look is set before (not after) the caller's sign-in completes");
-  assert.ok(!/setTimeout\(|wait\(/.test(submit), "no added wait in the flow");
+  // Ruling R35: nothing holds the sign-in back for the look (no timer, no frame, no forced flush): on the lock the cover
+  // closes in the same render, so the look shows on /login only.
+  assert.ok(!/setTimeout\(|wait\(|requestAnimationFrame\(|flushSync\(/.test(submit), "no added wait in the flow");
   assert.match(src, /<PinPad\b[^>]*\bkeyboard\b/, "the pad listens to the keyboard (a counter PC)");
   assert.match(src, /<StaffAvatar\b[^>]*seed=\{/, "avatars are seeded by the person's id, so a colour is stable");
   assert.match(src, /setInterval\(\s*tick,\s*WAIT_TICK_MS\s*\)/, "the wait counts down on a local timer");
@@ -347,7 +373,7 @@ test("PIN: PinSignIn signs in through the shared client and words every refusal 
 // ── PinSignIn: pure helpers ─────────────────────────────────────────────────
 
 test("PIN: the picker's greeting and date line, in fixed English", async () => {
-  const { pinGreeting, pickerDateLabel } = await import("@/components/auth/PinSignIn");
+  const { pinGreeting, pickerDateLabel } = await import("@/lib/staff-picker");
   assert.equal(pickerDateLabel(new Date(2026, 9, 16, 20, 27)), "Friday, 16 October", "the mock-up's date line");
   assert.equal(pickerDateLabel(new Date(2027, 0, 3, 9, 0)), "Sunday, 3 January", "no zero padding; month in full");
   assert.equal(pinGreeting(new Date(2026, 9, 16, 20, 27)), "Good evening", "evening, no full stop (the mock-up)");
@@ -363,7 +389,7 @@ test("PIN: the picker's greeting and date line, in fixed English", async () => {
 });
 
 test("PIN: the role tabs count every remembered person (All staff), the admins and the staff (R28, design 5.6)", async () => {
-  const { roleTabs } = await import("@/components/auth/PinSignIn");
+  const { roleTabs } = await import("@/lib/staff-picker");
   assert.deepEqual(
     roleTabs(THREE).map((t) => [t.value, t.label, t.count]),
     [["all", "All staff", 3], ["admin", "Admin", 1], ["staff", "Staff", 2]],
@@ -374,19 +400,60 @@ test("PIN: the role tabs count every remembered person (All staff), the admins a
 });
 
 test("PIN: a tile's line under the name: Locked · {ago} for the locker, PIN blocked for a blocked PIN, else the role", async () => {
-  const { tileSub } = await import("@/components/auth/PinSignIn");
+  const { tileSub } = await import("@/lib/staff-picker");
   const priya = THREE[0];
   const rohan = THREE[1];
   const locker = { id: priya.id, label: "Locked · 3 min ago" };
-  assert.deepEqual(tileSub(priya, locker, new Set()), { text: "Locked · 3 min ago", tone: "locked" }, "the locker");
-  assert.deepEqual(tileSub(rohan, locker, new Set()), { text: "Staff", tone: "role" }, "anyone else: the role");
-  assert.deepEqual(tileSub(rohan, null, new Set([rohan.id])), { text: "PIN blocked", tone: "blocked" }, "a blocked PIN (design 5.6)");
-  assert.deepEqual(tileSub(priya, null, new Set()), { text: "Admin", tone: "role" }, "an admin's role");
-  assert.deepEqual(tileSub(priya, locker, new Set([priya.id])), { text: "Locked · 3 min ago", tone: "locked" }, "the locker's mark comes first");
+  assert.deepEqual(tileSub(priya, locker, new Set(), null), { text: "Locked · 3 min ago", tone: "locked" }, "the locker");
+  assert.deepEqual(tileSub(rohan, locker, new Set(), null), { text: "Staff", tone: "role" }, "anyone else: the role");
+  assert.deepEqual(tileSub(rohan, null, new Set([rohan.id]), null), { text: "PIN blocked", tone: "blocked" }, "a blocked PIN (design 5.6)");
+  assert.deepEqual(tileSub(priya, null, new Set(), null), { text: "Admin", tone: "role" }, "an admin's role");
+  assert.deepEqual(tileSub(priya, locker, new Set([priya.id]), null), { text: "Locked · 3 min ago", tone: "locked" }, "the locker's mark comes first");
+  // Ruling R37: while our local wait runs for a person, the HTML's locked-out words in bad-i (values 4.3 tile states).
+  assert.deepEqual(tileSub(rohan, locker, new Set(), rohan.id), { text: "Try again soon", tone: "out" }, "a person in the wait");
+  assert.deepEqual(tileSub(rohan, null, new Set([rohan.id]), rohan.id), { text: "PIN blocked", tone: "blocked" }, "a blocked PIN says so, wait or not");
+  assert.deepEqual(tileSub(priya, locker, new Set(), priya.id), { text: "Locked · 3 min ago", tone: "locked" }, "the locker's mark still first");
+  assert.deepEqual(tileSub(priya, null, new Set(), rohan.id), { text: "Admin", tone: "role" }, "someone else's wait leaves this tile alone");
+});
+
+test("ruling R37: the picker hands the running wait's person to tileSub, and that line reads in bad-i", () => {
+  const src = read(PIN);
+  assert.match(src, /tileSub\(person, highlight, blockedIds, waitingId\)/, "the tile line knows who is in the wait");
+  assert.match(src, /const waitingId = wait !== null && waitLeftSec > 0 \? wait\.id : null;/, "only while the wait runs");
+  assert.match(src, /out: "text-status-bad-ink"/, "the HTML's locked-out sub colour (bad-i)");
+});
+
+test("ruling R34: Escape on the pad goes back to the picker, unless a field has focus or a try is in flight", async () => {
+  const { escapeGoesBack } = await import("@/lib/staff-picker");
+  assert.equal(escapeGoesBack({ key: "Escape", activeTag: "BODY", busy: false }), true, "Escape with nothing focused");
+  assert.equal(escapeGoesBack({ key: "Escape", activeTag: "DIV", busy: false }), true, "Escape on the pad region");
+  assert.equal(escapeGoesBack({ key: "Escape", activeTag: "INPUT", busy: false }), false, "never from a field");
+  assert.equal(escapeGoesBack({ key: "Escape", activeTag: "TEXTAREA", busy: false }), false, "never from a text area");
+  assert.equal(escapeGoesBack({ key: "Escape", activeTag: "BODY", busy: true }), false, "never while a try is in flight (its answer belongs to the pad)");
+  assert.equal(escapeGoesBack({ key: "Enter", activeTag: "BODY", busy: false }), false, "only Escape");
+});
+
+test("ruling R34: the pad opens with focus on its own region (no ring on All staff), and Escape is heard on key-up", () => {
+  const src = read(PIN);
+  assert.match(src, /padRef\.current\?\.focus\(\)/, "the opening focus goes to the pad region");
+  assert.ok(!/backRef\.current\?\.focus\(\)/.test(src), "not to All staff (typed digits would paint its ring, Enter would leave)");
+  const view = src.match(/<div\b[^>]*data-ui="pin-view"[^>]*>/)?.[0] ?? "";
+  assert.ok(view.includes("tabIndex={-1}"), "the region takes focus without joining the Tab order");
+  assert.ok(view.includes('role="group"') && view.includes("aria-labelledby={"), "a screen reader hears the person and the PIN line on arrival");
+  assert.ok(view.includes("outline-none"), "no focus ring on the region");
+  // The lock cover swallows Escape's key-DOWN at the window (sheets left open under it must not close), so the pad
+  // listens for the key-up, the same on the login page and the lock.
+  assert.match(src, /window\.addEventListener\("keyup", onKeyUp\)/, "a window key-up listener");
+  assert.match(src, /escapeGoesBack\(/, "decided by escapeGoesBack");
+  // While a try is in flight (and through the success look) "All staff" is disabled but keeps its strength, as the
+  // HTML's link never dims (the keys do the same).
+  const back = src.match(/const BACK_CLASS = cn\(\s*"([^"]+)"/)?.[1] ?? "";
+  assert.ok(back.includes("disabled:pointer-events-none"), "a disabled All staff takes no tap");
+  assert.ok(!back.includes("disabled:opacity"), "and is not dimmed");
 });
 
 test('PIN: an empty search says "No staff found for “{q}”." (the HTML\'s words, the trimmed query)', async () => {
-  const { noStaffLine } = await import("@/components/auth/PinSignIn");
+  const { noStaffLine } = await import("@/lib/staff-picker");
   assert.equal(noStaffLine("zz"), "No staff found for “zz”.", "the HTML's sentence with curly quotes");
   assert.equal(noStaffLine("  ro  "), "No staff found for “ro”.", "the query as filtered (trimmed)");
 });
@@ -400,7 +467,7 @@ test("PIN: the header clock reads h:mm AM/PM", async () => {
 });
 
 test("PIN: the tile filter keeps the role tab and the search together", async () => {
-  const { visiblePeople } = await import("@/components/auth/PinSignIn");
+  const { visiblePeople } = await import("@/lib/staff-picker");
   const ids = (list: KnownPerson[]) => list.map((p) => p.id).join(",");
   assert.equal(ids(visiblePeople(NINE, "all", "")), NINE.map((p) => p.id).join(","), "all, no search: everyone, in order");
   assert.equal(ids(visiblePeople(NINE, "admin", "")), "p1,p4", "Admin: the two admins");
@@ -411,7 +478,7 @@ test("PIN: the tile filter keeps the role tab and the search together", async ()
 });
 
 test("PIN: what the pad shows for each answer (wrong keeps it enabled; a wait or a block disables it)", async () => {
-  const { pinPadView } = await import("@/components/auth/PinSignIn");
+  const { pinPadView } = await import("@/lib/staff-picker");
   assert.deepEqual(pinPadView({ failure: null, waitLeftSec: 0, busy: false }), { message: null, disabled: false }, "idle");
   assert.deepEqual(pinPadView({ failure: null, waitLeftSec: 0, busy: true }), { message: null, disabled: true }, "a try in flight");
   assert.deepEqual(
@@ -483,7 +550,7 @@ test("PIN: the picker's look is the HTML's (values 4.3): head row, search box, r
     ["flex", "items-center", "gap-2", "h-10", "w-[calc(100%-32px)]", "tab:w-[260px]", "rounded-[8px]", "border", "border-border", "bg-card", "px-3"],
     "the search box",
   );
-  expectAll(tagOf(html, "pick-search-input"), ["min-w-0", "flex-1", "border-0", "bg-transparent", "text-[14px]", "text-foreground", "outline-none", "placeholder:text-subtle-foreground", "[&::-webkit-search-cancel-button]:appearance-none"], "the search input (no browser clear button: the HTML's has none)");
+  expectAll(tagOf(html, "pick-search-input"), ["min-w-0", "flex-1", "border-0", "bg-transparent", "text-base", "tab:text-[14px]", "leading-[normal]", "text-foreground", "outline-none", "placeholder:text-subtle-foreground", "[&::-webkit-search-cancel-button]:appearance-none"], "the search input (no browser clear button: the HTML's has none)");
   expectAll(tagOf(html, "pick-tabs"), ["flex", "w-full", "gap-1", "overflow-x-auto", "border-b", "border-border"], "the role tabs row");
   expectAll(tagOf(html, "pick-tabs-root"), ["-mt-1.5", "flex", "flex-col", "gap-5"], "the tabs block (the HTML's margin-top -6, 20 to the grid)");
   for (let i = 0; i < 3; i += 1) {
@@ -523,8 +590,8 @@ test("PIN: ruling R29 — two visible tiles with the same short name show the fu
 test("PIN: nine remembered people -> the search field and the tabs All staff 9 / Admin 2 / Staff 7", async () => {
   const html = await renderPinSignIn({ people: NINE });
   assert.equal(tilesOf(html).length, 9, "nine tiles on the All staff tab");
-  assert.ok(html.includes('placeholder="Search staff"'), "the search field shows above 8 people");
-  assert.ok(html.includes('role="tablist"'), "the role tabs show above 8 people");
+  assert.ok(html.includes('placeholder="Search staff"'), "the search field shows");
+  assert.ok(html.includes('role="tablist"'), "the role tabs show");
   const text = textOf(html);
   for (const tab of ["All staff 9", "Admin 2", "Staff 7"]) {
     assert.ok(text.includes(tab), `the tab "${tab}"`);

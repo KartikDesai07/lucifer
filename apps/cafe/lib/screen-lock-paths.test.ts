@@ -169,6 +169,25 @@ test("the cover's look (values 4.2, ruling R3/R27): the cafe's own tile, its nam
   assert.match(src, /subline=\{<NavDeviceLine lead=\{VENDOR_PRODUCT_NAME\} \/>\}/, "Sandbee POS · {this device's print name}");
   assert.match(src, /footerAction=\{/, "Sign out sits in the footer row, beside Powered by");
   assert.ok(!/\bfooter=\{/.test(src), "and no longer in the card (the card measures as the HTML's)");
+  // Review m3: the 12.5px link keeps the 41px footer, and a pseudo-element gives it a hit area of 24px or more
+  // (17px line + 2 x 6px), 8px wider on each side.
+  const cls = src.match(/const SIGN_OUT_CLASS =\s*"([^"]+)"/)?.[1] ?? "";
+  for (const token of ["relative", "before:absolute", "before:-inset-x-2", "before:-inset-y-1.5", "before:content-['']"]) {
+    assert.ok(cls.split(/\s+/).includes(token), `Sign out carries ${token} (got "${cls}")`);
+  }
+  assert.ok(!/\b(p|py|px|h|min-h)-/.test(cls), "no padding or height of its own (the footer stays 41px)");
+});
+
+// Ruling R35: the lock shows no success flash. Our unlock closes the cover as soon as it is done, and nothing on the
+// way holds it for a look (R30: no added wait): no timer, no frame, no forced flush.
+test("PIN: a right PIN on the lock closes the cover at once (ruling R35: no hold for a success look)", () => {
+  const src = read(COVER);
+  const unlockedAt = src.indexOf("const unlocked = async");
+  const body = src.slice(unlockedAt, src.indexOf("const signOut", unlockedAt));
+  assert.ok(unlockedAt >= 0 && body.includes("close();"), "landmark: unlocked() ends in close()");
+  assert.ok(!/setTimeout\(|requestAnimationFrame\(|flushSync\(|wait\(/.test(body), "unlocked() holds nothing back");
+  assert.match(src, /const pinSignedIn = \(person: KnownPerson\) => onUnlocked\(/, "a PIN goes straight to onUnlocked");
+  assert.ok(!/flushSync/.test(src), "no forced flush anywhere in the cover");
 });
 
 test("PIN: activity is pointerdown/keydown on window in the capture phase; the idle check is a 30 s local timer plus visibilitychange, calling autoLockDue (no request)", () => {

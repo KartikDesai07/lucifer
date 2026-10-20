@@ -63,9 +63,10 @@ const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 // The lock's Sign out, in the footer line beside "Powered by" (U0 match Task 10): the footer's own 12.5px, our link
-// colour and weight, no padding, so the footer keeps the HTML's 41px.
+// colour and weight, no padding, so the footer keeps the HTML's 41px; an invisible pseudo-element widens what a finger
+// hits to 29px tall and 16px wider (review m3).
 const SIGN_OUT_CLASS =
-  "rounded-[4px] font-medium leading-[normal] text-link outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "relative rounded-[4px] font-medium leading-[normal] text-link outline-none focus-visible:ring-2 focus-visible:ring-ring before:absolute before:-inset-x-2 before:-inset-y-1.5 before:content-['']";
 
 type LockReason = "auto" | "manual" | "switch";
 /** An open cover: the stored state, who was signed in when it opened, and a fresh key per lock. */
