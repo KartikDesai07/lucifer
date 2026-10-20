@@ -104,16 +104,16 @@ custom breakpoints, container queries), the shadcn/Radix kit, next/font (Geist, 
   (`--seg-sh`) and `shadow-pop` (`--pop`). Fonts: `font-mono` = Geist Mono, `font-brand-script` = Shrikhand.
   Breakpoints `tab:` (45rem) and `desk:` (68.75rem).
 
-- [ ] **Step 1: tests first.** `theme-tokens.test.ts`: one assertion per new token with the HTML hex (message names the
+- [x] **Step 1: tests first.** `theme-tokens.test.ts`: one assertion per new token with the HTML hex (message names the
   values § row); the status inks equal values §1.1; `fonts-paths.test.ts`: `lib/fonts.ts` loads `Shrikhand` weight 400
   through `next/font/google` with a CSS variable registered in `@theme inline` as `--font-brand-script`;
   `theme-tokens.test.ts`: `@theme inline` declares `--breakpoint-tab: 45rem` and `--breakpoint-desk: 68.75rem`;
   `ui-constants.test.ts`: the eight avatar hues map to the values §1.6 bg/fg hex. Run them: RED.
-- [ ] **Step 2: implement** the tokens, the font and the breakpoints. Keep every existing token name working (other
+- [x] **Step 2: implement** the tokens, the font and the breakpoints. Keep every existing token name working (other
   pages use them); where U0 changed an HTML value for contrast, the HTML value returns and `brand-contrast.test.ts` drops
   or adjusts that pair with the reason "owner's HTML value (design §9)".
-- [ ] **Step 3:** the five test files GREEN; `css-compat.test.ts` GREEN; the cafe chain, typecheck, lint.
-- [ ] **Step 4: commit** (one commit; the body lists every pin changed and why).
+- [x] **Step 3:** the five test files GREEN; `css-compat.test.ts` GREEN; the cafe chain, typecheck, lint.
+- [x] **Step 4: commit** (one commit; the body lists every pin changed and why).
 
 No probes for this task (it has no screen of its own); Task 2 onwards measure the tokens in use.
 
@@ -140,20 +140,20 @@ No probes for this task (it has no screen of its own); Task 2 onwards measure th
   `76`; the nav item data with HTML labels (design §5.2: groups Operate / Manage; "Home", "Order", rail label
   "Bookings" for Reservations).
 
-- [ ] **Step 1: tests first.** `pos-layout-paths.test.ts`: `navWidthPx` returns 0 / 76 / 232 / 76 for (390, false),
+- [x] **Step 1: tests first.** `pos-layout-paths.test.ts`: `navWidthPx` returns 0 / 76 / 232 / 76 for (390, false),
   (1024, false), (1280, false), (1280, true), and the grid columns the POS computes at 1280, 1280-collapsed, 1024, 820,
   390 are each ≥ 1 and the grid's total width fits the viewport minus the nav (message per width);
   `sidebar-order-paths.test.ts`: group labels "Operate" and "Manage", the item order of design §5.2, labels "Home" and
   "Order"; `sidebar-paths.test.ts`: the rail label of Reservations is "Bookings" below 1280 px or when collapsed. RED.
-- [ ] **Step 2: implement** values §2.3 exactly (wide and rail; Collapse/Expand at ≥ 1280 px remembered on the device;
+- [x] **Step 2: implement** values §2.3 exactly (wide and rail; Collapse/Expand at ≥ 1280 px remembered on the device;
   the brand tile shows the cafe's uploaded logo, else the first letter in Shrikhand on `brand-red`; line 2 "{product
   name} · {device print name}"; the grey Order Requests badge; the user card). Sub-rows and flyouts per design §5.2.
-- [ ] **Step 3:** the changed pins GREEN with reasons; the cafe chain, typecheck, lint.
-- [ ] **Step 4: probes** for values §2.3 (nav box, brand tile, name lines, group label, separator (rail), item
+- [x] **Step 3:** the changed pins GREEN with reasons; the cafe chain, typecheck, lint.
+- [x] **Step 4: probes** for values §2.3 (nav box, brand tile, name lines, group label, separator (rail), item
   height/width/padding/font/radius/colours active and resting, active bar, badge, Collapse, divider, user card,
   avatar) at the five viewports; run; fix until clean. Also open `/pos` at the five viewports and attach a shot of each
   (Review Focus 1).
-- [ ] **Step 5: commit.**
+- [x] **Step 5: commit.**
 
 ### Task 3: The page header and the request strip (every page)
 
@@ -185,24 +185,24 @@ No probes for this task (it has no screen of its own); Task 2 onwards measure th
   mount, never rendered twice). The page body no longer shows `PageHeader`'s `<h2>` block; the header's title is the
   page's `<h1>`.
 
-- [ ] **Step 1: tests first.** `page-header-slot.test.ts`: `pageTitleFor` returns each page's `PageHeader` title for
+- [x] **Step 1: tests first.** `page-header-slot.test.ts`: `pageTitleFor` returns each page's `PageHeader` title for
   every route in `app/(dashboard)` (one assertion per route, message names the route); `PageHeader` renders nothing in
   the body at ≥ 720 px and its actions exactly once at each width (render with a stub media hook); a non-string eyebrow
   becomes a link with its href. Update `common-components.test.ts` (the `<h2>` expectation → the header slot contract,
   reason in the commit). `printer-dot-ui-paths.test.ts`: the header order becomes: (phone) mini logo, title block, page
   actions, Tables, New order, Refresh, Tokens, printer; `sidebar-order-paths.test.ts`: header classes per values §2.5.
   RED.
-- [ ] **Step 2: implement.** Header exactly values §2.5 (padding 0 20px / 0 12px, min-height 56, bottom border, sticky,
+- [x] **Step 2: implement.** Header exactly values §2.5 (padding 0 20px / 0 12px, min-height 56, bottom border, sticky,
   z-index 3; title 15/600 line-height 1.2; subtitle 12 px `text-2` ellipsised; 36 px buttons: outline 1px `border`,
   radius 8, 13.5/500, gap 7, icon 15; primary `accent`, 13.5/600, gap 6, plus icon 14 stroke 2.4; labels hidden on a
   phone). Default subtitle when a page gives none: "{cafe name} · {weekday, day month}". The strip per design §5.3.
-- [ ] **Step 3:** pins GREEN with reasons; the cafe chain, typecheck, lint.
-- [ ] **Step 4: probes** for values §2.5 on the dashboard and on `/orders` (title, subtitle, End of day/New
+- [x] **Step 3:** pins GREEN with reasons; the cafe chain, typecheck, lint.
+- [x] **Step 4: probes** for values §2.5 on the dashboard and on `/orders` (title, subtitle, End of day/New
   order/printer boxes and styles, the dot, mini logo on a phone) and for the strip (height, colours, font sizes) with a
   pending request in the database (create one through the demo seeder's data or `/m` locally); run; fix until clean.
   Attach shots of `/requests`, `/expenses`, `/kitchen`, `/settings/business`, `/tables/qr` at 1280 and 390 (Review
   Focus 2).
-- [ ] **Step 5: commit.**
+- [x] **Step 5: commit.**
 
 ### Task 4: Phone tab bar, the More / profile sheet, Ctrl/⌘+L, toasts
 
@@ -221,20 +221,20 @@ No probes for this task (it has no screen of its own); Task 2 onwards measure th
 - Produces: `TAB_BAR_ITEMS` (Home `/`, Floor `/tables`, Order `/pos`, Orders `/orders`) and `moreItemsFor(role, tokensOn)`
   (every allowed destination not in the tab bar, groups with their sub-pages); `ProfileSheet({ open, onOpenChange })`.
 
-- [ ] **Step 1: tests first.** `tab-bar-paths.test.ts`: the four tabs and More with the HTML labels; the active colour
+- [x] **Step 1: tests first.** `tab-bar-paths.test.ts`: the four tabs and More with the HTML labels; the active colour
   rule; `moreItemsFor("staff", false)` has no admin-only item; group tiles list their sub-pages; the More button's
   accessible name is "More". `screen-lock-paths.test.ts`: the sheet rows in order Lock screen, Switch user, Change
   password, Sign out with the existing copy; the footer "Auto-locks after {n} min without activity" / "Auto-lock is
   off"; Ctrl/⌘+L calls `requestScreenLock("manual")` and not inside an input. RED.
-- [ ] **Step 2: implement** values §2.6, §2.7, §2.8 exactly (the phone sheet slides from the bottom over the scrim;
+- [x] **Step 2: implement** values §2.6, §2.7, §2.8 exactly (the phone sheet slides from the bottom over the scrim;
   tablet/desktop panel anchored as values §2.1 `menuLeft/menuBottom/menuW`); a group tile opens a second view with a back
   arrow (design §5.4).
-- [ ] **Step 3:** GREEN; the cafe chain, typecheck, lint.
-- [ ] **Step 4: probes** for the tab bar (bar box, tab boxes, icon size, label font, colours, glass), the sheet at 1280,
+- [x] **Step 3:** GREEN; the cafe chain, typecheck, lint.
+- [x] **Step 4: probes** for the tab bar (bar box, tab boxes, icon size, label font, colours, glass), the sheet at 1280,
   1024 and 390 (panel box, user block, grid buttons 86.5×72 on a phone, rows 52 px, chip), the toast box at each width;
   run; fix until clean. Attach phone shots of `/pos` with a cart, `/orders` scrolled to the bottom, and a toast
   (Review Focus 3).
-- [ ] **Step 5: commit.**
+- [x] **Step 5: commit.**
 
 ### Task 5: Dashboard frame, header actions, attention, period row, the card shell
 
@@ -252,15 +252,15 @@ No probes for this task (it has no screen of its own); Task 2 onwards measure th
 - Test: `lib/dashboard-layout-paths.test.ts`, the dashboard pins of code-map §7.3, `lib/report*` pins that read
   `RangeBar`/`EndOfDayButton` (must stay green: reports unchanged)
 
-- [ ] **Step 1: tests first:** the attention item mapping (strong/rest/action/dot/href per design §5.5, one assertion
+- [x] **Step 1: tests first:** the attention item mapping (strong/rest/action/dot/href per design §5.5, one assertion
   each); the period track and button classes; the card shell classes; the page container padding and `@container`; the
   reports' `RangeBar` and `EndOfDayButton` classes unchanged. RED.
-- [ ] **Step 2: implement** values §3.0–§3.2 exactly with our data and words; the phone attention card (closed by
+- [x] **Step 2: implement** values §3.0–§3.2 exactly with our data and words; the phone attention card (closed by
   default, chevron rotation, rows 46 px, action 28 px); "All clear" state in 13 px `text-2`.
-- [ ] **Step 3:** GREEN; chain, typecheck, lint.
-- [ ] **Step 4: probes** (the content box per viewport from values §3.18, the attention label/chip/pill, the phone card,
+- [x] **Step 3:** GREEN; chain, typecheck, lint.
+- [x] **Step 4: probes** (the content box per viewport from values §3.18, the attention label/chip/pill, the phone card,
   the period title/sub/track/buttons, one generic card's padding/radius/title/sub/link); run; fix until clean.
-- [ ] **Step 5: commit.**
+- [x] **Step 5: commit.**
 
 ### Task 6: Net sales hero, bill breakdown, the sales mask
 
@@ -285,20 +285,20 @@ No probes for this task (it has no screen of its own); Task 2 onwards measure th
   or `{ ok: false, code }` with the same codes as the PIN sign-in; `Cache-Control: no-store`.
 - `SALES_REVEAL_MS = 3_600_000`; storage key `pos.salesReveal` holding `{ by, until }` in sessionStorage.
 
-- [ ] **Step 1: tests first.** `sales-reveal.test.ts`: the three states of values §3.3 (labels, titles, hints with
+- [x] **Step 1: tests first.** `sales-reveal.test.ts`: the three states of values §3.3 (labels, titles, hints with
   minutes, colours); `maskMoney` gives "₹ • • • •" and the bill rows "• • • •"; a different `me` than `by` is masked and
   needs the PIN; expiry after 60 min. `staff-pin-signin.test.ts`: `verifyOwnStaffPin` takes a slot before the compare,
   refunds a right PIN, keeps a wrong one, answers blocked/nopin/wait. Live leg: the route refuses a signed-out caller,
   answers ok for the right PIN, a wrong PIN shows in the same window as a PIN sign-in. RED.
-- [ ] **Step 2: implement** values §3.3, §3.4, §3.16, §3.17 exactly with our KPIs and our bill rows (design §5.5); the
+- [x] **Step 2: implement** values §3.3, §3.4, §3.16, §3.17 exactly with our KPIs and our bill rows (design §5.5); the
   no-PIN messages of design §7; locking (`SCREEN_LOCK_EVENT`) and leaving the dashboard set shown to false; the toast
   "Sales visible for the next hour · tap the eye to hide".
-- [ ] **Step 3:** GREEN (unit + the live leg); chain, typecheck, lint.
-- [ ] **Step 4: probes** (hero box per viewport from values §3.18, padding, radius, label, the figure 60/42 px Geist Mono
+- [x] **Step 3:** GREEN (unit + the live leg); chain, typecheck, lint.
+- [x] **Step 4: probes** (hero box per viewport from values §3.18, padding, radius, label, the figure 60/42 px Geist Mono
   500 −0.04em line-height 1, pill, reveal button 36 px, hint, minis grid columns and value 24 px; the receipt box, head,
   rules, rows, total 22 px, torn edge; the dialog panel 360 px, keys 100.66×50, dots) masked and revealed; run; fix until
   clean.
-- [ ] **Step 5: commit.**
+- [x] **Step 5: commit.**
 
 ### Task 7: Sales by hour (CSS bars) and Live tables
 
@@ -313,15 +313,15 @@ No probes for this task (it has no screen of its own); Task 2 onwards measure th
   importers pin then lists only `components/reports/ReportChart.tsx`)
 - Test: new `lib/dashboard/hour-bars.test.ts`, `lib/dashboard-layout-paths.test.ts`, the chart.js importers pin
 
-- [ ] **Step 1: tests first:** `hour-bars.test.ts`: window, step and ticks (`₹6k, ₹4k, ₹2k, ₹0` for a 5,360 max),
+- [x] **Step 1: tests first:** `hour-bars.test.ts`: window, step and ticks (`₹6k, ₹4k, ₹2k, ₹0` for a 5,360 max),
   heights, future hours, peak/quietest strings, vs % and colour, polyline points (values §3.5 formulas);
   LiveFloorPanel: the status mapping table and the sub line "{inUse} of {total} in use · {reserved} reserved". RED.
-- [ ] **Step 2: implement** values §3.5 and §3.6 exactly (210 px plot, 70 px grid lines, bars max 34 px radius 5 5 2 2,
+- [x] **Step 2: implement** values §3.5 and §3.6 exactly (210 px plot, 70 px grid lines, bars max 34 px radius 5 5 2 2,
   the tooltip, x labels every 2nd hour (every 3rd on a phone), 92 px tiles 52 px tall).
-- [ ] **Step 3:** GREEN; chain, typecheck, lint.
-- [ ] **Step 4: probes** (card boxes and grid columns per values §3.18, plot box, a bar's width/radius, tick font, legend,
+- [x] **Step 3:** GREEN; chain, typecheck, lint.
+- [x] **Step 4: probes** (card boxes and grid columns per values §3.18, plot box, a bar's width/radius, tick font, legend,
   footer, tables status bar, legend, zone label, tile box/padding/fonts per state); run; fix until clean.
-- [ ] **Step 5: commit.**
+- [x] **Step 5: commit.**
 
 ### Task 8: Recent orders, Today's reservations, How guests paid, Where orders came from, Money leaks
 
@@ -331,14 +331,14 @@ No probes for this task (it has no screen of its own); Task 2 onwards measure th
   `MoneyLeaks.tsx` (values §3.11), `RankedList.tsx` if its rows change (pinned bar class: change with reason)
 - Test: `lib/dashboard-layout-paths.test.ts` and the code-map §7.3 pins of these cards
 
-- [ ] **Step 1: tests first:** each card's row structure and words (our data: "#NNN · {table|Walk-in}", the code tile
+- [x] **Step 1: tests first:** each card's row structure and words (our data: "#NNN · {table|Walk-in}", the code tile
   `T{n}`/`TA`/…, pay pill kinds; the reservation time pill; the payment total and bar; source tiles; leak rows and the
   total pill). RED.
-- [ ] **Step 2: implement** values §3.7–§3.11 exactly with our data and empty/error/loading states in the card shell.
-- [ ] **Step 3:** GREEN; chain, typecheck, lint.
-- [ ] **Step 4: probes** (per card: box per viewport, header, a row's grid/padding/fonts/tiles/pills); run; fix until
+- [x] **Step 2: implement** values §3.7–§3.11 exactly with our data and empty/error/loading states in the card shell.
+- [x] **Step 3:** GREEN; chain, typecheck, lint.
+- [x] **Step 4: probes** (per card: box per viewport, header, a row's grid/padding/fonts/tiles/pills); run; fix until
   clean.
-- [ ] **Step 5: commit.**
+- [x] **Step 5: commit.**
 
 ### Task 9: Top items, Sales by category, Slow movers, Busy hours
 
@@ -349,13 +349,13 @@ No probes for this task (it has no screen of its own); Task 2 onwards measure th
   phone (the HTML does not transpose), the "Busiest: …" line and the legend 14 px squares)
 - Test: `lib/dashboard-layout-paths.test.ts`, the busy-hours pins
 
-- [ ] **Step 1: tests first** (row structures, the busy-hours grid columns and the phone scroll instead of transpose,
+- [x] **Step 1: tests first** (row structures, the busy-hours grid columns and the phone scroll instead of transpose,
   the legend). RED.
-- [ ] **Step 2: implement** values §3.12–§3.15 exactly.
-- [ ] **Step 3:** GREEN; chain, typecheck, lint.
-- [ ] **Step 4: probes;** run; fix until clean. Then run all dashboard probes (Tasks 5–9) together at the five viewports
+- [x] **Step 2: implement** values §3.12–§3.15 exactly.
+- [x] **Step 3:** GREEN; chain, typecheck, lint.
+- [x] **Step 4: probes;** run; fix until clean. Then run all dashboard probes (Tasks 5–9) together at the five viewports
   and compare the full-page boxes with values §3.18.
-- [ ] **Step 5: commit.**
+- [x] **Step 5: commit.**
 
 ### Task 10: Login, the lock cover, the staff picker, the PIN pad
 
@@ -373,24 +373,91 @@ No probes for this task (it has no screen of its own); Task 2 onwards measure th
 - Test: `lib/login-pin-paths.test.ts`, `lib/staff-pin-ui-paths.test.ts`, `lib/screen-lock-paths.test.ts`,
   `lib/common-components.test.ts` (PinPad), `lib/sign-in-paths.test.ts`, code-map §7.4 pins
 
-- [ ] **Step 1: tests first:** the tabs show at any count; tab counts; the search filters by name; "No staff found for
+- [x] **Step 1: tests first:** the tabs show at any count; tab counts; the search filters by name; "No staff found for
   “{q}”."; tile sub states; the Online chip words; the PIN pad's dot/key classes per state; the password form classes;
   the cover still makes the tab bar and the rail `inert`. RED.
-- [ ] **Step 2: implement** values §4.2–§4.5 exactly with our behaviour and messages (design §5.6).
-- [ ] **Step 3:** GREEN; chain, typecheck, lint.
-- [ ] **Step 4: probes** for the picker and the PIN pad at the five viewports (values §4.5 boxes: card, head, tabs,
+- [x] **Step 2: implement** values §4.2–§4.5 exactly with our behaviour and messages (design §5.6).
+- [x] **Step 3:** GREEN; chain, typecheck, lint.
+- [x] **Step 4: probes** for the picker and the PIN pad at the five viewports (values §4.5 boxes: card, head, tabs,
   grid, avatar, dots row, keypad, Forgot, footer; header row elements); the login page's password form at 1280 and 390;
   run; fix until clean.
-- [ ] **Step 5: commit.**
+- [x] **Step 5: commit.**
 
 ### Task 11: Whole verification (controller)
 
-- [ ] All probe files together at the five viewports: no difference except named mapped features; side-by-side shots
+- [x] All probe files together at the five viewports: no difference except named mapped features; side-by-side shots
   of every screen and size for the owner (`D:\kd\pos-dev-keep\ui-redesign\match\final\`).
-- [ ] Every suite (cafe chain, typecheck, lint; shared; mobile and desktop if touched; print-tools; release-native),
+- [x] Every suite (cafe chain, typecheck, lint; shared; mobile and desktop if touched; print-tools; release-native),
   the live legs (staff-pin incl. the reveal cases, bootstrap, dashboard, print, appearance), a production build in
   `D:\kd\uib`, every other page's first screen (`baseline.mjs` FOLD=1) with the new shell, the local a11y check, the
   emulator on WebView 109 (`/`, `/pos`, `/orders`, the printer panel, the lock, the reveal), the S1 pin, the print
   budget, the idle request count.
-- [ ] A fresh Claude Fable 5.1 whole-branch review; one fix wave; the plan's Results; the owner's preview on 3110 with
+- [x] A fresh Claude Fable 5.1 whole-branch review; one fix wave; the plan's Results; the owner's preview on 3110 with
   the new build; the merge question.
+
+## Results (2026-10-19 → 20)
+
+**Commits** `a0a4355..429307c` on `feat/ui-redesign` (26 commits, 160 files, +12208/−3375), executed
+subagent-driven: a task review after each task, fix rounds with scoped re-reviews, then the whole verification and a
+final whole-branch review with one fix wave.
+- Task 1 theme tokens, Shrikhand, the `tab`/`desk` breakpoints `1b0d669`; Task 2 the nav (232 px sidebar, 76 px rail,
+  collapse remembered) `bdcaf2d` + `0c96175`; Task 3 the 56 px page header on every page and the request strip
+  `65c0b22` + `7db1bbe`; Task 4 the phone tab bar, More/profile sheet, Ctrl/Cmd+L, the toast `8a9df41` + `5b3db50`.
+- Dashboard: Task 5 the frame (header actions, container, attention chips, period row) `486dc9f` + `0e07041`; Task 6
+  the Net sales hero, the bill breakdown, the sales mask with its own-PIN check `2b9e4ae` + `7f5e046`; Task 7 Sales by
+  hour as the HTML's bars, Live tables `4642e10` + `0651339`; Task 8 Recent orders, reservations, payments, sources,
+  money leaks `1f66c43` + `d9fe71e`; Task 9 Top items, categories, Slow movers, Busy hours, the HTML's global font
+  rules on staff screens `bb9e115` + `f4c3c5f`.
+- Task 10 login, the lock cover, the staff picker, the PIN pad `b4bc0b5` + `f842017` + `5631d39`.
+- The final fix wave: the header actions' fit rule `e49ef48`, the login header names the cafe `c017399`, the chart's
+  name keeps the total hidden while masked `2a4e184`, the header actions' filled look `79f4203`, dead code removed
+  `69b470b`, the header date past midnight `429307c`.
+
+**Tests.** The cafe chain 6451 tests, 6450 pass, 0 fail, 1 skipped (U0: 6229); typecheck clean; lint 0 errors (the 2
+known warnings). Shared 1015/1015, print-tools 11/11, release-native 12/12 (at `5631d39`); apps/mobile and
+apps/desktop unchanged since `4388752`. Live legs on new scratch databases: staff-pin 49/0 (incl. 13 sales-reveal
+cases), bootstrap 35/0, dashboard 171/0, print 473/0, appearance 14/0.
+
+**The measured match** (local tool `compare-ui.mjs`: the HTML from file:// with every other request blocked, our
+production build, five viewports 1280×800, 1280 collapsed, 1024×768 touch, 820×1180 touch, 390×844 phone): every probe
+file together, 166 differences in 17572 checks; 156 are named mapped features (below) with the page-offset arithmetic
+closing at all five viewports, 10 were a probe broken on a production build (fixed; 0 in 110). After the fix wave: task-3
+0/1046, task-5 0/1285, task-7 0/2169, task-10 12/2319 (mapped). 273 side-by-side pairs for the owner:
+`D:\kd\pos-dev-keep\ui-redesign\match\final\shots\index.html`.
+
+**Verification (local only).** Production build of `5631d39` in `D:\kd\uib` (webpack cache off): exit 0, `.next` 28 MB.
+Every page's first screen (`after-fold-5631d39\`, 78 shots, every route 200, console identical to U0 and main; the
+56 px header, 36 px actions, the title room rule and the phone tab bar on every page). The paper: the S1 43 files'
+hashes and `print-budget.test.ts` unchanged; only the header's printer button (look) changed under `components/print`;
+the slip roots keep normal figures and print fonts. Requests: an idle signed-in dashboard over 240 s sends 12 kinds /
+66 requests open and locked, the same as main and U0; the sales check sends one POST only when a PIN is typed. Laptop
+fit: no sideways scroll at 1366×768 and 1280×800. Accessibility (local axe-core, WCAG 2.2 AA): one new rule against U0
+(below). The diner menu /m unchanged in two presets. Emulator on the factory WebView 109: the password form, the
+dashboard and the sales reveal (wrong and right PIN), /pos, /orders, /tables, the printer panel, the lock (wrong and
+right PIN, the shell untappable) all right; the count-up ≈ 55 fps with a few dropped frames while the page mounts.
+
+**The reviews.** Every task passed its task review after one fix round (Task 10: two). The final whole-branch review
+(Claude Fable 5.1): With fixes, 0 Critical, 2 Important, 7 Minor, all 37 rulings judged sound; the fix wave took both
+Importants and four Minors; its scoped re-review found all six addressed and no new problem.
+
+**Mapped differences and owner-visible notes** (each a ruling in the SDD ledger):
+- The owner's choices carried out: the sales mask with the person's own PIN for 1 hour; the shell on every page; the
+  alert band as a thin strip under the header.
+- Our data and features where the HTML has none: our 10 tables and request strip move the cards below; our password
+  link under the staff tiles (+46 px card); three role tabs (All staff, Admin, Staff); 12 busy-hours columns (our
+  hours 11 am–10 pm); six category rows when a cafe has more than five (the sixth "Other categories" grey; a cafe with
+  exactly six named categories shows the sixth grey); Top items' and Slow movers' dots grey (colouring them needs a
+  category field in the dashboard data: the owner's call); "Bill printed" shows only for bills with a print-host stamp
+  (locally printed bills stay "Eating").
+- Words: the HTML's words where the HTML has the element; "Offline" only (our PIN needs the server); "Forgot PIN?" keeps
+  our inline line; the login header now names the cafe.
+- Phones: 16 px fields and search below 720 px (iPhone zoom on focus); the lock shows no success flash (our unlock is
+  instant; /login shows it).
+- Look notes: the admin's nav list scrolls on a laptop (the HTML's 38 px rows: Reports, Printer setup and Settings
+  below the fold at 1280×800); the lit phone tab label #0F62FE measures 4.04:1 over the dark hero (the HTML's colour;
+  #0043CE would pass); on WebView 109 the reveal and More sheets are ~99 % opaque (cosmetic, to re-check); toasts stay
+  visible over the lock cover (inert) so a locked counter still sees a new order.
+- Left for the page sessions: duplicated weekday/date/glyph/avatar helpers, large and source-pin test files.
+- Environment: the demo seeder's verify fails 5 checks between midnight and the cafe-day start (pre-existing); three
+  scratch databases from the live legs (`pos_scratch_va11_appearance`, `_bootstrap`, `_dashboard`) wait for the owner's
+  OK to drop.
