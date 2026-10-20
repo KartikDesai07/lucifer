@@ -21,8 +21,10 @@ interface PageHeaderProps {
 // <h1>), the description (its second line) and the eyebrow (a section word is read to screen readers only; a back
 // link becomes a 36px button before the title), before the first paint. Its actions sit in the header from 720px up
 // while they fit beside a readable title (ruling R6) and otherwise (and on a phone, where the HTML's header holds icon
-// buttons only) once in a row at the top of the page body; `className` styles that row. Either way they take the
-// HTML's 36px header-button look (data-header-actions, app/globals.css). Outside the shell they stay in the body.
+// buttons only) once in a row at the top of the page body, 10px apart as in the header's box (the slot measures them
+// here to predict their width there, final review I1); `className` styles that row, after the default. Either way
+// they take the HTML's 36px header-button look (data-header-actions, app/globals.css). Outside the shell they stay in
+// the body.
 // `phoneActions` (ruling R13) sit in the header at every width, before the actions when those are there too.
 export function PageHeader({ title, eyebrow, description, actions, phoneActions, className }: PageHeaderProps) {
   const slot = usePageHeaderSlot();
@@ -47,7 +49,7 @@ export function PageHeader({ title, eyebrow, description, actions, phoneActions,
     <>
       {header}
       {bodyActions ? (
-        <div ref={slot?.bodyRowRef} data-ui="page-actions" data-header-actions="" className={cn("flex flex-wrap items-center gap-2", className)}>
+        <div ref={slot?.bodyRowRef} data-ui="page-actions" data-header-actions="" className={cn("flex flex-wrap items-center gap-2.5", className)}>
           {bodyActions}
         </div>
       ) : null}

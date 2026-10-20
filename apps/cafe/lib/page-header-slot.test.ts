@@ -19,6 +19,7 @@ import { FESTIVAL_CARDS_TITLE } from "@pos/shared/reward-campaigns";
 import { defaultPageSubtitle, headerWordsFor, pageTitleFor } from "@/lib/page-titles";
 import { settingsSectionBySlug, type SettingsSectionSlug } from "@/lib/settings-sections";
 import { stripComments } from "@/lib/source-pin-utils";
+import { classesOf, tagOf } from "./class-tags.fixtures";
 import {
   HEADER_TITLE_MIN_PX,
   PageHeaderBackLink,
@@ -184,6 +185,58 @@ test("actionsFitBesideTitle: in the header while the title keeps 140px; moved up
     const stays = actionsFitBesideTitle({ actionsInHeader: true, titleWidth: total - actions - 10, actionsWidth: 0 });
     assert.equal(up, stays, `title block ${total}px: moving up and staying up agree`);
   }
+});
+
+// Final review I1: the rule reads the actions' width in the body row and predicts the title's width in the header, so
+// the two placements must lay the actions out the same gap apart; with 8px in the body row and 10px in the header's
+// box, two actions flipped every frame in a 2px viewport window (and remounted, closing an open dialog or menu).
+/** Tailwind's gap token on an element ("gap-2.5" = 10px, "gap-[10px]" = 10px); exactly one. */
+function gapPx(tokens: string[], label: string): number {
+  const gaps = tokens.filter((t) => /^gap-(?:\d+(?:\.\d+)?|\[\d+px\])$/.test(t));
+  assert.equal(gaps.length, 1, `${label}: one gap token (got ${gaps.join(", ") || "none"})`);
+  const scale = /^gap-(\d+(?:\.\d+)?)$/.exec(gaps[0]);
+  return scale ? Number(scale[1]) * 4 : Number(/\[(\d+)px\]/.exec(gaps[0])![1]);
+}
+
+/** The header's free widths (what the title block takes with the actions box empty) at which the rule flips for ever:
+ *  from the body row it moves the actions up (their row there: Σw + bodyGap·(n−1)), and in the header the title block
+ *  then measures too narrow (the box: Σw + boxGap·(n−1), one headerGap after the title), so they go back down. */
+function flipWindow(m: { widths: number[]; bodyGap: number; boxGap: number; headerGap: number }): number[] {
+  const row = (gap: number) => m.widths.reduce((a, b) => a + b, 0) + gap * (m.widths.length - 1);
+  const flips: number[] = [];
+  for (let free = 0; free <= 1600; free += 0.5) {
+    const up = actionsFitBesideTitle({ actionsInHeader: false, titleWidth: free, actionsWidth: row(m.bodyGap) });
+    const stays = actionsFitBesideTitle({ actionsInHeader: true, titleWidth: free - row(m.boxGap) - m.headerGap, actionsWidth: 0 });
+    if (up && !stays) flips.push(free);
+  }
+  return flips;
+}
+
+test("actionsFitBesideTitle never flips: the body row lays the actions out with the header box's gap (final review I1)", () => {
+  // The model has teeth: the gaps as they were (8px in the body row, 10px in the header) flip in a 2(n-1)px window.
+  for (const widths of [[120, 90], [120, 90, 64]]) {
+    const old = flipWindow({ widths, bodyGap: 8, boxGap: 10, headerGap: 10 });
+    assert.equal(old.length, 2 * (widths.length - 1) * 2, `${widths.length} actions, 8px vs 10px: a ${2 * (widths.length - 1)}px window (${old[0]}-${old.at(-1)})`);
+  }
+  // The real gaps: the header's own (title to the actions box), the box's, and the body row PageHeader renders.
+  const headerSrc = read(path.join(CAFE_ROOT, "components/layout/Header.tsx"));
+  const headerTokens = /<header className="([^"]*)"/.exec(headerSrc)?.[1].split(/\s+/) ?? [];
+  const boxTokens = /<div ref=\{actionsRef\}[^>]*className="([^"]*)"/.exec(headerSrc)?.[1].split(/\s+/) ?? [];
+  const bodyTokens = classesOf(tagOf(renderWith(false, PROPS), "page-actions"));
+  const gaps = { headerGap: gapPx(headerTokens, "the header"), boxGap: gapPx(boxTokens, "the header's actions box"), bodyGap: gapPx(bodyTokens, "the body row") };
+  assert.equal(gaps.headerGap, 10, "landmark: the header's 10px gap (values 2.5)");
+  assert.equal(gaps.bodyGap, gaps.boxGap, `the body row and the header's box lay the actions out the same gap apart (body ${gaps.bodyGap}px, header ${gaps.boxGap}px)`);
+  for (const widths of [[120], [120, 90], [120, 90, 64], [36, 36, 36, 36], [131.5, 97.25]]) {
+    const flips = flipWindow({ widths, ...gaps });
+    assert.deepEqual(flips, [], `${widths.length} actions (${widths.join(", ")}): no width flips them (got ${flips[0]}-${flips.at(-1)})`);
+  }
+});
+
+test("the body row's gap is a default the page's className still overrides (the dashboard's own gap-2.5, any other)", () => {
+  const dashboard = classesOf(tagOf(renderWith(false, { title: "Dashboard", actions: ACTIONS, className: "gap-2.5" }), "page-actions"));
+  assert.equal(dashboard.filter((t) => t.startsWith("gap-")).join(" "), "gap-2.5", `the dashboard's row: its gap-2.5, once (got "${dashboard.join(" ")}")`);
+  const other = classesOf(tagOf(renderWith(false, { ...PROPS, className: "gap-4 print:hidden" }), "page-actions"));
+  assert.ok(other.includes("gap-4") && !other.includes("gap-2.5") && other.includes("print:hidden"), `a page's own gap replaces the default (got "${other.join(" ")}")`);
 });
 
 test("PIN: the provider decides once for the shell — the 720px media query and the measured room — with a ResizeObserver", () => {

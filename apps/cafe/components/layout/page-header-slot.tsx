@@ -72,7 +72,9 @@ const HEADER_GAP_PX = 10;
 
 /** Whether the page's actions fit in the header beside a readable title (ruling R6). The title block takes the
  *  header's free width, so with the actions in the header it is its width now; with them in the body row it is what
- *  would be left after them and one gap, were they moved up. The two agree at the boundary, so nothing flaps. */
+ *  would be left after them and one gap, were they moved up. The two agree at the boundary, so nothing flaps, because
+ *  the body row lays the actions out the same 10px apart as the header's actions box (PageHeader's and Header's
+ *  gap-2.5; final review I1: 8px there flipped two actions every frame in a 2px window). */
 export function actionsFitBesideTitle(m: { actionsInHeader: boolean; titleWidth: number; actionsWidth: number }): boolean {
   const titleBesideActions = m.actionsInHeader ? m.titleWidth : m.titleWidth - m.actionsWidth - HEADER_GAP_PX;
   return titleBesideActions >= HEADER_TITLE_MIN_PX;
