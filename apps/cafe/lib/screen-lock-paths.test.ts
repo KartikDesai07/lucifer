@@ -31,7 +31,8 @@ const SCRIPT_MODULE = "lib/screen-lock-script.ts";
 const LOCK_MODULE = "lib/screen-lock.ts";
 const ACCOUNT = "components/layout/SidebarAccount.tsx";
 const CSS = "app/globals.css";
-const LOGIN = "app/(auth)/login/page.tsx";
+// The login page's client screen (ruling R39: app/(auth)/login/page.tsx is a server page rendering it).
+const LOGIN = "components/auth/LoginScreen.tsx";
 
 /** The body of `const <name> = async (...) => { ... };`, by brace matching from its first `{`. */
 function arrowBody(src: string, name: string): string {

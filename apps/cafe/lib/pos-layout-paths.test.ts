@@ -73,7 +73,9 @@ const SIDEBAR_TSX = "apps/cafe/components/ui/sidebar.tsx";
 const GLOBALS_CSS = "apps/cafe/app/globals.css";
 const REQUEST_ALERT_BAR = "apps/cafe/components/orders/RequestAlertBar.tsx";
 const INPUT_TSX = "apps/cafe/components/ui/input.tsx";
-const LOGIN_PAGE = "apps/cafe/app/(auth)/login/page.tsx";
+// The login page's client screen (ruling R39: app/(auth)/login/page.tsx is now a server page that reads the cafe's name
+// and renders this component; every client pin below moved with the code).
+const LOGIN_PAGE = "apps/cafe/components/auth/LoginScreen.tsx";
 const AUTH_SHELL = "apps/cafe/components/auth/AuthShell.tsx";
 const M_LAYOUT = "apps/cafe/app/m/layout.tsx";
 const PUBLIC_MENU = "apps/cafe/components/public/PublicMenu.tsx";
@@ -433,7 +435,7 @@ test("PIN: route-parity fences — the other routes keep the 100vh document floo
   // (a 100vh floor on a fixed root would push its footer under a phone browser's toolbar). Checked on the root <main>
   // itself, not anywhere in the file, so a frame that stops covering the viewport fails.
   const loginSrc = stripComments(readSrc(LOGIN_PAGE));
-  assert.match(loginSrc, /<AuthShell[\s>]/, "(auth)/login/page.tsx must render its screen inside <AuthShell>");
+  assert.match(loginSrc, /<AuthShell[\s>]/, "the login screen (components/auth/LoginScreen.tsx) must render inside <AuthShell>");
   const shellRoot = stripComments(readSrc(AUTH_SHELL)).match(/<main\b[^>]*className="([^"]*)"/);
   assert.ok(shellRoot, "landmark: AuthShell must render a <main className=\"...\"> root");
   const rootClasses = shellRoot![1].split(/\s+/);

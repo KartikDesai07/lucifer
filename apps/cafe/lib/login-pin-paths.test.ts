@@ -21,7 +21,9 @@ const CAFE_ROOT = path.resolve(__dirname, "..");
 const exists = (rel: string): boolean => existsSync(path.join(CAFE_ROOT, rel));
 const read = (rel: string): string => (exists(rel) ? stripComments(readFileSync(path.join(CAFE_ROOT, rel), "utf8")) : "");
 
-const PAGE = "app/(auth)/login/page.tsx";
+// The login page's client screen (ruling R39: app/(auth)/login/page.tsx is now a server page that reads the cafe's name
+// and renders this component; every client pin below moved with the code).
+const PAGE = "components/auth/LoginScreen.tsx";
 const PIN = "components/auth/PinSignIn.tsx";
 const SHELL = "components/auth/AuthShell.tsx";
 

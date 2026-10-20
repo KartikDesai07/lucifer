@@ -55,7 +55,9 @@ const SETTINGS_FORM_DEFAULTS = "apps/cafe/lib/settings-form-defaults.ts";
 const BUSINESS_DETAILS_FIELDS = "apps/cafe/components/settings/BusinessDetailsFields.tsx";
 const IMAGE_UPLOAD = "apps/cafe/components/shared/ImageUpload.tsx";
 const APP_SIDEBAR = "apps/cafe/components/layout/AppSidebar.tsx";
-const LOGIN_PAGE = "apps/cafe/app/(auth)/login/page.tsx";
+// The login page's client screen (ruling R39: app/(auth)/login/page.tsx is now a server page that reads the cafe's name
+// and renders this component; every client pin below moved with the code).
+const LOGIN_PAGE = "apps/cafe/components/auth/LoginScreen.tsx";
 const BRANDING_ASSET_MODEL = "apps/cafe/models/BrandingAsset.ts";
 const BRANDING_LIB = "apps/cafe/lib/branding.ts";
 const MIDDLEWARE_FILE = "apps/cafe/middleware.ts";

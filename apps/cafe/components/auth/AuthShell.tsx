@@ -19,7 +19,7 @@ import { HtmlRulesScope } from "@/components/layout/HtmlRulesScope";
 // own failure fallback) and its lines and hands them in, so this file can never be the reason sign-in breaks.
 
 interface AuthShellProps {
-  /** The cafe's name (the login page, which has no session: the product's generic name). */
+  /** The cafe's name (the login page reads it on the server, ruling R39; the product's name when the cafe has none). */
   brandName: string;
   /** The 34px brand tile, ready drawn; the caller owns its image and that image's onError fallback. */
   logo: ReactNode;

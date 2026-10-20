@@ -74,6 +74,7 @@
     "lib/sales-reveal.test.ts",
     "lib/pin-sign-in-client.test.ts",
     "lib/login-pin-paths.test.ts",
+    "lib/login-brand.test.ts",
     "lib/tenant.test.ts",
     "models/order.ledger.test.ts",
     "models/daily-rollup.ledger.test.ts",
