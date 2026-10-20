@@ -12,7 +12,7 @@ import { clearMastersBlob } from "@/lib/masters-blob";
 import { fetchKnownPeople, rememberThisDevice, type KnownPerson } from "@/lib/pin-sign-in-client";
 import { clearLockState } from "@/lib/screen-lock";
 import { loginSchema, type LoginInput } from "@/schemas/staff.schema";
-import { APP_NAME } from "@/lib/constants";
+import { APP_NAME, VENDOR_PRODUCT_NAME } from "@/lib/constants";
 import { brandingUrl } from "@/lib/images";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,16 +21,21 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { PinSignIn } from "@/components/auth/PinSignIn";
 import {
-  BRAND_BUTTON_CLASS,
-  BRAND_FIELD_ERROR_CLASS,
-  BRAND_INPUT_CLASS,
-  BRAND_LABEL_CLASS,
-} from "@/components/brand/brand-classes";
+  AUTH_ALERT_CLASS,
+  AUTH_BUTTON_CLASS,
+  AUTH_FIELD_ERROR_CLASS,
+  AUTH_INPUT_CLASS,
+  AUTH_LABEL_CLASS,
+  AUTH_LINK_CLASS,
+  AUTH_REVEAL_CLASS,
+} from "@/components/auth/auth-classes";
+import { cn } from "@/lib/utils";
 
 // Staff sign-in. The screen's FRAME (header, card, "Powered by") lives in components/auth/AuthShell and the name
 // tiles + PIN pad in components/auth/PinSignIn; this file keeps everything that decides whether sign-in works: which
 // way in this device offers, the form, the credentials call, the shared-device wipe, the masked-by-default password,
-// the device memory after a sign-in and the logo's failure fallback.
+// the device memory after a sign-in and the logo's failure fallback. The look is the owner's HTML lock screen (U0 match
+// Task 10, values 4.2, design 5.6): the form takes its form style (components/auth/auth-classes, ruling R31).
 
 // "loading" until the device's remembered people are known (one neutral card, no flash of either form); then the
 // tiles when there is anyone to pick, else the username and password form (spec 2026-10-16 §5.3).
@@ -120,23 +125,28 @@ export default function LoginPage() {
     setMode("pin");
   };
 
-  // One element, handed to the shell for its logo tile. It takes the tile's
-  // height and its OWN width (a wide wordmark reads at its real size, not
-  // shrunk into a square); multiply lets a logo saved on a white background
-  // sit on the white tile without a box of its own. The fallback glyph takes
-  // over if the image fails.
-  const logo = iconFailed ? (
-    <UtensilsCrossed className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-  ) : (
-    <Image
-      src={productLogoSrc}
-      alt={APP_NAME}
-      width={48}
-      height={48}
-      unoptimized
-      className="h-full w-auto max-w-full object-contain mix-blend-multiply"
-      onError={() => setIconFailed(true)}
-    />
+  // The shell's 34px brand tile (values 4.2: radius 9). The login page has no session, so its mark is the product's
+  // logo (ruling R3), on white like the nav's logo tile, scaled to fit, never cropped; the fallback glyph takes over if
+  // the image fails.
+  const logo = (
+    <span
+      data-ui="auth-logo"
+      className="flex size-[34px] flex-none items-center justify-center overflow-hidden rounded-[9px] bg-white p-0.5"
+    >
+      {iconFailed ? (
+        <UtensilsCrossed className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+      ) : (
+        <Image
+          src={productLogoSrc}
+          alt={APP_NAME}
+          width={34}
+          height={34}
+          unoptimized
+          className="h-full w-full object-contain"
+          onError={() => setIconFailed(true)}
+        />
+      )}
+    </span>
   );
 
   const passwordMode = mode === "password";
@@ -145,6 +155,7 @@ export default function LoginPage() {
     <AuthShell
       brandName={APP_NAME}
       logo={logo}
+      subline={VENDOR_PRODUCT_NAME}
       title={passwordMode ? "Welcome back." : undefined}
       intro={passwordMode ? `Sign in to continue to ${APP_NAME}.` : undefined}
       footer={passwordMode ? "Forgot your password? Ask an admin to reset it." : undefined}
@@ -153,7 +164,7 @@ export default function LoginPage() {
         <div role="status" aria-label="Loading sign-in" className="flex flex-col gap-3">
           <Skeleton className="h-7 w-48" />
           <Skeleton className="h-4 w-72 max-w-full" />
-          <Skeleton className="mt-3 h-[150px] w-full md:h-[160px]" />
+          <Skeleton className="mt-3 h-[121px] w-full tab:h-[130px]" />
         </div>
       )}
 
@@ -169,7 +180,7 @@ export default function LoginPage() {
               URL, the history and the request logs. */}
           <form method="post" className="space-y-5" onSubmit={handleSubmit(onSubmit)} noValidate>
             <div className="space-y-2">
-              <Label htmlFor="username" className={BRAND_LABEL_CLASS}>
+              <Label htmlFor="username" className={AUTH_LABEL_CLASS}>
                 Username
               </Label>
               <Input
@@ -179,16 +190,16 @@ export default function LoginPage() {
                 autoCapitalize="none"
                 spellCheck={false}
                 aria-invalid={!!errors.username}
-                className={BRAND_INPUT_CLASS}
+                className={AUTH_INPUT_CLASS}
                 {...register("username")}
               />
               {errors.username && (
-                <p className={BRAND_FIELD_ERROR_CLASS}>{errors.username.message}</p>
+                <p className={AUTH_FIELD_ERROR_CLASS}>{errors.username.message}</p>
               )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password" className={BRAND_LABEL_CLASS}>
+              <Label htmlFor="password" className={AUTH_LABEL_CLASS}>
                 Password
               </Label>
               <div className="relative">
@@ -197,10 +208,10 @@ export default function LoginPage() {
                   type={passwordShown ? "text" : "password"}
                   autoComplete="current-password"
                   aria-invalid={!!errors.password}
-                  className={`${BRAND_INPUT_CLASS} pr-12`}
+                  className={`${AUTH_INPUT_CLASS} pr-11`}
                   {...register("password")}
                 />
-                {/* Inside the field's own box (pr-12 keeps the text clear of
+                {/* Inside the field's own box (pr-11 keeps the text clear of
                     it) so the form layout is unchanged. type="button" is
                     load-bearing: a bare <button> inside a <form> submits. */}
                 <button
@@ -208,7 +219,7 @@ export default function LoginPage() {
                   onClick={() => setPasswordShown((shown) => !shown)}
                   aria-label={passwordShown ? "Hide password" : "Show password"}
                   aria-pressed={passwordShown}
-                  className="absolute inset-y-0 right-0 grid w-12 place-items-center rounded-r-md text-brand-muted hover:text-brand-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent"
+                  className={AUTH_REVEAL_CLASS}
                 >
                   {passwordShown ? (
                     <EyeOff className="h-4 w-4" aria-hidden="true" />
@@ -218,7 +229,7 @@ export default function LoginPage() {
                 </button>
               </div>
               {errors.password && (
-                <p className={BRAND_FIELD_ERROR_CLASS}>{errors.password.message}</p>
+                <p className={AUTH_FIELD_ERROR_CLASS}>{errors.password.message}</p>
               )}
             </div>
 
@@ -228,16 +239,13 @@ export default function LoginPage() {
               // The one-off shake replays on EVERY failure: onSubmit clears the
               // error before the network call, so each failed attempt mounts this
               // box afresh.
-              <div
-                role="alert"
-                className="flex items-start gap-2 rounded-md border border-brand-danger/25 bg-brand-danger/5 px-3 py-2.5 text-sm text-brand-danger motion-safe:animate-brand-shake"
-              >
+              <div role="alert" className={AUTH_ALERT_CLASS}>
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                 <span>{authError}</span>
               </div>
             )}
 
-            <Button type="submit" className={BRAND_BUTTON_CLASS} disabled={isSubmitting}>
+            <Button type="submit" className={AUTH_BUTTON_CLASS} disabled={isSubmitting}>
               {isSubmitting ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -258,11 +266,7 @@ export default function LoginPage() {
           </form>
 
           {people.length > 0 && (
-            <button
-              type="button"
-              onClick={showPinSignIn}
-              className="mx-auto mt-3 flex h-11 items-center rounded-md px-2 text-[13.5px] font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
+            <button type="button" data-ui="login-use-pin" onClick={showPinSignIn} className={cn(AUTH_LINK_CLASS, "mx-auto mt-3 flex")}>
               Sign in with PIN
             </button>
           )}

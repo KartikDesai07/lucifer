@@ -139,6 +139,38 @@ test("PIN: ScreenLock is a portal over everything (dialog, modal, labelled, z-[1
   assert.match(src, /\.focus\(\)/, "focus moves into the cover when it opens");
 });
 
+// U0 match Task 10 (ruling R27): the cover is the HTML's full-screen lock over the shell, and the shell behind it — the
+// phone's tab bar, the rail/sidebar, the header, the page — stays inert. Both bars render inside the layout's own tree
+// (one child of <body>, which the cover marks inert), never in a portal of their own; a sheet they open later is a new
+// body child, which the MutationObserver catches.
+test("PIN: the cover still makes the tab bar and the rail inert: both sit inside the layout's body child, and the cover quiets every body child but itself", () => {
+  const layout = read(LAYOUT);
+  const provider = layout.indexOf("<SidebarProvider>");
+  const providerEnd = layout.indexOf("</SidebarProvider>");
+  for (const bar of ["<AppSidebar />", "<TabBar />", "<Header />", "<ScreenLock />"]) {
+    const at = layout.indexOf(bar);
+    assert.ok(at > provider && at < providerEnd, `${bar} renders inside <SidebarProvider> (the layout's own body child)`);
+  }
+  for (const file of ["components/layout/TabBar.tsx", "components/layout/AppSidebar.tsx", "components/layout/Header.tsx"]) {
+    assert.ok(!/createPortal\(/.test(read(file)), `${file} draws no portal of its own (it would escape the inert subtree)`);
+  }
+  const cover = read(COVER);
+  assert.match(cover, /Array\.from\(document\.body\.children\)\.forEach\(quiet\)/, "every body child is quieted when the cover opens");
+  assert.match(cover, /if \(el === root \|\| el\.tagName === "IFRAME" \|\| el\.hasAttribute\("inert"\)\) return;/, "all but the cover itself (and a print iframe)");
+  assert.match(cover, /observer\.observe\(document\.body, \{ childList: true \}\)/, "a body child added later is quieted too");
+});
+
+test("the cover's look (values 4.2, ruling R3/R27): the cafe's own tile, its name, the product · device line, Sign out in the footer", () => {
+  const src = read(COVER);
+  assert.match(src, /<AuthShell\b/, "the cover is the shared AuthShell frame");
+  assert.match(src, /<BrandTile\b[^>]*size="nav"/, "the 34px brand tile (the nav's)");
+  assert.match(src, /const logoUrl = productImageUrl\(settings\.data\?\.logo, undefined, \{ fit: true \}\);/, "the cafe's own logo only (ruling R3)");
+  assert.ok(!/productLogo|brandingUrl\(/.test(src), "never the product logo or the branding route (the initial on brand red instead)");
+  assert.match(src, /subline=\{<NavDeviceLine lead=\{VENDOR_PRODUCT_NAME\} \/>\}/, "Sandbee POS · {this device's print name}");
+  assert.match(src, /footerAction=\{/, "Sign out sits in the footer row, beside Powered by");
+  assert.ok(!/\bfooter=\{/.test(src), "and no longer in the card (the card measures as the HTML's)");
+});
+
 test("PIN: activity is pointerdown/keydown on window in the capture phase; the idle check is a 30 s local timer plus visibilitychange, calling autoLockDue (no request)", () => {
   const src = read(COVER);
   assert.match(

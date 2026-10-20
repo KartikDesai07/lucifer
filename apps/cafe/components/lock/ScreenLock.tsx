@@ -11,16 +11,14 @@ import {
   type SyntheticEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { UtensilsCrossed } from "lucide-react";
 import { SCREEN_LOCK_DEFAULT_MINUTES } from "@pos/shared/staff-pin";
 
-import { APP_NAME } from "@/lib/constants";
-import { brandingUrl, productImageUrl } from "@/lib/images";
+import { APP_NAME, VENDOR_PRODUCT_NAME } from "@/lib/constants";
+import { productImageUrl } from "@/lib/images";
 import { fetchKnownPeople, rememberThisDevice, type KnownPerson } from "@/lib/pin-sign-in-client";
 import {
   LOCK_ATTR,
@@ -44,6 +42,8 @@ import { useSettings } from "@/hooks/use-settings";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { PinSignIn } from "@/components/auth/PinSignIn";
+import { BrandTile } from "@/components/layout/BrandTile";
+import { NavDeviceLine } from "@/components/layout/NavDeviceLine";
 import { LockPasswordForm } from "@/components/lock/LockPasswordForm";
 
 // The screen lock (spec 2026-10-16 §5.6). A COVER over the running dashboard, never a sign-out: signing out would
@@ -62,8 +62,10 @@ const LABEL_TICK_MS = 60_000;
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-const LINK_CLASS =
-  "inline-flex h-9 items-center rounded-md px-2 text-[13.5px] font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:h-11";
+// The lock's Sign out, in the footer line beside "Powered by" (U0 match Task 10): the footer's own 12.5px, our link
+// colour and weight, no padding, so the footer keeps the HTML's 41px.
+const SIGN_OUT_CLASS =
+  "rounded-[4px] font-medium leading-[normal] text-link outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 type LockReason = "auto" | "manual" | "switch";
 /** An open cover: the stored state, who was signed in when it opened, and a fresh key per lock. */
@@ -265,7 +267,6 @@ function LockCover({ lock, signedInAs, onUnlocked, onSignOut }: LockCoverProps) 
   const [people, setPeople] = useState<KnownPerson[] | null>(null);
   // null: chosen from who this device remembers; then whatever the person picks.
   const [view, setView] = useState<"pin" | "password" | null>(null);
-  const [logoFailed, setLogoFailed] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   // One look-up per lock: who this device remembers with a PIN (any failure reads as nobody).
@@ -360,7 +361,7 @@ function LockCover({ lock, signedInAs, onUnlocked, onSignOut }: LockCoverProps) 
       <div role="status" aria-label="Loading sign-in" className="flex flex-col gap-3">
         <Skeleton className="h-7 w-48" />
         <Skeleton className="h-4 w-72 max-w-full" />
-        <Skeleton className="mt-3 h-[150px] w-full md:h-[160px]" />
+        <Skeleton className="mt-3 h-[121px] w-full tab:h-[130px]" />
       </div>
     );
   } else if (showing === "pin") {
@@ -378,24 +379,9 @@ function LockCover({ lock, signedInAs, onUnlocked, onSignOut }: LockCoverProps) 
   }
 
   const brandName = settings.data?.restaurantName?.trim() || APP_NAME;
-  // The sidebar's chain: the cafe's logo, then the saved product logo, then the branding route's built-in mark.
-  const logoUrl =
-    productImageUrl(settings.data?.logo, undefined, { fit: true }) ??
-    productImageUrl(settings.data?.productLogo, undefined, { fit: true }) ??
-    brandingUrl("productLogo");
-  const logo = logoFailed ? (
-    <UtensilsCrossed className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-  ) : (
-    <Image
-      src={logoUrl}
-      alt=""
-      width={48}
-      height={48}
-      unoptimized
-      className="h-full w-auto max-w-full object-contain mix-blend-multiply"
-      onError={() => setLogoFailed(true)}
-    />
-  );
+  // The nav's tile (ruling R3): the cafe's own uploaded logo, else its first letter in Shrikhand on the brand red (a
+  // logo that fails to load falls back to the letter); keyed on the logo so a new one gets a fresh try.
+  const logoUrl = productImageUrl(settings.data?.logo, undefined, { fit: true });
 
   return createPortal(
     <div
@@ -415,10 +401,11 @@ function LockCover({ lock, signedInAs, onUnlocked, onSignOut }: LockCoverProps) 
     >
       <AuthShell
         brandName={brandName}
-        logo={logo}
+        logo={<BrandTile key={logoUrl ?? "initial"} name={brandName} logoUrl={logoUrl} size="nav" dataUi="auth-logo" />}
+        subline={<NavDeviceLine lead={VENDOR_PRODUCT_NAME} />}
         title={people !== null && showing === "password" ? "Screen locked" : undefined}
-        footer={
-          <button type="button" onClick={() => void onSignOut()} className={LINK_CLASS}>
+        footerAction={
+          <button type="button" data-ui="lock-sign-out" onClick={() => void onSignOut()} className={SIGN_OUT_CLASS}>
             Sign out
           </button>
         }

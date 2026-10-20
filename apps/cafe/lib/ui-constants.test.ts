@@ -10,7 +10,6 @@ import {
   PAY_PILL_KIND,
   PAYMENT_KIND,
   PIN_KEY_CLASS,
-  PIN_KEY_CLASS_PHONE,
   RESERVATION_KIND,
   STATUS_CLASSES,
   TABLE_KIND,
@@ -69,8 +68,8 @@ test("payment, channel, table and reservation maps", () => {
     { Booked: "info", Seated: "ok", Completed: "neutral", Cancelled: "bad" },
     "reservation kinds",
   );
-  assert.equal(PIN_KEY_CLASS, "h-14");
-  assert.equal(PIN_KEY_CLASS_PHONE, "h-[54px]");
+  // U0 match Task 10: the HTML's keyH (values 4.4): 62px on a phone, 60px from 720px; one class for both.
+  assert.equal(PIN_KEY_CLASS, "h-[62px] tab:h-[60px]", "the sign-in pad's key height");
 });
 
 test("avatar hues: the eight HTML pairs (values 1.6, color-mix precomputed), and a stable index", () => {

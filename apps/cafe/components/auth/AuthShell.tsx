@@ -3,27 +3,36 @@
 import type { ReactNode } from "react";
 
 import { useNow } from "@/hooks/use-now";
+import { useOnline } from "@/hooks/use-online";
+import { cn } from "@/lib/utils";
+import { STATUS_CLASSES } from "@/lib/ui";
 import { VendorMark } from "@/components/brand/VendorMark";
 import { HtmlRulesScope } from "@/components/layout/HtmlRulesScope";
 
-// The frame every signed-out staff screen sits in: sign-in today, and any later set-password / invite screen, which
-// drops straight into it. The look is the owner's mock-up (spec 2026-10-16 §5.3): the cafe's logo and name top-left
-// and the time top-right on a soft background, one white card in the middle, "Powered by Sandbee POS" under it.
+// The frame every signed-out staff screen sits in: the login page and the screen lock's cover. The look is the owner's
+// HTML lock screen (values 4.2, design 5.6, ruling R27): a full-screen root over everything, a soft accent tint at the
+// top, a top bar (the 34px brand tile, the cafe's name in Shrikhand over "{product} · {device}", the Online chip, a
+// divider, the clock), one white card centred in the space between, and the footer line "Powered by Sandbee POS" (the
+// HTML's "Demo PIN 1234" line is left out).
 //
-// Presentation ONLY: no auth, no data fetching, no session. The page owns its form and its logo (including the logo's
-// own failure fallback) and hands them in, so this file can never be the reason sign-in breaks.
+// Presentation ONLY: no auth, no data fetching, no session. The page owns its form, its tile (including the logo's
+// own failure fallback) and its lines and hands them in, so this file can never be the reason sign-in breaks.
 
 interface AuthShellProps {
-  /** The cafe/product name beside the logo. */
+  /** The cafe's name (the login page, which has no session: the product's generic name). */
   brandName: string;
-  /** The logo element; it fills the tile it is given. The caller owns its src and its onError fallback. */
+  /** The 34px brand tile, ready drawn; the caller owns its image and that image's onError fallback. */
   logo: ReactNode;
+  /** The line under the name: "{product} · {this device's print name}", or the product alone. */
+  subline?: ReactNode;
   /** The card's headline, e.g. "Welcome back." Left out when the content brings its own (the PIN picker). */
   title?: string;
   /** One short line under the headline. */
   intro?: string;
   /** Under a closing rule at the foot of the card. */
   footer?: ReactNode;
+  /** A control in the page's footer line, before "Powered by" (the lock's Sign out). */
+  footerAction?: ReactNode;
   children: ReactNode;
 }
 
@@ -33,56 +42,103 @@ export function clockLabel(now: Date): string {
   return `${hour % 12 || 12}:${String(now.getMinutes()).padStart(2, "0")} ${hour < 12 ? "AM" : "PM"}`;
 }
 
+/** The Online chip's words (the HTML's, ruling R28). */
+export function onlineChipLabel(online: boolean): string {
+  return online ? "Online" : "Offline · PINs still work";
+}
+
 // Its own component so the once-a-second tick re-renders only the clock, never the card's content.
 function HeaderClock() {
   const now = useNow();
   return (
-    <span className="min-w-[4.5rem] shrink-0 text-right text-[13.5px] font-medium tabular-nums">
+    <span data-ui="auth-clock" className="whitespace-nowrap text-[13.5px] font-medium">
       {now ? clockLabel(now) : null}
     </span>
   );
 }
 
-export function AuthShell({ brandName, logo, title, intro, footer, children }: AuthShellProps) {
+// The browser's own online flag (no request); none on a phone, as the HTML's lkChips.
+function OnlineChip() {
+  const online = useOnline();
   return (
-    // min-h-screen is this screen's document floor (the body's own floor is dvh-based; the route-parity pin in
-    // lib/pos-layout-paths.test.ts keeps signed-out screens on the full 100vh they have always had).
-    <main className="relative flex min-h-screen flex-col bg-background text-foreground">
+    <span data-ui="auth-net" className="hidden items-center gap-[7px] whitespace-nowrap text-[12.5px] text-muted-foreground tab:flex">
+      <span
+        data-ui="auth-net-dot"
+        aria-hidden="true"
+        className={cn("size-[7px] rounded-[50%]", STATUS_CLASSES[online ? "ok" : "warn"].dot)}
+      />
+      {onlineChipLabel(online)}
+    </span>
+  );
+}
+
+export function AuthShell({ brandName, logo, subline, title, intro, footer, footerAction, children }: AuthShellProps) {
+  return (
+    <main
+      data-ui="auth-root"
+      className="fixed inset-0 z-[60] flex flex-col overflow-hidden bg-background leading-[normal] text-foreground motion-safe:animate-html-fade"
+    >
       {/* The HTML's global rules (values 1.4, ruling R24) on the sign-in screen too. */}
       <HtmlRulesScope />
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-linear-to-b from-accent to-transparent"
+        data-ui="auth-tint"
+        className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-[linear-gradient(180deg,var(--color-accent),transparent)]"
       />
 
-      <header className="relative flex shrink-0 items-center gap-3 px-4 py-3.5 md:px-7 md:py-5">
-        <span className="flex h-[34px] min-w-[34px] max-w-[8.5rem] shrink-0 items-center justify-center overflow-hidden rounded-[9px] border border-border bg-card p-1">
-          {logo}
+      <header data-ui="auth-header" className="relative flex flex-none items-center gap-3 px-4 py-3.5 tab:px-7 tab:py-5">
+        {logo}
+        <span data-ui="auth-brand" className="flex min-w-0 flex-1 flex-col">
+          <span data-ui="auth-name" className="truncate font-brand-script text-[20px] font-normal leading-[1.1] text-brand-red">
+            {brandName}
+          </span>
+          {subline && (
+            <span data-ui="auth-sub" className="text-[12px] text-muted-foreground">
+              {subline}
+            </span>
+          )}
         </span>
-        <span className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-[-0.01em]">{brandName}</span>
+        <OnlineChip />
+        <span data-ui="auth-divider" aria-hidden="true" className="hidden h-5 w-px bg-border tab:block" />
         <HeaderClock />
       </header>
 
-      <div className="relative flex flex-1 flex-col items-center px-3 pb-2 pt-1 md:px-6 md:py-2">
-        <div className="my-auto flex w-full max-w-[520px] flex-col gap-5 rounded-2xl border border-border bg-card px-4 py-5 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_12px_40px_rgb(0_0_0/0.06)] motion-safe:animate-brand-rise md:max-w-[680px] md:rounded-[20px] md:p-6 xl:max-w-[900px] xl:px-8 xl:py-7">
+      <div
+        data-ui="auth-main"
+        className="relative flex min-h-0 flex-1 flex-col items-center overflow-auto px-3 pb-2 pt-1 tab:px-6 tab:py-2"
+      >
+        <div
+          data-ui="auth-card"
+          className="my-auto flex w-full max-w-[520px] flex-col gap-5 rounded-[16px] border border-border bg-card px-4 py-5 [box-shadow:0_1px_2px_rgba(0,0,0,.04),0_12px_40px_rgba(0,0,0,.06)] motion-safe:animate-html-rise tab:max-w-[680px] tab:rounded-[20px] tab:p-6 desk:max-w-[900px] desk:px-8 desk:py-7"
+        >
           {title && (
             <div className="text-center">
-              <h1 className="text-[22px] font-semibold tracking-[-0.02em] md:text-[26px]">{title}</h1>
-              {intro && <p className="mt-1 text-pretty text-sm text-muted-foreground">{intro}</p>}
+              <h1 data-ui="auth-title" className="text-[22px] font-semibold tracking-[-0.02em] tab:text-[26px]">
+                {title}
+              </h1>
+              {intro && (
+                <p data-ui="auth-intro" className="mt-1 text-pretty text-[14px] text-muted-foreground">
+                  {intro}
+                </p>
+              )}
             </div>
           )}
 
           {children}
 
           {footer && (
-            <div className="border-t border-border pt-4 text-center text-xs text-pretty text-muted-foreground">
+            <div className="border-t border-border pt-4 text-center text-[12.5px] text-pretty text-muted-foreground">
               {footer}
             </div>
           )}
         </div>
       </div>
 
-      <footer className="relative flex justify-center px-4 pb-[calc(14px+env(safe-area-inset-bottom))] pt-2.5">
+      <footer
+        data-ui="auth-footer"
+        className="relative flex flex-none flex-wrap justify-center gap-x-[18px] gap-y-1.5 px-4 pb-[calc(14px+env(safe-area-inset-bottom))] pt-2.5 text-[12.5px] text-subtle-foreground"
+      >
+        {footerAction}
         <VendorMark />
       </footer>
     </main>

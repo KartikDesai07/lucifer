@@ -1,5 +1,5 @@
-export const PIN_KEY_CLASS = "h-14"; // 56 px keys
-export const PIN_KEY_CLASS_PHONE = "h-[54px]";
+// The sign-in pad's keys (values 4.4 keyH): 62px on a phone, 60px from 720px (the HTML's breakpoint, `tab:`).
+export const PIN_KEY_CLASS = "h-[62px] tab:h-[60px]";
 
 /** Sales by category's hues (values 3.13, ruling R20; staff screens only): the owner's HTML's five section hues
  *  (SEC_HUE: Starters, Mains, Sides, Drinks, Desserts), handed out by rank, the same in light and dark as the HTML's.

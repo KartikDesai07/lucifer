@@ -428,18 +428,20 @@ test("PIN: (dashboard)/layout.tsx renders a BARE <SidebarProvider>, and DASHBOAR
 });
 
 test("PIN: route-parity fences — the other routes keep the 100vh document floor the body used to give them (plan §B4, review F2)", () => {
-  // The login screen's floor now lives in its frame, components/auth/AuthShell
-  // (2026-09-26 redesign). The page must still RENDER that frame, and the
-  // frame's root must carry min-h-screen — checked on the root <main> itself,
-  // not anywhere in the file, so a floor moved onto some inner element fails.
+  // The login screen's frame is components/auth/AuthShell. Since U0 match Task 10 (ruling R27) its root is the owner's
+  // HTML lock root: fixed to the viewport (inset 0), so the screen IS the visible viewport and needs no document floor
+  // (a 100vh floor on a fixed root would push its footer under a phone browser's toolbar). Checked on the root <main>
+  // itself, not anywhere in the file, so a frame that stops covering the viewport fails.
   const loginSrc = stripComments(readSrc(LOGIN_PAGE));
   assert.match(loginSrc, /<AuthShell[\s>]/, "(auth)/login/page.tsx must render its screen inside <AuthShell>");
-  const shellRoot = stripComments(readSrc(AUTH_SHELL)).match(/<main className="([^"]*)"/);
+  const shellRoot = stripComments(readSrc(AUTH_SHELL)).match(/<main\b[^>]*className="([^"]*)"/);
   assert.ok(shellRoot, "landmark: AuthShell must render a <main className=\"...\"> root");
+  const rootClasses = shellRoot![1].split(/\s+/);
   assert.ok(
-    shellRoot![1].split(/\s+/).includes("min-h-screen"),
-    "AuthShell's root <main> must carry min-h-screen — the signed-out screens keep their 100vh floor, unaffected by the body change",
+    rootClasses.includes("fixed") && rootClasses.includes("inset-0"),
+    "AuthShell's root <main> must be fixed inset-0 — the signed-out screen fills the visible viewport exactly",
   );
+  assert.ok(!rootClasses.includes("min-h-screen"), "no 100vh floor on the fixed root (it would overflow a phone browser's visible viewport)");
   // /m's wrapper used to say min-h-dvh but the body's min-h-screen was the
   // binding floor on every diner page; with the body now on a dvh floor the
   // wrapper itself must carry min-h-screen so the owner-accepted QR flow's
