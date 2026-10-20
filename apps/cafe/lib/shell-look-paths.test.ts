@@ -133,14 +133,117 @@ test("a page's actions take the header buttons' look: 36px, radius 8, 13.5px, ou
     assert.ok(outline.includes(decl), `an outline action: ${decl}`);
   }
   assert.ok(rule('[data-header-actions] :is(button, a)[class~="border"]:hover').includes("background-color: var(--hover);"), "outline hover --hover");
-  const filled = rule('[data-header-actions] :is(button, a):not([class~="border"])');
+  // Final review m2: the filled look is keyed on the primary fill itself (the kit's bg-primary, or the brand button's
+  // bg-brand-primary, the same colour), never on a missing border.
+  const FILLED = '[data-header-actions] :is(button, a):is([class~="bg-primary"], [class~="bg-brand-primary"])';
+  const filled = rule(FILLED);
   for (const decl of ["padding: 0 14px;", "gap: 6px;", "font-weight: 600;"]) assert.ok(filled.includes(decl), `a filled action: ${decl}`);
-  assert.ok(rule('[data-header-actions] :is(button, a):not([class~="border"]):hover').includes("background-color: var(--primary-hover);"), "filled hover accent-h");
-  assert.ok(rule('[data-header-actions] :is(button, a):not([class~="border"]) svg').includes("width: 14px;"), "a 14px icon on a filled action");
+  assert.ok(rule(`${FILLED}:hover`).includes("background-color: var(--primary-hover);"), "filled hover accent-h");
+  assert.ok(rule(`${FILLED} svg`).includes("width: 14px;"), "a 14px icon on a filled action");
   assert.ok(/\[class~="size-10"\][^{]*\{[^}]*width: 36px;/.test(css), "an icon-only action is a 36px square");
   const before = css.slice(0, css.indexOf("[data-header-actions] :is(button, a) {"));
   // Top level (brace depth 0), not inside an @layer: unlayered CSS outranks every layered utility.
   assert.equal((before.match(/\{/g) ?? []).length - (before.match(/\}/g) ?? []).length, 0, "the rules sit at the top level, unlayered");
+});
+
+// ── which [data-header-actions] rules a control gets, from its classes (final review m2) ─────────────────────────────
+
+const ACTION_PREFIX = "[data-header-actions] :is(button, a)";
+
+/** Whether a compound selector of [class~="…"], :is(…), :not(…) and state pseudo-classes matches an enabled control
+ *  with these classes, hovered and pressed (so a :hover or :active rule counts as applying in that state). */
+function matchesCompound(sel: string, classes: ReadonlySet<string>): boolean {
+  let i = 0;
+  while (i < sel.length) {
+    const rest = sel.slice(i);
+    const cls = /^\[class~="([^"]+)"\]/.exec(rest);
+    if (cls) {
+      if (!classes.has(cls[1])) return false;
+      i += cls[0].length;
+      continue;
+    }
+    const fn = /^:(not|is)\(/.exec(rest);
+    if (fn) {
+      let depth = 1;
+      let end = i + fn[0].length;
+      for (; depth > 0; end++) depth += sel[end] === "(" ? 1 : sel[end] === ")" ? -1 : 0;
+      const inner = sel.slice(i + fn[0].length, end - 1);
+      const parts: string[] = [];
+      let d = 0;
+      let from = 0;
+      for (let k = 0; k < inner.length; k++) {
+        if (inner[k] === "(") d++;
+        else if (inner[k] === ")") d--;
+        else if (inner[k] === "," && d === 0) {
+          parts.push(inner.slice(from, k).trim());
+          from = k + 1;
+        }
+      }
+      parts.push(inner.slice(from).trim());
+      const any = parts.some((p) => matchesCompound(p, classes));
+      if (fn[1] === "not" ? any : !any) return false;
+      i = end;
+      continue;
+    }
+    const pseudo = /^:(hover|active|disabled)/.exec(rest);
+    assert.ok(pseudo, `the matcher knows every part of "${sel}" (stuck at "${rest}")`);
+    if (pseudo![1] === "disabled") return false;
+    i += pseudo![0].length;
+  }
+  return true;
+}
+
+/** The declarations app/globals.css gives a page action with these classes: at rest, on hover, and on its icon. */
+function actionLook(classList: string): { rest: string; hover: string; svg: string } {
+  const css = read("app/globals.css");
+  const classes = new Set(classList.split(/\s+/).filter(Boolean));
+  const look = { rest: "", hover: "", svg: "" };
+  let rules = 0;
+  for (const m of css.matchAll(/(^|\n)(\[data-header-actions\] [^{]+)\{([^}]*)\}/g)) {
+    const selector = m[2].trim();
+    if (!selector.startsWith(ACTION_PREFIX)) continue;
+    rules++;
+    let own = selector.slice(ACTION_PREFIX.length);
+    const svg = own.endsWith(" svg");
+    if (svg) own = own.slice(0, -" svg".length);
+    if (!matchesCompound(own, classes)) continue;
+    const key = svg ? "svg" : /:hover\b/.test(own) ? "hover" : /:active\b/.test(own) ? null : "rest";
+    if (key) look[key] += m[3];
+  }
+  assert.ok(rules >= 8, `landmark: the header-actions rules were read (${rules})`);
+  return look;
+}
+
+test("only a primary-filled control gets the header's filled look: a ghost or link button, or a plain link, keeps its own (final review m2)", async () => {
+  const { buttonVariants } = await import("@/components/ui/button");
+  const { cn } = await import("@/lib/utils");
+  const { BRAND_BUTTON_CLASS } = await import("@/components/brand/brand-classes");
+  const isFilled = (look: { rest: string; hover: string; svg: string }) =>
+    look.rest.includes("padding: 0 14px;") || look.rest.includes("font-weight: 600;") || look.hover.includes("--primary-hover") || look.svg.includes("width: 14px;");
+  const own: Array<[string, string]> = [
+    ["a ghost Button", buttonVariants({ variant: "ghost" })],
+    ["a link Button", buttonVariants({ variant: "link" })],
+    ["a plain <a>", ""],
+    ["a ghost icon Button", buttonVariants({ variant: "ghost", size: "icon" })],
+  ];
+  for (const [name, classes] of own) {
+    const look = actionLook(classes);
+    assert.ok(!isFilled(look), `${name} is not painted as the filled primary (rest "${look.rest.trim()}", hover "${look.hover.trim()}")`);
+    assert.ok(look.rest.includes("height: 36px;") && look.rest.includes("padding: 0 12px;"), `${name} still takes the header's 36px size`);
+    assert.ok(!look.hover.includes("background-color"), `${name} keeps its own hover`);
+  }
+  const filledOnes: Array<[string, string]> = [
+    ["the kit's default Button", buttonVariants()],
+    ["a small default Button (/tables/qr Print)", buttonVariants({ size: "sm" })],
+    ["Expenses' Add expense (the brand button)", cn(buttonVariants(), BRAND_BUTTON_CLASS, "h-10 w-auto shrink-0 px-4")],
+  ];
+  for (const [name, classes] of filledOnes) {
+    const look = actionLook(classes);
+    assert.ok(look.rest.includes("padding: 0 14px;") && look.rest.includes("font-weight: 600;"), `${name} is the filled primary (${classes})`);
+    assert.ok(look.hover.includes("background-color: var(--primary-hover);") && look.svg.includes("width: 14px;"), `${name}: hover accent-h, a 14px icon`);
+  }
+  const outline = actionLook(buttonVariants({ variant: "outline" }));
+  assert.ok(outline.rest.includes("border: 1px solid var(--border);") && !isFilled(outline), "an outline Button is the outline look, never the filled one");
 });
 
 test("the header's buttons are the HTML's 36px outline (13.5/500, gap 7, 15px icon) and primary (13.5/600, gap 6, 14px plus)", () => {

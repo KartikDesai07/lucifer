@@ -658,8 +658,10 @@ html[data-pos-locked]:not([data-pos-lock-ready]) body > * {
    the top of the page (a phone, or no room beside the title), take the HTML's header buttons whatever classes the page
    gives them. Unlayered on purpose, so it outranks every utility, the touch sizes included (ruling R1). Outline (a
    control with a border): 36px, radius 8, 1px border, surface, 13.5px/500, a 15px icon 7px from the label, padding
-   0 12px, hover --hover. Filled (the page's primary): its own fill, 13.5px/600, a 14px icon 6px away, padding 0 14px,
-   hover accent-h. An icon-only control (the kit's w-9 or a size-N square) is a 36px square. */
+   0 12px, hover --hover. Filled (the page's primary: the kit's bg-primary or the brand button's bg-brand-primary, the
+   same colour; final review m2: keyed on the fill, so a ghost or link control or a plain <a> keeps its own look): its
+   own fill, 13.5px/600, a 14px icon 6px away, padding 0 14px, hover accent-h. Any other control takes the 36px size
+   only. An icon-only control (the kit's w-9 or a size-N square) is a 36px square. */
 [data-header-actions] :is(button, a) {
   box-sizing: border-box;
   height: 36px;
@@ -701,15 +703,15 @@ html[data-pos-locked]:not([data-pos-lock-ready]) body > * {
 [data-header-actions] :is(button, a)[class~="border"]:hover {
   background-color: var(--hover);
 }
-[data-header-actions] :is(button, a):not([class~="border"]) {
+[data-header-actions] :is(button, a):is([class~="bg-primary"], [class~="bg-brand-primary"]) {
   padding: 0 14px;
   gap: 6px;
   font-weight: 600;
 }
-[data-header-actions] :is(button, a):not([class~="border"]):hover {
+[data-header-actions] :is(button, a):is([class~="bg-primary"], [class~="bg-brand-primary"]):hover {
   background-color: var(--primary-hover);
 }
-[data-header-actions] :is(button, a):not([class~="border"]) svg {
+[data-header-actions] :is(button, a):is([class~="bg-primary"], [class~="bg-brand-primary"]) svg {
   width: 14px;
   height: 14px;
   stroke-width: 2.4;
