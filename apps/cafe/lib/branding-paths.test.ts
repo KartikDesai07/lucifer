@@ -55,7 +55,9 @@ const SETTINGS_FORM_DEFAULTS = "apps/cafe/lib/settings-form-defaults.ts";
 const BUSINESS_DETAILS_FIELDS = "apps/cafe/components/settings/BusinessDetailsFields.tsx";
 const IMAGE_UPLOAD = "apps/cafe/components/shared/ImageUpload.tsx";
 const APP_SIDEBAR = "apps/cafe/components/layout/AppSidebar.tsx";
-const LOGIN_PAGE = "apps/cafe/app/(auth)/login/page.tsx";
+// The login page's client screen (ruling R39: app/(auth)/login/page.tsx is now a server page that reads the cafe's name
+// and renders this component; every client pin below moved with the code).
+const LOGIN_PAGE = "apps/cafe/components/auth/LoginScreen.tsx";
 const BRANDING_ASSET_MODEL = "apps/cafe/models/BrandingAsset.ts";
 const BRANDING_LIB = "apps/cafe/lib/branding.ts";
 const MIDDLEWARE_FILE = "apps/cafe/middleware.ts";
@@ -471,28 +473,23 @@ test("PIN: ImageUpload's branding branch PUTs to /api/branding/<slot>, and the p
   );
 });
 
-// ── 10. AppSidebar falls back to the product logo, restaurant logo first ───
+// ── 10. The nav's brand tile shows the cafe's own logo, never the product's ─
+// Design 5.2 (ruling R3, 2026-10-19): the tile shows the CAFE's uploaded logo, else the cafe's first letter on the
+// brand red. The product logo stays the tab icon (generateMetadata, pinned above) and the login page's mark (item 11);
+// the old restaurant -> product -> branding-route chain is gone from the nav.
 
-test("PIN: AppSidebar shows the restaurant logo first, then the saved product logo, then the unversioned branding route — never the product logo ahead of the restaurant's own mark", () => {
+test("PIN: the nav's brand tile reads only the cafe's own logo (Settings.logo), never the product logo or the branding route", () => {
   const src = stripComments(readSrc(APP_SIDEBAR));
 
-  const logoUrlIdx = src.indexOf("const logoUrl = productImageUrl(settings.data?.logo,");
-  const productLogoUrlIdx = src.indexOf("const productLogoUrl = productImageUrl(settings.data?.productLogo,");
-  assert.ok(logoUrlIdx >= 0, "logoUrl must be derived from settings.data?.logo");
-  assert.ok(productLogoUrlIdx > logoUrlIdx, "productLogoUrl must be derived (and declared after logoUrl) from settings.data?.productLogo");
-
-  // Mutation this catches: reordering the `??` chain (e.g.
-  // `productLogoUrl ?? logoUrl ?? brandingUrl(...)`) — the product's generic
-  // mark would then permanently mask a cafe's own uploaded logo, since
-  // `productLogoUrl` may resolve to a real URL more often than an unset
-  // `logoUrl` would. Also catches dropping the final `brandingUrl("productLogo")`
-  // link — an unbranded cafe with neither logo saved would then hand `<Image>`
-  // a `null` src instead of the route that answers with the built-in mark.
-  assert.match(
-    src,
-    /const displayLogoUrl = logoUrl \?\? productLogoUrl \?\? brandingUrl\("productLogo"\);/,
-    'displayLogoUrl must try logoUrl (the restaurant\'s own mark) FIRST, then productLogoUrl, then brandingUrl("productLogo") only when both are unset',
+  assert.ok(
+    src.includes("const logoUrl = productImageUrl(settings.data?.logo,"),
+    "logoUrl must be derived from settings.data?.logo (the cafe's own mark)",
   );
+  assert.match(src, /<SidebarBrand[^>]*logoUrl=\{logoUrl\}/, "the brand tile gets exactly the cafe's logo");
+  // Mutation this catches: the product's mark (or the built-in mark the branding route answers with) creeping back
+  // into the tile, which then never shows the cafe's initial.
+  assert.ok(!/productLogo/.test(src), "the nav never reads the product logo");
+  assert.ok(!/brandingUrl\(/.test(src), "the nav never falls back to the branding route");
 });
 
 // ── 11. Login page has no session-bound dependency, and degrades gracefully ─

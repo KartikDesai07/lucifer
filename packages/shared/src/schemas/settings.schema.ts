@@ -258,6 +258,14 @@ export const settingsSchema = z.object({
     .min(TABLE_LONG_STAY_MIN_MINUTES, `At least ${TABLE_LONG_STAY_MIN_MINUTES} minutes`)
     .max(TABLE_LONG_STAY_MAX_MINUTES, `At most ${TABLE_LONG_STAY_MAX_MINUTES} minutes`)
     .optional(),
+
+  // Staff PIN sign-in (2026-10-16): idle minutes before the lock screen; 0 = never.
+  // OPTIONAL, no .default() (tableLongStayMinutes precedent): the model stores the default.
+  screenLockMinutes: z
+    .union([z.literal(0), z.literal(30), z.literal(60), z.literal(120)], {
+      errorMap: () => ({ message: "Pick one of the listed times" }),
+    })
+    .optional(),
 });
 
 // PUT accepts any subset; the form sends the full object.

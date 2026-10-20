@@ -43,20 +43,28 @@ test("TABLE_STATUS_META has an entry for every TABLE_STATUSES value, with label 
   assert.deepEqual(Object.keys(TABLE_STATUS_META).sort(), [...TABLE_STATUSES].sort(), "no extra/stale meta keys");
 });
 
-test("class strings are built from the pinned hex values", () => {
+// U0 match Task 7 (Task 1's carry): the classes are the theme's status tokens (the HTML's ok / info / res set, values
+// 1.1) instead of hex literals, so the floor, the setup rows and the dashboard's Live tables follow the theme; the hex
+// fields stay for the contrast maths and must equal the tokens' :root values.
+test("class strings use the theme's status tokens, whose :root values are the pinned hex", () => {
+  const css = readFileSync(fileURLToPath(new URL("../app/globals.css", import.meta.url)), "utf8");
+  const rootHex = (name: string): string | undefined => css.match(new RegExp(`\\n\\s*--${name}:\\s*(#[0-9a-f]{6});`, "i"))?.[1];
   for (const status of TABLE_STATUSES) {
     const m = TABLE_STATUS_META[status];
-    assert.match(m.fg, /^#[0-9a-f]{6}$/i);
-    assert.match(m.bg, /^#[0-9a-f]{6}$/i);
-    assert.match(m.mark, /^#[0-9a-f]{6}$/i);
-    assert.ok(m.chipClass.includes(`bg-[${m.bg}]`), `${status} chipClass lacks bg-[${m.bg}]: ${m.chipClass}`);
-    assert.ok(m.chipClass.includes(`text-[${m.fg}]`), `${status} chipClass lacks text-[${m.fg}]: ${m.chipClass}`);
-    assert.ok(m.dotClass.includes(m.mark), `${status} dotClass lacks mark ${m.mark}`);
+    const t = m.token;
+    assert.match(m.fg, /^#[0-9a-f]{6}$/i, `${status} fg is a hex`);
+    assert.match(m.bg, /^#[0-9a-f]{6}$/i, `${status} bg is a hex`);
+    assert.match(m.mark, /^#[0-9a-f]{6}$/i, `${status} mark is a hex`);
+    assert.equal(rootHex(`status-${t}-ink`), m.fg, `${status} fg is --status-${t}-ink`);
+    assert.equal(rootHex(`status-${t}-tint`), m.bg, `${status} bg is --status-${t}-tint`);
+    assert.equal(rootHex(`status-${t}`), m.mark, `${status} mark is --status-${t}`);
+    assert.equal(m.chipClass, `bg-status-${t}-tint text-status-${t}-ink`, `${status} chipClass: the tint and the ink`);
+    assert.equal(m.dotClass, `bg-status-${t}`, `${status} dotClass: the status colour`);
     // Floor redesign (2026-10-02): the tile is tinted with the chip colours instead of a stripe.
-    assert.ok(m.tileClass.includes(`bg-[${m.bg}]`), `${status} tileClass lacks bg-[${m.bg}]: ${m.tileClass}`);
+    assert.ok(m.tileClass.includes(`bg-status-${t}-tint`), `${status} tileClass lacks bg-status-${t}-tint: ${m.tileClass}`);
     assert.ok(m.tileClass.includes(m.borderClass), `${status} tileClass lacks its border ${m.borderClass}`);
-    assert.equal(m.textClass, `text-[${m.fg}]`, `${status} textClass must be its fg colour`);
-    assert.ok(m.borderClass.length > 0);
+    assert.equal(m.textClass, `text-status-${t}-ink`, `${status} textClass must be its ink`);
+    assert.ok(m.borderClass.length > 0, `${status} has a border class`);
   }
 });
 
@@ -94,6 +102,27 @@ test("contrast: every text colour the floor tile prints stays readable on its st
   }
   const occupied = TABLE_STATUS_META.Occupied.bg;
   assert.ok(contrast(danger, occupied) >= TEXT_MIN, `danger ${danger} on ${occupied} = ${contrast(danger, occupied).toFixed(2)}`);
+});
+
+// UI redesign (Task 19): the floor speaks the one status vocabulary (Available ok, Occupied info, Reserved reserved).
+test("the three statuses wear the theme's ok / info / reserved colours, and ink / muted / danger read on those tints", () => {
+  const want = {
+    // the owner's HTML value (values 1.1 --ok-i, design 5.1), was #16733a; on --ok-t it measures 4.55:1
+    Available: { mark: "#24a148", fg: "#198038", bg: "#defbe6" },
+    Occupied: { mark: "#0f62fe", fg: "#0043ce", bg: "#edf5ff", border: "#a6c8ff" },
+    Reserved: { mark: "#8a3ffc", fg: "#6929c4", bg: "#f6f2ff", border: "#d4bbff" },
+  } as const;
+  const css = readFileSync(fileURLToPath(new URL("../app/globals.css", import.meta.url)), "utf8");
+  for (const [status, v] of Object.entries(want)) {
+    const m = TABLE_STATUS_META[status as keyof typeof want];
+    assert.deepEqual({ mark: m.mark, fg: m.fg, bg: m.bg }, { mark: v.mark, fg: v.fg, bg: v.bg }, `${status} colours`);
+    if ("border" in v) {
+      // U0 match Task 7: the border is the theme's -border token (the HTML's info-b / res-b), whose value is the hex.
+      assert.equal(m.borderClass, `border-status-${m.token}-border`, `${status} border is the --status-${m.token}-border token`);
+      assert.ok(css.includes(`--status-${m.token}-border: ${v.border};`), `--status-${m.token}-border is ${v.border}`);
+    }
+  }
+  assert.equal(TABLE_STATUS_META.Available.borderClass, "border-[#a8e0b8]", "Available keeps the Floor's own green border (the HTML has no ok-b)");
 });
 
 test("longStayMinutesOf: missing settings / absent key / out-of-range / non-integer fall back to the default", () => {

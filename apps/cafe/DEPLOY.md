@@ -272,7 +272,8 @@ prospective clients: a full menu (categories, 100+ products, photos), 40
 customers with dues, ~31 days of orders (dine-in and takeaway, cash/online/split/
 due payments, a few voids and cancellations, 3 open tabs today), events,
 reservations, and QR self-order requests. Staff logins (`priya` / `rahul` /
-`amit`) share the seeded admin's password. Vercel is not touched — same
+`amit`) share the seeded admin's password, and have PINs (priya 2468, rahul 1357, amit 8642; the admin 9753) for
+the name + PIN sign-in on a device after its first password sign-in. Vercel is not touched — same
 project, same URL, same env.
 
 ```bash
@@ -319,7 +320,7 @@ MONGODB_URI="mongodb+srv://…" npm run seed:tables
 
 - [ ] Open the URL → login page loads
 - [ ] `GET /api/health` → HTTP 200 `{ "ok": true, "db": "up", … }` (a 503 with `"db": "down"` = app up, cluster unreachable)
-- [ ] Log in as admin
+- [ ] Log in as admin (username and password; the first sign-in on a device is always by password, then set PINs on the Staff page)
 - [ ] Dashboard KPIs + live floor populate (exercises the summary/aggregate)
 - [ ] Add a product with an image (browser PUTs to the cafe's own R2 bucket; needs the bucket CORS rule above)
 - [ ] POS: open a tab → fire KOT → settle; receipt prints

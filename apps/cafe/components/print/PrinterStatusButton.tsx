@@ -1,18 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Printer } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
+import { GlyphPrinter } from "@/components/layout/nav-icons";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
 import { usePrintHostDot } from "@/components/layout/print-host-dot-context";
 import { usePrintWaitingCount } from "@/components/layout/print-waiting-context";
 import { PrinterPanel } from "@/components/print/PrinterPanel";
 import {
-  PRINTER_DOT_BAD_CLASS,
   PRINTER_DOT_CLASS,
   PRINTER_DOT_OK_CLASS,
+  PRINTER_DOT_WARN_CLASS,
   PRINTER_ICON_BUTTON_CLASS,
 } from "@/components/print/printer-classes";
 import { useDotPrinters } from "@/hooks/use-agent-printers";
@@ -54,19 +55,21 @@ export function PrinterStatusButton() {
       <SheetTrigger asChild>
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
           size="icon"
-          className={PRINTER_ICON_BUTTON_CLASS}
+          className={cn(PRINTER_ICON_BUTTON_CLASS, HTML_PRESS_CLASS)}
           aria-label={name}
           title={name}
           data-printer-dot={tone}
           data-printer-waiting={waiting}
+          data-ui="printer-button"
         >
-          <Printer />
+          <GlyphPrinter aria-hidden strokeWidth={1.8} />
           {tone !== "none" && (
             <span
               aria-hidden="true"
-              className={cn(PRINTER_DOT_CLASS, tone === "green" ? PRINTER_DOT_OK_CLASS : PRINTER_DOT_BAD_CLASS)}
+              className={cn(PRINTER_DOT_CLASS, tone === "green" ? PRINTER_DOT_OK_CLASS : PRINTER_DOT_WARN_CLASS)}
+              data-ui="printer-dot"
             />
           )}
           {waiting !== "" && (

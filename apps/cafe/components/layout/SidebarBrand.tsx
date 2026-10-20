@@ -1,78 +1,45 @@
 "use client";
 
-import { useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 
-import { APP_NAME } from "@/lib/constants";
-import { cn } from "@/lib/utils";
+import { VENDOR_PRODUCT_NAME } from "@/lib/constants";
+import { BrandTile } from "@/components/layout/BrandTile";
+import { NavDeviceLine } from "@/components/layout/NavDeviceLine";
 
-// The sidebar's top row: the cafe's logo at its own shape (a wide wordmark
-// keeps its width), then the cafe's name over the product name. Extracted
-// from AppSidebar, which still owns WHICH logo to show (restaurant logo,
-// then product logo, then the branding route — pinned there).
+// The nav's brand block (the owner's HTML, values 2.3; design 5.2): a 34px tile, then (wide form only) the cafe's
+// name in Shrikhand over "{product name} · {this device's print name}". The tile (BrandTile, shared with the phone
+// header's mini logo) shows the cafe's uploaded logo when there is one (AppSidebar decides which, pinned there), else
+// the name's first letter in Shrikhand on the brand red; a logo that fails to load falls back to the letter too.
 //
-// The whole row is a link to the Dashboard (owner, 2026-09-29), like the
-// home link in any app's header. It never prefetches on its own — the
-// sidebar's only warmer is useWarmRoutes, which already keeps "/" warm — and
-// it closes the phone sheet exactly like a nav row does.
-//
-// In the 3rem icon rail the real logo shows, scaled down to fit the 32px
-// square (object-contain: a wide wordmark shrinks to the square's width
-// rather than being cropped). A monogram tile — the name's first letter, ink
-// on paper — stands in only when the logo fails to load.
+// The block is a link to the Dashboard (owner, 2026-09-29), like the home link in any app's header. It never
+// prefetches on its own (the nav's only warmer is useWarmRoutes, which keeps "/" warm).
 
 interface SidebarBrandProps {
   brandName: string;
-  logoUrl: string;
-  collapsed: boolean;
-  /** Called on a tap — AppSidebar closes the phone sheet with it. */
-  onNavigate: () => void;
+  /** The uploaded logo to show in the tile, or null for the letter. */
+  logoUrl: string | null;
 }
 
-export function SidebarBrand({ brandName, logoUrl, collapsed, onNavigate }: SidebarBrandProps) {
-  const [failed, setFailed] = useState(false);
-  const initial = brandName.trim().charAt(0).toUpperCase() || "?";
-
+export function SidebarBrand({ brandName, logoUrl }: SidebarBrandProps) {
   return (
     <Link
       href="/"
       prefetch={false}
-      onClick={onNavigate}
+      title={brandName}
       aria-label={`${brandName}, go to Dashboard`}
-      className="flex h-9 min-w-0 items-center gap-2.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+      data-ui="nav-brand"
+      className="mb-2.5 flex flex-none items-center justify-center gap-2.5 rounded-[8px] p-1.5 text-white outline-none focus-visible:ring-2 focus-visible:ring-brand-nav-focus wide:justify-start"
     >
-      {failed ? (
+      <BrandTile name={brandName} logoUrl={logoUrl} size="nav" dataUi="nav-brand-tile" />
+      <span className="hidden min-w-0 flex-col wide:flex">
         <span
-          aria-hidden="true"
-          className="grid size-8 shrink-0 place-items-center rounded-lg bg-brand-primary font-brand-display text-[15px] font-semibold text-brand-slip"
+          data-ui="nav-brand-name"
+          className="truncate font-brand-script text-[18px] font-normal leading-[1.15] text-brand-nav-name"
         >
-          {initial}
+          {brandName}
         </span>
-      ) : (
-        <Image
-          src={logoUrl}
-          alt=""
-          width={32}
-          height={32}
-          unoptimized
-          onError={() => setFailed(true)}
-          // multiply: a logo saved on a white background sits on the paper
-          // without a white box around it.
-          className={cn(
-            "h-8 w-auto max-w-[6.5rem] shrink-0 object-contain mix-blend-multiply",
-            collapsed && "w-8 max-w-8",
-          )}
-        />
-      )}
-      {!collapsed && (
-        <div className="min-w-0 leading-tight">
-          <div className="truncate text-[15px] font-semibold tracking-[-0.01em] text-brand-ink">{brandName}</div>
-          {/* The product name, unless the cafe has no name of its own yet —
-              then the line above already says it. */}
-          {brandName !== APP_NAME && <div className="truncate text-[12px] text-brand-muted">{APP_NAME}</div>}
-        </div>
-      )}
+        <NavDeviceLine lead={VENDOR_PRODUCT_NAME} dataUi="nav-brand-line" className="truncate text-[12px] text-nav-t2" />
+      </span>
     </Link>
   );
 }

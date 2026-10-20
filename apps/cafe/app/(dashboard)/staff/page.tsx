@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Pencil, UserX, UserCheck, UserCog, KeyRound } from "lucide-react";
+import { Plus, Pencil, UserX, UserCheck, UserCog, KeyRound, LockOpen } from "lucide-react";
 
 import { useAuth } from "@/hooks/use-auth";
 import { useStaff, useDeleteStaff, useUpdateStaff } from "@/hooks/use-staff";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusPill } from "@/components/shared/StatusPill";
 import {
   Table,
   TableBody,
@@ -75,6 +76,9 @@ function StaffManager() {
 
   const reactivate = (member: Staff) =>
     updateStaff.mutate({ id: member._id, data: { isActive: true } });
+
+  const unblockPin = (member: Staff) =>
+    updateStaff.mutate({ id: member._id, data: { pinBlocked: false } });
 
   const list = staff.data ?? [];
 
@@ -151,12 +155,29 @@ function StaffManager() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={member.isActive ? "outline" : "secondary"}>
-                          {member.isActive ? "Active" : "Inactive"}
-                        </Badge>
+                        <div className="flex flex-wrap gap-1">
+                          <Badge variant={member.isActive ? "outline" : "secondary"}>
+                            {member.isActive ? "Active" : "Inactive"}
+                          </Badge>
+                          {member.pinBlocked && <StatusPill kind="bad">PIN blocked</StatusPill>}
+                          {!member.hasPin && <StatusPill kind="neutral">No PIN</StatusPill>}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
+                          {member.pinBlocked && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className={BRAND_ROW_ACTION_CLASS}
+                              disabled={updateStaff.isPending}
+                              onClick={() => unblockPin(member)}
+                              aria-label="Unblock PIN"
+                              title="Unblock PIN"
+                            >
+                              <LockOpen className="h-4 w-4" />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="icon"
@@ -229,6 +250,7 @@ function StaffManager() {
                   onResetPassword={setResetting}
                   onDeactivate={setDeactivating}
                   onReactivate={reactivate}
+                  onUnblockPin={unblockPin}
                 />
               );
             })}

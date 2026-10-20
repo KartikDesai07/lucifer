@@ -7,6 +7,11 @@ export interface IStaff extends Document {
   password: string;
   role: "admin" | "staff";
   isActive: boolean;
+  pin?: string;
+  hasPin: boolean;
+  pinBlocked: boolean;
+  pinFailDay?: string;
+  pinFailCount: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -28,6 +33,14 @@ export const staffSchema = new Schema<IStaff>(
     password: { type: String, required: true, select: false },
     role: { type: String, enum: ["admin", "staff"], default: "staff" },
     isActive: { type: Boolean, default: true },
+    // The 4-digit sign-in PIN, stored as typed because admins are shown it (spec 5.2).
+    // select:false like the password: only the admin PIN route opts in with .select('+pin').
+    pin: { type: String, select: false },
+    hasPin: { type: Boolean, default: false },
+    pinBlocked: { type: Boolean, default: false },
+    // The wrong-try counter for one cafe day; internal, never listed.
+    pinFailDay: { type: String, select: false },
+    pinFailCount: { type: Number, default: 0, select: false },
   },
   { timestamps: true },
 );

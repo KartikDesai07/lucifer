@@ -55,12 +55,14 @@ test("a deliberate refresh is marked, so the page's own leave warning stays quie
   assert.equal(isDeliberateReload(), false);
 });
 
-test("PIN: the top bar shows Refresh right beside the printer icon", () => {
+// U0 Task 3 (design 5.3): the header's global buttons run Tables, New order, Refresh, Tokens (when on), the printer.
+test("PIN: the header shows Refresh among its global buttons, before the printer icon", () => {
   const header = src("apps/cafe/components/layout/Header.tsx");
   const refreshAt = header.indexOf("<RefreshButton />");
   const printerAt = header.indexOf("<PrinterStatusButton />");
-  assert.ok(refreshAt >= 0 && printerAt >= 0, "both buttons are in the top bar");
-  assert.ok(refreshAt < printerAt, "Refresh sits just before the printer icon");
+  assert.ok(refreshAt >= 0 && printerAt >= 0, "both buttons are in the header");
+  assert.ok(refreshAt < printerAt, "Refresh sits before the printer icon (only Tokens may come between)");
+  assert.ok(header.indexOf("<HeaderQuickTabs />") < refreshAt, "after Tables and New order");
 });
 
 test("PIN: Refresh shows only inside the POS app, asks first, then reloads quietly; a refresh that did not happen lets go", () => {

@@ -480,6 +480,9 @@ test("PIN: BOOTSTRAP_VERSION is at least 12 and the masters blob carries the are
   // CB-7 S1 then added Settings.rewardLevels (14 -> 15): a v14 blob has none, so a device holding one would read the reward
   // levels as never configured after the owner saved a set. Lowering it below 15 would revive those blobs.
   assert.ok(BOOTSTRAP_VERSION >= 15, `BOOTSTRAP_VERSION is ${BOOTSTRAP_VERSION} - Settings carrying rewardLevels (CB-7 S1) needs at least 15`);
+  // PIN lock then added Staff.hasPin / pinBlocked and Settings.screenLockMinutes (15 -> 16): a v15 blob has none, so the Staff page
+  // would show no PIN state and a device would never auto-lock from it. Lowering it below 16 would revive those blobs.
+  assert.ok(BOOTSTRAP_VERSION >= 16, `BOOTSTRAP_VERSION is ${BOOTSTRAP_VERSION} - Staff carrying hasPin/pinBlocked and Settings carrying screenLockMinutes (PIN lock) needs at least 16`);
   // Positive landmark: the part the version bump was for is really in the key list.
   assert.ok((MASTERS_PART_KEYS as readonly string[]).includes("areas"), "MASTERS_PART_KEYS includes areas");
 });

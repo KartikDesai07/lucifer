@@ -27,8 +27,9 @@ import type { Product } from "@/types";
 // query believing the staff tablet lacked them; CB-1c proved the tablet is a
 // modern engine, and the tiers stay because they are plain data the layout
 // pins can verify (lib/pos-layout.ts). The sidebar state comes from
-// SidebarProvider (defaultOpen, cookie never read), so the server and the
-// first client render agree on the class.
+// SidebarProvider (expanded on the server and the first client render; the
+// remembered collapse is read after mount), so the two agree on the class —
+// and both states share one tier table, so the class never changes anyway.
 function useGridClass(): string {
   const { state } = useSidebar();
   return state === "collapsed"

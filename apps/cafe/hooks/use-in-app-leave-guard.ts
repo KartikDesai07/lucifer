@@ -18,7 +18,7 @@ import {
 // React's root listener, so next/link never sees a guarded click. The click is
 // swallowed and the dialog opens. On Discard the form is reset, then the same
 // anchor is clicked again with the guard bypassed — a replay, so next/link AND
-// any onClick the link carries (the sidebar closing its phone sheet) both run.
+// any onClick the link carries (the phone's More sheet closing) both run.
 // If the anchor left the DOM meanwhile, router.push(href) is the fallback.
 // The bypass flag exists for this replay only.
 //

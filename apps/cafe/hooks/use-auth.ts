@@ -19,14 +19,15 @@ export function useAuth() {
   //
   // 1. Drop this tab's stored master copy AND every cached query first. Neither
   //    carries a user or role: the customer list is cached for minutes and the
-  //    master blob holds the admin's staff list, so whatever the admin fetched
-  //    — including real mobile numbers — would otherwise be served to the next
+  //    query cache holds the admin's staff list (the device's master blob never
+  //    does: MASTERS_PERSISTED_PART_KEYS), so whatever the admin fetched —
+  //    including real mobile numbers — would otherwise be served to the next
   //    person from cache with no network call at all.
   // 2. signOut() can REJECT (its internal fetch is unguarded), and when it does
   //    it never reaches its own redirect: the session cookie is never cleared
   //    and the screen does not change. Left unhandled, the manager walks away
   //    believing they logged out while an admin session stays live for the rest
-  //    of its 30-day rolling life (SESSION_MAX_AGE_SECONDS). Say so instead of
+  //    of its 90-day rolling life (SESSION_MAX_AGE_SECONDS). Say so instead of
   //    failing silently.
   const logout = async () => {
     clearMastersBlob();

@@ -43,6 +43,9 @@ export default {
       },
       authorize: () => null,
     }),
+    // The PIN provider's stub (spec 2026-10-16 §5.4); its real check (the device cookie, the
+    // per-person limits, the staff row) lives in lib/auth.ts.
+    Credentials({ id: "pin", credentials: { staffId: {}, pin: {} }, authorize: () => null }),
   ],
   pages: { signIn: "/login" },
   // maxAge bounds how long a token (and thus a deactivated login) can live.

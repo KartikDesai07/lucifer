@@ -46,6 +46,7 @@ export interface DemoStaffMember {
   username: string; // login, lowercase [a-z0-9._@-]+
   mobile: string;
   weight: number; // share of orders rung up by this person
+  pin: string; // 4-digit PIN for the name + PIN sign-in
 }
 
 // ── Seeded random numbers (rng.ts) ───────────────────────────────────────────

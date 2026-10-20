@@ -1,13 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { stripComments } from "@/lib/source-pin-utils";
 
 // Dashboard redesign (2026-09-29) — source pins for the contracts this screen
 // makes that no unit test can see: the owner's "recent orders max 5", Chart.js
-// staying out of the first bundle, the live strip riding the realtime nudges,
+// staying off the dashboard (its chart is CSS), the live strip riding the realtime nudges,
 // the admin-only multi-day rule, and no cafe name in the screen's code.
 // Needles are built by concatenation so this file can never match itself.
 
@@ -20,26 +20,23 @@ test("Recent orders shows at most five rows and links to the full Orders list", 
   const src = readSrc("components/dashboard/RecentOrders.tsx");
   assert.match(src, /const MAX_ROWS = 5;/, "MAX_ROWS must be 5 (owner: recent orders max 5)");
   assert.ok(src.includes("orders.slice(0, MAX_ROWS)"), "the rows must be cut to MAX_ROWS");
-  assert.ok(src.includes('link={{ href: "/orders", label: "View all" }}'), "a View all link to /orders");
+  // U0 match Task 8 (ruling R17): the HTML's words for the link, "All orders →".
+  assert.ok(src.includes('link={{ href: "/orders", label: "All orders" }}'), "an All orders link to /orders");
 });
 
-test("Chart.js reaches the page only through a dynamic, client-only import", () => {
+// U0 match Task 7 (values 3.5, design 5.5): the dashboard's sales chart is the owner's HTML bar chart in CSS
+// (components/dashboard/HourBars.tsx), so SalesChart and its chart-size module are gone and the Reports' ReportChart
+// is the one file left that may import Chart.js / react-chartjs-2 (still through next/dynamic, reports-paths.test.ts).
+test("the dashboard draws its sales chart in CSS; only the Reports' ReportChart imports Chart.js", () => {
   const cards = readSrc(CARDS);
-  assert.ok(cards.includes('dynamic(() => import("@/components/dashboard/SalesChart")'), "SalesChart is next/dynamic");
-  assert.match(cards, /ssr: false/, "…with ssr: false");
-  const staticImport = "from " + '"@/components/dashboard/SalesChart"';
-  for (const rel of [PAGE, CARDS]) {
-    const src = readSrc(rel);
-    assert.ok(src.includes("@/components/dashboard/"), `${rel}: landmark (dashboard imports present)`);
-    assert.ok(!src.includes(staticImport), `${rel} must not import SalesChart statically`);
+  assert.ok(cards.includes('from "@/components/dashboard/HourBars"'), "landmark: SalesCard draws HourBars");
+  assert.ok(!cards.includes("next/dynamic"), "no lazy chart chunk left on the cards");
+  for (const gone of ["components/dashboard/SalesChart.tsx", "components/dashboard/chart-size.ts"]) {
+    assert.ok(!existsSync(path.join(HERE, "..", gone)), `${gone} is deleted (nothing imports it)`);
   }
-  // Only SalesChart and the Reports screens' own ReportChart may import
-  // chart.js / react-chartjs-2 (Reports redesign Batch 1, 2026-09-29 —
-  // ReportChart is the Reports screens' chart, same kit, allow-listed
-  // alongside SalesChart rather than replacing it).
   const needles = ['from "' + "chart.js" + '"', 'from "' + "react-chartjs-2" + '"'];
   const dirs = ["components", "app", "hooks", "lib"];
-  const ALLOWED_CHARTJS_FILES = ["components/dashboard/SalesChart.tsx", "components/reports/ReportChart.tsx"];
+  const ALLOWED_CHARTJS_FILES = ["components/reports/ReportChart.tsx"];
   const offenders: string[] = [];
   let scanned = 0;
   const walk = (rel: string) => {
@@ -55,7 +52,6 @@ test("Chart.js reaches the page only through a dynamic, client-only import", () 
   };
   for (const d of dirs) walk(d);
   assert.ok(scanned > 100, `scanned ${scanned} source files — the walk must actually cover the app`);
-  assert.ok(readSrc("components/dashboard/SalesChart.tsx").includes(needles[1]), "landmark: SalesChart does use react-chartjs-2");
   assert.ok(readSrc("components/reports/ReportChart.tsx").includes(needles[1]), "landmark: ReportChart does use react-chartjs-2");
   assert.deepEqual(offenders, [], "no other file imports Chart.js");
 });
@@ -103,8 +99,32 @@ test("no cafe name is written into the dashboard's code", () => {
     CARDS,
     ...readdirSync(path.join(HERE, "..", "components/dashboard")).map((f) => `components/dashboard/${f}`),
   ];
-  assert.ok(readSrc(PAGE).includes("restaurantName"), "landmark: the page names the cafe from Settings");
+  // U0 match Task 5: the page's title row moved into the shell's header, whose second line names the cafe from
+  // Settings when the page gives no description (the HTML's "{cafe} · {weekday, day month}").
+  assert.ok(/<PageHeader\s+title="Dashboard"/.test(readSrc(PAGE)), "landmark: the page names itself through PageHeader");
+  assert.ok(!/<PageHeader[^>]*\bdescription=/.test(readSrc(PAGE)), "with no description, so the header's cafe line shows");
+  assert.ok(readSrc("components/layout/Header.tsx").includes("settings.data?.restaurantName"), "landmark: the header names the cafe from Settings");
   for (const rel of files) {
     assert.ok(!/lucifer/i.test(readSrc(rel)), `${rel} must not hardcode a cafe name`);
   }
+});
+
+// U0 match Task 8, fix round 1: the dashboard's cards read an order's channel from lib/dashboard/channel.ts (the JS twin
+// of CHANNEL_EXPR), never from the server's aggregation module, which no client file may import.
+test("channelOf lives in lib/dashboard/channel.ts; no component, hook or page imports lib/dashboard/pipelines", () => {
+  const root = path.join(HERE, "..");
+  const walk = (dir: string): string[] =>
+    readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((e) => {
+      const rel = path.join(dir, e.name);
+      if (e.isDirectory()) return rel.split(path.sep).includes("api") ? [] : walk(rel);
+      return /\.tsx?$/.test(e.name) && !/\.test\.tsx?$/.test(e.name) ? [rel] : [];
+    });
+  const needle = "@/lib/dashboard/" + "pipelines";
+  const offenders = ["components", "hooks", "app"].flatMap(walk).filter((f) => readSrc(f).includes(needle));
+  assert.deepEqual(offenders, [], "client code reads the channel from lib/dashboard/channel.ts");
+  assert.match(readSrc("components/dashboard/RecentOrders.tsx"), /import \{ channelOf \} from "@\/lib\/dashboard\/channel";/, "Recent orders' channel");
+  const channel = readSrc("lib/dashboard/channel.ts");
+  assert.ok(/export function channelOf\(/.test(channel), "the twin is defined there");
+  assert.ok(!/from "mongoose"|from "@\/models|from "@\/lib\/db/.test(channel), "and imports nothing of the server");
+  assert.ok(readSrc("lib/dashboard/pipelines.ts").includes('export { channelOf } from "@/lib/dashboard/channel";'), "pipelines.ts re-exports it for the scripts and tests");
 });

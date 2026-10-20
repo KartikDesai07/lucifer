@@ -1,9 +1,10 @@
 // Source pins for the staff sidebar's 2026-09-26 redesign (components/layout/
 // AppSidebar.tsx + its extracted pieces). The sidebar is chrome on EVERY
 // staff screen, so the behaviours a restyle could silently drop are pinned:
-// who sees which row, the "you are here" announcement, the phone sheet's
-// labels, a waiting request staying visible in the folded rail, and the
-// brand fonts/colours reaching the portaled phone sheet. Same readSrc +
+// who sees which row, the "you are here" announcement, the remembered fold
+// staying a desktop choice, a waiting request staying visible in the folded
+// rail, and the brand fonts/colours. (Since U0 Task 4 a phone renders no nav:
+// the tab bar and its More sheet replaced the old phone sheet.) Same readSrc +
 // stripComments idiom as lib/kitchen-paths.test.ts.
 
 import { test } from "node:test";
@@ -78,9 +79,19 @@ test("PIN: every sidebar link says which page is current — aria-current rides 
   // Review finding 2026-09-28: on the /settings hub the list auto-opens but
   // no section row matches — the Settings row itself must light and announce
   // the page, or nothing in the sidebar says where you are.
+  // U0 Task 2: the row is lit on every Settings page (the rail's flyout has no
+  // open list to hand the light to); in the wide form, with the list open, the
+  // lit sub-row takes over unless the row's own page (the hub) is current —
+  // nav-parts' data-sub-current, a CSS rule, so the first paint is right.
   assert.match(group, /const onHub = pathname === url;/);
-  assert.match(group, /isActive=\{onHub \|\| \(onSettings && !settingsOpen\)\}/, "the Settings row lights on the hub even with its list open");
+  assert.match(group, /isActive=\{onSettings\}/, "the Settings row lights on every Settings page");
   assert.match(group, /aria-current=\{onHub \? "page" : undefined\}/, "and announces the hub as the current page");
+  const parts = stripComments(readSrc("apps/cafe/components/layout/nav-parts.tsx"));
+  assert.match(
+    parts,
+    /data-sub-current=\{isActive && ariaCurrent !== "page"\}/,
+    "a group row hands its light to the lit sub-row only when its own page is not the current one (the hub keeps it)",
+  );
 });
 
 // Menu redesign (2026-09-30): Categories left the flat nav list and joined
@@ -105,15 +116,16 @@ test("PIN: the Menu group renders from MENU_SECTIONS (not a private literal) and
   assert.ok(!/\{ title: "Categories", url: "\/categories"/.test(app), "Categories must no longer be a flat AppSidebar nav entry");
 });
 
-// G15 (arbiter-confirmed): on the collapsed rail (or for staff, who see only
-// one Menu sub-section) the group collapses to one plain Link to Items. Its
-// LIT state must follow onMenu (isMenuPath), like SidebarReportsGroup's own
-// collapsed branch — otherwise an admin on /categories with the rail folded
-// sees the Menu icon go dark, as if no section under it were open.
-test("PIN: the Menu group's collapsed/single-section Link lights on ANY menu page (onMenu), not only its own exact href", () => {
+// G15 (arbiter-confirmed): for staff, who see only one Menu sub-section, the
+// group is one plain Link to Items. Its LIT state must follow onMenu
+// (isMenuPath) — otherwise a staff member on an Items sub-page would see the
+// Menu row go dark. U0 Task 2: the rail no longer folds to this Link; it opens
+// the sections in a flyout (NavGroupRow), lit on any menu page too.
+test("PIN: the Menu group's single-section Link lights on ANY menu page (onMenu), not only its own exact href", () => {
   const group = stripComments(readSrc(MENU_GROUP));
-  const collapsedBranchStart = group.indexOf("if (collapsed || sections.length <= 1)");
-  assert.ok(collapsedBranchStart >= 0, "landmark: the collapsed/single-section branch must still exist");
+  const collapsedBranchStart = group.indexOf("if (sections.length <= 1)");
+  assert.ok(collapsedBranchStart >= 0, "landmark: the single-section branch must still exist");
+  assert.match(group, /<NavGroupRow[^>]*isActive=\{onMenu\}/, "the drop-down row (and the rail's flyout row) lights on any menu page");
   const collapsedBranchEnd = group.indexOf("\n  }\n", collapsedBranchStart);
   const branch = group.slice(collapsedBranchStart, collapsedBranchEnd);
 
@@ -122,30 +134,34 @@ test("PIN: the Menu group's collapsed/single-section Link lights on ANY menu pag
   assert.match(branch, /aria-current=\{exact \? "page" : undefined\}/, "aria-current must still announce only the exact Items match");
 });
 
-test("PIN: the phone sheet always shows row labels, whatever the desktop rail was last folded to", () => {
+test("PIN: the remembered fold is a desktop choice — it never applies below 720px, whatever the rail was last folded to", () => {
   const src = stripComments(readSrc(APP_SIDEBAR));
-  // Mutation this catches: `collapsed = state === "collapsed"` alone — a
-  // tablet folded in landscape then turned to portrait would open a sheet of
-  // bare icons (the folded state is remembered per browser).
+  // Mutation this catches: `collapsed = state === "collapsed"` alone — the
+  // folded state is remembered per browser, so a phone-width window would
+  // carry a desktop fold it cannot show (it renders no nav since U0 Task 4).
   assert.match(src, /const collapsed = state === "collapsed" && !isMobile;/);
 });
 
-test("PIN: a waiting order request stays visible in the folded rail — a red dot on the icon, where the primitive hides the count", () => {
+// U0 Task 2: the count is the owner's HTML grey pill (values 2.3), shown in
+// the wide form only, like the HTML; the rail keeps a dot on the icon so a
+// waiting request never vanishes just because the nav is the rail.
+test("PIN: a waiting order request stays visible in the rail — a dot on the icon, where the HTML hides the count pill", () => {
   const src = stripComments(readSrc(REQUEST_BADGE));
-  const dot = src.match(/<span[^>]*className="([^"]*)"[^>]*\/>/);
-  assert.ok(dot, "RequestCountBadge must render a dot <span> beside the count badge");
+  assert.match(src, /<span data-ui="nav-badge" className=\{BRAND_NAV_BADGE_CLASS\}>/, "the count is the nav's badge pill");
+  const pill = stripComments(readSrc(BRAND_CLASSES)).match(/export const BRAND_NAV_BADGE_CLASS =\s*"([^"]*)";/);
+  assert.ok(pill, "landmark: BRAND_NAV_BADGE_CLASS is a plain class string");
+  for (const token of ["hidden", "wide:inline-flex", "bg-nav-2", "text-nav-t", "h-5", "min-w-5", "rounded-[10px]", "text-[11.5px]", "font-semibold"]) {
+    assert.ok(pill![1].split(/\s+/).includes(token), `the count pill carries the HTML's ${token}`);
+  }
+  const dot = src.match(/<span\s+aria-hidden="true"\s+className="([^"]*)"\s*\/>/);
+  assert.ok(dot, "RequestCountBadge must render a dot <span> beside the count pill");
   const classes = dot![1].split(/\s+/);
-  // Hidden in the full sidebar (the count shows there), shown in the rail.
-  assert.ok(classes.includes("hidden"), "the dot is hidden by default");
-  assert.ok(classes.includes("group-data-[collapsible=icon]:block"), "the dot shows only in the folded rail");
-  assert.ok(classes.includes("bg-brand-danger"), "the dot is the same red as the count badge");
-  // Mutation this catches: the primitive's peer rules re-colouring the count
-  // on an active or hovered row (ink on red, unreadable).
-  assert.match(src, /peer-data-\[active=true\]\/menu-button:text-white/);
-  assert.match(src, /peer-hover\/menu-button:text-white/);
+  // Shown in the rail, hidden in the wide form (the count shows there).
+  assert.ok(classes.includes("wide:hidden"), "the dot shows only in the rail");
+  assert.ok(classes.includes("bg-status-warn"), "the dot is the request strip's warn colour");
 });
 
-test("PIN: the brand fonts sit on a child of <Sidebar>, not its className — the phone sheet renders the children but drops the className", () => {
+test("PIN: the brand fonts sit on a child of <Sidebar>, not its className (the old phone sheet rendered the children but dropped the className)", () => {
   const src = stripComments(readSrc(APP_SIDEBAR));
   const open = src.indexOf('<Sidebar collapsible="icon"');
   assert.ok(open >= 0, 'landmark: AppSidebar renders <Sidebar collapsible="icon"');
@@ -160,17 +176,18 @@ test("PIN: the brand fonts sit on a child of <Sidebar>, not its className — th
   );
 });
 
-test("PIN: the sidebar's colours come from the brand palette on :root (the phone sheet is portaled, so a wrapper could not reach it)", () => {
+test("PIN: the sidebar's colours come from the brand palette on :root (a portaled piece, like the rail's flyout, still reaches them)", () => {
   const css = readSrc(GLOBALS_CSS);
   const root = [...css.matchAll(/:root\s*\{([^}]*)\}/g)].map((m) => m[1]).find((body) => body.includes("--sidebar:"));
   assert.ok(root, "a :root block must declare --sidebar");
   for (const [name, token] of [
     ["sidebar", "brand-sidebar"],
-    ["sidebar-foreground", "brand-ink"],
-    ["sidebar-accent", "brand-wash"],
-    ["sidebar-accent-foreground", "brand-ink"],
-    ["sidebar-border", "brand-rule"],
-    ["sidebar-ring", "brand-accent"],
+    ["sidebar-foreground", "brand-nav-text"],
+    ["sidebar-accent", "brand-nav-hover"],
+    ["sidebar-accent-foreground", "brand-slip"],
+    ["sidebar-border", "brand-nav-rule"],
+    ["sidebar-ring", "brand-nav-focus"],
+    ["sidebar-muted", "brand-nav-muted"],
   ] as const) {
     assert.match(root!, new RegExp(`--${name}:\\s*var\\(--${token}\\);`), `--${name} must be var(--${token})`);
   }
@@ -181,14 +198,14 @@ test("PIN: the sidebar's colours come from the brand palette on :root (the phone
 // lib/warm-routes.ts). Pinned so a later edit can neither drop the warmth nor
 // spread it to setup/admin screens (each warm route costs a background request
 // per reuse window on every open device).
-// Order (owner, 2026-09-29): Orders directly under New Order; Floor under both (2026-10-02).
-const WARM_URLS = ["/", "/pos", "/orders", "/tables", "/requests", "/kitchen", "/now-serving", "/reservations"];
+// The same eight warm screens since 2026-10-02; U0 Task 2 put them in the HTML's order (Home, Floor, Order, Orders, …).
+const WARM_URLS = ["/", "/tables", "/pos", "/orders", "/requests", "/kitchen", "/now-serving", "/reservations"];
 const NEXT_CONFIG = "apps/cafe/next.config.ts";
 
-test("PIN: exactly the Dashboard and Service sections are warm — no setup or admin screen — and only the line-gated hook prefetches them (their Links never do)", () => {
+test("PIN: exactly the Operate group is warm — no setup or admin screen — and only the line-gated hook prefetches it (its Links never do)", () => {
   const src = stripComments(readSrc(APP_SIDEBAR));
   const heads = [...src.matchAll(/\{\s*(?:label:\s*"([^"]+)",\s*)?(warm:\s*true,\s*)?items:\s*\[/g)];
-  assert.equal(heads.length, 4, "landmark: four nav sections (Dashboard, Service, Manage, Admin)");
+  assert.equal(heads.length, 2, "landmark: the HTML's two nav groups (Operate, Manage)");
   const warmUrls: string[] = [];
   heads.forEach((head, i) => {
     if (!head[2]) return;
@@ -198,7 +215,7 @@ test("PIN: exactly the Dashboard and Service sections are warm — no setup or a
       warmUrls.push(m[1]);
     }
   });
-  assert.deepEqual(warmUrls, WARM_URLS, "the warm rows are the dashboard and the service screens, in sidebar order");
+  assert.deepEqual(warmUrls, WARM_URLS, "the warm rows are the Operate screens, in nav order");
 
   // The warm rows are what the hook keeps prefetched (the FULL route — its
   // router.prefetch defaults to FULL); their own links do not prefetch at all.
@@ -228,7 +245,9 @@ test("PIN: no sidebar Link prefetches on its own — every one says prefetch={fa
   // 2026-09-29: a Link's default (or true) prefetch fires on sight and on
   // hover; on a line still waking up it can fail, and a failed prefetch turns
   // the next click into a full page load (vendor facts: lib/warm-routes.test.ts).
-  for (const [file, expected] of [[APP_SIDEBAR, 1], [SETTINGS_GROUP, 2], [REPORTS_GROUP, 2], [MENU_GROUP, 2], [TABLES_GROUP, 2], [SIDEBAR_BRAND, 1], [HEADER_QUICK_TABS, 1]] as const) {
+  // U0 Task 2: Settings, Reports and Tables lost their rail-only Link (the rail opens a flyout of the same sub-page
+  // Links); Menu keeps its staff single-section Link.
+  for (const [file, expected] of [[APP_SIDEBAR, 1], [SETTINGS_GROUP, 1], [REPORTS_GROUP, 1], [MENU_GROUP, 2], [TABLES_GROUP, 1], [SIDEBAR_BRAND, 1], [HEADER_QUICK_TABS, 1]] as const) {
     const src = stripComments(readSrc(file));
     // Vision guards: Link is next/link under that one name, and the scan finds
     // every tag the file renders (an extractor that finds none proves nothing).
@@ -254,22 +273,30 @@ test("PIN: next.config lengthens only the FULL-prefetch reuse window — staleTi
   assert.ok(!/dynamic/.test(block![1]), "staleTimes must not set `dynamic`");
 });
 
-test("PIN: the brand header is a link to the Dashboard that closes the phone sheet, and the icon rail shows the real logo (the monogram only when it fails to load)", () => {
+test("PIN: the brand block is a link to the Dashboard; its tile shows an uploaded logo, else the cafe's initial (and the initial when the logo fails to load)", () => {
   const brand = stripComments(readSrc(SIDEBAR_BRAND));
   const tags = linkTags(brand);
   assert.equal(tags.length, 1, "landmark: SidebarBrand renders one <Link>");
   // Mutation this catches: the header going back to a plain <div> (the owner
   // asked for the cafe name to open the Dashboard), or pointing elsewhere.
   assert.ok(tags[0].includes(`href="/"`), "the brand link goes to the Dashboard");
-  assert.ok(tags[0].includes("onClick={onNavigate}"), "a tap closes the phone sheet like a nav row");
+  // Final review m3: no phone sheet to close any more (a phone renders no nav), so the link only navigates.
+  assert.ok(!tags[0].includes("onClick="), "the brand link has no tap hook (the old phone sheet's closeMobile is gone)");
   const app = stripComments(readSrc(APP_SIDEBAR));
-  assert.match(app, /<SidebarBrand[^>]*onNavigate=\{closeMobile\}/, "AppSidebar hands the brand its closeMobile");
+  assert.ok(!/<SidebarBrand[^>]*onNavigate=/.test(app), "AppSidebar hands the brand no tap hook");
   // Mutation this catches: bringing back the wide-logo rule that swapped a
-  // wordmark for the letter in the rail — only a load failure may.
-  assert.match(brand, /\{failed \? \(/, "the monogram branch is keyed on the load failure alone");
-  assert.ok(!/naturalWidth|WIDE_LOGO/.test(brand), "no logo-shape rule may hide the real logo in the rail");
-  assert.match(brand, /collapsed && "w-8 max-w-8"/, "in the rail the logo is fitted to the 32px square");
-  assert.match(brand, /object-contain/, "and scaled, never cropped");
+  // wordmark for the letter in the rail — only a load failure, or no
+  // uploaded logo at all (design 5.2: the HTML's letter tile), may.
+  // U0 Task 3 fix round 1: the tile is BrandTile (shared with the phone header's 30px mini logo); the nav draws it at 34px.
+  const tile = stripComments(readSrc("apps/cafe/components/layout/BrandTile.tsx"));
+  const tileTag = /<BrandTile\b[^>]*\/>/.exec(brand)?.[0] ?? "";
+  assert.ok(tileTag.includes('size="nav"') && tileTag.includes("logoUrl={logoUrl}"), "the brand block draws the 34px tile with the logo it was given");
+  assert.match(tile, /\{failed \|\| logoUrl === null \? \(/, "the initial shows when the logo fails or none was uploaded");
+  assert.ok(!/naturalWidth|WIDE_LOGO/.test(brand + tile), "no logo-shape rule may hide the real logo in the rail");
+  assert.match(tile, /nav: \{ px: 34, box: "size-\[34px\] rounded-\[9px\]" \}/, "the HTML's 34px tile");
+  assert.match(tile, /LOGO_CLASS = "flex-none bg-white object-contain p-0\.5"/, "the logo fills the tile on white, scaled, never cropped");
+  // Ruling R3: only the cafe's own logo reaches the tile (lib/branding-paths.test.ts item 10).
+  assert.match(app, /<SidebarBrand[^>]*logoUrl=\{logoUrl\}/, "the tile gets the cafe's logo, or null for the initial");
 });
 
 // UI batch 1 C (2026-09-29) — "the Dashboard link sometimes does not respond".
@@ -281,18 +308,41 @@ test("PIN: the brand header is a link to the Dashboard that closes the phone she
 // browser, c-dash harness). An invisible heading must never take a click.
 const BRAND_CLASSES = "apps/cafe/components/brand/brand-classes.ts";
 
-test("PIN: a section heading folded away in the icon rail is click-through — it can never swallow a tap on the row above it", () => {
+// U0 Task 2: the HTML's group heading is display:none in the rail (values
+// 2.3 headDisplay), so a heading there is no box at all and cannot take a tap.
+test("PIN: a group heading is not displayed in the rail — it can never swallow a tap on the row above it", () => {
   const src = stripComments(readSrc(BRAND_CLASSES));
   const m = src.match(/export const BRAND_NAV_LABEL_CLASS =\s*"([^"]*)";/);
   assert.ok(m, "landmark: BRAND_NAV_LABEL_CLASS is a plain class string");
   const classes = m![1].split(/\s+/);
-  assert.ok(classes.includes("group-data-[collapsible=icon]:-mt-6"), "landmark: the heading still folds up in the rail");
-  assert.ok(
-    classes.includes("group-data-[collapsible=icon]:pointer-events-none"),
-    "the folded (invisible) heading must not take pointer events",
-  );
-  // And every section heading in the sidebar uses that class.
+  assert.ok(classes.includes("hidden"), "the heading is not displayed by default (the rail)");
+  assert.ok(classes.includes("wide:block"), "the heading shows in the wide form only");
+  // And every group heading in the nav uses that class.
   const app = stripComments(readSrc(APP_SIDEBAR));
-  assert.equal(app.match(/<SidebarGroupLabel\b/g)?.length, 1, "landmark: one SidebarGroupLabel render site");
-  assert.match(app, /<SidebarGroupLabel id=\{id\} className=\{BRAND_NAV_LABEL_CLASS\}>/);
+  assert.equal(app.match(/className=\{BRAND_NAV_LABEL_CLASS\}/g)?.length, 1, "landmark: one group heading render site");
+  assert.match(app, /<div id=\{id\} data-ui="nav-group-label" className=\{BRAND_NAV_LABEL_CLASS\}>/);
+});
+
+// U0 Task 2 (2026-10-19, values 2.4): the HTML labels Reservations "Bookings" while the nav is the rail
+// (`s.w<1280||s.navCollapsed`) and "Reservations" in the wide sidebar. The form is CSS (the `wide` variant), so the
+// pin follows the chain: the entry's rail title, the label that swaps on `wide:`, and the variant's own condition.
+const NAV_PARTS = "apps/cafe/components/layout/nav-parts.tsx";
+
+test("PIN: Reservations reads \"Bookings\" in the rail (below 1280 px, or collapsed) and \"Reservations\" in the wide sidebar", () => {
+  const app = stripComments(readSrc(APP_SIDEBAR));
+  const entry = app.match(/\{\s*title:\s*"Reservations",[^}]*\}/);
+  assert.ok(entry, "landmark: the Reservations entry exists");
+  assert.match(entry![0], /railTitle:\s*"Bookings"/, "the Reservations entry carries the rail label Bookings");
+
+  const parts = stripComments(readSrc(NAV_PARTS));
+  assert.match(parts, /<span className="wide:hidden">\{railTitle\}<\/span>/, "the rail label shows only outside the wide form");
+  assert.match(parts, /<span className="hidden wide:inline">\{title\}<\/span>/, "the full label shows only in the wide form");
+
+  const css = readSrc(GLOBALS_CSS);
+  const variant = css.match(/@custom-variant wide \{([\s\S]*?)\n\}/);
+  assert.ok(variant, "globals.css defines the `wide` variant");
+  assert.match(variant![1], /@media \(width >= 80rem\)/, "the wide form needs 1280 px (80rem)");
+  assert.match(variant![1], /:not\(\[data-nav-collapsed\]\)/, "and a nav that is not collapsed");
+  // U0 Task 4: a phone has no nav sheet any more (the tab bar and its More sheet), so nothing else turns wide.
+  assert.ok(!/data-nav-form/.test(variant![1]), "no phone nav sheet to force the wide form");
 });

@@ -27,7 +27,9 @@ const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel),
 
 const PROVIDER = "apps/cafe/components/layout/MasterDataProvider.tsx";
 const USE_AUTH = "apps/cafe/hooks/use-auth.ts";
-const LOGIN_PAGE = "apps/cafe/app/(auth)/login/page.tsx";
+// The login page's client screen (ruling R39: app/(auth)/login/page.tsx is now a server page that reads the cafe's name
+// and renders this component; every client pin below moved with the code).
+const LOGIN_PAGE = "apps/cafe/components/auth/LoginScreen.tsx";
 const MASTERS_BLOB = "apps/cafe/lib/masters-blob.ts";
 const MASTERS_SEED = "apps/cafe/lib/masters-seed.ts";
 const USE_SETTINGS = "apps/cafe/hooks/use-settings.ts";

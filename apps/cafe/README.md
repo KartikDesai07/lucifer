@@ -167,7 +167,9 @@ requirements:
 - Set all environment variables in the Vercel project settings.
 - MongoDB Atlas: allow `0.0.0.0/0` (Vercel uses dynamic egress IPs).
 - R2 bucket: public read access + the CORS rule for browser PUTs.
-- Seed the admin account before first login.
+- Seed the admin account before first login (an optional `SEED_ADMIN_PIN` gives it a 4-digit PIN).
+- Staff sign-in: each person signs in once per device with username and password (the session lasts 90 days
+  and renews with use); after that the device shows their name and a PIN pad. Admins set the PINs on the Staff page.
 
 See `DEPLOY.md` for the full runbook and checklist.
 

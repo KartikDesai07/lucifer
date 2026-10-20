@@ -1,98 +1,55 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronsUpDown, KeyRound, LogOut } from "lucide-react";
 
 import { useAuth } from "@/hooks/use-auth";
-import { brandFontVariables } from "@/lib/brand-fonts";
 import { cn } from "@/lib/utils";
-import { brandTooltip } from "@/components/brand/brand-tooltip";
-import { ChangePasswordDialog } from "@/components/shared/ChangePasswordDialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+import { BRAND_NAV_PRESS_CLASS } from "@/components/brand/brand-classes";
+import { NavDeviceLine } from "@/components/layout/NavDeviceLine";
+import { ProfileSheet } from "@/components/layout/ProfileSheet";
+import { StaffAvatar } from "@/components/shared/StaffAvatar";
 
-// The sidebar's foot: who is signed in, and the two things they can do about
-// it (change password, sign out). Extracted from AppSidebar to keep that file
-// small. The role is plain muted text — the old filled badge was the primary
-// GREEN, which in this app means a "Completed" status, not a role.
-//
-// The menu is portaled out of the sidebar, so it carries the brand font
-// variables itself.
+// The nav's foot: who is signed in. Extracted from AppSidebar to keep that file small. The card is the owner's HTML
+// user card (values 2.3): a 34px avatar with the green online dot, then (wide form only) the name and
+// "{role} · {this device's print name}". A tap opens the profile sheet (components/layout/ProfileSheet.tsx, values
+// 2.7; U0 Task 4) anchored above it: lock the screen, let a teammate sign in, change password, sign out.
 
-const MENU_ITEM_CLASS = "gap-2.5 rounded-md px-2.5 py-2 text-[14px] focus:bg-brand-wash focus:text-brand-ink";
-
-export function SidebarAccount({ collapsed }: { collapsed: boolean }) {
-  const { user, isAdmin, logout } = useAuth();
-  const [pwdOpen, setPwdOpen] = useState(false);
+export function SidebarAccount() {
+  const { user, isAdmin } = useAuth();
+  const [open, setOpen] = useState(false);
   const name = user?.name ?? "Account";
-  const initial = (user?.name ?? "?").charAt(0).toUpperCase();
   const role = isAdmin ? "Admin" : "Staff";
 
   return (
     <>
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <SidebarMenuButton
-                size="lg"
-                tooltip={brandTooltip(name)}
-                className="h-12 gap-2.5 rounded-lg px-2 hover:bg-brand-wash data-[state=open]:bg-brand-slip data-[state=open]:shadow-[0_0_0_1px_rgb(29_27_24/0.12)]"
-              >
-                <span
-                  aria-hidden="true"
-                  className="grid size-8 shrink-0 place-items-center rounded-full bg-brand-primary text-[13px] font-semibold text-brand-slip"
-                >
-                  {initial}
-                </span>
-                {!collapsed && (
-                  <>
-                    <span className="grid min-w-0 flex-1 text-left leading-tight">
-                      <span className="truncate text-[14px] font-semibold text-brand-ink">{name}</span>
-                      <span className="truncate text-[12px] text-brand-muted">{role}</span>
-                    </span>
-                    <ChevronsUpDown className="ml-auto size-4 text-brand-muted" aria-hidden="true" />
-                  </>
-                )}
-              </SidebarMenuButton>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              side="top"
-              align="start"
-              sideOffset={8}
-              className={cn(
-                brandFontVariables,
-                "w-60 rounded-xl border-brand-rule bg-brand-slip p-1.5 font-brand-sans text-brand-ink shadow-[0_12px_32px_-12px_rgb(29_27_24/0.28)]",
-              )}
-            >
-              <DropdownMenuLabel className="px-2.5 py-2 font-normal">
-                <span className="block truncate text-[14px] font-semibold">{user?.name}</span>
-                <span className="block text-[12px] text-brand-muted">
-                  {isAdmin ? "Administrator" : "Staff member"}
-                </span>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator className="bg-brand-rule" />
-              <DropdownMenuItem className={MENU_ITEM_CLASS} onSelect={() => setPwdOpen(true)}>
-                <KeyRound className="text-brand-muted" aria-hidden="true" />
-                Change password
-              </DropdownMenuItem>
-              <DropdownMenuItem className={MENU_ITEM_CLASS} onSelect={() => logout()}>
-                <LogOut className="text-brand-muted" aria-hidden="true" />
-                Sign out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </SidebarMenuItem>
-      </SidebarMenu>
+      <button
+        type="button"
+        title={name}
+        data-ui="nav-user"
+        className={cn(
+          "flex w-full flex-none items-center justify-center gap-2.5 rounded-[10px] px-0 py-1.5 text-left text-white hover:bg-nav-on wide:justify-start wide:p-2",
+          BRAND_NAV_PRESS_CLASS,
+        )}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen(true)}
+      >
+        {/* The HTML's 34px avatar, 13px initials; its 11px online dot ringed in the nav colour. */}
+        <StaffAvatar
+          name={name}
+          size="sm"
+          status="online"
+          className="[&>span:first-child]:size-[34px] [&>span:first-child]:rounded-[50%] [&>span:first-child]:text-[13px] [&_[data-status]]:-bottom-0.5 [&_[data-status]]:-right-0.5 [&_[data-status]]:size-[11px] [&_[data-status]]:rounded-[50%] [&_[data-status]]:border-0 [&_[data-status]]:[box-shadow:0_0_0_2px_var(--color-nav)]"
+        />
+        <span className="hidden min-w-0 flex-1 flex-col wide:flex">
+          <span data-ui="nav-user-name" className="truncate text-[13.5px] font-semibold">
+            {name}
+          </span>
+          <NavDeviceLine lead={role} dataUi="nav-user-line" className="truncate text-[12px] text-nav-t2" />
+        </span>
+      </button>
 
-      <ChangePasswordDialog open={pwdOpen} onOpenChange={setPwdOpen} />
+      <ProfileSheet open={open} onOpenChange={setOpen} />
     </>
   );
 }

@@ -24,6 +24,16 @@ import { stripComments } from "@/lib/source-pin-utils";
 import {
   SIDEBAR_WIDTH_REM,
   SIDEBAR_WIDTH_ICON_REM,
+  NAV_WIDTH_WIDE_PX,
+  NAV_WIDTH_RAIL_PX,
+  NAV_RAIL_MIN_PX,
+  NAV_WIDE_MIN_PX,
+  navWidthPx,
+  isWideNav,
+  posGridColumns,
+  posGridPaneWidthPx,
+  POS_MIN_TILE_PX,
+  POS_GRID_GAP_REM,
   POS_HEADER_ROW_REM,
   POS_SEARCH_ROW_REM,
   POS_MOBILE_BAR_REM,
@@ -63,7 +73,9 @@ const SIDEBAR_TSX = "apps/cafe/components/ui/sidebar.tsx";
 const GLOBALS_CSS = "apps/cafe/app/globals.css";
 const REQUEST_ALERT_BAR = "apps/cafe/components/orders/RequestAlertBar.tsx";
 const INPUT_TSX = "apps/cafe/components/ui/input.tsx";
-const LOGIN_PAGE = "apps/cafe/app/(auth)/login/page.tsx";
+// The login page's client screen (ruling R39: app/(auth)/login/page.tsx is now a server page that reads the cafe's name
+// and renders this component; every client pin below moved with the code).
+const LOGIN_PAGE = "apps/cafe/components/auth/LoginScreen.tsx";
 const AUTH_SHELL = "apps/cafe/components/auth/AuthShell.tsx";
 const M_LAYOUT = "apps/cafe/app/m/layout.tsx";
 const PUBLIC_MENU = "apps/cafe/components/public/PublicMenu.tsx";
@@ -405,7 +417,9 @@ test("PIN: (dashboard)/layout.tsx renders a BARE <SidebarProvider>, and DASHBOAR
     `(dashboard)/layout.tsx must not reference ${shellClassIdentifier} — the constant no longer exists in lib/pos-layout.ts`,
   );
   assert.match(dashboardSrc, /<RequestAlertBar\s*\/>/, "landmark: (dashboard)/layout.tsx must still render <RequestAlertBar />");
-  assert.match(dashboardSrc, /<main className="flex-1 p-4 md:p-6">/, "landmark: (dashboard)/layout.tsx's <main> must keep its unchanged flex-1 p-4 md:p-6 padding — the height-chain matrix pin depends on this figure");
+  // U0 Task 4: below 720px the page's foot keeps 92px clear of the tab bar (values 2.1 screenPadB); the POS root bleeds
+  // over it there (POS_ROOT_CLASS max-tab:-mb-[92px]), so the height chain's top padding (p-4 / md:p-6) is unchanged.
+  assert.match(dashboardSrc, /<main className="flex-1 p-4 pb-\[92px\] tab:pb-4 md:p-6">/, "landmark: (dashboard)/layout.tsx's <main> keeps its flex-1 p-4 md:p-6 padding, 92px at the foot on a phone — the height-chain matrix pin depends on this figure");
 
   const layoutTsSrc = stripComments(readSrc(POS_LAYOUT_TS));
   assert.ok(
@@ -416,18 +430,20 @@ test("PIN: (dashboard)/layout.tsx renders a BARE <SidebarProvider>, and DASHBOAR
 });
 
 test("PIN: route-parity fences — the other routes keep the 100vh document floor the body used to give them (plan §B4, review F2)", () => {
-  // The login screen's floor now lives in its frame, components/auth/AuthShell
-  // (2026-09-26 redesign). The page must still RENDER that frame, and the
-  // frame's root must carry min-h-screen — checked on the root <main> itself,
-  // not anywhere in the file, so a floor moved onto some inner element fails.
+  // The login screen's frame is components/auth/AuthShell. Since U0 match Task 10 (ruling R27) its root is the owner's
+  // HTML lock root: fixed to the viewport (inset 0), so the screen IS the visible viewport and needs no document floor
+  // (a 100vh floor on a fixed root would push its footer under a phone browser's toolbar). Checked on the root <main>
+  // itself, not anywhere in the file, so a frame that stops covering the viewport fails.
   const loginSrc = stripComments(readSrc(LOGIN_PAGE));
-  assert.match(loginSrc, /<AuthShell[\s>]/, "(auth)/login/page.tsx must render its screen inside <AuthShell>");
-  const shellRoot = stripComments(readSrc(AUTH_SHELL)).match(/<main className="([^"]*)"/);
+  assert.match(loginSrc, /<AuthShell[\s>]/, "the login screen (components/auth/LoginScreen.tsx) must render inside <AuthShell>");
+  const shellRoot = stripComments(readSrc(AUTH_SHELL)).match(/<main\b[^>]*className="([^"]*)"/);
   assert.ok(shellRoot, "landmark: AuthShell must render a <main className=\"...\"> root");
+  const rootClasses = shellRoot![1].split(/\s+/);
   assert.ok(
-    shellRoot![1].split(/\s+/).includes("min-h-screen"),
-    "AuthShell's root <main> must carry min-h-screen — the signed-out screens keep their 100vh floor, unaffected by the body change",
+    rootClasses.includes("fixed") && rootClasses.includes("inset-0"),
+    "AuthShell's root <main> must be fixed inset-0 — the signed-out screen fills the visible viewport exactly",
   );
+  assert.ok(!rootClasses.includes("min-h-screen"), "no 100vh floor on the fixed root (it would overflow a phone browser's visible viewport)");
   // /m's wrapper used to say min-h-dvh but the body's min-h-screen was the
   // binding floor on every diner page; with the body now on a dvh floor the
   // wrapper itself must carry min-h-screen so the owner-accepted QR flow's
@@ -476,14 +492,13 @@ test("PIN: RequestAlertBar publishes its own height on --pos-alert-h via a synch
     "the ResizeObserver cleanup must disconnect AND removeProperty(POS_ALERT_HEIGHT_VAR) in the same closure",
   );
   // The band's own div carries BOTH the ref the observer watches and the
-  // amber styling, in the SAME opening tag (not two different divs) — read
-  // the real attribute order rather than guessing.
+  // warn-tint styling (the status token since the 2026-10 look), in the SAME opening tag (not two different divs).
   assert.match(
     src,
-    /<div[^>]*ref=\{bandRef\}[^>]*bg-amber-50/,
-    "the band's <div ref={bandRef} ...> must be the SAME element that carries bg-amber-50",
+    /<div[^>]*ref=\{bandRef\}[^>]*bg-status-warn-tint/,
+    "the band's <div ref={bandRef} ...> must be the SAME element that carries bg-status-warn-tint",
   );
-  assert.match(src, /bg-amber-50/, "landmark: RequestAlertBar.tsx must still carry bg-amber-50");
+  assert.match(src, /bg-status-warn-tint/, "landmark: RequestAlertBar.tsx must still carry bg-status-warn-tint");
 });
 
 test("PIN: CategorySidebar.tsx's CategoryChips keeps the selected chip in view via a scrollIntoView effect keyed on the aria-current chip", () => {
@@ -623,8 +638,10 @@ test("PIN: DASHBOARD_HEADER_REM parity — parsed from Header.tsx's real <header
   const headerMatch = src.match(/<header className="([^"]*)"/);
   assert.ok(headerMatch, 'Header.tsx must render a <header className="..."> tag');
   assert.ok(headerMatch![1].includes("sticky top-0"), "landmark: Header.tsx's <header> must carry sticky top-0");
-  const heightMatch = headerMatch![1].match(/\bh-(\d+)\b/);
-  assert.ok(heightMatch, `Header.tsx's <header> className ("${headerMatch![1]}") must carry an h-N token`);
+  // U0 Task 3: the HTML's header is min-height 56px (values 2.5), so the token read is min-h-N, on purpose (not a
+  // \bh-N\b match inside it); no page title is long enough to grow it on the POS.
+  const heightMatch = headerMatch![1].match(/(?:^|\s)min-h-(\d+)(?=\s|$)/);
+  assert.ok(heightMatch, `Header.tsx's <header> className ("${headerMatch![1]}") must carry a min-h-N token`);
   assert.equal(
     DASHBOARD_HEADER_REM * 4,
     Number(heightMatch![1]),
@@ -651,10 +668,10 @@ test("PIN: (dashboard)/layout.tsx renders Header, then RequestAlertBar, then <ma
   assert.match(src, /<SidebarInset>/, "landmark: (dashboard)/layout.tsx must render <SidebarInset>");
   const headerIdx = src.indexOf("<Header");
   const alertIdx = src.indexOf("<RequestAlertBar");
-  const mainIdx = src.indexOf('<main className="flex-1 p-4 md:p-6">');
+  const mainIdx = src.indexOf('<main className="flex-1 p-4 pb-[92px] tab:pb-4 md:p-6">');
   assert.ok(headerIdx >= 0, "(dashboard)/layout.tsx must render <Header");
   assert.ok(alertIdx >= 0, "(dashboard)/layout.tsx must render <RequestAlertBar");
-  assert.ok(mainIdx >= 0, '(dashboard)/layout.tsx must render <main className="flex-1 p-4 md:p-6">');
+  assert.ok(mainIdx >= 0, '(dashboard)/layout.tsx must render <main className="flex-1 p-4 pb-[92px] tab:pb-4 md:p-6">');
   assert.ok(headerIdx < alertIdx, "<Header must be rendered before <RequestAlertBar");
   assert.ok(alertIdx < mainIdx, "<RequestAlertBar must be rendered before <main — it is main's sibling, not its child");
 });
@@ -1282,4 +1299,55 @@ test("PIN: D9.8c — on mobile, a surviving adjustment keeps the cart bar OPENAB
     /pos\.cart\.length === 0 && !pendingAdjustment/,
     "the POS page must not force-close the mobile sheet while an adjustment survives",
   );
+});
+
+// ── U0 Task 2 (2026-10-19): the HTML's nav widths drive the POS grid ─────────
+// The owner's HTML (values 2.1 rootCols): no nav on a phone (< 720 px), the 76 px rail from 720 px and on a collapsed
+// desktop, the 232 px sidebar at 1280 px and up. The POS grid pane is the viewport minus that nav, minus <main>'s side
+// padding, minus the two-pane rail + cart at xl.
+
+test("navWidthPx: 0 on a phone, the 76 px rail on a tablet or a collapsed desktop, the 232 px sidebar from 1280 px", () => {
+  assert.equal(NAV_WIDTH_WIDE_PX, 232, "the wide sidebar is the HTML's 232 px");
+  assert.equal(NAV_WIDTH_RAIL_PX, 76, "the rail is the HTML's 76 px");
+  assert.equal(NAV_RAIL_MIN_PX, 720, "the rail starts at the HTML's 720 px (values 0.1 ph)");
+  assert.equal(NAV_WIDE_MIN_PX, 1280, "the wide sidebar starts at the HTML's 1280 px (values 0.1 wide)");
+  assert.equal(SIDEBAR_WIDTH_REM * 16, NAV_WIDTH_WIDE_PX, "the primitive's --sidebar-width is the same 232 px");
+  assert.equal(SIDEBAR_WIDTH_ICON_REM * 16, NAV_WIDTH_RAIL_PX, "the primitive's --sidebar-width-icon is the same 76 px");
+  const cases: Array<[number, boolean, number]> = [
+    [390, false, 0],
+    [390, true, 0],
+    [719, false, 0],
+    [720, false, 76],
+    [820, false, 76],
+    [1024, false, 76],
+    [1279, false, 76],
+    [1280, false, 232],
+    [1280, true, 76],
+    [1920, false, 232],
+  ];
+  for (const [viewportWidth, collapsed, expected] of cases) {
+    assert.equal(navWidthPx({ viewportWidth, collapsed }), expected, `navWidthPx at ${viewportWidth} px (collapsed ${collapsed}) must be ${expected}`);
+  }
+  assert.equal(isWideNav({ viewportWidth: 1280, collapsed: false }), true, "1280 px, not collapsed: the wide form");
+  assert.equal(isWideNav({ viewportWidth: 1280, collapsed: true }), false, "1280 px, collapsed: the rail");
+  assert.equal(isWideNav({ viewportWidth: 1279, collapsed: false }), false, "below 1280 px: the rail");
+});
+
+test("the POS product grid gets at least one column and fits beside the nav at the plan's five viewports", () => {
+  const viewports: Array<[string, number, boolean]> = [
+    ["1280", 1280, false],
+    ["1280 collapsed", 1280, true],
+    ["1024", 1024, false],
+    ["820", 820, false],
+    ["390", 390, false],
+  ];
+  for (const [label, viewportWidth, collapsed] of viewports) {
+    const cols = posGridColumns({ viewportWidth, collapsed });
+    const pane = posGridPaneWidthPx({ viewportWidth, collapsed });
+    const room = viewportWidth - navWidthPx({ viewportWidth, collapsed });
+    const gridMin = cols * POS_MIN_TILE_PX + (cols - 1) * POS_GRID_GAP_REM * 16;
+    assert.ok(cols >= 1, `${label}: the POS grid must have at least one column, got ${cols}`);
+    assert.ok(pane > 0 && pane <= room, `${label}: the grid pane (${pane} px) must fit the ${room} px beside the nav`);
+    assert.ok(gridMin <= pane, `${label}: ${cols} columns of at least ${POS_MIN_TILE_PX} px need ${gridMin} px, the pane is ${pane} px`);
+  }
 });

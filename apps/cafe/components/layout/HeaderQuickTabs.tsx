@@ -2,41 +2,38 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, ShoppingCart, type LucideIcon } from "lucide-react";
 
 import { isActivePath } from "@/lib/nav-active";
+import { cn } from "@/lib/utils";
+import { buttonVariants } from "@/components/ui/button";
+import { GlyphPlus, NavFloor, type NavIcon } from "@/components/layout/nav-icons";
+import { HEADER_OUTLINE_BUTTON_CLASS, HEADER_PRIMARY_BUTTON_CLASS } from "@/components/layout/header-classes";
 
-// The top bar's two quick tabs (owner, 2026-10-11, PetPooja-style: "New Order" and "Tables" where the cafe name sat —
-// the name stays at the top of the sidebar). Same targets as the sidebar's New Order and Floor rows, and the same
-// active look (soft blue tint, ink label, blue icon), so the bar and the sidebar always agree on where you are.
+// The header's two quick links (owner, 2026-10-11): the Floor and a new order, the same targets as the sidebar's
+// Floor and Order rows. U0 Task 3 (values 2.5, design 5.3) draws them as the HTML's header buttons, after the page's
+// own actions: Tables (outline, the floor grid; hidden on a phone, where the tab bar has Floor) and New order (the
+// HTML's primary button and word; its plus only on a phone). The current page is marked for screen readers as in the
+// sidebar; the HTML's header buttons have no lit look.
 
 export interface HeaderQuickTab {
   title: string;
   url: string;
-  icon: LucideIcon;
-  /** Lights on this exact path only, like the sidebar's Floor row (not Tables → Setup / QR codes). */
+  icon: NavIcon;
+  /** Marks this exact path only, like the sidebar's Floor row (not Tables → Setup / QR codes). */
   exact?: boolean;
+  /** The accent button (New order); the other is outline. */
+  primary?: boolean;
 }
 
 export const HEADER_QUICK_TABS: readonly HeaderQuickTab[] = [
-  { title: "New Order", url: "/pos", icon: ShoppingCart },
-  { title: "Tables", url: "/tables", icon: LayoutGrid, exact: true },
+  { title: "Tables", url: "/tables", icon: NavFloor, exact: true },
+  { title: "New order", url: "/pos", icon: GlyphPlus, primary: true },
 ];
-
-// 36 px on a mouse, 44 px on touch. Below sm the icon hides and the padding / text / gap tighten (and the header
-// drops its separator), so both labels fit a 360 px phone even inside the POS app with tokens on — three 44 px
-// icon buttons beside them (s89f review). truncate is a last resort: the tabs never push the printer button off.
-const TAB_CLASS =
-  "inline-flex h-9 min-w-0 shrink items-center gap-1.5 rounded-md px-2 text-[13.5px] font-medium text-brand-ink/80 sm:px-2.5 sm:text-[14px] " +
-  "transition-colors duration-150 hover:bg-brand-wash hover:text-brand-ink focus-visible:outline-none focus-visible:ring-2 " +
-  "focus-visible:ring-brand-accent pointer-coarse:h-11 [&>svg]:hidden [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-brand-muted " +
-  "sm:[&>svg]:block data-[active=true]:bg-brand-primary-soft data-[active=true]:font-semibold data-[active=true]:text-brand-ink " +
-  "[&[data-active=true]>svg]:text-brand-primary";
 
 export function HeaderQuickTabs() {
   const pathname = usePathname() ?? "";
   return (
-    <nav aria-label="Quick links" className="flex min-w-0 flex-1 items-center gap-0.5 sm:gap-1 [contain:inline-size]">
+    <>
       {HEADER_QUICK_TABS.map((tab) => {
         const active = tab.exact ? pathname === tab.url : isActivePath(pathname, tab.url);
         const Icon = tab.icon;
@@ -48,13 +45,19 @@ export function HeaderQuickTabs() {
             prefetch={false}
             data-active={active}
             aria-current={active ? "page" : undefined}
-            className={TAB_CLASS}
+            aria-label={tab.title}
+            data-ui={tab.primary ? "header-new-order" : "header-tables"}
+            className={cn(
+              buttonVariants({ variant: tab.primary ? "default" : "outline" }),
+              tab.primary ? HEADER_PRIMARY_BUTTON_CLASS : HEADER_OUTLINE_BUTTON_CLASS,
+              tab.primary ? "inline-flex" : "hidden tab:inline-flex",
+            )}
           >
-            <Icon aria-hidden />
-            <span className="truncate">{tab.title}</span>
+            <Icon aria-hidden="true" strokeWidth={tab.primary ? 2.4 : 1.8} />
+            <span className="hidden tab:inline">{tab.title}</span>
           </Link>
         );
       })}
-    </nav>
+    </>
   );
 }

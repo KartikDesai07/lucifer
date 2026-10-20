@@ -26,6 +26,15 @@ export function greetingFor(now: Date): string {
   return `Good ${dayPartOf(now)}.`;
 }
 
+/** The staff picker's greeting by the owner's HTML hours (values 4.3, ruling R28): before 12 "Good morning", before 17
+ *  "Good afternoon", else "Good evening" — so from midnight it is morning there, unlike dayPartOf's 5 am start. */
+export function pickerGreeting(now: Date): string {
+  const hour = now.getHours();
+  if (hour < AFTERNOON_FROM_HOUR) return "Good morning";
+  if (hour < EVENING_FROM_HOUR) return "Good afternoon";
+  return "Good evening";
+}
+
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"] as const;
 const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"] as const;
 

@@ -3,6 +3,17 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* The nav's wide form (the HTML's `wide`, values 0.1): 1280 px and up while the nav is not collapsed. Below it the
+   nav is the 76 px rail (720 px up) or, on a phone, gone (the tab bar takes over). The collapse choice lives on
+   <html data-nav-collapsed>, set before the first paint from the sidebar cookie (lib/nav-state-script.ts). */
+@custom-variant wide {
+  @media (width >= 80rem) {
+    &:where(html:not([data-nav-collapsed]) *) {
+      @slot;
+    }
+  }
+}
+
 /* Installed Android shell: contain viewport rubber-banding without altering
    individual POS scrollers or blocking pinch zoom / selection in fields. */
 @layer base {
@@ -21,8 +32,9 @@
  * The @theme inline block maps CSS custom properties to Tailwind utility
  * classes (e.g. --color-primary -> bg-primary, text-primary).
  *
- * The :root and .dark blocks define the actual color values using oklch.
- * All colors MUST use oklch format.
+ * The :root and .dark blocks define the actual color values (hex for the new
+ * theme, oklch for the older tokens: charts, shadows, the dark sidebar).
+ * Plain sRGB (hex) lets a token get a tint fallback (postcss-tint-fallback).
  *
  * To add a new semantic color:
  * 1. Add the variable to :root (light value) and .dark (dark value)
@@ -32,11 +44,16 @@
 @theme inline {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  /* The HTML's brand script (the cafe's name and initial): Shrikhand 400. */
+  --font-brand-script: var(--font-shrikhand), Georgia, serif;
+  /* The HTML's breakpoints (values 0.1): tablet from 720 px, desktop from 1100 px. */
+  --breakpoint-tab: 45rem;
+  --breakpoint-desk: 68.75rem;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-xl: calc(var(--radius) + 2px);
+  --radius-2xl: calc(var(--radius) + 6px);
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
   --color-background: var(--background);
@@ -64,6 +81,64 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  /* The new theme's status set, ink pair, quiet text and popover shadow. */
+  --color-status-ok: var(--status-ok);
+  --color-status-ok-ink: var(--status-ok-ink);
+  --color-status-ok-tint: var(--status-ok-tint);
+  --color-status-warn: var(--status-warn);
+  --color-status-warn-ink: var(--status-warn-ink);
+  --color-status-warn-tint: var(--status-warn-tint);
+  --color-status-bad: var(--status-bad);
+  --color-status-bad-ink: var(--status-bad-ink);
+  --color-status-bad-tint: var(--status-bad-tint);
+  --color-status-info: var(--status-info);
+  --color-status-info-ink: var(--status-info-ink);
+  --color-status-info-tint: var(--status-info-tint);
+  --color-status-bill: var(--status-bill);
+  --color-status-bill-ink: var(--status-bill-ink);
+  --color-status-bill-tint: var(--status-bill-tint);
+  --color-status-reserved: var(--status-reserved);
+  --color-status-reserved-ink: var(--status-reserved-ink);
+  --color-status-reserved-tint: var(--status-reserved-tint);
+  --color-status-info-border: var(--status-info-border);
+  --color-status-bill-border: var(--status-bill-border);
+  --color-status-reserved-border: var(--status-reserved-border);
+  --color-ink: var(--ink);
+  --color-on-ink: var(--on-ink);
+  --color-on-ink-up: var(--on-ink-up);
+  --color-on-ink-down: var(--on-ink-down);
+  --color-on-ink-up-tint: var(--on-ink-up-tint);
+  --color-on-ink-down-tint: var(--on-ink-down-tint);
+  --color-track: var(--track);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --shadow-pop: var(--pop);
+  --shadow-seg: var(--seg-sh);
+  /* The HTML's own names (values 1.1), staff screens only. */
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-chart-bar: var(--chart-bar);
+  --color-heat-1: var(--heat-1);
+  --color-heat-2: var(--heat-2);
+  --color-heat-3: var(--heat-3);
+  --color-heat-4: var(--heat-4);
+  --color-border-2: var(--border-2);
+  --color-hover: var(--hover);
+  --color-seg: var(--seg);
+  --color-link: var(--link);
+  --color-accent-b: var(--accent-b);
+  --color-nav: var(--nav);
+  --color-nav-2: var(--nav-2);
+  --color-nav-t: var(--nav-t);
+  --color-nav-t2: var(--nav-t2);
+  --color-nav-on: var(--nav-on);
+  --color-brand-red: var(--brand-red);
+  --color-brand-nav-name: var(--brand-nav-name);
+  --color-toast: var(--toast);
+  --color-toast-t: var(--toast-t);
+  --color-toast-a: var(--toast-a);
+  --color-glass: var(--glass);
+  --color-scrim: var(--scrim);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -83,13 +158,10 @@
   --spacing-pub-gap: var(--pub-gap);
   --spacing-pub-pad: var(--pub-pad);
   /* 2026-09-26 — the "Paper & Ink" brand system: the new staff-UI base,
-     adopted screen by screen starting with /login. ADDITIVE ONLY: every name
-     below is new, so no existing screen changes until it opts in. The fonts
-     resolve only inside an element carrying lib/brand-fonts.ts's variables
-     (AuthShell's root today); elsewhere these utilities are simply unused —
-     the same scoping the --pub-* tokens above use. */
-  --font-brand-sans: var(--font-brand-schibsted);
-  --font-brand-display: var(--font-brand-fraunces);
+     adopted screen by screen starting with /login. The two brand font names
+     alias Geist everywhere now, so they resolve on any element. */
+  --font-brand-sans: var(--font-geist-sans);
+  --font-brand-display: var(--font-geist-sans);
   --color-brand-paper: var(--brand-paper);
   --color-brand-wash: var(--brand-wash);
   --color-brand-slip: var(--brand-slip);
@@ -104,15 +176,102 @@
   --color-brand-primary: var(--brand-primary);
   --color-brand-primary-hover: var(--brand-primary-hover);
   --color-brand-primary-soft: var(--brand-primary-soft);
+  --color-brand-nav-text: var(--brand-nav-text);
+  --color-brand-nav-muted: var(--brand-nav-muted);
+  --color-brand-nav-hover: var(--brand-nav-hover);
+  --color-brand-nav-rule: var(--brand-nav-rule);
+  --color-brand-nav-focus: var(--brand-nav-focus);
   /* Brand motion. Always applied through `motion-safe:` so a device with
      "reduce motion" on gets a still screen — every animation here is
      decoration or feedback, never the only way something is communicated. */
   --animate-brand-rise: brand-rise 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-brand-fade: brand-fade 400ms ease-out both;
   --animate-brand-shake: brand-shake 360ms ease-in-out;
-  /* The painting's postmark lands once the painting has painted itself in
-     (components/brand/PointillistScene.tsx REVEAL_MS is 1400). */
-  --animate-brand-stamp: brand-stamp 420ms cubic-bezier(0.2, 0.9, 0.3, 1) 1250ms both;
+  /* The HTML's sheet motion (values 1.5, 2.7): the panel rises in, its scrim fades in. */
+  --animate-sheet-in: sheet-in 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-scrim-in: brand-fade 0.2s ease both;
+  /* The HTML's shake (values 1.5): the reveal dialog's PIN dots after a wrong PIN (values 3.16). */
+  --animate-html-shake: html-shake 0.42s ease;
+  /* The HTML's growY (values 1.5, 3.5): the hour chart's bars rise from the floor. */
+  --animate-grow-y: grow-y 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* The HTML's growX (values 1.5, 3.9, 3.10): the payment bar's segments and the sources' fills grow from the left. */
+  --animate-grow-x: grow-x 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* The same growX at .9s (values 3.12): the Top items bars. */
+  --animate-grow-x-slow: grow-x 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* The HTML's pulse (values 1.5, 3.6): the Live tables dot. */
+  --animate-live-pulse: live-pulse 2s infinite;
+  /* The HTML's lock motion (values 1.5, 4.2–4.4; brand-fade and brand-rise below are its fadeIn and rise verbatim):
+     the screen fades in .4s, the PIN view .25s; the card rises .45s, each name tile .4s (with its own delay). The
+     whole-screen `unlock` keyframes are not used (ruling R30: our cover closes at once, so nothing would play them). */
+  --animate-html-fade: brand-fade 0.4s ease both;
+  --animate-html-fade-fast: brand-fade 0.25s ease both;
+  --animate-html-rise: brand-rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-html-rise-tile: brand-rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* The HTML's growY (values 1.5), verbatim. */
+@keyframes grow-y {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/* The HTML's growX (values 1.5), verbatim. */
+@keyframes grow-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* The HTML's pulse (values 1.5), verbatim: a ring of --ok (#24A148) that grows 7px and fades. */
+@keyframes live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(36, 161, 72, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(36, 161, 72, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(36, 161, 72, 0);
+  }
+}
+
+/* The HTML's shake (values 1.5), verbatim. */
+@keyframes html-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-9px);
+  }
+  40% {
+    transform: translateX(8px);
+  }
+  60% {
+    transform: translateX(-5px);
+  }
+  80% {
+    transform: translateX(3px);
+  }
+}
+
+/* The HTML's sheetIn (values 1.5). */
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* A card settling into place on load. */
@@ -149,135 +308,258 @@
     transform: translateX(4px);
   }
 }
-/* A rubber stamp coming down: in from a little above the page, a slight
-   squash as it hits, then still. */
-@keyframes brand-stamp {
-  0% {
-    opacity: 0;
-    transform: scale(1.3);
-  }
-  60% {
-    opacity: 1;
-    transform: scale(0.96);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
 
-/* White & Blue values (owner, 2026-09-29: "full sab proper White and blue theme
-   base" — replaces the Paper & Ink beige/terracotta; the token NAMES are kept so
-   every screen already on the brand system moves together). Every text pairing
-   is WCAG-AA measured by lib/brand-contrast.test.ts (relative-luminance formula):
-   ink on white 17.9:1, white on the blue action 5.2:1 (hover 6.7:1), blue on
-   white 5.2:1, muted on white 6.4:1 / on paper 5.9:1. The active nav row keeps
-   INK text on the soft tint (blue text there is only 4.5:1 — no margin) and
-   carries the state in its blue icon + weight. Field borders are 3.1:1 on white (WCAG 1.4.11 needs 3:1 for a control's
-   edge); --brand-rule is DECORATIVE only (dividers), never a field.
+/* The new light theme (owner's mock-up, 2026-10-16): zinc neutrals and the
+   IBM-blue action; the token NAMES are kept so every screen on the brand system
+   moves together. Every text pairing is WCAG-AA measured by
+   lib/brand-contrast.test.ts. Field borders (--brand-field) are 3:1 on white
+   (WCAG 1.4.11); --brand-rule is DECORATIVE only (dividers), never a field.
    The action colour is BLUE (--brand-primary), never green: green already
    means "Completed" in the status vocabulary. --brand-accent is the same blue,
-   for focus rings, chart marks and small marks — never a status. */
+   for focus rings, chart marks and small marks — never a status.
+   --brand-up is #16733a, not the mock-up's #198038: on its own 10% tint (the
+   Tally card) that green measures 4.38:1, under the pinned 4.5. --status-ok-ink
+   is the HTML's #198038 (owner's value, design 9). */
 :root {
-  /* The page behind the cards: white a hair toward blue-grey, so white cards read. */
-  --brand-paper: #f5f7fb;
-  /* The staff sidebar's surface — near-white; rows hover on --brand-wash and the
-     active row is the soft blue tint below. */
-  --brand-sidebar: #f8fafc;
+  /* The page behind the cards. */
+  --brand-paper: #f4f4f5;
+  /* The staff sidebar: dark (owner's mock-up) on the light page. Its text,
+     muted text, hover/active fill, divider and focus ring are the nav tokens;
+     all pairings are measured in lib/brand-contrast.test.ts. */
+  --brand-sidebar: #111113;
+  --brand-nav-text: #c8c8cc;
+  --brand-nav-muted: #8b8b93;
+  --brand-nav-hover: #1f1f23;
+  --brand-nav-rule: #27272a;
+  --brand-nav-focus: #78a9ff;
   /* One step down from the surfaces: hover / pressed. */
-  --brand-wash: #eaeff6;
+  --brand-wash: #f2f2f4;
   /* Cards, fields, the header. */
   --brand-slip: #ffffff;
-  /* Text (never an action fill any more — the action is --brand-primary). */
-  --brand-ink: #0f172a;
-  --brand-ink-hover: #1e293b;
-  --brand-muted: #556070;
-  --brand-rule: #e2e8f0;
-  --brand-field: #8a94a6;
-  --brand-accent: #2563eb;
+  /* Text (never an action fill — the action is --brand-primary). */
+  --brand-ink: #18181b;
+  --brand-ink-hover: #27272a;
+  --brand-muted: #52525b;
+  --brand-rule: #e2e2e6;
+  --brand-field: #8b8b93;
+  --brand-accent: #0f62fe;
   /* The action colour: primary buttons, the chosen period, the active nav row. */
-  --brand-primary: #2563eb;
-  --brand-primary-hover: #1d4ed8;
+  --brand-primary: #0f62fe;
+  --brand-primary-hover: #0043ce;
   /* A soft blue tint: the active nav row's fill (ink text on it, blue icon). */
-  --brand-primary-soft: #e8f0fe;
-  --brand-danger: #b42318;
+  --brand-primary-soft: #edf5ff;
+  --brand-danger: #a2191f;
   /* A change for the better on a dashboard figure ("▲ 6% vs Tue, 22 Sep") — text
      only, always beside an arrow and words, never a fill or a status. The
      worse direction reuses --brand-danger. */
-  --brand-up: #1d7a46;
+  --brand-up: #16733a;
 }
 
 :root {
-  --radius: 0.75rem;
-  --background: oklch(0.985 0.005 240);
-  --foreground: oklch(0.18 0.03 250);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.03 250);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.03 250);
-  /* White & Blue (owner, 2026-09-29: "full sab" — every staff screen, not only the
-     ones already on the brand classes): the shadcn action colour IS the brand
-     blue, one source. --success stays green (a status, never an action). */
+  --radius: 0.625rem;
+  --background: #f4f4f5;
+  --foreground: #18181b;
+  --card: #ffffff;
+  --card-foreground: #18181b;
+  --popover: #ffffff;
+  --popover-foreground: #18181b;
+  /* The shadcn action colour IS the brand blue, one source. --success stays
+     green (a status, never an action). */
   --primary: var(--brand-primary);
-  --primary-foreground: var(--brand-slip);
+  --primary-hover: #0043ce;
+  --primary-foreground: #ffffff;
   --primary-soft: var(--brand-primary-soft);
-  --secondary: oklch(0.96 0.01 240);
-  --secondary-foreground: oklch(0.25 0.03 250);
-  --muted: oklch(0.96 0.01 240);
-  --muted-foreground: oklch(0.5 0.02 250);
-  --accent: var(--brand-primary-soft);
-  --accent-foreground: var(--brand-primary-hover);
-  --destructive: oklch(0.6 0.22 25);
-  --destructive-foreground: oklch(0.99 0.01 150);
-  --success: oklch(0.62 0.17 155);
-  --warning: oklch(0.78 0.16 75);
-  --border: oklch(0.92 0.01 240);
-  --input: oklch(0.92 0.01 240);
+  --secondary: #f2f2f4;
+  --secondary-foreground: #52525b;
+  --muted: #f2f2f4;
+  --muted-foreground: #52525b;
+  /* Quieter than muted: hints and meta text. */
+  --subtle-foreground: #6b6b74;
+  --accent: #edf5ff;
+  --accent-foreground: #0043ce;
+  --destructive: #da1e28;
+  --destructive-foreground: #ffffff;
+  --success: #24a148;
+  --warning: #ff832b;
+  --border: #e2e2e6;
+  --input: #8b8b93;
   --ring: var(--brand-accent);
+  --ink: #18181b;
+  --on-ink: #ffffff;
+  /* Change colours on the dark Net sales hero (values 3.3: the HTML's #6FDC8C / #FF8389, and its 16 % pills
+     rgba(66,190,101,.16) / rgba(250,77,86,.16) flattened over the hero's --nav #111113). */
+  --on-ink-up: #6fdc8c;
+  --on-ink-down: #ff8389;
+  --on-ink-up-tint: #192d20;
+  --on-ink-down-tint: #361b1e;
+  /* The segmented picker's track. */
+  --track: #e9e9ec;
+  /* The HTML's own tokens (values 1.1). --nav-on is rgba(255,255,255,.09)
+     flattened over --nav; --glass keeps its alpha (never used with an opacity
+     modifier, so it gets no tint twin). */
+  --surface-2: #fafafa;
+  --surface-3: #e9e9ec;
+  /* The hour chart's bars (values 3.5): color-mix(in oklab, var(--accent) 60%, var(--surface)) precomputed. */
+  --chart-bar: #75a7ff;
+  /* Busy hours' steps 1-4 (values 3.15 LV): color-mix(in oklab, var(--accent) 16 / 30 / 48 / 70 %, var(--surface))
+     precomputed; step 0 is --surface-2, step 5 the accent itself. */
+  --heat-1: #dae8ff;
+  --heat-2: #b9d4ff;
+  --heat-3: #90baff;
+  --heat-4: #5e97ff;
+  --border-2: #ececef;
+  --hover: #f2f2f4;
+  --seg: #ffffff;
+  --link: #0f62fe;
+  --accent-b: #a6c8ff;
+  --nav: #111113;
+  --nav-2: #27272a;
+  --nav-t: #c8c8cc;
+  --nav-t2: #8b8b93;
+  --nav-on: #262628;
+  --brand-red: #c8381f;
+  --brand-nav-name: #ff6b4a;
+  --toast: #18181b;
+  --toast-t: #ffffff;
+  --toast-a: #a9c8b2;
+  --glass: rgba(255, 255, 255, 0.9);
+  /* The phone's More sheet scrim (values 1.1, 2.7); keeps its alpha like --glass. */
+  --scrim: rgba(17, 17, 19, 0.42);
+  --seg-sh: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+  --pop: 0 24px 60px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  /* Status colours: base (dots, fills), -ink (text on the tint), -tint (soft
+     fill), -border (outlined chips). */
+  --status-ok: #24a148;
+  --status-ok-ink: #198038;
+  --status-ok-tint: #defbe6;
+  --status-warn: #ff832b;
+  --status-warn-ink: #ba4e00;
+  --status-warn-tint: #fff2e8;
+  --status-bad: #da1e28;
+  --status-bad-ink: #a2191f;
+  --status-bad-tint: #fff1f1;
+  --status-info: #0f62fe;
+  --status-info-ink: #0043ce;
+  --status-info-tint: #edf5ff;
+  --status-info-border: #a6c8ff;
+  --status-bill: #b28600;
+  --status-bill-ink: #8e6a00;
+  --status-bill-tint: #fcf4d6;
+  --status-bill-border: #f1c21b;
+  --status-reserved: #8a3ffc;
+  --status-reserved-ink: #6929c4;
+  --status-reserved-tint: #f6f2ff;
+  --status-reserved-border: #d4bbff;
   --gradient-primary: linear-gradient(135deg, var(--brand-primary), var(--brand-primary-hover));
   --shadow-card: 0 1px 3px oklch(0.18 0.03 250 / 0.06), 0 1px 2px oklch(0.18 0.03 250 / 0.04);
-  --shadow-elevated: 0 10px 30px -10px rgb(37 99 235 / 0.25);
+  --shadow-elevated: 0 10px 30px -10px rgb(15 98 254 / 0.25);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  /* 2026-09-26: the staff sidebar is the second Paper & Ink screen. These
-     are read only by the shadcn sidebar primitive — the desktop rail AND the
-     phone sheet, which is portaled out of the sidebar's own tree, so they
-     have to be set here rather than on a wrapper. Ink on the sidebar surface
-     16.1:1, muted 5.5:1, the accent focus ring 4.6:1 (pinned in
-     lib/brand-contrast.test.ts). */
+  /* Read by the shadcn sidebar primitive — the desktop rail AND the phone
+     sheet, which is portaled out of the sidebar's own tree, so they have to
+     be set here rather than on a wrapper. The dark sidebar's text, hover and
+     focus pairings are pinned in lib/brand-contrast.test.ts. */
   --sidebar: var(--brand-sidebar);
-  --sidebar-foreground: var(--brand-ink);
+  --sidebar-foreground: var(--brand-nav-text);
   --sidebar-primary: var(--brand-ink);
   --sidebar-primary-foreground: var(--brand-slip);
-  --sidebar-accent: var(--brand-wash);
-  --sidebar-accent-foreground: var(--brand-ink);
-  --sidebar-border: var(--brand-rule);
-  --sidebar-ring: var(--brand-accent);
+  --sidebar-accent: var(--brand-nav-hover);
+  --sidebar-accent-foreground: var(--brand-slip);
+  --sidebar-border: var(--brand-nav-rule);
+  --sidebar-ring: var(--brand-nav-focus);
+  --sidebar-muted: var(--brand-nav-muted);
 }
 
+/* The mock-up's dark set on our names (no switch yet). Opaque values only, so
+   every colour keeps its -rgb tint twin (postcss-tint-fallback); the three
+   borders keep an alpha on purpose (lib/css-compat.test.ts expects it). The
+   mock-up's translucent tints are flattened over its surface #17171a. */
 .dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
+  --background: #0e0e10;
+  --foreground: #f4f4f5;
+  --card: #17171a;
+  --card-foreground: #f4f4f5;
+  --popover: #17171a;
+  --popover-foreground: #f4f4f5;
+  --primary: #0f62fe;
+  --primary-hover: #4589ff;
+  --primary-foreground: #ffffff;
+  --secondary: #1c1c20;
+  --secondary-foreground: #a9a9b2;
+  --muted: #1c1c20;
+  --muted-foreground: #a9a9b2;
+  --subtle-foreground: #80808a;
+  --accent: #1e293f;
+  --accent-foreground: #a6c8ff;
+  --destructive: #fa4d56;
+  --destructive-foreground: #ffffff;
+  --success: #42be65;
+  --warning: #ff832b;
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: #4589ff;
+  --ink: #f4f4f5;
+  --on-ink: #0e0e10;
+  /* The hero is the light card in dark mode: the light page's darker pair. */
+  --on-ink-up: #16733a;
+  --on-ink-down: #a2191f;
+  --on-ink-up-tint: #d8ebde;
+  --on-ink-down-tint: #f5d9dc;
+  --track: #27272b;
+  --surface-2: #1c1c20;
+  --surface-3: #27272b;
+  /* #0f62fe 60 % over the dark surface #17171a, in oklab */
+  --chart-bar: #1b459b;
+  /* #0f62fe 16 / 30 / 48 / 70 % over the dark surface #17171a, in oklab */
+  --heat-1: #1a243a;
+  --heat-2: #1b2f57;
+  --heat-3: #1c3c7f;
+  --heat-4: #1a4cb3;
+  --border-2: #242428;
+  --hover: #222226;
+  --seg: #3a3a40;
+  --link: #78a9ff;
+  /* rgba(69,137,255,.55) flattened over the card #17171a */
+  --accent-b: #305698;
+  --nav: #08080a;
+  --nav-2: #202024;
+  --nav-t: #a9a9b2;
+  --nav-t2: #73737c;
+  /* rgba(255,255,255,.08) flattened over --nav */
+  --nav-on: #1c1c1e;
+  --brand-red: #ff7b5e;
+  --brand-nav-name: #ff6b4a;
+  --toast: #f2f2f3;
+  --toast-t: #0f0f10;
+  --toast-a: #6faf85;
+  --glass: rgba(23, 23, 26, 0.9);
+  --scrim: rgba(0, 0, 0, 0.62);
+  --seg-sh: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --pop: 0 24px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --status-ok: #42be65;
+  --status-ok-ink: #6fdc8c;
+  --status-ok-tint: #1d2e25;
+  --status-warn: #ff832b;
+  --status-warn-ink: #ffb784;
+  --status-warn-tint: #37261c;
+  --status-bad: #fa4d56;
+  --status-bad-ink: #ff8389;
+  --status-bad-tint: #371f22;
+  --status-info: #4589ff;
+  --status-info-ink: #a6c8ff;
+  --status-info-tint: #1d2638;
+  --status-info-border: #2c4a81;
+  --status-bill: #f1c21b;
+  --status-bill-ink: #f1c21b;
+  --status-bill-tint: #2d281a;
+  --status-bill-border: #79641a;
+  --status-reserved: #a56eff;
+  --status-reserved-ink: #be95ff;
+  --status-reserved-tint: #292238;
+  --status-reserved-border: #573e81;
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
@@ -333,4 +615,109 @@
       opacity: 0.7;
     }
   }
+}
+
+/* The owner's HTML's global rules on the staff screens (values 1.4, ruling R24): its body stack — Geist, then
+   system-ui, -apple-system, 'Segoe UI' — so a glyph Geist lacks (the "→" of every header link) falls back as the HTML's
+   does instead of to next/font's metric-adjusted Arial ("Geist Fallback"), and its tabular figures on html/body.
+   Scoped by the marker only the staff screens render (components/layout/HtmlRulesScope.tsx: the dashboard shell and
+   the sign-in screen); :has() on <html> also reaches the dialogs and sheets that portal to <body>. The /m diner flow
+   and the print iframes never contain the marker. Unlayered on purpose: next/font's own --font-geist-sans class on
+   <html> is unlayered, and this must outrank it. */
+html:has([data-html-rules]) {
+  --font-geist-sans: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+@layer base {
+  /* The HTML's button,input rule (values 1.4); a utility (normal-nums) still wins on an element. */
+  html:has([data-html-rules]) :is(button, input) {
+    font-variant-numeric: tabular-nums;
+  }
+  /* A slip's root (white paper, black ink, a paper width: lib/print PAPER_WIDTH_CLASS) keeps the figures it had, so
+     the on-screen previews stay what the paper prints (a print iframe never inherits the staff rules). */
+  .bg-white.text-black:is(.w-\[210px\], .w-\[300px\]) {
+    font-variant-numeric: normal;
+  }
+}
+
+/* Screen lock (spec 2026-10-16 §5.6): while the dashboard layout's no-flash script has marked a reloaded page locked
+   and the cover (components/lock/ScreenLock.tsx) has not yet marked itself ready, nothing on the page paints. The
+   failsafe (ruling R13): ten seconds on, the page shows anyway, so a cover that never mounts can never leave a blank
+   screen for good. Unlayered on purpose, so no utility class outranks it. */
+html[data-pos-locked]:not([data-pos-lock-ready]) body > * {
+  visibility: hidden;
+  animation: pos-lock-failsafe 0s linear 10s forwards;
+}
+@keyframes pos-lock-failsafe {
+  to {
+    visibility: visible;
+  }
+}
+
+/* The page header's actions (U0 Task 3, values 2.5, ruling R6): a page's own buttons, in the header or in its row at
+   the top of the page (a phone, or no room beside the title), take the HTML's header buttons whatever classes the page
+   gives them. Unlayered on purpose, so it outranks every utility, the touch sizes included (ruling R1). Outline (a
+   control with a border): 36px, radius 8, 1px border, surface, 13.5px/500, a 15px icon 7px from the label, padding
+   0 12px, hover --hover. Filled (the page's primary: the kit's bg-primary or the brand button's bg-brand-primary, the
+   same colour; final review m2: keyed on the fill, so a ghost or link control or a plain <a> keeps its own look): its
+   own fill, 13.5px/600, a 14px icon 6px away, padding 0 14px, hover accent-h. Any other control takes the 36px size
+   only. An icon-only control (the kit's w-9 or a size-N square) is a 36px square. */
+[data-header-actions] :is(button, a) {
+  box-sizing: border-box;
+  height: 36px;
+  min-height: 36px;
+  border-radius: 8px;
+  padding: 0 12px;
+  gap: 7px;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: normal;
+  letter-spacing: normal;
+  white-space: nowrap;
+  /* The HTML's button feel (values 1.4), whatever the page's own classes say. */
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.22s ease,
+    transform 0.16s ease, opacity 0.16s ease;
+}
+/* The HTML's press; `scale: none` drops the kit Button's own press so the two never stack. */
+[data-header-actions] :is(button, a):not(:disabled):active {
+  transform: scale(0.97);
+  scale: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-header-actions] :is(button, a) {
+    transition: none;
+  }
+}
+[data-header-actions] :is(button, a) svg {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  flex: none;
+  stroke-width: 1.8;
+}
+[data-header-actions] :is(button, a)[class~="border"] {
+  border: 1px solid var(--border);
+  background-color: var(--card);
+  color: var(--foreground);
+}
+[data-header-actions] :is(button, a)[class~="border"]:hover {
+  background-color: var(--hover);
+}
+[data-header-actions] :is(button, a):is([class~="bg-primary"], [class~="bg-brand-primary"]) {
+  padding: 0 14px;
+  gap: 6px;
+  font-weight: 600;
+}
+[data-header-actions] :is(button, a):is([class~="bg-primary"], [class~="bg-brand-primary"]):hover {
+  background-color: var(--primary-hover);
+}
+[data-header-actions] :is(button, a):is([class~="bg-primary"], [class~="bg-brand-primary"]) svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.4;
+}
+[data-header-actions] :is(button, a):is([class~="w-9"], [class~="w-10"], [class~="w-11"], [class~="size-9"], [class~="size-10"], [class~="size-11"]) {
+  width: 36px;
+  min-width: 36px;
+  padding: 0;
 }

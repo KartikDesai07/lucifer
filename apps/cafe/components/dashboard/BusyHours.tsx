@@ -1,18 +1,188 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "@/lib/utils";
-import { WEEKDAYS_MONDAY_FIRST, hourLabel } from "@/lib/dashboard/range";
+import { WEEKDAYS_MONDAY_FIRST, hourLabel, mondayIndex } from "@/lib/dashboard/range";
+import {
+  busiestCell,
+  busiestWords,
+  heatCap,
+  heatCellLabel,
+  heatHourTick,
+  heatKeyTarget,
+  heatLevel,
+  type HeatCell,
+} from "@/lib/dashboard/busy-hours";
 import type { DashboardHeat } from "@/types/dashboard";
 
 // Busy hours — orders per hour on an average day of each weekday, as a grid
 // (a table of numbers, so a plain CSS grid, not a chart library). One hue,
-// light → dark (sequential), with a legend; tapping or hovering a cell reads
-// it out in words on a fixed line below, so a phone needs no tooltip. On a
-// phone the grid turns sideways (hours down, weekdays across) so every cell
-// stays a thumb-sized target instead of 16px slivers.
+// light → dark (sequential), with a legend; tapping, hovering or focusing a
+// cell reads it out in words, so a phone needs no tooltip.
+//
+// Two looks share the pick: the Dashboard's is the owner's HTML (values 3.15, U0 match Task 9, ruling R19: weekdays
+// down and hours across at every width, a 560px minimum that scrolls sideways inside the card, the read-out in the
+// head's cap box); the reports' BusyHours keeps its own look (a transposed grid on a phone) until its own session.
 
-const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
+/**
+ * The picked cell, kept by its HOUR, not its column: it survives a heat change (Reports' type filter, a range switch)
+ * and each heat has its own span of hours, so a column index would read past a shorter grid or silently re-point at
+ * another hour. The same weekday + hour stays picked, or the pick drops when that hour is gone.
+ */
+export function useHeatPick(heat: DashboardHeat | undefined): {
+  cell: HeatCell | null;
+  pick: (weekday: number, hourIndex: number) => void;
+  clear: () => void;
+} {
+  const [picked, setPicked] = useState<{ weekday: number; hour: number } | null>(null);
+  const index = picked && heat ? heat.hours.indexOf(picked.hour) : -1;
+  return {
+    cell: picked && index >= 0 ? { weekday: picked.weekday, hourIndex: index } : null,
+    pick: (weekday, hourIndex) => {
+      if (heat) setPicked({ weekday, hour: heat.hours[hourIndex] });
+    },
+    clear: () => setPicked(null),
+  };
+}
+
+// ── the Dashboard's (values 3.15) ───────────────────────────────────────────────────────────────────────────────────
+
+/** The HTML's six steps (LV): surface-2, the accent at 16 / 30 / 48 / 70 % over the card (precomputed), the accent. */
+const LEVEL_CLASS = ["bg-surface-2", "bg-heat-1", "bg-heat-2", "bg-heat-3", "bg-heat-4", "bg-primary"] as const;
+/** The hovered cell's ring (values 3.15): 0 0 0 2px var(--text), as a plain box-shadow. */
+const RING_CLASS = "[box-shadow:0_0_0_2px_var(--foreground)]";
+/** A keyboard-focused cell keeps the same ring even after the pointer leaves the grid (which clears the pick). */
+const FOCUS_RING_CLASS = "focus-visible:outline-none focus-visible:[box-shadow:0_0_0_2px_var(--foreground)]";
+
+/** The head's cap box (values 3.15): the read-out of the picked cell, the HTML's hint until one is. */
+export function BusyHoursCap({ heat, cell, updating }: { heat?: DashboardHeat; cell: HeatCell | null; updating?: boolean }) {
+  const cap = heatCap(heat, cell);
+  return (
+    <div
+      data-ui="heat-cap"
+      aria-live="polite"
+      className={cn(
+        "flex h-[34px] items-center gap-2 whitespace-nowrap rounded-[9px] border border-border-2 bg-surface-2 px-3 text-[13px] transition-opacity duration-200",
+        updating && "opacity-55",
+      )}
+    >
+      <span className="text-subtle-foreground">{cap.label}</span>
+      <b className="font-semibold">{cap.value}</b>
+    </div>
+  );
+}
+
+/** The grid (weekdays down, our hours across) and its footer: the busiest hour and the Fewer … More legend. The cells
+ *  are one tab stop (a roving tabindex: the picked cell, else the last focused, else the busiest hour); the arrow keys,
+ *  Home and End move the focus, and the focus picks (fix round 1). */
+export function BusyHoursGrid({
+  heat,
+  today,
+  cell,
+  onPick,
+  onClear,
+}: {
+  heat: DashboardHeat;
+  /** The cafe's today, whose weekday's label is bold. */
+  today: string;
+  cell: HeatCell | null;
+  onPick: (weekday: number, hourIndex: number) => void;
+  onClear: () => void;
+}) {
+  const todayIndex = mondayIndex(today);
+  const busiest = busiestWords(heat);
+  const cellRefs = useRef(new Map<string, HTMLButtonElement>());
+  const [roving, setRoving] = useState<HeatCell | null>(null);
+  const size = { days: WEEKDAYS_MONDAY_FIRST.length, hours: heat.hours.length };
+  const fits = (c: HeatCell | null) => (c && c.weekday < size.days && c.hourIndex < size.hours ? c : null);
+  const stop = fits(cell) ?? fits(roving) ?? busiestCell(heat) ?? { weekday: 0, hourIndex: 0 };
+  const onCellKey = (e: KeyboardEvent<HTMLButtonElement>, at: HeatCell) => {
+    const to = heatKeyTarget(at, e.key, size);
+    if (!to) return;
+    e.preventDefault();
+    cellRefs.current.get(`${to.weekday}:${to.hourIndex}`)?.focus();
+  };
+  return (
+    <>
+      <div data-ui="heat-scroll" className="overflow-x-auto [&::-webkit-scrollbar]:h-0">
+        <div
+          data-ui="heat-grid"
+          onMouseLeave={(e) => {
+            if (!e.currentTarget.querySelector(":focus-visible")) onClear();
+          }}
+          className="grid min-w-[560px] gap-1"
+          style={{ gridTemplateColumns: `40px repeat(${heat.hours.length}, minmax(0, 1fr))` }}
+        >
+          <span />
+          {heat.hours.map((h, i) => (
+            <span key={h} data-ui="heat-hour" className="whitespace-nowrap text-center text-[11px] text-subtle-foreground">
+              {heatHourTick(h, i)}
+            </span>
+          ))}
+          {WEEKDAYS_MONDAY_FIRST.map((day, weekday) => (
+            <div key={day} className="contents">
+              <span
+                data-ui="heat-day"
+                className={cn("flex items-center text-[12px]", weekday === todayIndex ? "font-semibold text-foreground" : "text-muted-foreground")}
+              >
+                {day}
+              </span>
+              {heat.hours.map((_, hourIndex) => {
+                const picked = cell?.weekday === weekday && cell.hourIndex === hourIndex;
+                const at = { weekday, hourIndex };
+                return (
+                  <button
+                    key={`${weekday}-${hourIndex}`}
+                    ref={(el) => {
+                      if (el) cellRefs.current.set(`${weekday}:${hourIndex}`, el);
+                      else cellRefs.current.delete(`${weekday}:${hourIndex}`);
+                    }}
+                    type="button"
+                    data-ui="heat-cell"
+                    aria-label={heatCellLabel(heat, at)}
+                    tabIndex={stop.weekday === weekday && stop.hourIndex === hourIndex ? 0 : -1}
+                    onClick={() => onPick(weekday, hourIndex)}
+                    onMouseEnter={() => onPick(weekday, hourIndex)}
+                    onFocus={() => {
+                      setRoving(at);
+                      onPick(weekday, hourIndex);
+                    }}
+                    onKeyDown={(e) => onCellKey(e, at)}
+                    className={cn(
+                      "h-[30px] rounded-[6px] transition-[box-shadow] duration-[120ms] ease-[ease]",
+                      FOCUS_RING_CLASS,
+                      LEVEL_CLASS[heatLevel(heat.avg[weekday]?.[hourIndex] ?? 0, heat.max)],
+                      picked && RING_CLASS,
+                    )}
+                  />
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div data-ui="heat-foot" className="mt-3.5 flex flex-wrap items-center justify-between gap-2.5 text-[12.5px] text-muted-foreground">
+        {busiest ? (
+          <span data-ui="heat-busiest">
+            Busiest: <b className="font-semibold text-foreground">{busiest.when}</b> · {busiest.orders} on average
+          </span>
+        ) : (
+          <span />
+        )}
+        <span data-ui="heat-legend" aria-hidden className="flex items-center gap-1">
+          Fewer
+          {LEVEL_CLASS.map((c) => (
+            <span key={c} data-ui="heat-swatch" className={cn("size-3.5 rounded-[3px]", c)} />
+          ))}
+          More
+        </span>
+      </div>
+    </>
+  );
+}
+
+// ── the reports' (their own look until their session) ───────────────────────────────────────────────────────────────
+
 // Sequential steps of the accent over the card (Tailwind opacity = color-mix).
 const STEPS = [
   "bg-brand-paper",
@@ -24,41 +194,10 @@ const STEPS = [
 ] as const;
 const HOUR_LABEL_EVERY = 3;
 
-function stepOf(value: number, max: number): number {
-  if (value <= 0 || max <= 0) return 0;
-  return Math.min(STEPS.length - 1, Math.ceil((value / max) * (STEPS.length - 1)));
-}
-
-const fmtOrders = (v: number) => `${Number.isInteger(v) ? v : v.toFixed(1)} ${v === 1 ? "order" : "orders"}`;
-
-interface Cell {
-  weekday: number;
-  hourIndex: number;
-}
-
 export function BusyHours({ heat }: { heat: DashboardHeat }) {
-  const busiest = (() => {
-    let best: Cell | null = null;
-    heat.avg.forEach((row, weekday) =>
-      row.forEach((v, hourIndex) => {
-        if (!best || v > heat.avg[best.weekday][best.hourIndex]) best = { weekday, hourIndex };
-      }),
-    );
-    return best as Cell | null;
-  })();
-  // The pick is kept by its HOUR, not its column: it survives a heat change
-  // (Reports' type filter, a range switch) and each heat has its own span of
-  // hours, so a column index would read past a shorter grid (heat.avg[w][i]
-  // undefined → fmtOrders throws) or silently re-point at another hour. The
-  // same weekday + hour stays picked, or the pick drops when that hour is gone.
-  const [picked, setPicked] = useState<{ weekday: number; hour: number } | null>(null);
-  const pickedIndex = picked ? heat.hours.indexOf(picked.hour) : -1;
-  const pickedCell: Cell | null = picked && pickedIndex >= 0 ? { weekday: picked.weekday, hourIndex: pickedIndex } : null;
+  const busiest = busiestCell(heat);
+  const { cell: pickedCell, pick, clear } = useHeatPick(heat);
   const shown = pickedCell ?? busiest;
-  const pick = (weekday: number, hourIndex: number) => setPicked({ weekday, hour: heat.hours[hourIndex] });
-
-  const cellLabel = (c: Cell) =>
-    `${WEEKDAY_NAMES[c.weekday]}, ${hourLabel(heat.hours[c.hourIndex])} to ${hourLabel((heat.hours[c.hourIndex] + 1) % 24)}: ${fmtOrders(heat.avg[c.weekday][c.hourIndex])} on average`;
 
   const cell = (weekday: number, hourIndex: number, className: string) => {
     const v = heat.avg[weekday][hourIndex];
@@ -67,13 +206,13 @@ export function BusyHours({ heat }: { heat: DashboardHeat }) {
       <button
         key={`${weekday}-${hourIndex}`}
         type="button"
-        aria-label={cellLabel({ weekday, hourIndex })}
+        aria-label={heatCellLabel(heat, { weekday, hourIndex })}
         onClick={() => pick(weekday, hourIndex)}
         onMouseEnter={() => pick(weekday, hourIndex)}
         onFocus={() => pick(weekday, hourIndex)}
         className={cn(
           "rounded-[4px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ink",
-          STEPS[stepOf(v, heat.max)],
+          STEPS[heatLevel(v, heat.max)],
           active && "ring-2 ring-brand-ink",
           className,
         )}
@@ -83,7 +222,7 @@ export function BusyHours({ heat }: { heat: DashboardHeat }) {
 
   const cols = heat.hours.length;
   return (
-    <div onMouseLeave={() => setPicked(null)}>
+    <div onMouseLeave={clear}>
       {/* Tablet and up: weekdays down, hours across. */}
       <div
         className="hidden gap-[3px] sm:grid"
@@ -122,7 +261,7 @@ export function BusyHours({ heat }: { heat: DashboardHeat }) {
           {shown ? (
             <>
               {pickedCell ? "" : <span className="text-brand-muted">Busiest: </span>}
-              {cellLabel(shown).replace(": ", " · ")}
+              {heatCellLabel(heat, shown).replace(": ", " · ")}
             </>
           ) : null}
         </p>

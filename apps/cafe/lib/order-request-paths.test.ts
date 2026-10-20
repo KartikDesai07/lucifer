@@ -565,34 +565,27 @@ test("PIN: pos/page.tsx no longer renders the order-request tray (owner request 
   }
 });
 
-test('PIN: AppSidebar declares an "Order Requests" nav entry after "New Order" (Orders, then Floor), pointing at /requests, and renders <RequestCountBadge /> beside it — the sidebar entry is the ONLY way in now that the POS button is gone', () => {
+test('PIN: AppSidebar declares an "Order Requests" nav entry right after "Orders" (Floor, Order, Orders, Order Requests), pointing at /requests, and renders <RequestCountBadge /> beside it — the sidebar entry is the ONLY way in now that the POS button is gone', () => {
   const src = stripComments(readSrc(APP_SIDEBAR));
-  const newOrderIdx = mustIndexOf(
-    src,
-    '{ title: "New Order", url: "/pos", icon: ShoppingCart },',
-    "the New Order nav entry",
-  );
+  // U0 Task 2 (design 5.2): the owner's HTML order — Home, Floor, Order, Orders — then Order Requests, still a row a
+  // waiter reaches straight after the order screens.
+  const floorIdx = mustIndexOf(src, '{ title: "Floor", url: "/tables",', "the Floor nav entry");
   const entryAfter = (from: number) => {
     const at = src.indexOf("{ title:", from + 1);
     assert.ok(at > from, "an entry must follow in the items array");
     return { at, text: src.slice(at, src.indexOf("},", at) + 2) };
   };
-  // Owner decision 2026-09-29 (UI batch 1 B) supersedes "directly below New
-  // Order": Orders now sits right under New Order, and Order Requests right
-  // under Orders — still the second service row a waiter reaches.
-  const orders = entryAfter(newOrderIdx);
-  assert.match(orders.text, /title:\s*"Orders"/, 'the entry directly after "New Order" must be "Orders"');
+  const order = entryAfter(floorIdx);
+  assert.match(order.text, /title:\s*"Order",\s*url:\s*"\/pos"/, 'the entry directly after "Floor" must be "Order" (/pos)');
+  const orders = entryAfter(order.at);
+  assert.match(orders.text, /title:\s*"Orders"/, 'the entry directly after "Order" must be "Orders"');
   assert.match(orders.text, /url:\s*"\/orders"/);
-  // Owner decision 2026-10-02: the Floor sits right under New Order and Orders,
-  // so Order Requests is now the row after the Floor (still the fourth service row).
-  const floor = entryAfter(orders.at);
-  assert.match(floor.text, /title:\s*"Floor"/, 'the entry directly after "Orders" must be "Floor"');
-  const nextEntry = entryAfter(floor.at).text;
+  const nextEntry = entryAfter(orders.at).text;
   // Mutation this catches: the requests entry landing anywhere else in the list.
   assert.match(
     nextEntry,
     /title:\s*"Order Requests"/,
-    'the entry directly after "Floor" must be titled "Order Requests"',
+    'the entry directly after "Orders" must be titled "Order Requests"',
   );
   assert.match(nextEntry, /url:\s*"\/requests"/, 'the "Order Requests" entry must link to /requests');
 

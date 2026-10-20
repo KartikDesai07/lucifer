@@ -39,7 +39,9 @@ import type { Area, Category, Product, Settings, Staff, Table } from "@/types";
 // category" for an item the owner set to "No kitchen ticket" and a save would clear it, and the tags would be missing - v13 blobs are discarded.
 // CB-7 S1 (2026-10-08): Settings gained `rewardLevels`. A v14 blob has none, so a device holding one would read the reward
 // levels as never configured after the owner saved a set - v14 blobs are discarded.
-export const BOOTSTRAP_VERSION = 15;
+// PIN lock (2026-10-16): Staff gains hasPin and pinBlocked; Settings gains screenLockMinutes. A v15 blob has none, so the
+// Staff page would show no PIN state and a device would never auto-lock from it - v15 blobs are discarded.
+export const BOOTSTRAP_VERSION = 16;
 
 // Device storage key (the browser's persistent per-origin store — survives a
 // reload, a closed tab and a restart of the app shell; cleared on logout and

@@ -3,124 +3,146 @@
 import type { ReactNode } from "react";
 
 import { useNow } from "@/hooks/use-now";
-import { brandFontVariables } from "@/lib/brand-fonts";
-import { dayPartOf, greetingFor } from "@/lib/brand-time";
-import { BrandCard } from "@/components/brand/BrandCard";
-import { PointillistScene } from "@/components/brand/PointillistScene";
-import { Postmark } from "@/components/brand/Postmark";
-import { StampFrame } from "@/components/brand/StampFrame";
+import { useOnline } from "@/hooks/use-online";
+import { cn } from "@/lib/utils";
+import { STATUS_CLASSES } from "@/lib/ui";
 import { VendorMark } from "@/components/brand/VendorMark";
+import { HtmlRulesScope } from "@/components/layout/HtmlRulesScope";
 
-// The frame every signed-out staff screen sits in — sign-in today, and any
-// later set-password / invite screen, which drops straight into it. Built on
-// the "Paper & Ink" brand system (tokens + motion in app/globals.css, type in
-// lib/brand-fonts.ts, pieces in components/brand).
+// The frame every signed-out staff screen sits in: the login page and the screen lock's cover. The look is the owner's
+// HTML lock screen (values 4.2, design 5.6, ruling R27): a full-screen root over everything, a soft accent tint at the
+// top, a top bar (the 34px brand tile, the cafe's name in Shrikhand over "{product} · {device}", the Online chip, a
+// divider, the clock), one white card centred in the space between, and the footer line "Powered by Sandbee POS" (the
+// HTML's "Demo PIN 1234" line is left out).
 //
-// Presentation ONLY: no auth, no data fetching, no session. The page owns its
-// form and its logo (including the logo's own failure fallback) and hands
-// them in, so this file can never be the reason sign-in breaks.
-//
-// One centred card on plain paper. On large screens it splits: a perforated
-// "stamp" holding a computed pointillist painting (hills, a sun, a steaming
-// bowl — its colours follow the time of day; it paints itself in on load and
-// is postmarked with today's date) on the left, the form on the right. On phones the
-// painting becomes a short strip across the top of the same card, and on a
-// short screen it steps aside entirely so the form never needs a scroll.
+// Presentation ONLY: no auth, no data fetching, no session. The page owns its form, its tile (including the logo's
+// own failure fallback) and its lines and hands them in, so this file can never be the reason sign-in breaks.
 
 interface AuthShellProps {
-  /** The cafe/product name beside the logo. */
+  /** The cafe's name (the login page reads it on the server, ruling R39; the product's name when the cafe has none). */
   brandName: string;
-  /** The logo element; it fills the box it is given. The caller owns its src
-   *  and its onError fallback. */
+  /** The 34px brand tile, ready drawn; the caller owns its image and that image's onError fallback. */
   logo: ReactNode;
-  /** The card's headline, e.g. "Welcome back." */
-  title: string;
+  /** The line under the name: "{product} · {this device's print name}", or the product alone. */
+  subline?: ReactNode;
+  /** The card's headline, e.g. "Welcome back." Left out when the content brings its own (the PIN picker). */
+  title?: string;
   /** One short line under the headline. */
-  intro: string;
-  /** Under a closing rule at the foot of the form. */
+  intro?: string;
+  /** Under a closing rule at the foot of the card. */
   footer?: ReactNode;
+  /** A control in the page's footer line, before "Powered by" (the lock's Sign out). */
+  footerAction?: ReactNode;
   children: ReactNode;
 }
 
-export function AuthShell({ brandName, logo, title, intro, footer, children }: AuthShellProps) {
-  // ONE clock for the screen: the greeting and the painting's palette both
-  // read it, so they always agree. null until mounted (see useNow) — nothing
-  // time-dependent is rendered on the server.
+/** "8:27 PM": the header clock, in the counter's own local time. */
+export function clockLabel(now: Date): string {
+  const hour = now.getHours();
+  return `${hour % 12 || 12}:${String(now.getMinutes()).padStart(2, "0")} ${hour < 12 ? "AM" : "PM"}`;
+}
+
+/** The Online chip's words (the HTML's "Online", ruling R28). Offline reads "Offline" only (ruling R32): the HTML's
+ *  "· PINs still work" is untrue here, where the PIN is checked on the server. */
+export function onlineChipLabel(online: boolean): string {
+  return online ? "Online" : "Offline";
+}
+
+// Its own component so the once-a-second tick re-renders only the clock, never the card's content. Until the first
+// tick (useNow is null) it holds the HTML's measured clock width, so the chip and divider never jump (review m6).
+function HeaderClock() {
   const now = useNow();
-  const dayPart = now ? dayPartOf(now) : null;
-  const greeting = now ? greetingFor(now) : null;
-
   return (
-    // min-h-screen is this screen's document floor (the body's own floor is
-    // dvh-based; the route-parity pin in lib/pos-layout-paths.test.ts keeps
-    // signed-out screens on the full 100vh they have always had).
-    <main className="min-h-screen bg-brand-paper text-brand-ink">
-      {/* Font variables live on this wrapper, not <main>, so the brand faces
-          resolve for everything inside and nowhere else. */}
+    <span data-ui="auth-clock" className={cn("whitespace-nowrap text-[13.5px] font-medium", now === null && "min-w-[61px]")}>
+      {now ? clockLabel(now) : null}
+    </span>
+  );
+}
+
+// The browser's own online flag (no request); none on a phone, as the HTML's lkChips.
+function OnlineChip() {
+  const online = useOnline();
+  return (
+    <span data-ui="auth-net" className="hidden items-center gap-[7px] whitespace-nowrap text-[12.5px] text-muted-foreground tab:flex">
+      <span
+        data-ui="auth-net-dot"
+        aria-hidden="true"
+        className={cn("size-[7px] rounded-[50%]", STATUS_CLASSES[online ? "ok" : "warn"].dot)}
+      />
+      {onlineChipLabel(online)}
+    </span>
+  );
+}
+
+export function AuthShell({ brandName, logo, subline, title, intro, footer, footerAction, children }: AuthShellProps) {
+  return (
+    <main
+      data-ui="auth-root"
+      className="fixed inset-0 z-[60] flex flex-col overflow-hidden bg-background leading-[normal] text-foreground motion-safe:animate-html-fade"
+    >
+      {/* The HTML's global rules (values 1.4, ruling R24) on the sign-in screen too. */}
+      <HtmlRulesScope />
       <div
-        className={`${brandFontVariables} flex min-h-screen flex-col font-brand-sans`}
+        aria-hidden="true"
+        data-ui="auth-tint"
+        className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-[linear-gradient(180deg,var(--color-accent),transparent)]"
+      />
+
+      <header data-ui="auth-header" className="relative flex flex-none items-center gap-3 px-4 py-3.5 tab:px-7 tab:py-5">
+        {logo}
+        <span data-ui="auth-brand" className="flex min-w-0 flex-1 flex-col">
+          <span data-ui="auth-name" className="truncate font-brand-script text-[20px] font-normal leading-[1.1] text-brand-red">
+            {brandName}
+          </span>
+          {subline && (
+            <span data-ui="auth-sub" className="text-[12px] text-muted-foreground">
+              {subline}
+            </span>
+          )}
+        </span>
+        <OnlineChip />
+        <span data-ui="auth-divider" aria-hidden="true" className="hidden h-5 w-px bg-border tab:block" />
+        <HeaderClock />
+      </header>
+
+      <div
+        data-ui="auth-main"
+        className="relative flex min-h-0 flex-1 flex-col items-center overflow-auto px-3 pb-2 pt-1 tab:px-6 tab:py-2"
       >
-        <div className="flex flex-1 items-center justify-center px-4 py-5 sm:px-6 sm:py-8 lg:py-12">
-          <div className="w-full max-w-md motion-safe:animate-brand-rise lg:max-w-[58rem]">
-            <BrandCard className="p-3 sm:p-3">
-              <div className="lg:grid lg:min-h-[35rem] lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1fr)]">
-                {/* The painting: a strip on phones (gone on short screens),
-                    the whole left half on large ones. */}
-                <StampFrame className="h-40 [@media(max-height:700px)]:hidden lg:h-auto lg:[@media(max-height:700px)]:flex">
-                  <PointillistScene dayPart={dayPart} className="absolute inset-0 bg-brand-paper" />
-                  {/* Large screens only: on the phone strip it crowds the bowl. */}
-                  {now && dayPart && (
-                    <Postmark
-                      now={now}
-                      dayPart={dayPart}
-                      className="pointer-events-none absolute left-4 top-4 hidden w-40 motion-safe:animate-brand-stamp lg:block"
-                    />
-                  )}
-                </StampFrame>
+        <div
+          data-ui="auth-card"
+          className="my-auto flex w-full max-w-[520px] flex-col gap-5 rounded-[16px] border border-border bg-card px-4 py-5 [box-shadow:0_1px_2px_rgba(0,0,0,.04),0_12px_40px_rgba(0,0,0,.06)] motion-safe:animate-html-rise tab:max-w-[680px] tab:rounded-[20px] tab:p-6 desk:max-w-[900px] desk:px-8 desk:py-7"
+        >
+          {title && (
+            <div className="text-center">
+              <h1 data-ui="auth-title" className="text-[22px] font-semibold tracking-[-0.02em] tab:text-[26px]">
+                {title}
+              </h1>
+              {intro && (
+                <p data-ui="auth-intro" className="mt-1 text-pretty text-[14px] text-muted-foreground">
+                  {intro}
+                </p>
+              )}
+            </div>
+          )}
 
-                <div className="flex flex-col px-4 pb-5 pt-7 sm:px-7 lg:px-12 lg:py-10">
-                  {/* The lockup: the cafe's logo at its own shape (a wide
-                      wordmark gets its width, a square mark stays square),
-                      a hairline, then the product name in the UI face. */}
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-9 max-w-[8.5rem] shrink-0 items-center">{logo}</div>
-                    <span aria-hidden="true" className="h-5 w-px shrink-0 bg-brand-rule" />
-                    <span className="truncate text-[15px] font-semibold tracking-[-0.01em]">{brandName}</span>
-                  </div>
+          {children}
 
-                  <div className="flex flex-1 flex-col justify-center">
-                    <p className="mt-6 h-5 text-sm font-medium text-brand-accent sm:mt-8 lg:mt-10">
-                      {greeting && (
-                        // key: a new part of the day re-runs the fade, once.
-                        <span key={greeting} className="motion-safe:animate-brand-fade">
-                          {greeting}
-                        </span>
-                      )}
-                    </p>
-                    <h1 className="mt-1 font-brand-display text-[2rem] font-medium leading-tight tracking-tight sm:text-4xl">
-                      {title}
-                    </h1>
-                    <p className="mt-2 text-pretty text-sm leading-relaxed text-brand-muted">{intro}</p>
-
-                    <div className="mt-7">{children}</div>
-                  </div>
-
-                  {footer && (
-                    <>
-                      <div aria-hidden="true" className="mt-6 border-t border-dashed border-brand-rule sm:mt-8" />
-                      <div className="text-pretty pt-4 text-center text-xs text-brand-muted">{footer}</div>
-                    </>
-                  )}
-                </div>
-              </div>
-            </BrandCard>
-          </div>
+          {footer && (
+            <div className="border-t border-border pt-4 text-center text-[12.5px] text-pretty text-muted-foreground">
+              {footer}
+            </div>
+          )}
         </div>
-
-        <footer className="flex justify-center px-4 pb-6">
-          <VendorMark />
-        </footer>
       </div>
+
+      <footer
+        data-ui="auth-footer"
+        className="relative flex flex-none flex-wrap justify-center gap-x-[18px] gap-y-1.5 px-4 pb-[calc(14px+env(safe-area-inset-bottom))] pt-2.5 text-[12.5px] text-subtle-foreground"
+      >
+        {footerAction}
+        <VendorMark />
+      </footer>
     </main>
   );
 }

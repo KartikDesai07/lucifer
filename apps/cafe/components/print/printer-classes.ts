@@ -1,6 +1,7 @@
 // Shared sizes and colours for the printer dot and the printer panel. Plain
 // class strings (components/ui/** is never edited); cn()'s tailwind-merge makes
 // each token REPLACE the shadcn default it sits next to.
+import { STATUS_CLASSES } from "@/lib/ui";
 
 /** A panel action: 44px tall, readable at arm's length on a counter tablet. */
 export const PRINTER_ACTION_CLASS = "h-11 px-4 text-base";
@@ -9,13 +10,17 @@ export const PRINTER_ACTION_CLASS = "h-11 px-4 text-base";
  *  which would shrink it below 16px on an iPad (iOS zooms the page on focus). */
 export const PRINTER_INPUT_CLASS = "h-11 text-base md:text-base";
 
-/** The top-bar button: 40px with a mouse, 44px on a touch screen. */
-export const PRINTER_ICON_BUTTON_CLASS = "relative h-10 w-10 pointer-coarse:h-11 pointer-coarse:w-11";
+/** The page header's icon square (the owner's HTML printer button, values 2.5): 36px with a 17px icon, on the kit's
+ *  outline Button; the same size on a touch screen (U0 ruling R1). Refresh, the phone's menu and a back link share it. */
+export const PRINTER_ICON_BUTTON_CLASS = "relative h-9 w-9 flex-none px-1.5 py-px [&_svg]:size-[17px]";
 
-/** The dot on the button's corner; the ring keeps it legible over the icon. */
-export const PRINTER_DOT_CLASS = "absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full ring-2 ring-background";
-export const PRINTER_DOT_OK_CLASS = "bg-green-600";
-export const PRINTER_DOT_BAD_CLASS = "bg-red-600";
+/** The HTML's status dot: 10px on the button's corner (top/right -3px), a 2px ring in the surface colour. On the
+ *  header button: the HTML's --ok green when printing works, its --warn orange when it does not (values 2.5). */
+export const PRINTER_DOT_CLASS = "absolute -right-[3px] -top-[3px] size-2.5 rounded-[50%] [box-shadow:0_0_0_2px_var(--card)]";
+export const PRINTER_DOT_OK_CLASS = STATUS_CLASSES.ok.dot;
+export const PRINTER_DOT_WARN_CLASS = STATUS_CLASSES.warn.dot;
+/** The Printer setup page's own dots: green connected, red a problem. */
+export const PRINTER_DOT_BAD_CLASS = STATUS_CLASSES.bad.dot;
 
 /** The 36px icon tile at the start of a panel header, a printer row and the status
  *  banner (the Settings hub's idiom). The colour comes from one of the tones below. */

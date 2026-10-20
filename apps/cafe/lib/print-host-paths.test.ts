@@ -40,7 +40,7 @@ const POS_DEVICE_ID = "apps/cafe/lib/pos-device-id.ts";
 
 // ── A. Reachability (plan §B5 tree) ──────────────────────────────────────
 
-test("PIN (A): app/(dashboard)/layout.tsx imports PrintHostProvider and PrintHostPrintSources; <PrintHostProvider> nests INSIDE <PosPulseProvider>, and <PrintHostPrintSources /> sits AFTER <main className=\"flex-1 p-4 md:p-6\"> and BEFORE </SidebarInset> — paired with the positive landmark <RequestAlertBar />", () => {
+test("PIN (A): app/(dashboard)/layout.tsx imports PrintHostProvider and PrintHostPrintSources; <PrintHostProvider> nests INSIDE <PosPulseProvider>, and <PrintHostPrintSources /> sits AFTER the page's <main> and BEFORE </SidebarInset> — paired with the positive landmark <RequestAlertBar />", () => {
   const src = readSrc(DASHBOARD_LAYOUT);
 
   assert.match(src, /import\s*\{\s*PrintHostProvider\s*\}\s*from\s*"@\/components\/layout\/PrintHostProvider"/, "layout.tsx must import PrintHostProvider");
@@ -57,10 +57,11 @@ test("PIN (A): app/(dashboard)/layout.tsx imports PrintHostProvider and PrintHos
     `expected index order PosPulseProvider(${posPulseOpen}) < PrintHostProvider(${printHostOpen}) < SidebarInset(${sidebarInsetOpen})`,
   );
 
-  const mainOpen = src.indexOf('<main className="flex-1 p-4 md:p-6">');
+  // U0 Task 4: the main's phone foot clears the tab bar (pb-[92px] below 720px).
+  const mainOpen = src.indexOf('<main className="flex-1 p-4 pb-[92px] tab:pb-4 md:p-6">');
   const printSourcesOpen = src.indexOf("<PrintHostPrintSources />");
   const sidebarInsetClose = src.indexOf("</SidebarInset>");
-  assert.ok(mainOpen >= 0, "positive landmark: <main className=\"flex-1 p-4 md:p-6\"> must be present");
+  assert.ok(mainOpen >= 0, "positive landmark: <main className=\"flex-1 p-4 pb-[92px] tab:pb-4 md:p-6\"> must be present");
   assert.ok(printSourcesOpen >= 0, "positive landmark: <PrintHostPrintSources /> must be present");
   assert.ok(sidebarInsetClose >= 0, "positive landmark: </SidebarInset> must be present");
   assert.ok(

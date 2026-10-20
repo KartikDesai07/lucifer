@@ -59,17 +59,8 @@ test("source pin: lib/reports/sales-fold.ts presents the range's money through p
   assert.ok(src.includes("pickMoneyBreakdown("), "must carry money through pickMoneyBreakdown(...)");
 });
 
-test("source pin: components/reports/MoneyBreakdownCard.tsx iterates MONEY_BREAKDOWN_LINES, renders MONEY_NET_LABEL, imports inr, captions via CardDescription", () => {
-  const src = stripComments(readSrc("components/reports/MoneyBreakdownCard.tsx"));
-  assert.ok(src.includes("MONEY_BREAKDOWN_LINES"), "must iterate MONEY_BREAKDOWN_LINES");
-  assert.ok(src.includes("MONEY_NET_LABEL"), "must render MONEY_NET_LABEL");
-  assert.ok(src.includes("inr"), "must import inr");
-  // Review C2: sibling cards describe themselves through the shadcn
-  // CardDescription slot (16 files), not a raw <p> - one type scale everywhere.
-  assert.ok(src.includes("<CardDescription"), "landmark: the caption must render through <CardDescription>");
-  const rawParagraphNeedle = "<p " + "className";
-  assert.ok(!src.includes(rawParagraphNeedle), "no raw <p className> caption may remain in the card");
-});
+// components/reports/MoneyBreakdownCard.tsx was deleted (final review m3): no page rendered it once the dashboard
+// drew its own receipt (BillBreakdown, pinned below), so its source pin went with it.
 
 test("source pin: components/reports/EndOfDaySummary.tsx iterates MONEY_BREAKDOWN_LINES, renders MONEY_NET_LABEL, drops the literal 'Gross sales', keeps w-[300px]", () => {
   const src = stripComments(readSrc("components/reports/EndOfDaySummary.tsx"));
@@ -88,14 +79,16 @@ test("source pin: components/reports/EndOfDaySummary.tsx iterates MONEY_BREAKDOW
 // (salesCsvRows/paymentsCsvRows/duesCsvRows), carries the equivalent pin in
 // lib/reports/csv.test.ts (implementer A's slice, not this file's).
 
-test("source pin: app/(dashboard)/page.tsx renders <MoneyBreakdownCard and imports it from @/components/reports/MoneyBreakdownCard", () => {
-  // Reports redesign Batch 1: the Reports screens moved off MoneyBreakdownCard
-  // onto their own TallyCard ("How it adds up" — a computed identity check,
-  // not a static breakdown list); the Dashboard alone still uses this card.
-  const src = stripComments(readSrc("app/(dashboard)/page.tsx"));
-  assert.ok(src.includes("<MoneyBreakdownCard"), "must render <MoneyBreakdownCard");
+test("source pin: the dashboard renders its own receipt (<BillBreakdown from @/components/dashboard/BillBreakdown) over MONEY_BREAKDOWN_LINES", () => {
+  // U0 match Task 6 (values 3.4): the dashboard's bill breakdown is the owner's HTML receipt (BillBreakdown), with our
+  // rows from the one label table.
+  const page = stripComments(readSrc("app/(dashboard)/page.tsx"));
+  assert.ok(page.includes("<BillBreakdown"), "must render <BillBreakdown");
   assert.ok(
-    src.includes('from "@/components/reports/MoneyBreakdownCard"'),
-    "must import MoneyBreakdownCard from @/components/reports/MoneyBreakdownCard",
+    page.includes('from "@/components/dashboard/BillBreakdown"'),
+    "must import BillBreakdown from @/components/dashboard/BillBreakdown",
   );
+  const card = stripComments(readSrc("components/dashboard/BillBreakdown.tsx"));
+  assert.ok(card.includes("MONEY_BREAKDOWN_LINES"), "BillBreakdown must iterate MONEY_BREAKDOWN_LINES");
+  assert.ok(card.includes("MONEY_NET_LABEL"), "BillBreakdown must render MONEY_NET_LABEL");
 });

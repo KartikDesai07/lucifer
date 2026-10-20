@@ -265,7 +265,7 @@ export async function runSeedDemo(opts: { file: string; imagesDir: string | null
     log(`  Top products by revenue: ${topProducts.map(([name, revenue]) => `${name} (₹${revenue})`).join(", ")}`);
   }
   const adminUsername = (process.env.SEED_ADMIN_USERNAME ?? "admin").toLowerCase();
-  log(`  Logins: admin = ${adminUsername}; staff priya / rahul / amit use the admin password`);
+  log(`  Logins: admin = ${adminUsername}; staff priya / rahul / amit use the admin password; PINs priya 2468, rahul 1357, amit 8642, admin 9753`);
   log(`  Verify: ${summary.verify.passed} passed, ${summary.verify.failed} failed`);
 
   return summary;

@@ -42,6 +42,8 @@ const CAPACITY_CYCLE = [2, 4, 4, 6, 4, 2, 8, 4] as const;
 const ROOFTOP_CHARGE_AMOUNT = 50;
 const ROOFTOP_CHARGE_LABEL = "Rooftop seating";
 const ADMIN_WEIGHT = 10;
+/** The demo admin's 4-digit PIN (the demo staff PINs live in people-data.ts). */
+const DEMO_ADMIN_PIN = "9753";
 
 export interface DemoClientCafe {
   cafe: CafeBlock;
@@ -74,12 +76,15 @@ export async function seedStaff(
       password: hashed,
       role: "staff",
       isActive: true,
+      pin: member.pin,
+      hasPin: true,
     });
     created.push({ _id: doc._id as Types.ObjectId, name: member.name, weight: member.weight });
   }
 
   const admin = await Staff.findOne({ role: "admin" });
   if (!admin) throw new Error("seedStaff: no admin account found — seedBase must run first");
+  await Staff.updateOne({ _id: admin._id }, { $set: { pin: DEMO_ADMIN_PIN, hasPin: true } });
   created.push({ _id: admin._id as Types.ObjectId, name: admin.name, weight: ADMIN_WEIGHT });
 
   return created;

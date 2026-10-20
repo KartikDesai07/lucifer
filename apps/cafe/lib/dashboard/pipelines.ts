@@ -9,7 +9,7 @@ import type { PipelineStage } from "mongoose";
 import { CAFE_TIMEZONE } from "@/lib/constants";
 import { SELF_ORDER_SOURCE } from "@pos/shared/public";
 import { ITEM_REVENUE_EXPR, MONEY_BREAKDOWN_GROUP } from "@/lib/money-breakdown";
-import type { DashboardChannel, DashboardSeriesMode } from "@/types/dashboard";
+import type { DashboardSeriesMode } from "@/types/dashboard";
 import type { TimeWindow } from "@/lib/dashboard/range";
 
 export const COMPLETED = { status: "Completed" } as const;
@@ -34,13 +34,9 @@ export const CHANNEL_EXPR = {
   },
 };
 
-/** JS twin of CHANNEL_EXPR (the live leg asserts the two agree on real documents). */
-export function channelOf(order: { source?: string; parcel?: boolean; tableNo?: string }): DashboardChannel {
-  if (order.source === SELF_ORDER_SOURCE) return "qr";
-  if (order.parcel === true) return "takeaway";
-  if ((order.tableNo ?? "").length > 0) return "dine-in";
-  return "counter";
-}
+/** JS twin of CHANNEL_EXPR, client-safe in lib/dashboard/channel.ts (the live leg asserts the two agree on real
+ *  documents); re-exported here for the scripts and tests that read it beside CHANNEL_EXPR. */
+export { channelOf } from "@/lib/dashboard/channel";
 
 /** The name AS SOLD ("items" path) — "Sp. Coco (Large)" — byte-for-byte the reports route's topProducts key. */
 export function itemLabelExpr(path: "items" | "voids") {

@@ -29,6 +29,8 @@ interface DatePickerProps {
   "aria-label"?: string;
   /** The field failed validation: a red edge (the message is the form's own). */
   invalid?: boolean;
+  /** What the button shows instead of the calendar icon and the full date (the dashboard's short header button). */
+  label?: React.ReactNode;
   className?: string;
 }
 
@@ -45,6 +47,7 @@ export const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(
       id,
       "aria-label": ariaLabel,
       invalid,
+      label,
       className,
     },
     ref,
@@ -81,8 +84,12 @@ export const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(
               className,
             )}
           >
-            <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
-            {selected ? format(selected, DISPLAY_FORMAT) : placeholder}
+            {label ?? (
+              <>
+                <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
+                {selected ? format(selected, DISPLAY_FORMAT) : placeholder}
+              </>
+            )}
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start" collisionPadding={POPOVER_EDGE_GAP_PX}>

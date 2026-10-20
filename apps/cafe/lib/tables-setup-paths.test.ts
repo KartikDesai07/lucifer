@@ -216,14 +216,16 @@ function checkTablesGroup(src: string): void {
   assert.match(src, /const active = isTableSectionActive\(pathname, section\.href\);/, "each sub-row's flag comes from isTableSectionActive (Floor is an exact match)");
   assert.match(src, /isActive=\{active\}/, "each sub-row lights from its own `active` flag");
   assert.match(src, /aria-current=\{active \? "page" : undefined\}/, "and announces it with aria-current");
-  const branchAt = src.indexOf("if (collapsed) {");
-  assert.ok(branchAt >= 0, "landmark: the collapsed branch exists");
-  const branch = src.slice(branchAt, src.indexOf("\n  }\n", branchAt));
-  assert.ok(branch.includes("isActive={onManage}"), "the plain Link lights on ANY manage page (isActive={onManage}), never on the Floor");
-  assert.ok(branch.includes("href={TABLES_SETUP_PATH}"), "the collapsed Link points at Setup (the Floor has its own row)");
+  // U0 Task 2: no collapsed-rail Link any more — the rail opens Setup / QR codes in a flyout (NavGroupRow).
+  assert.ok(src.includes("<NavGroupRow"), "landmark: the row is the nav's row with sub-pages (sub-rows wide, a flyout in the rail)");
+  assert.ok(src.includes("isActive={onManage}"), "the row lights on ANY manage page (isActive={onManage}), never on the Floor");
+  assert.ok(
+    src.includes("const onManage = isTablesManagePath(pathname);"),
+    "the row's pages are the manage paths only (the Floor has its own row)",
+  );
 }
 
-test("PIN: the Tables sidebar group renders from TABLE_SECTIONS, lights and announces each sub-row, and the collapsed Link lights on any Tables page", () => {
+test("PIN: the Tables nav group renders its sub-rows from TABLES_MANAGE_SECTIONS, lights and announces each, and its row lights on any manage page (never the Floor)", () => {
   checkTablesGroup(readSrc(TABLES_GROUP));
 });
 
@@ -280,7 +282,10 @@ test("MUTATION: the source pins fail on broken copies of the files this slice ow
 
   const group = readSrc(TABLES_GROUP);
   assert.throws(() => checkTablesGroup(mutate(group, "isActive={onManage}", "isActive={exact}")), /isActive=\{onManage\}/);
-  assert.throws(() => checkTablesGroup(mutate(group, "href={TABLES_SETUP_PATH}", "href={TABLES_FLOOR_PATH}")), /Floor has its own row/);
+  assert.throws(
+    () => checkTablesGroup(mutate(group, "const onManage = isTablesManagePath(pathname);", "const onManage = isTablesPath(pathname);")),
+    /Floor has its own row/,
+  );
   assert.throws(() => checkTablesGroup(mutate(group, 'aria-current={active ? "page" : undefined}', "")), /aria-current/);
   assert.throws(() => checkTablesGroup(mutate(group, "TABLES_MANAGE_SECTIONS.map(", "[].map(")), /Setup \+ QR codes only/);
 

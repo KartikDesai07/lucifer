@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
 import { createStaffSchema } from "@/schemas";
 import { STAFF_ROLES } from "@/lib/constants";
-import { useCreateStaff, useUpdateStaff } from "@/hooks/use-staff";
+import { STAFF_PIN_MESSAGES, staffPinProblem } from "@pos/shared/staff-pin";
+import { useCreateStaff, useRevealStaffPin, useUpdateStaff } from "@/hooks/use-staff";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -26,7 +28,7 @@ import type { Staff } from "@/types";
 // from their own account menu. `role` has a default, so input ≠ output.
 const staffFormSchema = createStaffSchema
   .pick({ name: true, mobile: true, username: true, role: true })
-  .extend({ password: z.string().optional() });
+  .extend({ password: z.string().optional(), pin: z.string().optional() });
 
 type StaffFormValues = z.input<typeof staffFormSchema>;
 type StaffFormData = z.output<typeof staffFormSchema>;
@@ -46,7 +48,11 @@ export function StaffFormSheet({
 }: StaffFormSheetProps) {
   const createStaff = useCreateStaff();
   const updateStaff = useUpdateStaff();
+  const revealPin = useRevealStaffPin();
   const isEdit = !!staff;
+  const [shownPin, setShownPin] = useState<string | null | undefined>(undefined);
+  // The member the sheet shows now: a reveal answering after the sheet closed or moved on is dropped.
+  const shownFor = useRef<string | undefined>(undefined);
 
   const {
     register,
@@ -57,10 +63,12 @@ export function StaffFormSheet({
     formState: { errors },
   } = useForm<StaffFormValues, unknown, StaffFormData>({
     resolver: zodResolver(staffFormSchema),
-    defaultValues: { name: "", mobile: "", username: "", password: "", role: "staff" },
+    defaultValues: { name: "", mobile: "", username: "", password: "", pin: "", role: "staff" },
   });
 
   useEffect(() => {
+    shownFor.current = open ? staff?._id : undefined;
+    setShownPin(undefined);
     if (!open) return;
     reset(
       staff
@@ -69,15 +77,23 @@ export function StaffFormSheet({
             mobile: staff.mobile,
             username: staff.username,
             password: "",
+            pin: "",
             role: staff.role,
           }
-        : { name: "", mobile: "", username: "", password: "", role: "staff" },
+                : { name: "", mobile: "", username: "", password: "", pin: "", role: "staff" },
     );
   }, [open, staff, reset]);
 
   const onSubmit = async (values: StaffFormData) => {
     try {
+      const pin = values.pin ?? "";
       if (isEdit) {
+        // A blank New PIN keeps the current one; a typed one must pass the same check as on create.
+        const problem = pin === "" ? null : staffPinProblem(pin);
+        if (problem) {
+          setError("pin", { message: STAFF_PIN_MESSAGES[problem] });
+          return;
+        }
         await updateStaff.mutateAsync({
           id: staff._id,
           data: {
@@ -85,6 +101,7 @@ export function StaffFormSheet({
             mobile: values.mobile,
             username: values.username,
             role: values.role,
+            ...(pin !== "" ? { pin } : {}),
           },
         });
       } else {
@@ -95,12 +112,18 @@ export function StaffFormSheet({
           });
           return;
         }
+        const problem = staffPinProblem(pin);
+        if (problem) {
+          setError("pin", { message: STAFF_PIN_MESSAGES[problem] });
+          return;
+        }
         await createStaff.mutateAsync({
           name: values.name,
           mobile: values.mobile,
           username: values.username,
           role: values.role,
           password: values.password,
+          pin,
           isActive: true,
         });
       }
@@ -180,6 +203,59 @@ export function StaffFormSheet({
           </p>
         </FormField>
       )}
+
+      <FormField
+        label={isEdit ? "New PIN" : "PIN (4 digits)"}
+        htmlFor="staff-pin"
+        error={errors.pin?.message}
+      >
+        <div className="flex items-center gap-2">
+          <Input
+            id="staff-pin"
+            inputMode="numeric"
+            maxLength={4}
+            autoComplete="off"
+            placeholder={isEdit ? "Leave blank to keep the current PIN" : undefined}
+            className={BRAND_CONTROL_CLASS}
+            aria-invalid={!!errors.pin}
+            {...register("pin")}
+          />
+          {isEdit && staff && (
+            <Button
+              type="button"
+              variant="outline"
+              className={BRAND_CONTROL_CLASS}
+              disabled={revealPin.isPending}
+              onClick={() => {
+                const askedFor = staff._id;
+                revealPin.mutate(askedFor, {
+                  onSuccess: (r) => {
+                    if (shownFor.current === askedFor) setShownPin(r.pin);
+                  },
+                });
+              }}
+            >
+              Show
+            </Button>
+          )}
+        </div>
+        {isEdit && shownPin !== undefined && (
+          <p className="text-sm">
+            {shownPin === null ? (
+              "No PIN set yet."
+            ) : (
+              <>
+                Current PIN: <span className="font-mono font-semibold tracking-widest">{shownPin}</span>
+              </>
+            )}
+          </p>
+        )}
+        {!isEdit && (
+          <p className="text-xs text-muted-foreground">
+            Used to unlock the screen and to sign in on this device.
+          </p>
+        )}
+      </FormField>
 
       <FormField label="Role">
         <Controller

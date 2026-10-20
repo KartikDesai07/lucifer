@@ -41,7 +41,11 @@ const WHITE = "#ffffff";
 const PAIRS: ReadonlyArray<readonly [string, string, number, string]> = [
   ["ink", "slip", TEXT_MIN, "body text on cards and fields, the active sidebar row"],
   ["ink", "paper", TEXT_MIN, "page text on paper"],
-  ["ink", "sidebar", TEXT_MIN, "the brand name and account name on the sidebar"],
+  ["nav-text", "sidebar", TEXT_MIN, "a resting sidebar row's label on the dark sidebar"],
+  ["nav-muted", "sidebar", TEXT_MIN, "sidebar section headings, the product name and role line, row icons"],
+  ["slip", "nav-hover", TEXT_MIN, "a hovered or active sidebar row (white on the nav-hover fill)"],
+  ["nav-text", "nav-hover", TEXT_MIN, "a resting row's label while the pointer is over it"],
+  ["nav-muted", "nav-hover", TEXT_MIN, "the role line on the hovered account row"],
   ["ink", "wash", TEXT_MIN, "a hovered sidebar row"],
   ["slip", "ink", TEXT_MIN, "the brand tooltip (white on ink)"],
   ["slip", "ink-hover", TEXT_MIN, "white on the ink hover step"],
@@ -62,13 +66,14 @@ const PAIRS: ReadonlyArray<readonly [string, string, number, string]> = [
   ["primary", "slip", TEXT_MIN, "a hint's link to another Settings section, inside a panel"],
   ["primary", "paper", TEXT_MIN, "the Bill print page's See the bill jump link, on paper"],
   ["muted", "paper", TEXT_MIN, "the vendor mark on paper"],
-  ["muted", "sidebar", TEXT_MIN, "sidebar section labels, the product name, row icons"],
   ["muted", "wash", TEXT_MIN, "the role line on the hovered account row"],
   ["danger", "slip", TEXT_MIN, "field and sign-in errors"],
   ["field", "slip", NON_TEXT_MIN, "a text field's border"],
   ["accent", "slip", NON_TEXT_MIN, "the active nav icon, focus rings on cards"],
   ["accent", "paper", NON_TEXT_MIN, "focus rings on paper"],
-  ["accent", "sidebar", NON_TEXT_MIN, "focus rings on the sidebar"],
+  ["accent", "sidebar", NON_TEXT_MIN, "the active row's 3px blue bar on the dark sidebar"],
+  ["accent", "nav-hover", NON_TEXT_MIN, "the active row's 3px blue bar, which sits on the nav-hover fill"],
+  ["nav-focus", "sidebar", NON_TEXT_MIN, "focus rings on the dark sidebar"],
   // Dashboard (screen 3).
   ["up", "slip", TEXT_MIN, "a dashboard figure's better-direction change (▲ 6% vs …) on a card"],
   ["danger", "slip", TEXT_MIN, "a dashboard figure's worse-direction change on a card"],
@@ -92,15 +97,6 @@ function over(fg: string, bg: string, alpha: number): string {
     .join("")}`;
 }
 
-// Translucent text: [foreground, its alpha, background, minimum, where]. The
-// alphas are the ones components/brand/brand-classes.ts paints the rows with.
-const NAV_ROW_ALPHA = 0.8;
-const NAV_SUB_ROW_ALPHA = 0.75;
-const TRANSLUCENT_PAIRS: ReadonlyArray<readonly [string, number, string, number, string]> = [
-  ["ink", NAV_ROW_ALPHA, "sidebar", TEXT_MIN, "a resting sidebar row's label (text-brand-ink/80)"],
-  ["ink", NAV_SUB_ROW_ALPHA, "sidebar", TEXT_MIN, "a resting Settings section row (text-brand-ink/75)"],
-];
-
 test("the brand palette parses from app/globals.css — every token a pairing below needs is present", () => {
   const tokens = brandTokens();
   assert.ok(tokens.size >= 10, `expected the full palette, parsed ${tokens.size} tokens`);
@@ -119,38 +115,25 @@ test("every brand pairing in use meets its WCAG contrast minimum", () => {
   }
 });
 
-test("the sidebar's translucent row labels meet the text minimum on the sidebar surface", () => {
-  const tokens = brandTokens();
-  assert.ok(TRANSLUCENT_PAIRS.length > 0, "the translucent pairing list itself must not be empty");
+// U0 Task 2: the nav row paints the owner's HTML token --nav-t; it must stay the colour measured above as
+// --brand-nav-text (4.5:1 on the dark nav), so the pairing still covers it.
+test("the nav's resting row label is the HTML's --nav-t, solid, the same colour as the measured --brand-nav-text", () => {
   const classes = readFileSync(fileURLToPath(new URL("../components/brand/brand-classes.ts", import.meta.url)), "utf8");
-  for (const [fg, alpha, bg, min, where] of TRANSLUCENT_PAIRS) {
-    // The alpha measured here must be the one the rows really use.
-    assert.ok(classes.includes(`text-brand-${fg}/${Math.round(alpha * 100)} `), `brand-classes.ts must paint text-brand-${fg}/${alpha * 100}`);
-    const ratio = contrast(over(tokens.get(fg)!, tokens.get(bg)!, alpha), tokens.get(bg)!);
-    assert.ok(ratio >= min, `${fg}/${alpha} on ${bg} (${where}) is ${ratio.toFixed(2)}:1, needs ${min}:1`);
-  }
+  const m = classes.match(/export const BRAND_NAV_ITEM_CLASS =\s*"([^"]*)"/);
+  assert.ok(m, "BRAND_NAV_ITEM_CLASS must open with one string literal");
+  assert.ok(m![1].split(/\s+/).includes("text-nav-t"), "a resting row must paint text-nav-t");
+  const root = [...CSS.matchAll(/:root\s*\{([^}]*)\}/g)].map((b) => b[1]).join("\n");
+  const navT = root.match(/--nav-t:\s*(#[0-9a-fA-F]{6})\s*;/)?.[1];
+  assert.ok(navT, "landmark: --nav-t is a hex colour on :root");
+  assert.equal(navT!.toLowerCase(), brandTokens().get("nav-text")?.toLowerCase(), "--nav-t is the measured --brand-nav-text colour");
 });
 
-// A translucent FILL (not text): components/dashboard/RankedList.tsx paints its
-// bars bg-brand-primary/85 over a paper track — a graphical object, so 3:1.
-const RANKED_BAR_ALPHA = 0.85;
-
-test("the dashboard's ranked-list bars stand out from their track (non-text 3:1), at the alpha RankedList really paints", () => {
-  const tokens = brandTokens();
-  const src = readFileSync(fileURLToPath(new URL("../components/dashboard/RankedList.tsx", import.meta.url)), "utf8");
-  assert.ok(src.includes(`bg-brand-primary/${Math.round(RANKED_BAR_ALPHA * 100)} `), "RankedList must paint bg-brand-primary/85");
-  const ratio = contrast(over(tokens.get("primary")!, tokens.get("paper")!, RANKED_BAR_ALPHA), tokens.get("paper")!);
-  assert.ok(ratio >= NON_TEXT_MIN, `primary/0.85 on paper is ${ratio.toFixed(2)}:1, needs ${NON_TEXT_MIN}:1`);
-});
-
-test("the sidebar surface is its own token, a step lighter than paper — the primitive's --sidebar reads it", () => {
+test("the sidebar surface is its own token, darker than paper and the slip — the primitive's --sidebar reads it", () => {
   const tokens = brandTokens();
   assert.ok(tokens.has("sidebar") && tokens.has("paper") && tokens.has("slip"), "landmark: --brand-sidebar, paper and slip are declared");
   const [sidebar, paper, slip] = ["sidebar", "paper", "slip"].map((t) => luminance(tokens.get(t)!));
-  // The owner asked for a MINOR step toward white: lighter than paper, still
-  // darker than the slip (so the raised active row keeps an edge to sit on).
-  assert.ok(sidebar > paper, "the sidebar must be lighter than paper");
-  assert.ok(sidebar < slip, "the sidebar must stay darker than the slip");
+  assert.ok(sidebar < paper, "the dark sidebar must be darker than paper");
+  assert.ok(sidebar < slip, "the dark sidebar must be darker than the slip");
   assert.match(CSS, /--sidebar:\s*var\(--brand-sidebar\);/);
 });
 

@@ -86,10 +86,11 @@ test("PIN: MoveTableDialog renders <MoveTablePicker exactly once and no longer c
   assert.ok(!src.includes("POS_MOVE_TABLE_LIST_CAP_CLASS"), "the dialog no longer imports the list cap class");
 });
 
-test("PIN: area headings appear ONLY on New Order and Move table - not on the diner chooser, QR stickers, Dashboard floor panel, or reservations", () => {
+// U0 match Task 7 (values 3.6, design 5.5): the dashboard's Live tables card is the owner's HTML card, whose tiles sit
+// under zone labels = our areas, so the Dashboard floor panel left this list (its own pin follows).
+test("PIN: area headings appear ONLY on New Order, Move table and the dashboard's Live tables - not on the diner chooser, QR stickers, or reservations", () => {
   const files: Array<[string, string]> = [
     ["apps/cafe/components/public/TableChooser.tsx", "tableNo"],
-    ["apps/cafe/components/dashboard/LiveFloorPanel.tsx", "tableNo"],
     ["apps/cafe/app/(dashboard)/tables/qr/page.tsx", "useTables("],
     ["apps/cafe/components/tables/QrSheet.tsx", "tableNo"],
     ["apps/cafe/components/reservations/ReservationFormSheet.tsx", "tableNo"],
@@ -103,4 +104,14 @@ test("PIN: area headings appear ONLY on New Order and Move table - not on the di
       assert.ok(!src.includes(needle), `${rel} must not contain ${needle} - areas stay off this screen`);
     }
   }
+});
+
+test("PIN: the dashboard's Live tables group their tiles by area through the shared groupTablesByArea, fed by useTableAreas", () => {
+  // Fix round 1: the model moved to lib/dashboard/live-tables.ts; the panel draws it.
+  assert.ok(code("apps/cafe/components/dashboard/LiveFloorPanel.tsx").includes("liveTablesModel("), "landmark: the panel draws the Live tables model");
+  const panel = code("apps/cafe/lib/dashboard/live-tables.ts");
+  assert.match(panel, /groupTablesByArea\(tables, areas\)/, "the panel groups through the one grouping helper");
+  assert.ok(panel.includes("NO_AREA_KEY"), "the no-area group is recognised by its shared key");
+  const page = code("apps/cafe/app/(dashboard)/page.tsx");
+  assert.equal(count(page, USE_TABLE_AREAS), 1, "the dashboard reads the areas once, healing like the Floor (useTableAreas)");
 });

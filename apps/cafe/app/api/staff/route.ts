@@ -47,7 +47,12 @@ export async function POST(req: Request) {
   try {
     await connectDB();
     const password = await bcrypt.hash(parsed.data.password, BCRYPT_ROUNDS);
-    const staff = await Staff.create({ ...parsed.data, password });
+    const { pin, ...rest } = parsed.data;
+    const staff = await Staff.create({
+      ...rest,
+      password,
+      ...(pin ? { pin, hasPin: true } : {}),
+    });
 
     // Re-read without the password rather than stripping the hash by hand.
     const safe = await Staff.findById(staff._id).select("-password").lean();

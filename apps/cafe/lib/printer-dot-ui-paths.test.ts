@@ -52,29 +52,40 @@ function ascending(src: string, needles: string[]): void {
 
 const PINS: PinCase[] = [
   {
-    name: "Header order: SidebarTrigger, Separator, h1, the quick tabs, then the ml-auto wrapper holding PrinterStatusButton",
+    // U0 Task 3 (values 2.5, design 5.3): the HTML's page header. On a phone the menu button (ruling R5, until the tab
+    // bar) and the mini logo come first; then the title block, the page's own actions, and our global buttons in the
+    // design's order: Tables, New order, Refresh, Tokens, the printer button last (where the HTML has it).
+    // U0 Task 4: the phone's menu button went with the tab bar (the phone's nav); the mini logo leads.
+    name: "Header order: (phone) mini logo, title block, page actions, Tables, New order, Refresh, Tokens, printer",
     file: HEADER,
     check: (src) => {
-      ascending(src, ["<SidebarTrigger", "<Separator", "<h1", "<HeaderQuickTabs", 'className="ml-auto flex items-center"', "<PrinterStatusButton"]);
-      // 2026-10-11 (owner): the row now carries the New Order + Tables tabs; the cafe name stays the screen-reader h1.
-      assert.match(src, /<h1 className="sr-only">\{name\}<\/h1>/, "the cafe name stays the page's h1, visually hidden");
+      assert.ok(!src.includes("PhoneMenuButton"), "no phone menu button (the tab bar is the phone's nav)");
+      ascending(src, [
+        "<BrandTile",
+        "<HeaderTitle",
+        "ref={actionsRef}",
+        "<HeaderQuickTabs />",
+        "<RefreshButton />",
+        "<TokenSheet />",
+        "<PrinterStatusButton />",
+      ]);
+      ascending(read("components/layout/HeaderQuickTabs.tsx"), ['title: "Tables"', 'title: "New order"']);
       // s63 smoke: a 60-char name at 768 px pushed the button off-screen (its min-content widened the page) — the
-      // same guard now sits on the tabs' nav: contained, filling the row, each label truncating.
-      const tabs = read("components/layout/HeaderQuickTabs.tsx");
-      assert.match(tabs, /<nav aria-label="Quick links" className="[^"]*\bmin-w-0\b[^"]*\bflex-1\b[^"]*\[contain:inline-size\][^"]*"/, "the tabs are contained and fill the row");
-      assert.match(tabs, /<span className="truncate">\{tab\.title\}<\/span>/, "a tab's label truncates instead of pushing the button off");
+      // title block is the HTML's flex:1 + min-width:0, so a long title shrinks instead of pushing the buttons off.
+      assert.match(read("components/layout/HeaderTitle.tsx"), /data-ui="header-title-block" className="min-w-0 flex-1"/, "the title block takes the free width and may shrink");
       assert.match(src, /import \{ PrinterStatusButton \} from "@\/components\/print\/PrinterStatusButton";/);
     },
-    mutate: (src) => src.replace("<SidebarTrigger />", "").replace("</header>", "<SidebarTrigger /></header>"),
+    mutate: (src) => src.replace("<RefreshButton />", "").replace("</header>", "<RefreshButton /></header>"),
   },
   {
-    name: "Header keeps its h-14 / sticky top-0 chrome and the ml-auto class",
+    // Fix round 1: the actions box is min-w-0, so a page's wide actions never push the printer button off at 720px.
+    name: "Header is the HTML's sticky 56px bar (min-h-14 sticky top-0), its actions box may shrink (min-w-0)",
     file: HEADER,
     check: (src) => {
-      assert.match(src, /<header className="sticky top-0 [^"]*\bh-14\b/);
-      assert.ok(src.includes("ml-auto"));
+      assert.match(src, /<header className="sticky top-0 [^"]*\bmin-h-14\b/);
+      assert.match(src, /data-ui="header-actions"[^>]*className="flex min-w-0 /, "the actions box is min-w-0");
     },
-    mutate: (src) => src.replace("ml-auto", "mr-auto"),
+    mutate: (src) => src.replace('className="flex min-w-0 ', 'className="flex '),
   },
   {
     name: "button name: aria-label AND title come from printerButtonName( (a variable), never a literal",
@@ -91,13 +102,14 @@ const PINS: PinCase[] = [
   {
     // R2-W7: was "only drawn when dot.show" with the tone computed inline; a checking printer must draw no dot
     // (never red while it only connects), so the tone now comes from printerDotTone( and the dot follows the tone.
+    // U0 Task 3 fix round 1 (values 2.5, design 5.3): the header dot is the HTML's ok green or warn orange.
     name: "button dot span is aria-hidden and only drawn when the tone is not none (a checking printer draws nothing)",
     file: BUTTON,
     check: (src) => {
       assert.match(src, /\{tone !== "none" && \(\s*<span\s+aria-hidden="true"\s+className=\{cn\(PRINTER_DOT_CLASS,/);
       assert.match(src, /data-printer-dot=\{tone\}/);
       assert.ok(src.includes("const tone = printerDotTone(dot);"), "the tone attribute is none / green / red, from the lib's printerDotTone(");
-      assert.ok(src.includes('tone === "green" ? PRINTER_DOT_OK_CLASS : PRINTER_DOT_BAD_CLASS'), "green draws the ok class, anything else drawn the bad one");
+      assert.ok(src.includes('tone === "green" ? PRINTER_DOT_OK_CLASS : PRINTER_DOT_WARN_CLASS'), "green draws the ok class, anything else the warn one");
     },
     mutate: (src) => src.replace('aria-hidden="true"', ""),
   },
@@ -258,15 +270,25 @@ const PINS: PinCase[] = [
     mutate: (src) => src.replace("disabled={blocked || reconnecting}", ""),
   },
   {
-    name: "printer-classes: the 40px / 44px coarse button and the 44px action and input",
+    // U0 Task 3: the HTML's 36px outline printer button with a 17px icon, the same size on touch (ruling R1: the shell
+    // takes the HTML's sizes on touch screens too), and its 10px dot at top/right -3px with a 2px surface ring. The dot
+    // keeps today's tone rules (green ok, red a problem) in the theme's ok / bad colours.
+    name: "printer-classes: the HTML's 36px button and 10px dot (no touch enlargement), and the 44px action and input",
     file: CLASSES,
     check: (src) => {
-      assert.ok(src.includes('PRINTER_ICON_BUTTON_CLASS = "relative h-10 w-10 pointer-coarse:h-11 pointer-coarse:w-11"'));
+      assert.ok(src.includes('PRINTER_ICON_BUTTON_CLASS = "relative h-9 w-9 flex-none px-1.5 py-px [&_svg]:size-[17px]"'), "36x36 with a button's 1px 6px padding, a 17px icon");
+      assert.ok(!/PRINTER_ICON_BUTTON_CLASS = "[^"]*pointer-coarse:/.test(src), "no touch enlargement in the header (R1)");
       assert.ok(src.includes('PRINTER_ACTION_CLASS = "h-11 px-4 text-base"'));
       assert.ok(src.includes('PRINTER_INPUT_CLASS = "h-11 text-base md:text-base"'), "W-R: md:text-sm in the shared Input must not win");
-      assert.ok(src.includes("bg-green-600") && src.includes("bg-red-600") && src.includes("ring-2 ring-background"));
+      assert.ok(
+        src.includes('PRINTER_DOT_CLASS = "absolute -right-[3px] -top-[3px] size-2.5 rounded-[50%] [box-shadow:0_0_0_2px_var(--card)]"'),
+        "the HTML's dot: 10px at top/right -3px, a 2px ring in the surface colour",
+      );
+      assert.ok(src.includes("PRINTER_DOT_OK_CLASS = STATUS_CLASSES.ok.dot;"), "the header dot when printing works: the HTML's --ok green");
+      assert.ok(src.includes("PRINTER_DOT_WARN_CLASS = STATUS_CLASSES.warn.dot;"), "the header dot when it does not: the HTML's --warn orange");
+      assert.ok(src.includes("PRINTER_DOT_BAD_CLASS = STATUS_CLASSES.bad.dot;"), "the Printer setup page's own dots keep red for a problem");
     },
-    mutate: (src) => src.replace("pointer-coarse:h-11 pointer-coarse:w-11", "pointer-coarse:h-9"),
+    mutate: (src) => src.replace('[&_svg]:size-[17px]"', '[&_svg]:size-[17px] pointer-coarse:h-11"'),
   },
   {
     name: "the dot lib imports neither the desktop-shell seam nor print-lane (the lane is a parameter)",

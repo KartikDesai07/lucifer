@@ -1,0 +1,425 @@
+"use client";
+
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  type SyntheticEvent,
+} from "react";
+import { createPortal } from "react-dom";
+import { usePathname, useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { SCREEN_LOCK_DEFAULT_MINUTES } from "@pos/shared/staff-pin";
+
+import { APP_NAME, VENDOR_PRODUCT_NAME } from "@/lib/constants";
+import { productImageUrl } from "@/lib/images";
+import { fetchKnownPeople, rememberThisDevice, type KnownPerson } from "@/lib/pin-sign-in-client";
+import {
+  LOCK_ATTR,
+  LOCK_READY_ATTR,
+  SCREEN_LOCK_EVENT,
+  autoLockDue,
+  clearLockState,
+  clearPersonScopedQueries,
+  coverTabTarget,
+  handleLockShortcut,
+  lockedAgoLabel,
+  readLockState,
+  refetchPersonScopedQueries,
+  unlockPlan,
+  writeLockState,
+  type LockState,
+  type UnlockedPerson,
+} from "@/lib/screen-lock";
+import { useAuth } from "@/hooks/use-auth";
+import { useNow } from "@/hooks/use-now";
+import { useSettings } from "@/hooks/use-settings";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AuthShell } from "@/components/auth/AuthShell";
+import { PinSignIn } from "@/components/auth/PinSignIn";
+import { BrandTile } from "@/components/layout/BrandTile";
+import { NavDeviceLine } from "@/components/layout/NavDeviceLine";
+import { LockPasswordForm } from "@/components/lock/LockPasswordForm";
+
+// The screen lock (spec 2026-10-16 §5.6). A COVER over the running dashboard, never a sign-out: signing out would
+// unmount this layout and with it the print host, the pulse, the alarm and realtime, so the page keeps running under
+// the cover and only the people at the counter are kept out. While it shows, every other child of <body> is inert.
+// It locks from the profile sheet or Ctrl/⌘+L (requestScreenLock), or after the cafe's idle minutes, measured by the
+// clock against the last tap or key (no request, no state per keystroke); it survives a reload through lib/screen-lock's
+// stored state and the layout's no-flash script. Whoever enters a correct PIN (or password) continues: the same person just
+// closes the cover; someone else switches the session in place, and the last person's admin-only data goes with them.
+
+/** The idle check's tick: a clock read against the last tap or key, never a request. */
+const IDLE_CHECK_MS = 30_000;
+/** "Locked · 3 min ago" changes at most once a minute. */
+const LABEL_TICK_MS = 60_000;
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+// The lock's Sign out, in the footer line beside "Powered by" (U0 match Task 10): the footer's own 12.5px, our link
+// colour and weight, no padding, so the footer keeps the HTML's 41px; an invisible pseudo-element widens what a finger
+// hits to 29px tall and 16px wider (review m3).
+const SIGN_OUT_CLASS =
+  "relative rounded-[4px] font-medium leading-[normal] text-link outline-none focus-visible:ring-2 focus-visible:ring-ring before:absolute before:-inset-x-2 before:-inset-y-1.5 before:content-['']";
+
+type LockReason = "auto" | "manual" | "switch";
+/** An open cover: the stored state, who was signed in when it opened, and a fresh key per lock. */
+type OpenLock = { state: LockState; as: { id: string | null; name: string | null }; key: number };
+
+function lockStorage(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    // Storage access itself can throw (site data blocked): the in-memory cover still holds.
+    return null;
+  }
+}
+
+export function ScreenLock() {
+  const { user, logout } = useAuth();
+  const settings = useSettings();
+  const minutes = settings.data?.screenLockMinutes ?? SCREEN_LOCK_DEFAULT_MINUTES;
+  const pathname = usePathname();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState<OpenLock | null>(null);
+  const [ready, setReady] = useState(false);
+  const openRef = useRef<OpenLock | null>(null);
+  const lastActivityAt = useRef(0);
+  const keyRef = useRef(0);
+  // afterCommit(): resolves once React has committed a render and run that commit's effects (see below).
+  const [commitTick, setCommitTick] = useState(0);
+  const commitWaiters = useRef<Array<() => void>>([]);
+  // The listeners and the timer read the latest render's values without subscribing again.
+  const latest = useRef({ user, minutes, pathname });
+  latest.current = { user, minutes, pathname };
+
+  const show = useCallback((state: LockState) => {
+    const u = latest.current.user;
+    const next: OpenLock = { state, as: { id: u?.id ?? null, name: u?.name ?? null }, key: ++keyRef.current };
+    openRef.current = next;
+    document.documentElement.setAttribute(LOCK_ATTR, "");
+    setOpen(next);
+  }, []);
+
+  const lockNow = useCallback(
+    (reason: LockReason) => {
+      if (openRef.current) return;
+      const u = latest.current.user;
+      // "Switch user" marks nobody as the locker: the list opens with no tile singled out, after a reload too.
+      const marked = reason !== "switch";
+      const state: LockState = {
+        locked: true,
+        by: marked ? (u?.id ?? null) : null,
+        byName: marked ? (u?.name ?? null) : null,
+        at: Date.now(),
+      };
+      writeLockState(lockStorage(), state);
+      show(state);
+    },
+    [show],
+  );
+
+  const close = useCallback(() => {
+    clearLockState(lockStorage());
+    document.documentElement.removeAttribute(LOCK_ATTR);
+    openRef.current = null;
+    lastActivityAt.current = Date.now();
+    setOpen(null);
+  }, []);
+
+  // A reload of a locked page opens on the cover.
+  useEffect(() => {
+    lastActivityAt.current = Date.now();
+    const saved = readLockState(lockStorage());
+    if (saved) show(saved);
+    else document.documentElement.removeAttribute(LOCK_ATTR);
+    setReady(true);
+  }, [show]);
+
+  // The no-flash CSS lets go only in the commit that holds the cover (a layout effect: before that frame paints).
+  useLayoutEffect(() => {
+    if (!ready) return;
+    const html = document.documentElement;
+    html.setAttribute(LOCK_READY_ATTR, "");
+    return () => {
+      html.removeAttribute(LOCK_READY_ATTR);
+      html.removeAttribute(LOCK_ATTR);
+    };
+  }, [ready]);
+
+  useEffect(() => {
+    const onPointer = () => {
+      lastActivityAt.current = Date.now();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      lastActivityAt.current = Date.now();
+      // A sheet or menu left open under the cover closes on Escape from a document listener; this one runs first.
+      if (openRef.current && e.key === "Escape") e.stopImmediatePropagation();
+      // Ctrl/⌘+L locks the screen (the owner's HTML), never from a field and never again while the cover is up.
+      if (!openRef.current) handleLockShortcut(e);
+    };
+    const check = () => {
+      if (openRef.current) return;
+      const { minutes: idleMinutes, pathname: path } = latest.current;
+      if (autoLockDue({ lastActivityAt: lastActivityAt.current, now: Date.now(), minutes: idleMinutes, pathname: path })) {
+        lockNow("auto");
+      }
+    };
+    const onRequest = (e: Event) => {
+      lockNow((e as CustomEvent<{ reason?: unknown }>).detail?.reason === "switch" ? "switch" : "manual");
+    };
+    window.addEventListener("pointerdown", onPointer, true);
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener(SCREEN_LOCK_EVENT, onRequest);
+    // A hidden Android or Windows app that comes back after the time opens locked.
+    document.addEventListener("visibilitychange", check);
+    const timer = window.setInterval(check, IDLE_CHECK_MS);
+    return () => {
+      window.removeEventListener("pointerdown", onPointer, true);
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener(SCREEN_LOCK_EVENT, onRequest);
+      document.removeEventListener("visibilitychange", check);
+      window.clearInterval(timer);
+    };
+  }, [lockNow]);
+
+  // A state tick commits a render; React first runs every effect still pending from earlier commits, and the timer
+  // waits out this commit's later siblings (the page runs its effects after this layout-level one). By then the
+  // page's query observers sit on the keys of whoever the session now names.
+  useEffect(() => {
+    if (commitWaiters.current.length === 0) return;
+    const waiters = commitWaiters.current.splice(0);
+    window.setTimeout(() => waiters.forEach((resolve) => resolve()), 0);
+  }, [commitTick]);
+  const afterCommit = () =>
+    new Promise<void>((resolve) => {
+      commitWaiters.current.push(resolve);
+      setCommitTick((n) => n + 1);
+    });
+
+  // Someone else signed in: what the last person loaded (staff list, reports, the multi-day dashboard) must never
+  // paint for, or be fetched again as, the next person. The POS cart is not tied to a person and stays.
+  const unlocked = async (person: UnlockedPerson) => {
+    const plan = unlockPlan({ before: openRef.current?.as.id ?? null, next: person, pathname: latest.current.pathname });
+    if (plan.switched) {
+      if (person !== null && latest.current.user?.id !== person.id) {
+        // A PIN: the new session has not rendered yet. Its data goes now, with no request, so the page renders the
+        // new person with nothing of the last one's (not even as a placeholder); the cover closes at once, the
+        // observers that change keys fetch them themselves, and the rest load after that commit.
+        clearPersonScopedQueries(queryClient);
+        void afterCommit().then(() => refetchPersonScopedQueries(queryClient));
+      } else {
+        // A password (or a session not read back): signIn's own update already rendered the new person under the
+        // cover, where an observer that changed keys may show the last person's figures as a placeholder. The cover
+        // stays until what the page shows has loaded as the new person; whatever the last person loaded goes.
+        await afterCommit();
+        const since = Date.now();
+        await refetchPersonScopedQueries(queryClient);
+        clearPersonScopedQueries(queryClient, since);
+      }
+      if (plan.redirectHome) router.replace("/");
+      if (plan.toast) toast.success(plan.toast);
+    }
+    void rememberThisDevice();
+    close();
+  };
+
+  const signOut = async () => {
+    // Ruling R15: the stored lock goes first, so the next sign-in never lands on a stale cover.
+    clearLockState(lockStorage());
+    await logout();
+    // logout reports a failed sign-out itself and leaves this page up: the cover stays, so the lock is stored again
+    // and holds a reload. After a successful one the page is already leaving for /login, whose sign-in clears it.
+    const still = openRef.current;
+    if (still) writeLockState(lockStorage(), still.state);
+  };
+
+  if (!open) return null;
+  return (
+    <LockCover
+      key={open.key}
+      lock={open.state}
+      signedInAs={open.as.name}
+      onUnlocked={unlocked}
+      onSignOut={signOut}
+    />
+  );
+}
+
+interface LockCoverProps {
+  lock: LockState;
+  signedInAs: string | null;
+  onUnlocked(person: UnlockedPerson): Promise<void>;
+  onSignOut(): Promise<void>;
+}
+
+// Mounted for one lock and gone on unlock, so each lock starts fresh (PinSignIn's pad stays disabled after a success).
+function LockCover({ lock, signedInAs, onUnlocked, onSignOut }: LockCoverProps) {
+  const settings = useSettings();
+  const { update } = useSession();
+  const now = useNow(LABEL_TICK_MS);
+  const [people, setPeople] = useState<KnownPerson[] | null>(null);
+  // null: chosen from who this device remembers; then whatever the person picks.
+  const [view, setView] = useState<"pin" | "password" | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // One look-up per lock: who this device remembers with a PIN (any failure reads as nobody).
+  useEffect(() => {
+    let live = true;
+    void fetchKnownPeople().then((known) => {
+      if (live) setPeople(known);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  // While the cover shows, no other child of <body> takes a tap, a key or focus; a portal that opens meanwhile
+  // joins them. An iframe is react-to-print's offscreen print window: the slip going out is left alone.
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const quieted: Element[] = [];
+    const quiet = (el: Element) => {
+      if (el === root || el.tagName === "IFRAME" || el.hasAttribute("inert")) return;
+      el.setAttribute("inert", "");
+      quieted.push(el);
+    };
+    Array.from(document.body.children).forEach(quiet);
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        record.addedNodes.forEach((node) => {
+          if (node instanceof Element) quiet(node);
+        });
+      }
+    });
+    observer.observe(document.body, { childList: true });
+    root?.focus();
+    return () => {
+      observer.disconnect();
+      for (const el of quieted) el.removeAttribute("inert");
+      if (before?.isConnected) before.focus({ preventScroll: true });
+    };
+  }, []);
+
+  // A sheet or menu left open under the cover listens on the document for a press, a focus or a scroll outside it,
+  // and would close (or block the scroll) on one here. React's own document listener runs before theirs, so
+  // stopping the native event at this root keeps the page under the cover exactly as it was.
+  const keepFromLayersBelow = (e: SyntheticEvent) => e.nativeEvent.stopImmediatePropagation();
+
+  // Tab and Shift+Tab wrap inside the cover.
+  const keepTabInside = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Tab") return;
+    const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+      (el) => el.getClientRects().length > 0,
+    );
+    if (items.length === 0) {
+      e.preventDefault();
+      return;
+    }
+    // From any element inside the cover, listed or not (the PIN pad's own region takes focus since ruling R34), the
+    // next stop stays inside: lib/screen-lock's coverTabTarget decides by document order.
+    const focused = document.activeElement;
+    const active = focused instanceof HTMLElement && e.currentTarget.contains(focused) ? focused : null;
+    const order = (item: HTMLElement): -1 | 0 | 1 => {
+      if (!active || item === active) return 0;
+      const pos = active.compareDocumentPosition(item);
+      return pos & Node.DOCUMENT_POSITION_FOLLOWING ? 1 : pos & Node.DOCUMENT_POSITION_PRECEDING ? -1 : 0;
+    };
+    const target = coverTabTarget(items, active, e.shiftKey, order);
+    if (target) {
+      e.preventDefault();
+      target.focus();
+    }
+  };
+
+  const pinSignedIn = (person: KnownPerson) => onUnlocked({ id: person.id, name: person.name, role: person.role });
+
+  // The session now names whoever signed in; read it back once to tell a switch from the same person.
+  const passwordSignedIn = async () => {
+    const fresh = await update();
+    const u = fresh?.user;
+    await onUnlocked(u?.id ? { id: u.id, name: u.name ?? null, role: u.role ?? null } : null);
+  };
+
+  const locker = lock.by;
+  const lockerKnown = locker !== null && (people ?? []).some((p) => p.id === locker);
+  const pinFirst = people !== null && people.length > 0 && (locker === null || lockerKnown);
+  const showing = view ?? (pinFirst ? "pin" : "password");
+  // The person who locked it first in the list, marked "Locked · 3 min ago".
+  const ordered =
+    people && lockerKnown
+      ? [...people.filter((p) => p.id === locker), ...people.filter((p) => p.id !== locker)]
+      : (people ?? []);
+  const highlight =
+    locker !== null && lockerKnown ? { id: locker, label: lockedAgoLabel(lock.at, now?.getTime() ?? Date.now()) } : null;
+
+  let body: ReactNode;
+  if (people === null) {
+    body = (
+      <div role="status" aria-label="Loading sign-in" className="flex flex-col gap-3">
+        <Skeleton className="h-7 w-48" />
+        <Skeleton className="h-4 w-72 max-w-full" />
+        <Skeleton className="mt-3 h-[121px] w-full tab:h-[130px]" />
+      </div>
+    );
+  } else if (showing === "pin") {
+    body = (
+      <PinSignIn people={ordered} highlight={highlight} onUsePassword={() => setView("password")} onSignedIn={pinSignedIn} />
+    );
+  } else {
+    body = (
+      <LockPasswordForm
+        signedInAs={signedInAs}
+        onSignedIn={passwordSignedIn}
+        onUsePin={people.length > 0 ? () => setView("pin") : undefined}
+      />
+    );
+  }
+
+  const brandName = settings.data?.restaurantName?.trim() || APP_NAME;
+  // The nav's tile (ruling R3): the cafe's own uploaded logo, else its first letter in Shrikhand on the brand red (a
+  // logo that fails to load falls back to the letter); keyed on the logo so a new one gets a fresh try.
+  const logoUrl = productImageUrl(settings.data?.logo, undefined, { fit: true });
+
+  return createPortal(
+    <div
+      ref={rootRef}
+      data-screen-lock=""
+      role="dialog"
+      aria-modal="true"
+      aria-label="Screen locked"
+      tabIndex={-1}
+      onKeyDown={keepTabInside}
+      onPointerDown={keepFromLayersBelow}
+      onFocus={keepFromLayersBelow}
+      onWheel={keepFromLayersBelow}
+      onTouchMove={keepFromLayersBelow}
+      // pointer-events-auto: a modal sheet left open under the cover sets pointer-events:none on <body>.
+      className="pointer-events-auto fixed inset-0 z-[100] overflow-y-auto overscroll-contain bg-background outline-none"
+    >
+      <AuthShell
+        brandName={brandName}
+        logo={<BrandTile key={logoUrl ?? "initial"} name={brandName} logoUrl={logoUrl} size="nav" dataUi="auth-logo" />}
+        subline={<NavDeviceLine lead={VENDOR_PRODUCT_NAME} />}
+        title={people !== null && showing === "password" ? "Screen locked" : undefined}
+        footerAction={
+          <button type="button" data-ui="lock-sign-out" onClick={() => void onSignOut()} className={SIGN_OUT_CLASS}>
+            Sign out
+          </button>
+        }
+      >
+        {body}
+      </AuthShell>
+    </div>,
+    document.body,
+  );
+}

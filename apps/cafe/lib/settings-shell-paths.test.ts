@@ -43,6 +43,8 @@ const USE_SETTINGS_SECTION_FORM = `${CAFE}/hooks/use-settings-section-form.ts`;
 const SETTINGS_SAVE_BAR = `${CAFE}/components/settings/SettingsSaveBar.tsx`;
 const APP_SIDEBAR = `${CAFE}/components/layout/AppSidebar.tsx`;
 const SIDEBAR_SETTINGS_GROUP = `${CAFE}/components/layout/SidebarSettingsGroup.tsx`;
+// U0 Task 2: the nav's shared row with sub-pages (sub-rows in the wide form, a flyout in the rail).
+const NAV_PARTS = `${CAFE}/components/layout/nav-parts.tsx`;
 const DASHBOARD_LAYOUT = `${CAFE}/app/(dashboard)/layout.tsx`;
 const HEADER = `${CAFE}/components/layout/Header.tsx`;
 const RETIRED_SETTINGS_FORM = `${CAFE}/components/settings/SettingsForm.tsx`;
@@ -210,7 +212,7 @@ test('PIN: SettingsSaveBar.tsx early-returns on !isDirty, both its buttons carry
 
 // ── 8. AppSidebar / SidebarSettingsGroup: collapsible sub-menu wiring ──────
 
-test("PIN: AppSidebar.tsx (+ the extracted SidebarSettingsGroup.tsx) import SidebarMenuSub + SETTINGS_SECTIONS, contain setOpenMobile(false), and the Collapsible's chevron carries group-data-[state=open]/collapsible:rotate-90 — the sidebar Settings entry expands in place instead of navigating away", () => {
+test("PIN: the nav's Settings row (AppSidebar + SidebarSettingsGroup + nav-parts) is a NavGroupRow of NavSubItem rows over VISIBLE_SETTINGS_SECTIONS, has no phone-sheet tap hook, and its chevron carries group-data-[state=open]/collapsible:rotate-90 — the Settings entry expands in place instead of navigating away", () => {
   const appSidebarSrc = stripComments(readSrc(APP_SIDEBAR));
   const groupFileExists = existsSync(absOf(SIDEBAR_SETTINGS_GROUP));
   const groupSrc = groupFileExists ? stripComments(readSrc(SIDEBAR_SETTINGS_GROUP)) : "";
@@ -220,30 +222,30 @@ test("PIN: AppSidebar.tsx (+ the extracted SidebarSettingsGroup.tsx) import Side
   // AppSidebar.tsx, but S5's own text explicitly allows this extraction.
   // Every assertion below is checked against the UNION of both files' source
   // so either layout satisfies the pin.
-  const combined = appSidebarSrc + "\n" + groupSrc;
+  // U0 Task 2: the row, its sub-rows and the rail's flyout are the shared nav-parts.tsx pieces (NavGroupRow,
+  // NavSubItem), replacing the shadcn SidebarMenuSub.
+  const combined = appSidebarSrc + "\n" + groupSrc + "\n" + stripComments(readSrc(NAV_PARTS));
 
   assert.match(
     combined,
-    /\bSidebarMenuSub\b/,
-    "SidebarMenuSub must be imported somewhere in the sidebar Settings wiring (AppSidebar.tsx or its extracted group file)",
+    /<NavGroupRow\b/,
+    "the Settings group renders the nav's row with sub-pages (NavGroupRow)",
   );
+  assert.match(combined, /<NavSubItem\b/, "each section is a NavSubItem sub-row");
   assert.match(
     combined,
-    /\{VISIBLE_SETTINGS_SECTIONS\.map\(/,
+    /\bVISIBLE_SETTINGS_SECTIONS\.map\(/,
     "VISIBLE_SETTINGS_SECTIONS must be iterated to render one sub-item per visible section",
   );
   assert.ok(
-    !/\{SETTINGS_SECTIONS\.map\(/.test(combined),
+    !/(?<!\w)SETTINGS_SECTIONS\.map\(/.test(combined),
     "the sidebar must not iterate the raw SETTINGS_SECTIONS (it includes hidden sections)",
   );
 
-  // setOpenMobile(false) specifically — not merely "setOpenMobile" — since a
-  // call with any other argument would not actually close the phone Sheet.
-  assert.match(
-    combined,
-    /setOpenMobile\(false\)/,
-    "setOpenMobile(false) must appear — shadcn's sidebar primitive does not auto-close the phone Sheet on nav (research brief, PR #8402)",
-  );
+  // Final review m3: the rows' old tap hook (AppSidebar's closeMobile, setOpenMobile(false)) is gone whole. Since U0
+  // Task 4 a phone renders no nav at all (the tab bar and its More sheet replace the old sheet), so it had no sheet to
+  // close (lib/tab-bar-paths.test.ts pins the kit's side).
+  assert.ok(!/setOpenMobile|closeMobile|onNavigate/.test(combined), "no phone-sheet tap hook is left on the nav's Settings rows");
 
   assert.match(
     combined,
@@ -273,14 +275,16 @@ test("PIN: every SETTINGS_SECTIONS entry renders <SettingsSectionPage and <Setti
 
 // ── 10. the height-chain shell stays byte-identical (parity, not replacement) ─
 
-test('PIN: (dashboard)/layout.tsx\'s <main className="flex-1 p-4 md:p-6"> and Header.tsx\'s h-14 are UNTOUCHED by the Settings redesign — parity with pos-layout-paths.test.ts\'s own pin, not a new claim replacing it', () => {
+test('PIN: (dashboard)/layout.tsx\'s <main> padding (flex-1 p-4 md:p-6) and Header.tsx\'s h-14 are UNTOUCHED by the Settings redesign — parity with pos-layout-paths.test.ts\'s own pin, not a new claim replacing it', () => {
   const dashboardSrc = stripComments(readSrc(DASHBOARD_LAYOUT));
+  // U0 Task 4 added the phone's 92px foot (the tab bar); the p-4 / md:p-6 padding is unchanged.
   assert.match(
     dashboardSrc,
-    /<main className="flex-1 p-4 md:p-6">/,
-    "(dashboard)/layout.tsx's <main> must keep its unchanged flex-1 p-4 md:p-6 padding",
+    /<main className="flex-1 p-4 pb-\[92px\] tab:pb-4 md:p-6">/,
+    "(dashboard)/layout.tsx's <main> must keep its flex-1 p-4 md:p-6 padding (92px at the foot on a phone)",
   );
 
   const headerSrc = stripComments(readSrc(HEADER));
-  assert.match(headerSrc, /\bh-14\b/, "Header.tsx must keep its h-14 height class");
+  // U0 Task 3: the HTML's header is min-height 56px (values 2.5): min-h-14, matched as its own token.
+  assert.match(headerSrc, /\smin-h-14\s/, "Header.tsx must keep its 56px min-h-14 height class");
 });

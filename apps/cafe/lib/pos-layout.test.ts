@@ -22,6 +22,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { ABOVE_TAB_BAR_STICKY_CLASS, PHONE_PAGE_FOOT_PX, TAB_BAR_HEIGHT_PX } from "./shell-layout";
+
 import {
   BREAKPOINT_SM_PX,
   BREAKPOINT_MD_PX,
@@ -29,8 +31,7 @@ import {
   BREAKPOINT_XL_PX,
   BREAKPOINT_2XL_PX,
   POS_TWO_PANE_MIN_PX,
-  SIDEBAR_WIDTH_REM,
-  SIDEBAR_WIDTH_ICON_REM,
+  navWidthPx,
   DASHBOARD_HEADER_REM,
   MAIN_PADDING_Y_REM_BASE,
   MAIN_PADDING_Y_REM_MD,
@@ -92,11 +93,12 @@ const GRID_TIERS: Record<SidebarState, ReadonlyArray<{ minPx: number; cols: numb
 // Pane width is unchanged by CB-1b/CB-1c (still viewport minus sidebar minus
 // main padding minus the two-pane cart+rail gap) — only COLUMN COUNT stopped
 // reading it (that's now a plain viewport breakpoint, see colsFor below).
+// U0 Task 2: the nav's width is the HTML's (navWidthPx: 0 below 720 px, the 76 px rail, the 232 px sidebar from
+// 1280 px unless collapsed), no longer the old 16rem/3rem sidebar from md up.
 function paneWidthPx(viewportPx: number, sidebarState: SidebarState = "expanded"): number {
-  const sidebarRem =
-    viewportPx >= BREAKPOINT_MD_PX ? (sidebarState === "expanded" ? SIDEBAR_WIDTH_REM : SIDEBAR_WIDTH_ICON_REM) : 0;
+  const navPx = navWidthPx({ viewportWidth: viewportPx, collapsed: sidebarState === "collapsed" });
   const paddingXRem = viewportPx >= BREAKPOINT_MD_PX ? MAIN_PADDING_X_REM_MD : MAIN_PADDING_X_REM_BASE;
-  let pane = viewportPx - sidebarRem * REM_PX - 2 * paddingXRem * REM_PX;
+  let pane = viewportPx - navPx - 2 * paddingXRem * REM_PX;
   if (viewportPx >= POS_TWO_PANE_MIN_PX) {
     pane -= (POS_PANE_GAP_REM + POS_CART_COLUMN_REM + POS_RAIL_REM + POS_PANE_GAP_REM) * REM_PX;
   }
@@ -158,6 +160,10 @@ test("PIN: desktop two-pane column counts cap at 3 everywhere (owner decision 20
   assert.equal(colsFor(1280, "collapsed"), 3, "1280px two-pane grid (sidebar collapsed) must give AT MOST 3 columns, not the old 4");
 });
 
+// The 16rem sidebar those two retired choices were measured against (frozen historical fact; U0 Task 2 made the nav
+// the HTML's 232 px / 76 px).
+const RETIRED_SIDEBAR_WIDTH_REM = 16;
+
 test("PIN: regression oracles — two retired breakpoint/tiering choices starved the grid; the shipped xl-switch does not", () => {
   // OLD v1 md-switch (retired): two-pane from md (768px) — once the sidebar
   // is counted the pane goes NEGATIVE, so the two-pane literally did not fit.
@@ -165,7 +171,7 @@ test("PIN: regression oracles — two retired breakpoint/tiering choices starved
   // retired container-query one, or today's viewport one) was in play.
   const OLD_MD_PANE_768 =
     768 -
-    SIDEBAR_WIDTH_REM * REM_PX -
+    RETIRED_SIDEBAR_WIDTH_REM * REM_PX -
     2 * MAIN_PADDING_X_REM_MD * REM_PX -
     POS_PANE_GAP_REM * REM_PX -
     POS_CART_COLUMN_REM * REM_PX -
@@ -182,7 +188,7 @@ test("PIN: regression oracles — two retired breakpoint/tiering choices starved
   // that no longer exists.
   const DRAFT_LG_PANE_1024 =
     1024 -
-    SIDEBAR_WIDTH_REM * REM_PX -
+    RETIRED_SIDEBAR_WIDTH_REM * REM_PX -
     2 * MAIN_PADDING_X_REM_MD * REM_PX -
     POS_PANE_GAP_REM * REM_PX -
     POS_CART_COLUMN_REM * REM_PX -
@@ -351,6 +357,31 @@ test("PIN: POS_ROOT_CLASS is a DEFINITE vh/dvh chain (CB-1c round 2) — every b
   }
 });
 
+// U0 Task 4: on a phone the tab bar (59px, values 2.6) is fixed at the foot and <main> keeps 92px clear there (values
+// 2.1 screenPadB). The POS root ends where the bar starts, so the sticky cart bar sits right on it (the HTML's order
+// screen keeps its bar 60px up) and nothing scrolls: the root's height subtracts the bar, and its negative bottom
+// margin bleeds over main's 92px foot instead of 16px.
+test("PIN: on a phone the POS root stops on the tab bar — its height subtracts the 59px bar and it bleeds over main's 92px foot", () => {
+  assert.equal(TAB_BAR_HEIGHT_PX, 1 + 2 + 56, "the bar: a 1px rule, 2px top padding, 56px tabs");
+  assert.equal(PHONE_PAGE_FOOT_PX, 92, "values 2.1 screenPadB on a phone");
+  const phoneH = "max-tab:h-[calc(100vh-" + POS_ROOT_CHROME_REM_BASE + "rem-" + TAB_BAR_HEIGHT_PX + "px-var(" + POS_ALERT_HEIGHT_VAR + ",0px))]";
+  const phoneDvh =
+    "max-tab:supports-[height:1dvh]:h-[calc(100dvh-" + POS_ROOT_CHROME_REM_BASE + "rem-" + TAB_BAR_HEIGHT_PX + "px-var(" + POS_ALERT_HEIGHT_VAR + ",0px))]";
+  const phoneBleed = "max-tab:-mb-[" + PHONE_PAGE_FOOT_PX + "px]";
+  for (const needle of [phoneH, phoneDvh, phoneBleed]) {
+    assert.ok(POS_ROOT_CLASS.split(/\s+/).includes(needle), `POS_ROOT_CLASS must include "${needle}"`);
+  }
+  // The layout's own pb-[92px] is pinned in lib/tab-bar-paths.test.ts and lib/pos-layout-paths.test.ts.
+});
+
+// Fix round 1: on a phone too short for the root's floor (360x400, 640x360) the document scrolls and the sticky cart bar
+// stuck at bottom 0 sat over the tab bar. It sticks above the bar instead, whatever the height.
+test("PIN: on a phone the POS cart bar always sticks above the tab bar (the shell's 59px sticky offset)", () => {
+  assert.equal(ABOVE_TAB_BAR_STICKY_CLASS, "max-tab:bottom-[" + TAB_BAR_HEIGHT_PX + "px]", "the offset is the tab bar's height");
+  assert.ok(POS_MOBILE_BAR_CLASS.split(/\s+/).includes(ABOVE_TAB_BAR_STICKY_CLASS), "POS_MOBILE_BAR_CLASS carries it");
+  assert.ok(POS_MOBILE_BAR_CLASS.split(/\s+/).includes("bottom-0"), "landmark: from 720px it still sticks to the screen's foot");
+});
+
 // ── C2. height-chain matrix (CB-1c round 2 — the min-content stack vs. the
 // DEFINITE vh/dvh root, alert-bar budget included; plan §H0's headless-
 // -Chrome arbiter probe validated this formula against the real chain) ─────
@@ -372,11 +403,16 @@ interface DeviceRow {
   readonly label: string;
   readonly visibleH: number;
   readonly mdPlus: boolean;
+  /** Narrower than 720 px: the phone's tab bar (U0 Task 4) sits under the root. */
+  readonly tabBar?: boolean;
 }
 
 const DEVICE_MATRIX_BASE: ReadonlyArray<DeviceRow> = [
-  { label: "360x640 phone portrait", visibleH: 560, mdPlus: false },
-  { label: "412x915 phone portrait", visibleH: 800, mdPlus: false },
+  { label: "360x640 phone portrait", visibleH: 560, mdPlus: false, tabBar: true },
+  { label: "412x915 phone portrait", visibleH: 800, mdPlus: false, tabBar: true },
+  // Fix round 1: short phones under the tab bar (narrower than 720px), where the root's floor bites.
+  { label: "640x360 phone landscape (tab bar)", visibleH: 360, mdPlus: false, tabBar: true },
+  { label: "360x400 short phone (tab bar)", visibleH: 400, mdPlus: false, tabBar: true },
   { label: "740x360 phone landscape (full viewport, arbiter probe value)", visibleH: 360, mdPlus: false },
   { label: "740x300 phone landscape (toolbar showing)", visibleH: 300, mdPlus: false },
   { label: "768x1024 tablet portrait", visibleH: 904, mdPlus: true },
@@ -396,6 +432,8 @@ const DEVICE_MATRIX: ReadonlyArray<DeviceMatrixRow> = DEVICE_MATRIX_BASE.flatMap
 const LANDSCAPE_LABELS = new Set([
   "740x360 phone landscape (full viewport, arbiter probe value)",
   "740x300 phone landscape (toolbar showing)",
+  "640x360 phone landscape (tab bar)",
+  "360x400 short phone (tab bar)",
 ]);
 
 // chromePx: the header plus the TOP HALF of main's own vertical padding only
@@ -407,7 +445,7 @@ function chromePxFor(row: DeviceRow): number {
 }
 
 function rootRawPxFor(row: DeviceMatrixRow): number {
-  return row.visibleH - chromePxFor(row) - row.bandPx;
+  return row.visibleH - chromePxFor(row) - row.bandPx - (row.tabBar ? TAB_BAR_HEIGHT_PX : 0);
 }
 
 function rootPxFor(row: DeviceMatrixRow): number {
@@ -434,7 +472,7 @@ test("PIN: every non-landscape device in the matrix (either alert-band value) ne
   }
 });
 
-test("PIN: both phone-landscape rows hit the root floor at every alert-band value — accepted Q1 deficit (the floor keeps one tile row and the sticky bar in view, rather than a header/strip/search with NO products)", () => {
+test("PIN: the short and landscape phone rows hit the root floor at every alert-band value — accepted Q1 deficit (the floor keeps one tile row and the sticky bar in view, rather than a header/strip/search with NO products)", () => {
   for (const row of DEVICE_MATRIX) {
     if (!LANDSCAPE_LABELS.has(row.label)) continue;
     const docScroll = docScrollPxFor(row);

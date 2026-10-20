@@ -2,18 +2,21 @@ import * as React from "react";
 
 const MOBILE_BREAKPOINT = 768;
 
-export function useIsMobile() {
+/** Below `breakpointPx` (768 by default: the report sheets open from the bottom there). The dashboard nav passes the
+ *  HTML's 720 px (U0 Task 2): below it the nav renders nothing (the phone's tab bar takes over, U0 Task 4), the rail
+ *  from 720 px up. */
+export function useIsMobile(breakpointPx: number = MOBILE_BREAKPOINT) {
   const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined);
 
   React.useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
+    const mql = window.matchMedia(`(max-width: ${breakpointPx - 1}px)`);
     const onChange = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+      setIsMobile(window.innerWidth < breakpointPx);
     };
     mql.addEventListener("change", onChange);
-    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    setIsMobile(window.innerWidth < breakpointPx);
     return () => mql.removeEventListener("change", onChange);
-  }, []);
+  }, [breakpointPx]);
 
   return !!isMobile;
 }

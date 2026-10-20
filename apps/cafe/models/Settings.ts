@@ -201,6 +201,9 @@ export const settingsSchema = new Schema<ISettings>(
       max: TABLE_LONG_STAY_MAX_MINUTES,
       default: TABLE_LONG_STAY_DEFAULT_MINUTES,
     },
+
+    // PIN lock (2026-10-16) - minutes of no activity before the screen locks; 0 = off.
+    screenLockMinutes: { type: Number, enum: [0, 30, 60, 120], default: 60 },
   },
   { timestamps: true },
 );

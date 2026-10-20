@@ -96,14 +96,26 @@ export async function PUT(req: Request, { params }: Params) {
     const guard = await guardLastAdmin(id, parsed.data);
     if (guard) return guard;
 
-    const staff = await Staff.findByIdAndUpdate(id, parsed.data, {
-      new: true,
-      runValidators: true,
-    })
+    // Build the update explicitly: a PIN also unblocks and zeroes the wrong-try
+    // count, and `pinBlocked: false` alone must zero it too (never a raw field set).
+    const { pin, pinBlocked, ...fields } = parsed.data;
+    const set: Record<string, unknown> = { ...fields };
+    if (pin) {
+      Object.assign(set, { pin, hasPin: true, pinBlocked: false, pinFailCount: 0 });
+    } else if (pinBlocked === false) {
+      Object.assign(set, { pinBlocked: false, pinFailCount: 0 });
+    }
+    const staff = await Staff.findByIdAndUpdate(
+      id,
+      { $set: set },
+      { new: true, runValidators: true },
+    )
       .select("-password")
       .lean();
     if (!staff) return notFound("Staff not found");
     cache.del(CACHE_KEY);
+    // A role or active change must reach the signed-in session at once, not after the revalidation window.
+    cache.del(`auth:revalidated:${id}`);
     return success(staff);
   } catch (e) {
     if (isDuplicateKeyError(e)) return failure("Username already taken", 400);

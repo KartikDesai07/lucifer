@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SessionProvider } from "next-auth/react";
 import { auth } from "@/lib/auth";
 import { fontVariables } from "@/lib/fonts";
-import { Toaster } from "@/components/ui/sonner";
+import { AppToaster } from "@/components/layout/AppToaster";
 import { Providers } from "@/components/providers";
 import { readSettings } from "@/lib/settings";
 import { APP_NAME } from "@/lib/constants";
@@ -53,8 +53,12 @@ export default async function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const session = await auth();
 
+  // suppressHydrationWarning covers <html>'s OWN attributes only (React applies it one level deep): the pre-paint
+  // scripts set an attribute on <html> before React hydrates it (the dashboard's screen lock, data-pos-locked; the
+  // diner's stored theme, data-pub-theme), which React's dev build would otherwise report as a mismatch. Nothing
+  // below <html> is affected.
   return (
-    <html lang="en" className={fontVariables}>
+    <html lang="en" className={fontVariables} suppressHydrationWarning>
       {/* min-h-screen = 100vh = the LARGEST mobile viewport (URL bar retracted),
           which made the document scroll by the toolbar height on staff devices.
           Where `dvh` exists the floor becomes the VISIBLE viewport instead; on
@@ -63,7 +67,7 @@ export default async function RootLayout({
       <body className="font-sans antialiased min-h-screen supports-[height:1dvh]:min-h-dvh bg-background text-foreground">
         <SessionProvider session={session}>
           <Providers>{children}</Providers>
-          <Toaster richColors position="top-right" />
+          <AppToaster />
         </SessionProvider>
       </body>
     </html>

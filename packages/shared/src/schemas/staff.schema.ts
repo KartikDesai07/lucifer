@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { STAFF_ROLES } from "../constants";
+import { staffPinSchema } from "../staff-pin";
 
 // Login credentials — shared by the login form and the authorize() callback.
 export const loginSchema = z.object({
@@ -15,6 +16,8 @@ export const createStaffSchema = z.object({
   mobile: z.string().trim().min(10, "Enter a valid mobile number"),
   username: z.string().trim().min(3, "Username must be at least 3 characters"),
   password: z.string().min(8, "Password must be at least 8 characters"),
+  // Optional so older callers still parse; the staff form requires it.
+  pin: staffPinSchema.optional(),
   role: z.enum(STAFF_ROLES).default("staff"),
   isActive: z.boolean().default(true),
 });
@@ -23,7 +26,9 @@ export type CreateStaffInput = z.infer<typeof createStaffSchema>;
 // Admin-only staff update. Password is changed via changePasswordSchema only.
 export const updateStaffSchema = createStaffSchema
   .omit({ password: true })
-  .partial();
+  .partial()
+  // The admin unblock (a blocked PIN is cleared; blocking happens only by wrong tries).
+  .extend({ pinBlocked: z.literal(false).optional() });
 export type UpdateStaffInput = z.infer<typeof updateStaffSchema>;
 
 // Self-service password change for any signed-in user.

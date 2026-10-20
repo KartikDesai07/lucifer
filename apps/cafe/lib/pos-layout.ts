@@ -12,8 +12,8 @@
 // header, category chips, full-width grid, a sticky bottom bar that opens the
 // cart in a bottom sheet. At xl+ the classic two-pane (rail + grid | cart
 // column) renders. Neither `md` (768) nor `lg` (1024) can be the switch: the
-// dashboard sidebar reserves SIDEBAR_WIDTH_REM (16rem, expanded by default on
-// every load) of in-flow width from md up, so a two-pane 1024px screen has
+// dashboard sidebar then reserved 16rem of in-flow width from md up (since
+// U0 Task 2 the nav is navWidthPx below: 76 px below 1280), so a two-pane 1024px screen had
 // 1024 - 256 - 48 - 12 - 352 - 176 - 12 = 168px left for the grid — v1's
 // ~56px tiles (the owner's "menu nahi dikh raha"). Single-pane at 1024 gives
 // the grid ~720px instead. (Review CB-1 F1 — the first draft switched at lg
@@ -45,12 +45,35 @@ export const BREAKPOINT_2XL_PX = 1536;
 // The viewport width at which the two-pane desktop layout switches on.
 export const POS_TWO_PANE_MIN_PX = BREAKPOINT_XL_PX;
 
-// The dashboard sidebar (components/ui/sidebar.tsx SIDEBAR_WIDTH /
-// SIDEBAR_WIDTH_ICON — parity-pinned by lib/pos-layout-paths.test.ts) takes
-// this much in-flow width from md up (expanded / icon-collapsed); below md it
-// is an overlay Sheet and takes none.
-export const SIDEBAR_WIDTH_REM = 16;
-export const SIDEBAR_WIDTH_ICON_REM = 3;
+// The dashboard nav (components/ui/sidebar.tsx SIDEBAR_WIDTH /
+// SIDEBAR_WIDTH_ICON — parity-pinned by lib/pos-layout-paths.test.ts), the
+// owner's HTML (values 2.1 rootCols, U0 Task 2): the 232 px sidebar from
+// 1280 px while not collapsed, the 76 px rail from 720 px (and on a collapsed
+// desktop), and no nav below 720 px (a phone; the nav is an overlay sheet).
+export const SIDEBAR_WIDTH_REM = 14.5;
+export const SIDEBAR_WIDTH_ICON_REM = 4.75;
+export const NAV_WIDTH_WIDE_PX = 232;
+export const NAV_WIDTH_RAIL_PX = 76;
+/** The HTML's `ph` ends here: the rail shows from 720 px (Tailwind `tab:`). */
+export const NAV_RAIL_MIN_PX = 720;
+/** The HTML's `wide`: the full sidebar from 1280 px (Tailwind `xl:`), unless collapsed. */
+export const NAV_WIDE_MIN_PX = BREAKPOINT_XL_PX;
+
+export interface NavViewport {
+  viewportWidth: number;
+  collapsed: boolean;
+}
+
+/** The nav is the wide sidebar (else the rail, or nothing on a phone). */
+export function isWideNav({ viewportWidth, collapsed }: NavViewport): boolean {
+  return viewportWidth >= NAV_WIDE_MIN_PX && !collapsed;
+}
+
+/** The in-flow width the nav takes at this viewport. */
+export function navWidthPx(viewport: NavViewport): number {
+  if (viewport.viewportWidth < NAV_RAIL_MIN_PX) return 0;
+  return isWideNav(viewport) ? NAV_WIDTH_WIDE_PX : NAV_WIDTH_RAIL_PX;
+}
 
 // Vertical chrome above the POS root (rem): the dashboard's sticky h-14 header
 // (3.5rem) plus <main>'s vertical padding (p-4 = 2rem below md, p-6 = 3rem at
@@ -135,8 +158,12 @@ export const POS_MOBILE_STACK_REM =
 // — parity-pinned) — the smallest grid worth showing.
 export const POS_TILE_MIN_REM = 6.5;
 export const POS_ROOT_FLOOR_REM_BASE = POS_MOBILE_STACK_REM + POS_TILE_MIN_REM; // 21.5
+// The phone's tab bar (U0 Task 4; lib/shell-layout.ts: TAB_BAR_HEIGHT_PX 59, PHONE_PAGE_FOOT_PX 92) is fixed at the
+// foot below 720 px (Tailwind `max-tab:`), and the dashboard's <main> keeps 92 px clear there. On a phone the POS root
+// ends where the bar starts: its height also subtracts the 59 px, and its negative bottom margin bleeds over the 92 px
+// instead of main's 16 px, so the cart bar sits right on the tab bar (the HTML's order screen: bottom 60px).
 export const POS_ROOT_CLASS =
-  "-mx-4 -mb-4 flex min-h-[21.5rem] h-[calc(100vh-4.5rem-var(--pos-alert-h,0px))] flex-col gap-3 supports-[height:1dvh]:h-[calc(100dvh-4.5rem-var(--pos-alert-h,0px))] md:-mx-6 md:-mb-6 md:h-[calc(100vh-5rem-var(--pos-alert-h,0px))] md:supports-[height:1dvh]:h-[calc(100dvh-5rem-var(--pos-alert-h,0px))] xl:mx-0 xl:mb-0 xl:min-h-[30rem] xl:h-[calc(100vh-6.5rem)] xl:supports-[height:1dvh]:h-[calc(100dvh-6.5rem)]";
+  "-mx-4 -mb-4 flex min-h-[21.5rem] h-[calc(100vh-4.5rem-var(--pos-alert-h,0px))] flex-col gap-3 supports-[height:1dvh]:h-[calc(100dvh-4.5rem-var(--pos-alert-h,0px))] max-tab:-mb-[92px] max-tab:h-[calc(100vh-4.5rem-59px-var(--pos-alert-h,0px))] max-tab:supports-[height:1dvh]:h-[calc(100dvh-4.5rem-59px-var(--pos-alert-h,0px))] md:-mx-6 md:-mb-6 md:h-[calc(100vh-5rem-var(--pos-alert-h,0px))] md:supports-[height:1dvh]:h-[calc(100dvh-5rem-var(--pos-alert-h,0px))] xl:mx-0 xl:mb-0 xl:min-h-[30rem] xl:h-[calc(100vh-6.5rem)] xl:supports-[height:1dvh]:h-[calc(100dvh-6.5rem)]";
 // Re-insets the header row and the rail|grid split inside the full-bleed root
 // below xl; a no-op at xl+ where the root itself sits inside main's padding.
 export const POS_INSET_CLASS = "px-4 md:px-6 xl:px-0";
@@ -171,8 +198,10 @@ export const POS_DESKTOP_ONLY_CLASS = "hidden xl:flex";
 // floor, a browser whose 100vh exceeds the visible area). It carries NO
 // margins: the root's own full-bleed puts its bottom edge on the screen edge
 // — the white strip the owner saw was <main>'s padding under a reserved gap.
+// On a phone it sticks 59px up (lib/shell-layout.ts ABOVE_TAB_BAR_STICKY_CLASS), on the tab bar: where the root's
+// floor makes the document scroll (a short phone), it would otherwise stick over the tab bar.
 export const POS_MOBILE_BAR_CLASS =
-  "sticky bottom-0 z-20 shrink-0 border-t bg-background p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]";
+  "sticky bottom-0 max-tab:bottom-[59px] z-20 shrink-0 border-t bg-background p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]";
 export const POS_MOBILE_BAR_BUTTON_CLASS =
   "flex h-12 w-full items-center justify-between touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
 
@@ -269,7 +298,7 @@ export const POS_CHIP_CLASS =
 // state (ProductGrid reads useSidebar()), which together determine the grid
 // pane's real width — chosen in CB-1b over a container query, and kept in
 // CB-1c because the tiers are plain data the pins can verify (the browser-
-// floor reason CB-1b gave was wrong). Below md the sidebar is an overlay,
+// floor reason CB-1b gave was wrong). Below 720 px the nav is an overlay,
 // so both strings agree there. Every tier keeps tiles ≥ POS_MIN_TILE_PX for
 // pane = viewport − sidebar − main padding − [xl+: gaps + cart + rail] (the
 // matrix pin in lib/pos-layout.test.ts derives exactly that).
@@ -297,6 +326,28 @@ export const POS_GRID_COLUMN_TIERS_SIDEBAR_COLLAPSED: ReadonlyArray<{ minPx: num
   { minPx: 0, cols: 2 },
   { minPx: BREAKPOINT_SM_PX, cols: 3 },
 ];
+
+const REM_PX = 16;
+
+/** The columns the POS grid shows at this viewport (the tier table its class string encodes). */
+export function posGridColumns({ viewportWidth, collapsed }: NavViewport): number {
+  const tiers = collapsed ? POS_GRID_COLUMN_TIERS_SIDEBAR_COLLAPSED : POS_GRID_COLUMN_TIERS_SIDEBAR_EXPANDED;
+  let cols = tiers[0].cols;
+  for (const tier of tiers) if (tier.minPx <= viewportWidth) cols = tier.cols;
+  return cols;
+}
+
+/** The grid pane's width: the viewport minus the nav and <main>'s side padding, and at xl the two-pane's category
+ *  rail, cart column and the two gaps between them. */
+export function posGridPaneWidthPx(viewport: NavViewport): number {
+  const { viewportWidth } = viewport;
+  const paddingXRem = viewportWidth >= BREAKPOINT_MD_PX ? MAIN_PADDING_X_REM_MD : MAIN_PADDING_X_REM_BASE;
+  let pane = viewportWidth - navWidthPx(viewport) - 2 * paddingXRem * REM_PX;
+  if (viewportWidth >= POS_TWO_PANE_MIN_PX) {
+    pane -= (POS_RAIL_REM + POS_PANE_GAP_REM + POS_PANE_GAP_REM + POS_CART_COLUMN_REM) * REM_PX;
+  }
+  return pane;
+}
 // Tile-internal geometry (ProductGrid markup, parity-pinned): what's left of
 // a tile after card padding, thumb, row gap and the options-button reserve is
 // the product-name box; the matrix pin floors it at POS_MIN_NAME_BOX_PX

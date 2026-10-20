@@ -2,7 +2,12 @@
 
 import { PAY_STYLES } from "@/lib/constants";
 import { inr, timeAgo, cn } from "@/lib/utils";
-import { DashCard } from "@/components/dashboard/DashCard";
+import { PAY_PILL_KIND, STATUS_CLASSES, type StatusKind } from "@/lib/ui";
+import { CHANNEL_LABELS } from "@/lib/dashboard/fold";
+import { plural } from "@/lib/dashboard/format";
+import { channelOf } from "@/lib/dashboard/channel";
+import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
+import { DASH_PILL_CLASS, DashCard } from "@/components/dashboard/DashCard";
 import type { Order } from "@/types";
 
 interface RecentOrdersProps {
@@ -16,69 +21,92 @@ interface RecentOrdersProps {
 // At most five — the dashboard is a glance, the full list lives on Orders
 // (owner, 2026-09-29: "recent order max 5 hi hona chahiye").
 const MAX_ROWS = 5;
-const ROW_PX = 52;
+/** A row (values 3.7): 10px + the 40px tile + 10px, over its 1px rule. */
+const ROW_PX = 61;
 
-// "ORD-20260929-009" → "Order #009" (the full id stays in the tooltip and on Orders).
-function shortOrderId(orderId: string): string {
-  return `Order #${orderId.split("-").pop() ?? orderId}`;
+/** The order's channel as the API returns it: `source` and `parcel` ride on the list rows (GET /api/orders). */
+type ListedOrder = Order & { source?: string; parcel?: boolean };
+
+/** The most digits the 40px tile holds after the "T" at 12.5/600. */
+const CODE_DIGITS = 3;
+
+/**
+ * The HTML's code tile, our closest codes: T + the first run of digits in the table's name ("T-12" → "T12", "Patio 2
+ * seat 4" → "T2", at most three digits; a table named without digits shows its first two letters), TA a takeaway, QR a
+ * diner's QR order, WI a walk-in at the counter.
+ */
+export function recentOrderCode(order: ListedOrder): string {
+  const channel = channelOf(order);
+  if (channel === "takeaway") return "TA";
+  if (channel === "qr") return "QR";
+  if (channel === "counter") return "WI";
+  const table = order.tableNo ?? "";
+  const digits = /\d+/.exec(table)?.[0];
+  return digits ? `T${digits.slice(0, CODE_DIGITS)}` : table.replace(/[^\p{L}]/gu, "").slice(0, 2).toUpperCase() || "T";
 }
 
-// Today's newest orders. Rows open the shared OrderDetailSheet via onSelect
-// (the dashboard owns the sheet so its print/complete actions are reused).
+/** Our payment kinds in the HTML's pill colours: Online the HTML's UPI blue, Cash ok, Split the HTML's Card purple, Due
+ *  bill, Credit and an open tab warn, a cancelled bill bad (the HTML's Refunded). */
+function payPill(order: Order): { label: string; kind: StatusKind } {
+  if (order.status === "Cancelled") return { label: "Cancelled", kind: "bad" };
+  return { label: PAY_STYLES[order.payment]?.label ?? order.payment, kind: PAY_PILL_KIND[order.payment] ?? "neutral" };
+}
+
+const ROW_CLASS = cn(
+  "-mx-2 grid grid-cols-[40px_minmax(0,1fr)_auto] @min-[560px]:grid-cols-[40px_minmax(0,1fr)_auto_84px] items-center gap-3 rounded-[10px] border-t border-border-2 px-2 py-2.5 text-left text-foreground hover:bg-hover outline-none focus-visible:ring-2 focus-visible:ring-ring",
+  HTML_PRESS_CLASS,
+);
+
+/**
+ * Today's newest orders as the owner's HTML list (values 3.7, ruling R17): the code tile, "#NNN · {table | Walk-in}",
+ * "{type} · {n} items · {ago}", the payment pill (gone below a 560px content width, as the HTML's) and the amount.
+ * Every status of today stays: a cancelled bill keeps its row with its amount struck through, since the figures above
+ * exclude it. Rows open the shared OrderDetailSheet via onSelect (the dashboard owns the sheet so its print/complete
+ * actions are reused).
+ */
 export function RecentOrders({ orders, loading, isError, onRetry, onSelect }: RecentOrdersProps) {
   const rows = orders.slice(0, MAX_ROWS);
   const status = loading ? "loading" : isError && orders.length === 0 ? "error" : rows.length === 0 ? "empty" : "ready";
 
   return (
     <DashCard
+      variant="dashboard"
+      ui="recent-card"
+      className="pb-2"
+      bodyGap={10}
       title="Recent orders"
       period="Today · newest first"
-      link={{ href: "/orders", label: "View all" }}
+      link={{ href: "/orders", label: "All orders" }}
       status={status}
       onRetry={onRetry}
       empty={{ title: "No orders yet today", description: "Orders taken on the POS show up here as they are placed." }}
       bodyMinHeight={MAX_ROWS * ROW_PX}
     >
-      <ul className="divide-y divide-brand-rule/70">
+      <ul data-ui="recent-list" className="flex flex-col">
         {rows.map((order) => {
-          const payStyle = PAY_STYLES[order.payment];
-          // A cancelled bill keeps its historical payment mode and total, but the
-          // figures above exclude it — so showing the row as an ordinary sale
-          // would make the dashboard contradict itself. Mark it and strike the
-          // amount instead of hiding the row (the trail stays visible).
           const cancelled = order.status === "Cancelled";
+          const pill = payPill(order);
+          const items = order.items.reduce((n, line) => n + line.qty, 0);
           return (
-            <li key={order._id}>
-              <button
-                type="button"
-                onClick={() => onSelect(order)}
-                style={{ minHeight: ROW_PX }}
-                className="-mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-md px-2 text-left transition-colors hover:bg-brand-wash focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-[13.5px] font-medium text-brand-ink" title={order.orderId}>
-                      {shortOrderId(order.orderId)}
-                    </span>
-                    <span className="shrink-0 text-[12px] text-brand-muted">{order.tableNo ?? "Walk-in"}</span>
-                  </div>
-                  <div className="truncate text-[12px] text-brand-muted">
-                    {order.customerName} · {timeAgo(order.createdAt)}
-                  </div>
-                </div>
-                <span
-                  className={cn(
-                    "shrink-0 rounded-full border border-brand-rule px-2 py-0.5 text-[11.5px] font-medium",
-                    cancelled ? "text-brand-muted" : payStyle?.color,
-                  )}
-                >
-                  {cancelled ? "Cancelled" : (payStyle?.label ?? order.payment)}
+            <li key={order._id} className="flex flex-col">
+              <button type="button" data-ui="recent-row" title={order.orderId} onClick={() => onSelect(order)} className={ROW_CLASS}>
+                <span data-ui="recent-code" className="flex size-10 items-center justify-center rounded-[10px] bg-surface-3 text-[12.5px] font-semibold">
+                  {recentOrderCode(order)}
+                </span>
+                <span className="min-w-0">
+                  <span data-ui="recent-title" className="block text-[14px] font-semibold">
+                    {`#${order.orderId.split("-").pop() ?? order.orderId} · ${order.tableNo || "Walk-in"}`}
+                  </span>
+                  <span data-ui="recent-meta" className="mt-0.5 block truncate text-[12.5px] text-subtle-foreground">
+                    {`${CHANNEL_LABELS[channelOf(order)]} · ${plural(items, "item")} · ${timeAgo(order.createdAt)}`}
+                  </span>
+                </span>
+                <span data-ui="recent-pay" className={cn(DASH_PILL_CLASS, "hidden @min-[560px]:flex [justify-self:start]", STATUS_CLASSES[pill.kind].pill)}>
+                  {pill.label}
                 </span>
                 <span
-                  className={cn(
-                    "w-[4.5rem] shrink-0 text-right text-[13.5px] font-semibold tabular-nums text-brand-ink",
-                    cancelled && "font-normal text-brand-muted line-through",
-                  )}
+                  data-ui="recent-amount"
+                  className={cn("text-right font-mono text-[14px] font-semibold", cancelled && "text-subtle-foreground line-through")}
                 >
                   {inr(order.total)}
                 </span>

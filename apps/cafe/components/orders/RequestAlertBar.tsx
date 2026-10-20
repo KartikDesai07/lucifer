@@ -18,11 +18,10 @@ const REQUESTS_PATH = "/requests";
 const TRUNCATED_LABEL = "50+";
 const DEFAULT_PREFS: PosDevicePrefs = { autoPrintSelfOrders: false, alertSound: true, printHost: false, printHostSeen: false };
 
-// CR2.3 §20 — the compact, always-mounted staff-attention bar: rendered once in
-// the dashboard layout, under the header, above every screen. `null` when there
-// is nothing to say (no open requests, no unprinted self-order, and — PH-8 §B7 —
-// no host warning / stale backlog / own outstanding job; that section renders
-// INSIDE bandRef so the published height covers it). CB-UI2 scoping (the
+// CR2.3 §20 — the always-mounted staff-attention strip, once in the dashboard layout under the page header (U0 Task 3,
+// design 5.3: the HTML's warn colours, one 40px line on wide screens, wrapping on a phone). `null` when there is
+// nothing to say (no open requests, no unprinted self-order, and — PH-8 §B7 — no host warning / stale backlog / own
+// outstanding job; that section renders INSIDE bandRef so the published height covers it). CB-UI2 scoping (the
 // print-host block, the routing note, and POS): lib/alert-bar-scope.ts.
 export function RequestAlertBar() {
   const { pulse, soundUnlocked, unlock, printHandler } = usePosPulseContext();
@@ -94,12 +93,12 @@ export function RequestAlertBar() {
   return (
     <div
       ref={bandRef}
-      className="flex flex-wrap items-center gap-3 border-b bg-amber-50 px-4 py-2 text-sm dark:bg-amber-950/40"
+      data-ui="request-strip"
+      className="flex min-h-10 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-status-warn-tint px-3 py-1 text-[13px] leading-[normal] text-status-warn-ink tab:px-5"
     >
       {openCount > 0 && (
-        <Link href={REQUESTS_PATH} className="font-medium underline-offset-2 hover:underline">
-          {pulse?.openTruncated ? TRUNCATED_LABEL : openCount} new order request
-          {openCount === 1 ? "" : "s"}
+        <Link href={REQUESTS_PATH} data-ui="request-strip-count" className="text-[13px] font-semibold text-status-warn-ink underline-offset-2 hover:underline">
+          {pulse?.openTruncated ? TRUNCATED_LABEL : openCount} new order request{openCount === 1 ? "" : "s"}
         </Link>
       )}
 
@@ -114,6 +113,7 @@ export function RequestAlertBar() {
                 key={row.requestId}
                 size="sm"
                 variant="outline"
+                className="h-[30px]"
                 disabled={tappedIds.has(row.requestId)}
                 onClick={() => {
                   setTappedIds((prev) => new Set(prev).add(row.requestId));
@@ -129,22 +129,18 @@ export function RequestAlertBar() {
             </Link>
           )}
           {pulse?.selfOrdersTruncated && (
-            <span className="text-xs text-muted-foreground">
-              — more exist; reprint older ones from Orders
-            </span>
+            <span className="text-xs text-muted-foreground">— more exist; reprint older ones from Orders</span>
           )}
         </div>
       )}
-
       <PrintHostBandSection pulse={pulse} readback={readback} />
-
       {!soundUnlocked && prefs.alertSound && (
-        <Button size="sm" variant="ghost" onClick={unlock}>
-          <Volume2 className="mr-1" /> Enable sound
+        <Button variant="outline" onClick={unlock} data-ui="request-strip-sound" className="h-[30px] gap-1.5 rounded-[8px] border border-border bg-card px-2.5 py-0 text-[13px] font-medium text-foreground hover:bg-hover [&_svg]:size-[14px]">
+          <Volume2 aria-hidden="true" strokeWidth={1.8} /> Enable sound
         </Button>
       )}
 
-      {onDashboard && <p className="ml-auto text-xs text-muted-foreground">{hostNote ?? SELF_ORDER_ALERT_LIMITATION}</p>}
+      {onDashboard && <p data-ui="request-strip-note" className="ml-auto text-[12.5px] text-muted-foreground">{hostNote ?? SELF_ORDER_ALERT_LIMITATION}</p>}
     </div>
   );
 }

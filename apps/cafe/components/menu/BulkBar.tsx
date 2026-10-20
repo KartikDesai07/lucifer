@@ -4,6 +4,8 @@ import { X } from "lucide-react";
 
 import { PRODUCT_BULK_MAX } from "@pos/shared/constants";
 import type { ProductBulkAction } from "@pos/shared/schemas";
+import { ABOVE_TAB_BAR_STICKY_CLASS } from "@/lib/shell-layout";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -27,14 +29,20 @@ interface BulkBarProps {
 // enforces this; STAFF_PRODUCT_BULK_ACTIONS mirrors it here for what's even
 // offered). lg+ shows every action inline; below lg the extra admin actions
 // (Move/Archive/Restore) collapse into one "More" menu. Over PRODUCT_BULK_MAX
-// selected, every action disables with the capped-selection message.
+// selected, every action disables with the capped-selection message. On a
+// phone the bar stops on the tab bar (U0 Task 4), never under it.
 export function BulkBar({ count, isAdmin, archived, isPending, onAction, onMove, onArchive, onClear }: BulkBarProps) {
   if (count === 0) return null;
   const overCap = count > PRODUCT_BULK_MAX;
   const disabled = isPending || overCap;
 
   return (
-    <div className="sticky bottom-0 z-10 -mx-1 flex flex-col gap-2 rounded-lg border bg-background/95 px-4 py-3 shadow-sm backdrop-blur pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+    <div
+      className={cn(
+        "sticky bottom-0 z-10 -mx-1 flex flex-col gap-2 rounded-lg border bg-background/95 px-4 py-3 shadow-sm backdrop-blur pb-[calc(0.75rem+env(safe-area-inset-bottom))]",
+        ABOVE_TAB_BAR_STICKY_CLASS,
+      )}
+    >
       {overCap && (
         <p className="text-xs text-destructive">Select up to {PRODUCT_BULK_MAX} items at a time.</p>
       )}

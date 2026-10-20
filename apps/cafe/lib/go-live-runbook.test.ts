@@ -1174,10 +1174,10 @@ test("PIN: §11's print-host bullet states BOTH that a configured host prints fr
 
 // ── §A row parity: CB-U1 staff session lifetime + print-job wake poll ─────
 
-test("PIN §A: SESSION_MAX_AGE_SECONDS (30 days) matches the doc's staff-session-lifetime row, which also states the session is ROLLING (not a fixed 30-day countdown from login) — scoped to the §A Pinned facts section (review round 1: factRow() alone scans the whole doc, and §3/§A share one row-label namespace)", () => {
-  assert.equal(SESSION_MAX_AGE_SECONDS, 30 * 24 * 60 * 60);
+test("PIN §A: SESSION_MAX_AGE_SECONDS (90 days) matches the doc's staff-session-lifetime row, which also states the session is ROLLING (not a fixed 90-day countdown from login) — scoped to the §A Pinned facts section (review round 1: factRow() alone scans the whole doc, and §3/§A share one row-label namespace)", () => {
+  assert.equal(SESSION_MAX_AGE_SECONDS, 90 * 24 * 60 * 60);
   const cell = factRowIn(SECTION_A_HEADING, "Staff session lifetime");
-  assert.match(cell, /30 days/, "the row must state the 30-day figure with its unit word");
+  assert.match(cell, /90 days/, "the row must state the 90-day figure with its unit word");
   assert.match(cell, /rolling/i, "the row must state the session is rolling with use, not a fixed countdown");
 });
 
@@ -1241,12 +1241,19 @@ test("PIN §7: the self-order alerts device step's counter-PC wake-poll bullet s
   );
 });
 
-test("PIN §6: the staff-accounts section states the 30-day signed-in lifetime and tells the operator to Log out on a shared device", () => {
+test("PIN §6: the staff-accounts section states the 90-day signed-in lifetime and tells the operator to Log out on a shared device", () => {
   const section = norm(sectionSlice("## §6 Staff accounts (CAFE ADMIN, `Staff`, admin only)"));
 
   const staySignedInDays = SESSION_MAX_AGE_SECONDS / (24 * 60 * 60);
   assert.match(section, new RegExp(`signed in for ${staySignedInDays} days`), "the §6 section must state the real SESSION_MAX_AGE_SECONDS figure in days");
   assert.match(section, /Log out when handing it over/, "the §6 section must tell the operator to Log out when handing a shared device over");
+});
+
+test("PIN §6: the staff-accounts section explains the PIN, the first sign-in on each device and the screen lock", () => {
+  const section = norm(sectionSlice("## §6 Staff accounts (CAFE ADMIN, `Staff`, admin only)"));
+  assert.match(section, /PIN/, "the §6 section must mention the staff PIN");
+  assert.match(section, /first time on each device/, "the §6 section must say a person signs in with the password the first time on each device");
+  assert.match(section, /Screen lock/, "the §6 section must name the Screen lock setting");
 });
 
 // New §6 bullet (CB-U1 review round 1, F2 doc/pin-only fix): the owner decided
@@ -1686,4 +1693,14 @@ test("PIN (printing Phase 4, spec §11 items 2 and 6): TEST-CHECKLIST's Phase 4 
   }
   const strings = readFileSync(path.join(REPO_ROOT, "apps/mobile/android/app/src/main/res/values/strings.xml"), "utf8");
   assert.ok(strings.includes('<string name="printer_name_network">Network printer %1$s</string>'), "the app's network printer name, which 2.0.2 gives the port when it is not 9100");
+});
+
+test("PIN §A: seed-admin.ts says when it ignores SEED_ADMIN_PIN because an admin already exists", () => {
+  const src = readFileSync(path.join(REPO_ROOT, "apps/cafe/scripts/seed-admin.ts"), "utf8");
+  const exists = src.indexOf("Admin already exists");
+  const note = src.indexOf("SEED_ADMIN_PIN ignored: an admin already exists. Set the PIN on the Staff page.");
+  const ret = src.indexOf("return;", exists);
+  assert.ok(exists >= 0 && note > exists, "the note follows the 'Admin already exists' line");
+  assert.ok(note < ret, "the note is logged before the early return");
+  assert.match(src.slice(exists, ret), /if \(pin !== undefined\)/, "only when SEED_ADMIN_PIN was given");
 });

@@ -7,16 +7,23 @@ import {
   MANIFEST_THEME_COLOR,
 } from "@/lib/pos-install";
 import { brandingUrl, productImageUrl } from "@/lib/images";
+import { SCREEN_LOCK_SCRIPT } from "@/lib/screen-lock-script";
+import { NAV_STATE_SCRIPT } from "@/lib/nav-state-script";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Header } from "@/components/layout/Header";
+import { PageHeaderSlotProvider } from "@/components/layout/page-header-slot";
+import { PageFade } from "@/components/layout/PageFade";
 import { MasterDataProvider } from "@/components/layout/MasterDataProvider";
 import { PosPulseProvider } from "@/components/layout/PosPulseProvider";
 import { PrintHostProvider } from "@/components/layout/PrintHostProvider";
 import { SessionKeepalive } from "@/components/layout/SessionKeepalive";
+import { TabBar } from "@/components/layout/TabBar";
+import { ScreenLock } from "@/components/lock/ScreenLock";
 import { RequestAlertBar } from "@/components/orders/RequestAlertBar";
 import { PrintHostPrintSources } from "@/components/print/PrintHostPrintSources";
 import { TouchFeel } from "@/components/shared/TouchFeel";
+import { HtmlRulesScope } from "@/components/layout/HtmlRulesScope";
 import "../print-fonts.css";
 
 // Tab title mirrors the cafe's own branding once Settings is configured,
@@ -75,33 +82,58 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <SidebarProvider>
-      <PosPulseProvider>
-        {/* Print-host plan §B5 (PH-5): the host bridge lives in the shell so a
-            designated PC prints from ANY screen (owner Q7). PrintHostPrintSources
-            sits inside SidebarInset after <main> — absolute, zero in-flow height,
-            null while idle — so the height-chain matrix is untouched. */}
-        <PrintHostProvider>
-          {/* CB-DL-1: one master-data call per page load. Seeds the five master
-              query keys from this tab's stored copy synchronously (before any
-              screen renders) and fetches GET /api/bootstrap once; a fresh tab
-              waits behind a placeholder so the mounted screens cannot each fire
-              their own master fetch first. */}
-          <MasterDataProvider>
-            {/* CB-U1: the session keepalive rolls the 30-day cookie for a tab
-                that never navigates — staff screens only, never /login or /m. */}
-            <SessionKeepalive />
-            <AppSidebar />
-            <SidebarInset>
-              <Header />
-              <RequestAlertBar />
-              <TouchFeel />
-              <main className="flex-1 p-4 md:p-6">{children}</main>
-              <PrintHostPrintSources />
-            </SidebarInset>
-          </MasterDataProvider>
-        </PrintHostProvider>
-      </PosPulseProvider>
-    </SidebarProvider>
+    <>
+      {/* Screen lock (spec 2026-10-16 §5.6): a plain script child, an imported CONSTANT string, that marks <html>
+          locked before the first paint when the stored lock says so, so a reload never flashes the page; the
+          ScreenLock cover below takes over once it mounts. The sidebar provider after it stays bare. */}
+      <script>{SCREEN_LOCK_SCRIPT}</script>
+      {/* The nav's remembered collapse (U0 Task 2): marks <html> collapsed before the first paint, from the sidebar
+          cookie, so the CSS shows the rail at once instead of flashing the wide sidebar. */}
+      <script>{NAV_STATE_SCRIPT}</script>
+      <SidebarProvider>
+        <PosPulseProvider>
+          {/* Print-host plan §B5 (PH-5): the host bridge lives in the shell so a
+              designated PC prints from ANY screen (owner Q7). PrintHostPrintSources
+              sits inside SidebarInset after <main> — absolute, zero in-flow height,
+              null while idle — so the height-chain matrix is untouched. */}
+          <PrintHostProvider>
+            {/* CB-DL-1: one master-data call per page load. Seeds the five master
+                query keys from this tab's stored copy synchronously (before any
+                screen renders) and fetches GET /api/bootstrap once; a fresh tab
+                waits behind a placeholder so the mounted screens cannot each fire
+                their own master fetch first. */}
+            <MasterDataProvider>
+              {/* CB-U1: the session keepalive rolls the 90-day cookie for a tab
+                  that never navigates — staff screens only, never /login or /m. */}
+              <SessionKeepalive />
+              {/* The screen lock: a cover over this running page (never a sign-out, so printing, the pulse, the alarm
+                  and realtime go on under it). Inside the master-data provider, so it reads the seeded settings. */}
+              <ScreenLock />
+              <AppSidebar />
+              <SidebarInset>
+                {/* U0 Task 3: the page header's slot. Every page's PageHeader fills the one header (its title,
+                    subtitle and, from 720px, its actions), so the provider wraps the header and the page. */}
+                <PageHeaderSlotProvider>
+                  <Header />
+                  <RequestAlertBar />
+                  <TouchFeel />
+                  {/* The HTML's global rules (values 1.4, ruling R24) for every staff page, its lock and its dialogs. */}
+                  <HtmlRulesScope />
+                  {/* Below 720px the page's foot keeps 92px clear (values 2.1 screenPadB): the 59px tab bar plus air.
+                      PageFade replays the HTML's pageIn on this element when the path changes (ruling R11). */}
+                  <main className="flex-1 p-4 pb-[92px] tab:pb-4 md:p-6">
+                    <PageFade />
+                    {children}
+                  </main>
+                  <PrintHostPrintSources />
+                </PageHeaderSlotProvider>
+              </SidebarInset>
+              {/* The phone's nav (values 2.6, U0 Task 4): the tab bar and its More sheet, fixed, below 720px only. */}
+              <TabBar />
+            </MasterDataProvider>
+          </PrintHostProvider>
+        </PosPulseProvider>
+      </SidebarProvider>
+    </>
   );
 }
