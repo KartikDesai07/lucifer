@@ -108,9 +108,11 @@ const SALES_CLOCK_MS = 30_000;
 /**
  * Sales by hour (one day) or by day (a span, ruling R15) as the owner's HTML bar chart (values 3.5): one bar per hour
  * from the first to the last hour with sales in either series (at least eight), today's later hours "not yet", the
- * peak in the accent, the comparison as a dashed line, Peak / Quietest / the comparison in the footer.
+ * peak in the accent, the comparison as a dashed line, Peak / Quietest / the comparison in the footer. `shown` is the
+ * sales mask's state (values 3.17): the chart's accessible name states the period's total (the hero's Net sales) only
+ * while the figures are shown (final review m1); the hours stay, as the HTML's tooltips show them.
  */
-export function SalesCard(p: RangeCardProps & { className?: string }) {
+export function SalesCard(p: RangeCardProps & { className?: string; shown: boolean }) {
   const d = p.data;
   const now = useNow(SALES_CLOCK_MS);
   const hasSales = !!d && d.series.some((s) => s.sales > 0 || s.compareSales > 0);
@@ -123,7 +125,7 @@ export function SalesCard(p: RangeCardProps & { className?: string }) {
   const total = d?.kpis.current.sales ?? 0;
   const peak = d?.series.reduce((best, s) => (s.sales > best.sales ? s : best), d.series[0]);
   const aria = d
-    ? `Sales ${d.mode === "hour" ? "by hour" : "by day"}, ${p.period}: ${inr(total)} in total${peak && peak.sales > 0 ? `, highest ${peak.label} with ${inr(peak.sales)}` : ""}.`
+    ? `Sales ${d.mode === "hour" ? "by hour" : "by day"}, ${p.period}${p.shown ? `: ${inr(total)} in total` : ""}${peak && peak.sales > 0 ? `, highest ${peak.label} with ${inr(peak.sales)}` : ""}.`
     : "";
   return (
     <DashCard

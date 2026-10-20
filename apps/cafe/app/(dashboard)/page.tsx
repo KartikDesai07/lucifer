@@ -164,7 +164,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 gap-4 @min-[1000px]:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-          <SalesCard {...cards} />
+          <SalesCard {...cards} shown={reveal.shown} />
           <LiveFloorPanel
             tables={tables.data ?? []}
             orders={floorOrders}

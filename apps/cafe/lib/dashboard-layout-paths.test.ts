@@ -1055,9 +1055,10 @@ const hourPoint = (h: number, sales: number, compareSales: number) => ({
   compareSales,
 });
 const HOUR_SERIES = [hourPoint(11, 1520, 1180), hourPoint(12, 3470, 2630), hourPoint(13, 0, 5360)];
-const salesCard = async (over: Partial<DashboardData> = {}, extra: Partial<ReturnType<typeof ready>> = {}) => {
+// Masked by default, as every visit to the dashboard starts (the mask, values 3.17).
+const salesCard = async (over: Partial<DashboardData> = {}, extra: Partial<ReturnType<typeof ready>> & { shown?: boolean } = {}) => {
   const { SalesCard } = await import("@/components/dashboard/RangeCards");
-  return renderToStaticMarkup(createElement(SalesCard, { ...ready({ series: HOUR_SERIES, ...over }), ...extra }));
+  return renderToStaticMarkup(createElement(SalesCard, { ...ready({ series: HOUR_SERIES, ...over }), shown: false, ...extra }));
 };
 const allTags = (html: string, name: string): string[] => html.match(new RegExp(`<[a-z0-9]+ [^>]*data-ui="${name}"[^>]*>`, "g")) ?? [];
 const textsOf = (html: string, name: string): string[] =>
@@ -1078,6 +1079,26 @@ test("SalesCard: the HTML's head - 'Sales by hour', '{period} · open hours, …
   );
   assert.ok(html.includes('class="transition-opacity duration-200 mt-[18px] min-h-[301px] @min-[560px]:min-h-[276px]"'), "the plot row 18px under the head, the body as tall as loading and empty hold");
   assert.ok(!html.includes("pointer-coarse"), "ruling R1: no touch enlargement");
+});
+
+// Final review m1: the chart's accessible name (the bars' group name and the screen-reader table's caption) must not
+// state the period's total while the sales are masked: it is the hero's masked Net sales. The hours may stay (the
+// HTML's tooltips show them).
+test("SalesCard's accessible name states the total only while the sales are shown (the mask, values 3.17)", async () => {
+  const names = (html: string): string[] => [
+    ...[...html.matchAll(/role="group" aria-label="([^"]*)"/g)].map((m) => m[1]),
+    ...[...html.matchAll(/<caption>([^<]*)<\/caption>/g)].map((m) => m[1]),
+  ];
+  const masked = names(await salesCard({}, { shown: false }));
+  assert.equal(masked.length, 2, `landmark: the bars' group name and the table's caption (got ${masked.length})`);
+  for (const name of masked) {
+    assert.ok(!name.includes("₹48,250") && !name.includes("in total"), `masked: no total in "${name}"`);
+    assert.equal(name, "Sales by hour, Today, highest 12 pm with ₹3,470.", "masked: the period and its busiest hour");
+  }
+  const shown = names(await salesCard({}, { shown: true }));
+  assert.equal(shown.length, 2, "landmark: both names when shown");
+  for (const name of shown) assert.equal(name, "Sales by hour, Today: ₹48,250 in total, highest 12 pm with ₹3,470.", "shown: the total too");
+  assert.match(readSrc(PAGE), /<SalesCard \{\.\.\.cards\} shown=\{reveal\.shown\} \/>/, "the page hands the card the mask's state");
 });
 
 test("HourBars: the 210px plot with 70px grid lines, the ticks, eight columns, bars max 34px radius 5 5 2 2, the dashed line", async () => {
@@ -1172,7 +1193,7 @@ test("SalesCard: a span of days draws the same bars per day, 'Sales by day', the
   // Fix round 1: the reserved body covers the phone's two-line footer (301px below cw 560) and the one-line 276px.
   assert.ok(empty.includes("min-h-[301px] @min-[560px]:min-h-[276px]"), "the empty body holds the loaded body's height at every width");
   const { SalesCard } = await import("@/components/dashboard/RangeCards");
-  const loading = renderToStaticMarkup(createElement(SalesCard, { ...ready(), data: undefined, status: "loading" }));
+  const loading = renderToStaticMarkup(createElement(SalesCard, { ...ready(), data: undefined, status: "loading", shown: false }));
   assert.ok(loading.includes('<div class="flex mt-[18px] min-h-[301px] @min-[560px]:min-h-[276px]">'), "loading: the skeleton holds the same, 18px under the head");
 });
 
