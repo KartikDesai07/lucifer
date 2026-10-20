@@ -89,6 +89,37 @@ export function screenLockLine(minutes: number): string {
   return `Auto-locks after ${minutes} min without activity`;
 }
 
+/**
+ * Where Tab (or Shift+Tab) goes inside the lock cover, so focus never leaves it: null means the browser's own move is
+ * already inside (a control between the ends). `items` are the cover's focusable controls in document order; `order`
+ * tells whether an item comes after (1) or before (-1) the focused element in the document (0: it is that element).
+ * - From the first control, Shift+Tab wraps to the last; from the last, Tab wraps to the first.
+ * - From anything else inside the cover that is not a listed control (the cover itself, the PIN pad's own region,
+ *   which takes focus since ruling R34, plain text): Shift+Tab goes to the nearest control before it, else the last;
+ *   Tab to the nearest control after it, else the first.
+ */
+export function coverTabTarget<T>(
+  items: readonly T[],
+  active: T | null,
+  shift: boolean,
+  order: (item: T) => -1 | 0 | 1,
+): T | null {
+  if (items.length === 0) return null;
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (active !== null && items.includes(active)) {
+    if (shift && active === first) return last;
+    if (!shift && active === last) return first;
+    return null;
+  }
+  if (active === null) return shift ? last : first;
+  if (shift) {
+    const before = items.filter((item) => order(item) < 0);
+    return before[before.length - 1] ?? last;
+  }
+  return items.find((item) => order(item) > 0) ?? first;
+}
+
 // The first key segment of each person-scoped query family (STAFF_KEYS, REPORT_KEYS, DASHBOARD_KEYS, EXPENSE_KEYS,
 // TELEGRAM_KEYS, PRINT_DEVICES_KEYS), written as literals; screen-lock.test.ts compares them with the hooks.
 export const PERSON_SCOPED_QUERY_ROOTS: readonly string[] = [

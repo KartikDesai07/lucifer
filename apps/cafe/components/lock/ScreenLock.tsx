@@ -27,6 +27,7 @@ import {
   autoLockDue,
   clearLockState,
   clearPersonScopedQueries,
+  coverTabTarget,
   handleLockShortcut,
   lockedAgoLabel,
   readLockState,
@@ -320,18 +321,23 @@ function LockCover({ lock, signedInAs, onUnlocked, onSignOut }: LockCoverProps) 
     const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
       (el) => el.getClientRects().length > 0,
     );
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (!first || !last) {
+    if (items.length === 0) {
       e.preventDefault();
       return;
     }
-    const active = document.activeElement;
-    const wrapBack = e.shiftKey && (active === first || active === e.currentTarget);
-    const wrapForward = !e.shiftKey && active === last;
-    if (wrapBack || wrapForward) {
+    // From any element inside the cover, listed or not (the PIN pad's own region takes focus since ruling R34), the
+    // next stop stays inside: lib/screen-lock's coverTabTarget decides by document order.
+    const focused = document.activeElement;
+    const active = focused instanceof HTMLElement && e.currentTarget.contains(focused) ? focused : null;
+    const order = (item: HTMLElement): -1 | 0 | 1 => {
+      if (!active || item === active) return 0;
+      const pos = active.compareDocumentPosition(item);
+      return pos & Node.DOCUMENT_POSITION_FOLLOWING ? 1 : pos & Node.DOCUMENT_POSITION_PRECEDING ? -1 : 0;
+    };
+    const target = coverTabTarget(items, active, e.shiftKey, order);
+    if (target) {
       e.preventDefault();
-      (wrapBack ? last : first).focus();
+      target.focus();
     }
   };
 

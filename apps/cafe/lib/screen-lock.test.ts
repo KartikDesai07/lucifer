@@ -209,3 +209,55 @@ describe("requestScreenLock", () => {
     assert.deepEqual(got, [{ type: SCREEN_LOCK_EVENT, detail: { reason: "switch" } }], "event dispatched");
   });
 });
+
+// U0 match Task 10 fix round 2: the cover's Tab trap. Since ruling R34 the PIN pad opens with focus on its own region
+// (tabIndex -1, not in the focusable list), so the trap must hold focus from ANY element inside the cover, not only from
+// the first or last control. The elements are modelled by their document positions: the region at 5 holds the controls
+// 6, 7, 8 ("All staff", the keys, "Forgot PIN?"), and 9 is the footer's Sign out.
+describe("coverTabTarget", () => {
+  const order = (active: number) => (item: number) => (item > active ? 1 : item < active ? -1 : 0);
+  const items = [6, 7, 8, 9];
+
+  it("Shift+Tab from the pad region (nothing before it) wraps to the last control", async () => {
+    const { coverTabTarget } = await import("./screen-lock");
+    assert.equal(coverTabTarget(items, 5, true, order(5)), 9, "Sign out, inside the cover (was: focus left to the body)");
+  });
+
+  it("Tab from the pad region goes to the first control after it", async () => {
+    const { coverTabTarget } = await import("./screen-lock");
+    assert.equal(coverTabTarget(items, 5, false, order(5)), 6, "All staff, the region's first control");
+  });
+
+  it("from an unlisted element between controls, Shift+Tab goes to the one before and Tab to the one after", async () => {
+    const { coverTabTarget } = await import("./screen-lock");
+    assert.equal(coverTabTarget(items, 7.5, true, order(7.5)), 7, "the control just before");
+    assert.equal(coverTabTarget(items, 7.5, false, order(7.5)), 8, "the control just after");
+  });
+
+  it("from an unlisted element after every control, Tab wraps to the first", async () => {
+    const { coverTabTarget } = await import("./screen-lock");
+    assert.equal(coverTabTarget(items, 10, false, order(10)), 6, "the first control");
+    assert.equal(coverTabTarget(items, 10, true, order(10)), 9, "Shift+Tab: the last control, just before");
+  });
+
+  it("the cover root (or nothing focused) wraps: Shift+Tab to the last, Tab to the first", async () => {
+    const { coverTabTarget } = await import("./screen-lock");
+    assert.equal(coverTabTarget(items, null, true, () => 1), 9, "nothing focused, Shift+Tab: the last");
+    assert.equal(coverTabTarget(items, null, false, () => 1), 6, "nothing focused, Tab: the first");
+    assert.equal(coverTabTarget(items, 0, true, order(0)), 9, "the root holds every control: Shift+Tab to the last");
+    assert.equal(coverTabTarget(items, 0, false, order(0)), 6, "and Tab to the first");
+  });
+
+  it("from a listed control: the ends wrap, the middle is left to the browser", async () => {
+    const { coverTabTarget } = await import("./screen-lock");
+    assert.equal(coverTabTarget(items, 6, true, order(6)), 9, "first + Shift+Tab: the last");
+    assert.equal(coverTabTarget(items, 9, false, order(9)), 6, "last + Tab: the first");
+    assert.equal(coverTabTarget(items, 7, false, order(7)), null, "a middle control: the browser's own order");
+    assert.equal(coverTabTarget(items, 7, true, order(7)), null, "either way");
+  });
+
+  it("no controls at all: nothing to move to", async () => {
+    const { coverTabTarget } = await import("./screen-lock");
+    assert.equal(coverTabTarget([], 5, true, order(5)), null, "null (the caller keeps focus where it is)");
+  });
+});

@@ -178,6 +178,18 @@ test("the cover's look (values 4.2, ruling R3/R27): the cafe's own tile, its nam
   assert.ok(!/\b(p|py|px|h|min-h)-/.test(cls), "no padding or height of its own (the footer stays 41px)");
 });
 
+// Fix round 2: the Tab trap holds focus from any element inside the cover (the PIN pad's region since R34 is not in
+// the focusable list); the decision is lib/screen-lock's coverTabTarget, tested there in both directions.
+test("PIN: the cover's Tab trap asks coverTabTarget for every Tab and Shift+Tab, with the document order of the focused element", () => {
+  const src = read(COVER);
+  const at = src.indexOf("const keepTabInside");
+  const body = src.slice(at, src.indexOf("const pinSignedIn", at));
+  assert.ok(at >= 0, "landmark: keepTabInside");
+  assert.match(body, /coverTabTarget\(items, active, e\.shiftKey,/, "the trap's decision is coverTabTarget");
+  assert.match(body, /compareDocumentPosition\(/, "items are placed before or after the focused element by document order");
+  assert.match(body, /e\.preventDefault\(\);\s*target\.focus\(\);/, "a target takes focus in place of the browser's own move");
+});
+
 // Ruling R35: the lock shows no success flash. Our unlock closes the cover as soon as it is done, and nothing on the
 // way holds it for a look (R30: no added wait): no timer, no frame, no forced flush.
 test("PIN: a right PIN on the lock closes the cover at once (ruling R35: no hold for a success look)", () => {
