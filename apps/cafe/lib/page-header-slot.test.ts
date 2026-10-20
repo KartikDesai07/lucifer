@@ -321,6 +321,23 @@ test("headerWordsFor: the route's title and the cafe line until a page registers
   );
 });
 
+// Final review m6: the default line's date follows the clock, so a tablet left on the dashboard past midnight shows the
+// new day without anything else re-rendering the header.
+test("the header's default date follows the clock: useNow once a minute; until its first tick, the first render's own date", () => {
+  const late = new Date("2026-10-19T18:29:00Z"); // 23:59 IST, Monday
+  const after = new Date("2026-10-19T18:31:00Z"); // 00:01 IST, Tuesday
+  const words = (now: Date) => headerWordsFor({ info: null, pathname: "/", cafeName: "Baseline Cafe", now }).subtitle;
+  assert.equal(words(late), "Baseline Cafe · Monday, 19 October", "a minute before midnight");
+  assert.equal(words(after), "Baseline Cafe · Tuesday, 20 October", "the next tick, past midnight: the new day");
+  const header = read(path.join(CAFE_ROOT, "components/layout/Header.tsx"));
+  assert.match(header, /import \{ useNow \} from "@\/hooks\/use-now";/, "the header reads the shared clock hook");
+  assert.match(header, /const HEADER_CLOCK_MS = 60_000;/, "once a minute");
+  // The shell renders on the client only (MasterDataProvider), so the first render already knows the device's date:
+  // the placeholder while the hook is null is that same line, the same words and width, with no blank frame.
+  assert.match(header, /const now = useNow\(HEADER_CLOCK_MS\) \?\? new Date\(\);/, "the clock's time, or the first render's while it is null");
+  assert.equal(count(header, "new Date("), 1, "no other per-render date in the header");
+});
+
 test("HeaderTitle draws the registered words: the h1, the subtitle, the section for screen readers, and the back link", () => {
   const html = renderToStaticMarkup(
     createElement(HeaderTitle, {
@@ -345,7 +362,7 @@ test("HeaderTitle draws the registered words: the h1, the subtitle, the section 
 
 test("PIN: the header composes the registered words, the actions box (min-w-0, the header-button look) and the slot's refs", () => {
   const header = read(path.join(CAFE_ROOT, "components/layout/Header.tsx"));
-  assert.match(header, /headerWordsFor\(\{ info, pathname, cafeName: name, now: new Date\(\) \}\)/, "the words come from the rule tested above");
+  assert.match(header, /headerWordsFor\(\{ info, pathname, cafeName: name, now \}\)/, "the words come from the rule tested above");
   assert.match(header, /<HeaderTitle\b[^>]*titleRef=\{titleRef\}/, "the title block is measured");
   assert.ok(!header.includes('className="sr-only">{name}</h1>'), "the old screen-reader-only cafe h1 is gone");
   const box = /<div ref=\{actionsRef\}([^>]*)\/>/.exec(header)?.[1] ?? "";

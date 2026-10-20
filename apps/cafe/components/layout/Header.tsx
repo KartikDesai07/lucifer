@@ -9,10 +9,14 @@ import { RefreshButton } from "@/components/layout/RefreshButton";
 import { HeaderQuickTabs } from "@/components/layout/HeaderQuickTabs";
 import { usePageHeader } from "@/components/layout/page-header-slot";
 import { TokenSheet } from "@/components/pos/TokenSheet";
+import { useNow } from "@/hooks/use-now";
 import { useSettings } from "@/hooks/use-settings";
 import { APP_NAME } from "@/lib/constants";
 import { productImageUrl } from "@/lib/images";
 import { headerWordsFor } from "@/lib/page-titles";
+
+/** The default line's date is re-read once a minute (final review m6): a day change lands within a minute. */
+const HEADER_CLOCK_MS = 60_000;
 
 // The page header on every staff page (the owner's HTML, values 2.5; design 5.3; U0 Task 3): 56px, white, a rule
 // under it, sticky. Left: on a phone the cafe's mini logo (the phone's nav is the tab bar, U0 Task 4); a back link
@@ -27,7 +31,11 @@ export function Header() {
   // The cafe's own logo only (ruling R3), as the nav's brand tile.
   const logoUrl = productImageUrl(settings.data?.logo, undefined, { fit: true });
   const { info, actionsRef, titleRef } = usePageHeader();
-  const { title, subtitle } = headerWordsFor({ info, pathname, cafeName: name, now: new Date() });
+  // The date in the default line follows the clock, so a tablet left on past midnight shows the new day. Until the
+  // hook's first tick (null) the line keeps this render's own date: the shell renders on the client only
+  // (MasterDataProvider), so that is already the device's date, the same words and width, with no blank frame.
+  const now = useNow(HEADER_CLOCK_MS) ?? new Date();
+  const { title, subtitle } = headerWordsFor({ info, pathname, cafeName: name, now });
 
   return (
     <header className="sticky top-0 z-[3] flex min-h-14 items-center gap-2.5 border-b border-border bg-card px-3 leading-[normal] text-foreground tab:px-5" data-ui="header">
