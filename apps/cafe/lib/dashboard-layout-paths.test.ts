@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import React, { createElement } from "react";
@@ -9,7 +9,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { stripComments } from "@/lib/source-pin-utils";
-import { MONEY_BREAKDOWN_LINES, MONEY_NET_LABEL } from "@/lib/money-breakdown";
+import { MONEY_BREAKDOWN_LINES } from "@/lib/money-breakdown";
 import { menuItemsHref } from "@/lib/menu-sections";
 import { presetRange } from "@/lib/dashboard/range";
 import { KpiCard } from "@/components/dashboard/KpiCard";
@@ -18,7 +18,6 @@ import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { DashCard } from "@/components/dashboard/DashCard";
 import { RangeBar } from "@/components/dashboard/RangeBar";
 import { TodayReservations } from "@/components/dashboard/TodayReservations";
-import { MoneyBreakdownCard } from "@/components/reports/MoneyBreakdownCard";
 import type { DashboardData, DashboardLive } from "@/types/dashboard";
 import type { Order, Reservation } from "@/types";
 
@@ -247,40 +246,16 @@ test("KpiCard renders byte for byte what it rendered before its change line move
   assert.ok(readSrc("components/dashboard/KpiCard.tsx").includes("<KpiChange"), "KpiCard renders the extracted KpiChange");
 });
 
-// sha256 of KpiRow's markup for fixture(), captured before kpiFigures existed.
-const KPI_ROW_SHA256 = {
-  ready: "dcde178a9f9cab1b79d823576d0031228e814a4304de6992f1224914f88c2967",
-  loading: "0d92346647d9f1f1c3cfc89a240ec561cd4872669d9b84fb5528d5940757ce50",
-};
-const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
-
-test("KpiRow maps kpiFigures with its output unchanged; kpiFigures gives the four figures in order", async () => {
-  const { KpiRow, kpiFigures } = await import("@/components/dashboard/RangeCards");
-  assert.equal(typeof kpiFigures, "function", "RangeCards exports kpiFigures");
-  const html = renderToStaticMarkup(createElement(KpiRow, ready()));
-  assert.equal(sha256(html), KPI_ROW_SHA256.ready, "KpiRow (ready) renders exactly what it rendered before");
-  const loading = renderToStaticMarkup(createElement(KpiRow, { ...ready(), data: undefined, status: "loading" as const }));
-  assert.equal(sha256(loading), KPI_ROW_SHA256.loading, "KpiRow (loading) renders exactly what it rendered before");
-
-  const figures = kpiFigures(fixture());
-  assert.deepEqual(
-    figures.map((f) => f.label),
-    ["Net sales", "Orders", "Average order", "Collected"],
-    "the four figures in today's order",
-  );
-  assert.deepEqual(
-    figures.map((f) => f.value),
-    ["₹48,250", "126", "₹383", "₹46,980"],
-    "today's value wording",
-  );
-  assert.deepEqual(
-    figures.map((f) => f.hint),
-    [undefined, undefined, undefined, "+ ₹100 paid against earlier dues"],
-    "only Collected carries the earlier-dues hint",
-  );
-  assert.equal(kpiFigures(fixture({ duesCollected: 0 }))[3].hint, undefined, "no hint when no earlier dues were paid");
-  assert.ok(figures.every((f) => f.compareLabel === "vs Fri, 9 Oct" && f.upIsGood), "same compare label, up is good");
+// Final review m3 (as ruling R23 did for RankedList): the KPI row's code went with the row (the hero shows the four
+// figures since U0 match Task 6), and its golden pin with it.
+test("KpiRow, kpiFigures and KpiFigure are gone: nothing renders the old KPI row", async () => {
+  const cards: Record<string, unknown> = await import("@/components/dashboard/RangeCards");
+  assert.equal(typeof cards.SalesCard, "function", "landmark: RangeCards still exports its cards");
+  for (const name of ["KpiRow", "kpiFigures"]) assert.ok(!(name in cards), `RangeCards no longer exports ${name}`);
+  assert.ok(!/\bKpiFigure\b|\bKpiCard\b/.test(readSrc("components/dashboard/RangeCards.tsx")), "no KpiFigure type and no KpiCard import left in RangeCards");
 });
+
+const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 
 // ── the Net sales hero (U0 match Task 6, values 3.3, 3.17, ruling R12) ────────
 
@@ -888,29 +863,11 @@ test("DashCard variant 'dashboard': the HTML's generic card (values 3.0) and its
 
 // ── the receipt ─────────────────────────────────────────────────────────────
 
-test("MoneyBreakdownCard is a receipt: every line with a dotted leader, the net, a zig-zag edge from a CSS mask", () => {
-  const src = readSrc("components/reports/MoneyBreakdownCard.tsx");
-  assert.ok(src.includes("<CardDescription"), "landmark: the caption renders through <CardDescription>");
-  assert.ok(!src.includes("<p " + "className"), "no raw <p className> caption (its existing pin)");
-  assert.ok(!src.includes("@" + "property"), "no @property (WebView 109)");
-
-  const money = { gross: 52000, discount: 1500, reward: 400, gst: 2400, charges: 750 };
-  const html = renderToStaticMarkup(createElement(MoneyBreakdownCard, { money, net: 53250, caption: "Completed orders · Today" }));
-  assert.ok(html.includes("Bill breakdown") && html.includes("Completed orders · Today"), "title and caption");
-  let last = -1;
-  for (const line of MONEY_BREAKDOWN_LINES) {
-    const at = html.indexOf(line.label);
-    assert.ok(at > last, `"${line.label}" is on the receipt, in order`);
-    last = at;
-  }
-  for (const amount of ["₹52,000", "- ₹1,500", "- ₹400", "+ ₹2,400", "+ ₹750"]) {
-    assert.ok(html.includes(amount), `the line amount ${amount}`);
-  }
-  assert.ok(html.indexOf(MONEY_NET_LABEL) > last && html.includes("₹53,250"), "the net line closes the receipt");
-  assert.equal((html.match(/border-dotted/g) ?? []).length, MONEY_BREAKDOWN_LINES.length, "a dotted leader on every line");
-  assert.ok(html.includes("-webkit-mask:") && html.includes("conic-gradient") && html.includes("repeat-x"), "the zig-zag edge is a prefixed CSS mask of a repeated gradient");
-  const loading = renderToStaticMarkup(createElement(MoneyBreakdownCard, { net: 0, loading: true, caption: "Completed orders · Today" }));
-  assert.ok(!loading.includes("₹"), "no amounts while loading");
+// Final review m3: no page renders the reports' old receipt since the dashboard drew its own (BillBreakdown, U0 match
+// Task 6), so it is gone with its pins (here and in money-breakdown-source-pins).
+test("MoneyBreakdownCard is gone: the dashboard's receipt is BillBreakdown, and nothing else rendered it", () => {
+  assert.ok(!existsSync(path.join(HERE, "..", "components/reports/MoneyBreakdownCard.tsx")), "no MoneyBreakdownCard file left");
+  assert.ok(readSrc("components/dashboard/BillBreakdown.tsx").includes("MONEY_BREAKDOWN_LINES"), "landmark: the dashboard's receipt still draws the shared rows");
 });
 
 // ── category and status colours (Task 19) ────────────────────────────────────

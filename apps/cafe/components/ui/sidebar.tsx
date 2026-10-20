@@ -28,8 +28,6 @@ type SidebarContextProps = {
   state: "expanded" | "collapsed";
   open: boolean;
   setOpen: (open: boolean) => void;
-  openMobile: boolean;
-  setOpenMobile: (open: boolean) => void;
   isMobile: boolean;
   toggleSidebar: () => void;
 };
@@ -66,7 +64,6 @@ const SidebarProvider = React.forwardRef<
     ref,
   ) => {
     const isMobile = useIsMobile(NAV_RAIL_MIN_PX);
-    const [openMobile, setOpenMobile] = React.useState(false);
 
     // This is the internal state of the sidebar.
     // We use openProp and setOpenProp for control from outside the component.
@@ -94,10 +91,12 @@ const SidebarProvider = React.forwardRef<
       if (openProp === undefined && document.documentElement.hasAttribute(NAV_COLLAPSED_ATTR)) _setOpen(false);
     }, [openProp]);
 
-    // Helper to toggle the sidebar.
+    // Folds or unfolds the nav (the Collapse button, Ctrl+B). Below 720px there is no nav to fold (the tab bar and its
+    // More sheet take over, U0 Task 4), so it does nothing there and the remembered desktop choice stays as it was.
     const toggleSidebar = React.useCallback(() => {
-      return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open);
-    }, [isMobile, setOpen, setOpenMobile]);
+      if (isMobile) return;
+      setOpen((open) => !open);
+    }, [isMobile, setOpen]);
 
     // Adds a keyboard shortcut to toggle the sidebar.
     React.useEffect(() => {
@@ -122,11 +121,9 @@ const SidebarProvider = React.forwardRef<
         open,
         setOpen,
         isMobile,
-        openMobile,
-        setOpenMobile,
         toggleSidebar,
       }),
-      [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar],
+      [state, open, setOpen, isMobile, toggleSidebar],
     );
 
     return (

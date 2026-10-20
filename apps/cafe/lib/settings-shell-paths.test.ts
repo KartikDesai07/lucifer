@@ -212,7 +212,7 @@ test('PIN: SettingsSaveBar.tsx early-returns on !isDirty, both its buttons carry
 
 // ── 8. AppSidebar / SidebarSettingsGroup: collapsible sub-menu wiring ──────
 
-test("PIN: the nav's Settings row (AppSidebar + SidebarSettingsGroup + nav-parts) is a NavGroupRow of NavSubItem rows over VISIBLE_SETTINGS_SECTIONS, contains setOpenMobile(false), and its chevron carries group-data-[state=open]/collapsible:rotate-90 — the Settings entry expands in place instead of navigating away", () => {
+test("PIN: the nav's Settings row (AppSidebar + SidebarSettingsGroup + nav-parts) is a NavGroupRow of NavSubItem rows over VISIBLE_SETTINGS_SECTIONS, has no phone-sheet tap hook, and its chevron carries group-data-[state=open]/collapsible:rotate-90 — the Settings entry expands in place instead of navigating away", () => {
   const appSidebarSrc = stripComments(readSrc(APP_SIDEBAR));
   const groupFileExists = existsSync(absOf(SIDEBAR_SETTINGS_GROUP));
   const groupSrc = groupFileExists ? stripComments(readSrc(SIDEBAR_SETTINGS_GROUP)) : "";
@@ -242,14 +242,10 @@ test("PIN: the nav's Settings row (AppSidebar + SidebarSettingsGroup + nav-parts
     "the sidebar must not iterate the raw SETTINGS_SECTIONS (it includes hidden sections)",
   );
 
-  // The rows' tap hook stays setOpenMobile(false) (AppSidebar's closeMobile). Since U0 Task 4 a phone renders no nav
-  // at all (the tab bar and its More sheet replace the old sheet), so it never has a sheet to close; the pin keeps the
-  // rows' onNavigate hook whole rather than half-removed.
-  assert.match(
-    combined,
-    /setOpenMobile\(false\)/,
-    "setOpenMobile(false) must appear — the rows' onNavigate hook (a no-op since a phone renders no nav)",
-  );
+  // Final review m3: the rows' old tap hook (AppSidebar's closeMobile, setOpenMobile(false)) is gone whole. Since U0
+  // Task 4 a phone renders no nav at all (the tab bar and its More sheet replace the old sheet), so it had no sheet to
+  // close (lib/tab-bar-paths.test.ts pins the kit's side).
+  assert.ok(!/setOpenMobile|closeMobile|onNavigate/.test(combined), "no phone-sheet tap hook is left on the nav's Settings rows");
 
   assert.match(
     combined,

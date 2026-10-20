@@ -18,10 +18,9 @@ interface SidebarTablesGroupProps {
   /** The nav's current form (useNavWide): sub-rows when wide, the flyout in the rail. */
   wide: boolean;
   pathname: string;
-  onNavigate: () => void;
 }
 
-export function SidebarTablesGroup({ title, icon, wide, pathname, onNavigate }: SidebarTablesGroupProps) {
+export function SidebarTablesGroup({ title, icon, wide, pathname }: SidebarTablesGroupProps) {
   const onManage = isTablesManagePath(pathname);
   const [open, setOpen] = useState(onManage);
   useEffect(() => {
@@ -42,7 +41,7 @@ export function SidebarTablesGroup({ title, icon, wide, pathname, onNavigate }: 
           const active = isTableSectionActive(pathname, section.href);
           return (
             <NavSubItem key={section.href} place={place} isActive={active}>
-              <Link href={section.href} prefetch={false} aria-current={active ? "page" : undefined} onClick={onNavigate}>
+              <Link href={section.href} prefetch={false} aria-current={active ? "page" : undefined}>
                 {section.title}
               </Link>
             </NavSubItem>

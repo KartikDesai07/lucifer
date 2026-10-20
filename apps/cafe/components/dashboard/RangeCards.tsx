@@ -4,14 +4,12 @@ import type { ReactNode } from "react";
 import { QrCode, Store } from "lucide-react";
 import { cafeHourOf, cn, inr } from "@/lib/utils";
 import { CHANNEL_KIND, PAYMENT_KIND, STATUS_CLASSES, categoryHue, type StatusKind } from "@/lib/ui";
-import { deltaRatio } from "@/lib/dashboard/fold";
 import { plural, sharePercent } from "@/lib/dashboard/format";
-import { compareShort, insightWords, kpiCompareText, noCompareText, slowItemLine } from "@/lib/dashboard/labels";
+import { compareShort, insightWords, slowItemLine } from "@/lib/dashboard/labels";
 import { chartSubline, salesChart } from "@/lib/dashboard/hour-bars";
 import { DASH_PILL_CLASS, DashCard, type DashCardStatus } from "@/components/dashboard/DashCard";
 import { HourBars, HourBarsLegend } from "@/components/dashboard/HourBars";
 import { useNow } from "@/hooks/use-now";
-import { KpiCard } from "@/components/dashboard/KpiCard";
 import { BusyHoursCap, BusyHoursGrid, useHeatPick } from "@/components/dashboard/BusyHours";
 import { DashGlyph } from "@/components/dashboard/DashGlyph";
 import { LEAK_ROW_PX, MoneyLeaks, MoneyLeaksTotal, MONEY_LEAK_ROWS } from "@/components/dashboard/MoneyLeaks";
@@ -44,58 +42,6 @@ const BUSY_HOURS_BODY_PX = 14 + 4 + 7 * 30 + 6 * 4 + 14 + 17;
 const BUSY_HOURS_BODY_CLASS = "min-h-[310px] @min-[560px]:min-h-[283px]";
 
 const statusOf = (p: RangeCardProps, empty: boolean): DashCardStatus => (p.status !== "ready" ? p.status : empty ? "empty" : "ready");
-
-/** One headline figure, as the hero and KpiRow show it. */
-export interface KpiFigure {
-  label: string;
-  value: string;
-  delta: number | null;
-  compareLabel: string;
-  noCompareText: string;
-  hint?: string;
-  upIsGood: boolean;
-}
-
-/**
- * The four headline figures — Net sales, Orders, Average order, Collected —
- * against the comparison period. With no data yet (loading) the labels are
- * still named, so the cards hold their place.
- */
-export function kpiFigures(d: DashboardData | undefined): KpiFigure[] {
-  const cur = d?.kpis.current;
-  const prev = d?.kpis.previous;
-  const compare = d ? kpiCompareText(d) : "";
-  const none = d ? noCompareText(d) : "";
-  const common = { compareLabel: compare, noCompareText: none, upIsGood: true };
-  return [
-    { label: "Net sales", value: inr(cur?.sales ?? 0), delta: deltaRatio(cur?.sales ?? 0, prev?.sales ?? 0), ...common },
-    { label: "Orders", value: String(cur?.orders ?? 0), delta: deltaRatio(cur?.orders ?? 0, prev?.orders ?? 0), ...common },
-    {
-      label: "Average order",
-      value: inr(cur?.averageOrder ?? 0),
-      delta: deltaRatio(cur?.averageOrder ?? 0, prev?.averageOrder ?? 0),
-      ...common,
-    },
-    {
-      label: "Collected",
-      value: inr(cur?.collected ?? 0),
-      delta: deltaRatio(cur?.collected ?? 0, prev?.collected ?? 0),
-      hint: d && d.duesCollected > 0 ? `+ ${inr(d.duesCollected)} paid against earlier dues` : undefined,
-      ...common,
-    },
-  ];
-}
-
-export function KpiRow(p: RangeCardProps) {
-  const loading = p.status !== "ready" || !p.data;
-  return (
-    <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-      {kpiFigures(p.data).map((f) => (
-        <KpiCard key={f.label} {...f} loading={loading} updating={p.updating} />
-      ))}
-    </div>
-  );
-}
 
 /** The loaded chart's body (values 3.5): the 210px plot, 8px, the 14px x labels, then the footer's 14px + 12px over
  *  its 1px rule and one 17px line = 276px; on a phone (cw < 560) the footer takes two lines (+ 8px gap + 17px) = 301px.

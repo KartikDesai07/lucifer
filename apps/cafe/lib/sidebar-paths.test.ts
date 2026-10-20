@@ -273,16 +273,17 @@ test("PIN: next.config lengthens only the FULL-prefetch reuse window — staleTi
   assert.ok(!/dynamic/.test(block![1]), "staleTimes must not set `dynamic`");
 });
 
-test("PIN: the brand block is a link to the Dashboard that closes the phone sheet; its tile shows an uploaded logo, else the cafe's initial (and the initial when the logo fails to load)", () => {
+test("PIN: the brand block is a link to the Dashboard; its tile shows an uploaded logo, else the cafe's initial (and the initial when the logo fails to load)", () => {
   const brand = stripComments(readSrc(SIDEBAR_BRAND));
   const tags = linkTags(brand);
   assert.equal(tags.length, 1, "landmark: SidebarBrand renders one <Link>");
   // Mutation this catches: the header going back to a plain <div> (the owner
   // asked for the cafe name to open the Dashboard), or pointing elsewhere.
   assert.ok(tags[0].includes(`href="/"`), "the brand link goes to the Dashboard");
-  assert.ok(tags[0].includes("onClick={onNavigate}"), "a tap closes the phone sheet like a nav row");
+  // Final review m3: no phone sheet to close any more (a phone renders no nav), so the link only navigates.
+  assert.ok(!tags[0].includes("onClick="), "the brand link has no tap hook (the old phone sheet's closeMobile is gone)");
   const app = stripComments(readSrc(APP_SIDEBAR));
-  assert.match(app, /<SidebarBrand[^>]*onNavigate=\{closeMobile\}/, "AppSidebar hands the brand its closeMobile");
+  assert.ok(!/<SidebarBrand[^>]*onNavigate=/.test(app), "AppSidebar hands the brand no tap hook");
   // Mutation this catches: bringing back the wide-logo rule that swapped a
   // wordmark for the letter in the rail — only a load failure, or no
   // uploaded logo at all (design 5.2: the HTML's letter tile), may.

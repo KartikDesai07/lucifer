@@ -145,7 +145,7 @@ export function navSubPages(url: string, isAdmin: boolean): NavSubPage[] {
 const SCROLL_AFTER_OPEN_MS = 250;
 
 export function AppSidebar() {
-  const { state, isMobile, setOpenMobile, toggleSidebar } = useSidebar();
+  const { state, isMobile, toggleSidebar } = useSidebar();
   // The collapsed state is remembered on this device; a phone has no nav.
   const collapsed = state === "collapsed" && !isMobile;
   const wide = useNavWide(collapsed);
@@ -153,15 +153,6 @@ export function AppSidebar() {
   const { isAdmin } = useAuth();
   const labelId = useId();
   const navRef = useRef<HTMLElement>(null);
-
-  // The rows' tap hook (onNavigate on every row's Link). Below 720px the nav
-  // renders nothing (components/ui/sidebar.tsx; the tab bar and its More sheet
-  // take over, U0 Task 4), so no row can be tapped while isMobile is true and
-  // this does nothing; it stays as the rows' hook (sidebar-paths and
-  // settings-shell-paths pin it).
-  const closeMobile = () => {
-    if (isMobile) setOpenMobile(false);
-  };
 
   // Settings expands in place instead of navigating away: the section list
   // is a Collapsible sub-menu under the Settings row. Open state is
@@ -228,7 +219,7 @@ export function AppSidebar() {
           <SidebarSettingsGroup
             key={item.url} url={item.url} title={item.title} icon={item.icon} wide={wide}
             pathname={pathname} onSettings={onSettings} settingsOpen={settingsOpen}
-            onSettingsOpenChange={setSettingsOpen} onNavigate={closeMobile}
+            onSettingsOpenChange={setSettingsOpen}
           />
         );
       case "/reports":
@@ -236,21 +227,19 @@ export function AppSidebar() {
           <SidebarReportsGroup
             key={item.url} title={item.title} icon={item.icon} wide={wide} pathname={pathname}
             onReports={onReports} reportsOpen={reportsOpen} onReportsOpenChange={setReportsOpen}
-            onNavigate={closeMobile}
           />
         );
       case "/products":
         return (
           <SidebarMenuGroup
             key={item.url} title={item.title} icon={item.icon} wide={wide} pathname={pathname}
-            isAdmin={isAdmin} menuOpen={menuOpen} onMenuOpenChange={setMenuOpen} onNavigate={closeMobile}
+            isAdmin={isAdmin} menuOpen={menuOpen} onMenuOpenChange={setMenuOpen}
           />
         );
       case "/tables/setup":
         return (
           <SidebarTablesGroup
             key={item.url} title={item.title} icon={item.icon} wide={wide} pathname={pathname}
-            onNavigate={closeMobile}
           />
         );
     }
@@ -263,7 +252,6 @@ export function AppSidebar() {
           prefetch={false}
           title={item.title}
           aria-current={active ? "page" : undefined}
-          onClick={closeMobile}
         >
           <NavRowContent icon={item.icon} title={item.title} railTitle={item.railTitle}>
             {item.url === "/requests" && <RequestCountBadge />}
@@ -277,7 +265,7 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <div className={`${brandFontVariables} flex min-h-0 flex-1 flex-col`}>
         <nav ref={navRef} aria-label="Main" data-ui="nav" className={BRAND_NAV_CLASS}>
-          <SidebarBrand key={logoUrl ?? "initial"} brandName={brandName} logoUrl={logoUrl} onNavigate={closeMobile} />
+          <SidebarBrand key={logoUrl ?? "initial"} brandName={brandName} logoUrl={logoUrl} />
 
           <div className={BRAND_NAV_SCROLL_CLASS}>
             {visibleSections.map((section, index) => {

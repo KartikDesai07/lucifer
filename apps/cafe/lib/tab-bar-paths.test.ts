@@ -211,3 +211,18 @@ test("PIN: nothing on a phone opens the old nav sheet any more (the header's men
   assert.ok(!/<Sheet\b/.test(sidebar), "the nav renders no sheet");
   assert.match(sidebar, /if \(isMobile\) return null;/, "below 720px the nav renders nothing (the tab bar takes over)");
 });
+
+// Final review m3: the old phone sheet's state went with the sheet. The kit sidebar keeps no openMobile, its fold
+// toggle (the Collapse button, Ctrl+B) still does nothing below 720px, and AppSidebar's no-op closeMobile tap hook is
+// gone from the nav's rows.
+test("the old phone sheet's state is gone: no openMobile in the kit sidebar, no closeMobile tap hook on the nav's rows", () => {
+  const sidebar = read("components/ui/sidebar.tsx");
+  assert.ok(!/openMobile|setOpenMobile/.test(sidebar), "the kit sidebar holds no phone-sheet state");
+  assert.match(sidebar, /if \(isMobile\) return;\s*setOpen\(\(open\) => !open\);/, "below 720px the fold toggle still does nothing");
+  assert.match(sidebar, /isMobile,\s*toggleSidebar,/, "landmark: the context still says isMobile and gives the toggle");
+  for (const file of ["AppSidebar", "SidebarBrand", "SidebarSettingsGroup", "SidebarReportsGroup", "SidebarMenuGroup", "SidebarTablesGroup"]) {
+    const src = read(`components/layout/${file}.tsx`);
+    assert.ok(src.includes("<Link"), `landmark: ${file} renders its Links`);
+    assert.ok(!/closeMobile|setOpenMobile|onNavigate/.test(src), `${file}: no phone-sheet tap hook left`);
+  }
+});

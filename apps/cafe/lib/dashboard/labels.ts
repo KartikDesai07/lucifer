@@ -34,11 +34,6 @@ export function periodDates(range: DashboardRange): string {
   return `${dayLabel(range.from)} – ${dayLabel(range.to)}`;
 }
 
-/** The KPI delta suffix — kept short so it stays on one line in a four-up row. */
-export function kpiCompareText(data: DashboardData): string {
-  return data.compare.label;
-}
-
 const WEEKDAYS_LONG = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
 
 /**

@@ -19,7 +19,6 @@ interface SidebarSettingsGroupProps {
   onSettings: boolean;
   settingsOpen: boolean;
   onSettingsOpenChange: (open: boolean) => void;
-  onNavigate: () => void;
 }
 
 export function SidebarSettingsGroup({
@@ -31,7 +30,6 @@ export function SidebarSettingsGroup({
   onSettings,
   settingsOpen,
   onSettingsOpenChange,
-  onNavigate,
 }: SidebarSettingsGroupProps) {
   // The Settings hub itself (/settings, the card grid) has no section row of
   // its own, so there the Settings row stays lit and announces the page.
@@ -55,7 +53,7 @@ export function SidebarSettingsGroup({
           const active = pathname === href;
           return (
             <NavSubItem key={section.slug} place={place} isActive={active}>
-              <Link href={href} prefetch={false} aria-current={active ? "page" : undefined} onClick={onNavigate}>
+              <Link href={href} prefetch={false} aria-current={active ? "page" : undefined}>
                 {section.title}
               </Link>
             </NavSubItem>

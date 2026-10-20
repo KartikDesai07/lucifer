@@ -10,8 +10,8 @@ import type { MoneyBreakdown } from "@/types";
 // border and a torn lower edge, the period tag in Geist Mono, a dashed rule, our five rows in our words (they are our
 // data: Gross bill, Discounts, Rewards given, GST added, Additional charges) in the HTML's colours and its − / + signs,
 // a second dashed rule and the Net sales total. Masked rows read "• • • •" in text-3 and the total "₹ • • • •"
-// (values 3.17); a screen reader hears "{row} hidden" instead of the bullets. It replaced the dashboard's
-// components/reports/MoneyBreakdownCard.tsx, which no page renders now (left for a later clean-up).
+// (values 3.17); a screen reader hears "{row} hidden" instead of the bullets. It replaced the reports' old receipt
+// card (deleted once nothing rendered it, final review m3).
 
 // values 3.4: the gross in the text colour, the deductions in --bad-i, the additions in --text-2.
 const ROW_COLOUR: Record<keyof MoneyBreakdown, string> = {

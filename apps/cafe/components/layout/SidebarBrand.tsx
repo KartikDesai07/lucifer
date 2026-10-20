@@ -12,23 +12,19 @@ import { NavDeviceLine } from "@/components/layout/NavDeviceLine";
 // the name's first letter in Shrikhand on the brand red; a logo that fails to load falls back to the letter too.
 //
 // The block is a link to the Dashboard (owner, 2026-09-29), like the home link in any app's header. It never
-// prefetches on its own (the nav's only warmer is useWarmRoutes, which keeps "/" warm) and it calls the rows' tap hook
-// exactly like a nav row does.
+// prefetches on its own (the nav's only warmer is useWarmRoutes, which keeps "/" warm).
 
 interface SidebarBrandProps {
   brandName: string;
   /** The uploaded logo to show in the tile, or null for the letter. */
   logoUrl: string | null;
-  /** Called on a tap: AppSidebar's rows' tap hook (closeMobile). */
-  onNavigate: () => void;
 }
 
-export function SidebarBrand({ brandName, logoUrl, onNavigate }: SidebarBrandProps) {
+export function SidebarBrand({ brandName, logoUrl }: SidebarBrandProps) {
   return (
     <Link
       href="/"
       prefetch={false}
-      onClick={onNavigate}
       title={brandName}
       aria-label={`${brandName}, go to Dashboard`}
       data-ui="nav-brand"

@@ -21,7 +21,6 @@ interface SidebarMenuGroupProps {
   isAdmin: boolean;
   menuOpen: boolean;
   onMenuOpenChange: (open: boolean) => void;
-  onNavigate: () => void;
 }
 
 export function SidebarMenuGroup({
@@ -32,7 +31,6 @@ export function SidebarMenuGroup({
   isAdmin,
   menuOpen,
   onMenuOpenChange,
-  onNavigate,
 }: SidebarMenuGroupProps) {
   const sections = visibleMenuSections(isAdmin);
   const onMenu = isMenuPath(pathname);
@@ -45,7 +43,7 @@ export function SidebarMenuGroup({
     const exact = isActivePath(pathname, MENU_ITEMS_PATH);
     return (
       <NavItem isActive={onMenu}>
-        <Link href={MENU_ITEMS_PATH} prefetch={false} title={title} aria-current={exact ? "page" : undefined} onClick={onNavigate}>
+        <Link href={MENU_ITEMS_PATH} prefetch={false} title={title} aria-current={exact ? "page" : undefined}>
           <NavRowContent icon={icon} title={title} />
         </Link>
       </NavItem>
@@ -65,7 +63,7 @@ export function SidebarMenuGroup({
           const active = isActivePath(pathname, section.href);
           return (
             <NavSubItem key={section.href} place={place} isActive={active}>
-              <Link href={section.href} prefetch={false} aria-current={active ? "page" : undefined} onClick={onNavigate}>
+              <Link href={section.href} prefetch={false} aria-current={active ? "page" : undefined}>
                 {section.title}
               </Link>
             </NavSubItem>

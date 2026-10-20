@@ -6,7 +6,6 @@ import {
   compareWords,
   insightPeriod,
   noCompareWords,
-  kpiCompareText,
   noCompareText,
   periodDates,
   periodLabel,
@@ -60,10 +59,6 @@ test("periodLabel names today, yesterday, a past day, the 7/30-day presets and a
 test("periodDates spells the dates behind a named period", () => {
   assert.equal(periodDates({ from: TODAY, to: TODAY }), "Tue, 29 Sep");
   assert.equal(periodDates({ from: "2026-09-23", to: TODAY }), "23 Sep – 29 Sep");
-});
-
-test("the KPI delta suffix is the comparison's own short label", () => {
-  assert.equal(kpiCompareText(data({})), "vs Tue, 22 Sep");
 });
 
 // U0 match (Task 5, values 3.2, ruling R9): the HTML's "{range} · compared with {comparison}" under the period's name,

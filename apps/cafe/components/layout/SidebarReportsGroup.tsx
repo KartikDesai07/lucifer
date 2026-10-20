@@ -19,7 +19,6 @@ interface SidebarReportsGroupProps {
   onReports: boolean;
   reportsOpen: boolean;
   onReportsOpenChange: (open: boolean) => void;
-  onNavigate: () => void;
 }
 
 export function SidebarReportsGroup({
@@ -30,7 +29,6 @@ export function SidebarReportsGroup({
   onReports,
   reportsOpen,
   onReportsOpenChange,
-  onNavigate,
 }: SidebarReportsGroupProps) {
   return (
     <NavGroupRow
@@ -46,7 +44,7 @@ export function SidebarReportsGroup({
           const active = pathname === href;
           return (
             <NavSubItem key={section.slug} place={place} isActive={active}>
-              <Link href={href} prefetch={false} aria-current={active ? "page" : undefined} onClick={onNavigate}>
+              <Link href={href} prefetch={false} aria-current={active ? "page" : undefined}>
                 {section.title}
               </Link>
             </NavSubItem>
