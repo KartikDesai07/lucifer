@@ -487,6 +487,31 @@ test("PIN: CartLines selects one line and offers Remove (a new line) or Void (a 
   assert.equal(constOf(lines, "ACTION_CLASS"), "min-h-11 cursor-pointer bg-transparent p-0 text-[12.5px] font-medium text-link", "12.5px 500 --link (our own control: 44px tall)");
 });
 
+// U1 final fix wave (the Task 4 review's FIX BEFORE MERGE): the action button unmounts with its row, and the keyboard
+// focus fell to <body>. After Remove it moves to the next line's name (else the previous, else the cart's first
+// control: lib/pos-cart-view.ts focusIndexAfterRemove, unit-tested); before Void opens the dialog it moves to the line's
+// own name, so the dialog's opener focus (hooks/use-opener-focus.ts) gives it back there when the dialog closes.
+test("PIN: the focus never falls to <body> after a line's Remove or Void", () => {
+  const lines = stripComments(readSrc(CART_LINES));
+  const line = stripComments(readSrc(CART_LINE));
+  assert.match(line, /data-ui="pos-line-name"/, "the name button is addressable");
+  assert.match(lines, /<div ref=\{listRef\} data-ui="pos-cart-lines"/, "the list is held, to find its names");
+  const remove = between(lines, "item.kotRound === 0", ">Remove</button>");
+  assert.ok(remove.indexOf("removedRef.current = { lineId: item.lineId, index: i };") >= 0, "Remove notes the line and its place");
+  assert.ok(
+    remove.indexOf("removedRef.current = { lineId: item.lineId, index: i };") < remove.indexOf("onRemove(item.lineId)"),
+    "noted before today's remove runs",
+  );
+  assert.ok(lines.includes("focusIndexAfterRemove(gone.index, names.length)"), "the next line, else the previous (the pure rule)");
+  assert.ok(lines.includes("if (!gone || lines.some((l) => l.lineId === gone.lineId)) return;"), "only once the line is really gone");
+  const voidRow = between(lines, "if (!resumedOrder || !onVoidItem) return null;", ">Void</button>");
+  assert.ok(voidRow.includes("nameOf(e.currentTarget)?.focus();"), "Void hands the focus to the line's name first");
+  assert.ok(
+    voidRow.indexOf("nameOf(e.currentTarget)?.focus();") < voidRow.indexOf("onVoidItem(voidLineOf(item, resumedOrder))"),
+    "before the dialog opens (its opener focus remembers the name)",
+  );
+});
+
 // Owner Q9 (design 6.5): the head's two cells, Table and Customer, in the HTML's cell look; the Table cell opens today's
 // table picker for a new order and today's move / assign dialog for a tab; both lock while busy.
 test("PIN: CartHead draws the HTML's head: the title, the tab's meta, Clear / Close in the red link style, and two cells", () => {
@@ -1247,7 +1272,13 @@ test("PIN: owner Q11 — APPLIED money stays OUTSIDE the panel: the bill rows, T
   const close = cart.indexOf("</BillOptionsPanel>");
   const bill = cart.search(/<CartBill[\s/>]/);
   assert.ok(bill > 0, "Cart.tsx must render <CartBill");
-  assert.ok(bill < open || bill > close, "the bill renders outside the panel — a charge the customer pays is never behind a tap");
+  // Ruling P16: the bill's rows sit behind "Details" on a window under 820px tall, so what holds is narrower than "never
+  // behind a tap": the applied rows and their remove controls are the bill's own (never in the panel), and a waived or
+  // changed table charge opens the details by itself until the user uses the toggle.
+  assert.ok(
+    bill < open || bill > close,
+    "the bill renders outside the panel — applied money is the bill's own rows, and a waived or changed table charge shows the details by itself (P16)",
+  );
 
   const src = stripComments(readSrc(CART_BILL));
   // Needles anchored on the tag BOUNDARY: a bare prefix would pass a renamed-away component (mutation-tested in D9.8).
@@ -1355,8 +1386,15 @@ test("PIN: the footer is the HTML's (values 5.5): sticky at the cart's foot over
 
 test("PIN: the bill is the HTML's (values 5.5, 0.4; owner Q12): the details behind Total · Details / Hide details, open by default from an 820px-tall window", () => {
   const src = stripComments(readSrc(CART_BILL));
-  assert.match(src, /const billOpen = toggled \?\? windowHeight >= BILL_OPEN_MIN_HEIGHT_PX;/, "values 0.4: billOpen = s.billOpen ?? (s.h >= 820)");
-  assert.match(src, /const BILL_OPEN_MIN_HEIGHT_PX = 820;/, "the HTML's 820px");
+  // Ruling P16 (U1 final fix wave): the rule moved to lib/pos-cart-view.ts (billDetailsOpen, unit-tested: the user's toggle
+  // wins; until then the HTML's 820px, and open while the table charge is waived or changed).
+  assert.match(
+    src,
+    /const billOpen = billDetailsOpen\(\{ toggled, windowHeight, chargeAdjusted \}\);/,
+    "values 0.4: billOpen = s.billOpen ?? (s.h >= 820), and P16's waived / changed table charge",
+  );
+  assert.match(src, /const chargeAdjusted = chargeShown && charge !== entitledCharge;/, "P16: the same condition as the waived / changed row");
+  assert.match(src, /\{chargeShown && \(/, "the charge rows render on the same condition");
   assert.match(src, /useWindowHeight\(\)/, "the window's own height (the HTML's s.h)");
   assert.ok(src.includes('{billOpen ? "Hide details" : "Details"}'), "owner Q1: the HTML's words");
   assert.match(src, /aria-expanded=\{billOpen\}/, "the toggle says whether the rows show");

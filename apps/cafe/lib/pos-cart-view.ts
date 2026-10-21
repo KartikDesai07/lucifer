@@ -2,7 +2,8 @@
 // docs/superpowers/specs/2026-10-20-pos-html-values.md; design 6.5, 6.6; owner Q9, Q10): the title, a tab's
 // "#012 · 32 min", the Table cell, a line's number and meta, the stored-order address the cart's Void action hands the
 // void dialog, and when a selected line stays selected; U1 Task 7: the order bar's first line below 1024px (values
-// 6.1). Pure: no React, no fetching; client-safe.
+// 6.1); the final fix wave: where the focus goes after a line's Remove, and when the bill's details show (ruling P16).
+// Pure: no React, no fetching; client-safe.
 import { inr, orderItemModifierLines, orderLineKey } from "@pos/shared/utils";
 import { tableAreaIdOf } from "@/lib/table-areas";
 import type { Area, Order, OrderItem, Table } from "@/types";
@@ -137,4 +138,22 @@ export function selectionHolds(
   now: { scope: string; busy: boolean; lineIds: readonly string[] },
 ): boolean {
   return !now.busy && sel.scope === now.scope && now.lineIds.includes(sel.lineId);
+}
+
+/** Where the keyboard focus goes once a removed line is gone (U1 final fix wave): the line that took its place (the
+ *  next one), else the one before it, among the `remaining` lines; null when none is left (the cart's first control). */
+export function focusIndexAfterRemove(removedAt: number, remaining: number): number | null {
+  if (remaining === 0) return null;
+  return Math.min(removedAt, remaining - 1);
+}
+
+/** The HTML opens the bill's details from an 820px-tall window (values 0.4: billOpen = s.billOpen ?? (s.h >= 820)). */
+export const BILL_OPEN_MIN_HEIGHT_PX = 820;
+
+/** Whether the bill's details show (owner Q12; values 0.4; ruling P16): the user's own toggle wins once used (the
+ *  HTML's toggleBill stores it); until then the window's height, and open while the table charge is waived or changed
+ *  (charge !== entitledCharge), so today's D9.8 guard holds on short windows too: a waiver never rides unseen onto the
+ *  next customer. */
+export function billDetailsOpen(input: { toggled: boolean | null; windowHeight: number; chargeAdjusted: boolean }): boolean {
+  return input.toggled ?? (input.chargeAdjusted || input.windowHeight >= BILL_OPEN_MIN_HEIGHT_PX);
 }

@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 
 import { effectiveUnitPrice } from "@pos/shared/public";
 import { initialSelected, pickModifierResult } from "./modifier-picker";
-import { NO_TAG, cardTag, defaultAddOptions, priceButtonTitle, priceButtonsFor, priceText, shortSize } from "./pos-price-buttons";
+import { NO_TAG, cardNameDescribedBy, cardTag, defaultAddOptions, priceButtonTitle, priceButtonsFor, priceText, shortSize } from "./pos-price-buttons";
 
 const plain = { price: 229, discount: 0, modifiers: [] as string[], available: true };
 
@@ -153,4 +153,15 @@ test("cardTag: Unavailable (bad) first, then the discount, then Customisable, th
   assert.deepStrictEqual(cardTag(base, none), { text: NO_TAG, tone: "plain" }, "else blank");
   assert.equal(NO_TAG, " ", "a no-break space keeps the 16px tag line on every card (values 4.2)");
   assert.deepStrictEqual(cardTag(base, { showCategory: true, categoryLabel: "" }), { text: NO_TAG, tone: "plain" }, "an empty name never collapses the line");
+});
+
+// U1 final fix wave (the Task 3 review's FIX BEFORE MERGE): the name button's aria-label names the item and what a tap
+// does, which hid the tag line ("Unavailable", "10% off", "Customisable", the category) from screen readers; the button
+// is now described by the tag and, while the item is in the cart, by its qty badge.
+test("cardNameDescribedBy: the tag line, then the qty badge while in the cart; a blank tag line describes nothing", () => {
+  const ids = { tagId: "tag-1", badgeId: "badge-1" };
+  assert.equal(cardNameDescribedBy({ ...ids, tag: "Unavailable", inCart: false }), "tag-1", "the tag alone");
+  assert.equal(cardNameDescribedBy({ ...ids, tag: "10% off", inCart: true }), "tag-1 badge-1", "the tag, then the qty badge");
+  assert.equal(cardNameDescribedBy({ ...ids, tag: NO_TAG, inCart: true }), "badge-1", "a blank tag line is not read out; the badge still is");
+  assert.equal(cardNameDescribedBy({ ...ids, tag: NO_TAG, inCart: false }), undefined, "nothing to describe: no attribute");
 });

@@ -29,10 +29,10 @@ export interface CategoryPickerProps {
 }
 
 const NO_CATEGORIES: Category[] = [];
-const NO_PRODUCTS: Product[] = [];
 
+// While the products load the rows carry no count (null), so no row reads "0" on the first paint (U1 final fix wave).
 function useCategoryRows(categories: Category[] | undefined, products: Product[] | undefined, query: string): CategoryRow[] {
-  return useMemo(() => categoryRows(categories ?? NO_CATEGORIES, products ?? NO_PRODUCTS, query), [categories, products, query]);
+  return useMemo(() => categoryRows(categories ?? NO_CATEGORIES, products, query), [categories, products, query]);
 }
 
 // A row (values 2.1-2.2): 34px (44px on a phone), radius 6, 0 10px, 13.5px; the chosen one on --accent-t in --accent-i
@@ -44,7 +44,7 @@ const ROW_CLASS =
 interface CategoryRowButtonProps {
   value: string;
   name: string;
-  count: number;
+  count: number | null;
   hue: string | null;
   selected: boolean;
   onSelect: (value: string) => void;
@@ -69,9 +69,11 @@ function CategoryRowButton({ value, name, count, hue, selected, onSelect }: Cate
         {hue && <span aria-hidden="true" data-ui="pos-cat-dot" className="size-2 flex-none rounded-[50%]" style={{ background: hue }} />}
         <span className="truncate">{name}</span>
       </span>
-      <span data-ui="pos-cat-count" className={cn("text-[12px]", selected ? "text-accent-foreground" : "text-subtle-foreground")}>
-        {count}
-      </span>
+      {count !== null && (
+        <span data-ui="pos-cat-count" className={cn("text-[12px]", selected ? "text-accent-foreground" : "text-subtle-foreground")}>
+          {count}
+        </span>
+      )}
     </button>
   );
 }

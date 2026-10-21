@@ -149,7 +149,10 @@ test("PIN (4): pos-cart-props.ts wires onAddExtraCharge/onRemoveExtraCharge/extr
   // keyed on <CartExtraChargeRows, because the ADD FORM moved up into the More
   // menu (now the Bill options panel) and its position there says nothing about
   // the bill's arithmetic — only the rendered rows do.
-  const tableChargeBlockAt = billSrc.indexOf('chargeLabel !== "" && (entitledCharge > 0 || charge > 0)');
+  // U1 final fix wave (ruling P16): the block's condition is named once (chargeShown, also read by the details' rule),
+  // so the block's landmark is its render, {chargeShown && (; the condition itself is pinned in pos-layout-paths.
+  assert.ok(billSrc.includes('const chargeShown = chargeLabel !== "" && (entitledCharge > 0 || charge > 0);'), "the table names a charge (today's condition)");
+  const tableChargeBlockAt = billSrc.indexOf("{chargeShown && (");
   const extraRowsAt = billSrc.search(/<CartExtraChargeRows[\s/>]/);
   const totalRowAt = billSrc.indexOf("<span>Total</span>");
   assert.ok(tableChargeBlockAt >= 0, "positive landmark: the table-charge conditional block must still be present");

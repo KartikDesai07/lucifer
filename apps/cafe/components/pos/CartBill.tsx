@@ -9,6 +9,7 @@ import { CartAppliedRows } from "@/components/pos/CartAppliedRows";
 import { CartAppliedCard } from "@/components/pos/CartRewardCards";
 import { CartExtraChargeRows, type ExtraChargeEntry } from "@/components/pos/CartExtraCharges";
 import { POS_BILL_LABEL_CLASS, POS_BILL_LINK_CLASS, POS_BILL_ROW_CLASS, POS_BILL_VALUE_CLASS } from "@/lib/pos-layout";
+import { billDetailsOpen } from "@/lib/pos-cart-view";
 import type { RungOffer } from "@/lib/reward-rungs";
 import type { CardOffer } from "@/lib/reward-card-offers";
 
@@ -16,11 +17,10 @@ import type { CardOffer } from "@/lib/reward-card-offers";
 // cart's bill in the HTML's block — the rows behind "Total · Details / Hide details", then the total. The rows are
 // today's (our words, our figures): the subtotal, the discount, the applied promo / reward / scratch card, GST, the
 // table's charge (its amount field, Remove = waive, and the "waived / changed from" row with Undo), the extra charges.
-// Each row that can be taken off keeps its control here, outside the Bill options panel: what the customer pays is
-// never behind a tap (D9.8, D9.8d). Every figure is usePosTotals' — this block only prints them (lib/receipt.test.ts).
-
-/** The HTML opens the details from an 820px-tall window (values 0.4: billOpen = s.billOpen ?? (s.h >= 820)). */
-const BILL_OPEN_MIN_HEIGHT_PX = 820;
+// Each row that can be taken off keeps its control here, outside the Bill options panel (D9.8, D9.8d); the rows sit
+// behind "Details" on a window under 820px tall, and a waived or changed table charge opens them by itself until the
+// user uses the toggle (ruling P16: lib/pos-cart-view.ts billDetailsOpen). Every figure is usePosTotals' — this block
+// only prints them (lib/receipt.test.ts).
 
 /** "Total · Details" (values 5.5): the toggle — "Total" 15px 600 --text, 6px, then the 12px 500 --link word. */
 const TOGGLE_CLASS = cn(
@@ -86,9 +86,13 @@ export function CartBill({
 }: CartBillProps) {
   const detailsId = useId();
   const windowHeight = useWindowHeight();
-  // The operator's own choice wins once made (the HTML's toggleBill stores it); until then, the window's height.
+  // The table names a charge for this bill; it was waived or changed (the "waived / changed from" row says so).
+  const chargeShown = chargeLabel !== "" && (entitledCharge > 0 || charge > 0);
+  const chargeAdjusted = chargeShown && charge !== entitledCharge;
+  // The operator's own choice wins once made (the HTML's toggleBill stores it); until then, the window's height, and
+  // open while the table charge is waived or changed (ruling P16).
   const [toggled, setToggled] = useState<boolean | null>(null);
-  const billOpen = toggled ?? windowHeight >= BILL_OPEN_MIN_HEIGHT_PX;
+  const billOpen = billDetailsOpen({ toggled, windowHeight, chargeAdjusted });
 
   return (
     // values 5.5: the bill block, its rows 5px apart, 13px --text-2 (the amounts in --text).
@@ -130,7 +134,7 @@ export function CartBill({
 
           {/* The selected table's charge. Sits BELOW the GST line because that is where it lands in the arithmetic —
               it is added after tax, not taxed. Rendered only when the table actually names a charge. */}
-          {chargeLabel !== "" && (entitledCharge > 0 || charge > 0) && (
+          {chargeShown && (
             <>
               <div className={POS_BILL_ROW_CLASS}>
                 <span className={POS_BILL_LABEL_CLASS}>
@@ -164,7 +168,7 @@ export function CartBill({
               {/* Says out loud that this bill no longer matches the table's own setting, and offers the way back —
                   otherwise a waiver made on the previous customer silently rides onto the next one. The HTML's
                   "Service charge removed · Add back" row. */}
-              {charge !== entitledCharge && (
+              {chargeAdjusted && (
                 <div className={POS_BILL_ROW_CLASS}>
                   <span className="min-w-0 truncate">
                     {charge === 0 ? `${chargeLabel} waived` : `${chargeLabel} changed from ${inr(entitledCharge)}`}

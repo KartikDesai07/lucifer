@@ -56,7 +56,12 @@ test("PIN: the card's callbacks are product-bound (onAdd also takes the price bu
   assert.ok(name.includes("disabled={outOfStock}"), "an out-of-stock name opens nothing (values 4.2)");
   assert.ok(name.includes("title={product.name}"), "a name cut by the ellipsis stays readable (values 4.1)");
   assert.match(src, /aria-label=\{`\$\{qty\} in cart`\}/, "landmark: the qty badge must keep aria-label={`${qty} in cart`}");
-  assert.ok(name.includes("aria-describedby={inCart ? badgeId : undefined}"), "the name button is described by the badge, so its qty is heard");
+  // U1 final fix wave: the tag line is heard too (its words were hidden behind the aria-label), then the badge.
+  assert.ok(
+    name.includes("aria-describedby={cardNameDescribedBy({ tagId, badgeId, tag: tag.text, inCart })}"),
+    "the name button is described by the tag line and the badge (lib/pos-price-buttons.ts, unit-tested), so both are heard",
+  );
+  assert.match(src, /<span id=\{tagId\} data-ui="pos-card-tag"/, "the tag line carries its own id");
   // The corner options button and its icon are gone (owner Q5: the name opens the modal).
   assert.ok(!src.includes("NotebookPen"), "no NotebookPen corner button");
   assert.ok(!src.includes("POS_TILE_OPTIONS"), "no corner-button classes");
@@ -214,7 +219,9 @@ test("PIN: the card's height is the HTML's 117px (123px below 1100px): 1 + 12 + 
 
 test("PIN: the photo area shows only for an item with a photo: 112px (96px on a phone), radius 10, --surface-2, cover, greyscale when out of stock (owner Q6, values 4.1/4.6)", () => {
   const src = stripComments(readSrc(PRODUCT_CARD));
-  assert.ok(src.includes("const photo = productImageUrl(product.image, CARD_PHOTO_PX);"), "the stored ref resolved by lib/images.ts");
+  // U1 final fix wave: Cloudinary scales the photo to fit (c_fit, no crop) and the box's object-cover crops it once,
+  // instead of a c_fill square crop cropped again by the 194x112 / 340x96 box.
+  assert.ok(src.includes("const photo = productImageUrl(product.image, CARD_PHOTO_PX, { fit: true });"), "the stored ref resolved by lib/images.ts, cropped once");
   const at = src.indexOf("{photo && (");
   assert.ok(at >= 0, "the area renders only when there is a photo");
   const area = src.slice(at, src.indexOf("</div>", at));

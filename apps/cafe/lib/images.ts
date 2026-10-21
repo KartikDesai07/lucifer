@@ -89,9 +89,11 @@ export function brandingUrl(slot: BrandingSlot): string {
 }
 
 export interface ProductImageUrlOptions {
-  // Cloudinary only: c_fill square-crops (fine for product tiles), but a wide
-  // logo needs c_fit (scale to bound, no crop) — the OrderReceipt/AppSidebar
-  // logo call sites pass this; product image call sites leave it unset.
+  // Cloudinary only: c_fill square-crops (fine for square product tiles), but a
+  // wide logo needs c_fit (scale to bound, no crop) — the OrderReceipt/AppSidebar
+  // logo call sites pass this, and so does the /pos card, whose wide photo box
+  // crops the photo itself (object-cover); other product image call sites leave
+  // it unset.
   fit?: boolean;
 }
 

@@ -10,7 +10,10 @@ import { cartItemFromOrderItem } from "@/hooks/use-cart";
 import type { CartItem } from "@/hooks/use-cart";
 import type { Area, Order, OrderItem, Table } from "@/types";
 import {
+  BILL_OPEN_MIN_HEIGHT_PX,
+  billDetailsOpen,
   cartTitle,
+  focusIndexAfterRemove,
   lineMeta,
   lineNumber,
   matchVoidLine,
@@ -197,4 +200,29 @@ test("selectionHolds: one selected line, kept only while it is on screen, in the
   assert.equal(selectionHolds(sel, { scope: "tab-2", busy: false, lineIds: ids }), false, "another tab resumed: cleared");
   assert.equal(selectionHolds(sel, { scope: "new", busy: false, lineIds: ids }), false, "the tab closed (a new order): cleared");
   assert.equal(selectionHolds(sel, { scope: "tab-1", busy: false, lineIds: ["#0:pA", "pC"] }), false, "the line went: cleared");
+});
+
+// U1 final fix wave (the Task 4 review's FIX BEFORE MERGE): after "Remove" the action row unmounts with its line, and
+// the keyboard focus fell to <body>; it now moves to the next line's name, else the previous one's, else the cart.
+test("focusIndexAfterRemove: the next line (it takes the removed one's place), else the previous, else none", () => {
+  assert.equal(focusIndexAfterRemove(0, 2), 0, "the first of three removed: the next line is now first");
+  assert.equal(focusIndexAfterRemove(1, 2), 1, "a middle line removed: the next line moved up into its place");
+  assert.equal(focusIndexAfterRemove(2, 2), 1, "the last line removed: the previous one");
+  assert.equal(focusIndexAfterRemove(0, 0), null, "the only line removed: no line is left (the cart's first control)");
+  assert.equal(focusIndexAfterRemove(5, 3), 2, "an index past the end (lines shifted meanwhile): the last line");
+});
+
+// ── the bill's details (owner Q12; ruling P16) ────────────────────────────────────────────────────────────────────
+
+test("billDetailsOpen: the user's own toggle wins; until then the HTML's 820px rule, and open while the table charge is waived or changed", () => {
+  assert.equal(BILL_OPEN_MIN_HEIGHT_PX, 820, "values 0.4: billOpen = s.billOpen ?? (s.h >= 820)");
+  assert.equal(billDetailsOpen({ toggled: null, windowHeight: 820, chargeAdjusted: false }), true, "an 820px-tall window: open");
+  assert.equal(billDetailsOpen({ toggled: null, windowHeight: 819, chargeAdjusted: false }), false, "shorter: closed");
+  assert.equal(
+    billDetailsOpen({ toggled: null, windowHeight: 700, chargeAdjusted: true }),
+    true,
+    "P16: a waived or changed table charge shows by itself (a waiver never rides unseen onto the next customer)",
+  );
+  assert.equal(billDetailsOpen({ toggled: false, windowHeight: 900, chargeAdjusted: true }), false, "the user hid the details: they stay hidden");
+  assert.equal(billDetailsOpen({ toggled: true, windowHeight: 600, chargeAdjusted: false }), true, "the user opened them: they stay open");
 });

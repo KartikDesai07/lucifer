@@ -86,3 +86,11 @@ export function cardTag(
   if (opts.showCategory && opts.categoryLabel !== "") return { text: opts.categoryLabel, tone: "plain" };
   return { text: NO_TAG, tone: "plain" };
 }
+
+/** The name button's description (U1 final fix wave): its aria-label names the item and what a tap does, so the tag
+ *  line inside it ("Unavailable", "10% off", "Customisable", the category) is read out as the description, then the qty
+ *  badge while the item is in the cart. A blank tag line (NO_TAG) says nothing; nothing at all: no attribute. */
+export function cardNameDescribedBy(input: { tagId: string; badgeId: string; tag: string; inCart: boolean }): string | undefined {
+  const ids = [input.tag !== NO_TAG ? input.tagId : null, input.inCart ? input.badgeId : null].filter((id): id is string => id !== null);
+  return ids.length > 0 ? ids.join(" ") : undefined;
+}

@@ -30,34 +30,36 @@ export function categoryHueMap(categories: readonly Pick<Category, "_id">[]): Ma
   return new Map(categories.map((c, i) => [c._id, hueAt(i)]));
 }
 
-/** One row of the list: `key` is what a pick selects (ALL_CATEGORIES or the category's _id); `hue` is null for
- *  "All items" (no dot). */
+/** One row of the list: `key` is what a pick selects (ALL_CATEGORIES or the category's _id); `count` is null while
+ *  the products load (no number is drawn, never a "0"); `hue` is null for "All items" (no dot). */
 export interface CategoryRow {
   key: string;
   name: string;
-  count: number;
+  count: number | null;
   hue: string | null;
 }
 
 /** The rows for the find text `query`: with no query, "All items" (every product) then every category; with one, only
  *  the categories whose name contains it (any case; the HTML's trimmed, lower-cased `cq`), "All items" left out, each
- *  keeping the hue of its place among all the categories so a filter never recolours a row. No match: no rows. */
+ *  keeping the hue of its place among all the categories so a filter never recolours a row. No match: no rows.
+ *  `products` is undefined while the menu loads: every row's count is null then (U1 final fix wave). */
 export function categoryRows(
   categories: readonly Pick<Category, "_id" | "name">[],
-  products: readonly Pick<Product, "categoryId">[],
+  products: readonly Pick<Product, "categoryId">[] | undefined,
   query: string,
 ): CategoryRow[] {
   const counts = new Map<string, number>();
-  for (const p of products) counts.set(p.categoryId, (counts.get(p.categoryId) ?? 0) + 1);
+  for (const p of products ?? []) counts.set(p.categoryId, (counts.get(p.categoryId) ?? 0) + 1);
+  const countOf = (n: number): number | null => (products === undefined ? null : n);
   const q = query.trim().toLowerCase();
   const rows: CategoryRow[] = [];
-  if (q === "") rows.push({ key: ALL_CATEGORIES, name: ALL_ITEMS_LABEL, count: products.length, hue: null });
+  if (q === "") rows.push({ key: ALL_CATEGORIES, name: ALL_ITEMS_LABEL, count: countOf(products?.length ?? 0), hue: null });
   categories.forEach((c, i) => {
     if (q !== "" && !c.name.toLowerCase().includes(q)) return;
     rows.push({
       key: c._id,
       name: c.name,
-      count: counts.get(c._id) ?? 0,
+      count: countOf(counts.get(c._id) ?? 0),
       hue: hueAt(i),
     });
   });

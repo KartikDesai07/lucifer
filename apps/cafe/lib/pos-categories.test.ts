@@ -81,6 +81,14 @@ test("categoryRows: a blank query reads as no query", () => {
   assert.equal(categoryRows(CATS, PRODUCTS, "   ")[0]?.name, "All items", "spaces only: the full list with All items first");
 });
 
+// U1 final fix wave (the Task 3 review, owner-visible): while the products load the rows show no count, never "0".
+test("categoryRows: no products yet (still loading) gives every row a null count (no number drawn)", () => {
+  const rows = categoryRows(CATS, undefined, "");
+  assert.deepEqual(rows.map((r) => r.count), [null, null, null, null], "All items and every category: no count yet");
+  assert.deepEqual(rows.map((r) => r.name), ["All items", "Starters", "Pizza", "Cold Beverages"], "the rows themselves show");
+  assert.deepEqual(categoryRows(CATS, [], "").map((r) => r.count), [0, 0, 0, 0], "a loaded empty menu still counts 0");
+});
+
 test("categoryRows: no categories yet gives only \"All items\"", () => {
   assert.deepEqual(categoryRows([], PRODUCTS, ""), [{ key: "All", name: "All items", count: 5, hue: null }], "the loading menu");
 });

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 
 import { POS_CART_LIST_CLASS } from "@/lib/pos-layout";
-import { lineNumber, selectionHolds, voidLineOf, type LineSelection, type VoidLine } from "@/lib/pos-cart-view";
+import { focusIndexAfterRemove, lineNumber, selectionHolds, voidLineOf, type LineSelection, type VoidLine } from "@/lib/pos-cart-view";
 import { cn } from "@/lib/utils";
 import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { CartLine } from "@/components/pos/CartLine";
@@ -22,6 +22,16 @@ const ACTION_CLASS = "min-h-11 cursor-pointer bg-transparent p-0 text-[12.5px] f
 
 // A tap on the action row acts; it does not toggle the line's selection.
 const keep = (e: MouseEvent) => e.stopPropagation();
+
+/** A line's name button (CartLine), the keyboard's way to a line. */
+const LINE_NAME = "[data-ui='pos-line-name']";
+/** The cart (this mount: the column, or the sheet) and its controls, for the focus after the last line goes. */
+const CART_ROOT = "[data-ui='pos-cart-body']";
+const FOCUSABLE = "button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex='-1'])";
+
+/** The name button of the line an action button sits in. */
+const nameOf = (action: HTMLElement): HTMLElement | null =>
+  action.closest("[data-ui='pos-cart-line']")?.querySelector<HTMLElement>(LINE_NAME) ?? null;
 
 export function CartLines({
   items,
@@ -56,13 +66,30 @@ export function CartLines({
     setSelection(selectedId === lineId ? null : { lineId, scope });
   };
 
-  const actionsFor = (item: CartItem) => {
+  // The action button unmounts with its row (U1 final fix wave): after "Remove" the keyboard focus moves to the line
+  // that took its place, else the one before it, else the cart's first control — never to <body>. Acted on once the
+  // line is really gone (the remove is the page's state).
+  const listRef = useRef<HTMLDivElement>(null);
+  const removedRef = useRef<{ lineId: string; index: number } | null>(null);
+  useEffect(() => {
+    const gone = removedRef.current;
+    if (!gone || lines.some((l) => l.lineId === gone.lineId)) return;
+    removedRef.current = null;
+    const list = listRef.current;
+    const names = Array.from(list?.querySelectorAll<HTMLElement>(LINE_NAME) ?? []);
+    const at = focusIndexAfterRemove(gone.index, names.length);
+    const target = at !== null ? names[at] : list?.closest(CART_ROOT)?.querySelector<HTMLElement>(FOCUSABLE);
+    target?.focus();
+  });
+
+  const actionsFor = (item: CartItem, i: number) => {
     if (item.kotRound === 0) {
       return (
         <button
           type="button"
           className={cn(ACTION_CLASS, BRAND_PRESS_CLASS)}
           onClick={() => {
+            removedRef.current = { lineId: item.lineId, index: i };
             setSelection(null);
             onRemove(item.lineId);
           }}
@@ -70,11 +97,14 @@ export function CartLines({
       );
     }
     if (!resumedOrder || !onVoidItem) return null;
+    // The focus moves to the line's own name before the dialog opens, so the dialog's opener focus gives it back there
+    // when it closes.
     return (
       <button
         type="button"
         className={cn(ACTION_CLASS, BRAND_PRESS_CLASS)}
-        onClick={() => {
+        onClick={(e) => {
+          nameOf(e.currentTarget)?.focus();
           setSelection(null);
           onVoidItem(voidLineOf(item, resumedOrder));
         }}
@@ -83,7 +113,7 @@ export function CartLines({
   };
 
   return (
-    <div data-ui="pos-cart-lines" className={POS_CART_LIST_CLASS}>
+    <div ref={listRef} data-ui="pos-cart-lines" className={POS_CART_LIST_CLASS}>
       {lines.length === 0 ? (
         <div data-ui="pos-cart-empty" className="flex h-full min-h-40 flex-col items-center justify-center gap-1 text-center">
           <p className="text-[15px] font-semibold">No items</p>
@@ -92,7 +122,7 @@ export function CartLines({
       ) : (
         <>
           {lines.map((item, i) => {
-            const action = item.lineId === selectedId ? actionsFor(item) : null;
+            const action = item.lineId === selectedId ? actionsFor(item, i) : null;
             return (
               <CartLine
                 key={item.lineId}

@@ -66,7 +66,7 @@ export function CartLine({
       onClick={disabled ? undefined : () => onToggle(item.lineId)}
     >
       <span className="font-mono text-[12px] text-subtle-foreground">{number}</span>
-      <button type="button" className={NAME_CLASS} aria-expanded={selected}>
+      <button type="button" data-ui="pos-line-name" className={NAME_CLASS} aria-expanded={selected}>
         <span className="block truncate text-[14px] font-medium">{item.name}</span>
         <span className="block truncate text-[12px] text-muted-foreground">{lineMeta(item)}</span>
       </button>

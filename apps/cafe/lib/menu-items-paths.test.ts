@@ -192,7 +192,7 @@ test("PIN: ItemArt renders photo, then icon, then the name's initial, in that or
 // Items page's ItemArt keeps the three stages above).
 test("PIN: ProductCard shows the item's photo in the HTML's photo area, or nothing — no icon / initial fallback", () => {
   const src = stripComments(readSrc(PRODUCT_CARD));
-  assert.ok(src.includes("const photo = productImageUrl(product.image, CARD_PHOTO_PX);"), "the photo is the stored image ref, resolved by lib/images.ts");
+  assert.ok(src.includes("const photo = productImageUrl(product.image, CARD_PHOTO_PX, { fit: true });"), "the photo is the stored image ref, resolved by lib/images.ts (scaled to fit, cropped once by the box)");
   assert.ok(src.includes("{photo && ("), "the area renders only when there is a photo");
   assert.ok(!src.includes("productIconComponent"), "no icon fallback on the POS card");
   assert.ok(!src.includes("charAt(0)"), "no initial fallback on the POS card");

@@ -4,7 +4,7 @@ import { memo, useId } from "react";
 import Image from "next/image";
 
 import { productImageUrl } from "@/lib/images";
-import { cardTag, priceButtonTitle, priceButtonsFor, priceText } from "@/lib/pos-price-buttons";
+import { cardNameDescribedBy, cardTag, priceButtonTitle, priceButtonsFor, priceText } from "@/lib/pos-price-buttons";
 import { cn } from "@/lib/utils";
 import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
 import type { Product } from "@/types";
@@ -23,7 +23,8 @@ export const PRICE_STRIP_CLASS = "grid gap-0.5 rounded-[8px] bg-surface-2 p-0.5"
 export const PRICE_HEIGHT_CLASS = "h-10 max-desk:h-[46px]";
 
 /** The size a photo is asked for where the store resizes on delivery (Cloudinary; R2 photos come pre-sized): the
- *  widest card's photo box (340px on a phone) at twice the pixels. */
+ *  widest card's photo box (340px on a phone) at twice the pixels. Scaled to fit (no crop there): the box's
+ *  object-cover crops it once, to the box's own shape. */
 export const CARD_PHOTO_PX = 680;
 
 // The HTML's motion (values 4.1): transform .28s on its easing, box-shadow .28s, border-color .2s; on hover the card
@@ -75,11 +76,12 @@ export const ProductCard = memo(function ProductCard({
   onOptions,
 }: ProductCardProps) {
   const badgeId = useId();
+  const tagId = useId();
   // Legacy products (pre-`available`) read as available; only an explicit
   // `available:false` ("86") disables ordering.
   const outOfStock = product.available === false;
   const inCart = qty > 0;
-  const photo = productImageUrl(product.image, CARD_PHOTO_PX);
+  const photo = productImageUrl(product.image, CARD_PHOTO_PX, { fit: true });
   const tag = cardTag(product, { showCategory, categoryLabel });
   const buttons = priceButtonsFor(product);
 
@@ -102,14 +104,14 @@ export const ProductCard = memo(function ProductCard({
         disabled={outOfStock}
         onClick={() => onOptions(product)}
         aria-label={`${product.name}: Add with note or quantity`}
-        aria-describedby={inCart ? badgeId : undefined}
+        aria-describedby={cardNameDescribedBy({ tagId, badgeId, tag: tag.text, inCart })}
         className={cn(NAME_BUTTON_CLASS, BRAND_PRESS_CLASS)}
       >
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span title={product.name} className="truncate text-[14.5px] font-medium tracking-[-0.005em]">
             {product.name}
           </span>
-          <span data-ui="pos-card-tag" className={cn("truncate text-[12px]", tag.tone === "bad" ? "text-status-bad-ink" : "text-muted-foreground")}>
+          <span id={tagId} data-ui="pos-card-tag" className={cn("truncate text-[12px]", tag.tone === "bad" ? "text-status-bad-ink" : "text-muted-foreground")}>
             {tag.text}
           </span>
         </span>
