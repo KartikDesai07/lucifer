@@ -44,16 +44,17 @@ export function codeOf(tableNo: string | undefined, walkIn: boolean, isNew: bool
   return (letters || tableNo.trim()).slice(0, 2).toUpperCase();
 }
 
-/** The switch button for the order on screen (values 1.3; design 6.2). The pill counts our open tabs (a new order is
- *  not one yet). */
+/** The switch button for the order on screen (values 1.3; design 6.2). The sub names the customer only when the order
+ *  has one (ruling P17: never "Walk-In", which in our words means "no table"; a walk-in tab's title says so already).
+ *  The pill counts our open tabs (a new order is not one yet). */
 export function switchView(view: SwitchInput, openTabs: readonly Order[]): SwitchView {
   const tableNo = view.resumedOrder?.tableNo;
-  const who = view.customerName?.trim() || WALK_IN;
+  const who = view.customerName?.trim();
   const items = view.count > 0 ? `${itemsLabel(view.count)} · ${inr(view.total)}` : "No items yet";
   return {
     code: codeOf(tableNo, !tableNo, !view.resumedOrder),
     title: cartTitle({ resumedOrder: view.resumedOrder }),
-    sub: `${who} · ${items}`,
+    sub: who ? `${who} · ${items}` : items,
     count: `${openTabs.length} open`,
     dot: view.count === 0 ? "empty" : view.newCount > 0 ? "unsent" : "sent",
   };

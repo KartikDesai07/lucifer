@@ -21,8 +21,8 @@ import type { Order } from "@/types";
 // The Open orders panel (U1 Task 6; the owner's HTML, values 7 in docs/superpowers/specs/2026-10-20-pos-html-values.md;
 // design 6.2; owner Q16, Q17): opened by the header's switch-order button (PosHeader.tsx), it lists our open tabs — the
 // list the page already reads, searched on the device — in the tabs All · Tables · Walk-In, the tab on screen first.
-// A tap resumes the tab through the page's requestResume (today's "Discard unsent items?" prompt when needed) and
-// closes the panel. No "+ New …" footer (owner Q16); after this device printed or sent something (today's rule), the
+// A tap on another tab resumes it through the page's requestResume (today's "Discard unsent items?" prompt when needed)
+// and closes the panel; a tap on the tab already on screen only closes it (ruling P18). No "+ New …" footer (owner Q16); after this device printed or sent something (today's rule), the
 // foot holds today's KOT reprint (owner Q17). A Radix dialog: focus trap, Escape and the scrim close it, and its
 // role=dialog keeps F8 / F9 off while it is open (PosKeys).
 
@@ -87,8 +87,10 @@ export function OpenTabsButton({ tabs, currentId, onResume, lastOrder, onReprint
   const contentRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Another tab resumes through the page's requestResume (today's prompt rules); the tab already on screen only closes
+  // the panel, as the HTML's (ruling P18).
   const resume = (order: Order) => {
-    onResume(order);
+    if (order._id !== currentId) onResume(order);
     setOpen(false);
   };
   // The search takes focus from 1100px (values 7: the HTML focuses it on desk only); below, the panel itself does.

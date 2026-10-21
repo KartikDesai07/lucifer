@@ -148,7 +148,12 @@ test("PIN: OpenTabsButton is the HTML's Open orders panel — the trigger it is 
   assert.ok(src.includes("const counts = openOrderCounts(tabs);"), "the tab counts, whatever the search");
   assert.ok(src.includes("OPEN_ORDER_TABS.map("), "All · Tables · Walk-In");
   assert.ok(src.includes("onClick={() => resume(row.tab)}"), "a row resumes its tab");
-  assert.match(src, /const resume = \(order: Order\) => \{\s*onResume\(order\);\s*setOpen\(false\);\s*\};/, "through the page's requestResume, then closes");
+  // Ruling P18 (2026-10-21): the tab already on screen only closes the panel (the HTML's), no requestResume for it.
+  assert.match(
+    src,
+    /const resume = \(order: Order\) => \{\s*if \(order\._id !== currentId\) onResume\(order\);\s*setOpen\(false\);\s*\};/,
+    "another tab: through the page's requestResume (its prompt rules); the current one: no resume; then it closes",
+  );
   assert.ok(src.includes("No open orders match “{q.trim()}”"), "the HTML's no-match line");
   assert.ok(src.includes("No open tabs") && src.includes("Orders you send to the kitchen appear here until settled."), "our empty words");
   for (const gone of ["+ Takeaway", "+ Delivery", "+ Table", "DialogContent", "EmptyState", "POS_DIALOG_LIST_CAP_CLASS"]) {

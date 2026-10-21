@@ -68,23 +68,29 @@ test("codeOf: a table is \"T\" + its name's digits, else its first two letters; 
 
 const NEW_EMPTY: SwitchInput = { resumedOrder: null, customerName: undefined, count: 0, newCount: 0, total: 0 };
 
-test("switchView: a new order with no items — \"+\", \"New order\", \"Walk-In · No items yet\", the grey dot", () => {
+test("switchView: a new order with no items — \"+\", \"New order\", \"No items yet\", the grey dot", () => {
   const view = switchView(NEW_EMPTY, [T2, T6, T1]);
   assert.equal(view.code, "+", "a new order's tile");
   assert.equal(view.title, "New order", "the cart's own title (lib/pos-cart-view.ts)");
-  assert.equal(view.sub, "Walk-In · No items yet", "the HTML's \"{who} · No items yet\"");
+  assert.equal(view.sub, "No items yet", "no customer: no customer part (ruling P17)");
   assert.equal(view.count, "3 open", "the open tabs, not counting the new order");
   assert.equal(view.dot, "empty", "grey: no items");
 });
 
-test("switchView: the sub names the customer and counts quantities, singular for one (never \"1 items\")", () => {
-  assert.equal(switchView({ ...NEW_EMPTY, count: 1, newCount: 1, total: 200 }, []).sub, "Walk-In · 1 item · ₹200", "one item");
+// Ruling P17 (2026-10-21): the sub names the customer only when the order has one — never "Walk-In", which in our words
+// means "no table" (a walk-in tab's title says so already).
+test("switchView: the sub names the customer when there is one and counts quantities, singular for one (never \"1 items\")", () => {
+  assert.equal(switchView({ ...NEW_EMPTY, count: 1, newCount: 1, total: 200 }, []).sub, "1 item · ₹200", "one item, no customer");
   assert.equal(
     switchView({ ...NEW_EMPTY, customerName: "Neha Joshi", count: 5, newCount: 5, total: 954 }, []).sub,
     "Neha Joshi · 5 items · ₹954",
     "the customer's name, five items, the total",
   );
-  assert.equal(switchView({ ...NEW_EMPTY, customerName: "  ", count: 2, newCount: 2, total: 50 }, []).sub, "Walk-In · 2 items · ₹50", "a blank name is no name");
+  assert.equal(switchView({ ...NEW_EMPTY, customerName: "Neha Joshi" }, []).sub, "Neha Joshi · No items yet", "a customer on an empty order");
+  assert.equal(switchView({ ...NEW_EMPTY, customerName: "  ", count: 2, newCount: 2, total: 50 }, []).sub, "2 items · ₹50", "a blank name is no name");
+  for (const view of [NEW_EMPTY, { ...NEW_EMPTY, count: 6, newCount: 0, total: 1090 }]) {
+    assert.ok(!switchView(view, []).sub.includes("Walk-In"), `never "Walk-In" in the sub: ${switchView(view, []).sub}`);
+  }
   assert.equal(switchView(NEW_EMPTY, []).count, "0 open", "no open tabs");
   assert.equal(switchView(NEW_EMPTY, [T6]).count, "1 open", "one open tab");
 });
@@ -105,6 +111,8 @@ test("switchView: a resumed tab — its table's code and \"Table T-2\", or \"WI\
   const walkIn = switchView({ resumedOrder: WI, customerName: "Neha Joshi", count: 3, newCount: 0, total: 954 }, TABS);
   assert.equal(walkIn.code, "WI", "a walk-in tab");
   assert.equal(walkIn.title, "Walk-In", "the cart's title for a tab with no table");
+  const seated = switchView({ resumedOrder: T2, customerName: undefined, count: 6, newCount: 0, total: 1090 }, TABS);
+  assert.equal(seated.sub, "6 items · ₹1,090", "a table tab with no customer: the items and the total only (ruling P17)");
 });
 
 // ── the panel (values 7.1, 7.2; design 6.2; owner Q16) ────────────────────────────────────────────────────────────
