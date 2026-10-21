@@ -18,7 +18,7 @@ import {
 } from "@/components/print/printer-classes";
 import { useDotPrinters } from "@/hooks/use-agent-printers";
 import { useDesktopPrinterChosen, useDeviceOnline, useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
-import { printerButtonName, printerDotOf, printerDotTone } from "@/lib/printer/printer-dot";
+import { printerButtonName, printerDotOf, printerDotTone, type PrinterDotTone } from "@/lib/printer/printer-dot";
 import { printWaitingName } from "@/lib/print-waiting";
 import { onOpenPrinterPanel } from "@/lib/printer-panel-open";
 import { cn } from "@/lib/utils";
@@ -31,7 +31,7 @@ import { cn } from "@/lib/utils";
 const SHEET_TITLE = "Printer";
 const SHEET_DESCRIPTION = "Printer status and setup for this device.";
 
-export function PrinterStatusButton() {
+export function PrinterStatusButton({ onToneChange }: { onToneChange?: (tone: PrinterDotTone) => void } = {}) {
   const [open, setOpen] = useState(false);
   // Session 1D: the 20 s alarm's Show button opens this sheet.
   useEffect(() => onOpenPrinterPanel(() => setOpen(true)), []);
@@ -49,6 +49,8 @@ export function PrinterStatusButton() {
   const name = printWaitingName(printerButtonName(dot), waiting);
   // A printer that is only being checked draws no dot (never red while it connects).
   const tone = printerDotTone(dot);
+  // U1 Task 1 (design 6.1): the /pos header's clock block shows this same dot; the header takes the tone from here.
+  useEffect(() => onToneChange?.(tone), [onToneChange, tone]);
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>

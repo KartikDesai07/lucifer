@@ -1,6 +1,6 @@
 // CB-1d.3a / C2 — ProductCard memo + stable-handler source pins. Companion to
-// lib/pos-layout-paths.test.ts (the POS_TILE_MIN_REM parity pin there now
-// reads ProductCard.tsx). This is a PURE REFACTOR: memo + product-bound
+// lib/pos-layout-paths.test.ts (the tile-height parity pin there reads
+// ProductCard.tsx). This is a PURE REFACTOR: memo + product-bound
 // callbacks let 127/128 tiles bail out of a re-render that used to touch
 // every ProductCard/NotebookPen/Icon on the screen. Raw readFileSync pins,
 // same REPO_ROOT/readSrc/stripComments idiom as pos-layout-paths.test.ts.

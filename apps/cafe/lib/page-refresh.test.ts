@@ -56,10 +56,11 @@ test("a deliberate refresh is marked, so the page's own leave warning stays quie
 });
 
 // U0 Task 3 (design 5.3): the header's global buttons run Tables, New order, Refresh, Tokens (when on), the printer.
+// U1 Task 1: the printer button now hands its tone to the /pos clock (onToneChange), so the needle is its tag's start.
 test("PIN: the header shows Refresh among its global buttons, before the printer icon", () => {
   const header = src("apps/cafe/components/layout/Header.tsx");
   const refreshAt = header.indexOf("<RefreshButton />");
-  const printerAt = header.indexOf("<PrinterStatusButton />");
+  const printerAt = header.indexOf("<PrinterStatusButton");
   assert.ok(refreshAt >= 0 && printerAt >= 0, "both buttons are in the header");
   assert.ok(refreshAt < printerAt, "Refresh sits before the printer icon (only Tokens may come between)");
   assert.ok(header.indexOf("<HeaderQuickTabs />") < refreshAt, "after Tables and New order");

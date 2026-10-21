@@ -18,13 +18,16 @@ import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
-  POS_ROOT_CLASS,
+  POS_PAGE_CLASS,
+  POS_BODY_GRID_CLASS,
+  POS_ASIDE_CLASS,
+  POS_MAIN_CLASS,
+  POS_CART_CLASS,
+  POS_MOBILE_BAR_CLASS,
   POS_CHIP_ROW_CLASS,
-  POS_ROOT_CHROME_REM_BASE,
-  POS_ROOT_CHROME_REM_MD,
-  POS_ROOT_CHROME_REM_XL,
-  POS_ROOT_FLOOR_REM_BASE,
-  POS_ROOT_FLOOR_REM_XL,
+  POS_BODY_COLUMNS_PX,
+  POS_MAIN_PAD_B_PX,
+  DASHBOARD_HEADER_REM,
   POS_ALERT_HEIGHT_VAR,
   POS_HEADER_CONTROL_CLASS,
   POS_CART_STEPPER_CLASS,
@@ -77,119 +80,91 @@ const loadModule: LoadModule = async () => {
   throw new Error("pos-layout-compile.test.ts: no Tailwind plugin/config modules expected for this candidate set");
 };
 
-async function compileCandidates(candidates: string[]): Promise<string> {
+async function compileCandidates(candidates: string[], extraCss = ""): Promise<string> {
   const lib = (await import(pathToFileURL(path.join(TAILWIND_DIR, "dist/lib.mjs")).href)) as TailwindLib;
-  const compiled = await lib.compile(`@import "tailwindcss";`, { base: CAFE_ROOT, loadStylesheet, loadModule });
+  const compiled = await lib.compile(`@import "tailwindcss";\n${extraCss}`, { base: CAFE_ROOT, loadStylesheet, loadModule });
   return compiled.build(candidates);
 }
 
-test("PIN: real Tailwind compiles POS_ROOT_CLASS/POS_CHIP_ROW_CLASS/body-dvh candidates to the exact CSS the height-chain contract assumes — no mangled var()/media-query emission", async () => {
+// U1 Task 1 (values 1.1, 2.0, 6.2; design 5): the page's frame uses the app's own breakpoints (tab 720px, desk
+// 1100px) and the nav's `wide` variant, so this compile reads those three definitions out of app/globals.css (the real
+// config, never re-typed) and adds them to the compiler's input.
+function appBreakpointsCss(): string {
+  const globals = readFileSync(path.join(CAFE_ROOT, "app/globals.css"), "utf8");
+  const tab = globals.match(/--breakpoint-tab:\s*[\d.]+rem;/);
+  const desk = globals.match(/--breakpoint-desk:\s*[\d.]+rem;/);
+  const wide = globals.match(/@custom-variant wide \{[\s\S]*?\n\}/);
+  assert.ok(tab && desk && wide, "app/globals.css declares the tab and desk breakpoints and the wide variant");
+  return `@theme { ${tab![0]} ${desk![0]} }\n${wide![0]}\n`;
+}
+
+test("PIN: real Tailwind compiles the /pos frame (page height, body grid, regions, main's foot, the bar) to the exact CSS the frame pins assume — and the column sets cascade lg < desk < wide", async () => {
   const candidates = [
-    ...POS_ROOT_CLASS.split(/\s+/),
+    ...POS_PAGE_CLASS.split(/\s+/),
+    ...POS_BODY_GRID_CLASS.split(/\s+/),
+    ...POS_ASIDE_CLASS.split(/\s+/),
+    ...POS_MAIN_CLASS.split(/\s+/),
+    ...POS_CART_CLASS.split(/\s+/),
+    ...POS_MOBILE_BAR_CLASS.split(/\s+/),
     ...POS_CHIP_ROW_CLASS.split(/\s+/),
     "min-h-screen",
     "supports-[height:1dvh]:min-h-dvh",
   ].filter(Boolean);
 
-  const raw = await compileCandidates(candidates);
+  const raw = await compileCandidates(candidates, appBreakpointsCss());
   const css = raw.replace(/\s+/g, " ").trim();
 
-  // Needles built from the constants (never re-typed literals, testing.md) —
-  // a drifted constant trips this pin instead of a hand-typed number silently
-  // agreeing with itself.
-  const baseHeightDecl =
-    "height: calc(100vh - " + POS_ROOT_CHROME_REM_BASE + "rem - var(" + POS_ALERT_HEIGHT_VAR + ",0px));";
-  const baseDvhBlock =
-    "@supports (height:1dvh) { height: calc(100dvh - " +
-    POS_ROOT_CHROME_REM_BASE +
-    "rem - var(" +
-    POS_ALERT_HEIGHT_VAR +
-    ",0px)); }";
-  const mdBlock =
-    "@media (width >= 48rem) { height: calc(100vh - " +
-    POS_ROOT_CHROME_REM_MD +
-    "rem - var(" +
-    POS_ALERT_HEIGHT_VAR +
-    ",0px)); }";
-  const xlBlock = "@media (width >= 80rem) { height: calc(100vh - " + POS_ROOT_CHROME_REM_XL + "rem); }";
-  // The two compound variants (breakpoint + @supports): the md one is the rule
-  // that actually governs the owner's md+, dvh-capable tablet (review F9).
-  const mdDvhBlock =
-    "@media (width >= 48rem) { @supports (height:1dvh) { height: calc(100dvh - " +
-    POS_ROOT_CHROME_REM_MD +
-    "rem - var(" +
-    POS_ALERT_HEIGHT_VAR +
-    ",0px)); } }";
-  const xlDvhBlock =
-    "@media (width >= 80rem) { @supports (height:1dvh) { height: calc(100dvh - " + POS_ROOT_CHROME_REM_XL + "rem); } }";
-  const floorBaseDecl = "min-height: " + POS_ROOT_FLOOR_REM_BASE + "rem;";
-  const floorXlBlock = "@media (width >= 80rem) { min-height: " + POS_ROOT_FLOOR_REM_XL + "rem; }";
-  const dvhFloorBlock = "@supports (height:1dvh) { min-height: 100dvh; }";
-  // The vh side of the body floor — and the whole premise of app/m/layout.tsx
-  // keeping the diner flow at its old 100vh document height (review F2): a
-  // Tailwind/theme change that redefined `screen` would otherwise pass silently.
-  const vhFloorDecl = "min-height: 100vh;";
+  // Needles built from the constants (never re-typed literals, testing.md).
+  const alert = "var(" + POS_ALERT_HEIGHT_VAR + ",0px)";
+  const pageHeight = "height: calc(100vh - " + DASHBOARD_HEADER_REM + "rem - " + alert + ");";
+  const pageDvh = "@supports (height:1dvh) { height: calc(100dvh - " + DASHBOARD_HEADER_REM + "rem - " + alert + "); }";
+  const { wide, desk, tablet } = POS_BODY_COLUMNS_PX;
+  const cols = "grid-template-columns: minmax(0,1fr);";
+  const lgCols = "@media (width >= 64rem) { grid-template-columns: minmax(0,1fr) " + tablet.cart + "px; }";
+  const deskCols = "@media (width >= 68.75rem) { grid-template-columns: " + desk.aside + "px minmax(0,1fr) " + desk.cart + "px; }";
+  const wideCols =
+    "@media (width >= 80rem) { &:where(html:not([data-nav-collapsed]) *) { grid-template-columns: " +
+    wide.aside +
+    "px minmax(0,1fr) " +
+    wide.cart +
+    "px; } }";
+  const cmpFoot = "@media (width < 64rem) { padding-bottom: " + POS_MAIN_PAD_B_PX.cmp + "px; }";
+  const phoneFoot = "@media (width < 45rem) { padding-bottom: " + POS_MAIN_PAD_B_PX.phone + "px; }";
+  const asideOn = "@media (width >= 68.75rem) { display: flex; }";
+  const cartOn = "@media (width >= 64rem) { display: flex; }";
+  const barOff = "@media (width >= 64rem) { display: none; }";
 
-  assert.ok(css.includes(baseHeightDecl), `compiled CSS must include "${baseHeightDecl}"`);
-  assert.ok(
-    css.includes(baseDvhBlock),
-    `compiled CSS must include the dvh variant nested inside @supports (height:1dvh): "${baseDvhBlock}"`,
-  );
-  assert.ok(
-    css.includes(mdBlock),
-    `compiled CSS must include the md height variant nested inside its own @media wrapper: "${mdBlock}"`,
-  );
-  assert.ok(
-    css.includes(xlBlock),
-    `compiled CSS must include the xl height variant (no alert-var term) nested inside its own @media wrapper: "${xlBlock}"`,
-  );
-  assert.ok(
-    css.includes(mdDvhBlock),
-    `compiled CSS must include the md+dvh compound nested @media > @supports: "${mdDvhBlock}"`,
-  );
-  assert.ok(
-    css.includes(xlDvhBlock),
-    `compiled CSS must include the xl+dvh compound nested @media > @supports: "${xlDvhBlock}"`,
-  );
-  assert.ok(css.includes(floorBaseDecl), `compiled CSS must include "${floorBaseDecl}"`);
-  assert.ok(
-    css.includes(floorXlBlock),
-    `compiled CSS must include the xl min-height floor nested inside @media (width >= 80rem): "${floorXlBlock}"`,
-  );
-  assert.ok(
-    css.includes(dvhFloorBlock),
-    `compiled CSS must include the body's dvh min-height floor nested inside @supports (height:1dvh): "${dvhFloorBlock}"`,
-  );
-  assert.ok(css.includes(vhFloorDecl), `compiled CSS must include min-h-screen's plain "${vhFloorDecl}" — the floor /m and the body fall back to`);
+  for (const [needle, what] of [
+    [pageHeight, "the page's vh height"],
+    [pageDvh, "the page's dvh height inside @supports (height:1dvh)"],
+    [cols, "one menu column below 1024px"],
+    [lgCols, "the cart column from 1024px"],
+    [deskCols, "the category and cart columns from 1100px"],
+    [wideCols, "the wide nav's narrower columns from 1280px, nav open"],
+    [cmpFoot, "main's 100px foot below 1024px"],
+    [phoneFoot, "main's 150px foot on a phone"],
+    [asideOn, "the category column shows from 1100px"],
+    [cartOn, "the cart column shows from 1024px"],
+    [barOff, "the bar hides from 1024px"],
+    ["min-height: 100vh;", "min-h-screen's plain floor — the floor /m and the body fall back to"],
+    ["@supports (height:1dvh) { min-height: 100dvh; }", "the body's dvh floor"],
+  ] as const) {
+    assert.ok(css.includes(needle), `compiled CSS must include ${what}: "${needle}"`);
+  }
 
-  // Landmark: the plain utilities from POS_CHIP_ROW_CLASS must also have
-  // compiled — proves the whole candidate list reached the compiler, not just
-  // the arithmetic-bearing tokens asserted above.
-  assert.ok(css.includes(".flex {"), "landmark: compiled CSS must include the plain .flex utility");
-  assert.ok(css.includes("gap: calc(var(--spacing) * 2);"), "landmark: compiled CSS must include gap-2's declaration");
+  // The cascade: the later set wins where several match (a 1280px open nav matches all three).
+  assert.ok(css.indexOf(lgCols) < css.indexOf(deskCols), "lg's columns come before desk's");
+  assert.ok(css.indexOf(deskCols) < css.indexOf(wideCols), "desk's columns come before wide's");
+  assert.ok(css.indexOf(cmpFoot) < css.indexOf(phoneFoot), "main's phone foot comes after its 1024px one (the narrower wins)");
+  assert.ok(css.indexOf(cartOn) < css.indexOf(asideOn), "landmark: breakpoints emit in width order");
 
-  // No mangled var() emission: every "var(--pos-alert-h" opener must be
-  // immediately followed by exactly ",0px)" — a split/whitespace-mangled
-  // emission would make these two counts diverge even where the exact-text
-  // check above already caught the common failure mode.
+  // No mangled var() emission: every "var(--pos-alert-h" opener is followed by ",0px)", once per page height token.
   const escapeRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const varOpenNeedle = "var(" + POS_ALERT_HEIGHT_VAR;
   const varOpenCount = (css.match(new RegExp(escapeRegex(varOpenNeedle), "g")) ?? []).length;
-  const varFullNeedle = varOpenNeedle + ",0px)";
-  const varFullCount = (css.match(new RegExp(escapeRegex(varFullNeedle), "g")) ?? []).length;
-  // Exactly the four below-xl height tokens subtract the alert var (base
-  // vh/dvh + md vh/dvh); the two xl height tokens and the two min-h floors
-  // never reference it.
-  assert.equal(
-    varFullCount,
-    4,
-    `"${varFullNeedle}" must appear exactly 4 times (the four below-xl height tokens), got ${varFullCount}`,
-  );
-  assert.equal(
-    varOpenCount,
-    varFullCount,
-    `every "${varOpenNeedle}" opener must be immediately followed by ",0px)" with no split/whitespace mangling — found ${varOpenCount} openers vs ${varFullCount} well-formed`,
-  );
+  const varFullCount = (css.match(new RegExp(escapeRegex(alert), "g")) ?? []).length;
+  assert.equal(varFullCount, 2, `"${alert}" must appear exactly twice (the page's vh and dvh heights), got ${varFullCount}`);
+  assert.equal(varOpenCount, varFullCount, `every "${varOpenNeedle}" opener must be well-formed — ${varOpenCount} openers vs ${varFullCount}`);
 });
 
 test("PIN: real Tailwind compiles the CB-1d.1 touch-feel/device-size tokens to the exact CSS the string/paths pins assume — pointer-fine height variants nested UNDER the xl media query, coarse-pointer active scale/opacity, dialog-cap vh/dvh pairs, and base-before-variant emission order", async () => {

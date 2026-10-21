@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { usePathname } from "next/navigation";
 
 import { PrinterStatusButton } from "@/components/print/PrinterStatusButton";
@@ -7,6 +8,7 @@ import { BrandTile } from "@/components/layout/BrandTile";
 import { HeaderTitle } from "@/components/layout/HeaderTitle";
 import { RefreshButton } from "@/components/layout/RefreshButton";
 import { HeaderQuickTabs } from "@/components/layout/HeaderQuickTabs";
+import { PosHeaderBrand, PosHeaderClock, usePosHeaderRoom } from "@/components/layout/PosHeaderBrand";
 import { usePageHeader } from "@/components/layout/page-header-slot";
 import { TokenSheet } from "@/components/pos/TokenSheet";
 import { useNow } from "@/hooks/use-now";
@@ -14,6 +16,8 @@ import { useSettings } from "@/hooks/use-settings";
 import { APP_NAME } from "@/lib/constants";
 import { productImageUrl } from "@/lib/images";
 import { headerWordsFor } from "@/lib/page-titles";
+import { isPosPath } from "@/lib/pos-layout";
+import type { PrinterDotTone } from "@/lib/printer/printer-dot";
 
 /** The default line's date is re-read once a minute (final review m6): a day change lands within a minute. */
 const HEADER_CLOCK_MS = 60_000;
@@ -24,30 +28,48 @@ const HEADER_CLOCK_MS = 60_000;
 // date. Right: the page's own actions (portaled in by its PageHeader from 720px up while they fit beside a 140px
 // title, ruling R6; drawn as the HTML's header buttons), then ours in the design's order.
 // The title comes from the route at once and from the page's PageHeader once it mounts (the same words).
+// On /pos (U1 Task 1; the POS values 1.2-1.4, design 6.1) it is the HTML's Order header: data-pos makes the bar
+// exactly 56px with 16px gaps and not sticky (the page under it never scrolls); the brand block takes the mini logo's
+// and the title block's place (the page's h1 stays, for screen readers); the actions box takes the free width,
+// right-aligned (the switch-order button lands there, U1 Task 6); the clock block follows; no quick links.
 export function Header() {
   const pathname = usePathname() ?? "";
+  const pos = isPosPath(pathname);
   const settings = useSettings();
   const name = settings.data?.restaurantName?.trim() || APP_NAME;
   // The cafe's own logo only (ruling R3), as the nav's brand tile.
   const logoUrl = productImageUrl(settings.data?.logo, undefined, { fit: true });
-  const { info, actionsRef, titleRef } = usePageHeader();
+  const { info, actionsRef, titleRef, actionsBox } = usePageHeader();
   // The date in the default line follows the clock, so a tablet left on past midnight shows the new day. Until the
   // hook's first tick (null) the line keeps this render's own date: the shell renders on the client only
   // (MasterDataProvider), so that is already the device's date, the same words and width, with no blank frame.
   const now = useNow(HEADER_CLOCK_MS) ?? new Date();
   const { title, subtitle } = headerWordsFor({ info, pathname, cafeName: name, now });
+  // The /pos clock block's dot is the printer button's own (design 6.1): the button hands its tone over.
+  const [printerTone, setPrinterTone] = useState<PrinterDotTone>("none");
+  const room = usePosHeaderRoom(pos, actionsBox);
 
   return (
-    <header className="sticky top-0 z-[3] flex min-h-14 items-center gap-2.5 border-b border-border bg-card px-3 leading-[normal] text-foreground tab:px-5" data-ui="header">
-      <BrandTile key={logoUrl ?? "initial"} name={name} logoUrl={logoUrl} size="mini" dataUi="header-mini-logo" className="tab:hidden" />
-      <HeaderTitle title={title} subtitle={subtitle} eyebrow={info?.eyebrow} back={info?.back} titleRef={titleRef} />
+    <header className="sticky top-0 z-[3] flex min-h-14 items-center gap-2.5 border-b border-border bg-card px-3 leading-[normal] text-foreground tab:px-5 data-pos:static data-pos:z-auto data-pos:h-14 data-pos:min-w-0 data-pos:gap-4" data-ui="header" data-pos={pos ? "" : undefined}>
+      {pos ? (
+        <PosHeaderBrand name={name} logoUrl={logoUrl} room={room} />
+      ) : (
+        <BrandTile key={logoUrl ?? "initial"} name={name} logoUrl={logoUrl} size="mini" dataUi="header-mini-logo" className="tab:hidden" />
+      )}
+      {pos ? (
+        <h1 data-ui="header-title" className="sr-only">{title}</h1>
+      ) : (
+        <HeaderTitle title={title} subtitle={subtitle} eyebrow={info?.eyebrow} back={info?.back} titleRef={titleRef} />
+      )}
       {/* The page's own actions (ruling R6: the HTML's header buttons, data-header-actions in app/globals.css). min-w-0:
-          they never push our buttons off screen while the slot measures whether they fit. */}
-      <div ref={actionsRef} data-ui="header-actions" data-header-actions="" className="flex min-w-0 items-center gap-2.5 empty:hidden" />
+          they never push our buttons off screen while the slot measures whether they fit. On /pos the HTML's actions
+          box: flex:1, right-aligned, 6px apart, scrolling sideways; it stays in the row while empty. */}
+      <div ref={actionsRef} data-ui="header-actions" data-header-actions="" data-pos={pos ? "" : undefined} className="flex min-w-0 items-center gap-2.5 empty:hidden data-pos:flex-1 data-pos:justify-end data-pos:gap-1.5 data-pos:overflow-x-auto data-pos:empty:flex" />
       <HeaderQuickTabs />
+      {pos && <PosHeaderClock now={now} tone={printerTone} room={room} />}
       <RefreshButton />
       <TokenSheet />
-      <PrinterStatusButton />
+      <PrinterStatusButton onToneChange={setPrinterTone} />
     </header>
   );
 }

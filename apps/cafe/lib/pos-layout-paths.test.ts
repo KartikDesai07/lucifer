@@ -34,12 +34,10 @@ import {
   posGridPaneWidthPx,
   POS_MIN_TILE_PX,
   POS_GRID_GAP_REM,
-  POS_HEADER_ROW_REM,
-  POS_SEARCH_ROW_REM,
-  POS_MOBILE_BAR_REM,
-  POS_CHIP_STRIP_REM,
-  POS_ROOT_GAP_REM,
-  POS_TILE_MIN_REM,
+  POS_BODY_GRID_CLASS,
+  POS_MAIN_CLASS,
+  POS_PANE_CLASS,
+  POS_MOBILE_BAR_CLASS,
   DASHBOARD_HEADER_REM,
   POS_PRESS_FEEDBACK_CLASS,
   POS_HEADER_CONTROL_CLASS,
@@ -72,7 +70,6 @@ const ROOT_LAYOUT = "apps/cafe/app/layout.tsx";
 const SIDEBAR_TSX = "apps/cafe/components/ui/sidebar.tsx";
 const GLOBALS_CSS = "apps/cafe/app/globals.css";
 const REQUEST_ALERT_BAR = "apps/cafe/components/orders/RequestAlertBar.tsx";
-const INPUT_TSX = "apps/cafe/components/ui/input.tsx";
 // The login page's client screen (ruling R39: app/(auth)/login/page.tsx is now a server page that reads the cafe's name
 // and renders this component; every client pin below moved with the code).
 const LOGIN_PAGE = "apps/cafe/components/auth/LoginScreen.tsx";
@@ -86,19 +83,21 @@ const MOVE_TABLE_DIALOG = "apps/cafe/components/orders/MoveTableDialog.tsx";
 const MOVE_TABLE_PICKER = "apps/cafe/components/orders/MoveTablePicker.tsx";
 const TOUCH_FEEL = "apps/cafe/components/shared/TouchFeel.tsx";
 
-test("PIN: pos/page.tsx imports the five layout classes and uses each as a real className, wrapping PosHeader/the split in POS_INSET_CLASS", () => {
+// U1 Task 1 (design 5, values 2.0): the page is the HTML's body grid, so the frame's classes are the page, the grid and
+// its three regions (lib/pos-frame.test.ts pins their order and data-ui names); the old root/inset/split/pane-cart
+// wrapper classes are gone.
+test("PIN: pos/page.tsx imports the frame's classes and uses each as a real className", () => {
   const src = stripComments(readSrc(POS_PAGE));
   const importMatch = src.match(/import\s*\{([^}]*)\}\s*from\s*"@\/lib\/pos-layout"/);
   assert.ok(importMatch, "pos/page.tsx must import from @/lib/pos-layout");
-  for (const name of ["POS_ROOT_CLASS", "POS_INSET_CLASS", "POS_SPLIT_CLASS", "POS_PANE_CLASS", "POS_DESKTOP_CART_CLASS"]) {
+  const frame = ["POS_PAGE_CLASS", "POS_BODY_GRID_CLASS", "POS_ASIDE_CLASS", "POS_MAIN_CLASS", "POS_PANE_CLASS", "POS_CART_CLASS"];
+  for (const name of frame) {
     assert.ok(importMatch![1].includes(name), `the @/lib/pos-layout import must include ${name}`);
+    assert.match(src, new RegExp(`className=\\{${name}\\}`), `${name} must be used as a bare className={${name}} in pos/page.tsx`);
   }
-  for (const name of ["POS_ROOT_CLASS", "POS_PANE_CLASS", "POS_DESKTOP_CART_CLASS"]) {
-    assert.match(src, new RegExp(`className=\\{${name}\\}`), `${name} must be used as a bare className={${name}} somewhere in pos/page.tsx`);
+  for (const gone of ["POS_ROOT_CLASS", "POS_INSET_CLASS", "POS_SPLIT_CLASS", "POS_DESKTOP_CART_CLASS"]) {
+    assert.ok(!src.includes(gone), `pos/page.tsx must not reference the retired ${gone}`);
   }
-  assert.match(src, /<div className=\{POS_INSET_CLASS\}>\s*<PosHeader\b/, "pos/page.tsx must wrap <PosHeader in <div className={POS_INSET_CLASS}>");
-  assert.match(src, /className=\{cn\(POS_SPLIT_CLASS, POS_INSET_CLASS\)\}/, "the split div must use className={cn(POS_SPLIT_CLASS, POS_INSET_CLASS)} — POS_SPLIT_CLASS is no longer a bare className");
-  assert.match(src, /import\s*\{\s*cn\s*\}\s*from\s*"@\/lib\/utils"/, "pos/page.tsx must import cn from @/lib/utils");
 });
 
 test("PIN: pos/page.tsx renders both category presentations off one category state, and feeds ProductGrid the live cart quantities", () => {
@@ -178,7 +177,7 @@ test("PIN: the category rail never reverts to its old fixed width — width come
   assert.ok(src.includes("w-44"), "landmark: the rail must still be w-44 (11rem, matches POS_RAIL_REM), just not md-gated");
 });
 
-test("PIN: MobileCartBar mounts only below xl, in a bottom sheet, and the Cart panel inside uses the shared scrollable-panel class", () => {
+test("PIN: MobileCartBar mounts only below 1024px (the cart column takes over there), in a bottom sheet, and the Cart panel inside uses the shared scrollable-panel class", () => {
   const src = stripComments(readSrc(MOBILE_CART_BAR));
   assert.match(src, /POS_MOBILE_ONLY_CLASS/, "MobileCartBar's wrapper must use POS_MOBILE_ONLY_CLASS");
   assert.match(src, /POS_MOBILE_BAR_CLASS/, "MobileCartBar's fixed bar must use POS_MOBILE_BAR_CLASS");
@@ -189,7 +188,7 @@ test("PIN: MobileCartBar mounts only below xl, in a bottom sheet, and the Cart p
   assert.ok(!src.includes("rounded-none border-0"), "must not hardcode the old rounded-none border-0 — now in POS_CART_SHEET_PANEL_CLASS");
 });
 
-test("PIN: MobileCartBar's outer div gates the breakpoint AND carries the sticky bar styling in one combined className (CB-1b: the bar is in-flow now, not sidebar-offset)", () => {
+test("PIN: MobileCartBar's outer div gates the breakpoint AND carries the bar styling in one combined className (U1 Task 1: the bar lies over the page's foot, not sidebar-offset)", () => {
   const src = stripComments(readSrc(MOBILE_CART_BAR));
   assert.match(
     src,
@@ -198,7 +197,7 @@ test("PIN: MobileCartBar's outer div gates the breakpoint AND carries the sticky
   );
 });
 
-test("PIN: MobileCartBar no longer reads the sidebar itself — CB-1b made the bar sticky/in-flow, so it needs no sidebar-width offset", () => {
+test("PIN: MobileCartBar no longer reads the sidebar itself — the bar sits inside the page (beside the nav), so it needs no sidebar-width offset", () => {
   const src = stripComments(readSrc(MOBILE_CART_BAR));
   assert.ok(!src.includes("useSidebar"), "MobileCartBar.tsx must not import/call useSidebar any more");
   assert.ok(!src.includes("POS_MOBILE_BAR_SIDEBAR_EXPANDED_CLASS"), "must not reference the retired POS_MOBILE_BAR_SIDEBAR_EXPANDED_CLASS");
@@ -356,21 +355,28 @@ test("PIN: app/layout.tsx's <body> is a vh base with a supports-dvh override (mi
   assert.match(src, /<body\b/, "landmark: app/layout.tsx must still render <body");
 });
 
-test("PIN: no stray lg: token remains in pos/page.tsx — the mode switch moved to xl", () => {
-  // lib/pos-layout.ts is deliberately EXCLUDED from this sweep now: CB-1b's
-  // viewport-keyed grid tiers legitimately reintroduced a real "lg:" token
-  // (lg:grid-cols-4 in POS_GRID_CLASS_SIDEBAR_EXPANDED) — that is pinned by
-  // the tier-encoding test in lib/pos-layout.test.ts instead.
+// U1 Task 1 (design 5): the page switches at the HTML's widths (the cart column from 1024px, the category column from
+// 1100px), and those switches live in lib/pos-layout.ts; the page's own literals keep only the category skeleton's,
+// which follows the category column (desk).
+test("PIN: no stray lg:/xl: token in pos/page.tsx — the frame's switches live in lib/pos-layout.ts; the chip skeleton hides with the chips at 1100px", () => {
   const src = stripComments(readSrc(POS_PAGE));
-  assert.ok(!src.includes("lg:"), "pos/page.tsx must not carry a stray lg: token — the mode switch moved to xl");
-  assert.match(src, /xl:block/, "landmark: pos/page.tsx must carry its xl: token (xl:block)");
+  assert.ok(!src.includes("lg:"), "pos/page.tsx must not carry a stray lg: token — the cart column's switch is POS_CART_CLASS's");
+  assert.ok(!src.includes("xl:"), "pos/page.tsx must not carry a stray xl: token — the retired two-pane switch");
+  assert.match(src, /desk:hidden/, "landmark: the chip skeleton hides where the category column shows (desk:hidden)");
 });
 
-test("PIN: lib/pos-layout.ts carries NO lg: token any more — the owner's 2026-09-29 at-most-3-columns decision (UI batch 1 §H) retired CB-1b's lg:grid-cols-4 tier, and no xl-switch stray ever existed here either", () => {
+// U1 Task 1: the HTML's cmp breakpoint (1024px) is Tailwind's lg, so lg: is back in lib/pos-layout.ts, but only as the
+// frame's cart switch; the retired lg:grid-cols-4 tier (owner, 2026-09-29: at most 3 columns) never returns.
+test("PIN: lib/pos-layout.ts carries lg: only as the HTML's 1024px cart switch — never a lg:grid-cols-N tier", () => {
   const src = stripComments(readSrc(POS_LAYOUT_TS));
-  const occurrences = (src.match(/lg:/g) ?? []).length;
-  assert.equal(occurrences, 0, `expected 0 "lg:" occurrences in lib/pos-layout.ts (the 4-column grid tier is retired), found ${occurrences}`);
-  assert.match(src, /xl:hidden/, "landmark: lib/pos-layout.ts must still carry its xl: mode-switch token");
+  const lgTokens = src.match(/[\w:-]*lg:[^\s"`]+/g) ?? [];
+  assert.deepEqual(
+    [...lgTokens].sort(),
+    ["lg:flex", "lg:grid-cols-[minmax(0,1fr)_340px]", "lg:hidden", "max-lg:pb-[100px]"],
+    `the only lg: tokens are the cart column, its grid track, the bar's hide and main's 100px foot, found ${lgTokens.join(", ")}`,
+  );
+  assert.ok(!/lg:grid-cols-\d/.test(src), "no lg:grid-cols-N tier (the 4-column tier is retired)");
+  assert.match(src, /desk:hidden/, "landmark: lib/pos-layout.ts carries the category switch too (desk:hidden)");
 });
 
 test("PIN: the dashboard sidebar's widths match SIDEBAR_WIDTH_REM/SIDEBAR_WIDTH_ICON_REM, and the desktop gap div reserves that space", () => {
@@ -426,7 +432,7 @@ test("PIN: (dashboard)/layout.tsx renders a BARE <SidebarProvider>, and DASHBOAR
     !layoutTsSrc.includes(shellClassIdentifier),
     `lib/pos-layout.ts must not declare/export ${shellClassIdentifier} — the shell-class experiment was reverted in CB-1c round 2, checked directly on the definition side, not just its former consumer`,
   );
-  assert.match(layoutTsSrc, /export const POS_ROOT_CLASS/, "landmark: lib/pos-layout.ts must still export POS_ROOT_CLASS");
+  assert.match(layoutTsSrc, /export const POS_PAGE_CLASS/, "landmark: lib/pos-layout.ts must still export the page's class (POS_PAGE_CLASS)");
 });
 
 test("PIN: route-parity fences — the other routes keep the 100vh document floor the body used to give them (plan §B4, review F2)", () => {
@@ -518,75 +524,23 @@ test("PIN: CategorySidebar.tsx's CategoryChips keeps the selected chip in view v
   assert.ok(src.indexOf("ALL_CATEGORIES", chipsStart) < src.indexOf("categories.map(", chipsStart), "landmark: CategoryChips must still render ALL_CATEGORIES before categories.map(");
 });
 
-test("PIN: pos/page.tsx's root renders exactly the three in-flow children the ROOT-level POS_ROOT_GAP_COUNT boundaries assume (header wrapper, split, MobileCartBar) — the fourth boundary lives inside ProductGrid, not at the root", () => {
+// U1 Task 1 (design 5, values 2.0 and 6.2): the page holds ONE in-flow child, the HTML's body grid, which fills it;
+// the phone/tablet cart bar lies over the page's foot (absolute; main's bottom padding keeps it clear), so it never
+// shortens the grid. The CB-1 root's three in-flow rows (header wrapper, split, bar) and their gap budget are gone.
+test("PIN: pos/page.tsx's page renders the body grid as its one in-flow child, filling it, with the cart bar over its foot", () => {
   const src = stripComments(readSrc(POS_PAGE));
-  assert.match(src, /<div className=\{POS_INSET_CLASS\}>\s*<PosHeader\b/, "landmark: pos/page.tsx must wrap <PosHeader in <div className={POS_INSET_CLASS}> as the root's first in-flow child");
-  assert.match(src, /className=\{cn\(POS_SPLIT_CLASS, POS_INSET_CLASS\)\}/, "landmark: the split div (second in-flow child) must use className={cn(POS_SPLIT_CLASS, POS_INSET_CLASS)}");
-  assert.match(src, /<MobileCartBar\b/, "landmark: pos/page.tsx must render <MobileCartBar (third in-flow child)");
+  assert.match(src, /<div className=\{POS_PAGE_CLASS\}>\s*(?:\{\}\s*)?<div data-ui="pos-body"/, "the page opens with the body grid (a comment aside)");
+  const body = src.indexOf('<div data-ui="pos-body"');
+  const bar = src.indexOf("<MobileCartBar");
+  assert.ok(body >= 0 && bar > body, "the bar comes after the body grid, as the page's second child");
+  assert.ok(POS_BODY_GRID_CLASS.split(/\s+/).includes("h-full"), "the body grid fills the page's height");
+  assert.ok(POS_MOBILE_BAR_CLASS.split(/\s+/).includes("absolute"), "the bar is out of the flow: it lies over the page's foot");
 });
 
-test("PIN: POS_CHIP_STRIP_REM parity — chip height (POS_CHIP_CLASS) + row bottom padding (POS_CHIP_ROW_CLASS), parsed from the real class strings, not re-typed 10+1 (review finding F14)", () => {
-  const layoutSrc = stripComments(readSrc(POS_LAYOUT_TS));
-
-  const chipClassMatch = layoutSrc.match(/POS_CHIP_CLASS\s*=\s*\n?\s*"([^"]*)"/);
-  assert.ok(chipClassMatch, "pos-layout.ts must declare POS_CHIP_CLASS as a string literal");
-  const chipHeightMatch = chipClassMatch![1].match(/\bh-(\d+)\b/);
-  assert.ok(chipHeightMatch, `POS_CHIP_CLASS ("${chipClassMatch![1]}") must carry an h-N token`);
-
-  const chipRowClassMatch = layoutSrc.match(/POS_CHIP_ROW_CLASS\s*=\s*"([^"]*)"/);
-  assert.ok(chipRowClassMatch, "pos-layout.ts must declare POS_CHIP_ROW_CLASS as a string literal");
-  const chipRowPaddingMatch = chipRowClassMatch![1].match(/(?:^|\s)pb-(\d+)(?:\s|$)/);
-  assert.ok(chipRowPaddingMatch, `POS_CHIP_ROW_CLASS ("${chipRowClassMatch![1]}") must carry a bare pb-N token`);
-
-  const hVal = Number(chipHeightMatch![1]);
-  const pbVal = Number(chipRowPaddingMatch![1]);
-  assert.equal(POS_CHIP_STRIP_REM * 4, hVal + pbVal, `POS_CHIP_STRIP_REM*4 must equal POS_CHIP_CLASS's h-${hVal} + POS_CHIP_ROW_CLASS's pb-${pbVal}`);
-});
-
-test("PIN: POS_ROOT_GAP_REM parity — the bare gap-N token parsed from POS_ROOT_CLASS, POS_PANE_CLASS, and ProductGrid's search|scroller container all agree (review finding F14)", () => {
-  const layoutSrc = stripComments(readSrc(POS_LAYOUT_TS));
-
-  const rootClassMatch = layoutSrc.match(/POS_ROOT_CLASS\s*=\s*\n?\s*"([^"]*)"/);
-  assert.ok(rootClassMatch, "pos-layout.ts must declare POS_ROOT_CLASS as a string literal");
-  const rootGapMatch = rootClassMatch![1].match(/(?:^|\s)gap-(\d+)(?:\s|$)/);
-  assert.ok(rootGapMatch, `POS_ROOT_CLASS ("${rootClassMatch![1]}") must carry a bare gap-N token`);
-
-  const paneClassMatch = layoutSrc.match(/POS_PANE_CLASS\s*=\s*"([^"]*)"/);
-  assert.ok(paneClassMatch, "pos-layout.ts must declare POS_PANE_CLASS as a string literal");
-  const paneGapMatch = paneClassMatch![1].match(/(?:^|\s)gap-(\d+)(?:\s|$)/);
-  assert.ok(paneGapMatch, `POS_PANE_CLASS ("${paneClassMatch![1]}") must carry a bare gap-N token`);
-
-  const gridSrc = stripComments(readSrc(PRODUCT_GRID));
-  const gridContainerMatch = gridSrc.match(/className="(flex min-h-0 flex-1 flex-col gap-\d+)"/);
-  assert.ok(gridContainerMatch, "ProductGrid.tsx must render its search|scroller container as flex min-h-0 flex-1 flex-col gap-N (the 4th gap boundary)");
-  const gridGapMatch = gridContainerMatch![1].match(/gap-(\d+)$/);
-  assert.ok(gridGapMatch, `ProductGrid.tsx's container class ("${gridContainerMatch![1]}") must end in gap-N`);
-
-  assert.equal(POS_ROOT_GAP_REM * 4, Number(rootGapMatch![1]), `POS_ROOT_GAP_REM*4 must equal POS_ROOT_CLASS's gap-${rootGapMatch![1]}`);
-  assert.equal(POS_ROOT_GAP_REM * 4, Number(paneGapMatch![1]), `POS_ROOT_GAP_REM*4 must equal POS_PANE_CLASS's gap-${paneGapMatch![1]}`);
-  assert.equal(POS_ROOT_GAP_REM * 4, Number(gridGapMatch![1]), `POS_ROOT_GAP_REM*4 must equal ProductGrid's container gap-${gridGapMatch![1]}`);
-
-  // Landmark + documented decision: the scroller itself still carries no
-  // floor of its own — plan §H0 (d) FAILED that (a min-h floor on the
-  // scroller left the one visible row 45px under the sticky bar); (d') put
-  // the floor on the ROOT (min-h-[21.5rem]) instead, so ProductGrid's own
-  // scroller stays untouched.
-  assert.match(
-    gridSrc,
-    /className="min-h-0 flex-1 overflow-y-auto"/,
-    "ProductGrid.tsx's scroller must still carry no min-h floor of its own — the floor lives on the ROOT (documented decision, plan §H0)",
-  );
-});
-
-test("PIN: POS_TILE_MIN_REM parity — parsed from ProductCard's own TILE_MIN_HEIGHT constant, not re-typed", () => {
+test("PIN: ProductCard's TILE_MIN_HEIGHT and ProductGrid's SKELETON_HEIGHT stay one height, so the loading grid does not jump", () => {
   const cardSrc = stripComments(readSrc(PRODUCT_CARD));
   const tileMinMatch = cardSrc.match(/TILE_MIN_HEIGHT\s*=\s*"min-h-\[([\d.]+)rem\]"/);
   assert.ok(tileMinMatch, 'ProductCard.tsx must declare TILE_MIN_HEIGHT = "min-h-[Nrem]"');
-  assert.equal(POS_TILE_MIN_REM, Number(tileMinMatch![1]), `POS_TILE_MIN_REM must equal ProductCard.tsx's TILE_MIN_HEIGHT value (${tileMinMatch![1]}rem)`);
-
-  // Keep the two in step: ProductGrid's own GridSkeleton uses a concrete
-  // SKELETON_HEIGHT so the loading grid doesn't jump when real tiles land —
-  // its value must track ProductCard's TILE_MIN_HEIGHT exactly.
   const gridSrc = stripComments(readSrc(PRODUCT_GRID));
   const skeletonMatch = gridSrc.match(/SKELETON_HEIGHT\s*=\s*"h-\[([\d.]+)rem\]"/);
   assert.ok(skeletonMatch, 'ProductGrid.tsx must declare SKELETON_HEIGHT = "h-[Nrem]"');
@@ -595,61 +549,27 @@ test("PIN: POS_TILE_MIN_REM parity — parsed from ProductCard's own TILE_MIN_HE
     Number(tileMinMatch![1]),
     `ProductGrid.tsx's SKELETON_HEIGHT (${skeletonMatch![1]}rem) must equal ProductCard.tsx's TILE_MIN_HEIGHT (${tileMinMatch![1]}rem)`,
   );
-});
-
-test("PIN: POS_SEARCH_ROW_REM/POS_HEADER_ROW_REM/POS_MOBILE_BAR_REM parity — parsed from the real consumer class strings, not re-typed numbers", () => {
-  // components/ui/input.tsx's base Input class carries the real h-N the
-  // search field renders at; POS_SEARCH_ROW_REM must track it in rem (h-N/4).
-  const inputSrc = stripComments(readSrc(INPUT_TSX));
-  const inputHeightMatch = inputSrc.match(/\bh-(\d+)\b/);
-  assert.ok(inputHeightMatch, "components/ui/input.tsx's base Input class must carry an h-N token");
-  assert.equal(POS_SEARCH_ROW_REM * 4, Number(inputHeightMatch![1]), `POS_SEARCH_ROW_REM*4 must equal input.tsx's h-N (${inputHeightMatch![1]})`);
-
-  // pos-layout.ts's own POS_HEADER_CONTROL_CLASS carries the header controls'
-  // real touch-target height.
-  const layoutSrc = stripComments(readSrc(POS_LAYOUT_TS));
-  const headerClassMatch = layoutSrc.match(/POS_HEADER_CONTROL_CLASS\s*=\s*"([^"]*)"/);
-  assert.ok(headerClassMatch, "pos-layout.ts must declare POS_HEADER_CONTROL_CLASS as a string literal");
-  const headerHeightMatch = headerClassMatch![1].match(/\bh-(\d+)\b/);
-  assert.ok(headerHeightMatch, `POS_HEADER_CONTROL_CLASS ("${headerClassMatch![1]}") must carry an h-N token`);
-  assert.equal(POS_HEADER_ROW_REM * 4, Number(headerHeightMatch![1]), `POS_HEADER_ROW_REM*4 must equal POS_HEADER_CONTROL_CLASS's h-N (${headerHeightMatch![1]})`);
-
-  // POS_MOBILE_BAR_CLASS/POS_MOBILE_BAR_BUTTON_CLASS: p-3 (top) + h-12
-  // (button) + p-3 (bottom) — pos-layout.ts's own doc comment above
-  // POS_MOBILE_BAR_REM lists the same three terms, so the bar's outer p-3
-  // padding is intentionally counted on BOTH sides here, not doubled by mistake.
-  const barClassMatch = layoutSrc.match(/POS_MOBILE_BAR_CLASS\s*=\s*\n?\s*"([^"]*)"/);
-  assert.ok(barClassMatch, "pos-layout.ts must declare POS_MOBILE_BAR_CLASS as a string literal");
-  const barPaddingMatch = barClassMatch![1].match(/(?:^|\s)p-(\d+)(?:\s|$)/);
-  assert.ok(barPaddingMatch, `POS_MOBILE_BAR_CLASS ("${barClassMatch![1]}") must carry a bare p-N token`);
-  const buttonClassMatch = layoutSrc.match(/POS_MOBILE_BAR_BUTTON_CLASS\s*=\s*"([^"]*)"/);
-  assert.ok(buttonClassMatch, "pos-layout.ts must declare POS_MOBILE_BAR_BUTTON_CLASS as a string literal");
-  const buttonHeightMatch = buttonClassMatch![1].match(/\bh-(\d+)\b/);
-  assert.ok(buttonHeightMatch, `POS_MOBILE_BAR_BUTTON_CLASS ("${buttonClassMatch![1]}") must carry an h-N token`);
-  const pVal = Number(barPaddingMatch![1]);
-  const hVal = Number(buttonHeightMatch![1]);
-  assert.equal(POS_MOBILE_BAR_REM, (pVal + hVal + pVal) / 4, `POS_MOBILE_BAR_REM must equal (p-${pVal} + h-${hVal} + p-${pVal})/4`);
+  assert.match(gridSrc, /className="flex min-h-0 flex-1 flex-col gap-3"/, "landmark: ProductGrid's search|scroller column fills the menu pane");
 });
 
 // ── CB-1c round 2b additions (fresh-eyes review pin hardening) ─────────────
 
-test("PIN: DASHBOARD_HEADER_REM parity — parsed from Header.tsx's real <header> h-N token, not re-typed (the height-chain matrix's chrome constants assume this figure)", () => {
+// U1 Task 1: the header keeps every page's 56px literal (min-h-14); on /pos (data-pos) it is exactly 56px tall (h-14),
+// the HTML's Order header (values 1.2), and the page's height subtracts that same figure (lib/pos-frame.test.ts).
+test("PIN: DASHBOARD_HEADER_REM parity — parsed from Header.tsx's real <header> tokens (min-h-14 everywhere, h-14 on /pos), not re-typed", () => {
   const src = stripComments(readSrc(HEADER_TSX));
   const headerMatch = src.match(/<header className="([^"]*)"/);
   assert.ok(headerMatch, 'Header.tsx must render a <header className="..."> tag');
   assert.ok(headerMatch![1].includes("sticky top-0"), "landmark: Header.tsx's <header> must carry sticky top-0");
-  // U0 Task 3: the HTML's header is min-height 56px (values 2.5), so the token read is min-h-N, on purpose (not a
-  // \bh-N\b match inside it); no page title is long enough to grow it on the POS.
-  const heightMatch = headerMatch![1].match(/(?:^|\s)min-h-(\d+)(?=\s|$)/);
-  assert.ok(heightMatch, `Header.tsx's <header> className ("${headerMatch![1]}") must carry a min-h-N token`);
-  assert.equal(
-    DASHBOARD_HEADER_REM * 4,
-    Number(heightMatch![1]),
-    `DASHBOARD_HEADER_REM*4 must equal Header.tsx's h-${heightMatch![1]}`,
-  );
+  const minMatch = headerMatch![1].match(/(?:^|\s)min-h-(\d+)(?=\s|$)/);
+  assert.ok(minMatch, `Header.tsx's <header> className ("${headerMatch![1]}") must carry a min-h-N token`);
+  assert.equal(DASHBOARD_HEADER_REM * 4, Number(minMatch![1]), `DASHBOARD_HEADER_REM*4 must equal Header.tsx's min-h-${minMatch![1]}`);
+  const posMatch = headerMatch![1].match(/(?:^|\s)data-pos:h-(\d+)(?=\s|$)/);
+  assert.ok(posMatch, `Header.tsx's <header> className ("${headerMatch![1]}") must carry a data-pos:h-N token`);
+  assert.equal(DASHBOARD_HEADER_REM * 4, Number(posMatch![1]), `DASHBOARD_HEADER_REM*4 must equal Header.tsx's data-pos:h-${posMatch![1]}`);
 });
 
-test("PIN: CategoryChips' <nav> composes exactly cn(POS_MOBILE_ONLY_CLASS, POS_CHIP_ROW_CLASS) — no third class argument — and no md: literal survives anywhere in CategorySidebar.tsx (the chip strip is one scrolling line at every width below xl)", () => {
+test("PIN: CategoryChips' <nav> composes exactly cn(POS_MOBILE_ONLY_CLASS, POS_CHIP_ROW_CLASS) — no third class argument — and no md: literal survives anywhere in CategorySidebar.tsx (the chip strip is one scrolling line at every width below 1100px)", () => {
   const src = stripComments(readSrc(CATEGORY_SIDEBAR));
   assert.match(
     src,
@@ -979,29 +899,31 @@ test("PIN: app/m/layout.tsx never mounts the touch-feel scope — the diner flow
 // "bahut bade bade box". min-w-0 on the pane is what lets the track size to
 // the viewport and the strip scroll sideways as designed (headless probe:
 // innerWidth 1241 → 412, grid 608px×2 → 186px×2, document scrollWidth = 412).
-test("PIN: POS_PANE_CLASS carries min-w-0 so the chip strip's min-content width can never widen the split's auto column (CB-1d.1b phone layout)", () => {
-  const layoutSrc = stripComments(readSrc(POS_LAYOUT_TS));
-  const paneClassMatch = layoutSrc.match(/POS_PANE_CLASS\s*=\s*"([^"]*)"/);
-  assert.ok(paneClassMatch, "landmark: pos-layout.ts must declare POS_PANE_CLASS as a string literal");
-  const paneTokens = paneClassMatch![1].split(/\s+/);
-  assert.ok(paneTokens.includes("min-w-0"), `POS_PANE_CLASS ("${paneClassMatch![1]}") must carry min-w-0`);
-  assert.ok(paneTokens.includes("min-h-0"), `POS_PANE_CLASS ("${paneClassMatch![1]}") must still carry min-h-0 (the height chain)`);
-  assert.ok(paneTokens.includes("flex") && paneTokens.includes("flex-col"), "POS_PANE_CLASS must still be a flex column below xl");
+// U1 Task 1: the grid item is now the HTML's menu column (main, `min-width:0`, values 3.1) in the body grid's
+// minmax(0,1fr) track; the pane inside it stacks the control row, the chips and the grid, and is min-w-0 too.
+test("PIN: the menu column and its pane carry min-w-0 so the chip strip's min-content width can never widen the body grid's column (CB-1d.1b phone layout)", () => {
+  const mainTokens = POS_MAIN_CLASS.split(/\s+/);
+  assert.ok(mainTokens.includes("min-w-0"), `POS_MAIN_CLASS ("${POS_MAIN_CLASS}") must carry min-w-0 (the grid item)`);
+  assert.ok(mainTokens.includes("min-h-0"), `POS_MAIN_CLASS ("${POS_MAIN_CLASS}") must carry min-h-0 (it scrolls inside the page)`);
+  const paneTokens = POS_PANE_CLASS.split(/\s+/);
+  assert.ok(paneTokens.includes("min-w-0"), `POS_PANE_CLASS ("${POS_PANE_CLASS}") must carry min-w-0`);
+  assert.ok(paneTokens.some((t) => /^min-h-\[\d+px\]$/.test(t)), `POS_PANE_CLASS ("${POS_PANE_CLASS}") must carry its floor (the height chain, lib/pos-layout.test.ts)`);
+  assert.ok(paneTokens.includes("flex") && paneTokens.includes("flex-col"), "POS_PANE_CLASS must still be a flex column");
+  assert.ok(POS_BODY_GRID_CLASS.includes("grid-cols-[minmax(0,1fr)]"), "landmark: the menu track itself has a 0 minimum");
 
-  // The strip keeps its own sideways scroll — the pane's min-w-0 is what makes
+  // The strip keeps its own sideways scroll — the min-w-0 above is what makes
   // that scroll actually happen instead of widening the page.
+  const layoutSrc = stripComments(readSrc(POS_LAYOUT_TS));
   const chipRowClassMatch = layoutSrc.match(/POS_CHIP_ROW_CLASS\s*=\s*"([^"]*)"/);
   assert.ok(chipRowClassMatch, "landmark: pos-layout.ts must declare POS_CHIP_ROW_CLASS as a string literal");
   assert.ok(chipRowClassMatch![1].split(/\s+/).includes("overflow-x-auto"), "POS_CHIP_ROW_CLASS must keep overflow-x-auto");
 
-  // The pane div is the split's FIRST child (the grid item whose automatic
-  // minimum this pin guards) and takes the constant verbatim.
+  // The pane is the menu column's only child and takes the constant verbatim.
   const pageSrc = stripComments(readSrc(POS_PAGE));
-  assert.match(pageSrc, /className=\{POS_PANE_CLASS\}/, "landmark: pos/page.tsx must render the pane with className={POS_PANE_CLASS}");
   assert.match(
     pageSrc,
-    /className=\{cn\(POS_SPLIT_CLASS, POS_INSET_CLASS\)\}\s*>\s*<div className=\{POS_PANE_CLASS\}/,
-    "the pane must be the split div's first child — it is the grid item whose min-width the chip strip was widening",
+    /<div data-ui="pos-main" className=\{POS_MAIN_CLASS\}>\s*(?:\{\}\s*)?<div className=\{POS_PANE_CLASS\}>/,
+    "the pane must be the menu column's child — the column is the grid item whose min-width the chip strip would widen",
   );
 });
 
@@ -1303,8 +1225,8 @@ test("PIN: D9.8c — on mobile, a surviving adjustment keeps the cart bar OPENAB
 
 // ── U0 Task 2 (2026-10-19): the HTML's nav widths drive the POS grid ─────────
 // The owner's HTML (values 2.1 rootCols): no nav on a phone (< 720 px), the 76 px rail from 720 px and on a collapsed
-// desktop, the 232 px sidebar at 1280 px and up. The POS grid pane is the viewport minus that nav, minus <main>'s side
-// padding, minus the two-pane rail + cart at xl.
+// desktop, the 232 px sidebar at 1280 px and up. The POS grid pane is the HTML's menu column (U1 Task 1, values 2.0:
+// the viewport minus that nav, the category column from 1100 px and the cart column from 1024 px) minus its inset.
 
 test("navWidthPx: 0 on a phone, the 76 px rail on a tablet or a collapsed desktop, the 232 px sidebar from 1280 px", () => {
   assert.equal(NAV_WIDTH_WIDE_PX, 232, "the wide sidebar is the HTML's 232 px");
@@ -1333,7 +1255,7 @@ test("navWidthPx: 0 on a phone, the 76 px rail on a tablet or a collapsed deskto
   assert.equal(isWideNav({ viewportWidth: 1279, collapsed: false }), false, "below 1280 px: the rail");
 });
 
-test("the POS product grid gets at least one column and fits beside the nav at the plan's five viewports", () => {
+test("the POS product grid gets at least one column and fits beside the nav, the category column and the cart at the plan's five viewports", () => {
   const viewports: Array<[string, number, boolean]> = [
     ["1280", 1280, false],
     ["1280 collapsed", 1280, true],

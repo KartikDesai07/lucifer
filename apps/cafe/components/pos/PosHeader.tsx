@@ -54,7 +54,8 @@ export const PosHeader = memo(function PosHeader({
 }: PosHeaderProps) {
   return (
     // One row that never wraps below xl; compact desktop row at xl+. The page's title is the page header's (U0 Task 3,
-    // ruling R4), so the row holds only the controls.
+    // ruling R4; on /pos the HTML's Order header has no title block, so its h1 is read to screen readers only, U1
+    // Task 1), so the row holds only the controls, at the top of the menu column until U1 Tasks 4 and 6 move them.
     <div className="flex items-center justify-between gap-2 xl:flex-wrap">
       <PageHeader title="POS Terminal" />
       <div className="flex min-w-0 flex-1 items-center gap-2 xl:flex-none xl:flex-wrap">

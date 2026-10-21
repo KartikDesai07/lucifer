@@ -27,14 +27,14 @@ import { PrintSources } from "@/components/pos/PrintSources";
 import { PosModals } from "@/components/pos/PosModals";
 import { SelfOrderAutoPrint } from "@/components/pos/SelfOrderAutoPrint";
 import { printConfigOf } from "@/lib/print";
-import { cn } from "@/lib/utils";
 import { buildCartProps, hasPendingAdjustment } from "@/lib/pos-cart-props";
 import {
-  POS_ROOT_CLASS,
-  POS_INSET_CLASS,
-  POS_SPLIT_CLASS,
+  POS_PAGE_CLASS,
+  POS_BODY_GRID_CLASS,
+  POS_ASIDE_CLASS,
+  POS_MAIN_CLASS,
   POS_PANE_CLASS,
-  POS_DESKTOP_CART_CLASS,
+  POS_CART_CLASS,
 } from "@/lib/pos-layout";
 import type { Order, Product } from "@/types";
 
@@ -150,71 +150,71 @@ export default function PosPage() {
   const cartProps = buildCartProps(pos, () => itemVoid.setOpen(true), products.data);
 
   return (
-    <div className={POS_ROOT_CLASS}>
-      {/* The root is full-bleed below xl (its bottom edge is the screen edge, for
-          the sticky bar); the header and the split re-inset themselves. */}
-      <div className={POS_INSET_CLASS}>
-        <PosHeader
-          lastOrder={pos.lastOrder}
-          onReprintKot={pos.reprintKot}
-          openTabs={openTabs.data ?? NO_OPEN_TABS}
-          onResumeTab={onResumeTab}
-          resumedOrder={pos.resumedOrder}
-          isBusy={pos.isBusy}
-          onMoveTable={handleMoveTable}
-          tables={tables.data}
-          table={pos.table}
-          onTableChange={onTableChange}
-          customer={pos.customer}
-          onCustomerChange={pos.setCustomer}
-        />
-      </div>
-
-      <div className={cn(POS_SPLIT_CLASS, POS_INSET_CLASS)}>
-        <div className={POS_PANE_CLASS}>
+    <div className={POS_PAGE_CLASS}>
+      {/* The HTML's body grid (values 2.0): categories from 1100px, the menu, the cart from 1024px; each scrolls. */}
+      <div data-ui="pos-body" className={POS_BODY_GRID_CLASS}>
+        <aside data-ui="pos-aside" className={POS_ASIDE_CLASS}>
           {categories.isLoading ? (
-            <>
-              <Skeleton className="hidden h-full w-44 shrink-0 xl:block" />
-              <Skeleton className="h-10 w-full xl:hidden" />
-            </>
+            <Skeleton className="m-3 flex-1" />
           ) : (
-            <>
+            <CategorySidebar
+              categories={categories.data ?? []}
+              selected={category}
+              onSelect={setCategory}
+            />
+          )}
+        </aside>
+        {/* The menu column: today's control row, chips (below 1100px) and grid, until U1 Tasks 2-6 give it the
+            HTML's toolbar, cards and switch button. */}
+        <div data-ui="pos-main" className={POS_MAIN_CLASS}>
+          <div className={POS_PANE_CLASS}>
+            <PosHeader
+              lastOrder={pos.lastOrder}
+              onReprintKot={pos.reprintKot}
+              openTabs={openTabs.data ?? NO_OPEN_TABS}
+              onResumeTab={onResumeTab}
+              resumedOrder={pos.resumedOrder}
+              isBusy={pos.isBusy}
+              onMoveTable={handleMoveTable}
+              tables={tables.data}
+              table={pos.table}
+              onTableChange={onTableChange}
+              customer={pos.customer}
+              onCustomerChange={pos.setCustomer}
+            />
+            {categories.isLoading ? (
+              <Skeleton className="h-10 w-full shrink-0 desk:hidden" />
+            ) : (
               <CategoryChips
                 categories={categories.data ?? []}
                 selected={category}
                 onSelect={setCategory}
               />
-              <CategorySidebar
-                categories={categories.data ?? []}
-                selected={category}
-                onSelect={setCategory}
+            )}
+            {products.isLoading ? (
+              <GridSkeleton />
+            ) : products.isError && products.data === undefined ? (
+              <p className="text-sm text-destructive">
+                Failed to load products. Refresh to retry.
+              </p>
+            ) : (
+              <ProductGrid
+                products={products.data ?? []}
+                selectedCategory={category}
+                onProductClick={handleProductClick}
+                onProductOptions={handleProductOptions}
+                qtyByProduct={qtyByProduct}
+                disabled={pos.isBusy}
               />
-            </>
-          )}
-          {products.isLoading ? (
-            <GridSkeleton />
-          ) : products.isError && products.data === undefined ? (
-            <p className="text-sm text-destructive">
-              Failed to load products. Refresh to retry.
-            </p>
-          ) : (
-            <ProductGrid
-              products={products.data ?? []}
-              selectedCategory={category}
-              onProductClick={handleProductClick}
-              onProductOptions={handleProductOptions}
-              qtyByProduct={qtyByProduct}
-              disabled={pos.isBusy}
-            />
-          )}
+            )}
+          </div>
         </div>
-
-        <div className={POS_DESKTOP_CART_CLASS}>
-          <Cart {...cartProps} />
-        </div>
+        <section data-ui="pos-cart" className={POS_CART_CLASS}>
+          <Cart {...cartProps} className="rounded-none border-0" />
+        </section>
       </div>
 
-      {/* Below xl: cart lives in a bottom sheet behind a fixed summary bar. */}
+      {/* Below 1024px: the cart lives in a bottom sheet behind a summary bar over the page's foot. */}
       <MobileCartBar
         open={mobileCartOpen}
         onOpenChange={setMobileCartOpen}
