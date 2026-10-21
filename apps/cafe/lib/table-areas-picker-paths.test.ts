@@ -18,56 +18,67 @@ const count = (haystack: string, needle: string): number => haystack.split(needl
 const TABLE_SELECTOR = "apps/cafe/components/pos/TableSelector.tsx";
 const MOVE_TABLE_DIALOG = "apps/cafe/components/orders/MoveTableDialog.tsx";
 const MOVE_TABLE_PICKER = "apps/cafe/components/orders/MoveTablePicker.tsx";
+const TABLE_SHEET = "apps/cafe/components/pos/TableSheet.tsx";
+const TABLE_SHEET_LIB = "apps/cafe/lib/table-sheet.ts";
 
-const SELECTOR_GRID = 'cn("grid grid-cols-4 gap-2 overflow-y-auto", POS_DIALOG_LIST_CAP_CLASS)';
-const PICKER_GRID = 'cn("grid grid-cols-3 gap-2 overflow-y-auto", POS_MOVE_TABLE_LIST_CAP_CLASS)';
 const USE_TABLE_AREAS = "useTable" + "Areas(";
+// Each named area: TableArea (its name, "{n} free" and the grid) over the area's own tiles, in the area's order.
+const AREA_BLOCK =
+  /<TableArea key=\{g\.key\} name=\{g\.name\} free=\{freeTileCount\(g\.items\.map\(\(t\) => tileOf\(t\)\.kind\)\)\}>\s*\{g\.items\.map\(renderTile\)\}\s*<\/TableArea>/;
+// No named area: one grid of every table, in the cafe's order.
+const FLAT_GRID = '<div data-ui="tp-grid" className={TABLE_GRID_CLASS}>{(tables ?? []).map(renderTile)}</div>';
 
-test("PIN: TableSelector keeps its pinned grid literal ONCE and puts col-span-4 area headings inside it, grouped by the shared helpers", () => {
+// U1 Task 11 (values 9.1; design 6.12): both pickers are the owner's HTML "Choose a table" sheet. An area is TableArea
+// (components/pos/TableSheet.tsx): its name and "{n} free" over the HTML's auto-fill grid, minmax(92px, 1fr). So the
+// capped `grid grid-cols-4` / `grid grid-cols-3` literals and the `<h3 col-span-N>` headings went ON PURPOSE (reason: the
+// HTML's auto-fill grid, and its sheet caps the panel, not the list); the grouping, its gate and its order stay.
+test("PIN: TableSelector groups its tiles under TableArea by the shared helpers, and stays flat when no area is named", () => {
   const src = code(TABLE_SELECTOR);
-  assert.equal(count(src, SELECTOR_GRID), 1, "the capped grid literal must appear exactly once");
   assert.equal(count(src, USE_TABLE_AREAS), 1, "TableSelector must call useTableAreas( once");
   assert.match(src, /groupTablesByArea\(tables \?\? \[\], areas\.data\)/, "landmark: grouping goes through groupTablesByArea");
   assert.match(src, /showAreaHeadings\(groups\)/, "headings are gated by showAreaHeadings");
-  assert.match(
-    src,
-    /<h3 className="col-span-4 truncate pt-1 text-sm font-semibold first:pt-0" title=\{g\.name\}>/,
-    "the area heading must span all 4 columns, truncate, and carry the full name as a title",
-  );
-  const gridAt = src.indexOf(SELECTOR_GRID);
-  const headingAt = src.indexOf('className="col-span-4');
-  const gridEnd = src.indexOf("</div>", gridAt);
-  assert.ok(gridAt >= 0 && headingAt > gridAt && headingAt < gridEnd, "the heading must sit INSIDE the capped grid");
-  assert.match(src, /\(tables \?\? \[\]\)\.map\(renderTile\)/, "no headings = the flat map, unchanged");
-  assert.equal(count(src, "tablePickAction" + "("), 1, "the shared pick rule stays called once");
+  assert.match(src, AREA_BLOCK, "each named area: its heading over its own tiles");
+  assert.ok(src.includes(FLAT_GRID), "no headings = the flat map, unchanged");
+  assert.equal(count(src, "selectorTile" + "("), 1, "the shared tile rule (lib/table-sheet.ts) stays called once");
+  for (const gone of ["grid grid-" + "cols-4", "col-span-" + "4", "POS_DIALOG_LIST_" + "CAP_CLASS"]) {
+    assert.ok(!src.includes(gone), `TableSelector must not carry ${gone}: the HTML's auto-fill grid in a capped panel`);
+  }
 });
 
-test("PIN: MoveTablePicker groups with col-span-3 headings inside the pinned grid and returns a fragment", () => {
+test("PIN: TableArea draws the HTML's area: the name (truncated, its full name as a title) and '{n} free' over the grid", () => {
+  const src = code(TABLE_SHEET);
+  const start = src.indexOf("export function TableArea(");
+  assert.ok(start >= 0, "landmark: TableSheet.tsx exports TableArea");
+  const body = src.slice(start, src.indexOf("\n}\n", start));
+  const headAt = body.indexOf('data-ui="tp-area-head"');
+  const gridAt = body.indexOf('data-ui="tp-grid"');
+  assert.ok(headAt >= 0 && gridAt > headAt, "the heading sits over the grid, inside the area");
+  assert.match(body, /<span className="min-w-0 truncate" title=\{name\}>\s*\{name\}\s*<\/span>/, "a long area name truncates and keeps its full name as a title");
+  assert.match(body, /\{freeText\(free\)\}/, "the HTML's '{n} free' (upper-cased by its style)");
+  assert.match(body, /className=\{TABLE_GRID_CLASS\}>\s*\{children\}/, "the tiles in the area's grid");
+});
+
+test("PIN: MoveTablePicker groups the same way and returns a fragment: the legend, the areas, then its foot", () => {
   const src = code(MOVE_TABLE_PICKER);
-  assert.equal(count(src, PICKER_GRID), 1, "the capped grid literal must appear exactly once");
   assert.equal(count(src, USE_TABLE_AREAS), 1, "the picker must call useTableAreas( once");
   assert.match(src, /groupTablesByArea\(tables \?\? \[\], areas\.data\)/, "landmark: grouping goes through groupTablesByArea");
   assert.match(src, /showAreaHeadings\(groups\)/, "headings are gated by showAreaHeadings");
+  assert.match(src, AREA_BLOCK, "each named area: its heading over its own tiles");
+  assert.ok(src.includes(FLAT_GRID), "no headings = the flat map, unchanged");
+  // A fragment: the first thing return( opens is <>, not a wrapper element, so its parts are the panel's own rows.
+  assert.match(src, /return \(\s*<>\s*<TableLegend items=\{MOVE_LEGEND\} \/>/, "the picker must return a fragment, not a wrapper div");
   assert.match(
     src,
-    /<h3 className="col-span-3 truncate pt-1 text-sm font-semibold first:pt-0" title=\{g\.name\}>/,
-    "the area heading must span all 3 columns, truncate, and carry the full name as a title",
-  );
-  const gridAt = src.indexOf(PICKER_GRID);
-  const headingAt = src.indexOf('className="col-span-3');
-  const gridEnd = src.indexOf("</div>", gridAt);
-  assert.ok(gridAt >= 0 && headingAt > gridAt && headingAt < gridEnd, "the heading must sit INSIDE the capped grid");
-  assert.match(src, /\(tables \?\? \[\]\)\.map\(renderTile\)/, "no headings = the flat map, unchanged");
-  // A fragment: the first thing return( opens is <>, not a wrapper element.
-  assert.match(src, /return \(\s*<>\s*<div className=\{cn\("grid grid-cols-3/, "the picker must return a fragment, not a wrapper div");
-  assert.match(
-    src,
-    /\{!isAssign && \(\s*<Button[^>]*onClick=\{onUnseat\}[^>]*>\s*Remove from table\s*<\/Button>/,
+    /\{!isAssign && \(\s*<button[^>]*onClick=\{onUnseat\}[^>]*>\s*Remove from table\s*<\/button>/,
     "Remove from table shows only when the tab has a table, and fires onUnseat",
   );
-  assert.match(src, /<Button variant="outline" disabled=\{busy\} onClick=\{onCancel\}>\s*Cancel/, "Cancel fires onCancel");
-  assert.match(src, /isFreeTable\(t\)/, "free tables come from the shared isFreeTable");
-  assert.ok(!src.includes("function isFree("), "the private isFree copy moved to lib/table-status");
+  assert.match(src, /<button[^>]*disabled=\{busy\}\s+onClick=\{onCancel\}[^>]*>\s*Cancel\s*<\/button>/, "Cancel fires onCancel (locked while the move is in flight)");
+  assert.equal(count(src, "moveTile" + "("), 1, "the shared move rule (lib/table-sheet.ts) stays called once");
+  assert.match(code(TABLE_SHEET_LIB), /isFreeTable\(table\)/, "free tables come from the shared isFreeTable");
+  for (const src2 of [src, code(TABLE_SHEET_LIB)]) assert.ok(!src2.includes("function " + "isFree("), "the private isFree copy moved to lib/table-status");
+  for (const gone of ["grid grid-" + "cols-3", "col-span-" + "3", "POS_MOVE_TABLE_" + "LIST_CAP_CLASS"]) {
+    assert.ok(!src.includes(gone), `MoveTablePicker must not carry ${gone}: the HTML's auto-fill grid in a capped panel`);
+  }
 });
 
 test("PIN: MoveTableDialog renders <MoveTablePicker exactly once and no longer carries the grid itself", () => {
@@ -82,8 +93,9 @@ test("PIN: MoveTableDialog renders <MoveTablePicker exactly once and no longer c
   assert.match(src, /onCancel=\{\(\) => onOpenChange\(false\)\}/, "Cancel closes the dialog");
   assert.match(src, /onUnseat=\{armUnseat\}/, "Remove from table still arms the confirm step");
   assert.equal(count(src, "useTables" + "("), 1, "useTables() stays in the dialog");
-  assert.ok(!src.includes("grid grid-cols-3"), "the grid moved to MoveTablePicker");
-  assert.ok(!src.includes("POS_MOVE_TABLE_LIST_CAP_CLASS"), "the dialog no longer imports the list cap class");
+  for (const gone of ["TABLE_GRID_" + "CLASS", "<Table" + "Area", "grid grid-" + "cols-3", "POS_MOVE_TABLE_" + "LIST_CAP_CLASS"]) {
+    assert.ok(!src.includes(gone), `the grid lives in MoveTablePicker, not the dialog (${gone})`);
+  }
 });
 
 // U0 match Task 7 (values 3.6, design 5.5): the dashboard's Live tables card is the owner's HTML card, whose tiles sit

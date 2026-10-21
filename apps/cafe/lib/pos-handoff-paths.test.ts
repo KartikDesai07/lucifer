@@ -83,12 +83,18 @@ test("PIN: every refusal passes the one fresh floor read before its toast (R12)"
   }
 });
 
-test("PIN: TableSelector uses the shared pick rule, not its old inline lookup", () => {
+// U1 Task 11: the picker draws each tile from lib/table-sheet.ts's selectorTile (the HTML's "Choose a table" tiles), so
+// the shared pick rule is read there, once; the tile is TableTile's native <button> (components/pos/TableSheet.tsx).
+test("PIN: TableSelector uses the shared pick rule (through selectorTile), not its old inline lookup", () => {
   const src = readCode(TABLE_SELECTOR);
-  assert.match(src, /<button\b/, "landmark: the tile button must still render");
-  assert.equal(count(src, "tablePickAction" + "("), 1);
+  assert.match(src, /<TableTile\b/, "landmark: the tile must still render");
+  assert.match(readCode("apps/cafe/components/pos/TableSheet.tsx"), /<button\b/, "the tile is a native button");
+  assert.equal(count(src, "selectorTile" + "("), 1, "TableSelector reads every tile through the one rule");
   assert.ok(!src.includes("tabs?.find((o) => o.tableNo === t.tableNo)"), "the old inline find must be gone");
-  assert.match(src, /pick\.kind !== "select"/);
+  const sheet = readCode("apps/cafe/lib/table-sheet.ts");
+  assert.equal(count(sheet, "tablePickAction" + "("), 1, "the rule calls the shared tablePickAction once");
+  assert.ok(!sheet.includes("tabs?.find("), "and no inline find of its own");
+  assert.match(sheet, /pick\.kind !== "select"/, "a tile that cannot take a new order is disabled by the pick's verdict");
 });
 
 test("PIN: the page's open-tabs filter literal equals OPEN_TABS_FILTERS", () => {

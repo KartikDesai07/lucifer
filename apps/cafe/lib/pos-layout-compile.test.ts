@@ -41,7 +41,6 @@ import {
   POS_CART_CTA_CLASS,
   POS_PRESS_FEEDBACK_CLASS,
   POS_DIALOG_LIST_CAP_CLASS,
-  POS_MOVE_TABLE_LIST_CAP_CLASS,
 } from "@/lib/pos-layout";
 
 // Hand-typed to the minimal slice of Tailwind's internal compiler API this
@@ -213,7 +212,6 @@ test("PIN: real Tailwind compiles the CB-1d.1 touch-feel/device-size tokens to t
     ...POS_CART_CTA_CLASS.split(/\s+/),
     ...POS_PRESS_FEEDBACK_CLASS.split(/\s+/),
     ...POS_DIALOG_LIST_CAP_CLASS.split(/\s+/),
-    ...POS_MOVE_TABLE_LIST_CAP_CLASS.split(/\s+/),
   ].filter(Boolean);
 
   const raw = await compileCandidates(candidates);
@@ -250,24 +248,20 @@ test("PIN: real Tailwind compiles the CB-1d.1 touch-feel/device-size tokens to t
     "compiled CSS must include the vendor-prefixed user-select: none pair",
   );
 
-  // Dialog-cap vh/dvh pairs (both dialogs' cap classes).
+  // The dialog-cap vh/dvh pair (U1 Task 11: the Move table dialog's 50vh pair went with its list cap; the HTML's table
+  // sheet caps its panel at 100dvh - 32px instead, lib/table-sheet.ts).
   assert.ok(css.includes("max-height: 60vh;"), "compiled CSS must include max-height: 60vh;");
   assert.ok(
     css.includes("@supports (height:1dvh) { max-height: 60dvh; }"),
     "compiled CSS must include the 60dvh @supports override",
   );
-  assert.ok(css.includes("max-height: 50vh;"), "compiled CSS must include max-height: 50vh;");
-  assert.ok(
-    css.includes("@supports (height:1dvh) { max-height: 50dvh; }"),
-    "compiled CSS must include the 50dvh @supports override",
-  );
 
-  // g12: both dialog-cap classes ("max-h-[60vh] supports-[height:1dvh]:max-h-[60dvh]"
-  // and the 50vh pair) must compile to their ESCAPED selectors, base before
+  // g12: the dialog-cap class ("max-h-[60vh] supports-[height:1dvh]:max-h-[60dvh]")
+  // must compile to its ESCAPED selectors, base before
   // the @supports-scoped dvh variant — "equal specificity, source order
   // decides" is exactly the same base-before-variant contract the h-10/h-8
   // ORDER pin below checks for the pointer-fine tokens.
-  for (const n of ["60", "50"]) {
+  for (const n of ["60"]) {
     const baseSelectorIdx = css.indexOf(`.max-h-\\[${n}vh\\] {`);
     const dvhSelectorIdx = css.indexOf(`.supports-\\[height\\:1dvh\\]\\:max-h-\\[${n}dvh\\] {`);
     assert.ok(baseSelectorIdx >= 0, `compiled CSS must include the escaped .max-h-\\[${n}vh\\] { rule`);

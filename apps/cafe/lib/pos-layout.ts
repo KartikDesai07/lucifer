@@ -342,9 +342,9 @@ export const POS_CART_GST_BUTTON_CLASS =
 // Dialog list caps (CB-1d.1 V2, the CB-1c residual): a plain-vh cap ignores
 // the URL bar / on-screen keyboard, pushing a capped list — and the dialog's
 // escape buttons — off a keyboard-shrunk phone viewport. vh base + dvh
-// override (POS_CART_SHEET_CLASS pattern); 60vh pickers, 50vh Move table.
+// override (POS_CART_SHEET_CLASS pattern); 60vh lists. (U1 Task 11: the table
+// picker and the Move table dialog cap their PANEL instead, lib/table-sheet.ts.)
 export const POS_DIALOG_LIST_CAP_CLASS = "max-h-[60vh] supports-[height:1dvh]:max-h-[60dvh]";
-export const POS_MOVE_TABLE_LIST_CAP_CLASS = "max-h-[50vh] supports-[height:1dvh]:max-h-[50dvh]";
 
 // The (dashboard) layout mounts <TouchFeel /> (components/shared/TouchFeel.tsx),
 // which publishes this attribute on <html> while the staff dashboard is mounted

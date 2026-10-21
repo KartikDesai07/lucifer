@@ -100,14 +100,16 @@ test("PIN: the Table and Customer chips left PosHeader for the cart's cells (own
   assert.ok(src.includes("onSelect={onTableChange}"), "the Floor hand-off still selects a table");
 });
 
-test("PIN: TableSelector opens from the trigger it is given (the cart's Table cell) — its dialog is today's", () => {
+// U1 Task 11: the dialog is the HTML's "Choose a table" sheet on a Radix dialog of its own (DialogPrimitive, as the
+// customer and payment sheets), so the trigger is DialogPrimitive.Trigger (look; the pin keeps its meaning: the cell).
+test("PIN: TableSelector opens from the trigger it is given (the cart's Table cell) — the HTML's table sheet", () => {
   const src = stripComments(readSrc(TABLE_SELECTOR));
   assert.match(src, /trigger: ReactElement;/, "TableSelector must take the cell it opens from");
-  assert.ok(src.includes("<DialogTrigger asChild>{trigger}</DialogTrigger>"), "the cell is the dialog's trigger");
+  assert.ok(src.includes("<DialogPrimitive.Trigger asChild>{trigger}</DialogPrimitive.Trigger>"), "the cell is the dialog's trigger");
   for (const gone of ["LayoutGrid", "POS_HEADER_CHIP_ICON_CLASS", "className?: string", "disabled?: boolean"]) {
     assert.ok(!src.includes(gone), `TableSelector must no longer carry its chip's ${gone}: the cell brings its own look and lock`);
   }
-  assert.ok(src.includes("<DialogTitle>Select table</DialogTitle>"), "landmark: today's dialog (U1 Task 11 restyles it)");
+  assert.ok(src.includes("title={TABLE_SHEET_TITLE}"), "landmark: the HTML's sheet, \"Choose a table\" (U1 Task 11)");
 });
 
 // U1 Task 9 (values 11.1; design 6.11): the payment sheet is the only user of CustomerSearch's own trigger, so the chip

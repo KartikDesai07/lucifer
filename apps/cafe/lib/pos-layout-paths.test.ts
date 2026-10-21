@@ -46,7 +46,6 @@ import {
   POS_CART_CTA_CLASS,
   POS_MOBILE_BAR_BUTTON_CLASS,
   POS_DIALOG_LIST_CAP_CLASS,
-  POS_MOVE_TABLE_LIST_CAP_CLASS,
   POS_TOUCH_ATTR,
 } from "@/lib/pos-layout";
 
@@ -996,61 +995,51 @@ test("PIN: header/CTA tokens gate their xl compact look on pointer-fine ONLY —
 // U1 Task 3: the tile's corner options button, its title reserve and the thumbnail-row arithmetic went with the old
 // tile (owner Q5/Q6); the card's own geometry (the HTML's 117px / 123px) is pinned in lib/pos-tile-paths.test.ts.
 
-test("PIN: POS_DIALOG_LIST_CAP_CLASS/POS_MOVE_TABLE_LIST_CAP_CLASS each pair a vh base with an EXACT-matching dvh override (CB-1d.1 V2)", () => {
+test("PIN: POS_DIALOG_LIST_CAP_CLASS pairs a vh base with an EXACT-matching dvh override (CB-1d.1 V2)", () => {
   const capPattern = /^max-h-\[(\d+)vh\] supports-\[height:1dvh\]:max-h-\[\1dvh\]$/;
-  for (const [label, cls] of [
-    ["POS_DIALOG_LIST_CAP_CLASS", POS_DIALOG_LIST_CAP_CLASS],
-    ["POS_MOVE_TABLE_LIST_CAP_CLASS", POS_MOVE_TABLE_LIST_CAP_CLASS],
-  ] as const) {
-    assert.match(cls, capPattern, `${label} ("${cls}") must be exactly "max-h-[Nvh] supports-[height:1dvh]:max-h-[Ndvh]" with matching N`);
-  }
+  assert.match(
+    POS_DIALOG_LIST_CAP_CLASS,
+    capPattern,
+    `POS_DIALOG_LIST_CAP_CLASS ("${POS_DIALOG_LIST_CAP_CLASS}") must be exactly "max-h-[Nvh] supports-[height:1dvh]:max-h-[Ndvh]" with matching N`,
+  );
 });
 
 // U1 Task 6 (values 7.1): OpenTabsButton is the HTML's Open orders panel now, its list a flex child of a panel capped at
-// min(640px, 100dvh - 80px) (86dvh on a phone; lib/pos-header-paths.test.ts), so only TableSelector keeps the 60vh cap.
-test("PIN: TableSelector uses POS_DIALOG_LIST_CAP_CLASS for its scrollable list, and the Open orders panel caps on the visible viewport — no bare max-h-[60vh] literal left behind (CB-1d.1 V2)", () => {
-  // Needle built by concatenation (testing.md) so this file's own source text
+// min(640px, 100dvh - 80px) (86dvh on a phone; lib/pos-header-paths.test.ts). U1 Task 11 (values 9.1): the table picker
+// and the move dialog are the HTML's "Choose a table" sheet, whose PANEL is capped at 100dvh - 32px (88dvh on a phone)
+// with the areas scrolling inside it, so the 60vh / 50vh list caps went (POS_MOVE_TABLE_LIST_CAP_CLASS with them).
+test("PIN: the table sheet and the Open orders panel cap on the visible viewport — no bare max-h-[60vh] / max-h-[50vh] literal left behind (CB-1d.1 V2)", () => {
+  // Needles built by concatenation (testing.md) so this file's own source text
   // never contains the literal as one contiguous string.
   const sixtyVh = "max-h-[60" + "vh]";
+  const fiftyVh = "max-h-[50" + "vh]";
   const selector = stripComments(readSrc(TABLE_SELECTOR));
-  assert.match(selector, /cn\("grid grid-cols-4 gap-2 overflow-y-auto", POS_DIALOG_LIST_CAP_CLASS\)/, "landmark: TableSelector must call cn(...) with POS_DIALOG_LIST_CAP_CLASS on its scrollable list");
+  const picker = stripComments(readSrc(MOVE_TABLE_PICKER));
+  const dialog = stripComments(readSrc(MOVE_TABLE_DIALOG));
   const panel = stripComments(readSrc(OPEN_TABS_BUTTON));
-  for (const src of [selector, panel]) assert.ok(!src.includes(sixtyVh), `no bare "${sixtyVh}" literal`);
+  for (const src of [selector, picker, dialog, panel]) {
+    assert.ok(!src.includes(sixtyVh) && !src.includes(fiftyVh), `no bare "${sixtyVh}" / "${fiftyVh}" literal`);
+  }
+  assert.ok(selector.includes("className={TABLE_PANEL_CLASS}") && dialog.includes("className={TABLE_PANEL_CLASS}"), "landmark: both open the shared capped panel");
+  assert.ok(selector.includes("className={TABLE_BODY_CLASS}") && picker.includes("className={TABLE_BODY_CLASS}"), "landmark: the areas scroll in the shared body");
+  const sheet = stripComments(readSrc("apps/cafe/lib/table-sheet.ts"));
+  assert.ok(sheet.includes("tab:supports-[height:1dvh]:max-h-[calc(100dvh-32px)]"), "the table sheet: the dvh cap where it exists");
+  assert.ok(sheet.includes("max-tab:supports-[height:1dvh]:max-h-[88dvh]"), "the phone's table sheet: 88dvh where it exists");
   assert.ok(panel.includes("tab:supports-[height:1dvh]:max-h-[min(640px,calc(100dvh-80px))]"), "the panel: the dvh cap where it exists");
   assert.ok(panel.includes("max-tab:supports-[height:1dvh]:max-h-[86dvh]"), "the phone's sheet: 86dvh where it exists");
 });
 
-test("PIN: MoveTablePicker (the table grid MoveTableDialog renders) uses POS_MOVE_TABLE_LIST_CAP_CLASS — no bare max-h-[50vh] literal left behind in the picker or the dialog", () => {
-  const fiftyVh = "max-h-[50" + "vh]";
-  const picker = stripComments(readSrc(MOVE_TABLE_PICKER));
-  assert.match(
-    picker,
-    /cn\("grid grid-cols-3 gap-2 overflow-y-auto", POS_MOVE_TABLE_LIST_CAP_CLASS\)/,
-    "landmark: MoveTablePicker must call cn(...) with POS_MOVE_TABLE_LIST_CAP_CLASS on its table grid",
-  );
-  assert.ok(!picker.includes(fiftyVh), `MoveTablePicker must not carry a bare "${fiftyVh}" literal — POS_MOVE_TABLE_LIST_CAP_CLASS replaces it`);
-  const dialog = stripComments(readSrc(MOVE_TABLE_DIALOG));
-  assert.match(dialog, /<MoveTablePicker\b/, "landmark: MoveTableDialog must still render the picker that owns the capped grid");
-  assert.ok(!dialog.includes(fiftyVh), `MoveTableDialog must not carry a bare "${fiftyVh}" literal`);
-});
-
-test("PIN: MoveTablePicker's table tile keeps a long table name readable — min-w-0 on the tile button, truncate px-1 on the name span, and the status sub-line also truncates", () => {
-  const src = stripComments(readSrc(MOVE_TABLE_PICKER));
-  assert.match(
-    src,
-    /"flex min-w-0 flex-col items-center justify-center gap-0\.5 rounded-lg border p-2 text-sm font-semibold transition"/,
-    "MoveTablePicker's tile button base class must include min-w-0",
-  );
-  assert.match(
-    src,
-    /<span className="max-w-full truncate px-1">\{t\.tableNo\}<\/span>/,
-    "MoveTablePicker's tile name span must be exactly max-w-full truncate px-1",
-  );
-  assert.match(
-    src,
-    /<span className="max-w-full truncate text-\[10px\] font-normal">/,
-    "landmark: the status sub-line span must also carry max-w-full truncate",
-  );
+// U1 Task 11: the tile is TableTile (components/pos/TableSheet.tsx) in both pickers, a grid item of the HTML's auto-fill
+// grid; a long table name must neither widen its column nor push the seats out.
+test("PIN: the table tile keeps a long table name readable — min-w-0 on the tile (a grid item), the name truncates beside the seats, the title names it in full", () => {
+  const sheet = stripComments(readSrc("apps/cafe/lib/table-sheet.ts"));
+  const tokens = (name: string) => sheet.match(new RegExp(`const ${name} =\\s*"([^"]*)"`))?.[1]?.split(/\s+/) ?? [];
+  assert.ok(tokens("TABLE_TILE_CLASS").includes("min-w-0"), "the tile button: min-w-0, so its column stays minmax(92px, 1fr)");
+  for (const t of ["min-w-0", "truncate"]) assert.ok(tokens("TABLE_TILE_NAME_CLASS").includes(t), `the name: ${t}`);
+  assert.ok(tokens("TABLE_TILE_SEATS_CLASS").includes("whitespace-nowrap"), "the seats never wrap under a long name");
+  const tile = stripComments(readSrc("apps/cafe/components/pos/TableSheet.tsx"));
+  assert.match(tile, /<span className=\{TABLE_TILE_NAME_CLASS\}>\{table\.tableNo\}<\/span>/, "the name span shows the table's name");
+  assert.match(tile, /title=\{title \?\? table\.tableNo\}/, "the full name (or the open tab's customer) as the tile's title");
 });
 
 test("PIN: (dashboard)/layout.tsx mounts <TouchFeel />, which publishes/removes POS_TOUCH_ATTR on <html> (CB-1d.1 L1) — same publish/remove shape as RequestAlertBar's --pos-alert-h", () => {
