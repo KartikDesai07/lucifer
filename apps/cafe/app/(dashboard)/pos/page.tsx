@@ -16,8 +16,8 @@ import { useStableCallback } from "@/hooks/use-stable-callback";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   CategorySidebar,
-  CategoryChips,
   ALL_CATEGORIES,
+  type CategoryPickerProps,
 } from "@/components/pos/CategorySidebar";
 import { ProductGrid, GridSkeleton } from "@/components/pos/ProductGrid";
 import { Cart } from "@/components/pos/Cart";
@@ -33,7 +33,8 @@ import {
   POS_BODY_GRID_CLASS,
   POS_ASIDE_CLASS,
   POS_MAIN_CLASS,
-  POS_PANE_CLASS,
+  POS_CONTROLS_CLASS,
+  POS_LIST_CLASS,
   POS_CART_CLASS,
 } from "@/lib/pos-layout";
 import type { Order, Product } from "@/types";
@@ -70,6 +71,7 @@ export default function PosPage() {
   });
 
   const [category, setCategory] = useState(ALL_CATEGORIES);
+  const [catQuery, setCatQuery] = useState("");
   const [modifierProduct, setModifierProduct] = useState<Product | null>(null);
   const [modifierOpen, setModifierOpen] = useState(false);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
@@ -148,6 +150,15 @@ export default function PosPage() {
   const handleMoveTable = useCallback(() => setMoveTableOpen(true), []);
 
   const cartProps = buildCartProps(pos, () => itemVoid.setOpen(true), products.data);
+  // One picker and one Find category text (values 2.6) for the column and the Category sheet (design 6.3).
+  const categoryPicker: CategoryPickerProps = {
+    categories: categories.data,
+    products: products.data,
+    selected: category,
+    onSelect: setCategory,
+    query: catQuery,
+    onQueryChange: setCatQuery,
+  };
 
   return (
     <div className={POS_PAGE_CLASS}>
@@ -157,17 +168,14 @@ export default function PosPage() {
           {categories.isLoading ? (
             <Skeleton className="m-3 flex-1" />
           ) : (
-            <CategorySidebar
-              categories={categories.data ?? []}
-              selected={category}
-              onSelect={setCategory}
-            />
+            <CategorySidebar {...categoryPicker} />
           )}
         </aside>
-        {/* The menu column: today's control row, chips (below 1100px) and grid, until U1 Tasks 2-6 give it the
-            HTML's toolbar, cards and switch button. */}
+        {/* The menu column (values 3.1): the HTML's one scroller. Today's control row first, until U1 Tasks 4 and 6 move
+            its controls to the cart head and the header; then ProductGrid's sticky toolbar (the search box, the
+            Category button below 1100px) and its list, which scroll under the toolbar. */}
         <div data-ui="pos-main" className={POS_MAIN_CLASS}>
-          <div className={POS_PANE_CLASS}>
+          <div data-ui="pos-controls" className={POS_CONTROLS_CLASS}>
             <PosHeader
               lastOrder={pos.lastOrder}
               onReprintKot={pos.reprintKot}
@@ -182,32 +190,24 @@ export default function PosPage() {
               customer={pos.customer}
               onCustomerChange={pos.setCustomer}
             />
-            {categories.isLoading ? (
-              <Skeleton className="h-10 w-full shrink-0 desk:hidden" />
-            ) : (
-              <CategoryChips
-                categories={categories.data ?? []}
-                selected={category}
-                onSelect={setCategory}
-              />
-            )}
-            {products.isLoading ? (
-              <GridSkeleton />
-            ) : products.isError && products.data === undefined ? (
-              <p className="text-sm text-destructive">
-                Failed to load products. Refresh to retry.
-              </p>
-            ) : (
-              <ProductGrid
-                products={products.data ?? []}
-                selectedCategory={category}
-                onProductClick={handleProductClick}
-                onProductOptions={handleProductOptions}
-                qtyByProduct={qtyByProduct}
-                disabled={pos.isBusy}
-              />
-            )}
           </div>
+          {products.isLoading ? (
+            <GridSkeleton />
+          ) : products.isError && products.data === undefined ? (
+            <p className={POS_LIST_CLASS}>
+              <span className="text-sm text-destructive">Failed to load products. Refresh to retry.</span>
+            </p>
+          ) : (
+            <ProductGrid
+              products={products.data ?? []}
+              selectedCategory={category}
+              onProductClick={handleProductClick}
+              onProductOptions={handleProductOptions}
+              qtyByProduct={qtyByProduct}
+              disabled={pos.isBusy}
+              categoryPicker={categoryPicker}
+            />
+          )}
         </div>
         <section data-ui="pos-cart" className={POS_CART_CLASS}>
           <Cart {...cartProps} className="rounded-none border-0" />

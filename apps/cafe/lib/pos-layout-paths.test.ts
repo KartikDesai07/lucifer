@@ -35,8 +35,9 @@ import {
   POS_MIN_TILE_PX,
   POS_GRID_GAP_REM,
   POS_BODY_GRID_CLASS,
+  POS_ASIDE_CLASS,
   POS_MAIN_CLASS,
-  POS_PANE_CLASS,
+  POS_TOOLBAR_CLASS,
   POS_MOBILE_BAR_CLASS,
   DASHBOARD_HEADER_REM,
   POS_PRESS_FEEDBACK_CLASS,
@@ -44,7 +45,6 @@ import {
   POS_CART_STEPPER_CLASS,
   POS_TILE_OPTIONS_BUTTON_CLASS,
   POS_TILE_OPTIONS_RESERVE_CLASS,
-  POS_CHIP_CLASS,
   POS_CART_CTA_CLASS,
   POS_MOBILE_BAR_BUTTON_CLASS,
   POS_DIALOG_LIST_CAP_CLASS,
@@ -85,26 +85,35 @@ const TOUCH_FEEL = "apps/cafe/components/shared/TouchFeel.tsx";
 
 // U1 Task 1 (design 5, values 2.0): the page is the HTML's body grid, so the frame's classes are the page, the grid and
 // its three regions (lib/pos-frame.test.ts pins their order and data-ui names); the old root/inset/split/pane-cart
-// wrapper classes are gone.
+// wrapper classes are gone. U1 Task 2 (values 3.1): the menu column is the HTML's one scroller, so the pane that stacked
+// the control row, the chips and the grid is gone too; today's control row sits in its own wrapper above the toolbar
+// until U1 Tasks 4 and 6 move its controls (POS_CONTROLS_CLASS).
 test("PIN: pos/page.tsx imports the frame's classes and uses each as a real className", () => {
   const src = stripComments(readSrc(POS_PAGE));
   const importMatch = src.match(/import\s*\{([^}]*)\}\s*from\s*"@\/lib\/pos-layout"/);
   assert.ok(importMatch, "pos/page.tsx must import from @/lib/pos-layout");
-  const frame = ["POS_PAGE_CLASS", "POS_BODY_GRID_CLASS", "POS_ASIDE_CLASS", "POS_MAIN_CLASS", "POS_PANE_CLASS", "POS_CART_CLASS"];
+  const frame = ["POS_PAGE_CLASS", "POS_BODY_GRID_CLASS", "POS_ASIDE_CLASS", "POS_MAIN_CLASS", "POS_CONTROLS_CLASS", "POS_CART_CLASS"];
   for (const name of frame) {
     assert.ok(importMatch![1].includes(name), `the @/lib/pos-layout import must include ${name}`);
     assert.match(src, new RegExp(`className=\\{${name}\\}`), `${name} must be used as a bare className={${name}} in pos/page.tsx`);
   }
-  for (const gone of ["POS_ROOT_CLASS", "POS_INSET_CLASS", "POS_SPLIT_CLASS", "POS_DESKTOP_CART_CLASS"]) {
+  for (const gone of ["POS_ROOT_CLASS", "POS_INSET_CLASS", "POS_SPLIT_CLASS", "POS_DESKTOP_CART_CLASS", "POS_PANE_CLASS"]) {
     assert.ok(!src.includes(gone), `pos/page.tsx must not reference the retired ${gone}`);
   }
 });
 
-test("PIN: pos/page.tsx renders both category presentations off one category state, and feeds ProductGrid the live cart quantities", () => {
+// U1 Task 2 (design 6.3, values 2.1-2.6): the category column (from 1100px) and the toolbar's "Category" button + sheet
+// (below it) take ONE picker from the page: the same chosen category and the same "Find category" text (the HTML's
+// shared catQuery). Today's chip strip is gone.
+test("PIN: pos/page.tsx hands one category picker to the column and to ProductGrid's Category sheet, and feeds ProductGrid the live cart quantities", () => {
   const src = stripComments(readSrc(POS_PAGE));
-  assert.match(src, /<CategoryChips\b/, "pos/page.tsx must render <CategoryChips");
-  assert.match(src, /<CategorySidebar\b/, "pos/page.tsx must render <CategorySidebar");
-  assert.match(src, /<ProductGrid\b/, "landmark: pos/page.tsx must render <ProductGrid");
+  assert.ok(!src.includes("CategoryChips"), "the chip strip is gone (design 6.3)");
+  assert.match(src, /const \[catQuery, setCatQuery\] = useState\(""\);/, "one Find category text in the page, shared by the column and the sheet");
+  assert.match(src, /<CategorySidebar \{\.\.\.categoryPicker\} \/>/, "the column takes the picker");
+  assert.match(src, /<ProductGrid\b[^>]*categoryPicker=\{categoryPicker\}/, "the toolbar's Category sheet takes the same picker");
+  for (const field of ["selected: category", "onSelect: setCategory", "query: catQuery", "onQueryChange: setCatQuery"]) {
+    assert.ok(src.includes(field), `the picker carries ${field}`);
+  }
   assert.match(src, /qtyByProduct=\{qtyByProduct\}/, "pos/page.tsx must pass qtyByProduct={qtyByProduct} to ProductGrid");
 });
 
@@ -133,48 +142,61 @@ test("PIN: pos/page.tsx never reintroduces the retired md two-pane grid or the o
   assert.match(src, /<MobileCartBar\b/, "landmark: pos/page.tsx must still render <MobileCartBar");
 });
 
-test("PIN: pos/page.tsx imports CategoryChips from CategorySidebar (reachability, not just definition)", () => {
+test("PIN: pos/page.tsx imports the column from CategorySidebar (reachability, not just definition), and no chip strip", () => {
   const src = stripComments(readSrc(POS_PAGE));
   const importMatch = src.match(/import\s*\{([^}]*)\}\s*from\s*"@\/components\/pos\/CategorySidebar"/);
   assert.ok(importMatch, "pos/page.tsx must import from @/components/pos/CategorySidebar");
-  assert.ok(importMatch![1].includes("CategoryChips"), "pos/page.tsx must import CategoryChips, not just CategorySidebar");
+  assert.ok(importMatch![1].includes("CategorySidebar"), "pos/page.tsx must import CategorySidebar");
+  assert.ok(!importMatch![1].includes("CategoryChips"), "the chip strip is gone (design 6.3)");
 });
 
-test("PIN: CategorySidebar exports CategoryChips, and the chip nav is labelled but NOT an ARIA tablist", () => {
+// U1 Task 2: the column (values 2.1) and the sheet (values 2.6) are the two presentations; each list is a labelled nav
+// of plain buttons with aria-current, never an ARIA tablist (that promises roving tab focus + panels it doesn't have).
+test("PIN: CategorySidebar exports the column and the Category sheet; both lists are labelled navs, NOT an ARIA tablist", () => {
   const src = stripComments(readSrc(CATEGORY_SIDEBAR));
-  assert.match(src, /export function CategoryChips\(/, "CategorySidebar.tsx must export CategoryChips");
-  assert.match(src, /POS_DESKTOP_ONLY_CLASS/, "the vertical rail must use POS_DESKTOP_ONLY_CLASS");
-  assert.match(src, /POS_MOBILE_ONLY_CLASS/, "the chip row must use POS_MOBILE_ONLY_CLASS");
-  assert.match(src, /POS_CHIP_ROW_CLASS/, "the chip row must use POS_CHIP_ROW_CLASS");
-  assert.match(src, /aria-label="Product categories"/, 'the chip nav must carry aria-label="Product categories"');
-  assert.ok(!src.includes('role="tablist"'), "the chip nav must NOT be an ARIA tablist — that promises roving tab focus + panels it doesn't have");
+  assert.match(src, /export function CategorySidebar\(/, "CategorySidebar.tsx must export the column");
+  assert.match(src, /export function CategorySheet\(/, "CategorySidebar.tsx must export the Category button + sheet");
+  assert.ok(!src.includes("CategoryChips"), "the chip strip is gone (design 6.3)");
+  for (const gone of ["POS_DESKTOP_ONLY_CLASS", "POS_MOBILE_ONLY_CLASS", "POS_CHIP_ROW_CLASS", "POS_CHIP_CLASS"]) {
+    assert.ok(!src.includes(gone), `CategorySidebar.tsx must not use the retired ${gone}`);
+  }
+  assert.equal(src.split('<nav aria-label="Product categories"').length - 1, 2, 'one <nav aria-label="Product categories"> per presentation');
+  assert.ok(!src.includes('role="tablist"'), "the lists must NOT be an ARIA tablist");
 });
 
-test("PIN: CategoryChip signals selection via aria-current (same contract as the rail's CategoryButton), never an ARIA tab role", () => {
+test("PIN: a category row signals selection via aria-current, never an ARIA tab role", () => {
   const src = stripComments(readSrc(CATEGORY_SIDEBAR));
-  assert.match(src, /aria-current=\{selected \? "true" : undefined\}/, 'CategoryChip must use aria-current={selected ? "true" : undefined}');
+  assert.match(src, /aria-current=\{selected \? "true" : undefined\}/, 'a row must use aria-current={selected ? "true" : undefined}');
   assert.ok(!src.includes('role="tab"'), "CategorySidebar.tsx must not declare role=\"tab\" anywhere — aria-current is the real selection signal");
+  assert.match(src, /title=\{name\}/, "a row's operator-typed name stays readable when cut (title)");
 });
 
-test("PIN: both CategorySidebar and CategoryChips render the ALL_CATEGORIES entry before the per-cafe category list", () => {
+// The rows themselves ("All items" first, the counts, the hues, the find filter) are lib/pos-categories.ts's, pinned by
+// lib/pos-categories.test.ts; both presentations draw exactly those rows.
+test("PIN: both presentations draw lib/pos-categories.ts's rows and share the Find category text", () => {
   const src = stripComments(readSrc(CATEGORY_SIDEBAR));
-  const railStart = src.indexOf("export function CategorySidebar(");
-  const chipsStart = src.indexOf("export function CategoryChips(");
-  assert.ok(railStart >= 0, "CategorySidebar function must exist");
-  assert.ok(chipsStart > railStart, "CategoryChips must be declared after CategorySidebar");
-  const railBody = src.slice(railStart, chipsStart);
-  assert.ok(railBody.indexOf("ALL_CATEGORIES") >= 0 && railBody.indexOf("categories.map(") >= 0);
-  assert.ok(railBody.indexOf("ALL_CATEGORIES") < railBody.indexOf("categories.map("), "CategorySidebar must render ALL_CATEGORIES before categories.map(");
-  const chipsBody = src.slice(chipsStart);
-  assert.ok(chipsBody.indexOf("ALL_CATEGORIES") >= 0 && chipsBody.indexOf("categories.map(") >= 0);
-  assert.ok(chipsBody.indexOf("ALL_CATEGORIES") < chipsBody.indexOf("categories.map("), "CategoryChips must render ALL_CATEGORIES before categories.map(");
+  assert.match(src, /import \{[^}]*\bcategoryRows\b[^}]*\} from "@\/lib\/pos-categories"/, "the rows come from the pure helper");
+  const columnStart = src.indexOf("export function CategorySidebar(");
+  const sheetStart = src.indexOf("export function CategorySheet(");
+  assert.ok(columnStart >= 0 && sheetStart > columnStart, "the column is declared before the sheet");
+  const column = src.slice(columnStart, sheetStart);
+  const sheet = src.slice(sheetStart);
+  for (const [what, body] of [["the column", column], ["the sheet", sheet]] as const) {
+    assert.match(body, /useCategoryRows\(categories, products, query\)/, `${what} draws the rows for the shared query`);
+    assert.match(body, /<CategoryFind value=\{query\} onChange=\{onQueryChange\} \/>/, `${what} shows the shared Find category box`);
+    assert.match(body, /\{rows\.map\(\(c\) => \(/, `${what} draws every row`);
+  }
 });
 
-test("PIN: the category rail never reverts to its old fixed width — width comes only from the shared constants file", () => {
+// U1 Task 2 (design 6.3, values 2.0): the column is the body grid's own track (200px beside the wide nav, 220px beside
+// the rail), so the component sets no width of its own; the old rail's w-44 (and the older w-28) are gone.
+test("PIN: the category column takes the body grid's 200px / 220px track — CategorySidebar.tsx sets no width of its own", () => {
   const src = stripComments(readSrc(CATEGORY_SIDEBAR));
   assert.ok(!src.includes("w-28"), "CategorySidebar.tsx must not hardcode the old w-28 rail width");
-  assert.ok(!src.includes("md:w-44"), "CategorySidebar.tsx must not gate the rail width at md (tablet-portrait bug)");
-  assert.ok(src.includes("w-44"), "landmark: the rail must still be w-44 (11rem, matches POS_RAIL_REM), just not md-gated");
+  assert.ok(!src.includes("w-44"), "CategorySidebar.tsx must not hardcode the old w-44 rail width: the aside is the grid's track");
+  assert.ok(POS_BODY_GRID_CLASS.includes("desk:grid-cols-[220px_"), "the column is 220px beside the rail (values 2.0)");
+  assert.ok(POS_BODY_GRID_CLASS.includes("wide:grid-cols-[200px_"), "the column is 200px beside the wide nav (values 2.0)");
+  assert.ok(POS_ASIDE_CLASS.split(/\s+/).includes("desk:flex"), "the column shows from 1100px");
 });
 
 test("PIN: MobileCartBar mounts only below 1024px (the cart column takes over there), in a bottom sheet, and the Cart panel inside uses the shared scrollable-panel class", () => {
@@ -267,11 +289,10 @@ test("PIN: ProductGrid picks its grid class via a sidebar-keyed useGridClass() h
   assert.match(src, /import\s*\{\s*useSidebar\s*\}\s*from\s*"@\/components\/ui\/sidebar"/, "ProductGrid.tsx must import useSidebar from @/components/ui/sidebar");
   assert.match(src, /function useGridClass\(/, "ProductGrid.tsx must declare a useGridClass() helper");
   assert.match(src, /state === "collapsed"/, 'useGridClass must branch on state === "collapsed"');
-  assert.match(
-    src,
-    /className="min-h-0 flex-1 overflow-y-auto"/,
-    'the grid\'s scroll wrapper must be the literal className="min-h-0 flex-1 overflow-y-auto"',
-  );
+  // U1 Task 2 (values 3.1): the menu column (main) is the HTML's one scroller and the toolbar sticks inside it, so the
+  // grid sits in the HTML's list wrapper (its listPad) and keeps no scroller of its own.
+  assert.match(src, /<div data-ui="pos-list" className=\{POS_LIST_CLASS\}>/, "the grid sits in the HTML's list wrapper");
+  assert.ok(!src.includes("overflow-y-auto"), "no scroller of its own: main scrolls the toolbar's list");
 });
 
 test("PIN: ProductGrid never reverts to the container-query grid — @container/POS_GRID_CONTAINER_CLASS/overscroll-contain are all gone (CB-1b)", () => {
@@ -295,6 +316,9 @@ test("PIN: ProductGrid carries the cart-quantity prop and a real search input; P
   const gridSrc = stripComments(readSrc(PRODUCT_GRID));
   assert.match(gridSrc, /qtyByProduct\?:\s*Record<string,\s*number>/, "ProductGridProps must declare qtyByProduct?: Record<string, number>");
   assert.match(gridSrc, /type="search"/, 'the search field must be type="search"');
+  // U1 Task 2: the HTML's words (owner Q1) and the hook the "/" key (U1 Task 5) focuses.
+  assert.match(gridSrc, /data-ui="pos-search"/, 'the search input carries data-ui="pos-search" for the "/" key');
+  assert.match(gridSrc, /placeholder="Search items"/, 'the HTML\'s placeholder "Search items"');
   assert.match(gridSrc, /<ProductCard\b/, "landmark: ProductGrid must render <ProductCard — the tile lives in ProductCard.tsx since CB-1d.3a");
 
   const src = stripComments(readSrc(PRODUCT_CARD));
@@ -356,13 +380,14 @@ test("PIN: app/layout.tsx's <body> is a vh base with a supports-dvh override (mi
 });
 
 // U1 Task 1 (design 5): the page switches at the HTML's widths (the cart column from 1024px, the category column from
-// 1100px), and those switches live in lib/pos-layout.ts; the page's own literals keep only the category skeleton's,
-// which follows the category column (desk).
-test("PIN: no stray lg:/xl: token in pos/page.tsx — the frame's switches live in lib/pos-layout.ts; the chip skeleton hides with the chips at 1100px", () => {
+// 1100px), and those switches live in lib/pos-layout.ts. U1 Task 2: the chip strip and its skeleton are gone, so the
+// page carries no breakpoint of its own (the Category button's 1100px switch is CategorySidebar.tsx's).
+test("PIN: no stray lg:/xl:/desk: token in pos/page.tsx — the frame's switches live in lib/pos-layout.ts", () => {
   const src = stripComments(readSrc(POS_PAGE));
   assert.ok(!src.includes("lg:"), "pos/page.tsx must not carry a stray lg: token — the cart column's switch is POS_CART_CLASS's");
   assert.ok(!src.includes("xl:"), "pos/page.tsx must not carry a stray xl: token — the retired two-pane switch");
-  assert.match(src, /desk:hidden/, "landmark: the chip skeleton hides where the category column shows (desk:hidden)");
+  assert.ok(!src.includes("desk:"), "pos/page.tsx must not carry a desk: token — the category switch is the aside's and the button's");
+  assert.match(src, /className=\{POS_ASIDE_CLASS\}/, "landmark: the column's switch is POS_ASIDE_CLASS's");
 });
 
 // U1 Task 1: the HTML's cmp breakpoint (1024px) is Tailwind's lg, so lg: is back in lib/pos-layout.ts, but only as the
@@ -507,21 +532,18 @@ test("PIN: RequestAlertBar publishes its own height on --pos-alert-h via a synch
   assert.match(src, /bg-status-warn-tint/, "landmark: RequestAlertBar.tsx must still carry bg-status-warn-tint");
 });
 
-test("PIN: CategorySidebar.tsx's CategoryChips keeps the selected chip in view via a scrollIntoView effect keyed on the aria-current chip", () => {
+// U1 Task 2 (values 2.2, 2.6): picking a row in the sheet chooses the category AND closes the sheet (the HTML's
+// setState({cat, catSheet:false})); the chosen name then reads on the Category button, so a pick is never lost from
+// view (the retired chip strip's scrollIntoView did that job). Done and a tap on the scrim close it too (Radix Close and
+// the overlay), and Escape (Radix).
+test("PIN: picking a row in the Category sheet chooses it and closes the sheet; the button names the chosen category", () => {
   const src = stripComments(readSrc(CATEGORY_SIDEBAR));
-  assert.match(src, /\buseRef\b/, "CategorySidebar.tsx must import/use useRef");
-  assert.match(src, /\buseEffect\b/, "CategorySidebar.tsx must import/use useEffect");
-  assert.match(src, /scrollIntoView/, "CategorySidebar.tsx must call scrollIntoView");
-  assert.match(src, /\[aria-current="true"\]/, 'CategorySidebar.tsx must query \'[aria-current="true"]\'');
-  assert.match(src, /inline:\s*"nearest"/, 'the scrollIntoView call must pass inline: "nearest"');
-  assert.match(src, /block:\s*"nearest"/, 'the scrollIntoView call must pass block: "nearest" — "start" would scroll ancestors too');
-  assert.match(src, /ref=\{navRef\}/, "the <nav> must carry ref={navRef}");
-  // Landmark: reuse the file's existing ALL_CATEGORIES-before-categories.map(
-  // ordering fact so this pin also fails loud if CategorySidebar.tsx were
-  // ever gutted rather than genuinely edited.
-  const chipsStart = src.indexOf("export function CategoryChips(");
-  assert.ok(chipsStart >= 0, "landmark: CategoryChips must still exist");
-  assert.ok(src.indexOf("ALL_CATEGORIES", chipsStart) < src.indexOf("categories.map(", chipsStart), "landmark: CategoryChips must still render ALL_CATEGORIES before categories.map(");
+  const sheet = src.slice(src.indexOf("export function CategorySheet("));
+  assert.match(sheet, /const \[open, setOpen\] = useState\(false\);/, "the sheet opens from the button and starts closed");
+  assert.match(sheet, /onSelect\(value\);\s*setOpen\(false\);/, "a pick chooses the category, then closes the sheet");
+  assert.match(sheet, /selectedCategoryName\(categories, selected\)/, 'the button reads "Category {name}" (values 3.1 curCatName)');
+  assert.match(sheet, /<DialogPrimitive\.Close\b[^>]*>\s*Done\s*<\/DialogPrimitive\.Close>/, '"Done" closes the sheet');
+  assert.match(sheet, /<DialogPrimitive\.Trigger asChild>\s*<button type="button" data-ui="pos-category-button"/, "the Category button opens the sheet");
 });
 
 // U1 Task 1 (design 5, values 2.0 and 6.2): the page holds ONE in-flow child, the HTML's body grid, which fills it;
@@ -549,7 +571,7 @@ test("PIN: ProductCard's TILE_MIN_HEIGHT and ProductGrid's SKELETON_HEIGHT stay 
     Number(tileMinMatch![1]),
     `ProductGrid.tsx's SKELETON_HEIGHT (${skeletonMatch![1]}rem) must equal ProductCard.tsx's TILE_MIN_HEIGHT (${tileMinMatch![1]}rem)`,
   );
-  assert.match(gridSrc, /className="flex min-h-0 flex-1 flex-col gap-3"/, "landmark: ProductGrid's search|scroller column fills the menu pane");
+  assert.match(gridSrc, /<div data-ui="pos-toolbar" className=\{POS_TOOLBAR_CLASS\}>/, "landmark: ProductGrid heads the list with the HTML's toolbar");
 });
 
 // ── CB-1c round 2b additions (fresh-eyes review pin hardening) ─────────────
@@ -569,18 +591,16 @@ test("PIN: DASHBOARD_HEADER_REM parity — parsed from Header.tsx's real <header
   assert.equal(DASHBOARD_HEADER_REM * 4, Number(posMatch![1]), `DASHBOARD_HEADER_REM*4 must equal Header.tsx's data-pos:h-${posMatch![1]}`);
 });
 
-test("PIN: CategoryChips' <nav> composes exactly cn(POS_MOBILE_ONLY_CLASS, POS_CHIP_ROW_CLASS) — no third class argument — and no md: literal survives anywhere in CategorySidebar.tsx (the chip strip is one scrolling line at every width below 1100px)", () => {
+// U1 Task 2 (values 0.3 asideDisplay / catBtnDisplay / catRowH): exactly one category list shows at any width: the
+// column from 1100px, the Category button (and its sheet) below it; the rows are 34px, 44px on a phone. No md: switch.
+test("PIN: the Category button switches with the column at the HTML's 1100px, and the rows take the HTML's 34px / 44px", () => {
   const src = stripComments(readSrc(CATEGORY_SIDEBAR));
-  assert.match(
-    src,
-    /cn\(\s*POS_MOBILE_ONLY_CLASS\s*,\s*POS_CHIP_ROW_CLASS\s*\)/,
-    "CategoryChips' <nav> must call cn(POS_MOBILE_ONLY_CLASS, POS_CHIP_ROW_CLASS) with no third argument",
-  );
+  assert.match(src, /data-ui="pos-category-button"/, "landmark: the Category button");
+  assert.match(src, /"[^"]*\bdesk:hidden\b[^"]*"/, "the button hides from 1100px");
+  assert.ok(POS_ASIDE_CLASS.split(/\s+/).includes("desk:flex"), "the column shows from 1100px");
+  assert.match(src, /h-\[34px\][^"]*max-tab:h-11/, "a row is 34px, 44px on a phone (values 0.3 catRowH)");
   assert.match(src, /aria-current/, "landmark: CategorySidebar.tsx must still carry aria-current");
-  assert.ok(
-    !src.includes("md:"),
-    "CategorySidebar.tsx must not carry any md: literal anywhere — the owner-decided single scrolling chip line has no md-gated wrapping cloud left to reintroduce",
-  );
+  assert.ok(!src.includes("md:"), "CategorySidebar.tsx must not carry any md: literal — the HTML switches at 720px and 1100px only");
 });
 
 test("PIN: (dashboard)/layout.tsx renders Header, then RequestAlertBar, then <main> — in that ORDER — so the alert-bar budget's assumption (an in-flow SIBLING above <main>, not a child inside it) holds", () => {
@@ -598,12 +618,12 @@ test("PIN: (dashboard)/layout.tsx renders Header, then RequestAlertBar, then <ma
 
 // ── CB-1d.1 additions: touch-feel/device-size token changes ────────────────
 
-test("PIN: POS_PRESS_FEEDBACK_CLASS is duplicated VERBATIM inside every touch-target token (CB-1d.1 L1) — a paths pin, not a re-typed literal, keeps the six copies in sync", () => {
+// U1 Task 2: the chip token (POS_CHIP_CLASS) went with the chip strip (design 6.3), so five copies remain.
+test("PIN: POS_PRESS_FEEDBACK_CLASS is duplicated VERBATIM inside every touch-target token (CB-1d.1 L1) — a paths pin, not a re-typed literal, keeps the five copies in sync", () => {
   for (const [label, cls] of [
     ["POS_HEADER_CONTROL_CLASS", POS_HEADER_CONTROL_CLASS],
     ["POS_CART_STEPPER_CLASS", POS_CART_STEPPER_CLASS],
     ["POS_TILE_OPTIONS_BUTTON_CLASS", POS_TILE_OPTIONS_BUTTON_CLASS],
-    ["POS_CHIP_CLASS", POS_CHIP_CLASS],
     ["POS_CART_CTA_CLASS", POS_CART_CTA_CLASS],
     ["POS_MOBILE_BAR_BUTTON_CLASS", POS_MOBILE_BAR_BUTTON_CLASS],
   ] as const) {
@@ -900,30 +920,24 @@ test("PIN: app/m/layout.tsx never mounts the touch-feel scope — the diner flow
 // the viewport and the strip scroll sideways as designed (headless probe:
 // innerWidth 1241 → 412, grid 608px×2 → 186px×2, document scrollWidth = 412).
 // U1 Task 1: the grid item is now the HTML's menu column (main, `min-width:0`, values 3.1) in the body grid's
-// minmax(0,1fr) track; the pane inside it stacks the control row, the chips and the grid, and is min-w-0 too.
-test("PIN: the menu column and its pane carry min-w-0 so the chip strip's min-content width can never widen the body grid's column (CB-1d.1b phone layout)", () => {
+// minmax(0,1fr) track. U1 Task 2: the chip strip is gone; main is the HTML's one scroller with the sticky toolbar
+// (values 3.1: `position:sticky; top:0; z-index:3` on --bg) and holds, until U1 Tasks 4 and 6, today's control row
+// above the toolbar (its own wrapper, POS_CONTROLS_CLASS).
+test("PIN: the menu column carries min-w-0 so no content's min-content width can widen the body grid's column (CB-1d.1b phone layout), and it is the toolbar's scroller", () => {
   const mainTokens = POS_MAIN_CLASS.split(/\s+/);
   assert.ok(mainTokens.includes("min-w-0"), `POS_MAIN_CLASS ("${POS_MAIN_CLASS}") must carry min-w-0 (the grid item)`);
   assert.ok(mainTokens.includes("min-h-0"), `POS_MAIN_CLASS ("${POS_MAIN_CLASS}") must carry min-h-0 (it scrolls inside the page)`);
-  const paneTokens = POS_PANE_CLASS.split(/\s+/);
-  assert.ok(paneTokens.includes("min-w-0"), `POS_PANE_CLASS ("${POS_PANE_CLASS}") must carry min-w-0`);
-  assert.ok(paneTokens.some((t) => /^min-h-\[\d+px\]$/.test(t)), `POS_PANE_CLASS ("${POS_PANE_CLASS}") must carry its floor (the height chain, lib/pos-layout.test.ts)`);
-  assert.ok(paneTokens.includes("flex") && paneTokens.includes("flex-col"), "POS_PANE_CLASS must still be a flex column");
+  assert.ok(mainTokens.includes("overflow-auto"), "main is the HTML's one scroller");
   assert.ok(POS_BODY_GRID_CLASS.includes("grid-cols-[minmax(0,1fr)]"), "landmark: the menu track itself has a 0 minimum");
+  const toolbar = POS_TOOLBAR_CLASS.split(/\s+/);
+  for (const t of ["sticky", "top-0", "z-[3]", "bg-background"]) assert.ok(toolbar.includes(t), `the toolbar sticks inside main: "${t}"`);
 
-  // The strip keeps its own sideways scroll — the min-w-0 above is what makes
-  // that scroll actually happen instead of widening the page.
-  const layoutSrc = stripComments(readSrc(POS_LAYOUT_TS));
-  const chipRowClassMatch = layoutSrc.match(/POS_CHIP_ROW_CLASS\s*=\s*"([^"]*)"/);
-  assert.ok(chipRowClassMatch, "landmark: pos-layout.ts must declare POS_CHIP_ROW_CLASS as a string literal");
-  assert.ok(chipRowClassMatch![1].split(/\s+/).includes("overflow-x-auto"), "POS_CHIP_ROW_CLASS must keep overflow-x-auto");
-
-  // The pane is the menu column's only child and takes the constant verbatim.
+  // Today's control row first (interim), then the toolbar and the list (ProductGrid) or the loading / error branch.
   const pageSrc = stripComments(readSrc(POS_PAGE));
   assert.match(
     pageSrc,
-    /<div data-ui="pos-main" className=\{POS_MAIN_CLASS\}>\s*(?:\{\}\s*)?<div className=\{POS_PANE_CLASS\}>/,
-    "the pane must be the menu column's child — the column is the grid item whose min-width the chip strip would widen",
+    /<div data-ui="pos-main" className=\{POS_MAIN_CLASS\}>\s*(?:\{\}\s*)?<div data-ui="pos-controls" className=\{POS_CONTROLS_CLASS\}>\s*<PosHeader\b/,
+    "the control row's wrapper is the menu column's first child until U1 Tasks 4 and 6",
   );
 });
 

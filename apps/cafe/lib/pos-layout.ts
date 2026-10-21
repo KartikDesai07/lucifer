@@ -117,35 +117,35 @@ export function posMainPadBottomPx(viewportWidth: number): number {
   return viewportWidth < BREAKPOINT_LG_PX ? POS_MAIN_PAD_B_PX.cmp : POS_MAIN_PAD_B_PX.base;
 }
 
-/** The menu column (values 3.1 main): the HTML's scroller with `min-width:0` and its bottom padding. A flex column for
- *  now, so today's grid keeps its own scroller under the control row and the chips (U1 Tasks 2-6 rebuild them). */
-export const POS_MAIN_CLASS = "flex min-h-0 min-w-0 flex-col overflow-auto pb-4 max-lg:pb-[100px] max-tab:pb-[150px]";
+/** The menu column (values 3.1 main): the HTML's one scroller, a block with `min-width:0` and its bottom padding; the
+ *  toolbar sticks at its top and the list scrolls under it (U1 Task 2). */
+export const POS_MAIN_CLASS = "min-h-0 min-w-0 overflow-auto pb-4 max-lg:pb-[100px] max-tab:pb-[150px]";
 
-/** The menu column's inset, px: the HTML's list padding (values 3.1 listPad, 20 px; 12 px on a phone). */
+/** The toolbar (values 3.1, 0.3 toolPad): sticky at the top of the menu column, over the cards (z-index 3), on the
+ *  page's --bg, 14px 20px 4px (10px 12px 4px on a phone). It holds the search row and, below 1100px, the Category
+ *  button (components/pos/ProductGrid.tsx). The HTML sets no line-height on this screen: normal. */
+export const POS_TOOLBAR_CLASS =
+  "sticky top-0 z-[3] bg-background px-5 pt-3.5 pb-1 leading-[normal] max-tab:px-3 max-tab:pt-2.5";
+
+/** The list wrapper under the toolbar (values 3.1, 0.3 listPad): 16px 20px, 14px 12px on a phone. */
+export const POS_LIST_CLASS = "px-5 py-4 max-tab:px-3 max-tab:py-3.5";
+
+/** The list wrapper's side padding, px (POS_LIST_CLASS's px-5 / max-tab:px-3): the inset the grid's tile arithmetic
+ *  subtracts from the menu column. */
 export const POS_PANE_INSET_PX = { phone: 12, base: 20 } as const;
 
-/** Inside the menu column, until U1 Tasks 2-6: today's control row, the category chips and the grid, stacked 12 px
- *  apart inside the HTML's toolbar padding (14 px from the top, 10 px on a phone) and list inset. min-w-0 is
- *  load-bearing (CB-1d.1b): the chip strip's min-content width must never widen the column. Its floor
- *  (POS_PANE_FLOOR_PX) keeps one tile row in view on a short screen; below it the menu column scrolls. */
-export const POS_PANE_CLASS = "flex min-h-[274px] min-w-0 flex-1 flex-col gap-3 px-5 pt-3.5 max-tab:px-3 max-tab:pt-2.5";
-
-/** The pane's floor, px (CB-1c's rule in the new frame: a short screen, a landscape phone or a short window, never shows
- *  the control row, the chips and the search box with NO products): the control row 40 + the chips 44 + the search
- *  row 36 + their three 12 px gaps + one 104 px tile row + the 14 px top inset. Until U1 Tasks 2-3 make main the
- *  HTML's one scroller. */
-export const POS_PANE_FLOOR_PX = 274;
+/** Today's control row (PosHeader: open tabs, table, customer, KOT) has no place in the HTML's menu column; until U1
+ *  Tasks 4 and 6 move its controls into the cart head and the header, it sits above the toolbar with the toolbar's side
+ *  inset and top padding, and scrolls away with the list. */
+export const POS_CONTROLS_CLASS = "px-5 pt-3.5 max-tab:px-3 max-tab:pt-2.5";
 
 /** The cart column (values 5.1): from 1024 px the body grid's last column, the surface with a rule on its left; it
  *  scrolls on its own. Below 1024 px the cart is MobileCartBar's sheet (U1 Task 7 gives it the HTML's sheet). */
 export const POS_CART_CLASS =
   "relative z-[15] hidden min-h-0 flex-col overflow-y-auto overflow-x-hidden overscroll-contain border-l border-border bg-card lg:flex";
 
-// The category rail shows with the category column (1100 px, values 0.3
-// asideDisplay) and the chip strip below it, so exactly one category list
-// shows at any width (the HTML's Category button and sheet replace the chips
-// in U1 Task 2).
-export const POS_DESKTOP_ONLY_CLASS = "hidden desk:flex";
+// The bar's wrapper gate (MobileCartBar; POS_MOBILE_BAR_CLASS hides the bar itself from 1024 px). The category
+// column and the toolbar's Category button switch at 1100 px on their own (POS_ASIDE_CLASS, CategorySidebar.tsx).
 export const POS_MOBILE_ONLY_CLASS = "desk:hidden";
 
 // Bottom cart bar (below 1024 px, where the cart is not a column): it lies
@@ -153,8 +153,8 @@ export const POS_MOBILE_ONLY_CLASS = "desk:hidden";
 // foot — so the menu column keeps its full height and keeps the bar clear with
 // its own bottom padding (values 6.2). On a phone it sits 59px up
 // (lib/shell-layout.ts ABOVE_TAB_BAR_STICKY_CLASS), on the tab bar. It hides
-// from 1024 px, where the cart column takes over (its own gate, since the
-// chips it shared POS_MOBILE_ONLY_CLASS with switch at 1100 px).
+// from 1024 px, where the cart column takes over (its own gate, since
+// POS_MOBILE_ONLY_CLASS switches at 1100 px).
 export const POS_MOBILE_BAR_CLASS =
   "absolute inset-x-0 bottom-0 max-tab:bottom-[59px] z-20 border-t bg-background p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] lg:hidden";
 export const POS_MOBILE_BAR_BUTTON_CLASS =
@@ -256,23 +256,6 @@ export const POS_HEADER_CHIP_FIXED_CLASS = "shrink-0 max-w-28 xl:max-w-none";
 export const POS_HEADER_CHIP_FLEX_CLASS = "min-w-0 flex-1 xl:flex-none";
 export const POS_HEADER_CHIP_ICON_CLASS = "hidden h-4 w-4 xl:block";
 
-// Category chips row (below 1100 px): ONE sideways-scrolling line at every width,
-// phones and tablets alike (owner decision 2026-08-29 — "category line",
-// chosen over the 2–3-row cloud). CB-1b's three-row wrapping cloud (≈9rem)
-// plus the header and search rows ate ~59% of a landscape tablet's visible
-// height — the owner's "category half page me aa raha hai". A single 40px
-// strip gives that ~100px back to the menu. `shrink-0` so the flex column
-// never squeezes the strip when the grid competes for height; the selected
-// chip is kept in view by CategoryChips (scrollIntoView on change), so a
-// category that scrolled off the strip is never lost. No scroll-snap: a
-// `snap-x` container is inert without `snap-*` on the chips. "All" first.
-export const POS_CHIP_ROW_CLASS = "flex shrink-0 gap-2 overflow-x-auto pb-1";
-// inline-flex is load-bearing: the label span inside is truncated with a
-// max-width, which only applies once the span is a flex item (max-width and
-// overflow are ignored on a plain inline box inside an inline-block button).
-export const POS_CHIP_CLASS =
-  "inline-flex h-10 shrink-0 items-center rounded-full border px-4 text-sm font-medium transition-colors touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
-
 // Product grid columns are decided by VIEWPORT breakpoints + the sidebar's
 // state (ProductGrid reads useSidebar()), which together determine the grid
 // pane's real width — chosen in CB-1b over a container query, and kept in
@@ -323,7 +306,7 @@ export function posGridColumns({ viewportWidth, collapsed }: NavViewport): numbe
 }
 
 /** The grid pane's width: the HTML's menu column (posBodyColumnsPx: the viewport minus the nav, the category column
- *  and the cart column) minus the pane's side inset. */
+ *  and the cart column) minus the list wrapper's side padding. */
 export function posGridPaneWidthPx(viewport: NavViewport): number {
   const columns = posBodyColumnsPx(viewport);
   const menu = columns.length === 3 ? columns[1] : columns[0];

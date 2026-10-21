@@ -1,20 +1,20 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
   POS_GRID_CLASS_SIDEBAR_EXPANDED,
   POS_GRID_CLASS_SIDEBAR_COLLAPSED,
+  POS_TOOLBAR_CLASS,
+  POS_LIST_CLASS,
 } from "@/lib/pos-layout";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useSettings } from "@/hooks/use-settings";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { ALL_CATEGORIES } from "@/components/pos/CategorySidebar";
+import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
+import { ALL_CATEGORIES, CategorySheet, type CategoryPickerProps } from "@/components/pos/CategorySidebar";
 import { ProductCard } from "@/components/pos/ProductCard";
 import { useCategoryMap } from "@/hooks/use-category-map";
 import { useMenuFreshness } from "@/hooks/use-menu-freshness";
@@ -55,7 +55,19 @@ interface ProductGridProps {
   // A send is in flight: the tiles are inert (no line can join a request that
   // already left), while the list itself still scrolls.
   disabled?: boolean;
+  // The page's category picker: the toolbar's Category button + sheet below 1100px share it with the column.
+  categoryPicker: CategoryPickerProps;
 }
+
+// The HTML's search box (values 3.1): flex 1, 36px, 0 10px, 1px --border, radius 8, on --surface; the 15px magnifier
+// 8px from the field, which is 14px (16px below 720px, ruling R36), no focus look; the "/" chip from 720px (11px
+// --text-3, 1px --border, radius 4, 0 5px, line-height 16px). Chrome's own clear button is hidden (the HTML's field has
+// none; U0's staff search does the same).
+const SEARCH_BOX_CLASS = "flex h-9 min-w-0 flex-1 items-center gap-2 rounded-[8px] border border-border bg-card px-2.5";
+const SEARCH_INPUT_CLASS =
+  "min-w-0 flex-1 border-0 bg-transparent px-0.5 py-px text-[14px] leading-[normal] text-foreground outline-none placeholder:text-subtle-foreground max-tab:text-base [&::-webkit-search-cancel-button]:appearance-none";
+const SLASH_CHIP_CLASS =
+  "hidden rounded-[4px] border border-border px-[5px] text-[11px] leading-4 text-subtle-foreground tab:inline";
 
 // Category-filtered, name-searchable product grid. Clicking a tile delegates to
 // the parent (which opens the modifier modal or adds straight to the cart).
@@ -66,6 +78,7 @@ export function ProductGrid({
   onProductOptions,
   qtyByProduct,
   disabled = false,
+  categoryPicker,
 }: ProductGridProps) {
   const [search, setSearch] = useState("");
   const gridClass = useGridClass();
@@ -111,53 +124,67 @@ export function ProductGrid({
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          {/* type="search" gives the phone keyboard a Search key and the
-              native clear affordance; Input already renders text-base below
-              md, so this does not trigger iOS's focus-zoom. */}
-          <Input
-            type="search"
-            enterKeyHint="search"
-            autoComplete="off"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search products…"
-            className="pl-8"
-            aria-label="Search products"
-          />
-        </div>
-        {/* Standing count of what the category + search filter is showing, so a
-            short grid reads as "that is all there is" and not "it failed". */}
-        <span
-          aria-live="polite"
-          className="shrink-0 text-xs tabular-nums text-muted-foreground"
-        >
-          {refreshFailed ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-auto min-h-11 px-2 text-xs text-destructive md:min-h-8"
-              onClick={retry}
+    <>
+      {/* The HTML's toolbar (values 3.1): sticky at the top of the menu column, the list scrolls under it. */}
+      <div data-ui="pos-toolbar" className={POS_TOOLBAR_CLASS}>
+        <div data-ui="pos-toolbar-row" className="flex items-center gap-2">
+          <label data-ui="pos-search-box" className={SEARCH_BOX_CLASS}>
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              aria-hidden="true"
+              className="flex-none text-subtle-foreground"
             >
-              Couldn&apos;t refresh · Try again
-            </Button>
-          ) : (
-            <>
-              {filtered.length} {filtered.length === 1 ? "item" : "items"}
-            </>
-          )}
-        </span>
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+            {/* type="search" gives the phone keyboard a Search key; data-ui is what the "/" key focuses (U1 Task 5). */}
+            <input
+              type="search"
+              data-ui="pos-search"
+              enterKeyHint="search"
+              autoComplete="off"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search items"
+              aria-label="Search items"
+              className={SEARCH_INPUT_CLASS}
+            />
+            <span aria-hidden="true" data-ui="pos-search-slash" className={SLASH_CHIP_CLASS}>
+              /
+            </span>
+          </label>
+          {/* What the category + search filter shows, read to screen readers (design 6.3: the counts show in the
+              category list); when a menu refresh failed but the grid still has data, "Couldn't refresh · Try again"
+              shows here, at the row's right where the HTML's diet filter sits (13px --bad-i link; its 44px hit area
+              overhangs the 36px row). The span leaves the row while it holds only the spoken count. */}
+          <span aria-live="polite" className="sr-only has-[button]:not-sr-only has-[button]:flex-none">
+            {refreshFailed ? (
+              <button
+                type="button"
+                data-ui="pos-menu-retry"
+                className={cn("-my-1 min-h-11 whitespace-nowrap bg-transparent px-1 text-[13px] font-medium text-status-bad-ink", BRAND_PRESS_CLASS)}
+                onClick={retry}
+              >
+                Couldn&apos;t refresh · Try again
+              </button>
+            ) : (
+              <>
+                {filtered.length} {filtered.length === 1 ? "item" : "items"}
+              </>
+            )}
+          </span>
+        </div>
+        <CategorySheet {...categoryPicker} />
       </div>
 
-      {/* The only scroller on the screen. No overscroll-contain: when the root
-          is taller than a short viewport (landscape phone, min-h floor) a drag
-          past the grid's end must chain to the document so the rest of the
-          page stays reachable. */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      {/* The HTML's list wrapper (values 3.1 listPad); main (the menu column) is the one scroller. */}
+      <div data-ui="pos-list" className={POS_LIST_CLASS}>
         {filtered.length === 0 ? (
           <EmptyState
             title="No products found"
@@ -215,7 +242,7 @@ export function ProductGrid({
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 }
 
@@ -225,7 +252,7 @@ export function ProductGrid({
 export function GridSkeleton() {
   const gridClass = useGridClass();
   return (
-    <div className={cn(gridClass, "min-h-0 flex-1 content-start")}>
+    <div className={cn(gridClass, POS_LIST_CLASS)}>
       {Array.from({ length: 12 }).map((_, i) => (
         <Skeleton key={i} className={cn(SKELETON_HEIGHT, "w-full")} />
       ))}

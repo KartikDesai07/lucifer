@@ -150,6 +150,12 @@ test("the old two-pane and stacked-phone frame is gone, not left dead (design 5)
     "POS_MOBILE_STACK_REM",
     "POS_ROOT_FLOOR_REM_BASE",
     "POS_ROOT_CHROME_REM_XL",
+    // U1 Task 2 (values 3.1, design 6.3): the interim pane, its floor, the chip strip and the rail's gate.
+    "POS_PANE_CLASS",
+    "POS_PANE_FLOOR_PX",
+    "POS_CHIP_CLASS",
+    "POS_CHIP_ROW_CLASS",
+    "POS_DESKTOP_ONLY_CLASS",
   ]) {
     assert.ok(!(name in layout), `lib/pos-layout.ts must no longer export ${name}`);
   }
@@ -166,8 +172,8 @@ test("pos/page.tsx renders the HTML's body grid: the aside, the menu column and 
       "<CategorySidebar",
       "</aside>",
       '<div data-ui="pos-main" className={POS_MAIN_CLASS}>',
+      '<div data-ui="pos-controls" className={POS_CONTROLS_CLASS}>',
       "<PosHeader",
-      "<CategoryChips",
       "<ProductGrid",
       '<section data-ui="pos-cart" className={POS_CART_CLASS}>',
       "<Cart {...cartProps}",

@@ -32,22 +32,19 @@ import {
   posGridPaneWidthPx,
   POS_BODY_COLUMNS_PX,
   POS_PANE_INSET_PX,
-  POS_PANE_FLOOR_PX,
-  POS_PANE_CLASS,
   POS_PAGE_CLASS,
   POS_MAIN_CLASS,
   POS_MAIN_PAD_B_PX,
   POS_ASIDE_CLASS,
   POS_CART_CLASS,
   POS_MOBILE_ONLY_CLASS,
-  POS_DESKTOP_ONLY_CLASS,
+  POS_TOOLBAR_CLASS,
+  POS_LIST_CLASS,
+  POS_CONTROLS_CLASS,
   POS_MOBILE_BAR_CLASS,
   POS_CART_SHEET_CLASS,
   POS_CART_SHEET_PANEL_CLASS,
   POS_CART_LIST_CLASS,
-  POS_CHIP_ROW_CLASS,
-  POS_CHIP_CLASS,
-  POS_HEADER_CONTROL_CLASS,
   POS_GRID_CLASS_SIDEBAR_EXPANDED,
   POS_GRID_CLASS_SIDEBAR_COLLAPSED,
   POS_GRID_GAP_REM,
@@ -148,38 +145,31 @@ test("PIN: lib/pos-layout.ts's posGridPaneWidthPx is the same menu-column arithm
   }
 });
 
-test("PIN: the pane's inset is the one POS_PANE_CLASS draws (px-5, max-tab:px-3)", () => {
-  const cls = tokens(POS_PANE_CLASS);
-  assert.ok(cls.includes(`px-${POS_PANE_INSET_PX.base / 4}`), `POS_PANE_CLASS must carry px-${POS_PANE_INSET_PX.base / 4} (${POS_PANE_INSET_PX.base}px)`);
-  assert.ok(cls.includes(`max-tab:px-${POS_PANE_INSET_PX.phone / 4}`), `POS_PANE_CLASS must carry max-tab:px-${POS_PANE_INSET_PX.phone / 4} (${POS_PANE_INSET_PX.phone}px)`);
-  for (const t of ["flex", "flex-col", "flex-1", "min-w-0"]) assert.ok(cls.includes(t), `POS_PANE_CLASS stacks the menu column's parts: "${t}"`);
+// U1 Task 2 (values 3.1 listPad): the grid sits in the HTML's list wrapper, 16px 20px (14px 12px on a phone); its side
+// padding is the inset the tile arithmetic above subtracts.
+test("PIN: the grid's inset is the list wrapper's padding POS_LIST_CLASS draws (px-5 py-4, max-tab:px-3 max-tab:py-3.5)", () => {
+  const cls = tokens(POS_LIST_CLASS);
+  assert.ok(cls.includes(`px-${POS_PANE_INSET_PX.base / 4}`), `POS_LIST_CLASS must carry px-${POS_PANE_INSET_PX.base / 4} (${POS_PANE_INSET_PX.base}px)`);
+  assert.ok(cls.includes(`max-tab:px-${POS_PANE_INSET_PX.phone / 4}`), `POS_LIST_CLASS must carry max-tab:px-${POS_PANE_INSET_PX.phone / 4} (${POS_PANE_INSET_PX.phone}px)`);
+  assert.ok(cls.includes("py-4") && cls.includes("max-tab:py-3.5"), "16px above and below, 14px on a phone (values 0.3 listPad)");
 });
 
-// CB-1c's rule, kept in the new frame: a short screen (a landscape phone, a 1280x560 window) never shows the control
-// row, the chips and the search box with NO products. Until U1 Tasks 2-3 make main the HTML's one scroller, the pane
-// keeps a floor of one tile row under them, and below it the menu column (overflow auto) scrolls instead.
-test("PIN: the pane's floor keeps one tile row under the control row, the chips and the search row; below it the menu column scrolls", () => {
-  // Each part parsed from the class string it renders with (never re-typed numbers).
-  const scale = (cls: string, re: RegExp, what: string): number => {
-    const m = cls.match(re);
-    assert.ok(m, `${what}: the token is in "${cls}"`);
-    return Number(m![1]) * 4;
-  };
-  const rowPx = scale(POS_HEADER_CONTROL_CLASS, /(?:^|\s)h-(\d+)(?:\s|$)/, "the control row");
-  const chipsPx = scale(POS_CHIP_CLASS, /(?:^|\s)h-(\d+)(?:\s|$)/, "a chip") + scale(POS_CHIP_ROW_CLASS, /(?:^|\s)pb-(\d+)(?:\s|$)/, "the chip row");
-  const input = readFileSync(path.join(CAFE_ROOT, "components/ui/input.tsx"), "utf8");
-  const searchPx = scale(input, /\bh-(\d+)\b/, "the search input");
-  const gapsPx = 3 * scale(POS_PANE_CLASS, /(?:^|\s)gap-(\d+)(?:\s|$)/, "the pane's gap"); // row|chips, chips|grid, search|scroller
-  const card = readFileSync(path.join(CAFE_ROOT, "components/pos/ProductCard.tsx"), "utf8");
-  const tileRowPx = Number(card.match(/TILE_MIN_HEIGHT\s*=\s*"min-h-\[([\d.]+)rem\]"/)?.[1]) * REM_PX;
-  const topInsetPx = scale(POS_PANE_CLASS, /(?:^|\s)pt-([\d.]+)(?:\s|$)/, "the pane's top inset");
-  assert.equal(POS_PANE_FLOOR_PX, rowPx + chipsPx + searchPx + gapsPx + tileRowPx + topInsetPx, "the floor is the stack plus one tile row");
-  assert.ok(tokens(POS_PANE_CLASS).includes(`min-h-[${POS_PANE_FLOOR_PX}px]`), `POS_PANE_CLASS must carry min-h-[${POS_PANE_FLOOR_PX}px]`);
-  assert.ok(tokens(POS_MAIN_CLASS).includes("overflow-auto"), "the menu column scrolls when the floor is taller than it");
-  // 640x360 (a landscape phone under the tab bar): the page is 360 - 56 = 304px, main keeps 150px at its foot, so the
-  // pane's 154px would hide every tile: the floor holds and main scrolls by the difference.
-  const shortMain = 360 - 56 - POS_MAIN_PAD_B_PX.phone;
-  assert.ok(shortMain < POS_PANE_FLOOR_PX, "landmark: the floor bites on a landscape phone");
+// U1 Task 2 (values 3.1, 0.3 toolPad): the toolbar sticks at the top of main on the page's --bg, 14px 20px 4px (10px
+// 12px 4px on a phone). Main is the HTML's one scroller, so the list scrolls under the toolbar at every height: the
+// pane's floor (CB-1c's rule in Task 1's interim frame) is gone with the pane.
+test("PIN: the toolbar is the HTML's sticky strip with its toolPad, and main is the one scroller (no floor)", () => {
+  const cls = tokens(POS_TOOLBAR_CLASS);
+  for (const t of ["sticky", "top-0", "z-[3]", "bg-background", "px-5", "pt-3.5", "pb-1", "max-tab:px-3", "max-tab:pt-2.5"]) {
+    assert.ok(cls.includes(t), `POS_TOOLBAR_CLASS (values 3.1 toolbar): "${t}"`);
+  }
+  assert.ok(tokens(POS_MAIN_CLASS).includes("overflow-auto"), "the menu column scrolls the list under the toolbar");
+  assert.ok(!tokens(POS_MAIN_CLASS).includes("flex"), "main is a block, as the HTML's (the toolbar and the list stack in flow)");
+  for (const gone of ["POS_PANE_CLASS", "POS_PANE_FLOOR_PX", "POS_CHIP_CLASS", "POS_CHIP_ROW_CLASS", "POS_DESKTOP_ONLY_CLASS"]) {
+    assert.ok(!readFileSync(path.join(CAFE_ROOT, "lib/pos-layout.ts"), "utf8").includes(`export const ${gone}`), `lib/pos-layout.ts no longer exports ${gone}`);
+  }
+  // Today's control row (until U1 Tasks 4 and 6) sits above the toolbar with the toolbar's own side inset.
+  const controls = tokens(POS_CONTROLS_CLASS);
+  for (const t of ["px-5", "pt-3.5", "max-tab:px-3", "max-tab:pt-2.5"]) assert.ok(controls.includes(t), `POS_CONTROLS_CLASS lines up with the toolbar: "${t}"`);
 });
 
 test("PIN: desktop column counts cap at 3 everywhere (owner decision 2026-09-29, UI batch 1 §H — supersedes the old v1-four-columns-at-1536+ target)", () => {
@@ -295,10 +285,13 @@ test("PIN: the cart is a column from the HTML's 1024px (lg), the category column
   }
 });
 
-test("PIN: exactly one cart and one category list show at any width — the column and the bar switch at 1024px, the rail and the chips at 1100px", () => {
+// U1 Task 2: the category list switches at 1100px between the column (POS_ASIDE_CLASS) and the toolbar's Category
+// button + sheet (CategorySidebar.tsx, desk:hidden; pinned in lib/pos-layout-paths.test.ts); the chip strip and the rail
+// constants went with it. POS_MOBILE_ONLY_CLASS stays for the bar's wrapper (MobileCartBar).
+test("PIN: exactly one cart and one category list show at any width — the column and the bar switch at 1024px, the category column and the Category button at 1100px", () => {
   assert.ok(tokens(POS_MOBILE_BAR_CLASS).includes("lg:hidden"), "the bar hides where the cart column shows (lg)");
-  assert.equal(POS_MOBILE_ONLY_CLASS, "desk:hidden", "the chips hide where the category column shows (desk)");
-  assert.equal(POS_DESKTOP_ONLY_CLASS, "hidden desk:flex", "the rail shows with the category column (desk)");
+  assert.equal(POS_MOBILE_ONLY_CLASS, "desk:hidden", "the bar's wrapper keeps its 1100px gate (U1 Task 7 rebuilds the bar)");
+  assert.ok(tokens(POS_ASIDE_CLASS).includes("desk:flex"), "the category column shows from 1100px");
 });
 
 test("PIN: the cart sheet's scrollable panel and its line-list floor carry the right utility classes", () => {
@@ -321,24 +314,4 @@ test("PIN: the cart sheet's scrollable panel and its line-list floor carry the r
     !POS_CART_LIST_CLASS.includes("overscroll-contain"),
     "POS_CART_LIST_CLASS must NOT include overscroll-contain — a drag that runs out of list must chain to the scrolling panel so the CTAs come up",
   );
-});
-
-test("PIN: POS_CHIP_ROW_CLASS is ONE sideways-scrolling line at every width below 1100px — no md: wrapping cloud any more (owner decision 2026-08-29, CB-1c: the wrapping cloud ate ~59% of a landscape tablet's visible height)", () => {
-  const rowTokens = tokens(POS_CHIP_ROW_CLASS);
-  assert.ok(rowTokens.includes("flex"), "POS_CHIP_ROW_CLASS must include flex");
-  assert.ok(rowTokens.includes("shrink-0"), "POS_CHIP_ROW_CLASS must include shrink-0");
-  assert.ok(rowTokens.includes("gap-2"), "POS_CHIP_ROW_CLASS must include gap-2");
-  assert.ok(rowTokens.includes("overflow-x-auto"), "POS_CHIP_ROW_CLASS must include overflow-x-auto");
-  assert.ok(rowTokens.includes("pb-1"), "POS_CHIP_ROW_CLASS must include pb-1");
-
-  // Negatives: no md: token of ANY kind (the whole wrapping-cloud variant set
-  // is retired, not just flex-wrap/max-h/overflow-y-auto individually).
-  assert.ok(!rowTokens.some((t) => t.startsWith("md:")), "POS_CHIP_ROW_CLASS must carry no md: token at all — one scrolling line at every width below 1100px");
-  assert.ok(!POS_CHIP_ROW_CLASS.includes("flex-wrap"), "POS_CHIP_ROW_CLASS must not include flex-wrap — CB-1b's retired wrapping cloud");
-  assert.ok(!POS_CHIP_ROW_CLASS.includes("max-h"), "POS_CHIP_ROW_CLASS must not include a max-h cap — no cloud, nothing to cap");
-});
-
-test("PIN: POS_CHIP_CLASS is inline-flex with items-center — the label span's max-w truncate only works on a flex item", () => {
-  assert.ok(POS_CHIP_CLASS.startsWith("inline-flex"), `POS_CHIP_CLASS must start with "inline-flex", got "${POS_CHIP_CLASS}"`);
-  assert.match(POS_CHIP_CLASS, /(^|\s)items-center(\s|$)/, "POS_CHIP_CLASS must include items-center");
 });

@@ -24,7 +24,8 @@ import {
   POS_MAIN_CLASS,
   POS_CART_CLASS,
   POS_MOBILE_BAR_CLASS,
-  POS_CHIP_ROW_CLASS,
+  POS_TOOLBAR_CLASS,
+  POS_LIST_CLASS,
   POS_BODY_COLUMNS_PX,
   POS_MAIN_PAD_B_PX,
   DASHBOARD_HEADER_REM,
@@ -33,7 +34,6 @@ import {
   POS_CART_STEPPER_CLASS,
   POS_TILE_OPTIONS_BUTTON_CLASS,
   POS_TILE_OPTIONS_RESERVE_CLASS,
-  POS_CHIP_CLASS,
   POS_CART_CTA_CLASS,
   POS_MOBILE_BAR_BUTTON_CLASS,
   POS_PRESS_FEEDBACK_CLASS,
@@ -106,7 +106,8 @@ test("PIN: real Tailwind compiles the /pos frame (page height, body grid, region
     ...POS_MAIN_CLASS.split(/\s+/),
     ...POS_CART_CLASS.split(/\s+/),
     ...POS_MOBILE_BAR_CLASS.split(/\s+/),
-    ...POS_CHIP_ROW_CLASS.split(/\s+/),
+    ...POS_TOOLBAR_CLASS.split(/\s+/),
+    ...POS_LIST_CLASS.split(/\s+/),
     "min-h-screen",
     "supports-[height:1dvh]:min-h-dvh",
   ].filter(Boolean);
@@ -133,6 +134,9 @@ test("PIN: real Tailwind compiles the /pos frame (page height, body grid, region
   const asideOn = "@media (width >= 68.75rem) { display: flex; }";
   const cartOn = "@media (width >= 64rem) { display: flex; }";
   const barOff = "@media (width >= 64rem) { display: none; }";
+  // U1 Task 2 (values 3.1 toolbar, 0.3 toolPad / listPad): the sticky toolbar and the list wrapper, phone forms last.
+  const toolbarPhoneTop = "@media (width < 45rem) { padding-top: calc(var(--spacing) * 2.5); }";
+  const listPhoneY = "@media (width < 45rem) { padding-block: calc(var(--spacing) * 3.5); }";
 
   for (const [needle, what] of [
     [pageHeight, "the page's vh height"],
@@ -146,6 +150,10 @@ test("PIN: real Tailwind compiles the /pos frame (page height, body grid, region
     [asideOn, "the category column shows from 1100px"],
     [cartOn, "the cart column shows from 1024px"],
     [barOff, "the bar hides from 1024px"],
+    ["position: sticky;", "the toolbar sticks inside main"],
+    ["z-index: 3;", "the toolbar sits over the cards (z-index 3)"],
+    [toolbarPhoneTop, "the toolbar's 10px top padding on a phone"],
+    [listPhoneY, "the list's 14px top and bottom padding on a phone"],
     ["min-height: 100vh;", "min-h-screen's plain floor — the floor /m and the body fall back to"],
     ["@supports (height:1dvh) { min-height: 100dvh; }", "the body's dvh floor"],
   ] as const) {
@@ -173,7 +181,6 @@ test("PIN: real Tailwind compiles the CB-1d.1 touch-feel/device-size tokens to t
     ...POS_CART_STEPPER_CLASS.split(/\s+/),
     ...POS_TILE_OPTIONS_BUTTON_CLASS.split(/\s+/),
     ...POS_TILE_OPTIONS_RESERVE_CLASS.split(/\s+/),
-    ...POS_CHIP_CLASS.split(/\s+/),
     ...POS_CART_CTA_CLASS.split(/\s+/),
     ...POS_MOBILE_BAR_BUTTON_CLASS.split(/\s+/),
     ...POS_PRESS_FEEDBACK_CLASS.split(/\s+/),
@@ -283,5 +290,5 @@ test("PIN: real Tailwind compiles the CB-1d.1 touch-feel/device-size tokens to t
 
   // Landmark: the whole candidate list reached the compiler, not just the
   // arithmetic-bearing tokens asserted above.
-  assert.ok(css.includes(".inline-flex {"), "landmark: compiled CSS must include the plain .inline-flex utility (POS_CHIP_CLASS)");
+  assert.ok(css.includes(".justify-between {"), "landmark: compiled CSS must include the plain .justify-between utility (POS_MOBILE_BAR_BUTTON_CLASS)");
 });
