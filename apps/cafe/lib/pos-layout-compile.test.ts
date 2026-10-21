@@ -26,14 +26,15 @@ import {
   POS_MOBILE_BAR_CLASS,
   POS_TOOLBAR_CLASS,
   POS_LIST_CLASS,
+  POS_CARD_GRID_CLASS,
+  POS_CARD_MIN_PX,
+  POS_CARD_GAP_PX,
   POS_BODY_COLUMNS_PX,
   POS_MAIN_PAD_B_PX,
   DASHBOARD_HEADER_REM,
   POS_ALERT_HEIGHT_VAR,
   POS_HEADER_CONTROL_CLASS,
   POS_CART_STEPPER_CLASS,
-  POS_TILE_OPTIONS_BUTTON_CLASS,
-  POS_TILE_OPTIONS_RESERVE_CLASS,
   POS_CART_CTA_CLASS,
   POS_MOBILE_BAR_BUTTON_CLASS,
   POS_PRESS_FEEDBACK_CLASS,
@@ -108,6 +109,7 @@ test("PIN: real Tailwind compiles the /pos frame (page height, body grid, region
     ...POS_MOBILE_BAR_CLASS.split(/\s+/),
     ...POS_TOOLBAR_CLASS.split(/\s+/),
     ...POS_LIST_CLASS.split(/\s+/),
+    ...POS_CARD_GRID_CLASS.split(/\s+/),
     "min-h-screen",
     "supports-[height:1dvh]:min-h-dvh",
   ].filter(Boolean);
@@ -137,6 +139,9 @@ test("PIN: real Tailwind compiles the /pos frame (page height, body grid, region
   // U1 Task 2 (values 3.1 toolbar, 0.3 toolPad / listPad): the sticky toolbar and the list wrapper, phone forms last.
   const toolbarPhoneTop = "@media (width < 45rem) { padding-top: calc(var(--spacing) * 2.5); }";
   const listPhoneY = "@media (width < 45rem) { padding-block: calc(var(--spacing) * 3.5); }";
+  // U1 Task 3 (values 4.1): the card grid's auto-fill tracks and 8px gap.
+  const cardTracks = "grid-template-columns: repeat(auto-fill,minmax(min(" + POS_CARD_MIN_PX + "px, 100%),1fr));";
+  const cardGap = "gap: calc(var(--spacing) * " + POS_CARD_GAP_PX / 4 + ");";
 
   for (const [needle, what] of [
     [pageHeight, "the page's vh height"],
@@ -154,6 +159,8 @@ test("PIN: real Tailwind compiles the /pos frame (page height, body grid, region
     ["z-index: 3;", "the toolbar sits over the cards (z-index 3)"],
     [toolbarPhoneTop, "the toolbar's 10px top padding on a phone"],
     [listPhoneY, "the list's 14px top and bottom padding on a phone"],
+    [cardTracks, "the card grid's auto-fill tracks of at least 200px"],
+    [cardGap, "the card grid's 8px gap"],
     ["min-height: 100vh;", "min-h-screen's plain floor — the floor /m and the body fall back to"],
     ["@supports (height:1dvh) { min-height: 100dvh; }", "the body's dvh floor"],
   ] as const) {
@@ -179,8 +186,6 @@ test("PIN: real Tailwind compiles the CB-1d.1 touch-feel/device-size tokens to t
   const candidates = [
     ...POS_HEADER_CONTROL_CLASS.split(/\s+/),
     ...POS_CART_STEPPER_CLASS.split(/\s+/),
-    ...POS_TILE_OPTIONS_BUTTON_CLASS.split(/\s+/),
-    ...POS_TILE_OPTIONS_RESERVE_CLASS.split(/\s+/),
     ...POS_CART_CTA_CLASS.split(/\s+/),
     ...POS_MOBILE_BAR_BUTTON_CLASS.split(/\s+/),
     ...POS_PRESS_FEEDBACK_CLASS.split(/\s+/),
@@ -191,13 +196,13 @@ test("PIN: real Tailwind compiles the CB-1d.1 touch-feel/device-size tokens to t
   const raw = await compileCandidates(candidates);
   const css = raw.replace(/\s+/g, " ").trim();
 
-  // Header controls / tile options button share the xl:pointer-fine:h-8
-  // value; the cart stepper has its own h-7/w-7 pair. The pointer-fine media
+  // Header controls carry the xl:pointer-fine:h-8 value (U1 Task 3: the
+  // tile's corner options button that shared it is gone); the cart stepper has its own h-7/w-7 pair. The pointer-fine media
   // query nests INSIDE the xl one (width first, capability second) — the
   // cascade the string-level V1 pin assumes.
   assert.ok(
     css.includes("@media (width >= 80rem) { @media (pointer: fine) { height: calc(var(--spacing) * 8); } }"),
-    "compiled CSS must include the xl:pointer-fine h-8 rule (header controls + tile options button)",
+    "compiled CSS must include the xl:pointer-fine h-8 rule (header controls)",
   );
   assert.ok(
     css.includes("@media (width >= 80rem) { @media (pointer: fine) { height: calc(var(--spacing) * 7); } }"),
@@ -256,8 +261,8 @@ test("PIN: real Tailwind compiles the CB-1d.1 touch-feel/device-size tokens to t
     );
   }
 
-  // ORDER pin: the base .h-10 utility (header control / chip / options
-  // button's un-prefixed size) must compile BEFORE its escaped
+  // ORDER pin: the base .h-10 utility (the header control's un-prefixed
+  // size) must compile BEFORE its escaped
   // .xl\:pointer-fine\:h-8 variant selector — this protects the DESKTOP
   // (xl + pointer-fine) compact size specifically: base-before-variant order
   // is what lets the narrower xl:pointer-fine: rule win over the wider base

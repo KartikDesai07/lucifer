@@ -19,7 +19,7 @@ import {
   ALL_CATEGORIES,
   type CategoryPickerProps,
 } from "@/components/pos/CategorySidebar";
-import { ProductGrid, GridSkeleton } from "@/components/pos/ProductGrid";
+import { ProductGrid, GridSkeleton, MenuLoadError } from "@/components/pos/ProductGrid";
 import { Cart } from "@/components/pos/Cart";
 import { MobileCartBar } from "@/components/pos/MobileCartBar";
 import { PosHeader } from "@/components/pos/PosHeader";
@@ -28,13 +28,13 @@ import { PosModals } from "@/components/pos/PosModals";
 import { SelfOrderAutoPrint } from "@/components/pos/SelfOrderAutoPrint";
 import { printConfigOf } from "@/lib/print";
 import { buildCartProps, hasPendingAdjustment } from "@/lib/pos-cart-props";
+import { defaultAddOptions } from "@/lib/pos-price-buttons";
 import {
   POS_PAGE_CLASS,
   POS_BODY_GRID_CLASS,
   POS_ASIDE_CLASS,
   POS_MAIN_CLASS,
   POS_CONTROLS_CLASS,
-  POS_LIST_CLASS,
   POS_CART_CLASS,
 } from "@/lib/pos-layout";
 import type { Order, Product } from "@/types";
@@ -122,21 +122,19 @@ export default function PosPage() {
   });
 
   const { addToCart } = pos;
-  const handleProductClick = useCallback((product: Product) => {
-    // A variation item must never add straight to the cart — there is no
-    // meaningful default size, so the modal's required chooser is the only
-    // way to pick the price that gets billed.
-    if (product.modifiers.length > 0 || (product.variations?.length ?? 0) > 0) {
-      setModifierProduct(product);
-      setModifierOpen(true);
-    } else {
-      addToCart(product);
-    }
+  // A price button adds at once (owner Q5, U1 Task 3): the item, or the
+  // variation its button names, with exactly what the options modal adds when
+  // nothing in it is changed (lib/pos-price-buttons.ts) — so the two lines
+  // merge. A variation item never adds without its size: every adding button
+  // names one, and beyond three sizes one "Choose" button opens the modal.
+  const handleProductClick = useCallback((product: Product, variation?: string) => {
+    addToCart(product, defaultAddOptions(product, variation));
   }, [addToCart]);
 
   // Opens the SAME modal for a plain product too — it already hides its
   // add-ons block when the product carries none, so this is "free": the
-  // operator still gets the instructions/qty fields.
+  // operator still gets the instructions/qty fields. The card's name opens it
+  // (and the "Choose" button of an item with more than three sizes).
   const handleProductOptions = useCallback((product: Product) => {
     setModifierProduct(product);
     setModifierOpen(true);
@@ -191,12 +189,14 @@ export default function PosPage() {
               onCustomerChange={pos.setCustomer}
             />
           </div>
+          {/* Loading: the toolbar as it will stand (its search box and Category button take no input yet) over
+              HTML-shaped cards, so nothing jumps when the menu arrives; a failed first read: the HTML's no-results
+              line (design 6.3). A failed background refresh keeps the grid: only the toolbar's slot changes
+              (lib/menu-freshness-paths.test.ts M1/M3). */}
           {products.isLoading ? (
-            <GridSkeleton />
+            <GridSkeleton categoryPicker={categoryPicker} />
           ) : products.isError && products.data === undefined ? (
-            <p className={POS_LIST_CLASS}>
-              <span className="text-sm text-destructive">Failed to load products. Refresh to retry.</span>
-            </p>
+            <MenuLoadError />
           ) : (
             <ProductGrid
               products={products.data ?? []}

@@ -3,14 +3,16 @@
 // under the 56px header, its body grid holds the category column (from 1100px), the menu column and the cart column
 // (from 1024px), and each region scrolls on its own. CB-1's two-pane switch at 1280px, its stacked phone column, the
 // root's floor and the device height matrices that modelled that stack went with it (lib/pos-frame.test.ts pins the
-// new page, grid and header; this file keeps the arithmetic: the grid's tiles beside the new columns, the column
-// tiers, and the class strings that still encode numbers).
+// new page, grid and header; this file keeps the arithmetic: the card grid beside the new columns and the class strings
+// that still encode numbers).
 //
 // lib/pos-layout.ts is the single source of the class strings/numbers the page consumes. Source-read pins live in
 // lib/pos-layout-paths.test.ts + lib/pos-header-paths.test.ts.
 //
-// Column-count tiering (viewport breakpoints keyed by sidebar state, not a container query) is kept until U1 Task 3
-// gives the menu the HTML's auto-fill cards: plain data these pins can verify directly.
+// U1 Task 3 (values 4.1, 4.3): the menu's cards sit in the HTML's auto-fill grid — as many columns of at least 200px as
+// the menu column holds, 8px apart — so the column count follows the menu column's own width. CB-1b's viewport tiers
+// keyed by the nav's state, the old tile's thumbnail-row arithmetic and its corner button's reserve went with the old
+// tile.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -20,16 +22,15 @@ import path from "node:path";
 import { ABOVE_TAB_BAR_STICKY_CLASS, PHONE_PAGE_FOOT_PX, TAB_BAR_HEIGHT_PX } from "./shell-layout";
 
 import {
-  BREAKPOINT_SM_PX,
-  BREAKPOINT_MD_PX,
   BREAKPOINT_LG_PX,
   BREAKPOINT_XL_PX,
-  BREAKPOINT_2XL_PX,
   BREAKPOINT_DESK_PX,
   NAV_RAIL_MIN_PX,
   navWidthPx,
   posBodyColumnsPx,
   posGridPaneWidthPx,
+  posCardColumns,
+  posCardWidthPx,
   POS_BODY_COLUMNS_PX,
   POS_PANE_INSET_PX,
   POS_PAGE_CLASS,
@@ -45,17 +46,9 @@ import {
   POS_CART_SHEET_CLASS,
   POS_CART_SHEET_PANEL_CLASS,
   POS_CART_LIST_CLASS,
-  POS_GRID_CLASS_SIDEBAR_EXPANDED,
-  POS_GRID_CLASS_SIDEBAR_COLLAPSED,
-  POS_GRID_GAP_REM,
-  POS_GRID_COLUMN_TIERS_SIDEBAR_EXPANDED,
-  POS_GRID_COLUMN_TIERS_SIDEBAR_COLLAPSED,
-  POS_MIN_TILE_PX,
-  POS_TILE_CARD_PADDING_PX,
-  POS_TILE_THUMB_PX,
-  POS_TILE_ROW_GAP_PX,
-  POS_MIN_NAME_BOX_PX,
-  POS_TILE_OPTIONS_RESERVE_CLASS,
+  POS_CARD_GRID_CLASS,
+  POS_CARD_MIN_PX,
+  POS_CARD_GAP_PX,
 } from "@/lib/pos-layout";
 
 const REM_PX = 16;
@@ -64,10 +57,6 @@ const tokens = (cls: string): string[] => cls.split(/\s+/).filter(Boolean);
 
 type SidebarState = "expanded" | "collapsed";
 const SIDEBAR_STATES: ReadonlyArray<SidebarState> = ["expanded", "collapsed"];
-const GRID_TIERS: Record<SidebarState, ReadonlyArray<{ minPx: number; cols: number }>> = {
-  expanded: POS_GRID_COLUMN_TIERS_SIDEBAR_EXPANDED,
-  collapsed: POS_GRID_COLUMN_TIERS_SIDEBAR_COLLAPSED,
-};
 
 // ── pure helpers mirroring the HTML's own rules (never lib/pos-layout.ts's functions) ─────────────────────────────
 
@@ -86,18 +75,14 @@ function paneWidthPx(viewportPx: number, sidebarState: SidebarState = "expanded"
   return viewportPx - nav - aside - cart - 2 * inset;
 }
 
-// Column count is a VIEWPORT breakpoint keyed by sidebar state (CB-1b) — no container query, no pane width input.
-function colsFor(viewportPx: number, sidebarState: SidebarState): number {
-  const tiers = GRID_TIERS[sidebarState];
-  let cols = tiers[0].cols;
-  for (const tier of tiers) {
-    if (tier.minPx <= viewportPx) cols = tier.cols;
-  }
-  return cols;
-}
-
-function tilePx(panePx: number, cols: number): number {
-  return (panePx - (cols - 1) * POS_GRID_GAP_REM * REM_PX) / cols;
+// CSS grid's auto-fill over the HTML's tracks (values 4.1: repeat(auto-fill,minmax(min(200px,100%),1fr)), gap 8px):
+// each track is 200px, or the whole width when that is narrower; as many as fit with the 8px gaps between them, and
+// never fewer than one. Counted one track at a time, not by lib/pos-layout.ts's division.
+function autoFillColumns(gridPx: number): number {
+  const track = Math.min(200, gridPx);
+  let n = 1;
+  while ((n + 1) * track + n * 8 <= gridPx) n += 1;
+  return n;
 }
 
 // ── A. breakpoint matrix ─────────────────────────────────────────────────────
@@ -105,31 +90,15 @@ function tilePx(panePx: number, cols: number): number {
 // U1 Task 1 adds the HTML's own breakpoints: 1100 (the category column arrives; the owner's tablet) and 1180.
 const VIEWPORTS = [360, 412, 740, 768, 820, 1024, 1100, 1180, 1280, 1366, 1536, 1920];
 
-// g1: the bare (base, un-prefixed) pr-N reserve, parsed from the real class
-// string — never re-typed — anchored to the BASE utility (not the
-// xl:pointer-fine:pr-7 variant) via the (?:^|\s)...(?:\s|$) fence.
-const reserveMatch = POS_TILE_OPTIONS_RESERVE_CLASS.match(/(?:^|\s)pr-(\d+)(?:\s|$)/);
-assert.ok(reserveMatch, `expected a bare pr-N token in POS_TILE_OPTIONS_RESERVE_CLASS ("${POS_TILE_OPTIONS_RESERVE_CLASS}")`);
-const RESERVE_PX = Number(reserveMatch![1]) * 4;
-
-test("PIN: every POS breakpoint keeps the grid tile at or above POS_MIN_TILE_PX beside the HTML's columns, sidebar expanded OR collapsed — and the product-name box left over after card padding/thumb/row-gap/reserve never drops below POS_MIN_NAME_BOX_PX (CB-1d.1 g1)", () => {
+test("PIN: at every POS breakpoint, nav open or collapsed, the card grid holds the HTML's auto-fill columns: each card at least 200px (the whole width when the menu is narrower), the row filling the menu exactly", () => {
   for (const vw of VIEWPORTS) {
     for (const sidebarState of SIDEBAR_STATES) {
       const pane = paneWidthPx(vw, sidebarState);
-      const cols = colsFor(vw, sidebarState);
-      const tile = tilePx(pane, cols);
-      assert.ok(
-        tile >= POS_MIN_TILE_PX,
-        `viewport ${vw}px (sidebar ${sidebarState}): pane ${pane}px -> ${cols} cols -> tile ${tile.toFixed(1)}px ` +
-          `is below POS_MIN_TILE_PX (${POS_MIN_TILE_PX}px)`,
-      );
-
-      const nameBox = tile - 2 * POS_TILE_CARD_PADDING_PX - POS_TILE_THUMB_PX - POS_TILE_ROW_GAP_PX - RESERVE_PX;
-      assert.ok(
-        nameBox >= POS_MIN_NAME_BOX_PX,
-        `viewport ${vw}px (sidebar ${sidebarState}): tile ${tile.toFixed(1)}px -> name box ${nameBox.toFixed(1)}px ` +
-          `is below POS_MIN_NAME_BOX_PX (${POS_MIN_NAME_BOX_PX}px)`,
-      );
+      const cols = posCardColumns(pane);
+      const card = posCardWidthPx(pane);
+      assert.equal(cols, autoFillColumns(pane), `viewport ${vw}px (sidebar ${sidebarState}): pane ${pane}px holds ${autoFillColumns(pane)} auto-fill column(s), got ${cols}`);
+      assert.ok(card >= Math.min(POS_CARD_MIN_PX, pane) - 1e-9, `viewport ${vw}px (sidebar ${sidebarState}): card ${card.toFixed(2)}px is below its 200px track`);
+      assert.ok(Math.abs(cols * card + (cols - 1) * POS_CARD_GAP_PX - pane) < 1e-9, `viewport ${vw}px (sidebar ${sidebarState}): the row fills the ${pane}px menu`);
     }
   }
 });
@@ -146,12 +115,14 @@ test("PIN: lib/pos-layout.ts's posGridPaneWidthPx is the same menu-column arithm
 });
 
 // U1 Task 2 (values 3.1 listPad): the grid sits in the HTML's list wrapper, 16px 20px (14px 12px on a phone); its side
-// padding is the inset the tile arithmetic above subtracts.
-test("PIN: the grid's inset is the list wrapper's padding POS_LIST_CLASS draws (px-5 py-4, max-tab:px-3 max-tab:py-3.5)", () => {
+// padding is the inset the card arithmetic above subtracts. U1 Task 3: the HTML sets no line-height on its cards, group
+// headings or messages (values 0.5: normal).
+test("PIN: the grid's inset is the list wrapper's padding POS_LIST_CLASS draws (px-5 py-4, max-tab:px-3 max-tab:py-3.5), at line-height normal", () => {
   const cls = tokens(POS_LIST_CLASS);
   assert.ok(cls.includes(`px-${POS_PANE_INSET_PX.base / 4}`), `POS_LIST_CLASS must carry px-${POS_PANE_INSET_PX.base / 4} (${POS_PANE_INSET_PX.base}px)`);
   assert.ok(cls.includes(`max-tab:px-${POS_PANE_INSET_PX.phone / 4}`), `POS_LIST_CLASS must carry max-tab:px-${POS_PANE_INSET_PX.phone / 4} (${POS_PANE_INSET_PX.phone}px)`);
   assert.ok(cls.includes("py-4") && cls.includes("max-tab:py-3.5"), "16px above and below, 14px on a phone (values 0.3 listPad)");
+  assert.ok(cls.includes("leading-[normal]"), "line-height normal for the cards, the group headings and the messages");
 });
 
 // U1 Task 2 (values 3.1, 0.3 toolPad): the toolbar sticks at the top of main on the page's --bg, 14px 20px 4px (10px
@@ -172,62 +143,34 @@ test("PIN: the toolbar is the HTML's sticky strip with its toolPad, and main is 
   for (const t of ["px-5", "pt-3.5", "max-tab:px-3", "max-tab:pt-2.5"]) assert.ok(controls.includes(t), `POS_CONTROLS_CLASS lines up with the toolbar: "${t}"`);
 });
 
-test("PIN: desktop column counts cap at 3 everywhere (owner decision 2026-09-29, UI batch 1 §H — supersedes the old v1-four-columns-at-1536+ target)", () => {
-  assert.equal(colsFor(1280, "expanded"), 3, "1280px grid (sidebar expanded) must give 3 columns");
-  assert.equal(colsFor(1536, "expanded"), 3, "1536px grid (sidebar expanded) must give AT MOST 3 columns, not the old v1 four");
-  assert.equal(colsFor(1920, "expanded"), 3, "1920px grid (sidebar expanded) must give AT MOST 3 columns, not the old v1 four");
-  assert.equal(colsFor(1280, "collapsed"), 3, "1280px grid (sidebar collapsed) must give AT MOST 3 columns, not the old 4");
-  // U1 Task 1: beside the category column and the 380px cart (1100-1279px) the menu is too narrow for three tiles.
-  assert.equal(colsFor(1100, "expanded"), 2, "1100px (the category column arrives) gives 2 columns");
-  assert.equal(colsFor(1279, "collapsed"), 2, "1279px beside the rail still gives 2 columns");
-  for (const state of SIDEBAR_STATES) {
-    for (const tier of GRID_TIERS[state]) assert.ok(tier.cols <= 3, `no tier above 3 columns (sidebar ${state}, from ${tier.minPx}px)`);
-  }
+// U1 Task 3 (values 4.3, design 5 "The grid is repeat(auto-fill,...)"): the HTML's grid decides the columns from the
+// menu column's width, so the 2026-09-29 cap of three columns (UI batch 1 §H, made for the old tile) gives way to it.
+test("PIN: the card columns follow the menu column's width as the HTML's: two beside the cart, three at 820px, one on a phone, more on a wider screen", () => {
+  assert.equal(posCardColumns(paneWidthPx(1280, "expanded")), 2, "1280px, nav open: 2 columns (values 4.3)");
+  assert.equal(posCardColumns(paneWidthPx(1280, "collapsed")), 2, "1280px, nav collapsed: 2 columns (values 4.3)");
+  assert.equal(posCardColumns(paneWidthPx(1024)), 2, "1024px: 2 columns (values 4.3)");
+  assert.equal(posCardColumns(paneWidthPx(820)), 3, "820px: 3 columns (values 4.3)");
+  assert.equal(posCardColumns(paneWidthPx(390)), 1, "a phone: 1 column (values 4.3)");
+  assert.equal(posCardColumns(paneWidthPx(1100)), 1, "1100px beside the rail: the 384px menu holds one 200px track");
+  assert.equal(posCardColumns(paneWidthPx(1920)), 5, "1920px: the 1088px menu holds five");
 });
 
-// ── B. the two grid class strings encode exactly their tier tables ─────────
+// ── B. the card grid's class string encodes the HTML's grid ─────────────────
 
-const NAMED_BREAKPOINT_PX: Record<string, number> = {
-  sm: BREAKPOINT_SM_PX,
-  md: BREAKPOINT_MD_PX,
-  lg: BREAKPOINT_LG_PX,
-  desk: BREAKPOINT_DESK_PX,
-  xl: BREAKPOINT_XL_PX,
-  "2xl": BREAKPOINT_2XL_PX,
-};
-
-function parseGridTiers(cls: string): Array<{ minPx: number; cols: number }> {
-  const tiers: Array<{ minPx: number; cols: number }> = [];
-  const bareMatch = cls.match(/(?:^|\s)grid-cols-(\d+)(?:\s|$)/);
-  if (bareMatch) tiers.push({ minPx: 0, cols: Number(bareMatch[1]) });
-  for (const m of cls.matchAll(/(sm|md|lg|desk|xl|2xl):grid-cols-(\d+)/g)) {
-    tiers.push({ minPx: NAMED_BREAKPOINT_PX[m[1]], cols: Number(m[2]) });
-  }
-  tiers.sort((a, b) => a.minPx - b.minPx);
-  return tiers;
-}
-
-test("PIN: POS_GRID_CLASS_SIDEBAR_EXPANDED/COLLAPSED each encode exactly their POS_GRID_COLUMN_TIERS_SIDEBAR_* table", () => {
-  assert.deepStrictEqual(
-    parseGridTiers(POS_GRID_CLASS_SIDEBAR_EXPANDED),
-    POS_GRID_COLUMN_TIERS_SIDEBAR_EXPANDED as unknown as ReturnType<typeof parseGridTiers>,
-    "the tiers parsed out of POS_GRID_CLASS_SIDEBAR_EXPANDED must exactly match POS_GRID_COLUMN_TIERS_SIDEBAR_EXPANDED",
-  );
-  assert.deepStrictEqual(
-    parseGridTiers(POS_GRID_CLASS_SIDEBAR_COLLAPSED),
-    POS_GRID_COLUMN_TIERS_SIDEBAR_COLLAPSED as unknown as ReturnType<typeof parseGridTiers>,
-    "the tiers parsed out of POS_GRID_CLASS_SIDEBAR_COLLAPSED must exactly match POS_GRID_COLUMN_TIERS_SIDEBAR_COLLAPSED",
-  );
-});
-
-test("PIN: neither grid class string uses a container query — the viewport tiers are kept as plain testable data, not a missing-support fallback", () => {
-  for (const [label, cls] of [
-    ["POS_GRID_CLASS_SIDEBAR_EXPANDED", POS_GRID_CLASS_SIDEBAR_EXPANDED],
-    ["POS_GRID_CLASS_SIDEBAR_COLLAPSED", POS_GRID_CLASS_SIDEBAR_COLLAPSED],
-  ] as const) {
-    assert.ok(!cls.includes("@container"), `${label} must not include @container`);
-    assert.ok(!cls.includes("@min-"), `${label} must not include @min-`);
-    assert.match(cls, /grid-cols-2/, `landmark: ${label} must still carry the bare grid-cols-2 base tier`);
+test("PIN: POS_CARD_GRID_CLASS is the HTML's card grid (values 4.1): auto-fill tracks of minmax(min(200px,100%),1fr), 8px apart — one grid at every width, no container query", () => {
+  const cls = tokens(POS_CARD_GRID_CLASS);
+  assert.ok(cls.includes("grid"), "a grid");
+  assert.ok(cls.includes(`grid-cols-[repeat(auto-fill,minmax(min(${POS_CARD_MIN_PX}px,100%),1fr))]`), "the HTML's auto-fill tracks");
+  assert.ok(cls.includes(`gap-${POS_CARD_GAP_PX / 4}`), "8px apart");
+  assert.ok(!cls.some((t) => t.includes(":")), "no variant: the same grid at every width");
+  assert.ok(!POS_CARD_GRID_CLASS.includes("@container") && !POS_CARD_GRID_CLASS.includes("@min-"), "no container query");
+  for (const gone of [
+    "POS_GRID_CLASS_SIDEBAR_EXPANDED",
+    "POS_GRID_COLUMN_TIERS_SIDEBAR_EXPANDED",
+    "POS_MIN_TILE_PX",
+    "POS_TILE_OPTIONS_RESERVE_CLASS",
+  ]) {
+    assert.ok(!readFileSync(path.join(CAFE_ROOT, "lib/pos-layout.ts"), "utf8").includes(`export const ${gone}`), `lib/pos-layout.ts no longer exports ${gone}`);
   }
 });
 

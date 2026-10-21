@@ -207,6 +207,7 @@
     "lib/source-pin-utils.test.ts",
     "lib/pos-frame.test.ts",
     "lib/pos-categories.test.ts",
+    "lib/pos-price-buttons.test.ts",
     "lib/pos-layout.test.ts",
     "lib/pos-layout-paths.test.ts",
     "lib/pos-tile-paths.test.ts",

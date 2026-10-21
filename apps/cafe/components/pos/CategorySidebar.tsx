@@ -153,8 +153,17 @@ const CATEGORY_BUTTON_CLASS = cn(
   BRAND_PRESS_CLASS,
 );
 
-/** Below 1100px: the toolbar's "Category {name}" button and the bottom sheet it opens (values 2.6, 3.1). */
-export function CategorySheet({ categories, products, selected, onSelect, query, onQueryChange }: CategoryPickerProps) {
+/** Below 1100px: the toolbar's "Category {name}" button and the bottom sheet it opens (values 2.6, 3.1). `disabled`:
+ *  while the products load (U1 Task 3) the button shows but opens nothing, so no row reads a count of 0. */
+export function CategorySheet({
+  categories,
+  products,
+  selected,
+  onSelect,
+  query,
+  onQueryChange,
+  disabled = false,
+}: CategoryPickerProps & { disabled?: boolean }) {
   const [open, setOpen] = useState(false);
   const rows = useCategoryRows(categories, products, query);
   const pick = (value: string) => {
@@ -164,7 +173,7 @@ export function CategorySheet({ categories, products, selected, onSelect, query,
   return (
     <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
       <DialogPrimitive.Trigger asChild>
-        <button type="button" data-ui="pos-category-button" className={CATEGORY_BUTTON_CLASS}>
+        <button type="button" data-ui="pos-category-button" disabled={disabled} className={CATEGORY_BUTTON_CLASS}>
           <span className="flex min-w-0 gap-2">
             <span className="text-muted-foreground">Category</span>
             <span data-ui="pos-category-value" className="truncate font-semibold">

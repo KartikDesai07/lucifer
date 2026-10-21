@@ -127,11 +127,12 @@ export const POS_MAIN_CLASS = "min-h-0 min-w-0 overflow-auto pb-4 max-lg:pb-[100
 export const POS_TOOLBAR_CLASS =
   "sticky top-0 z-[3] bg-background px-5 pt-3.5 pb-1 leading-[normal] max-tab:px-3 max-tab:pt-2.5";
 
-/** The list wrapper under the toolbar (values 3.1, 0.3 listPad): 16px 20px, 14px 12px on a phone. */
-export const POS_LIST_CLASS = "px-5 py-4 max-tab:px-3 max-tab:py-3.5";
+/** The list wrapper under the toolbar (values 3.1, 0.3 listPad): 16px 20px, 14px 12px on a phone. The HTML sets no
+ *  line-height on the cards, group headings or messages inside it: normal (values 0.5). */
+export const POS_LIST_CLASS = "px-5 py-4 leading-[normal] max-tab:px-3 max-tab:py-3.5";
 
-/** The list wrapper's side padding, px (POS_LIST_CLASS's px-5 / max-tab:px-3): the inset the grid's tile arithmetic
- *  subtracts from the menu column. */
+/** The list wrapper's side padding, px (POS_LIST_CLASS's px-5 / max-tab:px-3): the inset the card grid's arithmetic
+ *  subtracts from the menu column (posGridPaneWidthPx). */
 export const POS_PANE_INSET_PX = { phone: 12, base: 20 } as const;
 
 /** Today's control row (PosHeader: open tabs, table, customer, KOT) has no place in the HTML's menu column; until U1
@@ -256,53 +257,25 @@ export const POS_HEADER_CHIP_FIXED_CLASS = "shrink-0 max-w-28 xl:max-w-none";
 export const POS_HEADER_CHIP_FLEX_CLASS = "min-w-0 flex-1 xl:flex-none";
 export const POS_HEADER_CHIP_ICON_CLASS = "hidden h-4 w-4 xl:block";
 
-// Product grid columns are decided by VIEWPORT breakpoints + the sidebar's
-// state (ProductGrid reads useSidebar()), which together determine the grid
-// pane's real width — chosen in CB-1b over a container query, and kept in
-// CB-1c because the tiers are plain data the pins can verify (the browser-
-// floor reason CB-1b gave was wrong). Below 720 px the nav is an overlay,
-// so both strings agree there. Every tier keeps tiles ≥ POS_MIN_TILE_PX for
-// pane = the HTML's menu column minus the pane's inset (U1 Task 1; the
-// matrix pin in lib/pos-layout.test.ts derives exactly that).
-// AT MOST 3 COLUMNS (owner decision 2026-09-29, UI batch 1 §H — supersedes
-// the old "no 5-column tier: the ≥1536 desktop keeps its v1 four columns"):
-// once a tier reaches 3 it never grows further, so BOTH tables collapse to
-// two rows (a base 2-column tier, then 3 from `sm` up) — the old lg/xl/2xl
-// entries (4, 3-again, 4) and the collapsed md/xl entries (4, 4) are simply
-// redundant with the sm:3 tier now and are dropped rather than kept at a
-// value the owner capped.
-// U1 Task 1: from 1100 px the category column and the 380 px cart leave the
-// menu 384-563 px beside the rail, too narrow for three tiles (122 px at
-// 1100), so two columns there; three again from 1280 px. U1 Task 3 replaces
-// these tiers with the HTML's auto-fill cards.
-export const POS_GRID_CLASS_SIDEBAR_EXPANDED =
-  "grid grid-cols-2 gap-2 sm:grid-cols-3 desk:grid-cols-2 xl:grid-cols-3";
-export const POS_GRID_CLASS_SIDEBAR_COLLAPSED =
-  "grid grid-cols-2 gap-2 sm:grid-cols-3 desk:grid-cols-2 xl:grid-cols-3";
-export const POS_GRID_GAP_REM = 0.5;
-// The same tiers as data (viewport px → columns), for the layout pins' tile-
-// width matrix. Keep in step with the two class strings above (the test
-// asserts each string encodes exactly its table). Both sidebar states share
-// the same table now that neither ever exceeds 3 columns.
-export const POS_GRID_COLUMN_TIERS_SIDEBAR_EXPANDED: ReadonlyArray<{ minPx: number; cols: number }> = [
-  { minPx: 0, cols: 2 },
-  { minPx: BREAKPOINT_SM_PX, cols: 3 },
-  { minPx: BREAKPOINT_DESK_PX, cols: 2 },
-  { minPx: BREAKPOINT_XL_PX, cols: 3 },
-];
-export const POS_GRID_COLUMN_TIERS_SIDEBAR_COLLAPSED: ReadonlyArray<{ minPx: number; cols: number }> = [
-  { minPx: 0, cols: 2 },
-  { minPx: BREAKPOINT_SM_PX, cols: 3 },
-  { minPx: BREAKPOINT_DESK_PX, cols: 2 },
-  { minPx: BREAKPOINT_XL_PX, cols: 3 },
-];
+// The menu's card grid (values 4.1, 4.3; design 5): the HTML's auto-fill columns, each at least 200px (the whole width
+// when the menu is narrower), 8px apart, so the column count follows the menu column's own width — two beside the
+// cart, three at 820px, one on a phone, more on a wide screen. U1 Task 3 replaced CB-1b's viewport tiers (keyed by the
+// nav's state, capped at three for the old tile) and the old tile's thumbnail-row arithmetic with it.
+export const POS_CARD_GRID_CLASS = "grid grid-cols-[repeat(auto-fill,minmax(min(200px,100%),1fr))] gap-2";
+/** The grid's track minimum and gap, px (POS_CARD_GRID_CLASS). */
+export const POS_CARD_MIN_PX = 200;
+export const POS_CARD_GAP_PX = 8;
 
-/** The columns the POS grid shows at this viewport (the tier table its class string encodes). */
-export function posGridColumns({ viewportWidth, collapsed }: NavViewport): number {
-  const tiers = collapsed ? POS_GRID_COLUMN_TIERS_SIDEBAR_COLLAPSED : POS_GRID_COLUMN_TIERS_SIDEBAR_EXPANDED;
-  let cols = tiers[0].cols;
-  for (const tier of tiers) if (tier.minPx <= viewportWidth) cols = tier.cols;
-  return cols;
+/** How many cards a row of the grid holds at this width (CSS auto-fill: as many tracks as fit, at least one). */
+export function posCardColumns(gridWidthPx: number): number {
+  const track = Math.min(POS_CARD_MIN_PX, gridWidthPx);
+  return Math.max(1, Math.floor((gridWidthPx + POS_CARD_GAP_PX) / (track + POS_CARD_GAP_PX)));
+}
+
+/** A card's width in a grid this wide, px (the 1fr tracks share what the gaps leave). */
+export function posCardWidthPx(gridWidthPx: number): number {
+  const columns = posCardColumns(gridWidthPx);
+  return (gridWidthPx - (columns - 1) * POS_CARD_GAP_PX) / columns;
 }
 
 /** The grid pane's width: the HTML's menu column (posBodyColumnsPx: the viewport minus the nav, the category column
@@ -313,32 +286,12 @@ export function posGridPaneWidthPx(viewport: NavViewport): number {
   const inset = viewport.viewportWidth < NAV_RAIL_MIN_PX ? POS_PANE_INSET_PX.phone : POS_PANE_INSET_PX.base;
   return menu - 2 * inset;
 }
-// Tile-internal geometry (ProductGrid markup, parity-pinned): what's left of
-// a tile after card padding, thumb, row gap and the options-button reserve is
-// the product-name box; the matrix pin floors it at POS_MIN_NAME_BOX_PX
-// (= the 1280/expanded/coarse tier's 136px tile — the CB-1d.1 V3 trade-off,
-// 40px button ⇒ pr-9, accepted at arbitration g1).
-export const POS_TILE_CARD_PADDING_PX = 10;
-export const POS_TILE_THUMB_PX = 40;
-export const POS_TILE_ROW_GAP_PX = 8;
-export const POS_MIN_NAME_BOX_PX = 32;
-// Coarse lower bound on tile width ("menu nahi dikh raha"). NOTE: at 128px
-// the name box would be only 24px (128 − 20 pad − 40 thumb − 8 gap − 36
-// reserve), BELOW the enforced 32px name floor — so with pr-9 the BINDING
-// constraint is the nameBox >= POS_MIN_NAME_BOX_PX matrix pin (tightest real
-// tier: 136px tile), and this constant is the retained secondary bound.
-export const POS_MIN_TILE_PX = 128;
 
 // Touch targets: cart qty steppers / remove (36px, compacting to 28px only on
-// an xl+ FINE pointer) and the tile's "add with note" corner button — 40px now
-// (CB-1d.1 V3: 32px sat under every comfort bar), same pointer-fine compact.
+// an xl+ FINE pointer). (The tile's corner "add with note" button went with the
+// old tile in U1 Task 3: the card's name opens the options modal, owner Q5.)
 export const POS_CART_STEPPER_CLASS =
   "h-9 w-9 xl:pointer-fine:h-7 xl:pointer-fine:w-7 touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
-export const POS_TILE_OPTIONS_BUTTON_CLASS =
-  "h-10 w-10 xl:pointer-fine:h-8 xl:pointer-fine:w-8 touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
-// Title clearance for that button: 40px + 4px inset − 10px card padding =
-// 34px ⇒ pr-9 (pr-7 was sized for the 32px button the same way).
-export const POS_TILE_OPTIONS_RESERVE_CLASS = "pr-9 xl:pointer-fine:pr-7";
 // Primary/secondary cart CTAs: 48px on touch; `size="lg"`'s 40px only at
 // xl + FINE pointer (glass keeps 48px — the V1 invariant is uniform, g4).
 export const POS_CART_CTA_CLASS =

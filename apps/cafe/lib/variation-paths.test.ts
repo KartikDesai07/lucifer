@@ -178,41 +178,38 @@ test("PIN: ModifierModal disables Add until a variation is picked when the produ
   );
 });
 
-// ── 3. pos/page.tsx: a variation item must never add straight to the cart ──
+// ── 3. pos/page.tsx: a variation item never adds without its size ──────────
+//
+// U1 Task 3 (owner Q5, design 6.4): the card's price buttons add at once, one
+// button PER VARIATION (up to three), so the size is the button the operator
+// tapped; beyond three, one "Choose" button opens the modal's required chooser.
+// The rule the old pin guarded (no silent default size) now lives in the price
+// buttons: lib/pos-price-buttons.test.ts proves every adding button of a
+// variation item carries its variation; this pin proves the wiring passes it.
+const PRODUCT_CARD = "apps/cafe/components/pos/ProductCard.tsx";
 
-test("PIN: pos/page.tsx's handleProductClick opens the modifier modal for a variation product exactly like a modifiers product — the direct add-to-cart path is only its ELSE branch", () => {
+test("PIN: a price button adds with ITS OWN variation (the size the operator tapped) and \"Choose\" opens the modal — pos/page.tsx's handleProductClick hands that variation to the add", () => {
   const src = stripComments(readSrc(POS_PAGE));
 
   // CB-1d.3a wrapped the handler in useCallback (stable identity for the
   // memo'd ProductCard); the marker still ends on the function's opening brace.
-  const marker = "const handleProductClick = useCallback((product: Product) => {";
+  const marker = "const handleProductClick = useCallback((product: Product, variation?: string) => {";
   const markerStart = src.indexOf(marker);
   assert.ok(markerStart >= 0, "handleProductClick must exist with this signature");
   const braceOpen = markerStart + marker.length - 1;
   assert.equal(src[braceOpen], "{", "marker must end on the function's opening brace");
   const braceClose = matchingBraceEnd(src, braceOpen);
   const body = src.slice(braceOpen, braceClose + 1);
-
-  assert.match(
-    body,
-    /if \(product\.modifiers\.length > 0 \|\| \(product\.variations\?\.length \?\? 0\) > 0\) \{/,
-    "the modal-open condition must check variations too — otherwise a variation item with no modifiers adds straight to the cart with no size chosen and no meaningful default price",
-  );
-  const ifIdx = body.indexOf("if (product.modifiers.length > 0");
-  const elseIdx = body.indexOf("} else {", ifIdx);
-  assert.ok(elseIdx > ifIdx, "the direct add-to-cart branch must be the ELSE of that same condition, not a separately reachable path");
-  const thenBranch = body.slice(ifIdx, elseIdx);
-  const elseBranch = body.slice(elseIdx);
-
-  assert.match(thenBranch, /setModifierProduct\(product\);/);
-  assert.match(thenBranch, /setModifierOpen\(true\);/);
   // `addToCart` is destructured from `pos` once above the handler (a method call
   // would make exhaustive-deps demand the whole per-render `pos` object).
-  assert.match(elseBranch, /\baddToCart\(product\);/);
+  assert.match(body, /\baddToCart\(product, defaultAddOptions\(product, variation\)\);/, "the add carries the tapped button's variation");
+
+  const card = stripComments(readSrc(PRODUCT_CARD));
   assert.ok(
-    !/\baddToCart\(/.test(thenBranch),
-    "the modal-open branch must NOT also add straight to the cart",
+    card.includes("onClick={() => (b.opensOptions ? onOptions(product) : onAdd(product, b.variation))}"),
+    "every adding button passes its own variation; the Choose button (more than three sizes) opens the modal instead",
   );
+  assert.ok(!/onAdd\(product\)/.test(card), "no add without the button's variation");
 });
 
 // ── 4. Every renderer of an item's name goes through orderItemLabel ────────

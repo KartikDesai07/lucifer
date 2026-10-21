@@ -19,6 +19,17 @@ export const ALL_ITEMS_LABEL = "All items";
  *  turn by their position. */
 export const POS_CATEGORY_HUES = ["#E8590C", "#C92A2A", "#D19A00", "#1C7ED6", "#AE3EC9"] as const;
 
+/** A category's dot: the hue of its place among all the categories, in turn. */
+function hueAt(index: number): string {
+  return POS_CATEGORY_HUES[index % POS_CATEGORY_HUES.length];
+}
+
+/** Each category's dot by its _id (U1 Task 3: the "By category" group headings draw the same dot as the category's row
+ *  in the column). */
+export function categoryHueMap(categories: readonly Pick<Category, "_id">[]): Map<string, string> {
+  return new Map(categories.map((c, i) => [c._id, hueAt(i)]));
+}
+
 /** One row of the list: `key` is what a pick selects (ALL_CATEGORIES or the category's _id); `hue` is null for
  *  "All items" (no dot). */
 export interface CategoryRow {
@@ -47,7 +58,7 @@ export function categoryRows(
       key: c._id,
       name: c.name,
       count: counts.get(c._id) ?? 0,
-      hue: POS_CATEGORY_HUES[i % POS_CATEGORY_HUES.length],
+      hue: hueAt(i),
     });
   });
   return rows;

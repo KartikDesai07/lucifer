@@ -187,17 +187,15 @@ test("PIN: ItemArt renders photo, then icon, then the name's initial, in that or
   assert.match(src, /\{Icon \? <Icon[^/]*\/> : name\.charAt\(0\)\.toUpperCase\(\) \|\| "/, "the no-photo branch must render the icon when present, else the initial");
 });
 
-test("PIN: ProductCard's tile fallback renders the icon when present, else the initial", () => {
+// U1 Task 3 (owner Q6, design 6.4): the /pos card is the owner's HTML card — the item's photo in the HTML's photo area
+// when it has one, nothing otherwise (the 40px thumbnail with its icon / initial fallback is gone from the POS; the
+// Items page's ItemArt keeps the three stages above).
+test("PIN: ProductCard shows the item's photo in the HTML's photo area, or nothing — no icon / initial fallback", () => {
   const src = stripComments(readSrc(PRODUCT_CARD));
-  assert.match(src, /const Icon = productIconComponent\(product\.icon\);/, "ProductCard must resolve product.icon via productIconComponent");
-  assert.match(
-    src,
-    /\{Icon \? <Icon className="h-5 w-5" \/> : product\.name\.charAt\(0\)\.toUpperCase\(\)\}/,
-    "the fallback span must render the icon when present, else the initial",
-  );
-  // Mutation-guard for the pos-layout-paths.test.ts geometry pin: the h-10
-  // w-10 shrink-0 thumb classes must survive this change untouched.
-  assert.ok(src.includes("h-10 w-10 shrink-0"), "the thumb geometry class must be unchanged by the icon addition");
+  assert.ok(src.includes("const photo = productImageUrl(product.image, CARD_PHOTO_PX);"), "the photo is the stored image ref, resolved by lib/images.ts");
+  assert.ok(src.includes("{photo && ("), "the area renders only when there is a photo");
+  assert.ok(!src.includes("productIconComponent"), "no icon fallback on the POS card");
+  assert.ok(!src.includes("charAt(0)"), "no initial fallback on the POS card");
 });
 
 test("PIN: PublicInitialTile renders photo, then icon, then the initial (in the no-photo/failed branch)", () => {

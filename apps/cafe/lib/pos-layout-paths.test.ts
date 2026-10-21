@@ -30,10 +30,11 @@ import {
   NAV_WIDE_MIN_PX,
   navWidthPx,
   isWideNav,
-  posGridColumns,
   posGridPaneWidthPx,
-  POS_MIN_TILE_PX,
-  POS_GRID_GAP_REM,
+  posCardColumns,
+  posCardWidthPx,
+  POS_CARD_MIN_PX,
+  POS_CARD_GAP_PX,
   POS_BODY_GRID_CLASS,
   POS_ASIDE_CLASS,
   POS_MAIN_CLASS,
@@ -43,18 +44,22 @@ import {
   POS_PRESS_FEEDBACK_CLASS,
   POS_HEADER_CONTROL_CLASS,
   POS_CART_STEPPER_CLASS,
-  POS_TILE_OPTIONS_BUTTON_CLASS,
-  POS_TILE_OPTIONS_RESERVE_CLASS,
   POS_CART_CTA_CLASS,
   POS_MOBILE_BAR_BUTTON_CLASS,
   POS_DIALOG_LIST_CAP_CLASS,
   POS_MOVE_TABLE_LIST_CAP_CLASS,
   POS_TOUCH_ATTR,
-  POS_TILE_CARD_PADDING_PX,
 } from "@/lib/pos-layout";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel), "utf8");
+
+/** The plain string literal a `const NAME = "...";` (or `export const`) declares in `src`. */
+function constOf(src: string, name: string): string {
+  const m = src.match(new RegExp(`const ${name} =\\s*"([^"]*)";`));
+  assert.ok(m, `${name} must be declared as one plain string literal`);
+  return m![1];
+}
 
 const POS_LAYOUT_TS = "apps/cafe/lib/pos-layout.ts";
 const POS_PAGE = "apps/cafe/app/(dashboard)/pos/page.tsx";
@@ -280,19 +285,27 @@ test("PIN: CartLine steppers use the shared touch-target class, not the old fixe
   assert.match(src, /aria-label="Decrease quantity"/, "landmark: the decrease-qty stepper must still exist");
 });
 
-test("PIN: ProductGrid picks its grid class via a sidebar-keyed useGridClass() helper — the staff tablet's browser has no container query in play here (viewport tiers, kept for testability, not missing support)", () => {
+// U1 Task 3 (values 4.1, 4.3; design 5): the cards sit in the HTML's auto-fill grid, so the columns follow the menu
+// column's own width (two beside the cart, three at 820px, one on a phone) — CB-1b's viewport tiers keyed by the nav's
+// state (useGridClass + useSidebar) went with the old tile.
+test("PIN: ProductGrid lays the cards in the HTML's auto-fill grid (POS_CARD_GRID_CLASS) inside the HTML's list wrapper — no viewport tiers, no nav-state read, no scroller of its own", () => {
   const src = stripComments(readSrc(PRODUCT_GRID));
   const importMatch = src.match(/import\s*\{([^}]*)\}\s*from\s*"@\/lib\/pos-layout"/);
   assert.ok(importMatch, "ProductGrid.tsx must import from @/lib/pos-layout");
-  assert.ok(importMatch![1].includes("POS_GRID_CLASS_SIDEBAR_EXPANDED"), "the import must include POS_GRID_CLASS_SIDEBAR_EXPANDED");
-  assert.ok(importMatch![1].includes("POS_GRID_CLASS_SIDEBAR_COLLAPSED"), "the import must include POS_GRID_CLASS_SIDEBAR_COLLAPSED");
-  assert.match(src, /import\s*\{\s*useSidebar\s*\}\s*from\s*"@\/components\/ui\/sidebar"/, "ProductGrid.tsx must import useSidebar from @/components/ui/sidebar");
-  assert.match(src, /function useGridClass\(/, "ProductGrid.tsx must declare a useGridClass() helper");
-  assert.match(src, /state === "collapsed"/, 'useGridClass must branch on state === "collapsed"');
+  assert.ok(importMatch![1].includes("POS_CARD_GRID_CLASS"), "the import must include POS_CARD_GRID_CLASS");
+  for (const gone of ["useSidebar", "useGridClass", "POS_GRID_CLASS_SIDEBAR_EXPANDED", "POS_GRID_CLASS_SIDEBAR_COLLAPSED"]) {
+    assert.ok(!src.includes(gone), `ProductGrid.tsx must not use the retired ${gone}: the auto-fill grid needs no tier`);
+  }
   // U1 Task 2 (values 3.1): the menu column (main) is the HTML's one scroller and the toolbar sticks inside it, so the
   // grid sits in the HTML's list wrapper (its listPad) and keeps no scroller of its own.
   assert.match(src, /<div data-ui="pos-list" className=\{POS_LIST_CLASS\}>/, "the grid sits in the HTML's list wrapper");
   assert.ok(!src.includes("overflow-y-auto"), "no scroller of its own: main scrolls the toolbar's list");
+  // Both layouts (owner Q8) use the one grid and stay inert while busy (pos-send-paths S8).
+  assert.equal(
+    src.split('<div className={cn(POS_CARD_GRID_CLASS, disabled && "opacity-50")} inert={disabled}>').length - 1,
+    2,
+    "the Normal grid and each By category group's grid",
+  );
 });
 
 test("PIN: ProductGrid never reverts to the container-query grid — @container/POS_GRID_CONTAINER_CLASS/overscroll-contain are all gone (CB-1b)", () => {
@@ -300,19 +313,26 @@ test("PIN: ProductGrid never reverts to the container-query grid — @container/
   assert.ok(!src.includes("@container"), "ProductGrid.tsx must not use @container");
   assert.ok(!src.includes("POS_GRID_CONTAINER_CLASS"), "ProductGrid.tsx must not reference the retired POS_GRID_CONTAINER_CLASS");
   assert.ok(!src.includes("overscroll-contain"), "must not include overscroll-contain — a drag past the grid's end must chain to the document on a short viewport");
-  assert.match(src, /useGridClass/, "landmark: ProductGrid.tsx must still reference useGridClass");
+  assert.match(src, /POS_CARD_GRID_CLASS/, "landmark: ProductGrid.tsx must still reference POS_CARD_GRID_CLASS");
 });
 
-test("PIN: GridSkeleton computes its column count the same sidebar-keyed way as the real grid", () => {
+// U1 Task 3 (design 6.3): while the products load, the toolbar shows (its search box and Category button take no input)
+// over HTML-shaped cards in the same grid, so nothing jumps when the menu arrives.
+test("PIN: GridSkeleton draws the toolbar (no input while loading) over HTML-shaped cards in the same auto-fill grid", () => {
   const src = stripComments(readSrc(PRODUCT_GRID));
-  const start = src.indexOf("function GridSkeleton");
+  const start = src.indexOf("export function GridSkeleton(");
   assert.ok(start >= 0, "GridSkeleton must exist");
   const nextFnIdx = src.indexOf("\nfunction ", start + 1);
   const body = nextFnIdx > 0 ? src.slice(start, nextFnIdx) : src.slice(start);
-  assert.match(body, /useGridClass\(\)/, "GridSkeleton's body must call useGridClass()");
+  assert.match(body, /<MenuToolbar\b[^>]*\bloading\b/, "the toolbar shows while loading");
+  assert.ok(body.includes("<div className={POS_CARD_GRID_CLASS}>"), "the same grid as the cards");
+  assert.ok(body.includes("<CardSkeleton key={i} />"), "HTML-shaped cards");
+  const toolbar = src.slice(src.indexOf("function MenuToolbar("), src.indexOf("export function ProductGrid("));
+  assert.ok(toolbar.includes("disabled={loading}"), "the search box takes no input while loading");
+  assert.ok(toolbar.includes("<CategorySheet {...categoryPicker} disabled={loading} />"), "nor does the Category button");
 });
 
-test("PIN: ProductGrid carries the cart-quantity prop and a real search input; ProductCard (the tile, split out in CB-1d.3a) carries the notes-button class and the press-feedback wiring", () => {
+test("PIN: ProductGrid carries the cart-quantity prop and a real search input; ProductCard's buttons press like the HTML's and show no press while disabled", () => {
   const gridSrc = stripComments(readSrc(PRODUCT_GRID));
   assert.match(gridSrc, /qtyByProduct\?:\s*Record<string,\s*number>/, "ProductGridProps must declare qtyByProduct?: Record<string, number>");
   assert.match(gridSrc, /type="search"/, 'the search field must be type="search"');
@@ -322,33 +342,58 @@ test("PIN: ProductGrid carries the cart-quantity prop and a real search input; P
   assert.match(gridSrc, /<ProductCard\b/, "landmark: ProductGrid must render <ProductCard — the tile lives in ProductCard.tsx since CB-1d.3a");
 
   const src = stripComments(readSrc(PRODUCT_CARD));
-  assert.match(src, /POS_TILE_OPTIONS_BUTTON_CLASS/, "the tile's notes button must use POS_TILE_OPTIONS_BUTTON_CLASS");
+  // U1 Task 3 (values 1.4, ruling R1): the HTML's button feel (its transition, scale(.97) when not disabled) on the
+  // name and price buttons, as on the rebuilt shell — the coarse-pointer press token went with the old tile.
+  assert.ok(src.includes("className={cn(NAME_BUTTON_CLASS, BRAND_PRESS_CLASS)}"), "the name button presses like the HTML's");
+  assert.ok(src.includes("className={cn(PRICE_BUTTON_CLASS, PRICE_HEIGHT_CLASS, BRAND_PRESS_CLASS)}"), "the price buttons press like the HTML's");
+  assert.ok(!src.includes("POS_PRESS_FEEDBACK_CLASS"), "the old tile's press token is gone from the card");
 
-  // g10: the tile button's cn() must wire POS_PRESS_FEEDBACK_CLASS directly —
-  // the only component-level press-feedback wiring (in ProductCard.tsx since
-  // the CB-1d.3a split; the grid itself carries none).
-  assert.match(
-    src,
-    /POS_PRESS_FEEDBACK_CLASS,\s*TILE_MIN_HEIGHT/,
-    "the tile button's cn() must apply POS_PRESS_FEEDBACK_CLASS directly (the only component-level press wiring)",
-  );
-
-  // g18: regression pin for the arbiter-probed disabled-tile :active flash — a
-  // disabled control can still match :active in Chromium, so the tile button
-  // must carry disabled:pointer-events-none (needle concatenated per
-  // testing.md so this file's own text never spells the literal out whole).
-  const disabledPointerEventsNone = "disabled:pointer-" + "events-none";
-  assert.ok(src.includes("transition-colors"), "landmark: the tile button's base string must still carry transition-colors");
-  assert.ok(
-    src.includes(disabledPointerEventsNone),
-    `the tile button's base string must carry "${disabledPointerEventsNone}" — a disabled tile can still match :active in Chromium and would otherwise flash brighter under the press-feedback token`,
-  );
+  // g18: a disabled control can still match :active in Chromium, and the touch layer ([data-pos-touch]) dims any
+  // pressed button on a coarse pointer — so an out-of-stock card's buttons take no touch at all (the pointer still
+  // shows not-allowed, values 4.2). Needle concatenated per testing.md.
+  const noTouch = "pointer-coarse:disabled:pointer-" + "events-none";
+  for (const name of ["NAME_BUTTON_CLASS", "PRICE_BUTTON_CLASS"]) {
+    const cls = src.match(new RegExp(`const ${name} =\\s*"([^"]*)";`))?.[1] ?? "";
+    assert.ok(cls.includes(noTouch), `${name} must carry "${noTouch}" (no press flash on a disabled button under a finger)`);
+    assert.ok(cls.includes("disabled:cursor-not-allowed"), `${name}: the HTML's not-allowed pointer when disabled`);
+  }
 });
 
 test("PIN: ProductGrid never reintroduces a locally-defined GRID_CLASS constant", () => {
   const src = stripComments(readSrc(PRODUCT_GRID));
   assert.ok(!src.includes("const GRID_CLASS ="), "ProductGrid.tsx must not re-derive its own GRID_CLASS constant");
-  assert.match(src, /POS_GRID_CLASS_SIDEBAR_EXPANDED/, "landmark: ProductGrid.tsx must still reference POS_GRID_CLASS_SIDEBAR_EXPANDED");
+  assert.match(src, /POS_CARD_GRID_CLASS/, "landmark: ProductGrid.tsx must still reference POS_CARD_GRID_CLASS");
+});
+
+// U1 Task 3 (owner Q8, design 6.4, values 4.1): "By category" draws the HTML's groups — "● {category} {count}", 13.5px
+// 600, the dot in the category's own hue from the column (Task 2's rows), 24px apart, "Other" last in --text-3;
+// "Normal" is one grid with no heading.
+test("PIN: the By category groups are the HTML's: the heading (dot, name, count), the category's own hue, 24px apart; Normal has no heading", () => {
+  const src = stripComments(readSrc(PRODUCT_GRID));
+  assert.match(src, /import \{[^}]*\bcategoryHueMap\b[^}]*\} from "@\/lib\/pos-categories"/, "the hues come from the column's own rule");
+  assert.ok(src.includes('<section key={group.categoryId ?? "other"} data-ui="pos-group" className="mb-6">'), "a section per group, 24px apart");
+  const heading = constOf(src, "GROUP_HEADING_CLASS");
+  for (const t of ["mt-1", "mb-2.5", "flex", "items-center", "gap-2", "text-[13.5px]", "font-semibold", "text-foreground"]) {
+    assert.ok(heading.split(/\s+/).includes(t), `the group heading (values 4.1): "${t}"`);
+  }
+  assert.ok(src.includes('role="heading"') && src.includes("aria-level={3}"), "still a level-3 heading for screen readers");
+  assert.ok(src.includes("hue={group.categoryId === null ? null : (hues.get(group.categoryId) ?? null)}"), "the dot takes the category's hue; Other has none");
+  assert.ok(src.includes('hue === null && "bg-subtle-foreground"'), "a dot without a hue (Other) is --text-3");
+  assert.ok(src.includes('<span data-ui="pos-group-count" className="font-normal text-subtle-foreground">'), "the count: 400, --text-3");
+  assert.ok(!src.includes("border-b pb-1"), "today's ruled heading is gone");
+});
+
+// U1 Task 3 (values 3.1, design 6.3): a search with no hit reads the HTML's "No results for “{q}”"; an empty category
+// our "No products found"; the page's load error the same line — centred, 14px, --text-2, 64px above and below.
+test("PIN: the menu's messages are the HTML's no-results line: a search with no hit, an empty category, the load error", () => {
+  const src = stripComments(readSrc(PRODUCT_GRID));
+  assert.equal(constOf(src, "MENU_MESSAGE_CLASS"), "py-16 text-center text-[14px] text-muted-foreground", "values 3.1 No results");
+  assert.ok(src.includes('{search.trim() === "" ? "No products found" : `No results for “${search}”`}'), "the HTML's words for a search, ours for an empty category");
+  assert.ok(src.includes("Failed to load products. Refresh to retry."), "the load error, in the same look (MenuLoadError)");
+  assert.ok(!src.includes("<EmptyState"), "the dashed empty card is gone");
+  const page = stripComments(readSrc(POS_PAGE));
+  assert.match(page, /\) : products\.isError && products\.data === undefined \? \(\s*<MenuLoadError \/>\s*\) : \(/, "the page's error branch draws it");
+  assert.ok(!page.includes("text-destructive"), "no red error text on the page");
 });
 
 test("PIN: only the dashboard layout opts into resizes-content — the public root layout must not", () => {
@@ -559,18 +604,17 @@ test("PIN: pos/page.tsx's page renders the body grid as its one in-flow child, f
   assert.ok(POS_MOBILE_BAR_CLASS.split(/\s+/).includes("absolute"), "the bar is out of the flow: it lies over the page's foot");
 });
 
-test("PIN: ProductCard's TILE_MIN_HEIGHT and ProductGrid's SKELETON_HEIGHT stay one height, so the loading grid does not jump", () => {
-  const cardSrc = stripComments(readSrc(PRODUCT_CARD));
-  const tileMinMatch = cardSrc.match(/TILE_MIN_HEIGHT\s*=\s*"min-h-\[([\d.]+)rem\]"/);
-  assert.ok(tileMinMatch, 'ProductCard.tsx must declare TILE_MIN_HEIGHT = "min-h-[Nrem]"');
+// U1 Task 3: the loading card is drawn from the card's own shell, strip and price height (ProductCard.tsx), with bars as
+// tall as the name (19px) and the tag (16px) 2px apart, so it is the card's 117px (123px below 1100px; pinned in
+// lib/pos-tile-paths.test.ts) and the loading grid does not jump.
+test("PIN: the loading card is the real card's shape (its shell, strip and price height), so the loading grid does not jump", () => {
   const gridSrc = stripComments(readSrc(PRODUCT_GRID));
-  const skeletonMatch = gridSrc.match(/SKELETON_HEIGHT\s*=\s*"h-\[([\d.]+)rem\]"/);
-  assert.ok(skeletonMatch, 'ProductGrid.tsx must declare SKELETON_HEIGHT = "h-[Nrem]"');
-  assert.equal(
-    Number(skeletonMatch![1]),
-    Number(tileMinMatch![1]),
-    `ProductGrid.tsx's SKELETON_HEIGHT (${skeletonMatch![1]}rem) must equal ProductCard.tsx's TILE_MIN_HEIGHT (${tileMinMatch![1]}rem)`,
-  );
+  assert.match(gridSrc, /import \{[^}]*\bCARD_SHELL_CLASS\b[^}]*\bPRICE_HEIGHT_CLASS\b[^}]*\bPRICE_STRIP_CLASS\b[^}]*\} from "@\/components\/pos\/ProductCard"/, "the card's own classes");
+  const skeleton = gridSrc.slice(gridSrc.indexOf("function CardSkeleton("));
+  assert.ok(skeleton.includes('className={cn(CARD_SHELL_CLASS, "border-border")}'), "the card's shell");
+  assert.match(skeleton, /<Skeleton className="h-\[19px\] [^"]*" \/>\s*<Skeleton className="h-4 [^"]*" \/>/, "the name (19px) and tag (16px) bars");
+  assert.ok(skeleton.includes('<div className="flex flex-col gap-0.5">'), "2px apart, as the card's name column");
+  assert.match(skeleton, /<div className=\{PRICE_STRIP_CLASS\}>\s*<div className=\{PRICE_HEIGHT_CLASS\} \/>\s*<\/div>/, "the strip with one price button's height");
   assert.match(gridSrc, /<div data-ui="pos-toolbar" className=\{POS_TOOLBAR_CLASS\}>/, "landmark: ProductGrid heads the list with the HTML's toolbar");
 });
 
@@ -618,12 +662,12 @@ test("PIN: (dashboard)/layout.tsx renders Header, then RequestAlertBar, then <ma
 
 // ── CB-1d.1 additions: touch-feel/device-size token changes ────────────────
 
-// U1 Task 2: the chip token (POS_CHIP_CLASS) went with the chip strip (design 6.3), so five copies remain.
-test("PIN: POS_PRESS_FEEDBACK_CLASS is duplicated VERBATIM inside every touch-target token (CB-1d.1 L1) — a paths pin, not a re-typed literal, keeps the five copies in sync", () => {
+// U1 Task 2: the chip token (POS_CHIP_CLASS) went with the chip strip (design 6.3); U1 Task 3: the tile's corner options
+// button (POS_TILE_OPTIONS_BUTTON_CLASS) went with the old tile (owner Q5: the name opens the modal), so four copies remain.
+test("PIN: POS_PRESS_FEEDBACK_CLASS is duplicated VERBATIM inside every touch-target token (CB-1d.1 L1) — a paths pin, not a re-typed literal, keeps the four copies in sync", () => {
   for (const [label, cls] of [
     ["POS_HEADER_CONTROL_CLASS", POS_HEADER_CONTROL_CLASS],
     ["POS_CART_STEPPER_CLASS", POS_CART_STEPPER_CLASS],
-    ["POS_TILE_OPTIONS_BUTTON_CLASS", POS_TILE_OPTIONS_BUTTON_CLASS],
     ["POS_CART_CTA_CLASS", POS_CART_CTA_CLASS],
     ["POS_MOBILE_BAR_BUTTON_CLASS", POS_MOBILE_BAR_BUTTON_CLASS],
   ] as const) {
@@ -653,13 +697,11 @@ test("PIN: POS_PRESS_FEEDBACK_CLASS itself carries the instant-tap primitives, g
   assert.ok(activeCount >= 2, `landmark: expected >=2 active: tokens in POS_PRESS_FEEDBACK_CLASS, found ${activeCount}`);
 });
 
-test("PIN: header/stepper/options-button/CTA/reserve tokens gate their xl compact look on pointer-fine ONLY — glass (coarse) never shrinks at xl (CB-1d.1 V1); every xl: term in these tokens is pointer-fine-gated, enumerated, not just the documented ones (CB-1d.1 g11)", () => {
+test("PIN: header/stepper/CTA tokens gate their xl compact look on pointer-fine ONLY — glass (coarse) never shrinks at xl (CB-1d.1 V1); every xl: term in these tokens is pointer-fine-gated, enumerated, not just the documented ones (CB-1d.1 g11)", () => {
   for (const [label, cls, xlLandmarks] of [
     ["POS_HEADER_CONTROL_CLASS", POS_HEADER_CONTROL_CLASS, ["xl:pointer-fine:h-8", "xl:pointer-fine:text-xs"]],
     ["POS_CART_STEPPER_CLASS", POS_CART_STEPPER_CLASS, ["xl:pointer-fine:h-7", "xl:pointer-fine:w-7"]],
-    ["POS_TILE_OPTIONS_BUTTON_CLASS", POS_TILE_OPTIONS_BUTTON_CLASS, ["xl:pointer-fine:h-8", "xl:pointer-fine:w-8"]],
     ["POS_CART_CTA_CLASS", POS_CART_CTA_CLASS, ["xl:pointer-fine:h-10"]],
-    ["POS_TILE_OPTIONS_RESERVE_CLASS", POS_TILE_OPTIONS_RESERVE_CLASS, ["xl:pointer-fine:pr-7"]],
   ] as const) {
     for (const needle of xlLandmarks) {
       assert.ok(cls.includes(needle), `landmark: ${label} must include "${needle}"`);
@@ -683,42 +725,8 @@ test("PIN: header/stepper/options-button/CTA/reserve tokens gate their xl compac
   }
 });
 
-// Utility/variant split for a single Tailwind spacing token: `base` is the
-// bare (un-prefixed) N, `fine` is the N behind xl:pointer-fine: — parsed from
-// the real class strings, never re-typed (review CB-1d.1, "reserve arithmetic").
-function baseAndFineOf(cls: string, prefix: "pr" | "h"): { base: number; fine: number } {
-  const baseMatch = cls.match(new RegExp(`(?:^|\\s)${prefix}-(\\d+)(?:\\s|$)`));
-  const fineMatch = cls.match(new RegExp(`xl:pointer-fine:${prefix}-(\\d+)`));
-  assert.ok(baseMatch, `expected a bare ${prefix}-N token in "${cls}"`);
-  assert.ok(fineMatch, `expected an xl:pointer-fine:${prefix}-N token in "${cls}"`);
-  return { base: Number(baseMatch![1]), fine: Number(fineMatch![1]) };
-}
-
-test("PIN: POS_TILE_OPTIONS_RESERVE_CLASS clears its button's touch target at both the base and xl:pointer-fine sizes (button height + 4px inset − POS_TILE_CARD_PADDING_PX)", () => {
-  const reserve = baseAndFineOf(POS_TILE_OPTIONS_RESERVE_CLASS, "pr");
-  const button = baseAndFineOf(POS_TILE_OPTIONS_BUTTON_CLASS, "h");
-  const INSET_PX = 4;
-  assert.ok(
-    reserve.base * 4 >= button.base * 4 + INSET_PX - POS_TILE_CARD_PADDING_PX,
-    `base pr-${reserve.base} (${reserve.base * 4}px) must clear h-${button.base} (${button.base * 4}px) + ${INSET_PX} − ${POS_TILE_CARD_PADDING_PX} = ${button.base * 4 + INSET_PX - POS_TILE_CARD_PADDING_PX}px`,
-  );
-  assert.ok(
-    reserve.fine * 4 >= button.fine * 4 + INSET_PX - POS_TILE_CARD_PADDING_PX,
-    `xl:pointer-fine pr-${reserve.fine} (${reserve.fine * 4}px) must clear h-${button.fine} (${button.fine * 4}px) + ${INSET_PX} − ${POS_TILE_CARD_PADDING_PX} = ${button.fine * 4 + INSET_PX - POS_TILE_CARD_PADDING_PX}px`,
-  );
-});
-
-test("PIN: ProductCard's tile markup encodes exactly the geometry the name-box floor arithmetic assumes (CB-1d.1 g1; the tile moved to ProductCard.tsx in CB-1d.3a) — card padding p-2.5, thumb row gap-2, thumb h-10 w-10 shrink-0, and the reserve landing on the name column", () => {
-  const src = stripComments(readSrc(PRODUCT_CARD));
-  assert.match(src, /p-2\.5\b/, "landmark: the tile card's base className must carry p-2.5 (POS_TILE_CARD_PADDING_PX = 10)");
-  assert.match(src, /className="flex w-full min-w-0 items-start gap-2"/, "the thumb+name row must carry gap-2 (POS_TILE_ROW_GAP_PX = 8)");
-  assert.ok(src.includes("h-10 w-10 shrink-0"), "landmark: the thumb (image or fallback initial) must carry h-10 w-10 shrink-0 (POS_TILE_THUMB_PX = 40)");
-  assert.match(
-    src,
-    /cn\("min-w-0 flex-1",\s*POS_TILE_OPTIONS_RESERVE_CLASS\)/,
-    "the reserve must land on the name column via cn(\"min-w-0 flex-1\", POS_TILE_OPTIONS_RESERVE_CLASS)",
-  );
-});
+// U1 Task 3: the tile's corner options button, its title reserve and the thumbnail-row arithmetic went with the old
+// tile (owner Q5/Q6); the card's own geometry (the HTML's 117px / 123px) is pinned in lib/pos-tile-paths.test.ts.
 
 test("PIN: POS_DIALOG_LIST_CAP_CLASS/POS_MOVE_TABLE_LIST_CAP_CLASS each pair a vh base with an EXACT-matching dvh override (CB-1d.1 V2)", () => {
   const capPattern = /^max-h-\[(\d+)vh\] supports-\[height:1dvh\]:max-h-\[\1dvh\]$/;
@@ -1269,21 +1277,24 @@ test("navWidthPx: 0 on a phone, the 76 px rail on a tablet or a collapsed deskto
   assert.equal(isWideNav({ viewportWidth: 1279, collapsed: false }), false, "below 1280 px: the rail");
 });
 
-test("the POS product grid gets at least one column and fits beside the nav, the category column and the cart at the plan's five viewports", () => {
-  const viewports: Array<[string, number, boolean]> = [
-    ["1280", 1280, false],
-    ["1280 collapsed", 1280, true],
-    ["1024", 1024, false],
-    ["820", 820, false],
-    ["390", 390, false],
+// U1 Task 3 (values 4.3): the HTML's measured columns and card widths at the plan's five viewports.
+test("the POS card grid gives the HTML's columns and card widths beside the nav, the category column and the cart at the plan's five viewports", () => {
+  const viewports: Array<[string, number, boolean, number, number, number]> = [
+    // label, viewport, collapsed, list inner width, columns, card width (values 4.3)
+    ["1280", 1280, false, 448, 2, 220],
+    ["1280 collapsed", 1280, true, 564, 2, 278],
+    ["1024", 1024, false, 568, 2, 280],
+    ["820", 820, false, 704, 3, 229.33],
+    ["390", 390, false, 366, 1, 366],
   ];
-  for (const [label, viewportWidth, collapsed] of viewports) {
-    const cols = posGridColumns({ viewportWidth, collapsed });
+  for (const [label, viewportWidth, collapsed, inner, columns, card] of viewports) {
     const pane = posGridPaneWidthPx({ viewportWidth, collapsed });
     const room = viewportWidth - navWidthPx({ viewportWidth, collapsed });
-    const gridMin = cols * POS_MIN_TILE_PX + (cols - 1) * POS_GRID_GAP_REM * 16;
-    assert.ok(cols >= 1, `${label}: the POS grid must have at least one column, got ${cols}`);
     assert.ok(pane > 0 && pane <= room, `${label}: the grid pane (${pane} px) must fit the ${room} px beside the nav`);
-    assert.ok(gridMin <= pane, `${label}: ${cols} columns of at least ${POS_MIN_TILE_PX} px need ${gridMin} px, the pane is ${pane} px`);
+    assert.equal(pane, inner, `${label}: the list's inner width`);
+    assert.equal(posCardColumns(pane), columns, `${label}: ${columns} column(s)`);
+    assert.ok(Math.abs(posCardWidthPx(pane) - card) < 0.01, `${label}: cards ${card} px wide, got ${posCardWidthPx(pane)}`);
   }
+  assert.equal(POS_CARD_MIN_PX, 200, "values 4.1: minmax(min(200px,100%),1fr)");
+  assert.equal(POS_CARD_GAP_PX, 8, "values 4.1: gap 8px");
 });

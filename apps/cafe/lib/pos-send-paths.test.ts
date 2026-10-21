@@ -185,7 +185,8 @@ test("S8: every editing surface is locked during the flight — grid, lines, Cle
   const page = readSrc(POS_PAGE);
   assert.match(between(page, "<ProductGrid", "/>"), /disabled=\{pos\.isBusy\}/, "the product grid is inert while a send flies");
   const grid = readSrc(GRID);
-  assert.ok(grid.includes('<div className={cn(gridClass, disabled && "opacity-50")} inert={disabled}>'));
+  // U1 Task 3: the HTML's card grid (one class at every width) in both layouts — the Normal grid and each group's.
+  assert.equal(grid.split('<div className={cn(POS_CARD_GRID_CLASS, disabled && "opacity-50")} inert={disabled}>').length - 1, 2, "both layouts' grids are inert while a send flies");
   const cart = readSrc(CART);
   assert.match(between(cart, "fresh.map((item) => (", "))"), /disabled=\{isBusy\}/, "unsent lines' steppers lock");
   assert.ok(cart.includes("onClick={onClear} disabled={isBusy}"), "Clear locks");

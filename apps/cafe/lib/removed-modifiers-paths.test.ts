@@ -15,6 +15,7 @@ import { checkItemRemovedModifiers } from "@/lib/variations";
 import { cartItemFromOrderItem, cartItemToInput } from "@/hooks/use-cart";
 import { billFromCart } from "@/components/public/public-bill-rows";
 import { modifiersPreselectedToSave } from "@/components/products/ModifiersPreselectedField";
+import { defaultAddOptions } from "@/lib/pos-price-buttons";
 import { REMOVED_MODIFIERS_NOT_ALLOWED_ERROR, REMOVED_MODIFIER_UNKNOWN_ERROR } from "@pos/shared/utils";
 import type { CartLine } from "@/components/public/public-cart-store";
 import type { OrderItem } from "@/types";
@@ -159,6 +160,18 @@ test("cart: removals survive the cart round trip into the send payload; a line w
   assert.equal("removedModifiers" in cartItemToInput(plain), false);
   // Different lines to the cart too.
   assert.notEqual(withRemoval.lineId.replace(/^#\d+:/, ""), plain.lineId.replace(/^#\d+:/, ""));
+});
+
+// U1 Task 3 (owner Q5): a /pos price button adds at once with the options modal's untouched add — on a "modifiers come
+// ticked" item every modifier stays ticked, so nothing is removed and no NO line reaches the kitchen.
+test("POS price button: a direct add on a \"modifiers come ticked\" item keeps every modifier — no removal rides to the kitchen", () => {
+  const reverse = { modifiers: ["Mushroom", "Onion"], modifiersPreselected: true };
+  const opts = defaultAddOptions(reverse);
+  assert.equal("removedModifiers" in opts, false, "nothing unticked, so no removedModifiers key");
+  assert.deepEqual(opts.modifiers, [], "kept defaults print nothing (pickModifierResult's reverse-mode rule)");
+  const line = cartItemFromOrderItem(orderItem({ modifiers: opts.modifiers, instructions: opts.instructions, kotRound: 0 }), 0);
+  assert.equal("removedModifiers" in cartItemToInput(line), false, "the send payload carries no removals key");
+  assert.ok(!line.lineId.includes("\u001e"), "the line key has no removals part: it is the untouched modal add's line");
 });
 
 test("diner bill: the sub line shows NO Mushroom, and an older line keeps its modifiers", () => {

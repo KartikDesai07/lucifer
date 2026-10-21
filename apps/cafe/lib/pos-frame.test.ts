@@ -156,6 +156,21 @@ test("the old two-pane and stacked-phone frame is gone, not left dead (design 5)
     "POS_CHIP_CLASS",
     "POS_CHIP_ROW_CLASS",
     "POS_DESKTOP_ONLY_CLASS",
+    // U1 Task 3 (values 4.1, 4.3; owner Q5/Q6): the HTML's auto-fill card grid replaced the viewport tiers, and the HTML
+    // card replaced the tile with its thumbnail row and corner options button.
+    "POS_GRID_CLASS_SIDEBAR_EXPANDED",
+    "POS_GRID_CLASS_SIDEBAR_COLLAPSED",
+    "POS_GRID_COLUMN_TIERS_SIDEBAR_EXPANDED",
+    "POS_GRID_COLUMN_TIERS_SIDEBAR_COLLAPSED",
+    "posGridColumns",
+    "POS_GRID_GAP_REM",
+    "POS_MIN_TILE_PX",
+    "POS_MIN_NAME_BOX_PX",
+    "POS_TILE_CARD_PADDING_PX",
+    "POS_TILE_THUMB_PX",
+    "POS_TILE_ROW_GAP_PX",
+    "POS_TILE_OPTIONS_BUTTON_CLASS",
+    "POS_TILE_OPTIONS_RESERVE_CLASS",
   ]) {
     assert.ok(!(name in layout), `lib/pos-layout.ts must no longer export ${name}`);
   }

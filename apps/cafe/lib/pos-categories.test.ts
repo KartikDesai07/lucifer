@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { ALL_ITEMS_LABEL, POS_CATEGORY_HUES, categoryRows, selectedCategoryName } from "./pos-categories";
+import { ALL_ITEMS_LABEL, POS_CATEGORY_HUES, categoryHueMap, categoryRows, selectedCategoryName } from "./pos-categories";
 
 const CATS = [
   { _id: "c-starters", name: "Starters" },
@@ -89,4 +89,16 @@ test("selectedCategoryName: the Category button's value is \"All items\" or the 
   assert.equal(selectedCategoryName(CATS, "All"), "All items", "the HTML's curCatName for All");
   assert.equal(selectedCategoryName(CATS, "c-pizza"), "Pizza", "a category by its id");
   assert.equal(selectedCategoryName(CATS, "c-gone"), "All items", "an id no longer in the list reads as All items");
+});
+
+// U1 Task 3 (design 6.4, values 4.1): the "By category" group headings take each category's dot from the same rule, so a
+// group's dot is its row's dot in the column.
+test("categoryHueMap: each category's hue is its row's hue in the column (by position, repeating every five)", () => {
+  const many = Array.from({ length: 7 }, (_, i) => ({ _id: `c${i}`, name: `Cat ${i}` }));
+  const map = categoryHueMap(many);
+  for (const row of categoryRows(many, [], "").slice(1)) {
+    assert.equal(map.get(row.key), row.hue, `${row.name}: the group's dot is the row's dot`);
+  }
+  assert.equal(map.size, 7, "every category has a hue");
+  assert.equal(map.get("c-gone"), undefined, "an unknown category has none (the Other group draws --text-3)");
 });
