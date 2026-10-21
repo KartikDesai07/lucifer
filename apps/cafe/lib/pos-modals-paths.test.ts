@@ -299,6 +299,126 @@ test("PIN: PosPrompts and PosHeader are named, exported React.memo wrappers (Pos
   assert.match(headerSrc, /<OpenTabsButton/, "PosHeader.tsx must render <OpenTabsButton");
 });
 
+// ── U1 Task 8: the item options modal in the owner's HTML (values 10 in docs/superpowers/specs/2026-10-20-pos-html-values.md;
+// design 6.10; owner Q1). Look only: its state, reset and add are pinned in lib/variation-paths.test.ts and
+// lib/pos-tile-paths.test.ts; the add-on rows' checkbox semantics in lib/removed-modifiers-paths.test.ts.
+const MODIFIER_MODAL = "apps/cafe/components/pos/ModifierModal.tsx";
+
+/** The class-string literal a `const NAME = "...";` declares. */
+function modalConst(src: string, name: string): string {
+  const m = src.match(new RegExp(`const ${name} =\\s*"([^"]*)";`));
+  assert.ok(m, `ModifierModal.tsx must declare ${name} as one plain string literal`);
+  return m![1];
+}
+
+test("PIN (U1 Task 8, owner Q1): the item options modal speaks the HTML's words — Size, Add-ons, Kitchen note, Add to order · ₹x — and keeps ours where the HTML has none", () => {
+  const src = stripComments(readSrc(MODIFIER_MODAL));
+  assert.ok(src.includes(">Size</span>"), "the variations' caption is the HTML's \"Size\" (was \"Variation (required)\")");
+  assert.ok(src.includes(">Add-ons</span>"), "the modifiers' caption is the HTML's \"Add-ons\"");
+  assert.ok(src.includes(">Kitchen note</label>"), "the instructions field's caption is the HTML's \"Kitchen note\" (was \"Instructions (optional)\"), a real label");
+  assert.ok(src.includes("`Add to order · ${inr(unit * qty)}`"), "the add button reads the HTML's \"Add to order · ₹x\" (was \"Add {n} — ₹x\"): the unit price × qty, as today");
+  assert.ok(src.includes('"Pick a variation"'), "a variation item with none chosen still reads \"Pick a variation\" (our state, no HTML counterpart)");
+  assert.ok(src.includes("Untick what the customer does not want."), "the reverse-mode hint stays (our feature, no HTML counterpart)");
+  assert.ok(src.includes('placeholder="e.g. less spicy, no onions"'), "the note field keeps today's placeholder");
+  assert.ok(src.includes('id="item-instructions"') && src.includes('htmlFor="item-instructions"'), "the caption labels the note field by today's id");
+  assert.ok(src.includes('aria-label="Decrease quantity"') && src.includes('aria-label="Increase quantity"'), "today's stepper aria-labels kept");
+  assert.ok(src.includes(">−</button>") && src.includes(">+</button>"), "the HTML's stepper glyphs (U+2212 and +), not icons");
+  for (const gone of ["Variation (required)", "Instructions (optional)", "Add ${qty} —", ">Quantity<"]) {
+    assert.ok(!src.includes(gone), `ModifierModal.tsx must no longer show "${gone}" (owner Q1: the HTML's words)`);
+  }
+});
+
+test("PIN (U1 Task 8, values 10.1): the modal is the HTML's sheet — a Radix dialog whose scrim holds the 440px panel (a bottom sheet below 720px), the name + \"✕\" head, the read-out-only description", () => {
+  const src = stripComments(readSrc(MODIFIER_MODAL));
+  assert.match(src, /import \* as DialogPrimitive from "@radix-ui\/react-dialog";/, "a Radix dialog: focus trap, Escape, role=dialog (F8 / F9 stay off while it is open)");
+  assert.ok(!src.includes('from "@/components/ui/dialog"'), "not the kit DialogContent: its corner X and black overlay are not the HTML's");
+  assert.ok(!src.includes('from "@/components/ui/checkbox"') && !src.includes('from "@/components/ui/textarea"'), "the HTML's check rows and 48px field replace the kit checkbox and textarea");
+  const overlay = src.indexOf("<DialogPrimitive.Overlay");
+  const content = src.indexOf("<DialogPrimitive.Content");
+  assert.ok(overlay > 0 && content > overlay && src.indexOf("</DialogPrimitive.Overlay>") > src.indexOf("</DialogPrimitive.Content>"), "the scrim holds the panel (values 10.1: the panel is centred / bottom-anchored inside it)");
+  assert.ok(src.includes("className={SCRIM_CLASS}") && src.includes("className={PANEL_CLASS}"), "the scrim and the panel wear the HTML's frame");
+  assert.ok(src.includes("<DialogPrimitive.Title className={NAME_CLASS}>{product.name}</DialogPrimitive.Title>"), "the title is the product's name in the head");
+  assert.ok(src.includes('<DialogPrimitive.Description className="sr-only">'), "today's description stays for screen readers only (the HTML shows none)");
+  assert.ok(src.includes('aria-label="Close"') && src.includes(">✕</DialogPrimitive.Close>"), "the HTML's \"✕\" character closes it, named Close");
+  assert.ok(src.includes("onOpenAutoFocus={rememberOpener}") && src.includes("onCloseAutoFocus={returnFocus}"), "landmark: the panel's open / close focus handlers");
+  assert.match(
+    src,
+    /const rememberOpener = \(e: Event\) => \{\s*openerRef\.current = document\.activeElement instanceof HTMLElement \? document\.activeElement : null;\s*e\.preventDefault\(\);\s*if \(e\.currentTarget instanceof HTMLElement\) e\.currentTarget\.focus\(\);\s*\};/,
+    "on open the panel itself takes the focus (no ring on \"✕\", no phone keyboard for the note field), remembering what had it",
+  );
+  assert.match(
+    src,
+    /const returnFocus = \(e: Event\) => \{\s*e\.preventDefault\(\);\s*if \(openerRef\.current\?\.isConnected\) openerRef\.current\.focus\(\);\s*\};/,
+    "on close the focus goes back to what opened it (the page opens the modal from state: Radix has no trigger to return to, so it fell to <body>)",
+  );
+
+  assert.equal(
+    modalConst(src, "SCRIM_CLASS"),
+    "fixed inset-0 z-20 flex items-center justify-center bg-scrim p-4 font-sans leading-[normal] text-foreground motion-safe:animate-scrim-in max-tab:items-end max-tab:p-0",
+    "values 10.1 scrim: fixed, z-index 20 (over the phone's tab bar), --scrim, fadeIn .2s; sheetAlign / sheetPad: centred in 16px, along the foot with no padding below 720px",
+  );
+  assert.equal(
+    modalConst(src, "PANEL_CLASS"),
+    "flex w-full max-w-[440px] flex-col overflow-hidden rounded-[14px] bg-card [box-shadow:var(--pop)] outline-none motion-safe:animate-sheet-in tab:max-h-[calc(100vh-32px)] tab:supports-[height:1dvh]:max-h-[calc(100dvh-32px)] max-tab:max-h-[88vh] max-tab:rounded-[14px_14px_0_0] max-tab:supports-[height:1dvh]:max-h-[88dvh]",
+    "values 10.1 panel: 440px, --surface, no border, sheetRadius 14 (14 14 0 0 below 720px), --pop, sheetIn .34s; capped at the HTML's sheet heights (csMaxH) so a long option list scrolls in the body",
+  );
+  assert.equal(modalConst(src, "HEAD_CLASS"), "flex flex-none items-center gap-2.5 border-b border-border-2 px-[18px] py-4", "values 10.1 head: 16px 18px, gap 10, a --border-2 rule");
+  assert.equal(modalConst(src, "NAME_CLASS"), "min-w-0 flex-1 text-[17px] font-semibold tracking-[-0.01em]", "values 10.1 name: 17px 600, -.01em, flex 1 (no veg mark: owner Q7)");
+  assert.equal(
+    modalConst(src, "CLOSE_CLASS"),
+    "size-7 cursor-pointer rounded-[50%] border-0 bg-surface-3 px-1.5 py-px text-[12px] text-muted-foreground",
+    "values 10.1 ✕: 28px round on --surface-3, 12px --text-2, the UA's 1px 6px padding",
+  );
+  assert.equal(modalConst(src, "BODY_CLASS"), "flex min-h-0 flex-col gap-[18px] overflow-y-auto px-[18px] py-4", "values 10.1 body: 16px 18px, the blocks 18px apart");
+  assert.equal(modalConst(src, "BLOCK_CLASS"), "flex flex-col gap-2", "values 10.1: each block's caption 8px above its control");
+  assert.equal(modalConst(src, "CAPTION_CLASS"), "text-[12px] font-semibold text-muted-foreground", "values 10.1 captions: 12px 600 --text-2");
+  assert.equal(modalConst(src, "HINT_CLASS"), "text-[12px] text-muted-foreground", "the reverse-mode hint: 12px --text-2 under the caption");
+});
+
+test("PIN (U1 Task 8, values 10.1-10.2): Size segments, add-on rows, the 48px note field and the footer take the HTML's measures", () => {
+  const src = stripComments(readSrc(MODIFIER_MODAL));
+  assert.equal(modalConst(src, "SIZES_CLASS"), "grid gap-0.5 rounded-[8px] bg-surface-3 p-0.5", "values 10.1 segments: a --surface-3 track, radius 8, 2px inset and gap");
+  assert.ok(src.includes("gridTemplateColumns: `repeat(${Math.min(product.variations!.length, SIZE_COLUMNS_MAX)}, minmax(0, 1fr))`"), "one column per size (m.cols), three a row at most (our items carry up to 20 sizes)");
+  assert.match(src, /const SIZE_COLUMNS_MAX = 3;/, "the HTML's widest size row");
+  assert.equal(
+    modalConst(src, "SIZE_CLASS"),
+    "flex h-11 min-w-0 cursor-pointer flex-col items-center justify-center rounded-[6px] border-0 px-1.5 py-px leading-[1.2] text-foreground",
+    "values 10.1 size button: 44px, radius 6, line-height 1.2, --text, the UA's padding",
+  );
+  assert.equal(modalConst(src, "SIZE_ON_CLASS"), "bg-seg [box-shadow:var(--seg-sh)]", "SEG_ON (U0 values 1.6)");
+  assert.equal(modalConst(src, "SIZE_OFF_CLASS"), "bg-transparent", "SEG_OFF");
+  assert.equal(modalConst(src, "SIZE_LABEL_CLASS"), "max-w-full truncate text-[12px] text-muted-foreground", "the full size name, 12px --text-2");
+  assert.equal(modalConst(src, "SIZE_PRICE_CLASS"), "text-[14px] font-semibold", "the price, 14px 600");
+  assert.equal(modalConst(src, "ADDON_LIST_CLASS"), "overflow-hidden rounded-[10px] border border-border", "values 10.1 add-on list: 1px --border, radius 10");
+  assert.equal(
+    modalConst(src, "ADDON_CLASS"),
+    "flex h-[42px] w-full cursor-pointer items-center gap-2.5 border-b border-border-2 bg-card px-3 text-left text-[14px] text-foreground hover:bg-hover",
+    "values 10.1 add-on row: 42px, 0 12px, gap 10, 14px, a --border-2 rule under every row (the last too), hover --hover",
+  );
+  assert.equal(
+    modalConst(src, "CHECK_CLASS"),
+    "flex size-[18px] flex-none items-center justify-center rounded-[5px] border-[1.5px] text-[11px] text-primary-foreground",
+    "values 10.1 check box: 18px, radius 5, a 1.5px rule, the 11px check in --on-accent",
+  );
+  assert.equal(modalConst(src, "CHECK_ON_CLASS"), "border-primary bg-primary", "values 10.2 add-on on: --accent box and fill");
+  assert.equal(modalConst(src, "CHECK_OFF_CLASS"), "border-subtle-foreground bg-card", "values 10.2 add-on off: --text-3 box on --surface");
+  assert.ok(src.includes('{on ? "✓" : ""}'), "the HTML's check character when on");
+  assert.equal(
+    modalConst(src, "NOTE_FIELD_CLASS"),
+    "h-12 rounded-[12px] border-[1.5px] border-border px-3 py-0 text-[15px] leading-[normal] placeholder:text-subtle-foreground md:text-[15px] max-tab:text-base",
+    "the HTML's field (values 8.3): 48px, radius 12, a 1.5px --border rule, 0 12px, 15px (16px below 720px, ruling R36), --text-3 placeholder",
+  );
+  assert.equal(modalConst(src, "FOOT_CLASS"), "flex flex-none items-center gap-2.5 border-t border-border-2 px-[18px] pt-3.5 pb-[18px]", "values 10.1 footer: 14px 18px 18px, gap 10, a --border-2 rule");
+  assert.equal(modalConst(src, "STEPPER_CLASS"), "flex h-[46px] items-center rounded-[10px] border border-border", "values 10.1 stepper: 46px, 1px --border, radius 10");
+  assert.equal(modalConst(src, "STEP_CLASS"), "h-11 w-[42px] cursor-pointer border-0 bg-transparent px-1.5 py-px text-[18px] text-foreground", "values 10.1 − / +: 42x44, 18px --text, the UA's padding");
+  assert.equal(modalConst(src, "QTY_CLASS"), "min-w-6 text-center text-[15px] font-semibold", "values 10.1 qty: min 24px, 15px 600");
+  assert.equal(
+    modalConst(src, "ADD_CLASS"),
+    "h-[46px] flex-1 cursor-pointer rounded-[10px] border-0 bg-primary px-1.5 py-px text-[15px] font-semibold text-primary-foreground not-disabled:hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50",
+    "values 10.1 Add: 46px, flex 1, radius 10, --accent, 15px 600 --on-accent, hover --accent-h; disabled (no size yet) not-allowed at .5",
+  );
+});
+
 test("PIN: line budgets — pos/page.tsx < 300 (exact count pinned in pos-tile-paths), PosModals.tsx <= 300, PosHeader.tsx <= 300, PosPrompts.tsx <= 300", () => {
   const lineCount = (rel: string): number => readSrc(rel).replace(/\n$/, "").split("\n").length;
 

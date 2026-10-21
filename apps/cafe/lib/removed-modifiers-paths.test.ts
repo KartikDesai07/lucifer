@@ -58,6 +58,28 @@ test("PIN (E): every <Checkbox> in the app carries BRAND_CHECKBOX_SQUARE_CLASS �
   assert.ok(!/rounded-(sm|md|lg|full)\b/.test(m![1]), "the square class must not use the --radius scale");
 });
 
+// U1 Task 8 (values 10.1, design 6.10): the /pos options modal's add-ons are the HTML's check rows, not the kit box. Each
+// row is still a checkbox to assistive tech, a tap still toggles exactly that modifier, and "modifiers come ticked" keeps
+// its hint, so an unticked default still reaches the kitchen as a NO line.
+test("PIN (E/F, U1 Task 8): the options modal's add-on rows are checkboxes (role + aria-checked) that toggle their modifier; reverse mode keeps its hint", () => {
+  const src = stripComments(readSrc("components/pos/ModifierModal.tsx"));
+  const start = src.indexOf("product.modifiers.map((modifier) =>");
+  assert.ok(start > 0, "landmark: the modal maps the product's modifiers to rows");
+  const row = src.slice(start, src.indexOf("</button>", start));
+  assert.ok(row.includes('role="checkbox"'), "an add-on row is announced as a checkbox");
+  assert.ok(row.includes("aria-checked={on}"), "and says whether it is ticked");
+  assert.ok(row.includes("const on = selected.includes(modifier);"), "ticked = in the modal's selection, as the kit box was");
+  assert.ok(row.includes("onClick={() => toggle(modifier, !on)}"), "a tap toggles exactly that modifier");
+  assert.ok(row.includes('aria-hidden="true"'), "the drawn box is decoration (the row carries the state)");
+  assert.match(
+    src,
+    /\{reverseMode && \(\s*<span id=\{hintId\} className=\{HINT_CLASS\}>\s*Untick what the customer does not want\.\s*<\/span>\s*\)\}/,
+    "reverse mode keeps its hint under the Add-ons caption",
+  );
+  assert.ok(src.includes("aria-describedby={reverseMode ? hintId : undefined}"), "and the add-on group is described by it");
+  assert.ok(src.includes("pickModifierResult(product, selected)"), "landmark: the add still splits the selection through pickModifierResult (the NO lines)");
+});
+
 // ── F — one formatter on every surface ───────────────────────────────────────
 
 const DISPLAY_SURFACES = [

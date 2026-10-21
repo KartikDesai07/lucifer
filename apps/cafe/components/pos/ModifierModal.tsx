@@ -1,24 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Minus, Plus } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 
 import { effectivePrice } from "@/hooks/use-cart";
 import { inr, cn } from "@/lib/utils";
 import { initialSelected, pickModifierResult, modifiersPreselectedFor } from "@/lib/modifier-picker";
-import { BRAND_CHECKBOX_SQUARE_CLASS } from "@/components/brand/brand-classes";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
+import { Input } from "@/components/ui/input";
 import type { Product } from "@/types";
 
 export interface AddToCartOpts {
@@ -41,9 +30,69 @@ interface ModifierModalProps {
   onConfirm: (product: Product, opts: AddToCartOpts) => void;
 }
 
-// Opens for products that carry modifiers (add-ons) or whenever item notes are
-// wanted. Modifiers are plain labels — they don't change the price (the model
-// has no per-modifier price); only qty drives the line total.
+// The item options modal in the owner's HTML (U1 Task 8; values 10 in docs/superpowers/specs/2026-10-20-pos-html-values.md;
+// design 6.10; owner Q1): the name and "✕"; "Size" = our variations (required, none lit until tapped; a plain product
+// has no Size block); "Add-ons" = our modifiers as the HTML's check rows (plain labels: no price column); "Kitchen note"
+// = our free-text instructions in the HTML's 48px field (its quick chips need data we do not have); the stepper and
+// "Add to order · ₹x". Opened by a card's name (any product) and by a "Choose" price button (more than three sizes). A
+// Radix dialog: focus trap, Escape and the scrim close it, the title is the name, the description is read out only (the
+// HTML shows none). Modifiers carry no price, so the line total is the chosen size's (or the product's) price × qty.
+
+// The scrim (values 10.1, 0.3 sheetAlign/sheetPad): fixed over everything at z-index 20 (the phone's tab bar too), --scrim,
+// fadeIn .2s; the panel centred in 16px, along the window's foot with no padding below 720px.
+const SCRIM_CLASS =
+  "fixed inset-0 z-20 flex items-center justify-center bg-scrim p-4 font-sans leading-[normal] text-foreground motion-safe:animate-scrim-in max-tab:items-end max-tab:p-0";
+// The panel (values 10.1, 0.3 sheetRadius): 440px on --surface, no border, radius 14 (14 14 0 0 below 720px), --pop,
+// sheetIn .34s. The HTML's panel has no height cap (its items have at most four add-ons); ours takes the HTML's sheet cap
+// (customer sheet csMaxH) so an item with many options scrolls in the body and "Add to order" stays on screen.
+const PANEL_CLASS =
+  "flex w-full max-w-[440px] flex-col overflow-hidden rounded-[14px] bg-card [box-shadow:var(--pop)] outline-none motion-safe:animate-sheet-in tab:max-h-[calc(100vh-32px)] tab:supports-[height:1dvh]:max-h-[calc(100dvh-32px)] max-tab:max-h-[88vh] max-tab:rounded-[14px_14px_0_0] max-tab:supports-[height:1dvh]:max-h-[88dvh]";
+// The head (values 10.1): 16px 18px, gap 10, a --border-2 rule; the name 17px 600 -.01em (no veg mark: owner Q7); the
+// "✕" a 28px round --surface-3 button, 12px --text-2 (buttons the HTML leaves unpadded keep the UA's 1px 6px).
+const HEAD_CLASS = "flex flex-none items-center gap-2.5 border-b border-border-2 px-[18px] py-4";
+const NAME_CLASS = "min-w-0 flex-1 text-[17px] font-semibold tracking-[-0.01em]";
+const CLOSE_CLASS = "size-7 cursor-pointer rounded-[50%] border-0 bg-surface-3 px-1.5 py-px text-[12px] text-muted-foreground";
+// The body (values 10.1): 16px 18px, the blocks 18px apart; each block a 12px 600 --text-2 caption 8px above its control.
+const BODY_CLASS = "flex min-h-0 flex-col gap-[18px] overflow-y-auto px-[18px] py-4";
+const BLOCK_CLASS = "flex flex-col gap-2";
+const CAPTION_CLASS = "text-[12px] font-semibold text-muted-foreground";
+const HINT_CLASS = "text-[12px] text-muted-foreground";
+// Size (values 10.1-10.2): a --surface-3 track, radius 8, 2px inset and gap, one column per size (three a row at most:
+// the HTML's widest; our items carry up to 20 sizes); a 44px segment, radius 6, line-height 1.2: the full name 12px
+// --text-2 over the price 14px 600; the picked one SEG_ON (U0 values 1.6), the others SEG_OFF.
+const SIZE_COLUMNS_MAX = 3;
+const SIZES_CLASS = "grid gap-0.5 rounded-[8px] bg-surface-3 p-0.5";
+const SIZE_CLASS =
+  "flex h-11 min-w-0 cursor-pointer flex-col items-center justify-center rounded-[6px] border-0 px-1.5 py-px leading-[1.2] text-foreground";
+const SIZE_ON_CLASS = "bg-seg [box-shadow:var(--seg-sh)]";
+const SIZE_OFF_CLASS = "bg-transparent";
+const SIZE_LABEL_CLASS = "max-w-full truncate text-[12px] text-muted-foreground";
+const SIZE_PRICE_CLASS = "text-[14px] font-semibold";
+// Add-ons (values 10.1-10.2): a 1px --border list, radius 10; 42px rows, 0 12px, gap 10, 14px, a --border-2 rule under
+// each (the last too), hover --hover; the 18px box, radius 5, a 1.5px rule: --accent box and fill with the white check
+// when on, a --text-3 box on --surface when off.
+const ADDON_LIST_CLASS = "overflow-hidden rounded-[10px] border border-border";
+const ADDON_CLASS =
+  "flex h-[42px] w-full cursor-pointer items-center gap-2.5 border-b border-border-2 bg-card px-3 text-left text-[14px] text-foreground hover:bg-hover";
+const CHECK_CLASS =
+  "flex size-[18px] flex-none items-center justify-center rounded-[5px] border-[1.5px] text-[11px] text-primary-foreground";
+const CHECK_ON_CLASS = "border-primary bg-primary";
+const CHECK_OFF_CLASS = "border-subtle-foreground bg-card";
+// Kitchen note: the HTML's field (values 8.3, the customer sheet's): 48px, radius 12, a 1.5px --border rule, 0 12px,
+// 15px (16px below 720px, ruling R36), the --text-3 placeholder; on the kit Input through tailwind-merge (its focus ring
+// stays).
+const NOTE_FIELD_CLASS =
+  "h-12 rounded-[12px] border-[1.5px] border-border px-3 py-0 text-[15px] leading-[normal] placeholder:text-subtle-foreground md:text-[15px] max-tab:text-base";
+// The footer (values 10.1): 14px 18px 18px, gap 10, a --border-2 rule; the 46px stepper (1px --border, radius 10) with
+// 42x44 "−" / "+" (18px --text) around the 15px 600 qty; "Add to order" 46px on --accent, radius 10, 15px 600, hover
+// --accent-h; disabled while no size is picked (the HTML's not-allowed cursor, at .5).
+const FOOT_CLASS = "flex flex-none items-center gap-2.5 border-t border-border-2 px-[18px] pt-3.5 pb-[18px]";
+const STEPPER_CLASS = "flex h-[46px] items-center rounded-[10px] border border-border";
+const STEP_CLASS = "h-11 w-[42px] cursor-pointer border-0 bg-transparent px-1.5 py-px text-[18px] text-foreground";
+const QTY_CLASS = "min-w-6 text-center text-[15px] font-semibold";
+const ADD_CLASS =
+  "h-[46px] flex-1 cursor-pointer rounded-[10px] border-0 bg-primary px-1.5 py-px text-[15px] font-semibold text-primary-foreground not-disabled:hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50";
+
 export function ModifierModal({
   product,
   open,
@@ -58,6 +107,12 @@ export function ModifierModal({
   // confirm button fire right away and silently bill the cheapest size, so it
   // starts empty and confirm stays disabled below until the operator taps one.
   const [variation, setVariation] = useState<string | undefined>(undefined);
+  // The captions name their groups for screen readers (the HTML's captions are plain text).
+  const sizeId = useId();
+  const addonsId = useId();
+  const hintId = useId();
+  // What had the focus when the modal opened (the card's name or "Choose" button).
+  const openerRef = useRef<HTMLElement | null>(null);
 
   // Reset the form each time a new product is opened. A reverse-mode product
   // (modifiers come ticked) starts every modifier ticked; normal mode starts
@@ -105,125 +160,154 @@ export function ModifierModal({
     onOpenChange(false);
   };
 
+  // On open the panel itself takes the focus (the dialog is announced by its name; Tab then reaches "✕" and the
+  // options): no ring lands on "✕" and no phone keyboard pops up for the note field. The page opens the modal from its
+  // state, so Radix has no trigger to give the focus back to and would drop it on <body>; it goes back to the opener.
+  const rememberOpener = (e: Event) => {
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    e.preventDefault();
+    if (e.currentTarget instanceof HTMLElement) e.currentTarget.focus();
+  };
+  const returnFocus = (e: Event) => {
+    e.preventDefault();
+    if (openerRef.current?.isConnected) openerRef.current.focus();
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{product.name}</DialogTitle>
-          <DialogDescription>
-            {unit === null
-              ? "Pick a variation to continue."
-              : `${inr(unit)} each — choose add-ons and quantity.`}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          {hasVariations && (
-            <div className="space-y-2">
-              <Label>Variation (required)</Label>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {product.variations!.map((v) => {
-                  const active = v.name === variation;
-                  const price = effectivePrice({
-                    price: v.price,
-                    discount: product.discount,
-                  });
-                  return (
-                    <button
-                      key={v.name}
-                      type="button"
-                      onClick={() => setVariation(v.name)}
-                      className={cn(
-                        "rounded-md border py-2 text-sm font-semibold transition-colors",
-                        active
-                          ? "border-primary bg-accent ring-2 ring-primary ring-offset-1"
-                          : "hover:border-primary hover:bg-accent",
-                      )}
-                    >
-                      {v.name}
-                      <span className="block text-xs font-normal text-muted-foreground">
-                        {inr(price)}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {product.modifiers.length > 0 && (
-            <div className="space-y-2">
-              <Label>Add-ons</Label>
-              {reverseMode && (
-                <p className="text-xs text-muted-foreground">
-                  Untick what the customer does not want.
-                </p>
-              )}
-              <div className="space-y-2">
-                {product.modifiers.map((modifier) => (
-                  <label
-                    key={modifier}
-                    className="flex items-center gap-2 text-sm"
-                  >
-                    <Checkbox
-                      className={BRAND_CHECKBOX_SQUARE_CLASS}
-                      checked={selected.includes(modifier)}
-                      onCheckedChange={(c) => toggle(modifier, c === true)}
-                    />
-                    {modifier}
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <Label htmlFor="item-instructions">Instructions (optional)</Label>
-            <Textarea
-              id="item-instructions"
-              value={instructions}
-              onChange={(e) => setInstructions(e.target.value)}
-              placeholder="e.g. less spicy, no onions"
-              rows={2}
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <Label>Quantity</Label>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={() => setQty((q) => Math.max(1, q - 1))}
-                aria-label="Decrease quantity"
-              >
-                <Minus className="h-4 w-4" />
-              </Button>
-              <span className="w-8 text-center text-sm font-semibold">{qty}</span>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={() => setQty((q) => q + 1)}
-                aria-label="Increase quantity"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button
-            onClick={confirm}
-            disabled={confirmDisabled}
-            className="w-full sm:w-auto"
+    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay data-ui="pos-item-options" className={SCRIM_CLASS}>
+          <DialogPrimitive.Content
+            data-ui="pos-item-options-panel"
+            onOpenAutoFocus={rememberOpener}
+            onCloseAutoFocus={returnFocus}
+            className={PANEL_CLASS}
           >
-            {unit === null ? "Pick a variation" : `Add ${qty} — ${inr(unit * qty)}`}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            <div data-ui="pos-item-options-head" className={HEAD_CLASS}>
+              <DialogPrimitive.Title className={NAME_CLASS}>{product.name}</DialogPrimitive.Title>
+              <DialogPrimitive.Description className="sr-only">
+                {unit === null
+                  ? "Pick a variation to continue."
+                  : `${inr(unit)} each — choose add-ons and quantity.`}
+              </DialogPrimitive.Description>
+              <DialogPrimitive.Close
+                data-ui="pos-item-options-close"
+                aria-label="Close"
+                className={cn(CLOSE_CLASS, BRAND_PRESS_CLASS)}
+              >✕</DialogPrimitive.Close>
+            </div>
+
+            <div data-ui="pos-item-options-body" className={BODY_CLASS}>
+              {hasVariations && (
+                <div data-ui="pos-item-size" role="group" aria-labelledby={sizeId} className={BLOCK_CLASS}>
+                  <span id={sizeId} className={CAPTION_CLASS}>Size</span>
+                  <div
+                    data-ui="pos-item-sizes"
+                    className={SIZES_CLASS}
+                    style={{ gridTemplateColumns: `repeat(${Math.min(product.variations!.length, SIZE_COLUMNS_MAX)}, minmax(0, 1fr))` }}
+                  >
+                    {product.variations!.map((v) => {
+                      const active = v.name === variation;
+                      const price = effectivePrice({ price: v.price, discount: product.discount });
+                      return (
+                        <button
+                          key={v.name}
+                          type="button"
+                          data-ui="pos-item-size-button"
+                          aria-pressed={active}
+                          onClick={() => setVariation(v.name)}
+                          className={cn(SIZE_CLASS, active ? SIZE_ON_CLASS : SIZE_OFF_CLASS, BRAND_PRESS_CLASS)}
+                        >
+                          {/* Names are operator-typed (CR1.1): one cut by the segment's width stays readable on hover. */}
+                          <span title={v.name} className={SIZE_LABEL_CLASS}>{v.name}</span>
+                          <span className={SIZE_PRICE_CLASS}>{inr(price)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {product.modifiers.length > 0 && (
+                <div
+                  data-ui="pos-item-addons"
+                  role="group"
+                  aria-labelledby={addonsId}
+                  aria-describedby={reverseMode ? hintId : undefined}
+                  className={BLOCK_CLASS}
+                >
+                  <span id={addonsId} className={CAPTION_CLASS}>Add-ons</span>
+                  {reverseMode && (
+                    <span id={hintId} className={HINT_CLASS}>
+                      Untick what the customer does not want.
+                    </span>
+                  )}
+                  <div data-ui="pos-item-addon-list" className={ADDON_LIST_CLASS}>
+                    {product.modifiers.map((modifier) => {
+                      const on = selected.includes(modifier);
+                      return (
+                        <button
+                          key={modifier}
+                          type="button"
+                          role="checkbox"
+                          aria-checked={on}
+                          data-ui="pos-item-addon"
+                          onClick={() => toggle(modifier, !on)}
+                          className={cn(ADDON_CLASS, BRAND_PRESS_CLASS)}
+                        >
+                          <span aria-hidden="true" data-ui="pos-item-check" className={cn(CHECK_CLASS, on ? CHECK_ON_CLASS : CHECK_OFF_CLASS)}>
+                            {on ? "✓" : ""}
+                          </span>
+                          <span title={modifier} className="min-w-0 flex-1 truncate">{modifier}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div data-ui="pos-item-note" className={BLOCK_CLASS}>
+                <label htmlFor="item-instructions" className={CAPTION_CLASS}>Kitchen note</label>
+                <Input
+                  id="item-instructions"
+                  value={instructions}
+                  onChange={(e) => setInstructions(e.target.value)}
+                  placeholder="e.g. less spicy, no onions"
+                  autoComplete="off"
+                  className={NOTE_FIELD_CLASS}
+                />
+              </div>
+            </div>
+
+            <div data-ui="pos-item-options-foot" className={FOOT_CLASS}>
+              <div data-ui="pos-item-stepper" role="group" aria-label="Quantity" className={STEPPER_CLASS}>
+                <button
+                  type="button"
+                  aria-label="Decrease quantity"
+                  onClick={() => setQty((q) => Math.max(1, q - 1))}
+                  className={cn(STEP_CLASS, BRAND_PRESS_CLASS)}
+                >−</button>
+                <span data-ui="pos-item-qty" className={QTY_CLASS}>{qty}</span>
+                <button
+                  type="button"
+                  aria-label="Increase quantity"
+                  onClick={() => setQty((q) => q + 1)}
+                  className={cn(STEP_CLASS, BRAND_PRESS_CLASS)}
+                >+</button>
+              </div>
+              <button
+                type="button"
+                data-ui="pos-item-add"
+                onClick={confirm}
+                disabled={confirmDisabled}
+                className={cn(ADD_CLASS, BRAND_PRESS_CLASS)}
+              >
+                {unit === null ? "Pick a variation" : `Add to order · ${inr(unit * qty)}`}
+              </button>
+            </div>
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Overlay>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }

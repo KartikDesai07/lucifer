@@ -177,6 +177,17 @@ test("PIN: ModifierModal disables Add until a variation is picked when the produ
     !/confirm\(\)/.test(pickerBlock),
     "the variation chooser must never call confirm() directly — an item sold by size has no meaningful default, so the operator must still tap Add",
   );
+  // U1 Task 8 (values 10.1, owner Q1): the chooser is the HTML's "Size" segments — the chosen size is lit (SEG_ON) and
+  // announced, nothing is lit until a tap (no default), and a plain product shows no Size block at all (design 6.10).
+  assert.ok(pickerBlock.includes(">Size</span>"), "the chooser's caption is the HTML's \"Size\"");
+  assert.ok(pickerBlock.includes("const active = v.name === variation;"), "a size is lit only when it IS the picked variation (undefined lights none)");
+  assert.ok(pickerBlock.includes("aria-pressed={active}"), "the picked size is announced");
+  assert.ok(pickerBlock.includes("active ? SIZE_ON_CLASS : SIZE_OFF_CLASS"), "the picked size wears SEG_ON, the others SEG_OFF");
+  assert.ok(pickerBlock.includes("{v.name}") && pickerBlock.includes("{inr(price)}"), "each segment: the full variation name over its price");
+  assert.ok(
+    pickerBlock.includes("effectivePrice({ price: v.price, discount: product.discount })"),
+    "a segment's price is the variation's own price after the product's % discount (as the add bills it)",
+  );
 });
 
 // ── 3. pos/page.tsx: a variation item never adds without its size ──────────
