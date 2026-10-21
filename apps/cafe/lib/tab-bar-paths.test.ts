@@ -192,8 +192,13 @@ test("PIN: every sticky bar at a page's foot stops on the tab bar on a phone (Se
     assert.match(src, /import \{ ABOVE_TAB_BAR_STICKY_CLASS \} from "@\/lib\/shell-layout";/, `${file} reads the shell's offset`);
     assert.match(src, /ABOVE_TAB_BAR_STICKY_CLASS,\s*\)\}/, `${file} applies it to its sticky bar`);
   }
+  // Ruling P44: the POS cart bar lies UNDER the tab bar (z-index 10 < 12), so it also rides up by the safe-area inset
+  // the tab bar grows by (its bottom padding); at inset 0 it is the same 59px. The two sticky bars above keep the shell's.
   const { POS_MOBILE_BAR_CLASS } = await import("@/lib/pos-layout");
-  assert.ok(POS_MOBILE_BAR_CLASS.split(/\s+/).includes(ABOVE_TAB_BAR_STICKY_CLASS), "the POS cart bar too");
+  assert.ok(
+    POS_MOBILE_BAR_CLASS.split(/\s+/).includes(`max-tab:bottom-[calc(${TAB_BAR_HEIGHT_PX}px+env(safe-area-inset-bottom))]`),
+    "the POS cart bar too, plus the tab bar's safe-area inset",
+  );
 });
 
 // U1 Task 7 (values 6.1, 6.3; design 6.9, 8): on a phone the /pos order bar sits ON the tab bar (59px up; the HTML
@@ -211,7 +216,11 @@ test("on a phone the POS order bar sits on the tab bar, and the cart sheet cover
   assert.ok(tabBar, "landmark: the tab bar's class");
   const tabZ = zOf(tabBar![1]);
   assert.equal(tabZ, 12, "values 2.6: the tab bar's z-index 12");
-  assert.ok(POS_MOBILE_BAR_CLASS.split(/\s+/).includes(`max-tab:bottom-[${TAB_BAR_HEIGHT_PX}px]`), "the bar's foot is the tab bar's top");
+  assert.match(tabBar![1], /(?:^|\s)pb-\[env\(safe-area-inset-bottom\)\](?=\s|$)/, "landmark: the tab bar grows by the safe-area inset");
+  assert.ok(
+    POS_MOBILE_BAR_CLASS.split(/\s+/).includes(`max-tab:bottom-[calc(${TAB_BAR_HEIGHT_PX}px+env(safe-area-inset-bottom))]`),
+    "the bar's foot is the tab bar's top, inset included (ruling P44)",
+  );
   assert.ok(zOf(POS_MOBILE_BAR_CLASS) < tabZ, "the bar (z-index 10) never paints over the tab bar");
   assert.ok(zOf(POS_CART_SHEET_CLASS) > tabZ, "the cart sheet (z-index 15) covers the tab bar on a phone");
   for (const t of ["fixed", "inset-y-0", "right-0", "max-tab:left-0"]) {

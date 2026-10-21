@@ -17,6 +17,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { TAB_BAR_HEIGHT_PX } from "@/lib/shell-layout";
 import {
   POS_PAGE_CLASS,
   POS_BODY_GRID_CLASS,
@@ -136,7 +137,10 @@ test("PIN: real Tailwind compiles the /pos frame (page height, body grid, region
     wide.cart +
     "px; } }";
   const cmpFoot = "@media (width < 64rem) { padding-bottom: " + POS_MAIN_PAD_B_PX.cmp + "px; }";
-  const phoneFoot = "@media (width < 45rem) { padding-bottom: " + POS_MAIN_PAD_B_PX.phone + "px; }";
+  // Ruling P44: on a phone main's foot and the bar's place add the safe-area inset the tab bar grows by.
+  const inset = "env(safe-area-inset-bottom)";
+  const phoneFoot = "@media (width < 45rem) { padding-bottom: calc(" + POS_MAIN_PAD_B_PX.phone + "px + " + inset + "); }";
+  const barPhoneFoot = "@media (width < 45rem) { bottom: calc(" + TAB_BAR_HEIGHT_PX + "px + " + inset + "); }";
   const asideOn = "@media (width >= 68.75rem) { display: flex; }";
   const cartOn = "@media (width >= 64rem) { display: flex; }";
   // U1 Task 7 (values 6.1, 6.3): the bar shows below 1024px only; the sheet is 440px wide (the whole screen on a phone,
@@ -165,7 +169,8 @@ test("PIN: real Tailwind compiles the /pos frame (page height, body grid, region
     [deskCols, "the category and cart columns from 1100px"],
     [wideCols, "the wide nav's narrower columns from 1280px, nav open"],
     [cmpFoot, "main's 100px foot below 1024px"],
-    [phoneFoot, "main's 150px foot on a phone"],
+    [phoneFoot, "main's 150px foot on a phone, plus the tab bar's safe-area inset"],
+    [barPhoneFoot, "the bar on the phone's tab bar: 59px plus its safe-area inset"],
     [asideOn, "the category column shows from 1100px"],
     [cartOn, "the cart column shows from 1024px"],
     [barOn, "the bar shows below 1024px only"],

@@ -60,6 +60,15 @@ const REM_PX = 16;
 const CAFE_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const tokens = (cls: string): string[] => cls.split(/\s+/).filter(Boolean);
 
+/** The safe-area inset the phone's tab bar grows by: its own bottom padding (components/layout/TabBar.tsx), read from
+ *  its class so /pos's order bar and menu column add the very same expression (ruling P44). */
+function tabBarInset(): string {
+  const src = readFileSync(path.join(CAFE_ROOT, "components/layout/TabBar.tsx"), "utf8");
+  const m = src.match(/data-ui="tab-bar"\s*className="[^"]*\spb-\[(env\(safe-area-inset-bottom\))\]/);
+  assert.ok(m, "landmark: the tab bar's bottom padding is env(safe-area-inset-bottom)");
+  return m![1];
+}
+
 type SidebarState = "expanded" | "collapsed";
 const SIDEBAR_STATES: ReadonlyArray<SidebarState> = ["expanded", "collapsed"];
 
@@ -198,7 +207,12 @@ test("PIN: on a phone the page runs under the tab bar to the window's foot, and 
   assert.ok(page.includes(`-mb-[${PHONE_PAGE_FOOT_PX}px]`), "the page bleeds over <main>'s 92px phone foot, to the window's foot");
   assert.ok(!page.some((t) => t.startsWith("max-tab:h-")), "no phone height of its own: the page is the window minus the header at every width");
   assert.ok(POS_MAIN_PAD_B_PX.phone > TAB_BAR_HEIGHT_PX + POS_ORDER_BAR_HEIGHT_PX, "150px clears the order bar on the tab bar");
-  assert.ok(tokens(POS_MAIN_CLASS).includes(`max-tab:pb-[${POS_MAIN_PAD_B_PX.phone}px]`), "main's phone padding");
+  // Ruling P44: the bar rides up by the tab bar's safe-area inset, so main's foot grows by it too (150px at inset 0).
+  assert.ok(
+    tokens(POS_MAIN_CLASS).includes(`max-tab:pb-[calc(${POS_MAIN_PAD_B_PX.phone}px+${tabBarInset()})]`),
+    "main's phone padding: 150px plus the tab bar's safe-area inset",
+  );
+  assert.equal(tokens(POS_MAIN_CLASS).filter((t) => t.startsWith("max-tab:pb-")).length, 1, "one phone padding");
 });
 
 // U1 Task 7 (values 6.1, 6.2): the order bar is a 1px rule, 10px of padding above and below the 44px "Review order" —
@@ -235,10 +249,17 @@ test("PIN: the bar's place: beside the nav, on the phone's tab bar, at the windo
   assert.deepEqual(box(390, 844), [0, 720, 390, 65], "values 6.1 p390: [0,719,390,65], ours 1px lower, on the tab bar (design 8)");
 });
 
-test("PIN: on a phone the POS cart bar always sits on the tab bar (the shell's 59px offset)", () => {
-  assert.equal(ABOVE_TAB_BAR_STICKY_CLASS, "max-tab:bottom-[" + TAB_BAR_HEIGHT_PX + "px]", "the offset is the tab bar's height");
-  assert.ok(tokens(POS_MOBILE_BAR_CLASS).includes(ABOVE_TAB_BAR_STICKY_CLASS), "POS_MOBILE_BAR_CLASS carries it");
-  assert.ok(tokens(POS_MOBILE_BAR_CLASS).includes("bottom-0"), "landmark: from 720px it sits on the screen's foot");
+// Ruling P44 (U1 V-C F2, 2026-10-22): inside the Android app on WebView 154 the phone reports a bottom safe-area inset
+// (about 24.8 CSS px) and the tab bar grows by it (its bottom padding). The bar lies under the tab bar (z-index 10 <
+// 12), so it rides up by the same inset: the tab bar never hides its total or "Review order". At inset 0 it is the
+// shell's 59px. The shell's own ABOVE_TAB_BAR_STICKY_CLASS (Settings' save bar, the menu's bulk bar) stays as it is.
+test("PIN: on a phone the POS cart bar always sits on the tab bar: its 59px plus the safe-area inset it grows by (ruling P44)", () => {
+  assert.equal(ABOVE_TAB_BAR_STICKY_CLASS, "max-tab:bottom-[" + TAB_BAR_HEIGHT_PX + "px]", "the shell's offset is unchanged: the tab bar's height");
+  const bar = tokens(POS_MOBILE_BAR_CLASS);
+  assert.ok(bar.includes(`max-tab:bottom-[calc(${TAB_BAR_HEIGHT_PX}px+${tabBarInset()})]`), "the bar's phone foot: the tab bar's 59px plus its inset");
+  assert.ok(!bar.includes(ABOVE_TAB_BAR_STICKY_CLASS), "not the plain 59px: the taller tab bar would hide the bar's foot");
+  assert.equal(bar.filter((t) => t.startsWith("max-tab:bottom-")).length, 1, "one phone foot");
+  assert.ok(bar.includes("bottom-0"), "landmark: from 720px it sits on the screen's foot");
 });
 
 // U1 Task 7 (values 6.3, 5.1, 0.3 cartW / cartSh / cartLeft; design 6.9): the cart sheet is the HTML's cart section,

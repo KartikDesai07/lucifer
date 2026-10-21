@@ -109,7 +109,8 @@ export const POS_BODY_GRID_CLASS =
 export const POS_ASIDE_CLASS = "hidden min-h-0 flex-col border-r border-border bg-card desk:flex";
 
 /** The menu column's bottom padding (values 6.2 mainPadB), px: room for the order bar and the tab bar on a phone, for
- *  the bar below 1024 px, 16 px beside the cart column. */
+ *  the bar below 1024 px, 16 px beside the cart column. At a safe-area inset of 0 (POS_MAIN_CLASS adds the inset on a
+ *  phone, ruling P44). */
 export const POS_MAIN_PAD_B_PX = { phone: 150, cmp: 100, base: 16 } as const;
 
 export function posMainPadBottomPx(viewportWidth: number): number {
@@ -118,8 +119,10 @@ export function posMainPadBottomPx(viewportWidth: number): number {
 }
 
 /** The menu column (values 3.1 main): the HTML's one scroller, a block with `min-width:0` and its bottom padding; the
- *  toolbar sticks at its top and the list scrolls under it (U1 Task 2). */
-export const POS_MAIN_CLASS = "min-h-0 min-w-0 overflow-auto pb-4 max-lg:pb-[100px] max-tab:pb-[150px]";
+ *  toolbar sticks at its top and the list scrolls under it (U1 Task 2). On a phone its foot also grows by the safe-area
+ *  inset the tab bar grows by, as the order bar rides up by it (ruling P44): 150px at inset 0, the HTML's. */
+export const POS_MAIN_CLASS =
+  "min-h-0 min-w-0 overflow-auto pb-4 max-lg:pb-[100px] max-tab:pb-[calc(150px+env(safe-area-inset-bottom))]";
 
 /** The toolbar (values 3.1, 0.3 toolPad): sticky at the top of the menu column, over the cards (z-index 3), on the
  *  page's --bg, 14px 20px 4px (10px 12px 4px on a phone). It holds the search row and, below 1100px, the Category
@@ -149,7 +152,8 @@ export const POS_ORDER_BAR_HEIGHT_PX = 65;
 
 /** Where the order bar sits (values 0.3 obLeft / obBottom; design 8): from the nav's edge (the 76px rail from 720px, the
  *  window's edge on a phone) to the window's right edge; on a phone ON the 59px tab bar (the HTML leaves 1px of the menu
- *  between them: not copied), from 720px on the window's foot. Null from 1024px: the cart is a column, no bar. */
+ *  between them: not copied), from 720px on the window's foot. Null from 1024px: the cart is a column, no bar. At a
+ *  safe-area inset of 0 (POS_MOBILE_BAR_CLASS adds the inset on a phone, ruling P44). */
 export function posOrderBarInsetsPx(viewport: NavViewport): { left: number; bottom: number } | null {
   if (viewport.viewportWidth >= BREAKPOINT_LG_PX) return null;
   return { left: navWidthPx(viewport), bottom: viewport.viewportWidth < NAV_RAIL_MIN_PX ? TAB_BAR_HEIGHT_PX : 0 };
@@ -159,12 +163,14 @@ export function posOrderBarInsetsPx(viewport: NavViewport): { left: number; bott
 // on top, 10px 14px, its two lines and "Review order" 12px apart, centred; z-index 10, under the tab bar's 12 (they
 // never overlap). It lies over the page's foot — absolute inside the page, which runs from the nav's edge to the
 // window's right edge and foot, so its box is the HTML's fixed one (posOrderBarInsetsPx) and follows the nav by itself
-// — and the menu column keeps it clear with its own bottom padding (values 6.2). On a phone it sits 59px up
-// (lib/shell-layout.ts ABOVE_TAB_BAR_STICKY_CLASS), on the tab bar. It shows below 1024px only, in every state (owner
+// — and the menu column keeps it clear with its own bottom padding (values 6.2). On a phone it sits on the tab bar: the
+// bar's 59px (lib/shell-layout.ts TAB_BAR_HEIGHT_PX) plus env(safe-area-inset-bottom), the padding the tab bar grows by
+// where a WebView reports a bottom inset (ruling P44: WebView 154 in the Android app, about 24.8px, would otherwise hide
+// the total and "Review order" under the tab bar); 59px at inset 0. It shows below 1024px only, in every state (owner
 // Q18: an empty order too) except while its sheet is open (data-open; values 6.1 showBar: !cartOpen — at 820 the sheet
 // and the scrim leave the page's foot bare). The HTML sets no line-height here: normal.
 export const POS_MOBILE_BAR_CLASS =
-  "absolute inset-x-0 bottom-0 max-tab:bottom-[59px] z-10 hidden items-center gap-3 border-t border-border bg-glass px-3.5 py-2.5 leading-[normal] [backdrop-filter:saturate(180%)_blur(20px)] [-webkit-backdrop-filter:saturate(180%)_blur(20px)] max-lg:flex data-open:hidden";
+  "absolute inset-x-0 bottom-0 max-tab:bottom-[calc(59px+env(safe-area-inset-bottom))] z-10 hidden items-center gap-3 border-t border-border bg-glass px-3.5 py-2.5 leading-[normal] [backdrop-filter:saturate(180%)_blur(20px)] [-webkit-backdrop-filter:saturate(180%)_blur(20px)] max-lg:flex data-open:hidden";
 /** "Review order" (values 6.1): 44px, radius 10, --accent with --on-accent, 0 20px, 15px 600; no hover rule. The HTML's
  *  press comes from BRAND_PRESS_CLASS (MobileCartBar), as on the cart's Send KOT and Pay. */
 export const POS_MOBILE_BAR_BUTTON_CLASS =
