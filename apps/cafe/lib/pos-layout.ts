@@ -203,28 +203,42 @@ export function posHeaderRoom(m: { room: PosHeaderRoom; actionsWidth: number; br
   return 2;
 }
 
-// D9.8 (owner decision 2026-09-26) — the cart's more-actions control and the
-// panel it opens. The occasional money controls (reward, promo, discount, the
-// GST preset, extra charges) moved off the always-visible footer stack and
-// behind this one button; components/pos/CartMoreMenu.tsx carries the full why.
-//
-// D9.8b (owner decision 2026-09-26): the three-dot glyph ALONE, no "More"
-// label, sitting at the END of the collapsed note row — so the menu costs the
-// footer no row of its own. Hence a SQUARE 44px target rather than the earlier
-// full-width bar: 44px is the comfort floor these screens are built to, and it
-// compacts to 32px only on an xl+ FINE pointer (the POS_HEADER_CONTROL_CLASS
-// idiom — keying the SHRINK on a fine pointer is cascade-proof where a coarse
-// re-floor would depend on emission order, CB-1d.1 V1), so glass never gets a
-// smaller target than touch.
-export const POS_CART_MORE_BUTTON_CLASS =
-  "flex h-11 w-11 shrink-0 items-center justify-center text-muted-foreground xl:pointer-fine:h-8 xl:pointer-fine:w-8 touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
-// The panel the More button opens. Width is capped to the viewport so it can
-// never overhang a phone screen, and the height cap + scroll keeps its
-// contents reachable when the reward ladder is long or the on-screen keyboard
-// is up — vh base with a dvh override, the POS_DIALOG_LIST_CAP_CLASS pattern,
-// for exactly the reason given there.
-export const POS_CART_MORE_PANEL_CLASS =
-  "w-[min(20rem,calc(100vw-1.5rem))] max-h-[60vh] overflow-y-auto p-3 supports-[height:1dvh]:max-h-[60dvh]";
+// The cart footer's bill rows and the controls inside the Bill options / Note panels (U1 Task 5; values 5.3, 5.5 in
+// docs/superpowers/specs/2026-10-20-pos-html-values.md; design 6.7, 6.8; owner Q11, Q12). D9.8's three-dot trigger and
+// its panel (2026-09-26) became the links row and the one Bill options panel (components/pos/BillOptionsPanel.tsx);
+// these are the looks the bill's rows and the panel's controls share.
+
+/** A bill row (values 5.5 charge rows): the label (with its Remove link) on the left, the amount on the right, 8px apart. */
+export const POS_BILL_ROW_CLASS = "flex items-center justify-between gap-2";
+/** A bill row's label: its words, then the row's link 8px after them. */
+export const POS_BILL_LABEL_CLASS = "flex min-w-0 items-center gap-2";
+/** A bill row's amount (values 5.5): --text. */
+export const POS_BILL_VALUE_CLASS = "whitespace-nowrap text-foreground";
+/** The HTML's "Remove" / "Add back" link in a bill row (values 5.5): 12px --link, no padding (our "Undo" too). */
+export const POS_BILL_LINK_CLASS =
+  "cursor-pointer whitespace-nowrap bg-transparent p-0 text-[12px] text-link disabled:cursor-not-allowed disabled:opacity-50";
+
+/** A field in the Bill options / Note panels (design 6.7): 34px, radius 8, 13.5px (16px below 720px, ruling R36); on the
+ *  kit Input / Textarea it replaces their height, radius and type through tailwind-merge. */
+export const POS_PANEL_FIELD_CLASS =
+  "h-[34px] rounded-[8px] border-border px-2.5 text-[13.5px] shadow-none md:text-[13.5px] max-tab:text-base";
+/** A panel's plain button, the HTML popover's "Move" look (values 5.3): 34px, 1px --border on --surface, radius 8,
+ *  0 12px, 13px 500; hover --hover. */
+export const POS_PANEL_BUTTON_CLASS =
+  "inline-flex h-[34px] cursor-pointer items-center justify-center whitespace-nowrap rounded-[8px] border border-border bg-card px-3 text-[13px] font-medium text-foreground not-disabled:hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50";
+/** A panel's confirming button (Apply, Add), the HTML's small ink button (values 8.3 "Use"): 34px, --ink, --on-ink,
+ *  radius 8, 0 12px, 13px 600. */
+export const POS_PANEL_PRIMARY_CLASS =
+  "inline-flex h-[34px] cursor-pointer items-center justify-center whitespace-nowrap rounded-[8px] border-0 bg-ink px-3 text-[13px] font-semibold text-on-ink disabled:cursor-not-allowed disabled:opacity-50";
+/** A panel's pick (a reward rung, a scratch card), the HTML popover's pickup button (values 5.3): a 1px rule, radius 8,
+ *  12.5px 500; the chosen one in --ink with --on-ink (POS_PANEL_PICK_ON_CLASS), the others on --surface. */
+export const POS_PANEL_PICK_CLASS =
+  "flex min-w-0 max-w-full cursor-pointer rounded-[8px] border px-2.5 py-1.5 text-left text-[12.5px] font-medium disabled:cursor-not-allowed";
+export const POS_PANEL_PICK_ON_CLASS = "border-ink bg-ink text-on-ink";
+export const POS_PANEL_PICK_OFF_CLASS = "border-border bg-card text-foreground not-disabled:hover:bg-hover";
+/** A panel's link ("Add promo code", "Add additional charge"): the footer links' --link at 13px 500, a field's 34px row. */
+export const POS_PANEL_LINK_CLASS =
+  "inline-flex h-[34px] cursor-pointer items-center gap-1.5 self-start bg-transparent p-0 text-[13px] font-medium text-link disabled:cursor-not-allowed disabled:opacity-50";
 
 // Instant-tap feel (CB-1d.1 L1): no double-tap-zoom delay, no long-press text
 // selection, and a compositor-only pressed state (scale/opacity — never paint)

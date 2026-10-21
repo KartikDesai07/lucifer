@@ -248,6 +248,11 @@ test("PIN: Cart.tsx never re-derives the bill total — it takes `total` as a re
     /^\s*total:\s*number;/m,
     "CartProps must declare `total: number` as REQUIRED, so a caller cannot mount the cart without the figure every other surface is showing.",
   );
+  // U1 Task 5 (owner Q12): the bill rows and Total moved into CartBill.tsx — the same rule holds there.
+  const bill = stripComments(readSrc("components/pos/CartBill.tsx"));
+  assert.ok(bill.includes("{inr(total)}"), "landmark: CartBill prints the total it is handed");
+  assert.ok(!/const\s+total\s*=/.test(bill), "CartBill.tsx must not compute its own total");
+  assert.ok(!/subtotal\s*-\s*discount/.test(bill), "CartBill.tsx must not do bill arithmetic");
 });
 
 // The second confirmed defect: the POS cleared the operator's charge waiver

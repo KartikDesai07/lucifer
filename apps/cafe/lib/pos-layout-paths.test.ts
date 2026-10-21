@@ -253,7 +253,7 @@ test("PIN: MobileCartBar never reverts to the old md-hidden wrapper or a fixed 8
 });
 
 // U1 Task 4 (values 5.2, 5.4; design 6.5, 6.6): the cart is the HTML's head (CartHead.tsx) over its lines
-// (CartLines.tsx), then today's note row and footer until U1 Task 5.
+// (CartLines.tsx); U1 Task 5 (values 5.5): then the HTML's footer.
 test("PIN: Cart composes the HTML's head and lines, and still takes the sheet's onBack", () => {
   const src = stripComments(readSrc(CART_TSX));
   assert.match(src, /onBack\?:\s*\(\)\s*=>\s*void/, "CartProps must declare onBack?: () => void");
@@ -261,8 +261,8 @@ test("PIN: Cart composes the HTML's head and lines, and still takes the sheet's 
   assert.match(src, /import \{ CartLines \} from "@\/components\/pos\/CartLines";/, "the lines come from CartLines.tsx");
   const head = src.indexOf("<CartHead");
   const lines = src.indexOf("<CartLines");
-  const notes = src.indexOf("<CartNotes");
-  assert.ok(head > 0 && head < lines && lines < notes, "the head, then the lines, then today's note row");
+  const footer = src.indexOf('data-ui="pos-cart-footer"');
+  assert.ok(head > 0 && head < lines && lines < footer, "the head, then the lines, then the HTML's footer (U1 Task 5)");
   assert.match(between(src, "<CartHead", "/>"), /onBack=\{onBack\}/, "the sheet's way back reaches the head");
   for (const gone of ["<EmptyState", "CartSentSection", "ShoppingCart", "Cart is empty", "Tab {resumedOrderId}"]) {
     assert.ok(!src.includes(gone), `Cart.tsx must no longer carry today's head/list piece ${gone} (the HTML's head and lines replace it)`);
@@ -306,16 +306,51 @@ test("PIN: Cart's ROOT is the HTML's cart column body — it scrolls as one (bot
   assert.ok(!stripComments(readSrc(POS_PAGE)).includes("rounded-none border-0"), "the page no longer has a card frame to undo");
 });
 
-test("PIN: every CTA in CartActions carries the touch-target class POS_CART_CTA_CLASS", () => {
+// U1 Task 5 (values 5.5; design 6.8; ruling R1): the HTML's two 50px buttons replace the kit CTAs. The pin's meaning is
+// kept — every CTA is touch-sized (50px is above the 44px floor) — through the two HTML looks every button wears.
+test("PIN: CartActions draws the HTML's two buttons — every button wears the Send or the Pay look, both 50px, and the keys find them", () => {
   const src = stripComments(readSrc(CART_TSX));
   const start = src.indexOf("function CartActions");
   assert.ok(start >= 0, "CartActions must exist in Cart.tsx");
   const nextFnIdx = src.indexOf("\nfunction ", start + 1);
   const body = nextFnIdx > 0 ? src.slice(start, nextFnIdx) : src.slice(start);
-  const buttonCount = (body.match(/<Button\b/g) ?? []).length;
-  assert.ok(buttonCount >= 4, `landmark: CartActions must render >=4 <Button elements, found ${buttonCount}`);
-  const ctaClassCount = (body.match(/className=\{POS_CART_CTA_CLASS\}/g) ?? []).length;
-  assert.equal(ctaClassCount, buttonCount, `every CTA needs the touch-target class (else a 40px target under a thumb): ${buttonCount} <Button, ${ctaClassCount} with POS_CART_CTA_CLASS`);
+  assert.ok(!/<Button\b/.test(body), "no kit Button: the HTML's buttons are drawn as the HTML draws them");
+  const buttons = body.match(/<button\b[^>]*>/g) ?? [];
+  assert.ok(buttons.length >= 4, `landmark: Send again, Send KOT and the two Pay buttons (new order, tab), found ${buttons.length}`);
+  for (const tag of buttons) {
+    assert.match(tag, /className=\{(?:SEND|PAY)_BUTTON_CLASS\}/, `every CTA wears one of the two HTML looks (no cn() wrap): ${tag}`);
+  }
+  assert.ok(body.includes('<SendDiscard kind="kitchen" disabled={sending} onDiscard={onDiscard} className={SEND_BUTTON_CLASS} />'), "Discard takes its slot's look");
+  for (const name of ["SEND_LOOK", "PAY_LOOK"]) {
+    const look = constOf(src, name).split(/\s+/);
+    for (const t of ["flex", "h-[50px]", "items-center", "justify-center", "gap-2", "whitespace-nowrap", "rounded-[10px]", "px-1.5", "py-px", "font-semibold", "cursor-pointer"]) {
+      assert.ok(look.includes(t), `values 5.5: ${name} must include ${t}`);
+    }
+  }
+  const send = constOf(src, "SEND_LOOK").split(/\s+/);
+  for (const t of ["border", "border-ink", "bg-card", "text-foreground", "text-[14.5px]", "not-disabled:hover:bg-hover", "disabled:opacity-50"]) {
+    assert.ok(send.includes(t), `values 5.5 Send KOT: ${t}`);
+  }
+  const pay = constOf(src, "PAY_LOOK").split(/\s+/);
+  for (const t of ["[border:0]", "bg-primary", "text-primary-foreground", "text-[15px]", "not-disabled:hover:bg-primary-hover", "disabled:opacity-40"]) {
+    assert.ok(pay.includes(t), `values 5.5 Pay: ${t}`);
+  }
+  assert.match(src, /const SEND_BUTTON_CLASS = cn\(SEND_LOOK, BRAND_PRESS_CLASS\);/, "the HTML's press on Send");
+  assert.match(src, /const PAY_BUTTON_CLASS = cn\(PAY_LOOK, BRAND_PRESS_CLASS\);/, "the HTML's press on Pay");
+  assert.equal(count(body, '<div className="grid grid-cols-[1fr_1.4fr] gap-2" data-ui="pos-cart-actions">'), 2, "values 5.5: the 1fr 1.4fr grid, 8px apart (a new order's and a tab's)");
+  assert.equal(count(body, 'data-ui="pos-send"'), 1, "F8 finds the one Send KOT button");
+  assert.equal(count(body, 'data-ui="pos-pay"'), 2, "F9 finds Pay (a new order's and a tab's)");
+  assert.match(body, /\{newCount > 0 \? `Send KOT · \$\{newCount\}` : "All sent"\}/, "owner Q1: the HTML's words, the unsent quantity");
+  assert.equal(count(body, "Pay {inr(total)}"), 2, "owner Q1: Pay ₹{total} on both");
+  assert.equal(count(body, '<span aria-hidden="true" className={SEND_CHIP_CLASS}>F8</span>'), 1, "the F8 chip");
+  assert.equal(count(body, '<span aria-hidden="true" className={PAY_CHIP_CLASS}>F9</span>'), 2, "the F9 chip");
+  for (const chip of ["SEND_CHIP_CLASS", "PAY_CHIP_CLASS"]) {
+    const t = constOf(src, chip).split(/\s+/);
+    for (const k of ["hidden", "tab:inline", "rounded-[4px]", "border", "px-1", "font-mono", "text-[11px]", "leading-4"]) {
+      assert.ok(t.includes(k), `values 5.5: the ${chip} key chip (Geist Mono 11, from 720px) needs ${k}`);
+    }
+  }
+  assert.ok(constOf(src, "PAY_CHIP_CLASS").includes("border-[rgba(255,255,255,.5)]"), "the Pay chip's white rule, precomputed (no runtime color-mix)");
 });
 
 // U1 Task 4 (values 5.4, 0.3 stepBox/stepW/stepH; ruling R1: the HTML's sizes on touch screens too): the HTML's line —
@@ -1117,132 +1152,127 @@ test("PIN: the menu column carries min-w-0 so no content's min-content width can
 });
 
 // ---------------------------------------------------------------------------
-// D9.8 (owner decision 2026-09-26) — the cart footer's "More" menu.
-// The occasional money controls moved off the always-visible footer stack.
-// These pins guard the SAFETY property that made that move acceptable:
-// an adjustment the customer is actually paying is never concealed by it.
+// U1 Task 5 (owner Q11, 2026-10-21; design 6.7, 6.8; values 5.5): the cart footer is the HTML's — the links row, the
+// bill behind "Total · Details", the notices, the two buttons. Today's three-dot More menu (D9.8, 2026-09-26) became the
+// one Bill options panel the links open at their own section; its contents and their order did not change. The SAFETY
+// property D9.8 pinned still holds: an adjustment the customer is paying is never concealed — the links name it
+// (lib/pos-footer.ts, unit-tested in lib/pos-footer.test.ts) and the bill (CartBill.tsx) keeps each applied row and its
+// remove control outside the panel.
 // ---------------------------------------------------------------------------
 
-const CART_MORE_MENU = "apps/cafe/components/pos/CartMoreMenu.tsx";
+const BILL_OPTIONS_PANEL = "apps/cafe/components/pos/BillOptionsPanel.tsx";
+const CART_BILL = "apps/cafe/components/pos/CartBill.tsx";
+const CART_FOOTER_LINKS = "apps/cafe/components/pos/CartFooterLinks.tsx";
+const CART_NOTES = "apps/cafe/components/pos/CartNotes.tsx";
 const CART_EXTRA_CHARGES = "apps/cafe/components/pos/CartExtraCharges.tsx";
+const POS_FOOTER_TS = "apps/cafe/lib/pos-footer.ts";
+const POS_KEYS = "apps/cafe/components/pos/PosKeys.tsx";
 
-test("PIN: D9.8 — the occasional money controls render INSIDE CartMoreMenu, not in the always-visible footer stack", () => {
+test("PIN: owner Q11 — the More menu's contents render INSIDE the Bill options panel, in today's order, each in its captioned section", () => {
   const src = stripComments(readSrc(CART_TSX));
-  const open = src.indexOf("<CartMoreMenu");
-  const close = src.indexOf("</CartMoreMenu>");
-  assert.ok(open > 0, "Cart.tsx must render <CartMoreMenu>");
-  assert.ok(close > open, "Cart.tsx must close </CartMoreMenu>");
-
+  const open = src.indexOf("<BillOptionsPanel");
+  const close = src.indexOf("</BillOptionsPanel>");
+  assert.ok(open > 0 && close > open, "Cart.tsx must render <BillOptionsPanel>…</BillOptionsPanel>");
   const inside = src.slice(open, close);
-  for (const needle of ["<CartReward", "<CartPromo", "<CartExtraCharges", "POS_CART_GST_BUTTON_CLASS"]) {
-    assert.ok(
-      inside.includes(needle),
-      `${needle} must render INSIDE the More menu — putting it back in the always-visible stack is what crowded the 22rem column and the phone sheet`,
-    );
+  // Today's binding order inside the More menu (owner decision: the reward sits right above the discount), kept.
+  let last = -1;
+  for (const needle of ["<CartReward", "<CartPromo", 'aria-label="Discount value"', "POS_CART_GST_BUTTON_CLASS", "<CartExtraCharges"]) {
+    const at = inside.indexOf(needle);
+    assert.ok(at > last, `${needle} must render inside the panel, after the control before it (reward, promo, discount, the GST preset, extra charges)`);
+    last = at;
   }
-  // The discount field is identified by its own aria-label, not by a tag.
-  assert.ok(
-    inside.includes('aria-label="Discount value"'),
-    "the discount input must render inside the More menu",
+  const sections = [...inside.matchAll(/<BillOptionsSection id="(\w+)" caption="([^"]+)"/g)].map((m) => `${m[1]}:${m[2]}`);
+  assert.deepEqual(
+    sections,
+    ["reward:Reward", "promo:Promo code", "discount:Discount", "charges:Extra charges"],
+    "design 6.7: one captioned section per link, in today's order",
   );
+  assert.ok(!src.includes("CartMoreMenu") && !src.includes("moreMenu"), "the three-dot trigger and its two mount points are gone (owner Q11)");
+  assert.ok(!src.includes("activeAdjustments"), "the trigger's summary is gone: the links name what is applied");
 });
 
-test("PIN: D9.8 — APPLIED money stays OUTSIDE the menu: the discount line, the extra-charge rows and Total are never hidden behind a tap", () => {
+test("PIN: owner Q11 — APPLIED money stays OUTSIDE the panel: the bill rows, Total and each row's remove control live in CartBill", () => {
+  const cart = stripComments(readSrc(CART_TSX));
+  const open = cart.indexOf("<BillOptionsPanel");
+  const close = cart.indexOf("</BillOptionsPanel>");
+  const bill = cart.search(/<CartBill[\s/>]/);
+  assert.ok(bill > 0, "Cart.tsx must render <CartBill");
+  assert.ok(bill < open || bill > close, "the bill renders outside the panel — a charge the customer pays is never behind a tap");
+
+  const src = stripComments(readSrc(CART_BILL));
+  // Needles anchored on the tag BOUNDARY: a bare prefix would pass a renamed-away component (mutation-tested in D9.8).
+  assert.match(src, /<CartExtraChargeRows[\s/>]/, "the APPLIED extra-charge rows");
+  assert.ok(src.includes('gstActive ? "GST Discount applied" : "Discount applied"'), 'the "Discount applied" line');
+  assert.match(src, /<span>Total<\/span>/, "Total");
+  assert.ok(!/<CartExtraChargeRows[^>]*onAdd/.test(src), "CartExtraChargeRows takes no onAdd — it renders applied rows only");
+  const call = src.match(/<CartAppliedRows[\s\S]*?\/>/);
+  assert.ok(call, "the promo / reward rows (CartAppliedRows) render in the bill");
+  assert.match(call![0], /promoCode=\{promoCode\}/, "fed the live promoCode");
+  assert.match(call![0], /selectedReward=\{/, "fed the selected reward offer");
+  assert.match(call![0], /rewardLocked=\{rewardLocked\}/, "fed rewardLocked");
+  assert.match(src, /<CartAppliedCard[\s/>]/, "the picked scratch card's row");
+
+  const rowsSrc = stripComments(readSrc("apps/cafe/components/pos/CartAppliedRows.tsx"));
+  assert.match(rowsSrc, /Promo \{promoCode\} applied/, "the promo row names the code in literal text, never colour alone");
+  assert.match(rowsSrc, /rungWorthLabel\(selectedReward\.rung\)/, "the reward row names what the reward is worth");
+  assert.ok(/if \(!promoCode && !selectedReward\) return null;/.test(rowsSrc), "nothing applied: no row");
+  assert.match(rowsSrc, /\{!rewardLocked && \(/, "a LOCKED reward renders without a remove control");
+});
+
+test("PIN: owner Q11 — the links name what is applied, read off the same props the controls render from (keyed on the entered figure)", () => {
   const src = stripComments(readSrc(CART_TSX));
-  const close = src.indexOf("</CartMoreMenu>");
-  assert.ok(close > 0, "landmark: Cart.tsx must close </CartMoreMenu>");
-  const after = src.slice(close);
-
-  // Needle is anchored on the tag BOUNDARY (`\s` or `/>`), not a bare prefix:
-  // `includes("<CartExtraChargeRows")` also matches `<CartExtraChargeRowsXX`,
-  // so a renamed-away component would have passed this pin (caught by
-  // mutation-testing it — a bare substring is not an identity check).
-  assert.match(
-    after,
-    /<CartExtraChargeRows[\s/>]/,
-    "the APPLIED extra-charge rows must render AFTER the menu closes — a charge the customer pays is never hidden behind a tap",
-  );
-  assert.ok(
-    after.includes("Discount applied"),
-    'the "Discount applied" line must render outside the menu',
-  );
-  assert.ok(
-    /<span>Total<\/span>/.test(after),
-    "Total must render outside the menu",
-  );
-  // The rows component takes no onAdd: the FORM is what moved, not the list.
-  assert.ok(
-    !/<CartExtraChargeRows[^>]*onAdd/.test(src),
-    "CartExtraChargeRows must not take onAdd — it renders applied rows only",
-  );
-});
-
-test("PIN: D9.8 — CartMoreMenu's trigger summarises what it is hiding, so an applied adjustment can never look idle", () => {
-  const cartSrc = stripComments(readSrc(CART_TSX));
-  assert.match(
-    cartSrc,
-    /<CartMoreMenu\s+activeLabels=\{activeAdjustments\}/,
-    "Cart.tsx must pass activeAdjustments to CartMoreMenu's activeLabels",
-  );
-  // Every adjustment the menu can hide must contribute to that summary. The
-  // condition is matched on the SAME line as its own push(), not merely
-  // present somewhere in the file: `promoCode` (say) appears in the props,
-  // the destructure and the CartPromo call, so a whole-file `includes` passed
-  // even with the push deleted (caught by mutation-testing this pin).
-  // Each condition is matched against the whole activeAdjustments BLOCK
-  // (from the declaration to the return), not the single push line: D9.8c
-  // moved the discount test onto its own `if (...) { push }` so it could also
-  // fire on an entered-but-underived figure. Scoping to the block keeps the
-  // pin honest — `promoCode` alone appears all over the file, so a whole-file
-  // includes() would pass with the push deleted (that escape was caught by
-  // mutation-testing this pin).
-  const blockStart = cartSrc.indexOf("const activeAdjustments");
-  assert.ok(blockStart > 0, "landmark: Cart.tsx must declare activeAdjustments");
-  const blockEnd = cartSrc.indexOf("const moreMenu", blockStart);
-  assert.ok(blockEnd > blockStart, "landmark: moreMenu must follow the activeAdjustments block");
-  const block = cartSrc.slice(blockStart, blockEnd);
-  assert.ok(
-    (block.match(/activeAdjustments\.push/g) ?? []).length >= 4,
-    "expected at least 4 activeAdjustments.push calls",
-  );
-  for (const [needle, what] of [
-    ["discountRaw > 0", "a manual discount figure the operator entered"],
-    ["promoCode", "an applied promo code"],
-    ["selectedRewardAt !== null", "a selected reward"],
-    ["extraCharges.length > 0", "a staff-entered extra charge"],
-  ] as const) {
-    assert.ok(
-      block.includes(needle),
-      `activeAdjustments must account for ${what} — the block does not test \`${needle}\``,
-    );
+  const view = between(src, "footerLinks({", "})");
+  for (const needle of ["resuming", "discountRaw", "discountUnit", "promoCode", "rewardWorth", "extraCount: extraCharges.length", "notes"]) {
+    assert.ok(view.includes(needle), `the links' view must carry ${needle}`);
   }
-
-  const menuSrc = stripComments(readSrc(CART_MORE_MENU));
-  assert.ok(
-    menuSrc.includes("activeLabels.join"),
-    "CartMoreMenu must render the active labels on its own trigger, not only in aria",
-  );
+  const lib = stripComments(readSrc(POS_FOOTER_TS));
+  assert.match(lib, /view\.discountRaw > 0/, "a discount the operator ENTERED counts even when the derived amount is 0 (an empty cart after Clear)");
+  assert.match(lib, /view\.discountUnit === "GST"/, "the GST preset counts on its own");
+  const links = stripComments(readSrc(CART_FOOTER_LINKS));
+  assert.match(links, /\{link\.applied \?\? link\.label\}/, "an applied link shows its value in place of its word");
+  assert.ok(links.includes("font-semibold text-accent-foreground"), "values 5.5 / design 6.7: an applied link in --accent-i 600");
 });
 
-test("PIN: D9.8 — CartMoreMenu uses a Popover, NEVER a DropdownMenu (a DropdownMenuItem closes on click and would make the discount/promo/charge inputs unusable)", () => {
-  const src = stripComments(readSrc(CART_MORE_MENU));
-  assert.match(
-    src,
-    /from\s*"@\/components\/ui\/popover"/,
-    "CartMoreMenu must import from components/ui/popover",
-  );
-  assert.ok(src.includes("<PopoverContent"), "landmark: CartMoreMenu must render a PopoverContent");
-  assert.ok(
-    !src.includes("dropdown-menu"),
-    "CartMoreMenu must not import the dropdown-menu primitive — its items close the menu on click, which breaks typing a discount or a promo code",
-  );
-  assert.ok(
-    !src.includes("DropdownMenuItem"),
-    "CartMoreMenu must not use DropdownMenuItem — see above",
-  );
+test("PIN: owner Q11 / D9.8c — the links row is NEVER gated on an empty cart: Clear keeps the adjustments, so removing them stays reachable; only busy locks it", () => {
+  const src = stripComments(readSrc(CART_TSX));
+  const tag = src.match(/<CartFooterLinks[^>]*\/>/);
+  assert.ok(tag, "landmark: Cart.tsx must render <CartFooterLinks … />");
+  assert.match(tag![0], /disabled=\{isBusy\}/, "the links lock ONLY while busy (plan Review Focus 1)");
+  assert.ok(!/items\.length/.test(tag![0]), "the links must NOT be gated on the cart's items — a surviving adjustment would be stranded");
+  const links = stripComments(readSrc(CART_FOOTER_LINKS));
+  assert.equal(count(links, "<button"), 1, "one button per link");
+  assert.match(links, /disabled=\{disabled\}/, "each link honours the lock");
+  assert.match(src, /if \(isBusy && panel !== null\) setPanel\(null\);/, "a panel open when the cart turns busy closes: nothing in it acts while a send flies");
 });
 
-test("PIN: D9.8 — CartExtraCharges still exports BOTH the add-form and the applied-rows components", () => {
+test("PIN: owner Q11 — the Bill options and Note panels are one Popover anchored on the footer (never a DropdownMenu), opening upward at the tapped section", () => {
+  const panel = stripComments(readSrc(BILL_OPTIONS_PANEL));
+  assert.match(panel, /from "@\/components\/ui\/popover"/, "the kit Popover: inputs inside keep their focus");
+  assert.ok(panel.includes("<PopoverContent"), "landmark: a PopoverContent");
+  assert.ok(!panel.includes("dropdown-menu") && !panel.includes("DropdownMenuItem"), "never a DropdownMenu: its items close on click and steal the field's focus");
+  assert.match(panel, /side="top"/, "it opens upward, over the lines, never over the bill and the buttons");
+  assert.ok(panel.includes("data-bill-section"), "each section is addressable so the tapped one scrolls into view and takes the focus");
+  assert.match(panel, /onOpenAutoFocus=\{\(e\) => e\.preventDefault\(\)\}/, "the panel focuses the tapped section's field, not its first button");
+  const cart = stripComments(readSrc(CART_TSX));
+  assert.match(cart, /<PopoverAnchor asChild>\s*<div data-ui="pos-cart-footer"/, "the footer anchors the panels");
+  assert.ok(!stripComments(readSrc(POS_LAYOUT_TS)).includes("POS_CART_MORE_"), "the three-dot trigger's classes went with it");
+});
+
+test("PIN: the Note link opens the order note for a NEW order only (an add-round carries no notes); the note keeps its 200-character field", () => {
+  const lib = stripComments(readSrc(POS_FOOTER_TS));
+  assert.match(lib, /if \(!view\.resuming\)/, "no Note link on a resumed tab");
+  const cart = stripComments(readSrc(CART_TSX));
+  assert.match(cart, /if \(resuming && panel === "note"\) setPanel\(null\);/, "a resumed tab closes the note panel (it has no note)");
+  assert.match(cart, /\{panel === "note" \? \(\s*<CartNotes /, "the Note link opens the note panel");
+  const notes = stripComments(readSrc(CART_NOTES));
+  assert.match(notes, /maxLength=\{ORDER_NOTES_MAX_LEN\}/, "the 200-character cap");
+  assert.ok(notes.includes('placeholder="Order note (prints on KOT)"'), "today's placeholder");
+  assert.ok(notes.includes(">Order note<"), "the panel's title labels the field");
+  assert.match(notes, /htmlFor=\{notesId\}/, "the title is the field's label (useId: the cart mounts twice)");
+  assert.ok(!notes.includes("trailing"), "the three-dot trigger no longer rides the note");
+});
+
+test("PIN: CartExtraCharges still exports BOTH the add-form and the applied-rows components", () => {
   const src = stripComments(readSrc(CART_EXTRA_CHARGES));
   assert.match(src, /export function CartExtraChargeRows/, "must export CartExtraChargeRows (applied rows)");
   assert.match(src, /export function CartExtraCharges\b/, "must export CartExtraCharges (the add form)");
@@ -1252,119 +1282,54 @@ test("PIN: D9.8 — CartExtraCharges still exports BOTH the add-form and the app
   );
 });
 
-test("PIN: D9.8b — the more-actions trigger is the three-dot glyph ALONE (no 'More' label) and stays reachable while resuming", () => {
-  const menuSrc = stripComments(readSrc(CART_MORE_MENU));
-  assert.ok(menuSrc.includes("<MoreHorizontal"), "landmark: CartMoreMenu must render the MoreHorizontal glyph");
-  // Owner decision 2026-09-26: no word on the trigger. A literal "More" in
-  // the rendered label is exactly what was asked to be removed.
-  assert.ok(
-    !/>\s*\{?\s*["'`]?More["'`]?\s*\}?\s*</.test(menuSrc),
-    'CartMoreMenu must not render a literal "More" label — the trigger is the three-dot glyph alone',
-  );
-  assert.ok(
-    !menuSrc.includes('activeLabels.join(" · ")'),
-    "the label-summary text is retired with the label — the applied state now shows as a dot plus the aria-label",
-  );
-  // ...but the applied state must STILL be announced and still be visible.
-  assert.ok(
-    menuSrc.includes("activeLabels.join(\", \")"),
-    "CartMoreMenu's aria-label must still name what is applied",
-  );
-  assert.match(
-    menuSrc,
-    /hasActive\s*&&\s*\(/,
-    "CartMoreMenu must render a visible marker when an adjustment is applied",
-  );
-
-  // Both mount points: the note row (normal sale) and its own row (resuming,
-  // where CartNotes does not render at all — without this the discount, promo
-  // and extra-charge controls would be unreachable on an open tab).
-  const cartSrc = stripComments(readSrc(CART_TSX));
-  assert.match(
-    cartSrc,
-    /<CartNotes[^>]*trailing=\{moreMenu\}/,
-    "Cart.tsx must pass the menu to CartNotes as its trailing slot",
-  );
-  assert.match(
-    cartSrc,
-    /\{resuming\s*&&[^}]*\{moreMenu\}/,
-    "Cart.tsx must ALSO mount the menu while resuming — CartNotes does not render then, and the controls must not become unreachable",
-  );
-});
-
-test("PIN: D9.8b — CartNotes renders its trailing slot in BOTH branches, so the money controls never vanish when a note is opened", () => {
-  const src = stripComments(readSrc("apps/cafe/components/pos/CartNotes.tsx"));
-  assert.match(src, /trailing\?:\s*ReactNode/, "CartNotes must declare an optional trailing?: ReactNode");
-  const collapsedAt = src.indexOf("if (!expanded)");
-  assert.ok(collapsedAt >= 0, "landmark: CartNotes must keep its collapsed branch");
-
-  // Originally the slot rendered ONLY on the collapsed row, which made the
-  // three-dot trigger — and with it discount, promo, reward and extra charges
-  // — disappear the moment an operator opened the note box. Both branches now
-  // carry it.
-  const slots = src.match(/\{trailing\}/g) ?? [];
-  assert.equal(
-    slots.length,
-    2,
-    `CartNotes must render {trailing} in BOTH the collapsed and expanded branches, found ${slots.length}`,
-  );
-  const first = src.indexOf("{trailing}");
-  const second = src.indexOf("{trailing}", first + 1);
-  assert.ok(first > collapsedAt, "the first {trailing} must sit inside the collapsed branch");
-  assert.ok(second > first, "landmark: the second {trailing} must follow the first");
-  // The expanded branch keeps its own Done control alongside the slot.
-  assert.match(src, /onClick=\{\(\)\s*=>\s*setExpanded\(false\)\}/, "landmark: the expanded box must keep its Done control");
-});
-
-test("PIN: D9.8c — the More menu is NEVER gated on an empty cart: Clear keeps the adjustments, so removing them must stay reachable", () => {
+test("PIN: the footer is the HTML's (values 5.5): sticky at the cart's foot over its lines, 12px 16px 14px, a rule and a soft lift; links, bill, notices, buttons in that order", () => {
   const src = stripComments(readSrc(CART_TSX));
-  const trigger = src.match(/<CartMoreMenu[^>]*>/);
-  assert.ok(trigger, "landmark: Cart.tsx must render <CartMoreMenu ...>");
-  assert.match(trigger![0], /disabled=\{isBusy\}/, "CartMoreMenu must be disabled ONLY on isBusy");
-  assert.ok(
-    !/items\.length\s*===\s*0/.test(trigger![0]),
-    "CartMoreMenu must NOT be gated on items.length === 0 — onClear is clearCart (items only), so a discount/promo/reward/extra charge survives Clear; gating the trigger stranded it: invisible, unreachable, and silently re-applied to the next sale",
-  );
-
-  // The dot must report a discount the operator ENTERED even when the derived
-  // amount is 0 (usePosTotals returns 0 while subtotal is 0) — otherwise a
-  // discount that survived Clear reports nothing anywhere at all.
-  assert.match(
-    src,
-    /discountRaw\s*>\s*0/,
-    "activeAdjustments must key the discount on the entered figure (discountRaw), not only the derived `discount`",
-  );
-  assert.match(src, /activeAdjustments\.push/, "landmark: activeAdjustments must still be built");
+  const footer = constOf(src, "FOOTER_CLASS").split(/\s+/);
+  for (const t of [
+    "sticky", "bottom-0", "z-[2]", "flex", "flex-none", "flex-col", "gap-2.5", "border-t", "border-border", "bg-card", "px-4", "pt-3",
+    "pb-3.5", "max-tab:pb-[calc(12px+env(safe-area-inset-bottom))]", "[box-shadow:0_-10px_24px_rgba(0,0,0,.04)]", "leading-[normal]",
+  ]) {
+    assert.ok(footer.includes(t), `values 5.5 footer: ${t}`);
+  }
+  const at = (needle: string) => {
+    const i = src.indexOf(needle);
+    assert.ok(i > 0, `landmark: ${needle}`);
+    return i;
+  };
+  const order = ["<CartFooterLinks", "<CartBill", "<CartUnavailableNotice", "<WriteNoticePanel", "<CartActions"].map(at);
+  assert.deepEqual([...order].sort((a, b) => a - b), order, "the links, the bill, the menu notice, the send notice, the buttons");
+  const links = stripComments(readSrc(CART_FOOTER_LINKS));
+  assert.match(links, /className="flex flex-wrap gap-x-4 gap-y-1"/, "values 5.5: the links wrap, 4px 16px apart");
+  assert.ok(links.includes("text-[12.5px] font-medium text-link"), "values 5.5: a link 12.5px 500 --link");
 });
 
-test("PIN: D9.8d — an applied PROMO and a selected REWARD render OUTSIDE the More menu: neither moves Subtotal/Total on this screen, so hiding them made a discounted bill look identical to an undiscounted one", () => {
-  const src = stripComments(readSrc(CART_TSX));
-  const close = src.indexOf("</CartMoreMenu>");
-  assert.ok(close > 0, "landmark: Cart.tsx must close </CartMoreMenu>");
-  const after = src.slice(close);
-  assert.match(
-    after,
-    /<CartAppliedRows[\s/>]/,
-    "CartAppliedRows must render AFTER the menu closes — a promo/reward the customer is getting is never hidden behind a tap",
-  );
+test("PIN: the bill is the HTML's (values 5.5, 0.4; owner Q12): the details behind Total · Details / Hide details, open by default from an 820px-tall window", () => {
+  const src = stripComments(readSrc(CART_BILL));
+  assert.match(src, /const billOpen = toggled \?\? windowHeight >= BILL_OPEN_MIN_HEIGHT_PX;/, "values 0.4: billOpen = s.billOpen ?? (s.h >= 820)");
+  assert.match(src, /const BILL_OPEN_MIN_HEIGHT_PX = 820;/, "the HTML's 820px");
+  assert.match(src, /useWindowHeight\(\)/, "the window's own height (the HTML's s.h)");
+  assert.ok(src.includes('{billOpen ? "Hide details" : "Details"}'), "owner Q1: the HTML's words");
+  assert.match(src, /aria-expanded=\{billOpen\}/, "the toggle says whether the rows show");
+  assert.ok(src.includes("text-[26px] font-semibold tracking-[-0.02em]"), "values 5.5: the total 26px 600 -.02em");
+  assert.ok(src.includes("text-[15px] font-semibold"), 'values 5.5: "Total" 15px 600');
+  assert.ok(src.includes("text-[12px] font-medium text-link"), 'values 5.5: "Details" 12px 500 --link');
+  assert.ok(src.includes("text-status-ok-ink"), "values 5.5: the discount in --ok-i");
+  assert.match(src, /mt-1 flex items-baseline justify-between border-t border-border-2 pt-2\.5/, "values 5.5: the total row (4px over a --border-2 rule, 10px under it)");
+  assert.ok(!/const\s+total\s*=/.test(src) && !/subtotal\s*-\s*discount/.test(src), "the bill only prints usePosTotals' figures");
+});
 
-  // It must be fed the real state, not a placeholder.
-  const call = after.match(/<CartAppliedRows[\s\S]*?\/>/);
-  assert.ok(call, "landmark: the CartAppliedRows call must be readable");
-  assert.match(call![0], /promoCode=\{promoCode\}/, "must receive the live promoCode");
-  assert.match(call![0], /selectedReward=\{/, "must receive the selected reward offer");
-  assert.match(call![0], /rewardLocked=\{rewardLocked\}/, "must receive rewardLocked");
-
-  const rowsSrc = stripComments(readSrc("apps/cafe/components/pos/CartAppliedRows.tsx"));
-  assert.match(rowsSrc, /Promo \{promoCode\} applied/, "the promo row must name the code in literal text, never colour alone");
-  assert.match(rowsSrc, /rungWorthLabel\(selectedReward\.rung\)/, "the reward row must name what the reward is worth");
-  assert.ok(
-    /if \(!promoCode && !selectedReward\) return null;/.test(rowsSrc),
-    "CartAppliedRows must render nothing when neither is applied — an ordinary sale pays no footer height",
-  );
-  // A granted reward on a resumed tab cannot be revoked here, so it must not
-  // offer a control that would silently do nothing.
-  assert.match(rowsSrc, /\{!rewardLocked && \(/, "a LOCKED reward must render without a remove control");
+test("PIN: owner Q13 — PosKeys is rendered ONCE, by the page, and presses only the visible cart's enabled buttons", () => {
+  const page = stripComments(readSrc(POS_PAGE));
+  assert.equal(count(page, "<PosKeys"), 1, "one key listener for the page");
+  assert.match(page, /<PosKeys busy=\{pos\.isBusy\} \/>/, "the cart's busy flag reaches the keys");
+  assert.equal(count(stripComments(readSrc(CART_TSX)), "<PosKeys"), 0, "never per cart mount (the cart mounts twice)");
+  const keys = stripComments(readSrc(POS_KEYS));
+  assert.match(keys, /posKeyAction\(/, "the pure guard decides (lib/pos-keys.ts, unit-tested)");
+  assert.ok(keys.includes("[data-ui='pos-search']") && keys.includes("[data-ui='pos-send']") && keys.includes("[data-ui='pos-pay']"), "the search, Send KOT and Pay");
+  assert.match(keys, /getClientRects\(\)\.length > 0/, "only a visible element (the hidden cart mount is skipped)");
+  assert.match(keys, /\.disabled/, "a disabled button is never pressed");
+  assert.match(keys, /data-ui='pos-cart-sheet'/, "the cart sheet below 1024px is no dialog to the keys when it is the only one");
+  assert.match(stripComments(readSrc(MOBILE_CART_BAR)), /data-ui="pos-cart-sheet"/, "the sheet names itself");
 });
 
 test("PIN: D9.8c — on mobile, a surviving adjustment keeps the cart bar OPENABLE (and the sheet from auto-closing), or it is unreachable there", () => {

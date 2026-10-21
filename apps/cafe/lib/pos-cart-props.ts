@@ -36,6 +36,9 @@ export function buildCartProps(
   const menuIssues = cartMenuIssues(pos.cart, menu);
   return {
     items: pos.cart,
+    // U1 Task 5 (values 5.5): the bill's "Subtotal · {n} items" and the HTML's "Send KOT · {n}" (the unsent quantity).
+    count: pos.count,
+    newCount: pos.newCount,
     subtotal: pos.subtotal,
     discount: pos.discount,
     gstAmount: pos.gstAmount,
@@ -101,7 +104,6 @@ export function buildCartProps(
       onCustomerChange: pos.setCustomer,
       ...page,
     },
-    nextRound: (pos.resumedOrder?.kotRounds ?? 0) + 1,
     isBusy: pos.isBusy,
     // The Send button's "Sending…", and the unanswered send's notice (Send again).
     sending: pos.sendingKitchen,

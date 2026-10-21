@@ -31,6 +31,8 @@ const CART_LINE = "apps/cafe/components/pos/CartLine.tsx";
 const CART_LINES = "apps/cafe/components/pos/CartLines.tsx";
 const CART_HEAD = "apps/cafe/components/pos/CartHead.tsx";
 const CART_NOTES = "apps/cafe/components/pos/CartNotes.tsx";
+const CART_BILL = "apps/cafe/components/pos/CartBill.tsx";
+const CART_LINKS = "apps/cafe/components/pos/CartFooterLinks.tsx";
 const GRID = "apps/cafe/components/pos/ProductGrid.tsx";
 const HEADER = "apps/cafe/components/pos/PosHeader.tsx";
 const OPEN_TABS = "apps/cafe/components/pos/OpenTabsButton.tsx";
@@ -201,13 +203,19 @@ test("S8: every editing surface is locked during the flight — grid, lines, Cle
   assert.ok(head.includes("onClick={onClear} disabled={isBusy}"), "Clear locks");
   assert.ok(head.includes("onClick={onCloseTab} disabled={isBusy}"), "Close locks");
   assert.equal(count(head, "disabled={isBusy}"), 5, "Clear, Close, the table cell, the move cell and the customer cell");
-  assert.ok(cart.includes("trailing={moreMenu} disabled={isBusy} />"), "the note locks");
-  assert.ok(cart.includes("disabled={charge === 0 || isBusy}"), "the waive button locks");
-  assert.match(between(cart, "value={charge === 0 ? \"\" : charge}", "/>"), /disabled=\{isBusy\}/, "the charge input locks");
-  assert.match(between(cart, "onClick={onChargeReset}", ">"), /disabled=\{isBusy\}/, "Undo locks");
+  // U1 Task 5 (owner Q11, Q12; values 5.5): the note row became the Note link + its panel, the More trigger the links,
+  // and the bill rows (the table charge's field, its Remove and Undo) moved into CartBill.tsx — each still locks.
+  assert.match(between(cart, "<CartFooterLinks", "/>"), /disabled=\{isBusy\}/, "the links (Note, Discount, …) lock");
+  assert.match(between(cart, "<CartNotes", "/>"), /disabled=\{isBusy\}/, "the note field locks");
+  assert.match(between(cart, "<CartBill", "/>"), /isBusy=\{isBusy\}/, "the bill gets the lock");
+  const bill = readSrc(CART_BILL);
+  assert.ok(bill.includes("disabled={charge === 0 || isBusy}"), "the waive button locks");
+  assert.match(between(bill, "value={charge === 0 ? \"\" : charge}", "/>"), /disabled=\{isBusy\}/, "the charge input locks");
+  assert.match(between(bill, "onClick={onChargeReset}", ">"), /disabled=\{isBusy\}/, "Undo locks");
   // U1 Task 4 (owner Q10): the trash button went (select the line, then Remove), so the two stepper buttons remain.
   assert.equal(count(readSrc(CART_LINE), "disabled={disabled}"), 2, "both steppers");
-  assert.equal(count(readSrc(CART_NOTES), "disabled={disabled}"), 2, "the Add note row and the textarea");
+  assert.equal(count(readSrc(CART_NOTES), "disabled={disabled}"), 1, "the note field (its Add note row became the Note link)");
+  assert.ok(readSrc(CART_LINKS).includes("disabled={disabled}"), "every link honours the lock");
   // U1 Task 4 (owner Q9): the move/assign, table and customer chips are the cart head's cells (counted above).
   assert.equal(count(readSrc(HEADER), "disabled={isBusy}"), 2, "KOT reprint, Open tabs");
   assert.ok(readSrc(OPEN_TABS).includes("disabled={disabled}"), "the Open tabs trigger honours it");
@@ -222,8 +230,9 @@ test("S9: the cart shows Sending… and, after an unanswered send, the notice wi
   assert.ok(actions.includes("Sending…"), "the Send button reads Sending… in flight");
   const again = between(actions, 'if (notice?.action === "send-again") {', "if (resuming) {");
   assert.ok(again.includes('{inFlight || "Send again"}') && again.includes("onClick={onSendToKitchen}"), "Send again re-runs the send");
-  assert.match(again, /<Button className=\{POS_CART_CTA_CLASS\} size="lg" disabled=\{sending\}/, "Send again is live while frozen — only a flight disables it");
-  assert.ok(again.includes('<SendDiscard kind="kitchen" disabled={sending} onDiscard={onDiscard} />'), "R-d: the cart offers Discard");
+  // U1 Task 5 (design 6.8): "Send again" | "Discard" in the two button slots, in the HTML's button looks.
+  assert.match(again, /<button type="button" className=\{PAY_BUTTON_CLASS\} disabled=\{sending\} onClick=\{onSendToKitchen\}>/, "Send again is live while frozen — only a flight disables it");
+  assert.ok(again.includes('<SendDiscard kind="kitchen" disabled={sending} onDiscard={onDiscard} className={SEND_BUTTON_CLASS} />'), "R-d: the cart offers Discard");
   assert.ok(!again.includes("onPayNow") && !again.includes("onSettle"), "nothing else can go out over an unanswered send");
   assert.ok(cart.includes("onDiscard={onDiscardSend}"), "the cart hands CartActions the Discard");
   const bar = readSrc(MOBILE_BAR);

@@ -89,7 +89,7 @@ export function MobileCartBar({
             </Button>
           </SheetTrigger>
         )}
-        <SheetContent side="bottom" className={POS_CART_SHEET_CLASS}>
+        <SheetContent side="bottom" data-ui="pos-cart-sheet" className={POS_CART_SHEET_CLASS}>
           <SheetHeader className="sr-only">
             <SheetTitle>Your cart</SheetTitle>
           </SheetHeader>

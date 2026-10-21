@@ -189,6 +189,8 @@
   --animate-brand-shake: brand-shake 360ms ease-in-out;
   /* The HTML's sheet motion (values 1.5, 2.7): the panel rises in, its scrim fades in. */
   --animate-sheet-in: sheet-in 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* The same sheetIn at .25s (POS values 5.3): the /pos cart's Bill options and Note panels rise in. */
+  --animate-html-sheet-in-fast: sheet-in 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   --animate-scrim-in: brand-fade 0.2s ease both;
   /* The HTML's shake (values 1.5): the reveal dialog's PIN dots after a wrong PIN (values 3.16). */
   --animate-html-shake: html-shake 0.42s ease;

@@ -26,6 +26,7 @@ import { PosHeader } from "@/components/pos/PosHeader";
 import { PrintSources } from "@/components/pos/PrintSources";
 import { PosModals } from "@/components/pos/PosModals";
 import { SelfOrderAutoPrint } from "@/components/pos/SelfOrderAutoPrint";
+import { PosKeys } from "@/components/pos/PosKeys";
 import { printConfigOf } from "@/lib/print";
 import { buildCartProps, hasPendingAdjustment } from "@/lib/pos-cart-props";
 import { defaultAddOptions } from "@/lib/pos-price-buttons";
@@ -39,8 +40,7 @@ import {
 } from "@/lib/pos-layout";
 import type { Order, Product } from "@/types";
 
-// PosHeader is memoized (CB-1d.3c): a still-loading openTabs must not hand it a
-// fresh [] every render, or its three dialog-bearing children re-render per tap.
+// PosHeader is memoized (CB-1d.3c): a loading openTabs must not hand it a fresh [] each render (re-renders per tap).
 const NO_OPEN_TABS: Order[] = [];
 
 export default function PosPage() {
@@ -221,9 +221,9 @@ export default function PosPage() {
         count={pos.count}
         total={pos.total}
       />
+      <PosKeys busy={pos.isBusy} />
 
-      {/* The five modal roots live in one child whose per-root memo boundaries let a
-          closed modal skip PosPage's re-renders (CB-1d.3c / C3); modal state stays here. */}
+      {/* The modal roots live in one child: per-root memo boundaries skip PosPage's re-renders (CB-1d.3c / C3). */}
       <PosModals
         modifierProduct={modifierProduct}
         modifierOpen={modifierOpen}

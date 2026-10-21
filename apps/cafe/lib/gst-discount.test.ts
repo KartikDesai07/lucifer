@@ -710,8 +710,10 @@ test("PIN: every findOneAndUpdate writer of discountKind (items / settle / void 
   assert.ok(create.includes("Order.create("), "landmark: POST /api/orders must still create via Order.create");
 });
 
-test("PIN: Cart.tsx labels the applied row 'GST Discount applied' while the preset is active", () => {
-  const src = stripComments(readSrc("components/pos/Cart.tsx"));
+// U1 Task 5 (owner Q12; values 5.5): the bill rows moved from Cart.tsx into CartBill.tsx (the HTML's bill block behind
+// "Total · Details"); the applied row and its label are unchanged.
+test("PIN: CartBill.tsx labels the applied row 'GST Discount applied' while the preset is active", () => {
+  const src = stripComments(readSrc("components/pos/CartBill.tsx"));
   assert.ok(src.includes('gstActive ? "GST Discount applied" : "Discount applied"'), "the applied row must switch its label on gstActive");
 });
 

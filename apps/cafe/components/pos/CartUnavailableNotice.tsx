@@ -8,10 +8,11 @@
 // toast after a refused Send and this notice read the same.
 //
 // Money changes only on the cashier's tap: "Update them" shows old -> new
-// first and only re-adds the lines when tapped. Amber = the same "changed" tone
-// as WriteNotice.tsx.
+// first and only re-adds the lines when tapped. U1 Task 5 (design 6.8): the owner's HTML note box in WriteNotice's
+// "changed" tone (warn), taken from WriteNotice itself so the two never drift.
 
 import { Button } from "@/components/ui/button";
+import { WRITE_NOTICE_TONE, noticeBoxClass } from "@/components/pos/WriteNotice";
 import { cn } from "@/lib/utils";
 import {
   changedRowText,
@@ -23,9 +24,6 @@ export interface CartMenuNoticeProps extends CartMenuNotice {
   onRemoveUnavailable: () => void;
   onUpdateChanged: () => void;
 }
-
-// WriteNotice.tsx's "changed" tone, verbatim (pinned).
-const NOTICE_TONE = "bg-amber-100 text-amber-800";
 
 // Touch size: 44px below md, the compact button from md up.
 const NOTICE_BUTTON_CLASS = "min-h-11 md:min-h-8";
@@ -40,13 +38,13 @@ export function CartUnavailableNotice({
   if (!notice) return null;
   const { shown, more } = changedRowsShown(notice.changed);
   return (
-    <div role="status" className={cn("min-w-0 space-y-2 rounded-md p-3 text-sm", NOTICE_TONE)}>
+    <div role="status" data-ui="pos-menu-notice" className={cn("min-w-0 space-y-2", noticeBoxClass(WRITE_NOTICE_TONE.changed))}>
       <div className="min-w-0 space-y-0.5 break-words">
         {notice.sentences.map((sentence) => (
           <p key={sentence}>{sentence}</p>
         ))}
         {shown.length > 0 && (
-          <ul className="space-y-0.5 font-medium">
+          <ul className="space-y-0.5 font-medium text-foreground">
             {shown.map((row) => (
               <li key={row.lineId}>{changedRowText(row)}</li>
             ))}

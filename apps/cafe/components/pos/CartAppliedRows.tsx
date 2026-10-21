@@ -1,8 +1,8 @@
 "use client";
 
-import { Check, Ticket, X } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
+import { POS_BILL_LABEL_CLASS, POS_BILL_LINK_CLASS, POS_BILL_ROW_CLASS } from "@/lib/pos-layout";
 import { rungWorthLabel, type RungOffer } from "@/lib/reward-rungs";
 
 // D9.8d (2026-09-26) — the APPLIED promo code and the SELECTED reward, as
@@ -27,6 +27,10 @@ import { rungWorthLabel, type RungOffer } from "@/lib/reward-rungs";
 //
 // These rows are DISPLAY plus the remove control. No arithmetic: the figures
 // stay with usePosTotals and, authoritatively, the server.
+//
+// U1 Task 5 (design 6.8; values 5.5): rows of the HTML's bill block (CartBill) in its charge-row look: the words, then
+// a 12px --link "Remove" 8px after them (the remove controls keep their aria-labels). They render as the bill's own
+// rows (a fragment), 5px apart like the rest.
 
 interface CartAppliedRowsProps {
   promoCode: string | null;
@@ -48,56 +52,37 @@ export function CartAppliedRows({
   disabled,
 }: CartAppliedRowsProps) {
   if (!promoCode && !selectedReward) return null;
+  const link = cn(POS_BILL_LINK_CLASS, BRAND_PRESS_CLASS);
 
   return (
-    <div className="space-y-1.5">
+    <>
       {promoCode && (
-        <div className="flex items-center justify-between gap-2 text-sm">
-          <span className="flex min-w-0 flex-1 items-center gap-1.5">
-            <Ticket className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <div data-ui="pos-bill-promo" className={POS_BILL_ROW_CLASS}>
+          <span className={POS_BILL_LABEL_CLASS}>
             <span className="min-w-0 truncate">Promo {promoCode} applied</span>
+            <button type="button" className={link} onClick={onRemovePromo} disabled={disabled} aria-label={`Remove promo code ${promoCode}`}>
+              Remove
+            </button>
           </span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 shrink-0"
-            onClick={onRemovePromo}
-            disabled={disabled}
-            aria-label={`Remove promo code ${promoCode}`}
-          >
-            <X className="h-4 w-4" />
-          </Button>
         </div>
       )}
 
       {selectedReward && (
-        <div className="flex items-center justify-between gap-2 text-sm">
-          <span className="flex min-w-0 flex-1 items-center gap-1.5">
-            <Check className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
-            <span className="min-w-0 truncate">
-              Reward: {rungWorthLabel(selectedReward.rung)}
-            </span>
+        <div data-ui="pos-bill-reward" className={POS_BILL_ROW_CLASS}>
+          <span className={POS_BILL_LABEL_CLASS}>
+            <span className="min-w-0 truncate">Reward: {rungWorthLabel(selectedReward.rung)}</span>
+            {/* A granted reward on a resumed tab cannot be taken back here (one
+                reward per order, and the add-round route 409s a second claim),
+                so it renders as a statement rather than a control that would
+                silently do nothing. */}
+            {!rewardLocked && (
+              <button type="button" className={link} onClick={onClearReward} disabled={disabled} aria-label="Remove reward">
+                Remove
+              </button>
+            )}
           </span>
-          {/* A granted reward on a resumed tab cannot be taken back here (one
-              reward per order, and the add-round route 409s a second claim),
-              so it renders as a statement rather than a control that would
-              silently do nothing. */}
-          {!rewardLocked && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 shrink-0"
-              onClick={onClearReward}
-              disabled={disabled}
-              aria-label="Remove reward"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          )}
         </div>
       )}
-    </div>
+    </>
   );
 }

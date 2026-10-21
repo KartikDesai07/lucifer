@@ -23,6 +23,7 @@ const MOVE_CHARGE_PREVIEW = "apps/cafe/lib/move-charge-preview.ts";
 const MOVE_TABLE_DIALOG = "apps/cafe/components/orders/MoveTableDialog.tsx";
 const MOVE_TABLE_PICKER = "apps/cafe/components/orders/MoveTablePicker.tsx";
 const CART_TSX = "apps/cafe/components/pos/Cart.tsx";
+const CART_BILL = "apps/cafe/components/pos/CartBill.tsx";
 const POS_CART_PROPS = "apps/cafe/lib/pos-cart-props.ts";
 const CART_EXTRA_CHARGES = "apps/cafe/components/pos/CartExtraCharges.tsx";
 
@@ -135,19 +136,22 @@ test("PIN (4): pos-cart-props.ts wires onAddExtraCharge/onRemoveExtraCharge/extr
   assert.match(imported, /(^|[\s,])CartExtraCharges([\s,]|$)/, "Cart.tsx must import CartExtraCharges (the add form)");
   assert.match(imported, /type ExtraChargeEntry/, "Cart.tsx must import type ExtraChargeEntry");
   // The applied rows must be rendered too — otherwise a charge the customer
-  // is paying would exist only behind the More menu's tap.
-  assert.match(cartSrc, /<CartExtraChargeRows[\s/>]/, "Cart.tsx must render <CartExtraChargeRows — the APPLIED charges stay outside the menu");
+  // is paying would exist only behind the Bill options panel's tap. U1 Task 5
+  // (owner Q12; values 5.5): the bill rows moved into CartBill.tsx, the HTML's
+  // bill block behind "Total · Details", which Cart.tsx renders outside the panel.
+  const billSrc = stripComments(readSrc(CART_BILL));
+  assert.match(cartSrc, /<CartBill[\s/>]/, "Cart.tsx must render <CartBill — the APPLIED charges stay outside the panel");
+  assert.match(billSrc, /<CartExtraChargeRows[\s/>]/, "CartBill.tsx must render <CartExtraChargeRows — the APPLIED charges");
 
   // Positive ordering landmark: the APPLIED extra-charge rows render BELOW the
   // table charge block and ABOVE the Total row (plan §5C — where they land in
   // the arithmetic, after GST, before the bottom total). D9.8: this is now
   // keyed on <CartExtraChargeRows, because the ADD FORM moved up into the More
-  // menu and its position there says nothing about the bill's arithmetic —
-  // only the rendered rows do. (A bare "<CartExtraCharges" indexOf would now
-  // find the in-menu form and silently assert the wrong element's position.)
-  const tableChargeBlockAt = cartSrc.indexOf('chargeLabel !== "" && (entitledCharge > 0 || charge > 0)');
-  const extraRowsAt = cartSrc.search(/<CartExtraChargeRows[\s/>]/);
-  const totalRowAt = cartSrc.indexOf("<span>Total</span>");
+  // menu (now the Bill options panel) and its position there says nothing about
+  // the bill's arithmetic — only the rendered rows do.
+  const tableChargeBlockAt = billSrc.indexOf('chargeLabel !== "" && (entitledCharge > 0 || charge > 0)');
+  const extraRowsAt = billSrc.search(/<CartExtraChargeRows[\s/>]/);
+  const totalRowAt = billSrc.indexOf("<span>Total</span>");
   assert.ok(tableChargeBlockAt >= 0, "positive landmark: the table-charge conditional block must still be present");
   assert.ok(extraRowsAt >= 0, "positive landmark: <CartExtraChargeRows must still be present");
   assert.ok(totalRowAt >= 0, "positive landmark: the Total row must still be present");
