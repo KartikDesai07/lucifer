@@ -39,6 +39,7 @@ import type { PaymentResult } from "@/components/pos/PaymentModal";
 import { collectedAmount } from "@/lib/payment-result";
 import { tokenLabelOf } from "@/lib/token-view";
 import { KITCHEN_NOTHING_TO_SEND_MESSAGE, kitchenOrderOf, orderSkipsKitchen } from "@/lib/kitchen-lines";
+import { keepOpenForNestedDialog } from "@/lib/nested-dialog";
 import type { Customer, Order, SettleOrderInput } from "@/types";
 
 const PaymentModal = dynamic(
@@ -126,6 +127,9 @@ export function OrderDetailSheet({
   const { routePrint, enqueuePending } = useHostRouting();
   const [settleOpen, setSettleOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
+  // Ruling P38: the payment and move dialogs render beside the sheet (outside its panel), so a press that closes one of
+  // them must not close the sheet too; the panel tells such a press from a tap outside every dialog.
+  const sheetRef = useRef<HTMLDivElement>(null);
   // The tab as it was when "Settle & Pay" opened: the popup shows, and the
   // settle echoes, THIS bill even if a live refresh moves `order` meanwhile —
   // never a total the operator did not collect. Cleared when the popup closes.
@@ -282,7 +286,11 @@ export function OrderDetailSheet({
 
   return (
     <Sheet open={!!order} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full flex-col gap-0 overflow-y-auto sm:max-w-md">
+      <SheetContent
+        ref={sheetRef}
+        className="flex w-full flex-col gap-0 overflow-y-auto sm:max-w-md"
+        onInteractOutside={(e) => keepOpenForNestedDialog(e, sheetRef.current)}
+      >
         <SheetHeader>
           <SheetTitle>{order?.orderId}</SheetTitle>
           <SheetDescription>

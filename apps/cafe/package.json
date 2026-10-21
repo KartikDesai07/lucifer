@@ -211,6 +211,7 @@
     "lib/pos-cart-view.test.ts",
     "lib/pos-footer.test.ts",
     "lib/pos-keys.test.ts",
+    "lib/nested-dialog.test.ts",
     "lib/pos-open-orders.test.ts",
     "lib/pos-layout.test.ts",
     "lib/pos-layout-paths.test.ts",

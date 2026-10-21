@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 
 import { inr, cn } from "@/lib/utils";
 import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { Cart, type CartProps } from "@/components/pos/Cart";
 import { hasPendingAdjustment } from "@/lib/pos-cart-props";
+import { keepOpenForNestedDialog } from "@/lib/nested-dialog";
 import { cartTitle, orderBarSummary } from "@/lib/pos-cart-view";
 import {
   BREAKPOINT_LG_PX,
@@ -39,6 +40,7 @@ const CART_COLUMN_QUERY = `(min-width: ${BREAKPOINT_LG_PX}px)`;
 // keys treat it as the cart, not as a dialog (PosKeys). The page closes it by itself once the cart is TRULY empty
 // (pos/page.tsx); the bar stays.
 export function MobileCartBar({ open, onOpenChange, cartProps }: MobileCartBarProps) {
+  const sheetRef = useRef<HTMLDivElement>(null);
   // A sheet left open while the window grows to 1024px (a tablet turned to landscape) gives way to the cart column, as
   // the HTML's does — otherwise it would lie over the column, with the page behind it locked.
   useEffect(() => {
@@ -84,7 +86,15 @@ export function MobileCartBar({ open, onOpenChange, cartProps }: MobileCartBarPr
       </div>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay data-ui="pos-cart-scrim" className={POS_CART_SHEET_SCRIM_CLASS} />
-        <DialogPrimitive.Content data-ui="pos-cart-sheet" aria-describedby={undefined} className={POS_CART_SHEET_CLASS}>
+        {/* Ruling P38: closing a nested dialog by a press (the payment, the void, the move, a confirm prompt: the page
+            renders them beside this sheet) leaves the sheet open; a tap on the scrim still closes it. */}
+        <DialogPrimitive.Content
+          data-ui="pos-cart-sheet"
+          ref={sheetRef}
+          aria-describedby={undefined}
+          className={POS_CART_SHEET_CLASS}
+          onInteractOutside={(e) => keepOpenForNestedDialog(e, sheetRef.current)}
+        >
           <DialogPrimitive.Title className="sr-only">Your cart</DialogPrimitive.Title>
           {/* The sheet's way back is the head's "‹ Menu" (onBack); the panel class makes the whole Cart scroll when the
               sheet is shorter than its content (landscape phone, keyboard up), so Send / Pay never fall off-screen. */}

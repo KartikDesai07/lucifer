@@ -230,9 +230,11 @@ test("PIN: MobileCartBar is the HTML's bar (shown below 1024px by its own class)
   assert.ok(!src.includes("POS_MOBILE_ONLY_CLASS") && !/\b(?:xl|desk):/.test(src), "no xl: / desk: gate: the bar shows below 1024px (max-lg:flex in POS_MOBILE_BAR_CLASS)");
   assert.match(src, /<DialogPrimitive\.Root open=\{open\} onOpenChange=\{onOpenChange\}>/, "the page owns the open state (its auto-close)");
   assert.match(src, /<DialogPrimitive\.Overlay data-ui="pos-cart-scrim" className=\{POS_CART_SHEET_SCRIM_CLASS\} \/>/, "the scrim (720-1023px)");
+  // U1 final fix wave (ruling P38): the panel also holds a ref and an outside guard (lib/nested-dialog.ts, pinned in its
+  // own test), so the tag spans lines; the name and the frame are unchanged.
   assert.match(
     src,
-    /<DialogPrimitive\.Content data-ui="pos-cart-sheet" aria-describedby=\{undefined\} className=\{POS_CART_SHEET_CLASS\}>/,
+    /<DialogPrimitive\.Content\s+data-ui="pos-cart-sheet"\s+ref=\{sheetRef\}\s+aria-describedby=\{undefined\}\s+className=\{POS_CART_SHEET_CLASS\}/,
     "the sheet panel names itself for the keys and takes the HTML's frame",
   );
   assert.match(src, /<DialogPrimitive\.Title className="sr-only">Your cart<\/DialogPrimitive\.Title>/, 'the sheet keeps its sr-only title "Your cart"');
