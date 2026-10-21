@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 
 import { effectiveUnitPrice } from "@pos/shared/public";
 import { initialSelected, pickModifierResult } from "./modifier-picker";
-import { NO_TAG, cardTag, defaultAddOptions, priceButtonsFor, priceText, shortSize } from "./pos-price-buttons";
+import { NO_TAG, cardTag, defaultAddOptions, priceButtonTitle, priceButtonsFor, priceText, shortSize } from "./pos-price-buttons";
 
 const plain = { price: 229, discount: 0, modifiers: [] as string[], available: true };
 
@@ -95,6 +95,20 @@ test("a variation item never adds without its size: every button names one of it
 test("an out-of-stock item still gets its buttons (the card disables them, values 4.2)", () => {
   const oos = { ...plain, available: false, variations: [{ name: "Regular", price: 449 }, { name: "Medium", price: 569 }, { name: "Large", price: 689 }] };
   assert.deepStrictEqual(priceButtonsFor(oos).map((b) => `${b.label} ${priceText(b)}`), ["Reg ₹449", "Med ₹569", "Lrg ₹689"], "the HTML's Pepperoni");
+});
+
+// Ruling P9: the HTML's title "Add {label}" reads "Add Add" on a plain item (its slip), so the title names the item.
+test("priceButtonTitle: \"Add {item}\", \"Add {item} ({variation})\" with the full variation name, \"Pick a variation\" on Choose — never \"Add Add\"", () => {
+  const [plainButton] = priceButtonsFor(plain);
+  assert.equal(priceButtonTitle("Cold Coffee", plainButton), "Add Cold Coffee", "a plain item's button names the item");
+  const sized = priceButtonsFor({ ...plain, variations: [{ name: "Regular", price: 120 }, { name: "Large", price: 150 }] });
+  assert.deepStrictEqual(
+    sized.map((b) => priceButtonTitle("Badam Shake", b)),
+    ["Add Badam Shake (Regular)", "Add Badam Shake (Large)"],
+    "a variation button names the item and the variation's full name (not the short word)",
+  );
+  const many = priceButtonsFor({ ...plain, variations: ["S", "M", "L", "XL"].map((name, i) => ({ name, price: 100 + i })) });
+  assert.equal(priceButtonTitle("Latte", many[0]), "Pick a variation", "the Choose button says what it does");
 });
 
 // The options modal's add with nothing changed (components/pos/ModifierModal.tsx): it opens with initialSelected(product)

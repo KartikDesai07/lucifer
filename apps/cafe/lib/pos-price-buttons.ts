@@ -51,6 +51,13 @@ export function priceText(button: Pick<PriceButton, "price" | "priceMax">): stri
   return button.priceMax === undefined ? inr(button.price) : `${inr(button.price)}–${inr(button.priceMax)}`;
 }
 
+/** A price button's title (ruling P9: not the HTML's "Add {label}", which reads "Add Add" on a plain item): "Add
+ *  {item}", "Add {item} ({variation})" with the variation's full name, and "Pick a variation" on the Choose button. */
+export function priceButtonTitle(productName: string, button: Pick<PriceButton, "variation" | "opensOptions">): string {
+  if (button.opensOptions) return "Pick a variation";
+  return button.variation === undefined ? `Add ${productName}` : `Add ${productName} (${button.variation})`;
+}
+
 /** What a price button adds: exactly the options modal's add when nothing in it is changed — it opens with the item's
  *  initial ticks (none, or every modifier for a "modifiers come ticked" item), no note and qty 1 — with the button's
  *  variation (components/pos/ModifierModal.tsx; lib/pos-tile-paths.test.ts pins that the modal still builds it so). */

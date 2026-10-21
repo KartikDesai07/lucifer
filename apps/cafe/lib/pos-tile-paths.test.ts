@@ -74,7 +74,9 @@ test("PIN: a price button adds its own item or variation at once; \"Choose\" ope
     "a price adds with the button's own variation; the Choose button opens the modal (never a silent default size)",
   );
   assert.ok(strip.includes("disabled={outOfStock}"), "an out-of-stock price adds nothing (values 4.2)");
-  assert.ok(strip.includes('title={b.opensOptions ? "Pick a variation" : `Add ${b.label}`}'), 'the HTML\'s title "Add {label}"; Choose says what it does');
+  // Ruling P9: not the HTML's "Add {label}" ("Add Add" on a plain item): the title names the item (and the variation).
+  assert.ok(strip.includes("title={priceButtonTitle(product.name, b)}"), "the title comes from the unit-tested priceButtonTitle");
+  assert.ok(!strip.includes("`Add ${b.label}`"), "never the HTML's \"Add {label}\" title");
   assert.ok(src.includes("const outOfStock = product.available === false;"), "only an explicit available:false locks the card");
   assert.equal(src.split("disabled={outOfStock}").length - 1, 2, "exactly the name button and the price buttons lock");
   assert.ok(src.includes("const tag = cardTag(product, { showCategory, categoryLabel });"), "the tag line comes from the pure helper");

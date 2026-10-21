@@ -4,7 +4,7 @@ import { memo, useId } from "react";
 import Image from "next/image";
 
 import { productImageUrl } from "@/lib/images";
-import { cardTag, priceButtonsFor, priceText } from "@/lib/pos-price-buttons";
+import { cardTag, priceButtonTitle, priceButtonsFor, priceText } from "@/lib/pos-price-buttons";
 import { cn } from "@/lib/utils";
 import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
 import type { Product } from "@/types";
@@ -126,7 +126,7 @@ export const ProductCard = memo(function ProductCard({
             type="button"
             data-ui="pos-price-button"
             disabled={outOfStock}
-            title={b.opensOptions ? "Pick a variation" : `Add ${b.label}`}
+            title={priceButtonTitle(product.name, b)}
             onClick={() => (b.opensOptions ? onOptions(product) : onAdd(product, b.variation))}
             className={cn(PRICE_BUTTON_CLASS, PRICE_HEIGHT_CLASS, BRAND_PRESS_CLASS)}
           >
