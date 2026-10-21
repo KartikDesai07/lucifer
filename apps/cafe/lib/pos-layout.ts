@@ -334,10 +334,11 @@ export function posGridPaneWidthPx(viewport: NavViewport): number {
 export const POS_CART_CTA_CLASS =
   "w-full h-12 xl:pointer-fine:h-10 touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
 
-// CB-2 — the cart's "GST Discount" preset toggle: the 36px control tier (the
-// stepper's), full width, compacting to 32px only on an xl+ FINE pointer.
+// CB-2 — the cart's "GST Discount" preset toggle, full width. Ruling P15 (U1 final fix wave): it sits in the Bill
+// options panel, so it takes the panel's 34px (design 6.7: its fields and buttons are 34px) on every screen (ruling R1:
+// no touch enlargement in the rebuilt parts); the press feedback stays.
 export const POS_CART_GST_BUTTON_CLASS =
-  "h-9 w-full xl:pointer-fine:h-8 touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
+  "h-[34px] w-full touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
 
 // Dialog list caps (CB-1d.1 V2, the CB-1c residual): a plain-vh cap ignores
 // the URL bar / on-screen keyboard, pushing a capped list — and the dialog's

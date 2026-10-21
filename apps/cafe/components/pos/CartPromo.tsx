@@ -48,6 +48,13 @@ interface CartPromoProps {
 export function CartPromo({ code, onApply, onRemove, rewardActive, disabled, defaultExpanded = false }: CartPromoProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [inputText, setInputText] = useState("");
+  // The open Bill options panel moved here by its link asks again (U1 final fix wave): the form opens then too, not only
+  // on mount. Adjusted while rendering, so no frame shows the collapsed trigger.
+  const [expandAsked, setExpandAsked] = useState(defaultExpanded);
+  if (expandAsked !== defaultExpanded) {
+    setExpandAsked(defaultExpanded);
+    if (defaultExpanded) setExpanded(true);
+  }
 
   // COURTESY exclusion only (see rewardActive doc above) — the server is the
   // real fence. Once a reward is selected, hide the promo control entirely

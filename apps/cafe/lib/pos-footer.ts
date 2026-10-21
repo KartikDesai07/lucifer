@@ -42,6 +42,19 @@ export function rewardOffered(input: { customerSelected: boolean; offers: number
   return input.customerSelected && (input.offers > 0 || (input.stamps ?? 0) > 0 || input.cards > 0);
 }
 
+/** The Bill options panel's Reward section (U1 final fix wave): shown while the customer has something to pick
+ *  (rewardOffered), a reward is picked, or the tab's reward is locked (today's locked line says so) — so the Reward
+ *  link, shown while offered or picked, never opens a panel without its section. CartReward draws on the same gate. */
+export function rewardSectionShown(input: { offered: boolean; picked: boolean; locked: boolean }): boolean {
+  return input.offered || input.picked || input.locked;
+}
+
+/** A footer link of this cart (each mount has its own row), by its key: the panel gives the focus back to it as it
+ *  closes (U1 final fix wave). */
+export function footerLinkSelector(key: string): string {
+  return `[data-ui='pos-footer-link'][data-key='${key}']`;
+}
+
 /** CartPromo's own gate: a picked reward stands the promo control down (one reward per bill) unless a code is set. */
 export function promoOffered(input: { rewardPicked: boolean; promoCode: string | null }): boolean {
   return !input.rewardPicked || !!input.promoCode;

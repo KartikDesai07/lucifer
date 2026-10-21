@@ -22,7 +22,7 @@ import { CartUnavailableNotice, type CartMenuNoticeProps } from "@/components/po
 import { SendDiscard } from "@/components/pos/SendDiscard";
 import type { WriteNotice } from "@/lib/pending-writes";
 import { POS_CART_GST_BUTTON_CLASS, POS_PANEL_FIELD_CLASS } from "@/lib/pos-layout";
-import { footerLinks, promoOffered, rewardOffered, type FooterLink } from "@/lib/pos-footer";
+import { footerLinks, promoOffered, rewardOffered, rewardSectionShown, type FooterLink } from "@/lib/pos-footer";
 import { GST_DISCOUNT_LABEL } from "@/lib/constants";
 import { PROMO_BLOCKS_GST_DISCOUNT_MESSAGE, REWARD_BLOCKS_GST_DISCOUNT_MESSAGE } from "@/lib/receipt";
 import { rungWorthLabel, type RungOffer } from "@/lib/reward-rungs";
@@ -338,7 +338,8 @@ export function Cart({
           <BillOptionsPanel section={panel} boundary={root} onDone={closePanel}>
             {/* Owner decision, binding (kept): the reward sits directly above Discount so the two money decisions
                 (reward vs. manual discount, mutually exclusive — see CartReward) read as one group. */}
-            {rewardShown && (
+            {/* Shown whenever the Reward link can open it: offered, picked, or a tab's locked reward (its line). */}
+            {rewardSectionShown({ offered: rewardShown, picked: rewardPicked, locked: rewardLocked }) && (
               <BillOptionsSection id="reward" caption="Reward">
                 <CartReward
                   customerSelected={customerSelected}

@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { footerLinks, promoOffered, rewardOffered, type FooterView } from "./pos-footer";
+import { footerLinkSelector, footerLinks, promoOffered, rewardOffered, rewardSectionShown, type FooterView } from "./pos-footer";
 
 const NEW_ORDER: FooterView = {
   resuming: false,
@@ -102,4 +102,32 @@ test("every link keeps its own word next to its applied text (the panel section 
     ["Discount", "Promo code", "Reward", "Extra charge", "Note"],
     "the words stay the section names",
   );
+});
+
+// U1 final fix wave (the Task 5 review's FIX BEFORE MERGE): the Reward link must never open a panel with no Reward
+// section. The link shows while the customer has something to pick or a reward is picked (a tab's locked one too); the
+// section shows then as well, and also for a tab whose reward is locked (today's locked line says so).
+test("rewardSectionShown: offered, picked or locked; the Reward link never shows without its section", () => {
+  assert.equal(rewardSectionShown({ offered: false, picked: false, locked: false }), false, "nothing to pick, nothing picked: no section");
+  assert.equal(rewardSectionShown({ offered: true, picked: false, locked: false }), true, "something to pick");
+  assert.equal(rewardSectionShown({ offered: false, picked: true, locked: true }), true, "a tab's reward whose rung left the ladder: the locked line");
+  assert.equal(rewardSectionShown({ offered: false, picked: false, locked: true }), true, "a tab's card reward: the locked line");
+  for (const offered of [false, true]) {
+    for (const picked of [false, true]) {
+      for (const locked of [false, true]) {
+        const view = { ...NEW_ORDER, rewardOffered: offered, rewardWorth: picked ? "applied" : null };
+        const link = linkOf(view, "reward") !== undefined;
+        assert.ok(
+          !link || rewardSectionShown({ offered, picked, locked }),
+          `offered=${offered} picked=${picked} locked=${locked}: a Reward link opens a panel that has the Reward section`,
+        );
+      }
+    }
+  }
+});
+
+// U1 final fix wave: closing the Bill options or Note panel gives the focus back to the link that opened it.
+test("footerLinkSelector: the visible cart's link for a section (or the note)", () => {
+  assert.equal(footerLinkSelector("promo"), "[data-ui='pos-footer-link'][data-key='promo']", "the promo link");
+  assert.equal(footerLinkSelector("note"), "[data-ui='pos-footer-link'][data-key='note']", "the note link");
 });

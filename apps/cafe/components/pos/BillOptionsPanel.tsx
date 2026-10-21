@@ -5,7 +5,7 @@ import { useEffect, useId, useRef, type ReactNode } from "react";
 import { PopoverContent } from "@/components/ui/popover";
 import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { cn } from "@/lib/utils";
-import type { BillSection } from "@/lib/pos-footer";
+import { footerLinkSelector, type BillSection } from "@/lib/pos-footer";
 
 // U1 Task 5 (owner Q11, 2026-10-21; design 6.7; values 5.3 in docs/superpowers/specs/2026-10-20-pos-html-values.md):
 // the cart footer's panels in the HTML's popover look. Today's three-dot More menu (D9.8, 2026-09-26) became the one
@@ -35,8 +35,9 @@ const DONE_CLASS = cn("cursor-pointer bg-transparent p-0 text-[13.5px] font-semi
 /** A section's caption (design 6.7): 12px 600 --text-2. */
 const CAPTION_CLASS = "text-[12px] font-semibold text-muted-foreground";
 
-/** What takes the focus when a section opens: its first live control. */
-const FIRST_FIELD = "input:not([disabled]):not([readonly]), textarea:not([disabled]), button:not([disabled])";
+/** What takes the focus when a section opens: its first live control, never an applied row's "Remove" (each is
+ *  labelled "Remove …": the promo, an extra charge). */
+const FIRST_FIELD = "input:not([disabled]):not([readonly]), textarea:not([disabled]), button:not([disabled]):not([aria-label^='Remove'])";
 
 // A press on the links row is the footer's own business (switch the section, or close on a second tap), never a
 // dismissal from outside.
@@ -75,6 +76,16 @@ export function FooterPanel({ label, title, focusKey, boundary, onDone, children
     return () => cancelAnimationFrame(frame);
   }, [focusKey]);
 
+  // Closing (Done, Escape, a tap outside) gives the focus back to the link that opened the panel, in this cart (U1 final
+  // fix wave): the panel has no Radix trigger, so it fell to <body>. A tap outside that took the focus somewhere (a
+  // field, a button, the link itself) keeps it there.
+  const returnFocus = (e: Event) => {
+    e.preventDefault();
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    boundary?.querySelector<HTMLElement>(footerLinkSelector(focusKey))?.focus();
+  };
+
   return (
     <PopoverContent
       data-ui={dataUi}
@@ -86,6 +97,7 @@ export function FooterPanel({ label, title, focusKey, boundary, onDone, children
       collisionBoundary={boundary ?? undefined}
       collisionPadding={12}
       onOpenAutoFocus={(e) => e.preventDefault()}
+      onCloseAutoFocus={returnFocus}
       onInteractOutside={(e) => {
         if (onLinksRow(e.detail.originalEvent.target)) e.preventDefault();
       }}

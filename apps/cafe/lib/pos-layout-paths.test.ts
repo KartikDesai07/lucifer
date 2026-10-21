@@ -1522,3 +1522,34 @@ test("the POS card grid gives the HTML's columns and card widths beside the nav,
   assert.equal(POS_CARD_MIN_PX, 200, "values 4.1: minmax(min(200px,100%),1fr)");
   assert.equal(POS_CARD_GAP_PX, 8, "values 4.1: gap 8px");
 });
+
+// U1 final fix wave (the Task 5 review's FIX BEFORE MERGE minors): a section switch while the Bill options panel is open
+// opens that section's form too (CartPromo / CartExtraCharges seeded it on mount only); the first-field focus skips a
+// section's "Remove" buttons; the Reward section shows whenever its link does (lib/pos-footer.ts rewardSectionShown);
+// closing a panel gives the focus back to the link that opened it (it has no Radix trigger).
+test("PIN: the Bill options panel opens the switched-to section's form, focuses past Remove, keeps the Reward section with its link, and returns the focus to the link", () => {
+  for (const file of ["apps/cafe/components/pos/CartPromo.tsx", CART_EXTRA_CHARGES]) {
+    const src = stripComments(readSrc(file));
+    assert.match(src, /const \[expandAsked, setExpandAsked\] = useState\(defaultExpanded\);/, `${file}: remembers what the panel last asked`);
+    assert.match(
+      src,
+      /if \(expandAsked !== defaultExpanded\) \{\s*setExpandAsked\(defaultExpanded\);\s*if \(defaultExpanded\) setExpanded\(true\);\s*\}/,
+      `${file}: a later ask (another link moved the open panel here) opens the form, while rendering (no frame without it)`,
+    );
+  }
+  const panel = stripComments(readSrc(BILL_OPTIONS_PANEL));
+  assert.ok(
+    panel.includes(`const FIRST_FIELD = "input:not([disabled]):not([readonly]), textarea:not([disabled]), button:not([disabled]):not([aria-label^='Remove'])";`),
+    "the first field is never a Remove button (every Remove in the panel is labelled \"Remove …\")",
+  );
+  assert.match(panel, /onCloseAutoFocus=\{returnFocus\}/, "the panel hands the focus back as it closes");
+  assert.ok(panel.includes("boundary?.querySelector<HTMLElement>(footerLinkSelector(focusKey))?.focus();"), "to this cart's link of the open section");
+  assert.ok(panel.includes("if (active && active !== document.body) return;"), "unless a tap outside put the focus somewhere on purpose");
+  const cart = stripComments(readSrc(CART_TSX));
+  assert.ok(
+    cart.includes("{rewardSectionShown({ offered: rewardShown, picked: rewardPicked, locked: rewardLocked }) && ("),
+    "the Reward section shows whenever its link can (offered, picked, or a tab's locked reward)",
+  );
+  const reward = stripComments(readSrc("apps/cafe/components/pos/CartReward.tsx"));
+  assert.match(reward, /if \(!rewardSectionShown\(\{ offered, picked: selectedAt !== null \|\| \(cards\?\.selectedId \?\? null\) !== null, locked \}\)\) return null;/, "CartReward draws on the same gate (the locked line included)");
+});

@@ -125,6 +125,13 @@ export function CartExtraCharges({ extras, onAdd, onRemove, disabled, defaultExp
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [label, setLabel] = useState("");
   const [amountText, setAmountText] = useState("");
+  // The open Bill options panel moved here by its link asks again (U1 final fix wave): the form opens then too, not only
+  // on mount. Adjusted while rendering, so no frame shows the collapsed trigger.
+  const [expandAsked, setExpandAsked] = useState(defaultExpanded);
+  if (expandAsked !== defaultExpanded) {
+    setExpandAsked(defaultExpanded);
+    if (defaultExpanded) setExpanded(true);
+  }
 
   const error = expanded ? validationError(label, amountText) : null;
 

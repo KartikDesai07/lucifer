@@ -5,7 +5,7 @@ import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { rungWorthLabel, type RungOffer } from "@/lib/reward-rungs";
-import { rewardOffered } from "@/lib/pos-footer";
+import { rewardOffered, rewardSectionShown } from "@/lib/pos-footer";
 import { POS_PANEL_PICK_CLASS, POS_PANEL_PICK_OFF_CLASS, POS_PANEL_PICK_ON_CLASS } from "@/lib/pos-layout";
 import { CartRewardCards, type CartRewardCardsState } from "@/components/pos/CartRewardCards";
 
@@ -61,8 +61,11 @@ export function CartReward({
   // D9.3: the panel only exists once staff have picked a customer — no dead
   // chrome for an anonymous walk-in sale; and a cafe with no configured ladder
   // (this customer has never earned a stamp and holds no card) has nothing to
-  // show here at all. One gate with the footer's Reward link (lib/pos-footer.ts).
-  if (!rewardOffered({ customerSelected, offers: offers.length, stamps, cards: cards?.offers.length ?? 0 })) return null;
+  // show here at all — unless a reward is picked or the tab's is locked (its
+  // line below says so). One gate with the panel's Reward section, which the
+  // footer's Reward link never outlives (lib/pos-footer.ts rewardSectionShown).
+  const offered = rewardOffered({ customerSelected, offers: offers.length, stamps, cards: cards?.offers.length ?? 0 });
+  if (!rewardSectionShown({ offered, picked: selectedAt !== null || (cards?.selectedId ?? null) !== null, locked })) return null;
 
   const selectedOffer = offers.find((o) => o.rung.at === selectedAt);
 

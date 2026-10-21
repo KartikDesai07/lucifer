@@ -663,7 +663,10 @@ test("PIN: apps/cafe/models/Order.ts's discountKind path has enum: [...DISCOUNT_
   assert.ok(!schemaLineMatch![0].includes("default"), "the discountKind schema path must carry no default:");
 });
 
-test("PIN: lib/pos-layout.ts's POS_CART_GST_BUTTON_CLASS includes POS_PRESS_FEEDBACK_CLASS verbatim, h-9, w-full, xl:pointer-fine:h-8, and no un-gated xl: term", () => {
+// Ruling P15 (U1 final fix wave): the toggle sits in the Bill options panel now, so it takes the panel's 34px (design 6.7:
+// its fields and buttons are 34px) on every screen (ruling R1: no touch enlargement in the rebuilt parts); the old 36px
+// with a 32px compact size at xl on a fine pointer went. A look pin: it moves with the look.
+test("PIN: lib/pos-layout.ts's POS_CART_GST_BUTTON_CLASS includes POS_PRESS_FEEDBACK_CLASS verbatim, the panel's 34px, w-full, and no xl: size", () => {
   const src = stripComments(readSrc("lib/pos-layout.ts"));
   const classMatch = src.match(/export const POS_CART_GST_BUTTON_CLASS\s*=\s*\n?\s*"([^"]+)"/);
   assert.ok(classMatch, "landmark: POS_CART_GST_BUTTON_CLASS must still be exported as a string literal");
@@ -671,14 +674,11 @@ test("PIN: lib/pos-layout.ts's POS_CART_GST_BUTTON_CLASS includes POS_PRESS_FEED
   const feedbackMatch = src.match(/export const POS_PRESS_FEEDBACK_CLASS\s*=\s*\n?\s*"([^"]+)"/);
   assert.ok(feedbackMatch, "landmark: POS_PRESS_FEEDBACK_CLASS must still be exported as a string literal");
   assert.ok(cls.includes(feedbackMatch![1]), "POS_CART_GST_BUTTON_CLASS must include POS_PRESS_FEEDBACK_CLASS verbatim");
-  assert.match(cls, /(?:^|\s)h-9(?:\s|$)/, "POS_CART_GST_BUTTON_CLASS must include h-9");
+  assert.match(cls, /(?:^|\s)h-\[34px\](?:\s|$)/, "POS_CART_GST_BUTTON_CLASS must include h-[34px] (the panel's controls, P15)");
+  assert.ok(!/(?:^|\s)h-9(?:\s|$)/.test(cls), "the old 36px is gone");
   assert.match(cls, /(?:^|\s)w-full(?:\s|$)/, "POS_CART_GST_BUTTON_CLASS must include w-full");
-  assert.ok(cls.includes("xl:pointer-fine:h-8"), "POS_CART_GST_BUTTON_CLASS must include xl:pointer-fine:h-8");
   const xlTerms = (cls.match(/(?:^|\s)(xl:\S+)/g) ?? []).map((s) => s.trim());
-  assert.ok(xlTerms.length > 0, "landmark: POS_CART_GST_BUTTON_CLASS must carry at least one xl: term");
-  for (const t of xlTerms) {
-    assert.ok(t.startsWith("xl:pointer-fine:"), `POS_CART_GST_BUTTON_CLASS's xl: term "${t}" must be gated on xl:pointer-fine:`);
-  }
+  assert.deepEqual(xlTerms, [], "no xl: size: the HTML's 34px on every screen (ruling R1)");
 });
 
 // -- A8: the DB-level fence for discountKind is runValidators:true on every
