@@ -135,9 +135,9 @@ export const POS_LIST_CLASS = "px-5 py-4 leading-[normal] max-tab:px-3 max-tab:p
  *  subtracts from the menu column (posGridPaneWidthPx). */
 export const POS_PANE_INSET_PX = { phone: 12, base: 20 } as const;
 
-/** Today's control row (PosHeader: open tabs, table, customer, KOT) has no place in the HTML's menu column; until U1
- *  Tasks 4 and 6 move its controls into the cart head and the header, it sits above the toolbar with the toolbar's side
- *  inset and top padding, and scrolls away with the list. */
+/** Today's control row (PosHeader: open tabs, KOT; U1 Task 4 moved the table and customer chips into the cart head's
+ *  cells) has no place in the HTML's menu column; until U1 Task 6 moves the rest into the header, it sits above the
+ *  toolbar with the toolbar's side inset and top padding, and scrolls away with the list. */
 export const POS_CONTROLS_CLASS = "px-5 pt-3.5 max-tab:px-3 max-tab:pt-2.5";
 
 /** The cart column (values 5.1): from 1024 px the body grid's last column, the surface with a rule on its left; it
@@ -173,13 +173,11 @@ export const POS_CART_SHEET_CLASS =
 // instead of overflowing past the sheet's bottom edge (review CB-1 F3).
 export const POS_CART_SHEET_PANEL_CLASS =
   "h-full overflow-y-auto overscroll-contain rounded-none border-0";
-// The cart's line list keeps at least this much height before the panel
-// itself starts scrolling — otherwise flex shrinks the list to 0 first and
-// the operator sees a cart with no items in it. The Cart root scrolls in BOTH
-// mounts (Cart.tsx), so on a short desktop window the footer is reached by
-// scrolling the card rather than overflowing it. No overscroll-contain here:
-// a drag that runs out of list must chain to the panel so the CTAs come up.
-export const POS_CART_LIST_CLASS = "min-h-48 flex-1 overflow-y-auto p-2";
+// The HTML's lines wrapper (values 5.4, 0.3 linesMin; U1 Task 4): it grows into the cart's free height and never
+// shrinks below its lines (flex 1 0 auto), keeps 150px (180px on a phone) so the empty state has room, 14px sides.
+// It has no scroller of its own: the Cart root scrolls in BOTH mounts (Cart.tsx), as the HTML's cart does, so on a
+// short window the footer is reached by scrolling the cart rather than overflowing it. The HTML sets no line-height.
+export const POS_CART_LIST_CLASS = "flex-[1_0_auto] min-h-[150px] px-3.5 leading-[normal] max-tab:min-h-[180px]";
 
 // The /pos header's room rule (design 6.1; components/layout/PosHeaderBrand.tsx measures, ruling R6's pattern): our
 // header buttons the HTML has no place for (Refresh in the apps, Tokens when on) take the actions box's width; when
@@ -237,7 +235,8 @@ export const POS_CART_MORE_PANEL_CLASS =
 export const POS_PRESS_FEEDBACK_CLASS =
   "touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
 
-// Header controls (Table / Customer / Open tabs / KOT / Move table): 40px tall
+// Header controls (Open tabs / KOT on /pos; U1 Task 4 moved the table, move and
+// customer chips into the cart head's cells; also the diner PIN reset row): 40px tall
 // with 14px text wherever a finger might tap; the compact 32px / 12px
 // `size="sm"` look returns at xl+ only behind `pointer-fine:` — keying the
 // SHRINK on a fine pointer is cascade-proof where a coarse re-floor would
@@ -245,16 +244,10 @@ export const POS_PRESS_FEEDBACK_CLASS =
 // (CB-1d.1 V1). tailwind-merge lets these override the size variant.
 export const POS_HEADER_CONTROL_CLASS =
   "h-10 text-sm xl:pointer-fine:h-8 xl:pointer-fine:text-xs touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
-// Below xl the header is ONE non-wrapping row, so only one control may
-// flex-shrink and truncate — the customer chip (names are the long values).
-// The table / move-table chip is content-sized (capped at 7rem so an
-// operator-typed table name cannot starve the customer chip), both chips
-// drop their leading icon below xl, and Open tabs shows icon + count only:
-// review CB-1 F10 probed a 360px header down to two visible glyphs per chip
-// when both chips shared the leftover width. Budget at 360px (328px row):
-// KOT 40 + tabs ~68 + table ≤112 + 3 gaps 24 = ≤244 → customer ≥84px.
-export const POS_HEADER_CHIP_FIXED_CLASS = "shrink-0 max-w-28 xl:max-w-none";
-export const POS_HEADER_CHIP_FLEX_CLASS = "min-w-0 flex-1 xl:flex-none";
+// The customer chip's leading icon (CustomerSearch's own trigger, the payment
+// popup's): shown from xl only. The header's table and customer chips (and
+// their fixed / flex width classes, review CB-1 F10) became the cart head's
+// cells in U1 Task 4 (owner Q9).
 export const POS_HEADER_CHIP_ICON_CLASS = "hidden h-4 w-4 xl:block";
 
 // The menu's card grid (values 4.1, 4.3; design 5): the HTML's auto-fill columns, each at least 200px (the whole width
@@ -287,11 +280,10 @@ export function posGridPaneWidthPx(viewport: NavViewport): number {
   return menu - 2 * inset;
 }
 
-// Touch targets: cart qty steppers / remove (36px, compacting to 28px only on
-// an xl+ FINE pointer). (The tile's corner "add with note" button went with the
-// old tile in U1 Task 3: the card's name opens the options modal, owner Q5.)
-export const POS_CART_STEPPER_CLASS =
-  "h-9 w-9 xl:pointer-fine:h-7 xl:pointer-fine:w-7 touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
+// (The cart's qty stepper / remove touch-target token went with the old cart
+// line in U1 Task 4: the HTML's stepper keeps its own 30/28 and 36/34 sizes on
+// touch screens too, ruling R1 — components/pos/CartLine.tsx; the tile's
+// corner "add with note" button went with the old tile in U1 Task 3.)
 // Primary/secondary cart CTAs: 48px on touch; `size="lg"`'s 40px only at
 // xl + FINE pointer (glass keeps 48px — the V1 invariant is uniform, g4).
 export const POS_CART_CTA_CLASS =

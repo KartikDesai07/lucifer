@@ -209,6 +209,8 @@
   --animate-html-rise-tile: brand-rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   /* The HTML's pop (POS values 4.1): the /pos card's qty badge springs in. */
   --animate-html-pop: html-pop 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* The HTML's lineIn (POS values 5.4): a /pos cart line slides in from the right as it arrives. */
+  --animate-html-line-in: html-line-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 /* The HTML's growY (values 1.5), verbatim. */
@@ -307,6 +309,17 @@
   100% {
     transform: scale(1);
     opacity: 1;
+  }
+}
+/* The HTML's lineIn (POS values 5.4), verbatim. */
+@keyframes html-line-in {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
 /* One short "no" — used on a failed sign-in's error box. */

@@ -245,7 +245,6 @@ test("PIN: pos/page.tsx feeds the memoized PosHeader Object.is-stable props — 
   const propPins = [
     "openTabs={openTabs.data ?? NO_OPEN_TABS}",
     "onResumeTab={onResumeTab}",
-    "onMoveTable={handleMoveTable}",
     "onTableChange={onTableChange}",
     "resumedOrder={pos.resumedOrder}",
     "isBusy={pos.isBusy}",
@@ -254,6 +253,19 @@ test("PIN: pos/page.tsx feeds the memoized PosHeader Object.is-stable props — 
     assert.ok(block.includes(needle), `<PosHeader ...> block must include "${needle}", got:\n${block}`);
   }
   assert.ok(!block.includes("=>"), `<PosHeader ...> block must carry no inline arrow prop — every callback prop must be a pre-bound reference, got:\n${block}`);
+  // U1 Task 4 (owner Q9): the move / assign opener is the cart's Table cell now, handed over with the cells' inputs.
+  assert.ok(!block.includes("onMoveTable"), "the move opener left the header row");
+  assert.ok(stripped.includes("onResumeTab, onMoveTable: handleMoveTable"), "the cart's Table cell opens the move / assign dialog");
+});
+
+test("PIN: the cart's Void action reaches the lazy void dialog as its initial line — a plain data prop, no new latch", () => {
+  const page = stripComments(readSrc(POS_PAGE));
+  const modals = stripComments(readSrc(POS_MODALS));
+  assert.ok(page.includes("voidInitialLine={itemVoid.line}"), "the page hands PosModals the line the cart named");
+  assert.ok(modals.includes("voidInitialLine: VoidLine | null;"), "PosModalsProps declares it");
+  const tag = modals.slice(modals.indexOf("<VoidItemDialog"), modals.indexOf("/>", modals.indexOf("<VoidItemDialog")));
+  assert.ok(tag.startsWith("<VoidItemDialog"), "landmark: PosModals renders <VoidItemDialog");
+  assert.ok(tag.includes("initialLine={voidInitialLine}"), "and the dialog opens on it");
 });
 
 test("PIN: PosPrompts and PosHeader are named, exported React.memo wrappers (PosPromptsProps exported for PosModals)", () => {
@@ -275,7 +287,8 @@ test("PIN: PosPrompts and PosHeader are named, exported React.memo wrappers (Pos
     "PosHeader.tsx must declare export const PosHeader = memo(function PosHeader(",
   );
   assert.match(headerSrc, /import\s*\{\s*memo\s*\}\s*from\s*"react"/, 'PosHeader.tsx must import memo from "react"');
-  assert.match(headerSrc, /<TableSelector/, "PosHeader.tsx must render <TableSelector");
+  // U1 Task 4 (owner Q9): the table chip left the row for the cart head; its Open tabs control stays until U1 Task 6.
+  assert.match(headerSrc, /<OpenTabsButton/, "PosHeader.tsx must render <OpenTabsButton");
 });
 
 test("PIN: line budgets — pos/page.tsx < 300 (exact count pinned in pos-tile-paths), PosModals.tsx <= 300, PosHeader.tsx <= 300, PosPrompts.tsx <= 300", () => {

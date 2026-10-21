@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import { User, Search, Check, Loader2, UserPlus } from "lucide-react";
 
 import {
@@ -30,6 +30,9 @@ interface CustomerSearchProps {
   className?: string;
   // A send is in flight: the customer cannot change under it.
   disabled?: boolean;
+  // The control this dialog opens from instead of the chip: the cart head's Customer cell (U1 Task 4, owner Q9). It
+  // brings its own words, title and lock; className and disabled above style and lock the chip (the payment popup's).
+  trigger?: ReactElement;
 }
 
 // Separators a cafe actually types around a phone number ("+91 98765-43210").
@@ -38,7 +41,7 @@ interface CustomerSearchProps {
 const PHONE_SEPARATOR_PATTERN = /[+\s-]/g;
 const DIGITS_ONLY_PATTERN = /^\d+$/;
 
-export function CustomerSearch({ value, onChange, className, disabled }: CustomerSearchProps) {
+export function CustomerSearch({ value, onChange, className, disabled, trigger }: CustomerSearchProps) {
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -79,21 +82,23 @@ export function CustomerSearch({ value, onChange, className, disabled }: Custome
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
+      {/* The chip's empty state reads "Customer", not "Walk-In": a table
+          control beside it says Walk-In for "no table", and below xl the chip
+          has no icon to tell them apart. title = the untruncated name. */}
       <DialogTrigger asChild>
-        {/* Empty state reads "Customer", not "Walk-In": the table chip beside
-            it already says Walk-In for "no table", and below xl neither chip
-            has its icon to tell them apart. title = the untruncated name. */}
-        <Button
-          variant="outline"
-          size="sm"
-          className={cn("gap-2 xl:max-w-[12rem]", className)}
-          disabled={disabled}
-          aria-label={value ? `Customer: ${value.name}` : "Select customer"}
-          title={value ? value.name : "Select customer"}
-        >
-          <User className={POS_HEADER_CHIP_ICON_CLASS} />
-          <span className="min-w-0 truncate">{value ? value.name : "Customer"}</span>
-        </Button>
+        {trigger ?? (
+          <Button
+            variant="outline"
+            size="sm"
+            className={cn("gap-2 xl:max-w-[12rem]", className)}
+            disabled={disabled}
+            aria-label={value ? `Customer: ${value.name}` : "Select customer"}
+            title={value ? value.name : "Select customer"}
+          >
+            <User className={POS_HEADER_CHIP_ICON_CLASS} />
+            <span className="min-w-0 truncate">{value ? value.name : "Customer"}</span>
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>

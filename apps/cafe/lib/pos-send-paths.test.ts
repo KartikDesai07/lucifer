@@ -28,6 +28,8 @@ const POS_PAGE = "apps/cafe/app/(dashboard)/pos/page.tsx";
 const CART_PROPS = "apps/cafe/lib/pos-cart-props.ts";
 const CART = "apps/cafe/components/pos/Cart.tsx";
 const CART_LINE = "apps/cafe/components/pos/CartLine.tsx";
+const CART_LINES = "apps/cafe/components/pos/CartLines.tsx";
+const CART_HEAD = "apps/cafe/components/pos/CartHead.tsx";
 const CART_NOTES = "apps/cafe/components/pos/CartNotes.tsx";
 const GRID = "apps/cafe/components/pos/ProductGrid.tsx";
 const HEADER = "apps/cafe/components/pos/PosHeader.tsx";
@@ -188,17 +190,28 @@ test("S8: every editing surface is locked during the flight — grid, lines, Cle
   // U1 Task 3: the HTML's card grid (one class at every width) in both layouts — the Normal grid and each group's.
   assert.equal(grid.split('<div className={cn(POS_CARD_GRID_CLASS, disabled && "opacity-50")} inert={disabled}>').length - 1, 2, "both layouts' grids are inert while a send flies");
   const cart = readSrc(CART);
-  assert.match(between(cart, "fresh.map((item) => (", "))"), /disabled=\{isBusy\}/, "unsent lines' steppers lock");
-  assert.ok(cart.includes("onClick={onClear} disabled={isBusy}"), "Clear locks");
+  // U1 Task 4 (values 5.2, 5.4; owner Q9/Q10): the head and the lines left Cart.tsx for CartHead.tsx / CartLines.tsx,
+  // each line's stepper locks, Clear / Close and the cells lock, and no line can be selected (so no Remove / Void).
+  const lines = readSrc(CART_LINES);
+  const head = readSrc(CART_HEAD);
+  assert.match(between(cart, "<CartLines", "/>"), /isBusy=\{isBusy\}/, "the lines get the lock");
+  assert.match(between(cart, "<CartHead", "/>"), /isBusy=\{isBusy\}/, "the head gets the lock");
+  assert.match(between(lines, "lines.map((item, i) => {", "})}"), /disabled=\{isBusy\}/, "every line's stepper locks");
+  assert.ok(lines.includes("if (isBusy) return;"), "no line is selected while busy (no Remove, no Void)");
+  assert.ok(head.includes("onClick={onClear} disabled={isBusy}"), "Clear locks");
+  assert.ok(head.includes("onClick={onCloseTab} disabled={isBusy}"), "Close locks");
+  assert.equal(count(head, "disabled={isBusy}"), 5, "Clear, Close, the table cell, the move cell and the customer cell");
   assert.ok(cart.includes("trailing={moreMenu} disabled={isBusy} />"), "the note locks");
   assert.ok(cart.includes("disabled={charge === 0 || isBusy}"), "the waive button locks");
   assert.match(between(cart, "value={charge === 0 ? \"\" : charge}", "/>"), /disabled=\{isBusy\}/, "the charge input locks");
   assert.match(between(cart, "onClick={onChargeReset}", ">"), /disabled=\{isBusy\}/, "Undo locks");
-  assert.equal(count(readSrc(CART_LINE), "disabled={disabled}"), 3, "both steppers and remove");
+  // U1 Task 4 (owner Q10): the trash button went (select the line, then Remove), so the two stepper buttons remain.
+  assert.equal(count(readSrc(CART_LINE), "disabled={disabled}"), 2, "both steppers");
   assert.equal(count(readSrc(CART_NOTES), "disabled={disabled}"), 2, "the Add note row and the textarea");
-  assert.equal(count(readSrc(HEADER), "disabled={isBusy}"), 5, "KOT reprint, Open tabs, move/assign, table tiles, customer");
+  // U1 Task 4 (owner Q9): the move/assign, table and customer chips are the cart head's cells (counted above).
+  assert.equal(count(readSrc(HEADER), "disabled={isBusy}"), 2, "KOT reprint, Open tabs");
   assert.ok(readSrc(OPEN_TABS).includes("disabled={disabled}"), "the Open tabs trigger honours it");
-  assert.ok(readSrc(CUSTOMER).includes("disabled={disabled}"), "the customer trigger honours it");
+  assert.ok(readSrc(CUSTOMER).includes("disabled={disabled}"), "the customer chip (the payment popup's) honours it");
 });
 
 test("S9: the cart shows Sending… and, after an unanswered send, the notice with Send again (and only that)", () => {

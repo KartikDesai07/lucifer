@@ -1,9 +1,19 @@
 import type { CartProps } from "@/components/pos/Cart";
 import type { usePosTab } from "@/hooks/use-pos-tab";
 import { cartMenuActions, cartMenuIssues } from "@/lib/cart-availability";
-import type { Product } from "@/types";
+import type { VoidLine } from "@/lib/pos-cart-view";
+import type { Order, Product, Table } from "@/types";
 
 type Pos = ReturnType<typeof usePosTab>;
+
+/** What only the page holds for the cart head's two cells (U1 Task 4, owner Q9): the floor for the table picker, the
+ *  open tabs an occupied tile jumps to, the resume (today's prompt rules) and the move / assign opener. */
+export interface CartPageInputs {
+  tables: Table[] | undefined;
+  openTabs: Order[];
+  onResumeTab: (order: Order) => void;
+  onMoveTable: () => void;
+}
 
 // Builds the POS Cart panel's props from usePosTab's state — split out of
 // pos/page.tsx (CR2.3 S2's own wiring pushed it past the ~300-line budget) so
@@ -14,7 +24,15 @@ type Pos = ReturnType<typeof usePosTab>;
 // `menu` = the products list on screen (undefined until it has loaded): the
 // cart notice for lines the menu can no longer sell is derived from it here,
 // so pos/page.tsx gains no lines (Menu B2).
-export function buildCartProps(pos: Pos, onVoidItem: () => void, menu?: Product[]): CartProps {
+//
+// `onVoidItem` opens the void dialog on the sent line the cart's Void action names (owner Q10); `page` carries what the
+// head's Table and Customer cells need beyond usePosTab (owner Q9).
+export function buildCartProps(
+  pos: Pos,
+  onVoidItem: (line: VoidLine | null) => void,
+  menu: Product[] | undefined,
+  page: CartPageInputs,
+): CartProps {
   const menuIssues = cartMenuIssues(pos.cart, menu);
   return {
     items: pos.cart,
@@ -73,6 +91,16 @@ export function buildCartProps(pos: Pos, onVoidItem: () => void, menu?: Product[
     onCloseTab: pos.requestCloseTab,
     onVoidItem,
     resumedOrderId: pos.resumedOrder?.orderId,
+    resumedOrder: pos.resumedOrder,
+    // The head's two cells (owner Q9): the table and the customer, set exactly as the header chips set them
+    // (pos.setTable also re-derives the table charge and drops a waiver), plus the page's inputs.
+    cells: {
+      table: pos.table,
+      onTableChange: pos.setTable,
+      customer: pos.customer,
+      onCustomerChange: pos.setCustomer,
+      ...page,
+    },
     nextRound: (pos.resumedOrder?.kotRounds ?? 0) + 1,
     isBusy: pos.isBusy,
     // The Send button's "Sending…", and the unanswered send's notice (Send again).

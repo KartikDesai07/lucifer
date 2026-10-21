@@ -126,7 +126,8 @@ test("M3: the page keeps the grid on a failed background refresh and feeds the c
   assert.ok(!src.includes(": products.isError ? ("), "the bare isError branch is gone");
   const errorAt = at(src, "products.isError && products.data === undefined");
   assert.ok(at(src, "<ProductGrid") > errorAt, "vision guard: the grid is the branch after the error line");
-  assert.ok(src.includes("buildCartProps(pos, () => itemVoid.setOpen(true), products.data)"), "the list reaches buildCartProps");
+  // U1 Task 4 (owner Q10): the void opener now takes the line the cart's Void action names (useItemVoid.openFor).
+  assert.ok(src.includes("buildCartProps(pos, itemVoid.openFor, products.data, {"), "the list reaches buildCartProps");
   const lines = readRaw(PAGE).replace(/\n$/, "").split("\n").length;
   assert.equal(lines, 299, "page.tsx stays at its pinned 299 lines");
 });
@@ -206,7 +207,13 @@ test("M6: the cart mounts one notice, directly above the send notice, locked whi
 
 test("M7: buildCartProps threads menuNotice from the list", () => {
   const src = readSrc(CART_PROPS);
-  assert.ok(src.includes("export function buildCartProps(pos: Pos, onVoidItem: () => void, menu?: Product[]): CartProps {"));
+  // U1 Task 4: the void opener takes the named line, and the page hands over what the head's cells need (owner Q9/Q10).
+  assert.ok(
+    src.includes(
+      "export function buildCartProps(\n  pos: Pos,\n  onVoidItem: (line: VoidLine | null) => void,\n  menu: Product[] | undefined,\n  page: CartPageInputs,\n): CartProps {",
+    ),
+    "buildCartProps(pos, onVoidItem, menu, page)",
+  );
   assert.ok(src.includes("cartMenuIssues(pos.cart, menu)"), "judged from the list on screen");
   assert.ok(src.includes("menuNotice: menuIssues ? { ...menuIssues, ...cartMenuActions(menuIssues, pos) } : undefined"));
 });

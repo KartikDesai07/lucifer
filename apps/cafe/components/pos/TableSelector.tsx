@@ -1,10 +1,10 @@
 "use client";
 
-import { Fragment, useState } from "react";
-import { LayoutGrid, Check } from "lucide-react";
+import { Fragment, useState, type ReactElement } from "react";
+import { Check } from "lucide-react";
 
 import { cn, inr } from "@/lib/utils";
-import { POS_HEADER_CHIP_ICON_CLASS, POS_DIALOG_LIST_CAP_CLASS } from "@/lib/pos-layout";
+import { POS_DIALOG_LIST_CAP_CLASS } from "@/lib/pos-layout";
 import { tablePickAction } from "@/lib/table-pick";
 import { groupTablesByArea, showAreaHeadings } from "@/lib/table-areas";
 import { useTableAreas } from "@/hooks/use-table-areas";
@@ -30,24 +30,22 @@ interface TableSelectorProps {
   tables: Table[] | undefined;
   value: string | undefined;
   onChange: (tableNo: string | undefined) => void;
-  // Locked while resuming an open tab — moving THAT tab's table now goes
-  // through MoveTableDialog (server-CAS'd, prints a kitchen slip), not this
-  // picker, which only ever writes local cart state.
-  disabled?: boolean;
   tabs?: Order[]; // open, unsettled tabs — lets an occupied tile name who is sitting there
   onResume?: (order: Order) => void; // jump straight to that tab instead of picking a table
-  // Applied to the trigger button only — the header sizes it per breakpoint.
-  className?: string;
+  // The control this picker opens from: the cart head's Table cell (U1 Task 4, owner Q9). It brings its own words,
+  // title and lock (disabled while an order write is in flight); a resumed tab never mounts this picker — moving THAT
+  // tab's table goes through MoveTableDialog (server-CAS'd, prints a kitchen slip), not this picker, which only ever
+  // writes local cart state.
+  trigger: ReactElement;
 }
 
 export function TableSelector({
   tables,
   value,
   onChange,
-  disabled,
   tabs,
   onResume,
-  className,
+  trigger,
 }: TableSelectorProps) {
   const [open, setOpen] = useState(false);
 
@@ -111,21 +109,7 @@ export function TableSelector({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className={cn("gap-2", className)}
-          disabled={disabled}
-          aria-label={value ? `Table ${value}` : "Select table (Walk-In)"}
-          // The header caps this chip's width below xl, so a long custom table
-          // name truncates — the tooltip keeps the whole name reachable.
-          title={value ? `Table ${value}` : "Walk-In — no table"}
-        >
-          <LayoutGrid className={POS_HEADER_CHIP_ICON_CLASS} />
-          <span className="min-w-0 truncate">{value ? `Table ${value}` : "Walk-In"}</span>
-        </Button>
-      </DialogTrigger>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Select table</DialogTitle>

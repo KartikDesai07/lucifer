@@ -57,9 +57,12 @@ const TABLE_SETUP_LIST = "apps/cafe/components/tables/TableSetupList.tsx";
 const TABLE_MODEL = "apps/cafe/models/Table.ts";
 const ORDER_DETAIL_SHEET = "apps/cafe/components/orders/OrderDetailSheet.tsx";
 const POS_PAGE = "apps/cafe/app/(dashboard)/pos/page.tsx";
-// CR2.3 S0 split — the header action row (including the Move-table button)
-// moved out of pos/page.tsx into its own component.
-const POS_HEADER = "apps/cafe/components/pos/PosHeader.tsx";
+// CR2.3 S0 split moved the header action row (including the Move-table button)
+// out of pos/page.tsx into PosHeader.tsx; U1 Task 4 (owner Q9) — the
+// Move-table button is the cart head's Table cell on a resumed tab now.
+const CART_HEAD = "apps/cafe/components/pos/CartHead.tsx";
+const CART_TSX = "apps/cafe/components/pos/Cart.tsx";
+const CART_PROPS = "apps/cafe/lib/pos-cart-props.ts";
 // CB-DL-1 S1 — the tables GET's query/sort now lives in the shared master
 // spec this file reads for the arrangement-sort pin below.
 const MASTERS_LIB = "apps/cafe/lib/masters.ts";
@@ -482,11 +485,16 @@ test("PIN: OrderDetailSheet hands the moved order back to its parent — without
 });
 
 test("PIN: the POS Move-table button is blocked while an order write is in flight — react-to-print keeps ONE fixed-id iframe, so a move slip racing a round's KOT can delete the other job", () => {
-  // CR2.3 S0 split — this button now lives in PosHeader.tsx (a pure props-in
-  // lift out of pos/page.tsx), so this pin moved with it, plus a reachability
-  // check that pos/page.tsx actually feeds the header the LIVE order-write
-  // state rather than a stray literal (CR2.1's dead-hook lesson).
-  const src = stripComments(readSrc(POS_HEADER));
+  // CR2.3 S0 split — this button moved into PosHeader.tsx (a pure props-in
+  // lift out of pos/page.tsx); U1 Task 4 (owner Q9) — it is the cart head's
+  // Table cell on a resumed tab now (CartHead.tsx), so this pin moved with it,
+  // plus a reachability check that the cart is fed the LIVE order-write state
+  // rather than a stray literal (CR2.1's dead-hook lesson).
+  const head = stripComments(readSrc(CART_HEAD));
+  const moveCell = head.slice(head.lastIndexOf("<button", head.indexOf("onClick={cells.onMoveTable}")), head.indexOf("onClick={cells.onMoveTable}"));
+  assert.ok(moveCell.startsWith("<button"), "landmark: the move / assign cell is a button");
+  assert.match(moveCell, /disabled=\{isBusy\}/, "the move / assign cell must be gated on no in-flight order write");
+  const src = head;
   // The `isBusy` term is this pin's SUBJECT (the print race in the title) and
   // must never be dropped. The `!resumedOrder.tableNo` term that used to sit
   // beside it is GONE ON PURPOSE: a tab with no table can now be ASSIGNED one
@@ -511,6 +519,12 @@ test("PIN: the POS Move-table button is blocked while an order write is in fligh
     "pos/page.tsx must feed PosHeader the live resumedOrder",
   );
   assert.match(posSrc, /isBusy=\{pos\.isBusy\}/, "pos/page.tsx must feed PosHeader the live isBusy flag");
+  const props = stripComments(readSrc(CART_PROPS));
+  assert.ok(props.includes("resumedOrder: pos.resumedOrder,"), "the cart gets the live resumed tab");
+  assert.ok(props.includes("isBusy: pos.isBusy,"), "the cart gets the live isBusy flag");
+  const cart = stripComments(readSrc(CART_TSX));
+  const headTag = cart.slice(cart.indexOf("<CartHead"), cart.indexOf("/>", cart.indexOf("<CartHead")));
+  assert.ok(headTag.includes("isBusy={isBusy}") && headTag.includes("resumedOrder={resumedOrder}"), "and hands both to its head");
 });
 
 test("PIN: TableSetupList rolls a failed save back to the LATEST server order — the re-seed effect cannot do it (a failed save leaves the server order unchanged, so its key never changes), and a pre-drag snapshot would overwrite the hook's fresh re-read", () => {

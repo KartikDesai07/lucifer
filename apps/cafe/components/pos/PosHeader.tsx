@@ -2,22 +2,15 @@
 
 import { memo } from "react";
 
-import { ChefHat, LayoutGrid } from "lucide-react";
+import { ChefHat } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import {
-  POS_HEADER_CONTROL_CLASS,
-  POS_HEADER_CHIP_FIXED_CLASS,
-  POS_HEADER_CHIP_FLEX_CLASS,
-  POS_HEADER_CHIP_ICON_CLASS,
-} from "@/lib/pos-layout";
+import { POS_HEADER_CONTROL_CLASS } from "@/lib/pos-layout";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { OpenTabsButton } from "@/components/pos/OpenTabsButton";
-import { TableSelector } from "@/components/pos/TableSelector";
-import { CustomerSearch } from "@/components/pos/CustomerSearch";
 import { PosTableHandoff } from "@/components/pos/PosTableHandoff";
-import type { Customer, Order, Table } from "@/types";
+import type { Order } from "@/types";
 
 interface PosHeaderProps {
   lastOrder: Order | null;
@@ -26,18 +19,14 @@ interface PosHeaderProps {
   onResumeTab: (order: Order) => void;
   resumedOrder: Order | null;
   isBusy: boolean;
-  onMoveTable: () => void;
-  tables: Table[] | undefined;
-  table: string | undefined;
+  // The Floor hand-off below selects a table through this (the Table cell itself lives in the cart head now).
   onTableChange: (tableNo: string | undefined) => void;
-  customer: Customer | undefined;
-  onCustomerChange: (customer: Customer | undefined) => void;
 }
 
 // The POS terminal's header action row — lifted verbatim out of pos/page.tsx
 // to keep that file under the line budget. Pure props in, callbacks out; the
 // page still owns every piece of state this reads or writes.
-// Memoized (CB-1d.3c): the page passes latched callbacks, so its three dialog roots bail out.
+// Memoized (CB-1d.3c): the page passes latched callbacks, so its dialog root bails out.
 export const PosHeader = memo(function PosHeader({
   lastOrder,
   onReprintKot,
@@ -45,17 +34,13 @@ export const PosHeader = memo(function PosHeader({
   onResumeTab,
   resumedOrder,
   isBusy,
-  onMoveTable,
-  tables,
-  table,
   onTableChange,
-  customer,
-  onCustomerChange,
 }: PosHeaderProps) {
   return (
     // One row that never wraps below xl; compact desktop row at xl+. The page's title is the page header's (U0 Task 3,
     // ruling R4; on /pos the HTML's Order header has no title block, so its h1 is read to screen readers only, U1
-    // Task 1), so the row holds only the controls, at the top of the menu column until U1 Tasks 4 and 6 move them.
+    // Task 1), so the row holds only the controls. The Table and Customer chips are the cart head's two cells (U1 Task 4,
+    // owner Q9); the KOT reprint and Open tabs stay at the top of the menu column until U1 Task 6 moves them.
     <div className="flex items-center justify-between gap-2 xl:flex-wrap">
       <PageHeader title="POS Terminal" />
       <div className="flex min-w-0 flex-1 items-center gap-2 xl:flex-none xl:flex-wrap">
@@ -77,58 +62,6 @@ export const PosHeader = memo(function PosHeader({
           tabs={openTabs}
           onResume={onResumeTab}
           className={cn(POS_HEADER_CONTROL_CLASS, "shrink-0")}
-          disabled={isBusy}
-        />
-        {resumedOrder ? (
-          // A resumed tab no longer locks the table picker — it swaps to a
-          // move: MoveTableDialog owns the whole interaction (claim the
-          // destination, CAS the order, release the old table, print the
-          // kitchen's slip), so re-selecting here would race that route with
-          // the stolen-table bug it was written to close.
-          <Button
-            variant="outline"
-            size="sm"
-            className={cn(POS_HEADER_CONTROL_CLASS, POS_HEADER_CHIP_FIXED_CLASS, "gap-2")}
-            // A walk-in tab can now be SEATED here (the route added the ASSIGN
-            // verb — a tab with no table is no longer a reason to refuse), so
-            // this control stays enabled either way. Still blocked while any
-            // order write is in flight: firing a round queues a KOT print, and
-            // react-to-print keeps ONE fixed-id iframe (lib/print.ts), so a
-            // move/assign slip starting alongside that ticket can delete the
-            // other job's iframe and one of the two never reaches the kitchen.
-            disabled={isBusy}
-            title={
-              resumedOrder.tableNo
-                ? `Move ${resumedOrder.orderId} to another table`
-                : `Assign a table to ${resumedOrder.orderId}`
-            }
-            onClick={onMoveTable}
-          >
-            <LayoutGrid className={POS_HEADER_CHIP_ICON_CLASS} />
-            <span className="min-w-0 truncate">
-              {resumedOrder.tableNo
-                ? `Table ${resumedOrder.tableNo}`
-                : "Walk-In"}
-            </span>
-          </Button>
-        ) : (
-          <TableSelector
-            tables={tables}
-            value={table}
-            onChange={onTableChange}
-            // Occupied tiles become a one-tap shortcut to their own bill
-            // (F2) — the rush-path way to jump straight to a running tab
-            // instead of hunting it in Open tabs.
-            tabs={openTabs}
-            onResume={onResumeTab}
-            className={cn(POS_HEADER_CONTROL_CLASS, POS_HEADER_CHIP_FIXED_CLASS)}
-            disabled={isBusy}
-          />
-        )}
-        <CustomerSearch
-          value={customer}
-          onChange={onCustomerChange}
-          className={cn(POS_HEADER_CONTROL_CLASS, POS_HEADER_CHIP_FLEX_CLASS)}
           disabled={isBusy}
         />
       </div>

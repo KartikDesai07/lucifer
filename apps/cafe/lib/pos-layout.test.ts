@@ -237,24 +237,18 @@ test("PIN: exactly one cart and one category list show at any width — the colu
   assert.ok(tokens(POS_ASIDE_CLASS).includes("desk:flex"), "the category column shows from 1100px");
 });
 
-test("PIN: the cart sheet's scrollable panel and its line-list floor carry the right utility classes", () => {
+test("PIN: the cart sheet's scrollable panel and the HTML's lines wrapper carry the right utility classes", () => {
   assert.match(POS_CART_SHEET_PANEL_CLASS, /(^|\s)h-full(\s|$)/, "POS_CART_SHEET_PANEL_CLASS must include h-full");
   assert.match(POS_CART_SHEET_PANEL_CLASS, /overflow-y-auto/, "POS_CART_SHEET_PANEL_CLASS must include overflow-y-auto");
-  // D9.8 (2026-09-26): raised 32 → 48 (8rem → 12rem). A cart LINE is a
-  // two-row block (name+price, then the 36px stepper row) ≈ 76px, so the old
-  // 128px floor could only ever show 1.68 of them — the owner's phone
-  // screenshot caught the second line clipped mid-stepper. 192px shows 2.5,
-  // so the cut always lands INSIDE a line and reads as "scroll for more"
-  // rather than as a line with its controls sheared off. Affordable now that
-  // the footer's occasional controls live behind the More menu.
-  assert.match(POS_CART_LIST_CLASS, /(^|\s)min-h-48(\s|$)/, "POS_CART_LIST_CLASS must include min-h-48");
-  assert.ok(
-    !POS_CART_LIST_CLASS.includes("min-h-32"),
-    "POS_CART_LIST_CLASS must NOT fall back to the old min-h-32 floor — it clipped the second cart line mid-stepper",
+  // U1 Task 4 (values 5.4, 0.3 linesMin): the HTML's lines wrapper — it grows into the cart's free height and never
+  // shrinks below its lines (flex 1 0 auto), keeps 150px (180px on a phone), 14px sides; the whole cart scrolls as one
+  // (Cart's root), so the wrapper has no scroller of its own (D9.8's 192px floor for a scrolling list went with it).
+  assert.equal(
+    POS_CART_LIST_CLASS,
+    "flex-[1_0_auto] min-h-[150px] px-3.5 leading-[normal] max-tab:min-h-[180px]",
+    "values 5.4 lines wrapper: flex 1 0 auto, min-height linesMin (150 / 180 below 720px), padding 0 14px",
   );
-  assert.match(POS_CART_LIST_CLASS, /(^|\s)flex-1(\s|$)/, "POS_CART_LIST_CLASS must include flex-1");
-  assert.ok(
-    !POS_CART_LIST_CLASS.includes("overscroll-contain"),
-    "POS_CART_LIST_CLASS must NOT include overscroll-contain — a drag that runs out of list must chain to the scrolling panel so the CTAs come up",
-  );
+  for (const gone of ["overflow-y-auto", "overscroll-contain", "min-h-48"]) {
+    assert.ok(!POS_CART_LIST_CLASS.includes(gone), `POS_CART_LIST_CLASS must not carry ${gone}: the cart scrolls as one`);
+  }
 });

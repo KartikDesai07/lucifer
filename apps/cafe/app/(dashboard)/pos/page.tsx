@@ -141,13 +141,17 @@ export default function PosPage() {
   }, []);
 
   // PosHeader is memoized: these two usePosTab closures are re-minted every render
-  // (they read the live cart), so latch them; the move-table opener only wraps a
-  // setState and needs plain useCallback.
+  // (they read the live cart), so latch them; the move-table opener (the cart's Table
+  // cell on a tab) only wraps a setState and needs plain useCallback.
   const onResumeTab = useStableCallback(pos.requestResume);
   const onTableChange = useStableCallback(pos.setTable);
   const handleMoveTable = useCallback(() => setMoveTableOpen(true), []);
 
-  const cartProps = buildCartProps(pos, () => itemVoid.setOpen(true), products.data);
+  // One props object for both cart mounts. The head's cells take the floor, the open tabs and the two openers (owner
+  // Q9); a sent line's Void opens the dialog on that line (owner Q10).
+  const cartProps = buildCartProps(pos, itemVoid.openFor, products.data, {
+    tables: tables.data, openTabs: openTabs.data ?? NO_OPEN_TABS, onResumeTab, onMoveTable: handleMoveTable,
+  });
   // One picker and one Find category text (values 2.6) for the column and the Category sheet (design 6.3).
   const categoryPicker: CategoryPickerProps = {
     categories: categories.data,
@@ -169,9 +173,9 @@ export default function PosPage() {
             <CategorySidebar {...categoryPicker} />
           )}
         </aside>
-        {/* The menu column (values 3.1): the HTML's one scroller. Today's control row first, until U1 Tasks 4 and 6 move
-            its controls to the cart head and the header; then ProductGrid's sticky toolbar (the search box, the
-            Category button below 1100px) and its list, which scroll under the toolbar. */}
+        {/* The menu column (values 3.1): the HTML's one scroller. Today's control row first (KOT reprint, Open tabs),
+            until U1 Task 6 moves them to the header; then ProductGrid's sticky toolbar (the search box, the Category
+            button below 1100px) and its list, which scroll under the toolbar. */}
         <div data-ui="pos-main" className={POS_MAIN_CLASS}>
           <div data-ui="pos-controls" className={POS_CONTROLS_CLASS}>
             <PosHeader
@@ -181,12 +185,7 @@ export default function PosPage() {
               onResumeTab={onResumeTab}
               resumedOrder={pos.resumedOrder}
               isBusy={pos.isBusy}
-              onMoveTable={handleMoveTable}
-              tables={tables.data}
-              table={pos.table}
               onTableChange={onTableChange}
-              customer={pos.customer}
-              onCustomerChange={pos.setCustomer}
             />
           </div>
           {/* Loading: the toolbar as it will stand (its search box and Category button take no input yet) over
@@ -210,7 +209,7 @@ export default function PosPage() {
           )}
         </div>
         <section data-ui="pos-cart" className={POS_CART_CLASS}>
-          <Cart {...cartProps} className="rounded-none border-0" />
+          <Cart {...cartProps} />
         </section>
       </div>
 
@@ -258,6 +257,7 @@ export default function PosPage() {
         onVoidOpenChange={itemVoid.setOpen}
         voidPending={itemVoid.isPending}
         onVoidConfirm={itemVoid.confirm}
+        voidInitialLine={itemVoid.line}
         moveTableOpen={moveTableOpen}
         onMoveTableOpenChange={setMoveTableOpen}
         // `kot:false` — the move's own slip IS the kitchen's paper; a round

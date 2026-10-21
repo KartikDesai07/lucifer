@@ -31,7 +31,8 @@ function resolverBody(src: string): string {
 
 test("PIN: PosHeader renders exactly one hand-off component and the page never does", () => {
   const header = readCode(POS_HEADER);
-  assert.match(header, /<TableSelector\b/, "landmark: PosHeader must still render <TableSelector");
+  // U1 Task 4 (owner Q9): the table chip is the cart head's Table cell now; the hand-off stays in the header row.
+  assert.match(header, /<OpenTabsButton\b/, "landmark: PosHeader must still render <OpenTabsButton");
   assert.equal(count(header, "<" + "PosTableHandoff"), 1, "PosHeader must render exactly one hand-off component");
   assert.match(header, /import \{ PosTableHandoff \} from "@\/components\/pos\/PosTableHandoff"/);
   const page = readCode(POS_PAGE);

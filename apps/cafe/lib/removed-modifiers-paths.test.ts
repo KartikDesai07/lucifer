@@ -16,6 +16,7 @@ import { cartItemFromOrderItem, cartItemToInput } from "@/hooks/use-cart";
 import { billFromCart } from "@/components/public/public-bill-rows";
 import { modifiersPreselectedToSave } from "@/components/products/ModifiersPreselectedField";
 import { defaultAddOptions } from "@/lib/pos-price-buttons";
+import { lineMeta } from "@/lib/pos-cart-view";
 import { REMOVED_MODIFIERS_NOT_ALLOWED_ERROR, REMOVED_MODIFIER_UNKNOWN_ERROR } from "@pos/shared/utils";
 import type { CartLine } from "@/components/public/public-cart-store";
 import type { OrderItem } from "@/types";
@@ -62,7 +63,9 @@ test("PIN (E): every <Checkbox> in the app carries BRAND_CHECKBOX_SQUARE_CLASS â
 const DISPLAY_SURFACES = [
   "components/pos/KOTReceipt.tsx",
   "components/pos/OrderReceipt.tsx",
-  "components/pos/CartLine.tsx",
+  // U1 Task 4 (values 5.4): the /pos cart line's one meta line is built in lib/pos-cart-view.ts (lineMeta), which
+  // CartLine renders; the pin below keeps CartLine on it.
+  "lib/pos-cart-view.ts",
   "components/kitchen/KitchenLineCard.tsx",
   "components/orders/OrderDetailSheet.tsx",
   "components/orders/OrderRequestCard.tsx",
@@ -83,6 +86,14 @@ test("PIN (F): every line-display surface prints modifiers through orderItemModi
     // Also the optional-chain form (item.modifiers?.join) a regression would idiomatically use.
     assert.ok(!/\bmodifiers\s*\??\.\s*join\s*\(/.test(src), `${rel}: a hand-written modifiers join is back â€” it would drop the NO lines`);
   }
+});
+
+test("PIN (F): the /pos cart line shows a reverse-mode line's removals through lineMeta (U1 Task 4, values 5.4)", () => {
+  const line = stripComments(readSrc("components/pos/CartLine.tsx"));
+  assert.match(line, /import \{[^}]*\blineMeta\b[^}]*\} from "@\/lib\/pos-cart-view";/, "CartLine takes its meta from lib/pos-cart-view.ts");
+  assert.ok(line.includes("{lineMeta(item)}"), "and renders it under the name");
+  const pizza = { productId: "2".repeat(24), name: "Pizza", price: 300, qty: 1, modifiers: [], removedModifiers: ["Mushroom", "Onion"], instructions: "", kotRound: 1 } as OrderItem;
+  assert.equal(lineMeta(cartItemFromOrderItem(pizza, 0)), "NO Mushroom, NO Onion", "a sent reverse-mode line still says what was taken off");
 });
 
 test("PIN (F): both void slips (host print job and local print) carry the removals of the voided line", () => {

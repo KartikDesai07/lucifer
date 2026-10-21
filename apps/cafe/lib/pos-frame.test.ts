@@ -171,6 +171,11 @@ test("the old two-pane and stacked-phone frame is gone, not left dead (design 5)
     "POS_TILE_ROW_GAP_PX",
     "POS_TILE_OPTIONS_BUTTON_CLASS",
     "POS_TILE_OPTIONS_RESERVE_CLASS",
+    // U1 Task 4 (values 5.2, 5.4; owner Q9): the Table and Customer chips left the header row for the cart head's
+    // cells, and the HTML's line stepper (its own sizes, ruling R1) replaced the cart's touch-target stepper.
+    "POS_HEADER_CHIP_FIXED_CLASS",
+    "POS_HEADER_CHIP_FLEX_CLASS",
+    "POS_CART_STEPPER_CLASS",
   ]) {
     assert.ok(!(name in layout), `lib/pos-layout.ts must no longer export ${name}`);
   }

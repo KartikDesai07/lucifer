@@ -8,6 +8,7 @@ import type { AddToCartOpts } from "@/components/pos/ModifierModal";
 import type { PosModalTotals } from "@/hooks/use-pos-modal-totals";
 import { useStableCallback } from "@/hooks/use-stable-callback";
 import type { PaymentResult } from "@/lib/payment-result";
+import type { VoidLine } from "@/lib/pos-cart-view";
 import type { WriteNotice } from "@/lib/pending-writes";
 import type { Customer, Order, Product, VoidItemInput } from "@/types";
 
@@ -70,6 +71,8 @@ export interface PosModalsProps extends PosPromptsProps {
   onVoidOpenChange: (open: boolean) => void;
   voidPending: boolean;
   onVoidConfirm: (payload: VoidItemInput) => void;
+  // The sent line the cart's Void action named (plain data: it changes only when the dialog is opened for a line).
+  voidInitialLine: VoidLine | null;
   // MoveTableDialog
   moveTableOpen: boolean;
   onMoveTableOpenChange: (open: boolean) => void;
@@ -112,6 +115,7 @@ export function PosModals({
   onVoidOpenChange,
   voidPending,
   onVoidConfirm,
+  voidInitialLine,
   moveTableOpen,
   onMoveTableOpenChange,
   onMoved,
@@ -177,6 +181,7 @@ export function PosModals({
         order={resumedOrder}
         isPending={voidPending}
         onConfirm={voidConfirm}
+        initialLine={voidInitialLine}
       />
 
       <MoveTableDialog

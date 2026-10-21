@@ -24,6 +24,9 @@ const LINK_FIELD = new RegExp("\\b" + "area" + "Id" + "\\b");
 // [file, positive landmark proving the file really groups through the helpers]
 const GATED: ReadonlyArray<readonly [string, string]> = [
   ["apps/cafe/components/pos/TableSelector.tsx", "useTableAreas("],
+  // U1 Task 4: the cart head's Table cell names the table's area ("T-4 · Garden") through the shared reader.
+  ["apps/cafe/components/pos/CartHead.tsx", "tableAreaName("],
+  ["apps/cafe/lib/pos-cart-view.ts", "tableAreaIdOf("],
   ["apps/cafe/components/orders/MoveTablePicker.tsx", "groupTablesByArea("],
   ["apps/cafe/components/orders/MoveTableDialog.tsx", "<MoveTablePicker"],
   ["apps/cafe/app/(dashboard)/tables/setup/page.tsx", "useTableAreas("],

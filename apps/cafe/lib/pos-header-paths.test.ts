@@ -28,8 +28,9 @@ test("PIN: PosHeader names the page through the header slot (no title of its own
   const src = stripComments(readSrc(POS_HEADER));
   assert.match(src, /<PageHeader title="POS Terminal" \/>/, "the page's title goes to the shell header");
   assert.ok(!/<h[12]\b/.test(src), "no heading of its own in the row");
+  // U1 Task 4: the Table and Customer chips left the row (owner Q9), so its controls are the KOT reprint and Open tabs.
   const occurrences = (src.match(/POS_HEADER_CONTROL_CLASS/g) ?? []).length;
-  assert.ok(occurrences >= 4, `expected POS_HEADER_CONTROL_CLASS referenced (import + usages) >=4 times, found ${occurrences}`);
+  assert.ok(occurrences >= 3, `expected POS_HEADER_CONTROL_CLASS referenced (import + usages) >=3 times, found ${occurrences}`);
 });
 
 test("PIN: every flex-wrap in PosHeader is xl-gated — neither the outer row nor the controls row wraps below xl", () => {
@@ -41,55 +42,59 @@ test("PIN: every flex-wrap in PosHeader is xl-gated — neither the outer row no
     assert.equal(src.slice(idx - 3, idx), "xl:", `the flex-wrap at index ${idx} must be immediately preceded by "xl:" (not lg:) — an ungated one reopens the phone wrap bug`);
   }
   assert.match(src, /"flex items-center justify-between gap-2 xl:flex-wrap"/, "the OUTER row must carry xl:flex-wrap too — v1 wrapped at desktop");
-  assert.match(src, /<TableSelector\b/, "landmark: PosHeader must render <TableSelector");
+  assert.match(src, /<OpenTabsButton\b/, "landmark: PosHeader must render <OpenTabsButton");
 });
 
-test("PIN: PosHeader gives exactly one control the flex/truncate chip class, and >=2 the fixed chip class (review F10)", () => {
+// U1 Task 4 (owner Q9, design 6.5): the Table and Customer chips are the cart head's two cells now
+// (components/pos/CartHead.tsx, pinned in lib/pos-layout-paths.test.ts); the row keeps the KOT reprint and Open tabs
+// until U1 Task 6, and the Floor hand-off, which still selects a table through onTableChange.
+test("PIN: the Table and Customer chips left PosHeader for the cart's cells (owner Q9) — no chip, no chip class, no move opener", () => {
   const src = stripComments(readSrc(POS_HEADER));
-  const importBlock = src.match(/import\s*\{[^}]*\}\s*from\s*"@\/lib\/pos-layout"/);
-  const body = importBlock ? src.replace(importBlock[0], "") : src;
-  const flexCount = (body.match(/POS_HEADER_CHIP_FLEX_CLASS/g) ?? []).length;
-  const fixedCount = (body.match(/POS_HEADER_CHIP_FIXED_CLASS/g) ?? []).length;
-  assert.equal(flexCount, 1, `expected exactly 1 FLEX chip, found ${flexCount} — a 2nd flex-1 chip re-creates F10's 360px two-glyph truncation`);
-  assert.ok(fixedCount >= 2, `expected >=2 FIXED chips, found ${fixedCount}`);
-});
-
-test("PIN: PosHeader never reverts to the old hand-rolled min-w-0 flex-1 xl:flex-none literal — the chip classes replace it", () => {
-  const src = stripComments(readSrc(POS_HEADER));
-  assert.ok(!src.includes("min-w-0 flex-1 xl:flex-none"), "must not hardcode the old literal — use POS_HEADER_CHIP_FLEX_CLASS");
-  assert.match(src, /POS_HEADER_CHIP_FLEX_CLASS/, "landmark: PosHeader.tsx must still reference POS_HEADER_CHIP_FLEX_CLASS");
-});
-
-test("PIN: TableSelector and CustomerSearch import POS_HEADER_CHIP_ICON_CLASS and truncate their trigger label (review F10)", () => {
-  for (const { label, path: rel } of [
-    { label: "TableSelector", path: TABLE_SELECTOR },
-    { label: "CustomerSearch", path: CUSTOMER_SEARCH },
+  for (const gone of [
+    "<TableSelector",
+    "<CustomerSearch",
+    "LayoutGrid",
+    "POS_HEADER_CHIP_FIXED_CLASS",
+    "POS_HEADER_CHIP_FLEX_CLASS",
+    "POS_HEADER_CHIP_ICON_CLASS",
+    "onMoveTable",
+    "onCustomerChange",
+    "min-w-0 flex-1 xl:flex-none",
   ]) {
-    const src = stripComments(readSrc(rel));
-    assert.match(
-      src,
-      /import\s*\{[^}]*POS_HEADER_CHIP_ICON_CLASS[^}]*\}\s*from\s*"@\/lib\/pos-layout"/,
-      `${label} must import POS_HEADER_CHIP_ICON_CLASS from @/lib/pos-layout`,
-    );
-    assert.match(src, /<span className="min-w-0 truncate">/, `${label}'s trigger label span must be "min-w-0 truncate"`);
+    assert.ok(!src.includes(gone), `PosHeader must no longer carry ${gone}: the cells live in the cart head`);
   }
+  assert.ok(src.includes("onSelect={onTableChange}"), "the Floor hand-off still selects a table");
 });
 
-test("PIN: CustomerSearch's empty trigger label reads Customer, not Walk-In (the table chip already owns that word); TableSelector's still does", () => {
+test("PIN: TableSelector opens from the trigger it is given (the cart's Table cell) — its dialog is today's", () => {
+  const src = stripComments(readSrc(TABLE_SELECTOR));
+  assert.match(src, /trigger: ReactElement;/, "TableSelector must take the cell it opens from");
+  assert.ok(src.includes("<DialogTrigger asChild>{trigger}</DialogTrigger>"), "the cell is the dialog's trigger");
+  for (const gone of ["LayoutGrid", "POS_HEADER_CHIP_ICON_CLASS", "className?: string", "disabled?: boolean"]) {
+    assert.ok(!src.includes(gone), `TableSelector must no longer carry its chip's ${gone}: the cell brings its own look and lock`);
+  }
+  assert.ok(src.includes("<DialogTitle>Select table</DialogTitle>"), "landmark: today's dialog (U1 Task 11 restyles it)");
+});
+
+test("PIN: CustomerSearch keeps its chip for the payment popup and opens from the cart's Customer cell when given one", () => {
+  const src = stripComments(readSrc(CUSTOMER_SEARCH));
+  assert.match(src, /trigger\?: ReactElement;/, "an optional trigger (the cart's Customer cell)");
+  assert.match(src, /<DialogTrigger asChild>\s*\{trigger \?\? \(/, "the given trigger, else today's chip");
+  assert.match(
+    src,
+    /import\s*\{[^}]*POS_HEADER_CHIP_ICON_CLASS[^}]*\}\s*from\s*"@\/lib\/pos-layout"/,
+    "the chip (PaymentModal's) keeps its icon class",
+  );
+  assert.match(src, /<span className="min-w-0 truncate">/, "the chip's label span stays \"min-w-0 truncate\"");
+});
+
+test("PIN: CustomerSearch's empty trigger label reads Customer, not Walk-In (the table chip already owns that word)", () => {
   const csSrc = stripComments(readSrc(CUSTOMER_SEARCH));
   const csLabel = csSrc.match(/<span className="min-w-0 truncate">\{value \? value\.name : "([^"]+)"\}<\/span>/);
   assert.ok(csLabel, "CustomerSearch's trigger label must be a value ? value.name : \"...\" ternary");
   assert.equal(csLabel![1], "Customer", `CustomerSearch's empty-state fallback must be "Customer", found "${csLabel![1]}"`);
   assert.match(csSrc, /POS_HEADER_CHIP_ICON_CLASS/, "landmark: CustomerSearch must still use POS_HEADER_CHIP_ICON_CLASS");
   assert.match(csSrc, /title=\{value \? value\.name : "Select customer"\}/, "CustomerSearch's trigger must carry a title=");
-
-  const tsSrc = stripComments(readSrc(TABLE_SELECTOR));
-  assert.match(
-    tsSrc,
-    /<span className="min-w-0 truncate">\{value \? `Table \$\{value\}` : "Walk-In"\}<\/span>/,
-    "TableSelector's trigger label must still fall back to Walk-In — a table can genuinely be none",
-  );
-  assert.match(tsSrc, /title=\{/, "TableSelector's trigger must carry a title=");
 });
 
 test("PIN: OpenTabsButton shows a full label at xl+ and icon+count only below xl, both readable via aria-label/title (review F10)", () => {
@@ -101,9 +106,9 @@ test("PIN: OpenTabsButton shows a full label at xl+ and icon+count only below xl
   assert.ok(!src.includes('"xl:hidden">Tabs<'), "must not revert to the old bare \"Tabs\" label below xl — aria-label/title carry the word now");
 });
 
-test("PIN: TableSelector, CustomerSearch, and OpenTabsButton each accept a className and apply it to their trigger", () => {
+// U1 Task 4: TableSelector's trigger is the cart's Table cell (its own look), so it takes no className any more.
+test("PIN: CustomerSearch and OpenTabsButton each accept a className and apply it to their trigger", () => {
   for (const { label, path: rel } of [
-    { label: "TableSelector", path: TABLE_SELECTOR },
     { label: "CustomerSearch", path: CUSTOMER_SEARCH },
     { label: "OpenTabsButton", path: OPEN_TABS_BUTTON },
   ]) {

@@ -34,7 +34,6 @@ import {
   DASHBOARD_HEADER_REM,
   POS_ALERT_HEIGHT_VAR,
   POS_HEADER_CONTROL_CLASS,
-  POS_CART_STEPPER_CLASS,
   POS_CART_CTA_CLASS,
   POS_MOBILE_BAR_BUTTON_CLASS,
   POS_PRESS_FEEDBACK_CLASS,
@@ -185,7 +184,6 @@ test("PIN: real Tailwind compiles the /pos frame (page height, body grid, region
 test("PIN: real Tailwind compiles the CB-1d.1 touch-feel/device-size tokens to the exact CSS the string/paths pins assume — pointer-fine height variants nested UNDER the xl media query, coarse-pointer active scale/opacity, dialog-cap vh/dvh pairs, and base-before-variant emission order", async () => {
   const candidates = [
     ...POS_HEADER_CONTROL_CLASS.split(/\s+/),
-    ...POS_CART_STEPPER_CLASS.split(/\s+/),
     ...POS_CART_CTA_CLASS.split(/\s+/),
     ...POS_MOBILE_BAR_BUTTON_CLASS.split(/\s+/),
     ...POS_PRESS_FEEDBACK_CLASS.split(/\s+/),
@@ -197,20 +195,14 @@ test("PIN: real Tailwind compiles the CB-1d.1 touch-feel/device-size tokens to t
   const css = raw.replace(/\s+/g, " ").trim();
 
   // Header controls carry the xl:pointer-fine:h-8 value (U1 Task 3: the
-  // tile's corner options button that shared it is gone); the cart stepper has its own h-7/w-7 pair. The pointer-fine media
+  // tile's corner options button that shared it is gone; U1 Task 4: the cart
+  // stepper's h-7/w-7 pair went with the old cart line — the HTML's stepper
+  // keeps its own sizes on touch screens too, ruling R1). The pointer-fine media
   // query nests INSIDE the xl one (width first, capability second) — the
   // cascade the string-level V1 pin assumes.
   assert.ok(
     css.includes("@media (width >= 80rem) { @media (pointer: fine) { height: calc(var(--spacing) * 8); } }"),
     "compiled CSS must include the xl:pointer-fine h-8 rule (header controls)",
-  );
-  assert.ok(
-    css.includes("@media (width >= 80rem) { @media (pointer: fine) { height: calc(var(--spacing) * 7); } }"),
-    "compiled CSS must include the xl:pointer-fine h-7 rule (cart stepper)",
-  );
-  assert.ok(
-    css.includes("@media (width >= 80rem) { @media (pointer: fine) { width: calc(var(--spacing) * 7); } }"),
-    "compiled CSS must include the xl:pointer-fine w-7 rule (cart stepper)",
   );
   assert.ok(
     css.includes("@media (width >= 80rem) { @media (pointer: fine) { height: calc(var(--spacing) * 10); } }"),

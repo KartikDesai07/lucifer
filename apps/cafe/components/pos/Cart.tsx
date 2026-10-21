@@ -1,13 +1,12 @@
 "use client";
 
-import { ShoppingCart, ChefHat, X, ChevronLeft, Loader2 } from "lucide-react";
+import { ChefHat, X, Loader2 } from "lucide-react";
 
 import { inr, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { EmptyState } from "@/components/shared/EmptyState";
-import { CartLine, CartSection } from "@/components/pos/CartLine";
-import { CartSentSection } from "@/components/pos/CartSentSection";
+import { CartHead, type CartCellsProps } from "@/components/pos/CartHead";
+import { CartLines } from "@/components/pos/CartLines";
 import { CartNotes } from "@/components/pos/CartNotes";
 import { CartReward } from "@/components/pos/CartReward";
 import { CartPromo } from "@/components/pos/CartPromo";
@@ -23,12 +22,14 @@ import { WriteNoticePanel } from "@/components/pos/WriteNotice";
 import { CartUnavailableNotice, type CartMenuNoticeProps } from "@/components/pos/CartUnavailableNotice";
 import { SendDiscard } from "@/components/pos/SendDiscard";
 import type { WriteNotice } from "@/lib/pending-writes";
-import { POS_CART_CTA_CLASS, POS_CART_GST_BUTTON_CLASS, POS_CART_LIST_CLASS } from "@/lib/pos-layout";
+import { POS_CART_CTA_CLASS, POS_CART_GST_BUTTON_CLASS } from "@/lib/pos-layout";
 import { GST_DISCOUNT_LABEL } from "@/lib/constants";
 import { PROMO_BLOCKS_GST_DISCOUNT_MESSAGE, REWARD_BLOCKS_GST_DISCOUNT_MESSAGE } from "@/lib/receipt";
 import type { CartItem } from "@/hooks/use-cart";
 import type { RungOffer } from "@/lib/reward-rungs";
 import type { CardOffer } from "@/lib/reward-card-offers";
+import type { VoidLine } from "@/lib/pos-cart-view";
+import type { Order } from "@/types";
 
 // "GST" = the GST-equivalent preset; the amount is DERIVED (usePosTotals, and
 // authoritatively the server), never typed.
@@ -106,9 +107,15 @@ export interface CartProps {
   onPayNow?: () => void; // immediate full payment (new order only)
   onSettle?: () => void; // settle a resumed open tab
   onCloseTab?: () => void; // leave resume mode without settling
-  onVoidItem?: () => void; // open the void dialog for an already-fired line
+  // Open the void dialog on an already-fired line (owner Q10: the selected sent line's "Void"; null = the stored
+  // order no longer holds that line, so the dialog opens with nothing picked).
+  onVoidItem?: (line: VoidLine | null) => void;
   // Resume context — present only when editing a live open tab.
   resumedOrderId?: string;
+  // The tab on screen (null for a new order): the head's title, meta and Table cell, and the Void action's address.
+  resumedOrder: Order | null;
+  // The head's two cells (owner Q9): the table and customer, and what their dialogs need.
+  cells: CartCellsProps;
   nextRound?: number; // round number the next fire will create
   isBusy?: boolean; // disable actions while a mutation is in flight
   sending?: boolean; // a Send to Kitchen is in flight — its button reads "Sending…"
@@ -121,11 +128,13 @@ export interface CartProps {
   onBack?: () => void;
 }
 
-// Cart panel: line items with qty steppers, an amount-or-% discount field, and
-// the running total. Discount is controlled by the parent so the panel can be
-// mounted twice (desktop column + mobile sheet) without diverging. When resuming
-// an open tab, already-fired lines render locked under a "Sent" group and new
-// items under "New"; the action buttons switch between fire / pay / settle.
+// Cart panel: the owner's HTML head and lines (U1 Task 4: CartHead, CartLines —
+// the title, the Table and Customer cells, the numbered lines with their
+// steppers and status), an amount-or-% discount field, and the running total.
+// Discount is controlled by the parent so the panel can be mounted twice
+// (desktop column + mobile sheet) without diverging. When resuming an open tab,
+// already-fired lines come first, locked, marked "Sent to kitchen"; the action
+// buttons switch between fire / pay / settle.
 export function Cart({
   items,
   subtotal,
@@ -173,6 +182,8 @@ export function Cart({
   onCloseTab,
   onVoidItem,
   resumedOrderId,
+  resumedOrder,
+  cells,
   nextRound,
   isBusy,
   sending = false,
@@ -184,9 +195,7 @@ export function Cart({
 }: CartProps) {
   const resuming = !!resumedOrderId;
   const gstActive = discountUnit === "GST";
-  const fired = items.filter((it) => it.kotRound > 0);
-  const fresh = items.filter((it) => it.kotRound === 0);
-  const hasNew = fresh.length > 0;
+  const hasNew = items.some((it) => it.kotRound === 0);
 
   // D9.8 — what the More menu is currently HIDING, named on its own trigger.
   // A control that conceals an applied adjustment must never look idle: this
@@ -337,85 +346,33 @@ export function Cart({
   );
 
   return (
-    // The panel itself scrolls (both mounts): when the column or sheet is
-    // shorter than header + list floor + notes + footer, the footer's inputs
-    // and CTAs are reached by scrolling instead of overflowing the card edge.
+    // The panel itself scrolls (both mounts), as the HTML's cart column does (values 5.1): when the column or sheet is
+    // shorter than the head + the lines' floor + the note row + the footer, the footer is reached by scrolling the
+    // cart instead of overflowing it. The column (POS_CART_CLASS) draws its left rule; the cart has no card frame.
     <div
       className={cn(
-        "flex h-full flex-col overflow-y-auto overscroll-contain rounded-lg border bg-card",
+        "flex h-full min-h-0 flex-col overflow-y-auto overflow-x-hidden overscroll-contain bg-card",
         className,
       )}
     >
-      <div className="flex items-center justify-between border-b px-4 py-3">
-        <div className="flex min-w-0 items-center gap-1">
-          {onBack && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 shrink-0"
-              onClick={onBack}
-              aria-label="Back to menu"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </Button>
-          )}
-          <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold">
-            <ShoppingCart className="h-4 w-4 shrink-0" />
-            {resuming ? (
-              <span className="truncate">Tab {resumedOrderId}</span>
-            ) : (
-              "Cart"
-            )}
-          </h2>
-        </div>
-        {resuming ? (
-          <Button variant="ghost" size="sm" onClick={onCloseTab} disabled={isBusy}>
-            <X className="mr-1 h-3.5 w-3.5" /> Close
-          </Button>
-        ) : (
-          items.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={onClear} disabled={isBusy}>
-              Clear
-            </Button>
-          )
-        )}
-      </div>
+      <CartHead
+        hasItems={items.length > 0}
+        resumedOrder={resumedOrder}
+        isBusy={isBusy}
+        onClear={onClear}
+        onCloseTab={onCloseTab}
+        onBack={onBack}
+        cells={cells}
+      />
 
-      {/* min-h (in the constant) keeps the list visible when the panel itself
-          scrolls — a short sheet (landscape phone, keyboard up) or a short
-          desktop window (1280×640 laptops at 150% scaling). */}
-      <div className={POS_CART_LIST_CLASS}>
-        {items.length === 0 ? (
-          <EmptyState
-            className="h-full border-0"
-            title="Cart is empty"
-            description="Add items to start an order."
-          />
-        ) : (
-          <div className="space-y-3">
-            <CartSentSection fired={fired} resuming={resuming} onVoidItem={onVoidItem} isBusy={isBusy} />
-            {(hasNew || fired.length > 0) && (
-              <CartSection label={fired.length > 0 ? "New items" : undefined}>
-                {fresh.length === 0 ? (
-                  <p className="px-2 py-1 text-xs text-muted-foreground">
-                    Add items to fire another round.
-                  </p>
-                ) : (
-                  fresh.map((item) => (
-                    <CartLine
-                      key={item.lineId}
-                      item={item}
-                      disabled={isBusy}
-                      onUpdateQty={onUpdateQty}
-                      onRemove={onRemove}
-                    />
-                  ))
-                )}
-              </CartSection>
-            )}
-          </div>
-        )}
-      </div>
+      <CartLines
+        items={items}
+        resumedOrder={resumedOrder}
+        isBusy={isBusy}
+        onUpdateQty={onUpdateQty}
+        onRemove={onRemove}
+        onVoidItem={onVoidItem}
+      />
 
       {/* D9.8b (owner decision 2026-09-26): the three-dot trigger rides at the
           END of the note row, so the occasional controls cost the footer no

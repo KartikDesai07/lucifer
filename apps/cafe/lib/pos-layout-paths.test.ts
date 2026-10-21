@@ -43,7 +43,6 @@ import {
   DASHBOARD_HEADER_REM,
   POS_PRESS_FEEDBACK_CLASS,
   POS_HEADER_CONTROL_CLASS,
-  POS_CART_STEPPER_CLASS,
   POS_CART_CTA_CLASS,
   POS_MOBILE_BAR_BUTTON_CLASS,
   POS_DIALOG_LIST_CAP_CLASS,
@@ -61,12 +60,25 @@ function constOf(src: string, name: string): string {
   return m![1];
 }
 
+const count = (src: string, needle: string): number => src.split(needle).length - 1;
+
+/** `src` from one landmark to the next one after it, both asserted to exist (an absent one would blind the slice). */
+function between(src: string, from: string, to: string): string {
+  const start = src.indexOf(from);
+  const end = src.indexOf(to, start + 1);
+  assert.ok(start >= 0, `landmark missing: ${from}`);
+  assert.ok(end > start, `landmark missing after ${from}: ${to}`);
+  return src.slice(start, end);
+}
+
 const POS_LAYOUT_TS = "apps/cafe/lib/pos-layout.ts";
 const POS_PAGE = "apps/cafe/app/(dashboard)/pos/page.tsx";
 const CATEGORY_SIDEBAR = "apps/cafe/components/pos/CategorySidebar.tsx";
 const MOBILE_CART_BAR = "apps/cafe/components/pos/MobileCartBar.tsx";
 const CART_TSX = "apps/cafe/components/pos/Cart.tsx";
 const CART_LINE = "apps/cafe/components/pos/CartLine.tsx";
+const CART_LINES = "apps/cafe/components/pos/CartLines.tsx";
+const CART_HEAD = "apps/cafe/components/pos/CartHead.tsx";
 const PRODUCT_GRID = "apps/cafe/components/pos/ProductGrid.tsx";
 const PRODUCT_CARD = "apps/cafe/components/pos/ProductCard.tsx";
 const DASHBOARD_LAYOUT = "apps/cafe/app/(dashboard)/layout.tsx";
@@ -240,20 +252,42 @@ test("PIN: MobileCartBar never reverts to the old md-hidden wrapper or a fixed 8
   assert.match(src, /Cart is empty/, "landmark: MobileCartBar must still render the empty-cart placeholder copy");
 });
 
-test("PIN: Cart accepts an optional onBack for the mobile sheet, with an accessible way back to the menu", () => {
+// U1 Task 4 (values 5.2, 5.4; design 6.5, 6.6): the cart is the HTML's head (CartHead.tsx) over its lines
+// (CartLines.tsx), then today's note row and footer until U1 Task 5.
+test("PIN: Cart composes the HTML's head and lines, and still takes the sheet's onBack", () => {
   const src = stripComments(readSrc(CART_TSX));
   assert.match(src, /onBack\?:\s*\(\)\s*=>\s*void/, "CartProps must declare onBack?: () => void");
-  assert.match(src, /aria-label="Back to menu"/, 'the back button must carry aria-label="Back to menu"');
+  assert.match(src, /import \{ CartHead, type CartCellsProps \} from "@\/components\/pos\/CartHead";/, "the head comes from CartHead.tsx");
+  assert.match(src, /import \{ CartLines \} from "@\/components\/pos\/CartLines";/, "the lines come from CartLines.tsx");
+  const head = src.indexOf("<CartHead");
+  const lines = src.indexOf("<CartLines");
+  const notes = src.indexOf("<CartNotes");
+  assert.ok(head > 0 && head < lines && lines < notes, "the head, then the lines, then today's note row");
+  assert.match(between(src, "<CartHead", "/>"), /onBack=\{onBack\}/, "the sheet's way back reaches the head");
+  for (const gone of ["<EmptyState", "CartSentSection", "ShoppingCart", "Cart is empty", "Tab {resumedOrderId}"]) {
+    assert.ok(!src.includes(gone), `Cart.tsx must no longer carry today's head/list piece ${gone} (the HTML's head and lines replace it)`);
+  }
+  const head2 = stripComments(readSrc(CART_HEAD));
+  assert.match(head2, /aria-label="Back to menu"/, 'the back button must carry aria-label="Back to menu"');
+  assert.match(head2, /onClick=\{onBack\}/, "the back button closes the sheet");
 });
 
-test("PIN: Cart's line-list div uses the shared scrollable-list class, not a hand-rolled literal", () => {
-  const src = stripComments(readSrc(CART_TSX));
-  assert.match(src, /className=\{POS_CART_LIST_CLASS\}/, "Cart.tsx's line-list div must use className={POS_CART_LIST_CLASS}");
-  assert.ok(!src.includes("min-h-0 flex-1 overflow-y-auto"), "must not hardcode the old literal — now in POS_CART_LIST_CLASS");
-  assert.match(src, /Cart is empty/, "landmark: Cart.tsx must still render the empty-cart title");
+test("PIN: CartLines' wrapper is the HTML's lines wrapper (POS_CART_LIST_CLASS) with the HTML's empty words", () => {
+  const src = stripComments(readSrc(CART_LINES));
+  assert.match(src, /className=\{POS_CART_LIST_CLASS\}/, "the lines wrapper must use className={POS_CART_LIST_CLASS}");
+  assert.ok(src.includes(">No items</p>"), 'values 5.4: "No items" (owner Q1: the HTML\'s words)');
+  assert.ok(src.includes(">Tap a price on the menu to add an item.</p>"), "values 5.4: the empty line under it");
+  assert.match(
+    src,
+    /className="flex h-full min-h-40 flex-col items-center justify-center gap-1 text-center"/,
+    "values 5.4: height 100%, min-height 160, a centred column 4px apart",
+  );
+  assert.ok(src.includes('className="text-[15px] font-semibold"'), '"No items" 15px 600');
+  assert.ok(src.includes('className="text-[13px] text-muted-foreground"'), "the line under it 13px --text-2");
+  assert.ok(src.includes("Add items to fire another round."), "a tab with nothing new keeps today's hint under its lines");
 });
 
-test("PIN: Cart's ROOT div scrolls too (both mounts) — a short 1280x640 desktop window reaches the footer by scrolling the card, not overflowing it", () => {
+test("PIN: Cart's ROOT is the HTML's cart column body — it scrolls as one (both mounts), on --surface, with no card frame of its own", () => {
   const src = stripComments(readSrc(CART_TSX));
   // Anchored on the ROOT's own cn(..., className) shape, not merely the first
   // cn("…") in the file: D9.8b hoisted the More menu above the return, so a
@@ -261,9 +295,15 @@ test("PIN: Cart's ROOT div scrolls too (both mounts) — a short 1280x640 deskto
   // asserts the wrong element's classes.
   const rootMatch = src.match(/cn\(\s*"([^"]*)",\s*className,?\s*\)/);
   assert.ok(rootMatch, "Cart.tsx's root div must build its className via cn(\"...\", className)");
-  assert.ok(rootMatch![1].includes("overflow-y-auto"), `Cart's root className literal must include overflow-y-auto, got "${rootMatch![1]}"`);
-  assert.ok(rootMatch![1].includes("rounded-lg border bg-card"), "landmark: the root className literal must still carry rounded-lg border bg-card");
-  assert.match(src, /className=\{POS_CART_LIST_CLASS\}/, "the list inside must still use className={POS_CART_LIST_CLASS}");
+  const root = rootMatch![1].split(/\s+/);
+  for (const t of ["flex", "h-full", "min-h-0", "flex-col", "overflow-y-auto", "overflow-x-hidden", "overscroll-contain", "bg-card"]) {
+    assert.ok(root.includes(t), `values 5.1: Cart's root className literal must include ${t}, got "${rootMatch![1]}"`);
+  }
+  // U1 Task 4 (values 5.1): the HTML's cart is the column itself (POS_CART_CLASS draws its left rule), not a card in it.
+  for (const t of ["rounded-lg", "border"]) {
+    assert.ok(!root.includes(t), `Cart's root must not draw today's card frame (${t}): the HTML's cart has none`);
+  }
+  assert.ok(!stripComments(readSrc(POS_PAGE)).includes("rounded-none border-0"), "the page no longer has a card frame to undo");
 });
 
 test("PIN: every CTA in CartActions carries the touch-target class POS_CART_CTA_CLASS", () => {
@@ -278,11 +318,138 @@ test("PIN: every CTA in CartActions carries the touch-target class POS_CART_CTA_
   assert.equal(ctaClassCount, buttonCount, `every CTA needs the touch-target class (else a 40px target under a thumb): ${buttonCount} <Button, ${ctaClassCount} with POS_CART_CTA_CLASS`);
 });
 
-test("PIN: CartLine steppers use the shared touch-target class, not the old fixed h-7 w-7", () => {
+// U1 Task 4 (values 5.4, 0.3 stepBox/stepW/stepH; ruling R1: the HTML's sizes on touch screens too): the HTML's line —
+// the number, the name and its meta, the stepper (or a sent line's "×qty") and the total, then the status line.
+test("PIN: CartLine is the HTML's line: its grid, the 30/28 stepper from 1100px (36/34 below), the status words, no trash button", () => {
   const src = stripComments(readSrc(CART_LINE));
-  assert.match(src, /POS_CART_STEPPER_CLASS/, "CartLine must use POS_CART_STEPPER_CLASS");
-  assert.ok(!src.includes("h-7 w-7"), "CartLine must not hardcode the old h-7 w-7 stepper size");
-  assert.match(src, /aria-label="Decrease quantity"/, "landmark: the decrease-qty stepper must still exist");
+  assert.equal(
+    constOf(src, "LINE_CLASS"),
+    "-mx-2 grid cursor-pointer grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-[3px] rounded-[10px] px-2 py-2.5 motion-safe:animate-html-line-in",
+    "values 5.4 line: 24px · 1fr · auto, gap 3px 10px, padding 10px 8px pulled back by margin 0 -8px, radius 10, lineIn",
+  );
+  assert.equal(
+    constOf(src, "SELECTED_CLASS"),
+    "bg-accent [box-shadow:inset_0_0_0_1px_var(--accent-b)]",
+    "values 5.4 selected: --accent-t under an inset 1px --accent-b ring",
+  );
+  assert.equal(
+    constOf(src, "STEPPER_CLASS"),
+    "flex h-9 items-center rounded-[8px] border border-border bg-card desk:h-[30px]",
+    "values 5.4 stepper box: 1px --border, radius 8, --surface, stepBox 36 / 30 from 1100px",
+  );
+  assert.equal(
+    constOf(src, "STEP_BUTTON_CLASS"),
+    "h-[34px] w-[38px] cursor-pointer bg-transparent px-1.5 py-px text-[16px] text-foreground not-disabled:hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50 desk:h-7 desk:w-[30px]",
+    "values 5.4 / 0.3 stepW/stepH / 0.5: 38x34 (30x28 from 1100px), the UA's 1px 6px padding, a 16px glyph, hover --surface-2",
+  );
+  assert.ok(src.includes('title="Remove one"') && src.includes('title="Add one"'), "the HTML's stepper titles");
+  assert.ok(src.includes('aria-label="Decrease quantity"') && src.includes('aria-label="Increase quantity"'), "today's aria-labels kept");
+  assert.ok(src.includes(">−</button>"), "the HTML's minus glyph (U+2212)");
+  assert.equal(count(src, "disabled={disabled}"), 2, "both stepper buttons lock while busy");
+  for (const gone of ["Trash2", "POS_CART_STEPPER_CLASS", "Remove ${", "orderItemLabel"]) {
+    assert.ok(!src.includes(gone), `CartLine must not carry ${gone}: no trash button (owner Q10: select a line, then Remove)`);
+  }
+  assert.ok(src.includes('"Sent to kitchen"') && src.includes('"New · not sent"'), "values 5.4 status words");
+  assert.ok(src.includes('dot: STATUS_CLASSES.ok.dot, color: "text-muted-foreground"'), "sent: --ok dot, --text-2");
+  assert.ok(src.includes("dot: STATUS_CLASSES.warn.dot, color: STATUS_CLASSES.warn.ink"), "new: --warn dot, --warn-i");
+  assert.ok(src.includes('"col-[2/4] flex items-center gap-1.5 text-[11.5px]"'), "the status spans columns 2-3, 6px gap, 11.5px");
+  assert.ok(src.includes('"size-1.5 rounded-[50%]"'), "a 6x6 dot, radius 50% (values 5.4)");
+  assert.match(src, />\s*×\{item\.qty\}\s*<\/span>/, "a sent line shows its quantity where the stepper sits (it stays locked)");
+  assert.ok(
+    src.includes('className="flex h-9 items-center text-[13px] font-semibold text-muted-foreground desk:h-[30px]"'),
+    '"×qty" 13px 600 --text-2, as tall as the stepper box (a sent line stands as tall as a new one)',
+  );
+  assert.ok(src.includes("{inr(item.price * item.qty)}"), "the line total at the real price (a reward line too, as today)");
+  assert.ok(src.includes("{lineMeta(item)}"), "the meta comes from lib/pos-cart-view.ts");
+});
+
+test("PIN: a cart line arrives with the HTML's lineIn, verbatim (values 5.4)", () => {
+  const css = readSrc(GLOBALS_CSS);
+  assert.match(css, /--animate-html-line-in: html-line-in 0\.4s cubic-bezier\(0\.2, 0\.8, 0\.2, 1\) both;/, "lineIn .4s on the HTML's easing");
+  assert.match(
+    css,
+    /@keyframes html-line-in \{\s*from \{\s*opacity: 0;\s*transform: translateX\(14px\);\s*\}\s*to \{\s*opacity: 1;\s*transform: none;\s*\}\s*\}/,
+    "@keyframes lineIn{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}",
+  );
+});
+
+// Owner Q10 (design 6.6): tapping a line (not its stepper) selects it and shows one action row under it: "Remove" for a
+// new line, "Void" for a sent line of a resumed tab (the void dialog opens on that line). One line at a time; none while
+// the cart is busy or frozen.
+test("PIN: CartLines selects one line and offers Remove (a new line) or Void (a sent line of a tab, opening the dialog on it)", () => {
+  const lines = stripComments(readSrc(CART_LINES));
+  const line = stripComments(readSrc(CART_LINE));
+  assert.ok(lines.includes("const fired = items.filter((it) => it.kotRound > 0);"), "sent lines first");
+  assert.ok(lines.includes("const lines = [...fired, ...fresh];"), "then the new ones");
+  assert.ok(lines.includes("selectionHolds(selection, { scope, busy: isBusy, lineIds: lines.map((l) => l.lineId) })"), "the pure rule");
+  assert.ok(lines.includes("if (selection !== null && !holds) setSelection(null);"), "a selection that no longer holds is dropped");
+  assert.ok(lines.includes("if (isBusy) return;"), "no selection while busy or frozen");
+  const remove = between(lines, "item.kotRound === 0", ">Remove</button>");
+  assert.ok(remove.includes("onRemove(item.lineId)"), "Remove removes that new line (today's remove)");
+  const voidRow = between(lines, "if (!resumedOrder || !onVoidItem) return null;", ">Void</button>");
+  assert.ok(voidRow.includes("onVoidItem(voidLineOf(item, resumedOrder))"), "Void opens the dialog on that sent line");
+  assert.match(between(lines, "<CartLine", "/>"), /disabled=\{isBusy\}/, "every line's controls lock while busy");
+  assert.ok(line.includes("onClick={disabled ? undefined : () => onToggle(item.lineId)}"), "a tap on the line selects it, not while busy");
+  assert.ok(line.includes("onClick={keep}"), "a tap on the stepper does not select the line");
+  assert.ok(line.includes("aria-expanded={selected}"), "the name is the keyboard's way to select (its click reaches the line)");
+  assert.equal(constOf(lines, "ACTION_CLASS"), "min-h-11 cursor-pointer bg-transparent p-0 text-[12.5px] font-medium text-link", "12.5px 500 --link (our own control: 44px tall)");
+});
+
+// Owner Q9 (design 6.5): the head's two cells, Table and Customer, in the HTML's cell look; the Table cell opens today's
+// table picker for a new order and today's move / assign dialog for a tab; both lock while busy.
+test("PIN: CartHead draws the HTML's head: the title, the tab's meta, Clear / Close in the red link style, and two cells", () => {
+  const src = stripComments(readSrc(CART_HEAD));
+  assert.equal(
+    constOf(src, "HEAD_CLASS"),
+    "relative flex flex-none flex-col gap-3 border-b border-border px-4 py-3.5 leading-[normal]",
+    "values 5.2 head: padding 14px 16px, a 12px column gap, a bottom rule",
+  );
+  assert.equal(
+    constOf(src, "TITLE_ROW_CLASS"),
+    "flex min-h-[29px] items-baseline justify-between gap-2.5",
+    "values 5.2 title row: baseline, 10px apart; 29px as the HTML's row with its Clear (no jump when the first item lands)",
+  );
+  assert.equal(constOf(src, "TITLE_CLASS"), "min-w-0 truncate text-[20px] font-semibold tracking-[-0.015em]", "values 5.2 title: 20px 600 -.015em");
+  assert.equal(constOf(src, "META_CLASS"), "font-mono text-[12px] text-muted-foreground", "values 5.2 meta: Geist Mono 12px --text-2");
+  assert.equal(
+    constOf(src, "HEAD_ACTION_CLASS"),
+    "h-[26px] cursor-pointer rounded-[6px] bg-transparent px-1 text-[12.5px] text-status-bad-ink not-disabled:hover:bg-status-bad-tint disabled:cursor-not-allowed disabled:opacity-50",
+    "values 5.2 Clear: 26px, --bad-i 12.5px, 0 4px, radius 6, hover --bad-t",
+  );
+  assert.equal(constOf(src, "CELLS_CLASS"), "grid grid-cols-2 overflow-hidden rounded-[10px] border border-border", "owner Q9: two cells");
+  assert.equal(
+    constOf(src, "CELL_CLASS"),
+    "flex min-w-0 cursor-pointer flex-col items-start border-r border-border bg-transparent px-2.5 py-2 text-left leading-[1.25] text-foreground not-disabled:hover:bg-hover focus-visible:ring-inset disabled:cursor-not-allowed disabled:opacity-50",
+    "values 5.2 cell: a column, 8px 10px, line-height 1.25, the HTML's right rule on every cell (its 2px right edge), hover --hover",
+  );
+  assert.ok(src.includes('"whitespace-nowrap text-[11px] text-muted-foreground"'), "the cell key 11px --text-2");
+  assert.ok(src.includes('"w-full truncate text-[13.5px] font-semibold"'), "the cell value 13.5px 600, one line");
+  assert.ok(src.includes("onClick={onClear} disabled={isBusy}"), "Clear locks while busy");
+  assert.ok(src.includes("onClick={onCloseTab} disabled={isBusy}"), "Close locks while busy");
+  assert.ok(src.includes(">Clear</button>") && src.includes(">Close</button>"), "the HTML's word, and today's for a tab");
+  assert.ok(src.includes("useNow(MINUTE_MS)"), "the tab's age ticks once a minute on the device (no request)");
+  assert.ok(src.includes("cartTitle({ resumedOrder })"), "the title from lib/pos-cart-view.ts");
+});
+
+test("PIN: CartHead's Table cell opens the picker for a new order and the move / assign dialog for a tab; the Customer cell opens the customer dialog", () => {
+  const src = stripComments(readSrc(CART_HEAD));
+  const cells = between(src, "className={CELLS_CLASS}", "</div>");
+  assert.equal(count(cells, "disabled={isBusy}"), 3, "the table trigger, the move cell and the customer trigger lock while busy");
+  assert.ok(cells.includes("<TableSelector"), "a new order: today's table picker");
+  assert.ok(cells.includes("onClick={cells.onMoveTable}"), "a tab: today's move / assign dialog");
+  assert.ok(cells.includes("<CustomerSearch"), "the customer: today's customer dialog");
+  assert.equal(count(cells, "trigger={"), 2, "both dialogs open from their cell");
+  assert.ok(cells.includes('aria-label={cells.table ? `Table ${cells.table}` : "Select table (Walk-In)"}'), "today's table chip aria");
+  assert.ok(cells.includes('title={cells.table ? `Table ${cells.table}` : "Walk-In — no table"}'), "today's table chip title");
+  assert.ok(
+    cells.includes("? `Move ${resumedOrder.orderId} to another table`") && cells.includes(": `Assign a table to ${resumedOrder.orderId}`"),
+    "today's move / assign titles",
+  );
+  assert.ok(cells.includes('aria-label={customer ? `Customer: ${customer.name}` : "Select customer"}'), "today's customer chip aria");
+  assert.ok(cells.includes('title={customer ? customer.name : "Select customer"}'), "today's customer chip title");
+  assert.ok(cells.includes('<CellText k="Customer" v={customer ? customer.name : "Add"} />'), 'values 5.2: "Customer" / name or "Add"');
+  assert.equal(count(cells, '<CellText k="Table" v={tableValue} />'), 2, "both Table cells say the same thing");
+  assert.ok(src.includes("tableCellValue(tableNo, tableAreaName(tableNo, cells.tables, areas.data))"), "\"T-4 · AC Hall\" / \"Walk-In\"");
 });
 
 // U1 Task 3 (values 4.1, 4.3; design 5): the cards sit in the HTML's auto-fill grid, so the columns follow the menu
@@ -663,11 +830,12 @@ test("PIN: (dashboard)/layout.tsx renders Header, then RequestAlertBar, then <ma
 // ── CB-1d.1 additions: touch-feel/device-size token changes ────────────────
 
 // U1 Task 2: the chip token (POS_CHIP_CLASS) went with the chip strip (design 6.3); U1 Task 3: the tile's corner options
-// button (POS_TILE_OPTIONS_BUTTON_CLASS) went with the old tile (owner Q5: the name opens the modal), so four copies remain.
-test("PIN: POS_PRESS_FEEDBACK_CLASS is duplicated VERBATIM inside every touch-target token (CB-1d.1 L1) — a paths pin, not a re-typed literal, keeps the four copies in sync", () => {
+// button (POS_TILE_OPTIONS_BUTTON_CLASS) went with the old tile (owner Q5: the name opens the modal); U1 Task 4: the cart
+// stepper token (POS_CART_STEPPER_CLASS) went with the old cart line (values 5.4: the HTML's stepper, its own sizes on
+// touch screens too, ruling R1), so three copies remain.
+test("PIN: POS_PRESS_FEEDBACK_CLASS is duplicated VERBATIM inside every touch-target token (CB-1d.1 L1) — a paths pin, not a re-typed literal, keeps the three copies in sync", () => {
   for (const [label, cls] of [
     ["POS_HEADER_CONTROL_CLASS", POS_HEADER_CONTROL_CLASS],
-    ["POS_CART_STEPPER_CLASS", POS_CART_STEPPER_CLASS],
     ["POS_CART_CTA_CLASS", POS_CART_CTA_CLASS],
     ["POS_MOBILE_BAR_BUTTON_CLASS", POS_MOBILE_BAR_BUTTON_CLASS],
   ] as const) {
@@ -697,10 +865,9 @@ test("PIN: POS_PRESS_FEEDBACK_CLASS itself carries the instant-tap primitives, g
   assert.ok(activeCount >= 2, `landmark: expected >=2 active: tokens in POS_PRESS_FEEDBACK_CLASS, found ${activeCount}`);
 });
 
-test("PIN: header/stepper/CTA tokens gate their xl compact look on pointer-fine ONLY — glass (coarse) never shrinks at xl (CB-1d.1 V1); every xl: term in these tokens is pointer-fine-gated, enumerated, not just the documented ones (CB-1d.1 g11)", () => {
+test("PIN: header/CTA tokens gate their xl compact look on pointer-fine ONLY — glass (coarse) never shrinks at xl (CB-1d.1 V1); every xl: term in these tokens is pointer-fine-gated, enumerated, not just the documented ones (CB-1d.1 g11)", () => {
   for (const [label, cls, xlLandmarks] of [
     ["POS_HEADER_CONTROL_CLASS", POS_HEADER_CONTROL_CLASS, ["xl:pointer-fine:h-8", "xl:pointer-fine:text-xs"]],
-    ["POS_CART_STEPPER_CLASS", POS_CART_STEPPER_CLASS, ["xl:pointer-fine:h-7", "xl:pointer-fine:w-7"]],
     ["POS_CART_CTA_CLASS", POS_CART_CTA_CLASS, ["xl:pointer-fine:h-10"]],
   ] as const) {
     for (const needle of xlLandmarks) {

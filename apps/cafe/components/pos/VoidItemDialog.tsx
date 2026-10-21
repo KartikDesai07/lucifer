@@ -6,6 +6,8 @@ import { Minus, Plus } from "lucide-react";
 import { ORDER_REASON_MIN_LEN, ORDER_REASON_MAX_LEN } from "@/lib/constants";
 import { inr } from "@/lib/utils";
 import { isLastLine } from "@/lib/order-void-rules";
+import { matchVoidLine } from "@/lib/pos-cart-view";
+import { useStableCallback } from "@/hooks/use-stable-callback";
 import { orderLineKey } from "@pos/shared/utils";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -28,6 +30,9 @@ interface VoidItemDialogProps {
   order: Order | null;
   isPending?: boolean;
   onConfirm: (payload: VoidItemInput) => void;
+  // The sent line the cart's Void action named (U1 Task 4, owner Q10): its position in order.items and its lineKey.
+  // The dialog opens with it picked while the stored order still holds it there; otherwise nothing is picked.
+  initialLine?: { index: number; lineKey: string } | null;
 }
 
 // Void or qty-reduce one already-fired line on the resumed tab (CR1.3-B). The
@@ -42,6 +47,7 @@ export function VoidItemDialog({
   order,
   isPending,
   onConfirm,
+  initialLine,
 }: VoidItemDialogProps) {
   const [selected, setSelected] = useState<number | null>(null);
   const [qty, setQty] = useState(1);
@@ -51,14 +57,21 @@ export function VoidItemDialog({
     .map((item, index) => ({ item, index }))
     .filter(({ item }) => (item.kotRound ?? 0) >= 1);
 
+  // The line the dialog opens on (and its whole quantity, as a tap on it gives), read at the moment it opens.
+  const opening = useStableCallback(() => {
+    const index = order && initialLine ? matchVoidLine(order.items, initialLine) : null;
+    return { index, qty: index === null ? 1 : (order?.items[index]?.qty ?? 1) };
+  });
+
   // Reset the form each time the dialog opens for a (possibly different) order.
   useEffect(() => {
     if (open) {
-      setSelected(null);
-      setQty(1);
+      const start = opening();
+      setSelected(start.index);
+      setQty(start.qty);
       setReason("");
     }
-  }, [open, order?._id]);
+  }, [open, order?._id, opening]);
 
   const line = selected === null ? null : order?.items[selected];
   const trimmedReason = reason.trim();

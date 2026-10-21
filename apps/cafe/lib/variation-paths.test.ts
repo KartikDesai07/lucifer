@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { stripComments } from "@/lib/source-pin-utils";
+import { lineMeta } from "@/lib/pos-cart-view";
 
 // SLICE F — pins for the menu-item VARIATIONS feature (SPEC-variations.md) that
 // have NO other test coverage. There is no React/route test framework in this
@@ -380,5 +381,29 @@ test("PIN: queueVoidSlip copies the voided line variation onto the synthesized p
     body,
     /variation: entry.variation,/,
     "the synthesized line must carry entry.variation through to KOTReceipt",
+  );
+});
+
+// ── U1 Task 4: the /pos cart line (values 5.4, design 6.6) ─────────────────
+// The HTML's line has one name line and one meta line; the size moved from a
+// "(Large)" suffix on the name to the front of the meta, so two sizes of one
+// dish must still never read alike in the cart.
+const CART_LINE = "apps/cafe/components/pos/CartLine.tsx";
+
+test("PIN: the /pos cart line names the dish and leads its meta with the variation — a Small and a Large never read alike in the cart", () => {
+  const src = stripComments(readSrc(CART_LINE));
+  assert.ok(src.includes("{item.name}"), "the name line is the dish's name (values 5.4)");
+  assert.ok(src.includes("{lineMeta(item)}"), "the meta line comes from lineMeta");
+  const base = { price: 140, modifiers: [] as string[], instructions: "" };
+  assert.equal(lineMeta({ ...base, variation: "Large" }), "Large", "a size alone is the whole meta");
+  assert.notEqual(
+    lineMeta({ ...base, variation: "Small" }),
+    lineMeta({ ...base, variation: "Large" }),
+    "two sizes of one dish read differently",
+  );
+  assert.equal(
+    lineMeta({ ...base, variation: "Large", modifiers: ["Extra cheese"] }),
+    "Large, + Extra cheese",
+    "the size comes first, before the add-ons",
   );
 });
