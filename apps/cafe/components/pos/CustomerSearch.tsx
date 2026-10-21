@@ -10,6 +10,15 @@ import {
 } from "@/hooks/use-customers";
 import { cn } from "@/lib/utils";
 import { PAY_PILL_ADD_CLASS, PAY_PILL_CLASS, PAY_PILL_SET_CLASS, pickerPillText } from "@/lib/payment-sheet";
+import {
+  CUSTOMER_TITLE,
+  NEW_CUSTOMER_TITLE,
+  NO_MATCH_HINT,
+  SKIP_CUSTOMER_LABEL,
+  customerListCaption,
+  newCustomerLabel,
+  noMatchText,
+} from "@/lib/customer-sheet";
 import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { CustomerRow } from "@/components/pos/CustomerRow";
 import { CustomerAddForm } from "@/components/pos/CustomerAddForm";
@@ -31,12 +40,14 @@ interface CustomerSearchProps {
 }
 
 // The customer sheet in the owner's HTML (U1 Task 10; values 8 in docs/superpowers/specs/2026-10-20-pos-html-values.md;
-// design 4 builder-check, 6.12; owner Q1; rulings P30-P33), wherever it opens: the cart's Customer cell, and the payment
-// sheet's pill on /pos, the Orders page and the dashboard. "Customer" over the order it is for; the 48px search; today's
-// line in the list area until a search runs (no frequent list: that would be a new request); "Results" over our rows
-// and over the no-match line; our search lines; the 46px "+ New customer" and our "Walk-In" link at the foot. The add
-// form is CustomerAddForm.tsx, a row CustomerRow.tsx; the HTML's back button is today's Cancel. A Radix dialog of its
-// own: focus trap, Escape and the scrim close it, the focus goes back to what opened it.
+// design 4 builder-check, 6.12; owner Q1; rulings P30-P37), wherever it opens: the cart's Customer cell, and the payment
+// sheet's pill on /pos, the Orders page and the dashboard. "Customer" ("New customer" over the add form) over the order
+// it is for; the 48px search; today's line in the list area until a search runs (no frequent list: that would be a new
+// request); the caption counting the rows, over them and over the HTML's two no-match lines; our searching / offline /
+// failed lines; the 46px "+ New customer" (with the query typed) and "Continue without customer" at the foot (the words
+// are lib/customer-sheet.ts). The add form is CustomerAddForm.tsx, a row CustomerRow.tsx; the HTML's back button is
+// today's Cancel. A Radix dialog of its own: focus trap, Escape and the scrim close it, the focus goes back to what
+// opened it.
 
 // Separators a cafe actually types around a phone number ("+91 98765-43210").
 // Stripped before the digits check below — this is a shape guess for the "+ New customer"
@@ -47,11 +58,15 @@ const DIGITS_ONLY_PATTERN = /^\d+$/;
 /** Today's description: the list's line until a search runs (design 4), and the dialog's description, read out only. */
 const SEARCH_HINT = "Search by name or mobile, or add a new customer.";
 
-// The scrim (values 8.1, 0.3 sheetAlign/sheetPad): --scrim, fadeIn .2s, the panel centred in 16px, along the window's
-// foot with no padding below 720px. z-index 51: over the payment sheet's 50 (lib/payment-sheet.ts), as the HTML's 46 over
-// its 45, so the sheet opened from the payment pill is on top everywhere the payment sheet opens.
+// The scrim (values 8.1, 0.3 sheetAlign/sheetPad): fadeIn .2s, the panel centred in 16px, along the window's foot with no
+// padding below 720px. z-index 51: over the payment sheet's 50 (lib/payment-sheet.ts), as the HTML's 46 over its 45, so
+// the sheet opened from the payment pill is on top everywhere the payment sheet opens. Its colour by path: --scrim from
+// the cart cell; clear from the pill, where the payment sheet's --scrim is already drawn under it (a second one would
+// darken the page twice; the HTML shows one).
 const SCRIM_CLASS =
-  "fixed inset-0 z-[51] flex items-center justify-center bg-scrim p-4 font-sans leading-[normal] text-foreground motion-safe:animate-scrim-in max-tab:items-end max-tab:p-0";
+  "fixed inset-0 z-[51] flex items-center justify-center p-4 font-sans leading-[normal] text-foreground motion-safe:animate-scrim-in max-tab:items-end max-tab:p-0";
+const SCRIM_SHADE_CLASS = "bg-scrim";
+const SCRIM_CLEAR_CLASS = "bg-transparent";
 // The panel (values 8.1, 0.3 csH/csMaxH/sheetRadius): 460px on --surface, 600 tall at most 100dvh - 32px, a 1px --border,
 // radius 14, --pop, sheetIn .32s; below 720px the full width, 88dvh, radius 14 14 0 0. The vh sizes are the base, the
 // dvh ones where they exist.
@@ -84,7 +99,7 @@ const LINE_CLASS = "px-3 py-6 text-center text-[13.5px] leading-[1.5] text-muted
 const LINE_BAD_CLASS = cn(LINE_CLASS, "text-status-bad-ink");
 const SEARCHING_CLASS = cn(LINE_CLASS, "flex items-center justify-center gap-2");
 // The foot (values 8.2): 12px 16px and 14px + the safe area, gap 8, a --border-2 rule; "+ New customer" 46px on --accent,
-// radius 12, 14.5px 600, hover --accent-h; our Walk-In as the HTML's 36px --link button, 13.5px 500.
+// radius 12, 14.5px 600, hover --accent-h; "Continue without customer" as the HTML's 36px --link button, 13.5px 500.
 const FOOT_CLASS =
   "flex flex-none flex-col gap-2 border-t border-border-2 px-4 pt-3 pb-[calc(14px+env(safe-area-inset-bottom))]";
 const NEW_CLASS =
@@ -144,6 +159,8 @@ export function CustomerSearch({ value, onChange, className, disabled, trigger, 
   const termIsPhoneLike = strippedTerm.length > 0 && DIGITS_ONLY_PATTERN.test(strippedTerm);
   // The HTML's mode word in the search box: which field "+ New customer" will fill (the same rule as the seeding above).
   const termMode = termIsPhoneLike ? "Phone" : term.trim() ? "Name" : "";
+  // The own trigger is the payment sheet's pill (PaymentModal is its only user): the sheet opens over the payment sheet.
+  const overPaymentSheet = trigger === undefined;
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
@@ -164,7 +181,7 @@ export function CustomerSearch({ value, onChange, className, disabled, trigger, 
         )}
       </DialogPrimitive.Trigger>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay data-ui="cs-sheet" className={SCRIM_CLASS}>
+        <DialogPrimitive.Overlay data-ui="cs-sheet" className={cn(SCRIM_CLASS, overPaymentSheet ? SCRIM_CLEAR_CLASS : SCRIM_SHADE_CLASS)}>
           <DialogPrimitive.Content data-ui="cs-panel" onOpenAutoFocus={focusMarkedField} className={PANEL_CLASS}>
             <div data-ui="cs-head" className={HEAD_CLASS}>
               {adding && (
@@ -175,7 +192,7 @@ export function CustomerSearch({ value, onChange, className, disabled, trigger, 
                 </button>
               )}
               <div className="min-w-0 flex-1">
-                <DialogPrimitive.Title className={TITLE_CLASS}>Customer</DialogPrimitive.Title>
+                <DialogPrimitive.Title className={TITLE_CLASS}>{adding ? NEW_CUSTOMER_TITLE : CUSTOMER_TITLE}</DialogPrimitive.Title>
                 {context && (
                   <div data-ui="cs-context" className={SUB_CLASS}>
                     {context}
@@ -219,7 +236,7 @@ export function CustomerSearch({ value, onChange, className, disabled, trigger, 
                 </div>
                 {(rows.length > 0 || noMatches) && (
                   <div data-ui="cs-caption" className={CAPTION_CLASS}>
-                    Results
+                    {customerListCaption(rows.length)}
                   </div>
                 )}
 
@@ -251,7 +268,9 @@ export function CustomerSearch({ value, onChange, className, disabled, trigger, 
                     debounced.trim().length >= CUSTOMER_SEARCH_MIN_CHARS &&
                     rows.length === 0 && (
                       <p data-ui="cs-line" className={LINE_CLASS}>
-                        No matches. Add a new customer below.
+                        {noMatchText(debounced.trim())}
+                        <br />
+                        {NO_MATCH_HINT}
                       </p>
                     )}
                   {rows.map((c) => (
@@ -267,10 +286,10 @@ export function CustomerSearch({ value, onChange, className, disabled, trigger, 
 
                 <div data-ui="cs-foot" className={FOOT_CLASS}>
                   <button type="button" data-ui="cs-new" onClick={() => setAdding(true)} className={cn(NEW_CLASS, BRAND_PRESS_CLASS)}>
-                    + New customer
+                    {newCustomerLabel(term)}
                   </button>
-                  <button type="button" data-ui="cs-walk-in" onClick={() => select(undefined)} className={cn(LINK_CLASS, BRAND_PRESS_CLASS)}>
-                    Walk-In
+                  <button type="button" data-ui="cs-skip" onClick={() => select(undefined)} className={cn(LINK_CLASS, BRAND_PRESS_CLASS)}>
+                    {SKIP_CUSTOMER_LABEL}
                   </button>
                 </div>
               </>

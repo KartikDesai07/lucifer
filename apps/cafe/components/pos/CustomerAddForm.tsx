@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 
 import { useCreateCustomer } from "@/hooks/use-customers";
 import { cn } from "@/lib/utils";
+import { mobileCountText } from "@/lib/customer-sheet";
 import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
 import type { Customer } from "@/types";
 
@@ -12,7 +13,7 @@ import type { Customer } from "@/types";
 // 6.12; owner Q1), with today's rules: "Mobile number" then "Name", "Add customer". The body 4px 16px 8px, fields 14px
 // apart; a caption 12.5px 600 --text-2, 6px over its 48px box (a 1.5px --border rule, radius 12, 0 12px, gap 8,
 // --surface); the inputs 16px with the UA's 1px 2px, the mobile in Geist Mono .04em after the 15px "+91" and a 1x20
-// --border divider, the 12px --text-3 count after it. The box shows the focus in the --ring colour (ours; the HTML has
+// --border divider, the 12px --text-3 count after it (what today's rule counts, at most 10). The box shows the focus in the --ring colour (ours; the HTML has
 // none). The foot 12px 16px and 14px + the safe area over a --border-2 rule, the 48px button (15px 600), at .5 while
 // today's rules block it (ruling P32). Its way back is the sheet head's back button (CustomerSearch: today's Cancel).
 const NEW_BODY_CLASS = "flex min-h-0 flex-1 flex-col gap-3.5 overflow-auto px-4 pt-1 pb-2";
@@ -55,8 +56,6 @@ export function CustomerAddForm({
   };
 
   const valid = name.trim().length > 0 && mobile.trim().length >= 10;
-  // The HTML's count: the digits typed so far, of the 10 a mobile has (shown only; today's rule above decides).
-  const digits = mobile.replace(/\D/g, "").length;
 
   return (
     <>
@@ -77,7 +76,7 @@ export function CustomerAddForm({
               autoComplete="off"
               className={MOBILE_INPUT_CLASS}
             />
-            <span aria-hidden="true" className={COUNT_CLASS}>{digits}/10</span>
+            <span aria-hidden="true" className={COUNT_CLASS}>{mobileCountText(mobile)}</span>
           </span>
         </label>
         <label htmlFor="new-customer-name" className={FIELD_CLASS}>
