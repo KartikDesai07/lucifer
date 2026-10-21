@@ -275,7 +275,9 @@ test("PosHeaderClock: \"● Printer\" and the time, from 720px; its dot is the p
     assert.ok(!src.includes(banned), `no request, poll or second printer read in the brand/clock file: "${banned}"`);
   }
   const button = read(PRINTER_BUTTON);
-  assert.match(button, /useEffect\(\(\) => onToneChange\?\.\(tone\), \[onToneChange, tone\]\);/, "the printer button hands its own tone over");
+  // U1 final fix wave (the Task 6 review's FIX BEFORE MERGE): handed over before the first paint, so the clock's dot is
+  // never one frame stale entering /pos.
+  assert.match(button, /useLayoutEffect\(\(\) => onToneChange\?\.\(tone\), \[onToneChange, tone\]\);/, "the printer button hands its own tone over before paint");
 });
 
 // ── The room rule (design 6.1, ruling R6's measuring pattern) ───────────────────────────────────────────────────

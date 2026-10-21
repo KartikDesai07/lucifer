@@ -29,6 +29,9 @@ const GATED: ReadonlyArray<readonly [string, string]> = [
   ["apps/cafe/lib/pos-cart-view.ts", "tableAreaIdOf("],
   ["apps/cafe/components/orders/MoveTablePicker.tsx", "groupTablesByArea("],
   ["apps/cafe/components/orders/MoveTableDialog.tsx", "<MoveTablePicker"],
+  // U1 Task 11's shared sheet: it draws the areas its callers grouped (TableArea) and rules the tiles (lib/table-sheet.ts).
+  ["apps/cafe/components/pos/TableSheet.tsx", "export function TableArea("],
+  ["apps/cafe/lib/table-sheet.ts", "export function freeTileCount("],
   ["apps/cafe/app/(dashboard)/tables/setup/page.tsx", "useTableAreas("],
   ["apps/cafe/components/tables/TableSetupList.tsx", "composeAreaOrder("],
   ["apps/cafe/components/tables/TableSetupRow.tsx", "useSortable("],

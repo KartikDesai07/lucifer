@@ -151,9 +151,10 @@ export const TABLE_CLOSE_CLASS =
 export const TABLE_LEGEND_CLASS = "flex flex-none flex-wrap gap-3.5 px-4 pb-2.5 text-[12px] text-muted-foreground";
 export const TABLE_LEGEND_ITEM_CLASS = "flex items-center gap-1.5";
 export const TABLE_LEGEND_DOT_CLASS = "size-2 rounded-[50%]";
-/** The body (values 9.1): the one scroller, 4px 16px and 18px + the safe area, 16px between areas. */
+/** The body (values 9.1): the one scroller, 4px 16px 18px, 16px between areas. Our foot always follows it and adds the
+ *  safe area itself (TABLE_FOOT_CLASS), so the body keeps the plain 18px (U1 final fix wave: no second inset gap). */
 export const TABLE_BODY_CLASS =
-  "flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-4 pt-1 pb-[calc(18px+env(safe-area-inset-bottom))]";
+  "flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-4 pt-1 pb-[18px]";
 /** An area (values 9.1): its head 8px over its grid; the head 12px 600 .04em upper-case --text-2, the name left and
  *  "{n} free" right; the grid auto-fills 92px-or-wider columns, 8px apart. */
 export const TABLE_AREA_CLASS = "flex flex-col gap-2";

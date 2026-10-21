@@ -101,7 +101,10 @@ test("PIN: the table sheet's look is the HTML's (values 9.1, 9.2)", () => {
   expectTokens(lib, "TABLE_CLOSE_CLASS", ["flex", "size-8", "flex-none", "items-center", "justify-center", "rounded-[50%]", "border-0", "bg-surface-3", "text-muted-foreground"]);
   expectTokens(lib, "TABLE_LEGEND_CLASS", ["flex", "flex-none", "flex-wrap", "gap-3.5", "px-4", "pb-2.5", "text-[12px]", "text-muted-foreground"]);
   expectTokens(lib, "TABLE_LEGEND_DOT_CLASS", ["size-2", "rounded-[50%]"]);
-  expectTokens(lib, "TABLE_BODY_CLASS", ["flex", "min-h-0", "flex-1", "flex-col", "gap-4", "overflow-auto", "px-4", "pt-1", "pb-[calc(18px+env(safe-area-inset-bottom))]"]);
+  // U1 final fix wave (the Task 11 review's FIX BEFORE MERGE): a foot always follows the body and adds the safe area
+  // itself, so the body keeps the plain 18px (the same at inset 0).
+  expectTokens(lib, "TABLE_BODY_CLASS", ["flex", "min-h-0", "flex-1", "flex-col", "gap-4", "overflow-auto", "px-4", "pt-1", "pb-[18px]"]);
+  assert.ok(!/TABLE_BODY_CLASS =\s*"[^"]*safe-area/.test(lib), "no second safe-area gap above the foot");
   expectTokens(lib, "TABLE_AREA_CLASS", ["flex", "flex-col", "gap-2"]);
   expectTokens(lib, "TABLE_AREA_HEAD_CLASS", ["flex", "justify-between", "text-[12px]", "font-semibold", "tracking-[0.04em]", "uppercase", "text-muted-foreground"]);
   expectTokens(lib, "TABLE_GRID_CLASS", ["grid", "grid-cols-[repeat(auto-fill,minmax(92px,1fr))]", "gap-2"]);

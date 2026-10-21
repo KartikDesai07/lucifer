@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
@@ -49,8 +49,9 @@ export function PrinterStatusButton({ onToneChange }: { onToneChange?: (tone: Pr
   const name = printWaitingName(printerButtonName(dot), waiting);
   // A printer that is only being checked draws no dot (never red while it connects).
   const tone = printerDotTone(dot);
-  // U1 Task 1 (design 6.1): the /pos header's clock block shows this same dot; the header takes the tone from here.
-  useEffect(() => onToneChange?.(tone), [onToneChange, tone]);
+  // U1 Task 1 (design 6.1): the /pos header's clock block shows this same dot; the header takes the tone from here,
+  // before the first paint (U1 final fix wave), so the dot is never one frame stale entering /pos.
+  useLayoutEffect(() => onToneChange?.(tone), [onToneChange, tone]);
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>

@@ -93,6 +93,12 @@ export function OpenTabsButton({ tabs, currentId, onResume, lastOrder, onReprint
     if (order._id !== currentId) onResume(order);
     setOpen(false);
   };
+  // Ruling P19 (U1 final fix wave): the foot's reprint starts today's KOT reprint and closes the panel, as the HTML's
+  // footer buttons close theirs (the toast reports the result).
+  const reprint = () => {
+    onReprintKot();
+    setOpen(false);
+  };
   // The search takes focus from 1100px (values 7: the HTML focuses it on desk only); below, the panel itself does.
   const focusOnOpen = (e: Event) => {
     e.preventDefault();
@@ -123,7 +129,7 @@ export function OpenTabsButton({ tabs, currentId, onResume, lastOrder, onReprint
               <div data-ui="pos-open-orders-foot" className={FOOT_CLASS}>
                 <button
                   type="button"
-                  onClick={onReprintKot}
+                  onClick={reprint}
                   disabled={isBusy}
                   aria-label={`Print kitchen ticket for ${lastOrder.orderId}`}
                   title={`Print kitchen ticket for ${lastOrder.orderId}`}

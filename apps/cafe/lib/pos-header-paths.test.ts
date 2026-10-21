@@ -176,7 +176,10 @@ test("PIN: the KOT reprint is the Open orders panel's foot (owner Q17) — only 
   const src = stripComments(readSrc(OPEN_TABS_BUTTON));
   const foot = src.slice(src.indexOf("{lastOrder && ("));
   assert.ok(src.includes("{lastOrder && ("), "only after this device printed or sent something (today's rule)");
-  assert.ok(foot.includes("onClick={onReprintKot}"), "today's reprint: the last ticket this device handled");
+  // Ruling P19 (U1 final fix wave): the tap starts today's reprint and closes the panel (the HTML's footer buttons close it;
+  // the toast reports the result).
+  assert.ok(foot.includes("onClick={reprint}"), "today's reprint: the last ticket this device handled");
+  assert.match(src, /const reprint = \(\) => \{\s*onReprintKot\(\);\s*setOpen\(false\);\s*\};/, "P19: the reprint starts, then the panel closes");
   assert.ok(foot.includes("aria-label={`Print kitchen ticket for ${lastOrder.orderId}`}"), "today's aria-label");
   assert.ok(foot.includes("title={`Print kitchen ticket for ${lastOrder.orderId}`}"), "today's title");
   assert.ok(foot.includes("Print kitchen ticket · {lastOrder.orderId}"), "the visible words");
