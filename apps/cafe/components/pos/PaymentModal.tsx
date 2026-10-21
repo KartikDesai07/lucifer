@@ -18,6 +18,7 @@ import {
   PAY_TITLE_CLASS,
   dueNoteText,
   paymentDescription,
+  paymentPlace,
   paymentTitle,
 } from "@/lib/payment-sheet";
 import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
@@ -220,7 +221,7 @@ export function PaymentModal({
             <PaymentAmount
               total={total}
               customerName={customer?.name}
-              picker={onSelectCustomer && <CustomerSearch value={customer} onChange={onSelectCustomer} disabled={locked} />}
+              picker={onSelectCustomer && <CustomerSearch value={customer} onChange={onSelectCustomer} disabled={locked} context={paymentPlace(tableNo, newSale)} />}
             />
 
             <PaymentSummary

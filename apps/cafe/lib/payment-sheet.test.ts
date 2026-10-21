@@ -52,6 +52,7 @@ import {
   PAYMENT_CHANGE_LABEL,
   dueNoteText,
   paymentDescription,
+  paymentPlace,
   paymentTitle,
   pickerPillText,
   readOnlyPillText,
@@ -90,6 +91,10 @@ test("the title is the HTML's 'Payment · {place}': New order / Table {n} / Walk
   assert.equal(paymentTitle(undefined, false), "Payment · Walk-In", "a tab with no table");
   assert.equal(paymentTitle("", false), "Payment · Walk-In", "an empty table field is no table");
   assert.equal(paymentTitle("", true), "Payment · New order", "an empty table field on a new sale is no table");
+  // Ruling P30 (U1 Task 10): the place word alone is the customer sheet's sub line when it opens from the pill.
+  assert.equal(paymentPlace(undefined, true), "New order", "the place word: a new sale with no table");
+  assert.equal(paymentPlace("T-4", false), "Table T-4", "the place word: a tab at a table");
+  assert.equal(paymentPlace(undefined, false), "Walk-In", "the place word: a tab with no table");
   const lib = readSrc("lib/payment-sheet.ts");
   assert.ok(lib.includes("cartTitle({ resumedOrder:"), "the place word is the cart's own title rule (lib/pos-cart-view.ts), not a copy");
 });
@@ -147,8 +152,10 @@ test("the picker takes the pill's place when offered; with neither, no pill", ()
 test("PaymentModal hands the picker only when it is offered and the tab's customer otherwise", () => {
   const src = readSrc(MODAL);
   assert.ok(
-    src.includes("picker={onSelectCustomer && <CustomerSearch value={customer} onChange={onSelectCustomer} disabled={locked} />}"),
-    "the picker exactly where today's showed (a new sale, or a tab with no customer)",
+    src.includes(
+      "picker={onSelectCustomer && <CustomerSearch value={customer} onChange={onSelectCustomer} disabled={locked} context={paymentPlace(tableNo, newSale)} />}",
+    ),
+    "the picker exactly where today's showed (a new sale, or a tab with no customer); its sheet names the order (ruling P30)",
   );
   assert.ok(src.includes("customerName={customer?.name}"), "the customer passed in, read-only when no picker");
   assert.ok(src.includes("<PaymentAmount"), "the amount block from its own file");

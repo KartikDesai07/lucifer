@@ -21,7 +21,13 @@ export const ADD_CUSTOMER_PILL = "+ Add customer";
  *  sale on /pos with no table yet is "New order"; a table (a tab's, or the one chosen for a new sale) "Table T-4"; a tab
  *  with no table "Walk-In". Only /pos's new sale passes `newSale`; the Orders / dashboard sheet settles tabs. */
 export function paymentTitle(tableNo: string | undefined, newSale: boolean): string {
-  return `Payment · ${cartTitle({ resumedOrder: newSale && !tableNo ? null : { tableNo } })}`;
+  return `Payment · ${paymentPlace(tableNo, newSale)}`;
+}
+
+/** The title's place word alone ("New order" / "Table T-4" / "Walk-In"): also the customer sheet's sub line when it
+ *  opens from the pill (U1 Task 10, ruling P30: the sheet names the order, as the HTML's does). */
+export function paymentPlace(tableNo: string | undefined, newSale: boolean): string {
+  return cartTitle({ resumedOrder: newSale && !tableNo ? null : { tableNo } });
 }
 
 /** Today's description line, kept word for word for screen readers: "3 items · Table T-4 · Neha Joshi". */

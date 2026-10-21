@@ -165,6 +165,7 @@ export function CartHead({
         <CustomerSearch
           value={customer}
           onChange={cells.onCustomerChange}
+          context={cartTitle({ resumedOrder })}
           trigger={
             <button
               type="button"

@@ -2,17 +2,17 @@
 
 import { useEffect, useState, type ReactElement } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { Check, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 import {
   useCustomerSearch,
-  useCreateCustomer,
   CUSTOMER_SEARCH_MIN_CHARS,
 } from "@/hooks/use-customers";
-import { cn, inr } from "@/lib/utils";
-import { AVATAR_HUES, avatarHueIndex } from "@/lib/ui";
+import { cn } from "@/lib/utils";
 import { PAY_PILL_ADD_CLASS, PAY_PILL_CLASS, PAY_PILL_SET_CLASS, pickerPillText } from "@/lib/payment-sheet";
 import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
+import { CustomerRow } from "@/components/pos/CustomerRow";
+import { CustomerAddForm } from "@/components/pos/CustomerAddForm";
 import type { Customer } from "@/types";
 
 interface CustomerSearchProps {
@@ -25,23 +25,26 @@ interface CustomerSearchProps {
   // The control this dialog opens from instead of the pill: the cart head's Customer cell (U1 Task 4, owner Q9). It
   // brings its own words, title and lock; className and disabled above style and lock the pill (the payment sheet's).
   trigger?: ReactElement;
+  // The order the sheet is for, its sub line (ruling P30, as the HTML's names it): the cart's title from the cell, the
+  // payment title's place word from the pill ("New order" / "Table T-4" / "Walk-In"). None: no sub line.
+  context?: string;
 }
 
 // The customer sheet in the owner's HTML (U1 Task 10; values 8 in docs/superpowers/specs/2026-10-20-pos-html-values.md;
-// design 4 builder-check, 6.12; owner Q1), wherever it opens: the cart's Customer cell, and the payment sheet's pill on
-// /pos, the Orders page and the dashboard. "Customer" over today's description; the 48px search; today's line in the
-// list area until a search runs (no frequent list: that would be a new request); "Results" over our rows; our search
-// lines; the 46px "+ New customer" and our "Walk-In" link at the foot. The add form: "Mobile number" (+91) then "Name",
-// today's rules, "Add customer"; the HTML's back button is today's Cancel. A Radix dialog of its own: focus trap, Escape
-// and the scrim close it, the focus goes back to what opened it.
+// design 4 builder-check, 6.12; owner Q1; rulings P30-P33), wherever it opens: the cart's Customer cell, and the payment
+// sheet's pill on /pos, the Orders page and the dashboard. "Customer" over the order it is for; the 48px search; today's
+// line in the list area until a search runs (no frequent list: that would be a new request); "Results" over our rows
+// and over the no-match line; our search lines; the 46px "+ New customer" and our "Walk-In" link at the foot. The add
+// form is CustomerAddForm.tsx, a row CustomerRow.tsx; the HTML's back button is today's Cancel. A Radix dialog of its
+// own: focus trap, Escape and the scrim close it, the focus goes back to what opened it.
 
 // Separators a cafe actually types around a phone number ("+91 98765-43210").
 // Stripped before the digits check below — this is a shape guess for the "+ New customer"
-// hand-off, not a validity check (AddCustomerForm's own `valid` gate is that).
+// hand-off, not a validity check (CustomerAddForm's own `valid` gate is that).
 const PHONE_SEPARATOR_PATTERN = /[+\s-]/g;
 const DIGITS_ONLY_PATTERN = /^\d+$/;
 
-/** Today's description: the sheet's sub line, and the list's line until a search runs (design 4). */
+/** Today's description: the list's line until a search runs (design 4), and the dialog's description, read out only. */
 const SEARCH_HINT = "Search by name or mobile, or add a new customer.";
 
 // The scrim (values 8.1, 0.3 sheetAlign/sheetPad): --scrim, fadeIn .2s, the panel centred in 16px, along the window's
@@ -58,7 +61,7 @@ const PANEL_CLASS =
 // 8, --text) in the add form and the 32px round ✕ (--text-2), both on --surface-3 (the UA's 1px 6px: the HTML sets none).
 const HEAD_CLASS = "flex flex-none items-center gap-2.5 px-4 pt-4 pb-3";
 const TITLE_CLASS = "text-[17px] font-semibold";
-const SUB_CLASS = "text-[12.5px] text-muted-foreground";
+const SUB_CLASS = "truncate text-[12.5px] text-muted-foreground";
 const ROUND_CLASS = "flex size-8 flex-none cursor-pointer items-center justify-center border-0 bg-surface-3 px-1.5 py-px";
 const BACK_CLASS = cn(ROUND_CLASS, "rounded-[8px] text-foreground", BRAND_PRESS_CLASS);
 const CLOSE_CLASS = cn(ROUND_CLASS, "rounded-[50%] text-muted-foreground", BRAND_PRESS_CLASS);
@@ -71,7 +74,7 @@ const SEARCH_BOX_CLASS =
 const SEARCH_INPUT_CLASS =
   "min-w-0 flex-1 [border:0] bg-transparent px-0.5 py-px text-[15px] text-foreground outline-none placeholder:text-subtle-foreground max-tab:text-[16px]";
 const MODE_CLASS = "whitespace-nowrap text-[11.5px] text-subtle-foreground";
-// The caption over the rows (values 8.2 list label): 4px 18px 6px, 11.5px 600 .05em upper-case --text-3.
+// The caption (values 8.2 list label): 4px 18px 6px, 11.5px 600 .05em upper-case --text-3.
 const CAPTION_CLASS =
   "flex-none px-[18px] pt-1 pb-1.5 text-[11.5px] font-semibold tracking-[0.05em] uppercase text-subtle-foreground";
 const LIST_CLASS = "min-h-0 flex-1 overflow-auto px-2";
@@ -80,18 +83,6 @@ const LIST_CLASS = "min-h-0 flex-1 overflow-auto px-2";
 const LINE_CLASS = "px-3 py-6 text-center text-[13.5px] leading-[1.5] text-muted-foreground";
 const LINE_BAD_CLASS = cn(LINE_CLASS, "text-status-bad-ink");
 const SEARCHING_CLASS = cn(LINE_CLASS, "flex items-center justify-center gap-2");
-// A row (values 8.2): 9px 10px, radius 10, 12px apart, rising in turn, hover --hover; the current customer on --accent-t
-// with a check where the HTML puts its tag. The avatar 38px round, 13px 600 initials in U0's tint for the name; the name
-// 14px 600 over the mobile in Geist Mono 12.5px --text-2 (masked for staff by the server); on the right, 12px --text-2
-// at 1.4: the visits, and our due in --bad-i.
-const ROW_CLASS =
-  "flex w-full cursor-pointer items-center gap-3 rounded-[10px] border-0 px-2.5 py-[9px] text-left text-foreground hover:bg-hover motion-safe:animate-html-rise-cs";
-const ROW_CURRENT_CLASS = "bg-accent";
-const ROW_OTHER_CLASS = "bg-transparent";
-const AVATAR_CLASS = "flex size-[38px] flex-none items-center justify-center rounded-[50%] text-[13px] font-semibold";
-const NAME_LINE_CLASS = "flex items-center gap-1.5 whitespace-nowrap text-[14px] font-semibold";
-const PHONE_CLASS = "block font-mono text-[12.5px] text-muted-foreground";
-const RIGHT_CLASS = "flex-none text-right text-[12px] leading-[1.4] text-muted-foreground";
 // The foot (values 8.2): 12px 16px and 14px + the safe area, gap 8, a --border-2 rule; "+ New customer" 46px on --accent,
 // radius 12, 14.5px 600, hover --accent-h; our Walk-In as the HTML's 36px --link button, 13.5px 500.
 const FOOT_CLASS =
@@ -99,34 +90,6 @@ const FOOT_CLASS =
 const NEW_CLASS =
   "h-[46px] cursor-pointer rounded-[12px] border-0 bg-primary px-1.5 py-px text-[14.5px] font-semibold text-primary-foreground hover:bg-primary-hover";
 const LINK_CLASS = "h-9 cursor-pointer border-0 bg-transparent px-1.5 py-px text-[13.5px] font-medium text-link";
-// The add form (values 8.3): the body 4px 16px 8px, fields 14px apart; a caption 12.5px 600 --text-2, 6px over its 48px
-// box (a 1.5px --border rule, radius 12, 0 12px, gap 8, --surface); the inputs 16px with the UA's 1px 2px, the mobile in
-// Geist Mono .04em after the 15px "+91" and a 1x20 --border divider, the 12px --text-3 count after it. The box shows
-// the focus in the --ring colour (ours; the HTML has none). The foot as the search foot's with the 48px button (15px
-// 600), at .5 while today's rules block it (as the item options modal, ruling P25).
-const NEW_BODY_CLASS = "flex min-h-0 flex-1 flex-col gap-3.5 overflow-auto px-4 pt-1 pb-2";
-const FIELD_CLASS = "flex flex-col gap-1.5";
-const FIELD_CAPTION_CLASS = "text-[12.5px] font-semibold text-muted-foreground";
-const FIELD_BOX_CLASS =
-  "flex h-12 items-center gap-2 rounded-[12px] border-[1.5px] border-border bg-card px-3 focus-within:border-ring";
-const FIELD_INPUT_CLASS =
-  "min-w-0 flex-1 [border:0] bg-transparent px-0.5 py-px text-[16px] text-foreground outline-none placeholder:text-subtle-foreground";
-const MOBILE_INPUT_CLASS = cn(FIELD_INPUT_CLASS, "font-mono tracking-[0.04em]");
-const PREFIX_CLASS = "font-mono text-[15px] text-muted-foreground";
-const COUNT_CLASS = "text-[12px] text-subtle-foreground";
-const NEW_FOOT_CLASS = "flex-none border-t border-border-2 px-4 pt-3 pb-[calc(14px+env(safe-area-inset-bottom))]";
-const SAVE_CLASS =
-  "flex h-12 w-full cursor-pointer items-center justify-center rounded-[12px] border-0 bg-primary px-1.5 py-px text-[15px] font-semibold text-primary-foreground not-disabled:hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50";
-
-/** The HTML's ini2 (values 8.2): the first letters of the first two words, upper-cased. */
-function initials(name: string): string {
-  return name.trim().split(/\s+/).map((w) => w.charAt(0)).join("").slice(0, 2).toUpperCase();
-}
-
-/** "1 visit", "12 visits" (never the HTML's "1 visits"). */
-function visitsText(visits: number): string {
-  return `${visits} visit${visits === 1 ? "" : "s"}`;
-}
 
 /** As the sheet opens, the field marked data-autofocus takes the focus (the search, or the add form's empty field).
  *  Opened from inside another dialog (the cart sheet below 1024px, the payment sheet), that dialog pulls a plain
@@ -138,7 +101,7 @@ function focusMarkedField(e: Event) {
   field.focus();
 }
 
-export function CustomerSearch({ value, onChange, className, disabled, trigger }: CustomerSearchProps) {
+export function CustomerSearch({ value, onChange, className, disabled, trigger, context }: CustomerSearchProps) {
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -161,6 +124,9 @@ export function CustomerSearch({ value, onChange, className, disabled, trigger }
   const settled = debounced.trim() === term.trim();
   const rows = settled ? (results ?? []) : [];
   const searching = term.trim().length > 0 && (!settled || isFetching);
+  // The no-match line's case (the same chain as the line itself below): the caption sits over it too (ruling P31).
+  const noMatches =
+    !searching && !isPaused && !isError && debounced.trim().length >= CUSTOMER_SEARCH_MIN_CHARS && rows.length === 0;
 
   const select = (customer: Customer | undefined) => {
     onChange(customer);
@@ -210,7 +176,12 @@ export function CustomerSearch({ value, onChange, className, disabled, trigger }
               )}
               <div className="min-w-0 flex-1">
                 <DialogPrimitive.Title className={TITLE_CLASS}>Customer</DialogPrimitive.Title>
-                <DialogPrimitive.Description className={SUB_CLASS}>{SEARCH_HINT}</DialogPrimitive.Description>
+                {context && (
+                  <div data-ui="cs-context" className={SUB_CLASS}>
+                    {context}
+                  </div>
+                )}
+                <DialogPrimitive.Description className="sr-only">{SEARCH_HINT}</DialogPrimitive.Description>
               </div>
               <DialogPrimitive.Close data-ui="cs-close" aria-label="Close" className={CLOSE_CLASS}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
@@ -220,7 +191,7 @@ export function CustomerSearch({ value, onChange, className, disabled, trigger }
             </div>
 
             {adding ? (
-              <AddCustomerForm
+              <CustomerAddForm
                 onCreated={select}
                 initialName={termIsPhoneLike ? undefined : term.trim()}
                 initialMobile={termIsPhoneLike ? strippedTerm : undefined}
@@ -246,7 +217,7 @@ export function CustomerSearch({ value, onChange, className, disabled, trigger }
                     <span data-ui="cs-mode" className={MODE_CLASS}>{termMode}</span>
                   </div>
                 </div>
-                {rows.length > 0 && (
+                {(rows.length > 0 || noMatches) && (
                   <div data-ui="cs-caption" className={CAPTION_CLASS}>
                     Results
                   </div>
@@ -308,132 +279,5 @@ export function CustomerSearch({ value, onChange, className, disabled, trigger }
         </DialogPrimitive.Overlay>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
-  );
-}
-
-/** One search result: a tap attaches the customer and closes the sheet. Rows rise 30 ms apart (values 8.2 d). */
-function CustomerRow({
-  customer: c,
-  index,
-  current,
-  onPick,
-}: {
-  customer: Customer;
-  index: number;
-  current: boolean;
-  onPick: (customer: Customer) => void;
-}) {
-  const hue = AVATAR_HUES[avatarHueIndex(c.name)];
-  return (
-    <button
-      type="button"
-      data-ui="cs-row"
-      aria-current={current ? "true" : undefined}
-      onClick={() => onPick(c)}
-      style={{ animationDelay: `${(index * 0.03).toFixed(2)}s` }}
-      className={cn(ROW_CLASS, current ? ROW_CURRENT_CLASS : ROW_OTHER_CLASS, BRAND_PRESS_CLASS)}
-    >
-      <span aria-hidden="true" className={AVATAR_CLASS} style={{ backgroundColor: hue.bg, color: hue.fg }}>
-        {initials(c.name)}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className={NAME_LINE_CLASS}>
-          <span className="overflow-hidden text-ellipsis">{c.name}</span>
-          {current && <Check aria-hidden="true" className="size-4 flex-none text-primary" />}
-        </span>
-        <span className={PHONE_CLASS}>{c.mobile}</span>
-      </span>
-      <span className={RIGHT_CLASS}>
-        {visitsText(c.visits)}
-        {c.totalDue > 0 && (
-          <>
-            <br />
-            <span className="text-status-bad-ink">Due {inr(c.totalDue)}</span>
-          </>
-        )}
-      </span>
-    </button>
-  );
-}
-
-function AddCustomerForm({
-  onCreated,
-  initialName,
-  initialMobile,
-}: {
-  onCreated: (customer: Customer) => void;
-  initialName?: string;
-  initialMobile?: string;
-}) {
-  const [name, setName] = useState(initialName ?? "");
-  const [mobile, setMobile] = useState(initialMobile ?? "");
-  const createCustomer = useCreateCustomer();
-  // Focus goes to whichever field the search term did NOT already fill —
-  // that is the one the operator still has to type.
-  const focusMobile = !!initialName;
-
-  const submit = async () => {
-    const created = await createCustomer.mutateAsync({
-      name: name.trim(),
-      mobile: mobile.trim(),
-      notes: "Regular",
-    });
-    onCreated(created);
-  };
-
-  const valid = name.trim().length > 0 && mobile.trim().length >= 10;
-  // The HTML's count: the digits typed so far, of the 10 a mobile has (shown only; today's rule above decides).
-  const digits = mobile.replace(/\D/g, "").length;
-
-  return (
-    <>
-      <div data-ui="cs-form" className={NEW_BODY_CLASS}>
-        <label htmlFor="new-customer-mobile" className={FIELD_CLASS}>
-          <span className={FIELD_CAPTION_CLASS}>Mobile number</span>
-          <span data-ui="cs-mobile" className={FIELD_BOX_CLASS}>
-            <span aria-hidden="true" className={PREFIX_CLASS}>+91</span>
-            <span aria-hidden="true" className="h-5 w-px flex-none bg-border" />
-            <input
-              id="new-customer-mobile"
-              value={mobile}
-              onChange={(e) => setMobile(e.target.value)}
-              inputMode="numeric"
-              placeholder="98200 12345"
-              autoFocus={focusMobile}
-              data-autofocus={focusMobile ? "" : undefined}
-              autoComplete="off"
-              className={MOBILE_INPUT_CLASS}
-            />
-            <span aria-hidden="true" className={COUNT_CLASS}>{digits}/10</span>
-          </span>
-        </label>
-        <label htmlFor="new-customer-name" className={FIELD_CLASS}>
-          <span className={FIELD_CAPTION_CLASS}>Name</span>
-          <span data-ui="cs-name" className={FIELD_BOX_CLASS}>
-            <input
-              id="new-customer-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Customer name"
-              autoFocus={!focusMobile}
-              data-autofocus={focusMobile ? undefined : ""}
-              autoComplete="off"
-              className={FIELD_INPUT_CLASS}
-            />
-          </span>
-        </label>
-      </div>
-      <div data-ui="cs-form-foot" className={NEW_FOOT_CLASS}>
-        <button
-          type="button"
-          data-ui="cs-add"
-          className={cn(SAVE_CLASS, BRAND_PRESS_CLASS)}
-          disabled={!valid || createCustomer.isPending}
-          onClick={submit}
-        >
-          {createCustomer.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add customer"}
-        </button>
-      </div>
-    </>
   );
 }

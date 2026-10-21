@@ -261,7 +261,8 @@ test("S11 (R-b): the Pay Now popup is frozen while its sale is unconfirmed — m
   assert.ok(src.includes("const locked = isSubmitting || frozen;"));
   assert.equal(count(src, "disabled={isSubmitting}"), 1, "only Discard is gated on the flight alone — no input is");
   assert.equal(count(src, "disabled={locked}"), 4, "the mode buttons, the amount, the split fields and the customer picker");
-  assert.ok(src.includes("<CustomerSearch value={customer} onChange={onSelectCustomer} disabled={locked} />"), "the customer picker");
+  // U1 Task 10 (ruling P30): the picker also names the order for its sheet's sub line (context); the lock is unchanged.
+  assert.ok(src.includes("<CustomerSearch value={customer} onChange={onSelectCustomer} disabled={locked} context={paymentPlace(tableNo, newSale)} />"), "the customer picker");
   const guard = between(src, "const openChange = (next: boolean) => {", "onOpenChange(next);");
   assert.ok(guard.includes("if (!next && isSubmitting) return;") && guard.includes("if (!next && frozen) return;"), "X / Escape / outside tap cannot close a frozen sale — only its Discard");
   // The main button stays Send again (M3: isSubmitting is the flight only).
