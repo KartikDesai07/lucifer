@@ -5,7 +5,7 @@
 // the rule today's three-dot More menu carried on its dot and aria-label (D9.8), now on the links themselves.
 // Pure: no React; read off the same props the panel's controls render from, so a link can never drift from its control.
 import { inr } from "@pos/shared/utils";
-import type { DiscountUnit } from "@/components/pos/Cart";
+import type { DiscountUnit } from "@/lib/pos-cart-props";
 
 /** A section of the Bill options panel (in the panel: today's More-menu order, reward, promo, discount, charges). */
 export type BillSection = "reward" | "promo" | "discount" | "charges";

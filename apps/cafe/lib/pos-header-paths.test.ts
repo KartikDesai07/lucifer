@@ -70,6 +70,10 @@ test("PIN: the switch-order button is the HTML's (values 1.2): sizes, parts, dot
   assert.ok(src.includes('className="flex min-w-0 flex-1 flex-col"'), "the text column takes the shrink");
   assert.ok(src.includes('className="truncate text-[14px] font-semibold leading-[1.2]"'), "the title");
   assert.ok(src.includes('className="truncate text-[11.5px] leading-[1.3] text-muted-foreground"'), "the sub line");
+  // U1 final fix wave (the final review's minor 4): the pill waits for the open tabs' first answer.
+  assert.match(src, /\{view\.count !== null && \(\s*<span data-ui="pos-switch-count" className=\{COUNT_CLASS\}>/, "no pill until the open tabs are known");
+  assert.ok(src.includes("switchView({ resumedOrder, customerName, count, newCount, total }, openTabs)"), "the header hands switchView the query's own data");
+  assert.ok(src.includes("tabs={openTabs ?? NO_OPEN_TABS}"), "the panel lists a stable empty list meanwhile");
   const pill = literal("COUNT_CLASS");
   for (const t of ["flex", "h-[22px]", "flex-none", "items-center", "whitespace-nowrap", "rounded-[999px]", "bg-surface-3", "px-2", "text-[11.5px]", "font-semibold", "text-muted-foreground"]) {
     assert.ok(pill.includes(t), `the count pill: "${t}"`);

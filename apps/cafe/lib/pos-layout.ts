@@ -289,11 +289,10 @@ export const POS_PRESS_FEEDBACK_CLASS =
 // (CB-1d.1 V1). tailwind-merge lets these override the size variant.
 export const POS_HEADER_CONTROL_CLASS =
   "h-10 text-sm xl:pointer-fine:h-8 xl:pointer-fine:text-xs touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
-// The customer chip's leading icon (CustomerSearch's own trigger, the payment
-// popup's): shown from xl only. The header's table and customer chips (and
-// their fixed / flex width classes, review CB-1 F10) became the cart head's
-// cells in U1 Task 4 (owner Q9).
-export const POS_HEADER_CHIP_ICON_CLASS = "hidden h-4 w-4 xl:block";
+// (The header's table and customer chips, their width classes and the chip's
+// icon token became the cart head's cells in U1 Task 4 (owner Q9); the icon
+// token's last caller went with the payment pill in U1 Task 9 and the export
+// in the final fix wave.)
 
 // The menu's card grid (values 4.1, 4.3; design 5): the HTML's auto-fill columns, each at least 200px (the whole width
 // when the menu is narrower), 8px apart, so the column count follows the menu column's own width — two beside the
@@ -328,11 +327,9 @@ export function posGridPaneWidthPx(viewport: NavViewport): number {
 // (The cart's qty stepper / remove touch-target token went with the old cart
 // line in U1 Task 4: the HTML's stepper keeps its own 30/28 and 36/34 sizes on
 // touch screens too, ruling R1 — components/pos/CartLine.tsx; the tile's
-// corner "add with note" button went with the old tile in U1 Task 3.)
-// Primary/secondary cart CTAs: 48px on touch; `size="lg"`'s 40px only at
-// xl + FINE pointer (glass keeps 48px — the V1 invariant is uniform, g4).
-export const POS_CART_CTA_CLASS =
-  "w-full h-12 xl:pointer-fine:h-10 touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
+// corner "add with note" button went with the old tile in U1 Task 3; the
+// cart's old 48px CTA token, unused since U1 Task 12, went in the final fix
+// wave: the HTML's Send KOT / Pay carry their own looks in Cart.tsx.)
 
 // CB-2 — the cart's "GST Discount" preset toggle, full width. Ruling P15 (U1 final fix wave): it sits in the Bill
 // options panel, so it takes the panel's 34px (design 6.7: its fields and buttons are 34px) on every screen (ruling R1:

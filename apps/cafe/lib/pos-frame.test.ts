@@ -9,7 +9,8 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { stripComments } from "./source-pin-utils";
-import { posClockLabel } from "./pos-clock";
+import { clockPrinterWords, posClockLabel } from "./pos-clock";
+import { PRINTER_BUTTON_NAME_BAD, PRINTER_BUTTON_NAME_OK } from "./printer/printer-dot";
 import { MAIN_PADDING_BLEED_CLASS } from "./shell-layout";
 import * as layout from "./pos-layout";
 import {
@@ -268,6 +269,9 @@ test("PosHeaderClock: \"● Printer\" and the time, from 720px; its dot is the p
   const src = read(BRAND);
   assert.ok(src.includes('"hidden h-7 min-w-max items-center gap-3.5 border-l border-border pl-4 tab:flex"'), "the clock block (values 1.2)");
   assert.ok(src.includes('className="flex items-center gap-1.5 text-[12px] text-muted-foreground"'), "the printer indicator: 12px --text-2, a 6px gap");
+  // U1 final fix wave (the final review's minor 3): the dot's state is also said in words, for screen readers only.
+  assert.match(src, /Printer\s*\{printerWords && <span className="sr-only"> \{printerWords\}<\/span>\}/, "\"Printer\" then, unseen, its state");
+  assert.ok(src.includes("const printerWords = clockPrinterWords(tone);"), "the words come from lib/pos-clock.ts (unit-tested)");
   assert.match(src, /cn\("size-1\.5 rounded-\[50%\]", CLOCK_DOT_CLASS\[tone\]\)/, "a 6px round dot (the HTML's 50% radius) in the tone's colour");
   assert.match(src, /green: PRINTER_DOT_OK_CLASS,\s*red: PRINTER_DOT_WARN_CLASS,\s*none: "bg-transparent",/, "green ok, orange off, nothing while the button shows no dot");
   assert.match(src, /className="text-\[13px\] font-medium">\{posClockLabel\(now\)\}</, "the time: 13/500, the header's own minute clock");
@@ -318,4 +322,14 @@ test("posSwitchMinPx / posHeaderRoom: the switch button's measured minimum (coun
   assert.ok(src.includes(`.filter((child) => child.getAttribute("data-ui") !== "pos-switch-text")`), "every part but the text column");
   assert.ok(src.includes(`querySelector<HTMLElement>("[data-ui='pos-switch']")`), "the switch button in the slot's own actions box");
   assert.ok(src.includes("new MutationObserver("), "it arrives by a portal and its pill's words change: the box's contents are watched");
+});
+
+// U1 final fix wave (the final review's minor 3): the clock block's "● Printer" carried its state by colour alone; the
+// state is said too (screen readers only), in the printer button's own words ("Printer connected — …").
+test("clockPrinterWords: the printer button's words for the dot's tone; none while it draws no dot", () => {
+  assert.equal(clockPrinterWords("green"), "connected", "green: connected");
+  assert.equal(clockPrinterWords("red"), "not connected", "red: not connected");
+  assert.equal(clockPrinterWords("none"), null, "no dot (checking, or nothing set up): nothing said");
+  assert.ok(PRINTER_BUTTON_NAME_OK.startsWith(`Printer ${clockPrinterWords("green")} —`), "the button's title says the same for green");
+  assert.ok(PRINTER_BUTTON_NAME_BAD.startsWith(`Printer ${clockPrinterWords("red")} —`), "the button's title says the same for red");
 });

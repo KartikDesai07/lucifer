@@ -12,7 +12,7 @@ import type { RedeemedReward } from "@pos/shared/reward-redemption";
 import type { RewardBaseLine } from "@/lib/reward-discount";
 import { chargesTotal, type OrderCharge } from "@pos/shared/order-charges";
 import { TABLE_CHARGE_MAX } from "@/lib/constants";
-import type { DiscountUnit } from "@/components/pos/Cart";
+import type { DiscountUnit } from "@/lib/pos-cart-props";
 import type { Settings } from "@/types";
 
 const NO_LINES: readonly RewardBaseLine[] = [];

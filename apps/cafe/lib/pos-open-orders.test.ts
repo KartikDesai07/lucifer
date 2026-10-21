@@ -93,6 +93,8 @@ test("switchView: the sub names the customer when there is one and counts quanti
   }
   assert.equal(switchView(NEW_EMPTY, []).count, "0 open", "no open tabs");
   assert.equal(switchView(NEW_EMPTY, [T6]).count, "1 open", "one open tab");
+  // U1 final fix wave (the final review's minor 4): until the open tabs' first answer there is no count, never "0 open".
+  assert.equal(switchView(NEW_EMPTY, undefined).count, null, "the open tabs still loading: no pill");
 });
 
 test("switchView: the dot — orange while any item is not sent, green when all are sent", () => {

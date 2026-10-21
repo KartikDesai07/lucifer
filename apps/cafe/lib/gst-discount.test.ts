@@ -552,16 +552,26 @@ test("PIN: hooks/use-pos-tab.ts restores the discount unit from order.discountKi
   );
 });
 
+// U1 final fix wave (the Task 5 review's minor): the type moved from the component to lib/pos-cart-props.ts, so the pure
+// lib/pos-footer.ts (and the hooks) no longer import a component for it; the union is unchanged.
 test("PIN: components/pos/Cart.tsx's unit toggle array is exactly [\"₹\",\"%\"] (no 'GST' inside it), and DiscountUnit includes 'GST'", () => {
   const raw = readSrc("components/pos/Cart.tsx");
   const src = stripComments(raw);
-  assert.match(src, /export type DiscountUnit\s*=/, "landmark: Cart.tsx must still export type DiscountUnit");
+  const lib = stripComments(readSrc("lib/pos-cart-props.ts"));
+  assert.match(lib, /export type DiscountUnit\s*=/, "landmark: lib/pos-cart-props.ts must export type DiscountUnit");
+  assert.match(src, /import type \{ DiscountUnit \} from "@\/lib\/pos-cart-props";/, "Cart.tsx takes the type from lib");
+  assert.ok(!/type DiscountUnit\s*=/.test(src), "Cart.tsx declares no copy of its own");
   assert.match(
     src,
     /\(\["₹",\s*"%"\]\s*as\s*DiscountUnit\[\]\)/,
     'the unit toggle array literal must be exactly ["₹", "%"] as DiscountUnit[]',
   );
-  assert.match(src, /DiscountUnit\s*=\s*"₹"\s*\|\s*"%"\s*\|\s*"GST"/, 'DiscountUnit must include "GST"');
+  assert.match(lib, /DiscountUnit\s*=\s*"₹"\s*\|\s*"%"\s*\|\s*"GST"/, 'DiscountUnit must include "GST"');
+  for (const file of ["lib/pos-footer.ts", "hooks/use-pos-tab.ts", "hooks/use-pos-totals.ts", "hooks/use-customer-rewards.ts"]) {
+    const other = stripComments(readSrc(file));
+    assert.ok(!other.includes('from "@/components/pos/Cart"'), `${file} imports nothing from the Cart component`);
+    assert.match(other, /import type \{ DiscountUnit \} from "@\/lib\/pos-cart-props";/, `${file} takes DiscountUnit from lib`);
+  }
 });
 
 test("PIN: the GST button in Cart.tsx is OUTSIDE function CartActions, carries aria-pressed and readOnly={gstActive}, and Cart.tsx still has no bill arithmetic", () => {

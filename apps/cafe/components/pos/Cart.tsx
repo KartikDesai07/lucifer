@@ -29,11 +29,8 @@ import { rungWorthLabel, type RungOffer } from "@/lib/reward-rungs";
 import type { CartItem } from "@/hooks/use-cart";
 import type { CardOffer } from "@/lib/reward-card-offers";
 import type { VoidLine } from "@/lib/pos-cart-view";
+import type { DiscountUnit } from "@/lib/pos-cart-props";
 import type { Order } from "@/types";
-
-// "GST" = the GST-equivalent preset; the amount is DERIVED (usePosTotals, and
-// authoritatively the server), never typed.
-export type DiscountUnit = "₹" | "%" | "GST";
 
 export interface CartProps {
   items: CartItem[];

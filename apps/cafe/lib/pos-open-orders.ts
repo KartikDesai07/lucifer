@@ -9,12 +9,13 @@ import type { Order } from "@/types";
 /** The tile's dot (values 1.3 sw.dot): grey with no items, orange while an item is not sent, green when all are. */
 export type SwitchDot = "empty" | "unsent" | "sent";
 
-/** The switch button's words (values 1.3): the code tile, the title, the sub line, the "{N} open" pill and the dot. */
+/** The switch button's words (values 1.3): the code tile, the title, the sub line, the "{N} open" pill (null until the
+ *  open tabs' first answer: no pill, never "0 open") and the dot. */
 export interface SwitchView {
   code: string;
   title: string;
   sub: string;
-  count: string;
+  count: string | null;
   dot: SwitchDot;
 }
 
@@ -46,8 +47,9 @@ export function codeOf(tableNo: string | undefined, walkIn: boolean, isNew: bool
 
 /** The switch button for the order on screen (values 1.3; design 6.2). The sub names the customer only when the order
  *  has one (ruling P17: never "Walk-In", which in our words means "no table"; a walk-in tab's title says so already).
- *  The pill counts our open tabs (a new order is not one yet). */
-export function switchView(view: SwitchInput, openTabs: readonly Order[]): SwitchView {
+ *  The pill counts our open tabs (a new order is not one yet); `openTabs` is undefined until the query's first answer,
+ *  and there is no pill then. */
+export function switchView(view: SwitchInput, openTabs: readonly Order[] | undefined): SwitchView {
   const tableNo = view.resumedOrder?.tableNo;
   const who = view.customerName?.trim();
   const items = view.count > 0 ? `${itemsLabel(view.count)} · ${inr(view.total)}` : "No items yet";
@@ -55,7 +57,7 @@ export function switchView(view: SwitchInput, openTabs: readonly Order[]): Switc
     code: codeOf(tableNo, !tableNo, !view.resumedOrder),
     title: cartTitle({ resumedOrder: view.resumedOrder }),
     sub: who ? `${who} · ${items}` : items,
-    count: `${openTabs.length} open`,
+    count: openTabs ? `${openTabs.length} open` : null,
     dot: view.count === 0 ? "empty" : view.newCount > 0 ? "unsent" : "sent",
   };
 }

@@ -15,7 +15,8 @@ import type { Order } from "@/types";
 interface PosHeaderProps {
   lastOrder: Order | null;
   onReprintKot: () => void;
-  openTabs: Order[];
+  /** The open tabs, undefined until the query's first answer (the "{N} open" pill waits for it). */
+  openTabs: Order[] | undefined;
   onResumeTab: (order: Order) => void;
   resumedOrder: Order | null;
   isBusy: boolean;
@@ -44,6 +45,8 @@ const DOT_CLASS: Record<SwitchDot, string> = {
   unsent: STATUS_CLASSES.warn.dot,
   sent: STATUS_CLASSES.ok.dot,
 };
+/** The panel's list while the open tabs load: one stable empty list (the memo below bails out on it). */
+const NO_OPEN_TABS: Order[] = [];
 // The "{N} open" pill: 22px, 0 8px, round, --surface-3 with --text-2, 11.5px 600.
 const COUNT_CLASS =
   "flex h-[22px] flex-none items-center whitespace-nowrap rounded-[999px] bg-surface-3 px-2 text-[11.5px] font-semibold text-muted-foreground";
@@ -71,9 +74,11 @@ function SwitchOrderButton({ view, className, ...props }: { view: SwitchView } &
           {view.sub}
         </span>
       </span>
-      <span data-ui="pos-switch-count" className={COUNT_CLASS}>
-        {view.count}
-      </span>
+      {view.count !== null && (
+        <span data-ui="pos-switch-count" className={COUNT_CLASS}>
+          {view.count}
+        </span>
+      )}
       <svg
         width="16"
         height="16"
@@ -118,7 +123,7 @@ export const PosHeader = memo(function PosHeader({
         title="POS Terminal"
         phoneActions={
           <OpenTabsButton
-            tabs={openTabs}
+            tabs={openTabs ?? NO_OPEN_TABS}
             currentId={resumedOrder?._id}
             onResume={onResumeTab}
             lastOrder={lastOrder}

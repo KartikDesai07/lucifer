@@ -39,7 +39,7 @@ import {
 } from "@/lib/pos-layout";
 import type { Order, Product } from "@/types";
 
-// PosHeader is memoized (CB-1d.3c): a loading openTabs must not hand it a fresh [] each render (re-renders per tap).
+// The cart's cells: a loading openTabs must not hand them a fresh [] each render (PosHeader takes the query's own data).
 const NO_OPEN_TABS: Order[] = [];
 
 export default function PosPage() {
@@ -168,7 +168,7 @@ export default function PosPage() {
       <PosHeader
         lastOrder={pos.lastOrder}
         onReprintKot={pos.reprintKot}
-        openTabs={openTabs.data ?? NO_OPEN_TABS}
+        openTabs={openTabs.data}
         onResumeTab={onResumeTab}
         resumedOrder={pos.resumedOrder}
         isBusy={pos.isBusy}

@@ -19,7 +19,8 @@ import type { CartItem } from "@/hooks/use-cart";
 const LINE_CLASS = "-mx-2 grid cursor-pointer grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-[3px] rounded-[10px] px-2 py-2.5 motion-safe:animate-html-line-in";
 /** Selected (values 5.4, owner Q10): --accent-t under an inset 1px --accent-b ring. */
 const SELECTED_CLASS = "bg-accent [box-shadow:inset_0_0_0_1px_var(--accent-b)]";
-/** The name column: the keyboard's way to select the line (its click reaches the line); no look of its own. */
+/** The name column: the keyboard's way to select the line (its click reaches the line), heard as pressed while the
+ *  line is selected (the action row is not a popup); no look of its own. */
 const NAME_CLASS = "min-w-0 cursor-pointer bg-transparent p-0 text-left text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring";
 /** The stepper box (values 5.4, 0.3 stepBox): 1px --border, radius 8, --surface; 36px tall, 30px from 1100px. */
 const STEPPER_CLASS = "flex h-9 items-center rounded-[8px] border border-border bg-card desk:h-[30px]";
@@ -66,7 +67,7 @@ export function CartLine({
       onClick={disabled ? undefined : () => onToggle(item.lineId)}
     >
       <span className="font-mono text-[12px] text-subtle-foreground">{number}</span>
-      <button type="button" data-ui="pos-line-name" className={NAME_CLASS} aria-expanded={selected}>
+      <button type="button" data-ui="pos-line-name" className={NAME_CLASS} aria-pressed={selected}>
         <span className="block truncate text-[14px] font-medium">{item.name}</span>
         <span className="block truncate text-[12px] text-muted-foreground">{lineMeta(item)}</span>
       </button>

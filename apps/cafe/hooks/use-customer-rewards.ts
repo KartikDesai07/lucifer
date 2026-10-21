@@ -10,7 +10,7 @@ import { REWARD_NEEDS_NEW_ITEMS, staffCardReward, type StaffRewardCard } from "@
 import { PROMO_BLOCKS_REWARD } from "@pos/shared/public-promo";
 import { cardOffers, type CardBillLine, type CardOffer } from "@/lib/reward-card-offers";
 import { canCarryClaim, hasOrderReward } from "@/lib/order-reward-fence";
-import type { DiscountUnit } from "@/components/pos/Cart";
+import type { DiscountUnit } from "@/lib/pos-cart-props";
 import type { Order } from "@/types";
 import type { CustomerRewardsResponse } from "@/app/api/customers/[id]/rewards/route";
 

@@ -6,6 +6,11 @@ import type { Order, Product, Table } from "@/types";
 
 type Pos = ReturnType<typeof usePosTab>;
 
+/** The discount's unit (U1 final fix wave: moved here from components/pos/Cart.tsx, so the pure lib modules and the
+ *  hooks take it from lib, not from a component): rupees, a percentage, or "GST" = the GST-equivalent preset, whose
+ *  amount is DERIVED (usePosTotals, and authoritatively the server), never typed. */
+export type DiscountUnit = "₹" | "%" | "GST";
+
 /** What only the page holds for the cart head's two cells (U1 Task 4, owner Q9): the floor for the table picker, the
  *  open tabs an occupied tile jumps to, the resume (today's prompt rules) and the move / assign opener. */
 export interface CartPageInputs {

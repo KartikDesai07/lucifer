@@ -245,7 +245,10 @@ test("PIN: pos/page.tsx feeds the memoized PosHeader Object.is-stable props — 
   // U1 Task 6 (values 1.3): the switch button reads the order on screen as plain values (a name, numbers), so the
   // memo still bails out on an unrelated render.
   const propPins = [
-    "openTabs={openTabs.data ?? NO_OPEN_TABS}",
+    // U1 final fix wave (the final review's minor 4): the header gets the query's own data, undefined until the first
+    // answer, so its "{N} open" pill waits for it (never "0 open" while loading); TanStack keeps the array's identity,
+    // and PosHeader holds its own stable empty list, so the memo still bails out.
+    "openTabs={openTabs.data}",
     "onResumeTab={onResumeTab}",
     "onTableChange={onTableChange}",
     "resumedOrder={pos.resumedOrder}",
@@ -340,17 +343,16 @@ test("PIN (U1 Task 8, values 10.1): the modal is the HTML's sheet — a Radix di
   assert.ok(src.includes("<DialogPrimitive.Title className={NAME_CLASS}>{product.name}</DialogPrimitive.Title>"), "the title is the product's name in the head");
   assert.ok(src.includes('<DialogPrimitive.Description className="sr-only">'), "today's description stays for screen readers only (the HTML shows none)");
   assert.ok(src.includes('aria-label="Close"') && src.includes(">✕</DialogPrimitive.Close>"), "the HTML's \"✕\" character closes it, named Close");
-  assert.ok(src.includes("onOpenAutoFocus={rememberOpener}") && src.includes("onCloseAutoFocus={returnFocus}"), "landmark: the panel's open / close focus handlers");
-  assert.match(
-    src,
-    /const rememberOpener = \(e: Event\) => \{\s*openerRef\.current = document\.activeElement instanceof HTMLElement \? document\.activeElement : null;\s*e\.preventDefault\(\);\s*if \(e\.currentTarget instanceof HTMLElement\) e\.currentTarget\.focus\(\);\s*\};/,
-    "on open the panel itself takes the focus (no ring on \"✕\", no phone keyboard for the note field), remembering what had it",
-  );
-  assert.match(
-    src,
-    /const returnFocus = \(e: Event\) => \{\s*e\.preventDefault\(\);\s*if \(openerRef\.current\?\.isConnected\) openerRef\.current\.focus\(\);\s*\};/,
-    "on close the focus goes back to what opened it (the page opens the modal from state: Radix has no trigger to return to, so it fell to <body>)",
-  );
+  // U1 final fix wave (the Task 9 review's minor): the modal's own copy of the opener focus went; it spreads the shared
+  // hook (hooks/use-opener-focus.ts, the same two handlers, pinned in lib/payment-sheet.test.ts), as the payment, void,
+  // table and move sheets do. Behaviour identical: the panel takes the focus on open (no ring on "✕", no phone keyboard
+  // for the note field) and gives it back to the opener on close (the page opens the modal from state, no trigger).
+  assert.match(src, /import \{ useOpenerFocus \} from "@\/hooks\/use-opener-focus";/, "the shared hook");
+  assert.ok(src.includes("const openerFocus = useOpenerFocus();"), "one instance per modal");
+  assert.match(src, /<DialogPrimitive\.Content\s+data-ui="pos-item-options-panel"\s+\{\.\.\.openerFocus\}/, "spread on the panel");
+  for (const gone of ["rememberOpener", "returnFocus", "openerRef"]) {
+    assert.ok(!src.includes(gone), `no own copy of the opener focus: ${gone}`);
+  }
 
   assert.equal(
     modalConst(src, "SCRIM_CLASS"),
@@ -363,7 +365,9 @@ test("PIN (U1 Task 8, values 10.1): the modal is the HTML's sheet — a Radix di
     "values 10.1 panel: 440px, --surface, no border, sheetRadius 14 (14 14 0 0 below 720px), --pop, sheetIn .34s; capped at the HTML's sheet heights (csMaxH) so a long option list scrolls in the body",
   );
   assert.equal(modalConst(src, "HEAD_CLASS"), "flex flex-none items-center gap-2.5 border-b border-border-2 px-[18px] py-4", "values 10.1 head: 16px 18px, gap 10, a --border-2 rule");
-  assert.equal(modalConst(src, "NAME_CLASS"), "min-w-0 flex-1 text-[17px] font-semibold tracking-[-0.01em]", "values 10.1 name: 17px 600, -.01em, flex 1 (no veg mark: owner Q7)");
+  // U1 final fix wave (the Task 8 review's minor): a long unbroken operator-typed name (CR1.1) wraps inside the head
+  // instead of pushing the "✕" out of the panel.
+  assert.equal(modalConst(src, "NAME_CLASS"), "min-w-0 flex-1 break-words text-[17px] font-semibold tracking-[-0.01em]", "values 10.1 name: 17px 600, -.01em, flex 1 (no veg mark: owner Q7); a long word wraps");
   assert.equal(
     modalConst(src, "CLOSE_CLASS"),
     "size-7 cursor-pointer rounded-[50%] border-0 bg-surface-3 px-1.5 py-px text-[12px] text-muted-foreground",
@@ -505,8 +509,8 @@ test("PIN (U1 Task 12, values 10.1 / 8.3 / 12.1): the check rows, the 46px stepp
   assert.equal(voidConst(src, "LIST_CLASS"), "max-h-56 overflow-y-auto rounded-[10px] border border-border", "values 10.1 list: a 1px --border, radius 10; today's 14rem cap scrolls a long tab");
   assert.equal(
     voidConst(src, "ROW_CLASS"),
-    "flex min-h-[42px] w-full cursor-pointer items-center gap-2.5 border-b border-border-2 bg-card px-3 py-2 text-left text-[14px] text-foreground hover:bg-hover",
-    "values 10.1 row: 42px (taller with modifier lines), 0 12px, gap 10, 14px --text, a --border-2 rule under each, hover --hover",
+    "flex min-h-[42px] w-full cursor-pointer items-center gap-2.5 border-b border-border-2 bg-card px-3 py-2 text-left text-[14px] text-foreground last:border-b-0 hover:bg-hover",
+    "values 10.1 row: 42px (taller with modifier lines), 0 12px, gap 10, 14px --text, a --border-2 rule under each but the last (the list's own border closes it), hover --hover",
   );
   assert.equal(
     voidConst(src, "CHECK_CLASS"),

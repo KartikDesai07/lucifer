@@ -38,7 +38,7 @@ import {
   DASHBOARD_HEADER_REM,
   POS_ALERT_HEIGHT_VAR,
   POS_HEADER_CONTROL_CLASS,
-  POS_CART_CTA_CLASS,
+  POS_CART_GST_BUTTON_CLASS,
   POS_PRESS_FEEDBACK_CLASS,
   POS_DIALOG_LIST_CAP_CLASS,
 } from "@/lib/pos-layout";
@@ -209,7 +209,9 @@ test("PIN: real Tailwind compiles the /pos frame (page height, body grid, region
 test("PIN: real Tailwind compiles the CB-1d.1 touch-feel/device-size tokens to the exact CSS the string/paths pins assume — pointer-fine height variants nested UNDER the xl media query, coarse-pointer active scale/opacity, dialog-cap vh/dvh pairs, and base-before-variant emission order", async () => {
   const candidates = [
     ...POS_HEADER_CONTROL_CLASS.split(/\s+/),
-    ...POS_CART_CTA_CLASS.split(/\s+/),
+    // U1 final fix wave: the dead POS_CART_CTA_CLASS went (no caller since Task 12) with its h-12 / xl:pointer-fine:h-10
+    // pins; the Bill options panel's GST toggle (34px, ruling P15) takes its place as the live w-full token.
+    ...POS_CART_GST_BUTTON_CLASS.split(/\s+/),
     ...POS_PRESS_FEEDBACK_CLASS.split(/\s+/),
     ...POS_DIALOG_LIST_CAP_CLASS.split(/\s+/),
   ].filter(Boolean);
@@ -227,10 +229,7 @@ test("PIN: real Tailwind compiles the CB-1d.1 touch-feel/device-size tokens to t
     css.includes("@media (width >= 80rem) { @media (pointer: fine) { height: calc(var(--spacing) * 8); } }"),
     "compiled CSS must include the xl:pointer-fine h-8 rule (header controls)",
   );
-  assert.ok(
-    css.includes("@media (width >= 80rem) { @media (pointer: fine) { height: calc(var(--spacing) * 10); } }"),
-    "compiled CSS must include the xl:pointer-fine h-10 rule (POS_CART_CTA_CLASS — g4: the CTA's xl compact size is no longer exempt, it is pointer-fine-gated like every other touch token)",
-  );
+  assert.ok(css.includes(".h-\\[34px\\] {"), "compiled CSS must include the GST toggle's escaped .h-\\[34px\\] rule (ruling P15)");
 
   // Compositor-only pressed state (POS_PRESS_FEEDBACK_CLASS): scale/opacity
   // only, gated on the coarse-pointer media query, never a paint property.
@@ -292,20 +291,8 @@ test("PIN: real Tailwind compiles the CB-1d.1 touch-feel/device-size tokens to t
     `the base .h-10 rule (index ${baseIdx}) must compile BEFORE its xl:pointer-fine:h-8 variant (index ${fineVariantIdx})`,
   );
 
-  // g4: the same base-before-variant order for the CTA's own pair — .h-12
-  // (POS_CART_CTA_CLASS's base height) before its escaped
-  // .xl\:pointer-fine\:h-10 variant selector.
-  const ctaBaseIdx = css.indexOf(".h-12 {");
-  const ctaFineVariantIdx = css.indexOf(".xl\\:pointer-fine\\:h-10 {");
-  assert.ok(ctaBaseIdx >= 0, "compiled CSS must include the base .h-12 { rule");
-  assert.ok(ctaFineVariantIdx >= 0, "compiled CSS must include the escaped .xl\\:pointer-fine\\:h-10 { rule");
-  assert.ok(
-    ctaBaseIdx < ctaFineVariantIdx,
-    `the base .h-12 rule (index ${ctaBaseIdx}) must compile BEFORE its xl:pointer-fine:h-10 variant (index ${ctaFineVariantIdx})`,
-  );
-
   // Landmark: the whole candidate list reached the compiler, not just the
   // arithmetic-bearing tokens asserted above.
   // U1 Task 7: the bar's button is the HTML's Review order (no touch token any more), so the landmark is the CTA's.
-  assert.ok(css.includes(".w-full {"), "landmark: compiled CSS must include the plain .w-full utility (POS_CART_CTA_CLASS)");
+  assert.ok(css.includes(".w-full {"), "landmark: compiled CSS must include the plain .w-full utility (POS_CART_GST_BUTTON_CLASS)");
 });

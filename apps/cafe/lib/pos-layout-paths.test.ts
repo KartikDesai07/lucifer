@@ -43,7 +43,6 @@ import {
   DASHBOARD_HEADER_REM,
   POS_PRESS_FEEDBACK_CLASS,
   POS_HEADER_CONTROL_CLASS,
-  POS_CART_CTA_CLASS,
   POS_MOBILE_BAR_BUTTON_CLASS,
   POS_DIALOG_LIST_CAP_CLASS,
   POS_TOUCH_ATTR,
@@ -483,7 +482,9 @@ test("PIN: CartLines selects one line and offers Remove (a new line) or Void (a 
   assert.match(between(lines, "<CartLine", "/>"), /disabled=\{isBusy\}/, "every line's controls lock while busy");
   assert.ok(line.includes("onClick={disabled ? undefined : () => onToggle(item.lineId)}"), "a tap on the line selects it, not while busy");
   assert.ok(line.includes("onClick={keep}"), "a tap on the stepper does not select the line");
-  assert.ok(line.includes("aria-expanded={selected}"), "the name is the keyboard's way to select (its click reaches the line)");
+  // U1 final fix wave (the final review's minor 2): the action row is not a popup, so the name says "pressed" (selected).
+  assert.ok(line.includes("aria-pressed={selected}"), "the name is the keyboard's way to select (its click reaches the line), heard as pressed");
+  assert.ok(!line.includes("aria-expanded"), "not aria-expanded: nothing pops up");
   assert.equal(constOf(lines, "ACTION_CLASS"), "min-h-11 cursor-pointer bg-transparent p-0 text-[12.5px] font-medium text-link", "12.5px 500 --link (our own control: 44px tall)");
 });
 
@@ -960,10 +961,12 @@ test("PIN: (dashboard)/layout.tsx renders Header, then RequestAlertBar, then <ma
 // stepper token (POS_CART_STEPPER_CLASS) went with the old cart line (values 5.4: the HTML's stepper, its own sizes on
 // touch screens too, ruling R1); U1 Task 7: the bar's button (POS_MOBILE_BAR_BUTTON_CLASS) is the HTML's "Review order"
 // with the HTML's press (BRAND_PRESS_CLASS, as the cart's Send KOT / Pay), so two copies remain.
+// U1 final fix wave (the final review's minor 1): POS_CART_CTA_CLASS had no caller left since Task 12 (SendDiscard's kit
+// fallback went) and POS_HEADER_CHIP_ICON_CLASS none since Task 9 (the customer chip's icon); both exports and their
+// pins went, so one copy remains here.
 test("PIN: POS_PRESS_FEEDBACK_CLASS is duplicated VERBATIM inside every touch-target token (CB-1d.1 L1) — a paths pin, not a re-typed literal, keeps the two copies in sync", () => {
   for (const [label, cls] of [
     ["POS_HEADER_CONTROL_CLASS", POS_HEADER_CONTROL_CLASS],
-    ["POS_CART_CTA_CLASS", POS_CART_CTA_CLASS],
   ] as const) {
     assert.ok(cls.includes(POS_PRESS_FEEDBACK_CLASS), `${label} must include POS_PRESS_FEEDBACK_CLASS verbatim`);
   }
@@ -995,7 +998,6 @@ test("PIN: POS_PRESS_FEEDBACK_CLASS itself carries the instant-tap primitives, g
 test("PIN: header/CTA tokens gate their xl compact look on pointer-fine ONLY — glass (coarse) never shrinks at xl (CB-1d.1 V1); every xl: term in these tokens is pointer-fine-gated, enumerated, not just the documented ones (CB-1d.1 g11)", () => {
   for (const [label, cls, xlLandmarks] of [
     ["POS_HEADER_CONTROL_CLASS", POS_HEADER_CONTROL_CLASS, ["xl:pointer-fine:h-8", "xl:pointer-fine:text-xs"]],
-    ["POS_CART_CTA_CLASS", POS_CART_CTA_CLASS, ["xl:pointer-fine:h-10"]],
   ] as const) {
     for (const needle of xlLandmarks) {
       assert.ok(cls.includes(needle), `landmark: ${label} must include "${needle}"`);
@@ -1552,4 +1554,13 @@ test("PIN: the Bill options panel opens the switched-to section's form, focuses 
   );
   const reward = stripComments(readSrc("apps/cafe/components/pos/CartReward.tsx"));
   assert.match(reward, /if \(!rewardSectionShown\(\{ offered, picked: selectedAt !== null \|\| \(cards\?\.selectedId \?\? null\) !== null, locked \}\)\) return null;/, "CartReward draws on the same gate (the locked line included)");
+});
+
+// U1 final fix wave (the final review's minor 1): the dead exports are gone, so the next page session cannot pick up a
+// token that describes a control that no longer exists.
+test("PIN: lib/pos-layout.ts no longer exports the dead POS_CART_CTA_CLASS / POS_HEADER_CHIP_ICON_CLASS", () => {
+  const src = readSrc(POS_LAYOUT_TS);
+  for (const gone of ["POS_CART_CTA_CLASS", "POS_HEADER_CHIP_ICON_CLASS"]) {
+    assert.ok(!src.includes(gone), `${gone} is gone from lib/pos-layout.ts (no caller outside tests)`);
+  }
 });

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 
 import { effectivePrice } from "@/hooks/use-cart";
 import { inr, cn } from "@/lib/utils";
 import { initialSelected, pickModifierResult, modifiersPreselectedFor } from "@/lib/modifier-picker";
+import { useOpenerFocus } from "@/hooks/use-opener-focus";
 import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { Input } from "@/components/ui/input";
 import type { Product } from "@/types";
@@ -47,10 +48,11 @@ const SCRIM_CLASS =
 // (customer sheet csMaxH) so an item with many options scrolls in the body and "Add to order" stays on screen.
 const PANEL_CLASS =
   "flex w-full max-w-[440px] flex-col overflow-hidden rounded-[14px] bg-card [box-shadow:var(--pop)] outline-none motion-safe:animate-sheet-in tab:max-h-[calc(100vh-32px)] tab:supports-[height:1dvh]:max-h-[calc(100dvh-32px)] max-tab:max-h-[88vh] max-tab:rounded-[14px_14px_0_0] max-tab:supports-[height:1dvh]:max-h-[88dvh]";
-// The head (values 10.1): 16px 18px, gap 10, a --border-2 rule; the name 17px 600 -.01em (no veg mark: owner Q7); the
-// "✕" a 28px round --surface-3 button, 12px --text-2 (buttons the HTML leaves unpadded keep the UA's 1px 6px).
+// The head (values 10.1): 16px 18px, gap 10, a --border-2 rule; the name 17px 600 -.01em (no veg mark: owner Q7), a long
+// unbroken operator-typed name (CR1.1) wrapping inside the head so the "✕" stays in the panel; the "✕" a 28px round
+// --surface-3 button, 12px --text-2 (buttons the HTML leaves unpadded keep the UA's 1px 6px).
 const HEAD_CLASS = "flex flex-none items-center gap-2.5 border-b border-border-2 px-[18px] py-4";
-const NAME_CLASS = "min-w-0 flex-1 text-[17px] font-semibold tracking-[-0.01em]";
+const NAME_CLASS = "min-w-0 flex-1 break-words text-[17px] font-semibold tracking-[-0.01em]";
 const CLOSE_CLASS = "size-7 cursor-pointer rounded-[50%] border-0 bg-surface-3 px-1.5 py-px text-[12px] text-muted-foreground";
 // The body (values 10.1): 16px 18px, the blocks 18px apart; each block a 12px 600 --text-2 caption 8px above its control.
 const BODY_CLASS = "flex min-h-0 flex-col gap-[18px] overflow-y-auto px-[18px] py-4";
@@ -111,8 +113,11 @@ export function ModifierModal({
   const sizeId = useId();
   const addonsId = useId();
   const hintId = useId();
-  // What had the focus when the modal opened (the card's name or "Choose" button).
-  const openerRef = useRef<HTMLElement | null>(null);
+  // On open the panel itself takes the focus (the dialog is announced by its name; Tab then reaches "✕" and the
+  // options): no ring lands on "✕" and no phone keyboard pops up for the note field. The page opens the modal from its
+  // state, so Radix has no trigger to give the focus back to and would drop it on <body>; it goes back to the opener
+  // (the card's name or "Choose" button). The shared hook, as the payment, void and table sheets (ruling P22).
+  const openerFocus = useOpenerFocus();
 
   // Reset the form each time a new product is opened. A reverse-mode product
   // (modifiers come ticked) starts every modifier ticked; normal mode starts
@@ -160,27 +165,13 @@ export function ModifierModal({
     onOpenChange(false);
   };
 
-  // On open the panel itself takes the focus (the dialog is announced by its name; Tab then reaches "✕" and the
-  // options): no ring lands on "✕" and no phone keyboard pops up for the note field. The page opens the modal from its
-  // state, so Radix has no trigger to give the focus back to and would drop it on <body>; it goes back to the opener.
-  const rememberOpener = (e: Event) => {
-    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    e.preventDefault();
-    if (e.currentTarget instanceof HTMLElement) e.currentTarget.focus();
-  };
-  const returnFocus = (e: Event) => {
-    e.preventDefault();
-    if (openerRef.current?.isConnected) openerRef.current.focus();
-  };
-
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay data-ui="pos-item-options" className={SCRIM_CLASS}>
           <DialogPrimitive.Content
             data-ui="pos-item-options-panel"
-            onOpenAutoFocus={rememberOpener}
-            onCloseAutoFocus={returnFocus}
+            {...openerFocus}
             className={PANEL_CLASS}
           >
             <div data-ui="pos-item-options-head" className={HEAD_CLASS}>

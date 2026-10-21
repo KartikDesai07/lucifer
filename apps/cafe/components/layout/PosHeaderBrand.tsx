@@ -6,7 +6,7 @@ import { BrandTile } from "@/components/layout/BrandTile";
 import { NavDeviceLine } from "@/components/layout/NavDeviceLine";
 import { PRINTER_DOT_OK_CLASS, PRINTER_DOT_WARN_CLASS } from "@/components/print/printer-classes";
 import { VENDOR_PRODUCT_NAME } from "@/lib/constants";
-import { posClockLabel } from "@/lib/pos-clock";
+import { clockPrinterWords, posClockLabel } from "@/lib/pos-clock";
 import { posHeaderRoom, posSwitchMinPx, type PosHeaderRoom } from "@/lib/pos-layout";
 import type { PrinterDotTone } from "@/lib/printer/printer-dot";
 import { cn } from "@/lib/utils";
@@ -125,11 +125,14 @@ interface PosHeaderClockProps {
 }
 
 export function PosHeaderClock({ now, tone, room }: PosHeaderClockProps) {
+  // The dot is decoration: its state is said in words too, for screen readers only (never colour alone).
+  const printerWords = clockPrinterWords(tone);
   return (
     <div ref={room.clockRef} data-ui="pos-clock" className={cn("hidden h-7 min-w-max items-center gap-3.5 border-l border-border pl-4 tab:flex", room.level >= 2 && ROOM_HIDDEN_CLASS)}>
       <span data-ui="pos-clock-printer" className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
         <span aria-hidden="true" data-ui="pos-clock-dot" className={cn("size-1.5 rounded-[50%]", CLOCK_DOT_CLASS[tone])} />
         Printer
+        {printerWords && <span className="sr-only"> {printerWords}</span>}
       </span>
       <span data-ui="pos-clock-time" className="text-[13px] font-medium">{posClockLabel(now)}</span>
     </div>

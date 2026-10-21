@@ -52,10 +52,11 @@ const BODY_CLASS = "flex min-h-0 flex-1 flex-col gap-3.5 overflow-auto px-4 pt-1
 // Our "nothing sent" line in the HTML's empty block (values 8.2): 24px 12px, centred, 13.5px --text-2 at 1.5.
 const EMPTY_CLASS = "px-3 py-6 text-center text-[13.5px] leading-[1.5] text-muted-foreground";
 // The sent lines (values 10.1's add-on list): a 1px --border list, radius 10, today's 14rem cap scrolling a long tab;
-// 42px rows (taller with our modifier lines), 0 12px, gap 10, 14px --text, a --border-2 rule under each, hover --hover.
+// 42px rows (taller with our modifier lines), 0 12px, gap 10, 14px --text, a --border-2 rule under each but the last
+// (the list's own border closes it: no doubled line), hover --hover.
 const LIST_CLASS = "max-h-56 overflow-y-auto rounded-[10px] border border-border";
 const ROW_CLASS =
-  "flex min-h-[42px] w-full cursor-pointer items-center gap-2.5 border-b border-border-2 bg-card px-3 py-2 text-left text-[14px] text-foreground hover:bg-hover";
+  "flex min-h-[42px] w-full cursor-pointer items-center gap-2.5 border-b border-border-2 bg-card px-3 py-2 text-left text-[14px] text-foreground last:border-b-0 hover:bg-hover";
 // The check (values 10.1-10.2), round for one choice: 18px, a 1.5px rule; the picked line's --accent box and fill with
 // the white check, the others a --text-3 ring on --surface.
 const CHECK_CLASS =
