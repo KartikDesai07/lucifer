@@ -155,6 +155,7 @@ export function PosModals({
         {...totals}
         customer={customer}
         tableNo={tableNo}
+        newSale={!resumedOrder}
         receiver={receiver}
         isSubmitting={isSubmitting}
         onConfirm={paymentConfirm}

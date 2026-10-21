@@ -80,10 +80,28 @@ const CUSTOMER = "components/pos/CustomerSearch.tsx";
 
 // ── words (owner Q1: the HTML's words where it has the element; ours for our data) ──────────────────────────────────
 
-test("the title is the HTML's 'Payment · {place}': the tab's or sale's table, else Walk-In (no new prop on any caller)", () => {
-  assert.equal(paymentTitle("T-4"), "Payment · Table T-4", "a table");
-  assert.equal(paymentTitle(undefined), "Payment · Walk-In", "no table: our word for it");
-  assert.equal(paymentTitle(""), "Payment · Walk-In", "an empty table field is no table");
+// Fix round 1 (review): the title names the order as the cart and the order bar do (design 6.11, cartTitle): a new
+// sale with no table is "New order"; a table (a tab's, or the one chosen for a new sale) is "Table {n}"; a tab with no
+// table is "Walk-In". The Orders / dashboard sheet settles tabs only, so it never says "New order".
+test("the title is the HTML's 'Payment · {place}': New order / Table {n} / Walk-In, as the cart names the order", () => {
+  assert.equal(paymentTitle(undefined, true), "Payment · New order", "/pos: a new sale with no table");
+  assert.equal(paymentTitle("T-4", true), "Payment · Table T-4", "/pos: a new sale at a chosen table");
+  assert.equal(paymentTitle("T-4", false), "Payment · Table T-4", "a tab at a table");
+  assert.equal(paymentTitle(undefined, false), "Payment · Walk-In", "a tab with no table");
+  assert.equal(paymentTitle("", false), "Payment · Walk-In", "an empty table field is no table");
+  assert.equal(paymentTitle("", true), "Payment · New order", "an empty table field on a new sale is no table");
+  const lib = readSrc("lib/payment-sheet.ts");
+  assert.ok(lib.includes("cartTitle({ resumedOrder:"), "the place word is the cart's own title rule (lib/pos-cart-view.ts), not a copy");
+});
+
+test("only /pos says which case it is: PosModals marks a new sale from the order on screen; the Orders sheet passes nothing", () => {
+  const modal = readSrc(MODAL);
+  assert.ok(modal.includes("newSale = false,"), "the default is a tab (the Orders / dashboard sheet)");
+  assert.ok(modal.includes("{paymentTitle(tableNo, newSale)}"), "the title reads the case");
+  const posModals = readSrc("components/pos/PosModals.tsx");
+  assert.ok(posModals.includes("newSale={!resumedOrder}"), "a new sale = nothing resumed (cartTitle's input)");
+  const sheet = readSrc("components/orders/OrderDetailSheet.tsx");
+  assert.ok(sheet.includes('confirmLabel="Settle"') && !sheet.includes("newSale"), "the Orders sheet settles a tab: Table {n} / Walk-In");
 });
 
 test("today's description line stays for screen readers, word for word", () => {
@@ -143,7 +161,7 @@ test("the frame: a Radix dialog drawn as the HTML's scrim and 420px panel, a bot
   assert.ok(src.includes('import * as DialogPrimitive from "@radix-ui/react-dialog";'), "Radix: focus trap, Escape, role=dialog");
   assert.ok(!src.includes('from "@/components/ui/dialog"'), "not the kit dialog (its corner X and black overlay)");
   assert.ok(src.includes("<DialogPrimitive.Root open={open} onOpenChange={openChange}>"), "every close still goes through the guard");
-  assert.ok(src.includes("{paymentTitle(tableNo)}"), "the HTML's title");
+  assert.ok(src.includes("{paymentTitle(tableNo, newSale)}"), "the HTML's title");
   assert.match(src, /<DialogPrimitive\.Description className="sr-only">\s*\{paymentDescription\(/, "today's description, read out only");
   assert.ok(src.includes('title="Close"') && src.includes("✕"), "the HTML's close: title Close and the ✕ character");
   // Ruling P22 (as the item options modal): the panel takes the focus on open and gives it back to the opener on close.

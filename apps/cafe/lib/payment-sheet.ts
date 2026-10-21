@@ -5,7 +5,7 @@
 // opens from /pos (Pay) and from the Orders / dashboard order sheet (Settle & Pay): the same look and behaviour in both.
 // Pure: no React, no fetching; client-safe.
 import type { PaymentMode } from "@/lib/constants";
-import { WALK_IN } from "@/lib/pos-cart-view";
+import { WALK_IN, cartTitle } from "@/lib/pos-cart-view";
 import { inr } from "@/lib/utils";
 
 // ── words (owner Q1: the HTML's where it has the element; ours for our data) ────────────────────────────────────────
@@ -17,9 +17,11 @@ export const PAYMENT_CHANGE_LABEL = "Change to return";
 /** The picker with no customer: the HTML's "+ Add customer for e-bill" without the e-bill (our sale sends none). */
 export const ADD_CUSTOMER_PILL = "+ Add customer";
 
-/** The HTML's title, "Payment · {place}": the table the tab or the sale is at ("Table T-4"), else our "Walk-In". */
-export function paymentTitle(tableNo: string | undefined): string {
-  return `Payment · ${tableNo ? `Table ${tableNo}` : WALK_IN}`;
+/** The HTML's title, "Payment · {place}", the place named as the cart names the order (design 6.11; cartTitle): a new
+ *  sale on /pos with no table yet is "New order"; a table (a tab's, or the one chosen for a new sale) "Table T-4"; a tab
+ *  with no table "Walk-In". Only /pos's new sale passes `newSale`; the Orders / dashboard sheet settles tabs. */
+export function paymentTitle(tableNo: string | undefined, newSale: boolean): string {
+  return `Payment · ${cartTitle({ resumedOrder: newSale && !tableNo ? null : { tableNo } })}`;
 }
 
 /** Today's description line, kept word for word for screen readers: "3 items · Table T-4 · Neha Joshi". */

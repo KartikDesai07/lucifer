@@ -83,6 +83,8 @@ interface PaymentModalProps {
   modes?: PaymentMode[];
   // CTA verb: "Place Order" (default) for a new sale, "Settle" when closing a tab.
   confirmLabel?: string;
+  // /pos's new sale (nothing resumed): the title says "New order" until a table is chosen, as the cart does.
+  newSale?: boolean;
   // Renders the customer picker (the pill) when provided; omit to keep the
   // sheet's plain read-only display of whatever customer was passed in.
   onSelectCustomer?: (customer: Customer | undefined) => void;
@@ -124,6 +126,7 @@ export function PaymentModal({
   onConfirm,
   modes = [...SETTLEMENT_PAY_MODES],
   confirmLabel = "Place Order",
+  newSale = false,
   onSelectCustomer,
   notice = null,
   points,
@@ -206,7 +209,7 @@ export function PaymentModal({
         <DialogPrimitive.Overlay data-ui="pay-sheet" className={PAY_SCRIM_CLASS}>
           <DialogPrimitive.Content data-ui="pay-panel" {...openerFocus} className={PAY_PANEL_CLASS}>
             <div data-ui="pay-head" className={PAY_HEAD_CLASS}>
-              <DialogPrimitive.Title className={PAY_TITLE_CLASS}>{paymentTitle(tableNo)}</DialogPrimitive.Title>
+              <DialogPrimitive.Title className={PAY_TITLE_CLASS}>{paymentTitle(tableNo, newSale)}</DialogPrimitive.Title>
               <DialogPrimitive.Description className="sr-only">
                 {paymentDescription({ itemCount, tableNo, customerName: customer?.name })}
               </DialogPrimitive.Description>
