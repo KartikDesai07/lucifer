@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactElement } from "react";
-import { User, Search, Check, Loader2, UserPlus } from "lucide-react";
+import { Search, Check, Loader2, UserPlus } from "lucide-react";
 
 import {
   useCustomerSearch,
@@ -9,7 +9,8 @@ import {
   CUSTOMER_SEARCH_MIN_CHARS,
 } from "@/hooks/use-customers";
 import { cn, inr } from "@/lib/utils";
-import { POS_HEADER_CHIP_ICON_CLASS } from "@/lib/pos-layout";
+import { PAY_PILL_ADD_CLASS, PAY_PILL_CLASS, PAY_PILL_SET_CLASS, pickerPillText } from "@/lib/payment-sheet";
+import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,12 +27,12 @@ import type { Customer } from "@/types";
 interface CustomerSearchProps {
   value: Customer | undefined;
   onChange: (customer: Customer | undefined) => void;
-  // Applied to the trigger button only — the header sizes it per breakpoint.
+  // Applied to the own trigger (the payment sheet's pill) only.
   className?: string;
   // A send is in flight: the customer cannot change under it.
   disabled?: boolean;
-  // The control this dialog opens from instead of the chip: the cart head's Customer cell (U1 Task 4, owner Q9). It
-  // brings its own words, title and lock; className and disabled above style and lock the chip (the payment popup's).
+  // The control this dialog opens from instead of the pill: the cart head's Customer cell (U1 Task 4, owner Q9). It
+  // brings its own words, title and lock; className and disabled above style and lock the pill (the payment sheet's).
   trigger?: ReactElement;
 }
 
@@ -82,22 +83,20 @@ export function CustomerSearch({ value, onChange, className, disabled, trigger }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      {/* The chip's empty state reads "Customer", not "Walk-In": a table
-          control beside it says Walk-In for "no table", and below xl the chip
-          has no icon to tell them apart. title = the untruncated name. */}
+      {/* The own trigger is the payment sheet's pill (U1 Task 9; values 11.1): "+ Add customer" in --link, or
+          "Customer: {name} · change" in --text; its empty words are never "Walk-In" (the table owns that word). Its
+          words are its name; title = the untruncated name. */}
       <DialogTrigger asChild>
         {trigger ?? (
-          <Button
-            variant="outline"
-            size="sm"
-            className={cn("gap-2 xl:max-w-[12rem]", className)}
+          <button
+            type="button"
+            data-ui="pay-customer"
+            className={cn(PAY_PILL_CLASS, value ? PAY_PILL_SET_CLASS : PAY_PILL_ADD_CLASS, BRAND_PRESS_CLASS, className)}
             disabled={disabled}
-            aria-label={value ? `Customer: ${value.name}` : "Select customer"}
             title={value ? value.name : "Select customer"}
           >
-            <User className={POS_HEADER_CHIP_ICON_CLASS} />
-            <span className="min-w-0 truncate">{value ? value.name : "Customer"}</span>
-          </Button>
+            {pickerPillText(value?.name)}
+          </button>
         )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">

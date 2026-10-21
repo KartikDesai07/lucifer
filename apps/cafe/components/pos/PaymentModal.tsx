@@ -1,27 +1,35 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, AlertCircle } from "lucide-react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { Loader2 } from "lucide-react";
 
 import { SETTLEMENT_PAY_MODES, type PaymentMode, type DiscountKind } from "@/lib/constants";
-import { inr } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { inr, cn } from "@/lib/utils";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  PAY_CHECK_CLASS,
+  PAY_CLOSE_CLASS,
+  PAY_DISCARD_LOOK,
+  PAY_HEAD_CLASS,
+  PAY_MAIN_LOOK,
+  PAY_PANEL_CLASS,
+  PAY_SCRIM_CLASS,
+  PAY_SERVED_BY_CLASS,
+  PAY_TITLE_CLASS,
+  dueNoteText,
+  paymentDescription,
+  paymentTitle,
+} from "@/lib/payment-sheet";
+import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
+import { useOpenerFocus } from "@/hooks/use-opener-focus";
 import { CustomerSearch } from "@/components/pos/CustomerSearch";
+import { PaymentAmount } from "@/components/pos/PaymentAmount";
 import { PaymentSummary } from "@/components/pos/PaymentSummary";
 import { PaymentModeGrid } from "@/components/pos/PaymentModeGrid";
 import { PaymentPoints } from "@/components/pos/PaymentPoints";
+import { PaymentCollectFields } from "@/components/pos/PaymentCollectFields";
 import { PaymentSplitFields } from "@/components/pos/PaymentSplitFields";
-import { WriteNoticePanel } from "@/components/pos/WriteNotice";
+import { WriteNoticePanel, noticeBoxClass } from "@/components/pos/WriteNotice";
 import { SendDiscard } from "@/components/pos/SendDiscard";
 import type { OrderCharge } from "@pos/shared/order-charges";
 import type { SettlePointsView } from "@/hooks/use-settle-points";
@@ -40,6 +48,10 @@ import type { WriteNotice } from "@/lib/pending-writes";
 // working unchanged — the type itself now lives in the pure `lib/payment-result`
 // module (shared with its callers without pulling in this client component).
 export type { PaymentResult };
+
+// U1 Task 9 (values 11 in docs/superpowers/specs/2026-10-20-pos-html-values.md; design 6.11; owner Q1, Q4, Q14): the
+// owner's HTML payment sheet, on /pos and on the Orders / dashboard sheet alike, with the same behaviour: a Radix dialog
+// (every close through the guard below) drawn as the HTML's scrim and panel; its look is in lib/payment-sheet.ts.
 
 interface PaymentModalProps {
   open: boolean;
@@ -71,8 +83,8 @@ interface PaymentModalProps {
   modes?: PaymentMode[];
   // CTA verb: "Place Order" (default) for a new sale, "Settle" when closing a tab.
   confirmLabel?: string;
-  // Renders an inline, editable customer picker when provided; omit to keep
-  // the modal's plain read-only display of whatever customer was passed in.
+  // Renders the customer picker (the pill) when provided; omit to keep the
+  // sheet's plain read-only display of whatever customer was passed in.
   onSelectCustomer?: (customer: Customer | undefined) => void;
   // The last write's outcome for this bill (lib/pending-writes.ts). Its action
   // decides the main button: confirm, Check, Send again or Close.
@@ -87,6 +99,10 @@ const UNPAID_MODES: PaymentMode[] = ["Due", "Credit"];
 // Cash/Online accept a partial collection (shortfall becomes a due, like
 // Due/Credit); Split must always reconcile to the exact total instead.
 const COLLECTABLE_MODES: PaymentMode[] = ["Cash", "Online"];
+
+const CLOSE_CLASS = cn(PAY_CLOSE_CLASS, BRAND_PRESS_CLASS);
+const MAIN_CLASS = cn(PAY_MAIN_LOOK, BRAND_PRESS_CLASS);
+const DISCARD_CLASS = cn(PAY_DISCARD_LOOK, BRAND_PRESS_CLASS);
 
 export function PaymentModal({
   open,
@@ -118,6 +134,7 @@ export function PaymentModal({
   const [openedTotal, setOpenedTotal] = useState(total);
   // open:false first, so a popup that mounts already open still resets.
   const seenRef = useRef<PopupSnapshot>({ open: false, total });
+  const openerFocus = useOpenerFocus();
 
   // The points the operator has ticked (0 = off): their own toggle moves the total, which is not "the bill changed".
   const pointsNow = points?.on ? points.row.amount : 0;
@@ -184,105 +201,86 @@ export function PaymentModal({
     action === "check" ? "Check" : action === "close" ? "Close" : action === "send-again" ? "Send again" : `${confirmLabel} · ${inr(total)}`;
 
   return (
-    <Dialog open={open} onOpenChange={openChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Payment</DialogTitle>
-          <DialogDescription>
-            {itemCount} item{itemCount === 1 ? "" : "s"}
-            {tableNo ? ` · Table ${tableNo}` : " · Walk-In"} ·{" "}
-            {customer ? customer.name : "No customer"}
-          </DialogDescription>
-        </DialogHeader>
+    <DialogPrimitive.Root open={open} onOpenChange={openChange}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay data-ui="pay-sheet" className={PAY_SCRIM_CLASS}>
+          <DialogPrimitive.Content data-ui="pay-panel" {...openerFocus} className={PAY_PANEL_CLASS}>
+            <div data-ui="pay-head" className={PAY_HEAD_CLASS}>
+              <DialogPrimitive.Title className={PAY_TITLE_CLASS}>{paymentTitle(tableNo)}</DialogPrimitive.Title>
+              <DialogPrimitive.Description className="sr-only">
+                {paymentDescription({ itemCount, tableNo, customerName: customer?.name })}
+              </DialogPrimitive.Description>
+              <DialogPrimitive.Close data-ui="pay-close" title="Close" aria-label="Close" className={CLOSE_CLASS}>✕</DialogPrimitive.Close>
+            </div>
 
-        <PaymentSummary
-          subtotal={subtotal}
-          discount={discount}
-          discountKind={discountKind}
-          gstAmount={gstAmount}
-          gstRate={gstRate}
-          charge={charge}
-          chargeLabel={chargeLabel}
-          charges={charges}
-          total={total}
-          // One "bill changed" message at a time: a write notice says it first.
-          billChangedFrom={notice == null && open && total !== openedTotal ? openedTotal : undefined}
-        />
-
-        {/* CustomerSearch brings its own Dialog; nesting it here is deliberate. */}
-        {onSelectCustomer && (
-          <div className="flex items-center justify-between gap-2 rounded-lg border p-2 text-sm">
-            <span className="font-medium">Customer</span>
-            <CustomerSearch value={customer} onChange={onSelectCustomer} disabled={locked} />
-          </div>
-        )}
-
-        {points?.show && <PaymentPoints points={points} disabled={locked} />}
-
-        <PaymentModeGrid modes={modes} mode={mode} onSelect={setMode} locked={locked} />
-
-        {/* Cash and Online both accept a partial collection here. */}
-        {collectable && (
-          <div className="space-y-2">
-            <Label htmlFor="amount-received">Amount received</Label>
-            <Input
-              id="amount-received"
-              type="number"
-              min={0}
-              disabled={locked}
-              value={collected === 0 ? "" : collected}
-              onChange={(e) => setCollected(Math.max(0, Number(e.target.value) || 0))}
+            {/* CustomerSearch brings its own Dialog; nesting it here is deliberate. */}
+            <PaymentAmount
+              total={total}
+              customerName={customer?.name}
+              picker={onSelectCustomer && <CustomerSearch value={customer} onChange={onSelectCustomer} disabled={locked} />}
             />
-            {mode === "Cash" && (
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Change</span>
-                <span className="font-semibold">{inr(change)}</span>
-              </div>
+
+            <PaymentSummary
+              subtotal={subtotal}
+              discount={discount}
+              discountKind={discountKind}
+              gstAmount={gstAmount}
+              gstRate={gstRate}
+              charge={charge}
+              chargeLabel={chargeLabel}
+              charges={charges}
+              total={total}
+              // One "bill changed" message at a time: a write notice says it first.
+              billChangedFrom={notice == null && open && total !== openedTotal ? openedTotal : undefined}
+            />
+
+            {points?.show && <PaymentPoints points={points} disabled={locked} />}
+
+            <PaymentModeGrid modes={modes} mode={mode} onSelect={setMode} locked={locked} />
+
+            {/* Cash and Online both accept a partial collection here. */}
+            {collectable && (
+              <PaymentCollectFields
+                showChange={mode === "Cash"}
+                collected={collected}
+                onCollectedChange={setCollected}
+                change={change}
+                remainder={partial ? remainder : 0}
+                customerName={customer?.name}
+                disabled={locked}
+              />
             )}
-            {partial && (
-              <p className="rounded-md bg-amber-100 p-2 text-sm font-semibold text-amber-800">
-                {inr(remainder)} unpaid — added to {customer ? customer.name : "the customer"}&apos;s dues.
+
+            {mode === "Split" && (
+              <PaymentSplitFields split={split} onSplitChange={setSplit} total={total} mismatch={splitMismatch} disabled={locked} />
+            )}
+
+            {(mode === "Due" || mode === "Credit") && (
+              <p data-ui="pay-due-note" className={noticeBoxClass(customer ? "neutral" : "warn")}>{dueNoteText(mode, total)}</p>
+            )}
+
+            {customerMissing && (
+              <p data-ui="pay-check" className={PAY_CHECK_CLASS}>
+                {UNPAID_MODES.includes(mode) ? `Select a customer for ${mode} orders.` : `${inr(remainder)} will be unpaid — select a customer to record the due.`}
               </p>
             )}
-          </div>
-        )}
 
-        {mode === "Split" && (
-          <PaymentSplitFields split={split} onSplitChange={setSplit} total={total} mismatch={splitMismatch} disabled={locked} />
-        )}
+            <WriteNoticePanel notice={notice} />
 
-        {(mode === "Due" || mode === "Credit") && (
-          <p className="text-sm text-muted-foreground">
-            {mode === "Due" ? "Payment marked as due" : "Charged to credit"} —
-            the full {inr(total)} is added to the customer&apos;s outstanding
-            balance.
-          </p>
-        )}
-
-        {customerMissing && (
-          <p className="flex items-center gap-1.5 text-sm text-destructive">
-            <AlertCircle className="h-4 w-4" />
-            {UNPAID_MODES.includes(mode) ? `Select a customer for ${mode} orders.` : `${inr(remainder)} will be unpaid — select a customer to record the due.`}
-          </p>
-        )}
-
-        <WriteNoticePanel notice={notice} />
-
-        <DialogFooter className="flex-col gap-2 sm:flex-col">
-          <p className="text-center text-xs text-muted-foreground">
-            Served by {receiver}
-          </p>
-          <Button
-            size="lg"
-            className="w-full"
-            disabled={blocked}
-            onClick={action === "close" ? () => onOpenChange(false) : confirm}
-          >
-            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : label}
-          </Button>
-          {frozen && <SendDiscard kind="pay" disabled={isSubmitting} onDiscard={() => onOpenChange(false)} />}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            <p data-ui="pay-served-by" className={PAY_SERVED_BY_CLASS}>Served by {receiver}</p>
+            <button
+              type="button"
+              data-ui="pay-confirm"
+              className={MAIN_CLASS}
+              disabled={blocked}
+              onClick={action === "close" ? () => onOpenChange(false) : confirm}
+            >
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : label}
+            </button>
+            {frozen && <SendDiscard kind="pay" disabled={isSubmitting} onDiscard={() => onOpenChange(false)} className={DISCARD_CLASS} />}
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Overlay>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }

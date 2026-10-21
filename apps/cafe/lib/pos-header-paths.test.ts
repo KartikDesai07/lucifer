@@ -110,24 +110,29 @@ test("PIN: TableSelector opens from the trigger it is given (the cart's Table ce
   assert.ok(src.includes("<DialogTitle>Select table</DialogTitle>"), "landmark: today's dialog (U1 Task 11 restyles it)");
 });
 
-test("PIN: CustomerSearch keeps its chip for the payment popup and opens from the cart's Customer cell when given one", () => {
+// U1 Task 9 (values 11.1; design 6.11): the payment sheet is the only user of CustomerSearch's own trigger, so the chip
+// became the HTML's 28px customer pill ("+ Add customer" / "Customer: {name} · change"; no icon). Reason: the HTML's
+// payment look. The cart's Customer cell still brings its own trigger.
+test("PIN: CustomerSearch's own trigger is the payment sheet's pill and it opens from the cart's Customer cell when given one", () => {
   const src = stripComments(readSrc(CUSTOMER_SEARCH));
   assert.match(src, /trigger\?: ReactElement;/, "an optional trigger (the cart's Customer cell)");
-  assert.match(src, /<DialogTrigger asChild>\s*\{trigger \?\? \(/, "the given trigger, else today's chip");
+  assert.match(src, /<DialogTrigger asChild>\s*\{trigger \?\? \(/, "the given trigger, else the payment sheet's pill");
   assert.match(
     src,
-    /import\s*\{[^}]*POS_HEADER_CHIP_ICON_CLASS[^}]*\}\s*from\s*"@\/lib\/pos-layout"/,
-    "the chip (PaymentModal's) keeps its icon class",
+    /import\s*\{[^}]*PAY_PILL_CLASS[^}]*\}\s*from\s*"@\/lib\/payment-sheet"/,
+    "the pill's look comes from the payment sheet's look",
   );
-  assert.match(src, /<span className="min-w-0 truncate">/, "the chip's label span stays \"min-w-0 truncate\"");
+  assert.ok(!src.includes("POS_HEADER_CHIP_ICON_CLASS"), "the chip's icon went with the chip");
+  assert.ok(src.includes("{pickerPillText(value?.name)}"), "the pill's words from lib/payment-sheet.ts");
 });
 
-test("PIN: CustomerSearch's empty trigger label reads Customer, not Walk-In (the table chip already owns that word)", () => {
+test("PIN: CustomerSearch's empty trigger label is not Walk-In (the table already owns that word)", () => {
   const csSrc = stripComments(readSrc(CUSTOMER_SEARCH));
-  const csLabel = csSrc.match(/<span className="min-w-0 truncate">\{value \? value\.name : "([^"]+)"\}<\/span>/);
-  assert.ok(csLabel, "CustomerSearch's trigger label must be a value ? value.name : \"...\" ternary");
-  assert.equal(csLabel![1], "Customer", `CustomerSearch's empty-state fallback must be "Customer", found "${csLabel![1]}"`);
-  assert.match(csSrc, /POS_HEADER_CHIP_ICON_CLASS/, "landmark: CustomerSearch must still use POS_HEADER_CHIP_ICON_CLASS");
+  const lib = stripComments(readSrc("apps/cafe/lib/payment-sheet.ts"));
+  const empty = lib.match(/export const ADD_CUSTOMER_PILL = "([^"]+)";/);
+  assert.ok(empty, "the pill's empty label must be one plain constant");
+  assert.equal(empty![1], "+ Add customer", `the pill's empty label must be "+ Add customer", found "${empty![1]}"`);
+  assert.ok(!/Walk-In/.test(empty![1]), "never Walk-In");
   assert.match(csSrc, /title=\{value \? value\.name : "Select customer"\}/, "CustomerSearch's trigger must carry a title=");
 });
 
@@ -216,5 +221,6 @@ test("PIN: no stray lg: token remains in PosHeader/CustomerSearch/OpenTabsButton
   ]) {
     assert.ok(!stripComments(readSrc(rel)).includes("lg:"), `${label} must not carry a stray lg: token`);
   }
-  assert.match(stripComments(readSrc(CUSTOMER_SEARCH)), /xl:max-w-\[12rem\]/, "landmark: CustomerSearch keeps its xl: chip width");
+  // U1 Task 9: the chip (and its xl: width) became the payment sheet's pill.
+  assert.match(stripComments(readSrc(CUSTOMER_SEARCH)), /PAY_PILL_CLASS/, "landmark: CustomerSearch's trigger is the payment pill");
 });

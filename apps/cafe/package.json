@@ -334,6 +334,7 @@
     "lib/realtime-nudge-fetch.test.ts",
     "lib/realtime-visible-recheck.test.ts",
     "lib/payment-result.test.ts",
+    "lib/payment-sheet.test.ts",
     "lib/settle-guard.test.ts",
     "lib/kot-tick-model.test.ts",
     "lib/kitchen-paths.test.ts",

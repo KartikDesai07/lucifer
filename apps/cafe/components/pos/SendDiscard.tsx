@@ -6,7 +6,7 @@
 // lives in lib/pos-send.ts next to the rest of the send copy.
 //
 // U1 Task 5 (design 6.8): in the cart, Discard takes a button slot of the HTML's footer, so the cart hands it that
-// slot's look (`className`); the payment popup keeps the kit button until its own rebuild.
+// slot's look (`className`); U1 Task 9 (design 6.11): the payment sheet hands it its 50px button look the same way.
 
 import { useState } from "react";
 

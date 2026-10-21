@@ -266,7 +266,8 @@ test("S11 (R-b): the Pay Now popup is frozen while its sale is unconfirmed — m
   assert.ok(guard.includes("if (!next && isSubmitting) return;") && guard.includes("if (!next && frozen) return;"), "X / Escape / outside tap cannot close a frozen sale — only its Discard");
   // The main button stays Send again (M3: isSubmitting is the flight only).
   assert.ok(src.includes('action === "send-again" ? "Send again"'), "landmark: the Send again label");
-  assert.ok(src.includes('{frozen && <SendDiscard kind="pay" disabled={isSubmitting} onDiscard={() => onOpenChange(false)} />}'), "R-d: the popup offers Discard");
+  // U1 Task 9 (design 6.11): Discard takes the payment sheet's 50px button look, as the cart's slot does (Task 5).
+  assert.ok(src.includes('{frozen && <SendDiscard kind="pay" disabled={isSubmitting} onDiscard={() => onOpenChange(false)} className={DISCARD_CLASS} />}'), "R-d: the popup offers Discard");
 });
 
 test("S12 (R-d): Discard confirms first, in plain English, through the shared ConfirmDialog", () => {
