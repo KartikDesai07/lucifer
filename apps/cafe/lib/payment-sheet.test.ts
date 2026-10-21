@@ -58,6 +58,9 @@ import {
   readOnlyPillText,
 } from "@/lib/payment-sheet";
 import { PaymentAmount } from "@/components/pos/PaymentAmount";
+import { Input } from "@/components/ui/input";
+import { POS_PANEL_FIELD_CLASS } from "@/lib/pos-layout";
+import { cn } from "@/lib/utils";
 
 // The component compiles with the classic JSX runtime under tsx, so React must be a global for it.
 (globalThis as { React?: typeof React }).React = React;
@@ -273,4 +276,44 @@ test("CustomerSearch's own trigger is the payment pill (the cart's cell brings i
   assert.ok(src.includes("{pickerPillText(value?.name)}"), "the pill's words");
   assert.ok(src.includes("cn(PAY_PILL_CLASS, value ? PAY_PILL_SET_CLASS : PAY_PILL_ADD_CLASS, BRAND_PRESS_CLASS, className)"), "the pill's look");
   assert.ok(src.includes('data-ui="pay-customer"'), "named for the probes");
+});
+
+// Ruling P46 (U1 V-B F1, 2026-10-22): the number fields /pos's cart draws outside this sheet (the Bill options panel's
+// Discount value and Charge amount, the bill's table-charge amount) hide Chrome's spinner the way this sheet's amounts
+// do, with the sheet's own token: one declaration, never a copy. Their type, min, inputMode and checks stay.
+test("ruling P46: the cart's number fields hide the spinner with the payment sheet's own token", async () => {
+  const sheet = (await import("@/lib/payment-sheet")) as Record<string, unknown>;
+  assert.equal(typeof sheet.NO_NUMBER_SPINNER_CLASS, "string", "lib/payment-sheet.ts exports NO_NUMBER_SPINNER_CLASS");
+  const spin = tokens(String(sheet.NO_NUMBER_SPINNER_CLASS));
+  assert.deepEqual(
+    spin,
+    ["[appearance:textfield]", "[&::-webkit-inner-spin-button]:appearance-none", "[&::-webkit-outer-spin-button]:appearance-none"],
+    "the payment sheet's three spinner rules",
+  );
+  hasAll(PAY_FIELD_INPUT_CLASS, spin, "the amount received");
+  hasAll(PAY_SPLIT_INPUT_CLASS, spin, "a split amount");
+  assert.equal(count(readSrc("lib/payment-sheet.ts"), "spin-button"), 2, "the rules are declared once, in the token");
+  const fields: Array<[string, string, string[]]> = [
+    ["components/pos/Cart.tsx", 'aria-label="Discount value"', ['type="number"', "min={0}"]],
+    ["components/pos/CartExtraCharges.tsx", 'aria-label="Charge amount"', ['type="number"', "min={1}", 'inputMode="numeric"']],
+    ["components/pos/CartBill.tsx", "aria-label={`${chargeLabel} amount`}", ['type="number"', "min={0}", 'inputMode="numeric"']],
+  ];
+  for (const [file, label, kept] of fields) {
+    const src = readSrc(file);
+    assert.match(src, /import \{[^}]*\bNO_NUMBER_SPINNER_CLASS\b[^}]*\} from "@\/lib\/payment-sheet";/, `${file} reads the payment sheet's token`);
+    assert.ok(!src.includes("spin-button"), `${file} keeps no copy of the rules`);
+    const at = src.indexOf(label);
+    const start = Math.max(src.lastIndexOf("<Input", at), src.lastIndexOf("<input", at));
+    const end = src.indexOf("/>", at);
+    assert.ok(at > 0 && start >= 0 && end > at, `landmark: the field tag around ${label} in ${file}`);
+    const tag = src.slice(start, end);
+    assert.ok(tag.includes("NO_NUMBER_SPINNER_CLASS"), `${file}: the ${label} field carries the token`);
+    for (const k of kept) assert.ok(tag.includes(k), `${file}: the ${label} field keeps ${k}`);
+  }
+  // The kit Input merges its own classes with the panel's through tailwind-merge: the three rules survive it.
+  const html = renderToStaticMarkup(
+    createElement(Input, { type: "number", className: cn(POS_PANEL_FIELD_CLASS, spin.join(" "), "min-w-0 flex-1 text-right") }),
+  );
+  const cls = (html.match(/class="([^"]*)"/)?.[1] ?? "").replace(/&amp;/g, "&");
+  hasAll(cls, spin, "the kit Input with the panel's classes");
 });

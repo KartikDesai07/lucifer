@@ -9,6 +9,7 @@ import { CartAppliedRows } from "@/components/pos/CartAppliedRows";
 import { CartAppliedCard } from "@/components/pos/CartRewardCards";
 import { CartExtraChargeRows, type ExtraChargeEntry } from "@/components/pos/CartExtraCharges";
 import { POS_BILL_LABEL_CLASS, POS_BILL_LINK_CLASS, POS_BILL_ROW_CLASS, POS_BILL_VALUE_CLASS } from "@/lib/pos-layout";
+import { NO_NUMBER_SPINNER_CLASS } from "@/lib/payment-sheet";
 import { billDetailsOpen } from "@/lib/pos-cart-view";
 import type { RungOffer } from "@/lib/reward-rungs";
 import type { CardOffer } from "@/lib/reward-card-offers";
@@ -160,7 +161,7 @@ export function CartBill({
                   onChange={(e) => onChargeChange(Math.max(0, Number(e.target.value) || 0))}
                   placeholder="0"
                   disabled={isBusy}
-                  className={CHARGE_FIELD_CLASS}
+                  className={cn(CHARGE_FIELD_CLASS, NO_NUMBER_SPINNER_CLASS)}
                   aria-label={`${chargeLabel} amount`}
                 />
               </div>

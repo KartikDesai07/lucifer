@@ -107,8 +107,11 @@ export const PAY_CAPTION_CLASS = "text-[12px] font-semibold text-muted-foregroun
 export const PAY_FIELD_CLASS =
   "flex h-11 items-center gap-2 rounded-[8px] border border-border bg-card px-3 focus-within:border-ring";
 export const PAY_FIELD_PREFIX_CLASS = "text-[13px] text-muted-foreground";
-const NUMBER_INPUT =
-  "[border:0] bg-transparent px-0.5 py-px text-foreground outline-none placeholder:text-subtle-foreground disabled:cursor-not-allowed disabled:opacity-50 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
+/** No number spinners (the HTML's fields have none): this sheet's amounts, and /pos's cart fields outside it, the Bill
+ *  options panel's Discount value and Charge amount and the bill's table-charge amount (ruling P46). */
+export const NO_NUMBER_SPINNER_CLASS =
+  "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
+const NUMBER_INPUT = `[border:0] bg-transparent px-0.5 py-px text-foreground outline-none placeholder:text-subtle-foreground disabled:cursor-not-allowed disabled:opacity-50 ${NO_NUMBER_SPINNER_CLASS}`;
 export const PAY_FIELD_INPUT_CLASS = `min-w-0 flex-1 text-right text-[15px] font-semibold max-tab:text-[16px] ${NUMBER_INPUT}`;
 /** Our partial-payment line where the HTML's "Short by" line sits: 12.5px, --warn-i (it is allowed, not refused). */
 export const PAY_PARTIAL_CLASS = "text-[12.5px] text-status-warn-ink";

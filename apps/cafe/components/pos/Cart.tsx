@@ -22,6 +22,7 @@ import { CartUnavailableNotice, type CartMenuNoticeProps } from "@/components/po
 import { SendDiscard } from "@/components/pos/SendDiscard";
 import type { WriteNotice } from "@/lib/pending-writes";
 import { POS_CART_GST_BUTTON_CLASS, POS_PANEL_FIELD_CLASS } from "@/lib/pos-layout";
+import { NO_NUMBER_SPINNER_CLASS } from "@/lib/payment-sheet";
 import { footerLinks, promoOffered, rewardOffered, rewardSectionShown, type FooterLink } from "@/lib/pos-footer";
 import { GST_DISCOUNT_LABEL } from "@/lib/constants";
 import { PROMO_BLOCKS_GST_DISCOUNT_MESSAGE, REWARD_BLOCKS_GST_DISCOUNT_MESSAGE } from "@/lib/receipt";
@@ -379,7 +380,7 @@ export function Cart({
                   onChange={(e) => onDiscountRawChange(Math.max(0, Number(e.target.value) || 0))}
                   placeholder="0"
                   disabled={items.length === 0}
-                  className={cn(POS_PANEL_FIELD_CLASS, "min-w-0 flex-1 text-right")}
+                  className={cn(POS_PANEL_FIELD_CLASS, NO_NUMBER_SPINNER_CLASS, "min-w-0 flex-1 text-right")}
                   aria-label="Discount value"
                 />
                 <div className={SEG_TRACK_CLASS}>

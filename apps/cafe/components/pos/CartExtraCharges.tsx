@@ -17,6 +17,7 @@ import {
   POS_PANEL_LINK_CLASS,
   POS_PANEL_PRIMARY_CLASS,
 } from "@/lib/pos-layout";
+import { NO_NUMBER_SPINNER_CLASS } from "@/lib/payment-sheet";
 
 // CB-CHG (plan §5C) — the POS cart's "additional charge" control: a takeaway
 // bill has no table but can still carry a staff-entered charge (packing,
@@ -183,7 +184,7 @@ export function CartExtraCharges({ extras, onAdd, onRemove, disabled, defaultExp
               placeholder="Amount"
               aria-label="Charge amount"
               disabled={disabled}
-              className={cn(POS_PANEL_FIELD_CLASS, "w-24 flex-none")}
+              className={cn(POS_PANEL_FIELD_CLASS, NO_NUMBER_SPINNER_CLASS, "w-24 flex-none")}
             />
           </div>
           {error && <p className="text-xs text-status-bad-ink">{error}</p>}
