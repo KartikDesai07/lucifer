@@ -1,8 +1,8 @@
 // POS header-chip SOURCE pins (CB-1 S3, split out of lib/pos-layout-paths.test.ts
-// to keep both files under the ~300-line convention). Covers PosHeader.tsx,
-// TableSelector.tsx, CustomerSearch.tsx, OpenTabsButton.tsx — the review F10
-// fixed/flex/icon chip treatment for the 360px two-glyph truncation bug, and
-// the xl-switch rename. No React/route test framework exists here (see
+// to keep both files under the ~300-line convention). Covers PosHeader.tsx (since
+// U1 Task 6 the HTML's switch-order button), TableSelector.tsx,
+// CustomerSearch.tsx and OpenTabsButton.tsx (since U1 Task 6 the HTML's Open
+// orders panel with the KOT reprint at its foot). No React/route test framework exists here (see
 // lib/table-flow-paths.test.ts), so these are raw readFileSync pins. Own
 // readSrc wiring — shares no module with either companion file beyond
 // lib/source-pin-utils.
@@ -22,32 +22,66 @@ const TABLE_SELECTOR = "apps/cafe/components/pos/TableSelector.tsx";
 const CUSTOMER_SEARCH = "apps/cafe/components/pos/CustomerSearch.tsx";
 const OPEN_TABS_BUTTON = "apps/cafe/components/pos/OpenTabsButton.tsx";
 
-// U0 Task 3 (ruling R4): "POS Terminal" is the page header's title now (the shell's 56px header, values 2.5), so the
-// row keeps only its controls and no page shows its title twice.
-test("PIN: PosHeader names the page through the header slot (no title of its own), and reuses POS_HEADER_CONTROL_CLASS on its controls", () => {
+// U0 Task 3 (ruling R4): "POS Terminal" is the page header's title (the shell's 56px header, values 2.5), read to screen
+// readers only on /pos (U1 Task 1). U1 Task 6 (values 1.2-1.4, 7; design 6.2; owner Q16, Q17): PosHeader is the HTML's
+// switch-order button, handed to the header's actions box at every width through PageHeader's phoneActions; it opens
+// the Open orders panel (OpenTabsButton), whose foot holds today's KOT reprint. The body control row is gone.
+test("PIN: PosHeader names the page through the header slot and hands it the switch-order button at every width (phoneActions)", () => {
   const src = stripComments(readSrc(POS_HEADER));
-  assert.match(src, /<PageHeader title="POS Terminal" \/>/, "the page's title goes to the shell header");
-  assert.ok(!/<h[12]\b/.test(src), "no heading of its own in the row");
-  // U1 Task 4: the Table and Customer chips left the row (owner Q9), so its controls are the KOT reprint and Open tabs.
-  const occurrences = (src.match(/POS_HEADER_CONTROL_CLASS/g) ?? []).length;
-  assert.ok(occurrences >= 3, `expected POS_HEADER_CONTROL_CLASS referenced (import + usages) >=3 times, found ${occurrences}`);
+  assert.match(src, /<PageHeader\s+title="POS Terminal"\s+phoneActions=\{/, "the title goes to the shell header, the switch button to its actions box at every width");
+  assert.ok(!/<h[12]\b/.test(src), "no heading of its own");
+  const phone = src.slice(src.indexOf("phoneActions={"));
+  assert.match(phone, /^phoneActions=\{\s*<OpenTabsButton\b/, "the Open orders panel and its trigger are the header's phone actions");
+  assert.ok(src.includes("trigger={<SwitchOrderButton view={view} />}"), "the switch-order button opens the panel");
+  assert.match(src, /const view = switchView\(\{ resumedOrder, customerName, count, newCount, total \}, openTabs\);/, "its words come from lib/pos-open-orders.ts");
+  assert.match(src, /import \{[^}]*\bswitchView\b[^}]*\} from "@\/lib\/pos-open-orders";/, "the pure helper");
+  assert.ok(src.includes("onSelect={onTableChange}"), "the Floor hand-off still selects a table");
+  // The body row's controls are gone: no KOT button of its own (it is the panel's foot), no row classes.
+  for (const gone of ["ChefHat", "POS_HEADER_CONTROL_CLASS", "flex-wrap", "lastOrder &&", "onClick={onReprintKot}", "<Button"]) {
+    assert.ok(!src.includes(gone), `PosHeader must no longer carry ${gone}: the control row is gone (U1 Task 6)`);
+  }
 });
 
-test("PIN: every flex-wrap in PosHeader is xl-gated — neither the outer row nor the controls row wraps below xl", () => {
+// Values 1.2 (the HTML's Switch order button): 42px, radius 12, padding 0 10 0 6, gap 10, max-width 340 (a phone: no
+// cap, flex 1); the 30px --ink code tile with its 9px dot in a 2px ring; title 14/600/1.2 and sub 11.5 --text-2/1.3,
+// both cut with an ellipsis; the 22px --surface-3 count pill; the 16px --text-3 chevron; hover --text-3 border + the
+// soft shadow. Busy never disables it: the panel opens, its rows and the reprint are what lock (owner Q17).
+test("PIN: the switch-order button is the HTML's (values 1.2): sizes, parts, dot colours, hover; it stays openable while busy", () => {
   const src = stripComments(readSrc(POS_HEADER));
-  const idxs: number[] = [];
-  for (let i = src.indexOf("flex-wrap"); i >= 0; i = src.indexOf("flex-wrap", i + 1)) idxs.push(i);
-  assert.ok(idxs.length >= 2, `landmark: PosHeader must contain >=2 flex-wrap occurrences (outer row + controls row), found ${idxs.length}`);
-  for (const idx of idxs) {
-    assert.equal(src.slice(idx - 3, idx), "xl:", `the flex-wrap at index ${idx} must be immediately preceded by "xl:" (not lg:) — an ungated one reopens the phone wrap bug`);
+  const literal = (name: string) => src.match(new RegExp(`const ${name} =\\s*"([^"]*)"`))?.[1]?.split(/\s+/) ?? [];
+  const button = literal("SWITCH_CLASS");
+  for (const t of [
+    "flex", "h-[42px]", "min-w-0", "max-w-[340px]", "flex-[0_1_auto]", "items-center", "gap-2.5", "rounded-[12px]", "border", "border-border",
+    "bg-card", "py-0", "pl-1.5", "pr-2.5", "text-left", "text-foreground", "cursor-pointer", "hover:border-subtle-foreground",
+    "hover:[box-shadow:0_4px_14px_rgba(0,0,0,0.06)]", "max-tab:max-w-none", "max-tab:flex-1",
+  ]) {
+    assert.ok(button.includes(t), `the switch button (values 1.2): "${t}"`);
   }
-  assert.match(src, /"flex items-center justify-between gap-2 xl:flex-wrap"/, "the OUTER row must carry xl:flex-wrap too — v1 wrapped at desktop");
-  assert.match(src, /<OpenTabsButton\b/, "landmark: PosHeader must render <OpenTabsButton");
+  assert.match(src, /<button\s+type="button"\s+title="Switch order"\s+data-ui="pos-switch"/, "the HTML's title, a data-ui for the room rule");
+  const tile = literal("CODE_CLASS");
+  for (const t of ["relative", "flex", "size-[30px]", "flex-none", "rounded-[8px]", "bg-ink", "text-on-ink", "text-[11.5px]", "font-bold", "tracking-[-0.01em]"]) {
+    assert.ok(tile.includes(t), `the code tile: "${t}"`);
+  }
+  const dot = literal("DOT_RING_CLASS");
+  for (const t of ["absolute", "-right-[3px]", "-top-[3px]", "size-[9px]", "rounded-[50%]", "[box-shadow:0_0_0_2px_var(--card)]"]) {
+    assert.ok(dot.includes(t), `the tile's dot: "${t}"`);
+  }
+  assert.match(src, /empty: STATUS_CLASSES\.neutral\.dot,\s*unsent: STATUS_CLASSES\.warn\.dot,\s*sent: STATUS_CLASSES\.ok\.dot,/, "grey / orange / green (values 1.3 dot), the shared status dots (lib/ui)");
+  assert.ok(src.includes('className="flex min-w-0 flex-1 flex-col"'), "the text column takes the shrink");
+  assert.ok(src.includes('className="truncate text-[14px] font-semibold leading-[1.2]"'), "the title");
+  assert.ok(src.includes('className="truncate text-[11.5px] leading-[1.3] text-muted-foreground"'), "the sub line");
+  const pill = literal("COUNT_CLASS");
+  for (const t of ["flex", "h-[22px]", "flex-none", "items-center", "whitespace-nowrap", "rounded-[999px]", "bg-surface-3", "px-2", "text-[11.5px]", "font-semibold", "text-muted-foreground"]) {
+    assert.ok(pill.includes(t), `the count pill: "${t}"`);
+  }
+  assert.ok(src.includes('<path d="m6 9 6 6 6-6" />'), "the chevron");
+  assert.ok(src.includes('className="flex-none text-subtle-foreground"'), "in --text-3");
+  assert.ok(!src.includes("disabled="), "nothing in PosHeader is disabled while busy: the switch button stays openable");
 });
 
 // U1 Task 4 (owner Q9, design 6.5): the Table and Customer chips are the cart head's two cells now
-// (components/pos/CartHead.tsx, pinned in lib/pos-layout-paths.test.ts); the row keeps the KOT reprint and Open tabs
-// until U1 Task 6, and the Floor hand-off, which still selects a table through onTableChange.
+// (components/pos/CartHead.tsx, pinned in lib/pos-layout-paths.test.ts); the Floor hand-off still selects a table
+// through onTableChange.
 test("PIN: the Table and Customer chips left PosHeader for the cart's cells (owner Q9) — no chip, no chip class, no move opener", () => {
   const src = stripComments(readSrc(POS_HEADER));
   for (const gone of [
@@ -97,36 +131,85 @@ test("PIN: CustomerSearch's empty trigger label reads Customer, not Walk-In (the
   assert.match(csSrc, /title=\{value \? value\.name : "Select customer"\}/, "CustomerSearch's trigger must carry a title=");
 });
 
-test("PIN: OpenTabsButton shows a full label at xl+ and icon+count only below xl, both readable via aria-label/title (review F10)", () => {
+// U1 Task 6 (values 7; design 6.2; owner Q16, Q17): today's Open tabs dialog became the HTML's Open orders panel — a
+// Radix dialog (focus trap, Escape, the scrim closes it) opened by the switch button. Its rows are our open tabs (the
+// list the page already reads), searched on the device, in the tabs All · Tables · Walk-In (no "+ New …" footer); a tap
+// resumes the tab through today's requestResume (its prompt rules) and closes the panel. The KOT reprint is its foot,
+// only after this device printed or sent something (today's rule), with today's title.
+test("PIN: OpenTabsButton is the HTML's Open orders panel — the trigger it is given, the head, search, tabs, rows, no footer buttons", () => {
   const src = stripComments(readSrc(OPEN_TABS_BUTTON));
-  assert.match(src, /aria-label=\{`Open tabs \(\$\{tabs\.length\}\)`\}/, "the trigger must carry aria-label={`Open tabs (${tabs.length})`}");
-  assert.match(src, /title=\{`Open tabs \(\$\{tabs\.length\}\)`\}/, "the trigger must carry a matching title=");
-  assert.match(src, /<span className="hidden truncate xl:inline">/, "the xl+ label span must be hidden truncate xl:inline");
-  assert.match(src, /<span className="tabular-nums xl:hidden">\{tabs\.length\}<\/span>/, "the below-xl fallback must show the bare count");
-  assert.ok(!src.includes('"xl:hidden">Tabs<'), "must not revert to the old bare \"Tabs\" label below xl — aria-label/title carry the word now");
+  assert.match(src, /import \* as DialogPrimitive from "@radix-ui\/react-dialog";/, "a Radix dialog: focus trap, Escape, role=dialog (F8/F9 stay off while it is open)");
+  assert.ok(src.includes("<DialogPrimitive.Trigger asChild>{trigger}</DialogPrimitive.Trigger>"), "the switch button opens it");
+  assert.match(src, /trigger: ReactElement;/, "it takes the button it opens from");
+  assert.ok(src.includes('<DialogPrimitive.Title className="text-[16px] font-semibold">Open orders</DialogPrimitive.Title>'), "the HTML's title, 16/600");
+  assert.ok(src.includes("{openOrdersSummary(tabs)}"), "\"{N} open · ₹{sum}\"");
+  assert.ok(src.includes('placeholder="Table, customer, phone or order #"'), "the HTML's placeholder");
+  assert.ok(src.includes("openOrderRows(tabs, currentId, q, tab, now)"), "the rows from lib/pos-open-orders.ts");
+  assert.ok(src.includes("const counts = openOrderCounts(tabs);"), "the tab counts, whatever the search");
+  assert.ok(src.includes("OPEN_ORDER_TABS.map("), "All · Tables · Walk-In");
+  assert.ok(src.includes("onClick={() => resume(row.tab)}"), "a row resumes its tab");
+  assert.match(src, /const resume = \(order: Order\) => \{\s*onResume\(order\);\s*setOpen\(false\);\s*\};/, "through the page's requestResume, then closes");
+  assert.ok(src.includes("No open orders match “{q.trim()}”"), "the HTML's no-match line");
+  assert.ok(src.includes("No open tabs") && src.includes("Orders you send to the kitchen appear here until settled."), "our empty words");
+  for (const gone of ["+ Takeaway", "+ Delivery", "+ Table", "DialogContent", "EmptyState", "POS_DIALOG_LIST_CAP_CLASS"]) {
+    assert.ok(!src.includes(gone), `no ${gone}: the HTML's panel with our tabs and no footer buttons (owner Q16)`);
+  }
 });
 
-// U1 Task 4: TableSelector's trigger is the cart's Table cell (its own look), so it takes no className any more.
-test("PIN: CustomerSearch and OpenTabsButton each accept a className and apply it to their trigger", () => {
+test("PIN: the KOT reprint is the Open orders panel's foot (owner Q17) — only with a last order, today's title, locked while busy", () => {
+  const src = stripComments(readSrc(OPEN_TABS_BUTTON));
+  const foot = src.slice(src.indexOf("{lastOrder && ("));
+  assert.ok(src.includes("{lastOrder && ("), "only after this device printed or sent something (today's rule)");
+  assert.ok(foot.includes("onClick={onReprintKot}"), "today's reprint: the last ticket this device handled");
+  assert.ok(foot.includes("aria-label={`Print kitchen ticket for ${lastOrder.orderId}`}"), "today's aria-label");
+  assert.ok(foot.includes("title={`Print kitchen ticket for ${lastOrder.orderId}`}"), "today's title");
+  assert.ok(foot.includes("Print kitchen ticket · {lastOrder.orderId}"), "the visible words");
+  assert.ok(foot.includes("disabled={isBusy}"), "locked while a send flies");
+});
+
+// Values 7.1 / 0.3: the scrim (6% black, the panel at the top right under the header, 62/16/16; a phone: --scrim, the
+// panel at the foot), the panel (420px, max-height min(640px, 100dvh - 80px); a phone: full width, 86dvh, radius
+// 18 18 0 0), the head, the 40px search on --surface-2 (15px; 16px below 720px, ruling R36), the segmented tabs, the
+// 54px rows (36px tile, --accent for the current one), the empty line. The search is focused on open from 1100px only.
+test("PIN: the Open orders panel's frame is the HTML's (values 7.1), the search focused on open from 1100px only", () => {
+  const src = stripComments(readSrc(OPEN_TABS_BUTTON));
+  const literal = (name: string) => src.match(new RegExp(`const ${name} =\\s*"([^"]*)"`))?.[1]?.split(/\s+/) ?? [];
+  const expect = (name: string, list: string[]) => {
+    const tokens = literal(name);
+    for (const t of list) assert.ok(tokens.includes(t), `${name}: "${t}"`);
+  };
+  expect("SCRIM_CLASS", ["fixed", "inset-0", "z-[44]", "flex", "items-start", "justify-end", "bg-[rgba(0,0,0,0.06)]", "px-4", "pt-[62px]", "pb-4", "max-tab:items-end", "max-tab:justify-center", "max-tab:bg-scrim", "max-tab:p-0", "motion-safe:animate-scrim-in"]);
+  expect("PANEL_CLASS", ["flex", "w-full", "max-w-[420px]", "flex-col", "overflow-hidden", "rounded-[16px]", "border", "border-border", "bg-card", "[box-shadow:var(--pop)]", "motion-safe:animate-html-sheet-in-op", "max-tab:max-w-none", "max-tab:rounded-[18px_18px_0_0]"]);
+  expect("HEAD_CLASS", ["flex", "flex-none", "flex-col", "gap-2.5", "border-b", "border-border-2", "px-3.5", "pt-3.5", "pb-2.5"]);
+  expect("SEARCH_CLASS", ["flex", "h-10", "items-center", "gap-2", "rounded-[10px]", "border", "border-border", "bg-surface-2", "px-3"]);
+  expect("INPUT_CLASS", ["min-w-0", "flex-1", "text-[15px]", "max-tab:text-base", "placeholder:text-subtle-foreground"]);
+  expect("TABS_CLASS", ["grid", "grid-cols-3", "gap-0.5", "rounded-[8px]", "bg-surface-3", "p-0.5"]);
+  expect("ROW_CLASS", ["flex", "w-full", "items-center", "gap-3", "rounded-[10px]", "px-2.5", "py-[9px]", "text-left", "motion-safe:animate-html-rise-row"]);
+  expect("TILE_CLASS", ["relative", "flex", "size-9", "flex-none", "items-center", "justify-center", "rounded-[10px]", "text-[12px]", "font-bold"]);
+  expect("FOOT_BUTTON_CLASS", ["h-10", "w-full", "rounded-[10px]", "border", "border-border", "bg-card", "text-[13px]", "font-semibold", "not-disabled:hover:border-primary", "not-disabled:hover:text-accent-foreground"]);
+  assert.ok(src.includes("onOpenAutoFocus={focusOnOpen}"), "the panel decides where focus lands");
+  assert.ok(src.includes("window.matchMedia(DESK_QUERY).matches"), "the search from 1100px (the HTML's desk), else the panel itself");
+  assert.ok(src.includes("style={{ animationDelay: row.delay }}"), "the rows rise in turn (values 7.2 d)");
+  const css = readSrc("apps/cafe/app/globals.css");
+  assert.ok(css.includes("--animate-html-sheet-in-op: sheet-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;"), "the panel's sheetIn .3s");
+  assert.ok(css.includes("--animate-html-rise-row: brand-rise 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;"), "a row's rise .35s");
+});
+
+// U1 Task 4: TableSelector's trigger is the cart's Table cell (its own look), so it takes no className any more; U1
+// Task 6: OpenTabsButton's trigger is the switch button (PosHeader.tsx), so neither does it.
+test("PIN: CustomerSearch accepts a className and applies it to its trigger", () => {
+  const src = stripComments(readSrc(CUSTOMER_SEARCH));
+  assert.match(src, /className\?:\s*string/, "CustomerSearch must declare className?: string");
+  assert.match(src, /cn\([^)]*\bclassName\b[^)]*\)/, "CustomerSearch must apply className via a cn(...) call on its trigger");
+});
+
+test("PIN: no stray lg: token remains in PosHeader/CustomerSearch/OpenTabsButton — the HTML's breakpoints are tab: and desk:", () => {
   for (const { label, path: rel } of [
-    { label: "CustomerSearch", path: CUSTOMER_SEARCH },
-    { label: "OpenTabsButton", path: OPEN_TABS_BUTTON },
+    { label: "PosHeader.tsx", path: POS_HEADER },
+    { label: "CustomerSearch.tsx", path: CUSTOMER_SEARCH },
+    { label: "OpenTabsButton.tsx", path: OPEN_TABS_BUTTON },
   ]) {
-    const src = stripComments(readSrc(rel));
-    assert.match(src, /className\?:\s*string/, `${label} must declare className?: string`);
-    assert.match(src, /cn\([^)]*\bclassName\b[^)]*\)/, `${label} must apply className via a cn(...) call on its trigger`);
+    assert.ok(!stripComments(readSrc(rel)).includes("lg:"), `${label} must not carry a stray lg: token`);
   }
-});
-
-test("PIN: no stray lg: token remains in PosHeader/CustomerSearch/OpenTabsButton — the mode switch moved to xl", () => {
-  const FILES: Array<{ label: string; path: string; xlLandmark: RegExp }> = [
-    { label: "PosHeader.tsx", path: POS_HEADER, xlLandmark: /xl:flex-wrap/ },
-    { label: "CustomerSearch.tsx", path: CUSTOMER_SEARCH, xlLandmark: /xl:max-w-\[12rem\]/ },
-    { label: "OpenTabsButton.tsx", path: OPEN_TABS_BUTTON, xlLandmark: /xl:hidden/ },
-  ];
-  for (const { label, path: rel, xlLandmark } of FILES) {
-    const src = stripComments(readSrc(rel));
-    assert.ok(!src.includes("lg:"), `${label} must not carry a stray lg: token — the mode switch moved to xl`);
-    assert.match(src, xlLandmark, `landmark: ${label} must carry its xl: token (${xlLandmark})`);
-  }
+  assert.match(stripComments(readSrc(CUSTOMER_SEARCH)), /xl:max-w-\[12rem\]/, "landmark: CustomerSearch keeps its xl: chip width");
 });

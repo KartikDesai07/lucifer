@@ -35,7 +35,6 @@ import {
   POS_BODY_GRID_CLASS,
   POS_ASIDE_CLASS,
   POS_MAIN_CLASS,
-  POS_CONTROLS_CLASS,
   POS_CART_CLASS,
 } from "@/lib/pos-layout";
 import type { Order, Product } from "@/types";
@@ -164,6 +163,19 @@ export default function PosPage() {
 
   return (
     <div className={POS_PAGE_CLASS}>
+      {/* The header's switch-order button and its Open orders panel (portaled into the shell's header) and the Floor
+          hand-off (U1 Task 6): nothing of it sits in the page's own flow. */}
+      <PosHeader
+        lastOrder={pos.lastOrder}
+        onReprintKot={pos.reprintKot}
+        openTabs={openTabs.data ?? NO_OPEN_TABS}
+        onResumeTab={onResumeTab}
+        resumedOrder={pos.resumedOrder}
+        isBusy={pos.isBusy}
+        onTableChange={onTableChange}
+        customerName={pos.customer?.name}
+        count={pos.count} newCount={pos.newCount} total={pos.total}
+      />
       {/* The HTML's body grid (values 2.0): categories from 1100px, the menu, the cart from 1024px; each scrolls. */}
       <div data-ui="pos-body" className={POS_BODY_GRID_CLASS}>
         <aside data-ui="pos-aside" className={POS_ASIDE_CLASS}>
@@ -173,21 +185,9 @@ export default function PosPage() {
             <CategorySidebar {...categoryPicker} />
           )}
         </aside>
-        {/* The menu column (values 3.1): the HTML's one scroller. Today's control row first (KOT reprint, Open tabs),
-            until U1 Task 6 moves them to the header; then ProductGrid's sticky toolbar (the search box, the Category
-            button below 1100px) and its list, which scroll under the toolbar. */}
+        {/* The menu column (values 3.1): the HTML's one scroller, ProductGrid's sticky toolbar (the search box, the
+            Category button below 1100px) and its list, which scroll under the toolbar. */}
         <div data-ui="pos-main" className={POS_MAIN_CLASS}>
-          <div data-ui="pos-controls" className={POS_CONTROLS_CLASS}>
-            <PosHeader
-              lastOrder={pos.lastOrder}
-              onReprintKot={pos.reprintKot}
-              openTabs={openTabs.data ?? NO_OPEN_TABS}
-              onResumeTab={onResumeTab}
-              resumedOrder={pos.resumedOrder}
-              isBusy={pos.isBusy}
-              onTableChange={onTableChange}
-            />
-          </div>
           {/* Loading: the toolbar as it will stand (its search box and Category button take no input yet) over
               HTML-shaped cards, so nothing jumps when the menu arrives; a failed first read: the HTML's no-results
               line (design 6.3). A failed background refresh keeps the grid: only the toolbar's slot changes

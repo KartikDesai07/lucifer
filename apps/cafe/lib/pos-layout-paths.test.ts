@@ -103,18 +103,18 @@ const TOUCH_FEEL = "apps/cafe/components/shared/TouchFeel.tsx";
 // U1 Task 1 (design 5, values 2.0): the page is the HTML's body grid, so the frame's classes are the page, the grid and
 // its three regions (lib/pos-frame.test.ts pins their order and data-ui names); the old root/inset/split/pane-cart
 // wrapper classes are gone. U1 Task 2 (values 3.1): the menu column is the HTML's one scroller, so the pane that stacked
-// the control row, the chips and the grid is gone too; today's control row sits in its own wrapper above the toolbar
-// until U1 Tasks 4 and 6 move its controls (POS_CONTROLS_CLASS).
+// the control row, the chips and the grid is gone too. U1 Task 6: the control row's last controls moved into the header
+// (the switch-order button) and its Open orders panel (the KOT reprint), so its wrapper (POS_CONTROLS_CLASS) is gone.
 test("PIN: pos/page.tsx imports the frame's classes and uses each as a real className", () => {
   const src = stripComments(readSrc(POS_PAGE));
   const importMatch = src.match(/import\s*\{([^}]*)\}\s*from\s*"@\/lib\/pos-layout"/);
   assert.ok(importMatch, "pos/page.tsx must import from @/lib/pos-layout");
-  const frame = ["POS_PAGE_CLASS", "POS_BODY_GRID_CLASS", "POS_ASIDE_CLASS", "POS_MAIN_CLASS", "POS_CONTROLS_CLASS", "POS_CART_CLASS"];
+  const frame = ["POS_PAGE_CLASS", "POS_BODY_GRID_CLASS", "POS_ASIDE_CLASS", "POS_MAIN_CLASS", "POS_CART_CLASS"];
   for (const name of frame) {
     assert.ok(importMatch![1].includes(name), `the @/lib/pos-layout import must include ${name}`);
     assert.match(src, new RegExp(`className=\\{${name}\\}`), `${name} must be used as a bare className={${name}} in pos/page.tsx`);
   }
-  for (const gone of ["POS_ROOT_CLASS", "POS_INSET_CLASS", "POS_SPLIT_CLASS", "POS_DESKTOP_CART_CLASS", "POS_PANE_CLASS"]) {
+  for (const gone of ["POS_ROOT_CLASS", "POS_INSET_CLASS", "POS_SPLIT_CLASS", "POS_DESKTOP_CART_CLASS", "POS_PANE_CLASS", "POS_CONTROLS_CLASS"]) {
     assert.ok(!src.includes(gone), `pos/page.tsx must not reference the retired ${gone}`);
   }
 });
@@ -798,7 +798,16 @@ test("PIN: picking a row in the Category sheet chooses it and closes the sheet; 
 // shortens the grid. The CB-1 root's three in-flow rows (header wrapper, split, bar) and their gap budget are gone.
 test("PIN: pos/page.tsx's page renders the body grid as its one in-flow child, filling it, with the cart bar over its foot", () => {
   const src = stripComments(readSrc(POS_PAGE));
-  assert.match(src, /<div className=\{POS_PAGE_CLASS\}>\s*(?:\{\}\s*)?<div data-ui="pos-body"/, "the page opens with the body grid (a comment aside)");
+  // U1 Task 6: PosHeader comes first and draws nothing in the page's flow — its switch button is a phone action of the
+  // page header (a portal into the shell's header at every width, never the body row) and the Floor hand-off renders
+  // nothing.
+  assert.match(
+    src,
+    /<div className=\{POS_PAGE_CLASS\}>\s*(?:\{\}\s*)?<PosHeader\b[^>]*\/>\s*(?:\{\}\s*)?<div data-ui="pos-body"/,
+    "the page opens with PosHeader, then the body grid (comments aside)",
+  );
+  const header = stripComments(readSrc("apps/cafe/components/pos/PosHeader.tsx"));
+  assert.ok(header.includes("phoneActions={") && !/\sactions=\{/.test(header), "PosHeader hands the header phone actions only: no body row");
   const body = src.indexOf('<div data-ui="pos-body"');
   const bar = src.indexOf("<MobileCartBar");
   assert.ok(body >= 0 && bar > body, "the bar comes after the body grid, as the page's second child");
@@ -940,26 +949,18 @@ test("PIN: POS_DIALOG_LIST_CAP_CLASS/POS_MOVE_TABLE_LIST_CAP_CLASS each pair a v
   }
 });
 
-test("PIN: TableSelector and OpenTabsButton use POS_DIALOG_LIST_CAP_CLASS for their scrollable list — no bare max-h-[60vh] literal left behind (CB-1d.1 V2)", () => {
+// U1 Task 6 (values 7.1): OpenTabsButton is the HTML's Open orders panel now, its list a flex child of a panel capped at
+// min(640px, 100dvh - 80px) (86dvh on a phone; lib/pos-header-paths.test.ts), so only TableSelector keeps the 60vh cap.
+test("PIN: TableSelector uses POS_DIALOG_LIST_CAP_CLASS for its scrollable list, and the Open orders panel caps on the visible viewport — no bare max-h-[60vh] literal left behind (CB-1d.1 V2)", () => {
   // Needle built by concatenation (testing.md) so this file's own source text
   // never contains the literal as one contiguous string.
   const sixtyVh = "max-h-[60" + "vh]";
-  for (const { label, path: rel, landmark } of [
-    {
-      label: "TableSelector",
-      path: TABLE_SELECTOR,
-      landmark: /cn\("grid grid-cols-4 gap-2 overflow-y-auto", POS_DIALOG_LIST_CAP_CLASS\)/,
-    },
-    {
-      label: "OpenTabsButton",
-      path: OPEN_TABS_BUTTON,
-      landmark: /cn\("space-y-2 overflow-y-auto", POS_DIALOG_LIST_CAP_CLASS\)/,
-    },
-  ] as const) {
-    const src = stripComments(readSrc(rel));
-    assert.match(src, landmark, `landmark: ${label} must call cn(...) with POS_DIALOG_LIST_CAP_CLASS on its scrollable list`);
-    assert.ok(!src.includes(sixtyVh), `${label} must not carry a bare "${sixtyVh}" literal — POS_DIALOG_LIST_CAP_CLASS replaces it`);
-  }
+  const selector = stripComments(readSrc(TABLE_SELECTOR));
+  assert.match(selector, /cn\("grid grid-cols-4 gap-2 overflow-y-auto", POS_DIALOG_LIST_CAP_CLASS\)/, "landmark: TableSelector must call cn(...) with POS_DIALOG_LIST_CAP_CLASS on its scrollable list");
+  const panel = stripComments(readSrc(OPEN_TABS_BUTTON));
+  for (const src of [selector, panel]) assert.ok(!src.includes(sixtyVh), `no bare "${sixtyVh}" literal`);
+  assert.ok(panel.includes("tab:supports-[height:1dvh]:max-h-[min(640px,calc(100dvh-80px))]"), "the panel: the dvh cap where it exists");
+  assert.ok(panel.includes("max-tab:supports-[height:1dvh]:max-h-[86dvh]"), "the phone's sheet: 86dvh where it exists");
 });
 
 test("PIN: MoveTablePicker (the table grid MoveTableDialog renders) uses POS_MOVE_TABLE_LIST_CAP_CLASS — no bare max-h-[50vh] literal left behind in the picker or the dialog", () => {
@@ -1131,8 +1132,8 @@ test("PIN: app/m/layout.tsx never mounts the touch-feel scope — the diner flow
 // innerWidth 1241 → 412, grid 608px×2 → 186px×2, document scrollWidth = 412).
 // U1 Task 1: the grid item is now the HTML's menu column (main, `min-width:0`, values 3.1) in the body grid's
 // minmax(0,1fr) track. U1 Task 2: the chip strip is gone; main is the HTML's one scroller with the sticky toolbar
-// (values 3.1: `position:sticky; top:0; z-index:3` on --bg) and holds, until U1 Tasks 4 and 6, today's control row
-// above the toolbar (its own wrapper, POS_CONTROLS_CLASS).
+// (values 3.1: `position:sticky; top:0; z-index:3` on --bg). U1 Task 6: the interim control row above the toolbar is
+// gone (its controls are the header's switch-order button and the Open orders panel), so the toolbar leads main.
 test("PIN: the menu column carries min-w-0 so no content's min-content width can widen the body grid's column (CB-1d.1b phone layout), and it is the toolbar's scroller", () => {
   const mainTokens = POS_MAIN_CLASS.split(/\s+/);
   assert.ok(mainTokens.includes("min-w-0"), `POS_MAIN_CLASS ("${POS_MAIN_CLASS}") must carry min-w-0 (the grid item)`);
@@ -1142,13 +1143,14 @@ test("PIN: the menu column carries min-w-0 so no content's min-content width can
   const toolbar = POS_TOOLBAR_CLASS.split(/\s+/);
   for (const t of ["sticky", "top-0", "z-[3]", "bg-background"]) assert.ok(toolbar.includes(t), `the toolbar sticks inside main: "${t}"`);
 
-  // Today's control row first (interim), then the toolbar and the list (ProductGrid) or the loading / error branch.
+  // The toolbar and the list (ProductGrid) or the loading / error branch are main's only content.
   const pageSrc = stripComments(readSrc(POS_PAGE));
   assert.match(
     pageSrc,
-    /<div data-ui="pos-main" className=\{POS_MAIN_CLASS\}>\s*(?:\{\}\s*)?<div data-ui="pos-controls" className=\{POS_CONTROLS_CLASS\}>\s*<PosHeader\b/,
-    "the control row's wrapper is the menu column's first child until U1 Tasks 4 and 6",
+    /<div data-ui="pos-main" className=\{POS_MAIN_CLASS\}>\s*(?:\{\}\s*)*\{products\.isLoading \? \(/,
+    "the loading / error / grid branch is the menu column's first child (no control row above the toolbar)",
   );
+  assert.ok(!pageSrc.includes("pos-controls"), "no control row's wrapper");
 });
 
 // ---------------------------------------------------------------------------

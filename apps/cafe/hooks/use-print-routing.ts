@@ -32,8 +32,8 @@ export interface PrintRoutingLocal {
   queueTokenSlip: (order: Order) => void;
   /** Records "this is the tab a reprint would act on" WITHOUT queueing a print.
    *  Separate from the four above because the routed lane never runs them, and
-   *  `lastOrder` is not a print signal: `PosHeader.tsx:57` gates the KOT
-   *  reprint button on it, and `reprintKot` needs it to build a payload at all. */
+   *  `lastOrder` is not a print signal: the Open orders panel (`OpenTabsButton.tsx`)
+   *  gates its KOT reprint on it, and `reprintKot` needs it to build a payload at all. */
   setLastOrder: (order: Order) => void;
 }
 

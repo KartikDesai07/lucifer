@@ -28,6 +28,7 @@ import {
   posBodyColumnsPx,
   posHeaderRoom,
   posMainPadBottomPx,
+  posSwitchMinPx,
 } from "./pos-layout";
 
 const CAFE_ROOT = fileURLToPath(new URL("../", import.meta.url));
@@ -181,19 +182,22 @@ test("the old two-pane and stacked-phone frame is gone, not left dead (design 5)
   }
 });
 
+// U1 Task 6: PosHeader draws nothing in the page's flow (the switch button and its panel portal into the shell's header,
+// the Floor hand-off renders nothing), so it sits first in the page, outside the body grid; the interim control row
+// above the toolbar (Task 2's ruling P5) is gone and the toolbar is main's first child again.
 test("pos/page.tsx renders the HTML's body grid: the aside, the menu column and the cart, in that order", () => {
   const src = read(PAGE);
+  assert.ok(!src.includes("pos-controls") && !src.includes("POS_CONTROLS_CLASS"), "no control row in the menu column");
   inOrder(
     src,
     [
       "className={POS_PAGE_CLASS}",
+      "<PosHeader",
       '<div data-ui="pos-body" className={POS_BODY_GRID_CLASS}>',
       '<aside data-ui="pos-aside" className={POS_ASIDE_CLASS}>',
       "<CategorySidebar",
       "</aside>",
       '<div data-ui="pos-main" className={POS_MAIN_CLASS}>',
-      '<div data-ui="pos-controls" className={POS_CONTROLS_CLASS}>',
-      "<PosHeader",
       "<ProductGrid",
       '<section data-ui="pos-cart" className={POS_CART_CLASS}>',
       "<Cart {...cartProps}",
@@ -215,7 +219,8 @@ test("Header: on /pos the HTML's Order header (brand, the actions box, the clock
   assert.match(src, /\{pos \? \(\s*<h1 data-ui="header-title" className="sr-only">\{title\}<\/h1>\s*\) : \(\s*<HeaderTitle\b/, "no title block on /pos: its h1 stays for screen readers");
   assert.match(src, /\{pos && <PosHeaderClock\b/, "the clock block only on /pos");
   inOrder(src, ["ref={actionsRef}", "<HeaderQuickTabs />", "<PosHeaderClock", "<RefreshButton />", "<TokenSheet />", "<PrinterStatusButton"], "Header");
-  assert.match(src, /<PrinterStatusButton onToneChange=\{setPrinterTone\} \/>/, "the clock's dot takes the printer button's own tone");
+  // U1 Task 6 (Task 1's review): only /pos hands the printer's tone over, so every other page's header is as before.
+  assert.match(src, /<PrinterStatusButton onToneChange=\{pos \? setPrinterTone : undefined\} \/>/, "the clock's dot takes the printer button's own tone, on /pos only");
   assert.match(src, /const room = usePosHeaderRoom\(pos, actionsBox\);/, "the room rule measures the slot's own actions box (ruling R6's pattern)");
 });
 
@@ -223,13 +228,19 @@ test("Header: on /pos the HTML's Order header (brand, the actions box, the clock
 // its actions box carry data-pos, and the data-pos: tokens give them the HTML's Order header.
 test("Header: the /pos bar is 56px tall with 16px gaps, not sticky; its actions box takes the free width, right-aligned", () => {
   const src = read(HEADER);
-  assert.match(src, /<header className="[^"]*" data-ui="header" data-pos=\{pos \? "" : undefined\}>/, "the header carries data-pos on /pos");
+  assert.match(src, /<header className="[^"]*" data-ui="header" data-pos=\{pos \? "" : undefined\} data-room-out=\{room\.level > 0 \? "" : undefined\}>/, "the header carries data-pos on /pos, and data-room-out while the room rule has a part out");
   const bar = tokens(src.match(/<header className="([^"]*)"/)?.[1] ?? "");
   for (const t of ["data-pos:h-14", "data-pos:min-w-0", "data-pos:gap-4", "data-pos:static", "data-pos:z-auto", "border-b", "border-border", "bg-card", "px-3", "tab:px-5"]) {
     assert.ok(bar.includes(t), `the /pos header (values 1.2): "${t}"`);
   }
+  // U1 Task 6 (Task 1's review): a part the room rule takes out is held at the header's right edge, so the header is
+  // its positioned ancestor while one is out (static, as the HTML's, otherwise).
+  assert.ok(bar.includes("data-room-out:relative"), "the header positions the parts the room rule takes out");
   const box = /<div ref=\{actionsRef\}([^>]*)\/>/.exec(src)?.[1] ?? "";
   assert.match(box, /data-pos=\{pos \? "" : undefined\}/, "the actions box carries data-pos on /pos");
+  // U1 Task 6 (Task 1's review): the switch-order button is the HTML's 42px, not U0's 36px header button, so the box
+  // drops the header-button look on /pos (every other page keeps it).
+  assert.match(box, /data-header-actions=\{pos \? undefined : ""\}/, "no header-button look on /pos");
   const boxTokens = tokens(/className="([^"]*)"/.exec(box)?.[1] ?? "");
   for (const t of ["min-w-0", "items-center", "data-pos:flex-1", "data-pos:justify-end", "data-pos:gap-1.5", "data-pos:overflow-x-auto", "data-pos:empty:flex"]) {
     assert.ok(boxTokens.includes(t), `the /pos actions box (values 1.2): "${t}"`);
@@ -285,4 +296,24 @@ test("posHeaderRoom: the brand text hides first, then the clock block, only whil
   assert.equal(at(2, POS_SWITCH_MIN_PX + clockWidth + POS_HEADER_GAP_PX), 1, "room for the clock again: it comes back, the brand text stays out");
   assert.equal(at(0, 100, 0), 2, "a brand text the width already hides frees nothing: the clock block goes");
   assert.equal(at(0, 0, 0, 0), 2, "a phone (nothing to hide): the level changes nothing on screen");
+});
+
+// U1 Task 6 (Task 1's review): the minimum is the real button's, measured from its parts: the tile, the pill and the
+// chevron (the text column is the only part that shrinks), the three gaps, the paddings and border — so a two-digit
+// "12 open" pill asks for its own few pixels more, and a button the box squeezes still reads its true minimum.
+test("posSwitchMinPx / posHeaderRoom: the switch button's measured minimum (count-aware), the fixed one only before it is measured", () => {
+  const edges = 6 + 10 + 1 + 1;
+  assert.equal(posSwitchMinPx({ fixedParts: [30, 53.34, 16], gap: 10, edges }), 148, "the HTML's button with \"8 open\": 147.34, rounded up");
+  assert.equal(posSwitchMinPx({ fixedParts: [30, 60.5, 16], gap: 10, edges }), 155, "a wider pill (\"12 open\"): a wider minimum");
+  const room = (actionsWidth: number, switchMin?: number) =>
+    posHeaderRoom({ room: 0, actionsWidth, brandWidth: 138.47, clockWidth: 207.84, switchMin });
+  assert.equal(room(150), 0, "unmeasured: the fixed minimum (148) fits in 150");
+  assert.equal(room(150, 155), 1, "measured 155: the brand text goes first");
+  assert.equal(room(155, 155), 0, "exactly the measured minimum fits");
+  assert.equal(POS_SWITCH_MIN_PX, 148, "the fallback is the HTML's one-digit button");
+  const src = read(BRAND);
+  assert.ok(src.includes("return posSwitchMinPx({ fixedParts, gap: px(style.columnGap), edges });"), "the hook measures the real button's parts");
+  assert.ok(src.includes(`.filter((child) => child.getAttribute("data-ui") !== "pos-switch-text")`), "every part but the text column");
+  assert.ok(src.includes(`querySelector<HTMLElement>("[data-ui='pos-switch']")`), "the switch button in the slot's own actions box");
+  assert.ok(src.includes("new MutationObserver("), "it arrives by a portal and its pill's words change: the box's contents are watched");
 });

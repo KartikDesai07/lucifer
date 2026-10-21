@@ -31,7 +31,9 @@ const HEADER_CLOCK_MS = 60_000;
 // On /pos (U1 Task 1; the POS values 1.2-1.4, design 6.1) it is the HTML's Order header: data-pos makes the bar
 // exactly 56px with 16px gaps and not sticky (the page under it never scrolls); the brand block takes the mini logo's
 // and the title block's place (the page's h1 stays, for screen readers); the actions box takes the free width,
-// right-aligned (the switch-order button lands there, U1 Task 6); the clock block follows; no quick links.
+// right-aligned, with the page's switch-order button in it (U1 Task 6: the HTML's own 42px button, so the box drops the
+// header-button look there); the clock block follows; no quick links. While the room rule has a part out
+// (data-room-out), the header is that part's positioned ancestor.
 export function Header() {
   const pathname = usePathname() ?? "";
   const pos = isPosPath(pathname);
@@ -45,12 +47,13 @@ export function Header() {
   // (MasterDataProvider), so that is already the device's date, the same words and width, with no blank frame.
   const now = useNow(HEADER_CLOCK_MS) ?? new Date();
   const { title, subtitle } = headerWordsFor({ info, pathname, cafeName: name, now });
-  // The /pos clock block's dot is the printer button's own (design 6.1): the button hands its tone over.
+  // The /pos clock block's dot is the printer button's own (design 6.1): the button hands its tone over, on /pos only,
+  // so every other page's header never re-renders for it.
   const [printerTone, setPrinterTone] = useState<PrinterDotTone>("none");
   const room = usePosHeaderRoom(pos, actionsBox);
 
   return (
-    <header className="sticky top-0 z-[3] flex min-h-14 items-center gap-2.5 border-b border-border bg-card px-3 leading-[normal] text-foreground tab:px-5 data-pos:static data-pos:z-auto data-pos:h-14 data-pos:min-w-0 data-pos:gap-4" data-ui="header" data-pos={pos ? "" : undefined}>
+    <header className="sticky top-0 z-[3] flex min-h-14 items-center gap-2.5 border-b border-border bg-card px-3 leading-[normal] text-foreground tab:px-5 data-pos:static data-pos:z-auto data-pos:h-14 data-pos:min-w-0 data-pos:gap-4 data-room-out:relative" data-ui="header" data-pos={pos ? "" : undefined} data-room-out={room.level > 0 ? "" : undefined}>
       {pos ? (
         <PosHeaderBrand name={name} logoUrl={logoUrl} room={room} />
       ) : (
@@ -63,13 +66,14 @@ export function Header() {
       )}
       {/* The page's own actions (ruling R6: the HTML's header buttons, data-header-actions in app/globals.css). min-w-0:
           they never push our buttons off screen while the slot measures whether they fit. On /pos the HTML's actions
-          box: flex:1, right-aligned, 6px apart, scrolling sideways; it stays in the row while empty. */}
-      <div ref={actionsRef} data-ui="header-actions" data-header-actions="" data-pos={pos ? "" : undefined} className="flex min-w-0 items-center gap-2.5 empty:hidden data-pos:flex-1 data-pos:justify-end data-pos:gap-1.5 data-pos:overflow-x-auto data-pos:empty:flex" />
+          box: flex:1, right-aligned, 6px apart, scrolling sideways; it stays in the row while empty; no header-button
+          look (it holds the HTML's own switch-order button). */}
+      <div ref={actionsRef} data-ui="header-actions" data-header-actions={pos ? undefined : ""} data-pos={pos ? "" : undefined} className="flex min-w-0 items-center gap-2.5 empty:hidden data-pos:flex-1 data-pos:justify-end data-pos:gap-1.5 data-pos:overflow-x-auto data-pos:empty:flex" />
       <HeaderQuickTabs />
       {pos && <PosHeaderClock now={now} tone={printerTone} room={room} />}
       <RefreshButton />
       <TokenSheet />
-      <PrinterStatusButton onToneChange={setPrinterTone} />
+      <PrinterStatusButton onToneChange={pos ? setPrinterTone : undefined} />
     </header>
   );
 }

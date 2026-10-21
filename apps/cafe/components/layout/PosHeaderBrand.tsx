@@ -7,7 +7,7 @@ import { NavDeviceLine } from "@/components/layout/NavDeviceLine";
 import { PRINTER_DOT_OK_CLASS, PRINTER_DOT_WARN_CLASS } from "@/components/print/printer-classes";
 import { VENDOR_PRODUCT_NAME } from "@/lib/constants";
 import { posClockLabel } from "@/lib/pos-clock";
-import { posHeaderRoom, type PosHeaderRoom } from "@/lib/pos-layout";
+import { posHeaderRoom, posSwitchMinPx, type PosHeaderRoom } from "@/lib/pos-layout";
 import type { PrinterDotTone } from "@/lib/printer/printer-dot";
 import { cn } from "@/lib/utils";
 
@@ -21,8 +21,8 @@ import { cn } from "@/lib/utils";
 // Tokens when on) leave the actions box narrower than the switch-order button's minimum, the brand text hides first,
 // then the clock block. A hidden part stays laid out (out of the row, unseen), so its width is always measured fresh.
 
-/** A part the room rule hides: out of the row and unseen, still measurable; held at the right edge, so its box never
- *  widens the page. */
+/** A part the room rule hides: out of the row and unseen, still measurable; held at the header's right edge (the header
+ *  is its positioned ancestor while a part is out: data-room-out in Header.tsx), so its box never widens the page. */
 const ROOM_HIDDEN_CLASS = "invisible absolute right-0";
 
 const CLOCK_DOT_CLASS: Record<PrinterDotTone, string> = {
@@ -39,23 +39,58 @@ export interface PosHeaderRoomState {
   clockRef: (el: HTMLElement | null) => void;
 }
 
-const widthOf = (el: HTMLElement | null): number => (el ? el.getBoundingClientRect().width : 0);
+const widthOf = (el: Element | null | undefined): number => (el ? el.getBoundingClientRect().width : 0);
 
-/** Measures the /pos header (when `enabled`) before the first paint and whenever the actions box or a part resizes. */
+/** The switch-order button the page portals into the actions box (components/pos/PosHeader.tsx), if it is there. */
+const switchIn = (box: HTMLElement): HTMLElement | null => box.querySelector<HTMLElement>("[data-ui='pos-switch']");
+
+/** The button's narrowest, from its parts: every child but the text column (the only part that shrinks), its gap, its
+ *  paddings and border. */
+function switchMinOf(button: HTMLElement): number {
+  const style = getComputedStyle(button);
+  const px = (value: string) => parseFloat(value) || 0;
+  const fixedParts = Array.from(button.children)
+    .filter((child) => child.getAttribute("data-ui") !== "pos-switch-text")
+    .map(widthOf);
+  const edges = px(style.paddingLeft) + px(style.paddingRight) + px(style.borderLeftWidth) + px(style.borderRightWidth);
+  return posSwitchMinPx({ fixedParts, gap: px(style.columnGap), edges });
+}
+
+/** Measures the /pos header (when `enabled`) before the first paint and whenever the actions box, a part or the
+ *  switch-order button resizes. The button's minimum is its own, measured (U1 Task 6): it arrives by a portal after
+ *  the header mounts and its "N open" pill changes with the count, so the box's contents are watched too. */
 export function usePosHeaderRoom(enabled: boolean, actionsBox: HTMLElement | null): PosHeaderRoomState {
   const [level, setLevel] = useState<PosHeaderRoom>(0);
   const [brandEl, setBrandEl] = useState<HTMLElement | null>(null);
   const [clockEl, setClockEl] = useState<HTMLElement | null>(null);
   const measure = useCallback(() => {
     if (!enabled || !actionsBox) return;
-    setLevel((room) => posHeaderRoom({ room, actionsWidth: widthOf(actionsBox), brandWidth: widthOf(brandEl), clockWidth: widthOf(clockEl) }));
+    const button = switchIn(actionsBox);
+    const switchMin = button ? switchMinOf(button) : undefined;
+    setLevel((room) =>
+      posHeaderRoom({ room, actionsWidth: widthOf(actionsBox), brandWidth: widthOf(brandEl), clockWidth: widthOf(clockEl), switchMin }),
+    );
   }, [enabled, actionsBox, brandEl, clockEl]);
   useLayoutEffect(() => {
     measure();
     if (!enabled || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
-    for (const el of [actionsBox, brandEl, clockEl]) if (el) observer.observe(el);
-    return () => observer.disconnect();
+    const observeAll = () => {
+      for (const el of [actionsBox, brandEl, clockEl, actionsBox && switchIn(actionsBox)]) if (el) observer.observe(el);
+    };
+    observeAll();
+    let contents: MutationObserver | null = null;
+    if (actionsBox && typeof MutationObserver !== "undefined") {
+      contents = new MutationObserver(() => {
+        observeAll();
+        measure();
+      });
+      contents.observe(actionsBox, { childList: true, subtree: true, characterData: true });
+    }
+    return () => {
+      observer.disconnect();
+      contents?.disconnect();
+    };
   }, [measure, enabled, actionsBox, brandEl, clockEl]);
   return { level: enabled ? level : 0, brandRef: setBrandEl, clockRef: setClockEl };
 }

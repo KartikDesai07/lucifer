@@ -41,7 +41,6 @@ import {
   POS_MOBILE_ONLY_CLASS,
   POS_TOOLBAR_CLASS,
   POS_LIST_CLASS,
-  POS_CONTROLS_CLASS,
   POS_MOBILE_BAR_CLASS,
   POS_CART_SHEET_CLASS,
   POS_CART_SHEET_PANEL_CLASS,
@@ -135,12 +134,11 @@ test("PIN: the toolbar is the HTML's sticky strip with its toolPad, and main is 
   }
   assert.ok(tokens(POS_MAIN_CLASS).includes("overflow-auto"), "the menu column scrolls the list under the toolbar");
   assert.ok(!tokens(POS_MAIN_CLASS).includes("flex"), "main is a block, as the HTML's (the toolbar and the list stack in flow)");
-  for (const gone of ["POS_PANE_CLASS", "POS_PANE_FLOOR_PX", "POS_CHIP_CLASS", "POS_CHIP_ROW_CLASS", "POS_DESKTOP_ONLY_CLASS"]) {
+  // U1 Task 6: the interim control row above the toolbar went with its last controls (the header's switch-order button
+  // and the Open orders panel), so the toolbar sits at the HTML's top of main.
+  for (const gone of ["POS_PANE_CLASS", "POS_PANE_FLOOR_PX", "POS_CHIP_CLASS", "POS_CHIP_ROW_CLASS", "POS_DESKTOP_ONLY_CLASS", "POS_CONTROLS_CLASS"]) {
     assert.ok(!readFileSync(path.join(CAFE_ROOT, "lib/pos-layout.ts"), "utf8").includes(`export const ${gone}`), `lib/pos-layout.ts no longer exports ${gone}`);
   }
-  // Today's control row (until U1 Tasks 4 and 6) sits above the toolbar with the toolbar's own side inset.
-  const controls = tokens(POS_CONTROLS_CLASS);
-  for (const t of ["px-5", "pt-3.5", "max-tab:px-3", "max-tab:pt-2.5"]) assert.ok(controls.includes(t), `POS_CONTROLS_CLASS lines up with the toolbar: "${t}"`);
 });
 
 // U1 Task 3 (values 4.3, design 5 "The grid is repeat(auto-fill,...)"): the HTML's grid decides the columns from the

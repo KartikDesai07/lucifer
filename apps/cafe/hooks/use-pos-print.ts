@@ -157,8 +157,8 @@ export function usePosPrint() {
   // printing, these enqueue instead — same signatures, so no call site changes.
   const routed = usePrintRouting({
     // `setLastOrder` travels too: the routed lane runs NONE of the four
-    // functions above, and `lastOrder` is not a print signal — PosHeader gates
-    // the KOT reprint button on it and `reprintKot` needs it to build a
+    // functions above, and `lastOrder` is not a print signal — the Open orders
+    // panel (OpenTabsButton) gates its KOT reprint on it and `reprintKot` needs it to build a
     // payload, so a host-configured device must still record the tab.
     local: { queueKotRound, queueVoidSlip, reprintKot, queueReceipt, queueTokenSlip, setLastOrder },
     lastOrder,

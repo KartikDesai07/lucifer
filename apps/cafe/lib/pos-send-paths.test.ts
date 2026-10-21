@@ -217,8 +217,10 @@ test("S8: every editing surface is locked during the flight — grid, lines, Cle
   assert.equal(count(readSrc(CART_NOTES), "disabled={disabled}"), 1, "the note field (its Add note row became the Note link)");
   assert.ok(readSrc(CART_LINKS).includes("disabled={disabled}"), "every link honours the lock");
   // U1 Task 4 (owner Q9): the move/assign, table and customer chips are the cart head's cells (counted above).
-  assert.equal(count(readSrc(HEADER), "disabled={isBusy}"), 2, "KOT reprint, Open tabs");
-  assert.ok(readSrc(OPEN_TABS).includes("disabled={disabled}"), "the Open tabs trigger honours it");
+  // U1 Task 6 (owner Q17; values 7): the header's switch-order button stays openable while a send flies (it only
+  // shows the panel); inside the Open orders panel every row (a resume) and the KOT reprint at its foot lock.
+  assert.equal(count(readSrc(HEADER), "disabled={isBusy}"), 0, "the switch-order button is never locked");
+  assert.equal(count(readSrc(OPEN_TABS), "disabled={isBusy}"), 2, "the panel's rows and its KOT reprint");
   assert.ok(readSrc(CUSTOMER).includes("disabled={disabled}"), "the customer chip (the payment popup's) honours it");
 });
 

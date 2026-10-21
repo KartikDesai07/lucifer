@@ -651,7 +651,7 @@ test("REGRESSION: routed prints serialize through one chain, while the no-host l
   );
 });
 
-test("REGRESSION: the routed lane still records lastOrder — otherwise PosHeader's KOT reprint button disappears and reprintKot can never build a payload", () => {
+test("REGRESSION: the routed lane still records lastOrder — otherwise the KOT reprint (the Open orders panel's foot since U1 Task 6) disappears and reprintKot can never build a payload", () => {
   const routingSrc = readSrc(USE_PRINT_ROUTING);
   // The three order-taking wrappers must record the tab on BOTH lanes: the
   // routed lane runs none of the local queue functions, and `lastOrder` is

@@ -135,11 +135,6 @@ export const POS_LIST_CLASS = "px-5 py-4 leading-[normal] max-tab:px-3 max-tab:p
  *  subtracts from the menu column (posGridPaneWidthPx). */
 export const POS_PANE_INSET_PX = { phone: 12, base: 20 } as const;
 
-/** Today's control row (PosHeader: open tabs, KOT; U1 Task 4 moved the table and customer chips into the cart head's
- *  cells) has no place in the HTML's menu column; until U1 Task 6 moves the rest into the header, it sits above the
- *  toolbar with the toolbar's side inset and top padding, and scrolls away with the list. */
-export const POS_CONTROLS_CLASS = "px-5 pt-3.5 max-tab:px-3 max-tab:pt-2.5";
-
 /** The cart column (values 5.1): from 1024 px the body grid's last column, the surface with a rule on its left; it
  *  scrolls on its own. Below 1024 px the cart is MobileCartBar's sheet (U1 Task 7 gives it the HTML's sheet). */
 export const POS_CART_CLASS =
@@ -184,22 +179,39 @@ export const POS_CART_LIST_CLASS = "flex-[1_0_auto] min-h-[150px] px-3.5 leading
 // it would get narrower than the switch-order button's minimum, the brand text hides first, then the clock block.
 /** The HTML's header gap (values 1.2). */
 export const POS_HEADER_GAP_PX = 16;
-/** The switch-order button's narrowest (values 1.2, design 6.1: its code tile and count pill stay whole): 1 + 6 left
- *  padding + the 30px tile + 10 + 10 (the text column at 0) + the "N open" pill (8 + 37.34 + 8) + 10 + the 16px
- *  chevron + 10 right padding + 1 = 147.34, rounded up. */
+/** The switch-order button's narrowest before it is measured (values 1.2, design 6.1: its code tile and count pill stay
+ *  whole), the HTML's with "8 open": 1 + 6 left padding + the 30px tile + 10 + 10 (the text column at 0) + the pill
+ *  (8 + 37.34 + 8) + 10 + the 16px chevron + 10 right padding + 1 = 147.34, rounded up. */
 export const POS_SWITCH_MIN_PX = 148;
 /** 0: everything shows; 1: the brand text is out; 2: the clock block is out too. */
 export type PosHeaderRoom = 0 | 1 | 2;
 
-/** The room level for the measured widths: the actions box now (at the current level), and the brand text and the
- *  clock block (0 when the width hides them anyway). The box's width with everything shown is worked back from the
- *  current level, so the answer is the same whichever level it is measured at (nothing flaps). */
-export function posHeaderRoom(m: { room: PosHeaderRoom; actionsWidth: number; brandWidth: number; clockWidth: number }): PosHeaderRoom {
+/** The switch-order button's narrowest, measured (U1 Task 6): the parts that never shrink (the code tile, the pill with
+ *  its "N open" words, the chevron: `fixedParts`), a gap between each of the button's children (the text column, at 0
+ *  wide, keeps its two), and its paddings and border (`edges`), rounded up — so a two-digit count asks for its own few
+ *  pixels more. Read from the parts, never from the button's own width, which the box can squeeze below this. */
+export function posSwitchMinPx(m: { fixedParts: number[]; gap: number; edges: number }): number {
+  const gaps = m.fixedParts.length * m.gap;
+  return Math.ceil(m.fixedParts.reduce((sum, w) => sum + w, 0) + gaps + m.edges);
+}
+
+/** The room level for the measured widths: the actions box now (at the current level), the brand text and the clock
+ *  block (0 when the width hides them anyway), and the switch button's measured minimum (POS_SWITCH_MIN_PX until it is
+ *  measured). The box's width with everything shown is worked back from the current level, so the answer is the same
+ *  whichever level it is measured at (nothing flaps). */
+export function posHeaderRoom(m: {
+  room: PosHeaderRoom;
+  actionsWidth: number;
+  brandWidth: number;
+  clockWidth: number;
+  switchMin?: number;
+}): PosHeaderRoom {
+  const min = m.switchMin ?? POS_SWITCH_MIN_PX;
   const freedByBrand = m.brandWidth;
   const freedByClock = m.clockWidth > 0 ? m.clockWidth + POS_HEADER_GAP_PX : 0;
   const allShown = m.actionsWidth - (m.room >= 1 ? freedByBrand : 0) - (m.room >= 2 ? freedByClock : 0);
-  if (allShown >= POS_SWITCH_MIN_PX) return 0;
-  if (allShown + freedByBrand >= POS_SWITCH_MIN_PX) return 1;
+  if (allShown >= min) return 0;
+  if (allShown + freedByBrand >= min) return 1;
   return 2;
 }
 
@@ -249,8 +261,9 @@ export const POS_PANEL_LINK_CLASS =
 export const POS_PRESS_FEEDBACK_CLASS =
   "touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
 
-// Header controls (Open tabs / KOT on /pos; U1 Task 4 moved the table, move and
-// customer chips into the cart head's cells; also the diner PIN reset row): 40px tall
+// Header controls (once Open tabs / KOT on /pos: U1 Task 4 moved the table, move and
+// customer chips into the cart head's cells, U1 Task 6 the rest into the header's
+// switch-order button and its Open orders panel; still the diner PIN reset row): 40px tall
 // with 14px text wherever a finger might tap; the compact 32px / 12px
 // `size="sm"` look returns at xl+ only behind `pointer-fine:` — keying the
 // SHRINK on a fine pointer is cascade-proof where a coarse re-floor would

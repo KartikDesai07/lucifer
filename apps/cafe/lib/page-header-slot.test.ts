@@ -367,7 +367,8 @@ test("PIN: the header composes the registered words, the actions box (min-w-0, t
   assert.ok(!header.includes('className="sr-only">{name}</h1>'), "the old screen-reader-only cafe h1 is gone");
   const box = /<div ref=\{actionsRef\}([^>]*)\/>/.exec(header)?.[1] ?? "";
   assert.match(box, /data-ui="header-actions"/, "landmark: the actions box");
-  assert.match(box, /data-header-actions=""/, "the page's actions take the header buttons' look there (ruling R6)");
+  // U1 Task 6: except on /pos, whose actions box holds the HTML's own 42px switch-order button (values 1.2).
+  assert.match(box, /data-header-actions=\{pos \? undefined : ""\}/, "the page's actions take the header buttons' look there (ruling R6), on every page but /pos");
   assert.match(box, /className="[^"]*\bmin-w-0\b[^"]*"/, "min-w-0: it never pushes the printer button off screen");
   const page = read(path.join(CAFE_ROOT, "components/shared/PageHeader.tsx"));
   assert.match(page, /useLayoutEffect\(/, "the page registers before the first paint (no subtitle flash)");

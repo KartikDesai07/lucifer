@@ -242,12 +242,20 @@ test("PIN: pos/page.tsx feeds the memoized PosHeader Object.is-stable props — 
   assert.ok(closeIdx > headerIdx, "must find a closing /> after <PosHeader");
   const block = stripped.slice(headerIdx, closeIdx);
 
+  // U1 Task 6 (values 1.3): the switch button reads the order on screen as plain values (a name, numbers), so the
+  // memo still bails out on an unrelated render.
   const propPins = [
     "openTabs={openTabs.data ?? NO_OPEN_TABS}",
     "onResumeTab={onResumeTab}",
     "onTableChange={onTableChange}",
     "resumedOrder={pos.resumedOrder}",
     "isBusy={pos.isBusy}",
+    "lastOrder={pos.lastOrder}",
+    "onReprintKot={pos.reprintKot}",
+    "customerName={pos.customer?.name}",
+    "count={pos.count}",
+    "newCount={pos.newCount}",
+    "total={pos.total}",
   ];
   for (const needle of propPins) {
     assert.ok(block.includes(needle), `<PosHeader ...> block must include "${needle}", got:\n${block}`);
@@ -287,7 +295,7 @@ test("PIN: PosPrompts and PosHeader are named, exported React.memo wrappers (Pos
     "PosHeader.tsx must declare export const PosHeader = memo(function PosHeader(",
   );
   assert.match(headerSrc, /import\s*\{\s*memo\s*\}\s*from\s*"react"/, 'PosHeader.tsx must import memo from "react"');
-  // U1 Task 4 (owner Q9): the table chip left the row for the cart head; its Open tabs control stays until U1 Task 6.
+  // U1 Task 4 (owner Q9): the table chip left for the cart head; U1 Task 6: the switch button opens the Open orders panel.
   assert.match(headerSrc, /<OpenTabsButton/, "PosHeader.tsx must render <OpenTabsButton");
 });
 
