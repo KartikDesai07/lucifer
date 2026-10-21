@@ -419,6 +419,135 @@ test("PIN (U1 Task 8, values 10.1-10.2): Size segments, add-on rows, the 48px no
   );
 });
 
+// ── U1 Task 12: the void dialog in the HTML's sheet frame (values 12.1's 420px confirm frame; values 8.1 head, 8.3 field,
+// 10.1 check rows and stepper; design 6.12). Look only: its state, reset, guard and payload are pinned in
+// lib/variation-paths.test.ts, lib/reward-void-trail.test.ts and lib/removed-modifiers-paths.test.ts; the hook in
+// hooks/use-item-void.ts is untouched.
+const VOID_DIALOG = "apps/cafe/components/pos/VoidItemDialog.tsx";
+
+/** The class-string literal a `const NAME = "...";` declares in VoidItemDialog.tsx. */
+function voidConst(src: string, name: string): string {
+  const m = src.match(new RegExp(`const ${name} =\\s*"([^"]*)";`));
+  assert.ok(m, `VoidItemDialog.tsx must declare ${name} as one plain string literal`);
+  return m![1];
+}
+
+test("PIN (U1 Task 12, design 6.12): the void dialog keeps every word and rule of today and adds the HTML's Cancel", () => {
+  const src = stripComments(readSrc(VOID_DIALOG));
+  for (const words of [
+    ">Void an item</DialogPrimitive.Title>",
+    "The kitchen gets a VOID slip for this line. This cannot be undone.",
+    "Nothing sent to the kitchen yet on this tab.",
+    "Quantity to void",
+    "Reason (required)",
+    'placeholder="e.g. wrong item fired, guest changed mind"',
+    "This would empty the tab — a tab must keep at least one item. Ask",
+    "an admin to cancel the order instead.",
+    'Void {qty > 1 ? `${qty} × ` : ""}item',
+    ">Cancel</DialogPrimitive.Close>",
+    'aria-label="Decrease quantity"',
+    'aria-label="Increase quantity"',
+  ]) {
+    assert.ok(src.includes(words), `VoidItemDialog.tsx keeps "${words}"`);
+  }
+  assert.ok(src.includes('id="void-reason"') && src.includes('htmlFor="void-reason"'), "the caption labels the reason field by today's id");
+  assert.ok(src.includes("maxLength={ORDER_REASON_MAX_LEN}"), "the reason's 200-character cap");
+  assert.ok(src.includes("trimmedReason.length >= ORDER_REASON_MIN_LEN"), "at least 3 trimmed characters before Void");
+  assert.ok(src.includes("onClick={() => setQty((q) => Math.max(1, q - 1))}") && src.includes("onClick={() => setQty((q) => Math.min(line.qty, q + 1))}"), "the qty stays within 1 … the line's qty");
+  assert.ok(src.includes("disabled={!canConfirm}") && src.includes("onClick={confirm}"), "Void runs today's confirm, off until the form is complete");
+  assert.ok(src.includes("{wouldEmptyTab && ("), "the last-line guard sentence shows only when the void would empty the tab");
+  assert.ok(src.includes("onValueChange={(v) => selectLine(Number(v))}"), "a pick selects the line with its whole qty (selectLine)");
+});
+
+test("PIN (U1 Task 12, values 12.1 / 8.1): the void dialog is the HTML's sheet — a Radix dialog whose scrim holds the 420px panel, the title + sub + ✕ head, the sent lines as one-choice check rows", () => {
+  const src = stripComments(readSrc(VOID_DIALOG));
+  assert.match(src, /import \* as DialogPrimitive from "@radix-ui\/react-dialog";/, "a Radix dialog: focus trap, Escape and the scrim close it, role=dialog");
+  assert.match(src, /import \* as RadioGroupPrimitive from "@radix-ui\/react-radio-group";/, "the rows are one radio group: role radio, aria-checked, the arrow keys");
+  for (const kit of ['from "@/components/ui/dialog"', 'from "@/components/ui/radio-group"', 'from "@/components/ui/textarea"', 'from "@/components/ui/label"', 'from "@/components/ui/button"']) {
+    assert.ok(!src.includes(kit), `not the kit (${kit}): its corner X, outline buttons and small radios are not the HTML's`);
+  }
+  const overlay = src.indexOf("<DialogPrimitive.Overlay");
+  const content = src.indexOf("<DialogPrimitive.Content");
+  assert.ok(overlay > 0 && content > overlay && src.indexOf("</DialogPrimitive.Overlay>") > src.indexOf("</DialogPrimitive.Content>"), "the scrim holds the panel (centred; a bottom sheet below 720px)");
+  assert.ok(src.includes("className={SCRIM_CLASS}") && src.includes("className={PANEL_CLASS}"), "the scrim and the panel wear the HTML's frame");
+  assert.ok(src.includes("{...openerFocus}"), "the panel takes the focus as it opens and gives it back to the cart's Void on close (ruling P22's way)");
+  assert.ok(src.includes("<DialogPrimitive.Description className={SUB_CLASS}>"), "today's description is the head's sub");
+  assert.ok(src.includes('aria-label="Close"'), "the head's ✕ is named Close");
+  assert.ok(src.includes("<RadioGroupPrimitive.Root") && src.includes("<RadioGroupPrimitive.Item"), "the sent lines: one radio group, one item per line");
+  assert.ok(src.includes("value={selected === null ? undefined : String(selected)}"), "the group shows today's selection");
+  assert.ok(src.includes("on ? CHECK_ON_CLASS : CHECK_OFF_CLASS") && src.includes('{on ? "✓" : ""}'), "the picked line's round check is lit with the HTML's ✓");
+  assert.ok(src.includes('role="group"') && src.includes("aria-labelledby={qtyId}"), "the stepper is named by its caption");
+
+  assert.equal(
+    voidConst(src, "SCRIM_CLASS"),
+    "fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4 font-sans leading-[normal] text-foreground motion-safe:animate-scrim-in max-tab:items-end max-tab:p-0",
+    "values 12.1 scrim: fixed at z-index 50, --scrim, fadeIn .2s; centred in 16px, along the foot with no padding below 720px",
+  );
+  assert.equal(
+    voidConst(src, "PANEL_CLASS"),
+    "flex w-full max-w-[420px] flex-col overflow-hidden rounded-[14px] border border-border bg-card [box-shadow:var(--pop)] outline-none motion-safe:animate-sheet-in tab:max-h-[calc(100vh-32px)] tab:supports-[height:1dvh]:max-h-[calc(100dvh-32px)] max-tab:max-h-[88vh] max-tab:rounded-[14px_14px_0_0] max-tab:supports-[height:1dvh]:max-h-[88dvh]",
+    "values 12.1 panel: 420px, --surface, a 1px --border, sheetRadius 14 (14 14 0 0 below 720px), --pop, sheetIn .34s; capped at the sheets' heights (values 0.3 csMaxH), the body scrolls",
+  );
+  assert.equal(voidConst(src, "HEAD_CLASS"), "flex flex-none items-center gap-2.5 px-4 pt-4 pb-3", "values 8.1 head: 16px 16px 12px, gap 10");
+  assert.equal(voidConst(src, "TITLE_CLASS"), "text-[17px] font-semibold", "values 8.1 title: 17px 600");
+  assert.equal(voidConst(src, "SUB_CLASS"), "text-[12.5px] text-muted-foreground", "values 8.1 sub: 12.5px --text-2");
+  assert.equal(
+    voidConst(src, "CLOSE_CLASS"),
+    "flex size-8 flex-none cursor-pointer items-center justify-center rounded-[50%] border-0 bg-surface-3 px-1.5 py-px text-muted-foreground",
+    "values 8.1 ✕: 32px round on --surface-3, --text-2, the UA's 1px 6px",
+  );
+  assert.equal(voidConst(src, "BODY_CLASS"), "flex min-h-0 flex-1 flex-col gap-3.5 overflow-auto px-4 pt-1 pb-2", "values 8.3 body: 4px 16px 8px, the blocks 14px apart, the one scroller");
+  assert.equal(voidConst(src, "EMPTY_CLASS"), "px-3 py-6 text-center text-[13.5px] leading-[1.5] text-muted-foreground", "our empty line in the HTML's empty block (values 8.2): 24px 12px, 13.5px --text-2, 1.5");
+});
+
+test("PIN (U1 Task 12, values 10.1 / 8.3 / 12.1): the check rows, the 46px stepper, the 48px reason field, the guard and the foot take the HTML's measures", () => {
+  const src = stripComments(readSrc(VOID_DIALOG));
+  assert.equal(voidConst(src, "LIST_CLASS"), "max-h-56 overflow-y-auto rounded-[10px] border border-border", "values 10.1 list: a 1px --border, radius 10; today's 14rem cap scrolls a long tab");
+  assert.equal(
+    voidConst(src, "ROW_CLASS"),
+    "flex min-h-[42px] w-full cursor-pointer items-center gap-2.5 border-b border-border-2 bg-card px-3 py-2 text-left text-[14px] text-foreground hover:bg-hover",
+    "values 10.1 row: 42px (taller with modifier lines), 0 12px, gap 10, 14px --text, a --border-2 rule under each, hover --hover",
+  );
+  assert.equal(
+    voidConst(src, "CHECK_CLASS"),
+    "flex size-[18px] flex-none items-center justify-center rounded-[50%] border-[1.5px] text-[11px] text-primary-foreground",
+    "values 10.1 check: 18px, a 1.5px rule, the 11px check in --on-accent; round (one choice)",
+  );
+  assert.equal(voidConst(src, "CHECK_ON_CLASS"), "border-primary bg-primary", "values 10.2 on: --accent box and fill");
+  assert.equal(voidConst(src, "CHECK_OFF_CLASS"), "border-subtle-foreground bg-card", "values 10.2 off: a --text-3 ring on --surface");
+  assert.equal(voidConst(src, "NAME_CLASS"), "min-w-0 flex-1", "values 10.1 label: flex 1 between the check and the price");
+  assert.equal(voidConst(src, "MODIFIER_CLASS"), "block text-[12px] text-muted-foreground", "our modifier lines under the name, 12px --text-2");
+  assert.equal(voidConst(src, "PRICE_CLASS"), "flex-none whitespace-nowrap text-muted-foreground", "values 10.1 price: --text-2 at the row's right");
+  assert.equal(voidConst(src, "CAPTION_CLASS"), "text-[12.5px] font-semibold text-muted-foreground", "values 8.3 captions: 12.5px 600 --text-2");
+  assert.equal(voidConst(src, "QTY_ROW_CLASS"), "flex items-center justify-between gap-2.5", "the caption left, the stepper right (today's row)");
+  assert.equal(voidConst(src, "STEPPER_CLASS"), "flex h-[46px] items-center rounded-[10px] border border-border", "values 10.1 stepper: 46px, 1px --border, radius 10");
+  assert.equal(voidConst(src, "STEP_CLASS"), "h-11 w-[42px] cursor-pointer border-0 bg-transparent px-1.5 py-px text-[18px] text-foreground", "values 10.1 − / +: 42x44, 18px --text, the UA's padding");
+  assert.equal(voidConst(src, "QTY_CLASS"), "min-w-6 text-center text-[15px] font-semibold", "values 10.1 qty: min 24px, 15px 600");
+  assert.ok(src.includes(">−</button>") && src.includes(">+</button>"), "the HTML's stepper glyphs (U+2212 and +), not icons");
+  assert.equal(voidConst(src, "GUARD_CLASS"), "text-[13px] font-medium leading-[1.5] text-status-bad-ink", "the guard in --bad-i (the HTML's message, values 12.2: 13px 500)");
+  assert.equal(voidConst(src, "FIELD_CLASS"), "flex flex-col gap-1.5", "values 8.3 field: the caption 6px over the box");
+  assert.equal(
+    voidConst(src, "FIELD_INPUT_CLASS"),
+    "h-12 rounded-[12px] border-[1.5px] border-border px-3 py-0 text-[15px] leading-[normal] placeholder:text-subtle-foreground md:text-[15px] max-tab:text-base",
+    "values 8.3 box: 48px, radius 12, a 1.5px --border rule, 0 12px, 15px (16px below 720px, ruling R36), --text-3 placeholder",
+  );
+  assert.equal(
+    voidConst(src, "FOOT_CLASS"),
+    "flex flex-none flex-col gap-2 border-t border-border-2 px-4 pt-3 pb-[calc(14px+env(safe-area-inset-bottom))]",
+    "values 8.2 foot: 12px 16px and 14px + the safe area, gap 8, a --border-2 rule",
+  );
+  assert.equal(
+    voidConst(src, "VOID_CLASS"),
+    "h-[46px] w-full cursor-pointer rounded-[10px] border border-status-bad bg-status-bad px-1.5 py-px text-[14.5px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50",
+    "values 12.1 button in --bad with white text (design 6.12): 46px, radius 10, 14.5px 600; off at .5 until the form is complete",
+  );
+  assert.equal(
+    voidConst(src, "CANCEL_CLASS"),
+    "h-[46px] w-full cursor-pointer rounded-[10px] border border-transparent bg-transparent px-1.5 py-px text-[14.5px] font-semibold text-link",
+    "values 12.1 kind 2: the 46px Cancel link, transparent, --link, 14.5px 600",
+  );
+});
+
 test("PIN: line budgets — pos/page.tsx < 300 (exact count pinned in pos-tile-paths), PosModals.tsx <= 300, PosHeader.tsx <= 300, PosPrompts.tsx <= 300", () => {
   const lineCount = (rel: string): number => readSrc(rel).replace(/\n$/, "").split("\n").length;
 

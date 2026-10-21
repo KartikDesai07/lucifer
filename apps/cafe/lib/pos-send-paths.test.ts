@@ -278,7 +278,11 @@ test("S12 (R-d): Discard confirms first, in plain English, through the shared Co
   assert.match(src, /onConfirm=\{\(\) => \{\s*setOpen\(false\);\s*onDiscard\(\);\s*\}\}/, "Discard runs only from the confirm");
   assert.equal(count(src, "onDiscard("), 1, "and nowhere else");
   assert.match(src, /onClick=\{\(\) => setOpen\(true\)\}/, "the button only opens the confirm");
-  assert.ok(src.includes("className={POS_CART_CTA_CLASS}"), "a touch-sized CTA on both surfaces");
+  // U1 Task 12: both surfaces hand Discard their slot's look (the cart's footer, Task 5; the payment sheet, Task 9), so
+  // the kit-outline fallback (POS_CART_CTA_CLASS) had no caller left and went; the confirm is the HTML's (look="sheet").
+  assert.ok(src.includes("className: string;") && src.includes("className={className}"), "the button wears the look of the slot it sits in, on both surfaces");
+  assert.ok(!src.includes("POS_CART_CTA_CLASS") && !src.includes('from "@/components/ui/button"'), "no kit-outline fallback left");
+  assert.ok(src.includes('look="sheet"'), "the confirm is the HTML's confirm sheet (values 12.1)");
   const copy = readSrc(CONTROLLER);
   assert.ok(copy.includes('"The order may already have reached the kitchen. Check Open tabs before sending it again."'));
   assert.ok(copy.includes('"The sale may already be saved. Check Orders before taking payment again."'));
