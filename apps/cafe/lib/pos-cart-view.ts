@@ -1,7 +1,8 @@
 // U1 Task 4 (2026-10-21): what the /pos cart's head and lines say, in the owner's HTML (values 5.2, 5.4 in
 // docs/superpowers/specs/2026-10-20-pos-html-values.md; design 6.5, 6.6; owner Q9, Q10): the title, a tab's
 // "#012 · 32 min", the Table cell, a line's number and meta, the stored-order address the cart's Void action hands the
-// void dialog, and when a selected line stays selected. Pure: no React, no fetching; client-safe.
+// void dialog, and when a selected line stays selected; U1 Task 7: the order bar's first line below 1024px (values
+// 6.1). Pure: no React, no fetching; client-safe.
 import { inr, orderItemModifierLines, orderLineKey } from "@pos/shared/utils";
 import { tableAreaIdOf } from "@/lib/table-areas";
 import type { Area, Order, OrderItem, Table } from "@/types";
@@ -37,6 +38,28 @@ export interface CartTitleView {
 export function cartTitle(view: CartTitleView): string {
   if (!view.resumedOrder) return NEW_ORDER_TITLE;
   return view.resumedOrder.tableNo ? `Table ${view.resumedOrder.tableNo}` : WALK_IN;
+}
+
+/** What the order bar below 1024px reads (values 6.1; design 6.9; owner Q18): the quantity on the order (sent and new),
+ *  the cart's title (cartTitle), whether an adjustment survived Clear (lib/pos-cart-props.ts hasPendingAdjustment), and
+ *  the title of an unanswered send's notice (none when every send was answered). */
+export interface OrderBarView {
+  count: number;
+  title: string;
+  adjustment: boolean;
+  noticeTitle: string | null;
+}
+
+/**
+ * The order bar's first line (values 6.1; design 6.9): the HTML's "{n} items · {order}" with our title and "1 item" for
+ * one; an empty order still has its bar (owner Q18) and reads "No items · New order"; an item-less cart whose promo,
+ * reward, discount or extra charge survived Clear says so (D9.8c); an unanswered send says its notice's own title
+ * ("Couldn't confirm"), so it is seen with the sheet closed.
+ */
+export function orderBarSummary(view: OrderBarView): string {
+  if (view.noticeTitle) return view.noticeTitle;
+  if (view.count === 0) return view.adjustment ? "Adjustment still applied" : `No items · ${view.title}`;
+  return `${view.count} ${view.count === 1 ? "item" : "items"} · ${view.title}`;
 }
 
 /**

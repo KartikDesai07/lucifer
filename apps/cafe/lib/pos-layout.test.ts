@@ -26,8 +26,11 @@ import {
   BREAKPOINT_XL_PX,
   BREAKPOINT_DESK_PX,
   NAV_RAIL_MIN_PX,
+  NAV_WIDTH_RAIL_PX,
   navWidthPx,
   posBodyColumnsPx,
+  posMainPadBottomPx,
+  posOrderBarInsetsPx,
   posGridPaneWidthPx,
   posCardColumns,
   posCardWidthPx,
@@ -38,11 +41,14 @@ import {
   POS_MAIN_PAD_B_PX,
   POS_ASIDE_CLASS,
   POS_CART_CLASS,
-  POS_MOBILE_ONLY_CLASS,
   POS_TOOLBAR_CLASS,
   POS_LIST_CLASS,
   POS_MOBILE_BAR_CLASS,
+  POS_MOBILE_BAR_BUTTON_CLASS,
+  POS_ORDER_BAR_HEIGHT_PX,
   POS_CART_SHEET_CLASS,
+  POS_CART_SHEET_SCRIM_CLASS,
+  POS_CART_SHEET_WIDTH_PX,
   POS_CART_SHEET_PANEL_CLASS,
   POS_CART_LIST_CLASS,
   POS_CARD_GRID_CLASS,
@@ -191,8 +197,42 @@ test("PIN: on a phone the page runs under the tab bar to the window's foot, and 
   const page = tokens(POS_PAGE_CLASS);
   assert.ok(page.includes(`-mb-[${PHONE_PAGE_FOOT_PX}px]`), "the page bleeds over <main>'s 92px phone foot, to the window's foot");
   assert.ok(!page.some((t) => t.startsWith("max-tab:h-")), "no phone height of its own: the page is the window minus the header at every width");
-  assert.ok(POS_MAIN_PAD_B_PX.phone > TAB_BAR_HEIGHT_PX + 65, "150px clears the order bar (65px) on the tab bar");
+  assert.ok(POS_MAIN_PAD_B_PX.phone > TAB_BAR_HEIGHT_PX + POS_ORDER_BAR_HEIGHT_PX, "150px clears the order bar on the tab bar");
   assert.ok(tokens(POS_MAIN_CLASS).includes(`max-tab:pb-[${POS_MAIN_PAD_B_PX.phone}px]`), "main's phone padding");
+});
+
+// U1 Task 7 (values 6.1, 6.2): the order bar is a 1px rule, 10px of padding above and below the 44px "Review order" —
+// 65px — and main's foot is the HTML's room for it: on a phone the bar on the 59px tab bar and 26px of air (150), at
+// 720-1023px the bar and 35px (100).
+test("PIN: the order bar is 65px tall, and main's foot is the HTML's room for it: 150 = bar + tab bar + 26 on a phone, 100 = bar + 35 below 1024px", () => {
+  const bar = tokens(POS_MOBILE_BAR_CLASS);
+  assert.ok(bar.includes("border-t") && bar.includes("py-2.5"), "values 6.1: the bar's 1px top rule and its 10px padding");
+  assert.ok(tokens(POS_MOBILE_BAR_BUTTON_CLASS).includes("h-11"), "values 6.1: the 44px Review order button");
+  assert.equal(POS_ORDER_BAR_HEIGHT_PX, 1 + 10 + 44 + 10, "values 6.1: the bar measures 65px ([76,1115,744,65] at 820)");
+  assert.equal(POS_MAIN_PAD_B_PX.phone, POS_ORDER_BAR_HEIGHT_PX + TAB_BAR_HEIGHT_PX + 26, "values 6.2: 150px on a phone");
+  assert.equal(POS_MAIN_PAD_B_PX.cmp, POS_ORDER_BAR_HEIGHT_PX + 35, "values 6.2: 100px at 720-1023px");
+  assert.equal(posMainPadBottomPx(390), 150, "390px: the phone's 150");
+  assert.equal(posMainPadBottomPx(820), 100, "820px: the tablet's 100");
+  assert.ok(tokens(POS_MAIN_CLASS).includes(`max-lg:pb-[${POS_MAIN_PAD_B_PX.cmp}px]`), "main's 100px below 1024px");
+});
+
+// values 0.3 obLeft / obBottom, 6.1; design 8: the bar starts at the nav's edge (the 76px rail from 720px, the window's
+// edge on a phone) and runs to the window's right edge; on a phone it sits ON the 59px tab bar (the HTML leaves 1px of
+// the menu showing between them: not copied), from 720px on the window's foot; from 1024px there is no bar.
+test("PIN: the bar's place: beside the nav, on the phone's tab bar, at the window's foot from 720px — the HTML's boxes", () => {
+  const at = (w: number) => posOrderBarInsetsPx({ viewportWidth: w, collapsed: false });
+  assert.deepEqual(at(390), { left: 0, bottom: TAB_BAR_HEIGHT_PX }, "390px: no nav, on the tab bar");
+  assert.deepEqual(at(719), { left: 0, bottom: TAB_BAR_HEIGHT_PX }, "719px: still a phone");
+  assert.deepEqual(at(720), { left: NAV_WIDTH_RAIL_PX, bottom: 0 }, "720px: beside the rail, on the window's foot");
+  assert.deepEqual(at(1023), { left: NAV_WIDTH_RAIL_PX, bottom: 0 }, "1023px: still the bar");
+  assert.equal(at(1024), null, "1024px: the cart is a column, no bar (values 6.1 showBar = cmp)");
+  const box = (w: number, h: number): number[] => {
+    const inset = at(w);
+    assert.ok(inset, `${w}px has a bar`);
+    return [inset!.left, h - inset!.bottom - POS_ORDER_BAR_HEIGHT_PX, w - inset!.left, POS_ORDER_BAR_HEIGHT_PX];
+  };
+  assert.deepEqual(box(820, 1180), [76, 1115, 744, 65], "values 6.1 t820: [76,1115,744,65]");
+  assert.deepEqual(box(390, 844), [0, 720, 390, 65], "values 6.1 p390: [0,719,390,65], ours 1px lower, on the tab bar (design 8)");
 });
 
 test("PIN: on a phone the POS cart bar always sits on the tab bar (the shell's 59px offset)", () => {
@@ -201,21 +241,74 @@ test("PIN: on a phone the POS cart bar always sits on the tab bar (the shell's 5
   assert.ok(tokens(POS_MOBILE_BAR_CLASS).includes("bottom-0"), "landmark: from 720px it sits on the screen's foot");
 });
 
-test("PIN: POS_CART_SHEET_CLASS carries a vh base with a supports-dvh override, plus the Radix-X hider", () => {
-  assert.ok(POS_CART_SHEET_CLASS.includes("h-[90vh]"), "POS_CART_SHEET_CLASS must include h-[90vh]");
-  assert.ok(POS_CART_SHEET_CLASS.includes("supports-[height:1dvh]:h-[90dvh]"), "POS_CART_SHEET_CLASS must include supports-[height:1dvh]:h-[90dvh]");
-  assert.ok(POS_CART_SHEET_CLASS.includes("[&>button]:hidden"), "POS_CART_SHEET_CLASS must still hide Radix's own close button");
+// U1 Task 7 (values 6.3, 5.1, 0.3 cartW / cartSh / cartLeft; design 6.9): the cart sheet is the HTML's cart section,
+// fixed: 440px from the right (the whole width when narrower) with the --pop shadow over a --scrim that covers the whole
+// window (the rail too) from 720px; on a phone the whole screen with no shadow and no scrim, over the header and the
+// tab bar (z-index 15 > 12). Its left rule stays on the phone too (the HTML's content starts at x 1). No entrance
+// animation (only the scrim fades in). The bottom sheet's 90vh height and its hidden Radix X went with it.
+test("PIN: the cart sheet is the HTML's: 440px from the right over the scrim from 720px, the whole screen on a phone, no entrance animation", () => {
+  const sheet = tokens(POS_CART_SHEET_CLASS);
+  assert.equal(POS_CART_SHEET_WIDTH_PX, 440, "values 0.3 cartW: min(440px,100%)");
+  for (const t of [
+    "fixed",
+    "inset-y-0",
+    "right-0",
+    `w-[min(${POS_CART_SHEET_WIDTH_PX}px,100%)]`,
+    "z-[15]",
+    "flex",
+    "flex-col",
+    "border-l",
+    "border-border",
+    "bg-card",
+    "[box-shadow:var(--pop)]",
+    "max-tab:left-0",
+    "max-tab:w-auto",
+    "max-tab:[box-shadow:none]",
+  ]) {
+    assert.ok(sheet.includes(t), `POS_CART_SHEET_CLASS (values 6.3): "${t}"`);
+  }
+  assert.ok(!sheet.some((t) => /animate|slide-|transition|duration/.test(t)), "no entrance animation on the sheet (values 6.3)");
+  for (const gone of ["h-[90vh]", "supports-[height:1dvh]:h-[90dvh]", "rounded-t-xl", "[&>button]:hidden"]) {
+    assert.ok(!sheet.includes(gone), `the bottom sheet's ${gone} is gone`);
+  }
+  const scrim = tokens(POS_CART_SHEET_SCRIM_CLASS);
+  for (const t of ["fixed", "inset-0", "z-[14]", "bg-scrim", "motion-safe:animate-scrim-in", "max-tab:hidden"]) {
+    assert.ok(scrim.includes(t), `POS_CART_SHEET_SCRIM_CLASS (values 5.1 cart scrim, 720-1023px only): "${t}"`);
+  }
 });
 
-// The page fills the screen and main runs to its foot (values 6.2), so the bar can no longer be an in-flow row under
-// the grid: it lies over the page's foot, inside the page (relative), where main's bottom padding keeps it clear.
-test("PIN: POS_MOBILE_BAR_CLASS lies over the page's foot (absolute inside the page), with no margins of its own, and hides from 1024px", () => {
+// The page fills the screen and main runs to its foot (values 6.2), so the bar is no in-flow row under the grid: it lies
+// over the page's foot, inside the page (relative) — the page runs from the nav's edge to the window's right edge and
+// foot, so the bar's box is the HTML's fixed one (posOrderBarInsetsPx) and follows the nav by itself — where main's
+// bottom padding keeps it clear. U1 Task 7: the HTML's glass bar (values 6.1), shown below 1024px only (max-lg:flex).
+test("PIN: POS_MOBILE_BAR_CLASS is the HTML's glass bar lying over the page's foot (absolute inside the page), shown below 1024px only", () => {
   const bar = tokens(POS_MOBILE_BAR_CLASS);
-  for (const t of ["absolute", "inset-x-0", "bottom-0", "lg:hidden"]) assert.ok(bar.includes(t), `POS_MOBILE_BAR_CLASS must include ${t}`);
+  for (const t of ["absolute", "inset-x-0", "bottom-0", "hidden", "max-lg:flex"]) assert.ok(bar.includes(t), `POS_MOBILE_BAR_CLASS must include ${t}`);
+  assert.ok(bar.includes("data-open:hidden"), "values 6.1 showBar (!cartOpen): the bar steps aside while its sheet is open");
   assert.ok(tokens(POS_PAGE_CLASS).includes("relative"), "the page is the bar's containing block");
-  assert.ok(!bar.includes("sticky"), "no longer an in-flow sticky row: main runs under it");
-  assert.ok(!bar.includes("fixed"), "not fixed: it stays inside the page, beside the nav");
+  assert.ok(!bar.includes("sticky"), "no in-flow sticky row: main runs under it");
+  assert.ok(!bar.includes("fixed"), "inside the page, beside the nav (the page's box is the HTML's fixed box)");
   assert.ok(!bar.some((t) => /^-?m[xyb]?-/.test(t)), "no margins of its own");
+  for (const t of [
+    "z-10",
+    "items-center",
+    "gap-3",
+    "border-t",
+    "border-border",
+    "bg-glass",
+    "px-3.5",
+    "py-2.5",
+    "leading-[normal]",
+    "[backdrop-filter:saturate(180%)_blur(20px)]",
+    "[-webkit-backdrop-filter:saturate(180%)_blur(20px)]",
+  ]) {
+    assert.ok(bar.includes(t), `values 6.1 bar: "${t}"`);
+  }
+  const button = tokens(POS_MOBILE_BAR_BUTTON_CLASS);
+  for (const t of ["h-11", "rounded-[10px]", "bg-primary", "text-primary-foreground", "px-5", "text-[15px]", "font-semibold", "cursor-pointer"]) {
+    assert.ok(button.includes(t), `values 6.1 Review order: "${t}"`);
+  }
+  assert.ok(!button.some((t) => t.startsWith("pointer-coarse:") || t.includes("hover:")), "the HTML's button on touch screens too (ruling R1), and it has no hover rule");
 });
 
 test("PIN: the cart is a column from the HTML's 1024px (lg), the category column from its 1100px (desk), never md", () => {
@@ -228,10 +321,13 @@ test("PIN: the cart is a column from the HTML's 1024px (lg), the category column
 
 // U1 Task 2: the category list switches at 1100px between the column (POS_ASIDE_CLASS) and the toolbar's Category
 // button + sheet (CategorySidebar.tsx, desk:hidden; pinned in lib/pos-layout-paths.test.ts); the chip strip and the rail
-// constants went with it. POS_MOBILE_ONLY_CLASS stays for the bar's wrapper (MobileCartBar).
+// constants went with it. U1 Task 7: the bar carries its own 1024px switch (max-lg:flex), so its wrapper's 1100px gate
+// (POS_MOBILE_ONLY_CLASS) went with the wrapper.
 test("PIN: exactly one cart and one category list show at any width — the column and the bar switch at 1024px, the category column and the Category button at 1100px", () => {
-  assert.ok(tokens(POS_MOBILE_BAR_CLASS).includes("lg:hidden"), "the bar hides where the cart column shows (lg)");
-  assert.equal(POS_MOBILE_ONLY_CLASS, "desk:hidden", "the bar's wrapper keeps its 1100px gate (U1 Task 7 rebuilds the bar)");
+  const bar = tokens(POS_MOBILE_BAR_CLASS);
+  assert.ok(bar.includes("hidden") && bar.includes("max-lg:flex"), "the bar shows exactly where the cart column does not (below lg)");
+  assert.ok(!bar.some((t) => /^(xl|desk|wide|lg):/.test(t)), "no other width gate on the bar: no xl:, desk:, wide: or lg: token");
+  assert.ok(!readFileSync(path.join(CAFE_ROOT, "lib/pos-layout.ts"), "utf8").includes("export const POS_MOBILE_ONLY_CLASS"), "the wrapper's gate is gone");
   assert.ok(tokens(POS_ASIDE_CLASS).includes("desk:flex"), "the category column shows from 1100px");
 });
 

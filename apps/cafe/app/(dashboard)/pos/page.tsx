@@ -213,13 +213,13 @@ export default function PosPage() {
         </section>
       </div>
 
-      {/* Below 1024px: the cart lives in a bottom sheet behind a summary bar over the page's foot. */}
+      {/* Below 1024px (values 6.1, 6.3; owner Q18): the HTML's glass order bar over the page's foot, in every state (on
+          the tab bar on a phone); its "Review order" opens the cart sheet (440px from the right, the whole phone screen).
+          The bar reads its figures (count, total, the tab on screen, an unanswered send) from the same cartProps. */}
       <MobileCartBar
         open={mobileCartOpen}
         onOpenChange={setMobileCartOpen}
         cartProps={cartProps}
-        count={pos.count}
-        total={pos.total}
       />
       <PosKeys busy={pos.isBusy} />
 

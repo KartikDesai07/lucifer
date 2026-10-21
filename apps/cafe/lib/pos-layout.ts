@@ -9,7 +9,7 @@
 // also reads lib/shell-layout.ts's literal), so Tailwind's source scanner sees every class name, and the pins
 // (lib/pos-frame, lib/pos-layout, lib/pos-layout-paths, lib/pos-layout-compile and lib/pos-header-paths tests) read
 // the SAME constants the page renders instead of re-typing them.
-import { MAIN_PADDING_BLEED_CLASS } from "@/lib/shell-layout";
+import { MAIN_PADDING_BLEED_CLASS, TAB_BAR_HEIGHT_PX } from "@/lib/shell-layout";
 
 // Tailwind's default viewport breakpoints (px), pinned so the layout test can
 // compute the pane-width matrix without importing Tailwind.
@@ -136,36 +136,54 @@ export const POS_LIST_CLASS = "px-5 py-4 leading-[normal] max-tab:px-3 max-tab:p
 export const POS_PANE_INSET_PX = { phone: 12, base: 20 } as const;
 
 /** The cart column (values 5.1): from 1024 px the body grid's last column, the surface with a rule on its left; it
- *  scrolls on its own. Below 1024 px the cart is MobileCartBar's sheet (U1 Task 7 gives it the HTML's sheet). */
+ *  scrolls on its own. Below 1024 px the cart is MobileCartBar's sheet (the HTML's, U1 Task 7; below). */
 export const POS_CART_CLASS =
   "relative z-[15] hidden min-h-0 flex-col overflow-y-auto overflow-x-hidden overscroll-contain border-l border-border bg-card lg:flex";
 
-// The bar's wrapper gate (MobileCartBar; POS_MOBILE_BAR_CLASS hides the bar itself from 1024 px). The category
+// Below 1024 px (where the cart is not a column) the owner's HTML puts the cart behind its glass order bar and opens it
+// as a sheet (U1 Task 7; values 6.1-6.3, 0.3 obLeft / obBottom / cartW / cartSh; design 6.9; owner Q18). The category
 // column and the toolbar's Category button switch at 1100 px on their own (POS_ASIDE_CLASS, CategorySidebar.tsx).
-export const POS_MOBILE_ONLY_CLASS = "desk:hidden";
 
-// Bottom cart bar (below 1024 px, where the cart is not a column): it lies
-// over the page's foot — absolute inside the page, which ends at the screen's
-// foot — so the menu column keeps its full height and keeps the bar clear with
-// its own bottom padding (values 6.2). On a phone it sits 59px up
-// (lib/shell-layout.ts ABOVE_TAB_BAR_STICKY_CLASS), on the tab bar. It hides
-// from 1024 px, where the cart column takes over (its own gate, since
-// POS_MOBILE_ONLY_CLASS switches at 1100 px).
+/** The order bar (values 6.1): a 1px top rule, 10px of padding above and below the 44px "Review order" — 65px. */
+export const POS_ORDER_BAR_HEIGHT_PX = 65;
+
+/** Where the order bar sits (values 0.3 obLeft / obBottom; design 8): from the nav's edge (the 76px rail from 720px, the
+ *  window's edge on a phone) to the window's right edge; on a phone ON the 59px tab bar (the HTML leaves 1px of the menu
+ *  between them: not copied), from 720px on the window's foot. Null from 1024px: the cart is a column, no bar. */
+export function posOrderBarInsetsPx(viewport: NavViewport): { left: number; bottom: number } | null {
+  if (viewport.viewportWidth >= BREAKPOINT_LG_PX) return null;
+  return { left: navWidthPx(viewport), bottom: viewport.viewportWidth < NAV_RAIL_MIN_PX ? TAB_BAR_HEIGHT_PX : 0 };
+}
+
+// The order bar (values 6.1): the HTML's glass strip — --glass behind a saturate(180%) blur(20px), a 1px --border rule
+// on top, 10px 14px, its two lines and "Review order" 12px apart, centred; z-index 10, under the tab bar's 12 (they
+// never overlap). It lies over the page's foot — absolute inside the page, which runs from the nav's edge to the
+// window's right edge and foot, so its box is the HTML's fixed one (posOrderBarInsetsPx) and follows the nav by itself
+// — and the menu column keeps it clear with its own bottom padding (values 6.2). On a phone it sits 59px up
+// (lib/shell-layout.ts ABOVE_TAB_BAR_STICKY_CLASS), on the tab bar. It shows below 1024px only, in every state (owner
+// Q18: an empty order too) except while its sheet is open (data-open; values 6.1 showBar: !cartOpen — at 820 the sheet
+// and the scrim leave the page's foot bare). The HTML sets no line-height here: normal.
 export const POS_MOBILE_BAR_CLASS =
-  "absolute inset-x-0 bottom-0 max-tab:bottom-[59px] z-20 border-t bg-background p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] lg:hidden";
+  "absolute inset-x-0 bottom-0 max-tab:bottom-[59px] z-10 hidden items-center gap-3 border-t border-border bg-glass px-3.5 py-2.5 leading-[normal] [backdrop-filter:saturate(180%)_blur(20px)] [-webkit-backdrop-filter:saturate(180%)_blur(20px)] max-lg:flex data-open:hidden";
+/** "Review order" (values 6.1): 44px, radius 10, --accent with --on-accent, 0 20px, 15px 600; no hover rule. The HTML's
+ *  press comes from BRAND_PRESS_CLASS (MobileCartBar), as on the cart's Send KOT and Pay. */
 export const POS_MOBILE_BAR_BUTTON_CLASS =
-  "flex h-12 w-full items-center justify-between touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
+  "h-11 cursor-pointer rounded-[10px] bg-primary px-5 text-[15px] font-semibold text-primary-foreground";
 
-// Cart bottom sheet height: `vh` base, `dvh` where supported (with
-// interactive-widget=resizes-content, set in the dashboard layout, the
-// on-screen keyboard then shrinks the sheet and its scroll region scrolls the
-// focused input into view).
+/** The cart sheet's width from 720px (values 0.3 cartW: min(440px,100%)). */
+export const POS_CART_SHEET_WIDTH_PX = 440;
+/** The sheet's scrim (values 5.1 cart scrim, 720-1023px): the whole window, the rail and the header too, --scrim at
+ *  z-index 14 under the sheet, the HTML's fadeIn; a tap on it closes the sheet. None on a phone (the sheet fills it). */
+export const POS_CART_SHEET_SCRIM_CLASS = "fixed inset-0 z-[14] bg-scrim motion-safe:animate-scrim-in max-tab:hidden";
+/** The cart sheet (values 6.3, 5.1): the HTML's cart section, fixed from the window's top to its foot at z-index 15 (over
+ *  the tab bar's 12), on --surface with its 1px --border rule on the left: 440px from the right with the --pop shadow
+ *  from 720px; on a phone the whole screen (left 0, the rule still drawn at x 0) with no shadow, over the header and the
+ *  tab bar. No entrance animation. The HTML sets no line-height on the cart: normal. */
 export const POS_CART_SHEET_CLASS =
-  "h-[90vh] rounded-t-xl p-0 supports-[height:1dvh]:h-[90dvh] [&>button]:hidden";
-// The Cart INSIDE that sheet scrolls as one panel: when the sheet is shorter
-// than header + list + notes + footer (phone landscape; portrait with the
-// keyboard up) the footer's inputs and CTAs must stay reachable by scrolling
-// instead of overflowing past the sheet's bottom edge (review CB-1 F3).
+  "fixed inset-y-0 right-0 z-[15] flex w-[min(440px,100%)] flex-col border-l border-border bg-card font-sans leading-[normal] text-foreground outline-none [box-shadow:var(--pop)] max-tab:left-0 max-tab:w-auto max-tab:[box-shadow:none]";
+// The Cart INSIDE that sheet scrolls as one panel, as the HTML's cart section does: when the sheet is shorter than the
+// head + the lines' floor + the footer (phone landscape; portrait with the keyboard up) the footer's inputs and buttons
+// stay reachable by scrolling instead of overflowing past the sheet's bottom edge (review CB-1 F3).
 export const POS_CART_SHEET_PANEL_CLASS =
   "h-full overflow-y-auto overscroll-contain rounded-none border-0";
 // The HTML's lines wrapper (values 5.4, 0.3 linesMin; U1 Task 4): it grows into the cart's free height and never

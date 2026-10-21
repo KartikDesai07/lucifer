@@ -216,24 +216,52 @@ test("PIN: the category column takes the body grid's 200px / 220px track — Cat
   assert.ok(POS_ASIDE_CLASS.split(/\s+/).includes("desk:flex"), "the column shows from 1100px");
 });
 
-test("PIN: MobileCartBar mounts only below 1024px (the cart column takes over there), in a bottom sheet, and the Cart panel inside uses the shared scrollable-panel class", () => {
+// U1 Task 7 (values 6.1, 6.3; design 6.9): below 1024px the HTML's glass order bar over the page's foot and the cart
+// sheet it opens. The sheet stays a Radix dialog (focus trap, Escape, the scrim's tap, the sr-only title) drawn as the
+// HTML's cart section: 440px from the right over the scrim from 720px, the whole screen on a phone. Its panel names
+// itself (data-ui="pos-cart-sheet"): the F8 / F9 keys treat it as the cart, not as a dialog (PosKeys, U1 Task 5).
+test("PIN: MobileCartBar is the HTML's bar (shown below 1024px by its own class) and a Radix dialog drawn as the HTML's cart sheet, the Cart inside", () => {
   const src = stripComments(readSrc(MOBILE_CART_BAR));
-  assert.match(src, /POS_MOBILE_ONLY_CLASS/, "MobileCartBar's wrapper must use POS_MOBILE_ONLY_CLASS");
-  assert.match(src, /POS_MOBILE_BAR_CLASS/, "MobileCartBar's fixed bar must use POS_MOBILE_BAR_CLASS");
-  assert.match(src, /side="bottom"/, 'the Sheet must open with side="bottom"');
-  assert.match(src, /className=\{POS_CART_SHEET_CLASS\}/, "SheetContent must use className={POS_CART_SHEET_CLASS}");
+  assert.match(src, /import \* as DialogPrimitive from "@radix-ui\/react-dialog";/, "the Radix dialog primitive (the kit sheet's overlay, X and slide are not the HTML's)");
+  assert.match(
+    src,
+    /<div data-ui="pos-order-bar" data-open=\{open \? "" : undefined\} className=\{POS_MOBILE_BAR_CLASS\}>/,
+    "one element, one class: the bar's look and its 1024px switch; it steps aside while its sheet is open (values 6.1 showBar)",
+  );
+  assert.ok(!src.includes("POS_MOBILE_ONLY_CLASS") && !/\b(?:xl|desk):/.test(src), "no xl: / desk: gate: the bar shows below 1024px (max-lg:flex in POS_MOBILE_BAR_CLASS)");
+  assert.match(src, /<DialogPrimitive\.Root open=\{open\} onOpenChange=\{onOpenChange\}>/, "the page owns the open state (its auto-close)");
+  assert.match(src, /<DialogPrimitive\.Overlay data-ui="pos-cart-scrim" className=\{POS_CART_SHEET_SCRIM_CLASS\} \/>/, "the scrim (720-1023px)");
+  assert.match(
+    src,
+    /<DialogPrimitive\.Content data-ui="pos-cart-sheet" aria-describedby=\{undefined\} className=\{POS_CART_SHEET_CLASS\}>/,
+    "the sheet panel names itself for the keys and takes the HTML's frame",
+  );
+  assert.match(src, /<DialogPrimitive\.Title className="sr-only">Your cart<\/DialogPrimitive\.Title>/, 'the sheet keeps its sr-only title "Your cart"');
   assert.match(src, /className=\{POS_CART_SHEET_PANEL_CLASS\}/, "the <Cart inside the sheet must use className={POS_CART_SHEET_PANEL_CLASS}");
   assert.match(src, /<Cart\b[\s\S]{0,160}onBack=\{/, "MobileCartBar must wire onBack= directly on the <Cart element");
   assert.ok(!src.includes("rounded-none border-0"), "must not hardcode the old rounded-none border-0 — now in POS_CART_SHEET_PANEL_CLASS");
+  assert.ok(!src.includes("@/components/ui/sheet"), "the kit's bottom sheet is gone");
 });
 
-test("PIN: MobileCartBar's outer div gates the breakpoint AND carries the bar styling in one combined className (U1 Task 1: the bar lies over the page's foot, not sidebar-offset)", () => {
+// Owner Q18 (design 6.9): the bar ALWAYS shows below 1024px — an empty new order too ("No items · New order"), so the
+// table, customer, note and bill options are reachable before the first item. Today's disabled "Cart is empty"
+// placeholder went with it; "Review order" opens the sheet in every state (a frozen send's too).
+test("PIN: owner Q18 — the bar renders \"Review order\" in every state, an empty order included; no disabled placeholder", () => {
   const src = stripComments(readSrc(MOBILE_CART_BAR));
+  assert.ok(!src.includes("Cart is empty"), "the empty-cart placeholder is gone (owner Q18)");
+  assert.ok(!/\bisEmpty\b/.test(src) && !/\bdisabled\b/.test(src), "no empty branch and nothing disabled: the bar is the same in every state");
+  assert.equal(count(src, "<DialogPrimitive.Trigger asChild>"), 1, "one trigger, always rendered");
   assert.match(
     src,
-    /className=\{cn\(POS_MOBILE_ONLY_CLASS, POS_MOBILE_BAR_CLASS\)\}/,
-    "MobileCartBar's outer div must be className={cn(POS_MOBILE_ONLY_CLASS, POS_MOBILE_BAR_CLASS)}",
+    /<DialogPrimitive\.Trigger asChild>\s*<button type="button" data-ui="pos-review-order" className=\{cn\(POS_MOBILE_BAR_BUTTON_CLASS, BRAND_PRESS_CLASS\)\}>\s*Review order\s*<\/button>/,
+    "the HTML's Review order (owner Q1), with the HTML's press",
   );
+  assert.match(src, /orderBarSummary\(\{/, "the first line comes from lib/pos-cart-view.ts (No items · New order, Adjustment still applied, Couldn't confirm)");
+  assert.match(src, /title: cartTitle\(\{ resumedOrder: cartProps\.resumedOrder \}\)/, "the cart's own title (U1 Task 4's cartTitle)");
+  assert.match(src, /\{inr\(cartProps\.total\)\}/, "the second line: the bill's total, usePosTotals' figure");
+  for (const gone of ["View cart", "Tap to send again", "SheetTrigger", "SheetContent", 'side="bottom"', "zoom-in-95"]) {
+    assert.ok(!src.includes(gone), `today's bar piece ${gone} is gone (the HTML's bar and sheet replace it)`);
+  }
 });
 
 test("PIN: MobileCartBar no longer reads the sidebar itself — the bar sits inside the page (beside the nav), so it needs no sidebar-width offset", () => {
@@ -241,15 +269,20 @@ test("PIN: MobileCartBar no longer reads the sidebar itself — the bar sits ins
   assert.ok(!src.includes("useSidebar"), "MobileCartBar.tsx must not import/call useSidebar any more");
   assert.ok(!src.includes("POS_MOBILE_BAR_SIDEBAR_EXPANDED_CLASS"), "must not reference the retired POS_MOBILE_BAR_SIDEBAR_EXPANDED_CLASS");
   assert.ok(!src.includes("POS_MOBILE_BAR_SIDEBAR_COLLAPSED_CLASS"), "must not reference the retired POS_MOBILE_BAR_SIDEBAR_COLLAPSED_CLASS");
-  assert.match(src, /SheetTrigger/, "landmark: MobileCartBar must still render SheetTrigger");
+  assert.match(src, /DialogPrimitive\.Trigger/, "landmark: MobileCartBar must still render the sheet's trigger");
 });
 
-test("PIN: MobileCartBar never reverts to the old md-hidden wrapper or a fixed 85dvh sheet height", () => {
+// From 1024px the cart is the page's column (values 0.3 cartDisplay): a sheet left open while the window grows (a
+// tablet turned to landscape) closes, as the HTML's sheet gives way to its column.
+test("PIN: MobileCartBar never reverts to the old md-hidden wrapper or a fixed sheet height, and closes its sheet where the cart column takes over", () => {
   const src = stripComments(readSrc(MOBILE_CART_BAR));
   assert.ok(!src.includes("md:hidden"), "MobileCartBar must not gate itself at md (tablet-portrait bug)");
-  assert.ok(!src.includes("h-[85dvh]"), "MobileCartBar must not hardcode a fixed 85dvh sheet height");
-  assert.match(src, /SheetContent/, "landmark: MobileCartBar must still render SheetContent");
-  assert.match(src, /Cart is empty/, "landmark: MobileCartBar must still render the empty-cart placeholder copy");
+  assert.ok(!src.includes("h-[85dvh]") && !src.includes("h-[90vh]"), "MobileCartBar must not hardcode a sheet height: the HTML's sheet runs top to bottom");
+  assert.match(src, /DialogPrimitive\.Content/, "landmark: MobileCartBar must still render the sheet's content");
+  assert.match(src, /window\.matchMedia\(CART_COLUMN_QUERY\)/, "the cart column's media query");
+  assert.match(src, /const CART_COLUMN_QUERY = `\(min-width: \$\{BREAKPOINT_LG_PX\}px\)`;/, "1024px, the cart column's own breakpoint");
+  assert.match(src, /if \(query\.matches\) onOpenChange\(false\);/, "the sheet closes there");
+  assert.match(src, /return \(\) => query\.removeEventListener\("change", closeOnColumn\);/, "the listener goes with the open sheet");
 });
 
 // U1 Task 4 (values 5.2, 5.4; design 6.5, 6.6): the cart is the HTML's head (CartHead.tsx) over its lines
@@ -270,6 +303,29 @@ test("PIN: Cart composes the HTML's head and lines, and still takes the sheet's 
   const head2 = stripComments(readSrc(CART_HEAD));
   assert.match(head2, /aria-label="Back to menu"/, 'the back button must carry aria-label="Back to menu"');
   assert.match(head2, /onClick=\{onBack\}/, "the back button closes the sheet");
+});
+
+// U1 Task 7 (values 5.2 "‹ Menu"; design 6.9): the sheet's way back is the HTML's "‹ Menu" on top of the head — 30px,
+// no padding, 15px --link at the button's own weight, the 18px chevron (stroke 2.2) 2px from the word — in place of
+// today's ghost icon button; its name stays "Back to menu" (the pinned word).
+test("PIN: CartHead's way back is the HTML's \"‹ Menu\": the chevron and the word, still named Back to menu", () => {
+  const src = stripComments(readSrc(CART_HEAD));
+  assert.equal(
+    constOf(src, "BACK_CLASS"),
+    "flex h-[30px] cursor-pointer items-center gap-0.5 self-start bg-transparent p-0 text-[15px] text-link",
+    "values 5.2: align-self flex-start, 30px, no padding, 15px --link, the chevron 2px from the word",
+  );
+  assert.match(
+    src,
+    /\{onBack && \(\s*<button type="button" data-ui="pos-cart-back" className=\{cn\(BACK_CLASS, BRAND_PRESS_CLASS\)\} onClick=\{onBack\} aria-label="Back to menu">/,
+    "the sheet only (onBack), first in the head, with the HTML's press",
+  );
+  assert.match(
+    src,
+    /<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2\.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">\s*<path d="m15 18-6-6 6-6" \/>\s*<\/svg>\s*Menu\s*<\/button>/,
+    "the HTML's chevron-left (18px, stroke 2.2, round) then the word Menu",
+  );
+  assert.ok(!src.includes("ChevronLeft") && !src.includes('size="icon"'), "today's ghost icon button is gone");
 });
 
 test("PIN: CartLines' wrapper is the HTML's lines wrapper (POS_CART_LIST_CLASS) with the HTML's empty words", () => {
@@ -644,11 +700,11 @@ test("PIN: lib/pos-layout.ts carries lg: only as the HTML's 1024px cart switch �
   const lgTokens = src.match(/[\w:-]*lg:[^\s"`]+/g) ?? [];
   assert.deepEqual(
     [...lgTokens].sort(),
-    ["lg:flex", "lg:grid-cols-[minmax(0,1fr)_340px]", "lg:hidden", "max-lg:pb-[100px]"],
-    `the only lg: tokens are the cart column, its grid track, the bar's hide and main's 100px foot, found ${lgTokens.join(", ")}`,
+    ["lg:flex", "lg:grid-cols-[minmax(0,1fr)_340px]", "max-lg:flex", "max-lg:pb-[100px]"],
+    `the only lg: tokens are the cart column, its grid track, the bar's show below 1024px and main's 100px foot, found ${lgTokens.join(", ")}`,
   );
   assert.ok(!/lg:grid-cols-\d/.test(src), "no lg:grid-cols-N tier (the 4-column tier is retired)");
-  assert.match(src, /desk:hidden/, "landmark: lib/pos-layout.ts carries the category switch too (desk:hidden)");
+  assert.match(src, /desk:flex/, "landmark: lib/pos-layout.ts carries the category column's switch too (desk:flex)");
 });
 
 test("PIN: the dashboard sidebar's widths match SIDEBAR_WIDTH_REM/SIDEBAR_WIDTH_ICON_REM, and the desktop gap div reserves that space", () => {
@@ -876,15 +932,16 @@ test("PIN: (dashboard)/layout.tsx renders Header, then RequestAlertBar, then <ma
 // U1 Task 2: the chip token (POS_CHIP_CLASS) went with the chip strip (design 6.3); U1 Task 3: the tile's corner options
 // button (POS_TILE_OPTIONS_BUTTON_CLASS) went with the old tile (owner Q5: the name opens the modal); U1 Task 4: the cart
 // stepper token (POS_CART_STEPPER_CLASS) went with the old cart line (values 5.4: the HTML's stepper, its own sizes on
-// touch screens too, ruling R1), so three copies remain.
-test("PIN: POS_PRESS_FEEDBACK_CLASS is duplicated VERBATIM inside every touch-target token (CB-1d.1 L1) — a paths pin, not a re-typed literal, keeps the three copies in sync", () => {
+// touch screens too, ruling R1); U1 Task 7: the bar's button (POS_MOBILE_BAR_BUTTON_CLASS) is the HTML's "Review order"
+// with the HTML's press (BRAND_PRESS_CLASS, as the cart's Send KOT / Pay), so two copies remain.
+test("PIN: POS_PRESS_FEEDBACK_CLASS is duplicated VERBATIM inside every touch-target token (CB-1d.1 L1) — a paths pin, not a re-typed literal, keeps the two copies in sync", () => {
   for (const [label, cls] of [
     ["POS_HEADER_CONTROL_CLASS", POS_HEADER_CONTROL_CLASS],
     ["POS_CART_CTA_CLASS", POS_CART_CTA_CLASS],
-    ["POS_MOBILE_BAR_BUTTON_CLASS", POS_MOBILE_BAR_BUTTON_CLASS],
   ] as const) {
     assert.ok(cls.includes(POS_PRESS_FEEDBACK_CLASS), `${label} must include POS_PRESS_FEEDBACK_CLASS verbatim`);
   }
+  assert.ok(!POS_MOBILE_BAR_BUTTON_CLASS.includes("pointer-coarse:"), "Review order is the HTML's button on touch screens too (ruling R1)");
 });
 
 test("PIN: POS_PRESS_FEEDBACK_CLASS itself carries the instant-tap primitives, gates every active: state on a coarse pointer, and stays compositor-only (scale/opacity — never a paint property)", () => {
@@ -1334,14 +1391,18 @@ test("PIN: owner Q13 — PosKeys is rendered ONCE, by the page, and presses only
   assert.match(stripComments(readSrc(MOBILE_CART_BAR)), /data-ui="pos-cart-sheet"/, "the sheet names itself");
 });
 
+// U1 Task 7 (owner Q18): the bar is openable in EVERY state now (an empty order too), so D9.8c's "openable while an
+// adjustment survives" holds by construction; the bar still says why an item-less cart is worth a look, through the
+// SAME shared predicate the page's auto-close uses.
 test("PIN: D9.8c — on mobile, a surviving adjustment keeps the cart bar OPENABLE (and the sheet from auto-closing), or it is unreachable there", () => {
   const barSrc = stripComments(readSrc(MOBILE_CART_BAR));
   assert.match(
     barSrc,
-    /const isEmpty =\s*cartProps\.items\.length === 0 && !hasPendingAdjustment\(cartProps\)/,
-    "the bar counts as empty ONLY when there are no items AND no surviving adjustment — Clear keeps the adjustment, and the sheet is the only place to remove it on a phone",
+    /adjustment: hasPendingAdjustment\(cartProps\),/,
+    "the bar's line reads the shared predicate: an item-less cart with a surviving adjustment says so",
   );
-  assert.match(barSrc, /Adjustment still applied/, "the bar must say WHY it is live on an item-less cart");
+  const viewSrc = stripComments(readSrc("apps/cafe/lib/pos-cart-view.ts"));
+  assert.match(viewSrc, /view\.adjustment \? "Adjustment still applied"/, "the bar must say WHY it is live on an item-less cart");
 
   // ONE predicate, shared: the bar and the page's auto-close must agree, or
   // one of them strands the adjustment the other is trying to keep reachable.

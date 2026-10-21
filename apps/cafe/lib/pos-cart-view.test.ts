@@ -14,6 +14,7 @@ import {
   lineMeta,
   lineNumber,
   matchVoidLine,
+  orderBarSummary,
   selectionHolds,
   tabMeta,
   tableAreaName,
@@ -69,6 +70,45 @@ test("cartTitle: a seated tab names its table, a walk-in tab reads Walk-In, a ne
   assert.equal(cartTitle({ resumedOrder: { tableNo: undefined } }), "Walk-In", "a resumed walk-in tab");
   assert.equal(cartTitle({ resumedOrder: {} }), "Walk-In", "a tab with no table field at all");
   assert.equal(cartTitle({ resumedOrder: null }), "New order", "nothing resumed: a new order");
+});
+
+// ── the order bar below 1024px (values 6.1; design 6.9; owner Q18; U1 Task 7) ────────────────────────────────────────
+
+test("orderBarSummary: \"{n} item(s) · {title}\" (one item says 1 item), the HTML's line with our title", () => {
+  const view = { title: "Table T-4", adjustment: false, noticeTitle: null };
+  assert.equal(orderBarSummary({ ...view, count: 5 }), "5 items · Table T-4", "the HTML's \"5 items · Table 4\" with our title");
+  assert.equal(orderBarSummary({ ...view, count: 1 }), "1 item · Table T-4", "singular for one (global constraints: never \"1 items\")");
+  assert.equal(orderBarSummary({ ...view, count: 2, title: "New order" }), "2 items · New order", "a new order's title");
+  assert.equal(orderBarSummary({ ...view, count: 3, title: "Walk-In" }), "3 items · Walk-In", "a walk-in tab's title");
+});
+
+test("orderBarSummary: an empty order still has its bar (owner Q18): \"No items · New order\"", () => {
+  const empty = { count: 0, adjustment: false, noticeTitle: null };
+  assert.equal(orderBarSummary({ ...empty, title: "New order" }), "No items · New order", "design 6.9: the empty new order's words");
+  assert.equal(orderBarSummary({ ...empty, title: "Table T-2" }), "No items · Table T-2", "a tab with nothing left on it names itself too");
+});
+
+test("orderBarSummary: an adjustment that survived Clear, and an unanswered send, say so in our words (design 6.9)", () => {
+  assert.equal(
+    orderBarSummary({ count: 0, title: "New order", adjustment: true, noticeTitle: null }),
+    "Adjustment still applied",
+    "D9.8c: no items but a promo / reward / discount / extra charge is still set",
+  );
+  assert.equal(
+    orderBarSummary({ count: 0, title: "New order", adjustment: true, noticeTitle: "Couldn't confirm" }),
+    "Couldn't confirm",
+    "an unanswered send outranks everything: it must be seen with the sheet closed",
+  );
+  assert.equal(
+    orderBarSummary({ count: 4, title: "New order", adjustment: false, noticeTitle: "Couldn't confirm" }),
+    "Couldn't confirm",
+    "also with items on the order",
+  );
+  assert.equal(
+    orderBarSummary({ count: 2, title: "New order", adjustment: true, noticeTitle: null }),
+    "2 items · New order",
+    "with items the count says enough (the adjustment shows on its footer link)",
+  );
 });
 
 test("tabMeta: \"#{the order id's last part} · {m} min\", at least 1 min, rounded", () => {

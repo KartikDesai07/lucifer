@@ -1,13 +1,10 @@
 "use client";
 
-import { ChevronLeft } from "lucide-react";
-
 import { useAreas } from "@/hooks/use-areas";
 import { useNow } from "@/hooks/use-now";
 import { cartTitle, tabMeta, tableAreaName, tableCellValue } from "@/lib/pos-cart-view";
 import { cn } from "@/lib/utils";
 import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
-import { Button } from "@/components/ui/button";
 import { TableSelector } from "@/components/pos/TableSelector";
 import { CustomerSearch } from "@/components/pos/CustomerSearch";
 import type { Customer, Order, Table } from "@/types";
@@ -19,6 +16,9 @@ import type { Customer, Order, Table } from "@/types";
 
 /** The head (values 5.2): 14px 16px, its rows 12px apart, a rule under it; the HTML sets no line-height here. */
 const HEAD_CLASS = "relative flex flex-none flex-col gap-3 border-b border-border px-4 py-3.5 leading-[normal]";
+/** "‹ Menu" (values 5.2, the sheet below 1024px only; U1 Task 7): on top of the head at its left, 30px, no padding,
+ *  15px --link at the button's own weight, the 18px chevron 2px from the word; no hover rule. */
+const BACK_CLASS = "flex h-[30px] cursor-pointer items-center gap-0.5 self-start bg-transparent p-0 text-[15px] text-link";
 /** The title row (values 5.2): baseline-aligned, 10px apart. 29px tall as the HTML's row with its 26px Clear, so the
  *  cells do not move when a new order's first item brings Clear in (the HTML always shows Clear). */
 const TITLE_ROW_CLASS = "flex min-h-[29px] items-baseline justify-between gap-2.5";
@@ -82,7 +82,7 @@ export function CartHead({
   isBusy?: boolean;
   onClear: () => void;
   onCloseTab?: () => void;
-  // Rendered only by the mobile sheet (U1 Task 7 gives it the HTML's "‹ Menu").
+  // The sheet's way back below 1024px (MobileCartBar): the HTML's "‹ Menu" closes the sheet.
   onBack?: () => void;
   cells: CartCellsProps;
 }) {
@@ -96,16 +96,14 @@ export function CartHead({
 
   return (
     <div data-ui="pos-cart-head" className={HEAD_CLASS}>
+      {/* Its name stays "Back to menu" (the word "Menu" is in it); the chevron is decoration. */}
       {onBack && (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9 shrink-0 self-start"
-          onClick={onBack}
-          aria-label="Back to menu"
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </Button>
+        <button type="button" data-ui="pos-cart-back" className={cn(BACK_CLASS, BRAND_PRESS_CLASS)} onClick={onBack} aria-label="Back to menu">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m15 18-6-6 6-6" />
+          </svg>
+          Menu
+        </button>
       )}
       <div data-ui="pos-cart-title-row" className={TITLE_ROW_CLASS}>
         <h2 data-ui="pos-cart-title" className={TITLE_CLASS}>

@@ -24,6 +24,10 @@ import {
   POS_MAIN_CLASS,
   POS_CART_CLASS,
   POS_MOBILE_BAR_CLASS,
+  POS_MOBILE_BAR_BUTTON_CLASS,
+  POS_CART_SHEET_CLASS,
+  POS_CART_SHEET_SCRIM_CLASS,
+  POS_CART_SHEET_WIDTH_PX,
   POS_TOOLBAR_CLASS,
   POS_LIST_CLASS,
   POS_CARD_GRID_CLASS,
@@ -35,7 +39,6 @@ import {
   POS_ALERT_HEIGHT_VAR,
   POS_HEADER_CONTROL_CLASS,
   POS_CART_CTA_CLASS,
-  POS_MOBILE_BAR_BUTTON_CLASS,
   POS_PRESS_FEEDBACK_CLASS,
   POS_DIALOG_LIST_CAP_CLASS,
   POS_MOVE_TABLE_LIST_CAP_CLASS,
@@ -98,7 +101,7 @@ function appBreakpointsCss(): string {
   return `@theme { ${tab![0]} ${desk![0]} }\n${wide![0]}\n`;
 }
 
-test("PIN: real Tailwind compiles the /pos frame (page height, body grid, regions, main's foot, the bar) to the exact CSS the frame pins assume — and the column sets cascade lg < desk < wide", async () => {
+test("PIN: real Tailwind compiles the /pos frame (page height, body grid, regions, main's foot, the bar, the cart sheet) to the exact CSS the frame pins assume — and the column sets cascade lg < desk < wide", async () => {
   const candidates = [
     ...POS_PAGE_CLASS.split(/\s+/),
     ...POS_BODY_GRID_CLASS.split(/\s+/),
@@ -106,6 +109,9 @@ test("PIN: real Tailwind compiles the /pos frame (page height, body grid, region
     ...POS_MAIN_CLASS.split(/\s+/),
     ...POS_CART_CLASS.split(/\s+/),
     ...POS_MOBILE_BAR_CLASS.split(/\s+/),
+    ...POS_MOBILE_BAR_BUTTON_CLASS.split(/\s+/),
+    ...POS_CART_SHEET_CLASS.split(/\s+/),
+    ...POS_CART_SHEET_SCRIM_CLASS.split(/\s+/),
     ...POS_TOOLBAR_CLASS.split(/\s+/),
     ...POS_LIST_CLASS.split(/\s+/),
     ...POS_CARD_GRID_CLASS.split(/\s+/),
@@ -134,7 +140,17 @@ test("PIN: real Tailwind compiles the /pos frame (page height, body grid, region
   const phoneFoot = "@media (width < 45rem) { padding-bottom: " + POS_MAIN_PAD_B_PX.phone + "px; }";
   const asideOn = "@media (width >= 68.75rem) { display: flex; }";
   const cartOn = "@media (width >= 64rem) { display: flex; }";
-  const barOff = "@media (width >= 64rem) { display: none; }";
+  // U1 Task 7 (values 6.1, 6.3): the bar shows below 1024px only; the sheet is 440px wide (the whole screen on a phone,
+  // with no shadow), the --pop shadow from 720px; the scrim only from 720px.
+  const barOn = "@media (width < 64rem) { display: flex; }";
+  // values 6.1 showBar (!cartOpen): [data-open] adds an attribute to the class, so it beats max-lg:flex in any order.
+  const barAside = "&[data-open] { display: none; }";
+  const barBlur = "backdrop-filter: saturate(180%) blur(20px);";
+  const sheetWidth = "width: min(" + POS_CART_SHEET_WIDTH_PX + "px, 100%);";
+  const sheetPhoneLeft = "@media (width < 45rem) { left: 0; }";
+  const sheetPhoneWidth = "@media (width < 45rem) { width: auto; }";
+  const sheetPhoneShadow = "@media (width < 45rem) { box-shadow: none; }";
+  const scrimPhoneOff = "@media (width < 45rem) { display: none; }";
   // U1 Task 2 (values 3.1 toolbar, 0.3 toolPad / listPad): the sticky toolbar and the list wrapper, phone forms last.
   const toolbarPhoneTop = "@media (width < 45rem) { padding-top: calc(var(--spacing) * 2.5); }";
   const listPhoneY = "@media (width < 45rem) { padding-block: calc(var(--spacing) * 3.5); }";
@@ -153,7 +169,17 @@ test("PIN: real Tailwind compiles the /pos frame (page height, body grid, region
     [phoneFoot, "main's 150px foot on a phone"],
     [asideOn, "the category column shows from 1100px"],
     [cartOn, "the cart column shows from 1024px"],
-    [barOff, "the bar hides from 1024px"],
+    [barOn, "the bar shows below 1024px only"],
+    [barAside, "the bar steps aside while its sheet is open"],
+    [barBlur, "the bar's glass blur (values 6.1)"],
+    ["box-shadow: var(--pop);", "the sheet's --pop shadow from 720px"],
+    [sheetWidth, "the sheet's 440px (min(440px,100%))"],
+    ["z-index: 15;", "the sheet over the tab bar (z-index 15)"],
+    ["z-index: 14;", "the scrim under the sheet (z-index 14)"],
+    [sheetPhoneLeft, "the phone's sheet from the window's left edge"],
+    [sheetPhoneWidth, "the phone's sheet: the whole width"],
+    [sheetPhoneShadow, "the phone's sheet: no shadow"],
+    [scrimPhoneOff, "no scrim on a phone"],
     ["position: sticky;", "the toolbar sticks inside main"],
     ["z-index: 3;", "the toolbar sits over the cards (z-index 3)"],
     [toolbarPhoneTop, "the toolbar's 10px top padding on a phone"],
@@ -185,7 +211,6 @@ test("PIN: real Tailwind compiles the CB-1d.1 touch-feel/device-size tokens to t
   const candidates = [
     ...POS_HEADER_CONTROL_CLASS.split(/\s+/),
     ...POS_CART_CTA_CLASS.split(/\s+/),
-    ...POS_MOBILE_BAR_BUTTON_CLASS.split(/\s+/),
     ...POS_PRESS_FEEDBACK_CLASS.split(/\s+/),
     ...POS_DIALOG_LIST_CAP_CLASS.split(/\s+/),
     ...POS_MOVE_TABLE_LIST_CAP_CLASS.split(/\s+/),
@@ -287,5 +312,6 @@ test("PIN: real Tailwind compiles the CB-1d.1 touch-feel/device-size tokens to t
 
   // Landmark: the whole candidate list reached the compiler, not just the
   // arithmetic-bearing tokens asserted above.
-  assert.ok(css.includes(".justify-between {"), "landmark: compiled CSS must include the plain .justify-between utility (POS_MOBILE_BAR_BUTTON_CLASS)");
+  // U1 Task 7: the bar's button is the HTML's Review order (no touch token any more), so the landmark is the CTA's.
+  assert.ok(css.includes(".w-full {"), "landmark: compiled CSS must include the plain .w-full utility (POS_CART_CTA_CLASS)");
 });
