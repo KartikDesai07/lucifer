@@ -195,6 +195,10 @@
   --animate-html-sheet-in-op: sheet-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   /* The HTML's rise at .35s (POS values 7.1): an Open orders row, each 25 ms after the one above (its own delay). */
   --animate-html-rise-row: brand-rise 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* The same sheetIn at .32s (POS values 8.1): the customer sheet rises in. */
+  --animate-html-sheet-in-cs: sheet-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* The HTML's rise at .3s (POS values 8.2): a customer row, each 30 ms after the one above (its own delay). */
+  --animate-html-rise-cs: brand-rise 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   --animate-scrim-in: brand-fade 0.2s ease both;
   /* The HTML's shake (values 1.5): the reveal dialog's PIN dots after a wrong PIN (values 3.16). */
   --animate-html-shake: html-shake 0.42s ease;

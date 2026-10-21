@@ -112,11 +112,12 @@ test("PIN: TableSelector opens from the trigger it is given (the cart's Table ce
 
 // U1 Task 9 (values 11.1; design 6.11): the payment sheet is the only user of CustomerSearch's own trigger, so the chip
 // became the HTML's 28px customer pill ("+ Add customer" / "Customer: {name} · change"; no icon). Reason: the HTML's
-// payment look. The cart's Customer cell still brings its own trigger.
+// payment look. The cart's Customer cell still brings its own trigger. U1 Task 10: the dialog is the HTML's customer
+// sheet on a Radix dialog of its own (DialogPrimitive), so the trigger is DialogPrimitive.Trigger.
 test("PIN: CustomerSearch's own trigger is the payment sheet's pill and it opens from the cart's Customer cell when given one", () => {
   const src = stripComments(readSrc(CUSTOMER_SEARCH));
   assert.match(src, /trigger\?: ReactElement;/, "an optional trigger (the cart's Customer cell)");
-  assert.match(src, /<DialogTrigger asChild>\s*\{trigger \?\? \(/, "the given trigger, else the payment sheet's pill");
+  assert.match(src, /<DialogPrimitive\.Trigger asChild>\s*\{trigger \?\? \(/, "the given trigger, else the payment sheet's pill");
   assert.match(
     src,
     /import\s*\{[^}]*PAY_PILL_CLASS[^}]*\}\s*from\s*"@\/lib\/payment-sheet"/,
@@ -134,6 +135,78 @@ test("PIN: CustomerSearch's empty trigger label is not Walk-In (the table alread
   assert.equal(empty![1], "+ Add customer", `the pill's empty label must be "+ Add customer", found "${empty![1]}"`);
   assert.ok(!/Walk-In/.test(empty![1]), "never Walk-In");
   assert.match(csSrc, /title=\{value \? value\.name : "Select customer"\}/, "CustomerSearch's trigger must carry a title=");
+});
+
+// U1 Task 10 (values 8.1-8.3; design 4 builder-check, 6.12; owner Q1): the customer dialog is the HTML's customer sheet
+// wherever it opens (the cart's Customer cell; the payment sheet's pill on /pos, the Orders page and the dashboard).
+// Words changed on purpose (owner Q1, the HTML's where it has the element): the search's "Phone number or name" (was
+// "Name or mobile…"), "+ New customer" (was "New"), "Mobile number" (was "Mobile") and the form's placeholders. Ours for
+// our features: "Customer" and today's description (the sub line, and the list's line until a search runs: no frequent
+// list), "Walk-In" (removes the customer), "Add customer", the search lines, "Results" over the rows.
+test("PIN: the customer sheet's words (owner Q1) and the behaviour its add form keeps", () => {
+  const src = stripComments(readSrc(CUSTOMER_SEARCH));
+  const has = (re: RegExp, what: string) => assert.match(src, re, what);
+  has(/placeholder="Phone number or name"/, "the HTML's search placeholder");
+  has(/>\s*\+ New customer\s*<\/button>/, "the HTML's new-customer button (was New)");
+  has(/>\s*Mobile number\s*<\/span>/, "the HTML's mobile caption (was Mobile)");
+  has(/>\s*Name\s*<\/span>/, "the name caption");
+  has(/placeholder="98200 12345"[\s\S]*placeholder="Customer name"/, "the HTML's form placeholders");
+  has(/<DialogPrimitive\.Title className=\{TITLE_CLASS\}>Customer<\/DialogPrimitive\.Title>/, "today's title");
+  has(/const SEARCH_HINT = "Search by name or mobile, or add a new customer\.";/, "today's description");
+  assert.equal(src.split("{SEARCH_HINT}").length - 1, 2, "the sub line, and the list's line until a search runs (design 4)");
+  has(/>\s*Walk-In\s*<\/button>/, "today's Walk-In");
+  has(/onClick=\{\(\) => select\(undefined\)\}/, "Walk-In removes the customer");
+  has(/>\s*Results\s*<\/div>/, "the caption over the rows");
+  for (const line of ["Searching…", "Offline — could not check the customer list.", "Search failed. Try again.", "No matches. Add a new customer below."]) {
+    assert.ok(src.includes(line), `today's line "${line}"`);
+  }
+  has(/"Add customer"/, "today's Add customer");
+  has(/aria-label="Cancel"/, "today's Cancel is the HTML's back button (to the search)");
+  has(/id="new-customer-mobile"[\s\S]*?inputMode="numeric"[\s\S]*?autoFocus=\{focusMobile\}/, "the mobile field: id, keypad, focus");
+  has(/id="new-customer-name"[\s\S]*?autoFocus=\{!focusMobile\}/, "the name field: id, focus");
+  has(/onOpenAutoFocus=\{focusMarkedField\}[\s\S]*data-autofocus=""[\s\S]*data-autofocus=\{focusMobile \? "" : undefined\}[\s\S]*data-autofocus=\{focusMobile \? undefined : ""\}/, "on open the search or the empty field takes the focus, also inside the cart / payment sheet (that dialog pulls a plain autoFocus back)");
+  has(/const valid = name\.trim\(\)\.length > 0 && mobile\.trim\(\)\.length >= 10;/, "today's rules");
+  has(/notes: "Regular",/, "today's create");
+  has(/initialMobile=\{termIsPhoneLike \? strippedTerm : undefined\}/, "a phone-like term seeds the mobile");
+  has(/const termMode = termIsPhoneLike \? "Phone" : term\.trim\(\) \? "Name" : "";/, "the HTML's mode word, from the same rule");
+  for (const gone of ["Name or mobile…", "UserPlus", "@/components/ui/dialog", "@/components/ui/button", "Frequent customers", "10-digit number"]) {
+    assert.ok(!src.includes(gone), `no ${gone}: the HTML's customer sheet (U1 Task 10)`);
+  }
+});
+
+// Values 8.1-8.3 / 0.3 (csH, csMaxH, sheetAlign, sheetPad, sheetRadius): the --scrim (fadeIn .2s; the panel centred in
+// 16px, on the foot below 720px) at z-index 51, over the payment sheet's 50 (the HTML's 46 over 45); the 460px panel,
+// 600 tall (88dvh below 720px), a 1px --border, radius 14 (14 14 0 0), sheetIn .32s; the head (16 16 12, gap 10, 17/600
+// over 12.5 --text-2, the 32px back and ✕); the 48px search with the --accent rule and ring; the caption; 56px rows;
+// the foot (46px "+ New customer", 36px link); the form's 48px fields (1.5px --border, radius 12) and 48px button.
+test("PIN: the customer sheet's look is the HTML's (values 8.1-8.3), over the payment sheet", () => {
+  const src = stripComments(readSrc(CUSTOMER_SEARCH));
+  const literal = (name: string) => src.match(new RegExp(`const ${name} =\\s*"([^"]*)"`))?.[1]?.split(/\s+/) ?? [];
+  const expect = (name: string, list: string[]) => {
+    const tokens = literal(name);
+    for (const t of list) assert.ok(tokens.includes(t), `${name}: "${t}"`);
+  };
+  expect("SCRIM_CLASS", ["fixed", "inset-0", "z-[51]", "flex", "items-center", "justify-center", "bg-scrim", "p-4", "motion-safe:animate-scrim-in", "max-tab:items-end", "max-tab:p-0"]);
+  expect("PANEL_CLASS", ["flex", "w-full", "max-w-[460px]", "flex-col", "overflow-hidden", "rounded-[14px]", "border", "border-border", "bg-card", "[box-shadow:var(--pop)]", "motion-safe:animate-html-sheet-in-cs", "tab:h-[600px]", "max-tab:h-[88vh]", "max-tab:rounded-[14px_14px_0_0]"]);
+  expect("HEAD_CLASS", ["flex", "flex-none", "items-center", "gap-2.5", "px-4", "pt-4", "pb-3"]);
+  expect("ROUND_CLASS", ["flex", "size-8", "flex-none", "items-center", "justify-center", "border-0", "bg-surface-3"]);
+  expect("SEARCH_BOX_CLASS", ["flex", "h-12", "items-center", "gap-2.5", "rounded-[12px]", "border-[1.5px]", "border-primary", "px-3", "[box-shadow:0_0_0_4px_var(--accent)]"]);
+  expect("SEARCH_INPUT_CLASS", ["min-w-0", "flex-1", "text-[15px]", "max-tab:text-[16px]", "placeholder:text-subtle-foreground"]);
+  expect("CAPTION_CLASS", ["flex-none", "px-[18px]", "pt-1", "pb-1.5", "text-[11.5px]", "font-semibold", "tracking-[0.05em]", "uppercase", "text-subtle-foreground"]);
+  expect("ROW_CLASS", ["flex", "w-full", "items-center", "gap-3", "rounded-[10px]", "px-2.5", "py-[9px]", "text-left", "hover:bg-hover", "motion-safe:animate-html-rise-cs"]);
+  expect("AVATAR_CLASS", ["flex", "size-[38px]", "flex-none", "items-center", "justify-center", "rounded-[50%]", "text-[13px]", "font-semibold"]);
+  expect("PHONE_CLASS", ["block", "font-mono", "text-[12.5px]", "text-muted-foreground"]);
+  expect("RIGHT_CLASS", ["flex-none", "text-right", "text-[12px]", "leading-[1.4]", "text-muted-foreground"]);
+  expect("NEW_CLASS", ["h-[46px]", "rounded-[12px]", "bg-primary", "text-[14.5px]", "font-semibold", "text-primary-foreground", "hover:bg-primary-hover"]);
+  expect("LINK_CLASS", ["h-9", "bg-transparent", "text-[13.5px]", "font-medium", "text-link"]);
+  expect("FIELD_BOX_CLASS", ["flex", "h-12", "items-center", "gap-2", "rounded-[12px]", "border-[1.5px]", "border-border", "bg-card", "px-3"]);
+  expect("SAVE_CLASS", ["h-12", "w-full", "rounded-[12px]", "bg-primary", "text-[15px]", "font-semibold", "disabled:opacity-50"]);
+  assert.ok(src.includes("const ROW_CURRENT_CLASS = \"bg-accent\";"), "the current customer's row on --accent-t, with a check");
+  assert.ok(src.includes("AVATAR_HUES[avatarHueIndex(c.name)]"), "U0's precomputed avatar tints, by name (no runtime color-mix)");
+  assert.ok(stripComments(readSrc("apps/cafe/lib/payment-sheet.ts")).includes('"fixed inset-0 z-50 '), "the payment sheet stays at 50, under it");
+  const css = readSrc("apps/cafe/app/globals.css");
+  assert.ok(css.includes("--animate-html-sheet-in-cs: sheet-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both;"), "the sheet's sheetIn .32s");
+  assert.ok(css.includes("--animate-html-rise-cs: brand-rise 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;"), "a row's rise .3s");
 });
 
 // U1 Task 6 (values 7; design 6.2; owner Q16, Q17): today's Open tabs dialog became the HTML's Open orders panel — a
