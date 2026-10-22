@@ -4,6 +4,7 @@ import type { ComponentProps, CSSProperties } from "react";
 import { usePathname } from "next/navigation";
 
 import { Toaster } from "@/components/ui/sonner";
+import { isPosPath } from "@/lib/pos-layout";
 
 // The one toaster, mounted by the root layout (U0 Task 4, ruling R8). The staff screens get the owner's HTML toast
 // (values 2.8; design 5.4); the diner menu (/m) keeps exactly its previous toast — the kit Toaster, whose look comes
@@ -44,8 +45,17 @@ export const STAFF_TOASTER_PROPS: ComponentProps<typeof Toaster> = {
   },
 };
 
+/** /pos (owner Q19): the order bar and the full-screen cart sheet's Send KOT / Pay sit at the window's foot up to 1279px
+ *  there (the HTML's 1024px cut-off moved to 1280px), so the toast keeps the bar's 92px up to 1279px and takes the
+ *  HTML's 24px only beside the cart column (xl:); every other page keeps the staff toaster's lg: 24px. */
+export const POS_TOASTER_PROPS: ComponentProps<typeof Toaster> = {
+  ...STAFF_TOASTER_PROPS,
+  className: "toaster group bottom-[140px]! tab:bottom-[92px]! xl:bottom-[24px]!",
+};
+
 export function AppToaster() {
   const pathname = usePathname() ?? "";
   if (isDinerRoute(pathname)) return <Toaster richColors position="top-right" />;
-  return <Toaster {...STAFF_TOASTER_PROPS} />;
+  // One element for every staff page: moving to or from /pos only changes its offset (no remount, no toast lost).
+  return <Toaster {...(isPosPath(pathname) ? POS_TOASTER_PROPS : STAFF_TOASTER_PROPS)} />;
 }

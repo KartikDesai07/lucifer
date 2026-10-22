@@ -22,11 +22,12 @@ const SELECTED_CLASS = "bg-accent [box-shadow:inset_0_0_0_1px_var(--accent-b)]";
 /** The name column: the keyboard's way to select the line (its click reaches the line), heard as pressed while the
  *  line is selected (the action row is not a popup); no look of its own. */
 const NAME_CLASS = "min-w-0 cursor-pointer bg-transparent p-0 text-left text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring";
-/** The stepper box (values 5.4, 0.3 stepBox): 1px --border, radius 8, --surface; 36px tall, 30px from 1100px. */
-const STEPPER_CLASS = "flex h-9 items-center rounded-[8px] border border-border bg-card desk:h-[30px]";
-/** A stepper button (values 5.4, 0.3 stepW/stepH, 0.5): 38x34, 30x28 from 1100px; the UA's 1px 6px padding; a 16px
- *  glyph in --text; hover --surface-2. Locked while busy. */
-const STEP_BUTTON_CLASS = "h-[34px] w-[38px] cursor-pointer bg-transparent px-1.5 py-px text-[16px] text-foreground not-disabled:hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50 desk:h-7 desk:w-[30px]";
+/** The stepper box (values 5.4, 0.3 stepBox): 1px --border, radius 8, --surface; 36px tall, 30px in the cart column
+ *  from 1280px (ruling P48: below 1280px the cart is the full-screen sheet, the mobile style, owner Q20). */
+const STEPPER_CLASS = "flex h-9 items-center rounded-[8px] border border-border bg-card xl:h-[30px]";
+/** A stepper button (values 5.4, 0.3 stepW/stepH, 0.5): 38x34, 30x28 in the column from 1280px (ruling P48); the UA's
+ *  1px 6px padding; a 16px glyph in --text; hover --surface-2. Locked while busy. */
+const STEP_BUTTON_CLASS = "h-[34px] w-[38px] cursor-pointer bg-transparent px-1.5 py-px text-[16px] text-foreground not-disabled:hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50 xl:h-7 xl:w-[30px]";
 
 // values 5.4 status: sent → --ok dot, --text-2; not sent → --warn dot, --warn-i (the theme's status set, lib/ui).
 const STATUS = {
@@ -73,8 +74,9 @@ export function CartLine({
       </button>
       <span className="flex items-center gap-2.5">
         {locked ? (
-          // In the stepper box's height, so a sent line stands as tall as a new one (values 5.4: 72px, 74px below 1100px).
-          <span data-ui="pos-line-qty" className="flex h-9 items-center text-[13px] font-semibold text-muted-foreground desk:h-[30px]">
+          // In the stepper box's height, so a sent line stands as tall as a new one (values 5.4: 72px in the column,
+          // 74px in the sheet; ruling P48).
+          <span data-ui="pos-line-qty" className="flex h-9 items-center text-[13px] font-semibold text-muted-foreground xl:h-[30px]">
             ×{item.qty}
           </span>
         ) : (

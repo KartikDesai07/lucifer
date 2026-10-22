@@ -38,6 +38,8 @@ import {
   POS_CARD_GAP_PX,
   POS_BODY_GRID_CLASS,
   POS_ASIDE_CLASS,
+  POS_CART_CLASS,
+  POS_CART_SHEET_CLASS,
   POS_MAIN_CLASS,
   POS_MAIN_PAD_B_PX,
   POS_TOOLBAR_CLASS,
@@ -429,7 +431,10 @@ test("PIN: CartActions draws the HTML's two buttons — every button wears the S
 
 // U1 Task 4 (values 5.4, 0.3 stepBox/stepW/stepH; ruling R1: the HTML's sizes on touch screens too): the HTML's line —
 // the number, the name and its meta, the stepper (or a sent line's "×qty") and the total, then the status line.
-test("PIN: CartLine is the HTML's line: its grid, the 30/28 stepper from 1100px (36/34 below), the status words, no trash button", () => {
+// Ruling P48 (U1 Task 14 review; owner Q20: below 1280px = the mobile style): the cart below 1280px is the full-screen
+// sheet, so its steppers take the HTML's touch sizes (the 36px box, 38x34 buttons, its below-1100 values) at 1100-1279px
+// too; the desk 30 / 30x28 go with the cart column from 1280px (xl:, POS_CART_CLASS's own switch).
+test("PIN: CartLine is the HTML's line: its grid, the 30/28 stepper in the column from 1280px (36/34 in the sheet below, ruling P48), the status words, no trash button", () => {
   const src = stripComments(readSrc(CART_LINE));
   assert.equal(
     constOf(src, "LINE_CLASS"),
@@ -443,14 +448,16 @@ test("PIN: CartLine is the HTML's line: its grid, the 30/28 stepper from 1100px 
   );
   assert.equal(
     constOf(src, "STEPPER_CLASS"),
-    "flex h-9 items-center rounded-[8px] border border-border bg-card desk:h-[30px]",
-    "values 5.4 stepper box: 1px --border, radius 8, --surface, stepBox 36 / 30 from 1100px",
+    "flex h-9 items-center rounded-[8px] border border-border bg-card xl:h-[30px]",
+    "values 5.4 stepper box: 1px --border, radius 8, --surface, stepBox 36 / 30 in the column from 1280px (ruling P48)",
   );
   assert.equal(
     constOf(src, "STEP_BUTTON_CLASS"),
-    "h-[34px] w-[38px] cursor-pointer bg-transparent px-1.5 py-px text-[16px] text-foreground not-disabled:hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50 desk:h-7 desk:w-[30px]",
-    "values 5.4 / 0.3 stepW/stepH / 0.5: 38x34 (30x28 from 1100px), the UA's 1px 6px padding, a 16px glyph, hover --surface-2",
+    "h-[34px] w-[38px] cursor-pointer bg-transparent px-1.5 py-px text-[16px] text-foreground not-disabled:hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50 xl:h-7 xl:w-[30px]",
+    "values 5.4 / 0.3 stepW/stepH / 0.5: 38x34 (30x28 in the column from 1280px, ruling P48), the UA's 1px 6px padding, a 16px glyph, hover --surface-2",
   );
+  assert.ok(!/\bdesk:/.test(src), "ruling P48: no 1100px size in the cart line (below 1280px it is the sheet's, the mobile style)");
+  assert.ok(POS_CART_CLASS.split(/\s+/).includes("xl:flex"), "the desk sizes switch where the cart column shows (xl:)");
   assert.ok(src.includes('title="Remove one"') && src.includes('title="Add one"'), "the HTML's stepper titles");
   assert.ok(src.includes('aria-label="Decrease quantity"') && src.includes('aria-label="Increase quantity"'), "today's aria-labels kept");
   assert.ok(src.includes(">−</button>"), "the HTML's minus glyph (U+2212)");
@@ -465,8 +472,8 @@ test("PIN: CartLine is the HTML's line: its grid, the 30/28 stepper from 1100px 
   assert.ok(src.includes('"size-1.5 rounded-[50%]"'), "a 6x6 dot, radius 50% (values 5.4)");
   assert.match(src, />\s*×\{item\.qty\}\s*<\/span>/, "a sent line shows its quantity where the stepper sits (it stays locked)");
   assert.ok(
-    src.includes('className="flex h-9 items-center text-[13px] font-semibold text-muted-foreground desk:h-[30px]"'),
-    '"×qty" 13px 600 --text-2, as tall as the stepper box (a sent line stands as tall as a new one)',
+    src.includes('className="flex h-9 items-center text-[13px] font-semibold text-muted-foreground xl:h-[30px]"'),
+    '"×qty" 13px 600 --text-2, as tall as the stepper box (a sent line stands as tall as a new one; ruling P48)',
   );
   assert.ok(src.includes("{inr(item.price * item.qty)}"), "the line total at the real price (a reward line too, as today)");
   assert.ok(src.includes("{lineMeta(item)}"), "the meta comes from lib/pos-cart-view.ts");
@@ -1443,6 +1450,25 @@ test("PIN: owner Q13 — PosKeys is rendered ONCE, by the page, and presses only
   assert.match(keys, /\.disabled/, "a disabled button is never pressed");
   assert.match(keys, /data-ui='pos-cart-sheet'/, "the cart sheet below 1280px is no dialog to the keys when it is the only one");
   assert.match(stripComments(readSrc(MOBILE_CART_BAR)), /data-ui="pos-cart-sheet"/, "the sheet names itself");
+});
+
+// U1 Task 14 review (minor): the cart sheet stays mounted for its .2s slide down (Radix keeps it until the close has
+// played, owner Q19), still on screen, so F8 / F9 must not press the closing sheet's Send KOT / Pay in that time: a
+// button inside a sheet whose data-state is "closed" is not the visible cart's.
+test("PIN: F8 / F9 never press the buttons of a cart sheet that is sliding down (data-state closed)", () => {
+  const keys = stripComments(readSrc(POS_KEYS));
+  assert.ok(keys.includes(`const CLOSING_CART_SHEET = "[data-ui='pos-cart-sheet'][data-state='closed']";`), "the closing sheet, by Radix's own state");
+  const visibleFn = between(keys, "function visible<", "\n}\n");
+  assert.match(
+    visibleFn,
+    /if \(el\.getClientRects\(\)\.length > 0 && !el\.closest\(CLOSING_CART_SHEET\)\) return el;/,
+    "visible() skips an element inside the closing sheet (Send KOT, Pay, the search alike)",
+  );
+  assert.match(keys, /const send = visible<HTMLButtonElement>\("\[data-ui='pos-send'\]"\);/, "Send KOT is found through visible()");
+  assert.match(keys, /const pay = visible<HTMLButtonElement>\("\[data-ui='pos-pay'\]"\);/, "Pay is found through visible()");
+  const sheet = stripComments(readSrc(MOBILE_CART_BAR));
+  assert.ok(POS_CART_SHEET_CLASS.includes("data-[state=closed]:animate-cart-sheet-down"), "the close is the one that keeps the sheet mounted");
+  assert.match(sheet, /<DialogPrimitive\.Content\s+data-ui="pos-cart-sheet"/, "landmark: the sheet is the Radix content (it carries data-state)");
 });
 
 // U1 Task 7 (owner Q18): the bar is openable in EVERY state now (an empty order too), so D9.8c's "openable while an

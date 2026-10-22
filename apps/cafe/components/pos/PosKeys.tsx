@@ -14,11 +14,14 @@ import { posKeyAction } from "@/lib/pos-keys";
 
 const OPEN_DIALOGS = "[role='dialog'], [role='alertdialog']";
 const CART_SHEET = "[data-ui='pos-cart-sheet']";
+/** The cart sheet sliding down (owner Q19): Radix keeps it mounted, on screen, for its .2s close; its buttons are no
+ *  longer the cart's, so a key never presses them. */
+const CLOSING_CART_SHEET = "[data-ui='pos-cart-sheet'][data-state='closed']";
 
-/** The first element matching `selector` that is on screen (the hidden cart mount has no box). */
+/** The first element matching `selector` that is on screen (the hidden cart mount has no box), outside a closing sheet. */
 function visible<T extends HTMLElement>(selector: string): T | null {
   for (const el of document.querySelectorAll<T>(selector)) {
-    if (el.getClientRects().length > 0) return el;
+    if (el.getClientRects().length > 0 && !el.closest(CLOSING_CART_SHEET)) return el;
   }
   return null;
 }
