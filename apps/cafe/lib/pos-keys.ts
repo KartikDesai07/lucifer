@@ -39,9 +39,16 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return (typeof el.tagName === "string" && FIELD_TAGS.has(el.tagName.toUpperCase())) || el.isContentEditable === true;
 }
 
+/** One of the three /pos keys ("/", F8, F9). Checked first, before anything else is read: components/pos/PosKeys.tsx
+ *  returns on any other key before it scans the page for dialogs and buttons, so typing in a field costs no DOM reads
+ *  (U1 audit wave, report M1; ruling P54). */
+export function isPosKey(key: string): boolean {
+  return key === "/" || key === "F8" || key === "F9";
+}
+
 /** What a keydown on /pos should do, or null for nothing (the key then reaches the page as usual). */
 export function posKeyAction(e: PosKeyEvent, s: PosKeyState): PosKeyAction | null {
-  if (e.key !== "/" && e.key !== "F8" && e.key !== "F9") return null;
+  if (!isPosKey(e.key)) return null;
   if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return null;
   if (s.dialogOpen || isTypingTarget(e.target)) return null;
   if (e.key === "/") return "search";

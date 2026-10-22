@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-import { posKeyAction } from "@/lib/pos-keys";
+import { isPosKey, posKeyAction } from "@/lib/pos-keys";
 
 // U1 Task 5 (owner Q13; design 6.13; values 13.2): the /pos keys — "/" focuses the menu search, F8 presses Send KOT,
 // F9 presses Pay. Rendered ONCE by the page (the cart mounts twice: the column and, below 1280px, the sheet), it
@@ -43,6 +43,8 @@ export function PosKeys({ busy }: { busy: boolean }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Any other key leaves before the page is read: typing in a field never pays for the scans below (report M1).
+      if (!isPosKey(e.key)) return;
       const send = visible<HTMLButtonElement>("[data-ui='pos-send']");
       const pay = visible<HTMLButtonElement>("[data-ui='pos-pay']");
       const action = posKeyAction(e, {

@@ -141,4 +141,9 @@ test("the counts and the stagger: '{n} free' per area (free tiles only), '{n} se
   assert.equal(seatsText(4), "4 seats", "plural");
   assert.equal(tileDelay(0), "0.00s", "the first tile at once");
   assert.equal(tileDelay(3), "0.06s", "values 9.2: d = k x .02s");
+  // Ruling P52 (U1 audit wave, report M4): capped at 0.3s, as the HTML's own Open orders rows (a real floor has 40+ tables).
+  assert.equal(tileDelay(14), "0.28s", "under the cap: still k x .02s");
+  assert.equal(tileDelay(15), "0.30s", "the cap itself");
+  assert.equal(tileDelay(40), "0.30s", "a 40-table area's last tile waits 0.3s, not 0.8s");
+  assert.equal(tileDelay(500), "0.30s", "far over the cap: 0.3s");
 });

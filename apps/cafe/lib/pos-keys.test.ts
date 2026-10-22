@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { posKeyAction, type PosKeyState } from "./pos-keys";
+import { isPosKey, posKeyAction, type PosKeyState } from "./pos-keys";
 
 // Event targets as the browser hands them: the page itself, a focused field, a focused button.
 const at = (tagName: string, extra: Record<string, unknown> = {}): EventTarget => ({ tagName, ...extra }) as unknown as EventTarget;
@@ -75,5 +75,18 @@ for (const [key, action, enabledKey] of [
 test("every other key does nothing", () => {
   for (const key of ["Enter", "Escape", "F7", "F10", "a", "?", " ", "Tab"]) {
     assert.equal(posKeyAction(press(key), READY), null, `${JSON.stringify(key)} is not a /pos key`);
+  }
+});
+
+// U1 audit wave (report M1; ruling P54): PosKeys asks isPosKey FIRST and returns on any other key before it scans the
+// page (3 querySelectorAll + getClientRects per keydown), so typing in a field costs no DOM reads; posKeyAction starts
+// with the same check, so the two can never disagree about which keys are the page's.
+test("isPosKey: exactly the three /pos keys, checked before anything else", () => {
+  for (const key of ["/", "F8", "F9"]) assert.equal(isPosKey(key), true, `${key} is a /pos key`);
+  for (const key of ["Enter", "Escape", "F7", "F10", "a", "?", " ", "Tab", "f8", "Divide", ""]) {
+    assert.equal(isPosKey(key), false, `${JSON.stringify(key)} is not a /pos key`);
+  }
+  for (const key of ["a", "Enter", "F10"]) {
+    assert.equal(posKeyAction(press(key), READY), null, `posKeyAction drops ${JSON.stringify(key)} as isPosKey does`);
   }
 });

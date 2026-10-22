@@ -64,9 +64,11 @@ export function freeTileCount(kinds: readonly TableTileKind[]): number {
   return kinds.filter((k) => k === "free").length;
 }
 
-/** values 9.2: each tile rises 20 ms after the one before it in its area. */
+/** values 9.2: each tile rises 20 ms after the one before it in its area, capped at 0.3s (ruling P52, as the HTML's own
+ *  Open orders rows: lib/pos-open-orders.ts) — the HTML's demo floor has about 12 tables, a real cafe's 40 or more, whose
+ *  last tiles would otherwise wait most of a second to show. */
 export function tileDelay(index: number): string {
-  return `${(index * 0.02).toFixed(2)}s`;
+  return `${Math.min(index * 0.02, 0.3).toFixed(2)}s`;
 }
 
 // ── the tile rules (behaviour unchanged: the rules TableSelector and MoveTablePicker ran inline) ─────────────────

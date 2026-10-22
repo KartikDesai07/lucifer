@@ -9,6 +9,7 @@ import {
   NO_MATCH_HINT,
   SKIP_CUSTOMER_LABEL,
   customerListCaption,
+  customerRowDelay,
   mobileCountText,
   newCustomerLabel,
   noMatchText,
@@ -18,6 +19,16 @@ test("the list caption counts the rows on screen (ruling P34; upper-cased by its
   assert.equal(customerListCaption(0), "No matches", "none: the no-match line's caption");
   assert.equal(customerListCaption(1), "1 match", "one: singular");
   assert.equal(customerListCaption(8), "8 matches", "several");
+});
+
+// Ruling P52 (U1 audit wave, report M4): the rows rise 30 ms apart (values 8.2), capped at 0.3s as the HTML's own Open
+// orders rows, so a long result list's last rows never wait most of a second.
+test("customerRowDelay: index x 30 ms, capped at 0.3s (ruling P52)", () => {
+  assert.equal(customerRowDelay(0), "0.00s", "the first row at once");
+  assert.equal(customerRowDelay(3), "0.09s", "values 8.2: d = index x .03s");
+  assert.equal(customerRowDelay(9), "0.27s", "under the cap");
+  assert.equal(customerRowDelay(10), "0.30s", "the cap itself");
+  assert.equal(customerRowDelay(200), "0.30s", "far over the cap: 0.3s");
 });
 
 test("the no-match line is the HTML's two lines, the query in curly quotes (ruling P34)", () => {

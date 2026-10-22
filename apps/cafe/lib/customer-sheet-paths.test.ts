@@ -134,6 +134,10 @@ test("PIN: the customer sheet's look is the HTML's (values 8.1-8.3), over the pa
   expectTokens(row, "RIGHT_CLASS", ["flex-none", "text-right", "text-[12px]", "leading-[1.4]", "text-muted-foreground"]);
   assert.ok(row.includes('const ROW_CURRENT_CLASS = "bg-accent";'), "the current customer's row on --accent-t, with a check");
   assert.ok(row.includes("AVATAR_HUES[avatarHueIndex(c.name)]"), "U0's precomputed avatar tints, by name (no runtime color-mix)");
+  // Ruling P52: the rise delay is lib/customer-sheet.ts's capped one (unit-tested), never an inline uncapped index x .03.
+  assert.ok(row.includes("style={{ animationDelay: customerRowDelay(index) }}"), "a row rises after the capped delay (ruling P52)");
+  assert.ok(row.includes('import { customerRowDelay } from "@/lib/customer-sheet";'), "the delay comes from the pure helper");
+  assert.ok(!row.includes("index * 0.03"), "no inline, uncapped delay");
   const form = readSrc(FORM);
   expectTokens(form, "FIELD_BOX_CLASS", ["flex", "h-12", "items-center", "gap-2", "rounded-[12px]", "border-[1.5px]", "border-border", "bg-card", "px-3"]);
   expectTokens(form, "SAVE_CLASS", ["h-12", "w-full", "rounded-[12px]", "bg-primary", "text-[15px]", "font-semibold", "disabled:opacity-50"]);

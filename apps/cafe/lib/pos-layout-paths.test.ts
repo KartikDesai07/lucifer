@@ -1473,6 +1473,26 @@ test("PIN: owner Q13 — PosKeys is rendered ONCE, by the page, and presses only
   assert.match(stripComments(readSrc(MOBILE_CART_BAR)), /data-ui="pos-cart-sheet"/, "the sheet names itself");
 });
 
+// U1 audit wave (report M1; ruling P54): the listener ran 3 querySelectorAll + getClientRects scans on EVERY keydown
+// (typing in any field) before posKeyAction dropped the key. The key is now checked first (isPosKey, unit-tested).
+test("PIN: PosKeys checks the key before any DOM read — any other key returns at the listener's first line", () => {
+  const keys = stripComments(readSrc(POS_KEYS));
+  assert.match(keys, /import \{ isPosKey, posKeyAction \} from "@\/lib\/pos-keys";/, "the shared key check");
+  assert.match(
+    keys,
+    /const onKey = \(e: KeyboardEvent\) => \{\s*if \(!isPosKey\(e\.key\)\) return;\s*const send = visible</,
+    "the first line of onKey returns on any other key, before the first scan",
+  );
+  const onKey = between(keys, "const onKey = (e: KeyboardEvent) => {", 'window.addEventListener("keydown", onKey);');
+  const early = onKey.indexOf("if (!isPosKey(e.key)) return;");
+  for (const read of ["visible<", "otherDialogOpen()", "querySelector", "getClientRects"]) {
+    const at = onKey.indexOf(read);
+    assert.ok(at === -1 || at > early, `${read} comes after the key check`);
+  }
+  const lib = stripComments(readSrc("apps/cafe/lib/pos-keys.ts"));
+  assert.match(lib, /export function posKeyAction\([^)]*\): PosKeyAction \| null \{\s*if \(!isPosKey\(e\.key\)\) return null;/, "posKeyAction's first check is the same isPosKey");
+});
+
 // U1 Task 14 review (minor): the cart sheet stays mounted for its .2s slide down (Radix keeps it until the close has
 // played, owner Q19), still on screen, so F8 / F9 must not press the closing sheet's Send KOT / Pay in that time: a
 // button inside a sheet whose data-state is "closed" is not the visible cart's.
