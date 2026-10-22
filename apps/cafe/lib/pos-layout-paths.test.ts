@@ -227,8 +227,10 @@ test("PIN: the category column's list keeps the order bar clear below 1280px, wi
   assert.ok(list, "landmark: the column's list");
   const cls = list![1].split(/\s+/);
   assert.ok(cls.includes("pb-4"), "16px at its foot beside the cart column (1280px and wider)");
-  assert.ok(cls.includes(`max-xl:pb-[${POS_MAIN_PAD_B_PX.cmp}px]`), "below 1280px the bar's room, main's own 100px");
-  assert.ok(POS_MAIN_CLASS.split(/\s+/).includes(`max-xl:pb-[${POS_MAIN_PAD_B_PX.cmp}px]`), "the same token as the menu column's");
+  // Ruling P49: the bar grows by the bottom safe-area inset from 720px, so the 100px does too (100px at inset 0).
+  const cmpFoot = `max-xl:pb-[calc(${POS_MAIN_PAD_B_PX.cmp}px+env(safe-area-inset-bottom))]`;
+  assert.ok(cls.includes(cmpFoot), "below 1280px the bar's room, main's own 100px plus the inset");
+  assert.ok(POS_MAIN_CLASS.split(/\s+/).includes(cmpFoot), "the same token as the menu column's");
 });
 
 // U1 Task 7 (values 6.1, 6.3; design 6.9): the HTML's glass order bar over the page's foot and the cart sheet it opens.
@@ -757,7 +759,7 @@ test("PIN: lib/pos-layout.ts carries no lg: token (owner Q19), and xl: only as t
   const xlTokens = (src.match(/[\w:-]*xl:[^\s"`]+/g) ?? []).filter((t) => !t.startsWith("xl:pointer-fine:"));
   assert.deepEqual(
     [...xlTokens].sort(),
-    ["max-xl:flex", "max-xl:pb-[100px]", "xl:flex", "xl:grid-cols-[220px_minmax(0,1fr)_380px]"],
+    ["max-xl:flex", "max-xl:pb-[calc(100px+env(safe-area-inset-bottom))]", "xl:flex", "xl:grid-cols-[220px_minmax(0,1fr)_380px]"],
     `the frame's only xl: tokens are the bar's show below 1280px, main's 100px foot, the cart column and its grid track, found ${xlTokens.join(", ")}`,
   );
   assert.ok(!/(?:lg|xl):grid-cols-\d/.test(src), "no lg:/xl:grid-cols-N tier (the 4-column tier is retired)");
@@ -1400,7 +1402,7 @@ test("PIN: the footer is the HTML's (values 5.5): sticky at the cart's foot over
   const footer = constOf(src, "FOOTER_CLASS").split(/\s+/);
   for (const t of [
     "sticky", "bottom-0", "z-[2]", "flex", "flex-none", "flex-col", "gap-2.5", "border-t", "border-border", "bg-card", "px-4", "pt-3",
-    "pb-3.5", "max-tab:pb-[calc(12px+env(safe-area-inset-bottom))]", "[box-shadow:0_-10px_24px_rgba(0,0,0,.04)]", "leading-[normal]",
+    "pb-[calc(14px+env(safe-area-inset-bottom))]", "max-tab:pb-[calc(12px+env(safe-area-inset-bottom))]", "[box-shadow:0_-10px_24px_rgba(0,0,0,.04)]", "leading-[normal]",
   ]) {
     assert.ok(footer.includes(t), `values 5.5 footer: ${t}`);
   }

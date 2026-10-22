@@ -47,10 +47,11 @@ export const STAFF_TOASTER_PROPS: ComponentProps<typeof Toaster> = {
 
 /** /pos (owner Q19): the order bar and the full-screen cart sheet's Send KOT / Pay sit at the window's foot up to 1279px
  *  there (the HTML's 1024px cut-off moved to 1280px), so the toast keeps the bar's 92px up to 1279px and takes the
- *  HTML's 24px only beside the cart column (xl:); every other page keeps the staff toaster's lg: 24px. */
+ *  HTML's 24px only beside the cart column (xl:); every other page keeps the staff toaster's lg: 24px. Ruling P49: from
+ *  720px the bar and the sheet's foot grow by the bottom safe-area inset, so the 92px does too (92px at inset 0). */
 export const POS_TOASTER_PROPS: ComponentProps<typeof Toaster> = {
   ...STAFF_TOASTER_PROPS,
-  className: "toaster group bottom-[140px]! tab:bottom-[92px]! xl:bottom-[24px]!",
+  className: "toaster group bottom-[140px]! tab:bottom-[calc(92px+env(safe-area-inset-bottom))]! xl:bottom-[24px]!",
 };
 
 export function AppToaster() {

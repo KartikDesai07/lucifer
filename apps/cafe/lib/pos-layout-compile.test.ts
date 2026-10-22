@@ -143,9 +143,11 @@ test("PIN: real Tailwind compiles the /pos frame (page height, body grid, region
     wide.cart +
     "px; } }";
   const lgCols = "@media (width >= 64rem) { grid-template-columns:";
-  const cmpFoot = "@media (width < 80rem) { padding-bottom: " + POS_MAIN_PAD_B_PX.cmp + "px; }";
-  // Ruling P44: on a phone main's foot and the bar's place add the safe-area inset the tab bar grows by.
+  // Ruling P44: on a phone main's foot and the bar's place add the safe-area inset the tab bar grows by; ruling P49: at
+  // 720-1279px main's foot and the bar's bottom padding add it too.
   const inset = "env(safe-area-inset-bottom)";
+  const cmpFoot = "@media (width < 80rem) { padding-bottom: calc(" + POS_MAIN_PAD_B_PX.cmp + "px + " + inset + "); }";
+  const barTabPad = "@media (width >= 45rem) { padding-bottom: calc(10px + " + inset + "); }";
   const phoneFoot = "@media (width < 45rem) { padding-bottom: calc(" + POS_MAIN_PAD_B_PX.phone + "px + " + inset + "); }";
   const barPhoneFoot = "@media (width < 45rem) { bottom: calc(" + TAB_BAR_HEIGHT_PX + "px + " + inset + "); }";
   const asideOn = "@media (width >= 68.75rem) { display: flex; }";
@@ -178,7 +180,8 @@ test("PIN: real Tailwind compiles the /pos frame (page height, body grid, region
     [deskCols, "the category column and the menu from 1100px (owner Q19: no cart column below 1280px)"],
     [xlCols, "the category, menu and cart columns from 1280px, nav collapsed (owner Q19)"],
     [wideCols, "the wide nav's narrower columns from 1280px, nav open"],
-    [cmpFoot, "main's 100px foot below 1280px (owner Q19)"],
+    [cmpFoot, "main's 100px foot below 1280px (owner Q19), plus the safe-area inset (ruling P49)"],
+    [barTabPad, "from 720px the bar's 10px bottom padding plus the safe-area inset (ruling P49)"],
     [phoneFoot, "main's 150px foot on a phone, plus the tab bar's safe-area inset"],
     [barPhoneFoot, "the bar on the phone's tab bar: 59px plus its safe-area inset"],
     [asideOn, "the category column shows from 1100px"],
@@ -209,6 +212,9 @@ test("PIN: real Tailwind compiles the /pos frame (page height, body grid, region
   assert.ok(css.indexOf(deskCols) < css.indexOf(xlCols), "desk's columns come before xl's");
   assert.ok(css.indexOf(xlCols) < css.indexOf(wideCols), "xl's columns come before wide's (an open nav at 1280px takes wide's)");
   assert.ok(css.indexOf(cmpFoot) < css.indexOf(phoneFoot), "main's phone foot comes after its 1280px one (the narrower wins)");
+  const barPadBlock = "padding-block: calc(var(--spacing) * 2.5);";
+  assert.ok(css.includes(barPadBlock), "landmark: the bar's 10px padding (py-2.5)");
+  assert.ok(css.indexOf(barPadBlock) < css.indexOf(barTabPad), "the bar's 720px bottom padding comes after its py-2.5 (it wins from 720px)");
   assert.ok(css.indexOf(asideOn) < css.indexOf(cartOn), "landmark: breakpoints emit in width order");
   assert.ok(!css.includes(lgCols), "no 1024px column set (owner Q19)");
   assert.ok(!css.includes("box-shadow: var(--pop);"), "no shadow on the sheet at any width (owner Q19)");

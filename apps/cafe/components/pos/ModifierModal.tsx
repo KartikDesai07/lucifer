@@ -87,8 +87,10 @@ const NOTE_FIELD_CLASS =
   "h-12 rounded-[12px] border-[1.5px] border-border px-3 py-0 text-[15px] leading-[normal] placeholder:text-subtle-foreground md:text-[15px] max-tab:text-base";
 // The footer (values 10.1): 14px 18px 18px, gap 10, a --border-2 rule; the 46px stepper (1px --border, radius 10) with
 // 42x44 "−" / "+" (18px --text) around the 15px 600 qty; "Add to order" 46px on --accent, radius 10, 15px 600, hover
-// --accent-h; disabled while no size is picked (the HTML's not-allowed cursor, at .5).
-const FOOT_CLASS = "flex flex-none items-center gap-2.5 border-t border-border-2 px-[18px] pt-3.5 pb-[18px]";
+// --accent-h; disabled while no size is picked (the HTML's not-allowed cursor, at .5). Below 720px the panel sits on the
+// window's foot, so the 18px grows by the bottom safe-area inset there (ruling P49; 18px at inset 0).
+const FOOT_CLASS =
+  "flex flex-none items-center gap-2.5 border-t border-border-2 px-[18px] pt-3.5 pb-[18px] max-tab:pb-[calc(18px+env(safe-area-inset-bottom))]";
 const STEPPER_CLASS = "flex h-[46px] items-center rounded-[10px] border border-border";
 const STEP_CLASS = "h-11 w-[42px] cursor-pointer border-0 bg-transparent px-1.5 py-px text-[18px] text-foreground";
 const QTY_CLASS = "min-w-6 text-center text-[15px] font-semibold";

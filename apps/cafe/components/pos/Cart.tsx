@@ -129,10 +129,12 @@ export interface CartProps {
   onBack?: () => void;
 }
 
-/** The HTML's footer (values 5.5): sticky at the cart's foot over its lines, 12px 16px 14px (12px + the safe area on a
- *  phone), a rule and a soft lift above it; the links, the bill and the buttons 10px apart. */
+/** The HTML's footer (values 5.5): sticky at the cart's foot over its lines, 12px 16px 14px (12px on a phone), a rule
+ *  and a soft lift above it; the links, the bill and the buttons 10px apart. The cart's foot is the window's foot in
+ *  both mounts (the full-screen sheet below 1280px, the column from 1280px), so the bottom padding adds the safe-area
+ *  inset at every width (ruling P49; 14px / 12px at inset 0). */
 const FOOTER_CLASS =
-  "sticky bottom-0 z-[2] flex flex-none flex-col gap-2.5 border-t border-border bg-card px-4 pt-3 pb-3.5 leading-[normal] [box-shadow:0_-10px_24px_rgba(0,0,0,.04)] max-tab:pb-[calc(12px+env(safe-area-inset-bottom))]";
+  "sticky bottom-0 z-[2] flex flex-none flex-col gap-2.5 border-t border-border bg-card px-4 pt-3 pb-[calc(14px+env(safe-area-inset-bottom))] leading-[normal] [box-shadow:0_-10px_24px_rgba(0,0,0,.04)] max-tab:pb-[calc(12px+env(safe-area-inset-bottom))]";
 
 /** The ₹ / % switch in the HTML's segmented look (U0 values SEG_ON / SEG_OFF; values 5.3's segments): a --surface-3
  *  track, radius 8, 2px inset and gap; 30px segments, radius 6, 13px 500; the chosen one on --seg with its lift. */

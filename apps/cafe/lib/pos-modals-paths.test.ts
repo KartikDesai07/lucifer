@@ -412,7 +412,11 @@ test("PIN (U1 Task 8, values 10.1-10.2): Size segments, add-on rows, the 48px no
     "h-12 rounded-[12px] border-[1.5px] border-border px-3 py-0 text-[15px] leading-[normal] placeholder:text-subtle-foreground md:text-[15px] max-tab:text-base",
     "the HTML's field (values 8.3): 48px, radius 12, a 1.5px --border rule, 0 12px, 15px (16px below 720px, ruling R36), --text-3 placeholder",
   );
-  assert.equal(modalConst(src, "FOOT_CLASS"), "flex flex-none items-center gap-2.5 border-t border-border-2 px-[18px] pt-3.5 pb-[18px]", "values 10.1 footer: 14px 18px 18px, gap 10, a --border-2 rule");
+  assert.equal(
+    modalConst(src, "FOOT_CLASS"),
+    "flex flex-none items-center gap-2.5 border-t border-border-2 px-[18px] pt-3.5 pb-[18px] max-tab:pb-[calc(18px+env(safe-area-inset-bottom))]",
+    "values 10.1 footer: 14px 18px 18px, gap 10, a --border-2 rule; below 720px (the window's foot) 18px + the safe-area inset (ruling P49)",
+  );
   assert.equal(modalConst(src, "STEPPER_CLASS"), "flex h-[46px] items-center rounded-[10px] border border-border", "values 10.1 stepper: 46px, 1px --border, radius 10");
   assert.equal(modalConst(src, "STEP_CLASS"), "h-11 w-[42px] cursor-pointer border-0 bg-transparent px-1.5 py-px text-[18px] text-foreground", "values 10.1 − / +: 42x44, 18px --text, the UA's padding");
   assert.equal(modalConst(src, "QTY_CLASS"), "min-w-6 text-center text-[15px] font-semibold", "values 10.1 qty: min 24px, 15px 600");

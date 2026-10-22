@@ -240,8 +240,55 @@ test("PIN: the order bar is 65px tall, and main's foot is the HTML's room for it
   assert.equal(posMainPadBottomPx(1024), 100, "1024px: the bar's 100 (owner Q19; the HTML's column foot was 16)");
   assert.equal(posMainPadBottomPx(1279), 100, "1279px: still the bar's 100 (owner Q19)");
   assert.equal(posMainPadBottomPx(1280), 16, "1280px: beside the cart column, 16");
-  assert.ok(tokens(POS_MAIN_CLASS).includes(`max-xl:pb-[${POS_MAIN_PAD_B_PX.cmp}px]`), "main's 100px below 1280px (owner Q19)");
+  assert.ok(
+    tokens(POS_MAIN_CLASS).includes(`max-xl:pb-[calc(${POS_MAIN_PAD_B_PX.cmp}px+${tabBarInset()})]`),
+    "main's 100px below 1280px (owner Q19), plus the safe-area inset the bar grows by from 720px (ruling P49)",
+  );
   assert.ok(!tokens(POS_MAIN_CLASS).some((t) => t.startsWith("max-lg:")), "no 1024px foot any more (owner Q19)");
+});
+
+// Ruling P49 (U1 audit wave, report I-1 / M-4): main's bar added env(safe-area-inset-bottom) to its bottom padding at
+// every width; at 720-1279px the branch's bar sits on the window's foot (no tab bar under it), so in the Android app
+// (WebView 154, an inset of about 24.8px) "Review order" sat in the gesture strip. Everything /pos pins to the window's
+// foot there adds the inset, with the values at inset 0 unchanged (a desktop browser reports 0: no pixel moves).
+test("PIN: ruling P49 — from 720px the order bar, main's foot, the toast, the cart's footer and the category lists add the bottom safe-area inset", () => {
+  const inset = tabBarInset();
+  const bar = tokens(POS_MOBILE_BAR_CLASS);
+  assert.ok(bar.includes("py-2.5"), "landmark: the bar's 10px padding (values 6.1)");
+  assert.ok(bar.includes(`tab:pb-[calc(10px+${inset})]`), "from 720px the bar's 10px bottom padding grows by the inset (main's bar did at every width)");
+  assert.equal(bar.filter((t) => /(?:^|:)pb-/.test(t)).length, 1, "one bottom padding token: below 720px the tab bar under the bar takes the inset");
+  const main = tokens(POS_MAIN_CLASS);
+  assert.ok(main.includes(`max-xl:pb-[calc(${POS_MAIN_PAD_B_PX.cmp}px+${inset})]`), "main keeps the taller bar clear at 720-1279px");
+  assert.ok(main.includes(`max-tab:pb-[calc(${POS_MAIN_PAD_B_PX.phone}px+${inset})]`), "the phone's value as it was (ruling P44)");
+  const src = (rel: string): string => readFileSync(path.join(CAFE_ROOT, rel), "utf8");
+  const classOf = (file: string, name: string): string[] => {
+    const m = src(file).match(new RegExp(`const ${name} =\\s*"([^"]*)"`));
+    assert.ok(m, `landmark: ${file} declares ${name}`);
+    return tokens(m![1]);
+  };
+  const footer = classOf("components/pos/Cart.tsx", "FOOTER_CLASS");
+  assert.ok(footer.includes(`pb-[calc(14px+${inset})]`), "the cart's footer is the window's foot in the sheet and in the column: 14px + the inset");
+  assert.ok(footer.includes(`max-tab:pb-[calc(12px+${inset})]`), "12px + the inset on a phone, as before");
+  assert.ok(!footer.includes("pb-3.5"), "the plain 14px is gone");
+  const modifierFoot = classOf("components/pos/ModifierModal.tsx", "FOOT_CLASS");
+  assert.ok(modifierFoot.includes("pb-[18px]"), "the item options foot keeps its 18px where the panel is centred (from 720px)");
+  assert.ok(modifierFoot.includes(`max-tab:pb-[calc(18px+${inset})]`), "below 720px the panel sits on the window's foot: 18px + the inset");
+  const toaster = src("components/layout/AppToaster.tsx");
+  assert.ok(
+    toaster.includes(`tab:bottom-[calc(92px+${inset})]!`),
+    "the /pos toast clears the taller bar and the sheet's foot at 720-1279px: 92px + the inset",
+  );
+  const categories = src("components/pos/CategorySidebar.tsx");
+  assert.match(
+    categories,
+    new RegExp(`data-ui="pos-cat-list" className="[^"]*max-xl:pb-\\[calc\\(${POS_MAIN_PAD_B_PX.cmp}px\\+env\\(safe-area-inset-bottom\\)\\)\\]`),
+    "the category column's list keeps the taller bar clear at 1100-1279px, as main does",
+  );
+  assert.match(
+    categories,
+    /data-ui="pos-category-list" className="[^"]*\bpb-\[calc\(24px\+env\(safe-area-inset-bottom\)\)\]/,
+    "the Category sheet lies on the window's foot below 1100px: its list's 24px foot + the inset",
+  );
 });
 
 // values 0.3 obLeft / obBottom, 6.1; design 8: the bar starts at the nav's edge (the 76px rail from 720px, the window's

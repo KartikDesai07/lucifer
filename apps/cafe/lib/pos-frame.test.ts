@@ -132,7 +132,8 @@ test("main keeps the HTML's mainPadB at its foot: 150px on a phone, 100px wherev
   for (const [w, px] of cases) assert.equal(posMainPadBottomPx(w), px, `${w}px: main's bottom padding`);
   const cls = tokens(POS_MAIN_CLASS);
   assert.ok(cls.includes(`pb-${POS_MAIN_PAD_B_PX.base / 4}`), "16px from 1280px");
-  assert.ok(cls.includes(`max-xl:pb-[${POS_MAIN_PAD_B_PX.cmp}px]`), "100px below 1280px (owner Q19)");
+  // Ruling P49: plus the safe-area inset the bar grows by from 720px (its bottom padding); 100px at inset 0.
+  assert.ok(cls.includes(`max-xl:pb-[calc(${POS_MAIN_PAD_B_PX.cmp}px+env(safe-area-inset-bottom))]`), "100px below 1280px (owner Q19), plus the inset");
   // Ruling P44: plus the safe-area inset the phone's tab bar grows by (the order bar rides up by it); 150px at inset 0.
   assert.ok(cls.includes(`max-tab:pb-[calc(${POS_MAIN_PAD_B_PX.phone}px+env(safe-area-inset-bottom))]`), "150px on a phone, plus the inset");
   for (const t of ["overflow-auto", "min-w-0", "min-h-0"]) assert.ok(cls.includes(t), `main is the HTML's scroller column: "${t}"`);

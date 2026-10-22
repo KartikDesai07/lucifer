@@ -113,7 +113,8 @@ function CategoryFind({ value, onChange }: { value: string; onChange: (value: st
 
 /** The category column (values 2.1, 2.4): "Categories" + "{n} total" over the find box, then the rows, which scroll on
  *  their own. The aside around it (POS_ASIDE_CLASS) is the body grid's 200px / 220px track from 1100px. Owner Q19: at
- *  1100-1279px the order bar runs under the column's foot, so the rows keep the menu column's 100px clear there. */
+ *  1100-1279px the order bar runs under the column's foot, so the rows keep the menu column's 100px clear there, plus
+ *  the safe-area inset the bar grows by (ruling P49; 100px at inset 0). */
 export function CategorySidebar({ categories, products, selected, onSelect, query, onQueryChange }: CategoryPickerProps) {
   const rows = useCategoryRows(categories, products, query);
   return (
@@ -125,7 +126,7 @@ export function CategorySidebar({ categories, products, selected, onSelect, quer
         </div>
         <CategoryFind value={query} onChange={onQueryChange} />
       </div>
-      <nav aria-label="Product categories" data-ui="pos-cat-list" className="min-h-0 flex-1 overflow-auto px-2 pb-4 max-xl:pb-[100px]">
+      <nav aria-label="Product categories" data-ui="pos-cat-list" className="min-h-0 flex-1 overflow-auto px-2 pb-4 max-xl:pb-[calc(100px+env(safe-area-inset-bottom))]">
         {rows.map((c) => (
           <CategoryRowButton
             key={c.key}
@@ -144,7 +145,8 @@ export function CategorySidebar({ categories, products, selected, onSelect, quer
 
 // The sheet (values 2.6): over the --scrim at every width (z-index 20, above the phone's tab bar), the panel along the
 // window's foot, full width, at most 82% of the screen's height, radius 14 14 0 0, no border or shadow; the HTML's
-// fadeIn / sheetIn. Escape, a tap on the scrim, "Done" or a pick closes it.
+// fadeIn / sheetIn. Escape, a tap on the scrim, "Done" or a pick closes it. The window's foot at every width, so the
+// list's 24px foot grows by the bottom safe-area inset (ruling P49; 24px at inset 0).
 const SHEET_SCRIM_CLASS = "fixed inset-0 z-20 flex items-end bg-scrim motion-safe:animate-scrim-in";
 const SHEET_PANEL_CLASS =
   "flex max-h-[82vh] w-full flex-col rounded-t-[14px] bg-card font-sans leading-[normal] text-foreground outline-none motion-safe:animate-sheet-in supports-[height:1dvh]:max-h-[82dvh]";
@@ -214,7 +216,7 @@ export function CategorySheet({
               </div>
               <CategoryFind value={query} onChange={onQueryChange} />
             </div>
-            <nav aria-label="Product categories" data-ui="pos-category-list" className="min-h-0 flex-1 overflow-auto px-2 pb-6">
+            <nav aria-label="Product categories" data-ui="pos-category-list" className="min-h-0 flex-1 overflow-auto px-2 pb-[calc(24px+env(safe-area-inset-bottom))]">
               {rows.map((c) => (
                 <CategoryRowButton
                   key={c.key}
