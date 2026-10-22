@@ -11,15 +11,13 @@
 // the SAME constants the page renders instead of re-typing them.
 import { MAIN_PADDING_BLEED_CLASS, TAB_BAR_HEIGHT_PX } from "@/lib/shell-layout";
 
-// Tailwind's default viewport breakpoints (px), pinned so the layout test can
-// compute the pane-width matrix without importing Tailwind.
-export const BREAKPOINT_SM_PX = 640;
-export const BREAKPOINT_MD_PX = 768;
-export const BREAKPOINT_LG_PX = 1024;
+// The viewport breakpoints the frame switches at (px), pinned so the layout test can compute the pane widths without
+// importing Tailwind: Tailwind's `xl` (80rem) and the HTML's `desk` (app/globals.css). The phone's end is NAV_RAIL_MIN_PX
+// (Tailwind `tab:`, below). Tailwind's sm / md / lg / 2xl values fed CB-1's column tables and went with them (U1 audit
+// wave, ruling P54: no caller was left).
 export const BREAKPOINT_XL_PX = 1280;
-export const BREAKPOINT_2XL_PX = 1536;
 /** The HTML's `desk` (values 0.2; Tailwind `desk:`, app/globals.css): the category column from 1100 px. The HTML's
- *  `cmp` ended at BREAKPOINT_LG_PX (1024 px); owner Q19 moved the cart's switch to POS_CART_COLUMN_MIN_PX (below). */
+ *  `cmp` ended at 1024 px (Tailwind `lg`); owner Q19 moved the cart's switch to POS_CART_COLUMN_MIN_PX (below). */
 export const BREAKPOINT_DESK_PX = 1100;
 /** Owner Q19 (2026-10-22; design 4 Q19, Q20): the cart is the page's right column from 1280 px (Tailwind `xl:`) — a PC
  *  or a laptop, nav open or collapsed — and below it (tablets portrait and landscape, phones) never a side column or a

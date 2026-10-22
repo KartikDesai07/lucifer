@@ -6,7 +6,8 @@
 // Pure: no React, no fetching; client-safe.
 import type { PaymentMode } from "@/lib/constants";
 import { WALK_IN, cartTitle } from "@/lib/pos-cart-view";
-import { inr } from "@/lib/utils";
+import { SHEET_PANEL_BASE, SHEET_PANEL_CAP_CLASS, SHEET_SCRIM_BASE } from "@/lib/sheet-frame";
+import { cn, inr } from "@/lib/utils";
 
 // ── words (owner Q1: the HTML's where it has the element; ours for our data) ────────────────────────────────────────
 
@@ -56,17 +57,19 @@ export function dueNoteText(mode: Extract<PaymentMode, "Due" | "Credit">, total:
 //    --accent primary, --accent-h primary-hover, --on-accent primary-foreground, --ok-i / --warn-i / --bad-i
 //    status-*-ink) ───────────────────────────────────────────────────────────────────────────────────────────────────
 
-/** The scrim (values 11.1; U0 2.1 sheetAlign / sheetPad): fixed over everything, --scrim, fadeIn .2s; the panel centred
- *  in 16px, on the window's foot with no padding below 720px. z-index 50, not the HTML's 45: the Orders page's order
- *  sheet (z 50) is under it, and the customer dialog and the Discard confirm open over it (z 50, later in the DOM). */
-export const PAY_SCRIM_CLASS =
-  "fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4 font-sans leading-[normal] text-foreground motion-safe:animate-scrim-in max-tab:items-end max-tab:p-0";
-/** The panel (values 11.1): 420px on --surface, no border, radius 14 (14 14 0 0 below 720px), --pop, sheetIn .34s,
- *  18px 18px cartFootB (14px; 12px + the safe area below 720px), its rows 16px apart. Content-sized as the HTML's; our
- *  extra rows (bill, points, notices) can make it taller than a short window, so it is capped at the HTML's sheet cap
- *  (csMaxH, as the item options modal: ruling P24) and scrolls. */
-export const PAY_PANEL_CLASS =
-  "flex w-full max-w-[420px] flex-col gap-4 overflow-y-auto rounded-[14px] bg-card px-[18px] pt-[18px] pb-3.5 [box-shadow:var(--pop)] outline-none motion-safe:animate-sheet-in tab:max-h-[calc(100vh-32px)] tab:supports-[height:1dvh]:max-h-[calc(100dvh-32px)] max-tab:max-h-[88vh] max-tab:rounded-[14px_14px_0_0] max-tab:pb-[calc(12px+env(safe-area-inset-bottom))] max-tab:supports-[height:1dvh]:max-h-[88dvh]";
+/** The scrim (values 11.1; U0 2.1 sheetAlign / sheetPad): the shared sheet frame's (lib/sheet-frame.ts, ruling P54).
+ *  z-index 50, not the HTML's 45: the Orders page's order sheet (z 50) is under it, and the customer dialog and the
+ *  Discard confirm open over it (z 50, later in the DOM). */
+export const PAY_SCRIM_CLASS = cn(SHEET_SCRIM_BASE, "z-50");
+/** The panel (values 11.1) in the shared frame: 420px on --surface, no border, sheetIn .34s, 18px 18px cartFootB (14px;
+ *  12px + the safe area below 720px), its rows 16px apart. Content-sized as the HTML's; our extra rows (bill, points,
+ *  notices) can make it taller than a short window, so it takes the HTML's sheet cap (csMaxH, as the item options
+ *  modal: ruling P24) and scrolls. */
+export const PAY_PANEL_CLASS = cn(
+  SHEET_PANEL_BASE,
+  SHEET_PANEL_CAP_CLASS,
+  "max-w-[420px] gap-4 overflow-y-auto px-[18px] pt-[18px] pb-3.5 motion-safe:animate-sheet-in max-tab:pb-[calc(12px+env(safe-area-inset-bottom))]",
+);
 /** The head (values 11.1): the title 16px 600 and the "✕" apart, 10px gap. */
 export const PAY_HEAD_CLASS = "flex items-center justify-between gap-2.5";
 export const PAY_TITLE_CLASS = "min-w-0 truncate text-[16px] font-semibold";

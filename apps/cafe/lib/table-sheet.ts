@@ -6,7 +6,8 @@
 // their tiles with components/pos/TableSheet.tsx. Pure: no React, no fetching; client-safe.
 import { tablePickAction } from "@/lib/table-pick";
 import { isFreeTable } from "@/lib/table-status";
-import { inr } from "@/lib/utils";
+import { SHEET_CLOSE_CLASS, SHEET_FOOT_CLASS, SHEET_PANEL_BASE, SHEET_PANEL_CAP_CLASS, SHEET_SCRIM_BASE } from "@/lib/sheet-frame";
+import { cn, inr } from "@/lib/utils";
 import type { Order, Table } from "@/types";
 
 // ── words (owner Q1: the HTML's where it has the element; ours for our features and data) ─────────────────────────
@@ -129,26 +130,25 @@ export function moveTile(table: Table, currentTableNo: string | undefined): Move
 //    --accent primary, --accent-t accent, --accent-i accent-foreground, --ok / --info / --res status-*,
 //    their -i inks status-*-ink, -t tints status-*-tint, -b borders status-*-border) ─────────────────────────────
 
-/** The scrim (values 9.1; U0 2.1 sheetAlign / sheetPad): --scrim, fadeIn .2s, the panel centred in 16px, on the
- *  window's foot with no padding below 720px. The picker at the HTML's z-index 46 (over the cart and its sheet). */
-export const SELECTOR_SCRIM_CLASS =
-  "fixed inset-0 z-[46] flex items-center justify-center bg-scrim p-4 font-sans leading-[normal] text-foreground motion-safe:animate-scrim-in max-tab:items-end max-tab:p-0";
+/** The scrim (values 9.1; U0 2.1 sheetAlign / sheetPad): the shared sheet frame's (lib/sheet-frame.ts, ruling P54). The
+ *  picker at the HTML's z-index 46 (over the cart and its sheet). */
+export const SELECTOR_SCRIM_CLASS = cn(SHEET_SCRIM_BASE, "z-[46]");
 /** The move dialog at 50 (ruling P26's way, as the payment sheet): it also opens from the Orders page's order sheet
  *  (z 50, earlier in the DOM), so it is above that sheet everywhere it opens. */
-export const MOVE_SCRIM_CLASS =
-  "fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4 font-sans leading-[normal] text-foreground motion-safe:animate-scrim-in max-tab:items-end max-tab:p-0";
-/** The panel (values 9.1, 0.3 csMaxH / sheetRadius): 600px on --surface, content-sized up to 100dvh - 32px (88dvh
- *  below 720px), a 1px --border, radius 14 (14 14 0 0 below 720px), --pop, sheetIn .32s. The vh caps are the base,
- *  the dvh ones where they exist. */
-export const TABLE_PANEL_CLASS =
-  "flex w-full max-w-[600px] flex-col overflow-hidden rounded-[14px] border border-border bg-card [box-shadow:var(--pop)] outline-none motion-safe:animate-html-sheet-in-cs tab:max-h-[calc(100vh-32px)] tab:supports-[height:1dvh]:max-h-[calc(100dvh-32px)] max-tab:max-h-[88vh] max-tab:rounded-[14px_14px_0_0] max-tab:supports-[height:1dvh]:max-h-[88dvh]";
-/** The head (values 9.1): 16px 16px 10px, gap 10; the title 17px 600 over the sub 12.5px --text-2; the 32px round ✕ on
- *  --surface-3 (--text-2; the UA's 1px 6px: the HTML sets none). */
+export const MOVE_SCRIM_CLASS = cn(SHEET_SCRIM_BASE, "z-50");
+/** The panel (values 9.1, 0.3 csMaxH / sheetRadius) in the shared frame: 600px on --surface, content-sized up to the
+ *  sheets' caps, a 1px --border, sheetIn .32s. */
+export const TABLE_PANEL_CLASS = cn(
+  SHEET_PANEL_BASE,
+  SHEET_PANEL_CAP_CLASS,
+  "max-w-[600px] overflow-hidden border border-border motion-safe:animate-html-sheet-in-cs",
+);
+/** The head (values 9.1): 16px 16px 10px, gap 10; the title 17px 600 over the sub 12.5px --text-2; the shared 32px
+ *  round ✕ (values 8.1, 9.1). */
 export const TABLE_HEAD_CLASS = "flex flex-none items-center gap-2.5 px-4 pt-4 pb-2.5";
 export const TABLE_TITLE_CLASS = "text-[17px] font-semibold";
 export const TABLE_SUB_CLASS = "text-[12.5px] text-muted-foreground";
-export const TABLE_CLOSE_CLASS =
-  "flex size-8 flex-none cursor-pointer items-center justify-center rounded-[50%] border-0 bg-surface-3 px-1.5 py-px text-muted-foreground";
+export const TABLE_CLOSE_CLASS = SHEET_CLOSE_CLASS;
 /** The legend (values 9.1): 0 16px 10px, 12px --text-2, 14px apart (wrapping); each word 6px after its 8px dot. */
 export const TABLE_LEGEND_CLASS = "flex flex-none flex-wrap gap-3.5 px-4 pb-2.5 text-[12px] text-muted-foreground";
 export const TABLE_LEGEND_ITEM_CLASS = "flex items-center gap-1.5";
@@ -187,9 +187,9 @@ export const TABLE_TILE_TONES: Record<TableTileKind, { tile: string; dot: string
   occupied: { tile: "border-border bg-surface-2", dot: "bg-subtle-foreground", label: "text-subtle-foreground" },
 };
 
-/** Our foot (the HTML's sheet has none): 12px 16px and 14px + the safe area over a --border-2 rule, 8px apart. */
-export const TABLE_FOOT_CLASS =
-  "flex flex-none flex-col gap-2 border-t border-border-2 px-4 pt-3 pb-[calc(14px+env(safe-area-inset-bottom))]";
+/** Our foot (the HTML's sheet has none): the shared sheet foot (values 8.2), 12px 16px and 14px + the safe area over a
+ *  --border-2 rule, 8px apart. */
+export const TABLE_FOOT_CLASS = SHEET_FOOT_CLASS;
 /** "Walk-In (no table)": 46px full width, a tile's 1.5px rule and radius 12, 14.5px 600; the current choice in the
  *  Current tile's colours, else a free tile's. */
 export const WALK_IN_CLASS = "h-[46px] w-full cursor-pointer rounded-[12px] border-[1.5px] px-1.5 py-px text-[14.5px] font-semibold";

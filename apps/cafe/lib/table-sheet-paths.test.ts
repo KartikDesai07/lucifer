@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { stripComments } from "@/lib/source-pin-utils";
+import { MOVE_SCRIM_CLASS, SELECTOR_SCRIM_CLASS, TABLE_CLOSE_CLASS, TABLE_PANEL_CLASS } from "@/lib/table-sheet";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const readSrc = (rel: string): string => stripComments(readFileSync(path.join(REPO_ROOT, rel), "utf8"));
@@ -74,8 +75,9 @@ test("PIN: the move / assign dialog is the HTML's sheet with today's steps (Move
   assert.match(picker, /onClick=\{\(\) => onPick\(t\)\}/, "a tap only reports the table (the dialog's confirm step does the rest)");
   assert.ok(!picker.includes("@/components/ui/button"), "the HTML's foot, not the kit's buttons");
   const lib = readSrc(LIB);
-  assert.match(lib, /export const MOVE_SCRIM_CLASS =\s*"fixed inset-0 z-50 /, "the move layer at 50, over the Orders sheet");
-  assert.match(lib, /export const SELECTOR_SCRIM_CLASS =\s*"fixed inset-0 z-\[46\] /, "the picker at the HTML's 46");
+  // Ruling P54 (U1 audit wave): the shared sheet scrim (lib/sheet-frame.ts) with each layer's own z-index.
+  assert.match(lib, /export const MOVE_SCRIM_CLASS = cn\(SHEET_SCRIM_BASE, "z-50"\);/, "the move layer at 50, over the Orders sheet");
+  assert.match(lib, /export const SELECTOR_SCRIM_CLASS = cn\(SHEET_SCRIM_BASE, "z-\[46\]"\);/, "the picker at the HTML's 46");
 });
 
 // Values 9.1 (the frame, head, legend, body, area, tile) and 9.2 (the tile looks): the --scrim (fadeIn .2s; the panel
@@ -87,10 +89,15 @@ test("PIN: the move / assign dialog is the HTML's sheet with today's steps (Move
 // row 11.5/500 with a 6px dot; the tones of 9.2 (and ours for an occupied table with no tab: --surface-2 / --text-3).
 test("PIN: the table sheet's look is the HTML's (values 9.1, 9.2)", () => {
   const lib = readSrc(LIB);
-  for (const scrim of ["SELECTOR_SCRIM_CLASS", "MOVE_SCRIM_CLASS"]) {
-    expectTokens(lib, scrim, ["fixed", "inset-0", "flex", "items-center", "justify-center", "bg-scrim", "p-4", "motion-safe:animate-scrim-in", "max-tab:items-end", "max-tab:p-0"]);
+  // Ruling P54 (U1 audit wave): the scrims, the panel, the ✕ and the foot are the shared sheet frame's parts
+  // (lib/sheet-frame.ts) — read here as the module renders them; lib/sheet-frame.test.ts pins each whole set, unchanged.
+  const has = (cls: string, name: string, list: string[]) => {
+    for (const t of list) assert.ok(cls.split(/\s+/).includes(t), `${name}: "${t}"`);
+  };
+  for (const [name, scrim] of [["SELECTOR_SCRIM_CLASS", SELECTOR_SCRIM_CLASS], ["MOVE_SCRIM_CLASS", MOVE_SCRIM_CLASS]] as const) {
+    has(scrim, name, ["fixed", "inset-0", "flex", "items-center", "justify-center", "bg-scrim", "p-4", "motion-safe:animate-scrim-in", "max-tab:items-end", "max-tab:p-0"]);
   }
-  expectTokens(lib, "TABLE_PANEL_CLASS", [
+  has(TABLE_PANEL_CLASS, "TABLE_PANEL_CLASS", [
     "flex", "w-full", "max-w-[600px]", "flex-col", "overflow-hidden", "rounded-[14px]", "border", "border-border", "bg-card",
     "[box-shadow:var(--pop)]", "motion-safe:animate-html-sheet-in-cs", "tab:max-h-[calc(100vh-32px)]", "max-tab:max-h-[88vh]",
     "max-tab:rounded-[14px_14px_0_0]",
@@ -98,7 +105,7 @@ test("PIN: the table sheet's look is the HTML's (values 9.1, 9.2)", () => {
   expectTokens(lib, "TABLE_HEAD_CLASS", ["flex", "flex-none", "items-center", "gap-2.5", "px-4", "pt-4", "pb-2.5"]);
   expectTokens(lib, "TABLE_TITLE_CLASS", ["text-[17px]", "font-semibold"]);
   expectTokens(lib, "TABLE_SUB_CLASS", ["text-[12.5px]", "text-muted-foreground"]);
-  expectTokens(lib, "TABLE_CLOSE_CLASS", ["flex", "size-8", "flex-none", "items-center", "justify-center", "rounded-[50%]", "border-0", "bg-surface-3", "text-muted-foreground"]);
+  has(TABLE_CLOSE_CLASS, "TABLE_CLOSE_CLASS", ["flex", "size-8", "flex-none", "items-center", "justify-center", "rounded-[50%]", "border-0", "bg-surface-3", "text-muted-foreground"]);
   expectTokens(lib, "TABLE_LEGEND_CLASS", ["flex", "flex-none", "flex-wrap", "gap-3.5", "px-4", "pb-2.5", "text-[12px]", "text-muted-foreground"]);
   expectTokens(lib, "TABLE_LEGEND_DOT_CLASS", ["size-2", "rounded-[50%]"]);
   // U1 final fix wave (the Task 11 review's FIX BEFORE MERGE): a foot always follows the body and adds the safe area

@@ -138,15 +138,16 @@ test("PIN (U1 Task 12, values 12.1): the sheet is the HTML confirm — a Radix a
   const cancelTag = sheet.slice(cancel, sheet.indexOf("</AlertDialogPrimitive.Cancel>"));
   assert.ok(cancelTag.includes("disabled={isLoading}") && cancelTag.includes("SHEET_CANCEL_CLASS") && cancelTag.includes("{cancelLabel}"), "Cancel in --surface-3, off while the action runs, today's word");
 
-  assert.equal(
-    confirmConst(src, "SHEET_SCRIM_CLASS"),
-    "fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4 font-sans leading-[normal] text-foreground motion-safe:animate-scrim-in max-tab:items-end max-tab:p-0",
-    "values 12.1 scrim: fixed, z-index 50, --scrim, fadeIn .2s; sheetAlign / sheetPad: centred in 16px, along the foot with no padding below 720px",
+  // Ruling P54 (U1 audit wave): the scrim and the panel are the shared sheet frame (lib/sheet-frame.ts) with the
+  // confirm's own z-index, width, border, padding and gap; lib/sheet-frame.test.ts pins the shared values and that each
+  // element's class set is exactly the one pinned here before.
+  assert.ok(
+    src.includes('const SHEET_SCRIM_CLASS = cn(SHEET_SCRIM_BASE, "z-50");'),
+    "values 12.1 scrim: the shared frame (fixed, --scrim, fadeIn .2s; centred in 16px, along the foot below 720px) at z-index 50",
   );
-  assert.equal(
-    confirmConst(src, "SHEET_PANEL_CLASS"),
-    "flex w-full max-w-[420px] flex-col gap-4 rounded-[14px] border border-border bg-card p-5 [box-shadow:var(--pop)] outline-none motion-safe:animate-sheet-in max-tab:rounded-[14px_14px_0_0]",
-    "values 12.1 panel: 420px, --surface, a 1px --border, sheetRadius 14 (14 14 0 0 below 720px), --pop, padding 20, gap 16, sheetIn .34s",
+  assert.ok(
+    src.includes('const SHEET_PANEL_CLASS = cn(SHEET_PANEL_BASE, "max-w-[420px] gap-4 border border-border p-5 motion-safe:animate-sheet-in");'),
+    "values 12.1 panel: the shared panel (--surface, sheetRadius 14, --pop) at 420px, a 1px --border, padding 20, gap 16, sheetIn .34s",
   );
   assert.equal(confirmConst(src, "SHEET_TITLE_CLASS"), "text-[18px] font-semibold tracking-[-0.01em]", "values 12.1 title: 18px 600 -.01em");
   assert.equal(confirmConst(src, "SHEET_BODY_CLASS"), "mt-1.5 text-[14px] leading-[1.5] text-pretty text-muted-foreground", "values 12.1 body: 14px --text-2, 6px under the title, line-height 1.5, text-wrap pretty");

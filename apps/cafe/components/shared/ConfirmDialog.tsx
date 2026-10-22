@@ -14,6 +14,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
+import { SHEET_PANEL_BASE, SHEET_SCRIM_BASE } from "@/lib/sheet-frame";
 import { cn } from "@/lib/utils";
 
 interface ConfirmDialogProps {
@@ -31,14 +32,11 @@ interface ConfirmDialogProps {
 }
 
 // The HTML confirm (values 12.1 in docs/superpowers/specs/2026-10-20-pos-html-values.md; values 0.3 sheetAlign /
-// sheetPad / sheetRadius; design 3, 6.12). The scrim: fixed at z-index 50, --scrim, fadeIn .2s; the panel centred in
-// 16px, along the window's foot with no padding below 720px.
-const SHEET_SCRIM_CLASS =
-  "fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4 font-sans leading-[normal] text-foreground motion-safe:animate-scrim-in max-tab:items-end max-tab:p-0";
-// The panel: 420px on --surface, a 1px --border, radius 14 (14 14 0 0 below 720px), --pop, padding 20, the text and
-// the buttons 16px apart, sheetIn .34s.
-const SHEET_PANEL_CLASS =
-  "flex w-full max-w-[420px] flex-col gap-4 rounded-[14px] border border-border bg-card p-5 [box-shadow:var(--pop)] outline-none motion-safe:animate-sheet-in max-tab:rounded-[14px_14px_0_0]";
+// sheetPad / sheetRadius; design 3, 6.12) in the shared sheet frame (lib/sheet-frame.ts, ruling P54). The scrim at
+// z-index 50; the panel 420px on --surface with a 1px --border, padding 20, the text and the buttons 16px apart,
+// sheetIn .34s, content-sized (no cap: two lines and two buttons).
+const SHEET_SCRIM_CLASS = cn(SHEET_SCRIM_BASE, "z-50");
+const SHEET_PANEL_CLASS = cn(SHEET_PANEL_BASE, "max-w-[420px] gap-4 border border-border p-5 motion-safe:animate-sheet-in");
 // The title 18px 600 -.01em; the body 14px --text-2 6px under it at 1.5, wrapped "pretty".
 const SHEET_TITLE_CLASS = "text-[18px] font-semibold tracking-[-0.01em]";
 const SHEET_BODY_CLASS = "mt-1.5 text-[14px] leading-[1.5] text-pretty text-muted-foreground";

@@ -20,8 +20,9 @@ import { rungWorthLabel, type RungOffer } from "@/lib/reward-rungs";
 //     LINE the server appends), so it too leaves Subtotal/Total untouched.
 //
 // So before this file, a bill carrying either one looked exactly like a bill
-// carrying neither, and the only on-screen trace was a colour dot on the
-// three-dot trigger — which the repo's own UI rule forbids as a sole channel
+// carrying neither, and the only on-screen trace was a colour dot on the cart's
+// old three-dot trigger (removed in U1: the footer's links and the Bill options
+// panel replaced it) — which the repo's own UI rule forbids as a sole channel
 // ("never colour alone"). The operator could collect the undiscounted amount,
 // or hand over a free item, with nothing saying so.
 //

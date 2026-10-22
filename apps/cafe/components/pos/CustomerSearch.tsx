@@ -10,6 +10,7 @@ import {
 } from "@/hooks/use-customers";
 import { cn } from "@/lib/utils";
 import { PAY_PILL_ADD_CLASS, PAY_PILL_CLASS, PAY_PILL_SET_CLASS, pickerPillText } from "@/lib/payment-sheet";
+import { SHEET_FOOT_CLASS, SHEET_PANEL_BASE, SHEET_PANEL_CAP_CLASS } from "@/lib/sheet-frame";
 import {
   CUSTOMER_TITLE,
   NEW_CUSTOMER_TITLE,
@@ -67,11 +68,14 @@ const SCRIM_CLASS =
   "fixed inset-0 z-[51] flex items-center justify-center p-4 font-sans leading-[normal] text-foreground motion-safe:animate-scrim-in max-tab:items-end max-tab:p-0";
 const SCRIM_SHADE_CLASS = "bg-scrim";
 const SCRIM_CLEAR_CLASS = "bg-transparent";
-// The panel (values 8.1, 0.3 csH/csMaxH/sheetRadius): 460px on --surface, 600 tall at most 100dvh - 32px, a 1px --border,
-// radius 14, --pop, sheetIn .32s; below 720px the full width, 88dvh, radius 14 14 0 0. The vh sizes are the base, the
-// dvh ones where they exist.
-const PANEL_CLASS =
-  "flex w-full max-w-[460px] flex-col overflow-hidden rounded-[14px] border border-border bg-card [box-shadow:var(--pop)] outline-none motion-safe:animate-html-sheet-in-cs tab:h-[600px] tab:max-h-[calc(100vh-32px)] tab:supports-[height:1dvh]:max-h-[calc(100dvh-32px)] max-tab:h-[88vh] max-tab:max-h-[88vh] max-tab:rounded-[14px_14px_0_0] max-tab:supports-[height:1dvh]:h-[88dvh] max-tab:supports-[height:1dvh]:max-h-[88dvh]";
+// The panel (values 8.1, 0.3 csH/csMaxH/sheetRadius) in the shared sheet frame (lib/sheet-frame.ts, ruling P54): 460px
+// on --surface, 600 tall at most the sheets' cap, a 1px --border, sheetIn .32s; below 720px the full width, 88dvh (the
+// vh height the base, the dvh one where it exists).
+const PANEL_CLASS = cn(
+  SHEET_PANEL_BASE,
+  SHEET_PANEL_CAP_CLASS,
+  "max-w-[460px] overflow-hidden border border-border motion-safe:animate-html-sheet-in-cs tab:h-[600px] max-tab:h-[88vh] max-tab:supports-[height:1dvh]:h-[88dvh]",
+);
 // The head (values 8.1): 16px 16px 12px, gap 10; the title 17px 600 over the sub 12.5px --text-2; the 32px back (radius
 // 8, --text) in the add form and the 32px round ✕ (--text-2), both on --surface-3 (the UA's 1px 6px: the HTML sets none).
 const HEAD_CLASS = "flex flex-none items-center gap-2.5 px-4 pt-4 pb-3";
@@ -98,10 +102,8 @@ const LIST_CLASS = "min-h-0 flex-1 overflow-auto px-2";
 const LINE_CLASS = "px-3 py-6 text-center text-[13.5px] leading-[1.5] text-muted-foreground";
 const LINE_BAD_CLASS = cn(LINE_CLASS, "text-status-bad-ink");
 const SEARCHING_CLASS = cn(LINE_CLASS, "flex items-center justify-center gap-2");
-// The foot (values 8.2): 12px 16px and 14px + the safe area, gap 8, a --border-2 rule; "+ New customer" 46px on --accent,
-// radius 12, 14.5px 600, hover --accent-h; "Continue without customer" as the HTML's 36px --link button, 13.5px 500.
-const FOOT_CLASS =
-  "flex flex-none flex-col gap-2 border-t border-border-2 px-4 pt-3 pb-[calc(14px+env(safe-area-inset-bottom))]";
+// The shared foot (values 8.2: SHEET_FOOT_CLASS); "+ New customer" 46px on --accent, radius 12, 14.5px 600, hover
+// --accent-h; "Continue without customer" as the HTML's 36px --link button, 13.5px 500.
 const NEW_CLASS =
   "h-[46px] cursor-pointer rounded-[12px] border-0 bg-primary px-1.5 py-px text-[14.5px] font-semibold text-primary-foreground hover:bg-primary-hover";
 const LINK_CLASS = "h-9 cursor-pointer border-0 bg-transparent px-1.5 py-px text-[13.5px] font-medium text-link";
@@ -284,7 +286,7 @@ export function CustomerSearch({ value, onChange, className, disabled, trigger, 
                   ))}
                 </div>
 
-                <div data-ui="cs-foot" className={FOOT_CLASS}>
+                <div data-ui="cs-foot" className={SHEET_FOOT_CLASS}>
                   <button type="button" data-ui="cs-new" onClick={() => setAdding(true)} className={cn(NEW_CLASS, BRAND_PRESS_CLASS)}>
                     {newCustomerLabel(term)}
                   </button>

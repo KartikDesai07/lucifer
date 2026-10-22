@@ -6,6 +6,15 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { effectivePrice } from "@/hooks/use-cart";
 import { inr, cn } from "@/lib/utils";
 import { initialSelected, pickModifierResult, modifiersPreselectedFor } from "@/lib/modifier-picker";
+import {
+  SHEET_FIELD_CLASS,
+  SHEET_PANEL_BASE,
+  SHEET_PANEL_CAP_CLASS,
+  SHEET_QTY_CLASS,
+  SHEET_SCRIM_BASE,
+  SHEET_STEP_CLASS,
+  SHEET_STEPPER_CLASS,
+} from "@/lib/sheet-frame";
 import { useOpenerFocus } from "@/hooks/use-opener-focus";
 import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { Input } from "@/components/ui/input";
@@ -39,15 +48,13 @@ interface ModifierModalProps {
 // Radix dialog: focus trap, Escape and the scrim close it, the title is the name, the description is read out only (the
 // HTML shows none). Modifiers carry no price, so the line total is the chosen size's (or the product's) price × qty.
 
-// The scrim (values 10.1, 0.3 sheetAlign/sheetPad): fixed over everything at z-index 20 (the phone's tab bar too), --scrim,
-// fadeIn .2s; the panel centred in 16px, along the window's foot with no padding below 720px.
-const SCRIM_CLASS =
-  "fixed inset-0 z-20 flex items-center justify-center bg-scrim p-4 font-sans leading-[normal] text-foreground motion-safe:animate-scrim-in max-tab:items-end max-tab:p-0";
-// The panel (values 10.1, 0.3 sheetRadius): 440px on --surface, no border, radius 14 (14 14 0 0 below 720px), --pop,
-// sheetIn .34s. The HTML's panel has no height cap (its items have at most four add-ons); ours takes the HTML's sheet cap
-// (customer sheet csMaxH) so an item with many options scrolls in the body and "Add to order" stays on screen.
-const PANEL_CLASS =
-  "flex w-full max-w-[440px] flex-col overflow-hidden rounded-[14px] bg-card [box-shadow:var(--pop)] outline-none motion-safe:animate-sheet-in tab:max-h-[calc(100vh-32px)] tab:supports-[height:1dvh]:max-h-[calc(100dvh-32px)] max-tab:max-h-[88vh] max-tab:rounded-[14px_14px_0_0] max-tab:supports-[height:1dvh]:max-h-[88dvh]";
+// The frame is the HTML's shared sheet frame (lib/sheet-frame.ts, ruling P54). The scrim (values 10.1, 0.3
+// sheetAlign/sheetPad) over everything at z-index 20 (the phone's tab bar too). The panel (values 10.1, 0.3 sheetRadius)
+// 440px on --surface, no border, sheetIn .34s. The HTML's panel has no height cap (its items have at most four add-ons);
+// ours takes the HTML's sheet cap (customer sheet csMaxH) so an item with many options scrolls in the body and "Add to
+// order" stays on screen.
+const SCRIM_CLASS = cn(SHEET_SCRIM_BASE, "z-20");
+const PANEL_CLASS = cn(SHEET_PANEL_BASE, SHEET_PANEL_CAP_CLASS, "max-w-[440px] overflow-hidden motion-safe:animate-sheet-in");
 // The head (values 10.1): 16px 18px, gap 10, a --border-2 rule; the name 17px 600 -.01em (no veg mark: owner Q7), a long
 // unbroken operator-typed name (CR1.1) wrapping inside the head so the "✕" stays in the panel; the "✕" a 28px round
 // --surface-3 button, 12px --text-2 (buttons the HTML leaves unpadded keep the UA's 1px 6px).
@@ -80,20 +87,13 @@ const CHECK_CLASS =
   "flex size-[18px] flex-none items-center justify-center rounded-[5px] border-[1.5px] text-[11px] text-primary-foreground";
 const CHECK_ON_CLASS = "border-primary bg-primary";
 const CHECK_OFF_CLASS = "border-subtle-foreground bg-card";
-// Kitchen note: the HTML's field (values 8.3, the customer sheet's): 48px, radius 12, a 1.5px --border rule, 0 12px,
-// 15px (16px below 720px, ruling R36), the --text-3 placeholder; on the kit Input through tailwind-merge (its focus ring
-// stays).
-const NOTE_FIELD_CLASS =
-  "h-12 rounded-[12px] border-[1.5px] border-border px-3 py-0 text-[15px] leading-[normal] placeholder:text-subtle-foreground md:text-[15px] max-tab:text-base";
-// The footer (values 10.1): 14px 18px 18px, gap 10, a --border-2 rule; the 46px stepper (1px --border, radius 10) with
-// 42x44 "−" / "+" (18px --text) around the 15px 600 qty; "Add to order" 46px on --accent, radius 10, 15px 600, hover
-// --accent-h; disabled while no size is picked (the HTML's not-allowed cursor, at .5). Below 720px the panel sits on the
-// window's foot, so the 18px grows by the bottom safe-area inset there (ruling P49; 18px at inset 0).
+// Kitchen note: the HTML's shared 48px field (values 8.3, the customer sheet's: SHEET_FIELD_CLASS, on the kit Input).
+// The footer (values 10.1): 14px 18px 18px, gap 10, a --border-2 rule; the shared 46px stepper (SHEET_STEPPER_CLASS and
+// its parts); "Add to order" 46px on --accent, radius 10, 15px 600, hover --accent-h; disabled while no size is picked
+// (the HTML's not-allowed cursor, at .5). Below 720px the panel sits on the window's foot, so the 18px grows by the
+// bottom safe-area inset there (ruling P49; 18px at inset 0).
 const FOOT_CLASS =
   "flex flex-none items-center gap-2.5 border-t border-border-2 px-[18px] pt-3.5 pb-[18px] max-tab:pb-[calc(18px+env(safe-area-inset-bottom))]";
-const STEPPER_CLASS = "flex h-[46px] items-center rounded-[10px] border border-border";
-const STEP_CLASS = "h-11 w-[42px] cursor-pointer border-0 bg-transparent px-1.5 py-px text-[18px] text-foreground";
-const QTY_CLASS = "min-w-6 text-center text-[15px] font-semibold";
 const ADD_CLASS =
   "h-[46px] flex-1 cursor-pointer rounded-[10px] border-0 bg-primary px-1.5 py-px text-[15px] font-semibold text-primary-foreground not-disabled:hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50";
 
@@ -267,25 +267,25 @@ export function ModifierModal({
                   onChange={(e) => setInstructions(e.target.value)}
                   placeholder="e.g. less spicy, no onions"
                   autoComplete="off"
-                  className={NOTE_FIELD_CLASS}
+                  className={SHEET_FIELD_CLASS}
                 />
               </div>
             </div>
 
             <div data-ui="pos-item-options-foot" className={FOOT_CLASS}>
-              <div data-ui="pos-item-stepper" role="group" aria-label="Quantity" className={STEPPER_CLASS}>
+              <div data-ui="pos-item-stepper" role="group" aria-label="Quantity" className={SHEET_STEPPER_CLASS}>
                 <button
                   type="button"
                   aria-label="Decrease quantity"
                   onClick={() => setQty((q) => Math.max(1, q - 1))}
-                  className={cn(STEP_CLASS, BRAND_PRESS_CLASS)}
+                  className={cn(SHEET_STEP_CLASS, BRAND_PRESS_CLASS)}
                 >−</button>
-                <span data-ui="pos-item-qty" className={QTY_CLASS}>{qty}</span>
+                <span data-ui="pos-item-qty" className={SHEET_QTY_CLASS}>{qty}</span>
                 <button
                   type="button"
                   aria-label="Increase quantity"
                   onClick={() => setQty((q) => q + 1)}
-                  className={cn(STEP_CLASS, BRAND_PRESS_CLASS)}
+                  className={cn(SHEET_STEP_CLASS, BRAND_PRESS_CLASS)}
                 >+</button>
               </div>
               <button

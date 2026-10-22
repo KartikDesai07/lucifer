@@ -224,6 +224,7 @@
     "lib/customer-sheet.test.ts",
     "lib/table-sheet.test.ts",
     "lib/table-sheet-paths.test.ts",
+    "lib/sheet-frame.test.ts",
     "lib/pos-pulse-paths.test.ts",
     "lib/print-job-model.test.ts",
     "lib/print-queue.test.ts",

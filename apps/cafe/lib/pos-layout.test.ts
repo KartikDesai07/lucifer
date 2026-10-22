@@ -318,6 +318,22 @@ test("PIN: the bar's place: beside the nav, on the phone's tab bar, at the windo
 
 // Owner Q19: one width decides it, the nav's wide breakpoint: the cart is a column from 1280px (a PC or a laptop, nav
 // open or collapsed), the bar and its full-screen sheet below.
+// U1 audit wave (ruling P54; report-clean Minor 2): Tailwind's sm / md / lg / 2xl values fed CB-1's column tables and
+// had no caller left; only the frame's own switches stay (xl 1280, desk 1100).
+test("PIN: lib/pos-layout.ts keeps only the breakpoints the frame switches at — the unused sm / md / lg / 2xl are gone", () => {
+  const exported = layout as unknown as Record<string, unknown>;
+  for (const gone of ["BREAKPOINT_SM_PX", "BREAKPOINT_MD_PX", "BREAKPOINT_LG_PX", "BREAKPOINT_2XL_PX"]) {
+    assert.ok(!(gone in exported), `${gone} is no longer exported`);
+  }
+  assert.deepEqual(
+    Object.keys(exported).filter((k) => k.startsWith("BREAKPOINT_")).sort(),
+    ["BREAKPOINT_DESK_PX", "BREAKPOINT_XL_PX"],
+    "the frame's two breakpoints",
+  );
+  assert.equal(BREAKPOINT_XL_PX, 1280, "Tailwind's xl (80rem)");
+  assert.equal(BREAKPOINT_DESK_PX, 1100, "the HTML's desk");
+});
+
 test("PIN: the cart column starts at 1280px (owner Q19), the nav's own wide breakpoint", () => {
   assert.equal(POS_CART_COLUMN_MIN_PX, 1280, "owner Q19: 1280px and wider keep the cart column");
   assert.equal(POS_CART_COLUMN_MIN_PX, BREAKPOINT_XL_PX, "Tailwind's xl: (80rem) is the switch");

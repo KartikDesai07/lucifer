@@ -354,15 +354,15 @@ test("PIN (U1 Task 8, values 10.1): the modal is the HTML's sheet — a Radix di
     assert.ok(!src.includes(gone), `no own copy of the opener focus: ${gone}`);
   }
 
-  assert.equal(
-    modalConst(src, "SCRIM_CLASS"),
-    "fixed inset-0 z-20 flex items-center justify-center bg-scrim p-4 font-sans leading-[normal] text-foreground motion-safe:animate-scrim-in max-tab:items-end max-tab:p-0",
-    "values 10.1 scrim: fixed, z-index 20 (over the phone's tab bar), --scrim, fadeIn .2s; sheetAlign / sheetPad: centred in 16px, along the foot with no padding below 720px",
+  // Ruling P54 (U1 audit wave): the scrim and the panel are the shared sheet frame (lib/sheet-frame.ts) with the modal's
+  // own z-index, width, overflow and sheetIn; lib/sheet-frame.test.ts pins each whole class set, unchanged.
+  assert.ok(
+    src.includes('const SCRIM_CLASS = cn(SHEET_SCRIM_BASE, "z-20");'),
+    "values 10.1 scrim: the shared frame (fixed, --scrim, fadeIn .2s; centred in 16px, along the foot below 720px) at z-index 20 (over the phone's tab bar)",
   );
-  assert.equal(
-    modalConst(src, "PANEL_CLASS"),
-    "flex w-full max-w-[440px] flex-col overflow-hidden rounded-[14px] bg-card [box-shadow:var(--pop)] outline-none motion-safe:animate-sheet-in tab:max-h-[calc(100vh-32px)] tab:supports-[height:1dvh]:max-h-[calc(100dvh-32px)] max-tab:max-h-[88vh] max-tab:rounded-[14px_14px_0_0] max-tab:supports-[height:1dvh]:max-h-[88dvh]",
-    "values 10.1 panel: 440px, --surface, no border, sheetRadius 14 (14 14 0 0 below 720px), --pop, sheetIn .34s; capped at the HTML's sheet heights (csMaxH) so a long option list scrolls in the body",
+  assert.ok(
+    src.includes('const PANEL_CLASS = cn(SHEET_PANEL_BASE, SHEET_PANEL_CAP_CLASS, "max-w-[440px] overflow-hidden motion-safe:animate-sheet-in");'),
+    "values 10.1 panel: the shared panel (--surface, sheetRadius 14, --pop) at 440px, no border, sheetIn .34s; capped at the HTML's sheet heights (csMaxH) so a long option list scrolls in the body",
   );
   assert.equal(modalConst(src, "HEAD_CLASS"), "flex flex-none items-center gap-2.5 border-b border-border-2 px-[18px] py-4", "values 10.1 head: 16px 18px, gap 10, a --border-2 rule");
   // U1 final fix wave (the Task 8 review's minor): a long unbroken operator-typed name (CR1.1) wraps inside the head
@@ -407,19 +407,17 @@ test("PIN (U1 Task 8, values 10.1-10.2): Size segments, add-on rows, the 48px no
   assert.equal(modalConst(src, "CHECK_ON_CLASS"), "border-primary bg-primary", "values 10.2 add-on on: --accent box and fill");
   assert.equal(modalConst(src, "CHECK_OFF_CLASS"), "border-subtle-foreground bg-card", "values 10.2 add-on off: --text-3 box on --surface");
   assert.ok(src.includes('{on ? "✓" : ""}'), "the HTML's check character when on");
-  assert.equal(
-    modalConst(src, "NOTE_FIELD_CLASS"),
-    "h-12 rounded-[12px] border-[1.5px] border-border px-3 py-0 text-[15px] leading-[normal] placeholder:text-subtle-foreground md:text-[15px] max-tab:text-base",
-    "the HTML's field (values 8.3): 48px, radius 12, a 1.5px --border rule, 0 12px, 15px (16px below 720px, ruling R36), --text-3 placeholder",
-  );
+  // Ruling P54: the 48px field and the stepper are the shared sheet frame's (lib/sheet-frame.ts; their values are pinned
+  // once in lib/sheet-frame.test.ts).
+  assert.match(src, /placeholder="e\.g\. less spicy, no onions"[\s\S]*?className=\{SHEET_FIELD_CLASS\}/, "the HTML's 48px field (values 8.3) for the kitchen note");
   assert.equal(
     modalConst(src, "FOOT_CLASS"),
     "flex flex-none items-center gap-2.5 border-t border-border-2 px-[18px] pt-3.5 pb-[18px] max-tab:pb-[calc(18px+env(safe-area-inset-bottom))]",
     "values 10.1 footer: 14px 18px 18px, gap 10, a --border-2 rule; below 720px (the window's foot) 18px + the safe-area inset (ruling P49)",
   );
-  assert.equal(modalConst(src, "STEPPER_CLASS"), "flex h-[46px] items-center rounded-[10px] border border-border", "values 10.1 stepper: 46px, 1px --border, radius 10");
-  assert.equal(modalConst(src, "STEP_CLASS"), "h-11 w-[42px] cursor-pointer border-0 bg-transparent px-1.5 py-px text-[18px] text-foreground", "values 10.1 − / +: 42x44, 18px --text, the UA's padding");
-  assert.equal(modalConst(src, "QTY_CLASS"), "min-w-6 text-center text-[15px] font-semibold", "values 10.1 qty: min 24px, 15px 600");
+  assert.ok(src.includes('aria-label="Quantity" className={SHEET_STEPPER_CLASS}'), "values 10.1 stepper: the shared 46px stepper");
+  assert.equal(countOccurrences(src, "className={cn(SHEET_STEP_CLASS, BRAND_PRESS_CLASS)}"), 2, "values 10.1 − / +: the shared 42x44 steps, with the HTML's press");
+  assert.ok(src.includes('data-ui="pos-item-qty" className={SHEET_QTY_CLASS}'), "values 10.1 qty: the shared 15px 600 qty");
   assert.equal(
     modalConst(src, "ADD_CLASS"),
     "h-[46px] flex-1 cursor-pointer rounded-[10px] border-0 bg-primary px-1.5 py-px text-[15px] font-semibold text-primary-foreground not-disabled:hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50",
@@ -486,23 +484,23 @@ test("PIN (U1 Task 12, values 12.1 / 8.1): the void dialog is the HTML's sheet �
   assert.ok(src.includes("on ? CHECK_ON_CLASS : CHECK_OFF_CLASS") && src.includes('{on ? "✓" : ""}'), "the picked line's round check is lit with the HTML's ✓");
   assert.ok(src.includes('role="group"') && src.includes("aria-labelledby={qtyId}"), "the stepper is named by its caption");
 
-  assert.equal(
-    voidConst(src, "SCRIM_CLASS"),
-    "fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4 font-sans leading-[normal] text-foreground motion-safe:animate-scrim-in max-tab:items-end max-tab:p-0",
-    "values 12.1 scrim: fixed at z-index 50, --scrim, fadeIn .2s; centred in 16px, along the foot with no padding below 720px",
+  // Ruling P54 (U1 audit wave): the scrim, the panel, the ✕, the stepper, the 48px field and the foot are the shared sheet
+  // frame (lib/sheet-frame.ts) with the dialog's own z-index, width, border and sheetIn; lib/sheet-frame.test.ts pins
+  // each whole class set, unchanged.
+  assert.ok(
+    src.includes('const SCRIM_CLASS = cn(SHEET_SCRIM_BASE, "z-50");'),
+    "values 12.1 scrim: the shared frame (fixed, --scrim, fadeIn .2s; centred in 16px, along the foot below 720px) at z-index 50",
   );
-  assert.equal(
-    voidConst(src, "PANEL_CLASS"),
-    "flex w-full max-w-[420px] flex-col overflow-hidden rounded-[14px] border border-border bg-card [box-shadow:var(--pop)] outline-none motion-safe:animate-sheet-in tab:max-h-[calc(100vh-32px)] tab:supports-[height:1dvh]:max-h-[calc(100dvh-32px)] max-tab:max-h-[88vh] max-tab:rounded-[14px_14px_0_0] max-tab:supports-[height:1dvh]:max-h-[88dvh]",
-    "values 12.1 panel: 420px, --surface, a 1px --border, sheetRadius 14 (14 14 0 0 below 720px), --pop, sheetIn .34s; capped at the sheets' heights (values 0.3 csMaxH), the body scrolls",
+  assert.ok(
+    src.includes('const PANEL_CLASS = cn(SHEET_PANEL_BASE, SHEET_PANEL_CAP_CLASS, "max-w-[420px] overflow-hidden border border-border motion-safe:animate-sheet-in");'),
+    "values 12.1 panel: the shared panel (--surface, sheetRadius 14, --pop) at 420px, a 1px --border, sheetIn .34s; capped at the sheets' heights (values 0.3 csMaxH), the body scrolls",
   );
   assert.equal(voidConst(src, "HEAD_CLASS"), "flex flex-none items-center gap-2.5 px-4 pt-4 pb-3", "values 8.1 head: 16px 16px 12px, gap 10");
   assert.equal(voidConst(src, "TITLE_CLASS"), "text-[17px] font-semibold", "values 8.1 title: 17px 600");
   assert.equal(voidConst(src, "SUB_CLASS"), "text-[12.5px] text-muted-foreground", "values 8.1 sub: 12.5px --text-2");
-  assert.equal(
-    voidConst(src, "CLOSE_CLASS"),
-    "flex size-8 flex-none cursor-pointer items-center justify-center rounded-[50%] border-0 bg-surface-3 px-1.5 py-px text-muted-foreground",
-    "values 8.1 ✕: 32px round on --surface-3, --text-2, the UA's 1px 6px",
+  assert.ok(
+    src.includes('data-ui="void-close" aria-label="Close" className={cn(SHEET_CLOSE_CLASS, BRAND_PRESS_CLASS)}'),
+    "values 8.1 ✕: the shared 32px round ✕, with the HTML's press",
   );
   assert.equal(voidConst(src, "BODY_CLASS"), "flex min-h-0 flex-1 flex-col gap-3.5 overflow-auto px-4 pt-1 pb-2", "values 8.3 body: 4px 16px 8px, the blocks 14px apart, the one scroller");
   assert.equal(voidConst(src, "EMPTY_CLASS"), "px-3 py-6 text-center text-[13.5px] leading-[1.5] text-muted-foreground", "our empty line in the HTML's empty block (values 8.2): 24px 12px, 13.5px --text-2, 1.5");
@@ -528,22 +526,16 @@ test("PIN (U1 Task 12, values 10.1 / 8.3 / 12.1): the check rows, the 46px stepp
   assert.equal(voidConst(src, "PRICE_CLASS"), "flex-none whitespace-nowrap text-muted-foreground", "values 10.1 price: --text-2 at the row's right");
   assert.equal(voidConst(src, "CAPTION_CLASS"), "text-[12.5px] font-semibold text-muted-foreground", "values 8.3 captions: 12.5px 600 --text-2");
   assert.equal(voidConst(src, "QTY_ROW_CLASS"), "flex items-center justify-between gap-2.5", "the caption left, the stepper right (today's row)");
-  assert.equal(voidConst(src, "STEPPER_CLASS"), "flex h-[46px] items-center rounded-[10px] border border-border", "values 10.1 stepper: 46px, 1px --border, radius 10");
-  assert.equal(voidConst(src, "STEP_CLASS"), "h-11 w-[42px] cursor-pointer border-0 bg-transparent px-1.5 py-px text-[18px] text-foreground", "values 10.1 − / +: 42x44, 18px --text, the UA's padding");
-  assert.equal(voidConst(src, "QTY_CLASS"), "min-w-6 text-center text-[15px] font-semibold", "values 10.1 qty: min 24px, 15px 600");
+  // Ruling P54: the stepper, the 48px field and the foot are the shared sheet frame's (values pinned once in
+  // lib/sheet-frame.test.ts).
+  assert.ok(src.includes('aria-labelledby={qtyId} className={SHEET_STEPPER_CLASS}'), "values 10.1 stepper: the shared 46px stepper");
+  assert.equal(countOccurrences(src, "className={cn(SHEET_STEP_CLASS, BRAND_PRESS_CLASS)}"), 2, "values 10.1 − / +: the shared 42x44 steps, with the HTML's press");
+  assert.ok(src.includes('data-ui="void-qty" className={SHEET_QTY_CLASS}'), "values 10.1 qty: the shared 15px 600 qty");
   assert.ok(src.includes(">−</button>") && src.includes(">+</button>"), "the HTML's stepper glyphs (U+2212 and +), not icons");
   assert.equal(voidConst(src, "GUARD_CLASS"), "text-[13px] font-medium leading-[1.5] text-status-bad-ink", "the guard in --bad-i (the HTML's message, values 12.2: 13px 500)");
   assert.equal(voidConst(src, "FIELD_CLASS"), "flex flex-col gap-1.5", "values 8.3 field: the caption 6px over the box");
-  assert.equal(
-    voidConst(src, "FIELD_INPUT_CLASS"),
-    "h-12 rounded-[12px] border-[1.5px] border-border px-3 py-0 text-[15px] leading-[normal] placeholder:text-subtle-foreground md:text-[15px] max-tab:text-base",
-    "values 8.3 box: 48px, radius 12, a 1.5px --border rule, 0 12px, 15px (16px below 720px, ruling R36), --text-3 placeholder",
-  );
-  assert.equal(
-    voidConst(src, "FOOT_CLASS"),
-    "flex flex-none flex-col gap-2 border-t border-border-2 px-4 pt-3 pb-[calc(14px+env(safe-area-inset-bottom))]",
-    "values 8.2 foot: 12px 16px and 14px + the safe area, gap 8, a --border-2 rule",
-  );
+  assert.match(src, /id="void-reason"[\s\S]*?className=\{SHEET_FIELD_CLASS\}/, "values 8.3 box: the shared 48px field for the reason");
+  assert.ok(src.includes('data-ui="void-foot" className={SHEET_FOOT_CLASS}'), "values 8.2 foot: the shared foot (14px + the safe area)");
   assert.equal(
     voidConst(src, "VOID_CLASS"),
     "h-[46px] w-full cursor-pointer rounded-[10px] border border-status-bad bg-status-bad px-1.5 py-px text-[14.5px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50",

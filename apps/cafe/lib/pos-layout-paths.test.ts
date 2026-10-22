@@ -1087,9 +1087,12 @@ test("PIN: the table sheet and the Open orders panel cap on the visible viewport
   }
   assert.ok(selector.includes("className={TABLE_PANEL_CLASS}") && dialog.includes("className={TABLE_PANEL_CLASS}"), "landmark: both open the shared capped panel");
   assert.ok(selector.includes("className={TABLE_BODY_CLASS}") && picker.includes("className={TABLE_BODY_CLASS}"), "landmark: the areas scroll in the shared body");
+  // Ruling P54 (U1 audit wave): the table panel's caps are the shared sheet frame's (lib/sheet-frame.ts).
   const sheet = stripComments(readSrc("apps/cafe/lib/table-sheet.ts"));
-  assert.ok(sheet.includes("tab:supports-[height:1dvh]:max-h-[calc(100dvh-32px)]"), "the table sheet: the dvh cap where it exists");
-  assert.ok(sheet.includes("max-tab:supports-[height:1dvh]:max-h-[88dvh]"), "the phone's table sheet: 88dvh where it exists");
+  assert.match(sheet, /export const TABLE_PANEL_CLASS = cn\(\s*SHEET_PANEL_BASE,\s*SHEET_PANEL_CAP_CLASS,/, "the table panel takes the shared caps");
+  const frame = stripComments(readSrc("apps/cafe/lib/sheet-frame.ts"));
+  assert.ok(frame.includes("tab:supports-[height:1dvh]:max-h-[calc(100dvh-32px)]"), "the table sheet: the dvh cap where it exists");
+  assert.ok(frame.includes("max-tab:supports-[height:1dvh]:max-h-[88dvh]"), "the phone's table sheet: 88dvh where it exists");
   assert.ok(panel.includes("tab:supports-[height:1dvh]:max-h-[min(640px,calc(100dvh-80px))]"), "the panel: the dvh cap where it exists");
   assert.ok(panel.includes("max-tab:supports-[height:1dvh]:max-h-[86dvh]"), "the phone's sheet: 86dvh where it exists");
 });

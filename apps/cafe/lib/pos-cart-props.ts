@@ -124,9 +124,12 @@ export function buildCartProps(
  * D9.8c — `onClear` is `clearCart` (setCart([]) — items ONLY), not
  * `resetOrder`, so a discount, promo, reward or extra charge SURVIVES the
  * Clear button. "No items" therefore does not mean "nothing applied", and
- * three separate places have to agree on that or the adjustment is stranded:
- * the More menu must stay openable, the mobile bar must stay tappable, and
- * the mobile sheet must not auto-close. One predicate so they cannot drift.
+ * the places that show or reach it have to agree on that or the adjustment is
+ * stranded: the cart footer's Bill options links (and the panel they open)
+ * stay usable on an empty cart (Cart.tsx, D9.8c: locked only while busy), the
+ * order bar says "Adjustment still applied" (MobileCartBar), and the cart
+ * sheet does not close itself while one survives (pos/page.tsx, ruling P50).
+ * The bar and the page read this one predicate so they cannot drift.
  *
  * Keyed on the operator's INTENT (`discountRaw`, the GST preset) rather than
  * the derived `discount`, which usePosTotals returns as 0 whenever subtotal is

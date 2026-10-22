@@ -118,7 +118,14 @@ test("PIN: the add form keeps today's rules, seeding and focus (CustomerAddForm.
 test("PIN: the customer sheet's look is the HTML's (values 8.1-8.3), over the payment sheet", () => {
   const src = readSrc(SEARCH);
   expectTokens(src, "SCRIM_CLASS", ["fixed", "inset-0", "z-[51]", "flex", "items-center", "justify-center", "p-4", "motion-safe:animate-scrim-in", "max-tab:items-end", "max-tab:p-0"]);
-  expectTokens(src, "PANEL_CLASS", ["flex", "w-full", "max-w-[460px]", "flex-col", "overflow-hidden", "rounded-[14px]", "border", "border-border", "bg-card", "[box-shadow:var(--pop)]", "motion-safe:animate-html-sheet-in-cs", "tab:h-[600px]", "max-tab:h-[88vh]", "max-tab:rounded-[14px_14px_0_0]"]);
+  // Ruling P54 (U1 audit wave): the panel is the shared sheet frame (lib/sheet-frame.ts: --surface, radius 14 / 14 14 0 0,
+  // --pop, the csMaxH caps) with the customer sheet's own 460px, border, 600 / 88dvh height and sheetIn .32s;
+  // lib/sheet-frame.test.ts pins its whole class set, unchanged.
+  assert.match(src, /const PANEL_CLASS = cn\(\s*SHEET_PANEL_BASE,\s*SHEET_PANEL_CAP_CLASS,\s*"([^"]*)",?\s*\);/, "the shared panel and its caps");
+  const own = src.match(/const PANEL_CLASS = cn\(\s*SHEET_PANEL_BASE,\s*SHEET_PANEL_CAP_CLASS,\s*"([^"]*)"/)?.[1]?.split(/\s+/) ?? [];
+  for (const t of ["max-w-[460px]", "overflow-hidden", "border", "border-border", "motion-safe:animate-html-sheet-in-cs", "tab:h-[600px]", "max-tab:h-[88vh]", "max-tab:supports-[height:1dvh]:h-[88dvh]"]) {
+    assert.ok(own.includes(t), `PANEL_CLASS: "${t}"`);
+  }
   expectTokens(src, "HEAD_CLASS", ["flex", "flex-none", "items-center", "gap-2.5", "px-4", "pt-4", "pb-3"]);
   expectTokens(src, "SUB_CLASS", ["text-[12.5px]", "text-muted-foreground"]);
   expectTokens(src, "ROUND_CLASS", ["flex", "size-8", "flex-none", "items-center", "justify-center", "border-0", "bg-surface-3"]);
@@ -141,7 +148,7 @@ test("PIN: the customer sheet's look is the HTML's (values 8.1-8.3), over the pa
   const form = readSrc(FORM);
   expectTokens(form, "FIELD_BOX_CLASS", ["flex", "h-12", "items-center", "gap-2", "rounded-[12px]", "border-[1.5px]", "border-border", "bg-card", "px-3"]);
   expectTokens(form, "SAVE_CLASS", ["h-12", "w-full", "rounded-[12px]", "bg-primary", "text-[15px]", "font-semibold", "disabled:opacity-50"]);
-  assert.ok(readSrc("apps/cafe/lib/payment-sheet.ts").includes('"fixed inset-0 z-50 '), "the payment sheet stays at 50, under it");
+  assert.ok(readSrc("apps/cafe/lib/payment-sheet.ts").includes('export const PAY_SCRIM_CLASS = cn(SHEET_SCRIM_BASE, "z-50");'), "the payment sheet stays at 50, under it");
   const css = readFileSync(path.join(REPO_ROOT, "apps/cafe/app/globals.css"), "utf8");
   assert.ok(css.includes("--animate-html-sheet-in-cs: sheet-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both;"), "the sheet's sheetIn .32s");
   assert.ok(css.includes("--animate-html-rise-cs: brand-rise 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;"), "a row's rise .3s");
