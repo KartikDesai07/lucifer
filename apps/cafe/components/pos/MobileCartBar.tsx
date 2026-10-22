@@ -38,7 +38,8 @@ const CART_COLUMN_QUERY = `(min-width: ${POS_CART_COLUMN_MIN_PX}px)`;
 // it) drawn as the HTML's cart section over the whole screen at every width below 1280px (owner Q19: the phone's sheet,
 // over the header, the rail and the tab bar, no scrim), sliding up from the window's foot. Its panel names itself
 // (data-ui="pos-cart-sheet"): the F8 / F9 keys treat it as the cart, not as a dialog (PosKeys). The page closes it by
-// itself once the cart is TRULY empty (pos/page.tsx); the bar stays.
+// itself once the open sheet's order is emptied and nothing applied is left (rulings P50, P55: hooks/
+// use-emptied-sheet-close.ts); a sheet opened on an order that was already empty stays open; the bar stays.
 export function MobileCartBar({ open, onOpenChange, cartProps }: MobileCartBarProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
   // A sheet left open while the window grows to 1280px (a window widened to a laptop's) gives way to the cart column,

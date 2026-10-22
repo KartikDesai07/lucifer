@@ -136,7 +136,7 @@ test("PIN: pos/page.tsx hands one category picker to the column and to ProductGr
   assert.match(src, /qtyByProduct=\{qtyByProduct\}/, "pos/page.tsx must pass qtyByProduct={qtyByProduct} to ProductGrid");
 });
 
-test("PIN: the mobile cart sheet auto-closes once the cart is TRULY empty — otherwise the fixed bar is a dead end over an empty sheet", () => {
+test("PIN: the mobile cart sheet auto-closes once its order is emptied with nothing applied left (P50, P55) — otherwise the fixed bar is a dead end over an empty sheet", () => {
   const src = stripComments(readSrc(POS_PAGE));
   // The original rule was `pos.cart.length === 0` alone. D9.8c narrowed it:
   // Clear is clearCart (items only), so a promo/reward/discount/extra charge
