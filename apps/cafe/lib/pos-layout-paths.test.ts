@@ -145,12 +145,13 @@ test("PIN: the mobile cart sheet auto-closes once the cart is TRULY empty — ot
   // only screen where a phone operator can remove the adjustment — trading
   // one dead end for a worse one (money silently riding to the next sale).
   // The dead-end guard itself is unchanged and still pinned, below. Ruling P50 (U1 audit wave): owner Q18 made the empty
-  // sheet a working place, so the close now fires as the cart DRAINS (the item count from some to none, nothing
-  // applied: lib/pos-cart-view.ts shouldCloseEmptiedSheet, unit-tested) through hooks/use-emptied-sheet-close.ts, not
-  // whenever it is empty; the ruling's own pin is "PIN: ruling P50" below.
+  // sheet a working place, so the close now follows the open sheet's order being emptied (the item count from some to
+  // none) and fires once nothing is applied (P55: in that render or a later one) — lib/pos-cart-view.ts
+  // emptiedSheetStep, tested over render sequences — through hooks/use-emptied-sheet-close.ts, not whenever the cart is
+  // empty; the rulings' own pin is "PIN: rulings P50 / P55" below.
   assert.match(
     src,
-    /useEmptiedSheetClose\(pos\.cart\.length, pendingAdjustment, setMobileCartOpen\)/,
+    /useEmptiedSheetClose\(pos\.cart\.length, pendingAdjustment, mobileCartOpen, setMobileCartOpen\)/,
     "must close the mobile cart sheet when the cart drains AND no adjustment survives",
   );
   const hook = stripComments(readSrc("apps/cafe/hooks/use-emptied-sheet-close.ts"));
@@ -1435,18 +1436,26 @@ test("PIN: the bill is the HTML's (values 5.5, 0.4; owner Q12): the details behi
     "values 0.4: billOpen = s.billOpen ?? (s.h >= 820), and P16's waived / changed table charge",
   );
   assert.match(src, /const chargeAdjusted = chargeShown && charge !== entitledCharge;/, "P16: the same condition as the waived / changed row");
-  // Ruling P51 (U1 audit wave, report M-2): the choice holds for the order on screen only (billToggleHolds, unit-tested in
-  // lib/pos-cart-view.test.ts): it is stored with its order, dropped during render when another order is on screen or
-  // the count has just gone from some to none (the column from 1280px never remounts), and `toggled` is what is left.
-  assert.match(src, /const \[toggle, setToggle\] = useState<BillToggle \| null>\(null\);/, "P51: the choice is stored with its order");
-  assert.match(src, /const \[hadItems, setHadItems\] = useState\(count > 0\);\s*if \(hadItems !== count > 0\) setHadItems\(count > 0\);/, "P51: the cart had items until now");
+  // Ruling P51 (U1 audit wave, report M-2): the choice holds for the order on screen only (billToggleStep, tested over
+  // render sequences in lib/pos-cart-view.test.ts): it is stored with its order, stepped during render — dropped when
+  // another order is on screen or the count has just gone from some to none (the column from 1280px never remounts) —
+  // and `toggled` is what is left.
   assert.match(
     src,
-    /if \(toggle !== null && !billToggleHolds\(toggle, \{ scope: orderScope, emptied: hadItems && count === 0 \}\)\) setToggle\(null\);/,
-    "P51: another order on screen, or the cart just emptied, drops the choice",
+    /const \[bill, setBill\] = useState<BillToggleState>\(\(\) => \(\{ toggle: null, hadItems: count > 0 \}\)\);/,
+    "P51: the choice is stored with its order, and whether the cart had items",
   );
-  assert.match(src, /const toggled = toggle\?\.open \?\? null;/, "P51: what is left of the choice feeds billDetailsOpen");
-  assert.match(src, /onClick=\{\(\) => setToggle\(\{ open: !billOpen, scope: orderScope \}\)\}/, "P51: a tap stores the choice with the order on screen");
+  assert.match(
+    src,
+    /const nextBill = billToggleStep\(bill, \{ scope: orderScope, count \}\);\s*if \(nextBill !== bill\) setBill\(nextBill\);/,
+    "P51: each render steps the rule; another order on screen, or the cart just emptied, drops the choice",
+  );
+  assert.match(src, /const toggled = nextBill\.toggle\?\.open \?\? null;/, "P51: what is left of the choice feeds billDetailsOpen");
+  assert.match(
+    src,
+    /onClick=\{\(\) => setBill\(\{ toggle: \{ open: !billOpen, scope: orderScope \}, hadItems: count > 0 \}\)\}/,
+    "P51: a tap stores the choice with the order on screen",
+  );
   assert.ok(!src.includes("setToggled("), "the per-mount toggle that never reset is gone");
   const cart = stripComments(readSrc(CART_TSX));
   assert.match(cart, /<CartBill\s+orderScope=\{resumedOrder\?\._id \?\? "new"\}/, "P51: the order on screen, CartLines' own scope (the tab's id, or \"new\")");
@@ -1557,34 +1566,43 @@ test("PIN: D9.8c — on mobile, a surviving adjustment keeps the cart bar OPENAB
     /hasPendingAdjustment\(pos\)/,
     "the POS page must use the SAME shared predicate, not its own copy",
   );
-  // Ruling P50: the page's close goes through hooks/use-emptied-sheet-close.ts, which asks the unit-tested
-  // shouldCloseEmptiedSheet (lib/pos-cart-view.test.ts) with the SAME predicate: never while an adjustment survives.
+  // Rulings P50 / P55: the page's close goes through hooks/use-emptied-sheet-close.ts, which steps the unit-tested
+  // emptiedSheetStep (lib/pos-cart-view.test.ts) with the SAME predicate: never while an adjustment survives.
   assert.match(
     pageSrc,
-    /const pendingAdjustment = hasPendingAdjustment\(pos\);\s*useEmptiedSheetClose\(pos\.cart\.length, pendingAdjustment, setMobileCartOpen\);/,
+    /const pendingAdjustment = hasPendingAdjustment\(pos\);\s*useEmptiedSheetClose\(pos\.cart\.length, pendingAdjustment, mobileCartOpen, setMobileCartOpen\);/,
     "the POS page must not force-close the mobile sheet while an adjustment survives",
   );
 });
 
 // Ruling P50 (U1 audit wave, report M-1): owner Q18 made the empty sheet a working place, so the page's close follows the
-// item count, not "empty right now": it fires as the count goes from some to none with nothing applied (main's last-item
-// / Clear / settled close), never when only an adjustment leaves an order that had no items already.
-test("PIN: ruling P50 — the cart sheet closes itself only as the last item goes (the page's hook, the pure decision), never on an adjustment alone", () => {
+// open sheet's order being emptied (its items from some to none: main's last-item / Clear / settled close), never an
+// empty sheet opened on an item-less order. Ruling P55 (the fix round, review I-1): the close may come a render later,
+// once a lagging adjustment (an auto-armed stamp reward) lets go — a small state machine (emptiedSheetStep), tested over
+// render sequences in lib/pos-cart-view.test.ts; these pins hold the wiring.
+test("PIN: rulings P50 / P55 — the cart sheet closes itself once its emptied order has nothing applied (the page's hook, the stepped rule)", () => {
   const pageSrc = stripComments(readSrc(POS_PAGE));
   assert.match(pageSrc, /import \{ useEmptiedSheetClose \} from "@\/hooks\/use-emptied-sheet-close";/, "the page imports the hook");
   assert.ok(!pageSrc.includes("setMobileCartOpen(false)"), "the page keeps no close of its own (the old empty-cart effect is gone)");
   assert.ok(!/pos\.cart\.length === 0/.test(pageSrc), "no 'empty right now' rule in the page");
   const hook = stripComments(readSrc("apps/cafe/hooks/use-emptied-sheet-close.ts"));
-  assert.match(hook, /import \{ shouldCloseEmptiedSheet \} from "@\/lib\/pos-cart-view";/, "the hook asks the pure decision");
-  assert.match(hook, /const prevCount = useRef\(count\);/, "it remembers the count it last saw (a ref: no render of its own)");
   assert.match(
     hook,
-    /if \(shouldCloseEmptiedSheet\(prevCount\.current, count, pendingAdjustment\)\) setOpen\(false\);\s*prevCount\.current = count;/,
-    "it closes on the decision, then moves the remembered count on",
+    /import \{ emptiedSheetStart, emptiedSheetStep, type EmptiedSheetState \} from "@\/lib\/pos-cart-view";/,
+    "the hook runs the pure rule",
   );
-  assert.match(hook, /\}, \[count, pendingAdjustment, setOpen\]\);/, "it re-asks when the count or the adjustment changes");
-  const view = stripComments(readSrc("apps/cafe/lib/pos-cart-view.ts"));
-  assert.match(view, /return prevCount > 0 && count === 0 && !pendingAdjustment;/, "the decision: some to none, nothing applied");
+  assert.match(
+    hook,
+    /const state = useRef<EmptiedSheetState>\(emptiedSheetStart\(\{ count, open \}\)\);/,
+    "it starts from the first render's figures (that render never closes), in a ref (no render of its own)",
+  );
+  assert.match(
+    hook,
+    /const step = emptiedSheetStep\(state\.current, \{ count, pendingAdjustment, open \}\);\s*state\.current = step\.state;\s*if \(step\.close\) setOpen\(false\);/,
+    "each change steps the rule once, keeps its state, and closes on its word",
+  );
+  assert.match(hook, /\}, \[count, pendingAdjustment, open, setOpen\]\);/, "it steps when the count, the adjustment or the sheet's open state changes");
+  assert.ok(!hook.includes("shouldCloseEmptiedSheet"), "the one-render comparison is gone (review I-1)");
 });
 
 // ── U0 Task 2 (2026-10-19): the HTML's nav widths drive the POS grid ─────────

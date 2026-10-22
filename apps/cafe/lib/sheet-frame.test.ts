@@ -8,7 +8,7 @@
 // compiled CSS and the rendered look are unchanged.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -98,26 +98,16 @@ test("the shared sheet frame's values (values 0.3, 8.1-8.3, 9.1, 10.1, 11.1, 12.
   );
 });
 
-// A part shared but still copied somewhere would drift again: no file but lib/sheet-frame.ts spells a shared string.
-test("PIN: no copy of a shared part is left — lib/sheet-frame.ts is the only file that spells them", () => {
+// A part shared but still copied in one of the sheets would drift again: none of the six files that held the copies
+// spells a shared string any more (review M-2, the fix round: the fence covers these files only, so an unrelated
+// element elsewhere that happens to share a string is not pushed onto the sheet frame).
+test("PIN: no copy of a shared part is left in the sheets that import the frame", () => {
   const parts = Object.entries(FRAME).filter(([, v]) => typeof v === "string");
   assert.ok(parts.length >= 9, "landmark: the frame's nine parts");
-  const files: string[] = [];
-  const walk = (dir: string) => {
-    for (const name of readdirSync(dir)) {
-      if (name === "node_modules" || name.startsWith(".")) continue;
-      const abs = path.join(dir, name);
-      if (statSync(abs).isDirectory()) walk(abs);
-      else if (/\.(ts|tsx)$/.test(name) && !/\.test\.ts$/.test(name)) files.push(abs);
-    }
-  };
-  for (const dir of ["app", "components", "hooks", "lib"]) walk(path.join(CAFE_ROOT, dir));
-  const own = path.join(CAFE_ROOT, "lib/sheet-frame.ts");
-  for (const abs of files) {
-    if (abs === own) continue;
-    const src = readFileSync(abs, "utf8");
+  for (const rel of [VOID, CONFIRM, MODIFIER, CUSTOMER, PAYMENT, TABLE]) {
+    const src = readFileSync(path.join(CAFE_ROOT, rel), "utf8");
     for (const [name, value] of parts) {
-      assert.ok(!src.includes(value), `${path.relative(CAFE_ROOT, abs)} must import ${name}, not copy it`);
+      assert.ok(!src.includes(value), `${rel} must import ${name}, not copy it`);
     }
   }
 });

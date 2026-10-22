@@ -13,18 +13,21 @@ import {
   BILL_OPEN_MIN_HEIGHT_PX,
   billDetailsOpen,
   billToggleHolds,
+  billToggleStep,
   cartTitle,
+  emptiedSheetStart,
+  emptiedSheetStep,
   focusIndexAfterRemove,
   lineMeta,
   lineNumber,
   matchVoidLine,
   orderBarSummary,
   selectionHolds,
-  shouldCloseEmptiedSheet,
   tabMeta,
   tableAreaName,
   tableCellValue,
   voidLineOf,
+  type BillToggleState,
 } from "./pos-cart-view";
 
 const item = (over: Partial<OrderItem>): OrderItem => ({
@@ -240,19 +243,115 @@ test("billToggleHolds (ruling P51): the details choice holds for the order on sc
   const fresh = { open: true, scope: "new" };
   assert.equal(billToggleHolds(fresh, { scope: "new", emptied: false }), true, "a new order keeps its own choice");
   assert.equal(billToggleHolds(fresh, { scope: "new", emptied: true }), false, "a new order cleared, paid or sent: the next order starts unchosen");
-  // Dropped, the 820px rule and the waived / changed charge decide again: a waiver shows by itself on the next order.
-  assert.equal(billDetailsOpen({ toggled: null, windowHeight: 700, chargeAdjusted: true }), true, "the next order's waiver is seen (D9.8)");
 });
 
-// ── the cart sheet's own close (ruling P50) ───────────────────────────────────────────────────────────────────────
+// Review M-1 (U1 audit fix round): the choice is CartBill's render-time state, so its rule is tested as CartBill runs it —
+// billToggleStep folded over a sequence of renders, with the operator's taps in between.
+type BillRender = { scope: string; count: number; tap?: boolean };
+/** CartBill over a sequence of renders: each render steps the state (as its render-time update does); a tap stores the
+ *  opposite of what shows, with the order on screen (as its onClick does). Returns the choice after each render. */
+function billRenders(renders: BillRender[], shown = true): Array<boolean | null> {
+  let state: BillToggleState = { toggle: null, hadItems: renders[0].count > 0 };
+  return renders.map((r) => {
+    state = billToggleStep(state, { scope: r.scope, count: r.count });
+    if (r.tap) state = { toggle: { open: !(state.toggle?.open ?? shown), scope: r.scope }, hadItems: r.count > 0 };
+    return state.toggle?.open ?? null;
+  });
+}
 
-// Ruling P50 (U1 audit wave, report M-1): owner Q18 made the empty sheet a working place; the page closed it whenever the
-// cart was empty with nothing applied, so adding then removing an extra charge on an empty order shut it mid-task.
-test("shouldCloseEmptiedSheet (ruling P50): only the last item going closes the sheet, never an adjustment leaving an item-less order", () => {
-  assert.equal(shouldCloseEmptiedSheet(2, 0, false), true, "the last item removed / Clear / the order sent or settled, nothing applied: closes (main's)");
-  assert.equal(shouldCloseEmptiedSheet(1, 0, true), false, "an adjustment survived Clear: stays open (D9.8c)");
-  assert.equal(shouldCloseEmptiedSheet(0, 0, false), false, "an extra charge removed from an already empty order: stays open (owner Q18)");
-  assert.equal(shouldCloseEmptiedSheet(0, 0, true), false, "an adjustment added on an empty order: stays open");
-  assert.equal(shouldCloseEmptiedSheet(0, 1, false), false, "an item added: stays open");
-  assert.equal(shouldCloseEmptiedSheet(3, 2, false), false, "one of several lines removed: stays open");
+test("billToggleStep over renders (ruling P51): the choice holds within one order through line changes, drops on another order or an emptied cart", () => {
+  assert.deepEqual(
+    billRenders([
+      { scope: "tab-1", count: 2, tap: true },
+      { scope: "tab-1", count: 3 },
+      { scope: "tab-1", count: 1 },
+      { scope: "tab-1", count: 1 },
+    ]),
+    [false, false, false, false],
+    "Hide details on a tab holds while lines are added and removed, and through plain re-renders (P16)",
+  );
+  assert.deepEqual(
+    billRenders([
+      { scope: "tab-1", count: 2, tap: true },
+      { scope: "tab-2", count: 4 },
+      { scope: "tab-2", count: 4 },
+    ]),
+    [false, null, null],
+    "another tab resumed: back to not chosen, and it stays so",
+  );
+  assert.deepEqual(
+    billRenders([
+      { scope: "tab-1", count: 2, tap: true },
+      { scope: "new", count: 0 },
+    ]),
+    [false, null],
+    "the tab settled or closed (a new, empty order): not chosen",
+  );
+  assert.deepEqual(
+    billRenders([
+      { scope: "new", count: 2, tap: true },
+      { scope: "new", count: 0 },
+      { scope: "new", count: 1 },
+    ]),
+    [false, null, null],
+    "a new order cleared, paid or sent (the same scope, the count from some to none): the next order starts unchosen",
+  );
+  assert.deepEqual(
+    billRenders([
+      { scope: "new", count: 0, tap: true },
+      { scope: "new", count: 0 },
+      { scope: "new", count: 2 },
+      { scope: "new", count: 2 },
+    ]),
+    [false, false, false, false],
+    "a choice made on an empty order (owner Q18's working place) holds while it stays empty and as items come",
+  );
+  const settled: BillToggleState = { toggle: { open: true, scope: "tab-1" }, hadItems: true };
+  assert.equal(billToggleStep(settled, { scope: "tab-1", count: 5 }), settled, "nothing changed: the same object (no render loop)");
+});
+
+// ── the cart sheet's own close (rulings P50, P55) ──────────────────────────────────────────────────────────────────
+
+// Ruling P50 (U1 audit wave, report M-1): owner Q18 made the empty sheet a working place, so the close follows the order
+// being emptied, not "empty right now". Ruling P55 (the fix round, review I-1): the hook compared one render with the
+// last, so a stamp reward auto-armed on the order (hooks/use-customer-rewards.ts), which lets go one render after the
+// items, left the sheet open over an empty order; the rule is now a small state machine, tested over render sequences.
+type SheetRender = [count: number, pendingAdjustment: boolean, open?: boolean];
+/** The hook over a sequence of renders: it starts from the first render's figures, then steps once per later render
+ *  (the effect runs when its inputs change; a repeat is harmless, case f). Returns, per later render, whether it closed;
+ *  a close flips `open` for the following renders, as setOpen(false) does. */
+function sheetRenders(renders: SheetRender[]): boolean[] {
+  let open = renders[0][2] ?? true;
+  let state = emptiedSheetStart({ count: renders[0][0], open });
+  return renders.slice(1).map(([count, pendingAdjustment, openNow]) => {
+    if (openNow !== undefined) open = openNow;
+    const step = emptiedSheetStep(state, { count, pendingAdjustment, open });
+    state = step.state;
+    if (step.close) open = false;
+    return step.close;
+  });
+}
+
+test("emptiedSheetStep over renders (rulings P50, P55): the emptied sheet closes once no adjustment is left; an empty sheet opened as such never does", () => {
+  assert.deepEqual(sheetRenders([[2, false], [0, true], [0, false]]), [false, true], "(a) Clear lets an auto-armed stamp reward go a render later: closes then (review I-1)");
+  assert.deepEqual(sheetRenders([[2, false], [0, false]]), [true], "(b) Clear with nothing applied: closes at once (main's)");
+  assert.deepEqual(
+    sheetRenders([[0, false, false], [0, false, true], [0, true], [0, false]]),
+    [false, false, false],
+    "(c) the empty sheet opened on an empty order, an extra charge added then removed: never closes (owner Q18)",
+  );
+  assert.deepEqual(sheetRenders([[1, true], [0, true], [0, false]]), [false, true], "(d) the last item removed while a discount survives, then the discount removed: closes then (as main)");
+  assert.deepEqual(
+    sheetRenders([[1, false], [0, true], [1, true], [1, false]]),
+    [false, false, false],
+    "(e) items come back before the adjustment settles: never closes",
+  );
+  assert.deepEqual(sheetRenders([[2, false], [2, false], [2, false]]), [false, false], "(f) repeated figures from the start never close");
+  assert.deepEqual(sheetRenders([[2, false], [0, false], [0, false, true], [0, false]]), [true, false, false], "(f) after a close the same figures never close again, even once the sheet is reopened");
+  // The first render never closes: the start state has nothing emptied, whatever the figures.
+  assert.deepEqual(emptiedSheetStart({ count: 0, open: true }), { count: 0, open: true, emptied: false }, "(f) the start state");
+  assert.equal(emptiedSheetStep(emptiedSheetStart({ count: 0, open: true }), { count: 0, pendingAdjustment: false, open: true }).close, false, "(f) a StrictMode repeat of the first render does not close");
+  // The sheet closed, or reopened, after it was emptied: "emptied" is forgotten.
+  assert.deepEqual(sheetRenders([[2, false], [0, true], [0, true, false], [0, true, true], [0, false]]), [false, false, false, false], "closed and reopened while the discount survives, then it is removed: the reopened empty sheet stays (owner Q18)");
+  assert.deepEqual(sheetRenders([[2, false, false], [0, false, false]]), [false], "emptied while the sheet is shut (the column from 1280px): nothing to close");
 });

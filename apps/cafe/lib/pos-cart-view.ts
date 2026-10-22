@@ -148,13 +148,44 @@ export function focusIndexAfterRemove(removedAt: number, remaining: number): num
   return Math.min(removedAt, remaining - 1);
 }
 
-/** Whether the cart sheet below 1280px closes by itself (ruling P50, U1 audit wave): only as the order's last item goes —
- *  the item count falls from some to none (a Remove, Clear, the order sent or settled) — with no adjustment left
- *  (lib/pos-cart-props.ts hasPendingAdjustment, D9.8c): main's close. Never when only an adjustment leaves an order
- *  that already had no items: owner Q18 made the empty sheet a working place (an extra charge added and removed there
- *  must not shut it mid-task), and never as items arrive. */
-export function shouldCloseEmptiedSheet(prevCount: number, count: number, pendingAdjustment: boolean): boolean {
-  return prevCount > 0 && count === 0 && !pendingAdjustment;
+/** What the cart sheet's own close remembers from one render to the next (rulings P50, P55): the item count and whether
+ *  the sheet was open last time, and whether the open sheet's order was emptied (its items went from some to none) and
+ *  still waits for its last adjustment to go. */
+export interface EmptiedSheetState {
+  count: number;
+  open: boolean;
+  emptied: boolean;
+}
+
+/** One render's figures: the item count, whether an adjustment survives (lib/pos-cart-props.ts hasPendingAdjustment,
+ *  D9.8c), whether the sheet is open. */
+export interface EmptiedSheetInput {
+  count: number;
+  pendingAdjustment: boolean;
+  open: boolean;
+}
+
+/** Where the close starts: the first render's figures, nothing emptied — the first render never closes the sheet. */
+export function emptiedSheetStart(input: Pick<EmptiedSheetInput, "count" | "open">): EmptiedSheetState {
+  return { count: input.count, open: input.open, emptied: false };
+}
+
+/** One render of the cart sheet's own close below 1280px (ruling P50; P55, U1 audit fix round). The open sheet whose
+ *  items go from some to none (a Remove, Clear, the order sent or settled) is "emptied"; while it stays open and stays
+ *  emptied it closes as soon as no adjustment is left — in that render or a later one (main's close: an auto-armed stamp
+ *  reward lets go one render after the items, hooks/use-customer-rewards.ts, and a discount the operator removes after
+ *  Clear goes later still). "Emptied" is forgotten when items come back, when the sheet closes, and when it is opened
+ *  anew: owner Q18's empty sheet, opened on an order with no items, is a working place (an extra charge added and
+ *  removed there never shuts it). Closing forgets it too, so the same figures never close it twice. */
+export function emptiedSheetStep(
+  state: EmptiedSheetState,
+  input: EmptiedSheetInput,
+): { state: EmptiedSheetState; close: boolean } {
+  const drainedWhileOpen = state.open && state.count > 0 && input.count === 0;
+  const openedAnew = input.open && !state.open;
+  const emptied = input.open && input.count === 0 && (drainedWhileOpen || (state.emptied && !openedAnew));
+  const close = emptied && !input.pendingAdjustment;
+  return { state: { count: input.count, open: input.open, emptied: emptied && !close }, close };
 }
 
 /** The HTML opens the bill's details from an 820px-tall window (values 0.4: billOpen = s.billOpen ?? (s.h >= 820)). */
@@ -183,4 +214,22 @@ export interface BillToggle {
  *  one order the choice wins (P16). */
 export function billToggleHolds(toggle: BillToggle, now: { scope: string; emptied: boolean }): boolean {
   return !now.emptied && toggle.scope === now.scope;
+}
+
+/** What CartBill keeps from render to render (ruling P51): the operator's choice (or none) and whether the cart had
+ *  items last time — so "just emptied" (some to none) can be told from "still empty". */
+export interface BillToggleState {
+  toggle: BillToggle | null;
+  hadItems: boolean;
+}
+
+/** One render of the details choice (ruling P51): it holds while the same order stays on screen, through any line
+ *  added or removed, and drops to "not chosen" when another order comes on screen or the cart is just emptied
+ *  (billToggleHolds). The SAME object comes back when nothing changed, so CartBill's render-time update settles in one
+ *  extra pass and never loops. */
+export function billToggleStep(state: BillToggleState, now: { scope: string; count: number }): BillToggleState {
+  const hasItems = now.count > 0;
+  const emptied = state.hadItems && !hasItems;
+  const toggle = state.toggle !== null && billToggleHolds(state.toggle, { scope: now.scope, emptied }) ? state.toggle : null;
+  return toggle === state.toggle && hasItems === state.hadItems ? state : { toggle, hadItems: hasItems };
 }

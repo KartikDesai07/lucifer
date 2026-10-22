@@ -278,6 +278,10 @@ test("PIN: ruling P49 — from 720px the order bar, main's foot, the toast, the 
     toaster.includes(`tab:bottom-[calc(92px+${inset})]!`),
     "the /pos toast clears the taller bar and the sheet's foot at 720-1279px: 92px + the inset",
   );
+  // Ruling P56 (the audit fix round): on a phone the bar rides on the tab bar, up by the inset (P44), so the /pos toast's
+  // 140px (the bar 65 + the tab bar 59 + 16 at inset 0) rides up by it too.
+  assert.ok(toaster.includes(`"toaster group bottom-[calc(140px+${inset})]! `), "the /pos phone toast: 140px + the inset");
+  assert.ok(140 > POS_ORDER_BAR_HEIGHT_PX + TAB_BAR_HEIGHT_PX, "140px clears the bar on the tab bar at inset 0");
   const categories = src("components/pos/CategorySidebar.tsx");
   assert.match(
     categories,

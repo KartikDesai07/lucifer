@@ -85,11 +85,11 @@ export default function PosPage() {
     return m;
   }, [pos.cart]);
 
-  // The sheet closes itself as the order's last item goes with no adjustment left (see hasPendingAdjustment), main's
-  // close; never when only an adjustment leaves an already item-less order: owner Q18's empty sheet is a working
-  // place (ruling P50, lib/pos-cart-view.ts shouldCloseEmptiedSheet).
+  // The open sheet closes itself once its order's items are gone and no adjustment is left (see hasPendingAdjustment),
+  // main's close, even when the adjustment lets go a render later; never an empty sheet opened on an item-less order:
+  // owner Q18's working place (rulings P50 / P55, lib/pos-cart-view.ts emptiedSheetStep).
   const pendingAdjustment = hasPendingAdjustment(pos);
-  useEmptiedSheetClose(pos.cart.length, pendingAdjustment, setMobileCartOpen);
+  useEmptiedSheetClose(pos.cart.length, pendingAdjustment, mobileCartOpen, setMobileCartOpen);
 
   // Print only after the receipt/KOT DOM reflects the freshly-placed order.
   const {

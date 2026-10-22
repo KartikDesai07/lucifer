@@ -10,7 +10,7 @@ import { CartAppliedCard } from "@/components/pos/CartRewardCards";
 import { CartExtraChargeRows, type ExtraChargeEntry } from "@/components/pos/CartExtraCharges";
 import { POS_BILL_LABEL_CLASS, POS_BILL_LINK_CLASS, POS_BILL_ROW_CLASS, POS_BILL_VALUE_CLASS } from "@/lib/pos-layout";
 import { NO_NUMBER_SPINNER_CLASS } from "@/lib/payment-sheet";
-import { billDetailsOpen, billToggleHolds, type BillToggle } from "@/lib/pos-cart-view";
+import { billDetailsOpen, billToggleStep, type BillToggleState } from "@/lib/pos-cart-view";
 import type { RungOffer } from "@/lib/reward-rungs";
 import type { CardOffer } from "@/lib/reward-card-offers";
 
@@ -95,14 +95,13 @@ export function CartBill({
   const chargeAdjusted = chargeShown && charge !== entitledCharge;
   // The operator's own choice wins once made (the HTML's toggleBill stores it), for the order on screen only: another
   // order on screen, or the cart just emptied (the count from some to none), puts it back to "not chosen" (ruling P51:
-  // lib/pos-cart-view.ts billToggleHolds) — dropped here during render, as CartLines drops a stale selection, since the
-  // column from 1280px stays mounted. Until then, the window's height, and open while the table charge is waived or
-  // changed (ruling P16).
-  const [toggle, setToggle] = useState<BillToggle | null>(null);
-  const [hadItems, setHadItems] = useState(count > 0);
-  if (hadItems !== count > 0) setHadItems(count > 0);
-  if (toggle !== null && !billToggleHolds(toggle, { scope: orderScope, emptied: hadItems && count === 0 })) setToggle(null);
-  const toggled = toggle?.open ?? null;
+  // lib/pos-cart-view.ts billToggleStep, tested over render sequences) — dropped here during render, as CartLines drops
+  // a stale selection, since the column from 1280px stays mounted. Until then, the window's height, and open while the
+  // table charge is waived or changed (ruling P16).
+  const [bill, setBill] = useState<BillToggleState>(() => ({ toggle: null, hadItems: count > 0 }));
+  const nextBill = billToggleStep(bill, { scope: orderScope, count });
+  if (nextBill !== bill) setBill(nextBill);
+  const toggled = nextBill.toggle?.open ?? null;
   const billOpen = billDetailsOpen({ toggled, windowHeight, chargeAdjusted });
 
   return (
@@ -205,7 +204,7 @@ export function CartBill({
           data-ui="pos-bill-toggle"
           aria-expanded={billOpen}
           aria-controls={billOpen ? detailsId : undefined}
-          onClick={() => setToggle({ open: !billOpen, scope: orderScope })}
+          onClick={() => setBill({ toggle: { open: !billOpen, scope: orderScope }, hadItems: count > 0 })}
           className={TOGGLE_CLASS}
         >
           <span>Total</span>

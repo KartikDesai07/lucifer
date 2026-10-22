@@ -58,11 +58,20 @@ test("the staff toast is the HTML's (values 2.8): bottom centre, the dark pill, 
 // and drops to the HTML's 24px only beside the cart column (xl:, 1280px). Every other page keeps the HTML's lg: 24px.
 test("PIN: owner Q19 — on /pos the toast clears the order bar and the sheet's buttons up to 1279px (xl:), every other page keeps lg:", () => {
   const pos = tokens(POS_TOASTER_PROPS.className);
-  // Ruling P49: from 720px the bar and the sheet's foot grow by the bottom safe-area inset, so the 92px does too.
-  for (const cls of ["toaster", "group", "bottom-[140px]!", "tab:bottom-[calc(92px+env(safe-area-inset-bottom))]!", "xl:bottom-[24px]!"]) {
+  // Ruling P49: from 720px the bar and the sheet's foot grow by the bottom safe-area inset, so the 92px does too. Ruling
+  // P56 (the audit fix round): on a phone the bar rides on the tab bar, which grows by the inset, so the 140px does too.
+  for (const cls of [
+    "toaster",
+    "group",
+    "bottom-[calc(140px+env(safe-area-inset-bottom))]!",
+    "tab:bottom-[calc(92px+env(safe-area-inset-bottom))]!",
+    "xl:bottom-[24px]!",
+  ]) {
     assert.ok(pos.includes(cls), `the /pos toaster carries ${cls}`);
   }
   assert.ok(!pos.includes("tab:bottom-[92px]!"), "not the plain 92px on /pos (ruling P49)");
+  assert.ok(!pos.includes("bottom-[140px]!"), "not the plain 140px on /pos (ruling P56)");
+  assert.ok(tokens(STAFF_TOASTER_PROPS.className).includes("bottom-[140px]!"), "every other page keeps the staff toaster's plain 140px (P56: /pos only)");
   assert.ok(!pos.includes("lg:bottom-[24px]!"), "no 24px from 1024px on /pos: the bar and the sheet's buttons are there up to 1279px");
   assert.equal(pos.length, tokens(STAFF_TOASTER_PROPS.className).length, "the same five tokens, only the 24px cut-off moves");
   assert.ok(tokens(STAFF_TOASTER_PROPS.className).includes("lg:bottom-[24px]!"), "every other page keeps the HTML's 24px from 1024px");
