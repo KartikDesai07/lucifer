@@ -584,6 +584,20 @@ two-line subs in the table sheets (P39); grey "Occupied" in the move dialog (P40
   refusal uses the diner wording; the cart clears after every send; the reprint foot still offers a just-settled order;
   no toast after a successful reprint or move; the nav list scrolls on laptops (U0).
 
+### Task 14 (owner change after the preview, 2026-10-22)
+The owner, on the preview: "Check this side bar UI IN tablate muje wo mobile jesa kardo niche se open ho side se nahi,
+side me only pc ya laptop me hi" (the right cart panel; design §4 Q19–Q21). Below 1280 px the cart is never a side
+column or side sheet: the order bar shows and the cart opens like the phone's, full screen, sliding up from the bottom
+(the phone too); 1280 px and wider keep the right column. Commits `950ce5e` (the change) and `24a4ffa` (its review's fix
+round: the /pos toast stays above the bar up to 1279 px, F8 / F9 skip a closing sheet, the sheet's steppers take the
+touch sizes below 1280, ruling P48), design note `af2fab5`. Chain 6622 / 6621 pass / 0 fail / 1 skip; live check 130/130
+with 0 writes; every new compare row is a Q19 row (t1024 / t820), 1280+ unchanged, the U0 shell probes 0 differences;
+review Needs fixes → one round → clean. Emulator WebView 109: the full-screen sheet slides up in portrait and landscape
+(on 109 the first ~85–90 % of the slide is not drawn, one ~120 ms first frame; 154 draws it all: an option is to keep
+the sheet mounted if a real tablet shows it); WebView 154: the P44 safe-area bar sits fully above the tab bar. Owner
+notes: at 1024–1279 F8 / F9 act only while the cart sheet is open; other pages' right panels follow this rule in their
+own sessions (Q21, in `prompt-u2.md`). Preview :3110 rebuilt at `24a4ffa`.
+
 ### Left for later
 The next page session (prompt `D:\kd\pos-dev-keep\ui-redesign\prompt-u2.md`); the owner's merge OK and, separately,
 the push.
