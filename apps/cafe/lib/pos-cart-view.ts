@@ -2,7 +2,8 @@
 // docs/superpowers/specs/2026-10-20-pos-html-values.md; design 6.5, 6.6; owner Q9, Q10): the title, a tab's
 // "#012 · 32 min", the Table cell, a line's number and meta, the stored-order address the cart's Void action hands the
 // void dialog, and when a selected line stays selected; U1 Task 7: the order bar's first line below 1280px (values
-// 6.1); the final fix wave: where the focus goes after a line's Remove, and when the bill's details show (ruling P16).
+// 6.1); the final fix wave: where the focus goes after a line's Remove, and when the bill's details show (ruling P16);
+// the audit wave: when the cart sheet closes itself (ruling P50) and how long the details choice holds (ruling P51).
 // Pure: no React, no fetching; client-safe.
 import { inr, orderItemModifierLines, orderLineKey } from "@pos/shared/utils";
 import { tableAreaIdOf } from "@/lib/table-areas";
@@ -147,13 +148,39 @@ export function focusIndexAfterRemove(removedAt: number, remaining: number): num
   return Math.min(removedAt, remaining - 1);
 }
 
+/** Whether the cart sheet below 1280px closes by itself (ruling P50, U1 audit wave): only as the order's last item goes —
+ *  the item count falls from some to none (a Remove, Clear, the order sent or settled) — with no adjustment left
+ *  (lib/pos-cart-props.ts hasPendingAdjustment, D9.8c): main's close. Never when only an adjustment leaves an order
+ *  that already had no items: owner Q18 made the empty sheet a working place (an extra charge added and removed there
+ *  must not shut it mid-task), and never as items arrive. */
+export function shouldCloseEmptiedSheet(prevCount: number, count: number, pendingAdjustment: boolean): boolean {
+  return prevCount > 0 && count === 0 && !pendingAdjustment;
+}
+
 /** The HTML opens the bill's details from an 820px-tall window (values 0.4: billOpen = s.billOpen ?? (s.h >= 820)). */
 export const BILL_OPEN_MIN_HEIGHT_PX = 820;
 
-/** Whether the bill's details show (owner Q12; values 0.4; ruling P16): the user's own toggle wins once used (the
- *  HTML's toggleBill stores it); until then the window's height, and open while the table charge is waived or changed
- *  (charge !== entitledCharge), so today's D9.8 guard holds on short windows too: a waiver never rides unseen onto the
- *  next customer. */
+/** Whether the bill's details show (owner Q12; values 0.4; ruling P16): the user's own toggle wins once used on the
+ *  order on screen (the HTML's toggleBill stores it; ruling P51: billToggleHolds drops it, back to null, when another
+ *  order comes on screen or the cart is emptied); until then the window's height, and open while the table charge is
+ *  waived or changed (charge !== entitledCharge), so today's D9.8 guard holds on short windows too: a waiver never rides
+ *  unseen onto the next customer. */
 export function billDetailsOpen(input: { toggled: boolean | null; windowHeight: number; chargeAdjusted: boolean }): boolean {
   return input.toggled ?? (input.chargeAdjusted || input.windowHeight >= BILL_OPEN_MIN_HEIGHT_PX);
+}
+
+/** The operator's own bill details choice ("Details" / "Hide details", ruling P16) and the order it was made on: the
+ *  resumed tab's id, or "new" (CartLines' selection scope). */
+export interface BillToggle {
+  open: boolean;
+  scope: string;
+}
+
+/** Whether the operator's details choice still holds (ruling P51, U1 audit wave): for the order on screen only. It goes
+ *  back to "not chosen" once another order is on screen (another tab resumed, a new order) or the cart has just been
+ *  emptied (its items went from some to none: Clear, the order sent or settled), so a waived or changed table charge
+ *  never rides hidden onto the next customer (D9.8) — the column from 1280px stays mounted from order to order. Within
+ *  one order the choice wins (P16). */
+export function billToggleHolds(toggle: BillToggle, now: { scope: string; emptied: boolean }): boolean {
+  return !now.emptied && toggle.scope === now.scope;
 }

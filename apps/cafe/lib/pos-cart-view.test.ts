@@ -12,6 +12,7 @@ import type { Area, Order, OrderItem, Table } from "@/types";
 import {
   BILL_OPEN_MIN_HEIGHT_PX,
   billDetailsOpen,
+  billToggleHolds,
   cartTitle,
   focusIndexAfterRemove,
   lineMeta,
@@ -19,6 +20,7 @@ import {
   matchVoidLine,
   orderBarSummary,
   selectionHolds,
+  shouldCloseEmptiedSheet,
   tabMeta,
   tableAreaName,
   tableCellValue,
@@ -225,4 +227,32 @@ test("billDetailsOpen: the user's own toggle wins; until then the HTML's 820px r
   );
   assert.equal(billDetailsOpen({ toggled: false, windowHeight: 900, chargeAdjusted: true }), false, "the user hid the details: they stay hidden");
   assert.equal(billDetailsOpen({ toggled: true, windowHeight: 600, chargeAdjusted: false }), true, "the user opened them: they stay open");
+});
+
+// Ruling P51 (U1 audit wave, report M-2): the column from 1280px stays mounted from order to order, so a "Hide details"
+// made on one order hid the next order's "waived · Undo" table-charge row (D9.8). The choice holds for its order only.
+test("billToggleHolds (ruling P51): the details choice holds for the order on screen only — another order or an emptied cart drops it", () => {
+  const hid = { open: false, scope: "tab-1" };
+  assert.equal(billToggleHolds(hid, { scope: "tab-1", emptied: false }), true, "the same order: the choice wins (P16)");
+  assert.equal(billToggleHolds(hid, { scope: "tab-2", emptied: false }), false, "another tab resumed: back to not chosen");
+  assert.equal(billToggleHolds(hid, { scope: "new", emptied: false }), false, "the tab closed or settled (a new order): back to not chosen");
+  assert.equal(billToggleHolds(hid, { scope: "tab-1", emptied: true }), false, "the cart just emptied: back to not chosen");
+  const fresh = { open: true, scope: "new" };
+  assert.equal(billToggleHolds(fresh, { scope: "new", emptied: false }), true, "a new order keeps its own choice");
+  assert.equal(billToggleHolds(fresh, { scope: "new", emptied: true }), false, "a new order cleared, paid or sent: the next order starts unchosen");
+  // Dropped, the 820px rule and the waived / changed charge decide again: a waiver shows by itself on the next order.
+  assert.equal(billDetailsOpen({ toggled: null, windowHeight: 700, chargeAdjusted: true }), true, "the next order's waiver is seen (D9.8)");
+});
+
+// ── the cart sheet's own close (ruling P50) ───────────────────────────────────────────────────────────────────────
+
+// Ruling P50 (U1 audit wave, report M-1): owner Q18 made the empty sheet a working place; the page closed it whenever the
+// cart was empty with nothing applied, so adding then removing an extra charge on an empty order shut it mid-task.
+test("shouldCloseEmptiedSheet (ruling P50): only the last item going closes the sheet, never an adjustment leaving an item-less order", () => {
+  assert.equal(shouldCloseEmptiedSheet(2, 0, false), true, "the last item removed / Clear / the order sent or settled, nothing applied: closes (main's)");
+  assert.equal(shouldCloseEmptiedSheet(1, 0, true), false, "an adjustment survived Clear: stays open (D9.8c)");
+  assert.equal(shouldCloseEmptiedSheet(0, 0, false), false, "an extra charge removed from an already empty order: stays open (owner Q18)");
+  assert.equal(shouldCloseEmptiedSheet(0, 0, true), false, "an adjustment added on an empty order: stays open");
+  assert.equal(shouldCloseEmptiedSheet(0, 1, false), false, "an item added: stays open");
+  assert.equal(shouldCloseEmptiedSheet(3, 2, false), false, "one of several lines removed: stays open");
 });

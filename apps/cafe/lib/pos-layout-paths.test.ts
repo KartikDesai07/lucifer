@@ -144,13 +144,17 @@ test("PIN: the mobile cart sheet auto-closes once the cart is TRULY empty — ot
   // that case. Closing on item-count alone would slam the sheet shut on the
   // only screen where a phone operator can remove the adjustment — trading
   // one dead end for a worse one (money silently riding to the next sale).
-  // The dead-end guard itself is unchanged and still pinned, below.
+  // The dead-end guard itself is unchanged and still pinned, below. Ruling P50 (U1 audit wave): owner Q18 made the empty
+  // sheet a working place, so the close now fires as the cart DRAINS (the item count from some to none, nothing
+  // applied: lib/pos-cart-view.ts shouldCloseEmptiedSheet, unit-tested) through hooks/use-emptied-sheet-close.ts, not
+  // whenever it is empty; the ruling's own pin is "PIN: ruling P50" below.
   assert.match(
     src,
-    /pos\.cart\.length === 0 && !pendingAdjustment\)\s*setMobileCartOpen\(false\)/,
+    /useEmptiedSheetClose\(pos\.cart\.length, pendingAdjustment, setMobileCartOpen\)/,
     "must close the mobile cart sheet when the cart drains AND no adjustment survives",
   );
-  assert.match(src, /setMobileCartOpen\(false\)/, "landmark: the auto-close must still exist");
+  const hook = stripComments(readSrc("apps/cafe/hooks/use-emptied-sheet-close.ts"));
+  assert.match(hook, /setOpen\(false\)/, "landmark: the auto-close must still exist");
 });
 
 test("PIN: pos/page.tsx never reintroduces the retired md two-pane grid or the old fixed chrome numbers", () => {
@@ -1428,6 +1432,21 @@ test("PIN: the bill is the HTML's (values 5.5, 0.4; owner Q12): the details behi
     "values 0.4: billOpen = s.billOpen ?? (s.h >= 820), and P16's waived / changed table charge",
   );
   assert.match(src, /const chargeAdjusted = chargeShown && charge !== entitledCharge;/, "P16: the same condition as the waived / changed row");
+  // Ruling P51 (U1 audit wave, report M-2): the choice holds for the order on screen only (billToggleHolds, unit-tested in
+  // lib/pos-cart-view.test.ts): it is stored with its order, dropped during render when another order is on screen or
+  // the count has just gone from some to none (the column from 1280px never remounts), and `toggled` is what is left.
+  assert.match(src, /const \[toggle, setToggle\] = useState<BillToggle \| null>\(null\);/, "P51: the choice is stored with its order");
+  assert.match(src, /const \[hadItems, setHadItems\] = useState\(count > 0\);\s*if \(hadItems !== count > 0\) setHadItems\(count > 0\);/, "P51: the cart had items until now");
+  assert.match(
+    src,
+    /if \(toggle !== null && !billToggleHolds\(toggle, \{ scope: orderScope, emptied: hadItems && count === 0 \}\)\) setToggle\(null\);/,
+    "P51: another order on screen, or the cart just emptied, drops the choice",
+  );
+  assert.match(src, /const toggled = toggle\?\.open \?\? null;/, "P51: what is left of the choice feeds billDetailsOpen");
+  assert.match(src, /onClick=\{\(\) => setToggle\(\{ open: !billOpen, scope: orderScope \}\)\}/, "P51: a tap stores the choice with the order on screen");
+  assert.ok(!src.includes("setToggled("), "the per-mount toggle that never reset is gone");
+  const cart = stripComments(readSrc(CART_TSX));
+  assert.match(cart, /<CartBill\s+orderScope=\{resumedOrder\?\._id \?\? "new"\}/, "P51: the order on screen, CartLines' own scope (the tab's id, or \"new\")");
   assert.match(src, /\{chargeShown && \(/, "the charge rows render on the same condition");
   assert.match(src, /useWindowHeight\(\)/, "the window's own height (the HTML's s.h)");
   assert.ok(src.includes('{billOpen ? "Hide details" : "Details"}'), "owner Q1: the HTML's words");
@@ -1515,11 +1534,34 @@ test("PIN: D9.8c — on mobile, a surviving adjustment keeps the cart bar OPENAB
     /hasPendingAdjustment\(pos\)/,
     "the POS page must use the SAME shared predicate, not its own copy",
   );
+  // Ruling P50: the page's close goes through hooks/use-emptied-sheet-close.ts, which asks the unit-tested
+  // shouldCloseEmptiedSheet (lib/pos-cart-view.test.ts) with the SAME predicate: never while an adjustment survives.
   assert.match(
     pageSrc,
-    /pos\.cart\.length === 0 && !pendingAdjustment/,
+    /const pendingAdjustment = hasPendingAdjustment\(pos\);\s*useEmptiedSheetClose\(pos\.cart\.length, pendingAdjustment, setMobileCartOpen\);/,
     "the POS page must not force-close the mobile sheet while an adjustment survives",
   );
+});
+
+// Ruling P50 (U1 audit wave, report M-1): owner Q18 made the empty sheet a working place, so the page's close follows the
+// item count, not "empty right now": it fires as the count goes from some to none with nothing applied (main's last-item
+// / Clear / settled close), never when only an adjustment leaves an order that had no items already.
+test("PIN: ruling P50 — the cart sheet closes itself only as the last item goes (the page's hook, the pure decision), never on an adjustment alone", () => {
+  const pageSrc = stripComments(readSrc(POS_PAGE));
+  assert.match(pageSrc, /import \{ useEmptiedSheetClose \} from "@\/hooks\/use-emptied-sheet-close";/, "the page imports the hook");
+  assert.ok(!pageSrc.includes("setMobileCartOpen(false)"), "the page keeps no close of its own (the old empty-cart effect is gone)");
+  assert.ok(!/pos\.cart\.length === 0/.test(pageSrc), "no 'empty right now' rule in the page");
+  const hook = stripComments(readSrc("apps/cafe/hooks/use-emptied-sheet-close.ts"));
+  assert.match(hook, /import \{ shouldCloseEmptiedSheet \} from "@\/lib\/pos-cart-view";/, "the hook asks the pure decision");
+  assert.match(hook, /const prevCount = useRef\(count\);/, "it remembers the count it last saw (a ref: no render of its own)");
+  assert.match(
+    hook,
+    /if \(shouldCloseEmptiedSheet\(prevCount\.current, count, pendingAdjustment\)\) setOpen\(false\);\s*prevCount\.current = count;/,
+    "it closes on the decision, then moves the remembered count on",
+  );
+  assert.match(hook, /\}, \[count, pendingAdjustment, setOpen\]\);/, "it re-asks when the count or the adjustment changes");
+  const view = stripComments(readSrc("apps/cafe/lib/pos-cart-view.ts"));
+  assert.match(view, /return prevCount > 0 && count === 0 && !pendingAdjustment;/, "the decision: some to none, nothing applied");
 });
 
 // ── U0 Task 2 (2026-10-19): the HTML's nav widths drive the POS grid ─────────

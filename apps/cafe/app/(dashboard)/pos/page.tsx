@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/use-auth";
 import { useProducts } from "@/hooks/use-products";
@@ -13,6 +13,7 @@ import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { useItemVoid } from "@/hooks/use-item-void";
 import { useKotPrintBridge } from "@/hooks/use-kot-print-bridge";
 import { useStableCallback } from "@/hooks/use-stable-callback";
+import { useEmptiedSheetClose } from "@/hooks/use-emptied-sheet-close";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   CategorySidebar,
@@ -84,12 +85,11 @@ export default function PosPage() {
     return m;
   }, [pos.cart]);
 
-  // An open sheet over a TRULY empty cart is a dead end — but "empty" means no
-  // items AND no surviving adjustment (see hasPendingAdjustment).
+  // The sheet closes itself as the order's last item goes with no adjustment left (see hasPendingAdjustment), main's
+  // close; never when only an adjustment leaves an already item-less order: owner Q18's empty sheet is a working
+  // place (ruling P50, lib/pos-cart-view.ts shouldCloseEmptiedSheet).
   const pendingAdjustment = hasPendingAdjustment(pos);
-  useEffect(() => {
-    if (pos.cart.length === 0 && !pendingAdjustment) setMobileCartOpen(false);
-  }, [pos.cart.length, pendingAdjustment]);
+  useEmptiedSheetClose(pos.cart.length, pendingAdjustment, setMobileCartOpen);
 
   // Print only after the receipt/KOT DOM reflects the freshly-placed order.
   const {

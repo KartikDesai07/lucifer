@@ -10,7 +10,7 @@ import { CartAppliedCard } from "@/components/pos/CartRewardCards";
 import { CartExtraChargeRows, type ExtraChargeEntry } from "@/components/pos/CartExtraCharges";
 import { POS_BILL_LABEL_CLASS, POS_BILL_LINK_CLASS, POS_BILL_ROW_CLASS, POS_BILL_VALUE_CLASS } from "@/lib/pos-layout";
 import { NO_NUMBER_SPINNER_CLASS } from "@/lib/payment-sheet";
-import { billDetailsOpen } from "@/lib/pos-cart-view";
+import { billDetailsOpen, billToggleHolds, type BillToggle } from "@/lib/pos-cart-view";
 import type { RungOffer } from "@/lib/reward-rungs";
 import type { CardOffer } from "@/lib/reward-card-offers";
 
@@ -20,8 +20,8 @@ import type { CardOffer } from "@/lib/reward-card-offers";
 // table's charge (its amount field, Remove = waive, and the "waived / changed from" row with Undo), the extra charges.
 // Each row that can be taken off keeps its control here, outside the Bill options panel (D9.8, D9.8d); the rows sit
 // behind "Details" on a window under 820px tall, and a waived or changed table charge opens them by itself until the
-// user uses the toggle (ruling P16: lib/pos-cart-view.ts billDetailsOpen). Every figure is usePosTotals' — this block
-// only prints them (lib/receipt.test.ts).
+// user uses the toggle (ruling P16: lib/pos-cart-view.ts billDetailsOpen), on that order only (ruling P51). Every
+// figure is usePosTotals' — this block only prints them (lib/receipt.test.ts).
 
 /** "Total · Details" (values 5.5): the toggle — "Total" 15px 600 --text, 6px, then the 12px 500 --link word. */
 const TOGGLE_CLASS = cn(
@@ -36,6 +36,8 @@ const CHARGE_FIELD_CLASS =
   "h-[26px] w-[72px] rounded-[6px] border border-border bg-card px-1.5 text-right text-[13px] text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 max-tab:text-base";
 
 export interface CartBillProps {
+  /** The order on screen: the resumed tab's id, or "new" (ruling P51: the details choice holds for it only). */
+  orderScope: string;
   /** Every line's quantity, sent and new (usePosTab's count). */
   count: number;
   subtotal: number;
@@ -62,6 +64,7 @@ export interface CartBillProps {
 }
 
 export function CartBill({
+  orderScope,
   count,
   subtotal,
   discount,
@@ -90,9 +93,16 @@ export function CartBill({
   // The table names a charge for this bill; it was waived or changed (the "waived / changed from" row says so).
   const chargeShown = chargeLabel !== "" && (entitledCharge > 0 || charge > 0);
   const chargeAdjusted = chargeShown && charge !== entitledCharge;
-  // The operator's own choice wins once made (the HTML's toggleBill stores it); until then, the window's height, and
-  // open while the table charge is waived or changed (ruling P16).
-  const [toggled, setToggled] = useState<boolean | null>(null);
+  // The operator's own choice wins once made (the HTML's toggleBill stores it), for the order on screen only: another
+  // order on screen, or the cart just emptied (the count from some to none), puts it back to "not chosen" (ruling P51:
+  // lib/pos-cart-view.ts billToggleHolds) — dropped here during render, as CartLines drops a stale selection, since the
+  // column from 1280px stays mounted. Until then, the window's height, and open while the table charge is waived or
+  // changed (ruling P16).
+  const [toggle, setToggle] = useState<BillToggle | null>(null);
+  const [hadItems, setHadItems] = useState(count > 0);
+  if (hadItems !== count > 0) setHadItems(count > 0);
+  if (toggle !== null && !billToggleHolds(toggle, { scope: orderScope, emptied: hadItems && count === 0 })) setToggle(null);
+  const toggled = toggle?.open ?? null;
   const billOpen = billDetailsOpen({ toggled, windowHeight, chargeAdjusted });
 
   return (
@@ -195,7 +205,7 @@ export function CartBill({
           data-ui="pos-bill-toggle"
           aria-expanded={billOpen}
           aria-controls={billOpen ? detailsId : undefined}
-          onClick={() => setToggled(!billOpen)}
+          onClick={() => setToggle({ open: !billOpen, scope: orderScope })}
           className={TOGGLE_CLASS}
         >
           <span>Total</span>

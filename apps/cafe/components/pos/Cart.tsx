@@ -290,6 +290,7 @@ export function Cart({
           <div data-ui="pos-cart-footer" className={FOOTER_CLASS}>
             <CartFooterLinks links={links} openKey={panel} onOpen={togglePanel} disabled={isBusy} />
             <CartBill
+              orderScope={resumedOrder?._id ?? "new"}
               count={count}
               subtotal={subtotal}
               discount={discount}
