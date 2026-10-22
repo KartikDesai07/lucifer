@@ -70,6 +70,7 @@ the printer panel's insides, the shell outside /pos, every other page's body, `/
 | Q19 | Cart on tablets (owner, 2026-10-22, after the preview) | "muje wo mobile jesa kardo niche se open ho side se nahi, side me only pc ya laptop me hi" (the right cart panel): **below 1280 px the cart is never a side column or side sheet**: the order bar shows and the cart opens like the phone's, full screen, sliding up from the bottom (the phone gets the same slide-up); **1280 px and wider** (PC / laptop, nav open or collapsed) keep the right cart column. This overrides the HTML's 1024–1279 cart column and 820 px side sheet and Q18's "below 1024" (now below 1280). |
 | Q20 | How tablets are told apart | **By width: below 1280 px = the mobile style** (most Android tablets are 800–1200 CSS px wide in landscape; laptops, PCs and touch POS terminals are 1280+). |
 | Q21 | Other pages | Other pages' right-side panels (e.g. the Orders page's order detail sheet) follow the same rule **in their own page sessions**, not in U1. |
+| Q22 | Open orders search words (owner, 2026-10-22, after the audit) | The open tabs carry no phone number and a phone search would need a new request, so the box **names only what it searches: "Table, customer or order #"** (the HTML's "phone" dropped). |
 
 Builder-check answers (my calls): on a tab that already has a customer, the payment sheet shows a read-only pill
 "Customer: {name}" (no "· change"), so the name never disappears (today it is in the description line); the customer
@@ -116,8 +117,8 @@ The HTML's Order header (values §1), not U0's title header:
   Walk-In} · {n} item(s) · ₹{total}" or "No items yet"), the "{N} open" pill (our open tabs), the chevron; dot grey = no
   items, orange = items not sent, green = all sent (my calls on the code and words).
 - It opens the HTML's **Open orders** panel (top right under the header from 720 px; a bottom sheet on the phone): title,
-  "{N} open · ₹{sum}", the search box "Table, customer, phone or order #" (filters the tabs already loaded by table,
-  customer name and order number; phone only if the tab data carries it: no new request), the tabs **All · Tables ·
+  "{N} open · ₹{sum}", the search box "Table, customer or order #" (Q22; filters the tabs already loaded by table,
+  customer name and order number; the tab data carries no phone and a new request is not allowed), the tabs **All · Tables ·
   Walk-In** with counts, the rows (code tile, "Table T-4 · current" / "Walk-In", "{customer} · {n} items · {m} min",
   ₹total, status "In kitchen" green; the current one lit), "No open orders match “…”", and the empty state with our words
   ("No open tabs" / "Orders you send to the kitchen appear here until settled."). Tapping a row = today's resume (with

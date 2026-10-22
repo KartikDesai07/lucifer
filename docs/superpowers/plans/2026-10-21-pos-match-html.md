@@ -598,6 +598,38 @@ the sheet mounted if a real tablet shows it); WebView 154: the P44 safe-area bar
 notes: at 1024–1279 F8 / F9 act only while the cart sheet is open; other pages' right panels follow this rule in their
 own sessions (Q21, in `prompt-u2.md`). Preview :3110 rebuilt at `24a4ffa`.
 
+### Audit wave (owner request after the preview, 2026-10-22)
+The owner asked for a full check before the merge: a clean code base, no bugs, no extra server load, no process issues.
+Three read-only audits ran on `310dda2` (bugs and regressions, server load and performance, code cleanliness), then one
+fix wave (rulings P49–P56 in the ledger):
+- **Safe area (P49, P56):** from 720 px the order bar, the menu's foot room, the /pos toast, the cart's foot (sheet and
+  column), the category column and the Category sheet add `env(safe-area-inset-bottom)` again, as main's bar did at every
+  width; the item options sheet's foot and the phone toast too. Insets are 0 in a browser, so nothing moves there; with
+  a 25 px inset (the app's WebView 154 reports ~24.8) "Review order" sits 35 px and Pay 39 px above the screen's foot
+  instead of 10 / 14 px (inside the gesture strip).
+- **The empty cart sheet (P50, P55):** adding then removing an extra charge on an empty order no longer shuts the sheet
+  (owner Q18: the empty sheet is a working place); Clear, the last item removed, Pay / Send / Discard / Close tab still
+  close it, also when a stamp reward drops a render later.
+- **Bill details (P51):** "Hide details" holds for the order on screen only, so a waived table charge never rides
+  hidden onto the next customer (D9.8).
+- **Open orders search (owner, design Q22):** "Table, customer or order #" — the tabs carry no phone number.
+- **Smoothness (P52, P54):** F8 / F9 / "/" check the key before any page scan (typing in fields does no extra work);
+  table tiles and customer rows rise within 0.3 s like the Open orders rows; one shared sheet frame
+  (`lib/sheet-frame.ts`) instead of byte copies in six dialogs (compiled CSS unchanged); four unused breakpoint
+  constants and two stale comments removed.
+Commits `7df9335`, `c1484b0`, `2923ade`, `5f04812`, `83e13aa`, `8d9ca00`, `e6d6660`. Review: spec ✅, one Important (the stamp
+reward case) → fix round 1 → re-review: all findings addressed, no new Critical / Important (the close rule checked over 3.2 million render sequences; its one comment-only minor fixed in `e6d6660`).
+Checks at `8d9ca00`: chain 6639 / 6638 pass / 0 fail / 1 skip (a planning file not on this PC); tsc 0; eslint 0 errors
+(2 old warnings in `lib/masters-blob.test.ts`, not this branch). Build: /pos first load 320 kB (main 324 kB). Compiled
+CSS against the preview `24a4ffa`: only the inset classes differ. Idle /pos over 240 s: pulse 12, tables 8, orders 8, 6
+prefetches = main exactly (also at 1024 px with the sheet closed and open; the open sheet adds one logo image).
+Typing at a 6x slower CPU: Find category ~66 ms a key on average (menu search ~51 ms); kept in the page (ruling P53).
+Live (read-only, every non-GET blocked): the empty sheet stays open after a charge is added and removed (`24a4ffa`
+closed it); Escape closes the Bill options panel, then the sheet; Clear closes it.
+Owner notes (kept, P53): the glass bar's blur (the HTML's; the phone tab bar has the same blur on main) — on a real old
+tablet that scrolls slowly, dropping the blur is a one-line change; card photos are asked for at 680 px from the old
+Cloudinary store only (R2 photos come pre-sized).
+
 ### Left for later
 The next page session (prompt `D:\kd\pos-dev-keep\ui-redesign\prompt-u2.md`); the owner's merge OK and, separately,
 the push.
