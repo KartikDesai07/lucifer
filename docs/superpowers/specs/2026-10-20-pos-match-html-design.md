@@ -67,6 +67,9 @@ the printer panel's insides, the shell outside /pos, every other page's body, `/
 | – | Phone cards | **One card per row** on the phone, as the HTML (three at 820, two on laptops). |
 | Q17 | KOT reprint | **Moves into the Open orders panel** at every width (6.2), so the phone header keeps the switch button's text; the header keeps only Refresh (apps) and Tokens (when on) before the printer. |
 | Q18 | Empty order below 1024 px | **The order bar always shows** (as today's bar), also on an empty new order, so Table, Customer, Note and Bill options are reachable before the first item. |
+| Q19 | Cart on tablets (owner, 2026-10-22, after the preview) | "muje wo mobile jesa kardo niche se open ho side se nahi, side me only pc ya laptop me hi" (the right cart panel): **below 1280 px the cart is never a side column or side sheet**: the order bar shows and the cart opens like the phone's, full screen, sliding up from the bottom (the phone gets the same slide-up); **1280 px and wider** (PC / laptop, nav open or collapsed) keep the right cart column. This overrides the HTML's 1024–1279 cart column and 820 px side sheet and Q18's "below 1024" (now below 1280). |
+| Q20 | How tablets are told apart | **By width: below 1280 px = the mobile style** (most Android tablets are 800–1200 CSS px wide in landscape; laptops, PCs and touch POS terminals are 1280+). |
+| Q21 | Other pages | Other pages' right-side panels (e.g. the Orders page's order detail sheet) follow the same rule **in their own page sessions**, not in U1. |
 
 Builder-check answers (my calls): on a tab that already has a customer, the payment sheet shows a read-only pill
 "Customer: {name}" (no "· change"), so the name never disappears (today it is in the description line); the customer
