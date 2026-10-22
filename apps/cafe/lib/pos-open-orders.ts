@@ -111,8 +111,9 @@ function inTab(t: Order, tab: OpenOrdersTab): boolean {
 
 /**
  * The panel's rows (values 7.2; design 6.2): the open tabs in the chosen tab, those whose title, table, customer or
- * order id holds the search (trimmed, any case; a phone number is not on the tab data, so it is not searched), the
- * tab on screen first, then the newest. Minutes as the cart's meta: since the tab opened, rounded, at least 1.
+ * order id holds the search (trimmed, any case; a phone number is not on the tab data, so it is not searched — owner
+ * 2026-10-22: the placeholder names table, customer and order # only), the tab on screen first, then the newest.
+ * Minutes as the cart's meta: since the tab opened, rounded, at least 1.
  */
 export function openOrderRows(
   tabs: readonly Order[],

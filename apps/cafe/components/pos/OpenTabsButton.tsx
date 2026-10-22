@@ -194,7 +194,7 @@ function OpenOrdersBody({ tabs, currentId, tab, onTab, inputRef, isBusy, resume 
             ref={inputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Table, customer, phone or order #"
+            placeholder="Table, customer or order #"
             aria-label="Search open orders"
             autoComplete="off"
             spellCheck={false}

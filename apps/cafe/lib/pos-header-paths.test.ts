@@ -158,7 +158,11 @@ test("PIN: OpenTabsButton is the HTML's Open orders panel — the trigger it is 
   assert.match(src, /trigger: ReactElement;/, "it takes the button it opens from");
   assert.ok(src.includes('<DialogPrimitive.Title className="text-[16px] font-semibold">Open orders</DialogPrimitive.Title>'), "the HTML's title, 16/600");
   assert.ok(src.includes("{openOrdersSummary(tabs)}"), "\"{N} open · ₹{sum}\"");
-  assert.ok(src.includes('placeholder="Table, customer, phone or order #"'), "the HTML's placeholder");
+  // Owner 2026-10-22 (U1 audit, report-bugs M-3): the search names only what it searches — a phone number is not on the
+  // tab data (lib/pos-open-orders.ts openOrderRows), so the HTML's "phone" is left out of the placeholder.
+  assert.ok(src.includes('placeholder="Table, customer or order #"'), "the placeholder names what is searched (owner 2026-10-22)");
+  assert.ok(!src.includes("phone or order #"), "no promise of a phone search");
+  assert.ok(src.includes('aria-label="Search open orders"'), "its accessible name stays");
   assert.ok(src.includes("openOrderRows(tabs, currentId, q, tab, now)"), "the rows from lib/pos-open-orders.ts");
   assert.ok(src.includes("const counts = openOrderCounts(tabs);"), "the tab counts, whatever the search");
   assert.ok(src.includes("OPEN_ORDER_TABS.map("), "All · Tables · Walk-In");
