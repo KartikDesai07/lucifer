@@ -527,4 +527,63 @@ pin: `D:\kd\pos-dev-keep\ui-redesign\inventory\pos-features.md` ("inventory §N"
 
 ## Results
 
-(Filled at the end.)
+(2026-10-20 → 22, branch `feat/ui-pos`, base main `d73dafb`; 26 commits, 121 files, +12424 / −4490. Not merged, not
+pushed. Ledger with every ruling and review: `.superpowers/sdd/2026-10-21-pos-match-html/progress.md`, copied to
+`D:\kd\pos-dev-keep\ui-redesign\reviews\u1\`.)
+
+### Commits
+- Docs: `8a5fd99` (values + design), `d67d682` (this plan).
+- Tasks: T1 `8069278` frame + header · T2 `47a466d` categories + toolbar · T3 `4c3ce2d` + `03cc701` cards + direct add ·
+  T4 `86dff1b` cart head + lines · T5 `e557fb4` footer, Bill options, keys · T6 `dd41069` + `ee4bd8e` switch order +
+  Open orders · T7 `518a05c` order bar + sheet · T8 `117ab39` options modal · T9 `041aebb` + `0a2400f` payment sheet ·
+  T10 `76e32a1` + `bf6113f` + `d42e587` customer sheet · T11 `3931417` table picker + move · T12 `f3522e5` void + confirms.
+- Final fix wave (after the Fable review): `19a8c81` (P38 nested dialogs), `3fdfbf2`, `bc5d1f0`, `195e1db`, `fe186c6`.
+- Verification fixes: `3a6d978` (P44 safe-area order bar), `08dd6f9` (P46 no number spinners).
+
+### Tests and checks (HEAD `fe186c6`, the two verification fixes re-checked on top)
+- Cafe chain 6617 / 6616 pass / 0 fail / 1 skip (main: 6451); typecheck clean; lint 0 errors, the 2 old warnings; shared
+  1015; print-tools 11; release-native 12. Mobile, desktop, hub, packages untouched.
+- Live legs: 20 legs, 1226 checks, 0 failed (staff-pin, bootstrap, dashboard, print, appearance, tables, orders, idem,
+  table-move, tables-floor, menu-orders, nine reward legs).
+- The paper: S1 43/43 hashes unchanged, `print-budget.test.ts` unchanged, no slip / printer / worker / model / API file
+  in the diff (`PrinterStatusButton.tsx` gained a screen-only tone callback).
+- Requests: idle 240 s on /pos = main's build exactly (34 requests, 9 kinds); the dashboard = U0 (66). No new request.
+- The write paths on the scratch DB (V-D, 1280 and 390): send KOT, reprint, round 2, settle, Pay Now + free table, void,
+  move, new customer + duplicate, partial as due, discount / promo refused / extra charge / GST discount: all pass, 0
+  requests different from main.
+- Measured match (V-B, :3130 production build): U1 probes 317 differences in 35,969 checks, every one a mapped row with
+  its ruling; U0 shell probes 164 in 17,663 all classed (U0's own rows + today's data); 556 side-by-side pairs:
+  `D:\kd\pos-dev-keep\ui-redesign\match\pos\final\shots\index.html`. First screens: 76 routes 200, console identical to
+  U0. A11y: 0 axe violations (12 screens + 20 open-dialog audits). /m unchanged.
+- Laptop fit 1366×768, 1280×800, 1100×800, 1024×768: no page scroll; the cart's buttons on screen.
+- Emulator, WebView 109 (V-C): portrait and landscape /pos, every dialog, the nested-dialog fix on device: pass.
+- Production build of `08dd6f9` in `D:\kd\uib`: the owner's preview on :3110 (uibase reseeded 2026-10-22).
+
+### Reviews
+- Twelve task reviews (fix rounds: Task 9 ×1, Task 10 ×1; Tasks 3, 6, 10 had small controller rulings applied before
+  review); final Claude Fable 5.1 whole-branch review: With fixes, 0 C / 1 I / 6 m, every ruling P1–P42 sound; one fix
+  wave (21 items) re-reviewed: all addressed; the two verification fixes reviewed: Approved.
+
+### What the owner will see differently from the HTML (mapped, each with its ruling)
+Two cart cells (Q9); no veg marks, "Popular", order types, guests, pickup, delivery, quick amounts (Q7, §7); our words
+for our data (Online, Due, Credit, "Continue without customer" which also removes an attached customer P37, the HTML's
+"No customer found … it takes 5 seconds" P34); our own options drawn in the HTML's style (Bill options panel, Note,
+line Remove / Void, KOT reprint in Open orders, Walk-In button in the table picker, the move confirm step); disabled
+cursors not-allowed (P8/P13); the payment and move layers at z 50 over the Orders sheet (P26); 16 px phone inputs (R36);
+two-line subs in the table sheets (P39); grey "Occupied" in the move dialog (P40).
+
+### Owner notes (decisions or pre-existing items, nothing changed for them)
+- The card grid follows the HTML (5 columns at 1920 px, 1 column at 1100–1123 px), replacing the 2026-09-29 "at most 3
+  columns" rule (P7). The order bar's count "pop" animation is gone (P21).
+- WebView 154 (newer phones) in the app: the bottom safe-area inset; fixed for /pos (P44); the shell's
+  `ABOVE_TAB_BAR_STICKY_CLASS` (Settings save bar, menu bulk bar) has the same gap: a one-line fix when the owner says.
+- WebView 109: phone bottom sheets ~0.85 % see-through (R41, cause unconfirmed); one device-pixel row between the order
+  bar and the tab bar at DPR 2.625.
+- Pre-existing (main's behaviour): the keyboard never resizes the WebView (fields hide under it); Android Back from /pos
+  drops unsent items (no in-app guard); the duplicate-customer path leaves an uncaught page error; a counter promo
+  refusal uses the diner wording; the cart clears after every send; the reprint foot still offers a just-settled order;
+  no toast after a successful reprint or move; the nav list scrolls on laptops (U0).
+
+### Left for later
+The next page session (prompt `D:\kd\pos-dev-keep\ui-redesign\prompt-u2.md`); the owner's merge OK and, separately,
+the push.
