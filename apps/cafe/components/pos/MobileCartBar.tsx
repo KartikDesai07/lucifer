@@ -10,7 +10,7 @@ import { hasPendingAdjustment } from "@/lib/pos-cart-props";
 import { keepOpenForNestedDialog } from "@/lib/nested-dialog";
 import { cartTitle, orderBarSummary } from "@/lib/pos-cart-view";
 import {
-  BREAKPOINT_LG_PX,
+  POS_CART_COLUMN_MIN_PX,
   POS_MOBILE_BAR_CLASS,
   POS_MOBILE_BAR_BUTTON_CLASS,
   POS_CART_SHEET_SCRIM_CLASS,
@@ -28,21 +28,21 @@ interface MobileCartBarProps {
   cartProps: Omit<CartProps, "className">;
 }
 
-/** From here the cart is the page's column (values 0.3 cartDisplay), never a sheet. */
-const CART_COLUMN_QUERY = `(min-width: ${BREAKPOINT_LG_PX}px)`;
+/** From here the cart is the page's column (values 0.3 cartDisplay; owner Q19: 1280px), never a sheet. */
+const CART_COLUMN_QUERY = `(min-width: ${POS_CART_COLUMN_MIN_PX}px)`;
 
-// Below 1024px (U1 Task 7; values 6.1, 6.3; design 6.9; owner Q18): the owner's HTML glass order bar over the page's
-// foot — "{n} items · {order}" over the total, and "Review order" — shown in EVERY state, an empty new order too ("No
-// items · New order"), so the table, the customer, the note and the bill options are reachable before the first item.
-// "Review order" opens the cart sheet: a Radix dialog (focus trapped, Escape and — from 720px — a tap on the scrim close
-// it; "‹ Menu" in the cart's head too) drawn as the HTML's cart section, 440px from the right over the scrim, the whole
-// screen on a phone (over the header and the tab bar). Its panel names itself (data-ui="pos-cart-sheet"): the F8 / F9
-// keys treat it as the cart, not as a dialog (PosKeys). The page closes it by itself once the cart is TRULY empty
-// (pos/page.tsx); the bar stays.
+// Below 1280px (U1 Task 7; values 6.1, 6.3; design 6.9; owner Q18, Q19): the owner's HTML glass order bar over the
+// page's foot — "{n} items · {order}" over the total, and "Review order" — shown in EVERY state, an empty new order too
+// ("No items · New order"), so the table, the customer, the note and the bill options are reachable before the first
+// item. "Review order" opens the cart sheet: a Radix dialog (focus trapped, Escape and "‹ Menu" in the cart's head close
+// it) drawn as the HTML's cart section over the whole screen at every width below 1280px (owner Q19: the phone's sheet,
+// over the header, the rail and the tab bar, no scrim), sliding up from the window's foot. Its panel names itself
+// (data-ui="pos-cart-sheet"): the F8 / F9 keys treat it as the cart, not as a dialog (PosKeys). The page closes it by
+// itself once the cart is TRULY empty (pos/page.tsx); the bar stays.
 export function MobileCartBar({ open, onOpenChange, cartProps }: MobileCartBarProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
-  // A sheet left open while the window grows to 1024px (a tablet turned to landscape) gives way to the cart column, as
-  // the HTML's does — otherwise it would lie over the column, with the page behind it locked.
+  // A sheet left open while the window grows to 1280px (a window widened to a laptop's) gives way to the cart column,
+  // as the HTML's does — otherwise it would lie over the column, with the page behind it locked.
   useEffect(() => {
     if (!open) return;
     const query = window.matchMedia(CART_COLUMN_QUERY);
@@ -87,7 +87,7 @@ export function MobileCartBar({ open, onOpenChange, cartProps }: MobileCartBarPr
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay data-ui="pos-cart-scrim" className={POS_CART_SHEET_SCRIM_CLASS} />
         {/* Ruling P38: closing a nested dialog by a press (the payment, the void, the move, a confirm prompt: the page
-            renders them beside this sheet) leaves the sheet open; a tap on the scrim still closes it. */}
+            renders them beside this sheet) leaves the sheet open. */}
         <DialogPrimitive.Content
           data-ui="pos-cart-sheet"
           ref={sheetRef}

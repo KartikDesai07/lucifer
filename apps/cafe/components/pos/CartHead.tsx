@@ -16,7 +16,7 @@ import type { Customer, Order, Table } from "@/types";
 
 /** The head (values 5.2): 14px 16px, its rows 12px apart, a rule under it; the HTML sets no line-height here. */
 const HEAD_CLASS = "relative flex flex-none flex-col gap-3 border-b border-border px-4 py-3.5 leading-[normal]";
-/** "‹ Menu" (values 5.2, the sheet below 1024px only; U1 Task 7): on top of the head at its left, 30px, no padding,
+/** "‹ Menu" (values 5.2, the sheet below 1280px only; U1 Task 7): on top of the head at its left, 30px, no padding,
  *  15px --link at the button's own weight, the 18px chevron 2px from the word; no hover rule. */
 const BACK_CLASS = "flex h-[30px] cursor-pointer items-center gap-0.5 self-start bg-transparent p-0 text-[15px] text-link";
 /** The title row (values 5.2): baseline-aligned, 10px apart. 29px tall as the HTML's row with its 26px Clear, so the
@@ -82,7 +82,7 @@ export function CartHead({
   isBusy?: boolean;
   onClear: () => void;
   onCloseTab?: () => void;
-  // The sheet's way back below 1024px (MobileCartBar): the HTML's "‹ Menu" closes the sheet.
+  // The sheet's way back below 1280px (MobileCartBar): the HTML's "‹ Menu" closes the sheet.
   onBack?: () => void;
   cells: CartCellsProps;
 }) {

@@ -176,7 +176,7 @@ export default function PosPage() {
         customerName={pos.customer?.name}
         count={pos.count} newCount={pos.newCount} total={pos.total}
       />
-      {/* The HTML's body grid (values 2.0): categories from 1100px, the menu, the cart from 1024px; each scrolls. */}
+      {/* The body grid (values 2.0): categories from 1100px, the menu, the cart from 1280px (owner Q19); each scrolls. */}
       <div data-ui="pos-body" className={POS_BODY_GRID_CLASS}>
         <aside data-ui="pos-aside" className={POS_ASIDE_CLASS}>
           {categories.isLoading ? (
@@ -213,8 +213,8 @@ export default function PosPage() {
         </section>
       </div>
 
-      {/* Below 1024px (values 6.1, 6.3; owner Q18): the HTML's glass order bar over the page's foot, in every state (on
-          the tab bar on a phone); its "Review order" opens the cart sheet (440px from the right, the whole phone screen).
+      {/* Below 1280px (values 6.1, 6.3; owner Q18, Q19): the HTML's glass order bar over the page's foot, in every state
+          (on the tab bar on a phone); its "Review order" slides up the cart sheet, the whole screen at every width.
           The bar reads its figures (count, total, the tab on screen, an unanswered send) from the same cartProps. */}
       <MobileCartBar
         open={mobileCartOpen}

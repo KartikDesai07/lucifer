@@ -223,7 +223,8 @@ test("on a phone the POS order bar sits on the tab bar, and the cart sheet cover
   );
   assert.ok(zOf(POS_MOBILE_BAR_CLASS) < tabZ, "the bar (z-index 10) never paints over the tab bar");
   assert.ok(zOf(POS_CART_SHEET_CLASS) > tabZ, "the cart sheet (z-index 15) covers the tab bar on a phone");
-  for (const t of ["fixed", "inset-y-0", "right-0", "max-tab:left-0"]) {
+  // Owner Q19 (2026-10-22): the phone's whole-screen sheet is now the sheet at every width below 1280px (inset 0).
+  for (const t of ["fixed", "inset-0"]) {
     assert.ok(POS_CART_SHEET_CLASS.split(/\s+/).includes(t), `the phone's sheet is the whole screen: "${t}"`);
   }
 });

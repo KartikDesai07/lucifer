@@ -11,7 +11,7 @@
 export type PosKeyAction = "search" | "send" | "pay";
 
 export interface PosKeyState {
-  /** A dialog, sheet or panel is open (the cart sheet below 1024px aside, when it is the only one). */
+  /** A dialog, sheet or panel is open (the cart sheet below 1280px aside, when it is the only one). */
   dialogOpen: boolean;
   /** An order write or a print is in flight, or a send is unconfirmed (usePosTab's isBusy). */
   busy: boolean;

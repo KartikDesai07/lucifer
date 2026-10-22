@@ -74,32 +74,38 @@ test("isPosPath: /pos and the pages below it, never a path that only starts with
 
 // ── The body grid (values 2.0) ───────────────────────────────────────────────────────────────────────────────────
 
-test("the body grid literal holds the HTML's four column sets (values 2.0 bodyCols), one per width", () => {
-  const { wide, desk, tablet } = POS_BODY_COLUMNS_PX;
-  assert.deepEqual([wide.aside, wide.cart, desk.aside, desk.cart, tablet.cart], [200, 360, 220, 380, 340], "the HTML's column widths");
+// Owner Q19 (2026-10-22): the cart column only from 1280px (nav open: the HTML's 200 1fr 360; collapsed: 220 1fr 380);
+// at 1100-1279px the category column and the menu (220px minmax(0,1fr)); below 1100px the menu alone. The HTML's
+// 1024-1099px `1fr 340px` and its 1100-1279px cart column are gone (the cart is the bar's full-screen sheet there).
+test("the body grid literal holds four column sets, one per width: the menu, the category column from 1100px, the cart column from 1280px (owner Q19)", () => {
+  const { wide, desk } = POS_BODY_COLUMNS_PX;
+  assert.deepEqual([wide.aside, wide.cart, desk.aside, desk.cart], [200, 360, 220, 380], "the HTML's column widths");
+  assert.ok(!("tablet" in POS_BODY_COLUMNS_PX), "no 1024-1099px column set (owner Q19)");
   const cls = tokens(POS_BODY_GRID_CLASS);
   for (const needle of [
     "grid",
     "min-h-0",
     "grid-cols-[minmax(0,1fr)]",
-    `lg:grid-cols-[minmax(0,1fr)_${tablet.cart}px]`,
-    `desk:grid-cols-[${desk.aside}px_minmax(0,1fr)_${desk.cart}px]`,
+    `desk:grid-cols-[${desk.aside}px_minmax(0,1fr)]`,
+    `xl:grid-cols-[${desk.aside}px_minmax(0,1fr)_${desk.cart}px]`,
     `wide:grid-cols-[${wide.aside}px_minmax(0,1fr)_${wide.cart}px]`,
   ]) {
     assert.ok(cls.includes(needle), `POS_BODY_GRID_CLASS must carry "${needle}"`);
   }
   assert.equal(cls.filter((t) => t.includes("grid-cols-")).length, 4, "exactly the four column sets, no stray tier");
+  assert.ok(!cls.some((t) => t.startsWith("lg:")), "no 1024px column set (owner Q19)");
 });
 
-test("posBodyColumnsPx gives the HTML's measured grid-template-columns at the five viewports (values 2.0)", () => {
+test("posBodyColumnsPx gives the measured grid-template-columns at the five viewports (values 2.0; owner Q19 below 1280px)", () => {
   const cases: Array<[string, number, boolean, number[]]> = [
     ["d1280", 1280, false, [200, 488, 360]],
     ["c1280", 1280, true, [220, 604, 380]],
-    ["t1024", 1024, false, [608, 340]],
+    ["t1024 (owner Q19: no cart column)", 1024, false, [948]],
     ["t820", 820, false, [744]],
     ["p390", 390, false, [390]],
-    ["1100 (desk, the rail)", 1100, false, [220, 424, 380]],
-    ["1099 (still the tablet's two columns)", 1099, false, [683, 340]],
+    ["1100 (desk, the rail; owner Q19: no cart column)", 1100, false, [220, 804]],
+    ["1279 nav collapsed (owner Q19: still no cart column)", 1279, true, [220, 983]],
+    ["1099 (the menu alone)", 1099, false, [1023]],
   ];
   for (const [label, viewportWidth, collapsed, expected] of cases) {
     assert.deepEqual(posBodyColumnsPx({ viewportWidth, collapsed }), expected, `${label}: the body grid's columns`);
@@ -120,25 +126,26 @@ test("the page fills the screen under the 56px header: a vh base with a dvh over
   assert.ok(!cls.some((t) => t.endsWith("overflow-hidden")), "nothing is clipped at the page's edge");
 });
 
-test("main keeps the HTML's mainPadB at its foot: 150px on a phone, 100px below 1024px, 16px from 1024px (values 6.2)", () => {
+test("main keeps the HTML's mainPadB at its foot: 150px on a phone, 100px wherever the bar shows (below 1280px, owner Q19), 16px from 1280px (values 6.2)", () => {
   assert.deepEqual(POS_MAIN_PAD_B_PX, { phone: 150, cmp: 100, base: 16 }, "the HTML's three values");
-  const cases: Array<[number, number]> = [[390, 150], [719, 150], [720, 100], [820, 100], [1023, 100], [1024, 16], [1280, 16]];
+  const cases: Array<[number, number]> = [[390, 150], [719, 150], [720, 100], [820, 100], [1023, 100], [1024, 100], [1279, 100], [1280, 16]];
   for (const [w, px] of cases) assert.equal(posMainPadBottomPx(w), px, `${w}px: main's bottom padding`);
   const cls = tokens(POS_MAIN_CLASS);
-  assert.ok(cls.includes(`pb-${POS_MAIN_PAD_B_PX.base / 4}`), "16px from 1024px");
-  assert.ok(cls.includes(`max-lg:pb-[${POS_MAIN_PAD_B_PX.cmp}px]`), "100px below 1024px");
+  assert.ok(cls.includes(`pb-${POS_MAIN_PAD_B_PX.base / 4}`), "16px from 1280px");
+  assert.ok(cls.includes(`max-xl:pb-[${POS_MAIN_PAD_B_PX.cmp}px]`), "100px below 1280px (owner Q19)");
   // Ruling P44: plus the safe-area inset the phone's tab bar grows by (the order bar rides up by it); 150px at inset 0.
   assert.ok(cls.includes(`max-tab:pb-[calc(${POS_MAIN_PAD_B_PX.phone}px+env(safe-area-inset-bottom))]`), "150px on a phone, plus the inset");
   for (const t of ["overflow-auto", "min-w-0", "min-h-0"]) assert.ok(cls.includes(t), `main is the HTML's scroller column: "${t}"`);
 });
 
-test("the regions: the category column from 1100px, the cart column from 1024px, each the HTML's surface with its rule", () => {
+test("the regions: the category column from 1100px, the cart column from 1280px (owner Q19), each the HTML's surface with its rule", () => {
   const aside = tokens(POS_ASIDE_CLASS);
   for (const t of ["hidden", "desk:flex", "flex-col", "min-h-0", "bg-card", "border-r", "border-border"]) {
     assert.ok(aside.includes(t), `the aside (values 2.1): "${t}"`);
   }
   const cart = tokens(POS_CART_CLASS);
-  for (const t of ["hidden", "lg:flex", "flex-col", "min-h-0", "relative", "z-[15]", "overflow-y-auto", "overflow-x-hidden", "overscroll-contain", "bg-card", "border-l", "border-border"]) {
+  assert.ok(!cart.includes("lg:flex"), "no cart column at 1024-1279px (owner Q19)");
+  for (const t of ["hidden", "xl:flex", "flex-col", "min-h-0", "relative", "z-[15]", "overflow-y-auto", "overflow-x-hidden", "overscroll-contain", "bg-card", "border-l", "border-border"]) {
     assert.ok(cart.includes(t), `the cart column (values 5.1): "${t}"`);
   }
 });
@@ -179,6 +186,9 @@ test("the old two-pane and stacked-phone frame is gone, not left dead (design 5)
     "POS_HEADER_CHIP_FIXED_CLASS",
     "POS_HEADER_CHIP_FLEX_CLASS",
     "POS_CART_STEPPER_CLASS",
+    // Owner Q19 (2026-10-22): the cart sheet is the phone's full screen at every width below 1280px, so the 720-1023px
+    // side sheet's 440px width went.
+    "POS_CART_SHEET_WIDTH_PX",
   ]) {
     assert.ok(!(name in layout), `lib/pos-layout.ts must no longer export ${name}`);
   }

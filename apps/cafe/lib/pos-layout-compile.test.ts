@@ -28,7 +28,6 @@ import {
   POS_MOBILE_BAR_BUTTON_CLASS,
   POS_CART_SHEET_CLASS,
   POS_CART_SHEET_SCRIM_CLASS,
-  POS_CART_SHEET_WIDTH_PX,
   POS_TOOLBAR_CLASS,
   POS_LIST_CLASS,
   POS_CARD_GRID_CLASS,
@@ -92,16 +91,21 @@ async function compileCandidates(candidates: string[], extraCss = ""): Promise<s
 // U1 Task 1 (values 1.1, 2.0, 6.2; design 5): the page's frame uses the app's own breakpoints (tab 720px, desk
 // 1100px) and the nav's `wide` variant, so this compile reads those three definitions out of app/globals.css (the real
 // config, never re-typed) and adds them to the compiler's input.
+// Owner Q19 (2026-10-22): the cart sheet's slide up / down are theme animations (--animate-cart-sheet-up / -down), so
+// their two declarations are read out of app/globals.css too (never re-typed).
 function appBreakpointsCss(): string {
   const globals = readFileSync(path.join(CAFE_ROOT, "app/globals.css"), "utf8");
   const tab = globals.match(/--breakpoint-tab:\s*[\d.]+rem;/);
   const desk = globals.match(/--breakpoint-desk:\s*[\d.]+rem;/);
   const wide = globals.match(/@custom-variant wide \{[\s\S]*?\n\}/);
+  const up = globals.match(/--animate-cart-sheet-up:[^;]*;/);
+  const down = globals.match(/--animate-cart-sheet-down:[^;]*;/);
   assert.ok(tab && desk && wide, "app/globals.css declares the tab and desk breakpoints and the wide variant");
-  return `@theme { ${tab![0]} ${desk![0]} }\n${wide![0]}\n`;
+  assert.ok(up && down, "app/globals.css declares the cart sheet's two slides (owner Q19)");
+  return `@theme { ${tab![0]} ${desk![0]} ${up![0]} ${down![0]} }\n${wide![0]}\n`;
 }
 
-test("PIN: real Tailwind compiles the /pos frame (page height, body grid, regions, main's foot, the bar, the cart sheet) to the exact CSS the frame pins assume — and the column sets cascade lg < desk < wide", async () => {
+test("PIN: real Tailwind compiles the /pos frame (page height, body grid, regions, main's foot, the bar, the cart sheet) to the exact CSS the frame pins assume — and the column sets cascade desk < xl < wide (owner Q19)", async () => {
   const candidates = [
     ...POS_PAGE_CLASS.split(/\s+/),
     ...POS_BODY_GRID_CLASS.split(/\s+/),
@@ -126,34 +130,40 @@ test("PIN: real Tailwind compiles the /pos frame (page height, body grid, region
   const alert = "var(" + POS_ALERT_HEIGHT_VAR + ",0px)";
   const pageHeight = "height: calc(100vh - " + DASHBOARD_HEADER_REM + "rem - " + alert + ");";
   const pageDvh = "@supports (height:1dvh) { height: calc(100dvh - " + DASHBOARD_HEADER_REM + "rem - " + alert + "); }";
-  const { wide, desk, tablet } = POS_BODY_COLUMNS_PX;
+  const { wide, desk } = POS_BODY_COLUMNS_PX;
   const cols = "grid-template-columns: minmax(0,1fr);";
-  const lgCols = "@media (width >= 64rem) { grid-template-columns: minmax(0,1fr) " + tablet.cart + "px; }";
-  const deskCols = "@media (width >= 68.75rem) { grid-template-columns: " + desk.aside + "px minmax(0,1fr) " + desk.cart + "px; }";
+  // Owner Q19: from 1100px the category column and the menu; the cart column from 1280px (collapsed nav: desk's 220 /
+  // 380; open nav: wide's 200 / 360). The HTML's 1024px `1fr 340px` set is gone.
+  const deskCols = "@media (width >= 68.75rem) { grid-template-columns: " + desk.aside + "px minmax(0,1fr); }";
+  const xlCols = "@media (width >= 80rem) { grid-template-columns: " + desk.aside + "px minmax(0,1fr) " + desk.cart + "px; }";
   const wideCols =
     "@media (width >= 80rem) { &:where(html:not([data-nav-collapsed]) *) { grid-template-columns: " +
     wide.aside +
     "px minmax(0,1fr) " +
     wide.cart +
     "px; } }";
-  const cmpFoot = "@media (width < 64rem) { padding-bottom: " + POS_MAIN_PAD_B_PX.cmp + "px; }";
+  const lgCols = "@media (width >= 64rem) { grid-template-columns:";
+  const cmpFoot = "@media (width < 80rem) { padding-bottom: " + POS_MAIN_PAD_B_PX.cmp + "px; }";
   // Ruling P44: on a phone main's foot and the bar's place add the safe-area inset the tab bar grows by.
   const inset = "env(safe-area-inset-bottom)";
   const phoneFoot = "@media (width < 45rem) { padding-bottom: calc(" + POS_MAIN_PAD_B_PX.phone + "px + " + inset + "); }";
   const barPhoneFoot = "@media (width < 45rem) { bottom: calc(" + TAB_BAR_HEIGHT_PX + "px + " + inset + "); }";
   const asideOn = "@media (width >= 68.75rem) { display: flex; }";
-  const cartOn = "@media (width >= 64rem) { display: flex; }";
-  // U1 Task 7 (values 6.1, 6.3): the bar shows below 1024px only; the sheet is 440px wide (the whole screen on a phone,
-  // with no shadow), the --pop shadow from 720px; the scrim only from 720px.
-  const barOn = "@media (width < 64rem) { display: flex; }";
-  // values 6.1 showBar (!cartOpen): [data-open] adds an attribute to the class, so it beats max-lg:flex in any order.
+  const cartOn = "@media (width >= 80rem) { display: flex; }";
+  // U1 Task 7 (values 6.1, 6.3); owner Q19: the bar shows below 1280px only; the sheet is the phone's whole screen at
+  // every width (inset 0, no shadow, no scrim), sliding up on open and down on close, motion-safe.
+  const barOn = "@media (width < 80rem) { display: flex; }";
+  // values 6.1 showBar (!cartOpen): [data-open] adds an attribute to the class, so it beats max-xl:flex in any order.
   const barAside = "&[data-open] { display: none; }";
   const barBlur = "backdrop-filter: saturate(180%) blur(20px);";
-  const sheetWidth = "width: min(" + POS_CART_SHEET_WIDTH_PX + "px, 100%);";
-  const sheetPhoneLeft = "@media (width < 45rem) { left: 0; }";
-  const sheetPhoneWidth = "@media (width < 45rem) { width: auto; }";
-  const sheetPhoneShadow = "@media (width < 45rem) { box-shadow: none; }";
-  const scrimPhoneOff = "@media (width < 45rem) { display: none; }";
+  const sheetInset = ".inset-0 { inset: 0; }";
+  const sheetUp =
+    '@media (prefers-reduced-motion: no-preference) { &[data-state="open"] { animation: var(--animate-cart-sheet-up); } }';
+  const sheetDown =
+    '@media (prefers-reduced-motion: no-preference) { &[data-state="closed"] { animation: var(--animate-cart-sheet-down); } }';
+  const sheetUpVar = "--animate-cart-sheet-up: cart-sheet-up 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;";
+  const sheetDownVar = "--animate-cart-sheet-down: cart-sheet-down 0.2s ease-in both;";
+  const scrimOff = ".hidden { display: none; }";
   // U1 Task 2 (values 3.1 toolbar, 0.3 toolPad / listPad): the sticky toolbar and the list wrapper, phone forms last.
   const toolbarPhoneTop = "@media (width < 45rem) { padding-top: calc(var(--spacing) * 2.5); }";
   const listPhoneY = "@media (width < 45rem) { padding-block: calc(var(--spacing) * 3.5); }";
@@ -164,26 +174,25 @@ test("PIN: real Tailwind compiles the /pos frame (page height, body grid, region
   for (const [needle, what] of [
     [pageHeight, "the page's vh height"],
     [pageDvh, "the page's dvh height inside @supports (height:1dvh)"],
-    [cols, "one menu column below 1024px"],
-    [lgCols, "the cart column from 1024px"],
-    [deskCols, "the category and cart columns from 1100px"],
+    [cols, "one menu column below 1100px"],
+    [deskCols, "the category column and the menu from 1100px (owner Q19: no cart column below 1280px)"],
+    [xlCols, "the category, menu and cart columns from 1280px, nav collapsed (owner Q19)"],
     [wideCols, "the wide nav's narrower columns from 1280px, nav open"],
-    [cmpFoot, "main's 100px foot below 1024px"],
+    [cmpFoot, "main's 100px foot below 1280px (owner Q19)"],
     [phoneFoot, "main's 150px foot on a phone, plus the tab bar's safe-area inset"],
     [barPhoneFoot, "the bar on the phone's tab bar: 59px plus its safe-area inset"],
     [asideOn, "the category column shows from 1100px"],
-    [cartOn, "the cart column shows from 1024px"],
-    [barOn, "the bar shows below 1024px only"],
+    [cartOn, "the cart column shows from 1280px (owner Q19)"],
+    [barOn, "the bar shows below 1280px only (owner Q19)"],
     [barAside, "the bar steps aside while its sheet is open"],
     [barBlur, "the bar's glass blur (values 6.1)"],
-    ["box-shadow: var(--pop);", "the sheet's --pop shadow from 720px"],
-    [sheetWidth, "the sheet's 440px (min(440px,100%))"],
+    [sheetInset, "the sheet: the whole screen at every width (owner Q19)"],
     ["z-index: 15;", "the sheet over the tab bar (z-index 15)"],
-    ["z-index: 14;", "the scrim under the sheet (z-index 14)"],
-    [sheetPhoneLeft, "the phone's sheet from the window's left edge"],
-    [sheetPhoneWidth, "the phone's sheet: the whole width"],
-    [sheetPhoneShadow, "the phone's sheet: no shadow"],
-    [scrimPhoneOff, "no scrim on a phone"],
+    [sheetUp, "the sheet slides up as it opens, motion-safe (owner Q19)"],
+    [sheetDown, "the sheet slides down as it closes, motion-safe (owner Q19)"],
+    [sheetUpVar, "the slide up's .34s on the HTML's sheetIn easing"],
+    [sheetDownVar, "the slide down's .2s ease-in"],
+    [scrimOff, "the overlay is never drawn (owner Q19: no scrim)"],
     ["position: sticky;", "the toolbar sticks inside main"],
     ["z-index: 3;", "the toolbar sits over the cards (z-index 3)"],
     [toolbarPhoneTop, "the toolbar's 10px top padding on a phone"],
@@ -197,10 +206,13 @@ test("PIN: real Tailwind compiles the /pos frame (page height, body grid, region
   }
 
   // The cascade: the later set wins where several match (a 1280px open nav matches all three).
-  assert.ok(css.indexOf(lgCols) < css.indexOf(deskCols), "lg's columns come before desk's");
-  assert.ok(css.indexOf(deskCols) < css.indexOf(wideCols), "desk's columns come before wide's");
-  assert.ok(css.indexOf(cmpFoot) < css.indexOf(phoneFoot), "main's phone foot comes after its 1024px one (the narrower wins)");
-  assert.ok(css.indexOf(cartOn) < css.indexOf(asideOn), "landmark: breakpoints emit in width order");
+  assert.ok(css.indexOf(deskCols) < css.indexOf(xlCols), "desk's columns come before xl's");
+  assert.ok(css.indexOf(xlCols) < css.indexOf(wideCols), "xl's columns come before wide's (an open nav at 1280px takes wide's)");
+  assert.ok(css.indexOf(cmpFoot) < css.indexOf(phoneFoot), "main's phone foot comes after its 1280px one (the narrower wins)");
+  assert.ok(css.indexOf(asideOn) < css.indexOf(cartOn), "landmark: breakpoints emit in width order");
+  assert.ok(!css.includes(lgCols), "no 1024px column set (owner Q19)");
+  assert.ok(!css.includes("box-shadow: var(--pop);"), "no shadow on the sheet at any width (owner Q19)");
+  assert.ok(!css.includes("z-index: 14;"), "no scrim layer under the sheet (owner Q19)");
 
   // No mangled var() emission: every "var(--pos-alert-h" opener is followed by ",0px)", once per page height token.
   const escapeRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

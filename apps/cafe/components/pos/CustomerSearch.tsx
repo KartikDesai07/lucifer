@@ -107,7 +107,7 @@ const NEW_CLASS =
 const LINK_CLASS = "h-9 cursor-pointer border-0 bg-transparent px-1.5 py-px text-[13.5px] font-medium text-link";
 
 /** As the sheet opens, the field marked data-autofocus takes the focus (the search, or the add form's empty field).
- *  Opened from inside another dialog (the cart sheet below 1024px, the payment sheet), that dialog pulls a plain
+ *  Opened from inside another dialog (the cart sheet below 1280px, the payment sheet), that dialog pulls a plain
  *  autoFocus back before this one traps the focus, and Radix would then focus the first control in the head (the ✕). */
 function focusMarkedField(e: Event) {
   const field = e.currentTarget instanceof HTMLElement ? e.currentTarget.querySelector<HTMLElement>("[data-autofocus]") : null;

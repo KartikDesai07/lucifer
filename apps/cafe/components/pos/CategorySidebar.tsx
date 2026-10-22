@@ -112,7 +112,8 @@ function CategoryFind({ value, onChange }: { value: string; onChange: (value: st
 }
 
 /** The category column (values 2.1, 2.4): "Categories" + "{n} total" over the find box, then the rows, which scroll on
- *  their own. The aside around it (POS_ASIDE_CLASS) is the body grid's 200px / 220px track from 1100px. */
+ *  their own. The aside around it (POS_ASIDE_CLASS) is the body grid's 200px / 220px track from 1100px. Owner Q19: at
+ *  1100-1279px the order bar runs under the column's foot, so the rows keep the menu column's 100px clear there. */
 export function CategorySidebar({ categories, products, selected, onSelect, query, onQueryChange }: CategoryPickerProps) {
   const rows = useCategoryRows(categories, products, query);
   return (
@@ -124,7 +125,7 @@ export function CategorySidebar({ categories, products, selected, onSelect, quer
         </div>
         <CategoryFind value={query} onChange={onQueryChange} />
       </div>
-      <nav aria-label="Product categories" data-ui="pos-cat-list" className="min-h-0 flex-1 overflow-auto px-2 pb-4">
+      <nav aria-label="Product categories" data-ui="pos-cat-list" className="min-h-0 flex-1 overflow-auto px-2 pb-4 max-xl:pb-[100px]">
         {rows.map((c) => (
           <CategoryRowButton
             key={c.key}

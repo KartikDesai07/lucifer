@@ -1,5 +1,5 @@
 // Ruling P38 (U1 final fix wave, 2026-10-22): a sheet whose nested dialogs are its React SIBLINGS (the /pos cart sheet
-// below 1024px: the payment, the void, the move and the confirm prompts; the Orders / dashboard order sheet: its
+// below 1280px: the payment, the void, the move and the confirm prompts; the Orders / dashboard order sheet: its
 // payment and move dialogs) must not close itself when one of them is closed by a press. Radix defers a modal layer's
 // outside pointer-down to the click; by then the nested layer is gone, the sheet is the top layer and the press on the
 // nested panel's ✕ / Cancel reads as "outside" for it. The predicate below tells such a press from a real one outside

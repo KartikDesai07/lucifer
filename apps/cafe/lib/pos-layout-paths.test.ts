@@ -28,6 +28,7 @@ import {
   NAV_WIDTH_RAIL_PX,
   NAV_RAIL_MIN_PX,
   NAV_WIDE_MIN_PX,
+  POS_CART_COLUMN_MIN_PX,
   navWidthPx,
   isWideNav,
   posGridPaneWidthPx,
@@ -38,6 +39,7 @@ import {
   POS_BODY_GRID_CLASS,
   POS_ASIDE_CLASS,
   POS_MAIN_CLASS,
+  POS_MAIN_PAD_B_PX,
   POS_TOOLBAR_CLASS,
   POS_MOBILE_BAR_CLASS,
   DASHBOARD_HEADER_REM,
@@ -214,21 +216,35 @@ test("PIN: the category column takes the body grid's 200px / 220px track — Cat
   assert.ok(POS_ASIDE_CLASS.split(/\s+/).includes("desk:flex"), "the column shows from 1100px");
 });
 
-// U1 Task 7 (values 6.1, 6.3; design 6.9): below 1024px the HTML's glass order bar over the page's foot and the cart
-// sheet it opens. The sheet stays a Radix dialog (focus trap, Escape, the scrim's tap, the sr-only title) drawn as the
-// HTML's cart section: 440px from the right over the scrim from 720px, the whole screen on a phone. Its panel names
-// itself (data-ui="pos-cart-sheet"): the F8 / F9 keys treat it as the cart, not as a dialog (PosKeys, U1 Task 5).
-test("PIN: MobileCartBar is the HTML's bar (shown below 1024px by its own class) and a Radix dialog drawn as the HTML's cart sheet, the Cart inside", () => {
+// Owner Q19: at 1100-1279px the order bar runs from the rail's edge under the category column too (left 76, as at 820),
+// so the column's list keeps the same room at its foot as the menu column (main's 100px below 1280px): its last rows
+// scroll clear of the bar instead of staying under it. From 1280px (no bar) its 16px as before.
+test("PIN: the category column's list keeps the order bar clear below 1280px, with the menu column's own 100px (owner Q19)", () => {
+  const src = stripComments(readSrc(CATEGORY_SIDEBAR));
+  const list = src.match(/<nav aria-label="Product categories" data-ui="pos-cat-list" className="([^"]*)"/);
+  assert.ok(list, "landmark: the column's list");
+  const cls = list![1].split(/\s+/);
+  assert.ok(cls.includes("pb-4"), "16px at its foot beside the cart column (1280px and wider)");
+  assert.ok(cls.includes(`max-xl:pb-[${POS_MAIN_PAD_B_PX.cmp}px]`), "below 1280px the bar's room, main's own 100px");
+  assert.ok(POS_MAIN_CLASS.split(/\s+/).includes(`max-xl:pb-[${POS_MAIN_PAD_B_PX.cmp}px]`), "the same token as the menu column's");
+});
+
+// U1 Task 7 (values 6.1, 6.3; design 6.9): the HTML's glass order bar over the page's foot and the cart sheet it opens.
+// The sheet stays a Radix dialog (focus trap, Escape, the sr-only title) drawn as the HTML's cart section. Its panel
+// names itself (data-ui="pos-cart-sheet"): the F8 / F9 keys treat it as the cart, not as a dialog (PosKeys, U1 Task 5).
+// Owner Q19 (2026-10-22): below 1280px (was 1024px), and the sheet is the phone's at every width: the whole screen,
+// sliding up from the foot, with no scrim (its overlay stays mounted, never drawn: the phone's form since Task 7).
+test("PIN: MobileCartBar is the HTML's bar (shown below 1280px by its own class, owner Q19) and a Radix dialog drawn as the phone's cart sheet, the Cart inside", () => {
   const src = stripComments(readSrc(MOBILE_CART_BAR));
   assert.match(src, /import \* as DialogPrimitive from "@radix-ui\/react-dialog";/, "the Radix dialog primitive (the kit sheet's overlay, X and slide are not the HTML's)");
   assert.match(
     src,
     /<div data-ui="pos-order-bar" data-open=\{open \? "" : undefined\} className=\{POS_MOBILE_BAR_CLASS\}>/,
-    "one element, one class: the bar's look and its 1024px switch; it steps aside while its sheet is open (values 6.1 showBar)",
+    "one element, one class: the bar's look and its 1280px switch; it steps aside while its sheet is open (values 6.1 showBar)",
   );
-  assert.ok(!src.includes("POS_MOBILE_ONLY_CLASS") && !/\b(?:xl|desk):/.test(src), "no xl: / desk: gate: the bar shows below 1024px (max-lg:flex in POS_MOBILE_BAR_CLASS)");
+  assert.ok(!src.includes("POS_MOBILE_ONLY_CLASS") && !/\b(?:xl|desk|lg):/.test(src), "no width gate in the file: the bar shows below 1280px (max-xl:flex in POS_MOBILE_BAR_CLASS)");
   assert.match(src, /<DialogPrimitive\.Root open=\{open\} onOpenChange=\{onOpenChange\}>/, "the page owns the open state (its auto-close)");
-  assert.match(src, /<DialogPrimitive\.Overlay data-ui="pos-cart-scrim" className=\{POS_CART_SHEET_SCRIM_CLASS\} \/>/, "the scrim (720-1023px)");
+  assert.match(src, /<DialogPrimitive\.Overlay data-ui="pos-cart-scrim" className=\{POS_CART_SHEET_SCRIM_CLASS\} \/>/, "the overlay: mounted, never drawn (owner Q19: no scrim at any width)");
   // U1 final fix wave (ruling P38): the panel also holds a ref and an outside guard (lib/nested-dialog.ts, pinned in its
   // own test), so the tag spans lines; the name and the frame are unchanged.
   assert.match(
@@ -272,15 +288,17 @@ test("PIN: MobileCartBar no longer reads the sidebar itself — the bar sits ins
   assert.match(src, /DialogPrimitive\.Trigger/, "landmark: MobileCartBar must still render the sheet's trigger");
 });
 
-// From 1024px the cart is the page's column (values 0.3 cartDisplay): a sheet left open while the window grows (a
-// tablet turned to landscape) closes, as the HTML's sheet gives way to its column.
-test("PIN: MobileCartBar never reverts to the old md-hidden wrapper or a fixed sheet height, and closes its sheet where the cart column takes over", () => {
+// Where the cart is the page's column (values 0.3 cartDisplay; owner Q19: from 1280px) a sheet left open while the
+// window grows (a window widened past 1280px) closes, as the HTML's sheet gives way to its column.
+test("PIN: MobileCartBar never reverts to the old md-hidden wrapper or a fixed sheet height, and closes its sheet where the cart column takes over (1280px, owner Q19)", () => {
   const src = stripComments(readSrc(MOBILE_CART_BAR));
   assert.ok(!src.includes("md:hidden"), "MobileCartBar must not gate itself at md (tablet-portrait bug)");
   assert.ok(!src.includes("h-[85dvh]") && !src.includes("h-[90vh]"), "MobileCartBar must not hardcode a sheet height: the HTML's sheet runs top to bottom");
   assert.match(src, /DialogPrimitive\.Content/, "landmark: MobileCartBar must still render the sheet's content");
   assert.match(src, /window\.matchMedia\(CART_COLUMN_QUERY\)/, "the cart column's media query");
-  assert.match(src, /const CART_COLUMN_QUERY = `\(min-width: \$\{BREAKPOINT_LG_PX\}px\)`;/, "1024px, the cart column's own breakpoint");
+  assert.match(src, /const CART_COLUMN_QUERY = `\(min-width: \$\{POS_CART_COLUMN_MIN_PX\}px\)`;/, "1280px, the cart column's own breakpoint (owner Q19)");
+  assert.ok(!src.includes("BREAKPOINT_LG_PX"), "no 1024px close any more (owner Q19)");
+  assert.equal(POS_CART_COLUMN_MIN_PX, 1280, "the query reads (min-width: 1280px)");
   assert.match(src, /if \(query\.matches\) onOpenChange\(false\);/, "the sheet closes there");
   assert.match(src, /return \(\) => query\.removeEventListener\("change", closeOnColumn\);/, "the listener goes with the open sheet");
 });
@@ -720,17 +738,22 @@ test("PIN: no stray lg:/xl:/desk: token in pos/page.tsx — the frame's switches
   assert.match(src, /className=\{POS_ASIDE_CLASS\}/, "landmark: the column's switch is POS_ASIDE_CLASS's");
 });
 
-// U1 Task 1: the HTML's cmp breakpoint (1024px) is Tailwind's lg, so lg: is back in lib/pos-layout.ts, but only as the
-// frame's cart switch; the retired lg:grid-cols-4 tier (owner, 2026-09-29: at most 3 columns) never returns.
-test("PIN: lib/pos-layout.ts carries lg: only as the HTML's 1024px cart switch — never a lg:grid-cols-N tier", () => {
+// U1 Task 1: the HTML's cmp breakpoint (1024px) is Tailwind's lg, so lg: came back in lib/pos-layout.ts as the frame's
+// cart switch; the retired lg:grid-cols-4 tier (owner, 2026-09-29: at most 3 columns) never returns. Owner Q19
+// (2026-10-22): the cart switch moved to 1280px (Tailwind's xl), so lib/pos-layout.ts carries no lg: token at all, and
+// its frame's xl: tokens are exactly the cart column, its grid track, the bar's show below 1280px and main's 100px foot
+// (the header controls' xl:pointer-fine: shrink is CB-1d.1 V1's, pinned below).
+test("PIN: lib/pos-layout.ts carries no lg: token (owner Q19), and xl: only as the 1280px cart switch — never a grid-cols-N tier", () => {
   const src = stripComments(readSrc(POS_LAYOUT_TS));
   const lgTokens = src.match(/[\w:-]*lg:[^\s"`]+/g) ?? [];
+  assert.deepEqual(lgTokens, [], `no lg: token: owner Q19 retired the 1024px cart switch, found ${lgTokens.join(", ")}`);
+  const xlTokens = (src.match(/[\w:-]*xl:[^\s"`]+/g) ?? []).filter((t) => !t.startsWith("xl:pointer-fine:"));
   assert.deepEqual(
-    [...lgTokens].sort(),
-    ["lg:flex", "lg:grid-cols-[minmax(0,1fr)_340px]", "max-lg:flex", "max-lg:pb-[100px]"],
-    `the only lg: tokens are the cart column, its grid track, the bar's show below 1024px and main's 100px foot, found ${lgTokens.join(", ")}`,
+    [...xlTokens].sort(),
+    ["max-xl:flex", "max-xl:pb-[100px]", "xl:flex", "xl:grid-cols-[220px_minmax(0,1fr)_380px]"],
+    `the frame's only xl: tokens are the bar's show below 1280px, main's 100px foot, the cart column and its grid track, found ${xlTokens.join(", ")}`,
   );
-  assert.ok(!/lg:grid-cols-\d/.test(src), "no lg:grid-cols-N tier (the 4-column tier is retired)");
+  assert.ok(!/(?:lg|xl):grid-cols-\d/.test(src), "no lg:/xl:grid-cols-N tier (the 4-column tier is retired)");
   assert.match(src, /desk:flex/, "landmark: lib/pos-layout.ts carries the category column's switch too (desk:flex)");
 });
 
@@ -1418,7 +1441,7 @@ test("PIN: owner Q13 — PosKeys is rendered ONCE, by the page, and presses only
   assert.ok(keys.includes("[data-ui='pos-search']") && keys.includes("[data-ui='pos-send']") && keys.includes("[data-ui='pos-pay']"), "the search, Send KOT and Pay");
   assert.match(keys, /getClientRects\(\)\.length > 0/, "only a visible element (the hidden cart mount is skipped)");
   assert.match(keys, /\.disabled/, "a disabled button is never pressed");
-  assert.match(keys, /data-ui='pos-cart-sheet'/, "the cart sheet below 1024px is no dialog to the keys when it is the only one");
+  assert.match(keys, /data-ui='pos-cart-sheet'/, "the cart sheet below 1280px is no dialog to the keys when it is the only one");
   assert.match(stripComments(readSrc(MOBILE_CART_BAR)), /data-ui="pos-cart-sheet"/, "the sheet names itself");
 });
 
@@ -1509,7 +1532,8 @@ test("the POS card grid gives the HTML's columns and card widths beside the nav,
     // label, viewport, collapsed, list inner width, columns, card width (values 4.3)
     ["1280", 1280, false, 448, 2, 220],
     ["1280 collapsed", 1280, true, 564, 2, 278],
-    ["1024", 1024, false, 568, 2, 280],
+    // Owner Q19: no cart column at 1024px, so the menu holds four (the HTML's 568 / 2 / 280).
+    ["1024 (owner Q19)", 1024, false, 908, 4, 221],
     ["820", 820, false, 704, 3, 229.33],
     ["390", 390, false, 366, 1, 366],
   ];

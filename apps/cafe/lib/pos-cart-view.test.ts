@@ -75,7 +75,7 @@ test("cartTitle: a seated tab names its table, a walk-in tab reads Walk-In, a ne
   assert.equal(cartTitle({ resumedOrder: null }), "New order", "nothing resumed: a new order");
 });
 
-// ── the order bar below 1024px (values 6.1; design 6.9; owner Q18; U1 Task 7) ────────────────────────────────────────
+// ── the order bar below 1280px (values 6.1; design 6.9; owner Q18; U1 Task 7) ────────────────────────────────────────
 
 test("orderBarSummary: \"{n} item(s) · {title}\" (one item says 1 item), the HTML's line with our title", () => {
   const view = { title: "Table T-4", adjustment: false, noticeTitle: null };

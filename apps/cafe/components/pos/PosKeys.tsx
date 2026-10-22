@@ -5,11 +5,11 @@ import { useEffect, useRef } from "react";
 import { posKeyAction } from "@/lib/pos-keys";
 
 // U1 Task 5 (owner Q13; design 6.13; values 13.2): the /pos keys — "/" focuses the menu search, F8 presses Send KOT,
-// F9 presses Pay. Rendered ONCE by the page (the cart mounts twice: the column and, below 1024px, the sheet), it
+// F9 presses Pay. Rendered ONCE by the page (the cart mounts twice: the column and, below 1280px, the sheet), it
 // listens on the window and presses the VISIBLE cart's own button, so a key does exactly what a tap does (the same
 // handler, the same idempotent send) and nothing a disabled button would refuse. lib/pos-keys.ts decides: never while
 // typing in a field, never with a dialog, sheet or panel open, never while busy, never on auto-repeat (a held F8 sends
-// once). The cart sheet below 1024px is where the buttons live there, so it is no dialog to the keys while it is the
+// once). The cart sheet below 1280px is where the buttons live there, so it is no dialog to the keys while it is the
 // only one open.
 
 const OPEN_DIALOGS = "[role='dialog'], [role='alertdialog']";

@@ -1,7 +1,7 @@
 // U1 Task 4 (2026-10-21): what the /pos cart's head and lines say, in the owner's HTML (values 5.2, 5.4 in
 // docs/superpowers/specs/2026-10-20-pos-html-values.md; design 6.5, 6.6; owner Q9, Q10): the title, a tab's
 // "#012 · 32 min", the Table cell, a line's number and meta, the stored-order address the cart's Void action hands the
-// void dialog, and when a selected line stays selected; U1 Task 7: the order bar's first line below 1024px (values
+// void dialog, and when a selected line stays selected; U1 Task 7: the order bar's first line below 1280px (values
 // 6.1); the final fix wave: where the focus goes after a line's Remove, and when the bill's details show (ruling P16).
 // Pure: no React, no fetching; client-safe.
 import { inr, orderItemModifierLines, orderLineKey } from "@pos/shared/utils";
@@ -41,7 +41,7 @@ export function cartTitle(view: CartTitleView): string {
   return view.resumedOrder.tableNo ? `Table ${view.resumedOrder.tableNo}` : WALK_IN;
 }
 
-/** What the order bar below 1024px reads (values 6.1; design 6.9; owner Q18): the quantity on the order (sent and new),
+/** What the order bar below 1280px reads (values 6.1; design 6.9; owner Q18): the quantity on the order (sent and new),
  *  the cart's title (cartTitle), whether an adjustment survived Clear (lib/pos-cart-props.ts hasPendingAdjustment), and
  *  the title of an unanswered send's notice (none when every send was answered). */
 export interface OrderBarView {
