@@ -3,8 +3,10 @@
 import { Check } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { rungWorthLabel, type RungOffer } from "@/lib/reward-rungs";
+import { rewardOffered, rewardSectionShown } from "@/lib/pos-footer";
+import { POS_PANEL_PICK_CLASS, POS_PANEL_PICK_OFF_CLASS, POS_PANEL_PICK_ON_CLASS } from "@/lib/pos-layout";
 import { CartRewardCards, type CartRewardCardsState } from "@/components/pos/CartRewardCards";
 
 // CB-5B S9 — the STAFF counter's reward-redemption picker. Mirrors the
@@ -15,6 +17,9 @@ import { CartRewardCards, type CartRewardCardsState } from "@/components/pos/Car
 // (which mirrors the server's RAW-stamps affordability test; see AFFORDABILITY
 // RULE in the slice spec) and handed down as props, so this file never reads
 // `stamps` against a milestone itself and can never drift from the server.
+//
+// U1 Task 5 (owner Q11; design 6.7): it renders as the Bill options panel's Reward section (the section carries the
+// caption), the rungs as the HTML popover's pickup buttons, the picked rung's line on --accent-t in --accent-i.
 interface CartRewardProps {
   customerSelected: boolean;
   loading: boolean;
@@ -36,6 +41,10 @@ interface CartRewardProps {
   disabled?: boolean;
 }
 
+/** The picked rung's line (design 6.7): --accent-t in --accent-i, radius 8, 13px. */
+const PICKED_LINE_CLASS =
+  "flex min-w-0 items-center justify-between gap-2 rounded-[8px] bg-accent px-2.5 py-1.5 text-[13px] text-accent-foreground";
+
 export function CartReward({
   customerSelected,
   loading,
@@ -50,17 +59,18 @@ export function CartReward({
   disabled,
 }: CartRewardProps) {
   // D9.3: the panel only exists once staff have picked a customer — no dead
-  // chrome for an anonymous walk-in sale.
-  if (!customerSelected) return null;
-  // A cafe with no configured ladder (and this customer has never earned a
-  // stamp) has nothing to show here at all.
-  const hasCards = (cards?.offers.length ?? 0) > 0;
-  if (offers.length === 0 && (stamps ?? 0) === 0 && !hasCards) return null;
+  // chrome for an anonymous walk-in sale; and a cafe with no configured ladder
+  // (this customer has never earned a stamp and holds no card) has nothing to
+  // show here at all — unless a reward is picked or the tab's is locked (its
+  // line below says so). One gate with the panel's Reward section, which the
+  // footer's Reward link never outlives (lib/pos-footer.ts rewardSectionShown).
+  const offered = rewardOffered({ customerSelected, offers: offers.length, stamps, cards: cards?.offers.length ?? 0 });
+  if (!rewardSectionShown({ offered, picked: selectedAt !== null || (cards?.selectedId ?? null) !== null, locked })) return null;
 
   const selectedOffer = offers.find((o) => o.rung.at === selectedAt);
 
   return (
-    <div className="space-y-1.5 rounded-md border p-2">
+    <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>Loyalty reward</span>
         {loading ? (
@@ -76,14 +86,14 @@ export function CartReward({
       {locked ? (
         <>
           {selectedOffer ? (
-            <div className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-primary/5 px-2 py-1.5 text-sm">
+            <div className={PICKED_LINE_CLASS}>
               <span className="min-w-0 flex-1 truncate">
                 {selectedOffer.rung.at} stamps → {rungWorthLabel(selectedOffer.rung)}
               </span>
-              <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+              <Check className="h-4 w-4 shrink-0" aria-hidden="true" />
             </div>
           ) : (
-            <p className="text-sm">Reward applied to this bill.</p>
+            <p className="text-[13px] text-foreground">Reward applied to this bill.</p>
           )}
           <p className="text-xs text-muted-foreground">
             Already applied to this bill. One reward per order.
@@ -100,11 +110,11 @@ export function CartReward({
       ) : (
         <>
           {selectedOffer && (
-            <div className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-primary/5 px-2 py-1.5 text-sm">
+            <div className={PICKED_LINE_CLASS}>
               <span className="min-w-0 flex-1 truncate">
                 {selectedOffer.rung.at} stamps → {rungWorthLabel(selectedOffer.rung)}
               </span>
-              <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+              <Check className="h-4 w-4 shrink-0" aria-hidden="true" />
             </div>
           )}
           <div className="flex flex-wrap gap-1.5">
@@ -163,10 +173,8 @@ function RungButton({
   };
 
   return (
-    <Button
+    <button
       type="button"
-      size="sm"
-      variant={selected ? "default" : "outline"}
       aria-pressed={selected}
       aria-label={
         usable
@@ -175,16 +183,22 @@ function RungButton({
       }
       disabled={disabled || !usable}
       onClick={handleClick}
-      className={cn("h-auto min-w-0 max-w-full flex-col items-start gap-0 px-2 py-1 text-left", !usable && "opacity-60")}
+      className={cn(
+        POS_PANEL_PICK_CLASS,
+        "flex-col items-start",
+        selected ? POS_PANEL_PICK_ON_CLASS : POS_PANEL_PICK_OFF_CLASS,
+        !usable && "opacity-60",
+        BRAND_PRESS_CLASS,
+      )}
     >
-      <span className="min-w-0 max-w-full truncate text-xs font-medium">
+      <span className="min-w-0 max-w-full truncate">
         {rung.at} stamps → {rungWorthLabel(rung)}
       </span>
       {!usable && reason && (
-        <span className="min-w-0 max-w-full truncate text-[10px] font-normal text-muted-foreground">
+        <span className="min-w-0 max-w-full truncate text-[11px] font-normal opacity-80">
           {reason}
         </span>
       )}
-    </Button>
+    </button>
   );
 }

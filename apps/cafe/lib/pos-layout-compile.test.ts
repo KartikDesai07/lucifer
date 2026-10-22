@@ -17,25 +17,30 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { TAB_BAR_HEIGHT_PX } from "@/lib/shell-layout";
 import {
-  POS_ROOT_CLASS,
-  POS_CHIP_ROW_CLASS,
-  POS_ROOT_CHROME_REM_BASE,
-  POS_ROOT_CHROME_REM_MD,
-  POS_ROOT_CHROME_REM_XL,
-  POS_ROOT_FLOOR_REM_BASE,
-  POS_ROOT_FLOOR_REM_XL,
+  POS_PAGE_CLASS,
+  POS_BODY_GRID_CLASS,
+  POS_ASIDE_CLASS,
+  POS_MAIN_CLASS,
+  POS_CART_CLASS,
+  POS_MOBILE_BAR_CLASS,
+  POS_MOBILE_BAR_BUTTON_CLASS,
+  POS_CART_SHEET_CLASS,
+  POS_CART_SHEET_SCRIM_CLASS,
+  POS_TOOLBAR_CLASS,
+  POS_LIST_CLASS,
+  POS_CARD_GRID_CLASS,
+  POS_CARD_MIN_PX,
+  POS_CARD_GAP_PX,
+  POS_BODY_COLUMNS_PX,
+  POS_MAIN_PAD_B_PX,
+  DASHBOARD_HEADER_REM,
   POS_ALERT_HEIGHT_VAR,
   POS_HEADER_CONTROL_CLASS,
-  POS_CART_STEPPER_CLASS,
-  POS_TILE_OPTIONS_BUTTON_CLASS,
-  POS_TILE_OPTIONS_RESERVE_CLASS,
-  POS_CHIP_CLASS,
-  POS_CART_CTA_CLASS,
-  POS_MOBILE_BAR_BUTTON_CLASS,
+  POS_CART_GST_BUTTON_CLASS,
   POS_PRESS_FEEDBACK_CLASS,
   POS_DIALOG_LIST_CAP_CLASS,
-  POS_MOVE_TABLE_LIST_CAP_CLASS,
 } from "@/lib/pos-layout";
 
 // Hand-typed to the minimal slice of Tailwind's internal compiler API this
@@ -77,158 +82,177 @@ const loadModule: LoadModule = async () => {
   throw new Error("pos-layout-compile.test.ts: no Tailwind plugin/config modules expected for this candidate set");
 };
 
-async function compileCandidates(candidates: string[]): Promise<string> {
+async function compileCandidates(candidates: string[], extraCss = ""): Promise<string> {
   const lib = (await import(pathToFileURL(path.join(TAILWIND_DIR, "dist/lib.mjs")).href)) as TailwindLib;
-  const compiled = await lib.compile(`@import "tailwindcss";`, { base: CAFE_ROOT, loadStylesheet, loadModule });
+  const compiled = await lib.compile(`@import "tailwindcss";\n${extraCss}`, { base: CAFE_ROOT, loadStylesheet, loadModule });
   return compiled.build(candidates);
 }
 
-test("PIN: real Tailwind compiles POS_ROOT_CLASS/POS_CHIP_ROW_CLASS/body-dvh candidates to the exact CSS the height-chain contract assumes — no mangled var()/media-query emission", async () => {
+// U1 Task 1 (values 1.1, 2.0, 6.2; design 5): the page's frame uses the app's own breakpoints (tab 720px, desk
+// 1100px) and the nav's `wide` variant, so this compile reads those three definitions out of app/globals.css (the real
+// config, never re-typed) and adds them to the compiler's input.
+// Owner Q19 (2026-10-22): the cart sheet's slide up / down are theme animations (--animate-cart-sheet-up / -down), so
+// their two declarations are read out of app/globals.css too (never re-typed).
+function appBreakpointsCss(): string {
+  const globals = readFileSync(path.join(CAFE_ROOT, "app/globals.css"), "utf8");
+  const tab = globals.match(/--breakpoint-tab:\s*[\d.]+rem;/);
+  const desk = globals.match(/--breakpoint-desk:\s*[\d.]+rem;/);
+  const wide = globals.match(/@custom-variant wide \{[\s\S]*?\n\}/);
+  const up = globals.match(/--animate-cart-sheet-up:[^;]*;/);
+  const down = globals.match(/--animate-cart-sheet-down:[^;]*;/);
+  assert.ok(tab && desk && wide, "app/globals.css declares the tab and desk breakpoints and the wide variant");
+  assert.ok(up && down, "app/globals.css declares the cart sheet's two slides (owner Q19)");
+  return `@theme { ${tab![0]} ${desk![0]} ${up![0]} ${down![0]} }\n${wide![0]}\n`;
+}
+
+test("PIN: real Tailwind compiles the /pos frame (page height, body grid, regions, main's foot, the bar, the cart sheet) to the exact CSS the frame pins assume — and the column sets cascade desk < xl < wide (owner Q19)", async () => {
   const candidates = [
-    ...POS_ROOT_CLASS.split(/\s+/),
-    ...POS_CHIP_ROW_CLASS.split(/\s+/),
+    ...POS_PAGE_CLASS.split(/\s+/),
+    ...POS_BODY_GRID_CLASS.split(/\s+/),
+    ...POS_ASIDE_CLASS.split(/\s+/),
+    ...POS_MAIN_CLASS.split(/\s+/),
+    ...POS_CART_CLASS.split(/\s+/),
+    ...POS_MOBILE_BAR_CLASS.split(/\s+/),
+    ...POS_MOBILE_BAR_BUTTON_CLASS.split(/\s+/),
+    ...POS_CART_SHEET_CLASS.split(/\s+/),
+    ...POS_CART_SHEET_SCRIM_CLASS.split(/\s+/),
+    ...POS_TOOLBAR_CLASS.split(/\s+/),
+    ...POS_LIST_CLASS.split(/\s+/),
+    ...POS_CARD_GRID_CLASS.split(/\s+/),
     "min-h-screen",
     "supports-[height:1dvh]:min-h-dvh",
   ].filter(Boolean);
 
-  const raw = await compileCandidates(candidates);
+  const raw = await compileCandidates(candidates, appBreakpointsCss());
   const css = raw.replace(/\s+/g, " ").trim();
 
-  // Needles built from the constants (never re-typed literals, testing.md) —
-  // a drifted constant trips this pin instead of a hand-typed number silently
-  // agreeing with itself.
-  const baseHeightDecl =
-    "height: calc(100vh - " + POS_ROOT_CHROME_REM_BASE + "rem - var(" + POS_ALERT_HEIGHT_VAR + ",0px));";
-  const baseDvhBlock =
-    "@supports (height:1dvh) { height: calc(100dvh - " +
-    POS_ROOT_CHROME_REM_BASE +
-    "rem - var(" +
-    POS_ALERT_HEIGHT_VAR +
-    ",0px)); }";
-  const mdBlock =
-    "@media (width >= 48rem) { height: calc(100vh - " +
-    POS_ROOT_CHROME_REM_MD +
-    "rem - var(" +
-    POS_ALERT_HEIGHT_VAR +
-    ",0px)); }";
-  const xlBlock = "@media (width >= 80rem) { height: calc(100vh - " + POS_ROOT_CHROME_REM_XL + "rem); }";
-  // The two compound variants (breakpoint + @supports): the md one is the rule
-  // that actually governs the owner's md+, dvh-capable tablet (review F9).
-  const mdDvhBlock =
-    "@media (width >= 48rem) { @supports (height:1dvh) { height: calc(100dvh - " +
-    POS_ROOT_CHROME_REM_MD +
-    "rem - var(" +
-    POS_ALERT_HEIGHT_VAR +
-    ",0px)); } }";
-  const xlDvhBlock =
-    "@media (width >= 80rem) { @supports (height:1dvh) { height: calc(100dvh - " + POS_ROOT_CHROME_REM_XL + "rem); } }";
-  const floorBaseDecl = "min-height: " + POS_ROOT_FLOOR_REM_BASE + "rem;";
-  const floorXlBlock = "@media (width >= 80rem) { min-height: " + POS_ROOT_FLOOR_REM_XL + "rem; }";
-  const dvhFloorBlock = "@supports (height:1dvh) { min-height: 100dvh; }";
-  // The vh side of the body floor — and the whole premise of app/m/layout.tsx
-  // keeping the diner flow at its old 100vh document height (review F2): a
-  // Tailwind/theme change that redefined `screen` would otherwise pass silently.
-  const vhFloorDecl = "min-height: 100vh;";
+  // Needles built from the constants (never re-typed literals, testing.md).
+  const alert = "var(" + POS_ALERT_HEIGHT_VAR + ",0px)";
+  const pageHeight = "height: calc(100vh - " + DASHBOARD_HEADER_REM + "rem - " + alert + ");";
+  const pageDvh = "@supports (height:1dvh) { height: calc(100dvh - " + DASHBOARD_HEADER_REM + "rem - " + alert + "); }";
+  const { wide, desk } = POS_BODY_COLUMNS_PX;
+  const cols = "grid-template-columns: minmax(0,1fr);";
+  // Owner Q19: from 1100px the category column and the menu; the cart column from 1280px (collapsed nav: desk's 220 /
+  // 380; open nav: wide's 200 / 360). The HTML's 1024px `1fr 340px` set is gone.
+  const deskCols = "@media (width >= 68.75rem) { grid-template-columns: " + desk.aside + "px minmax(0,1fr); }";
+  const xlCols = "@media (width >= 80rem) { grid-template-columns: " + desk.aside + "px minmax(0,1fr) " + desk.cart + "px; }";
+  const wideCols =
+    "@media (width >= 80rem) { &:where(html:not([data-nav-collapsed]) *) { grid-template-columns: " +
+    wide.aside +
+    "px minmax(0,1fr) " +
+    wide.cart +
+    "px; } }";
+  const lgCols = "@media (width >= 64rem) { grid-template-columns:";
+  // Ruling P44: on a phone main's foot and the bar's place add the safe-area inset the tab bar grows by; ruling P49: at
+  // 720-1279px main's foot and the bar's bottom padding add it too.
+  const inset = "env(safe-area-inset-bottom)";
+  const cmpFoot = "@media (width < 80rem) { padding-bottom: calc(" + POS_MAIN_PAD_B_PX.cmp + "px + " + inset + "); }";
+  const barTabPad = "@media (width >= 45rem) { padding-bottom: calc(10px + " + inset + "); }";
+  const phoneFoot = "@media (width < 45rem) { padding-bottom: calc(" + POS_MAIN_PAD_B_PX.phone + "px + " + inset + "); }";
+  const barPhoneFoot = "@media (width < 45rem) { bottom: calc(" + TAB_BAR_HEIGHT_PX + "px + " + inset + "); }";
+  const asideOn = "@media (width >= 68.75rem) { display: flex; }";
+  const cartOn = "@media (width >= 80rem) { display: flex; }";
+  // U1 Task 7 (values 6.1, 6.3); owner Q19: the bar shows below 1280px only; the sheet is the phone's whole screen at
+  // every width (inset 0, no shadow, no scrim), sliding up on open and down on close, motion-safe.
+  const barOn = "@media (width < 80rem) { display: flex; }";
+  // values 6.1 showBar (!cartOpen): [data-open] adds an attribute to the class, so it beats max-xl:flex in any order.
+  const barAside = "&[data-open] { display: none; }";
+  const barBlur = "backdrop-filter: saturate(180%) blur(20px);";
+  const sheetInset = ".inset-0 { inset: 0; }";
+  const sheetUp =
+    '@media (prefers-reduced-motion: no-preference) { &[data-state="open"] { animation: var(--animate-cart-sheet-up); } }';
+  const sheetDown =
+    '@media (prefers-reduced-motion: no-preference) { &[data-state="closed"] { animation: var(--animate-cart-sheet-down); } }';
+  const sheetUpVar = "--animate-cart-sheet-up: cart-sheet-up 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;";
+  const sheetDownVar = "--animate-cart-sheet-down: cart-sheet-down 0.2s ease-in both;";
+  const scrimOff = ".hidden { display: none; }";
+  // U1 Task 2 (values 3.1 toolbar, 0.3 toolPad / listPad): the sticky toolbar and the list wrapper, phone forms last.
+  const toolbarPhoneTop = "@media (width < 45rem) { padding-top: calc(var(--spacing) * 2.5); }";
+  const listPhoneY = "@media (width < 45rem) { padding-block: calc(var(--spacing) * 3.5); }";
+  // U1 Task 3 (values 4.1): the card grid's auto-fill tracks and 8px gap.
+  const cardTracks = "grid-template-columns: repeat(auto-fill,minmax(min(" + POS_CARD_MIN_PX + "px, 100%),1fr));";
+  const cardGap = "gap: calc(var(--spacing) * " + POS_CARD_GAP_PX / 4 + ");";
 
-  assert.ok(css.includes(baseHeightDecl), `compiled CSS must include "${baseHeightDecl}"`);
-  assert.ok(
-    css.includes(baseDvhBlock),
-    `compiled CSS must include the dvh variant nested inside @supports (height:1dvh): "${baseDvhBlock}"`,
-  );
-  assert.ok(
-    css.includes(mdBlock),
-    `compiled CSS must include the md height variant nested inside its own @media wrapper: "${mdBlock}"`,
-  );
-  assert.ok(
-    css.includes(xlBlock),
-    `compiled CSS must include the xl height variant (no alert-var term) nested inside its own @media wrapper: "${xlBlock}"`,
-  );
-  assert.ok(
-    css.includes(mdDvhBlock),
-    `compiled CSS must include the md+dvh compound nested @media > @supports: "${mdDvhBlock}"`,
-  );
-  assert.ok(
-    css.includes(xlDvhBlock),
-    `compiled CSS must include the xl+dvh compound nested @media > @supports: "${xlDvhBlock}"`,
-  );
-  assert.ok(css.includes(floorBaseDecl), `compiled CSS must include "${floorBaseDecl}"`);
-  assert.ok(
-    css.includes(floorXlBlock),
-    `compiled CSS must include the xl min-height floor nested inside @media (width >= 80rem): "${floorXlBlock}"`,
-  );
-  assert.ok(
-    css.includes(dvhFloorBlock),
-    `compiled CSS must include the body's dvh min-height floor nested inside @supports (height:1dvh): "${dvhFloorBlock}"`,
-  );
-  assert.ok(css.includes(vhFloorDecl), `compiled CSS must include min-h-screen's plain "${vhFloorDecl}" — the floor /m and the body fall back to`);
+  for (const [needle, what] of [
+    [pageHeight, "the page's vh height"],
+    [pageDvh, "the page's dvh height inside @supports (height:1dvh)"],
+    [cols, "one menu column below 1100px"],
+    [deskCols, "the category column and the menu from 1100px (owner Q19: no cart column below 1280px)"],
+    [xlCols, "the category, menu and cart columns from 1280px, nav collapsed (owner Q19)"],
+    [wideCols, "the wide nav's narrower columns from 1280px, nav open"],
+    [cmpFoot, "main's 100px foot below 1280px (owner Q19), plus the safe-area inset (ruling P49)"],
+    [barTabPad, "from 720px the bar's 10px bottom padding plus the safe-area inset (ruling P49)"],
+    [phoneFoot, "main's 150px foot on a phone, plus the tab bar's safe-area inset"],
+    [barPhoneFoot, "the bar on the phone's tab bar: 59px plus its safe-area inset"],
+    [asideOn, "the category column shows from 1100px"],
+    [cartOn, "the cart column shows from 1280px (owner Q19)"],
+    [barOn, "the bar shows below 1280px only (owner Q19)"],
+    [barAside, "the bar steps aside while its sheet is open"],
+    [barBlur, "the bar's glass blur (values 6.1)"],
+    [sheetInset, "the sheet: the whole screen at every width (owner Q19)"],
+    ["z-index: 15;", "the sheet over the tab bar (z-index 15)"],
+    [sheetUp, "the sheet slides up as it opens, motion-safe (owner Q19)"],
+    [sheetDown, "the sheet slides down as it closes, motion-safe (owner Q19)"],
+    [sheetUpVar, "the slide up's .34s on the HTML's sheetIn easing"],
+    [sheetDownVar, "the slide down's .2s ease-in"],
+    [scrimOff, "the overlay is never drawn (owner Q19: no scrim)"],
+    ["position: sticky;", "the toolbar sticks inside main"],
+    ["z-index: 3;", "the toolbar sits over the cards (z-index 3)"],
+    [toolbarPhoneTop, "the toolbar's 10px top padding on a phone"],
+    [listPhoneY, "the list's 14px top and bottom padding on a phone"],
+    [cardTracks, "the card grid's auto-fill tracks of at least 200px"],
+    [cardGap, "the card grid's 8px gap"],
+    ["min-height: 100vh;", "min-h-screen's plain floor — the floor /m and the body fall back to"],
+    ["@supports (height:1dvh) { min-height: 100dvh; }", "the body's dvh floor"],
+  ] as const) {
+    assert.ok(css.includes(needle), `compiled CSS must include ${what}: "${needle}"`);
+  }
 
-  // Landmark: the plain utilities from POS_CHIP_ROW_CLASS must also have
-  // compiled — proves the whole candidate list reached the compiler, not just
-  // the arithmetic-bearing tokens asserted above.
-  assert.ok(css.includes(".flex {"), "landmark: compiled CSS must include the plain .flex utility");
-  assert.ok(css.includes("gap: calc(var(--spacing) * 2);"), "landmark: compiled CSS must include gap-2's declaration");
+  // The cascade: the later set wins where several match (a 1280px open nav matches all three).
+  assert.ok(css.indexOf(deskCols) < css.indexOf(xlCols), "desk's columns come before xl's");
+  assert.ok(css.indexOf(xlCols) < css.indexOf(wideCols), "xl's columns come before wide's (an open nav at 1280px takes wide's)");
+  assert.ok(css.indexOf(cmpFoot) < css.indexOf(phoneFoot), "main's phone foot comes after its 1280px one (the narrower wins)");
+  const barPadBlock = "padding-block: calc(var(--spacing) * 2.5);";
+  assert.ok(css.includes(barPadBlock), "landmark: the bar's 10px padding (py-2.5)");
+  assert.ok(css.indexOf(barPadBlock) < css.indexOf(barTabPad), "the bar's 720px bottom padding comes after its py-2.5 (it wins from 720px)");
+  assert.ok(css.indexOf(asideOn) < css.indexOf(cartOn), "landmark: breakpoints emit in width order");
+  assert.ok(!css.includes(lgCols), "no 1024px column set (owner Q19)");
+  assert.ok(!css.includes("box-shadow: var(--pop);"), "no shadow on the sheet at any width (owner Q19)");
+  assert.ok(!css.includes("z-index: 14;"), "no scrim layer under the sheet (owner Q19)");
 
-  // No mangled var() emission: every "var(--pos-alert-h" opener must be
-  // immediately followed by exactly ",0px)" — a split/whitespace-mangled
-  // emission would make these two counts diverge even where the exact-text
-  // check above already caught the common failure mode.
+  // No mangled var() emission: every "var(--pos-alert-h" opener is followed by ",0px)", once per page height token.
   const escapeRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const varOpenNeedle = "var(" + POS_ALERT_HEIGHT_VAR;
   const varOpenCount = (css.match(new RegExp(escapeRegex(varOpenNeedle), "g")) ?? []).length;
-  const varFullNeedle = varOpenNeedle + ",0px)";
-  const varFullCount = (css.match(new RegExp(escapeRegex(varFullNeedle), "g")) ?? []).length;
-  // Exactly the four below-xl height tokens subtract the alert var (base
-  // vh/dvh + md vh/dvh); the two xl height tokens and the two min-h floors
-  // never reference it.
-  assert.equal(
-    varFullCount,
-    4,
-    `"${varFullNeedle}" must appear exactly 4 times (the four below-xl height tokens), got ${varFullCount}`,
-  );
-  assert.equal(
-    varOpenCount,
-    varFullCount,
-    `every "${varOpenNeedle}" opener must be immediately followed by ",0px)" with no split/whitespace mangling — found ${varOpenCount} openers vs ${varFullCount} well-formed`,
-  );
+  const varFullCount = (css.match(new RegExp(escapeRegex(alert), "g")) ?? []).length;
+  assert.equal(varFullCount, 2, `"${alert}" must appear exactly twice (the page's vh and dvh heights), got ${varFullCount}`);
+  assert.equal(varOpenCount, varFullCount, `every "${varOpenNeedle}" opener must be well-formed — ${varOpenCount} openers vs ${varFullCount}`);
 });
 
 test("PIN: real Tailwind compiles the CB-1d.1 touch-feel/device-size tokens to the exact CSS the string/paths pins assume — pointer-fine height variants nested UNDER the xl media query, coarse-pointer active scale/opacity, dialog-cap vh/dvh pairs, and base-before-variant emission order", async () => {
   const candidates = [
     ...POS_HEADER_CONTROL_CLASS.split(/\s+/),
-    ...POS_CART_STEPPER_CLASS.split(/\s+/),
-    ...POS_TILE_OPTIONS_BUTTON_CLASS.split(/\s+/),
-    ...POS_TILE_OPTIONS_RESERVE_CLASS.split(/\s+/),
-    ...POS_CHIP_CLASS.split(/\s+/),
-    ...POS_CART_CTA_CLASS.split(/\s+/),
-    ...POS_MOBILE_BAR_BUTTON_CLASS.split(/\s+/),
+    // U1 final fix wave: the dead POS_CART_CTA_CLASS went (no caller since Task 12) with its h-12 / xl:pointer-fine:h-10
+    // pins; the Bill options panel's GST toggle (34px, ruling P15) takes its place as the live w-full token.
+    ...POS_CART_GST_BUTTON_CLASS.split(/\s+/),
     ...POS_PRESS_FEEDBACK_CLASS.split(/\s+/),
     ...POS_DIALOG_LIST_CAP_CLASS.split(/\s+/),
-    ...POS_MOVE_TABLE_LIST_CAP_CLASS.split(/\s+/),
   ].filter(Boolean);
 
   const raw = await compileCandidates(candidates);
   const css = raw.replace(/\s+/g, " ").trim();
 
-  // Header controls / tile options button share the xl:pointer-fine:h-8
-  // value; the cart stepper has its own h-7/w-7 pair. The pointer-fine media
+  // Header controls carry the xl:pointer-fine:h-8 value (U1 Task 3: the
+  // tile's corner options button that shared it is gone; U1 Task 4: the cart
+  // stepper's h-7/w-7 pair went with the old cart line — the HTML's stepper
+  // keeps its own sizes on touch screens too, ruling R1). The pointer-fine media
   // query nests INSIDE the xl one (width first, capability second) — the
   // cascade the string-level V1 pin assumes.
   assert.ok(
     css.includes("@media (width >= 80rem) { @media (pointer: fine) { height: calc(var(--spacing) * 8); } }"),
-    "compiled CSS must include the xl:pointer-fine h-8 rule (header controls + tile options button)",
+    "compiled CSS must include the xl:pointer-fine h-8 rule (header controls)",
   );
-  assert.ok(
-    css.includes("@media (width >= 80rem) { @media (pointer: fine) { height: calc(var(--spacing) * 7); } }"),
-    "compiled CSS must include the xl:pointer-fine h-7 rule (cart stepper)",
-  );
-  assert.ok(
-    css.includes("@media (width >= 80rem) { @media (pointer: fine) { width: calc(var(--spacing) * 7); } }"),
-    "compiled CSS must include the xl:pointer-fine w-7 rule (cart stepper)",
-  );
-  assert.ok(
-    css.includes("@media (width >= 80rem) { @media (pointer: fine) { height: calc(var(--spacing) * 10); } }"),
-    "compiled CSS must include the xl:pointer-fine h-10 rule (POS_CART_CTA_CLASS — g4: the CTA's xl compact size is no longer exempt, it is pointer-fine-gated like every other touch token)",
-  );
+  assert.ok(css.includes(".h-\\[34px\\] {"), "compiled CSS must include the GST toggle's escaped .h-\\[34px\\] rule (ruling P15)");
 
   // Compositor-only pressed state (POS_PRESS_FEEDBACK_CLASS): scale/opacity
   // only, gated on the coarse-pointer media query, never a paint property.
@@ -246,24 +270,20 @@ test("PIN: real Tailwind compiles the CB-1d.1 touch-feel/device-size tokens to t
     "compiled CSS must include the vendor-prefixed user-select: none pair",
   );
 
-  // Dialog-cap vh/dvh pairs (both dialogs' cap classes).
+  // The dialog-cap vh/dvh pair (U1 Task 11: the Move table dialog's 50vh pair went with its list cap; the HTML's table
+  // sheet caps its panel at 100dvh - 32px instead, lib/table-sheet.ts).
   assert.ok(css.includes("max-height: 60vh;"), "compiled CSS must include max-height: 60vh;");
   assert.ok(
     css.includes("@supports (height:1dvh) { max-height: 60dvh; }"),
     "compiled CSS must include the 60dvh @supports override",
   );
-  assert.ok(css.includes("max-height: 50vh;"), "compiled CSS must include max-height: 50vh;");
-  assert.ok(
-    css.includes("@supports (height:1dvh) { max-height: 50dvh; }"),
-    "compiled CSS must include the 50dvh @supports override",
-  );
 
-  // g12: both dialog-cap classes ("max-h-[60vh] supports-[height:1dvh]:max-h-[60dvh]"
-  // and the 50vh pair) must compile to their ESCAPED selectors, base before
+  // g12: the dialog-cap class ("max-h-[60vh] supports-[height:1dvh]:max-h-[60dvh]")
+  // must compile to its ESCAPED selectors, base before
   // the @supports-scoped dvh variant — "equal specificity, source order
   // decides" is exactly the same base-before-variant contract the h-10/h-8
   // ORDER pin below checks for the pointer-fine tokens.
-  for (const n of ["60", "50"]) {
+  for (const n of ["60"]) {
     const baseSelectorIdx = css.indexOf(`.max-h-\\[${n}vh\\] {`);
     const dvhSelectorIdx = css.indexOf(`.supports-\\[height\\:1dvh\\]\\:max-h-\\[${n}dvh\\] {`);
     assert.ok(baseSelectorIdx >= 0, `compiled CSS must include the escaped .max-h-\\[${n}vh\\] { rule`);
@@ -274,8 +294,8 @@ test("PIN: real Tailwind compiles the CB-1d.1 touch-feel/device-size tokens to t
     );
   }
 
-  // ORDER pin: the base .h-10 utility (header control / chip / options
-  // button's un-prefixed size) must compile BEFORE its escaped
+  // ORDER pin: the base .h-10 utility (the header control's un-prefixed
+  // size) must compile BEFORE its escaped
   // .xl\:pointer-fine\:h-8 variant selector — this protects the DESKTOP
   // (xl + pointer-fine) compact size specifically: base-before-variant order
   // is what lets the narrower xl:pointer-fine: rule win over the wider base
@@ -294,19 +314,8 @@ test("PIN: real Tailwind compiles the CB-1d.1 touch-feel/device-size tokens to t
     `the base .h-10 rule (index ${baseIdx}) must compile BEFORE its xl:pointer-fine:h-8 variant (index ${fineVariantIdx})`,
   );
 
-  // g4: the same base-before-variant order for the CTA's own pair — .h-12
-  // (POS_CART_CTA_CLASS's base height) before its escaped
-  // .xl\:pointer-fine\:h-10 variant selector.
-  const ctaBaseIdx = css.indexOf(".h-12 {");
-  const ctaFineVariantIdx = css.indexOf(".xl\\:pointer-fine\\:h-10 {");
-  assert.ok(ctaBaseIdx >= 0, "compiled CSS must include the base .h-12 { rule");
-  assert.ok(ctaFineVariantIdx >= 0, "compiled CSS must include the escaped .xl\\:pointer-fine\\:h-10 { rule");
-  assert.ok(
-    ctaBaseIdx < ctaFineVariantIdx,
-    `the base .h-12 rule (index ${ctaBaseIdx}) must compile BEFORE its xl:pointer-fine:h-10 variant (index ${ctaFineVariantIdx})`,
-  );
-
   // Landmark: the whole candidate list reached the compiler, not just the
   // arithmetic-bearing tokens asserted above.
-  assert.ok(css.includes(".inline-flex {"), "landmark: compiled CSS must include the plain .inline-flex utility (POS_CHIP_CLASS)");
+  // U1 Task 7: the bar's button is the HTML's Review order (no touch token any more), so the landmark is the CTA's.
+  assert.ok(css.includes(".w-full {"), "landmark: compiled CSS must include the plain .w-full utility (POS_CART_GST_BUTTON_CLASS)");
 });

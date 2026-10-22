@@ -206,10 +206,18 @@ test("PIN: ProductCard accepts a categoryLabel prop (landmark)", () => {
   assert.match(src, /categoryLabel/, "ProductCard.tsx must declare/use a categoryLabel prop");
 });
 
-test("PIN: CategorySidebar's rail and chips both key their controls by value={c._id} (count 2 — one per presentation)", () => {
+// U1 Task 2 (design 6.3): both presentations (the column and the Category sheet) draw lib/pos-categories.ts's rows,
+// whose `key` IS the category's _id ("All" for All items), so a pick still selects by id, never by the name. The
+// literal moved from `value={c._id}` (a category) to `value={c.key}` (its row); the meaning is pinned on both sides.
+const POS_CATEGORIES_LIB = "apps/cafe/lib/pos-categories.ts";
+test("PIN: the column and the Category sheet both key their rows by the category's _id (count 2 — one per presentation)", () => {
   const src = stripComments(readSrc(CATEGORY_SIDEBAR));
-  const count = (src.match(/value=\{c\._id\}/g) ?? []).length;
-  assert.equal(count, 2, `CategorySidebar.tsx must use value={c._id} exactly twice (CategorySidebar's rail + CategoryChips), found ${count}`);
+  const count = (src.match(/value=\{c\.key\}/g) ?? []).length;
+  assert.equal(count, 2, `CategorySidebar.tsx must use value={c.key} exactly twice (the column + the sheet), found ${count}`);
+  assert.ok(!/value=\{c\.name\}/.test(src), "a row is never selected by its name");
+  const lib = stripComments(readSrc(POS_CATEGORIES_LIB));
+  assert.match(lib, /key: c\._id,/, "a category's row key is its _id");
+  assert.match(lib, /key: ALL_CATEGORIES,/, 'the "All items" row keeps the "All" value the grid filters on');
 });
 
 test("PIN: useCategoryMap( has at least 2 real call sites outside hooks/use-category-map.ts itself (wiring, not just compilation)", () => {

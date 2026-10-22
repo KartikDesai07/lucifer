@@ -59,11 +59,13 @@ interface HeaderSide {
   actionsRef: (el: HTMLElement | null) => void;
   /** The header's title block: a callback ref (measured). */
   titleRef: (el: HTMLElement | null) => void;
+  /** The header's actions box once mounted: the /pos header measures it for its room rule (U1 Task 1, design 6.1). */
+  actionsBox: HTMLElement | null;
 }
 
 export const PageHeaderSlotContext = createContext<PageHeaderSlot | null>(null);
 const noRef = () => undefined;
-const HeaderSideContext = createContext<HeaderSide>({ info: null, actionsRef: noRef, titleRef: noRef });
+const HeaderSideContext = createContext<HeaderSide>({ info: null, actionsRef: noRef, titleRef: noRef, actionsBox: null });
 
 /** The narrowest the title block may get beside the page's actions (ruling R6); below it they go to the body row. */
 export const HEADER_TITLE_MIN_PX = 140;
@@ -137,7 +139,7 @@ export function PageHeaderSlotProvider({ children }: { children: ReactNode }) {
     () => ({ actionsInHeader, renderInHeader, register, bodyRowRef: setBodyRow }),
     [actionsInHeader, renderInHeader, register],
   );
-  const side = useMemo<HeaderSide>(() => ({ info, actionsRef: setTarget, titleRef: setTitleEl }), [info]);
+  const side = useMemo<HeaderSide>(() => ({ info, actionsRef: setTarget, titleRef: setTitleEl, actionsBox: target }), [info, target]);
   return (
     <PageHeaderSlotContext.Provider value={slot}>
       <HeaderSideContext.Provider value={side}>{children}</HeaderSideContext.Provider>

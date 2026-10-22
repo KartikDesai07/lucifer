@@ -10,7 +10,8 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { stripComments } from "@/lib/source-pin-utils";
-import { STAFF_TOASTER_PROPS, isDinerRoute } from "@/components/layout/AppToaster";
+import { POS_TOASTER_PROPS, STAFF_TOASTER_PROPS, isDinerRoute } from "@/components/layout/AppToaster";
+import { POS_CART_COLUMN_MIN_PX, POS_ORDER_BAR_HEIGHT_PX } from "@/lib/pos-layout";
 
 const CAFE_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const read = (rel: string): string => stripComments(readFileSync(path.join(CAFE_ROOT, rel), "utf8"));
@@ -50,6 +51,48 @@ test("the staff toast is the HTML's (values 2.8): bottom centre, the dark pill, 
   const action = tokens(options?.classNames?.actionButton);
   assert.ok(action.includes("text-toast-a") && action.includes("font-semibold"), "an action (Undo) is --toast-a, 600");
   assert.ok(tokens(options?.classNames?.cancelButton).includes("text-toast-t"), "the cancel words are the toast's white");
+});
+
+// Owner Q19 (2026-10-22; U1 Task 14 review): on /pos the order bar and the full-screen cart sheet's Send KOT / Pay run
+// up to 1279px (the HTML's 1024px cut-off moved to 1280px there), so a toast on /pos keeps the bar's 92px up to 1279px
+// and drops to the HTML's 24px only beside the cart column (xl:, 1280px). Every other page keeps the HTML's lg: 24px.
+test("PIN: owner Q19 — on /pos the toast clears the order bar and the sheet's buttons up to 1279px (xl:), every other page keeps lg:", () => {
+  const pos = tokens(POS_TOASTER_PROPS.className);
+  // Ruling P49: from 720px the bar and the sheet's foot grow by the bottom safe-area inset, so the 92px does too. Ruling
+  // P56 (the audit fix round): on a phone the bar rides on the tab bar, which grows by the inset, so the 140px does too.
+  for (const cls of [
+    "toaster",
+    "group",
+    "bottom-[calc(140px+env(safe-area-inset-bottom))]!",
+    "tab:bottom-[calc(92px+env(safe-area-inset-bottom))]!",
+    "xl:bottom-[24px]!",
+  ]) {
+    assert.ok(pos.includes(cls), `the /pos toaster carries ${cls}`);
+  }
+  assert.ok(!pos.includes("tab:bottom-[92px]!"), "not the plain 92px on /pos (ruling P49)");
+  assert.ok(!pos.includes("bottom-[140px]!"), "not the plain 140px on /pos (ruling P56)");
+  assert.ok(tokens(STAFF_TOASTER_PROPS.className).includes("bottom-[140px]!"), "every other page keeps the staff toaster's plain 140px (P56: /pos only)");
+  assert.ok(!pos.includes("lg:bottom-[24px]!"), "no 24px from 1024px on /pos: the bar and the sheet's buttons are there up to 1279px");
+  assert.equal(pos.length, tokens(STAFF_TOASTER_PROPS.className).length, "the same five tokens, only the 24px cut-off moves");
+  assert.ok(tokens(STAFF_TOASTER_PROPS.className).includes("lg:bottom-[24px]!"), "every other page keeps the HTML's 24px from 1024px");
+  // Everything but the offset is the staff toaster's own (one look).
+  const withoutOffset = (props: typeof STAFF_TOASTER_PROPS) => {
+    const copy = { ...props };
+    delete copy.className;
+    return copy;
+  };
+  assert.deepEqual(withoutOffset(POS_TOASTER_PROPS), withoutOffset(STAFF_TOASTER_PROPS), "the /pos toaster is the staff toaster but for its offset");
+  // The 92px clears what sits at the window's foot there: the 65px bar, and the sheet's 50px buttons over its 14px foot.
+  assert.ok(92 > POS_ORDER_BAR_HEIGHT_PX, "92px clears the 65px order bar");
+  assert.ok(92 > 14 + 50, "92px clears the sheet's Send KOT / Pay (50px tall, 14px above the foot: cartFootB)");
+  assert.equal(POS_CART_COLUMN_MIN_PX, 80 * 16, "xl: (80rem) is where the cart column takes over on /pos");
+  const src = read("components/layout/AppToaster.tsx");
+  assert.match(src, /import \{ isPosPath \} from "@\/lib\/pos-layout";/, "the route read through isPosPath");
+  assert.match(
+    src,
+    /return <Toaster \{\.\.\.\(isPosPath\(pathname\) \? POS_TOASTER_PROPS : STAFF_TOASTER_PROPS\)\} \/>;/,
+    "one Toaster element for both (a navigation only changes its offset, no remount)",
+  );
 });
 
 test("an error or a warning keeps the dark pill, its glyph in --bad / --warn so an alarm stands out", () => {

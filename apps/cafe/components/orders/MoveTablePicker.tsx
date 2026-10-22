@@ -1,24 +1,21 @@
 "use client";
 
-import { Fragment } from "react";
-
 import { cn } from "@/lib/utils";
-import { POS_MOVE_TABLE_LIST_CAP_CLASS } from "@/lib/pos-layout";
+import {
+  MOVE_LEGEND,
+  REMOVE_LINK_CLASS,
+  SECONDARY_BUTTON_CLASS,
+  TABLE_BODY_CLASS,
+  TABLE_FOOT_CLASS,
+  TABLE_GRID_CLASS,
+  freeTileCount,
+  moveTile,
+} from "@/lib/table-sheet";
 import { groupTablesByArea, showAreaHeadings } from "@/lib/table-areas";
-import { isFreeTable } from "@/lib/table-status";
 import { useTableAreas } from "@/hooks/use-table-areas";
-import { Button } from "@/components/ui/button";
+import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
+import { TableArea, TableLegend, TableTile } from "@/components/pos/TableSheet";
 import type { Table } from "@/types";
-
-// Same colour vocabulary as components/pos/TableSelector.tsx (CLAUDE.md §10
-// table colors), duplicated rather than imported: that control's tap means
-// "select/resume", this one's means "move a live tab", and nothing should
-// couple the two just to share four lines of Tailwind classes.
-const STATUS_STYLE: Record<string, string> = {
-  Available: "border-green-300 bg-green-50 text-green-700",
-  Occupied: "border-red-300 bg-red-50 text-red-700",
-  Reserved: "border-amber-300 bg-amber-50 text-amber-700",
-};
 
 interface MoveTablePickerProps {
   tables: Table[] | undefined;
@@ -31,9 +28,11 @@ interface MoveTablePickerProps {
   onCancel: () => void;
 }
 
-// The free-table picker of MoveTableDialog: the grid, "Remove from table" and
-// Cancel. A FRAGMENT - its children sit directly in the dialog's own content.
-// It only reports a tap; the confirm step and the mutation stay in the dialog.
+// The free-table picker of MoveTableDialog, in the owner's HTML "Choose a table" sheet (U1 Task 11; values 9.1; design
+// 6.12): the legend, the areas with "{n} free" and their tiles (TableSheet.tsx), then the foot: "Remove from table" as a
+// red link and "Cancel". A FRAGMENT - its parts are rows of the dialog's own panel. Only a free table that is not the
+// tab's own can be tapped (lib/table-sheet.ts moveTile, on the shared isFreeTable); it only reports the tap - the
+// confirm step and the mutation stay in the dialog.
 export function MoveTablePicker({
   tables,
   currentTableNo,
@@ -47,64 +46,61 @@ export function MoveTablePicker({
   const groups = groupTablesByArea(tables ?? [], areas.data);
   const showHeadings = showAreaHeadings(groups);
 
-  const renderTile = (t: Table) => {
-    const isCurrent = t.tableNo === currentTableNo;
-    const tappable = !isCurrent && isFreeTable(t);
-    const disabled = !tappable || busy;
+  const tileOf = (t: Table) => moveTile(t, currentTableNo);
+
+  const renderTile = (t: Table, index: number) => {
+    const tile = tileOf(t);
     return (
-      <button
+      <TableTile
         key={t._id}
-        type="button"
-        disabled={disabled}
+        table={t}
+        kind={tile.kind}
+        label={tile.label}
+        disabled={tile.disabled || busy}
+        index={index}
         onClick={() => onPick(t)}
-        className={cn(
-          "flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg border p-2 text-sm font-semibold transition",
-          STATUS_STYLE[t.status],
-          isCurrent && "ring-2 ring-primary ring-offset-1",
-          disabled && "cursor-not-allowed opacity-50",
-        )}
-      >
-        <span className="max-w-full truncate px-1">{t.tableNo}</span>
-        <span className="max-w-full truncate text-[10px] font-normal">
-          {isCurrent ? "Current" : t.status} · {t.capacity} seats
-        </span>
-      </button>
+      />
     );
   };
 
   return (
     <>
-      <div className={cn("grid grid-cols-3 gap-2 overflow-y-auto", POS_MOVE_TABLE_LIST_CAP_CLASS)}>
+      <TableLegend items={MOVE_LEGEND} />
+      <div data-ui="tp-body" className={TABLE_BODY_CLASS}>
         {showHeadings
           ? groups.map((g) => (
-              <Fragment key={g.key}>
-                <h3 className="col-span-3 truncate pt-1 text-sm font-semibold first:pt-0" title={g.name}>
-                  {g.name}
-                </h3>
+              <TableArea key={g.key} name={g.name} free={freeTileCount(g.items.map((t) => tileOf(t).kind))}>
                 {g.items.map(renderTile)}
-              </Fragment>
+              </TableArea>
             ))
-          : (tables ?? []).map(renderTile)}
+          : <div data-ui="tp-grid" className={TABLE_GRID_CLASS}>{(tables ?? []).map(renderTile)}</div>}
       </div>
 
-      {/* Its own row, never a grid tile — a tile-shaped control here
-          could be mis-tapped while scanning tables. Still gated by the
-          dialog's confirm panel before anything fires. */}
-      {!isAssign && (
-        <Button
+      <div data-ui="tp-foot" className={TABLE_FOOT_CLASS}>
+        {/* Its own row, never a grid tile — a tile-shaped control here
+            could be mis-tapped while scanning tables. Still gated by the
+            dialog's confirm panel before anything fires. */}
+        {!isAssign && (
+          <button
+            type="button"
+            data-ui="tp-remove"
+            className={cn(REMOVE_LINK_CLASS, BRAND_PRESS_CLASS)}
+            disabled={busy}
+            onClick={onUnseat}
+          >
+            Remove from table
+          </button>
+        )}
+        <button
           type="button"
-          variant="ghost"
-          className="min-h-11 w-full justify-center text-sm font-medium text-destructive hover:text-destructive"
+          data-ui="tp-cancel"
+          className={cn(SECONDARY_BUTTON_CLASS, BRAND_PRESS_CLASS)}
           disabled={busy}
-          onClick={onUnseat}
+          onClick={onCancel}
         >
-          Remove from table
-        </Button>
-      )}
-
-      <Button variant="outline" disabled={busy} onClick={onCancel}>
-        Cancel
-      </Button>
+          Cancel
+        </button>
+      </div>
     </>
   );
 }

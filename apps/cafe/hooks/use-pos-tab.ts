@@ -21,7 +21,7 @@ import { usePosSend } from "@/hooks/use-pos-send";
 import { moneyEditedSince } from "@/lib/pending-writes";
 import { kitchenSentMessage, kotRoundOfSend } from "@/lib/pos-send";
 import { holdUnsentWork } from "@/lib/page-refresh";
-import type { DiscountUnit } from "@/components/pos/Cart";
+import type { DiscountUnit } from "@/lib/pos-cart-props";
 import type { PaymentResult } from "@/components/pos/PaymentModal";
 import { collectedAmount } from "@/lib/payment-result";
 import type { Customer, Order, CreateOrderInput, SettleOrderInput } from "@/types";

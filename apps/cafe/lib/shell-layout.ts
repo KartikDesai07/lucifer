@@ -21,6 +21,7 @@ export const PAGE_IN_KEYFRAMES: Keyframe[] = [
 /** …over .4s on the HTML's shared easing, held at its start until it runs (`backwards`). */
 export const PAGE_IN_TIMING: KeyframeAnimationOptions = { duration: 400, easing: "cubic-bezier(.2,.8,.2,1)", fill: "backwards" };
 
-/** A sticky bar at a page's foot (Settings' save bar, the menu's bulk bar, the POS cart bar): on a phone it stops on
- *  the tab bar, never under it, however short the screen. */
+/** A bar at a page's foot (Settings' save bar and the menu's bulk bar, sticky): on a phone it stops on the tab bar,
+ *  never under it, however short the screen. The POS order bar, which lies under the tab bar, adds the tab bar's
+ *  safe-area inset to the same 59px (lib/pos-layout.ts POS_MOBILE_BAR_CLASS, ruling P44). */
 export const ABOVE_TAB_BAR_STICKY_CLASS = "max-tab:bottom-[59px]";

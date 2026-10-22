@@ -28,7 +28,8 @@ export interface PosPromptsProps {
 }
 
 // The three POS confirm dialogs in one place — extracted out of pos/page.tsx
-// to keep that file under the line budget.
+// to keep that file under the line budget. U1 Task 12 (design 6.12): each wears the
+// owner's HTML confirm sheet (look="sheet", values 12.1); words and callbacks as before.
 // Memoized (CB-1d.3c): PosModals latches its callbacks, so a closed prompt bails out.
 export const PosPrompts = memo(function PosPrompts({
   closeConfirmOpen,
@@ -51,6 +52,7 @@ export const PosPrompts = memo(function PosPrompts({
         description="This tab has items not yet sent to the kitchen. Closing here discards them; the open tab itself stays open."
         confirmLabel="Discard & close"
         onConfirm={onConfirmCloseTab}
+        look="sheet"
       />
 
       <ConfirmDialog
@@ -60,6 +62,7 @@ export const PosPrompts = memo(function PosPrompts({
         description="You have items not yet sent to the kitchen. Resuming another tab will discard them."
         confirmLabel="Discard & resume"
         onConfirm={onConfirmResume}
+        look="sheet"
       />
 
       <ConfirmDialog
@@ -72,6 +75,7 @@ export const PosPrompts = memo(function PosPrompts({
         destructive={false}
         isLoading={freeingTable}
         onConfirm={onConfirmFreeTable}
+        look="sheet"
       />
     </>
   );

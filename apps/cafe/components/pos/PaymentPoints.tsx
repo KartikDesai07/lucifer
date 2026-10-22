@@ -23,10 +23,12 @@ interface PaymentPointsProps {
 export function PaymentPoints({ points, disabled }: PaymentPointsProps) {
   const { row, on, asked, onToggle } = points;
   const describedBy = [asked ? POINTS_ASKED_ID : null, row.reason ? POINTS_REASON_ID : null].filter(Boolean).join(" ");
+  // U1 Task 9 (design 6.11): the payment sheet's box (the HTML's 1px --border, radius 10, 0 12px), 13.5px; the lines under
+  // the switch 12px (the ask in --accent-i, a reason in --text-2). Our own control: the 44px row stays.
   return (
-    <div className="rounded-lg border px-3 text-sm">
+    <div data-ui="pay-points" className="rounded-[10px] border border-border px-3 text-[13.5px]">
       <div className="flex min-h-11 items-center justify-between gap-3">
-        <Label htmlFor={POINTS_SWITCH_ID} className="flex min-h-11 flex-1 cursor-pointer items-center font-medium">
+        <Label htmlFor={POINTS_SWITCH_ID} className="flex min-h-11 flex-1 cursor-pointer items-center text-[13.5px] font-medium text-foreground">
           {row.amount > 0 ? `Use ${row.amount} points (−${inr(row.amount)})` : "Use points"}
         </Label>
         <Switch
@@ -38,12 +40,12 @@ export function PaymentPoints({ points, disabled }: PaymentPointsProps) {
         />
       </div>
       {asked && (
-        <p id={POINTS_ASKED_ID} className="pb-2 text-xs font-medium text-primary">
+        <p id={POINTS_ASKED_ID} className="pb-2.5 text-[12px] font-medium text-accent-foreground">
           {POINTS_ASKED_HINT}
         </p>
       )}
       {row.reason && (
-        <p id={POINTS_REASON_ID} className="pb-2 text-xs text-muted-foreground">
+        <p id={POINTS_REASON_ID} className="pb-2.5 text-[12px] text-muted-foreground">
           {row.reason}
         </p>
       )}

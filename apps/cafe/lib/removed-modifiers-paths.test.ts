@@ -15,6 +15,8 @@ import { checkItemRemovedModifiers } from "@/lib/variations";
 import { cartItemFromOrderItem, cartItemToInput } from "@/hooks/use-cart";
 import { billFromCart } from "@/components/public/public-bill-rows";
 import { modifiersPreselectedToSave } from "@/components/products/ModifiersPreselectedField";
+import { defaultAddOptions } from "@/lib/pos-price-buttons";
+import { lineMeta } from "@/lib/pos-cart-view";
 import { REMOVED_MODIFIERS_NOT_ALLOWED_ERROR, REMOVED_MODIFIER_UNKNOWN_ERROR } from "@pos/shared/utils";
 import type { CartLine } from "@/components/public/public-cart-store";
 import type { OrderItem } from "@/types";
@@ -56,12 +58,36 @@ test("PIN (E): every <Checkbox> in the app carries BRAND_CHECKBOX_SQUARE_CLASS �
   assert.ok(!/rounded-(sm|md|lg|full)\b/.test(m![1]), "the square class must not use the --radius scale");
 });
 
+// U1 Task 8 (values 10.1, design 6.10): the /pos options modal's add-ons are the HTML's check rows, not the kit box. Each
+// row is still a checkbox to assistive tech, a tap still toggles exactly that modifier, and "modifiers come ticked" keeps
+// its hint, so an unticked default still reaches the kitchen as a NO line.
+test("PIN (E/F, U1 Task 8): the options modal's add-on rows are checkboxes (role + aria-checked) that toggle their modifier; reverse mode keeps its hint", () => {
+  const src = stripComments(readSrc("components/pos/ModifierModal.tsx"));
+  const start = src.indexOf("product.modifiers.map((modifier) =>");
+  assert.ok(start > 0, "landmark: the modal maps the product's modifiers to rows");
+  const row = src.slice(start, src.indexOf("</button>", start));
+  assert.ok(row.includes('role="checkbox"'), "an add-on row is announced as a checkbox");
+  assert.ok(row.includes("aria-checked={on}"), "and says whether it is ticked");
+  assert.ok(row.includes("const on = selected.includes(modifier);"), "ticked = in the modal's selection, as the kit box was");
+  assert.ok(row.includes("onClick={() => toggle(modifier, !on)}"), "a tap toggles exactly that modifier");
+  assert.ok(row.includes('aria-hidden="true"'), "the drawn box is decoration (the row carries the state)");
+  assert.match(
+    src,
+    /\{reverseMode && \(\s*<span id=\{hintId\} className=\{HINT_CLASS\}>\s*Untick what the customer does not want\.\s*<\/span>\s*\)\}/,
+    "reverse mode keeps its hint under the Add-ons caption",
+  );
+  assert.ok(src.includes("aria-describedby={reverseMode ? hintId : undefined}"), "and the add-on group is described by it");
+  assert.ok(src.includes("pickModifierResult(product, selected)"), "landmark: the add still splits the selection through pickModifierResult (the NO lines)");
+});
+
 // ── F — one formatter on every surface ───────────────────────────────────────
 
 const DISPLAY_SURFACES = [
   "components/pos/KOTReceipt.tsx",
   "components/pos/OrderReceipt.tsx",
-  "components/pos/CartLine.tsx",
+  // U1 Task 4 (values 5.4): the /pos cart line's one meta line is built in lib/pos-cart-view.ts (lineMeta), which
+  // CartLine renders; the pin below keeps CartLine on it.
+  "lib/pos-cart-view.ts",
   "components/kitchen/KitchenLineCard.tsx",
   "components/orders/OrderDetailSheet.tsx",
   "components/orders/OrderRequestCard.tsx",
@@ -82,6 +108,14 @@ test("PIN (F): every line-display surface prints modifiers through orderItemModi
     // Also the optional-chain form (item.modifiers?.join) a regression would idiomatically use.
     assert.ok(!/\bmodifiers\s*\??\.\s*join\s*\(/.test(src), `${rel}: a hand-written modifiers join is back — it would drop the NO lines`);
   }
+});
+
+test("PIN (F): the /pos cart line shows a reverse-mode line's removals through lineMeta (U1 Task 4, values 5.4)", () => {
+  const line = stripComments(readSrc("components/pos/CartLine.tsx"));
+  assert.match(line, /import \{[^}]*\blineMeta\b[^}]*\} from "@\/lib\/pos-cart-view";/, "CartLine takes its meta from lib/pos-cart-view.ts");
+  assert.ok(line.includes("{lineMeta(item)}"), "and renders it under the name");
+  const pizza = { productId: "2".repeat(24), name: "Pizza", price: 300, qty: 1, modifiers: [], removedModifiers: ["Mushroom", "Onion"], instructions: "", kotRound: 1 } as OrderItem;
+  assert.equal(lineMeta(cartItemFromOrderItem(pizza, 0)), "NO Mushroom, NO Onion", "a sent reverse-mode line still says what was taken off");
 });
 
 test("PIN (F): both void slips (host print job and local print) carry the removals of the voided line", () => {
@@ -159,6 +193,18 @@ test("cart: removals survive the cart round trip into the send payload; a line w
   assert.equal("removedModifiers" in cartItemToInput(plain), false);
   // Different lines to the cart too.
   assert.notEqual(withRemoval.lineId.replace(/^#\d+:/, ""), plain.lineId.replace(/^#\d+:/, ""));
+});
+
+// U1 Task 3 (owner Q5): a /pos price button adds at once with the options modal's untouched add — on a "modifiers come
+// ticked" item every modifier stays ticked, so nothing is removed and no NO line reaches the kitchen.
+test("POS price button: a direct add on a \"modifiers come ticked\" item keeps every modifier — no removal rides to the kitchen", () => {
+  const reverse = { modifiers: ["Mushroom", "Onion"], modifiersPreselected: true };
+  const opts = defaultAddOptions(reverse);
+  assert.equal("removedModifiers" in opts, false, "nothing unticked, so no removedModifiers key");
+  assert.deepEqual(opts.modifiers, [], "kept defaults print nothing (pickModifierResult's reverse-mode rule)");
+  const line = cartItemFromOrderItem(orderItem({ modifiers: opts.modifiers, instructions: opts.instructions, kotRound: 0 }), 0);
+  assert.equal("removedModifiers" in cartItemToInput(line), false, "the send payload carries no removals key");
+  assert.ok(!line.lineId.includes("\u001e"), "the line key has no removals part: it is the untouched modal add's line");
 });
 
 test("diner bill: the sub line shows NO Mushroom, and an older line keeps its modifiers", () => {

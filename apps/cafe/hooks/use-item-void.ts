@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -9,6 +9,7 @@ import { printAgentRequestOptions } from "@/lib/print-agent-calls";
 import { ORDER_KEYS } from "@/hooks/use-orders";
 import { TABLE_KEYS } from "@/hooks/use-tables";
 import { CUSTOMER_KEYS } from "@/hooks/use-customers";
+import type { VoidLine } from "@/lib/pos-cart-view";
 import type { VoidItemInput } from "@/types";
 import type { Order, OrderVoid } from "@/types";
 
@@ -21,6 +22,12 @@ export function useItemVoid(
   onVoided: (order: Order, entry: OrderVoid) => void,
 ) {
   const [open, setOpen] = useState(false);
+  // The sent line the cart's Void action named (U1 Task 4, owner Q10): the dialog opens with it picked.
+  const [line, setLine] = useState<VoidLine | null>(null);
+  const openFor = useCallback((named: VoidLine | null) => {
+    setLine(named);
+    setOpen(true);
+  }, []);
   const qc = useQueryClient();
 
   const mutation = useMutation({
@@ -60,6 +67,8 @@ export function useItemVoid(
   return {
     open,
     setOpen,
+    line,
+    openFor,
     isPending: mutation.isPending,
     confirm,
   };

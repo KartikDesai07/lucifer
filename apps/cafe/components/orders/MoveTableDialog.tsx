@@ -1,27 +1,28 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useReactToPrint } from "react-to-print";
 import { toast } from "sonner";
 
-import { inr } from "@/lib/utils";
+import { cn, inr } from "@/lib/utils";
 import { slipPrintOptions } from "@/lib/desktop-shell";
 import { printConfigOf, receiptPageStyle } from "@/lib/print";
 import { moveChargePreview } from "@/lib/move-charge-preview";
+import {
+  DESTRUCTIVE_BUTTON_CLASS, MOVE_BUTTONS_CLASS, MOVE_CONFIRM_CLASS, MOVE_NOTE_CLASS, MOVE_SCRIM_CLASS,
+  PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS, TABLE_PANEL_CLASS,
+} from "@/lib/table-sheet";
 import { useTables } from "@/hooks/use-tables";
 import { useSettings } from "@/hooks/use-settings";
 import { useMoveOrderTable } from "@/hooks/use-orders";
 import { useHostRouting } from "@/hooks/use-print-routing";
 import { useAuth } from "@/hooks/use-auth";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { useOpenerFocus } from "@/hooks/use-opener-focus";
+import { Dialog } from "@/components/ui/dialog";
+import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { KOTReceipt } from "@/components/pos/KOTReceipt";
+import { TableSheetHead } from "@/components/pos/TableSheet";
 import { MoveTablePicker } from "@/components/orders/MoveTablePicker";
 import { kitchenOrderOf, orderSkipsKitchen } from "@/lib/kitchen-lines";
 import type { Order, Table } from "@/types";
@@ -64,6 +65,8 @@ export function MoveTableDialog({ order, open, onOpenChange, onMoved }: MoveTabl
   const settings = useSettings();
   const moveTable = useMoveOrderTable();
   const { user } = useAuth();
+  // No trigger: the panel takes the focus on open and gives it back to what had it on close (ruling P22's way).
+  const openerFocus = useOpenerFocus();
   // This dialog is the ONLY moved-slip trigger on either surface (the POS and
   // the Orders sheet both render it), and it cannot reach usePosPrint — so the
   // host routing for this one document is wired here (§B5 carve-out).
@@ -200,6 +203,8 @@ export function MoveTableDialog({ order, open, onOpenChange, onMoved }: MoveTabl
   };
 
   const confirmLabel = unseatPending ? "Remove from table" : isAssign ? "Assign table" : "Move table";
+  // The HTML confirm's action button (values 12.1): --accent, or --bad when it takes the tab off its table.
+  const confirmClass = unseatPending ? DESTRUCTIVE_BUTTON_CLASS : PRIMARY_BUTTON_CLASS;
 
   const confirmMove = async () => {
     if (!order) return;
@@ -215,69 +220,63 @@ export function MoveTableDialog({ order, open, onOpenChange, onMoved }: MoveTabl
     }
   };
 
+  // The HTML's "Choose a table" sheet (U1 Task 11; values 9.1; design 6.12; owner Q4: wherever it opens), our titles and
+  // descriptions, the confirm step in the HTML's note box; z 50 (MOVE_SCRIM_CLASS): over the Orders page's order sheet.
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{isAssign ? "Assign a table" : "Move table"}</DialogTitle>
-            <DialogDescription>
-              {isAssign ? (
-                "Pick a free table to seat this tab at — the kitchen gets a slip so they can match it to the ticket they're holding."
+        <DialogPrimitive.Portal>
+          <DialogPrimitive.Overlay data-ui="tp-sheet" className={MOVE_SCRIM_CLASS}>
+            <DialogPrimitive.Content data-ui="tp-panel" {...openerFocus} className={TABLE_PANEL_CLASS}>
+              <TableSheetHead
+                title={isAssign ? "Assign a table" : "Move table"}
+                sub={
+                  isAssign ? (
+                    "Pick a free table to seat this tab at — the kitchen gets a slip so they can match it to the ticket they're holding."
+                  ) : (
+                    <>
+                      Currently on{" "}
+                      <span className="font-medium text-foreground">{currentTableNo}</span>
+                      . Pick a free table to move this tab to — the kitchen gets a
+                      slip so they can match it to the ticket they&apos;re holding.
+                    </>
+                  )
+                }
+              />
+              {pendingTable || unseatPending ? (
+                // The confirm step (plan §5B) — inside the SAME dialog content, not a nested Dialog. Only gate in front of
+                // moveTable.mutateAsync (source-pinned: lib/charge-ui-paths.test.ts). Shared by all three verbs —
+                // preview/confirmLabel already resolve to whichever is armed; the two are mutually exclusive by construction.
+                <div data-ui="mt-confirm" className={MOVE_CONFIRM_CLASS}>
+                  <div data-ui="mt-note" className={MOVE_NOTE_CLASS}>
+                    {preview.note && <p>{preview.note}</p>}
+                    <p className={preview.note ? "mt-1 font-semibold text-foreground" : "font-semibold text-foreground"}>
+                      New total: {inr(preview.total)}
+                    </p>
+                  </div>
+                  <div className={MOVE_BUTTONS_CLASS}>
+                    <button type="button" data-ui="mt-confirm-button" className={cn(confirmClass, BRAND_PRESS_CLASS)} disabled={moveTable.isPending} onClick={confirmMove}>
+                      {confirmLabel}
+                    </button>
+                    <button type="button" data-ui="mt-back" className={cn(SECONDARY_BUTTON_CLASS, BRAND_PRESS_CLASS)} disabled={moveTable.isPending} onClick={cancelPending}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
               ) : (
-                <>
-                  Currently on{" "}
-                  <span className="font-medium text-foreground">{currentTableNo}</span>
-                  . Pick a free table to move this tab to — the kitchen gets a
-                  slip so they can match it to the ticket they&apos;re holding.
-                </>
+                <MoveTablePicker
+                  tables={tables.data}
+                  currentTableNo={currentTableNo}
+                  isAssign={isAssign}
+                  disabled={moveTable.isPending}
+                  onPick={handlePick}
+                  onUnseat={armUnseat}
+                  onCancel={() => onOpenChange(false)}
+                />
               )}
-            </DialogDescription>
-          </DialogHeader>
-
-          {pendingTable || unseatPending ? (
-            // The confirm step (plan §5B) — inside the SAME DialogContent, not
-            // a nested Dialog. Only gate in front of moveTable.mutateAsync
-            // (source-pinned: lib/charge-ui-paths.test.ts). Shared by all
-            // three verbs — preview/confirmLabel already resolve to whichever
-            // is armed; the two are mutually exclusive by construction.
-            <div className="space-y-3">
-              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-                {preview.note && <p>{preview.note}</p>}
-                <p className={preview.note ? "mt-1 font-semibold" : "font-semibold"}>
-                  New total: {inr(preview.total)}
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  variant="outline"
-                  className="min-h-11"
-                  disabled={moveTable.isPending}
-                  onClick={cancelPending}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  className="min-h-11"
-                  disabled={moveTable.isPending}
-                  onClick={confirmMove}
-                >
-                  {confirmLabel}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <MoveTablePicker
-              tables={tables.data}
-              currentTableNo={currentTableNo}
-              isAssign={isAssign}
-              disabled={moveTable.isPending}
-              onPick={handlePick}
-              onUnseat={armUnseat}
-              onCancel={() => onOpenChange(false)}
-            />
-          )}
-        </DialogContent>
+            </DialogPrimitive.Content>
+          </DialogPrimitive.Overlay>
+        </DialogPrimitive.Portal>
       </Dialog>
 
       {/* Off-screen print source — a SIBLING of <Dialog>, not a child of it:

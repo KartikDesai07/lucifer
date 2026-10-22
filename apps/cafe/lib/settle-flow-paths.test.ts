@@ -29,6 +29,7 @@ const MODAL = "apps/cafe/components/pos/PaymentModal.tsx";
 const POS_MODALS = "apps/cafe/components/pos/PosModals.tsx";
 const POS_PAGE = "apps/cafe/app/(dashboard)/pos/page.tsx";
 const OPEN_TABS = "apps/cafe/components/pos/OpenTabsButton.tsx";
+const OPEN_ORDERS = "apps/cafe/lib/pos-open-orders.ts";
 const PROVIDERS = "apps/cafe/components/providers.tsx";
 const SHEET = "apps/cafe/components/orders/OrderDetailSheet.tsx";
 const ROUTE = "apps/cafe/app/api/orders/[id]/settle/route.ts";
@@ -60,10 +61,15 @@ test("P1: the background settle lane is gone — its files, its provider, its ch
   assert.deepEqual(offenders, [], "no source file may still name the background lane");
   assert.ok(readSrc(POS_TAB).includes("useSettleFlow("), "landmark: the POS settles through useSettleFlow");
   // Open tabs lists every tab normally again — no "Settling…" row, no lock.
+  // U1 Task 6 (values 7.2): the Open orders panel's rows are built by lib/pos-open-orders.ts (each carries its tab and
+  // its total in rupees), so the tap and the total are read there.
   const tabs = readSrc(OPEN_TABS);
-  assert.ok(tabs.includes("onClick={() => resume(t)}"), "landmark: each open tab resumes on tap");
+  assert.ok(tabs.includes("onClick={() => resume(row.tab)}"), "landmark: each open tab resumes on tap");
   assert.ok(!tabs.includes("isSettling"), "Open tabs no longer asks a lane whether a tab is settling");
-  assert.match(tabs, /\{inr\(t\.total\)\}/);
+  assert.ok(tabs.includes("{row.total}"), "each row shows its tab's total");
+  const rows = readSrc(OPEN_ORDERS);
+  assert.ok(rows.includes('total: qty > 0 ? inr(t.total) : "—",'), "the total of every listed tab, as today's inr(t.total)");
+  assert.ok(!rows.includes("isSettling"), "no settling state in the rows either");
 });
 
 test("P2: the hook is a thin shell — one controller, useSettleOrder's mutateAsync as send, one GET as read, no rules of its own", () => {

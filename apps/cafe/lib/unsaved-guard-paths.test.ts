@@ -49,3 +49,18 @@ test("PIN: pos/page.tsx wires useUnsavedGuard to pos.dirty, and usePosTab derive
   );
   assert.match(tab, /^\s*dirty,\s*$/m, "use-pos-tab.ts must expose dirty on its return object");
 });
+
+// U1 Task 7 (values 6.3; design 6.9): below 1280px (owner Q19) the cart is a sheet that closes by "‹ Menu" and Escape
+// (Q19 dropped the 720-1023px scrim and its tap) — and closing it must never lose work: every way out only flips the
+// page's open flag (the order stays exactly as it was, still guarded above); only the page's own auto-close (a TRULY
+// empty cart) and the 1280px hand-over to the cart column close it by themselves.
+test("PIN: the cart sheet's ways out (‹ Menu, Escape) only close it — none clears or discards the order", () => {
+  const bar = stripComments(readSrc("apps/cafe/components/pos/MobileCartBar.tsx"));
+  assert.match(bar, /<DialogPrimitive\.Root open=\{open\} onOpenChange=\{onOpenChange\}>/, "Escape reaches only onOpenChange");
+  assert.match(bar, /onBack=\{\(\) => onOpenChange\(false\)\}/, "‹ Menu only closes the sheet");
+  for (const write of ["onClear", "onDiscardSend", "onCloseTab", "clearCart"]) {
+    assert.ok(!bar.includes(write), `the bar itself never calls ${write}`);
+  }
+  const page = stripComments(readSrc(POS_PAGE));
+  assert.match(page, /<MobileCartBar\s+open=\{mobileCartOpen\}\s+onOpenChange=\{setMobileCartOpen\}/, "the page hands the bar its open flag's own setter");
+});

@@ -1,12 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, X } from "lucide-react";
+import { Plus } from "lucide-react";
 
-import { inr } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { inr, cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
+import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { TABLE_CHARGE_LABEL_MAX_LEN } from "@pos/shared/constants";
+import {
+  POS_BILL_LABEL_CLASS,
+  POS_BILL_LINK_CLASS,
+  POS_BILL_ROW_CLASS,
+  POS_BILL_VALUE_CLASS,
+  POS_PANEL_BUTTON_CLASS,
+  POS_PANEL_FIELD_CLASS,
+  POS_PANEL_LINK_CLASS,
+  POS_PANEL_PRIMARY_CLASS,
+} from "@/lib/pos-layout";
+import { NO_NUMBER_SPINNER_CLASS } from "@/lib/payment-sheet";
 
 // CB-CHG (plan §5C) — the POS cart's "additional charge" control: a takeaway
 // bill has no table but can still carry a staff-entered charge (packing,
@@ -16,6 +27,12 @@ import { TABLE_CHARGE_LABEL_MAX_LEN } from "@pos/shared/constants";
 // arithmetic" pin extends to this file) and never calls the server itself —
 // the extras array rides the create/add-round/settle payload
 // (use-pos-tab.ts), replacing the whole set on Send/Settle (decision 6).
+//
+// U1 Task 5 (owner Q11, Q12; design 6.7, 6.8): the form is the Bill options
+// panel's Extra charges section (the panel's 34px fields, the ink Add); the
+// applied charges are rows of the HTML's bill block, its charge-row look: the
+// name and a "Remove" link, the amount on the right. Words, rules, validation
+// and aria-labels as before.
 export interface ExtraChargeEntry {
   label: string;
   amount: number;
@@ -26,6 +43,8 @@ interface CartExtraChargesProps {
   onAdd: (entry: ExtraChargeEntry) => void;
   onRemove: (index: number) => void;
   disabled?: boolean;
+  /** Open with the form showing (the panel was opened from the "Extra charge" link). */
+  defaultExpanded?: boolean;
 }
 
 // Validation is SHAPE ONLY, never size (owner decision 8, 2026-09-25:
@@ -45,13 +64,45 @@ function validationError(label: string, amountText: string): string | null {
   return null;
 }
 
+/** One applied charge: its name and "Remove", the amount on the right (the HTML's charge row). */
+function ChargeRow({
+  entry,
+  onRemove,
+  disabled,
+}: {
+  entry: ExtraChargeEntry;
+  onRemove: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className={POS_BILL_ROW_CLASS}>
+      <span className={POS_BILL_LABEL_CLASS}>
+        <span className="min-w-0 truncate" title={entry.label}>
+          {entry.label}
+        </span>
+        <button
+          type="button"
+          className={cn(POS_BILL_LINK_CLASS, BRAND_PRESS_CLASS)}
+          onClick={onRemove}
+          disabled={disabled}
+          aria-label={"Remove " + entry.label}
+        >
+          Remove
+        </button>
+      </span>
+      <span className={POS_BILL_VALUE_CLASS}>{inr(entry.amount)}</span>
+    </div>
+  );
+}
+
 // D9.8 (2026-09-26) — the APPLIED charges, rendered on their own so they can
-// stay in the always-visible footer while the ADD form moves into the More
-// menu. What the customer is actually being charged must never sit behind a
-// tap: the same rule CartNotes set in D9.7 for a collapsed note, and money
-// raises the stakes (an operator could otherwise hand over a bill carrying a
-// packing fee with nothing on screen naming it). Renders nothing when empty,
-// so an ordinary sale still costs zero footer height.
+// stay in the always-visible bill while the ADD form sits in the Bill options
+// panel. What the customer is actually being charged must never sit behind a
+// tap: the same rule CartNotes set in D9.7 for a note, and money raises the
+// stakes (an operator could otherwise hand over a bill carrying a packing fee
+// with nothing on screen naming it). Renders nothing when empty, so an
+// ordinary sale still costs zero height; the rows are the bill's own (a
+// fragment), 5px apart like the rest.
 export function CartExtraChargeRows({
   extras,
   onRemove,
@@ -63,33 +114,25 @@ export function CartExtraChargeRows({
 }) {
   if (extras.length === 0) return null;
   return (
-    <div className="space-y-1.5">
+    <>
       {extras.map((entry, i) => (
-        <div key={`${entry.label}-${i}`} className="flex items-center justify-between gap-2 text-sm">
-          <span className="min-w-0 flex-1 truncate text-muted-foreground" title={entry.label}>
-            {entry.label} · {inr(entry.amount)}
-          </span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-11 w-11 shrink-0"
-            onClick={() => onRemove(i)}
-            disabled={disabled}
-            aria-label={"Remove " + entry.label}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+        <ChargeRow key={`${entry.label}-${i}`} entry={entry} onRemove={() => onRemove(i)} disabled={disabled} />
       ))}
-    </div>
+    </>
   );
 }
 
-export function CartExtraCharges({ extras, onAdd, onRemove, disabled }: CartExtraChargesProps) {
-  const [expanded, setExpanded] = useState(false);
+export function CartExtraCharges({ extras, onAdd, onRemove, disabled, defaultExpanded = false }: CartExtraChargesProps) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [label, setLabel] = useState("");
   const [amountText, setAmountText] = useState("");
+  // The open Bill options panel moved here by its link asks again (U1 final fix wave): the form opens then too, not only
+  // on mount. Adjusted while rendering, so no frame shows the collapsed trigger.
+  const [expandAsked, setExpandAsked] = useState(defaultExpanded);
+  if (expandAsked !== defaultExpanded) {
+    setExpandAsked(defaultExpanded);
+    if (defaultExpanded) setExpanded(true);
+  }
 
   const error = expanded ? validationError(label, amountText) : null;
 
@@ -106,39 +149,23 @@ export function CartExtraCharges({ extras, onAdd, onRemove, disabled }: CartExtr
   };
 
   return (
-    <div className="space-y-1.5">
+    <div className="flex flex-col gap-2 text-[13px] text-muted-foreground">
       {extras.map((entry, i) => (
-        <div key={`${entry.label}-${i}`} className="flex items-center justify-between gap-2 text-sm">
-          <span className="min-w-0 flex-1 truncate text-muted-foreground" title={entry.label}>
-            {entry.label} · {inr(entry.amount)}
-          </span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-11 w-11 shrink-0"
-            onClick={() => onRemove(i)}
-            disabled={disabled}
-            aria-label={"Remove " + entry.label}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+        <ChargeRow key={`${entry.label}-${i}`} entry={entry} onRemove={() => onRemove(i)} disabled={disabled} />
       ))}
 
       {!expanded ? (
-        <Button
+        <button
           type="button"
-          variant="ghost"
-          className="min-h-11 w-full justify-start px-2 text-sm font-medium text-muted-foreground"
+          className={cn(POS_PANEL_LINK_CLASS, BRAND_PRESS_CLASS)}
           onClick={() => setExpanded(true)}
           disabled={disabled}
         >
-          <Plus className="mr-1.5 h-4 w-4" /> Add additional charge
-        </Button>
+          <Plus className="h-4 w-4 shrink-0" aria-hidden="true" /> Add additional charge
+        </button>
       ) : (
-        <div className="space-y-1.5 rounded-md border p-2">
-          <div className="flex items-center gap-1.5">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
             <Input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
@@ -146,7 +173,7 @@ export function CartExtraCharges({ extras, onAdd, onRemove, disabled }: CartExtr
               placeholder="e.g. Packing charge"
               aria-label="Charge name"
               disabled={disabled}
-              className="min-h-11 flex-1"
+              className={cn(POS_PANEL_FIELD_CLASS, "min-w-0 flex-1")}
             />
             <Input
               type="number"
@@ -157,30 +184,27 @@ export function CartExtraCharges({ extras, onAdd, onRemove, disabled }: CartExtr
               placeholder="Amount"
               aria-label="Charge amount"
               disabled={disabled}
-              className="min-h-11 w-24"
+              className={cn(POS_PANEL_FIELD_CLASS, NO_NUMBER_SPINNER_CLASS, "w-24 flex-none")}
             />
           </div>
-          {error && <p className="text-xs text-destructive">{error}</p>}
-          <div className="flex gap-1.5">
-            <Button
+          {error && <p className="text-xs text-status-bad-ink">{error}</p>}
+          <div className="flex gap-2">
+            <button
               type="button"
-              size="sm"
-              className="min-h-11 flex-1"
+              className={cn(POS_PANEL_PRIMARY_CLASS, "flex-1", BRAND_PRESS_CLASS)}
               onClick={handleAdd}
               disabled={disabled || error !== null}
             >
               Add
-            </Button>
-            <Button
+            </button>
+            <button
               type="button"
-              variant="outline"
-              size="sm"
-              className="min-h-11 flex-1"
+              className={cn(POS_PANEL_BUTTON_CLASS, "flex-1", BRAND_PRESS_CLASS)}
               onClick={reset}
               disabled={disabled}
             >
               Cancel
-            </Button>
+            </button>
           </div>
         </div>
       )}

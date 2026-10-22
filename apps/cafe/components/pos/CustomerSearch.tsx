@@ -1,44 +1,124 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { User, Search, Check, Loader2, UserPlus } from "lucide-react";
+import { useEffect, useState, type ReactElement } from "react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { Loader2 } from "lucide-react";
 
 import {
   useCustomerSearch,
-  useCreateCustomer,
   CUSTOMER_SEARCH_MIN_CHARS,
 } from "@/hooks/use-customers";
-import { cn, inr } from "@/lib/utils";
-import { POS_HEADER_CHIP_ICON_CLASS } from "@/lib/pos-layout";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
+import { PAY_PILL_ADD_CLASS, PAY_PILL_CLASS, PAY_PILL_SET_CLASS, pickerPillText } from "@/lib/payment-sheet";
+import { SHEET_FOOT_CLASS, SHEET_PANEL_BASE, SHEET_PANEL_CAP_CLASS } from "@/lib/sheet-frame";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  CUSTOMER_TITLE,
+  NEW_CUSTOMER_TITLE,
+  NO_MATCH_HINT,
+  SKIP_CUSTOMER_LABEL,
+  customerListCaption,
+  newCustomerLabel,
+  noMatchText,
+} from "@/lib/customer-sheet";
+import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
+import { CustomerRow } from "@/components/pos/CustomerRow";
+import { CustomerAddForm } from "@/components/pos/CustomerAddForm";
 import type { Customer } from "@/types";
 
 interface CustomerSearchProps {
   value: Customer | undefined;
   onChange: (customer: Customer | undefined) => void;
-  // Applied to the trigger button only — the header sizes it per breakpoint.
+  // Applied to the own trigger (the payment sheet's pill) only.
   className?: string;
   // A send is in flight: the customer cannot change under it.
   disabled?: boolean;
+  // The control this dialog opens from instead of the pill: the cart head's Customer cell (U1 Task 4, owner Q9). It
+  // brings its own words, title and lock; className and disabled above style and lock the pill (the payment sheet's).
+  trigger?: ReactElement;
+  // The order the sheet is for, its sub line (ruling P30, as the HTML's names it): the cart's title from the cell, the
+  // payment title's place word from the pill ("New order" / "Table T-4" / "Walk-In"). None: no sub line.
+  context?: string;
 }
 
+// The customer sheet in the owner's HTML (U1 Task 10; values 8 in docs/superpowers/specs/2026-10-20-pos-html-values.md;
+// design 4 builder-check, 6.12; owner Q1; rulings P30-P37), wherever it opens: the cart's Customer cell, and the payment
+// sheet's pill on /pos, the Orders page and the dashboard. "Customer" ("New customer" over the add form) over the order
+// it is for; the 48px search; today's line in the list area until a search runs (no frequent list: that would be a new
+// request); the caption counting the rows, over them and over the HTML's two no-match lines; our searching / offline /
+// failed lines; the 46px "+ New customer" (with the query typed) and "Continue without customer" at the foot (the words
+// are lib/customer-sheet.ts). The add form is CustomerAddForm.tsx, a row CustomerRow.tsx; the HTML's back button is
+// today's Cancel. A Radix dialog of its own: focus trap, Escape and the scrim close it, the focus goes back to what
+// opened it.
+
 // Separators a cafe actually types around a phone number ("+91 98765-43210").
-// Stripped before the digits check below — this is a shape guess for the "New"
-// hand-off, not a validity check (AddCustomerForm's own `valid` gate is that).
+// Stripped before the digits check below — this is a shape guess for the "+ New customer"
+// hand-off, not a validity check (CustomerAddForm's own `valid` gate is that).
 const PHONE_SEPARATOR_PATTERN = /[+\s-]/g;
 const DIGITS_ONLY_PATTERN = /^\d+$/;
 
-export function CustomerSearch({ value, onChange, className, disabled }: CustomerSearchProps) {
+/** Today's description: the list's line until a search runs (design 4), and the dialog's description, read out only. */
+const SEARCH_HINT = "Search by name or mobile, or add a new customer.";
+
+// The scrim (values 8.1, 0.3 sheetAlign/sheetPad): fadeIn .2s, the panel centred in 16px, along the window's foot with no
+// padding below 720px. z-index 51: over the payment sheet's 50 (lib/payment-sheet.ts), as the HTML's 46 over its 45, so
+// the sheet opened from the payment pill is on top everywhere the payment sheet opens. Its colour by path: --scrim from
+// the cart cell; clear from the pill, where the payment sheet's --scrim is already drawn under it (a second one would
+// darken the page twice; the HTML shows one).
+const SCRIM_CLASS =
+  "fixed inset-0 z-[51] flex items-center justify-center p-4 font-sans leading-[normal] text-foreground motion-safe:animate-scrim-in max-tab:items-end max-tab:p-0";
+const SCRIM_SHADE_CLASS = "bg-scrim";
+const SCRIM_CLEAR_CLASS = "bg-transparent";
+// The panel (values 8.1, 0.3 csH/csMaxH/sheetRadius) in the shared sheet frame (lib/sheet-frame.ts, ruling P54): 460px
+// on --surface, 600 tall at most the sheets' cap, a 1px --border, sheetIn .32s; below 720px the full width, 88dvh (the
+// vh height the base, the dvh one where it exists).
+const PANEL_CLASS = cn(
+  SHEET_PANEL_BASE,
+  SHEET_PANEL_CAP_CLASS,
+  "max-w-[460px] overflow-hidden border border-border motion-safe:animate-html-sheet-in-cs tab:h-[600px] max-tab:h-[88vh] max-tab:supports-[height:1dvh]:h-[88dvh]",
+);
+// The head (values 8.1): 16px 16px 12px, gap 10; the title 17px 600 over the sub 12.5px --text-2; the 32px back (radius
+// 8, --text) in the add form and the 32px round ✕ (--text-2), both on --surface-3 (the UA's 1px 6px: the HTML sets none).
+const HEAD_CLASS = "flex flex-none items-center gap-2.5 px-4 pt-4 pb-3";
+const TITLE_CLASS = "text-[17px] font-semibold";
+const SUB_CLASS = "truncate text-[12.5px] text-muted-foreground";
+const ROUND_CLASS = "flex size-8 flex-none cursor-pointer items-center justify-center border-0 bg-surface-3 px-1.5 py-px";
+const BACK_CLASS = cn(ROUND_CLASS, "rounded-[8px] text-foreground", BRAND_PRESS_CLASS);
+const CLOSE_CLASS = cn(ROUND_CLASS, "rounded-[50%] text-muted-foreground", BRAND_PRESS_CLASS);
+// The search (values 8.2): 0 16px 10px around a 48px box, always drawn focused (a 1.5px --accent rule, radius 12, the
+// 4px --accent-t ring), 0 12px, gap 10: the 17px --text-2 magnifier, the input 15px (16px below 720px, ruling R36) with
+// the UA's 1px 2px, the mode word 11.5px --text-3 (an empty span without a query, as the HTML's).
+const SEARCH_WRAP_CLASS = "flex-none px-4 pb-2.5";
+const SEARCH_BOX_CLASS =
+  "flex h-12 items-center gap-2.5 rounded-[12px] border-[1.5px] border-primary px-3 [box-shadow:0_0_0_4px_var(--accent)]";
+const SEARCH_INPUT_CLASS =
+  "min-w-0 flex-1 [border:0] bg-transparent px-0.5 py-px text-[15px] text-foreground outline-none placeholder:text-subtle-foreground max-tab:text-[16px]";
+const MODE_CLASS = "whitespace-nowrap text-[11.5px] text-subtle-foreground";
+// The caption (values 8.2 list label): 4px 18px 6px, 11.5px 600 .05em upper-case --text-3.
+const CAPTION_CLASS =
+  "flex-none px-[18px] pt-1 pb-1.5 text-[11.5px] font-semibold tracking-[0.05em] uppercase text-subtle-foreground";
+const LIST_CLASS = "min-h-0 flex-1 overflow-auto px-2";
+// Our lines in the list area, in the HTML's empty block (values 8.2): 24px 12px, centred, 13.5px --text-2, 1.5; the
+// offline and failed lines in --bad-i (they mean "we did not find out").
+const LINE_CLASS = "px-3 py-6 text-center text-[13.5px] leading-[1.5] text-muted-foreground";
+const LINE_BAD_CLASS = cn(LINE_CLASS, "text-status-bad-ink");
+const SEARCHING_CLASS = cn(LINE_CLASS, "flex items-center justify-center gap-2");
+// The shared foot (values 8.2: SHEET_FOOT_CLASS); "+ New customer" 46px on --accent, radius 12, 14.5px 600, hover
+// --accent-h; "Continue without customer" as the HTML's 36px --link button, 13.5px 500.
+const NEW_CLASS =
+  "h-[46px] cursor-pointer rounded-[12px] border-0 bg-primary px-1.5 py-px text-[14.5px] font-semibold text-primary-foreground hover:bg-primary-hover";
+const LINK_CLASS = "h-9 cursor-pointer border-0 bg-transparent px-1.5 py-px text-[13.5px] font-medium text-link";
+
+/** As the sheet opens, the field marked data-autofocus takes the focus (the search, or the add form's empty field).
+ *  Opened from inside another dialog (the cart sheet below 1280px, the payment sheet), that dialog pulls a plain
+ *  autoFocus back before this one traps the focus, and Radix would then focus the first control in the head (the ✕). */
+function focusMarkedField(e: Event) {
+  const field = e.currentTarget instanceof HTMLElement ? e.currentTarget.querySelector<HTMLElement>("[data-autofocus]") : null;
+  if (!field) return;
+  e.preventDefault();
+  field.focus();
+}
+
+export function CustomerSearch({ value, onChange, className, disabled, trigger, context }: CustomerSearchProps) {
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -61,6 +141,9 @@ export function CustomerSearch({ value, onChange, className, disabled }: Custome
   const settled = debounced.trim() === term.trim();
   const rows = settled ? (results ?? []) : [];
   const searching = term.trim().length > 0 && (!settled || isFetching);
+  // The no-match line's case (the same chain as the line itself below): the caption sits over it too (ruling P31).
+  const noMatches =
+    !searching && !isPaused && !isError && debounced.trim().length >= CUSTOMER_SEARCH_MIN_CHARS && rows.length === 0;
 
   const select = (customer: Customer | undefined) => {
     onChange(customer);
@@ -70,202 +153,152 @@ export function CustomerSearch({ value, onChange, className, disabled }: Custome
     setAdding(false);
   };
 
-  // The operator already typed SOMETHING before hitting "New" — a phone-shaped
+  // The operator already typed SOMETHING before hitting "+ New customer" — a phone-shaped
   // term seeds the mobile field (and puts focus on name, the field still
   // blank), anything else seeds name (and puts focus on mobile). Re-typing the
   // number is where a wrong digit lands on the wrong customer's ledger.
   const strippedTerm = term.trim().replace(PHONE_SEPARATOR_PATTERN, "");
   const termIsPhoneLike = strippedTerm.length > 0 && DIGITS_ONLY_PATTERN.test(strippedTerm);
+  // The HTML's mode word in the search box: which field "+ New customer" will fill (the same rule as the seeding above).
+  const termMode = termIsPhoneLike ? "Phone" : term.trim() ? "Name" : "";
+  // The own trigger is the payment sheet's pill (PaymentModal is its only user): the sheet opens over the payment sheet.
+  const overPaymentSheet = trigger === undefined;
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {/* Empty state reads "Customer", not "Walk-In": the table chip beside
-            it already says Walk-In for "no table", and below xl neither chip
-            has its icon to tell them apart. title = the untruncated name. */}
-        <Button
-          variant="outline"
-          size="sm"
-          className={cn("gap-2 xl:max-w-[12rem]", className)}
-          disabled={disabled}
-          aria-label={value ? `Customer: ${value.name}` : "Select customer"}
-          title={value ? value.name : "Select customer"}
-        >
-          <User className={POS_HEADER_CHIP_ICON_CLASS} />
-          <span className="min-w-0 truncate">{value ? value.name : "Customer"}</span>
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Customer</DialogTitle>
-          <DialogDescription>
-            Search by name or mobile, or add a new customer.
-          </DialogDescription>
-        </DialogHeader>
-
-        {adding ? (
-          <AddCustomerForm
-            onCancel={() => setAdding(false)}
-            onCreated={select}
-            initialName={termIsPhoneLike ? undefined : term.trim()}
-            initialMobile={termIsPhoneLike ? strippedTerm : undefined}
-          />
-        ) : (
-          <div className="space-y-3">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                autoFocus
-                value={term}
-                onChange={(e) => setTerm(e.target.value)}
-                placeholder="Name or mobile…"
-                className="pl-8"
-              />
-            </div>
-
-            <div className="max-h-64 space-y-1 overflow-y-auto">
-              {searching && (
-                <div className="flex items-center gap-2 p-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Searching…
-                </div>
-              )}
-              {/* Offline and failed both mean "we did not find out", never "no
-                  such customer". That wrong answer ends with a duplicate record
-                  taking the bill while the real customer's dues are orphaned. */}
-              {!searching && isPaused && (
-                <p className="p-2 text-sm text-destructive">
-                  Offline — could not check the customer list.
-                </p>
-              )}
-              {!searching && !isPaused && isError && (
-                <p className="p-2 text-sm text-destructive">
-                  Search failed. Try again.
-                </p>
-              )}
-              {!searching &&
-                !isPaused &&
-                !isError &&
-                debounced.trim().length >= CUSTOMER_SEARCH_MIN_CHARS &&
-                rows.length === 0 && (
-                  <p className="p-2 text-sm text-muted-foreground">
-                    No matches. Add a new customer below.
-                  </p>
-                )}
-              {rows.map((c) => (
-                <button
-                  key={c._id}
-                  type="button"
-                  onClick={() => select(c)}
-                  className="flex w-full items-center justify-between rounded-md border p-2 text-left text-sm hover:bg-accent"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{c.name}</span>
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {c.mobile} · {c.visits} visits
-                    </span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    {c.totalDue > 0 && (
-                      <span className="text-xs font-medium text-destructive">
-                        Due {inr(c.totalDue)}
-                      </span>
-                    )}
-                    {value?._id === c._id && <Check className="h-4 w-4" />}
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                className="flex-1"
-                onClick={() => select(undefined)}
-              >
-                Walk-In
-              </Button>
-              <Button
-                variant="outline"
-                className="flex-1 gap-2"
-                onClick={() => setAdding(true)}
-              >
-                <UserPlus className="h-4 w-4" /> New
-              </Button>
-            </div>
-          </div>
+    <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
+      {/* The own trigger is the payment sheet's pill (U1 Task 9; values 11.1): "+ Add customer" in --link, or
+          "Customer: {name} · change" in --text; its empty words are never "Walk-In" (the table owns that word). Its
+          words are its name; title = the untruncated name. */}
+      <DialogPrimitive.Trigger asChild>
+        {trigger ?? (
+          <button
+            type="button"
+            data-ui="pay-customer"
+            className={cn(PAY_PILL_CLASS, value ? PAY_PILL_SET_CLASS : PAY_PILL_ADD_CLASS, BRAND_PRESS_CLASS, className)}
+            disabled={disabled}
+            title={value ? value.name : "Select customer"}
+          >
+            {pickerPillText(value?.name)}
+          </button>
         )}
-      </DialogContent>
-    </Dialog>
-  );
-}
+      </DialogPrimitive.Trigger>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay data-ui="cs-sheet" className={cn(SCRIM_CLASS, overPaymentSheet ? SCRIM_CLEAR_CLASS : SCRIM_SHADE_CLASS)}>
+          <DialogPrimitive.Content data-ui="cs-panel" onOpenAutoFocus={focusMarkedField} className={PANEL_CLASS}>
+            <div data-ui="cs-head" className={HEAD_CLASS}>
+              {adding && (
+                <button type="button" data-ui="cs-back" onClick={() => setAdding(false)} aria-label="Cancel" title="Cancel" className={BACK_CLASS}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="m15 18-6-6 6-6" />
+                  </svg>
+                </button>
+              )}
+              <div className="min-w-0 flex-1">
+                <DialogPrimitive.Title className={TITLE_CLASS}>{adding ? NEW_CUSTOMER_TITLE : CUSTOMER_TITLE}</DialogPrimitive.Title>
+                {context && (
+                  <div data-ui="cs-context" className={SUB_CLASS}>
+                    {context}
+                  </div>
+                )}
+                <DialogPrimitive.Description className="sr-only">{SEARCH_HINT}</DialogPrimitive.Description>
+              </div>
+              <DialogPrimitive.Close data-ui="cs-close" aria-label="Close" className={CLOSE_CLASS}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
+                  <path d="M6 6l12 12M18 6 6 18" />
+                </svg>
+              </DialogPrimitive.Close>
+            </div>
 
-function AddCustomerForm({
-  onCancel,
-  onCreated,
-  initialName,
-  initialMobile,
-}: {
-  onCancel: () => void;
-  onCreated: (customer: Customer) => void;
-  initialName?: string;
-  initialMobile?: string;
-}) {
-  const [name, setName] = useState(initialName ?? "");
-  const [mobile, setMobile] = useState(initialMobile ?? "");
-  const createCustomer = useCreateCustomer();
-  // Focus goes to whichever field the search term did NOT already fill —
-  // that is the one the operator still has to type.
-  const focusMobile = !!initialName;
+            {adding ? (
+              <CustomerAddForm
+                onCreated={select}
+                initialName={termIsPhoneLike ? undefined : term.trim()}
+                initialMobile={termIsPhoneLike ? strippedTerm : undefined}
+              />
+            ) : (
+              <>
+                <div data-ui="cs-search-wrap" className={SEARCH_WRAP_CLASS}>
+                  <div data-ui="cs-search" className={SEARCH_BOX_CLASS}>
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className="flex-none text-muted-foreground">
+                      <circle cx="11" cy="11" r="7" />
+                      <path d="m20 20-3.5-3.5" />
+                    </svg>
+                    <input
+                      autoFocus
+                      data-autofocus=""
+                      value={term}
+                      onChange={(e) => setTerm(e.target.value)}
+                      placeholder="Phone number or name"
+                      autoComplete="off"
+                      spellCheck={false}
+                      className={SEARCH_INPUT_CLASS}
+                    />
+                    <span data-ui="cs-mode" className={MODE_CLASS}>{termMode}</span>
+                  </div>
+                </div>
+                {(rows.length > 0 || noMatches) && (
+                  <div data-ui="cs-caption" className={CAPTION_CLASS}>
+                    {customerListCaption(rows.length)}
+                  </div>
+                )}
 
-  const submit = async () => {
-    const created = await createCustomer.mutateAsync({
-      name: name.trim(),
-      mobile: mobile.trim(),
-      notes: "Regular",
-    });
-    onCreated(created);
-  };
+                <div data-ui="cs-list" className={LIST_CLASS}>
+                  {!searching && debounced.trim().length < CUSTOMER_SEARCH_MIN_CHARS && (
+                    <p data-ui="cs-line" className={LINE_CLASS}>{SEARCH_HINT}</p>
+                  )}
+                  {searching && (
+                    <div data-ui="cs-line" className={SEARCHING_CLASS}>
+                      <Loader2 className="h-4 w-4 animate-spin" /> Searching…
+                    </div>
+                  )}
+                  {/* Offline and failed both mean "we did not find out", never "no
+                      such customer". That wrong answer ends with a duplicate record
+                      taking the bill while the real customer's dues are orphaned. */}
+                  {!searching && isPaused && (
+                    <p data-ui="cs-line" className={LINE_BAD_CLASS}>
+                      Offline — could not check the customer list.
+                    </p>
+                  )}
+                  {!searching && !isPaused && isError && (
+                    <p data-ui="cs-line" className={LINE_BAD_CLASS}>
+                      Search failed. Try again.
+                    </p>
+                  )}
+                  {!searching &&
+                    !isPaused &&
+                    !isError &&
+                    debounced.trim().length >= CUSTOMER_SEARCH_MIN_CHARS &&
+                    rows.length === 0 && (
+                      <p data-ui="cs-line" className={LINE_CLASS}>
+                        {noMatchText(debounced.trim())}
+                        <br />
+                        {NO_MATCH_HINT}
+                      </p>
+                    )}
+                  {rows.map((c) => (
+                    <CustomerRow
+                      key={c._id}
+                      customer={c}
+                      index={rows.indexOf(c)}
+                      current={value?._id === c._id}
+                      onPick={select}
+                    />
+                  ))}
+                </div>
 
-  const valid = name.trim().length > 0 && mobile.trim().length >= 10;
-
-  return (
-    <div className="space-y-3">
-      <div className="space-y-1.5">
-        <Label htmlFor="new-customer-name">Name</Label>
-        <Input
-          id="new-customer-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          autoFocus={!focusMobile}
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="new-customer-mobile">Mobile</Label>
-        <Input
-          id="new-customer-mobile"
-          value={mobile}
-          onChange={(e) => setMobile(e.target.value)}
-          inputMode="numeric"
-          placeholder="10-digit number"
-          autoFocus={focusMobile}
-        />
-      </div>
-      <div className="flex gap-2">
-        <Button variant="outline" className="flex-1" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button
-          className="flex-1"
-          disabled={!valid || createCustomer.isPending}
-          onClick={submit}
-        >
-          {createCustomer.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            "Add customer"
-          )}
-        </Button>
-      </div>
-    </div>
+                <div data-ui="cs-foot" className={SHEET_FOOT_CLASS}>
+                  <button type="button" data-ui="cs-new" onClick={() => setAdding(true)} className={cn(NEW_CLASS, BRAND_PRESS_CLASS)}>
+                    {newCustomerLabel(term)}
+                  </button>
+                  <button type="button" data-ui="cs-skip" onClick={() => select(undefined)} className={cn(LINK_CLASS, BRAND_PRESS_CLASS)}>
+                    {SKIP_CUSTOMER_LABEL}
+                  </button>
+                </div>
+              </>
+            )}
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Overlay>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }

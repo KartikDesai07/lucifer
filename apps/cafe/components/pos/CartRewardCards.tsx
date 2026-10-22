@@ -1,16 +1,26 @@
 "use client";
 
-import { Check, X } from "lucide-react";
+import { Check } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { deadlineLine } from "@/components/public/rewards/reward-clock";
 import type { CardOffer } from "@/lib/reward-card-offers";
+import {
+  POS_BILL_LABEL_CLASS,
+  POS_BILL_LINK_CLASS,
+  POS_BILL_ROW_CLASS,
+  POS_PANEL_PICK_CLASS,
+  POS_PANEL_PICK_OFF_CLASS,
+  POS_PANEL_PICK_ON_CLASS,
+} from "@/lib/pos-layout";
 
 // CB-7 S5 — the STAFF counter's list of a diner's revealed scratch cards, rendered inside CartReward. Purely
 // presentational: which cards exist, and whether each can be used on THIS bill, is decided upstream (the rewards route
 // allowlist + lib/reward-card-offers.ts, a preview of the server's own claim gates). A tap picks the card, a second
 // tap puts it back — the same toggle idiom as the stamp rungs. A card is never picked for the counter.
+// U1 Task 5 (design 6.7): the rows sit in the Bill options panel's Reward section as the HTML popover's pickup buttons
+// (lib/pos-layout.ts POS_PANEL_PICK_*); the picked card's bill row is the HTML's charge row with its "Remove" link.
 
 /** What Cart hands down: the offers for this bill, the picked card's id, and the toggle. */
 export interface CartRewardCardsState {
@@ -20,7 +30,7 @@ export interface CartRewardCardsState {
 }
 
 // A whole-row button, tall enough for a thumb (44 px) — the rows carry a sentence or two, so they are not chips.
-const ROW_CLASS = "h-auto min-h-11 w-full min-w-0 justify-between gap-2 px-2 py-1.5 text-left";
+const ROW_CLASS = "min-h-11 w-full items-center justify-between gap-2";
 
 function CardRow({
   offer,
@@ -42,17 +52,22 @@ function CardRow({
     onSelect(selected ? null : card.id);
   };
   return (
-    <Button
+    <button
       type="button"
-      variant={selected ? "default" : "outline"}
       aria-pressed={selected}
       aria-label={usable ? `Use card: ${card.label}` : `Card: ${card.label} — ${reason ?? "not available"}`}
       disabled={disabled || !usable}
       onClick={handleClick}
-      className={cn(ROW_CLASS, !usable && "opacity-60")}
+      className={cn(
+        POS_PANEL_PICK_CLASS,
+        ROW_CLASS,
+        selected ? POS_PANEL_PICK_ON_CLASS : POS_PANEL_PICK_OFF_CLASS,
+        !usable && "opacity-60",
+        BRAND_PRESS_CLASS,
+      )}
     >
       <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5 whitespace-normal">
-        <span className="min-w-0 max-w-full text-sm font-medium">{card.label}</span>
+        <span className="min-w-0 max-w-full text-[13px] font-medium">{card.label}</span>
         {card.condition && <span className="min-w-0 max-w-full text-xs font-normal opacity-80">{card.condition}</span>}
         <span className="min-w-0 max-w-full text-xs font-normal opacity-80">
           {deadlineLine("use", card.validUntil, nowMs)}
@@ -60,7 +75,7 @@ function CardRow({
         {!usable && reason && <span className="min-w-0 max-w-full text-xs font-normal">{reason}</span>}
       </span>
       {selected && <Check className="h-4 w-4 shrink-0" aria-hidden="true" />}
-    </Button>
+    </button>
   );
 }
 
@@ -74,7 +89,7 @@ export function CartRewardCards({
   if (offers.length === 0) return null;
   const nowMs = Date.now();
   return (
-    <div className="space-y-1.5">
+    <div className="flex flex-col gap-1.5">
       <div className="text-xs text-muted-foreground">Scratch cards</div>
       {offers.map((offer) => (
         <CardRow
@@ -105,22 +120,19 @@ export function CartAppliedCard({
 }) {
   if (!offer) return null;
   return (
-    <div className="flex items-center justify-between gap-2 text-sm">
-      <span className="flex min-w-0 flex-1 items-center gap-1.5">
-        <Check className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+    <div data-ui="pos-bill-card" className={POS_BILL_ROW_CLASS}>
+      <span className={POS_BILL_LABEL_CLASS}>
         <span className="min-w-0 truncate">Scratch card: {offer.card.label}</span>
+        <button
+          type="button"
+          className={cn(POS_BILL_LINK_CLASS, BRAND_PRESS_CLASS)}
+          onClick={onClear}
+          disabled={disabled}
+          aria-label="Remove scratch card"
+        >
+          Remove
+        </button>
       </span>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-11 w-11 shrink-0"
-        onClick={onClear}
-        disabled={disabled}
-        aria-label="Remove scratch card"
-      >
-        <X className="h-4 w-4" />
-      </Button>
     </div>
   );
 }

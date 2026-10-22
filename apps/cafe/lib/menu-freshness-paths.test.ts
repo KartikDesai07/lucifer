@@ -126,7 +126,8 @@ test("M3: the page keeps the grid on a failed background refresh and feeds the c
   assert.ok(!src.includes(": products.isError ? ("), "the bare isError branch is gone");
   const errorAt = at(src, "products.isError && products.data === undefined");
   assert.ok(at(src, "<ProductGrid") > errorAt, "vision guard: the grid is the branch after the error line");
-  assert.ok(src.includes("buildCartProps(pos, () => itemVoid.setOpen(true), products.data)"), "the list reaches buildCartProps");
+  // U1 Task 4 (owner Q10): the void opener now takes the line the cart's Void action names (useItemVoid.openFor).
+  assert.ok(src.includes("buildCartProps(pos, itemVoid.openFor, products.data, {"), "the list reaches buildCartProps");
   const lines = readRaw(PAGE).replace(/\n$/, "").split("\n").length;
   assert.equal(lines, 299, "page.tsx stays at its pinned 299 lines");
 });
@@ -206,7 +207,13 @@ test("M6: the cart mounts one notice, directly above the send notice, locked whi
 
 test("M7: buildCartProps threads menuNotice from the list", () => {
   const src = readSrc(CART_PROPS);
-  assert.ok(src.includes("export function buildCartProps(pos: Pos, onVoidItem: () => void, menu?: Product[]): CartProps {"));
+  // U1 Task 4: the void opener takes the named line, and the page hands over what the head's cells need (owner Q9/Q10).
+  assert.ok(
+    src.includes(
+      "export function buildCartProps(\n  pos: Pos,\n  onVoidItem: (line: VoidLine | null) => void,\n  menu: Product[] | undefined,\n  page: CartPageInputs,\n): CartProps {",
+    ),
+    "buildCartProps(pos, onVoidItem, menu, page)",
+  );
   assert.ok(src.includes("cartMenuIssues(pos.cart, menu)"), "judged from the list on screen");
   assert.ok(src.includes("menuNotice: menuIssues ? { ...menuIssues, ...cartMenuActions(menuIssues, pos) } : undefined"));
 });
@@ -226,12 +233,16 @@ test("M8: one price rule and one copy - the notice and the cart verdict import t
   for (const s of [avail, readSrc(NOTICE)]) assert.ok(!s.includes("Lucifer"), "no hardcoded cafe name");
 });
 
-test("M9: the notice is an amber status panel identical to WriteNotice's changed tone, 360px-safe, buttons locked while busy", () => {
+// U1 Task 5 (design 6.8; the HTML's note box, POS values 11.1): WriteNotice maps every kind to one of the note box's
+// tones (lib/ui NOTE_TONE_CLASSES: warn for a check, bad for a refusal, neutral); the menu notice wears WriteNotice's
+// changed tone BY REFERENCE, so the two can never drift (before: a copied amber class literal).
+test("M9: the notice is the HTML's note box in WriteNotice's changed tone, 360px-safe, buttons locked while busy", () => {
   const notice = readSrc(NOTICE);
   const tone = readSrc(WRITE_NOTICE).match(/changed:\s*"([^"]+)"/);
   assert.ok(tone, "landmark: WriteNotice declares a changed tone");
+  assert.equal(tone![1], "warn", "a changed bill is a check: the note box's warn tone");
   assert.ok(notice.includes('role="status"'));
-  assert.ok(notice.includes(tone![1]), `the notice carries WriteNotice's changed tone (${tone![1]})`);
+  assert.ok(notice.includes("noticeBoxClass(WRITE_NOTICE_TONE.changed)"), "the notice carries WriteNotice's changed tone");
   assert.equal(count(notice, "disabled={disabled}"), 2, "both buttons honour disabled");
   // Label -> handler wiring and the render guards (both handlers are () => void: a swap type-checks).
   const remove = between(notice, "{notice.unavailable.length > 0 && (", "Remove them");

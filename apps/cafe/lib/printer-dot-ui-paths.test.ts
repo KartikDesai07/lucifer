@@ -56,7 +56,9 @@ const PINS: PinCase[] = [
     // bar) and the mini logo come first; then the title block, the page's own actions, and our global buttons in the
     // design's order: Tables, New order, Refresh, Tokens, the printer button last (where the HTML has it).
     // U0 Task 4: the phone's menu button went with the tab bar (the phone's nav); the mini logo leads.
-    name: "Header order: (phone) mini logo, title block, page actions, Tables, New order, Refresh, Tokens, printer",
+    // U1 Task 1 (design 6.1): on /pos the clock block sits after the actions box, before Refresh; the printer button
+    // hands its dot's tone to it (onToneChange).
+    name: "Header order: (phone) mini logo, title block, page actions, Tables, New order, (/pos) the clock, Refresh, Tokens, printer",
     file: HEADER,
     check: (src) => {
       assert.ok(!src.includes("PhoneMenuButton"), "no phone menu button (the tab bar is the phone's nav)");
@@ -65,9 +67,10 @@ const PINS: PinCase[] = [
         "<HeaderTitle",
         "ref={actionsRef}",
         "<HeaderQuickTabs />",
+        "<PosHeaderClock",
         "<RefreshButton />",
         "<TokenSheet />",
-        "<PrinterStatusButton />",
+        "<PrinterStatusButton",
       ]);
       ascending(read("components/layout/HeaderQuickTabs.tsx"), ['title: "Tables"', 'title: "New order"']);
       // s63 smoke: a 60-char name at 768 px pushed the button off-screen (its min-content widened the page) — the

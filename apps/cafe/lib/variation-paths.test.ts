@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { stripComments } from "@/lib/source-pin-utils";
+import { lineMeta } from "@/lib/pos-cart-view";
 
 // SLICE F — pins for the menu-item VARIATIONS feature (SPEC-variations.md) that
 // have NO other test coverage. There is no React/route test framework in this
@@ -176,43 +177,51 @@ test("PIN: ModifierModal disables Add until a variation is picked when the produ
     !/confirm\(\)/.test(pickerBlock),
     "the variation chooser must never call confirm() directly — an item sold by size has no meaningful default, so the operator must still tap Add",
   );
+  // U1 Task 8 (values 10.1, owner Q1): the chooser is the HTML's "Size" segments — the chosen size is lit (SEG_ON) and
+  // announced, nothing is lit until a tap (no default), and a plain product shows no Size block at all (design 6.10).
+  assert.ok(pickerBlock.includes(">Size</span>"), "the chooser's caption is the HTML's \"Size\"");
+  assert.ok(pickerBlock.includes("const active = v.name === variation;"), "a size is lit only when it IS the picked variation (undefined lights none)");
+  assert.ok(pickerBlock.includes("aria-pressed={active}"), "the picked size is announced");
+  assert.ok(pickerBlock.includes("active ? SIZE_ON_CLASS : SIZE_OFF_CLASS"), "the picked size wears SEG_ON, the others SEG_OFF");
+  assert.ok(pickerBlock.includes("{v.name}") && pickerBlock.includes("{inr(price)}"), "each segment: the full variation name over its price");
+  assert.ok(
+    pickerBlock.includes("effectivePrice({ price: v.price, discount: product.discount })"),
+    "a segment's price is the variation's own price after the product's % discount (as the add bills it)",
+  );
 });
 
-// ── 3. pos/page.tsx: a variation item must never add straight to the cart ──
+// ── 3. pos/page.tsx: a variation item never adds without its size ──────────
+//
+// U1 Task 3 (owner Q5, design 6.4): the card's price buttons add at once, one
+// button PER VARIATION (up to three), so the size is the button the operator
+// tapped; beyond three, one "Choose" button opens the modal's required chooser.
+// The rule the old pin guarded (no silent default size) now lives in the price
+// buttons: lib/pos-price-buttons.test.ts proves every adding button of a
+// variation item carries its variation; this pin proves the wiring passes it.
+const PRODUCT_CARD = "apps/cafe/components/pos/ProductCard.tsx";
 
-test("PIN: pos/page.tsx's handleProductClick opens the modifier modal for a variation product exactly like a modifiers product — the direct add-to-cart path is only its ELSE branch", () => {
+test("PIN: a price button adds with ITS OWN variation (the size the operator tapped) and \"Choose\" opens the modal — pos/page.tsx's handleProductClick hands that variation to the add", () => {
   const src = stripComments(readSrc(POS_PAGE));
 
   // CB-1d.3a wrapped the handler in useCallback (stable identity for the
   // memo'd ProductCard); the marker still ends on the function's opening brace.
-  const marker = "const handleProductClick = useCallback((product: Product) => {";
+  const marker = "const handleProductClick = useCallback((product: Product, variation?: string) => {";
   const markerStart = src.indexOf(marker);
   assert.ok(markerStart >= 0, "handleProductClick must exist with this signature");
   const braceOpen = markerStart + marker.length - 1;
   assert.equal(src[braceOpen], "{", "marker must end on the function's opening brace");
   const braceClose = matchingBraceEnd(src, braceOpen);
   const body = src.slice(braceOpen, braceClose + 1);
-
-  assert.match(
-    body,
-    /if \(product\.modifiers\.length > 0 \|\| \(product\.variations\?\.length \?\? 0\) > 0\) \{/,
-    "the modal-open condition must check variations too — otherwise a variation item with no modifiers adds straight to the cart with no size chosen and no meaningful default price",
-  );
-  const ifIdx = body.indexOf("if (product.modifiers.length > 0");
-  const elseIdx = body.indexOf("} else {", ifIdx);
-  assert.ok(elseIdx > ifIdx, "the direct add-to-cart branch must be the ELSE of that same condition, not a separately reachable path");
-  const thenBranch = body.slice(ifIdx, elseIdx);
-  const elseBranch = body.slice(elseIdx);
-
-  assert.match(thenBranch, /setModifierProduct\(product\);/);
-  assert.match(thenBranch, /setModifierOpen\(true\);/);
   // `addToCart` is destructured from `pos` once above the handler (a method call
   // would make exhaustive-deps demand the whole per-render `pos` object).
-  assert.match(elseBranch, /\baddToCart\(product\);/);
+  assert.match(body, /\baddToCart\(product, defaultAddOptions\(product, variation\)\);/, "the add carries the tapped button's variation");
+
+  const card = stripComments(readSrc(PRODUCT_CARD));
   assert.ok(
-    !/\baddToCart\(/.test(thenBranch),
-    "the modal-open branch must NOT also add straight to the cart",
+    card.includes("onClick={() => (b.opensOptions ? onOptions(product) : onAdd(product, b.variation))}"),
+    "every adding button passes its own variation; the Choose button (more than three sizes) opens the modal instead",
   );
+  assert.ok(!/onAdd\(product\)/.test(card), "no add without the button's variation");
 });
 
 // ── 4. Every renderer of an item's name goes through orderItemLabel ────────
@@ -383,5 +392,29 @@ test("PIN: queueVoidSlip copies the voided line variation onto the synthesized p
     body,
     /variation: entry.variation,/,
     "the synthesized line must carry entry.variation through to KOTReceipt",
+  );
+});
+
+// ── U1 Task 4: the /pos cart line (values 5.4, design 6.6) ─────────────────
+// The HTML's line has one name line and one meta line; the size moved from a
+// "(Large)" suffix on the name to the front of the meta, so two sizes of one
+// dish must still never read alike in the cart.
+const CART_LINE = "apps/cafe/components/pos/CartLine.tsx";
+
+test("PIN: the /pos cart line names the dish and leads its meta with the variation — a Small and a Large never read alike in the cart", () => {
+  const src = stripComments(readSrc(CART_LINE));
+  assert.ok(src.includes("{item.name}"), "the name line is the dish's name (values 5.4)");
+  assert.ok(src.includes("{lineMeta(item)}"), "the meta line comes from lineMeta");
+  const base = { price: 140, modifiers: [] as string[], instructions: "" };
+  assert.equal(lineMeta({ ...base, variation: "Large" }), "Large", "a size alone is the whole meta");
+  assert.notEqual(
+    lineMeta({ ...base, variation: "Small" }),
+    lineMeta({ ...base, variation: "Large" }),
+    "two sizes of one dish read differently",
+  );
+  assert.equal(
+    lineMeta({ ...base, variation: "Large", modifiers: ["Extra cheese"] }),
+    "Large, + Extra cheese",
+    "the size comes first, before the add-ons",
   );
 });

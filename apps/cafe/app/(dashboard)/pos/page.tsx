@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/use-auth";
 import { useProducts } from "@/hooks/use-products";
@@ -13,33 +13,34 @@ import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { useItemVoid } from "@/hooks/use-item-void";
 import { useKotPrintBridge } from "@/hooks/use-kot-print-bridge";
 import { useStableCallback } from "@/hooks/use-stable-callback";
+import { useEmptiedSheetClose } from "@/hooks/use-emptied-sheet-close";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   CategorySidebar,
-  CategoryChips,
   ALL_CATEGORIES,
+  type CategoryPickerProps,
 } from "@/components/pos/CategorySidebar";
-import { ProductGrid, GridSkeleton } from "@/components/pos/ProductGrid";
+import { ProductGrid, GridSkeleton, MenuLoadError } from "@/components/pos/ProductGrid";
 import { Cart } from "@/components/pos/Cart";
 import { MobileCartBar } from "@/components/pos/MobileCartBar";
 import { PosHeader } from "@/components/pos/PosHeader";
 import { PrintSources } from "@/components/pos/PrintSources";
 import { PosModals } from "@/components/pos/PosModals";
 import { SelfOrderAutoPrint } from "@/components/pos/SelfOrderAutoPrint";
+import { PosKeys } from "@/components/pos/PosKeys";
 import { printConfigOf } from "@/lib/print";
-import { cn } from "@/lib/utils";
 import { buildCartProps, hasPendingAdjustment } from "@/lib/pos-cart-props";
+import { defaultAddOptions } from "@/lib/pos-price-buttons";
 import {
-  POS_ROOT_CLASS,
-  POS_INSET_CLASS,
-  POS_SPLIT_CLASS,
-  POS_PANE_CLASS,
-  POS_DESKTOP_CART_CLASS,
+  POS_PAGE_CLASS,
+  POS_BODY_GRID_CLASS,
+  POS_ASIDE_CLASS,
+  POS_MAIN_CLASS,
+  POS_CART_CLASS,
 } from "@/lib/pos-layout";
 import type { Order, Product } from "@/types";
 
-// PosHeader is memoized (CB-1d.3c): a still-loading openTabs must not hand it a
-// fresh [] every render, or its three dialog-bearing children re-render per tap.
+// The cart's cells: a loading openTabs must not hand them a fresh [] each render (PosHeader takes the query's own data).
 const NO_OPEN_TABS: Order[] = [];
 
 export default function PosPage() {
@@ -70,6 +71,7 @@ export default function PosPage() {
   });
 
   const [category, setCategory] = useState(ALL_CATEGORIES);
+  const [catQuery, setCatQuery] = useState("");
   const [modifierProduct, setModifierProduct] = useState<Product | null>(null);
   const [modifierOpen, setModifierOpen] = useState(false);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
@@ -83,12 +85,11 @@ export default function PosPage() {
     return m;
   }, [pos.cart]);
 
-  // An open sheet over a TRULY empty cart is a dead end — but "empty" means no
-  // items AND no surviving adjustment (see hasPendingAdjustment).
+  // The open sheet closes itself once its order's items are gone and no adjustment is left (see hasPendingAdjustment),
+  // main's close, even when the adjustment lets go a render later; never an empty sheet opened on an item-less order:
+  // owner Q18's working place (rulings P50 / P55, lib/pos-cart-view.ts emptiedSheetStep).
   const pendingAdjustment = hasPendingAdjustment(pos);
-  useEffect(() => {
-    if (pos.cart.length === 0 && !pendingAdjustment) setMobileCartOpen(false);
-  }, [pos.cart.length, pendingAdjustment]);
+  useEmptiedSheetClose(pos.cart.length, pendingAdjustment, mobileCartOpen, setMobileCartOpen);
 
   // Print only after the receipt/KOT DOM reflects the freshly-placed order.
   const {
@@ -120,83 +121,81 @@ export default function PosPage() {
   });
 
   const { addToCart } = pos;
-  const handleProductClick = useCallback((product: Product) => {
-    // A variation item must never add straight to the cart — there is no
-    // meaningful default size, so the modal's required chooser is the only
-    // way to pick the price that gets billed.
-    if (product.modifiers.length > 0 || (product.variations?.length ?? 0) > 0) {
-      setModifierProduct(product);
-      setModifierOpen(true);
-    } else {
-      addToCart(product);
-    }
+  // A price button adds at once (owner Q5, U1 Task 3): the item, or the
+  // variation its button names, with exactly what the options modal adds when
+  // nothing in it is changed (lib/pos-price-buttons.ts) — so the two lines
+  // merge. A variation item never adds without its size: every adding button
+  // names one, and beyond three sizes one "Choose" button opens the modal.
+  const handleProductClick = useCallback((product: Product, variation?: string) => {
+    addToCart(product, defaultAddOptions(product, variation));
   }, [addToCart]);
 
   // Opens the SAME modal for a plain product too — it already hides its
   // add-ons block when the product carries none, so this is "free": the
-  // operator still gets the instructions/qty fields.
+  // operator still gets the instructions/qty fields. The card's name opens it
+  // (and the "Choose" button of an item with more than three sizes).
   const handleProductOptions = useCallback((product: Product) => {
     setModifierProduct(product);
     setModifierOpen(true);
   }, []);
 
   // PosHeader is memoized: these two usePosTab closures are re-minted every render
-  // (they read the live cart), so latch them; the move-table opener only wraps a
-  // setState and needs plain useCallback.
+  // (they read the live cart), so latch them; the move-table opener (the cart's Table
+  // cell on a tab) only wraps a setState and needs plain useCallback.
   const onResumeTab = useStableCallback(pos.requestResume);
   const onTableChange = useStableCallback(pos.setTable);
   const handleMoveTable = useCallback(() => setMoveTableOpen(true), []);
 
-  const cartProps = buildCartProps(pos, () => itemVoid.setOpen(true), products.data);
+  // One props object for both cart mounts. The head's cells take the floor, the open tabs and the two openers (owner
+  // Q9); a sent line's Void opens the dialog on that line (owner Q10).
+  const cartProps = buildCartProps(pos, itemVoid.openFor, products.data, {
+    tables: tables.data, openTabs: openTabs.data ?? NO_OPEN_TABS, onResumeTab, onMoveTable: handleMoveTable,
+  });
+  // One picker and one Find category text (values 2.6) for the column and the Category sheet (design 6.3).
+  const categoryPicker: CategoryPickerProps = {
+    categories: categories.data,
+    products: products.data,
+    selected: category,
+    onSelect: setCategory,
+    query: catQuery,
+    onQueryChange: setCatQuery,
+  };
 
   return (
-    <div className={POS_ROOT_CLASS}>
-      {/* The root is full-bleed below xl (its bottom edge is the screen edge, for
-          the sticky bar); the header and the split re-inset themselves. */}
-      <div className={POS_INSET_CLASS}>
-        <PosHeader
-          lastOrder={pos.lastOrder}
-          onReprintKot={pos.reprintKot}
-          openTabs={openTabs.data ?? NO_OPEN_TABS}
-          onResumeTab={onResumeTab}
-          resumedOrder={pos.resumedOrder}
-          isBusy={pos.isBusy}
-          onMoveTable={handleMoveTable}
-          tables={tables.data}
-          table={pos.table}
-          onTableChange={onTableChange}
-          customer={pos.customer}
-          onCustomerChange={pos.setCustomer}
-        />
-      </div>
-
-      <div className={cn(POS_SPLIT_CLASS, POS_INSET_CLASS)}>
-        <div className={POS_PANE_CLASS}>
+    <div className={POS_PAGE_CLASS}>
+      {/* The header's switch-order button and its Open orders panel (portaled into the shell's header) and the Floor
+          hand-off (U1 Task 6): nothing of it sits in the page's own flow. */}
+      <PosHeader
+        lastOrder={pos.lastOrder}
+        onReprintKot={pos.reprintKot}
+        openTabs={openTabs.data}
+        onResumeTab={onResumeTab}
+        resumedOrder={pos.resumedOrder}
+        isBusy={pos.isBusy}
+        onTableChange={onTableChange}
+        customerName={pos.customer?.name}
+        count={pos.count} newCount={pos.newCount} total={pos.total}
+      />
+      {/* The body grid (values 2.0): categories from 1100px, the menu, the cart from 1280px (owner Q19); each scrolls. */}
+      <div data-ui="pos-body" className={POS_BODY_GRID_CLASS}>
+        <aside data-ui="pos-aside" className={POS_ASIDE_CLASS}>
           {categories.isLoading ? (
-            <>
-              <Skeleton className="hidden h-full w-44 shrink-0 xl:block" />
-              <Skeleton className="h-10 w-full xl:hidden" />
-            </>
+            <Skeleton className="m-3 flex-1" />
           ) : (
-            <>
-              <CategoryChips
-                categories={categories.data ?? []}
-                selected={category}
-                onSelect={setCategory}
-              />
-              <CategorySidebar
-                categories={categories.data ?? []}
-                selected={category}
-                onSelect={setCategory}
-              />
-            </>
+            <CategorySidebar {...categoryPicker} />
           )}
+        </aside>
+        {/* The menu column (values 3.1): the HTML's one scroller, ProductGrid's sticky toolbar (the search box, the
+            Category button below 1100px) and its list, which scroll under the toolbar. */}
+        <div data-ui="pos-main" className={POS_MAIN_CLASS}>
+          {/* Loading: the toolbar as it will stand (its search box and Category button take no input yet) over
+              HTML-shaped cards, so nothing jumps when the menu arrives; a failed first read: the HTML's no-results
+              line (design 6.3). A failed background refresh keeps the grid: only the toolbar's slot changes
+              (lib/menu-freshness-paths.test.ts M1/M3). */}
           {products.isLoading ? (
-            <GridSkeleton />
+            <GridSkeleton categoryPicker={categoryPicker} />
           ) : products.isError && products.data === undefined ? (
-            <p className="text-sm text-destructive">
-              Failed to load products. Refresh to retry.
-            </p>
+            <MenuLoadError />
           ) : (
             <ProductGrid
               products={products.data ?? []}
@@ -205,26 +204,26 @@ export default function PosPage() {
               onProductOptions={handleProductOptions}
               qtyByProduct={qtyByProduct}
               disabled={pos.isBusy}
+              categoryPicker={categoryPicker}
             />
           )}
         </div>
-
-        <div className={POS_DESKTOP_CART_CLASS}>
+        <section data-ui="pos-cart" className={POS_CART_CLASS}>
           <Cart {...cartProps} />
-        </div>
+        </section>
       </div>
 
-      {/* Below xl: cart lives in a bottom sheet behind a fixed summary bar. */}
+      {/* Below 1280px (values 6.1, 6.3; owner Q18, Q19): the HTML's glass order bar over the page's foot, in every state
+          (on the tab bar on a phone); its "Review order" slides up the cart sheet, the whole screen at every width.
+          The bar reads its figures (count, total, the tab on screen, an unanswered send) from the same cartProps. */}
       <MobileCartBar
         open={mobileCartOpen}
         onOpenChange={setMobileCartOpen}
         cartProps={cartProps}
-        count={pos.count}
-        total={pos.total}
       />
+      <PosKeys busy={pos.isBusy} />
 
-      {/* The five modal roots live in one child whose per-root memo boundaries let a
-          closed modal skip PosPage's re-renders (CB-1d.3c / C3); modal state stays here. */}
+      {/* The modal roots live in one child: per-root memo boundaries skip PosPage's re-renders (CB-1d.3c / C3). */}
       <PosModals
         modifierProduct={modifierProduct}
         modifierOpen={modifierOpen}
@@ -258,6 +257,7 @@ export default function PosPage() {
         onVoidOpenChange={itemVoid.setOpen}
         voidPending={itemVoid.isPending}
         onVoidConfirm={itemVoid.confirm}
+        voidInitialLine={itemVoid.line}
         moveTableOpen={moveTableOpen}
         onMoveTableOpenChange={setMoveTableOpen}
         // `kot:false` — the move's own slip IS the kitchen's paper; a round

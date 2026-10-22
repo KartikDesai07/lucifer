@@ -367,7 +367,8 @@ test("PIN: the header composes the registered words, the actions box (min-w-0, t
   assert.ok(!header.includes('className="sr-only">{name}</h1>'), "the old screen-reader-only cafe h1 is gone");
   const box = /<div ref=\{actionsRef\}([^>]*)\/>/.exec(header)?.[1] ?? "";
   assert.match(box, /data-ui="header-actions"/, "landmark: the actions box");
-  assert.match(box, /data-header-actions=""/, "the page's actions take the header buttons' look there (ruling R6)");
+  // U1 Task 6: except on /pos, whose actions box holds the HTML's own 42px switch-order button (values 1.2).
+  assert.match(box, /data-header-actions=\{pos \? undefined : ""\}/, "the page's actions take the header buttons' look there (ruling R6), on every page but /pos");
   assert.match(box, /className="[^"]*\bmin-w-0\b[^"]*"/, "min-w-0: it never pushes the printer button off screen");
   const page = read(path.join(CAFE_ROOT, "components/shared/PageHeader.tsx"));
   assert.match(page, /useLayoutEffect\(/, "the page registers before the first paint (no subtitle flash)");
@@ -389,8 +390,10 @@ test("ruling R4: no page shows its title twice — POS, Items and every report n
   assert.ok(report.includes("Download CSV") && report.includes("<RangeBar"), "Download CSV stays its action; the range row stays in the body");
   const items = read(path.join(CAFE_ROOT, "app/(dashboard)/products/page.tsx"));
   assert.match(items, /<PageHeader\s+eyebrow="Menu"\s+title="Items"\s+description=\{/, "the Items page's title block goes to the header");
-  // Only the shell's header writes an <h1> on a staff page (the Dashboard's own title row moved there in Task 5).
-  const allowed = new Set(["components/layout/HeaderTitle.tsx"]);
+  // Only the shell's header writes an <h1> on a staff page (the Dashboard's own title row moved there in Task 5): its
+  // title block, and on /pos (U1 Task 1) the header itself, for screen readers only (the HTML's Order header has no
+  // title block; lib/pos-frame.test.ts pins it).
+  const allowed = new Set(["components/layout/HeaderTitle.tsx", "components/layout/Header.tsx"]);
   const offenders: string[] = [];
   const scan = (dir: string) => {
     for (const entry of readdirSync(path.join(CAFE_ROOT, dir), { withFileTypes: true })) {

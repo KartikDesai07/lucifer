@@ -1,627 +1,486 @@
-// POS "New Order" layout ARITHMETIC pins (CB-1 S3; CB-1c round 2, 2026-08-30:
-// a DEFINITE vh/dvh root — vh base, dvh override — that subtracts the
-// RequestAlertBar's own published height via POS_ALERT_HEIGHT_VAR, plus a
-// below-xl min-height floor so a short landscape phone still shows one tile
-// row instead of an empty grid).
+// POS terminal layout ARITHMETIC pins. U1 Task 1 (2026-10-21) replaced the frame: the page is the owner's HTML Order
+// screen (values 1.1, 2.0, 6.2 in docs/superpowers/specs/2026-10-20-pos-html-values.md; design 5): it fills the screen
+// under the 56px header, its body grid holds the category column (from 1100px), the menu column and the cart column
+// (from 1024px), and each region scrolls on its own. CB-1's two-pane switch at 1280px, its stacked phone column, the
+// root's floor and the device height matrices that modelled that stack went with it (lib/pos-frame.test.ts pins the
+// new page, grid and header; this file keeps the arithmetic: the card grid beside the new columns and the class strings
+// that still encode numbers).
 //
-// lib/pos-layout.ts (S0/contract) is the single source of the class
-// strings/numbers the S1/S2 slices consume. This file pins the ARITHMETIC —
-// the breakpoint matrix holds, computed from the constants (never re-typed
-// numbers), plus that the class strings encode those same numbers.
-// Source-read pins live in lib/pos-layout-paths.test.ts + lib/pos-header-paths.test.ts.
+// lib/pos-layout.ts is the single source of the class strings/numbers the page consumes. Source-read pins live in
+// lib/pos-layout-paths.test.ts + lib/pos-header-paths.test.ts.
 //
-// Column-count tiering (viewport breakpoints keyed by sidebar state, not a
-// container query) is UNCHANGED by round 2, and is not there because the
-// staff tablet's browser lacks dvh or container-query support — CB-1c
-// corrected that CB-1b inference (the live stylesheet's un-fallbacked
-// oklch() colours are what a pre-Chromium-111 engine would actually choke
-// on, and the owner confirmed correct colours). The tiers stay viewport-
-// keyed because they are plain data these pins can verify directly, simpler
-// than a container query for that purpose — not a fallback for missing
-// support.
+// U1 Task 3 (values 4.1, 4.3): the menu's cards sit in the HTML's auto-fill grid — as many columns of at least 200px as
+// the menu column holds, 8px apart — so the column count follows the menu column's own width. CB-1b's viewport tiers
+// keyed by the nav's state, the old tile's thumbnail-row arithmetic and its corner button's reserve went with the old
+// tile.
+//
+// Owner Q19 (2026-10-22, after the preview; design 4 Q19-Q21): below 1280px (tablets portrait and landscape, phones) the
+// cart is never a side column or a side sheet: the order bar shows and the cart opens like the phone's, full screen,
+// sliding up from the window's foot; 1280px and wider (PC / laptop, nav open or collapsed) keep the cart column. This
+// overrides the HTML's 1024-1279px cart column and its 820px side sheet, so the pins below that encode those widths moved
+// on purpose (the category column still arrives at the HTML's 1100px).
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 
 import { ABOVE_TAB_BAR_STICKY_CLASS, PHONE_PAGE_FOOT_PX, TAB_BAR_HEIGHT_PX } from "./shell-layout";
+import * as layout from "@/lib/pos-layout";
 
 import {
-  BREAKPOINT_SM_PX,
-  BREAKPOINT_MD_PX,
-  BREAKPOINT_LG_PX,
   BREAKPOINT_XL_PX,
-  BREAKPOINT_2XL_PX,
-  POS_TWO_PANE_MIN_PX,
+  BREAKPOINT_DESK_PX,
+  NAV_RAIL_MIN_PX,
+  NAV_WIDE_MIN_PX,
+  NAV_WIDTH_RAIL_PX,
+  POS_CART_COLUMN_MIN_PX,
   navWidthPx,
-  DASHBOARD_HEADER_REM,
-  MAIN_PADDING_Y_REM_BASE,
-  MAIN_PADDING_Y_REM_MD,
-  MAIN_PADDING_X_REM_BASE,
-  MAIN_PADDING_X_REM_MD,
-  POS_CART_COLUMN_REM,
-  POS_RAIL_REM,
-  POS_PANE_GAP_REM,
-  POS_ROOT_CHROME_REM_BASE,
-  POS_ROOT_CHROME_REM_MD,
-  POS_ROOT_CHROME_REM_XL,
-  POS_ROOT_FLOOR_REM_BASE,
-  POS_ROOT_FLOOR_REM_XL,
-  POS_ROOT_GAP_COUNT,
-  POS_ROOT_GAP_REM,
-  POS_MOBILE_STACK_REM,
-  POS_TILE_MIN_REM,
-  POS_ALERT_HEIGHT_VAR,
-  POS_ROOT_CLASS,
-  POS_INSET_CLASS,
-  POS_SPLIT_CLASS,
-  POS_DESKTOP_CART_CLASS,
-  POS_MOBILE_ONLY_CLASS,
-  POS_DESKTOP_ONLY_CLASS,
+  posBodyColumnsPx,
+  posMainPadBottomPx,
+  posOrderBarInsetsPx,
+  posGridPaneWidthPx,
+  posCardColumns,
+  posCardWidthPx,
+  POS_BODY_COLUMNS_PX,
+  POS_PANE_INSET_PX,
+  POS_PAGE_CLASS,
+  POS_MAIN_CLASS,
+  POS_MAIN_PAD_B_PX,
+  POS_ASIDE_CLASS,
+  POS_CART_CLASS,
+  POS_TOOLBAR_CLASS,
+  POS_LIST_CLASS,
   POS_MOBILE_BAR_CLASS,
+  POS_MOBILE_BAR_BUTTON_CLASS,
+  POS_ORDER_BAR_HEIGHT_PX,
   POS_CART_SHEET_CLASS,
+  POS_CART_SHEET_SCRIM_CLASS,
   POS_CART_SHEET_PANEL_CLASS,
   POS_CART_LIST_CLASS,
-  POS_CHIP_ROW_CLASS,
-  POS_CHIP_CLASS,
-  POS_GRID_CLASS_SIDEBAR_EXPANDED,
-  POS_GRID_CLASS_SIDEBAR_COLLAPSED,
-  POS_GRID_GAP_REM,
-  POS_GRID_COLUMN_TIERS_SIDEBAR_EXPANDED,
-  POS_GRID_COLUMN_TIERS_SIDEBAR_COLLAPSED,
-  POS_MIN_TILE_PX,
-  POS_HEADER_ROW_REM,
-  POS_CHIP_STRIP_REM,
-  POS_SEARCH_ROW_REM,
-  POS_MOBILE_BAR_REM,
-  POS_TILE_CARD_PADDING_PX,
-  POS_TILE_THUMB_PX,
-  POS_TILE_ROW_GAP_PX,
-  POS_MIN_NAME_BOX_PX,
-  POS_TILE_OPTIONS_RESERVE_CLASS,
+  POS_CARD_GRID_CLASS,
+  POS_CARD_MIN_PX,
+  POS_CARD_GAP_PX,
 } from "@/lib/pos-layout";
 
 const REM_PX = 16;
+const CAFE_ROOT = fileURLToPath(new URL("../", import.meta.url));
+const tokens = (cls: string): string[] => cls.split(/\s+/).filter(Boolean);
+
+/** The safe-area inset the phone's tab bar grows by: its own bottom padding (components/layout/TabBar.tsx), read from
+ *  its class so /pos's order bar and menu column add the very same expression (ruling P44). */
+function tabBarInset(): string {
+  const src = readFileSync(path.join(CAFE_ROOT, "components/layout/TabBar.tsx"), "utf8");
+  const m = src.match(/data-ui="tab-bar"\s*className="[^"]*\spb-\[(env\(safe-area-inset-bottom\))\]/);
+  assert.ok(m, "landmark: the tab bar's bottom padding is env(safe-area-inset-bottom)");
+  return m![1];
+}
 
 type SidebarState = "expanded" | "collapsed";
 const SIDEBAR_STATES: ReadonlyArray<SidebarState> = ["expanded", "collapsed"];
-const GRID_TIERS: Record<SidebarState, ReadonlyArray<{ minPx: number; cols: number }>> = {
-  expanded: POS_GRID_COLUMN_TIERS_SIDEBAR_EXPANDED,
-  collapsed: POS_GRID_COLUMN_TIERS_SIDEBAR_COLLAPSED,
-};
 
-// ── pure helpers mirroring lib/pos-layout.ts's own formula ──────────────────
+// ── pure helpers mirroring the HTML's own rules (never lib/pos-layout.ts's functions) ─────────────────────────────
 
-// Pane width is unchanged by CB-1b/CB-1c (still viewport minus sidebar minus
-// main padding minus the two-pane cart+rail gap) — only COLUMN COUNT stopped
-// reading it (that's now a plain viewport breakpoint, see colsFor below).
-// U0 Task 2: the nav's width is the HTML's (navWidthPx: 0 below 720 px, the 76 px rail, the 232 px sidebar from
-// 1280 px unless collapsed), no longer the old 16rem/3rem sidebar from md up.
+// The menu column is the viewport minus the nav, the category column (from 1100px: 200px beside the wide nav, else
+// 220px) and the cart column (owner Q19: from 1280px only, 360px beside the wide nav, else 380px; below it the cart is
+// the bar's full-screen sheet) — values 2.0 bodyCols as Q19 changes them — and the grid sits inside the pane's side
+// inset (20px, 12px on a phone).
 function paneWidthPx(viewportPx: number, sidebarState: SidebarState = "expanded"): number {
-  const navPx = navWidthPx({ viewportWidth: viewportPx, collapsed: sidebarState === "collapsed" });
-  const paddingXRem = viewportPx >= BREAKPOINT_MD_PX ? MAIN_PADDING_X_REM_MD : MAIN_PADDING_X_REM_BASE;
-  let pane = viewportPx - navPx - 2 * paddingXRem * REM_PX;
-  if (viewportPx >= POS_TWO_PANE_MIN_PX) {
-    pane -= (POS_PANE_GAP_REM + POS_CART_COLUMN_REM + POS_RAIL_REM + POS_PANE_GAP_REM) * REM_PX;
-  }
-  return pane;
+  const collapsed = sidebarState === "collapsed";
+  const wide = viewportPx >= BREAKPOINT_XL_PX && !collapsed;
+  const desk = viewportPx >= BREAKPOINT_DESK_PX;
+  const nav = navWidthPx({ viewportWidth: viewportPx, collapsed });
+  const aside = desk ? (wide ? POS_BODY_COLUMNS_PX.wide.aside : POS_BODY_COLUMNS_PX.desk.aside) : 0;
+  const cart = viewportPx < BREAKPOINT_XL_PX ? 0 : wide ? POS_BODY_COLUMNS_PX.wide.cart : POS_BODY_COLUMNS_PX.desk.cart;
+  const inset = viewportPx < NAV_RAIL_MIN_PX ? POS_PANE_INSET_PX.phone : POS_PANE_INSET_PX.base;
+  return viewportPx - nav - aside - cart - 2 * inset;
 }
 
-// Column count is a VIEWPORT breakpoint keyed by sidebar state (CB-1b, kept
-// in CB-1c) — no container query, no pane width input.
-function colsFor(viewportPx: number, sidebarState: SidebarState): number {
-  const tiers = GRID_TIERS[sidebarState];
-  let cols = tiers[0].cols;
-  for (const tier of tiers) {
-    if (tier.minPx <= viewportPx) cols = tier.cols;
-  }
-  return cols;
-}
-
-function tilePx(panePx: number, cols: number): number {
-  return (panePx - (cols - 1) * POS_GRID_GAP_REM * REM_PX) / cols;
+// CSS grid's auto-fill over the HTML's tracks (values 4.1: repeat(auto-fill,minmax(min(200px,100%),1fr)), gap 8px):
+// each track is 200px, or the whole width when that is narrower; as many as fit with the 8px gaps between them, and
+// never fewer than one. Counted one track at a time, not by lib/pos-layout.ts's division.
+function autoFillColumns(gridPx: number): number {
+  const track = Math.min(200, gridPx);
+  let n = 1;
+  while ((n + 1) * track + n * 8 <= gridPx) n += 1;
+  return n;
 }
 
 // ── A. breakpoint matrix ─────────────────────────────────────────────────────
 
-const VIEWPORTS = [360, 412, 740, 768, 820, 1024, 1280, 1366, 1536, 1920];
+// U1 Task 1 adds the HTML's own breakpoints: 1100 (the category column arrives; the owner's tablet) and 1180.
+const VIEWPORTS = [360, 412, 740, 768, 820, 1024, 1100, 1180, 1280, 1366, 1536, 1920];
 
-// g1: the bare (base, un-prefixed) pr-N reserve, parsed from the real class
-// string — never re-typed — anchored to the BASE utility (not the
-// xl:pointer-fine:pr-7 variant) via the (?:^|\s)...(?:\s|$) fence.
-const reserveMatch = POS_TILE_OPTIONS_RESERVE_CLASS.match(/(?:^|\s)pr-(\d+)(?:\s|$)/);
-assert.ok(reserveMatch, `expected a bare pr-N token in POS_TILE_OPTIONS_RESERVE_CLASS ("${POS_TILE_OPTIONS_RESERVE_CLASS}")`);
-const RESERVE_PX = Number(reserveMatch![1]) * 4;
-
-test("PIN: every POS breakpoint keeps the grid tile at or above POS_MIN_TILE_PX, sidebar expanded OR collapsed — and the product-name box left over after card padding/thumb/row-gap/reserve never drops below POS_MIN_NAME_BOX_PX (CB-1d.1 g1)", () => {
+test("PIN: at every POS breakpoint, nav open or collapsed, the card grid holds the HTML's auto-fill columns: each card at least 200px (the whole width when the menu is narrower), the row filling the menu exactly", () => {
   for (const vw of VIEWPORTS) {
     for (const sidebarState of SIDEBAR_STATES) {
       const pane = paneWidthPx(vw, sidebarState);
-      const cols = colsFor(vw, sidebarState);
-      const tile = tilePx(pane, cols);
-      assert.ok(
-        tile >= POS_MIN_TILE_PX,
-        `viewport ${vw}px (sidebar ${sidebarState}): pane ${pane}px -> ${cols} cols -> tile ${tile.toFixed(1)}px ` +
-          `is below POS_MIN_TILE_PX (${POS_MIN_TILE_PX}px)`,
-      );
-
-      const nameBox = tile - 2 * POS_TILE_CARD_PADDING_PX - POS_TILE_THUMB_PX - POS_TILE_ROW_GAP_PX - RESERVE_PX;
-      assert.ok(
-        nameBox >= POS_MIN_NAME_BOX_PX,
-        `viewport ${vw}px (sidebar ${sidebarState}): tile ${tile.toFixed(1)}px -> name box ${nameBox.toFixed(1)}px ` +
-          `is below POS_MIN_NAME_BOX_PX (${POS_MIN_NAME_BOX_PX}px)`,
-      );
+      const cols = posCardColumns(pane);
+      const card = posCardWidthPx(pane);
+      assert.equal(cols, autoFillColumns(pane), `viewport ${vw}px (sidebar ${sidebarState}): pane ${pane}px holds ${autoFillColumns(pane)} auto-fill column(s), got ${cols}`);
+      assert.ok(card >= Math.min(POS_CARD_MIN_PX, pane) - 1e-9, `viewport ${vw}px (sidebar ${sidebarState}): card ${card.toFixed(2)}px is below its 200px track`);
+      assert.ok(Math.abs(cols * card + (cols - 1) * POS_CARD_GAP_PX - pane) < 1e-9, `viewport ${vw}px (sidebar ${sidebarState}): the row fills the ${pane}px menu`);
     }
   }
 });
 
-test("PIN: desktop two-pane column counts cap at 3 everywhere (owner decision 2026-09-29, UI batch 1 §H — supersedes the old v1-four-columns-at-1536+ target)", () => {
-  assert.equal(colsFor(1280, "expanded"), 3, "1280px two-pane grid (sidebar expanded) must give 3 columns");
-  assert.equal(colsFor(1536, "expanded"), 3, "1536px two-pane grid (sidebar expanded) must give AT MOST 3 columns, not the old v1 four");
-  assert.equal(colsFor(1920, "expanded"), 3, "1920px two-pane grid (sidebar expanded) must give AT MOST 3 columns, not the old v1 four");
-  assert.equal(colsFor(1280, "collapsed"), 3, "1280px two-pane grid (sidebar collapsed) must give AT MOST 3 columns, not the old 4");
-});
-
-// The 16rem sidebar those two retired choices were measured against (frozen historical fact; U0 Task 2 made the nav
-// the HTML's 232 px / 76 px).
-const RETIRED_SIDEBAR_WIDTH_REM = 16;
-
-test("PIN: regression oracles — two retired breakpoint/tiering choices starved the grid; the shipped xl-switch does not", () => {
-  // OLD v1 md-switch (retired): two-pane from md (768px) — once the sidebar
-  // is counted the pane goes NEGATIVE, so the two-pane literally did not fit.
-  // Frozen historical fact, independent of which column-tiering system (the
-  // retired container-query one, or today's viewport one) was in play.
-  const OLD_MD_PANE_768 =
-    768 -
-    RETIRED_SIDEBAR_WIDTH_REM * REM_PX -
-    2 * MAIN_PADDING_X_REM_MD * REM_PX -
-    POS_PANE_GAP_REM * REM_PX -
-    POS_CART_COLUMN_REM * REM_PX -
-    POS_RAIL_REM * REM_PX -
-    POS_PANE_GAP_REM * REM_PX;
-  assert.equal(OLD_MD_PANE_768, -88, "sanity: retired v1's md-switch pane at 768px must compute to -88px");
-  assert.ok(OLD_MD_PANE_768 < POS_MIN_TILE_PX, "retired v1's md-switch two-pane at 768px never fit at all (negative pane)");
-
-  // FIRST CB-1 DRAFT (review F1): sidebar-aware but switched at lg (1024),
-  // not xl — same 168px pane as above. At the time this was tested against
-  // the (now-retired) CONTAINER-QUERY tiers {0:2, 400:3, 672:4} (25rem/42rem
-  // in px) — that system is gone (CB-1b), so this oracle keeps those numbers
-  // as a frozen historical fact rather than re-deriving them from a constant
-  // that no longer exists.
-  const DRAFT_LG_PANE_1024 =
-    1024 -
-    RETIRED_SIDEBAR_WIDTH_REM * REM_PX -
-    2 * MAIN_PADDING_X_REM_MD * REM_PX -
-    POS_PANE_GAP_REM * REM_PX -
-    POS_CART_COLUMN_REM * REM_PX -
-    POS_RAIL_REM * REM_PX -
-    POS_PANE_GAP_REM * REM_PX;
-  const RETIRED_CONTAINER_TIERS = [
-    { minPx: 0, cols: 2 },
-    { minPx: 400, cols: 3 },
-    { minPx: 672, cols: 4 },
-  ];
-  let draftCols = RETIRED_CONTAINER_TIERS[0].cols;
-  for (const tier of RETIRED_CONTAINER_TIERS) if (tier.minPx <= DRAFT_LG_PANE_1024) draftCols = tier.cols;
-  const draftTile = tilePx(DRAFT_LG_PANE_1024, draftCols);
-  assert.equal(draftCols, 2, `sanity: the first draft's lg-switch pane (${DRAFT_LG_PANE_1024}px) must land in the retired 2-column tier`);
-  assert.ok(
-    draftTile < POS_MIN_TILE_PX,
-    `regression: the first draft's lg-switch produced an ${draftTile.toFixed(1)}px tile at 1024 — even sidebar-aware, lg was still the wrong breakpoint`,
-  );
-
-  // Shipped: xl-switch means 1024 stays single-pane; column count now comes
-  // from the viewport-keyed colsFor (CB-1b), not a pane-width container query.
-  const shippedPane = paneWidthPx(1024, "expanded");
-  const shippedCols = colsFor(1024, "expanded");
-  const shippedTile = tilePx(shippedPane, shippedCols);
-  assert.ok(
-    shippedTile >= POS_MIN_TILE_PX,
-    `regression: the shipped xl-switch single-pane 1024 (${shippedPane}px, ${shippedCols} cols, ` +
-      `${shippedTile.toFixed(1)}px tile) must be >= POS_MIN_TILE_PX`,
-  );
-});
-
-// ── B. the two grid class strings encode exactly their tier tables ─────────
-
-const NAMED_BREAKPOINT_PX: Record<string, number> = {
-  sm: BREAKPOINT_SM_PX,
-  md: BREAKPOINT_MD_PX,
-  lg: BREAKPOINT_LG_PX,
-  xl: BREAKPOINT_XL_PX,
-  "2xl": BREAKPOINT_2XL_PX,
-};
-
-function parseGridTiers(cls: string): Array<{ minPx: number; cols: number }> {
-  const tiers: Array<{ minPx: number; cols: number }> = [];
-  const bareMatch = cls.match(/(?:^|\s)grid-cols-(\d+)(?:\s|$)/);
-  if (bareMatch) tiers.push({ minPx: 0, cols: Number(bareMatch[1]) });
-  for (const m of cls.matchAll(/(sm|md|lg|xl|2xl):grid-cols-(\d+)/g)) {
-    tiers.push({ minPx: NAMED_BREAKPOINT_PX[m[1]], cols: Number(m[2]) });
-  }
-  tiers.sort((a, b) => a.minPx - b.minPx);
-  return tiers;
-}
-
-test("PIN: POS_GRID_CLASS_SIDEBAR_EXPANDED/COLLAPSED each encode exactly their POS_GRID_COLUMN_TIERS_SIDEBAR_* table", () => {
-  assert.deepStrictEqual(
-    parseGridTiers(POS_GRID_CLASS_SIDEBAR_EXPANDED),
-    POS_GRID_COLUMN_TIERS_SIDEBAR_EXPANDED as unknown as ReturnType<typeof parseGridTiers>,
-    "the tiers parsed out of POS_GRID_CLASS_SIDEBAR_EXPANDED must exactly match POS_GRID_COLUMN_TIERS_SIDEBAR_EXPANDED",
-  );
-  assert.deepStrictEqual(
-    parseGridTiers(POS_GRID_CLASS_SIDEBAR_COLLAPSED),
-    POS_GRID_COLUMN_TIERS_SIDEBAR_COLLAPSED as unknown as ReturnType<typeof parseGridTiers>,
-    "the tiers parsed out of POS_GRID_CLASS_SIDEBAR_COLLAPSED must exactly match POS_GRID_COLUMN_TIERS_SIDEBAR_COLLAPSED",
-  );
-});
-
-test("PIN: neither grid class string uses a container query — the viewport tiers are kept as plain testable data, not a missing-support fallback", () => {
-  for (const [label, cls] of [
-    ["POS_GRID_CLASS_SIDEBAR_EXPANDED", POS_GRID_CLASS_SIDEBAR_EXPANDED],
-    ["POS_GRID_CLASS_SIDEBAR_COLLAPSED", POS_GRID_CLASS_SIDEBAR_COLLAPSED],
-  ] as const) {
-    assert.ok(!cls.includes("@container"), `${label} must not include @container`);
-    assert.ok(!cls.includes("@min-"), `${label} must not include @min-`);
-    assert.match(cls, /grid-cols-2/, `landmark: ${label} must still carry the bare grid-cols-2 base tier`);
-  }
-});
-
-// ── C. arithmetic pins on the other class strings ───────────────────────────
-
-test("PIN: POS_ROOT_CHROME_REM_BASE/_MD count only the TOP half of main's own vertical padding (the root bleeds over the bottom half via its own negative margins below xl); POS_ROOT_CHROME_REM_XL counts BOTH paddings (the v1 two-pane keeps normal margins); POS_ROOT_FLOOR_REM_XL is the unchanged v1 desktop floor", () => {
-  assert.equal(POS_ROOT_CHROME_REM_BASE, DASHBOARD_HEADER_REM + MAIN_PADDING_Y_REM_BASE / 2, "POS_ROOT_CHROME_REM_BASE must equal DASHBOARD_HEADER_REM + MAIN_PADDING_Y_REM_BASE / 2");
-  assert.equal(POS_ROOT_CHROME_REM_BASE, 4.5, "POS_ROOT_CHROME_REM_BASE must be 4.5");
-  assert.equal(POS_ROOT_CHROME_REM_MD, DASHBOARD_HEADER_REM + MAIN_PADDING_Y_REM_MD / 2, "POS_ROOT_CHROME_REM_MD must equal DASHBOARD_HEADER_REM + MAIN_PADDING_Y_REM_MD / 2");
-  assert.equal(POS_ROOT_CHROME_REM_MD, 5, "POS_ROOT_CHROME_REM_MD must be 5");
-  assert.equal(POS_ROOT_CHROME_REM_XL, DASHBOARD_HEADER_REM + MAIN_PADDING_Y_REM_MD, "POS_ROOT_CHROME_REM_XL must equal DASHBOARD_HEADER_REM + MAIN_PADDING_Y_REM_MD (both paddings)");
-  assert.equal(POS_ROOT_CHROME_REM_XL, 6.5, "POS_ROOT_CHROME_REM_XL must be 6.5");
-  assert.equal(POS_ROOT_FLOOR_REM_XL, 30, "POS_ROOT_FLOOR_REM_XL must be 30 — the v1 two-pane's original desktop floor, unchanged");
-});
-
-test("PIN: POS_MOBILE_STACK_REM sums the four below-xl rows plus POS_ROOT_GAP_COUNT gap-3 boundaries to a literal 15rem, and POS_ROOT_FLOOR_REM_BASE adds ONE tile row on top of that", () => {
-  assert.equal(
-    POS_MOBILE_STACK_REM,
-    POS_HEADER_ROW_REM + POS_CHIP_STRIP_REM + POS_SEARCH_ROW_REM + POS_MOBILE_BAR_REM + POS_ROOT_GAP_COUNT * POS_ROOT_GAP_REM,
-    "POS_MOBILE_STACK_REM must equal the sum of the four row constants plus POS_ROOT_GAP_COUNT gap-3 boundaries",
-  );
-  // Deliberately a literal, not just internal-consistency: the point of this
-  // pin is that the stack IS 15rem, not merely that it agrees with itself.
-  assert.equal(POS_MOBILE_STACK_REM, 15, "POS_MOBILE_STACK_REM must be exactly 15rem");
-  assert.equal(POS_ROOT_GAP_COUNT, 4, "POS_ROOT_GAP_COUNT must be 4 — root: header|split and split|bar, pane: strip|grid, ProductGrid: search|scroller");
-  assert.equal(POS_ROOT_FLOOR_REM_BASE, POS_MOBILE_STACK_REM + POS_TILE_MIN_REM, "POS_ROOT_FLOOR_REM_BASE must equal the stack plus one POS_TILE_MIN_REM row");
-  assert.equal(POS_ROOT_FLOOR_REM_BASE, 21.5, "POS_ROOT_FLOOR_REM_BASE must be exactly 21.5rem");
-});
-
-// Utility/variant split for a single Tailwind token: `utility` is the part
-// after the LAST `:` (so a bracketed arbitrary value like
-// `supports-[height:1dvh]:h-[calc(...)]` is not mistaken for two tokens);
-// `variants` is everything before it (empty for a bare, un-prefixed token).
-function utilityOf(token: string): string {
-  const idx = token.lastIndexOf(":");
-  return idx >= 0 ? token.slice(idx + 1) : token;
-}
-
-test("PIN: POS_ROOT_CLASS is a DEFINITE vh/dvh chain (CB-1c round 2) — every below-xl height token subtracts the published alert-bar variable, xl+ height tokens don't, the two min-h floors are variant-scoped (F13), and the full-bleed negative margins stay", () => {
-  // Needles built from the constants (never re-typed literals) — testing.md's
-  // "build by concatenation" rule, so a drifted constant trips this pin
-  // instead of a hand-typed number silently agreeing with itself.
-  const baseH = "h-[calc(100vh-" + POS_ROOT_CHROME_REM_BASE + "rem-var(" + POS_ALERT_HEIGHT_VAR + ",0px))]";
-  const baseDvh = "supports-[height:1dvh]:h-[calc(100dvh-" + POS_ROOT_CHROME_REM_BASE + "rem-var(" + POS_ALERT_HEIGHT_VAR + ",0px))]";
-  const mdH = "md:h-[calc(100vh-" + POS_ROOT_CHROME_REM_MD + "rem-var(" + POS_ALERT_HEIGHT_VAR + ",0px))]";
-  const mdDvh = "md:supports-[height:1dvh]:h-[calc(100dvh-" + POS_ROOT_CHROME_REM_MD + "rem-var(" + POS_ALERT_HEIGHT_VAR + ",0px))]";
-  const xlH = "xl:h-[calc(100vh-" + POS_ROOT_CHROME_REM_XL + "rem)]";
-  const xlDvh = "xl:supports-[height:1dvh]:h-[calc(100dvh-" + POS_ROOT_CHROME_REM_XL + "rem)]";
-  const floorBase = "min-h-[" + POS_ROOT_FLOOR_REM_BASE + "rem]";
-  const floorXl = "xl:min-h-[" + POS_ROOT_FLOOR_REM_XL + "rem]";
-
-  for (const needle of [baseH, baseDvh, mdH, mdDvh, xlH, xlDvh, floorBase, floorXl, "-mx-4", "-mb-4", "md:-mx-6", "md:-mb-6", "xl:mx-0", "xl:mb-0"]) {
-    assert.ok(POS_ROOT_CLASS.includes(needle), `POS_ROOT_CLASS must include "${needle}"`);
-  }
-
-  const tokens = POS_ROOT_CLASS.split(/\s+/).filter(Boolean);
-
-  // Landmarks (paired with every negative pin below, per testing.md).
-  assert.ok(tokens.includes("flex"), "landmark: POS_ROOT_CLASS must still carry the bare flex token");
-  assert.ok(tokens.includes("flex-col"), "landmark: POS_ROOT_CLASS must still carry flex-col");
-  assert.ok(tokens.includes("gap-3"), "landmark: POS_ROOT_CLASS must still carry gap-3");
-  assert.ok(tokens.includes("-mx-4"), "landmark: POS_ROOT_CLASS must still carry -mx-4");
-
-  // Variant-aware negatives (review finding F13): a naive whole-string
-  // "no min-h token" or "no vh token outside xl:" check would either reject
-  // the two LEGITIMATE floor tokens or miss a stray one hiding under a
-  // different variant — so every check below reads utility vs. variant per
-  // token, never the raw string.
-  for (const t of tokens) {
-    const utility = utilityOf(t);
-
-    if (utility.startsWith("min-h-")) {
-      assert.ok(
-        t === floorBase || t === floorXl,
-        `token "${t}" starts with min-h- but is neither the base floor "${floorBase}" nor the xl floor "${floorXl}"`,
-      );
-    }
-    assert.ok(!utility.startsWith("pb-"), `token "${t}" must not reserve bottom padding — the bar is an in-flow sticky child now (POS_MOBILE_BAR_CLASS)`);
-    assert.ok(
-      utility !== "overflow-hidden",
-      `token "${t}" must not be overflow-hidden (any variant) — it would clip the sticky bar in the phone-landscape floor deficit case`,
-    );
-    if (utility.startsWith("h-[")) {
-      if (!t.startsWith("xl:")) {
-        assert.ok(
-          t.includes("var(" + POS_ALERT_HEIGHT_VAR + ",0px)"),
-          `below-xl height token "${t}" must subtract var(${POS_ALERT_HEIGHT_VAR},0px) — the alert bar's published height`,
-        );
-      } else {
-        assert.ok(!t.includes("var("), `xl-prefixed height token "${t}" must NOT reference var( — the alert-bar budget only applies below xl`);
-      }
+test("PIN: lib/pos-layout.ts's posGridPaneWidthPx is the same menu-column arithmetic (the HTML's columns minus the pane's inset)", () => {
+  for (const vw of [...VIEWPORTS, 719, 720, 1023, 1099, 1100, 1279]) {
+    for (const sidebarState of SIDEBAR_STATES) {
+      const viewport = { viewportWidth: vw, collapsed: sidebarState === "collapsed" };
+      assert.equal(posGridPaneWidthPx(viewport), paneWidthPx(vw, sidebarState), `${vw}px (sidebar ${sidebarState}): the grid pane`);
+      const columns = posBodyColumnsPx(viewport);
+      assert.equal(columns.reduce((a, b) => a + b, 0), vw - navWidthPx(viewport), `${vw}px (sidebar ${sidebarState}): the columns fill the page`);
     }
   }
 });
 
-// U0 Task 4: on a phone the tab bar (59px, values 2.6) is fixed at the foot and <main> keeps 92px clear there (values
-// 2.1 screenPadB). The POS root ends where the bar starts, so the sticky cart bar sits right on it (the HTML's order
-// screen keeps its bar 60px up) and nothing scrolls: the root's height subtracts the bar, and its negative bottom
-// margin bleeds over main's 92px foot instead of 16px.
-test("PIN: on a phone the POS root stops on the tab bar — its height subtracts the 59px bar and it bleeds over main's 92px foot", () => {
+// U1 Task 2 (values 3.1 listPad): the grid sits in the HTML's list wrapper, 16px 20px (14px 12px on a phone); its side
+// padding is the inset the card arithmetic above subtracts. U1 Task 3: the HTML sets no line-height on its cards, group
+// headings or messages (values 0.5: normal).
+test("PIN: the grid's inset is the list wrapper's padding POS_LIST_CLASS draws (px-5 py-4, max-tab:px-3 max-tab:py-3.5), at line-height normal", () => {
+  const cls = tokens(POS_LIST_CLASS);
+  assert.ok(cls.includes(`px-${POS_PANE_INSET_PX.base / 4}`), `POS_LIST_CLASS must carry px-${POS_PANE_INSET_PX.base / 4} (${POS_PANE_INSET_PX.base}px)`);
+  assert.ok(cls.includes(`max-tab:px-${POS_PANE_INSET_PX.phone / 4}`), `POS_LIST_CLASS must carry max-tab:px-${POS_PANE_INSET_PX.phone / 4} (${POS_PANE_INSET_PX.phone}px)`);
+  assert.ok(cls.includes("py-4") && cls.includes("max-tab:py-3.5"), "16px above and below, 14px on a phone (values 0.3 listPad)");
+  assert.ok(cls.includes("leading-[normal]"), "line-height normal for the cards, the group headings and the messages");
+});
+
+// U1 Task 2 (values 3.1, 0.3 toolPad): the toolbar sticks at the top of main on the page's --bg, 14px 20px 4px (10px
+// 12px 4px on a phone). Main is the HTML's one scroller, so the list scrolls under the toolbar at every height: the
+// pane's floor (CB-1c's rule in Task 1's interim frame) is gone with the pane.
+test("PIN: the toolbar is the HTML's sticky strip with its toolPad, and main is the one scroller (no floor)", () => {
+  const cls = tokens(POS_TOOLBAR_CLASS);
+  for (const t of ["sticky", "top-0", "z-[3]", "bg-background", "px-5", "pt-3.5", "pb-1", "max-tab:px-3", "max-tab:pt-2.5"]) {
+    assert.ok(cls.includes(t), `POS_TOOLBAR_CLASS (values 3.1 toolbar): "${t}"`);
+  }
+  assert.ok(tokens(POS_MAIN_CLASS).includes("overflow-auto"), "the menu column scrolls the list under the toolbar");
+  assert.ok(!tokens(POS_MAIN_CLASS).includes("flex"), "main is a block, as the HTML's (the toolbar and the list stack in flow)");
+  // U1 Task 6: the interim control row above the toolbar went with its last controls (the header's switch-order button
+  // and the Open orders panel), so the toolbar sits at the HTML's top of main.
+  for (const gone of ["POS_PANE_CLASS", "POS_PANE_FLOOR_PX", "POS_CHIP_CLASS", "POS_CHIP_ROW_CLASS", "POS_DESKTOP_ONLY_CLASS", "POS_CONTROLS_CLASS"]) {
+    assert.ok(!readFileSync(path.join(CAFE_ROOT, "lib/pos-layout.ts"), "utf8").includes(`export const ${gone}`), `lib/pos-layout.ts no longer exports ${gone}`);
+  }
+});
+
+// U1 Task 3 (values 4.3, design 5 "The grid is repeat(auto-fill,...)"): the HTML's grid decides the columns from the
+// menu column's width, so the 2026-09-29 cap of three columns (UI batch 1 §H, made for the old tile) gives way to it.
+// Owner Q19: below 1280px no cart column takes the menu's room, so the menu holds more cards at 1024-1279px than the
+// HTML's two (four at 1024px, three at 1100px beside the category column).
+test("PIN: the card columns follow the menu column's width: two beside the cart, four at 1024px and three at 1100px with no cart column (owner Q19), three at 820px, one on a phone", () => {
+  assert.equal(posCardColumns(paneWidthPx(1280, "expanded")), 2, "1280px, nav open: 2 columns (values 4.3)");
+  assert.equal(posCardColumns(paneWidthPx(1280, "collapsed")), 2, "1280px, nav collapsed: 2 columns (values 4.3)");
+  assert.equal(posCardColumns(paneWidthPx(1024)), 4, "1024px: the 908px menu holds four (owner Q19: no cart column; the HTML's two)");
+  assert.equal(posCardColumns(paneWidthPx(1100)), 3, "1100px beside the rail and the category column: the 764px menu holds three (owner Q19)");
+  assert.equal(posCardColumns(paneWidthPx(1279)), 4, "1279px: the 943px menu holds four (owner Q19)");
+  assert.equal(posCardColumns(paneWidthPx(820)), 3, "820px: 3 columns (values 4.3)");
+  assert.equal(posCardColumns(paneWidthPx(390)), 1, "a phone: 1 column (values 4.3)");
+  assert.equal(posCardColumns(paneWidthPx(1920)), 5, "1920px: the 1088px menu holds five");
+});
+
+// ── B. the card grid's class string encodes the HTML's grid ─────────────────
+
+test("PIN: POS_CARD_GRID_CLASS is the HTML's card grid (values 4.1): auto-fill tracks of minmax(min(200px,100%),1fr), 8px apart — one grid at every width, no container query", () => {
+  const cls = tokens(POS_CARD_GRID_CLASS);
+  assert.ok(cls.includes("grid"), "a grid");
+  assert.ok(cls.includes(`grid-cols-[repeat(auto-fill,minmax(min(${POS_CARD_MIN_PX}px,100%),1fr))]`), "the HTML's auto-fill tracks");
+  assert.ok(cls.includes(`gap-${POS_CARD_GAP_PX / 4}`), "8px apart");
+  assert.ok(!cls.some((t) => t.includes(":")), "no variant: the same grid at every width");
+  assert.ok(!POS_CARD_GRID_CLASS.includes("@container") && !POS_CARD_GRID_CLASS.includes("@min-"), "no container query");
+  for (const gone of [
+    "POS_GRID_CLASS_SIDEBAR_EXPANDED",
+    "POS_GRID_COLUMN_TIERS_SIDEBAR_EXPANDED",
+    "POS_MIN_TILE_PX",
+    "POS_TILE_OPTIONS_RESERVE_CLASS",
+  ]) {
+    assert.ok(!readFileSync(path.join(CAFE_ROOT, "lib/pos-layout.ts"), "utf8").includes(`export const ${gone}`), `lib/pos-layout.ts no longer exports ${gone}`);
+  }
+});
+
+// ── C. the frame's breakpoints and the classes that encode numbers ─────────
+
+test("PIN: the HTML's desk breakpoint is the app's desk: variant (1100px = 68.75rem in app/globals.css)", () => {
+  const css = readFileSync(path.join(CAFE_ROOT, "app/globals.css"), "utf8");
+  const desk = css.match(/--breakpoint-desk:\s*([\d.]+)rem;/);
+  assert.ok(desk, "app/globals.css declares --breakpoint-desk in rem");
+  assert.equal(Number(desk![1]) * REM_PX, BREAKPOINT_DESK_PX, "BREAKPOINT_DESK_PX is the CSS breakpoint");
+  const tab = css.match(/--breakpoint-tab:\s*([\d.]+)rem;/);
+  assert.equal(Number(tab?.[1]) * REM_PX, NAV_RAIL_MIN_PX, "the HTML's phone ends at the CSS tab breakpoint (720px)");
+});
+
+// values 6.2: on a phone main runs under the order bar and the 59px tab bar to the window's foot ([0,56,390,788]),
+// keeping 150px clear at its end (the bar 65 + the tab bar 59 + 26); 100px at 820 (the bar + 35).
+test("PIN: on a phone the page runs under the tab bar to the window's foot, and main keeps the bar and the tab bar clear", () => {
   assert.equal(TAB_BAR_HEIGHT_PX, 1 + 2 + 56, "the bar: a 1px rule, 2px top padding, 56px tabs");
   assert.equal(PHONE_PAGE_FOOT_PX, 92, "values 2.1 screenPadB on a phone");
-  const phoneH = "max-tab:h-[calc(100vh-" + POS_ROOT_CHROME_REM_BASE + "rem-" + TAB_BAR_HEIGHT_PX + "px-var(" + POS_ALERT_HEIGHT_VAR + ",0px))]";
-  const phoneDvh =
-    "max-tab:supports-[height:1dvh]:h-[calc(100dvh-" + POS_ROOT_CHROME_REM_BASE + "rem-" + TAB_BAR_HEIGHT_PX + "px-var(" + POS_ALERT_HEIGHT_VAR + ",0px))]";
-  const phoneBleed = "max-tab:-mb-[" + PHONE_PAGE_FOOT_PX + "px]";
-  for (const needle of [phoneH, phoneDvh, phoneBleed]) {
-    assert.ok(POS_ROOT_CLASS.split(/\s+/).includes(needle), `POS_ROOT_CLASS must include "${needle}"`);
-  }
-  // The layout's own pb-[92px] is pinned in lib/tab-bar-paths.test.ts and lib/pos-layout-paths.test.ts.
-});
-
-// Fix round 1: on a phone too short for the root's floor (360x400, 640x360) the document scrolls and the sticky cart bar
-// stuck at bottom 0 sat over the tab bar. It sticks above the bar instead, whatever the height.
-test("PIN: on a phone the POS cart bar always sticks above the tab bar (the shell's 59px sticky offset)", () => {
-  assert.equal(ABOVE_TAB_BAR_STICKY_CLASS, "max-tab:bottom-[" + TAB_BAR_HEIGHT_PX + "px]", "the offset is the tab bar's height");
-  assert.ok(POS_MOBILE_BAR_CLASS.split(/\s+/).includes(ABOVE_TAB_BAR_STICKY_CLASS), "POS_MOBILE_BAR_CLASS carries it");
-  assert.ok(POS_MOBILE_BAR_CLASS.split(/\s+/).includes("bottom-0"), "landmark: from 720px it still sticks to the screen's foot");
-});
-
-// ── C2. height-chain matrix (CB-1c round 2 — the min-content stack vs. the
-// DEFINITE vh/dvh root, alert-bar budget included; plan §H0's headless-
-// -Chrome arbiter probe validated this formula against the real chain) ─────
-
-// Visible-height figures are DOCUMENTED ESTIMATES (plan §H0's own probe
-// numbers, arbiter-validated design), not measured facts about every real
-// device out there. 740x360's 360 is the arbiter's own probe value (the full
-// viewport height, not a browser-chrome-adjusted figure); the 300 row models
-// the same phone with its address bar still showing (a toolbar-visible
-// landscape phone).
-const ALERT_BAND_PX_ESTIMATE = 48; // py-2 + text-sm content estimate — real height comes from the ResizeObserver at runtime; this is only a plausible test value.
-// Modelling note (no assertion change): the runtime subtracts the band's REAL
-// measured offsetHeight, not this estimate — a band that wraps to more lines
-// on a narrow phone can legitimately be taller than 48px, and a taller band
-// can legitimately make the POS_ROOT_FLOOR_REM_BASE (21.5rem) floor bite on a
-// device/row that this estimate alone would show clearing it.
-
-interface DeviceRow {
-  readonly label: string;
-  readonly visibleH: number;
-  readonly mdPlus: boolean;
-  /** Narrower than 720 px: the phone's tab bar (U0 Task 4) sits under the root. */
-  readonly tabBar?: boolean;
-}
-
-const DEVICE_MATRIX_BASE: ReadonlyArray<DeviceRow> = [
-  { label: "360x640 phone portrait", visibleH: 560, mdPlus: false, tabBar: true },
-  { label: "412x915 phone portrait", visibleH: 800, mdPlus: false, tabBar: true },
-  // Fix round 1: short phones under the tab bar (narrower than 720px), where the root's floor bites.
-  { label: "640x360 phone landscape (tab bar)", visibleH: 360, mdPlus: false, tabBar: true },
-  { label: "360x400 short phone (tab bar)", visibleH: 400, mdPlus: false, tabBar: true },
-  { label: "740x360 phone landscape (full viewport, arbiter probe value)", visibleH: 360, mdPlus: false },
-  { label: "740x300 phone landscape (toolbar showing)", visibleH: 300, mdPlus: false },
-  { label: "768x1024 tablet portrait", visibleH: 904, mdPlus: true },
-  { label: "1024x768 tablet landscape", visibleH: 648, mdPlus: true },
-  { label: "~1100x~600 owner tablet landscape", visibleH: 600, mdPlus: true },
-];
-
-type DeviceMatrixRow = DeviceRow & { readonly bandPx: number };
-
-// Each row appears twice: once with no alert band, once with the estimated
-// band height — the root's height chain must hold either way.
-const DEVICE_MATRIX: ReadonlyArray<DeviceMatrixRow> = DEVICE_MATRIX_BASE.flatMap((row) => [
-  { ...row, bandPx: 0 },
-  { ...row, bandPx: ALERT_BAND_PX_ESTIMATE },
-]);
-
-const LANDSCAPE_LABELS = new Set([
-  "740x360 phone landscape (full viewport, arbiter probe value)",
-  "740x300 phone landscape (toolbar showing)",
-  "640x360 phone landscape (tab bar)",
-  "360x400 short phone (tab bar)",
-]);
-
-// chromePx: the header plus the TOP HALF of main's own vertical padding only
-// — the root bleeds over the BOTTOM half via its own negative margins below
-// xl, so only the top half is chrome the root's own height has to subtract.
-function chromePxFor(row: DeviceRow): number {
-  const chromeRem = row.mdPlus ? POS_ROOT_CHROME_REM_MD : POS_ROOT_CHROME_REM_BASE;
-  return chromeRem * REM_PX;
-}
-
-function rootRawPxFor(row: DeviceMatrixRow): number {
-  return row.visibleH - chromePxFor(row) - row.bandPx - (row.tabBar ? TAB_BAR_HEIGHT_PX : 0);
-}
-
-function rootPxFor(row: DeviceMatrixRow): number {
-  return Math.max(rootRawPxFor(row), POS_ROOT_FLOOR_REM_BASE * REM_PX);
-}
-
-function gridPxFor(row: DeviceMatrixRow): number {
-  return rootPxFor(row) - POS_MOBILE_STACK_REM * REM_PX;
-}
-
-function docScrollPxFor(row: DeviceMatrixRow): number {
-  return rootPxFor(row) - rootRawPxFor(row);
-}
-
-const MIN_GRID_PX = POS_TILE_MIN_REM * REM_PX; // 104
-
-test("PIN: every non-landscape device in the matrix (either alert-band value) never document-scrolls and keeps >=104px of grid", () => {
-  for (const row of DEVICE_MATRIX) {
-    if (LANDSCAPE_LABELS.has(row.label)) continue;
-    const docScroll = docScrollPxFor(row);
-    const grid = gridPxFor(row);
-    assert.equal(docScroll, 0, `${row.label} (band ${row.bandPx}px): document must not scroll, got ${docScroll}px`);
-    assert.ok(grid >= MIN_GRID_PX, `${row.label} (band ${row.bandPx}px): grid ${grid}px must be >= ${MIN_GRID_PX}px`);
-  }
-});
-
-test("PIN: the short and landscape phone rows hit the root floor at every alert-band value — accepted Q1 deficit (the floor keeps one tile row and the sticky bar in view, rather than a header/strip/search with NO products)", () => {
-  for (const row of DEVICE_MATRIX) {
-    if (!LANDSCAPE_LABELS.has(row.label)) continue;
-    const docScroll = docScrollPxFor(row);
-    const grid = gridPxFor(row);
-    assert.ok(docScroll > 0, `${row.label} (band ${row.bandPx}px): must have a positive document-scroll deficit, got ${docScroll}px`);
-    assert.equal(grid, MIN_GRID_PX, `${row.label} (band ${row.bandPx}px): grid must sit exactly at the floor (${MIN_GRID_PX}px)`);
-  }
-});
-
-test("PIN: with the alert band present, the owner-tablet row still clears double the grid floor", () => {
-  const ownerRow = DEVICE_MATRIX.find(
-    (r) => r.label === "~1100x~600 owner tablet landscape" && r.bandPx === ALERT_BAND_PX_ESTIMATE,
-  );
-  assert.ok(ownerRow, "owner-tablet-with-band row must exist in DEVICE_MATRIX");
-  const grid = gridPxFor(ownerRow!);
-  assert.ok(grid >= MIN_GRID_PX * 2, `owner-tablet with alert band: grid ${grid}px must be >= ${MIN_GRID_PX * 2}px`);
-});
-
-// ── C3. xl (desktop two-pane) root/floor matrix — arbiter F5 datapoint ─────
-// At xl the alert-bar budget never applies (the C-section pin above proves no
-// xl height token references var(--pos-alert-h,...)), so every row here
-// models the band as 0px — not because the band can't render at xl, but
-// because xl's height tokens never subtract it (v1's un-budgeted desktop
-// behaviour, unchanged by CB-1c). "grid" isn't computed here: at xl the
-// layout is the two-pane rail|grid|cart split, not the below-xl single-column
-// min-content stack that gridPxFor/POS_MOBILE_STACK_REM model.
-interface XlDeviceRow {
-  readonly label: string;
-  readonly visibleH: number;
-}
-
-const XL_DEVICE_MATRIX: ReadonlyArray<XlDeviceRow> = [
-  { label: "1280x560 short desktop window", visibleH: 560 },
-  { label: "1280x800 desktop", visibleH: 800 },
-  { label: "1920x1080 desktop", visibleH: 1080 },
-];
-
-function xlChromePx(): number {
-  return POS_ROOT_CHROME_REM_XL * REM_PX;
-}
-
-function xlRootRawPxFor(row: XlDeviceRow): number {
-  return row.visibleH - xlChromePx();
-}
-
-function xlRootPxFor(row: XlDeviceRow): number {
-  return Math.max(xlRootRawPxFor(row), POS_ROOT_FLOOR_REM_XL * REM_PX);
-}
-
-function xlDocScrollPxFor(row: XlDeviceRow): number {
-  return xlRootPxFor(row) - xlRootRawPxFor(row);
-}
-
-test("PIN: xl root/floor matrix — POS_ROOT_CHROME_REM_XL + POS_ROOT_FLOOR_REM_XL reproduce the arbiter's F5 desktop-floor datapoint (1280x560 root 480px, doc-scroll 24px) and the two floor-clearing rows scroll 0", () => {
-  const EXPECTED: Record<string, { root: number; docScroll: number }> = {
-    "1280x560 short desktop window": { root: 480, docScroll: 24 },
-    "1280x800 desktop": { root: 696, docScroll: 0 },
-    "1920x1080 desktop": { root: 976, docScroll: 0 },
-  };
-  for (const row of XL_DEVICE_MATRIX) {
-    const expected = EXPECTED[row.label];
-    assert.ok(expected, `no expectation recorded for "${row.label}"`);
-    assert.equal(xlRootPxFor(row), expected!.root, `${row.label}: root px must be ${expected!.root}`);
-    assert.equal(
-      xlDocScrollPxFor(row),
-      expected!.docScroll,
-      `${row.label}: document-scroll deficit must be ${expected!.docScroll}`,
-    );
-  }
-});
-
-test("PIN: POS_INSET_CLASS re-insets the header/split inside the full-bleed root, a no-op at xl+", () => {
-  assert.equal(POS_INSET_CLASS, "px-4 md:px-6 xl:px-0");
-});
-
-test("PIN: POS_CART_SHEET_CLASS carries a vh base with a supports-dvh override, plus the Radix-X hider", () => {
-  assert.ok(POS_CART_SHEET_CLASS.includes("h-[90vh]"), "POS_CART_SHEET_CLASS must include h-[90vh]");
-  assert.ok(POS_CART_SHEET_CLASS.includes("supports-[height:1dvh]:h-[90dvh]"), "POS_CART_SHEET_CLASS must include supports-[height:1dvh]:h-[90dvh]");
-  assert.ok(POS_CART_SHEET_CLASS.includes("[&>button]:hidden"), "POS_CART_SHEET_CLASS must still hide Radix's own close button");
-});
-
-test("PIN: POS_MOBILE_BAR_CLASS is sticky and in-flow, carrying NO margins of its own — the full-bleed ROOT (not the bar) reaches the screen edge now", () => {
-  assert.match(POS_MOBILE_BAR_CLASS, /(^|\s)sticky(\s|$)/, "POS_MOBILE_BAR_CLASS must include sticky");
-  assert.match(POS_MOBILE_BAR_CLASS, /(^|\s)shrink-0(\s|$)/, "POS_MOBILE_BAR_CLASS must include shrink-0");
+  const page = tokens(POS_PAGE_CLASS);
+  assert.ok(page.includes(`-mb-[${PHONE_PAGE_FOOT_PX}px]`), "the page bleeds over <main>'s 92px phone foot, to the window's foot");
+  assert.ok(!page.some((t) => t.startsWith("max-tab:h-")), "no phone height of its own: the page is the window minus the header at every width");
+  assert.ok(POS_MAIN_PAD_B_PX.phone > TAB_BAR_HEIGHT_PX + POS_ORDER_BAR_HEIGHT_PX, "150px clears the order bar on the tab bar");
+  // Ruling P44: the bar rides up by the tab bar's safe-area inset, so main's foot grows by it too (150px at inset 0).
   assert.ok(
-    !POS_MOBILE_BAR_CLASS.includes("-mb"),
-    "POS_MOBILE_BAR_CLASS must not carry its own -mb margin — a negative margin on a sticky element hangs its border box below the viewport while stuck",
+    tokens(POS_MAIN_CLASS).includes(`max-tab:pb-[calc(${POS_MAIN_PAD_B_PX.phone}px+${tabBarInset()})]`),
+    "main's phone padding: 150px plus the tab bar's safe-area inset",
   );
-  assert.ok(!POS_MOBILE_BAR_CLASS.includes("-mx"), "POS_MOBILE_BAR_CLASS must not carry its own -mx margin — the full-bleed ROOT already reaches the screen edge");
-  assert.ok(!POS_MOBILE_BAR_CLASS.includes("fixed"), "POS_MOBILE_BAR_CLASS must not be position:fixed — it's an in-flow sticky child");
-  assert.ok(!POS_MOBILE_BAR_CLASS.includes("inset-x-0"), "POS_MOBILE_BAR_CLASS must not carry the old inset-x-0 (fixed-position leftover)");
-  assert.ok(!POS_MOBILE_BAR_CLASS.includes("left-0"), "POS_MOBILE_BAR_CLASS must not carry the old left-0 (fixed-position leftover, sidebar tracking is gone too)");
+  assert.equal(tokens(POS_MAIN_CLASS).filter((t) => t.startsWith("max-tab:pb-")).length, 1, "one phone padding");
 });
 
-test("PIN: POS_SPLIT_CLASS gives the cart its fixed column only from xl, never md or lg", () => {
-  const splitCols = `xl:grid-cols-[1fr_${POS_CART_COLUMN_REM}rem]`;
-  assert.ok(POS_SPLIT_CLASS.includes(splitCols), `POS_SPLIT_CLASS must include "${splitCols}"`);
-  assert.ok(!POS_SPLIT_CLASS.includes("md:grid-cols"), "POS_SPLIT_CLASS must not flip to two-pane at md");
+// U1 Task 7 (values 6.1, 6.2): the order bar is a 1px rule, 10px of padding above and below the 44px "Review order" —
+// 65px — and main's foot is the HTML's room for it: on a phone the bar on the 59px tab bar and 26px of air (150), at
+// 720-1023px the bar and 35px (100). Owner Q19: the bar shows up to 1279px, so the 100px foot runs to 1279px too.
+test("PIN: the order bar is 65px tall, and main's foot is the HTML's room for it: 150 = bar + tab bar + 26 on a phone, 100 = bar + 35 below 1280px (owner Q19)", () => {
+  const bar = tokens(POS_MOBILE_BAR_CLASS);
+  assert.ok(bar.includes("border-t") && bar.includes("py-2.5"), "values 6.1: the bar's 1px top rule and its 10px padding");
+  assert.ok(tokens(POS_MOBILE_BAR_BUTTON_CLASS).includes("h-11"), "values 6.1: the 44px Review order button");
+  assert.equal(POS_ORDER_BAR_HEIGHT_PX, 1 + 10 + 44 + 10, "values 6.1: the bar measures 65px ([76,1115,744,65] at 820)");
+  assert.equal(POS_MAIN_PAD_B_PX.phone, POS_ORDER_BAR_HEIGHT_PX + TAB_BAR_HEIGHT_PX + 26, "values 6.2: 150px on a phone");
+  assert.equal(POS_MAIN_PAD_B_PX.cmp, POS_ORDER_BAR_HEIGHT_PX + 35, "values 6.2: 100px wherever the bar shows from 720px");
+  assert.equal(posMainPadBottomPx(390), 150, "390px: the phone's 150");
+  assert.equal(posMainPadBottomPx(820), 100, "820px: the tablet's 100");
+  assert.equal(posMainPadBottomPx(1024), 100, "1024px: the bar's 100 (owner Q19; the HTML's column foot was 16)");
+  assert.equal(posMainPadBottomPx(1279), 100, "1279px: still the bar's 100 (owner Q19)");
+  assert.equal(posMainPadBottomPx(1280), 16, "1280px: beside the cart column, 16");
+  assert.ok(
+    tokens(POS_MAIN_CLASS).includes(`max-xl:pb-[calc(${POS_MAIN_PAD_B_PX.cmp}px+${tabBarInset()})]`),
+    "main's 100px below 1280px (owner Q19), plus the safe-area inset the bar grows by from 720px (ruling P49)",
+  );
+  assert.ok(!tokens(POS_MAIN_CLASS).some((t) => t.startsWith("max-lg:")), "no 1024px foot any more (owner Q19)");
 });
 
-test("PIN: exactly one cart mount is visible at any width — the desktop/mobile-only class literals switch at xl", () => {
-  assert.equal(POS_DESKTOP_CART_CLASS, "hidden min-h-0 xl:block");
-  assert.equal(POS_MOBILE_ONLY_CLASS, "xl:hidden");
-  assert.ok(POS_DESKTOP_ONLY_CLASS.startsWith("hidden "), 'POS_DESKTOP_ONLY_CLASS must start with "hidden "');
-  assert.ok(POS_DESKTOP_ONLY_CLASS.includes("xl:flex"), 'POS_DESKTOP_ONLY_CLASS must include "xl:flex"');
+// Ruling P49 (U1 audit wave, report I-1 / M-4): main's bar added env(safe-area-inset-bottom) to its bottom padding at
+// every width; at 720-1279px the branch's bar sits on the window's foot (no tab bar under it), so in the Android app
+// (WebView 154, an inset of about 24.8px) "Review order" sat in the gesture strip. Everything /pos pins to the window's
+// foot there adds the inset, with the values at inset 0 unchanged (a desktop browser reports 0: no pixel moves).
+test("PIN: ruling P49 — from 720px the order bar, main's foot, the toast, the cart's footer and the category lists add the bottom safe-area inset", () => {
+  const inset = tabBarInset();
+  const bar = tokens(POS_MOBILE_BAR_CLASS);
+  assert.ok(bar.includes("py-2.5"), "landmark: the bar's 10px padding (values 6.1)");
+  assert.ok(bar.includes(`tab:pb-[calc(10px+${inset})]`), "from 720px the bar's 10px bottom padding grows by the inset (main's bar did at every width)");
+  assert.equal(bar.filter((t) => /(?:^|:)pb-/.test(t)).length, 1, "one bottom padding token: below 720px the tab bar under the bar takes the inset");
+  const main = tokens(POS_MAIN_CLASS);
+  assert.ok(main.includes(`max-xl:pb-[calc(${POS_MAIN_PAD_B_PX.cmp}px+${inset})]`), "main keeps the taller bar clear at 720-1279px");
+  assert.ok(main.includes(`max-tab:pb-[calc(${POS_MAIN_PAD_B_PX.phone}px+${inset})]`), "the phone's value as it was (ruling P44)");
+  const src = (rel: string): string => readFileSync(path.join(CAFE_ROOT, rel), "utf8");
+  const classOf = (file: string, name: string): string[] => {
+    const m = src(file).match(new RegExp(`const ${name} =\\s*"([^"]*)"`));
+    assert.ok(m, `landmark: ${file} declares ${name}`);
+    return tokens(m![1]);
+  };
+  const footer = classOf("components/pos/Cart.tsx", "FOOTER_CLASS");
+  assert.ok(footer.includes(`pb-[calc(14px+${inset})]`), "the cart's footer is the window's foot in the sheet and in the column: 14px + the inset");
+  assert.ok(footer.includes(`max-tab:pb-[calc(12px+${inset})]`), "12px + the inset on a phone, as before");
+  assert.ok(!footer.includes("pb-3.5"), "the plain 14px is gone");
+  const modifierFoot = classOf("components/pos/ModifierModal.tsx", "FOOT_CLASS");
+  assert.ok(modifierFoot.includes("pb-[18px]"), "the item options foot keeps its 18px where the panel is centred (from 720px)");
+  assert.ok(modifierFoot.includes(`max-tab:pb-[calc(18px+${inset})]`), "below 720px the panel sits on the window's foot: 18px + the inset");
+  const toaster = src("components/layout/AppToaster.tsx");
+  assert.ok(
+    toaster.includes(`tab:bottom-[calc(92px+${inset})]!`),
+    "the /pos toast clears the taller bar and the sheet's foot at 720-1279px: 92px + the inset",
+  );
+  // Ruling P56 (the audit fix round): on a phone the bar rides on the tab bar, up by the inset (P44), so the /pos toast's
+  // 140px (the bar 65 + the tab bar 59 + 16 at inset 0) rides up by it too.
+  assert.ok(toaster.includes(`"toaster group bottom-[calc(140px+${inset})]! `), "the /pos phone toast: 140px + the inset");
+  assert.ok(140 > POS_ORDER_BAR_HEIGHT_PX + TAB_BAR_HEIGHT_PX, "140px clears the bar on the tab bar at inset 0");
+  const categories = src("components/pos/CategorySidebar.tsx");
+  assert.match(
+    categories,
+    new RegExp(`data-ui="pos-cat-list" className="[^"]*max-xl:pb-\\[calc\\(${POS_MAIN_PAD_B_PX.cmp}px\\+env\\(safe-area-inset-bottom\\)\\)\\]`),
+    "the category column's list keeps the taller bar clear at 1100-1279px, as main does",
+  );
+  assert.match(
+    categories,
+    /data-ui="pos-category-list" className="[^"]*\bpb-\[calc\(24px\+env\(safe-area-inset-bottom\)\)\]/,
+    "the Category sheet lies on the window's foot below 1100px: its list's 24px foot + the inset",
+  );
 });
 
-test("PIN: the cart sheet's scrollable panel and its line-list floor carry the right utility classes", () => {
+// values 0.3 obLeft / obBottom, 6.1; design 8: the bar starts at the nav's edge (the 76px rail from 720px, the window's
+// edge on a phone) and runs to the window's right edge; on a phone it sits ON the 59px tab bar (the HTML leaves 1px of
+// the menu showing between them: not copied), from 720px on the window's foot. Owner Q19: the bar runs up to 1279px (the
+// nav is the rail there, collapsed or not: the wide nav starts at 1280px); from 1280px there is no bar.
+test("PIN: the bar's place: beside the nav, on the phone's tab bar, at the window's foot from 720px to 1279px (owner Q19)", () => {
+  const at = (w: number, collapsed = false) => posOrderBarInsetsPx({ viewportWidth: w, collapsed });
+  assert.deepEqual(at(390), { left: 0, bottom: TAB_BAR_HEIGHT_PX }, "390px: no nav, on the tab bar");
+  assert.deepEqual(at(719), { left: 0, bottom: TAB_BAR_HEIGHT_PX }, "719px: still a phone");
+  assert.deepEqual(at(720), { left: NAV_WIDTH_RAIL_PX, bottom: 0 }, "720px: beside the rail, on the window's foot");
+  assert.deepEqual(at(1023), { left: NAV_WIDTH_RAIL_PX, bottom: 0 }, "1023px: still the bar");
+  assert.deepEqual(at(1024), { left: NAV_WIDTH_RAIL_PX, bottom: 0 }, "1024px: the bar beside the rail (owner Q19; the HTML's column)");
+  assert.deepEqual(at(1100), { left: NAV_WIDTH_RAIL_PX, bottom: 0 }, "1100px: the bar from the rail's edge, under the category column too (owner Q19)");
+  assert.deepEqual(at(1279, true), { left: NAV_WIDTH_RAIL_PX, bottom: 0 }, "1279px, nav collapsed: still the rail and the bar");
+  assert.equal(at(1280), null, "1280px: the cart is a column, no bar (owner Q19)");
+  assert.equal(at(1280, true), null, "1280px, nav collapsed: the cart column too (owner Q19)");
+  const box = (w: number, h: number): number[] => {
+    const inset = at(w);
+    assert.ok(inset, `${w}px has a bar`);
+    return [inset!.left, h - inset!.bottom - POS_ORDER_BAR_HEIGHT_PX, w - inset!.left, POS_ORDER_BAR_HEIGHT_PX];
+  };
+  assert.deepEqual(box(820, 1180), [76, 1115, 744, 65], "values 6.1 t820: [76,1115,744,65]");
+  assert.deepEqual(box(1024, 768), [76, 703, 948, 65], "t1024 (owner Q19): the 820 bar's rule at 1024 x 768");
+  assert.deepEqual(box(390, 844), [0, 720, 390, 65], "values 6.1 p390: [0,719,390,65], ours 1px lower, on the tab bar (design 8)");
+});
+
+// Owner Q19: one width decides it, the nav's wide breakpoint: the cart is a column from 1280px (a PC or a laptop, nav
+// open or collapsed), the bar and its full-screen sheet below.
+// U1 audit wave (ruling P54; report-clean Minor 2): Tailwind's sm / md / lg / 2xl values fed CB-1's column tables and
+// had no caller left; only the frame's own switches stay (xl 1280, desk 1100).
+test("PIN: lib/pos-layout.ts keeps only the breakpoints the frame switches at — the unused sm / md / lg / 2xl are gone", () => {
+  const exported = layout as unknown as Record<string, unknown>;
+  for (const gone of ["BREAKPOINT_SM_PX", "BREAKPOINT_MD_PX", "BREAKPOINT_LG_PX", "BREAKPOINT_2XL_PX"]) {
+    assert.ok(!(gone in exported), `${gone} is no longer exported`);
+  }
+  assert.deepEqual(
+    Object.keys(exported).filter((k) => k.startsWith("BREAKPOINT_")).sort(),
+    ["BREAKPOINT_DESK_PX", "BREAKPOINT_XL_PX"],
+    "the frame's two breakpoints",
+  );
+  assert.equal(BREAKPOINT_XL_PX, 1280, "Tailwind's xl (80rem)");
+  assert.equal(BREAKPOINT_DESK_PX, 1100, "the HTML's desk");
+});
+
+test("PIN: the cart column starts at 1280px (owner Q19), the nav's own wide breakpoint", () => {
+  assert.equal(POS_CART_COLUMN_MIN_PX, 1280, "owner Q19: 1280px and wider keep the cart column");
+  assert.equal(POS_CART_COLUMN_MIN_PX, BREAKPOINT_XL_PX, "Tailwind's xl: (80rem) is the switch");
+  assert.equal(POS_CART_COLUMN_MIN_PX, NAV_WIDE_MIN_PX, "the same width as the wide nav's");
+});
+
+// Ruling P44 (U1 V-C F2, 2026-10-22): inside the Android app on WebView 154 the phone reports a bottom safe-area inset
+// (about 24.8 CSS px) and the tab bar grows by it (its bottom padding). The bar lies under the tab bar (z-index 10 <
+// 12), so it rides up by the same inset: the tab bar never hides its total or "Review order". At inset 0 it is the
+// shell's 59px. The shell's own ABOVE_TAB_BAR_STICKY_CLASS (Settings' save bar, the menu's bulk bar) stays as it is.
+test("PIN: on a phone the POS cart bar always sits on the tab bar: its 59px plus the safe-area inset it grows by (ruling P44)", () => {
+  assert.equal(ABOVE_TAB_BAR_STICKY_CLASS, "max-tab:bottom-[" + TAB_BAR_HEIGHT_PX + "px]", "the shell's offset is unchanged: the tab bar's height");
+  const bar = tokens(POS_MOBILE_BAR_CLASS);
+  assert.ok(bar.includes(`max-tab:bottom-[calc(${TAB_BAR_HEIGHT_PX}px+${tabBarInset()})]`), "the bar's phone foot: the tab bar's 59px plus its inset");
+  assert.ok(!bar.includes(ABOVE_TAB_BAR_STICKY_CLASS), "not the plain 59px: the taller tab bar would hide the bar's foot");
+  assert.equal(bar.filter((t) => t.startsWith("max-tab:bottom-")).length, 1, "one phone foot");
+  assert.ok(bar.includes("bottom-0"), "landmark: from 720px it sits on the screen's foot");
+});
+
+// U1 Task 7 (values 6.3, 5.1, 0.3 cartW / cartSh / cartLeft; design 6.9): the cart sheet is the HTML's cart section.
+// Owner Q19 (2026-10-22): below 1280px it is the PHONE's sheet at every width — the whole screen (fixed, inset 0) over
+// the header, the rail and the tab bar (z-index 15 > 12), no side panel, no scrim, no shadow; its left rule stays (the
+// HTML's phone content starts at x 1). The HTML's 720-1023px form (440px from the right, --pop, over a --scrim) is gone.
+// It slides up from the window's foot (Q19: "niche se open ho"), the phone too: open = translateY(100%) to none over
+// .34s on the HTML's sheetIn easing, close = back down over .2s ease-in, keyed on Radix's data-state so the panel stays
+// mounted until the close has played (Radix Presence, as the kit's sheet); motion-safe (the app's rule for every
+// animation, app/globals.css), transform keyframes only (WebView 109: no @starting-style, no transition-behavior).
+test("PIN: the cart sheet is the phone's at every width below 1280px: the whole screen, no scrim, no shadow (owner Q19)", () => {
+  const sheet = tokens(POS_CART_SHEET_CLASS);
+  for (const t of ["fixed", "inset-0", "z-[15]", "flex", "flex-col", "border-l", "border-border", "bg-card", "outline-none"]) {
+    assert.ok(sheet.includes(t), `POS_CART_SHEET_CLASS (owner Q19: the phone's sheet): "${t}"`);
+  }
+  for (const gone of [
+    "inset-y-0",
+    "right-0",
+    "w-[min(440px,100%)]",
+    "[box-shadow:var(--pop)]",
+    "max-tab:left-0",
+    "max-tab:w-auto",
+    "max-tab:[box-shadow:none]",
+  ]) {
+    assert.ok(!sheet.includes(gone), `the 440px side sheet's "${gone}" is gone (owner Q19)`);
+  }
+  assert.ok(!sheet.some((t) => /^(?:max-)?(?:sm|md|lg|xl|tab|desk|wide):/.test(t)), "one form at every width below 1280px: no width variant");
+  assert.ok(!sheet.some((t) => /shadow/.test(t)), "no shadow at any width");
+  for (const gone of ["h-[90vh]", "supports-[height:1dvh]:h-[90dvh]", "rounded-t-xl", "[&>button]:hidden"]) {
+    assert.ok(!sheet.includes(gone), `the bottom sheet's ${gone} is gone`);
+  }
+  assert.ok(!("POS_CART_SHEET_WIDTH_PX" in layout), "the side sheet's 440px width constant is gone (owner Q19)");
+  assert.equal(POS_CART_SHEET_SCRIM_CLASS, "hidden", "no scrim at any width (owner Q19): the overlay is never drawn");
+});
+
+test("PIN: the cart sheet slides up from the window's foot and back down (owner Q19): .34s on the HTML's sheetIn easing, .2s ease-in, motion-safe, transform keyframes only", () => {
+  const sheet = tokens(POS_CART_SHEET_CLASS);
+  assert.ok(sheet.includes("motion-safe:data-[state=open]:animate-cart-sheet-up"), "open: the slide up, keyed on Radix's data-state");
+  assert.ok(sheet.includes("motion-safe:data-[state=closed]:animate-cart-sheet-down"), "close: the slide down, so Radix keeps it mounted until it ends");
+  assert.equal(sheet.filter((t) => t.includes("animate-")).length, 2, "exactly the two slides");
+  assert.ok(!sheet.some((t) => /(?:^|:)(?:transition|duration-|ease-|starting:)/.test(t)), "no transition, no @starting-style (WebView 109)");
+  const css = readFileSync(path.join(CAFE_ROOT, "app/globals.css"), "utf8");
+  assert.ok(
+    css.includes("--animate-cart-sheet-up: cart-sheet-up 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;"),
+    "open: .34s on the HTML's sheetIn easing cubic-bezier(.2,.8,.2,1); it fills backwards only, so the settled sheet keeps no transform",
+  );
+  assert.ok(css.includes("--animate-cart-sheet-down: cart-sheet-down 0.2s ease-in both;"), "close: .2s ease-in, held at the foot until unmounted");
+  const frames = (name: string): string => {
+    const m = css.match(new RegExp(`@keyframes ${name} \\{([\\s\\S]*?)\\n\\}`));
+    assert.ok(m, `app/globals.css declares @keyframes ${name}`);
+    return m![1].replace(/\s+/g, " ").trim();
+  };
+  assert.equal(frames("cart-sheet-up"), "from { transform: translateY(100%); } to { transform: none; }", "up: from below the window's foot to its place");
+  assert.equal(frames("cart-sheet-down"), "from { transform: none; } to { transform: translateY(100%); }", "down: from its place to below the foot");
+  assert.ok(!/@starting-style|transition-behavior/.test(css), "WebView 109: no @starting-style and no transition-behavior anywhere");
+});
+
+// The page fills the screen and main runs to its foot (values 6.2), so the bar is no in-flow row under the grid: it lies
+// over the page's foot, inside the page (relative) — the page runs from the nav's edge to the window's right edge and
+// foot, so the bar's box is the HTML's fixed one (posOrderBarInsetsPx) and follows the nav by itself — where main's
+// bottom padding keeps it clear. U1 Task 7: the HTML's glass bar (values 6.1), shown below 1024px only; owner Q19: below
+// 1280px (max-xl:flex), the owner's Q18 "always shows" holding there too.
+test("PIN: POS_MOBILE_BAR_CLASS is the HTML's glass bar lying over the page's foot (absolute inside the page), shown below 1280px only (owner Q19)", () => {
+  const bar = tokens(POS_MOBILE_BAR_CLASS);
+  for (const t of ["absolute", "inset-x-0", "bottom-0", "hidden", "max-xl:flex"]) assert.ok(bar.includes(t), `POS_MOBILE_BAR_CLASS must include ${t}`);
+  assert.ok(bar.includes("data-open:hidden"), "values 6.1 showBar (!cartOpen): the bar steps aside while its sheet is open");
+  assert.ok(tokens(POS_PAGE_CLASS).includes("relative"), "the page is the bar's containing block");
+  assert.ok(!bar.includes("sticky"), "no in-flow sticky row: main runs under it");
+  assert.ok(!bar.includes("fixed"), "inside the page, beside the nav (the page's box is the HTML's fixed box)");
+  assert.ok(!bar.some((t) => /^-?m[xyb]?-/.test(t)), "no margins of its own");
+  for (const t of [
+    "z-10",
+    "items-center",
+    "gap-3",
+    "border-t",
+    "border-border",
+    "bg-glass",
+    "px-3.5",
+    "py-2.5",
+    "leading-[normal]",
+    "[backdrop-filter:saturate(180%)_blur(20px)]",
+    "[-webkit-backdrop-filter:saturate(180%)_blur(20px)]",
+  ]) {
+    assert.ok(bar.includes(t), `values 6.1 bar: "${t}"`);
+  }
+  const button = tokens(POS_MOBILE_BAR_BUTTON_CLASS);
+  for (const t of ["h-11", "rounded-[10px]", "bg-primary", "text-primary-foreground", "px-5", "text-[15px]", "font-semibold", "cursor-pointer"]) {
+    assert.ok(button.includes(t), `values 6.1 Review order: "${t}"`);
+  }
+  assert.ok(!button.some((t) => t.startsWith("pointer-coarse:") || t.includes("hover:")), "the HTML's button on touch screens too (ruling R1), and it has no hover rule");
+});
+
+test("PIN: the cart is a column from 1280px (xl, owner Q19), the category column from the HTML's 1100px (desk), never md or lg", () => {
+  assert.ok(tokens(POS_CART_CLASS).includes("xl:flex") && tokens(POS_CART_CLASS).includes("hidden"), "the cart column shows from 1280px (owner Q19)");
+  assert.ok(tokens(POS_ASIDE_CLASS).includes("desk:flex") && tokens(POS_ASIDE_CLASS).includes("hidden"), "the category column shows from 1100px");
+  for (const [label, cls] of [["POS_CART_CLASS", POS_CART_CLASS], ["POS_ASIDE_CLASS", POS_ASIDE_CLASS]] as const) {
+    assert.ok(!cls.includes("md:"), `${label} must not switch at md`);
+    assert.ok(!cls.includes("lg:"), `${label} must not switch at lg (owner Q19 retired the 1024px cart column)`);
+  }
+});
+
+// U1 Task 2: the category list switches at 1100px between the column (POS_ASIDE_CLASS) and the toolbar's Category
+// button + sheet (CategorySidebar.tsx, desk:hidden; pinned in lib/pos-layout-paths.test.ts); the chip strip and the rail
+// constants went with it. U1 Task 7: the bar carries its own switch, so its wrapper's 1100px gate (POS_MOBILE_ONLY_CLASS)
+// went with the wrapper. Owner Q19: that switch is 1280px (max-xl:flex), the cart column's xl:flex.
+test("PIN: exactly one cart and one category list show at any width — the column and the bar switch at 1280px (owner Q19), the category column and the Category button at 1100px", () => {
+  const bar = tokens(POS_MOBILE_BAR_CLASS);
+  assert.ok(bar.includes("hidden") && bar.includes("max-xl:flex"), "the bar shows exactly where the cart column does not (below xl, owner Q19)");
+  assert.ok(tokens(POS_CART_CLASS).includes("xl:flex"), "the cart column's own switch is the same xl");
+  assert.ok(!bar.some((t) => /^(?:xl|desk|wide|lg|max-lg):/.test(t)), "no other width gate on the bar: no xl:, desk:, wide:, lg: or max-lg: token");
+  assert.ok(!readFileSync(path.join(CAFE_ROOT, "lib/pos-layout.ts"), "utf8").includes("export const POS_MOBILE_ONLY_CLASS"), "the wrapper's gate is gone");
+  assert.ok(tokens(POS_ASIDE_CLASS).includes("desk:flex"), "the category column shows from 1100px");
+});
+
+test("PIN: the cart sheet's scrollable panel and the HTML's lines wrapper carry the right utility classes", () => {
   assert.match(POS_CART_SHEET_PANEL_CLASS, /(^|\s)h-full(\s|$)/, "POS_CART_SHEET_PANEL_CLASS must include h-full");
   assert.match(POS_CART_SHEET_PANEL_CLASS, /overflow-y-auto/, "POS_CART_SHEET_PANEL_CLASS must include overflow-y-auto");
-  // D9.8 (2026-09-26): raised 32 → 48 (8rem → 12rem). A cart LINE is a
-  // two-row block (name+price, then the 36px stepper row) ≈ 76px, so the old
-  // 128px floor could only ever show 1.68 of them — the owner's phone
-  // screenshot caught the second line clipped mid-stepper. 192px shows 2.5,
-  // so the cut always lands INSIDE a line and reads as "scroll for more"
-  // rather than as a line with its controls sheared off. Affordable now that
-  // the footer's occasional controls live behind the More menu.
-  assert.match(POS_CART_LIST_CLASS, /(^|\s)min-h-48(\s|$)/, "POS_CART_LIST_CLASS must include min-h-48");
-  assert.ok(
-    !POS_CART_LIST_CLASS.includes("min-h-32"),
-    "POS_CART_LIST_CLASS must NOT fall back to the old min-h-32 floor — it clipped the second cart line mid-stepper",
+  // U1 Task 4 (values 5.4, 0.3 linesMin): the HTML's lines wrapper — it grows into the cart's free height and never
+  // shrinks below its lines (flex 1 0 auto), keeps 150px (180px on a phone), 14px sides; the whole cart scrolls as one
+  // (Cart's root), so the wrapper has no scroller of its own (D9.8's 192px floor for a scrolling list went with it).
+  assert.equal(
+    POS_CART_LIST_CLASS,
+    "flex-[1_0_auto] min-h-[150px] px-3.5 leading-[normal] max-tab:min-h-[180px]",
+    "values 5.4 lines wrapper: flex 1 0 auto, min-height linesMin (150 / 180 below 720px), padding 0 14px",
   );
-  assert.match(POS_CART_LIST_CLASS, /(^|\s)flex-1(\s|$)/, "POS_CART_LIST_CLASS must include flex-1");
-  assert.ok(
-    !POS_CART_LIST_CLASS.includes("overscroll-contain"),
-    "POS_CART_LIST_CLASS must NOT include overscroll-contain — a drag that runs out of list must chain to the scrolling panel so the CTAs come up",
-  );
-});
-
-test("PIN: POS_CHIP_ROW_CLASS is ONE sideways-scrolling line at every width below xl — no md: wrapping cloud any more (owner decision 2026-08-29, CB-1c: the wrapping cloud ate ~59% of a landscape tablet's visible height)", () => {
-  const tokens = POS_CHIP_ROW_CLASS.split(/\s+/).filter(Boolean);
-  assert.ok(tokens.includes("flex"), "POS_CHIP_ROW_CLASS must include flex");
-  assert.ok(tokens.includes("shrink-0"), "POS_CHIP_ROW_CLASS must include shrink-0");
-  assert.ok(tokens.includes("gap-2"), "POS_CHIP_ROW_CLASS must include gap-2");
-  assert.ok(tokens.includes("overflow-x-auto"), "POS_CHIP_ROW_CLASS must include overflow-x-auto");
-  assert.ok(tokens.includes("pb-1"), "POS_CHIP_ROW_CLASS must include pb-1");
-
-  // Landmarks for the negatives below.
-  assert.ok(tokens.includes("flex"), "landmark: POS_CHIP_ROW_CLASS must carry flex");
-  assert.ok(tokens.includes("gap-2"), "landmark: POS_CHIP_ROW_CLASS must carry gap-2");
-
-  // Negatives: no md: token of ANY kind (the whole wrapping-cloud variant set
-  // is retired, not just flex-wrap/max-h/overflow-y-auto individually).
-  assert.ok(!tokens.some((t) => t.startsWith("md:")), "POS_CHIP_ROW_CLASS must carry no md: token at all — one scrolling line at every width below xl");
-  assert.ok(!POS_CHIP_ROW_CLASS.includes("flex-wrap"), "POS_CHIP_ROW_CLASS must not include flex-wrap — CB-1b's retired wrapping cloud");
-  assert.ok(!POS_CHIP_ROW_CLASS.includes("max-h"), "POS_CHIP_ROW_CLASS must not include a max-h cap — no cloud, nothing to cap");
-});
-
-test("PIN: POS_CHIP_CLASS is inline-flex with items-center — the label span's max-w truncate only works on a flex item", () => {
-  assert.ok(POS_CHIP_CLASS.startsWith("inline-flex"), `POS_CHIP_CLASS must start with "inline-flex", got "${POS_CHIP_CLASS}"`);
-  assert.match(POS_CHIP_CLASS, /(^|\s)items-center(\s|$)/, "POS_CHIP_CLASS must include items-center");
+  for (const gone of ["overflow-y-auto", "overscroll-contain", "min-h-48"]) {
+    assert.ok(!POS_CART_LIST_CLASS.includes(gone), `POS_CART_LIST_CLASS must not carry ${gone}: the cart scrolls as one`);
+  }
 });

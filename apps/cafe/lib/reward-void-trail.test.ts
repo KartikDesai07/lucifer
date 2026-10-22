@@ -7,6 +7,8 @@ import path from "node:path";
 import { resolveItemVoid, type VoidableLine, type ItemVoidRequest } from "./order-void";
 import { voidPrintJob, voidLineInstructionsWithRewardMarker } from "./print-routing";
 import { stripComments } from "./source-pin-utils";
+import { matchVoidLine, voidLineOf } from "./pos-cart-view";
+import { cartItemFromOrderItem } from "@/hooks/use-cart";
 import { orderLineKey } from "@pos/shared/utils";
 import { REWARD_ITEM_LINE_NOTE } from "@pos/shared/reward-redemption";
 import { printJobPayloadSchema } from "@pos/shared/schemas/print-job.schema";
@@ -267,6 +269,37 @@ test("SOURCE PIN: VoidItemDialog.tsx branches on item.reward with a struck-throu
   const src = stripComments(readSrc("components/pos/VoidItemDialog.tsx"));
   assert.match(src, /orderItemLabel\(item\)/, "landmark: the line picker must still render item labels");
   assert.match(src, REWARD_ARM, "the struck-through worth + FREE must be the reward arm of the item.reward ternary");
+});
+
+// U1 Task 4 (owner Q10): a sent line's own "Void" action opens the dialog ON that line (initialLine = the line's
+// position in the STORED order and its whole identity). A reward line is voided the same way — the dialog is still where
+// staff see its struck-through worth + FREE before confirming — and the cart line itself shows the real price, as today.
+test("VoidItemDialog opens on the line the cart named (initialLine), only while the stored order still holds it there", () => {
+  const src = stripComments(readSrc("components/pos/VoidItemDialog.tsx"));
+  assert.match(src, /initialLine\?: \{ index: number; lineKey: string \} \| null;/, "the optional preselected line");
+  assert.ok(src.includes("matchVoidLine(order.items, initialLine)"), "checked against the stored order (lib/pos-cart-view.ts)");
+  const reset = src.slice(src.indexOf("useEffect(() => {"), src.indexOf("}, [open, order?._id, opening]);"));
+  assert.ok(reset.includes("if (open) {"), "landmark: the reset on open");
+  assert.ok(reset.includes("setSelected(start.index);") && reset.includes("setQty(start.qty);"), "it opens on that line, its whole quantity");
+  assert.ok(reset.includes('setReason("");'), "the reason still starts empty");
+  assert.ok(src.includes("}, [open, order?._id, opening]);"), "still reset only when it opens (or for another order)");
+});
+
+test("a reward line's Void action addresses the stored line, and the dialog finds it there", () => {
+  const order = {
+    items: [
+      { productId: "p1", name: "Latte", price: 180, qty: 1, modifiers: [], instructions: "", kotRound: 1 },
+      { productId: "p2", name: "Brownie", price: 220, qty: 1, modifiers: [], instructions: "", kotRound: 1, reward: true as const },
+    ],
+  } as unknown as Order;
+  const cartLine = cartItemFromOrderItem(order.items[1], 1);
+  assert.equal(cartLine.reward, true, "landmark: the cart line carries the reward flag");
+  const line = voidLineOf(cartLine, order);
+  assert.deepStrictEqual(line, { index: 1, lineKey: orderLineKey(order.items[1]) }, "the reward line's stored address");
+  assert.equal(matchVoidLine(order.items, line!), 1, "the dialog opens on it");
+  const cartSrc = stripComments(readSrc("components/pos/CartLine.tsx"));
+  assert.ok(cartSrc.includes("{inr(item.price * item.qty)}"), "the cart line shows the real price");
+  assert.ok(!/item\.reward/.test(cartSrc), "with no FREE branch in the cart (today's rule: the subtotal excludes it)");
 });
 
 // ── (g) the owner's KOT absence still holds for the VOID variant specifically ──

@@ -1,49 +1,28 @@
-// POS "New Order" screen layout contract (CB-1, 2026-08-28; CB-1b fallbacks;
-// CB-1c 2026-08-30: body dvh floor, alert-bar budget, single-line chip strip).
+// The POS terminal's (/pos) layout contract. Its frame is the owner's HTML Order screen (U1 Task 1, 2026-10-21;
+// docs/superpowers/specs/2026-10-20-pos-html-values.md values 1.1, 2.0, 6.2; design 5): the page fills the screen
+// under the shell's 56px header and never scrolls; the HTML's body grid holds the category column (from 1100px), the
+// menu column and the cart column (owner Q19, 2026-10-22: from 1280px only — a PC or a laptop; below it, tablets and
+// phones, the cart is the phone's full-screen sheet behind the bar), and each region scrolls on its own. CB-1's frame
+// (the two-pane switch at 1280px, its stacked phone column and the root's floor) is retired with its constants.
 //
-// One place for the class strings and numbers that make the phone / tablet /
-// desktop layouts agree with each other. Everything here is a plain literal so
-// Tailwind's source scanner still sees every class name, and so the layout
-// pins (lib/pos-layout.test.ts + lib/pos-layout-paths.test.ts +
-// lib/pos-header-paths.test.ts) can read the SAME constants the page renders
-// instead of re-typing them.
-//
-// Mode switch: `xl` (1280px). Below it the screen is single-pane — compact
-// header, category chips, full-width grid, a sticky bottom bar that opens the
-// cart in a bottom sheet. At xl+ the classic two-pane (rail + grid | cart
-// column) renders. Neither `md` (768) nor `lg` (1024) can be the switch: the
-// dashboard sidebar then reserved 16rem of in-flow width from md up (since
-// U0 Task 2 the nav is navWidthPx below: 76 px below 1280), so a two-pane 1024px screen had
-// 1024 - 256 - 48 - 12 - 352 - 176 - 12 = 168px left for the grid — v1's
-// ~56px tiles (the owner's "menu nahi dikh raha"). Single-pane at 1024 gives
-// the grid ~720px instead. (Review CB-1 F1 — the first draft switched at lg
-// and had left the sidebar out of the matrix entirely.)
-//
-// Browser floor — corrected (CB-1c, 2026-08-29; full evidence trail in the
-// CB-1c plan/review docs + auto-memory browser-floor-must-be-measured).
-// CB-1b wrongly inferred the staff tablet lacked dvh; the real cause was
-// <body> min-h-screen (100vh = the LARGEST mobile viewport, URL bar
-// retracted) overflowing the visible viewport by the toolbar height. Hence:
-// (1) <body> floors at min-h-dvh where dvh exists (app/layout.tsx); (2) the
-// POS root keeps a DEFINITE height — vh base, dvh override — subtracting the
-// RequestAlertBar's published height (POS_ALERT_HEIGHT_VAR). A percent height
-// chain (html/body/shell 100%) was tried and rejected by a headless probe
-// (CB-1c review): a percentage child of a min-height:auto flex item counts as
-// auto in the item's minimum, so <main> grew to the WHOLE grid; and a
-// definite shell un-stuck the header on every tall route. Nothing outside
-// this page's own boxes (and the body floor) may change height semantics.
-// Viewport-keyed column tiers stay (simpler than a container query, not a
-// fallback).
+// One place for the class strings and numbers the page renders. Everything here is a plain literal (POS_PAGE_CLASS
+// also reads lib/shell-layout.ts's literal), so Tailwind's source scanner sees every class name, and the pins
+// (lib/pos-frame, lib/pos-layout, lib/pos-layout-paths, lib/pos-layout-compile and lib/pos-header-paths tests) read
+// the SAME constants the page renders instead of re-typing them.
+import { MAIN_PADDING_BLEED_CLASS, TAB_BAR_HEIGHT_PX } from "@/lib/shell-layout";
 
-// Tailwind's default viewport breakpoints (px), pinned so the layout test can
-// compute the pane-width matrix without importing Tailwind.
-export const BREAKPOINT_SM_PX = 640;
-export const BREAKPOINT_MD_PX = 768;
-export const BREAKPOINT_LG_PX = 1024;
+// The viewport breakpoints the frame switches at (px), pinned so the layout test can compute the pane widths without
+// importing Tailwind: Tailwind's `xl` (80rem) and the HTML's `desk` (app/globals.css). The phone's end is NAV_RAIL_MIN_PX
+// (Tailwind `tab:`, below). Tailwind's sm / md / lg / 2xl values fed CB-1's column tables and went with them (U1 audit
+// wave, ruling P54: no caller was left).
 export const BREAKPOINT_XL_PX = 1280;
-export const BREAKPOINT_2XL_PX = 1536;
-// The viewport width at which the two-pane desktop layout switches on.
-export const POS_TWO_PANE_MIN_PX = BREAKPOINT_XL_PX;
+/** The HTML's `desk` (values 0.2; Tailwind `desk:`, app/globals.css): the category column from 1100 px. The HTML's
+ *  `cmp` ended at 1024 px (Tailwind `lg`); owner Q19 moved the cart's switch to POS_CART_COLUMN_MIN_PX (below). */
+export const BREAKPOINT_DESK_PX = 1100;
+/** Owner Q19 (2026-10-22; design 4 Q19, Q20): the cart is the page's right column from 1280 px (Tailwind `xl:`) — a PC
+ *  or a laptop, nav open or collapsed — and below it (tablets portrait and landscape, phones) never a side column or a
+ *  side sheet: the order bar and the phone's full-screen sheet. The wide nav's own breakpoint (NAV_WIDE_MIN_PX). */
+export const POS_CART_COLUMN_MIN_PX = BREAKPOINT_XL_PX;
 
 // The dashboard nav (components/ui/sidebar.tsx SIDEBAR_WIDTH /
 // SIDEBAR_WIDTH_ICON — parity-pinned by lib/pos-layout-paths.test.ts), the
@@ -75,178 +54,242 @@ export function navWidthPx(viewport: NavViewport): number {
   return isWideNav(viewport) ? NAV_WIDTH_WIDE_PX : NAV_WIDTH_RAIL_PX;
 }
 
-// Vertical chrome above the POS root (rem): the dashboard's sticky h-14 header
-// (3.5rem) plus <main>'s vertical padding (p-4 = 2rem below md, p-6 = 3rem at
-// md+). Was one static 7rem, wrong at every breakpoint. The RequestAlertBar
-// (variable height, only when QR requests / unprinted self-orders exist) is
-// budgeted separately through POS_ALERT_HEIGHT_VAR below.
+/** The POS terminal's route. */
+export const POS_PATH = "/pos";
+
+/** The route is the POS terminal (or a page below it, the alert strip's rule in lib/alert-bar-scope.ts): the shell
+ *  then draws the HTML's Order header (values 1.2) instead of the title header. */
+export function isPosPath(pathname: string): boolean {
+  return pathname === POS_PATH || pathname.startsWith(`${POS_PATH}/`);
+}
+
+/** The shell's header (components/layout/Header.tsx): the HTML's 56px (values 1.2; U0 values 2.5). */
 export const DASHBOARD_HEADER_REM = 3.5;
-export const MAIN_PADDING_Y_REM_BASE = 2;
-export const MAIN_PADDING_Y_REM_MD = 3;
-export const MAIN_PADDING_X_REM_BASE = 1;
-export const MAIN_PADDING_X_REM_MD = 1.5;
 
 // The amber RequestAlertBar sits in flow between the header and <main>, so the
-// POS root cannot know its height from CSS alone. The bar publishes its own
+// page cannot know its height from CSS alone. The bar publishes its own
 // offsetHeight (px) on <html> under this custom property — synchronously in a
 // layout effect so the first frame is right, then via a ResizeObserver as its
-// content wraps — and removes it whenever it renders nothing. The root's
-// height subtracts `var(--pos-alert-h, 0px)` below xl (at xl+ the v1 desktop
-// keeps its normal page growth). Any other page ignores the variable.
+// content wraps — and removes it whenever it renders nothing. The strip is
+// suppressed on /pos (lib/alert-bar-scope.ts), so the term is 0 there today;
+// the page's height still subtracts it, so it stays right if the strip shows.
 export const POS_ALERT_HEIGHT_VAR = "--pos-alert-h";
 
-// Desktop (xl+) two-pane geometry, unchanged from v1: cart column 22rem, rail
-// 11rem (w-44), page gap 0.75rem (gap-3) between rail|grid and grid|cart.
-// (v1 switched at md; the geometry itself is the same.)
-export const POS_CART_COLUMN_REM = 22;
-export const POS_RAIL_REM = 11;
-export const POS_PANE_GAP_REM = 0.75;
+/** The HTML's body columns (values 2.0 bodyCols), px: the category column and the cart beside the wide nav, and beside
+ *  the rail (desk: a collapsed nav from 1280 px; the category column alone at 1100-1279 px, owner Q19); the menu column
+ *  takes the rest (minmax(0,1fr)). Owner Q19 retired the HTML's 1024-1099 px cart column (340 px). */
+export const POS_BODY_COLUMNS_PX = {
+  wide: { aside: 200, cart: 360 },
+  desk: { aside: 220, cart: 380 },
+} as const;
 
-// Root: a DEFINITE app-screen height (viewport-bounded, no document scroll
-// when nothing extra is on the page). `vh` is the base every browser
-// understands; where `dvh` exists it takes over, so the visible viewport —
-// not the URL-bar-retracted one — is what gets divided up, and the on-screen
-// keyboard (interactive-widget=resizes-content) shrinks it. Below xl the
-// height budgets the header + TOP padding (4.5rem / 5rem) AND the alert bar's
-// published height; the root is FULL-BLEED (negative margins over <main>'s
-// side and bottom padding, children re-inset with POS_INSET_CLASS) so its
-// bottom edge IS the screen edge and the sticky bar needs no margins of its
-// own (a negative margin on a sticky element lets its border box hang below
-// the viewport while stuck — reviewer probe, CB-1b). No overflow-hidden: it
-// would clip the bar when the floor bites and make the root, not the
-// viewport, the bar's sticky container.
-// Floors: below xl the root never drops under its own chrome stack plus ONE
-// tile row (POS_ROOT_FLOOR_REM_BASE) — on a ~300px-tall landscape phone the
-// document then scrolls by the ~56px deficit with the bar stuck in view,
-// rather than showing a header, a strip, a search box and NO products (the
-// headless probe showed a floor on the scroller alone hides that row under
-// the bar). At xl+ the two-pane keeps its normal margins, v1's un-gated 30rem
-// floor (re-gated to xl here — it was what made phone landscape scroll) and
-// the 6.5rem chrome CB-1 shipped (header + both paddings; v1's static 7rem was
-// wrong at every breakpoint) — identical to the CB-1/CB-1b desktop, which is
-// the "desktop unchanged" the owner accepted.
-export const POS_ROOT_CHROME_REM_BASE = DASHBOARD_HEADER_REM + MAIN_PADDING_Y_REM_BASE / 2; // 4.5
-export const POS_ROOT_CHROME_REM_MD = DASHBOARD_HEADER_REM + MAIN_PADDING_Y_REM_MD / 2; // 5
-export const POS_ROOT_CHROME_REM_XL = DASHBOARD_HEADER_REM + MAIN_PADDING_Y_REM_MD; // 6.5
-export const POS_ROOT_FLOOR_REM_XL = 30;
-// The root's min-content stack below xl (rem): header controls row (h-10),
-// category strip (h-10 chips + pb-1), search row (components/ui/input.tsx
-// h-9 — parity-pinned), the bottom bar (p-3 + h-12 button + p-3;
-// env(safe-area-inset-bottom) is 0 on the staff devices) and FOUR gap-3
-// boundaries — root: header|split and split|bar; pane: strip|grid;
-// ProductGrid: search|scroller (the fourth was missed once and cost the
-// height matrix 12px on every row — CB-1c review F3). Whatever a viewport has
-// above this stack is the grid. Two known 1px-class approximations, kept out
-// of the constants on purpose: the bar's `border-t` adds 1px the 4.5rem does
-// not carry (so the landscape-phone floor shows its one tile row 1px short —
-// CB-1c review F5), and on a desktop browser with classic scrollbars an
-// overflowing chip strip is ~15px taller than 2.75rem (tablets and phones use
-// overlay scrollbars; below-xl desktop windows are not a staff device).
-export const POS_HEADER_ROW_REM = 2.5;
-export const POS_CHIP_STRIP_REM = 2.75;
-export const POS_SEARCH_ROW_REM = 2.25;
-export const POS_MOBILE_BAR_REM = 4.5;
-export const POS_ROOT_GAP_REM = 0.75;
-export const POS_ROOT_GAP_COUNT = 4;
-export const POS_MOBILE_STACK_REM =
-  POS_HEADER_ROW_REM +
-  POS_CHIP_STRIP_REM +
-  POS_SEARCH_ROW_REM +
-  POS_MOBILE_BAR_REM +
-  POS_ROOT_GAP_COUNT * POS_ROOT_GAP_REM; // 15
-// One product tile's minimum height (ProductGrid TILE_MIN_HEIGHT, min-h-[6.5rem]
-// — parity-pinned) — the smallest grid worth showing.
-export const POS_TILE_MIN_REM = 6.5;
-export const POS_ROOT_FLOOR_REM_BASE = POS_MOBILE_STACK_REM + POS_TILE_MIN_REM; // 21.5
-// The phone's tab bar (U0 Task 4; lib/shell-layout.ts: TAB_BAR_HEIGHT_PX 59, PHONE_PAGE_FOOT_PX 92) is fixed at the
-// foot below 720 px (Tailwind `max-tab:`), and the dashboard's <main> keeps 92 px clear there. On a phone the POS root
-// ends where the bar starts: its height also subtracts the 59 px, and its negative bottom margin bleeds over the 92 px
-// instead of main's 16 px, so the cart bar sits right on the tab bar (the HTML's order screen: bottom 60px).
-export const POS_ROOT_CLASS =
-  "-mx-4 -mb-4 flex min-h-[21.5rem] h-[calc(100vh-4.5rem-var(--pos-alert-h,0px))] flex-col gap-3 supports-[height:1dvh]:h-[calc(100dvh-4.5rem-var(--pos-alert-h,0px))] max-tab:-mb-[92px] max-tab:h-[calc(100vh-4.5rem-59px-var(--pos-alert-h,0px))] max-tab:supports-[height:1dvh]:h-[calc(100dvh-4.5rem-59px-var(--pos-alert-h,0px))] md:-mx-6 md:-mb-6 md:h-[calc(100vh-5rem-var(--pos-alert-h,0px))] md:supports-[height:1dvh]:h-[calc(100dvh-5rem-var(--pos-alert-h,0px))] xl:mx-0 xl:mb-0 xl:min-h-[30rem] xl:h-[calc(100vh-6.5rem)] xl:supports-[height:1dvh]:h-[calc(100dvh-6.5rem)]";
-// Re-insets the header row and the rail|grid split inside the full-bleed root
-// below xl; a no-op at xl+ where the root itself sits inside main's padding.
-export const POS_INSET_CLASS = "px-4 md:px-6 xl:px-0";
+/** The body grid's columns at this viewport, px (values 2.0's measured grid-template-columns; owner Q19 below 1280 px:
+ *  the menu alone below 1100 px, the category column and the menu at 1100-1279 px). */
+export function posBodyColumnsPx(viewport: NavViewport): number[] {
+  const content = viewport.viewportWidth - navWidthPx(viewport);
+  if (viewport.viewportWidth < BREAKPOINT_DESK_PX) return [content];
+  if (viewport.viewportWidth < POS_CART_COLUMN_MIN_PX) return [POS_BODY_COLUMNS_PX.desk.aside, content - POS_BODY_COLUMNS_PX.desk.aside];
+  const { aside, cart } = isWideNav(viewport) ? POS_BODY_COLUMNS_PX.wide : POS_BODY_COLUMNS_PX.desk;
+  return [aside, content - aside - cart, cart];
+}
 
-// The rail|grid + cart split. Single column below xl; the cart gets its fixed
-// 22rem column only from xl.
-export const POS_SPLIT_CLASS = "grid min-h-0 flex-1 gap-3 xl:grid-cols-[1fr_22rem]";
+// The page (values 1.1): exactly the screen under the 56px header — `vh` the
+// base every browser understands, `dvh` where it exists (the visible
+// viewport; with interactive-widget=resizes-content the on-screen keyboard
+// shrinks it) — bleeding over <main>'s padding at every width, so its edges
+// are the screen's (on a phone it runs under the 59px tab bar to the window's
+// foot, as the HTML's). It never scrolls: the regions below scroll on their
+// own, so there is no floor. `relative`: the phone/tablet cart bar lies over
+// its foot.
+export const POS_PAGE_CLASS = `${MAIN_PADDING_BLEED_CLASS} relative h-[calc(100vh-3.5rem-var(--pos-alert-h,0px))] supports-[height:1dvh]:h-[calc(100dvh-3.5rem-var(--pos-alert-h,0px))]`;
 
-// Left pane: chips-over-grid below xl, rail-beside-grid at xl+. min-w-0 is
-// load-bearing (CB-1d.1b): as a grid item the pane's automatic minimum width
-// is its min-content width, and the chip strip — ONE non-wrapping line of
-// shrink-0 chips — contributes the SUM of every chip (overflow-x-auto on the
-// strip does not shrink that contribution). With 12 categories the floor was
-// ~1225px, the single auto column sized to it, and a 412px phone laid the
-// whole POS out at 1241px wide: two 608px tiles per row — the owner's "bahut
-// bade bade box" (device pass 2026-09-04; the CB-1d.3 phone run had recorded
-// innerWidth 1241 in its layout block, unnoticed). min-w-0 lets the track
-// size to the viewport and the strip scroll sideways as designed.
-export const POS_PANE_CLASS = "flex min-h-0 min-w-0 flex-col gap-3 xl:flex-row";
+/** The body grid (values 2.0; owner Q19): one menu column below 1100 px; the category column (220 px) and the menu at
+ *  1100-1279 px; from 1280 px the cart column too (220 + 380 beside the collapsed rail, 200 + 360 beside the wide nav,
+ *  the HTML's). It fills the page. */
+export const POS_BODY_GRID_CLASS =
+  "grid h-full min-h-0 grid-cols-[minmax(0,1fr)] desk:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_380px] wide:grid-cols-[200px_minmax(0,1fr)_360px]";
 
-// Desktop cart column wrapper / mobile bar wrapper — mutually exclusive by
-// breakpoint, so exactly one cart mount is visible at any width.
-export const POS_DESKTOP_CART_CLASS = "hidden min-h-0 xl:block";
-export const POS_MOBILE_ONLY_CLASS = "xl:hidden";
-export const POS_DESKTOP_ONLY_CLASS = "hidden xl:flex";
+/** The category column (values 2.1): from 1100 px, the surface with a rule on its right. */
+export const POS_ASIDE_CLASS = "hidden min-h-0 flex-col border-r border-border bg-card desk:flex";
 
-// Bottom cart bar (below xl): the LAST child of the full-bleed root column,
-// sticky to the viewport bottom. In-flow means no reserved padding, no overlap
-// with the sidebar (it lives inside the content column) and no `fixed`-
-// position surprises under an on-screen keyboard; sticky means it stays in
-// view when the page is taller than the viewport (RequestAlertBar, the min-h
-// floor, a browser whose 100vh exceeds the visible area). It carries NO
-// margins: the root's own full-bleed puts its bottom edge on the screen edge
-// — the white strip the owner saw was <main>'s padding under a reserved gap.
-// On a phone it sticks 59px up (lib/shell-layout.ts ABOVE_TAB_BAR_STICKY_CLASS), on the tab bar: where the root's
-// floor makes the document scroll (a short phone), it would otherwise stick over the tab bar.
+/** The menu column's bottom padding (values 6.2 mainPadB), px: room for the order bar and the tab bar on a phone, for
+ *  the bar wherever it shows from 720 px (the HTML's `cmp` 100; owner Q19: up to 1279 px), 16 px beside the cart
+ *  column. At a safe-area inset of 0 (POS_MAIN_CLASS adds the inset wherever the bar shows: on a phone, ruling P44, and
+ *  at 720-1279 px, ruling P49). */
+export const POS_MAIN_PAD_B_PX = { phone: 150, cmp: 100, base: 16 } as const;
+
+export function posMainPadBottomPx(viewportWidth: number): number {
+  if (viewportWidth < NAV_RAIL_MIN_PX) return POS_MAIN_PAD_B_PX.phone;
+  return viewportWidth < POS_CART_COLUMN_MIN_PX ? POS_MAIN_PAD_B_PX.cmp : POS_MAIN_PAD_B_PX.base;
+}
+
+/** The menu column (values 3.1 main): the HTML's one scroller, a block with `min-width:0` and its bottom padding; the
+ *  toolbar sticks at its top and the list scrolls under it (U1 Task 2). On a phone its foot also grows by the safe-area
+ *  inset the tab bar grows by, as the order bar rides up by it (ruling P44): 150px at inset 0, the HTML's. Owner Q19:
+ *  the bar's 100px runs up to 1279px; ruling P49: there the bar grows by the inset too (its bottom padding, as main's
+ *  bar did at every width), so the 100px does as well — 100px at inset 0, the HTML's. */
+export const POS_MAIN_CLASS =
+  "min-h-0 min-w-0 overflow-auto pb-4 max-xl:pb-[calc(100px+env(safe-area-inset-bottom))] max-tab:pb-[calc(150px+env(safe-area-inset-bottom))]";
+
+/** The toolbar (values 3.1, 0.3 toolPad): sticky at the top of the menu column, over the cards (z-index 3), on the
+ *  page's --bg, 14px 20px 4px (10px 12px 4px on a phone). It holds the search row and, below 1100px, the Category
+ *  button (components/pos/ProductGrid.tsx). The HTML sets no line-height on this screen: normal. */
+export const POS_TOOLBAR_CLASS =
+  "sticky top-0 z-[3] bg-background px-5 pt-3.5 pb-1 leading-[normal] max-tab:px-3 max-tab:pt-2.5";
+
+/** The list wrapper under the toolbar (values 3.1, 0.3 listPad): 16px 20px, 14px 12px on a phone. The HTML sets no
+ *  line-height on the cards, group headings or messages inside it: normal (values 0.5). */
+export const POS_LIST_CLASS = "px-5 py-4 leading-[normal] max-tab:px-3 max-tab:py-3.5";
+
+/** The list wrapper's side padding, px (POS_LIST_CLASS's px-5 / max-tab:px-3): the inset the card grid's arithmetic
+ *  subtracts from the menu column (posGridPaneWidthPx). */
+export const POS_PANE_INSET_PX = { phone: 12, base: 20 } as const;
+
+/** The cart column (values 5.1): from 1280 px (owner Q19; the HTML's 1024 px) the body grid's last column, the surface
+ *  with a rule on its left; it scrolls on its own. Below 1280 px the cart is MobileCartBar's sheet (below). */
+export const POS_CART_CLASS =
+  "relative z-[15] hidden min-h-0 flex-col overflow-y-auto overflow-x-hidden overscroll-contain border-l border-border bg-card xl:flex";
+
+// Below 1280 px (where the cart is not a column; owner Q19, the HTML's 1024 px) the cart sits behind the HTML's glass
+// order bar and opens as a sheet (U1 Task 7; values 6.1-6.3, 0.3 obLeft / obBottom; design 6.9; owner Q18), the phone's
+// full-screen sheet at every width (owner Q19). The category column and the toolbar's Category button switch at 1100 px
+// on their own (POS_ASIDE_CLASS, CategorySidebar.tsx).
+
+/** The order bar (values 6.1): a 1px top rule, 10px of padding above and below the 44px "Review order" — 65px (at a
+ *  safe-area inset of 0: from 720px its bottom padding grows by the inset, ruling P49). */
+export const POS_ORDER_BAR_HEIGHT_PX = 65;
+
+/** Where the order bar sits (values 0.3 obLeft / obBottom; design 8): from the nav's edge (the 76px rail from 720px, the
+ *  window's edge on a phone) to the window's right edge; on a phone ON the 59px tab bar (the HTML leaves 1px of the menu
+ *  between them: not copied), from 720px on the window's foot (owner Q19: up to 1279px, where the nav is still the rail,
+ *  so at 1100-1279px the bar runs under the category column too). Null from 1280px: the cart is a column, no bar. At a
+ *  safe-area inset of 0 (POS_MOBILE_BAR_CLASS adds the inset: to its place on a phone, ruling P44, and to its bottom
+ *  padding from 720px, ruling P49). */
+export function posOrderBarInsetsPx(viewport: NavViewport): { left: number; bottom: number } | null {
+  if (viewport.viewportWidth >= POS_CART_COLUMN_MIN_PX) return null;
+  return { left: navWidthPx(viewport), bottom: viewport.viewportWidth < NAV_RAIL_MIN_PX ? TAB_BAR_HEIGHT_PX : 0 };
+}
+
+// The order bar (values 6.1): the HTML's glass strip — --glass behind a saturate(180%) blur(20px), a 1px --border rule
+// on top, 10px 14px, its two lines and "Review order" 12px apart, centred; z-index 10, under the tab bar's 12 (they
+// never overlap). It lies over the page's foot — absolute inside the page, which runs from the nav's edge to the
+// window's right edge and foot, so its box is the HTML's fixed one (posOrderBarInsetsPx) and follows the nav by itself
+// — and the menu column keeps it clear with its own bottom padding (values 6.2). On a phone it sits on the tab bar: the
+// bar's 59px (lib/shell-layout.ts TAB_BAR_HEIGHT_PX) plus env(safe-area-inset-bottom), the padding the tab bar grows by
+// where a WebView reports a bottom inset (ruling P44: WebView 154 in the Android app, about 24.8px, would otherwise hide
+// the total and "Review order" under the tab bar); 59px at inset 0. From 720px, where it sits on the window's foot
+// itself, its bottom padding grows by the inset instead (ruling P49, as main's bar did at every width: 10px at inset 0),
+// so "Review order" stays out of the gesture strip on a landscape phone or a tablet; below 720px it keeps its 10px, as
+// the tab bar under it already takes the inset. It shows below 1280px only (owner Q19; the HTML's 1024px), in every
+// state (owner Q18: an empty order too) except while its sheet is open (data-open; values 6.1 showBar: !cartOpen — the
+// sheet covers the page's foot anyway). The HTML sets no line-height here: normal.
 export const POS_MOBILE_BAR_CLASS =
-  "sticky bottom-0 max-tab:bottom-[59px] z-20 shrink-0 border-t bg-background p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]";
+  "absolute inset-x-0 bottom-0 max-tab:bottom-[calc(59px+env(safe-area-inset-bottom))] z-10 hidden items-center gap-3 border-t border-border bg-glass px-3.5 py-2.5 tab:pb-[calc(10px+env(safe-area-inset-bottom))] leading-[normal] [backdrop-filter:saturate(180%)_blur(20px)] [-webkit-backdrop-filter:saturate(180%)_blur(20px)] max-xl:flex data-open:hidden";
+/** "Review order" (values 6.1): 44px, radius 10, --accent with --on-accent, 0 20px, 15px 600; no hover rule. The HTML's
+ *  press comes from BRAND_PRESS_CLASS (MobileCartBar), as on the cart's Send KOT and Pay. */
 export const POS_MOBILE_BAR_BUTTON_CLASS =
-  "flex h-12 w-full items-center justify-between touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
+  "h-11 cursor-pointer rounded-[10px] bg-primary px-5 text-[15px] font-semibold text-primary-foreground";
 
-// Cart bottom sheet height: `vh` base, `dvh` where supported (with
-// interactive-widget=resizes-content, set in the dashboard layout, the
-// on-screen keyboard then shrinks the sheet and its scroll region scrolls the
-// focused input into view).
+/** The sheet's overlay (owner Q19: no scrim at any width; the HTML's phone has none): mounted with the dialog, never
+ *  drawn, as on the phone since U1 Task 7 (the HTML's 720-1023px --scrim and its tap went with the side sheet). */
+export const POS_CART_SHEET_SCRIM_CLASS = "hidden";
+/** The cart sheet (values 6.3, 5.1; owner Q19): the phone's sheet at every width below 1280px — the HTML's cart section
+ *  over the whole screen (fixed, inset 0) at z-index 15, over the header, the rail and the tab bar (12), under the
+ *  dialogs it opens; on --surface with its 1px --border rule on the left (the HTML's phone content starts at x 1); no
+ *  shadow, no side panel. It slides up from the window's foot as it opens (Q19 "niche se open ho": .34s on the HTML's
+ *  sheetIn easing) and back down as it closes (.2s ease-in): Radix's data-state picks the slide, and Radix keeps the
+ *  panel mounted until the close has played; motion-safe (app/globals.css: every animation), transform keyframes only
+ *  (WebView 109). The HTML sets no line-height on the cart: normal. */
 export const POS_CART_SHEET_CLASS =
-  "h-[90vh] rounded-t-xl p-0 supports-[height:1dvh]:h-[90dvh] [&>button]:hidden";
-// The Cart INSIDE that sheet scrolls as one panel: when the sheet is shorter
-// than header + list + notes + footer (phone landscape; portrait with the
-// keyboard up) the footer's inputs and CTAs must stay reachable by scrolling
-// instead of overflowing past the sheet's bottom edge (review CB-1 F3).
+  "fixed inset-0 z-[15] flex flex-col border-l border-border bg-card font-sans leading-[normal] text-foreground outline-none motion-safe:data-[state=open]:animate-cart-sheet-up motion-safe:data-[state=closed]:animate-cart-sheet-down";
+// The Cart INSIDE that sheet scrolls as one panel, as the HTML's cart section does: when the sheet is shorter than the
+// head + the lines' floor + the footer (phone landscape; portrait with the keyboard up) the footer's inputs and buttons
+// stay reachable by scrolling instead of overflowing past the sheet's bottom edge (review CB-1 F3).
 export const POS_CART_SHEET_PANEL_CLASS =
   "h-full overflow-y-auto overscroll-contain rounded-none border-0";
-// The cart's line list keeps at least this much height before the panel
-// itself starts scrolling — otherwise flex shrinks the list to 0 first and
-// the operator sees a cart with no items in it. The Cart root scrolls in BOTH
-// mounts (Cart.tsx), so on a short desktop window the footer is reached by
-// scrolling the card rather than overflowing it. No overscroll-contain here:
-// a drag that runs out of list must chain to the panel so the CTAs come up.
-export const POS_CART_LIST_CLASS = "min-h-48 flex-1 overflow-y-auto p-2";
+// The HTML's lines wrapper (values 5.4, 0.3 linesMin; U1 Task 4): it grows into the cart's free height and never
+// shrinks below its lines (flex 1 0 auto), keeps 150px (180px on a phone) so the empty state has room, 14px sides.
+// It has no scroller of its own: the Cart root scrolls in BOTH mounts (Cart.tsx), as the HTML's cart does, so on a
+// short window the footer is reached by scrolling the cart rather than overflowing it. The HTML sets no line-height.
+export const POS_CART_LIST_CLASS = "flex-[1_0_auto] min-h-[150px] px-3.5 leading-[normal] max-tab:min-h-[180px]";
 
-// D9.8 (owner decision 2026-09-26) — the cart's more-actions control and the
-// panel it opens. The occasional money controls (reward, promo, discount, the
-// GST preset, extra charges) moved off the always-visible footer stack and
-// behind this one button; components/pos/CartMoreMenu.tsx carries the full why.
-//
-// D9.8b (owner decision 2026-09-26): the three-dot glyph ALONE, no "More"
-// label, sitting at the END of the collapsed note row — so the menu costs the
-// footer no row of its own. Hence a SQUARE 44px target rather than the earlier
-// full-width bar: 44px is the comfort floor these screens are built to, and it
-// compacts to 32px only on an xl+ FINE pointer (the POS_HEADER_CONTROL_CLASS
-// idiom — keying the SHRINK on a fine pointer is cascade-proof where a coarse
-// re-floor would depend on emission order, CB-1d.1 V1), so glass never gets a
-// smaller target than touch.
-export const POS_CART_MORE_BUTTON_CLASS =
-  "flex h-11 w-11 shrink-0 items-center justify-center text-muted-foreground xl:pointer-fine:h-8 xl:pointer-fine:w-8 touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
-// The panel the More button opens. Width is capped to the viewport so it can
-// never overhang a phone screen, and the height cap + scroll keeps its
-// contents reachable when the reward ladder is long or the on-screen keyboard
-// is up — vh base with a dvh override, the POS_DIALOG_LIST_CAP_CLASS pattern,
-// for exactly the reason given there.
-export const POS_CART_MORE_PANEL_CLASS =
-  "w-[min(20rem,calc(100vw-1.5rem))] max-h-[60vh] overflow-y-auto p-3 supports-[height:1dvh]:max-h-[60dvh]";
+// The /pos header's room rule (design 6.1; components/layout/PosHeaderBrand.tsx measures, ruling R6's pattern): our
+// header buttons the HTML has no place for (Refresh in the apps, Tokens when on) take the actions box's width; when
+// it would get narrower than the switch-order button's minimum, the brand text hides first, then the clock block.
+/** The HTML's header gap (values 1.2). */
+export const POS_HEADER_GAP_PX = 16;
+/** The switch-order button's narrowest before it is measured (values 1.2, design 6.1: its code tile and count pill stay
+ *  whole), the HTML's with "8 open": 1 + 6 left padding + the 30px tile + 10 + 10 (the text column at 0) + the pill
+ *  (8 + 37.34 + 8) + 10 + the 16px chevron + 10 right padding + 1 = 147.34, rounded up. */
+export const POS_SWITCH_MIN_PX = 148;
+/** 0: everything shows; 1: the brand text is out; 2: the clock block is out too. */
+export type PosHeaderRoom = 0 | 1 | 2;
+
+/** The switch-order button's narrowest, measured (U1 Task 6): the parts that never shrink (the code tile, the pill with
+ *  its "N open" words, the chevron: `fixedParts`), a gap between each of the button's children (the text column, at 0
+ *  wide, keeps its two), and its paddings and border (`edges`), rounded up — so a two-digit count asks for its own few
+ *  pixels more. Read from the parts, never from the button's own width, which the box can squeeze below this. */
+export function posSwitchMinPx(m: { fixedParts: number[]; gap: number; edges: number }): number {
+  const gaps = m.fixedParts.length * m.gap;
+  return Math.ceil(m.fixedParts.reduce((sum, w) => sum + w, 0) + gaps + m.edges);
+}
+
+/** The room level for the measured widths: the actions box now (at the current level), the brand text and the clock
+ *  block (0 when the width hides them anyway), and the switch button's measured minimum (POS_SWITCH_MIN_PX until it is
+ *  measured). The box's width with everything shown is worked back from the current level, so the answer is the same
+ *  whichever level it is measured at (nothing flaps). */
+export function posHeaderRoom(m: {
+  room: PosHeaderRoom;
+  actionsWidth: number;
+  brandWidth: number;
+  clockWidth: number;
+  switchMin?: number;
+}): PosHeaderRoom {
+  const min = m.switchMin ?? POS_SWITCH_MIN_PX;
+  const freedByBrand = m.brandWidth;
+  const freedByClock = m.clockWidth > 0 ? m.clockWidth + POS_HEADER_GAP_PX : 0;
+  const allShown = m.actionsWidth - (m.room >= 1 ? freedByBrand : 0) - (m.room >= 2 ? freedByClock : 0);
+  if (allShown >= min) return 0;
+  if (allShown + freedByBrand >= min) return 1;
+  return 2;
+}
+
+// The cart footer's bill rows and the controls inside the Bill options / Note panels (U1 Task 5; values 5.3, 5.5 in
+// docs/superpowers/specs/2026-10-20-pos-html-values.md; design 6.7, 6.8; owner Q11, Q12). D9.8's three-dot trigger and
+// its panel (2026-09-26) became the links row and the one Bill options panel (components/pos/BillOptionsPanel.tsx);
+// these are the looks the bill's rows and the panel's controls share.
+
+/** A bill row (values 5.5 charge rows): the label (with its Remove link) on the left, the amount on the right, 8px apart. */
+export const POS_BILL_ROW_CLASS = "flex items-center justify-between gap-2";
+/** A bill row's label: its words, then the row's link 8px after them. */
+export const POS_BILL_LABEL_CLASS = "flex min-w-0 items-center gap-2";
+/** A bill row's amount (values 5.5): --text. */
+export const POS_BILL_VALUE_CLASS = "whitespace-nowrap text-foreground";
+/** The HTML's "Remove" / "Add back" link in a bill row (values 5.5): 12px --link, no padding (our "Undo" too). */
+export const POS_BILL_LINK_CLASS =
+  "cursor-pointer whitespace-nowrap bg-transparent p-0 text-[12px] text-link disabled:cursor-not-allowed disabled:opacity-50";
+
+/** A field in the Bill options / Note panels (design 6.7): 34px, radius 8, 13.5px (16px below 720px, ruling R36); on the
+ *  kit Input / Textarea it replaces their height, radius and type through tailwind-merge. */
+export const POS_PANEL_FIELD_CLASS =
+  "h-[34px] rounded-[8px] border-border px-2.5 text-[13.5px] shadow-none md:text-[13.5px] max-tab:text-base";
+/** A panel's plain button, the HTML popover's "Move" look (values 5.3): 34px, 1px --border on --surface, radius 8,
+ *  0 12px, 13px 500; hover --hover. */
+export const POS_PANEL_BUTTON_CLASS =
+  "inline-flex h-[34px] cursor-pointer items-center justify-center whitespace-nowrap rounded-[8px] border border-border bg-card px-3 text-[13px] font-medium text-foreground not-disabled:hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50";
+/** A panel's confirming button (Apply, Add), the HTML's small ink button (values 8.3 "Use"): 34px, --ink, --on-ink,
+ *  radius 8, 0 12px, 13px 600. */
+export const POS_PANEL_PRIMARY_CLASS =
+  "inline-flex h-[34px] cursor-pointer items-center justify-center whitespace-nowrap rounded-[8px] border-0 bg-ink px-3 text-[13px] font-semibold text-on-ink disabled:cursor-not-allowed disabled:opacity-50";
+/** A panel's pick (a reward rung, a scratch card), the HTML popover's pickup button (values 5.3): a 1px rule, radius 8,
+ *  12.5px 500; the chosen one in --ink with --on-ink (POS_PANEL_PICK_ON_CLASS), the others on --surface. */
+export const POS_PANEL_PICK_CLASS =
+  "flex min-w-0 max-w-full cursor-pointer rounded-[8px] border px-2.5 py-1.5 text-left text-[12.5px] font-medium disabled:cursor-not-allowed";
+export const POS_PANEL_PICK_ON_CLASS = "border-ink bg-ink text-on-ink";
+export const POS_PANEL_PICK_OFF_CLASS = "border-border bg-card text-foreground not-disabled:hover:bg-hover";
+/** A panel's link ("Add promo code", "Add additional charge"): the footer links' --link at 13px 500, a field's 34px row. */
+export const POS_PANEL_LINK_CLASS =
+  "inline-flex h-[34px] cursor-pointer items-center gap-1.5 self-start bg-transparent p-0 text-[13px] font-medium text-link disabled:cursor-not-allowed disabled:opacity-50";
 
 // Instant-tap feel (CB-1d.1 L1): no double-tap-zoom delay, no long-press text
 // selection, and a compositor-only pressed state (scale/opacity — never paint)
@@ -257,7 +300,9 @@ export const POS_CART_MORE_PANEL_CLASS =
 export const POS_PRESS_FEEDBACK_CLASS =
   "touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
 
-// Header controls (Table / Customer / Open tabs / KOT / Move table): 40px tall
+// Header controls (once Open tabs / KOT on /pos: U1 Task 4 moved the table, move and
+// customer chips into the cart head's cells, U1 Task 6 the rest into the header's
+// switch-order button and its Open orders panel; still the diner PIN reset row): 40px tall
 // with 14px text wherever a finger might tap; the compact 32px / 12px
 // `size="sm"` look returns at xl+ only behind `pointer-fine:` — keying the
 // SHRINK on a fine pointer is cascade-proof where a coarse re-floor would
@@ -265,131 +310,61 @@ export const POS_PRESS_FEEDBACK_CLASS =
 // (CB-1d.1 V1). tailwind-merge lets these override the size variant.
 export const POS_HEADER_CONTROL_CLASS =
   "h-10 text-sm xl:pointer-fine:h-8 xl:pointer-fine:text-xs touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
-// Below xl the header is ONE non-wrapping row, so only one control may
-// flex-shrink and truncate — the customer chip (names are the long values).
-// The table / move-table chip is content-sized (capped at 7rem so an
-// operator-typed table name cannot starve the customer chip), both chips
-// drop their leading icon below xl, and Open tabs shows icon + count only:
-// review CB-1 F10 probed a 360px header down to two visible glyphs per chip
-// when both chips shared the leftover width. Budget at 360px (328px row):
-// KOT 40 + tabs ~68 + table ≤112 + 3 gaps 24 = ≤244 → customer ≥84px.
-export const POS_HEADER_CHIP_FIXED_CLASS = "shrink-0 max-w-28 xl:max-w-none";
-export const POS_HEADER_CHIP_FLEX_CLASS = "min-w-0 flex-1 xl:flex-none";
-export const POS_HEADER_CHIP_ICON_CLASS = "hidden h-4 w-4 xl:block";
+// (The header's table and customer chips, their width classes and the chip's
+// icon token became the cart head's cells in U1 Task 4 (owner Q9); the icon
+// token's last caller went with the payment pill in U1 Task 9 and the export
+// in the final fix wave.)
 
-// Category chips row (below xl): ONE sideways-scrolling line at every width,
-// phones and tablets alike (owner decision 2026-08-29 — "category line",
-// chosen over the 2–3-row cloud). CB-1b's three-row wrapping cloud (≈9rem)
-// plus the header and search rows ate ~59% of a landscape tablet's visible
-// height — the owner's "category half page me aa raha hai". A single 40px
-// strip gives that ~100px back to the menu. `shrink-0` so the flex column
-// never squeezes the strip when the grid competes for height; the selected
-// chip is kept in view by CategoryChips (scrollIntoView on change), so a
-// category that scrolled off the strip is never lost. No scroll-snap: a
-// `snap-x` container is inert without `snap-*` on the chips. "All" first.
-export const POS_CHIP_ROW_CLASS = "flex shrink-0 gap-2 overflow-x-auto pb-1";
-// inline-flex is load-bearing: the label span inside is truncated with a
-// max-width, which only applies once the span is a flex item (max-width and
-// overflow are ignored on a plain inline box inside an inline-block button).
-export const POS_CHIP_CLASS =
-  "inline-flex h-10 shrink-0 items-center rounded-full border px-4 text-sm font-medium transition-colors touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
+// The menu's card grid (values 4.1, 4.3; design 5): the HTML's auto-fill columns, each at least 200px (the whole width
+// when the menu is narrower), 8px apart, so the column count follows the menu column's own width — two beside the
+// cart, three at 820px, one on a phone, more on a wide screen. U1 Task 3 replaced CB-1b's viewport tiers (keyed by the
+// nav's state, capped at three for the old tile) and the old tile's thumbnail-row arithmetic with it.
+export const POS_CARD_GRID_CLASS = "grid grid-cols-[repeat(auto-fill,minmax(min(200px,100%),1fr))] gap-2";
+/** The grid's track minimum and gap, px (POS_CARD_GRID_CLASS). */
+export const POS_CARD_MIN_PX = 200;
+export const POS_CARD_GAP_PX = 8;
 
-// Product grid columns are decided by VIEWPORT breakpoints + the sidebar's
-// state (ProductGrid reads useSidebar()), which together determine the grid
-// pane's real width — chosen in CB-1b over a container query, and kept in
-// CB-1c because the tiers are plain data the pins can verify (the browser-
-// floor reason CB-1b gave was wrong). Below 720 px the nav is an overlay,
-// so both strings agree there. Every tier keeps tiles ≥ POS_MIN_TILE_PX for
-// pane = viewport − sidebar − main padding − [xl+: gaps + cart + rail] (the
-// matrix pin in lib/pos-layout.test.ts derives exactly that).
-// AT MOST 3 COLUMNS (owner decision 2026-09-29, UI batch 1 §H — supersedes
-// the old "no 5-column tier: the ≥1536 desktop keeps its v1 four columns"):
-// once a tier reaches 3 it never grows further, so BOTH tables collapse to
-// two rows (a base 2-column tier, then 3 from `sm` up) — the old lg/xl/2xl
-// entries (4, 3-again, 4) and the collapsed md/xl entries (4, 4) are simply
-// redundant with the sm:3 tier now and are dropped rather than kept at a
-// value the owner capped.
-export const POS_GRID_CLASS_SIDEBAR_EXPANDED =
-  "grid grid-cols-2 gap-2 sm:grid-cols-3";
-export const POS_GRID_CLASS_SIDEBAR_COLLAPSED =
-  "grid grid-cols-2 gap-2 sm:grid-cols-3";
-export const POS_GRID_GAP_REM = 0.5;
-// The same tiers as data (viewport px → columns), for the layout pins' tile-
-// width matrix. Keep in step with the two class strings above (the test
-// asserts each string encodes exactly its table). Both sidebar states share
-// the same table now that neither ever exceeds 3 columns.
-export const POS_GRID_COLUMN_TIERS_SIDEBAR_EXPANDED: ReadonlyArray<{ minPx: number; cols: number }> = [
-  { minPx: 0, cols: 2 },
-  { minPx: BREAKPOINT_SM_PX, cols: 3 },
-];
-export const POS_GRID_COLUMN_TIERS_SIDEBAR_COLLAPSED: ReadonlyArray<{ minPx: number; cols: number }> = [
-  { minPx: 0, cols: 2 },
-  { minPx: BREAKPOINT_SM_PX, cols: 3 },
-];
-
-const REM_PX = 16;
-
-/** The columns the POS grid shows at this viewport (the tier table its class string encodes). */
-export function posGridColumns({ viewportWidth, collapsed }: NavViewport): number {
-  const tiers = collapsed ? POS_GRID_COLUMN_TIERS_SIDEBAR_COLLAPSED : POS_GRID_COLUMN_TIERS_SIDEBAR_EXPANDED;
-  let cols = tiers[0].cols;
-  for (const tier of tiers) if (tier.minPx <= viewportWidth) cols = tier.cols;
-  return cols;
+/** How many cards a row of the grid holds at this width (CSS auto-fill: as many tracks as fit, at least one). */
+export function posCardColumns(gridWidthPx: number): number {
+  const track = Math.min(POS_CARD_MIN_PX, gridWidthPx);
+  return Math.max(1, Math.floor((gridWidthPx + POS_CARD_GAP_PX) / (track + POS_CARD_GAP_PX)));
 }
 
-/** The grid pane's width: the viewport minus the nav and <main>'s side padding, and at xl the two-pane's category
- *  rail, cart column and the two gaps between them. */
+/** A card's width in a grid this wide, px (the 1fr tracks share what the gaps leave). */
+export function posCardWidthPx(gridWidthPx: number): number {
+  const columns = posCardColumns(gridWidthPx);
+  return (gridWidthPx - (columns - 1) * POS_CARD_GAP_PX) / columns;
+}
+
+/** The grid pane's width: the HTML's menu column (posBodyColumnsPx: the viewport minus the nav, the category column
+ *  and the cart column) minus the list wrapper's side padding. */
 export function posGridPaneWidthPx(viewport: NavViewport): number {
-  const { viewportWidth } = viewport;
-  const paddingXRem = viewportWidth >= BREAKPOINT_MD_PX ? MAIN_PADDING_X_REM_MD : MAIN_PADDING_X_REM_BASE;
-  let pane = viewportWidth - navWidthPx(viewport) - 2 * paddingXRem * REM_PX;
-  if (viewportWidth >= POS_TWO_PANE_MIN_PX) {
-    pane -= (POS_RAIL_REM + POS_PANE_GAP_REM + POS_PANE_GAP_REM + POS_CART_COLUMN_REM) * REM_PX;
-  }
-  return pane;
+  const columns = posBodyColumnsPx(viewport);
+  // The menu column follows the category column wherever that shows (from 1100px; owner Q19: alone at 1100-1279px).
+  const menu = columns.length >= 2 ? columns[1] : columns[0];
+  const inset = viewport.viewportWidth < NAV_RAIL_MIN_PX ? POS_PANE_INSET_PX.phone : POS_PANE_INSET_PX.base;
+  return menu - 2 * inset;
 }
-// Tile-internal geometry (ProductGrid markup, parity-pinned): what's left of
-// a tile after card padding, thumb, row gap and the options-button reserve is
-// the product-name box; the matrix pin floors it at POS_MIN_NAME_BOX_PX
-// (= the 1280/expanded/coarse tier's 136px tile — the CB-1d.1 V3 trade-off,
-// 40px button ⇒ pr-9, accepted at arbitration g1).
-export const POS_TILE_CARD_PADDING_PX = 10;
-export const POS_TILE_THUMB_PX = 40;
-export const POS_TILE_ROW_GAP_PX = 8;
-export const POS_MIN_NAME_BOX_PX = 32;
-// Coarse lower bound on tile width ("menu nahi dikh raha"). NOTE: at 128px
-// the name box would be only 24px (128 − 20 pad − 40 thumb − 8 gap − 36
-// reserve), BELOW the enforced 32px name floor — so with pr-9 the BINDING
-// constraint is the nameBox >= POS_MIN_NAME_BOX_PX matrix pin (tightest real
-// tier: 136px tile), and this constant is the retained secondary bound.
-export const POS_MIN_TILE_PX = 128;
 
-// Touch targets: cart qty steppers / remove (36px, compacting to 28px only on
-// an xl+ FINE pointer) and the tile's "add with note" corner button — 40px now
-// (CB-1d.1 V3: 32px sat under every comfort bar), same pointer-fine compact.
-export const POS_CART_STEPPER_CLASS =
-  "h-9 w-9 xl:pointer-fine:h-7 xl:pointer-fine:w-7 touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
-export const POS_TILE_OPTIONS_BUTTON_CLASS =
-  "h-10 w-10 xl:pointer-fine:h-8 xl:pointer-fine:w-8 touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
-// Title clearance for that button: 40px + 4px inset − 10px card padding =
-// 34px ⇒ pr-9 (pr-7 was sized for the 32px button the same way).
-export const POS_TILE_OPTIONS_RESERVE_CLASS = "pr-9 xl:pointer-fine:pr-7";
-// Primary/secondary cart CTAs: 48px on touch; `size="lg"`'s 40px only at
-// xl + FINE pointer (glass keeps 48px — the V1 invariant is uniform, g4).
-export const POS_CART_CTA_CLASS =
-  "w-full h-12 xl:pointer-fine:h-10 touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
+// (The cart's qty stepper / remove touch-target token went with the old cart
+// line in U1 Task 4: the HTML's stepper keeps its own 30/28 and 36/34 sizes on
+// touch screens too, ruling R1 — components/pos/CartLine.tsx; the tile's
+// corner "add with note" button went with the old tile in U1 Task 3; the
+// cart's old 48px CTA token, unused since U1 Task 12, went in the final fix
+// wave: the HTML's Send KOT / Pay carry their own looks in Cart.tsx.)
 
-// CB-2 — the cart's "GST Discount" preset toggle: the 36px control tier (the
-// stepper's), full width, compacting to 32px only on an xl+ FINE pointer.
+// CB-2 — the cart's "GST Discount" preset toggle, full width. Ruling P15 (U1 final fix wave): it sits in the Bill
+// options panel, so it takes the panel's 34px (design 6.7: its fields and buttons are 34px) on every screen (ruling R1:
+// no touch enlargement in the rebuilt parts); the press feedback stays.
 export const POS_CART_GST_BUTTON_CLASS =
-  "h-9 w-full xl:pointer-fine:h-8 touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
+  "h-[34px] w-full touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
 
 // Dialog list caps (CB-1d.1 V2, the CB-1c residual): a plain-vh cap ignores
 // the URL bar / on-screen keyboard, pushing a capped list — and the dialog's
 // escape buttons — off a keyboard-shrunk phone viewport. vh base + dvh
-// override (POS_CART_SHEET_CLASS pattern); 60vh pickers, 50vh Move table.
+// override (POS_CART_SHEET_CLASS pattern); 60vh lists. (U1 Task 11: the table
+// picker and the Move table dialog cap their PANEL instead, lib/table-sheet.ts.)
 export const POS_DIALOG_LIST_CAP_CLASS = "max-h-[60vh] supports-[height:1dvh]:max-h-[60dvh]";
-export const POS_MOVE_TABLE_LIST_CAP_CLASS = "max-h-[50vh] supports-[height:1dvh]:max-h-[50dvh]";
 
 // The (dashboard) layout mounts <TouchFeel /> (components/shared/TouchFeel.tsx),
 // which publishes this attribute on <html> while the staff dashboard is mounted

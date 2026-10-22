@@ -1,10 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { X } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
+import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
+import { promoOffered } from "@/lib/pos-footer";
+import {
+  POS_BILL_LABEL_CLASS,
+  POS_BILL_LINK_CLASS,
+  POS_PANEL_FIELD_CLASS,
+  POS_PANEL_LINK_CLASS,
+  POS_PANEL_PRIMARY_CLASS,
+} from "@/lib/pos-layout";
 
 // CB-5D part 2 — shape-only bound, mirrors PROMO_CODE_PATTERN's own 16-char
 // cap (packages/shared/src/public-promo.ts) — same hardcoded 16 the diner
@@ -23,6 +31,8 @@ interface CartPromoProps {
   // the other side.
   rewardActive: boolean;
   disabled?: boolean;
+  /** Open with the field showing (the panel was opened from the "Promo code" link, so the operator came to type). */
+  defaultExpanded?: boolean;
 }
 
 // CB-5D part 2 — the COUNTER's promo-code control, modeled closely on
@@ -32,24 +42,32 @@ interface CartPromoProps {
 // computes or shows a discount figure of its own; the server resolves the
 // code and returns 400/409 with a message on refusal (surfaced by the
 // existing create-order toast, not from here).
-export function CartPromo({ code, onApply, onRemove, rewardActive, disabled }: CartPromoProps) {
-  const [expanded, setExpanded] = useState(false);
+//
+// U1 Task 5 (owner Q11; design 6.7): the Bill options panel's Promo code section — the panel's 34px field and ink
+// "Apply", the applied code with a "Remove" link; words, rules and aria-labels as before.
+export function CartPromo({ code, onApply, onRemove, rewardActive, disabled, defaultExpanded = false }: CartPromoProps) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [inputText, setInputText] = useState("");
+  // The open Bill options panel moved here by its link asks again (U1 final fix wave): the form opens then too, not only
+  // on mount. Adjusted while rendering, so no frame shows the collapsed trigger.
+  const [expandAsked, setExpandAsked] = useState(defaultExpanded);
+  if (expandAsked !== defaultExpanded) {
+    setExpandAsked(defaultExpanded);
+    if (defaultExpanded) setExpanded(true);
+  }
 
   // COURTESY exclusion only (see rewardActive doc above) — the server is the
   // real fence. Once a reward is selected, hide the promo control entirely
   // rather than show a control staff cannot actually use.
-  if (rewardActive && !code) return null;
+  if (!promoOffered({ rewardPicked: rewardActive, promoCode: code })) return null;
 
   if (code) {
     return (
-      <div className="flex items-center justify-between gap-2 text-sm">
-        <span className="min-w-0 flex-1 truncate">Promo {code} applied</span>
-        <Button
+      <div className={cn(POS_BILL_LABEL_CLASS, "min-h-[34px] text-[13px]")}>
+        <span className="min-w-0 truncate">Promo {code} applied</span>
+        <button
           type="button"
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 shrink-0"
+          className={cn(POS_BILL_LINK_CLASS, BRAND_PRESS_CLASS)}
           onClick={() => {
             setInputText("");
             setExpanded(false);
@@ -58,8 +76,8 @@ export function CartPromo({ code, onApply, onRemove, rewardActive, disabled }: C
           disabled={disabled}
           aria-label="Remove promo code"
         >
-          <X className="h-4 w-4" />
-        </Button>
+          Remove
+        </button>
       </div>
     );
   }
@@ -70,7 +88,7 @@ export function CartPromo({ code, onApply, onRemove, rewardActive, disabled }: C
         type="button"
         onClick={() => setExpanded(true)}
         disabled={disabled}
-        className="text-left text-xs font-medium text-muted-foreground underline-offset-2 hover:underline disabled:opacity-50"
+        className={cn(POS_PANEL_LINK_CLASS, BRAND_PRESS_CLASS)}
       >
         Add promo code
       </button>
@@ -80,7 +98,7 @@ export function CartPromo({ code, onApply, onRemove, rewardActive, disabled }: C
   const trimmed = inputText.trim();
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-2">
       {/* Uppercase-normalised as the operator types — the server does the
           same transform (createOrderSchema's promoCode field), so what
           staff see here is exactly what gets sent and checked. */}
@@ -91,16 +109,16 @@ export function CartPromo({ code, onApply, onRemove, rewardActive, disabled }: C
         placeholder="Promo code"
         aria-label="Promo code"
         disabled={disabled}
-        className="h-8 text-sm"
+        className={POS_PANEL_FIELD_CLASS}
       />
-      <Button
+      <button
         type="button"
-        size="sm"
+        className={cn(POS_PANEL_PRIMARY_CLASS, BRAND_PRESS_CLASS)}
         onClick={() => trimmed && onApply(trimmed)}
         disabled={disabled || trimmed.length === 0}
       >
         Apply
-      </Button>
+      </button>
     </div>
   );
 }

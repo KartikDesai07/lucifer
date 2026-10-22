@@ -1,31 +1,53 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useId } from "react";
 import Image from "next/image";
-import { NotebookPen } from "lucide-react";
 
-import { effectivePrice } from "@/hooks/use-cart";
 import { productImageUrl } from "@/lib/images";
-import { productIconComponent } from "@/lib/product-icon-map";
-import { inr, cn } from "@/lib/utils";
-import {
-  POS_TILE_OPTIONS_BUTTON_CLASS,
-  POS_TILE_OPTIONS_RESERVE_CLASS,
-  POS_PRESS_FEEDBACK_CLASS,
-} from "@/lib/pos-layout";
-import { Badge } from "@/components/ui/badge";
+import { cardNameDescribedBy, cardTag, priceButtonTitle, priceButtonsFor, priceText } from "@/lib/pos-price-buttons";
+import { cn } from "@/lib/utils";
+import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
 import type { Product } from "@/types";
 
-// Tile thumbnail edge, CSS px. Requested at 2x so the Cloudinary branch (which
-// transforms on delivery) stays sharp on a retina counter screen.
-export const THUMB_PX = 40;
+// The owner's HTML item card (U1 Task 3; values 4.1-4.6 in docs/superpowers/specs/2026-10-20-pos-html-values.md;
+// design 6.4; owner Q5-Q7): the item's photo (only when it has one), the name button (it opens the options modal), the
+// tag line and the price strip (a tap on a price adds at once: lib/pos-price-buttons.ts). No veg mark (owner Q7): the
+// name starts where the HTML's mark sits.
 
-// Tile height FLOOR, not a fixed height: the worst case (two-line name + the
-// category sub-line + the price row) measures ~101px at the default type
-// scale, so a fixed 88px tile would have clipped the price under
-// overflow-hidden. Cards take their row's height from `h-full`, which is what
-// actually lines a row up; this floor only stops a one-word tile collapsing.
-export const TILE_MIN_HEIGHT = "min-h-[6.5rem]";
+/** The card (values 4.1): --surface, a 1px border, radius 14, 12px padding, its parts 10px apart. GridSkeleton draws
+ *  the same shell, so a loading card has the real card's 117px (123px below 1100px). */
+export const CARD_SHELL_CLASS = "flex flex-col gap-2.5 rounded-[14px] border bg-card p-3 text-foreground";
+/** The price strip (values 4.1): --surface-2, radius 8, 2px padding and gap. */
+export const PRICE_STRIP_CLASS = "grid gap-0.5 rounded-[8px] bg-surface-2 p-0.5";
+/** values 0.3 priceH: a price button is 40px from 1100px, 46px below. */
+export const PRICE_HEIGHT_CLASS = "h-10 max-desk:h-[46px]";
+
+/** The size a photo is asked for where the store resizes on delivery (Cloudinary; R2 photos come pre-sized): the
+ *  widest card's photo box (340px on a phone) at twice the pixels. Scaled to fit (no crop there): the box's
+ *  object-cover crops it once, to the box's own shape. */
+export const CARD_PHOTO_PX = 680;
+
+// The HTML's motion (values 4.1): transform .28s on its easing, box-shadow .28s, border-color .2s; on hover the card
+// lifts 2px over a soft shadow (only where the device hovers, ruling R14; the hover shadow replaces the in-cart ring, as
+// the HTML's !important hover rule does).
+const CARD_MOTION_CLASS =
+  "[transition:transform_.28s_cubic-bezier(.2,.8,.2,1),box-shadow_.28s,border-color_.2s] motion-reduce:transition-none hover:[transform:translateY(-2px)] hover:[box-shadow:0_10px_26px_rgba(0,0,0,.08)]";
+// In the cart (values 4.2): the accent border and a 1px accent ring.
+const IN_CART_CLASS = "border-primary [box-shadow:0_0_0_1px_var(--primary)]";
+// The name button (values 4.1) and the price buttons take no touch while disabled: a disabled button still matches
+// :active in Chromium, and the touch layer ([data-pos-touch], app/globals.css) would dim it under a finger; a mouse
+// still gets the HTML's not-allowed pointer.
+const NAME_BUTTON_CLASS =
+  "flex w-full cursor-pointer items-start gap-2 bg-transparent p-0 text-left disabled:cursor-not-allowed pointer-coarse:disabled:pointer-events-none";
+// The qty badge (values 4.1): 20px, radius 10, 0 6px, the accent with 12px/600 --on-accent figures; the HTML's pop.
+const BADGE_CLASS =
+  "flex h-5 min-w-5 flex-none items-center justify-center rounded-[10px] bg-primary px-1.5 text-[12px] font-semibold text-primary-foreground motion-safe:animate-html-pop";
+// A price button (values 4.1, 0.5): the UA's 1px 6px padding, radius 6, line-height 1.15; hover --surface with a hairline
+// shadow, pressed --accent-t.
+const PRICE_BUTTON_CLASS =
+  "flex min-w-0 cursor-pointer flex-col items-center justify-center rounded-[6px] bg-transparent px-1.5 py-px leading-[1.15] text-foreground hover:bg-card hover:[box-shadow:0_1px_2px_rgba(0,0,0,.1)] not-disabled:active:bg-accent disabled:cursor-not-allowed pointer-coarse:disabled:pointer-events-none";
+// values 4.2 cols: one column per button (at most three).
+const STRIP_COLUMNS = ["grid-cols-1", "grid-cols-2", "grid-cols-3"] as const;
 
 interface ProductCardProps {
   product: Product;
@@ -33,8 +55,9 @@ interface ProductCardProps {
   categoryLabel: string;
   qty: number;
   // Both callbacks receive the product — the card binds itself, so the grid can
-  // pass ONE stable function to every tile and React.memo can bail out.
-  onClick: (product: Product) => void;
+  // pass ONE stable function to every tile and React.memo can bail out. onAdd
+  // also gets the tapped price button's variation (none for an item sold one way).
+  onAdd: (product: Product, variation?: string) => void;
   onOptions: (product: Product) => void;
 }
 
@@ -49,152 +72,71 @@ export const ProductCard = memo(function ProductCard({
   showCategory,
   categoryLabel,
   qty,
-  onClick,
+  onAdd,
   onOptions,
 }: ProductCardProps) {
-  const url = productImageUrl(product.image, THUMB_PX * 2);
-  const Icon = productIconComponent(product.icon);
+  const badgeId = useId();
+  const tagId = useId();
   // Legacy products (pre-`available`) read as available; only an explicit
   // `available:false` ("86") disables ordering.
   const outOfStock = product.available === false;
-  const price = effectivePrice(product);
-  const hasDiscount = product.discount > 0;
-  const hasOptions = product.modifiers.length > 0;
-  // A variation item bills at whichever size the operator picks in the modal,
-  // never at this tile's base `price` — showing the min–max range up front
-  // (same figures the modal offers) keeps the number here from surprising
-  // anyone once the line lands in the cart.
-  const variationPrices = product.variations?.map((v) =>
-    effectivePrice({ price: v.price, discount: product.discount }),
-  );
-  const priceRange =
-    variationPrices && variationPrices.length > 0
-      ? { min: Math.min(...variationPrices), max: Math.max(...variationPrices) }
-      : null;
+  const inCart = qty > 0;
+  const photo = productImageUrl(product.image, CARD_PHOTO_PX, { fit: true });
+  const tag = cardTag(product, { showCategory, categoryLabel });
+  const buttons = priceButtonsFor(product);
 
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => onClick(product)}
-        disabled={outOfStock}
-        className={cn(
-          // w-full/h-full are load-bearing: a <button> sizes to its own CONTENT
-          // even as a flex container, so without them each tile took the width of
-          // its product name and the grid came out ragged, with the notes button
-          // stranded outside the card it belongs to. h-full makes every tile in a
-          // row adopt that row's height, so the bottom edges line up.
-          // disabled:pointer-events-none mirrors the options button / shadcn
-          // Button: a disabled control CAN match :active in Chromium (probed,
-          // review g18), and without it an 86'd tile would flash BRIGHTER
-          // (opacity-60 -> active:opacity-80) under the press-feedback token.
-          // Known trade-off: it also mutes the name span's title tooltip on a
-          // clipped out-of-stock name (desktop hover) — accepted, review r2.
-          "flex h-full w-full flex-col justify-between gap-1.5 overflow-hidden rounded-lg border bg-card p-2.5 text-left shadow-sm transition-colors disabled:pointer-events-none",
-          POS_PRESS_FEEDBACK_CLASS,
-          TILE_MIN_HEIGHT,
-          outOfStock
-            ? "cursor-not-allowed opacity-60"
-            : "hover:border-primary hover:bg-accent",
-          qty > 0 && "border-primary",
-        )}
-      >
-        <span className="flex w-full min-w-0 items-start gap-2">
-          {url ? (
-            <Image
-              src={url}
-              alt=""
-              width={THUMB_PX}
-              height={THUMB_PX}
-              className="h-10 w-10 shrink-0 rounded-md object-cover"
-            />
-          ) : (
-            <span
-              aria-hidden
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-muted text-base font-semibold text-muted-foreground"
-            >
-              {Icon ? <Icon className="h-5 w-5" /> : product.name.charAt(0).toUpperCase()}
-            </span>
-          )}
-          {/* Reserves the top-right corner for the notes button, which is
-              positioned over this card by the grid cell above. */}
-          <span className={cn("min-w-0 flex-1", POS_TILE_OPTIONS_RESERVE_CLASS)}>
-            <span
-              className="line-clamp-2 break-words text-sm font-semibold leading-tight"
-              title={product.name}
-            >
-              {product.name}
-            </span>
-            {showCategory && (
-              <span className="mt-0.5 block truncate text-[11px] leading-tight text-muted-foreground">
-                {categoryLabel}
-              </span>
-            )}
-          </span>
-        </span>
-
-        <span className="flex w-full items-center gap-1.5">
-          {priceRange ? (
-            <span className="text-base font-bold tabular-nums">
-              {inr(priceRange.min)} – {inr(priceRange.max)}
-            </span>
-          ) : (
-            <>
-              <span className="text-base font-bold tabular-nums">{inr(price)}</span>
-              {hasDiscount && (
-                <span className="text-xs tabular-nums text-muted-foreground line-through">
-                  {inr(product.price)}
-                </span>
-              )}
-            </>
-          )}
-          <span className="ml-auto flex shrink-0 items-center gap-1">
-            {outOfStock ? (
-              <Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
-                Out of stock
-              </Badge>
-            ) : (
-              <>
-                {/* A tap on these opens the add-ons modal instead of dropping the
-                    item straight into the cart — say so on the tile. */}
-                {hasOptions && (
-                  <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
-                    Options
-                  </Badge>
-                )}
-                {hasDiscount && (
-                  <Badge className="px-1.5 py-0 text-[10px]">
-                    {product.discount}% off
-                  </Badge>
-                )}
-              </>
-            )}
-          </span>
-        </span>
-      </button>
-      {qty > 0 && (
-        <span
-          aria-label={`${qty} in cart`}
-          className="absolute left-1 top-1 z-10 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[11px] font-semibold tabular-nums text-primary-foreground"
+    <div
+      data-ui="pos-card"
+      className={cn(CARD_SHELL_CLASS, CARD_MOTION_CLASS, inCart ? IN_CART_CLASS : "border-border", outOfStock && "opacity-45")}
+    >
+      {photo && (
+        <div
+          data-ui="pos-card-photo"
+          className={cn("relative h-28 overflow-hidden rounded-[10px] bg-surface-2 max-tab:h-24", outOfStock && "[filter:grayscale(1)]")}
         >
-          {qty}
-        </span>
+          <Image src={photo} alt="" fill sizes="(max-width: 719px) 100vw, 340px" className="object-cover" />
+        </div>
       )}
-      {/* Sibling of the card's own <button>, never nested inside it —
-          a <button> inside a <button> is invalid and unclickable. */}
       <button
         type="button"
+        data-ui="pos-card-name"
+        disabled={outOfStock}
         onClick={() => onOptions(product)}
-        disabled={product.available === false}
-        aria-label="Add with note or quantity"
-        title="Add with note or quantity"
-        className={cn(
-          POS_TILE_OPTIONS_BUTTON_CLASS,
-          "absolute right-1 top-1 z-10 grid place-items-center rounded-full bg-background/90 text-muted-foreground shadow-sm ring-1 ring-border hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-0",
-        )}
+        aria-label={`${product.name}: Add with note or quantity`}
+        aria-describedby={cardNameDescribedBy({ tagId, badgeId, tag: tag.text, inCart })}
+        className={cn(NAME_BUTTON_CLASS, BRAND_PRESS_CLASS)}
       >
-        <NotebookPen className="h-4 w-4" />
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span title={product.name} className="truncate text-[14.5px] font-medium tracking-[-0.005em]">
+            {product.name}
+          </span>
+          <span id={tagId} data-ui="pos-card-tag" className={cn("truncate text-[12px]", tag.tone === "bad" ? "text-status-bad-ink" : "text-muted-foreground")}>
+            {tag.text}
+          </span>
+        </span>
+        {inCart && (
+          <span id={badgeId} data-ui="pos-card-badge" aria-label={`${qty} in cart`} className={BADGE_CLASS}>
+            {qty}
+          </span>
+        )}
       </button>
+      <div data-ui="pos-price-strip" className={cn(PRICE_STRIP_CLASS, STRIP_COLUMNS[buttons.length - 1])}>
+        {buttons.map((b) => (
+          <button
+            key={b.variation ?? b.label}
+            type="button"
+            data-ui="pos-price-button"
+            disabled={outOfStock}
+            title={priceButtonTitle(product.name, b)}
+            onClick={() => (b.opensOptions ? onOptions(product) : onAdd(product, b.variation))}
+            className={cn(PRICE_BUTTON_CLASS, PRICE_HEIGHT_CLASS, BRAND_PRESS_CLASS)}
+          >
+            <span className="max-w-full truncate text-[10.5px] text-muted-foreground">{b.label}</span>
+            <span className="max-w-full truncate text-[13.5px] font-semibold">{priceText(b)}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 });

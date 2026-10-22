@@ -15,6 +15,17 @@ export const STATUS_CLASSES: Record<StatusKind, StatusClasses> = {
   neutral: { dot: "bg-subtle-foreground", ink: "text-muted-foreground", tint: "bg-muted", border: "border-transparent", pill: "bg-muted text-muted-foreground" },
 };
 
+/** The owner's HTML note box tones (POS values 11.1: the payment sheet's due and method notes; design 6.8): a tint on its
+ *  own 1px rule — warn for something to check, bad for a refusal, neutral on --surface-2. The box itself (radius 10,
+ *  padding 14, 13.5px, line-height 1.5, --text-2) is the component's (components/pos/WriteNotice.tsx). */
+export type NoteTone = "warn" | "bad" | "neutral";
+
+export const NOTE_TONE_CLASSES: Record<NoteTone, string> = {
+  warn: "border-status-warn bg-status-warn-tint",
+  bad: "border-status-bad bg-status-bad-tint",
+  neutral: "border-border bg-surface-2",
+};
+
 export const PAYMENT_KIND: Record<SettlementPayMode, StatusKind> = {
   Online: "info",
   Cash: "ok",

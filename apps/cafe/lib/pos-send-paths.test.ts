@@ -28,7 +28,11 @@ const POS_PAGE = "apps/cafe/app/(dashboard)/pos/page.tsx";
 const CART_PROPS = "apps/cafe/lib/pos-cart-props.ts";
 const CART = "apps/cafe/components/pos/Cart.tsx";
 const CART_LINE = "apps/cafe/components/pos/CartLine.tsx";
+const CART_LINES = "apps/cafe/components/pos/CartLines.tsx";
+const CART_HEAD = "apps/cafe/components/pos/CartHead.tsx";
 const CART_NOTES = "apps/cafe/components/pos/CartNotes.tsx";
+const CART_BILL = "apps/cafe/components/pos/CartBill.tsx";
+const CART_LINKS = "apps/cafe/components/pos/CartFooterLinks.tsx";
 const GRID = "apps/cafe/components/pos/ProductGrid.tsx";
 const HEADER = "apps/cafe/components/pos/PosHeader.tsx";
 const OPEN_TABS = "apps/cafe/components/pos/OpenTabsButton.tsx";
@@ -185,19 +189,39 @@ test("S8: every editing surface is locked during the flight — grid, lines, Cle
   const page = readSrc(POS_PAGE);
   assert.match(between(page, "<ProductGrid", "/>"), /disabled=\{pos\.isBusy\}/, "the product grid is inert while a send flies");
   const grid = readSrc(GRID);
-  assert.ok(grid.includes('<div className={cn(gridClass, disabled && "opacity-50")} inert={disabled}>'));
+  // U1 Task 3: the HTML's card grid (one class at every width) in both layouts — the Normal grid and each group's.
+  assert.equal(grid.split('<div className={cn(POS_CARD_GRID_CLASS, disabled && "opacity-50")} inert={disabled}>').length - 1, 2, "both layouts' grids are inert while a send flies");
   const cart = readSrc(CART);
-  assert.match(between(cart, "fresh.map((item) => (", "))"), /disabled=\{isBusy\}/, "unsent lines' steppers lock");
-  assert.ok(cart.includes("onClick={onClear} disabled={isBusy}"), "Clear locks");
-  assert.ok(cart.includes("trailing={moreMenu} disabled={isBusy} />"), "the note locks");
-  assert.ok(cart.includes("disabled={charge === 0 || isBusy}"), "the waive button locks");
-  assert.match(between(cart, "value={charge === 0 ? \"\" : charge}", "/>"), /disabled=\{isBusy\}/, "the charge input locks");
-  assert.match(between(cart, "onClick={onChargeReset}", ">"), /disabled=\{isBusy\}/, "Undo locks");
-  assert.equal(count(readSrc(CART_LINE), "disabled={disabled}"), 3, "both steppers and remove");
-  assert.equal(count(readSrc(CART_NOTES), "disabled={disabled}"), 2, "the Add note row and the textarea");
-  assert.equal(count(readSrc(HEADER), "disabled={isBusy}"), 5, "KOT reprint, Open tabs, move/assign, table tiles, customer");
-  assert.ok(readSrc(OPEN_TABS).includes("disabled={disabled}"), "the Open tabs trigger honours it");
-  assert.ok(readSrc(CUSTOMER).includes("disabled={disabled}"), "the customer trigger honours it");
+  // U1 Task 4 (values 5.2, 5.4; owner Q9/Q10): the head and the lines left Cart.tsx for CartHead.tsx / CartLines.tsx,
+  // each line's stepper locks, Clear / Close and the cells lock, and no line can be selected (so no Remove / Void).
+  const lines = readSrc(CART_LINES);
+  const head = readSrc(CART_HEAD);
+  assert.match(between(cart, "<CartLines", "/>"), /isBusy=\{isBusy\}/, "the lines get the lock");
+  assert.match(between(cart, "<CartHead", "/>"), /isBusy=\{isBusy\}/, "the head gets the lock");
+  assert.match(between(lines, "lines.map((item, i) => {", "})}"), /disabled=\{isBusy\}/, "every line's stepper locks");
+  assert.ok(lines.includes("if (isBusy) return;"), "no line is selected while busy (no Remove, no Void)");
+  assert.ok(head.includes("onClick={onClear} disabled={isBusy}"), "Clear locks");
+  assert.ok(head.includes("onClick={onCloseTab} disabled={isBusy}"), "Close locks");
+  assert.equal(count(head, "disabled={isBusy}"), 5, "Clear, Close, the table cell, the move cell and the customer cell");
+  // U1 Task 5 (owner Q11, Q12; values 5.5): the note row became the Note link + its panel, the More trigger the links,
+  // and the bill rows (the table charge's field, its Remove and Undo) moved into CartBill.tsx — each still locks.
+  assert.match(between(cart, "<CartFooterLinks", "/>"), /disabled=\{isBusy\}/, "the links (Note, Discount, …) lock");
+  assert.match(between(cart, "<CartNotes", "/>"), /disabled=\{isBusy\}/, "the note field locks");
+  assert.match(between(cart, "<CartBill", "/>"), /isBusy=\{isBusy\}/, "the bill gets the lock");
+  const bill = readSrc(CART_BILL);
+  assert.ok(bill.includes("disabled={charge === 0 || isBusy}"), "the waive button locks");
+  assert.match(between(bill, "value={charge === 0 ? \"\" : charge}", "/>"), /disabled=\{isBusy\}/, "the charge input locks");
+  assert.match(between(bill, "onClick={onChargeReset}", ">"), /disabled=\{isBusy\}/, "Undo locks");
+  // U1 Task 4 (owner Q10): the trash button went (select the line, then Remove), so the two stepper buttons remain.
+  assert.equal(count(readSrc(CART_LINE), "disabled={disabled}"), 2, "both steppers");
+  assert.equal(count(readSrc(CART_NOTES), "disabled={disabled}"), 1, "the note field (its Add note row became the Note link)");
+  assert.ok(readSrc(CART_LINKS).includes("disabled={disabled}"), "every link honours the lock");
+  // U1 Task 4 (owner Q9): the move/assign, table and customer chips are the cart head's cells (counted above).
+  // U1 Task 6 (owner Q17; values 7): the header's switch-order button stays openable while a send flies (it only
+  // shows the panel); inside the Open orders panel every row (a resume) and the KOT reprint at its foot lock.
+  assert.equal(count(readSrc(HEADER), "disabled={isBusy}"), 0, "the switch-order button is never locked");
+  assert.equal(count(readSrc(OPEN_TABS), "disabled={isBusy}"), 2, "the panel's rows and its KOT reprint");
+  assert.ok(readSrc(CUSTOMER).includes("disabled={disabled}"), "the customer chip (the payment popup's) honours it");
 });
 
 test("S9: the cart shows Sending… and, after an unanswered send, the notice with Send again (and only that)", () => {
@@ -208,8 +232,9 @@ test("S9: the cart shows Sending… and, after an unanswered send, the notice wi
   assert.ok(actions.includes("Sending…"), "the Send button reads Sending… in flight");
   const again = between(actions, 'if (notice?.action === "send-again") {', "if (resuming) {");
   assert.ok(again.includes('{inFlight || "Send again"}') && again.includes("onClick={onSendToKitchen}"), "Send again re-runs the send");
-  assert.match(again, /<Button className=\{POS_CART_CTA_CLASS\} size="lg" disabled=\{sending\}/, "Send again is live while frozen — only a flight disables it");
-  assert.ok(again.includes('<SendDiscard kind="kitchen" disabled={sending} onDiscard={onDiscard} />'), "R-d: the cart offers Discard");
+  // U1 Task 5 (design 6.8): "Send again" | "Discard" in the two button slots, in the HTML's button looks.
+  assert.match(again, /<button type="button" className=\{PAY_BUTTON_CLASS\} disabled=\{sending\} onClick=\{onSendToKitchen\}>/, "Send again is live while frozen — only a flight disables it");
+  assert.ok(again.includes('<SendDiscard kind="kitchen" disabled={sending} onDiscard={onDiscard} className={SEND_BUTTON_CLASS} />'), "R-d: the cart offers Discard");
   assert.ok(!again.includes("onPayNow") && !again.includes("onSettle"), "nothing else can go out over an unanswered send");
   assert.ok(cart.includes("onDiscard={onDiscardSend}"), "the cart hands CartActions the Discard");
   const bar = readSrc(MOBILE_BAR);
@@ -236,12 +261,14 @@ test("S11 (R-b): the Pay Now popup is frozen while its sale is unconfirmed — m
   assert.ok(src.includes("const locked = isSubmitting || frozen;"));
   assert.equal(count(src, "disabled={isSubmitting}"), 1, "only Discard is gated on the flight alone — no input is");
   assert.equal(count(src, "disabled={locked}"), 4, "the mode buttons, the amount, the split fields and the customer picker");
-  assert.ok(src.includes("<CustomerSearch value={customer} onChange={onSelectCustomer} disabled={locked} />"), "the customer picker");
+  // U1 Task 10 (ruling P30): the picker also names the order for its sheet's sub line (context); the lock is unchanged.
+  assert.ok(src.includes("<CustomerSearch value={customer} onChange={onSelectCustomer} disabled={locked} context={paymentPlace(tableNo, newSale)} />"), "the customer picker");
   const guard = between(src, "const openChange = (next: boolean) => {", "onOpenChange(next);");
   assert.ok(guard.includes("if (!next && isSubmitting) return;") && guard.includes("if (!next && frozen) return;"), "X / Escape / outside tap cannot close a frozen sale — only its Discard");
   // The main button stays Send again (M3: isSubmitting is the flight only).
   assert.ok(src.includes('action === "send-again" ? "Send again"'), "landmark: the Send again label");
-  assert.ok(src.includes('{frozen && <SendDiscard kind="pay" disabled={isSubmitting} onDiscard={() => onOpenChange(false)} />}'), "R-d: the popup offers Discard");
+  // U1 Task 9 (design 6.11): Discard takes the payment sheet's 50px button look, as the cart's slot does (Task 5).
+  assert.ok(src.includes('{frozen && <SendDiscard kind="pay" disabled={isSubmitting} onDiscard={() => onOpenChange(false)} className={DISCARD_CLASS} />}'), "R-d: the popup offers Discard");
 });
 
 test("S12 (R-d): Discard confirms first, in plain English, through the shared ConfirmDialog", () => {
@@ -251,7 +278,11 @@ test("S12 (R-d): Discard confirms first, in plain English, through the shared Co
   assert.match(src, /onConfirm=\{\(\) => \{\s*setOpen\(false\);\s*onDiscard\(\);\s*\}\}/, "Discard runs only from the confirm");
   assert.equal(count(src, "onDiscard("), 1, "and nowhere else");
   assert.match(src, /onClick=\{\(\) => setOpen\(true\)\}/, "the button only opens the confirm");
-  assert.ok(src.includes("className={POS_CART_CTA_CLASS}"), "a touch-sized CTA on both surfaces");
+  // U1 Task 12: both surfaces hand Discard their slot's look (the cart's footer, Task 5; the payment sheet, Task 9), so
+  // the kit-outline fallback (POS_CART_CTA_CLASS) had no caller left and went; the confirm is the HTML's (look="sheet").
+  assert.ok(src.includes("className: string;") && src.includes("className={className}"), "the button wears the look of the slot it sits in, on both surfaces");
+  assert.ok(!src.includes("POS_CART_CTA_CLASS") && !src.includes('from "@/components/ui/button"'), "no kit-outline fallback left");
+  assert.ok(src.includes('look="sheet"'), "the confirm is the HTML's confirm sheet (values 12.1)");
   const copy = readSrc(CONTROLLER);
   assert.ok(copy.includes('"The order may already have reached the kitchen. Check Open tabs before sending it again."'));
   assert.ok(copy.includes('"The sale may already be saved. Check Orders before taking payment again."'));

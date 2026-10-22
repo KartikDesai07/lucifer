@@ -189,6 +189,16 @@
   --animate-brand-shake: brand-shake 360ms ease-in-out;
   /* The HTML's sheet motion (values 1.5, 2.7): the panel rises in, its scrim fades in. */
   --animate-sheet-in: sheet-in 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* The same sheetIn at .25s (POS values 5.3): the /pos cart's Bill options and Note panels rise in. */
+  --animate-html-sheet-in-fast: sheet-in 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* The same sheetIn at .3s (POS values 7.1): the /pos Open orders panel rises in. */
+  --animate-html-sheet-in-op: sheet-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* The HTML's rise at .35s (POS values 7.1): an Open orders row, each 25 ms after the one above (its own delay). */
+  --animate-html-rise-row: brand-rise 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* The same sheetIn at .32s (POS values 8.1): the customer sheet rises in. */
+  --animate-html-sheet-in-cs: sheet-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* The HTML's rise at .3s (POS values 8.2): a customer row, each 30 ms after the one above (its own delay). */
+  --animate-html-rise-cs: brand-rise 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   --animate-scrim-in: brand-fade 0.2s ease both;
   /* The HTML's shake (values 1.5): the reveal dialog's PIN dots after a wrong PIN (values 3.16). */
   --animate-html-shake: html-shake 0.42s ease;
@@ -207,6 +217,15 @@
   --animate-html-fade-fast: brand-fade 0.25s ease both;
   --animate-html-rise: brand-rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   --animate-html-rise-tile: brand-rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* The HTML's pop (POS values 4.1): the /pos card's qty badge springs in. */
+  --animate-html-pop: html-pop 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* The HTML's lineIn (POS values 5.4): a /pos cart line slides in from the right as it arrives. */
+  --animate-html-line-in: html-line-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* Owner Q19 (2026-10-22, "niche se open ho"): below 1280 px the /pos cart sheet slides up from the window's foot on
+     the HTML's sheetIn easing, and back down as it closes (lib/pos-layout.ts POS_CART_SHEET_CLASS). The rise fills
+     backwards only, so the settled sheet carries no transform; the fall holds at the foot until Radix unmounts it. */
+  --animate-cart-sheet-up: cart-sheet-up 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  --animate-cart-sheet-down: cart-sheet-down 0.2s ease-in both;
 }
 
 /* The HTML's growY (values 1.5), verbatim. */
@@ -291,6 +310,48 @@
   }
   to {
     opacity: 1;
+  }
+}
+/* The HTML's pop (POS values 4.1), verbatim. */
+@keyframes html-pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+/* The HTML's lineIn (POS values 5.4), verbatim. */
+@keyframes html-line-in {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* Owner Q19: the /pos cart sheet's slide up from below the window's foot, and back down (transform only). */
+@keyframes cart-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes cart-sheet-down {
+  from {
+    transform: none;
+  }
+  to {
+    transform: translateY(100%);
   }
 }
 /* One short "no" — used on a failed sign-in's error box. */
