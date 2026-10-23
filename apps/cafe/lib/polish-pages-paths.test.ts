@@ -728,21 +728,26 @@ const FILTER_EMPTY_CASES: PinCase[] = [
   // U2 Task 4 (2026-10-23; design 6.5, 11; values 13): the empty box is the HTML's, drawn inside the list box by
   // OrderTable.tsx; its words come from lib/orders-row.ts emptyText ("No matching orders" became the HTML's "No orders
   // match these filters" / "Remove a filter to see more.", unit-pinned in orders-row.test.ts). The page keeps our way
-  // back: "Clear filters" wired to clearFilters while a filter or a phone is on, and the words know when a chip shows.
+  // back: "Clear filters" wired to clearFilters. Ruling P5: only the payment and the table are filters (never the date,
+  // the phone's date chip included; a typed phone keeps its own words), and the way back shows exactly with the
+  // filters words.
   {
     file: ORDERS_PAGE,
     pin: all(
       pinFilterEmpty({ titles: [], label: "Clear filters", handler: "onClick={clearFilters}", landmark: "<OrderTable" }),
       pinRegexes([
-        [/\bemptyAction=\{\s*filtersActive \?/, "the way back shows while a filter or a phone is on (emptyAction={filtersActive ? ...)"],
-        [/\bfiltersOn: chips\.length > 0\b/, "the empty words know when a chip shows (emptyText's filtersOn, the HTML's filters-active)"],
+        [/\bconst filtersOn = Boolean\(filters\.payment \|\| filters\.tableNo\);/, "filters = the payment and the table only (Ruling P5)"],
+        [/\bemptyText\(\{[^}]*\bfiltersOn,/, "the empty words read filtersOn"],
+        [/\bemptyAction=\{\s*filtersOn && !searching \?/, "the way back shows exactly with the filters words (emptyAction={filtersOn && !searching ? ...)"],
       ]),
     ),
     mutations: [
       rep('rename "Clear filters"', "Clear filters", "Reset"),
       repEvery("unwire the handler", "onClick={clearFilters}", "onClick={undefined}"),
-      repRe("the way back never shows", /emptyAction=\{\s*filtersActive \?/, "emptyAction={false ?"),
-      rep("the words never know about filters", "filtersOn: chips.length > 0", "filtersOn: false"),
+      rep("the date chips count again", "const filtersOn = Boolean(filters.payment || filters.tableNo);", "const filtersOn = chips.length > 0;"),
+      rep("the words never know about filters", "                          filtersOn,", "                          filtersOn: false,"),
+      rep("the way back shows over a search's words", "filtersOn && !searching ?", "filtersOn ?"),
+      repRe("the way back never shows", /emptyAction=\{\s*filtersOn && !searching \?/, "emptyAction={false ?"),
     ],
   },
   {

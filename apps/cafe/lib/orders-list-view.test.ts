@@ -243,6 +243,12 @@ test("the /orders page: the list head, the list box, Load more under it (also un
   assert.match(src, /<OrdersListHead head=\{head\} \/>\s*<OrderTable\b/, "the head over the list box");
   assert.match(src, /emptyText\(\{[^}]*\bloaded: list\.length\b[^}]*\}\)/, "the empty words count the loaded settled orders (Q10)");
   assert.match(src, /emptyText\(\{[^}]*\bmore: orders\.hasNextPage\b[^}]*\}\)/, "and know when more can be loaded");
+  // Ruling P5: only the payment and the table are filters (never the date, the phone's chip included; the phone search
+  // keeps its own words), and "Clear filters" shows exactly when the filters words show.
+  assert.match(src, /const filtersOn = Boolean\(filters\.payment \|\| filters\.tableNo\);/, "filters = the payment and the table only");
+  assert.match(src, /emptyText\(\{[^}]*\bfiltersOn,[^}]*\}\)/, "the empty words read that flag");
+  assert.ok(!/filtersOn: chips\.length/.test(src), "the chips (the phone's date chip among them) never make the filters words");
+  assert.match(src, /emptyAction=\{\s*filtersOn && !searching \?/, "Clear filters with the filters words only (a search's words win)");
   assert.match(src, /<OrderTable[^>]*\bonChoose=\{setDetail\}/, "a row opens the order (Task 5 owns the choice)");
   const tableEnd = src.indexOf("/>", src.indexOf("<OrderTable"));
   const more = src.indexOf("<OrdersLoadMore");

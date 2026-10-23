@@ -198,7 +198,7 @@ export interface EmptyTextInput {
   lane: OrdersLane;
   /** The searched phone ("" when none). */
   searching: string;
-  /** A chip shows (the HTML's "filters active"). */
+  /** A payment or a table filter is on (Ruling P5: the date never counts, the phone's date chip included). */
   filtersOn: boolean;
   /** More orders can be loaded. */
   more: boolean;
@@ -208,7 +208,8 @@ export interface EmptyTextInput {
 }
 
 /** The empty box's words (design 6.5, values 13, Q10): a phone that matches nothing, then a filter on, then a Paid or Due
- *  page with more settled orders to load, else "No {lane} orders {today | yesterday | on 22 Oct | yet}". */
+ *  page with more settled orders to load, else "No {lane} orders {today | yesterday | on 22 Oct | yet}" (Open always
+ *  "today"). */
 export function emptyText(i: EmptyTextInput): { title: string; text: string } {
   if (i.searching) return { title: `No orders match “${i.searching}”`, text: "Try another phone number." };
   if (i.filtersOn) return { title: "No orders match these filters", text: "Remove a filter to see more." };
@@ -216,5 +217,7 @@ export function emptyText(i: EmptyTextInput): { title: string; text: string } {
     return { title: `No ${i.lane} bills in the latest ${i.loaded} settled orders`, text: "Load more to check older ones." };
   }
   const lane = i.lane === "all" ? "" : `${i.lane} `;
-  return { title: `No ${lane}orders ${dateWhen(i.date)}`, text: "They will show up here as they happen." };
+  // Ruling P5: the Open lane ignores the date (Q5), so its words always say "today".
+  const when = i.lane === "open" ? "today" : dateWhen(i.date);
+  return { title: `No ${lane}orders ${when}`, text: "They will show up here as they happen." };
 }

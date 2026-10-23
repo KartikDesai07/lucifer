@@ -197,3 +197,21 @@ test("emptyText: searching, then filters, then Q10's sparse Paid / Due page, the
   assert.equal(plain("paid", { kind: "day", date: "2026-10-14" }).title, "No paid orders on 14 Oct", "a picked day");
   assert.equal(plain("cancelled", { kind: "all" }).title, "No cancelled orders yet", "All dates: 'yet', never a trailing space");
 });
+
+// Ruling P5 (2026-10-23): only the payment and the table are "filters"; the date never counts (not the phone's date
+// chip, not the desktop box), and the Open lane, which ignores the date, always says "today".
+test("emptyText (Ruling P5): a date-only state on the phone reads the lane's date words as on desktop; Open always says today", () => {
+  assert.deepEqual(
+    emptyText({ ...base, lane: "paid", date: { kind: "yesterday" }, filtersOn: false, loaded: 3 }),
+    { title: "No paid orders yesterday", text: "They will show up here as they happen." },
+    "the phone with only its Yesterday chip: the page sends filtersOn false (the date is no filter), the lane's words",
+  );
+  assert.deepEqual(
+    emptyText({ ...base, lane: "open", date: { kind: "yesterday" } }),
+    { title: "No open orders today", text: "They will show up here as they happen." },
+    "Open with Yesterday chosen: the lane ignores the date, so its words say today",
+  );
+  assert.equal(emptyText({ ...base, lane: "open", date: { kind: "all" } }).title, "No open orders today", "Open with All dates");
+  assert.equal(emptyText({ ...base, lane: "open", date: { kind: "day", date: "2026-10-14" } }).title, "No open orders today", "Open with a picked day");
+  assert.equal(emptyText({ ...base, lane: "all", date: { kind: "yesterday" } }).title, "No orders yesterday", "other lanes keep the date words");
+});

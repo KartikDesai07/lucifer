@@ -110,7 +110,9 @@ export default function OrdersPage() {
   const shown = laneRows(filters.lane, list, searching);
   // The list head (values 7) counts the rows shown, once the list has loaded.
   const head = orders.data === undefined ? null : listHead(filters.lane, shown.length, orders.hasNextPage, searching);
-  const filtersActive = [filters.payment, filters.tableNo, filters.phone].some(Boolean);
+  // Ruling P5: only the payment and the table are filters for the empty words and their way-back button (never the
+  // date, the phone's date chip included; a typed phone has its own words).
+  const filtersOn = Boolean(filters.payment || filters.tableNo);
   // The chips (values 6): the date one on the phone only; the Filters button's count is their number.
   const phoneWidth = useMediaQuery(ORDERS_PHONE_QUERY) === true;
   const chips = filterChips(filters, phoneWidth);
@@ -209,7 +211,7 @@ export default function OrdersPage() {
                       ? emptyText({
                           lane: filters.lane,
                           searching: filters.phone,
-                          filtersOn: chips.length > 0,
+                          filtersOn,
                           more: orders.hasNextPage,
                           loaded: list.length,
                           date: filters.date,
@@ -217,7 +219,7 @@ export default function OrdersPage() {
                       : null
                   }
                   emptyAction={
-                    filtersActive ? (
+                    filtersOn && !searching ? (
                       <button
                         type="button"
                         onClick={clearFilters}
