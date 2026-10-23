@@ -4,16 +4,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Receipt, Search } from "lucide-react";
 
-import {
-  useOrdersInfinite,
-  useTrimOrdersListOnLeave,
-  useCancelOrder,
-  type OrderFilters,
-} from "@/hooks/use-orders";
+import { useOrdersInfinite, useTrimOrdersListOnLeave, useCancelOrder } from "@/hooks/use-orders";
 import { dedupeOrdersById, liveOrderOf } from "@/lib/order-query";
 import { useTables } from "@/hooks/use-tables";
 import { useAuth } from "@/hooks/use-auth";
-import { ORDER_STATUSES, PAYMENT_MODES, PAY_STYLES } from "@/lib/constants";
+import { PAY_STYLES, SETTLEMENT_PAY_MODES, type SettlementPayMode } from "@/lib/constants";
 import {
   ORDERS_BODY_CLASS,
   ORDERS_DETAIL_COLUMN_CLASS,
@@ -22,6 +17,15 @@ import {
   ORDERS_SCROLLER_CLASS,
   ORDERS_TOP_CLASS,
 } from "@/lib/orders-layout";
+import {
+  DEFAULT_ORDERS_FILTERS,
+  dateFilterOf,
+  laneRows,
+  ordersQuery,
+  seedFromUrl,
+  type OrdersFilterState,
+  type OrdersLane,
+} from "@/lib/orders-lanes";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,60 +40,47 @@ import { OrderDetailSheet } from "@/components/orders/OrderDetailSheet";
 import { OrderTable } from "@/components/orders/OrderTable";
 import { CancelOrderDialog } from "@/components/orders/CancelOrderDialog";
 import { ALL, FilterSelect, type FilterOption } from "@/components/orders/OrderFilterSelect";
+import { OrdersLanes } from "@/components/orders/OrdersLanes";
 import type { Order } from "@/types";
 
 const PHONE_DEBOUNCE_MS = 350;
 const SKELETON_ROWS = 6;
 const POS_PATH = "/pos";
 
-// Filter options: the value is what the list query sends, the label is the word
-// the rows show (payment "Unpaid" reads "Open" on every row).
-const STATUS_OPTIONS: FilterOption[] = ORDER_STATUSES.map((s) => ({ value: s, label: s }));
-const PAYMENT_OPTIONS: FilterOption[] = PAYMENT_MODES.map((m) => ({ value: m, label: PAY_STYLES[m]?.label ?? m }));
+// Payment filter options: the five settled modes (the value is what the list query sends, the label the word the rows
+// show). Today's "Open" (Unpaid) choice is the Open lane now (design 6.3).
+const PAYMENT_OPTIONS: FilterOption[] = SETTLEMENT_PAY_MODES.map((m) => ({ value: m, label: PAY_STYLES[m]?.label ?? m }));
 
 // The owner's HTML Orders screen (U2; values 1.1, 2.1, 2.2; design 5): the page fills the screen under the shell's
 // header like /pos (lib/orders-layout.ts); the list column (top block over the list scroller) and, from 1280px, the
-// 400px detail column. Today's search, filters, list and sheet stay in the list column until U2 Tasks 2-5.
+// 400px detail column. The lanes lead the top block (Task 2); today's search, filters, list and sheet stay in the list
+// column until U2 Tasks 3-5.
 export default function OrdersPage() {
-  const [status, setStatus] = useState(ALL);
-  const [tableNo, setTableNo] = useState(ALL);
-  const [payment, setPayment] = useState(ALL);
-  const [date, setDate] = useState("");
+  // One filter state (lib/orders-lanes.ts): the lane, the date, the payment, the table and the searched phone; the one
+  // list query is ordersQuery's (the same GET /api/orders with today's filter keys only).
+  const [filters, setFilters] = useState<OrdersFilterState>(DEFAULT_ORDERS_FILTERS);
+  const setFilter = (patch: Partial<OrdersFilterState>) => setFilters((f) => ({ ...f, ...patch }));
   // Phone search: keep an immediate input value + a debounced filter value so we
   // don't refetch on every keystroke while typing a number.
   const [phoneInput, setPhoneInput] = useState("");
-  const [phone, setPhone] = useState("");
   useEffect(() => {
-    const t = setTimeout(() => setPhone(phoneInput.trim()), PHONE_DEBOUNCE_MS);
+    const t = setTimeout(() => {
+      const phone = phoneInput.trim();
+      setFilters((f) => (f.phone === phone ? f : { ...f, phone }));
+    }, PHONE_DEBOUNCE_MS);
     return () => clearTimeout(t);
   }, [phoneInput]);
 
-  // Seed the payment, status AND date filters from the URL on mount, so the
-  // dashboard's In-progress KPI ("/orders?payment=Unpaid&status=Pending") lands
-  // pre-filtered to open tabs, and a report's day drill-down
-  // ("/orders?date=YYYY-MM-DD") lands pre-filtered to that one day. Status is
-  // read too because a cancelled tab keeps its historical "Unpaid" payment:
-  // seeding payment alone would list dead tabs alongside the live ones, and the
-  // list would then disagree with the KPI that was clicked (CR1.3). Client-only
-  // (window), not useSearchParams (Suspense/prerender risk) — runs once.
+  // Seed the lane, payment AND date from the URL on mount (seedFromUrl): the dashboard's open-tabs link
+  // ("?payment=Unpaid&status=Pending") lands on Open, its "?status=Cancelled" on Cancelled over every day, a report's
+  // "?date=YYYY-MM-DD" on every order of that day. Client-only (window), not useSearchParams (Suspense/prerender
+  // risk) — runs once; never written back.
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const p = params.get("payment");
-    if (p && (PAYMENT_MODES as readonly string[]).includes(p)) setPayment(p);
-    const s = params.get("status");
-    if (s && (ORDER_STATUSES as readonly string[]).includes(s)) setStatus(s);
-    const d = params.get("date");
-    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) setDate(d);
+    const seed = seedFromUrl(window.location.search);
+    if (Object.keys(seed).length > 0) setFilters((f) => ({ ...f, ...seed }));
   }, []);
 
-  const filters: OrderFilters = {
-    status: status === ALL ? undefined : status,
-    tableNo: tableNo === ALL ? undefined : tableNo,
-    payment: payment === ALL ? undefined : payment,
-    date: date || undefined,
-    phone: phone || undefined,
-  };
-  const orders = useOrdersInfinite(filters);
+  const orders = useOrdersInfinite(ordersQuery(filters, new Date()));
   useTrimOrdersListOnLeave();
   const { isAdmin } = useAuth();
   const cancelOrder = useCancelOrder();
@@ -109,19 +100,26 @@ export default function OrdersPage() {
     }
   };
 
+  // `list` is every loaded row (the sheet follows its live row); `shown` the rows the chosen lane shows (all of them
+  // while a phone is typed: every lane is searched, owner Q4).
   const list = dedupeOrdersById(orders.data?.pages ?? []);
-  const activeFilterCount = [status !== ALL, tableNo !== ALL, payment !== ALL, !!date, !!phone].filter(Boolean).length;
+  const searching = filters.phone !== "";
+  const shown = laneRows(filters.lane, list, searching);
+  const activeFilterCount = [filters.payment, filters.tableNo, filters.phone].filter(Boolean).length;
   const filtersActive = activeFilterCount > 0;
 
-  // Clears the typed phone AND the debounced one, or the 350ms debounce would
-  // leave the old search applied for a beat after the box reads empty.
+  // Clears the payment, the table and the typed phone AND the debounced one, or the 350ms debounce would leave the old
+  // search applied for a beat after the box reads empty. The lane and the date stay (design 6.3).
   const clearFilters = () => {
-    setStatus(ALL);
-    setTableNo(ALL);
-    setPayment(ALL);
-    setDate("");
     setPhoneInput("");
-    setPhone("");
+    setFilter({ payment: null, tableNo: null, phone: "" });
+  };
+
+  // A lane tap (design 6.2): that lane, the phone search cleared (typed and searched) and the choice dropped.
+  const pickLane = (lane: OrdersLane) => {
+    setPhoneInput("");
+    setFilter({ lane, phone: "" });
+    setDetail(null);
   };
 
   return (
@@ -131,6 +129,14 @@ export default function OrdersPage() {
       <div data-ui="orders-body" className={ORDERS_BODY_CLASS}>
         <div data-ui="orders-list" className={ORDERS_LIST_COLUMN_CLASS}>
           <div data-ui="orders-top" className={ORDERS_TOP_CLASS}>
+            <OrdersLanes
+              filters={filters}
+              rows={shown}
+              more={orders.hasNextPage}
+              loaded={orders.data !== undefined}
+              onLane={pickLane}
+              onChoose={setDetail}
+            />
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-3 h-4 w-4 text-muted-foreground" />
               <Input
@@ -154,31 +160,26 @@ export default function OrdersPage() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+            {/* Until Task 3's toolbar: the payment, table and date controls on the lanes' state (a picked day is that
+                day, Clear is All dates; Today shows today's day). */}
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
               <FilterSelect
-                value={status}
-                onChange={setStatus}
-                allLabel="All statuses"
-                ariaLabel="Filter by status"
-                options={STATUS_OPTIONS}
-              />
-              <FilterSelect
-                value={payment}
-                onChange={setPayment}
+                value={filters.payment ?? ALL}
+                onChange={(v) => setFilter({ payment: v === ALL ? null : (v as SettlementPayMode) })}
                 allLabel="All payments"
                 ariaLabel="Filter by payment"
                 options={PAYMENT_OPTIONS}
               />
               <FilterSelect
-                value={tableNo}
-                onChange={setTableNo}
+                value={filters.tableNo ?? ALL}
+                onChange={(v) => setFilter({ tableNo: v === ALL ? null : v })}
                 allLabel="All tables"
                 ariaLabel="Filter by table"
                 options={tableOptions}
               />
               <DatePicker
-                value={date}
-                onChange={setDate}
+                value={dateFilterOf(filters.date, new Date()) ?? ""}
+                onChange={(day) => setFilter({ date: day ? { kind: "day", date: day } : { kind: "all" } })}
                 clearable
                 placeholder="All dates"
                 className={BRAND_CONTROL_CLASS}
@@ -209,7 +210,7 @@ export default function OrdersPage() {
               <p role="status" className="text-sm text-muted-foreground">
                 You appear to be offline. Orders will load when the connection is back.
               </p>
-            ) : list.length === 0 ? (
+            ) : shown.length === 0 ? (
               <EmptyState
                 icon={<Receipt className="h-8 w-8" />}
                 title={filtersActive ? "No matching orders" : "No orders yet"}
@@ -240,7 +241,7 @@ export default function OrdersPage() {
             ) : (
               <div className="flex flex-col gap-4">
                 <OrderTable
-                  orders={list}
+                  orders={shown}
                   onView={setDetail}
                   onSettle={setDetail}
                   onCancel={setCancelling}

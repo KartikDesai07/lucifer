@@ -631,7 +631,9 @@ const offlineTernaryCase = (file: string, obj: string, empty: string, dataGuard:
 };
 
 const OFFLINE_CASES: PinCase[] = [
-  offlineTernaryCase(ORDERS_PAGE, "orders", "list.length === 0", "!orders.data"),
+  // U2 Task 2 (owner Q2, Q3): the empty state reads the rows the chosen lane shows (`shown`, laneRows of the loaded
+  // `list`), so a Paid / Due page with no row of its own is empty; same pin, the branch head moved with the code.
+  offlineTernaryCase(ORDERS_PAGE, "orders", "shown.length === 0", "!orders.data"),
   offlineTernaryCase(RESERVATIONS_PAGE, "reservations", "list.length === 0 && isFiltered", "reservations.data === undefined"),
   offlineTernaryCase(EVENTS_PAGE, "events", "list.length === 0 && status !== ALL", "events.data === undefined"),
   {
