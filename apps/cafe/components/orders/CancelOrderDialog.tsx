@@ -38,10 +38,19 @@ interface CancelOrderDialogProps {
 // Ruling P17 (the verification fix, V-C F1): the Android keyboard never resizes the WebView, so along the window's foot
 // the sheet lay under it while the reason was typed. Below 720px it opens at the window's TOP instead (our own field; the
 // HTML confirm has none): 16px under the top edge plus the top safe-area inset, radius 14 all round, the same full width
-// and inner layout (padding 20 all round: the bottom inset is for the foot). From 720px it is U1's centred panel. Only
-// this sheet: composed over the shared CONFIRM_SHEET_* (U1's ConfirmDialog keeps its bottom frame).
-const CANCEL_SCRIM_CLASS = cn(CONFIRM_SHEET_SCRIM_CLASS, "max-tab:items-start max-tab:pt-[calc(16px+env(safe-area-inset-top))]");
-const CANCEL_PANEL_CLASS = cn(CONFIRM_SHEET_PANEL_CLASS, "max-tab:rounded-[14px] max-tab:pb-5");
+// and inner layout (padding 20 all round: the bottom inset is for the foot). From 720px it is U1's centred panel —
+// except (Ruling P17 extended) in a window shorter than 500px, a phone in landscape, where the centred panel lay inside
+// the landscape keyboard's band: there it opens at the top too (16px + the top inset, still centred across), capped at
+// the window less those 16px above and below, its content scrolling inside. Only this sheet: composed over the shared
+// CONFIRM_SHEET_* (U1's ConfirmDialog keeps its bottom frame and has no height variant).
+const CANCEL_SCRIM_CLASS = cn(
+  CONFIRM_SHEET_SCRIM_CLASS,
+  "max-tab:items-start max-tab:pt-[calc(16px+env(safe-area-inset-top))] [@media(max-height:499px)]:items-start [@media(max-height:499px)]:pt-[calc(16px+env(safe-area-inset-top))]",
+);
+const CANCEL_PANEL_CLASS = cn(
+  CONFIRM_SHEET_PANEL_CLASS,
+  "max-tab:rounded-[14px] max-tab:pb-5 [@media(max-height:499px)]:max-h-[calc(100vh-32px-env(safe-area-inset-top))] [@media(max-height:499px)]:supports-[height:1dvh]:max-h-[calc(100dvh-32px-env(safe-area-inset-top))] [@media(max-height:499px)]:overflow-y-auto",
+);
 const CAPTION_CLASS = "text-[12.5px] font-semibold text-muted-foreground";
 const SHORT_CLASS = "text-[13px] font-medium text-status-bad-ink";
 // The 48px field (SHEET_FIELD_CLASS) as a textarea: one row tall at first, its 48px as the floor, growing by a drag.

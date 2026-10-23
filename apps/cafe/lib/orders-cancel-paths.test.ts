@@ -115,19 +115,23 @@ function composedConst(src: string, name: string): string {
   );
 }
 const sorted = (cls: string): string[] => cls.split(/\s+/).filter(Boolean).sort();
+/** Ruling P17 (extended): the variant for a window shorter than 500px (a phone in landscape). */
+const SHORT = "[@media(max-height:499px)]:";
+const widthOnly = (cls: string): string => sorted(cls).filter((t) => !t.startsWith(SHORT)).join(" ");
+const shortOnly = (cls: string): string[] => sorted(cls).filter((t) => t.startsWith(SHORT));
 
 test("CancelOrderDialog (Ruling P17): below 720px the sheet opens at the window's top (16px + the top inset, radius 14 all round), composed over U1's confirm frame; 720px and up it is U1's centred panel", () => {
   const src = read(DIALOG);
-  assert.match(src, /const CANCEL_SCRIM_CLASS = cn\(CONFIRM_SHEET_SCRIM_CLASS, "[^"]*"\);/, "the scrim: U1's confirm scrim plus the cancel sheet's own literal");
-  assert.match(src, /const CANCEL_PANEL_CLASS = cn\(CONFIRM_SHEET_PANEL_CLASS, "[^"]*"\);/, "the panel: U1's confirm panel plus the cancel sheet's own literal");
-  const scrim = composedConst(src, "CANCEL_SCRIM_CLASS");
+  assert.match(src, /const CANCEL_SCRIM_CLASS = cn\(\s*CONFIRM_SHEET_SCRIM_CLASS,\s*"[^"]*",?\s*\);/, "the scrim: U1's confirm scrim plus the cancel sheet's own literal");
+  assert.match(src, /const CANCEL_PANEL_CLASS = cn\(\s*CONFIRM_SHEET_PANEL_CLASS,\s*"[^"]*",?\s*\);/, "the panel: U1's confirm panel plus the cancel sheet's own literal");
+  const scrim = widthOnly(composedConst(src, "CANCEL_SCRIM_CLASS"));
   assert.deepEqual(
     sorted(scrim),
     sorted("fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4 font-sans leading-[normal] text-foreground motion-safe:animate-scrim-in max-tab:items-start max-tab:p-0 max-tab:pt-[calc(16px+env(safe-area-inset-top))]"),
     "the scrim: centred in 16px from 720px; below, the panel at the top, 16px + the top inset under the edge, full width",
   );
   assert.ok(!sorted(scrim).includes("max-tab:items-end"), "never along the window's foot below 720px (the keyboard would cover it)");
-  const panel = composedConst(src, "CANCEL_PANEL_CLASS");
+  const panel = widthOnly(composedConst(src, "CANCEL_PANEL_CLASS"));
   assert.deepEqual(
     sorted(panel),
     sorted("flex w-full max-w-[420px] flex-col gap-4 rounded-[14px] border border-border bg-card p-5 [box-shadow:var(--pop)] outline-none motion-safe:animate-sheet-in max-tab:rounded-[14px] max-tab:pb-5"),
@@ -138,6 +142,33 @@ test("CancelOrderDialog (Ruling P17): below 720px the sheet opens at the window'
   }
   assert.ok(sorted(frame.CONFIRM_SHEET_SCRIM_CLASS).includes("max-tab:items-end"), "U1's ConfirmDialog keeps its bottom frame (the shared string unchanged)");
   assert.ok(sorted(frame.CONFIRM_SHEET_PANEL_CLASS).includes("max-tab:rounded-[14px_14px_0_0]"), "U1's confirm panel keeps its foot radius");
+});
+
+// Ruling P17 (extended, the verification fix's review): a phone in landscape (~862 x 390) is 720px wide or more, so the
+// sheet was U1's centred panel (y 26.5-363.5), inside the band the landscape keyboard covers. A window shorter than 500px
+// opens it at the top as well — 16px + the top inset under the edge, still centred across (the 420px panel in the
+// scrim's 16px sides from 720px; full width below) — and caps the panel at the window less those 16px above and below,
+// scrolling inside, so a shorter window never cuts it. Only this sheet: the shared CONFIRM_SHEET_* strings have no
+// height variant.
+test("CancelOrderDialog (Ruling P17 extended): a window shorter than 500px (phone landscape) opens the sheet at the top too, capped to the window and scrolling inside; the shared confirm frame has no height variant", () => {
+  const src = read(DIALOG);
+  assert.deepEqual(
+    shortOnly(composedConst(src, "CANCEL_SCRIM_CLASS")),
+    [`${SHORT}items-start`, `${SHORT}pt-[calc(16px+env(safe-area-inset-top))]`].sort(),
+    "the scrim below 500px tall: the panel at the top, 16px + the top inset under the edge (the sides stay the width's: 16px from 720px, 0 below)",
+  );
+  assert.deepEqual(
+    shortOnly(composedConst(src, "CANCEL_PANEL_CLASS")),
+    [
+      `${SHORT}max-h-[calc(100vh-32px-env(safe-area-inset-top))]`,
+      `${SHORT}overflow-y-auto`,
+      `${SHORT}supports-[height:1dvh]:max-h-[calc(100dvh-32px-env(safe-area-inset-top))]`,
+    ].sort(),
+    "the panel below 500px tall: at most the window less 16px + the top inset above and 16px below (vh, dvh where it exists), its content scrolling inside",
+  );
+  for (const name of ["CONFIRM_SHEET_SCRIM_CLASS", "CONFIRM_SHEET_PANEL_CLASS"] as const) {
+    assert.ok(!frame[name].includes("max-height:"), `${name}: U1's ConfirmDialog keeps its frame at every height (no height variant in the shared string)`);
+  }
 });
 
 // V-C F4 (the verification fix): the sheet is opened from the page's state (no Radix trigger), so its close focus fell

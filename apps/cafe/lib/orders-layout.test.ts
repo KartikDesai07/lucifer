@@ -84,9 +84,9 @@ test("ORDERS_LIST_COLUMN_CLASS: the named container `list` (the list's form foll
 
 // The verification fix (V-C F2; moved on purpose): in phone landscape (~862 x 390) the open Filters panel made the top
 // block taller than the list column, and as `flex: none` its Reset / Done fell below the window, out of reach. It may
-// shrink now and scrolls when taller than the column (the scroller's basis is 0, so the top block shrinks only then);
-// wherever it fits nothing moves.
-test("ORDERS_TOP_CLASS: the top block, padding 14px 20px 12px (10px 12px 12px on a phone), its parts 12px apart; it shrinks and scrolls only when taller than the list column", () => {
+// shrink now and scrolls when taller than the column less the scroller's padding floor (the scroller's basis is 0, its
+// bottom padding 28px, 92px on the phone, plus the inset); wherever it fits nothing moves.
+test("ORDERS_TOP_CLASS: the top block, padding 14px 20px 12px (10px 12px 12px on a phone), its parts 12px apart; it shrinks and scrolls only when taller than the list column less the scroller's padding floor", () => {
   hasAll(ORDERS_TOP_CLASS, ["flex", "flex-col", "gap-3", "pt-3.5", "px-5", "pb-3", "max-tab:pt-2.5", "max-tab:px-3"], "values 2.2 top block");
   hasAll(ORDERS_TOP_CLASS, ["flex-[0_1_auto]", "min-h-0", "overflow-y-auto", "overflow-x-hidden"], "flex: 0 1 auto; min-height: 0; it scrolls on its own when taller than the column (the Filters panel's Reset / Done reachable)");
   assert.ok(!tokens(ORDERS_TOP_CLASS).includes("flex-none"), "no longer flex: none (it could push the panel's foot below the window)");

@@ -15,7 +15,7 @@ import { stripComments } from "./source-pin-utils";
 import { classesOf, expectAll, tagOf } from "./class-tags.fixtures";
 import { STATUS_CLASSES } from "./ui";
 import { listHead } from "./orders-row";
-import { ORDERS_SCROLLER_CLASS } from "./orders-layout";
+import { ORDERS_LIST_COLUMN_CLASS, ORDERS_SCROLLER_CLASS } from "./orders-layout";
 import { NOW, minutesBefore, order, printed, settled } from "./orders-lanes.fixtures";
 import { OrderTable } from "@/components/orders/OrderTable";
 import { OrdersListHead, OrdersLoadMore } from "@/components/orders/OrdersListParts";
@@ -240,8 +240,11 @@ test("the list's form on the list column equals the HTML's on listW at every wid
   };
   const ours = (col: number): string => (col >= itemsFrom ? "table+items" : col >= tableFrom ? "table" : "cards");
   for (let col = 280; col <= 1700; col += 1) assert.equal(ours(col), html(col), `a ${col}px list column`);
-  const SCROLLBAR = 15;
-  for (const col of [744, 948]) assert.equal(ours(col), html(col), `${col}: the column is measured, so a ${SCROLLBAR}px scrollbar inside the scroller changes nothing`);
+  // What makes a scrollbar irrelevant is where the width is measured: the list column (the named container), never the
+  // scroller a classic scrollbar narrows, and no query that could reach a nearer, unnamed container.
+  assert.ok(ORDERS_LIST_COLUMN_CLASS.split(/\s+/).includes("@container/list"), "the list column is the named container `list`");
+  assert.ok(!ORDERS_SCROLLER_CLASS.includes("@container"), "the scroller is no container (its scrollbar never narrows what is measured)");
+  assert.ok(!/@min-\[\d+px\]:/.test(src), "OrderTable has no unnamed container query");
   // The plan's viewports (values 0.2: the nav 232 / 76; the detail column 400 from 1280; none below 1280, owner rule).
   const viewports: [string, number, string][] = [
     ["d1280", 1280 - 232 - 400, "cards"],

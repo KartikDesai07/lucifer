@@ -18,8 +18,10 @@ import type { Order } from "@/types";
 const BOX_CLASS = "overflow-hidden rounded-[12px] border border-border bg-card";
 // values 8.1's columns, except (Ruling P7) the Order and Customer columns may give way below the HTML's 150 / 110: at a
 // 704px list (t820) its minimums need 712px in a 670px box and clip "Settle"; at 764px (c1280) they are 157.125 /
-// 120.875 either way (a classic scrollbar's 15px narrower list still fits: min 0). With the Items column (a 900px list)
-// the HTML's minimums always fit, so they stay.
+// 120.875 either way (a classic scrollbar's 15px narrower list still fits: min 0). With the Items column (from a 940px
+// column, a 900px list) the HTML's minimums fit whenever no classic scrollbar takes width, so they stay. The leftover of
+// measuring the column rather than the list: with a ~15px classic (Windows, Electron) scrollbar, at 940-952px columns
+// the tracks' 864px of minimums run up to 13px into the row's 16px right padding (nothing is clipped).
 const COLS_CLASS =
   "grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_92px_124px_92px_84px] @min-[940px]/list:grid-cols-[minmax(150px,1.3fr)_minmax(110px,1fr)_minmax(140px,1.4fr)_92px_124px_92px_84px]";
 const HEAD_CLASS =

@@ -44,9 +44,11 @@ export const ORDERS_BODY_CLASS = "grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] 
 export const ORDERS_LIST_COLUMN_CLASS = "@container/list flex min-h-0 min-w-0 flex-col leading-[normal]";
 
 /** The top block (values 2.2 toolPad): the lanes, the toolbar, the Filters panel and the chips, 12px apart; padding
- *  14px 20px 12px, 10px 12px 12px on a phone. Content-sized (flex: 0 1 auto): it shrinks only when taller than the
- *  list column — the scroller's basis is 0 — and then scrolls on its own, so in phone landscape (~862 x 390) the open
- *  Filters panel's Reset and Done stay reachable (the verification fix, V-C F2); wherever it fits nothing moves. */
+ *  14px 20px 12px, 10px 12px 12px on a phone. Content-sized (flex: 0 1 auto): the scroller's basis is 0, but it never
+ *  shrinks below its own bottom padding (28px, 92px on the phone, plus the safe-area inset), so the top block shrinks
+ *  only when taller than the list column less that floor, and then scrolls on its own: in phone landscape (~862 x 390)
+ *  the open Filters panel's Reset and Done stay reachable (the verification fix, V-C F2); wherever it fits nothing
+ *  moves. */
 export const ORDERS_TOP_CLASS =
   "flex flex-[0_1_auto] flex-col gap-3 min-h-0 overflow-y-auto overflow-x-hidden px-5 pt-3.5 pb-3 max-tab:px-3 max-tab:pt-2.5";
 
