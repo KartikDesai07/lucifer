@@ -219,8 +219,47 @@ const shellMutations = (wide: boolean): Mutation[] => {
   ];
 };
 
+// U2 Task 1 (2026-10-23; design 5, values 1.1 / 2.1 in docs/superpowers/specs/2026-10-22-orders-html-values.md): Orders
+// left MenuPageShell. The owner's HTML Orders screen fills the screen under the shell's header like /pos (no paper
+// frame, no 1440px cap): its own frame from lib/orders-layout.ts, whose classes lib/orders-layout.test.ts pins. This
+// pin keeps the frame in the page and MenuPageShell out of it.
+const ORDERS_FRAME_OPEN = '<div data-ui="orders-page" className={ORDERS_PAGE_CLASS}>';
+const ORDERS_FRAME_RETURN_RE = /return \(\s*<div data-ui="orders-page" className=\{ORDERS_PAGE_CLASS\}>\s*<PageHeader(?![\w$])/;
+const ORDERS_LAYOUT_IMPORT_RE = /import\s*\{[^}]*\bORDERS_PAGE_CLASS\b[^}]*\}\s*from\s*"@\/lib\/orders-layout"/;
+const ORDERS_FRAME_REGIONS = [
+  'data-ui="orders-body" className={ORDERS_BODY_CLASS}',
+  'data-ui="orders-list" className={ORDERS_LIST_COLUMN_CLASS}',
+  'data-ui="orders-detail-column" className={ORDERS_DETAIL_COLUMN_CLASS}',
+];
+
+const pinOrdersFrame: Pin = (raw) => {
+  const p: string[] = [];
+  const s = strip(raw);
+  check(p, !/\bMenuPageShell\b/.test(s), "Orders must not use MenuPageShell (design 5: the HTML's screen fills the screen, no 1440px cap)");
+  check(p, ORDERS_LAYOUT_IMPORT_RE.test(s), 'must import ORDERS_PAGE_CLASS from "@/lib/orders-layout"');
+  const body = bodyAfter(s, "export default function");
+  check(p, body !== null, "landmark: a default-exported page function must exist");
+  if (body === null) return p;
+  check(p, ORDERS_FRAME_RETURN_RE.test(body), "the default export must return the frame (orders-page, ORDERS_PAGE_CLASS) with <PageHeader> as its first child");
+  for (const region of ORDERS_FRAME_REGIONS) check(p, body.includes(region), `the frame must render ${region}`);
+  return p;
+};
+
+const ORDERS_FRAME_CASE: PinCase = {
+  file: ORDERS_PAGE,
+  pin: pinOrdersFrame,
+  mutations: [
+    rep("wrap the frame in MenuPageShell again", ORDERS_FRAME_OPEN, `<MenuPageShell>${ORDERS_FRAME_OPEN}`),
+    { name: "the MenuPageShell import comes back", apply: (src) => `${SHELL_IMPORT_LINE}\n${src}` },
+    rep("drop the page's frame class", "className={ORDERS_PAGE_CLASS}", 'className="flex flex-col"'),
+    rep("a body row before the header (PageHeader no longer the frame's first child)", ORDERS_FRAME_OPEN, `${ORDERS_FRAME_OPEN}\n      <div />`),
+    rep("the body grid's class swapped for a literal", "className={ORDERS_BODY_CLASS}", 'className="grid"'),
+    rep("drop the detail column slot's name", 'data-ui="orders-detail-column" ', ""),
+    rep("the frame's classes imported from elsewhere", 'from "@/lib/orders-layout"', 'from "@/lib/pos-layout"'),
+  ],
+};
+
 const SHELL_PAGES: ReadonlyArray<readonly [string, boolean]> = [
-  [ORDERS_PAGE, false],
   [REQUESTS_PAGE, false],
   [KITCHEN_PAGE, true],
   [RESERVATIONS_PAGE, false],
@@ -230,6 +269,7 @@ const SHELL_PAGES: ReadonlyArray<readonly [string, boolean]> = [
 
 const SHELL_CASES: PinCase[] = [
   ...SHELL_PAGES.map(([file, wide]): PinCase => ({ file, pin: pinPageShell(wide), mutations: shellMutations(wide) })),
+  ORDERS_FRAME_CASE,
   {
     file: STAFF_PAGE,
     pin: pinStaffShell,
@@ -364,11 +404,22 @@ const pinHeaderFirst =
     return p;
   };
 
-const earlyReturn = (anchorJsx: string): Mutation =>
+/** How a page's return opens before its <PageHeader>: a fragment, or (U2 Task 1) the Orders frame. */
+interface ReturnOpen {
+  re: RegExp;
+  head: string;
+}
+const FRAGMENT_OPEN: ReturnOpen = { re: /return \(\s*<>\s*<PageHeader/, head: "<>" };
+const ORDERS_RETURN_OPEN: ReturnOpen = {
+  re: /return \(\s*<div data-ui="orders-page" className=\{ORDERS_PAGE_CLASS\}>\s*<PageHeader/,
+  head: '<div data-ui="orders-page" className={ORDERS_PAGE_CLASS}>',
+};
+
+const earlyReturn = (anchorJsx: string, open: ReturnOpen = FRAGMENT_OPEN): Mutation =>
   repRe(
     `an early return renders ${anchorJsx} before the header`,
-    /return \(\s*<>\s*<PageHeader/,
-    `if (failed) { return ${anchorJsx}; }\n  return (<><PageHeader`,
+    open.re,
+    `if (failed) { return ${anchorJsx}; }\n  return (${open.head}<PageHeader`,
   );
 
 const RETRY_MUTATIONS: Mutation[] = [
@@ -389,7 +440,7 @@ const ERROR_CASES: PinCase[] = [
       ...RETRY_MUTATIONS,
       rep("drop the no-data half of the guard", "orders.isError && !orders.data", "orders.isError"),
       rep("rename `orders.data` in the guard (substring trap)", "!orders.data ?", "!orders.dataset ?"),
-      earlyReturn("<ErrorState />"),
+      earlyReturn("<ErrorState />", ORDERS_RETURN_OPEN),
     ],
   },
   {
@@ -1292,7 +1343,8 @@ interface Group {
 
 const GROUPS: Group[] = [
   {
-    title: "PIN D1: every page renders inside MenuPageShell (Kitchen wide, Staff guard outside) and the shell takes `wide`",
+    title:
+      "PIN D1: every page renders inside MenuPageShell (Kitchen wide, Staff guard outside) and the shell takes `wide`; Orders fills the screen in its own frame (U2)",
     cases: SHELL_CASES,
   },
   { title: "PIN D2: PageHeader carries the sidebar-group eyebrow and the sidebar-row title", cases: HEADER_CASES },

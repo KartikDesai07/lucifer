@@ -206,6 +206,7 @@
     "lib/public-diner-polish.test.ts",
     "lib/source-pin-utils.test.ts",
     "lib/pos-frame.test.ts",
+    "lib/orders-layout.test.ts",
     "lib/pos-categories.test.ts",
     "lib/pos-price-buttons.test.ts",
     "lib/pos-cart-view.test.ts",

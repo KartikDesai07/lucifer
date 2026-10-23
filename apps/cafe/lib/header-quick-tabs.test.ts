@@ -59,9 +59,12 @@ test("PIN: every dashboard screen gets the two buttons — the shared Header ren
   assert.equal(tabs.split("{ title: ").length - 1, 2, "exactly the two buttons the owner asked for");
 });
 
-test("PIN: on a phone Tables hides (the tab bar has Floor) and New order shows only its plus (values 2.5)", () => {
+// U2 Task 1 (Orders values 1.2, design 6.1): the HTML's Orders header keeps New order's label on the phone too, so on
+// /orders the label shows at every width; every other page keeps U0's plus alone below 720px.
+test("PIN: on a phone Tables hides (the tab bar has Floor) and New order shows only its plus (values 2.5), except on /orders", () => {
   const tabs = read(TABS);
   assert.match(tabs, /tab\.primary \? "inline-flex" : "hidden tab:inline-flex"/, "Tables is hidden below 720px, New order always shows");
-  assert.match(tabs, /<span className="hidden tab:inline">\{tab\.title\}<\/span>/, "the label shows from 720px");
+  assert.match(tabs, /const labelClass = isOrdersPath\(pathname\) \? "inline" : "hidden tab:inline";/, "the label shows from 720px, and at every width on /orders");
+  assert.match(tabs, /<span className=\{labelClass\}>\{tab\.title\}<\/span>/, "the label takes that class");
   assert.match(tabs, /aria-label=\{tab\.title\}/, "the plus alone still has a name");
 });
