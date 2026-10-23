@@ -1,9 +1,10 @@
-// The order detail's head and body as a pure model (U2 Tasks 5-6, 2026-10-23; docs/superpowers/specs/
-// 2026-10-23-orders-match-html-design.md 6.7-6.8, Q9; docs/superpowers/specs/2026-10-22-orders-html-values.md 0.1 clock,
-// 11.2 head, 11.4-11.6 body, 11.10 per kind): the meta row and the steps components/orders/OrderDetailHead.tsx draws, the
-// customer row, the items head, the sums, the cancel note and a void's line components/orders/OrderDetailBody.tsx and
-// OrderVoidTrail.tsx draw. The code tile, the title and the number are the list row's (lib/orders-row.ts), so the head
-// names an order exactly as its row does. Client-safe: no Mongoose, no React.
+// The order detail's head, body and actions as a pure model (U2 Tasks 5-7, 2026-10-23; docs/superpowers/specs/
+// 2026-10-23-orders-match-html-design.md 6.7-6.9, Q7, Q9; docs/superpowers/specs/2026-10-22-orders-html-values.md 0.1
+// clock, 11.2 head, 11.4-11.6 body, 11.7 / 11.9 actions, 11.10 per kind): the meta row and the steps
+// components/orders/OrderDetailHead.tsx draws, the customer row, the items head, a line's meta, the sums, the cancel note
+// and a void's line components/orders/OrderDetailBody.tsx and OrderVoidTrail.tsx draw, the quick actions' words and the
+// foot OrderDetailSheet.tsx draws. The code tile, the title and the number are the list row's (lib/orders-row.ts), so the
+// head names an order exactly as its row does. Client-safe: no Mongoose, no React.
 import { CHANNEL_LABELS } from "@/lib/dashboard/fold";
 import { channelOf } from "@/lib/dashboard/channel";
 import { billPrintedNow } from "@/lib/dashboard/live-tables";
@@ -13,8 +14,9 @@ import { clockTime, orderAge, rowInstant, type AgeTone, type ListedOrder } from 
 import { receiptGst, type GstConfig } from "@/lib/receipt";
 import { tokenLabelOf } from "@/lib/token-view";
 import { chargesFromOrder, chargesTotal } from "@pos/shared/order-charges";
-import { cafeDateString, discountLineLabel, formatDate, inr } from "@pos/shared/utils";
-import type { Order, OrderVoid } from "@/types";
+import { REWARD_ITEM_LINE_NOTE } from "@pos/shared/reward-redemption";
+import { cafeDateString, discountLineLabel, formatDate, inr, orderItemModifierLines } from "@pos/shared/utils";
+import type { Order, OrderItem, OrderVoid } from "@/types";
 
 /** The meta item's icon: the HTML's table, person and clock glyphs, and our ticket glyph for the token. */
 export type DetailMetaIcon = "type" | "staff" | "token" | "clock";
@@ -137,8 +139,21 @@ export interface DetailSums {
 
 const sumRow = (label: string, value: string, tone: DetailSumTone = "plain"): DetailSumRow => ({ label, value, tone });
 
-/** No live settings here: an order taken before the GST snapshot existed (always settled long ago) shows no GST row. */
+/** No live settings here: an order taken before the GST snapshot existed (always settled long ago) is read from its own
+ *  stored figures only (gstRow). */
 const NO_LIVE_GST: GstConfig = { gstEnabled: false, gstRate: 0, gstMode: "inclusive" };
+
+/** The GST row as the printed bill shows it (receiptGst on the order's snapshot): exclusive "GST @5%" (added to the
+ *  total), inclusive "Incl. GST @5%" (inside it). An order stored before the mode snapshot existed but with an exclusive
+ *  amount (inclusive orders store 0) shows that stored amount in a plain "GST" row ("GST @{rate}%" with a stored rate),
+ *  so its rows still add up — never the cafe's live settings. */
+function gstRow(o: Order, chargeAmount: number): DetailSumRow | null {
+  const gst = receiptGst({ ...o, chargeAmount }, NO_LIVE_GST);
+  if (gst.show && gst.gstAmount > 0) return sumRow(`${gst.inclusive ? "Incl. GST" : "GST"} @${gst.rate}%`, inr(gst.gstAmount));
+  const stored = o.gstAmount ?? 0;
+  if (o.gstMode != null || stored <= 0) return null;
+  return sumRow((o.gstRate ?? 0) > 0 ? `GST @${o.gstRate}%` : "GST", inr(stored));
+}
 
 /** A bill paid in full in one mode (design 6.8): "Paid by Cash" / "Paid online". */
 const PAID_IN_FULL: Readonly<Record<string, string>> = { Cash: "Paid by Cash", Online: "Paid online" };
@@ -172,8 +187,8 @@ export function detailSums(o: Order): DetailSums {
   const rows: DetailSumRow[] = [sumRow("Subtotal", inr(o.subtotal))];
   if (o.discount > 0) rows.push(sumRow(discountLineLabel(o.discountKind), `−${inr(o.discount)}`, "bad"));
   for (const c of charges) rows.push(sumRow(c.label, inr(c.amount)));
-  const gst = receiptGst({ ...o, chargeAmount: chargesTotal(charges) }, NO_LIVE_GST);
-  if (gst.show && gst.gstAmount > 0) rows.push(sumRow(`${gst.inclusive ? "Incl. GST" : "GST"} @${gst.rate}%`, inr(gst.gstAmount)));
+  const gst = gstRow(o, chargesTotal(charges));
+  if (gst) rows.push(gst);
   if (o.status === "Completed") rows.push(...paidRows(o));
   const totalLabel = o.status === "Pending" ? "To pay" : o.status === "Cancelled" ? "Not charged" : "Bill total";
   return { rows, totalLabel, total: inr(o.total), struck: o.status === "Cancelled" };
@@ -185,17 +200,69 @@ export interface DetailCancelNote {
   reason: string | null;
 }
 
-/** "Cancelled at {time} by {who}." (the cancel time, else when it was opened: Ruling P8) and "Reason: {reason}"; who and
- *  why only when they were stored. Nothing for an order not cancelled. */
+/** "Cancelled at {time} by {who}." (the cancel time) and "Reason: {reason}"; the time, who and why only when they were
+ *  stored (with no cancel time stored, no time: the opened time would read as the cancel time). Nothing for an order not
+ *  cancelled. */
 export function cancelNote(o: Order): DetailCancelNote | null {
   if (o.status !== "Cancelled") return null;
+  const at = o.cancelledAt ? ` at ${clockTime(o.cancelledAt)}` : "";
   const who = o.cancelledBy?.trim();
   const reason = o.cancelReason?.trim();
-  return { text: `Cancelled at ${clockTime(rowInstant(o))}${who ? ` by ${who}` : ""}.`, reason: reason ? `Reason: ${reason}` : null };
+  return { text: `Cancelled${at}${who ? ` by ${who}` : ""}.`, reason: reason ? `Reason: ${reason}` : null };
+}
+
+/** A line's meta (values 11.5; design 6.8): our removed / added modifiers (orderItemModifierLines), the instructions and,
+ *  on a reward line, its stored note (a line stored before the note existed: the shared constant), joined ", ". */
+export function detailLineMeta(item: OrderItem): string {
+  const rewardNote = item.reward ? (item.note ?? REWARD_ITEM_LINE_NOTE) : "";
+  return [...orderItemModifierLines(item), item.instructions?.trim() ?? "", rewardNote].filter(Boolean).join(", ");
 }
 
 /** The line under a voided line in the trail (design 6.8): "round {n} · {reason} — {who}, {date}" (today's words, the
  *  round first; none named when the line carries no round). */
 export function voidLineNote(v: OrderVoid): string {
   return `${v.kotRound > 0 ? `round ${v.kotRound} · ` : ""}${v.reason} — ${v.voidedBy}, ${formatDate(v.at)}`;
+}
+
+// ── The actions (U2 Task 7; design 6.9, Q7; values 11.7, 11.9, 11.10) ───────────────────────────────────────────────
+
+/** A quick action: today's Print, KOT, Share, Token and Move under the HTML's words. */
+export type QuickActionKey = "bill" | "kot" | "share" | "token" | "move";
+
+export interface QuickAction {
+  key: QuickActionKey;
+  label: string;
+}
+
+/**
+ * The quick actions in the grid's order (design 6.9; values 11.7): "Print bill" (an open tab whose bill is not printed
+ * for its current total, billPrintedNow, Q11) / "Reprint bill" (today's Print, always a duplicate); "Reprint KOT"
+ * (today's KOT), "Notify kitchen" on a cancelled order (today's stop notice); "Share bill" (today's WhatsApp link);
+ * "Reprint token" when the order has a token and is not cancelled (the sheet's hasToken); "Move table" / "Assign table"
+ * (a walk-in tab) on an open tab (the sheet's isOpenTab).
+ */
+export function quickActions(o: Order): QuickAction[] {
+  const open = o.status === "Pending";
+  const cancelled = o.status === "Cancelled";
+  const actions: QuickAction[] = [
+    { key: "bill", label: open && !billPrintedNow(o) ? "Print bill" : "Reprint bill" },
+    { key: "kot", label: cancelled ? "Notify kitchen" : "Reprint KOT" },
+    { key: "share", label: "Share bill" },
+  ];
+  if (o.tokenNumber !== undefined && !cancelled) actions.push({ key: "token", label: "Reprint token" });
+  if (open) actions.push({ key: "move", label: o.tableNo ? "Move table" : "Assign table" });
+  return actions;
+}
+
+/** The foot (values 11.9): the table "Edit items" hands to New Order (null: no Edit items) and the primary's words. */
+export interface DetailFoot {
+  editTable: string | null;
+  settleLabel: string;
+}
+
+/** An open tab's foot (design 6.9, Q7): "Edit items" for a tab at a table (the Floor's hand-off to New Order), then
+ *  "Settle & pay · ₹x" (today's Settle & Pay); a walk-in tab's Settle & pay alone. Settled and cancelled orders: none. */
+export function detailFoot(o: Order): DetailFoot | null {
+  if (o.status !== "Pending") return null;
+  return { editTable: o.tableNo || null, settleLabel: `Settle & pay · ${inr(o.total)}` };
 }

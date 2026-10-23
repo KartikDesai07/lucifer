@@ -123,7 +123,8 @@ test("OrderDetailSheet: one useMediaQuery(ORDERS_XL_QUERY) gives the frame for t
   assert.equal(src.split("useMediaQuery(").length - 1, 1, "one width read in the sheet");
   assert.match(src, /const forWidth = orderDetailFrame\(place, useMediaQuery\(ORDERS_XL_QUERY\)\);/, "the frame for the width");
   assert.match(src, /const \[heldFrame, setHeldFrame\] = useState\(forWidth\);/, "the frame in use is held");
-  assert.match(src, /const frame = frameInUse\(heldFrame, forWidth, settleOpen \|\| moveOpen\);/, "kept while the payment (with its customer sheet) or the move sheet is up");
+  // U2 Task 7: the page's cancel sheet joins the latch (same meaning: no frame mounts under an open nested sheet).
+  assert.match(src, /const frame = frameInUse\(heldFrame, forWidth, settleOpen \|\| moveOpen \|\| cancelOpen\);/, "kept while the payment (with its customer sheet), the move sheet or the page's cancel sheet is up");
   assert.match(src, /if \(frame !== heldFrame\) setHeldFrame\(frame\);/, "stored during render, only on a change");
   assert.ok(src.indexOf("const [settleOpen, setSettleOpen]") < src.indexOf("frameInUse(") && src.indexOf("const [moveOpen, setMoveOpen]") < src.indexOf("frameInUse("), "the latch reads both sheets' state");
   assert.match(src, /<DetailFrame frame=\{frame\}/, "the frame drawn is the one in use");
@@ -163,7 +164,9 @@ test("OrderDetailSheet: the frame wraps the head, the body and the off-screen pr
   assert.match(inside, /<OrderDetailHead order=\{order\} now=\{now\}/, "the head inside the frame, on the page's tick when given");
   assert.ok(inside.includes('className="pointer-events-none absolute left-[-9999px] top-0" aria-hidden'), "the print sources inside the frame");
   assert.match(inside, /onClose=\{frame === "column" \? undefined : \(\) => onOpenChange\(false\)\}/, "the ✕ in the sheets only (no ✕ in the column)");
-  assert.match(inside, /<div data-ui="order-detail-scroll" className=\{ORDER_DETAIL_SCROLL_CLASS\}>/, "under the head the rest scrolls (values 11.1)");
+  // U2 Task 7: over the foot the body's bottom room is 18px (the foot takes the inset); same frame.
+  assert.match(inside, /<div data-ui="order-detail-scroll" className=\{cn\(ORDER_DETAIL_SCROLL_CLASS, foot && ORDER_DETAIL_SCROLL_OVER_FOOT_CLASS\)\}>/, "under the head the rest scrolls (values 11.1)");
+  assert.match(inside, /<div data-ui="order-detail-foot"/, "the foot inside the frame, under the body (values 11.9)");
   const after = ret.slice(frameEnd);
   assert.match(after, /<PaymentModal\b/, "the payment sheet beside the frame");
   assert.match(after, /<MoveTableDialog\b/, "the move sheet beside the frame");
@@ -182,7 +185,8 @@ test("KeepWhileClosing: through a sheet's close the last head and body stay draw
   assert.match(kept[0], /^\s*\{order && <OrderDetailHead\b/, "the head");
   assert.match(kept[1], /^\s*\{order && <OrderDetailBody order=\{order\} \/>\}\s*$/, "the body (U2 Task 6: OrderDetailBody)");
   for (const part of kept) {
-    for (const live of ["<SheetFooter", "onClick={printBill}", "onClick={printKitchenSlip}", "onClick={printToken}", "<OrderReceipt", "<KOTReceipt", "<TokenSlip", "openSettle"]) {
+    // U2 Task 7: today's footer became the quick actions, the danger link and the foot (same meaning: never kept).
+    for (const live of ["order-detail-quick", "order-detail-danger", "order-detail-foot", "onClick={printBill}", "onClick={printKitchenSlip}", "onClick={printToken}", "onCancel(", "<OrderReceipt", "<KOTReceipt", "<TokenSlip", "openSettle"]) {
       assert.ok(!part.includes(live), `${live} is never kept: it follows the live order`);
     }
   }

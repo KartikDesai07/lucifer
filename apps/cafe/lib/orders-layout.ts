@@ -10,6 +10,7 @@
 // lib/pos-layout.ts's POS_PAGE_CLASS), so Tailwind's source scanner sees every class name, and the pins
 // (lib/orders-layout.test.ts) read the SAME constants the page renders.
 import { POS_CART_SHEET_CLASS, POS_CART_SHEET_SCRIM_CLASS, POS_PAGE_CLASS } from "@/lib/pos-layout";
+import { cn } from "@/lib/utils";
 
 /** The Orders page's route. */
 export const ORDERS_PATH = "/orders";
@@ -103,9 +104,12 @@ export function frameInUse(held: OrderDetailFrame | null, forWidth: OrderDetailF
 
 /** Under the head (values 11.1: the head never shrinks, the rest scrolls) the HTML's body (values 11.4, U2 Task 6): a
  *  flex column, padding 14px 18px 18px, its parts 14px apart (none of them shrinks: each is flex-none), the bottom room
- *  growing by the window's safe-area inset (U1 P49). Today's buttons stay in it until U2 Task 7 rebuilds them. */
+ *  growing by the window's safe-area inset (U1 P49) when it runs to the window's foot (no foot under it). */
 export const ORDER_DETAIL_SCROLL_CLASS =
   "flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto overflow-x-hidden px-[18px] pt-3.5 pb-[calc(18px+env(safe-area-inset-bottom))]";
+/** With the foot under it (an open tab, values 11.9) the body's bottom room is the HTML's 18px: the foot is at the
+ *  window's foot and takes the safe-area inset. */
+export const ORDER_DETAIL_SCROLL_OVER_FOOT_CLASS = "pb-[18px]";
 
 // ── The detail's items box (U2 Task 6; values 11.5; design 6.8): shared by its lines and the void trail inside it ─────
 
@@ -120,3 +124,57 @@ export const ORDER_DETAIL_LINE_CLASS = "grid grid-cols-[28px_minmax(0,1fr)_auto]
 export const ORDER_DETAIL_QTY_CLASS = "font-mono text-[13px] font-semibold text-muted-foreground";
 /** The box's dashed rule (values 11.5: 1.5px dashed --border, drawn 1px at DPR 1); its margins are its place's. */
 export const ORDER_DETAIL_RULE_CLASS = "border-t-[1.5px] border-dashed border-border";
+
+// ── The detail's actions (U2 Task 7; values 11.7 quick actions, 11.8 danger link, 11.9 foot; design 6.9) ─────────────
+
+/** The quick actions grid (values 11.7): a 1px --border box, radius 12, clipped, on --surface. It never shrinks: the
+ *  HTML's flex body squeezes and clips it at 1280 / 1024 so that a tap can land on "Cancel this order" (values 20 #2-#3,
+ *  design 8: not copied) — the body scrolls instead. */
+export const ORDER_QUICK_GRID_CLASS = "grid flex-none overflow-hidden rounded-[12px] border border-border bg-card";
+
+const QUICK_COLS = ["grid-cols-1", "grid-cols-2", "grid-cols-3", "grid-cols-4"] as const;
+/** The grid's columns (values 11.7 quickCols: repeat(n, minmax(0, 1fr))): up to four actions in one row; five (an open
+ *  tab with a token) as 3 + 2 on six columns — three of two columns, then two of three under a 1px rule, the fourth
+ *  starting its row with no rule on its left (design 6.9: five 72px cells cut the labels). */
+export function quickGridClass(count: number): string {
+  if (count <= QUICK_COLS.length) return cn(ORDER_QUICK_GRID_CLASS, QUICK_COLS[Math.max(count, 1) - 1]);
+  return cn(
+    ORDER_QUICK_GRID_CLASS,
+    "grid-cols-6 [&>*]:col-span-2 [&>:nth-child(n+4)]:col-span-3 [&>:nth-child(n+4)]:border-t [&>:nth-child(4)]:[border-left:0]",
+  );
+}
+
+/** A quick action (values 11.7): 62px, the 18px icon over the 12px 600 label 5px apart, centred, 0 4px, one line, on
+ *  no fill with a 1px --border rule on its left (the first's left border the HTML's `0`: none); hover --hover; our disabled (a print being
+ *  queued) at .5. The HTML's press: BRAND_PRESS_CLASS at the call site. */
+export const ORDER_QUICK_ACTION_CLASS =
+  "flex h-[62px] cursor-pointer flex-col items-center justify-center gap-[5px] border-l border-border bg-transparent px-1 py-0 text-center text-[12px] font-semibold whitespace-nowrap text-foreground first:[border-left:0] hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50";
+
+/** A quick action's label: one line, cut with an ellipsis rather than spilling past its cell where a phone narrower than
+ *  the HTML's 390px leaves a four-action cell too narrow for "Reprint token" (at 390 every label fits whole). */
+export const ORDER_QUICK_LABEL_CLASS = "max-w-full truncate";
+
+/** "Cancel this order" (values 11.8): centred under the grid, the 15px icon 6px from the 13px 600 --bad-i words, 6px
+ *  10px, radius 8, no fill (hover --bad-t); it never shrinks. */
+export const ORDER_DANGER_CLASS =
+  "flex flex-none cursor-pointer items-center gap-1.5 self-center rounded-[8px] [border:0] bg-transparent px-2.5 py-1.5 text-[13px] font-semibold text-status-bad-ink hover:bg-status-bad-tint";
+
+/** The foot (values 11.9): under the body at the window's foot, 12px 18px and 14px + the safe-area inset below (the
+ *  phone's 12px + the inset: cartFootB; U1 P49), a 1px --border rule above, the buttons 8px apart on --surface. */
+export const ORDER_DETAIL_FOOT_CLASS =
+  "grid flex-none gap-2 border-t border-border bg-card px-[18px] pt-3 pb-[calc(14px+env(safe-area-inset-bottom))] max-tab:pb-[calc(12px+env(safe-area-inset-bottom))]";
+
+/** The foot's columns (values 11.9 footCols): Edit items and Settle & pay 1fr 2fr; Settle & pay alone, full width. */
+export function detailFootClass(both: boolean): string {
+  return cn(ORDER_DETAIL_FOOT_CLASS, both ? "grid-cols-[minmax(0,1fr)_minmax(0,2fr)]" : "grid-cols-1");
+}
+
+/** "Edit items" (values 11.9): 48px, a 1px --border rule, radius 10, on --surface, the 16px pencil 7px from the 14px 600
+ *  words, the UA's 1px 6px, one line; hover --hover. */
+export const ORDER_EDIT_ITEMS_CLASS =
+  "flex h-12 cursor-pointer items-center justify-center gap-[7px] rounded-[10px] border border-border bg-card px-1.5 py-px text-[14px] font-semibold whitespace-nowrap text-foreground hover:bg-hover";
+
+/** "Settle & pay · ₹x" (values 11.9): 48px on --accent, no rule, radius 10, 15px 600 --on-accent, the UA's 1px 6px, one
+ *  line; hover --accent-h. */
+export const ORDER_SETTLE_CLASS =
+  "flex h-12 cursor-pointer items-center justify-center gap-2 rounded-[10px] [border:0] bg-primary px-1.5 py-px text-[15px] font-semibold whitespace-nowrap text-primary-foreground hover:bg-primary-hover";

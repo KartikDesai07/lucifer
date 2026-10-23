@@ -102,18 +102,6 @@ export default function OrdersPage() {
   const tables = useTables();
   const tableNos = (tables.data ?? []).map((t) => t.tableNo);
 
-  const [cancelling, setCancelling] = useState<Order | null>(null);
-
-  const confirmCancel = async (reason: string) => {
-    if (!cancelling) return;
-    try {
-      await cancelOrder.mutateAsync({ id: cancelling._id, data: { reason } });
-      setCancelling(null);
-    } catch {
-      // hook toasts on error
-    }
-  };
-
   // `list` is every loaded row (the sheet follows its live row); `shown` the rows the chosen lane shows (all of them
   // while a phone is typed: every lane is searched, owner Q4).
   const list = dedupeOrdersById(orders.data?.pages ?? []);
@@ -135,6 +123,18 @@ export default function OrdersPage() {
   });
   const setDetail = (order: Order | null) => setHeld(tappedChoice(order, keyRef.current));
   const engage = () => setHeld(engageChoice);
+  // An admin's cancel from the detail (Ruling P6): the detail then shows the cancelled order the server returns, chosen
+  // as a settle's is (design 6.6: "Notify kitchen" at hand).
+  const [cancelling, setCancelling] = useState<Order | null>(null);
+  const confirmCancel = async (reason: string) => {
+    if (!cancelling) return;
+    try {
+      setDetail(await cancelOrder.mutateAsync({ id: cancelling._id, data: { reason } }));
+      setCancelling(null);
+    } catch {
+      // the hook toasts a failure; the sheet stays open
+    }
+  };
   // The list head (values 7) counts the rows shown, once the list has loaded.
   const head = orders.data === undefined ? null : listHead(filters.lane, shown.length, orders.hasNextPage, searching);
   // Ruling P5: only the payment and the table are filters for the empty words and their way-back button (never the
@@ -281,6 +281,8 @@ export default function OrdersPage() {
             listPending={listPending}
             onOpenChange={(o) => !o && setDetail(null)}
             onSettled={setDetail}
+            onCancel={isAdmin ? setCancelling : undefined}
+            cancelOpen={cancelling !== null}
           />
         </div>
       </div>

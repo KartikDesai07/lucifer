@@ -124,40 +124,31 @@ test("PIN (U1 Task 12, values 12.1): the sheet is the HTML confirm — a Radix a
   const overlay = sheet.indexOf("<AlertDialogPrimitive.Overlay");
   const content = sheet.indexOf("<AlertDialogPrimitive.Content");
   assert.ok(overlay > 0 && content > overlay && sheet.indexOf("</AlertDialogPrimitive.Overlay>") > sheet.indexOf("</AlertDialogPrimitive.Content>"), "the scrim holds the panel (values 12.1: centred, a bottom sheet below 720px)");
-  assert.ok(sheet.includes("className={SHEET_SCRIM_CLASS}") && sheet.includes("className={SHEET_PANEL_CLASS}"), "the scrim and the panel wear the HTML's frame");
-  assert.ok(sheet.includes("<AlertDialogPrimitive.Title className={SHEET_TITLE_CLASS}>{title}</AlertDialogPrimitive.Title>"), "the 18px title");
-  assert.ok(/\{description && \(\s*<AlertDialogPrimitive\.Description className=\{SHEET_BODY_CLASS\}>\{description\}<\/AlertDialogPrimitive\.Description>\s*\)\}/.test(sheet), "the body under it, only when there is one");
+  assert.ok(sheet.includes("className={CONFIRM_SHEET_SCRIM_CLASS}") && sheet.includes("className={CONFIRM_SHEET_PANEL_CLASS}"), "the scrim and the panel wear the HTML's frame");
+  assert.ok(sheet.includes("<AlertDialogPrimitive.Title className={CONFIRM_SHEET_TITLE_CLASS}>{title}</AlertDialogPrimitive.Title>"), "the 18px title");
+  assert.ok(/\{description && \(\s*<AlertDialogPrimitive\.Description className=\{CONFIRM_SHEET_BODY_CLASS\}>\{description\}<\/AlertDialogPrimitive\.Description>\s*\)\}/.test(sheet), "the body under it, only when there is one");
   const action = sheet.indexOf("<AlertDialogPrimitive.Action");
   const cancel = sheet.indexOf("<AlertDialogPrimitive.Cancel");
   assert.ok(action > 0 && cancel > action, "values 12.1: the action first, then Cancel");
   const actionTag = sheet.slice(action, sheet.indexOf("</AlertDialogPrimitive.Action>"));
   assert.match(actionTag, /onClick=\{\(e\) => \{\s*e\.preventDefault\(\);\s*onConfirm\(\);\s*\}\}/, "the action keeps the dialog open while it runs (the caller closes it), as today");
   assert.ok(actionTag.includes("disabled={isLoading}"), "the action is off while it runs");
-  assert.ok(actionTag.includes("destructive ? SHEET_DESTRUCTIVE_CLASS : SHEET_ACTION_CLASS"), "--bad when destructive, else --accent");
+  assert.ok(actionTag.includes("cn(CONFIRM_SHEET_BUTTON_CLASS, destructive ? CONFIRM_SHEET_DESTRUCTIVE_CLASS : SHEET_ACTION_CLASS"), "the 46px button; --bad when destructive, else --accent");
   assert.ok(actionTag.includes('{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}') && actionTag.includes("{confirmLabel}"), "today's spinner inside the action while it runs, then its label");
   const cancelTag = sheet.slice(cancel, sheet.indexOf("</AlertDialogPrimitive.Cancel>"));
   assert.ok(cancelTag.includes("disabled={isLoading}") && cancelTag.includes("SHEET_CANCEL_CLASS") && cancelTag.includes("{cancelLabel}"), "Cancel in --surface-3, off while the action runs, today's word");
 
-  // Ruling P54 (U1 audit wave): the scrim and the panel are the shared sheet frame (lib/sheet-frame.ts) with the
-  // confirm's own z-index, width, border, padding and gap; lib/sheet-frame.test.ts pins the shared values and that each
-  // element's class set is exactly the one pinned here before.
-  assert.ok(
-    src.includes('const SHEET_SCRIM_CLASS = cn(SHEET_SCRIM_BASE, "z-50");'),
-    "values 12.1 scrim: the shared frame (fixed, --scrim, fadeIn .2s; centred in 16px, along the foot below 720px) at z-index 50",
+  // Ruling P54 (U1 audit wave): the scrim and the panel are the shared sheet frame (lib/sheet-frame.ts). U2 Task 7: the
+  // scrim, the panel, the title, the body, the 46px button and the destructive colours moved there too (CONFIRM_SHEET_*,
+  // the Orders cancel sheet wears them); lib/sheet-frame.test.ts pins their strings, unchanged from the ones pinned here
+  // before. The buttons block and the two kinds' colours stay ConfirmDialog's own literals (short strings other sheets
+  // spell for their own blocks).
+  assert.match(
+    src,
+    /import \{[^}]*\bCONFIRM_SHEET_SCRIM_CLASS\b[^}]*\} from "@\/lib\/sheet-frame";/,
+    "values 12.1 scrim, panel, title, body, button: lib/sheet-frame.ts CONFIRM_SHEET_* (strings pinned in lib/sheet-frame.test.ts)",
   );
-  assert.ok(
-    src.includes('const SHEET_PANEL_CLASS = cn(SHEET_PANEL_BASE, "max-w-[420px] gap-4 border border-border p-5 motion-safe:animate-sheet-in");'),
-    "values 12.1 panel: the shared panel (--surface, sheetRadius 14, --pop) at 420px, a 1px --border, padding 20, gap 16, sheetIn .34s",
-  );
-  assert.equal(confirmConst(src, "SHEET_TITLE_CLASS"), "text-[18px] font-semibold tracking-[-0.01em]", "values 12.1 title: 18px 600 -.01em");
-  assert.equal(confirmConst(src, "SHEET_BODY_CLASS"), "mt-1.5 text-[14px] leading-[1.5] text-pretty text-muted-foreground", "values 12.1 body: 14px --text-2, 6px under the title, line-height 1.5, text-wrap pretty");
   assert.equal(confirmConst(src, "SHEET_BUTTONS_CLASS"), "flex flex-col gap-2", "values 12.1 buttons: stacked, 8px apart");
-  assert.equal(
-    confirmConst(src, "SHEET_BUTTON_CLASS"),
-    "flex h-[46px] w-full cursor-pointer items-center justify-center rounded-[10px] border px-1.5 py-px text-[14.5px] font-semibold disabled:cursor-not-allowed disabled:opacity-50",
-    "values 12.1 button: 46px, a 1px rule, radius 10, 14.5px 600, the UA's 1px 6px (the spinner and the label centred in one row)",
-  );
   assert.equal(confirmConst(src, "SHEET_ACTION_CLASS"), "border-primary bg-primary text-primary-foreground", "values 12.1 kind 1: --accent fill and rule, --on-accent text");
-  assert.equal(confirmConst(src, "SHEET_DESTRUCTIVE_CLASS"), "border-status-bad bg-status-bad text-white", "design 6.12: a destructive action in --bad with white text");
   assert.equal(confirmConst(src, "SHEET_CANCEL_CLASS"), "border-transparent bg-surface-3 text-foreground", "values 12.1 kind 0: --surface-3, --text, a transparent rule");
 });

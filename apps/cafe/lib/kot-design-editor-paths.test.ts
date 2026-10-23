@@ -56,7 +56,7 @@ test("PIN: the kitchen-ticket page hands the ONE form the draft's `extra`, previ
   assert.ok(page.includes("<KotPaperFields control={control} showTextSize={!design.active} />"), "the legacy text size hides while a design carries its own");
   assert.ok(page.includes("settings={{ ...settings, kotTemplate: design.draft }}"), "the draft reaches the preview through its settings prop");
   assert.ok(page.includes("<PreviewLoadNotice template={design.draft} />") && page.indexOf("<PreviewLoadNotice") < page.indexOf("<KitchenTicketPreview"), "the lazy-chunk failure notice sits above the preview");
-  assert.ok(page.includes("To see it on paper, save, then press KOT on any order in Orders."), "the page says how to see it on paper (no sample print)");
+  assert.ok(page.includes("To see it on paper, save, then press Reprint KOT on any order in Orders."), "the page says how to see it on paper (no sample print)");
   const kotPaper = code(`${SETTINGS}/KotPaperFields.tsx`);
   assert.ok(kotPaper.includes("showTextSize = true") && kotPaper.includes("{showTextSize && ("), "KotPaperFields: the size is shown by default and gated by the prop");
   assert.ok(read(`${SETTINGS}/KitchenTicketPreview.tsx`).includes("<KOTReceipt order={order} settings={live} {...slip} />"), "landmark: the preview draws the real receipt with the sample slip");

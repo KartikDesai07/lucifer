@@ -264,7 +264,10 @@ test("SOURCE PIN: OrderDetailBody.tsx (the Orders detail's item lines) branches 
   // Bound to the CONSEQUENT arm: the separate needles below passed even with the
   // ternary's arms SWAPPED — i.e. against the very bug they exist to catch.
   assert.match(src, REWARD_ARM, "the struck-through worth + FREE must be the reward arm of the item.reward ternary");
-  assert.match(src, /REWARD_ITEM_LINE_NOTE/, "the marker must come from the shared constant, never a hand-written literal");
+  // U2 Task 7: the line's meta words (the reward note among them) moved into lib/order-detail-view.ts (detailLineMeta,
+  // which the body renders); the shared-constant pin moved with them, same meaning.
+  assert.ok(src.includes("detailLineMeta(item)"), "the line's meta (with the reward note) is detailLineMeta's");
+  assert.match(stripComments(readSrc("lib/order-detail-view.ts")), /REWARD_ITEM_LINE_NOTE/, "the marker must come from the shared constant, never a hand-written literal");
 });
 
 test("SOURCE PIN: VoidItemDialog.tsx branches on item.reward with a struck-through worth + FREE landmark, at the moment staff pick WHICH line to void", () => {

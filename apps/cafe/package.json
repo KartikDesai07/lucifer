@@ -216,6 +216,8 @@
     "lib/order-detail-view.test.ts",
     "lib/order-detail-body.test.ts",
     "lib/orders-detail-frame.test.ts",
+    "lib/orders-actions.test.ts",
+    "lib/orders-cancel-paths.test.ts",
     "lib/orders-choice.test.ts",
     "lib/use-media-query.test.ts",
     "lib/pos-categories.test.ts",

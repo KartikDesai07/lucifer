@@ -214,9 +214,10 @@ test("OrderVoidTrail in the items box after the total: a dashed rule, the captio
 
 // ── Source pins ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
-test("OrderDetailBody renders detailSums, detailCustomer, detailItemsHead and cancelNote (the words in one tested place), never a sum of its own", () => {
+test("OrderDetailBody renders detailSums, detailCustomer, detailItemsHead, cancelNote and detailLineMeta (the words in one tested place), never a sum of its own", () => {
   const body = read("components/orders/OrderDetailBody.tsx");
-  for (const call of ["detailSums(order)", "detailCustomer(order)", "detailItemsHead(order)", "cancelNote(order)"]) assert.ok(body.includes(call), `the body reads ${call}`);
+  for (const call of ["detailSums(order)", "detailCustomer(order)", "detailItemsHead(order)", "cancelNote(order)", "detailLineMeta(item)"]) assert.ok(body.includes(call), `the body reads ${call}`);
+  assert.ok(!body.includes("function lineMeta(") && !body.includes("orderItemModifierLines("), "no meta words of its own (U2 Task 7: detailLineMeta)");
   assert.match(body, /from "@\/lib\/order-detail-view";/, "from lib/order-detail-view.ts");
   for (const own of ["order.subtotal", "order.paidAmount", "chargesFromOrder(", "discountLineLabel(", "receiptGst("]) assert.ok(!body.includes(own), `no figures of its own: ${own}`);
   assert.match(body, /<OrderVoidTrail voids=\{order\.voids\} \/>/, "the void trail inside the box");

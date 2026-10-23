@@ -9,11 +9,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 
 import { SELF_ORDER_SOURCE } from "@pos/shared/public";
+import { REWARD_ITEM_LINE_NOTE } from "@pos/shared/reward-redemption";
 import { expectAll, tagOf, tagsOf, textOf } from "./class-tags.fixtures";
 import {
   cancelNote,
   detailCustomer,
   detailItemsHead,
+  detailLineMeta,
   detailMeta,
   detailSteps,
   detailSums,
@@ -273,6 +275,20 @@ test("detailSums: every charge of the order's snapshot in its order (table, then
   assert.deepEqual(rowsOf(detailSums(legacy)), ["Subtotal|₹855|plain", "Table charge|₹50|plain"], "no snapshot of GST: no GST row; the scalar charge");
 });
 
+// U2 Task 6 carried (Task 7, fix before merge): an order stored before the GST mode snapshot but with an exclusive GST
+// amount must still add up — its stored figure in a plain row, never the cafe's live settings.
+test("detailSums: no GST mode snapshot but a stored gstAmount > 0 — a plain 'GST' row (or 'GST @{rate}%' with a stored rate) with that amount, so the rows add up", () => {
+  const bare = order("1", { subtotal: 500, gstAmount: 25, total: 525 });
+  assert.deepEqual(rowsOf(detailSums(bare)), ["Subtotal|₹500|plain", "GST|₹25|plain"], "no rate stored: 'GST'");
+  billRowsAddUp(detailSums(bare), "no mode, no rate");
+  const rated = order("1", { subtotal: 855, chargeAmount: 50, gstAmount: 43, gstRate: 5, total: 948 });
+  assert.deepEqual(rowsOf(detailSums(rated)), ["Subtotal|₹855|plain", "Table charge|₹50|plain", "GST @5%|₹43|plain"], "a stored rate: 'GST @5%'");
+  billRowsAddUp(detailSums(rated), "no mode, a rate");
+  const settledOld = detailSums({ ...settled("1", 525, 525, "Cash"), subtotal: 500, gstAmount: 25 });
+  assert.deepEqual(rowsOf(settledOld), ["Subtotal|₹500|plain", "GST|₹25|plain", "Paid by Cash|₹525|plain"], "a settled old bill: the GST row before the payment");
+  assert.deepEqual(rowsOf(detailSums(order("1", { subtotal: 300, gstAmount: 0, total: 300 }))), ["Subtotal|₹300|plain"], "no amount stored: no row");
+});
+
 test("detailSums: inclusive GST is a row inside the total, 'Incl. GST @5%', the bill's own figure (receiptGst: the charge lifted out first)", () => {
   const plain = order("1", { subtotal: 490, gstAmount: 0, gstRate: 5, gstMode: "inclusive", total: 490 });
   assert.deepEqual(rowsOf(detailSums(plain)), ["Subtotal|₹490|plain", "Incl. GST @5%|₹23|plain"], "490 incl. 5%: ₹23 of it is GST");
@@ -338,10 +354,14 @@ test("detailItemsHead: Σ quantity, '1 item' / 'n items' (values 11.5)", () => {
   assert.equal(detailItemsHead(items()), "0 items", "none");
 });
 
-test("cancelNote: our words — 'Cancelled at {time} by {who}.' (the cancel time, Ruling P8) and 'Reason: {reason}'; nothing for an order not cancelled", () => {
+// U2 Task 6 carried (Task 7, fix before merge): with no cancel time stored the note names no time (the opened time
+// would read as the cancel time).
+test("cancelNote: our words — 'Cancelled at {time} by {who}.' (the cancel time) and 'Reason: {reason}'; no cancel time stored: no time ('Cancelled by {who}.'); nothing for an order not cancelled", () => {
   const o = (over: Record<string, unknown>) => order("1", { status: "Cancelled", createdAt: minutesBefore(90), ...over });
   assert.deepEqual(cancelNote(o({ cancelledAt: minutesBefore(0), cancelledBy: "Rohan", cancelReason: "Guest left" })), { text: "Cancelled at 9:30 PM by Rohan.", reason: "Reason: Guest left" }, "design 6.8");
-  assert.deepEqual(cancelNote(o({})), { text: "Cancelled at 8:00 PM.", reason: null }, "no cancel time stored: when it was opened; no name, no reason: none said");
+  assert.deepEqual(cancelNote(o({ cancelledBy: "Rohan", cancelReason: "Guest left" })), { text: "Cancelled by Rohan.", reason: "Reason: Guest left" }, "no cancel time stored: never the opened time");
+  assert.deepEqual(cancelNote(o({ cancelledAt: minutesBefore(0) })), { text: "Cancelled at 9:30 PM.", reason: null }, "no name, no reason: none said");
+  assert.deepEqual(cancelNote(o({})), { text: "Cancelled.", reason: null }, "nothing stored: no time, no name");
   assert.equal(cancelNote(order("1", { cancelReason: "x" })), null, "an open tab has no note");
   assert.equal(cancelNote(settled("1", 100, 100)), null, "a settled bill has no note");
 });
@@ -350,4 +370,14 @@ test("voidLineNote: 'round {n} · {reason} — {who}, {date}' under a voided lin
   const v = { productId: "p", name: "Hot Cappuccino", price: 130, qty: 1, kotRound: 2, reason: "Customer sent it back", voidedBy: "Priya Shah", at: "2026-10-14T07:47:24.000Z" };
   assert.equal(voidLineNote(v), "round 2 · Customer sent it back — Priya Shah, 14 Oct 2026", "today's words with the round first");
   assert.equal(voidLineNote({ ...v, kotRound: 0 }), "Customer sent it back — Priya Shah, 14 Oct 2026", "no round");
+});
+
+// U2 Task 6 carried (Task 7): a line's meta words live here with the rest of the detail's words (OrderDetailBody draws them).
+test("detailLineMeta: our removed / added modifiers (orderItemModifierLines), the instructions trimmed and, on a reward line, its note (else the shared constant), joined ', '; empty parts dropped", () => {
+  const item = (over: Record<string, unknown>) => fired(over) as unknown as Order["items"][number];
+  assert.equal(detailLineMeta(item({ name: "Pizza", modifiers: ["Extra cheese", "Olives"], removedModifiers: ["Mushroom"], instructions: " Well done " })), "NO Mushroom, + Extra cheese, Olives, Well done", "removals, additions, then the note");
+  assert.equal(detailLineMeta(item({ modifiers: ["Extra thick"] })), "+ Extra thick", "an addition alone");
+  assert.equal(detailLineMeta(item({ reward: true, note: "Reward — free" })), "Reward — free", "a reward line's stored note");
+  assert.equal(detailLineMeta(item({ reward: true })), REWARD_ITEM_LINE_NOTE, "a reward line stored before the note: the shared constant");
+  assert.equal(detailLineMeta(item({ instructions: "   " })), "", "nothing to say: empty (the body draws no meta line)");
 });

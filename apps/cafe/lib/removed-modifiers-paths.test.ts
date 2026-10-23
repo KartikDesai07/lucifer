@@ -89,8 +89,9 @@ const DISPLAY_SURFACES = [
   // CartLine renders; the pin below keeps CartLine on it.
   "lib/pos-cart-view.ts",
   "components/kitchen/KitchenLineCard.tsx",
-  // U2 Task 6: the Orders detail's item lines moved with its body into OrderDetailBody.tsx.
-  "components/orders/OrderDetailBody.tsx",
+  // U2 Task 6: the Orders detail's item lines moved with its body into OrderDetailBody.tsx; U2 Task 7: their one meta
+  // line is built in lib/order-detail-view.ts (detailLineMeta), which OrderDetailBody renders (pin below).
+  "lib/order-detail-view.ts",
   "components/orders/OrderRequestCard.tsx",
   "components/public/PublicCartLine.tsx",
   "components/public/PublicStatusItemRow.tsx",
@@ -109,6 +110,13 @@ test("PIN (F): every line-display surface prints modifiers through orderItemModi
     // Also the optional-chain form (item.modifiers?.join) a regression would idiomatically use.
     assert.ok(!/\bmodifiers\s*\??\.\s*join\s*\(/.test(src), `${rel}: a hand-written modifiers join is back — it would drop the NO lines`);
   }
+});
+
+test("PIN (F): the Orders detail's line shows its removals through detailLineMeta (U2 Task 7: moved from OrderDetailBody.tsx, same meaning)", () => {
+  const body = stripComments(readSrc("components/orders/OrderDetailBody.tsx"));
+  assert.match(body, /import \{[^}]*\bdetailLineMeta\b[^}]*\} from "@\/lib\/order-detail-view";/, "OrderDetailBody takes its meta from lib/order-detail-view.ts");
+  assert.ok(body.includes("const meta = detailLineMeta(item);"), "and renders it under the name");
+  assert.ok(!/\bmodifiers\s*\??\.\s*join\s*\(/.test(body), "no hand-written modifiers join in the body");
 });
 
 test("PIN (F): the /pos cart line shows a reverse-mode line's removals through lineMeta (U1 Task 4, values 5.4)", () => {

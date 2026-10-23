@@ -10,6 +10,8 @@
 // keeps exactly the class set it had (lib/sheet-frame.test.ts). Every string here is a plain literal, so Tailwind's
 // source scanner sees each class. Pure: no React, no fetching; client-safe.
 
+import { cn } from "@/lib/utils";
+
 /** The scrim (values 0.3 sheetAlign / sheetPad; 8.1, 9.1, 10.1, 11.1, 12.1): fixed over the window, --scrim, fadeIn .2s;
  *  the panel centred in 16px, along the window's foot with no padding below 720px; the HTML sets no line-height on a
  *  sheet: normal. The z-index is the caller's literal: 20 for the item options (over the phone's tab bar), 46 for the
@@ -48,3 +50,23 @@ export const SHEET_FOOT_CLASS =
 /** The head's round ✕ (values 8.1, 9.1): 32px on --surface-3, --text-2, the UA's 1px 6px (the HTML sets none). */
 export const SHEET_CLOSE_CLASS =
   "flex size-8 flex-none cursor-pointer items-center justify-center rounded-[50%] border-0 bg-surface-3 px-1.5 py-px text-muted-foreground";
+
+// ── The confirm sheet (values 12.1; U1 Task 12; design 3, 6.12): ConfirmDialog look="sheet" and, from U2 Task 7, the
+// Orders cancel sheet (components/orders/CancelOrderDialog.tsx, design 6.10) — moved here from ConfirmDialog.tsx with
+// their strings unchanged. The buttons block and the two kinds' colours stay each caller's own literals. ──────────────
+
+/** The scrim at z-index 50 (values 12.1). */
+export const CONFIRM_SHEET_SCRIM_CLASS = cn(SHEET_SCRIM_BASE, "z-50");
+/** The panel (values 12.1): 420px on --surface with a 1px --border, padding 20, the text and the buttons 16px apart,
+ *  sheetIn .34s, content-sized (no cap). */
+export const CONFIRM_SHEET_PANEL_CLASS = cn(SHEET_PANEL_BASE, "max-w-[420px] gap-4 border border-border p-5 motion-safe:animate-sheet-in");
+/** The title 18px 600 -.01em. */
+export const CONFIRM_SHEET_TITLE_CLASS = "text-[18px] font-semibold tracking-[-0.01em]";
+/** The body 14px --text-2, 6px under the title at 1.5, wrapped "pretty". */
+export const CONFIRM_SHEET_BODY_CLASS = "mt-1.5 text-[14px] leading-[1.5] text-pretty text-muted-foreground";
+/** A button (values 12.1): 46px, a 1px rule, radius 10, 14.5px 600, the UA's 1px 6px (the HTML sets none); the spinner
+ *  and the label centred in one row; no hover look (the HTML's has none); off at .5. */
+export const CONFIRM_SHEET_BUTTON_CLASS =
+  "flex h-[46px] w-full cursor-pointer items-center justify-center rounded-[10px] border px-1.5 py-px text-[14.5px] font-semibold disabled:cursor-not-allowed disabled:opacity-50";
+/** A destructive action (design 6.12): --bad with white text. */
+export const CONFIRM_SHEET_DESTRUCTIVE_CLASS = "border-status-bad bg-status-bad text-white";

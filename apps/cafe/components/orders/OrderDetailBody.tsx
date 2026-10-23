@@ -1,8 +1,7 @@
 "use client";
 
-import { orderItemLabel, orderItemModifierLines } from "@pos/shared/utils";
-import { REWARD_ITEM_LINE_NOTE } from "@pos/shared/reward-redemption";
-import { cancelNote, detailCustomer, detailItemsHead, detailSums, type DetailSumTone } from "@/lib/order-detail-view";
+import { orderItemLabel } from "@pos/shared/utils";
+import { cancelNote, detailCustomer, detailItemsHead, detailLineMeta, detailSums, type DetailSumTone } from "@/lib/order-detail-view";
 import {
   ORDER_DETAIL_BOX_HEAD_CLASS,
   ORDER_DETAIL_LINE_CLASS,
@@ -12,7 +11,7 @@ import {
 import { STATUS_CLASSES } from "@/lib/ui";
 import { cn, inr } from "@/lib/utils";
 import { OrderVoidTrail } from "@/components/orders/OrderVoidTrail";
-import type { Order, OrderItem } from "@/types";
+import type { Order } from "@/types";
 
 // The order detail's body (U2 Task 6; values 11.4 customer row, 11.5 items box, sums and total, 11.6 cancel note; design
 // 6.8, Q9): the parts the scrolling body (lib/orders-layout.ts ORDER_DETAIL_SCROLL_CLASS) holds in the HTML's order,
@@ -72,7 +71,7 @@ function ItemsBox({ order }: { order: Order }) {
         <span>Amount</span>
       </div>
       {order.items.map((item, i) => {
-        const meta = lineMeta(item);
+        const meta = detailLineMeta(item);
         return (
           <div key={`${item.productId}-${i}`} data-ui="order-detail-line" className={ORDER_DETAIL_LINE_CLASS}>
             <span data-ui="order-detail-line-qty" className={ORDER_DETAIL_QTY_CLASS}>
@@ -139,11 +138,4 @@ function CancelNote({ order }: { order: Order }) {
       {note.reason && <p>{note.reason}</p>}
     </div>
   );
-}
-
-/** A line's meta (values 11.5; design 6.8): our removed / added modifiers (orderItemModifierLines), the instructions and,
- *  on a reward line, its stored note (a line stored before the note existed: the shared constant), joined ", ". */
-function lineMeta(item: OrderItem): string {
-  const rewardNote = item.reward ? (item.note ?? REWARD_ITEM_LINE_NOTE) : "";
-  return [...orderItemModifierLines(item), item.instructions?.trim() ?? "", rewardNote].filter(Boolean).join(", ");
 }

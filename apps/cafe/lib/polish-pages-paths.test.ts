@@ -990,10 +990,12 @@ const CONTROL_FILES = [
   EVENTS_PAGE,
   STAFF_PAGE,
   CUSTOMER_STATUS,
-  CANCEL_ORDER_DIALOG,
   ORDER_REQUEST_CARD,
   RECEIVE_PAYMENT_DIALOG,
 ];
+// U2 Task 7 (2026-10-23; design 6.10): CancelOrderDialog left the control list on purpose (P22): it is the owner's HTML
+// confirm sheet now (lib/sheet-frame.ts CONFIRM_SHEET_*: its 48px field and 46px buttons, no h-10 kit control);
+// lib/orders-actions.test.ts pins it. It stays in the copy-hygiene list (P23).
 // U2 Task 4 (2026-10-23): the Orders page and OrderTable left the panel, contain and row-action lists on purpose (P6,
 // P16): the list box is the owner's HTML surface (--surface, 1px --border, radius 12; values 8.1) drawn by OrderTable.tsx,
 // not the brand paper panel; it is no kit <Table> (no inline-size containment: it sits in its own @container); its row
