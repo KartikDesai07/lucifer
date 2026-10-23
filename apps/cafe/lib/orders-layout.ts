@@ -9,7 +9,7 @@
 // One place for the class strings the page renders. Everything here is a plain literal (ORDERS_PAGE_CLASS also reads
 // lib/pos-layout.ts's POS_PAGE_CLASS), so Tailwind's source scanner sees every class name, and the pins
 // (lib/orders-layout.test.ts) read the SAME constants the page renders.
-import { POS_PAGE_CLASS } from "@/lib/pos-layout";
+import { POS_CART_SHEET_CLASS, POS_CART_SHEET_SCRIM_CLASS, POS_PAGE_CLASS } from "@/lib/pos-layout";
 
 /** The Orders page's route. */
 export const ORDERS_PATH = "/orders";
@@ -84,15 +84,22 @@ export const ORDER_DETAIL_SIDE_CLASS =
   "flex w-[400px] flex-col gap-0 rounded-none border-l border-border bg-card p-0 font-sans leading-[normal] text-foreground sm:max-w-none [&>button]:hidden";
 
 /** The bottom sheet's overlay (owner rule: no scrim at any width below 1280px; at 390 the HTML's is under the sheet):
- *  mounted with the dialog (its scroll lock stays), never drawn — as the /pos cart sheet's. */
-export const ORDER_DETAIL_SHEET_SCRIM_CLASS = "hidden";
-/** The bottom sheet below 1280px on both pages (values 12 and 11.1 at 390; owner rule 2026-10-22): over the whole window
- *  (fixed, inset 0) at z-index 15, over the header, the rail and the tab bar (12), under the sheets it opens; --surface
- *  with the 1px --border rule on its left (the HTML's phone content starts at x 1); no shadow. It slides up from the
- *  window's foot and back down with the /pos cart sheet's slides (lib/pos-layout.ts POS_CART_SHEET_CLASS: the same
- *  keyframes, Radix's data-state picks one, motion-safe). The HTML sets no line-height: normal. */
-export const ORDER_DETAIL_SHEET_CLASS =
-  "fixed inset-0 z-[15] flex flex-col border-l border-border bg-card font-sans leading-[normal] text-foreground outline-none motion-safe:data-[state=open]:animate-cart-sheet-up motion-safe:data-[state=closed]:animate-cart-sheet-down";
+ *  the /pos cart sheet's own constant — mounted with the dialog (its scroll lock stays), never drawn. */
+export const ORDER_DETAIL_SHEET_SCRIM_CLASS = POS_CART_SHEET_SCRIM_CLASS;
+/** The bottom sheet below 1280px on both pages (values 12 and 11.1 at 390; owner rule 2026-10-22): the /pos cart sheet
+ *  itself (lib/pos-layout.ts POS_CART_SHEET_CLASS, one constant so the two cannot drift): over the whole window (fixed,
+ *  inset 0) at z-index 15, over the header, the rail and the tab bar (12), under the sheets it opens; --surface with the
+ *  1px --border rule on its left (the HTML's phone content starts at x 1); no shadow; it slides up from the window's foot
+ *  and back down (Radix's data-state picks the slide, motion-safe); line-height normal. */
+export const ORDER_DETAIL_SHEET_CLASS = POS_CART_SHEET_CLASS;
+
+/** The frame in use: while the payment (and the customer sheet it opens) or the move sheet opened from the detail is up,
+ *  the frame it opened from stays — Radix stacks its layers by mount order, so a frame mounted under an open sheet would
+ *  become the top layer (the payment behind its overlay, focus trapped below, Escape closing the detail and so the
+ *  payment). Once that sheet closes, the frame follows the width. */
+export function frameInUse(held: OrderDetailFrame | null, forWidth: OrderDetailFrame | null, nestedOpen: boolean): OrderDetailFrame | null {
+  return nestedOpen ? held : forWidth;
+}
 
 /** Under the head (values 11.1: the head never shrinks, the rest scrolls): today's body and buttons until U2 Tasks 6-7
  *  rebuild them, with room under the last button that clears the window's foot and its safe-area inset (U1 P49). */

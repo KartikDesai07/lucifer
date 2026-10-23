@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { useOrdersInfinite, useTrimOrdersListOnLeave, useCancelOrder } from "@/hooks/use-orders";
 import { dedupeOrdersById, liveOrderOf } from "@/lib/order-query";
@@ -18,7 +18,7 @@ import {
   ORDERS_TOP_CLASS,
   ORDERS_XL_QUERY,
 } from "@/lib/orders-layout";
-import { engageChoice, noChoice, settleChoice, tappedChoice, type OrdersChoice } from "@/lib/orders-choice";
+import { choiceKey, engageChoice, noChoice, settleChoice, tappedChoice, type OrdersChoice } from "@/lib/orders-choice";
 import {
   CHIP_CLEARS,
   DEFAULT_ORDERS_FILTERS,
@@ -62,7 +62,14 @@ export default function OrdersPage() {
   // One filter state (lib/orders-lanes.ts): the lane, the date, the payment, the table and the searched phone; the one
   // list query is ordersQuery's (the same GET /api/orders with today's filter keys only).
   const [filters, setFilters] = useState<OrdersFilterState>(DEFAULT_ORDERS_FILTERS);
-  const setFilter = (patch: Partial<OrdersFilterState>) => setFilters((f) => ({ ...f, ...patch }));
+  // Each filter edit (lane, date, payment, table, chip, Clear all / Reset, the URL seed) counts once: with the typed
+  // phone it keys the chosen order (ruling P11); the debounced phone landing is not an edit.
+  const [filterEdits, setFilterEdits] = useState(0);
+  const editFilters = (update: (f: OrdersFilterState) => OrdersFilterState) => {
+    setFilters(update);
+    setFilterEdits((n) => n + 1);
+  };
+  const setFilter = (patch: Partial<OrdersFilterState>) => editFilters((f) => ({ ...f, ...patch }));
   // Phone search: keep an immediate input value + a debounced filter value so we
   // don't refetch on every keystroke while typing a number.
   const [phoneInput, setPhoneInput] = useState("");
@@ -80,7 +87,9 @@ export default function OrdersPage() {
   // risk) — runs once; never written back.
   useEffect(() => {
     const seed = seedFromUrl(window.location.search);
-    if (Object.keys(seed).length > 0) setFilters((f) => ({ ...f, ...seed }));
+    if (Object.keys(seed).length === 0) return;
+    setFilters((f) => ({ ...f, ...seed }));
+    setFilterEdits((n) => n + 1); // an edit: it drops a first row taken from the unseeded list (ruling P11)
   }, []);
 
   // One clock for the page, re-read once a minute (no request): ordersQuery's key changes only when the cafe's day does,
@@ -110,15 +119,21 @@ export default function OrdersPage() {
   const list = dedupeOrdersById(orders.data?.pages ?? []);
   const searching = filters.phone !== "";
   const shown = laneRows(filters.lane, list, searching);
-  // The chosen order (design 6.6, ruling P9; lib/orders-choice.ts): from 1280px an empty choice takes the first row
-  // shown, once (a refresh never swaps it); a tap chooses; any filter change drops it; below 1280px an auto-picked row
-  // gives way. Settled during render and stored only on a change, so no frame ever shows a stale choice.
+  // The chosen order (design 6.6, rulings P9 / P11; lib/orders-choice.ts), settled during render, stored on a change
+  // only; no first row is taken until the list has answered (a typed phone not searched yet: the rows are the old
+  // search's); a tap or a settle reads the latest key (a ref, not this render's).
+  const key = choiceKey(filterEdits, phoneInput);
+  const listPending = orders.data === undefined || phoneInput.trim() !== filters.phone;
   const xl = useMediaQuery(ORDERS_XL_QUERY);
-  const [held, setHeld] = useState<OrdersChoice>(() => noChoice(filters));
-  const choice = settleChoice(held, filters, xl, shown[0]);
+  const [held, setHeld] = useState<OrdersChoice>(() => noChoice(key));
+  const choice = settleChoice(held, key, xl, listPending ? undefined : shown[0]);
   if (choice !== held) setHeld(choice);
   const detail = choice.order;
-  const setDetail = (order: Order | null) => setHeld(tappedChoice(order, filters));
+  const keyRef = useRef(key);
+  useLayoutEffect(() => {
+    keyRef.current = key;
+  });
+  const setDetail = (order: Order | null) => setHeld(tappedChoice(order, keyRef.current));
   const engage = () => setHeld(engageChoice);
   // The list head (values 7) counts the rows shown, once the list has loaded.
   const head = orders.data === undefined ? null : listHead(filters.lane, shown.length, orders.hasNextPage, searching);
@@ -139,7 +154,7 @@ export default function OrdersPage() {
   // 350ms debounce would leave the old search applied for a beat after the box reads empty. The lane and the date stay.
   const clearFilters = () => {
     setPhoneInput("");
-    setFilters(clearAllFilters);
+    editFilters(clearAllFilters);
   };
   // The search box's ✕: the typed and the searched phone at once (no 350ms ghost search).
   const clearSearch = () => {
@@ -147,7 +162,7 @@ export default function OrdersPage() {
     setFilter({ phone: "" });
   };
 
-  // A lane tap (design 6.2): that lane and the phone search cleared (typed and searched); the new filters drop the choice.
+  // A lane tap (design 6.2): that lane and the phone search cleared (typed and searched); the edit drops the choice.
   const pickLane = (lane: OrdersLane) => {
     setPhoneInput("");
     setFilter({ lane, phone: "" });
@@ -256,15 +271,14 @@ export default function OrdersPage() {
             )}
           </div>
         </div>
-        {/* The detail (design 6.6): from 1280px it fills this column; below, it opens full screen from the window's foot
-            through its own portal — one frame at a time. A press or focus inside it (or a sheet it opened) keeps an
-            auto-picked order chosen. It follows the live row (a tab another device grew or settled) and latches its
-            own copy while paying. */}
+        {/* The detail (design 6.6): this column from 1280px, below it full screen from the foot (its own portal). A press
+            or focus inside it keeps an auto-picked order chosen. It follows the live row; it latches its copy to pay. */}
         <div data-ui="orders-detail-column" className={ORDERS_DETAIL_COLUMN_CLASS} onPointerDownCapture={engage} onFocusCapture={engage}>
           <OrderDetailSheet
             place="page"
             order={liveOrderOf(detail, list)}
             now={now}
+            listPending={listPending}
             onOpenChange={(o) => !o && setDetail(null)}
             onSettled={setDetail}
           />

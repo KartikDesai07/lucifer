@@ -20,7 +20,6 @@ import { useSettleFlow } from "@/hooks/use-settle-flow";
 import { useHostRouting } from "@/hooks/use-print-routing";
 import { useTokenPrint } from "@/hooks/use-token-print";
 import { useMediaQuery } from "@/hooks/use-media-query";
-import { useNow } from "@/hooks/use-now";
 import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +40,7 @@ import {
   ORDER_DETAIL_SHEET_CLASS,
   ORDER_DETAIL_SHEET_SCRIM_CLASS,
   ORDER_DETAIL_SIDE_CLASS,
+  frameInUse,
   orderDetailFrame,
   type OrderDetailFrame,
   type OrderDetailPlace,
@@ -108,9 +108,6 @@ function sheetSettlePayload(order: Order, result: PaymentResult, picked: Custome
   };
 }
 
-/** The meta clock's own tick where the page passes none (the dashboard): once a minute, as the Orders page's. */
-const DETAIL_CLOCK_MS = 60_000;
-
 interface OrderDetailSheetProps {
   order: Order | null;
   onOpenChange: (open: boolean) => void;
@@ -124,8 +121,12 @@ interface OrderDetailSheetProps {
   place?: OrderDetailPlace;
   /** The page's cancel (admins on /orders; U2 Task 7 draws its "Cancel this order"). The dashboard provides none. */
   onCancel?: (order: Order) => void;
-  /** The page's minute tick for the meta clock, so the head's age reads as the list's (the Orders page's useNow). */
+  /** The page's minute tick for the meta clock, so the head's age reads as the list's (the Orders page's useNow); without
+   *  it (the dashboard) the head keeps its own. */
   now?: Date;
+  /** The page's list has not answered yet (a first or uncached load, a typed phone not searched yet): the column shows
+   *  nothing rather than "Select an order to see its details." */
+  listPending?: boolean;
 }
 
 export function OrderDetailSheet({
@@ -134,12 +135,9 @@ export function OrderDetailSheet({
   onSettled,
   place = "overlay",
   now,
+  listPending = false,
 }: OrderDetailSheetProps) {
-  // One frame for the width (design 6.6): the column, the side sheet or the bottom sheet — none until the width is
-  // known — so the print sources, the settle latch and the payment preload exist once at any width.
-  const frame = orderDetailFrame(place, useMediaQuery(ORDERS_XL_QUERY));
-  const ownClock = useNow(DETAIL_CLOCK_MS);
-  const clock = now ?? ownClock ?? new Date();
+  const forWidth = orderDetailFrame(place, useMediaQuery(ORDERS_XL_QUERY));
   const settings = useSettings();
   // Both buttons in this sheet's footer are INDEPENDENT print sites: they fire
   // their own useReactToPrint triggers straight from onClick and never touch
@@ -151,6 +149,13 @@ export function OrderDetailSheet({
   const { routePrint, enqueuePending } = useHostRouting();
   const [settleOpen, setSettleOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
+  // One frame for the width (design 6.6): the column, the side sheet or the bottom sheet — none until the width is
+  // known — so the print sources, the settle latch and the payment preload exist once at any width. While the payment
+  // (with the customer sheet it opens) or the move sheet is up, the frame it opened from stays (frameInUse): a frame
+  // mounted under it would take Radix's top layer and trap focus, take Escape and close the detail under the payment.
+  const [heldFrame, setHeldFrame] = useState(forWidth);
+  const frame = frameInUse(heldFrame, forWidth, settleOpen || moveOpen);
+  if (frame !== heldFrame) setHeldFrame(frame);
   // Ruling P38: the payment and move dialogs render beside the sheet (outside its panel), so a press that closes one of
   // them must not close the sheet too; the panel tells such a press from a tap outside every dialog.
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -310,130 +315,135 @@ export function OrderDetailSheet({
 
   return (
     <>
-      <DetailFrame frame={frame} open={!!order} onOpenChange={onOpenChange} sheetRef={sheetRef}>
-        {order && <OrderDetailHead order={order} now={clock} onClose={frame === "column" ? undefined : () => onOpenChange(false)} />}
+      <DetailFrame frame={frame} open={!!order} waiting={listPending} onOpenChange={onOpenChange} sheetRef={sheetRef}>
+        {/* Through a sheet's close the last order stays drawn; the buttons and the print sources follow the live one. */}
+        <KeepWhileClosing show={!!order}>
+          {order && <OrderDetailHead order={order} now={now} onClose={frame === "column" ? undefined : () => onOpenChange(false)} />}
+        </KeepWhileClosing>
 
         {/* Under the head the rest scrolls (values 11.1): today's body and buttons until U2 Tasks 6-7 rebuild them. */}
         <div data-ui="order-detail-scroll" className={ORDER_DETAIL_SCROLL_CLASS}>
-          {order && (
-            <div className="flex flex-1 flex-col gap-4 p-4 text-sm">
-              <div className="flex flex-wrap gap-2">
-                <Badge
-                  variant={order.status === "Completed" ? "default" : "secondary"}
-                  className={cn(
-                    order.status === "Pending" && "bg-amber-100 text-amber-800",
-                    order.status === "Completed" && "bg-green-100 text-green-800",
-                    order.status === "Cancelled" && "bg-gray-100 text-gray-800",
-                  )}
-                >
-                  {order.status}
-                </Badge>
-                <Badge variant="outline" className={cn(payStyle?.color)}>
-                  {payStyle?.label ?? order.payment}
-                </Badge>
-                <Badge variant="outline">{order.tableNo ?? "Walk-In"}</Badge>
-              </div>
-
-              {/* Colour alone never carries this — the heading names it too, and
-                  the reason/who/when make the cancellation legible on its own. */}
-              {order.status === "Cancelled" && (
-                <div className="space-y-1 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-destructive">
-                  <p className="font-semibold">Cancelled</p>
-                  {order.cancelReason && <p>{order.cancelReason}</p>}
-                  <p className="text-xs opacity-80">
-                    {order.cancelledBy ?? "Unknown"}
-                    {order.cancelledAt && ` · ${formatDate(order.cancelledAt)}`}
-                  </p>
+          <KeepWhileClosing show={!!order}>
+            {order && (
+              <div className="flex flex-1 flex-col gap-4 p-4 text-sm">
+                <div className="flex flex-wrap gap-2">
+                  <Badge
+                    variant={order.status === "Completed" ? "default" : "secondary"}
+                    className={cn(
+                      order.status === "Pending" && "bg-amber-100 text-amber-800",
+                      order.status === "Completed" && "bg-green-100 text-green-800",
+                      order.status === "Cancelled" && "bg-gray-100 text-gray-800",
+                    )}
+                  >
+                    {order.status}
+                  </Badge>
+                  <Badge variant="outline" className={cn(payStyle?.color)}>
+                    {payStyle?.label ?? order.payment}
+                  </Badge>
+                  <Badge variant="outline">{order.tableNo ?? "Walk-In"}</Badge>
                 </div>
-              )}
 
-              <div className="space-y-1">
-                <Row label="Customer" value={order.customerName} />
-                <Row label="Served by" value={order.receiver} />
-              </div>
+                {/* Colour alone never carries this — the heading names it too, and
+                    the reason/who/when make the cancellation legible on its own. */}
+                {order.status === "Cancelled" && (
+                  <div className="space-y-1 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-destructive">
+                    <p className="font-semibold">Cancelled</p>
+                    {order.cancelReason && <p>{order.cancelReason}</p>}
+                    <p className="text-xs opacity-80">
+                      {order.cancelledBy ?? "Unknown"}
+                      {order.cancelledAt && ` · ${formatDate(order.cancelledAt)}`}
+                    </p>
+                  </div>
+                )}
 
-              <Separator />
+                <div className="space-y-1">
+                  <Row label="Customer" value={order.customerName} />
+                  <Row label="Served by" value={order.receiver} />
+                </div>
 
-              <div className="space-y-2">
-                {order.items.map((item, i) => (
-                  <div key={`${item.productId}-${i}`} className="flex justify-between gap-3">
-                    <div className="min-w-0">
-                      <span className="font-medium">
-                        {orderItemLabel(item)}
-                        {item.qty > 1 ? ` ×${item.qty}` : ""}
-                      </span>
-                      {orderItemModifierLines(item).map((line) => (
-                        <div key={line} className="text-xs text-muted-foreground">
-                          {line}
-                        </div>
-                      ))}
-                      {item.instructions && (
-                        <div className="text-xs italic text-muted-foreground">
-                          {item.instructions}
-                        </div>
-                      )}
-                      {/* CB-5B — a reward line's money is excluded from the
-                          subtotal (lib/receipt.ts's reducer skips it), so
-                          showing its real price here would make the amounts
-                          below visibly not add up. The stored `note` is
-                          preferred over the live constant so a settled order
-                          reads the same note it was issued with; only a
-                          pre-S14 reward line (stored before this field
-                          existed) falls back to it. */}
-                      {item.reward && (
-                        <div className="text-xs italic text-muted-foreground">
-                          {item.note ?? REWARD_ITEM_LINE_NOTE}
-                        </div>
+                <Separator />
+
+                <div className="space-y-2">
+                  {order.items.map((item, i) => (
+                    <div key={`${item.productId}-${i}`} className="flex justify-between gap-3">
+                      <div className="min-w-0">
+                        <span className="font-medium">
+                          {orderItemLabel(item)}
+                          {item.qty > 1 ? ` ×${item.qty}` : ""}
+                        </span>
+                        {orderItemModifierLines(item).map((line) => (
+                          <div key={line} className="text-xs text-muted-foreground">
+                            {line}
+                          </div>
+                        ))}
+                        {item.instructions && (
+                          <div className="text-xs italic text-muted-foreground">
+                            {item.instructions}
+                          </div>
+                        )}
+                        {/* CB-5B — a reward line's money is excluded from the
+                            subtotal (lib/receipt.ts's reducer skips it), so
+                            showing its real price here would make the amounts
+                            below visibly not add up. The stored `note` is
+                            preferred over the live constant so a settled order
+                            reads the same note it was issued with; only a
+                            pre-S14 reward line (stored before this field
+                            existed) falls back to it. */}
+                        {item.reward && (
+                          <div className="text-xs italic text-muted-foreground">
+                            {item.note ?? REWARD_ITEM_LINE_NOTE}
+                          </div>
+                        )}
+                      </div>
+                      {item.reward ? (
+                        <span className="whitespace-nowrap">
+                          <span className="line-through opacity-60">{inr(item.price * item.qty)}</span>{" "}
+                          FREE
+                        </span>
+                      ) : (
+                        <span>{inr(item.price * item.qty)}</span>
                       )}
                     </div>
-                    {item.reward ? (
-                      <span className="whitespace-nowrap">
-                        <span className="line-through opacity-60">{inr(item.price * item.qty)}</span>{" "}
-                        FREE
-                      </span>
-                    ) : (
-                      <span>{inr(item.price * item.qty)}</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              <Separator />
-
-              <div className="space-y-1">
-                <Row label="Subtotal" value={inr(order.subtotal)} />
-                {order.discount > 0 && (
-                  <Row label={discountLineLabel(order.discountKind)} value={`−${inr(order.discount)}`} />
-                )}
-                {/* CB-CHG — every charge line (table + staff-entered extras),
-                    from the order's own snapshot, so this sheet reads the same
-                    as the slip that was printed for the customer, even if the
-                    table has since changed what it charges. A legacy order
-                    derives to exactly the one line the old conditional showed. */}
-                {chargesFromOrder(order).map((c, i) => (
-                  <Row key={`${c.label}-${i}`} label={c.label} value={`+${inr(c.amount)}`} />
-                ))}
-                <div className="flex justify-between gap-3 text-base font-bold">
-                  <span>Total</span>
-                  <span>{inr(order.total)}</span>
+                  ))}
                 </div>
-                <Row label="Paid" value={inr(order.paidAmount)} />
-                {due > 0 && order.status === "Completed" && (
-                  <div className="flex justify-between gap-3 font-medium text-destructive">
-                    <span>Due</span>
-                    <span>{inr(due)}</span>
+
+                <Separator />
+
+                <div className="space-y-1">
+                  <Row label="Subtotal" value={inr(order.subtotal)} />
+                  {order.discount > 0 && (
+                    <Row label={discountLineLabel(order.discountKind)} value={`−${inr(order.discount)}`} />
+                  )}
+                  {/* CB-CHG — every charge line (table + staff-entered extras),
+                      from the order's own snapshot, so this sheet reads the same
+                      as the slip that was printed for the customer, even if the
+                      table has since changed what it charges. A legacy order
+                      derives to exactly the one line the old conditional showed. */}
+                  {chargesFromOrder(order).map((c, i) => (
+                    <Row key={`${c.label}-${i}`} label={c.label} value={`+${inr(c.amount)}`} />
+                  ))}
+                  <div className="flex justify-between gap-3 text-base font-bold">
+                    <span>Total</span>
+                    <span>{inr(order.total)}</span>
                   </div>
+                  <Row label="Paid" value={inr(order.paidAmount)} />
+                  {due > 0 && order.status === "Completed" && (
+                    <div className="flex justify-between gap-3 font-medium text-destructive">
+                      <span>Due</span>
+                      <span>{inr(due)}</span>
+                    </div>
+                  )}
+                </div>
+
+                {order.voids && order.voids.length > 0 && (
+                  <>
+                    <Separator />
+                    <OrderVoidTrail voids={order.voids} />
+                  </>
                 )}
               </div>
-
-              {order.voids && order.voids.length > 0 && (
-                <>
-                  <Separator />
-                  <OrderVoidTrail voids={order.voids} />
-                </>
-              )}
-            </div>
-          )}
+            )}
+          </KeepWhileClosing>
 
           {/* Two rows at EVERY width. The panel is 400px wide (or the whole
               window below 1280px), but the SheetFooter primitive switches to a
@@ -550,6 +560,8 @@ interface DetailFrameProps {
   frame: OrderDetailFrame | null;
   /** An order is shown (the sheets open with it). */
   open: boolean;
+  /** The page's list has not answered yet: the column shows nothing. */
+  waiting: boolean;
   onOpenChange: (open: boolean) => void;
   sheetRef: RefObject<HTMLDivElement | null>;
   children: ReactNode;
@@ -557,18 +569,18 @@ interface DetailFrameProps {
 
 // The detail's three frames (U2 Task 5; design 6.6; values 11.1, 12, 13), one per width. The column (/orders from
 // 1280px) is a plain flex column filling the page's 400px column, no dialog and no ✕; with nothing chosen it shows the
-// HTML's words. The side sheet (the dashboard from 1280px) is the kit sheet over its scrim. The bottom sheet (both pages
-// below 1280px) is the /pos cart sheet's: a Radix dialog over the whole window, its overlay mounted and never drawn.
-// Escape and the head's ✕ close both sheets; ruling P38: a press that closes a nested dialog (the payment, the move:
-// rendered beside the frame) never closes the sheet beneath.
-function DetailFrame({ frame, open, onOpenChange, sheetRef, children }: DetailFrameProps) {
+// HTML's words once the list has answered (nothing before). The side sheet (the dashboard from 1280px) is the kit sheet
+// over its scrim. The bottom sheet (both pages below 1280px) is the /pos cart sheet's: a Radix dialog over the whole
+// window, its overlay mounted and never drawn. Escape and the head's ✕ close both sheets; ruling P38: a press that
+// closes a nested dialog (the payment, the move: rendered beside the frame) never closes the sheet beneath.
+function DetailFrame({ frame, open, waiting, onOpenChange, sheetRef, children }: DetailFrameProps) {
   if (frame === null) return null;
   if (frame === "column") {
     return (
       <div data-ui="order-detail" className={ORDER_DETAIL_COLUMN_CLASS}>
         {open ? (
           children
-        ) : (
+        ) : waiting ? null : (
           <p data-ui="order-detail-none" className="m-auto p-6 text-center text-[14px] text-muted-foreground">
             Select an order to see its details.
           </p>
@@ -604,6 +616,18 @@ function DetailFrame({ frame, open, onOpenChange, sheetRef, children }: DetailFr
       )}
     </Sheet>
   );
+}
+
+// Radix keeps a closing sheet's panel mounted while it slides away, but by then `order` is null: this keeps the last
+// shown head and body on screen through that close (set after each commit with an order, so a render that is thrown
+// away never changes it). Only the display: the buttons, their guards and the print sources always follow the live
+// `order`, so a tap during the slide still refuses a closed order (PRINT_ORDER_CHANGED_MESSAGE).
+function KeepWhileClosing({ show, children }: { show: boolean; children: ReactNode }) {
+  const last = useRef<ReactNode>(null);
+  useLayoutEffect(() => {
+    if (show) last.current = children;
+  });
+  return show ? children : last.current;
 }
 
 function Row({ label, value }: { label: string; value: string }) {

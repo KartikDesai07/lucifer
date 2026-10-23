@@ -26,6 +26,20 @@ function sharedList(query: string) {
   return entry;
 }
 
+/** A reader joins the query's shared list (and leaves it with the returned function). */
+export function subscribeMediaQuery(query: string, onChange: () => void): () => void {
+  const { readers } = sharedList(query);
+  readers.add(onChange);
+  return () => {
+    readers.delete(onChange);
+  };
+}
+
+/** The query's state, read from its shared list. */
+export function mediaQueryMatches(query: string): boolean {
+  return sharedList(query).list.matches;
+}
+
 // Width-keyed layout switch (never UA-sniffed — device-agnostic bar). Returns
 // null when the width is not known (server render), so a caller can fall back
 // to rendering both variants CSS-gated; once known, only the matching variant
@@ -33,14 +47,8 @@ function sharedList(query: string) {
 // the cards on every phone).
 export function useMediaQuery(query: string): boolean | null {
   return useSyncExternalStore(
-    (onChange) => {
-      const { readers } = sharedList(query);
-      readers.add(onChange);
-      return () => {
-        readers.delete(onChange);
-      };
-    },
-    () => sharedList(query).list.matches,
+    (onChange) => subscribeMediaQuery(query, onChange),
+    () => mediaQueryMatches(query),
     () => null,
   );
 }

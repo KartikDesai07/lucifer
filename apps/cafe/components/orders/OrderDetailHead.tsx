@@ -3,6 +3,7 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Ticket } from "lucide-react";
 
+import { useNow } from "@/hooks/use-now";
 import { detailMeta, detailSteps, type DetailMetaIcon, type DetailStepState } from "@/lib/order-detail-view";
 import { orderNumber, orderTitle, recentOrderCode, type AgeTone } from "@/lib/orders-row";
 import { STATUS_CLASSES } from "@/lib/ui";
@@ -60,13 +61,25 @@ function MetaIcon({ icon }: { icon: DetailMetaIcon }) {
 
 interface OrderDetailHeadProps {
   order: Order;
-  /** The minute tick the clock's age reads. */
-  now: Date;
+  /** The page's minute tick the clock's age reads (/orders: the list's own); without it the head ticks once a minute
+   *  itself (the dashboard), so a page with a tick runs one timer. */
+  now?: Date;
   /** In a sheet (a dialog): its close, drawn as the HTML's ✕; the name is then the dialog's title. The column has none. */
   onClose?: () => void;
 }
 
-export function OrderDetailHead({ order, now, onClose }: OrderDetailHeadProps) {
+/** The head's own minute (where the page passes none), as the Orders page's tick. */
+const HEAD_CLOCK_MS = 60_000;
+
+export function OrderDetailHead({ now, ...props }: OrderDetailHeadProps) {
+  return now ? <HeadAt {...props} now={now} /> : <HeadTicking {...props} />;
+}
+
+function HeadTicking(props: Omit<OrderDetailHeadProps, "now">) {
+  return <HeadAt {...props} now={useNow(HEAD_CLOCK_MS) ?? new Date()} />;
+}
+
+function HeadAt({ order, now, onClose }: Omit<OrderDetailHeadProps, "now"> & { now: Date }) {
   const meta = detailMeta(order, now);
   const steps = detailSteps(order);
   const name = (

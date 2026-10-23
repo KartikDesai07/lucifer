@@ -200,8 +200,8 @@ test("the /orders page: the lanes lead the top block; the status select is gone 
   const pick = src.slice(src.indexOf("const pickLane"), src.indexOf("};", src.indexOf("const pickLane")));
   assert.ok(pick.includes('setPhoneInput("")'), "a lane tap clears the typed phone");
   assert.ok(/phone: ""/.test(pick), "and the searched phone (no 350 ms ghost)");
-  // U2 Task 5: the choice is dropped by the new filter state itself (lib/orders-choice.ts settleChoice: a different
-  // filters object drops it, for the lane as for the date, a filter or the search; lib/orders-detail-frame.test.ts).
-  assert.ok(/setFilter\(\{ lane, phone: "" \}\)/.test(pick), "and the choice, through the new filters (settleChoice)");
-  assert.match(src, /settleChoice\(held, filters, xl, shown\[0\]\)/, "landmark: the page settles its choice on the filters");
+  // U2 Task 5 (fix round 1, ruling P11): the lane tap is a filter edit (setFilter counts it), and the edit drops the choice
+  // (lib/orders-choice.ts settleChoice on choiceKey; lib/orders-detail-frame.test.ts).
+  assert.ok(/setFilter\(\{ lane, phone: "" \}\)/.test(pick), "and the choice, through the edit (settleChoice)");
+  assert.match(src, /settleChoice\(held, key, xl, listPending \? undefined : shown\[0\]\)/, "landmark: the page settles its choice on the edits' key");
 });

@@ -1,9 +1,10 @@
 // U2 Task 5 (2026-10-23): the order detail's frames and the Orders page's choice (docs/superpowers/specs/
 // 2026-10-23-orders-match-html-design.md 6.6, Q8, the owner's right-panel rule of 2026-10-22; docs/superpowers/specs/
-// 2026-10-22-orders-html-values.md 11.1 container, 12 the sheet, 13 no selection; ruling P9; Review Focus 2): which frame
-// mounts at which width (exactly one, none while the width is unknown), the frames' classes, the page's choice (the
-// first row taken only into an empty choice, dropped on any filter change, an auto-picked row giving way below 1280px),
-// and source pins on components/orders/OrderDetailSheet.tsx and app/(dashboard)/orders/page.tsx.
+// 2026-10-22-orders-html-values.md 11.1 container, 12 the sheet, 13 no selection; rulings P9 and P11; Review Focus 2):
+// which frame mounts at which width (exactly one, none while the width is unknown; the frame in use kept while the
+// payment or move sheet it opened is up), the frames' classes, and source pins on components/orders/OrderDetailSheet.tsx,
+// OrderDetailHead.tsx and app/(dashboard)/orders/page.tsx (the choice itself: lib/orders-choice.test.ts; the shared
+// media query list both read: lib/use-media-query.test.ts).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -11,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { stripComments } from "./source-pin-utils";
-import { POS_CART_SHEET_CLASS } from "./pos-layout";
+import { POS_CART_SHEET_CLASS, POS_CART_SHEET_SCRIM_CLASS } from "./pos-layout";
 import {
   ORDERS_DETAIL_COLUMN_CLASS,
   ORDERS_XL_QUERY,
@@ -20,11 +21,11 @@ import {
   ORDER_DETAIL_SHEET_CLASS,
   ORDER_DETAIL_SHEET_SCRIM_CLASS,
   ORDER_DETAIL_SIDE_CLASS,
+  frameInUse,
   orderDetailFrame,
+  type OrderDetailFrame,
   type OrderDetailPlace,
 } from "./orders-layout";
-import { engageChoice, noChoice, settleChoice, tappedChoice } from "./orders-choice";
-import { order, state } from "./orders-lanes.fixtures";
 
 const CAFE_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const read = (rel: string): string => stripComments(readFileSync(path.join(CAFE_ROOT, rel), "utf8").replace(/\r\n/g, "\n"));
@@ -52,6 +53,19 @@ test("orderDetailFrame: from 1280px the column on /orders and a side sheet elsew
   }
 });
 
+test("frameInUse: while the payment or move sheet the detail opened is up, the frame it opened from stays at any width; once it closes, the frame follows the width", () => {
+  const frames: (OrderDetailFrame | null)[] = ["column", "side", "bottom", null];
+  for (const held of frames) {
+    for (const forWidth of frames) {
+      assert.equal(frameInUse(held, forWidth, true), held, `a sheet up: ${held} stays (the width says ${forWidth})`);
+      assert.equal(frameInUse(held, forWidth, false), forWidth, `no sheet up: ${forWidth} (held ${held})`);
+    }
+  }
+  // The crossings Review Focus 2 names, for both places.
+  assert.equal(frameInUse(orderDetailFrame("page", true), orderDetailFrame("page", false), true), "column", "/orders 1280 -> 1000 with the payment up: no bottom sheet mounts over it");
+  assert.equal(frameInUse(orderDetailFrame("overlay", false), orderDetailFrame("overlay", true), true), "bottom", "the dashboard 1000 -> 1280: no side sheet (and kit scrim) over the payment");
+});
+
 // ── The frames' classes (values 11.1, 12; U1 Task 14's cart sheet) ──────────────────────────────────────────────────
 
 test("ORDER_DETAIL_COLUMN_CLASS: fills the page's 400px column, which carries the look (one column frame, never two)", () => {
@@ -63,6 +77,8 @@ test("ORDER_DETAIL_COLUMN_CLASS: fills the page's 400px column, which carries th
 });
 
 test("ORDER_DETAIL_SHEET_CLASS: the bottom sheet over the whole window at z 15, the 1px rule on its left, no shadow; the /pos cart sheet's slide up and down, no scrim drawn", () => {
+  assert.equal(ORDER_DETAIL_SHEET_CLASS, POS_CART_SHEET_CLASS, "the /pos cart sheet's one constant (the two cannot drift)");
+  assert.equal(ORDER_DETAIL_SHEET_SCRIM_CLASS, POS_CART_SHEET_SCRIM_CLASS, "and its overlay's");
   hasAll(
     ORDER_DETAIL_SHEET_CLASS,
     ["fixed", "inset-0", "z-[15]", "flex", "flex-col", "border-l", "border-border", "bg-card", "font-sans", "leading-[normal]", "text-foreground", "outline-none"],
@@ -92,104 +108,33 @@ test("ORDER_DETAIL_SIDE_CLASS: the kit sheet at the column's 400px on --surface 
   );
 });
 
-// ── The page's choice (design 6.6; ruling P9; Review Focus 2) ───────────────────────────────────────────────────────
-
-test("settleChoice: from 1280px an empty choice takes the first row shown (auto); below 1280px or with the width unknown, nothing is taken", () => {
-  const f = state({});
-  const first = order("1");
-  assert.deepEqual(settleChoice(noChoice(f), f, true, first), { order: first, auto: true, filters: f }, "the HTML's column shows the first row");
-  for (const xl of [false, null]) {
-    const empty = noChoice(f);
-    assert.equal(settleChoice(empty, f, xl, first), empty, `xl=${xl}: nothing chosen until a row is tapped (same object: no store)`);
-  }
-  const empty = noChoice(f);
-  assert.equal(settleChoice(empty, f, true, undefined), empty, "an empty list: nothing chosen ('Select an order to see its details.')");
-});
-
-test("settleChoice: the auto-pick only fills an empty choice — a refresh with a new first row never swaps the order shown", () => {
-  const f = state({});
-  const held = settleChoice(noChoice(f), f, true, order("1"));
-  assert.equal(settleChoice(held, f, true, order("9")), held, "a new order on top: the same choice (the same object)");
-  const tapped = tappedChoice(order("5"), f);
-  assert.equal(settleChoice(tapped, f, true, order("1")), tapped, "a tapped order is never replaced by the first row");
-});
-
-test("settleChoice: any change of the filters (a new state object: lane, date, payment, table, chip, Clear all, the searched phone) drops the choice, then the next first row is taken", () => {
-  const f = state({});
-  const tapped = tappedChoice(order("5"), f);
-  const g = { ...f, lane: "paid" as const };
-  assert.deepEqual(settleChoice(tapped, g, true, order("7")), { order: order("7"), auto: true, filters: g }, "from 1280px: the new list's first row");
-  assert.deepEqual(settleChoice(tapped, g, false, order("7")), noChoice(g), "below 1280px: none (the sheet closes)");
-  assert.deepEqual(settleChoice(tapped, g, true, undefined), noChoice(g), "an empty new list: none");
-});
-
-test("settleChoice (ruling P9): below 1280px an auto-picked row gives way (no full-screen sheet pops open); a tapped one stays chosen across the line", () => {
-  const f = state({});
-  const auto = settleChoice(noChoice(f), f, true, order("1"));
-  assert.deepEqual(settleChoice(auto, f, false, order("1")), noChoice(f), "auto-picked, the window drops below 1280px: cleared");
-  const back = settleChoice(noChoice(f), f, true, order("2"));
-  assert.equal(back.order?._id, "2", "back over 1280px: the first row shown then");
-  const tapped = tappedChoice(order("5"), f);
-  assert.equal(settleChoice(tapped, f, false, order("1")), tapped, "tapped: stays chosen below 1280px (the bottom sheet shows it)");
-  assert.equal(settleChoice(tapped, f, true, order("1")), tapped, "and back over 1280px (the column shows it)");
-});
-
-test("engageChoice (Review Focus 2): a press or focus inside the detail makes an auto-picked order the operator's, so the payment it opened is never taken away below 1280px", () => {
-  const f = state({});
-  const auto = settleChoice(noChoice(f), f, true, order("1"));
-  const engaged = engageChoice(auto);
-  assert.deepEqual(engaged, { order: auto.order, auto: false, filters: f }, "the same order, now the operator's");
-  assert.equal(settleChoice(engaged, f, false, order("1")), engaged, "it stays chosen below 1280px");
-  const tapped = tappedChoice(order("5"), f);
-  assert.equal(engageChoice(tapped), tapped, "a tapped choice: unchanged (the same object: no store)");
-  const none = noChoice(f);
-  assert.equal(engageChoice(none), none, "no choice: unchanged");
-});
-
-test("settleChoice is settled: a settled choice settles to itself at every width (the page stores during render only when it changes)", () => {
-  const f = state({});
-  for (const xl of [true, false, null]) {
-    for (const start of [noChoice(f), tappedChoice(order("5"), f), settleChoice(noChoice(f), f, true, order("1")), noChoice(state({ lane: "all" }))]) {
-      const once = settleChoice(start, f, xl, order("1"));
-      assert.equal(settleChoice(once, f, xl, order("1")), once, `xl=${xl}: settling twice changes nothing`);
-    }
-  }
-});
-
-// The page's choice and its detail's frame read the same query. With a MediaQueryList per reader the browser reports
-// each on its own (a microtask between them), so the detail re-rendered first and opened its bottom sheet for a moment
-// on an auto-picked row the page was about to drop — whose focus then "engaged" it (found by the live check; ruling P9).
-test("useMediaQuery: one shared list and one change listener per query, so every reader (the page and its detail) re-renders in one pass, parent first", () => {
-  const hook = read("hooks/use-media-query.ts");
-  assert.equal(hook.split("window.matchMedia(").length - 1, 1, "the list is made once per query (in sharedList)");
-  assert.match(hook, /const lists = new Map<string, \{ list: MediaQueryList; readers: Set<\(\) => void> \}>\(\);/, "one list and its readers per query");
-  assert.match(hook, /list\.addEventListener\("change", \(\) => \{\s*for \(const tell of \[\.\.\.readers\]\) tell\(\);\s*\}\);/, "one listener tells every reader in the same call");
-  assert.match(hook, /readers\.add\(onChange\);/, "a reader joins the query's set");
-  assert.match(hook, /readers\.delete\(onChange\);/, "and leaves it on unmount");
-  assert.match(hook, /\(\) => sharedList\(query\)\.list\.matches,/, "the snapshot reads the shared list");
-});
-
 // ── OrderDetailSheet: one width, one frame (source pins) ────────────────────────────────────────────────────────────
 
-/** The source of `function DetailFrame(` up to the next top-level function. */
-function detailFrameSrc(src: string): string {
-  const at = src.indexOf("function DetailFrame(");
-  assert.ok(at >= 0, "landmark: OrderDetailSheet.tsx draws its frames in DetailFrame");
+/** The source of `function NAME(` up to the next top-level function. */
+function functionSrc(src: string, name: string): string {
+  const at = src.indexOf(`function ${name}(`);
+  assert.ok(at >= 0, `landmark: OrderDetailSheet.tsx has ${name}`);
   const end = src.indexOf("\nfunction ", at + 1);
   return src.slice(at, end < 0 ? undefined : end);
 }
 
-test("OrderDetailSheet: one useMediaQuery(ORDERS_XL_QUERY) picks the frame through orderDetailFrame; the place defaults to the dashboard's overlay", () => {
+test("OrderDetailSheet: one useMediaQuery(ORDERS_XL_QUERY) gives the frame for the width; the frame in use is latched while the payment or move sheet is up (frameInUse); the place defaults to the dashboard's overlay", () => {
   const src = read(SHEET);
   assert.equal(src.split("useMediaQuery(").length - 1, 1, "one width read in the sheet");
-  assert.match(src, /orderDetailFrame\(place, useMediaQuery\(ORDERS_XL_QUERY\)\)/, "the frame follows the width (one frame per width)");
+  assert.match(src, /const forWidth = orderDetailFrame\(place, useMediaQuery\(ORDERS_XL_QUERY\)\);/, "the frame for the width");
+  assert.match(src, /const \[heldFrame, setHeldFrame\] = useState\(forWidth\);/, "the frame in use is held");
+  assert.match(src, /const frame = frameInUse\(heldFrame, forWidth, settleOpen \|\| moveOpen\);/, "kept while the payment (with its customer sheet) or the move sheet is up");
+  assert.match(src, /if \(frame !== heldFrame\) setHeldFrame\(frame\);/, "stored during render, only on a change");
+  assert.ok(src.indexOf("const [settleOpen, setSettleOpen]") < src.indexOf("frameInUse(") && src.indexOf("const [moveOpen, setMoveOpen]") < src.indexOf("frameInUse("), "the latch reads both sheets' state");
+  assert.match(src, /<DetailFrame frame=\{frame\}/, "the frame drawn is the one in use");
   assert.match(src, /place = "overlay"/, "the dashboard passes nothing new: the overlay frames");
   assert.match(src, /place\?: OrderDetailPlace;/, "the place prop");
   assert.match(src, /onCancel\?: \(order: Order\) => void;/, "the cancel prop (Task 7 draws the danger link)");
+  assert.ok(!src.includes("useNow("), "no clock of its own: /orders runs one minute timer (the head ticks only without the page's)");
 });
 
-test("DetailFrame: no frame while the width is unknown; the column is a plain div with no SheetContent; both sheets keep ref={sheetRef} and the nested-dialog rule (ruling P38)", () => {
-  const frame = detailFrameSrc(read(SHEET));
+test("DetailFrame: no frame while the width is unknown; the column is a plain div with no SheetContent, its words only once the list has answered; both sheets keep ref={sheetRef} and the nested-dialog rule (ruling P38)", () => {
+  const frame = functionSrc(read(SHEET), "DetailFrame");
   assert.match(frame, /if \(frame === null\) return null;/, "the width not known yet: no frame");
   const column = frame.slice(frame.indexOf('if (frame === "column")'), frame.indexOf("<Sheet open"));
   assert.ok(column.length > 0, "landmark: the column branch comes before the sheets");
@@ -197,8 +142,8 @@ test("DetailFrame: no frame while the width is unknown; the column is a plain di
   assert.ok(!/SheetContent|DialogPrimitive|<Sheet\b|onClose/.test(column), "the column branch mounts no dialog");
   assert.match(
     column,
-    /\{open \? \(\s*children\s*\) : \(\s*<p data-ui="order-detail-none" className="m-auto p-6 text-center text-\[14px\] text-muted-foreground">\s*Select an order to see its details\.\s*<\/p>/,
-    "nothing chosen: the HTML's words, centred, 14px --text-2, padding 24 (values 13) — no buttons without an order",
+    /\{open \? \(\s*children\s*\) : waiting \? null : \(\s*<p data-ui="order-detail-none" className="m-auto p-6 text-center text-\[14px\] text-muted-foreground">\s*Select an order to see its details\.\s*<\/p>/,
+    "nothing chosen: nothing while the list has not answered, then the HTML's words (values 13) — no buttons without an order",
   );
   const NESTED = String.raw`onInteractOutside=\{\(e\) => keepOpenForNestedDialog\(e, sheetRef\.current\)\}`;
   assert.match(frame, new RegExp(String.raw`<SheetContent\s+ref=\{sheetRef\}[^>]*className=\{ORDER_DETAIL_SIDE_CLASS\}[^>]*` + NESTED), "the side sheet");
@@ -206,6 +151,7 @@ test("DetailFrame: no frame while the width is unknown; the column is a plain di
   assert.match(frame, /<DialogPrimitive\.Overlay className=\{ORDER_DETAIL_SHEET_SCRIM_CLASS\} \/>/, "the bottom sheet's overlay is mounted and never drawn (the scroll lock stays)");
   assert.match(frame, /frame === "side" \?/, "one sheet branch per frame");
   assert.equal(frame.split("ref={sheetRef}").length - 1, 2, "exactly the two sheet panels hold the ref");
+  assert.match(read(SHEET), /waiting=\{listPending\}/, "the page's pending list reaches the column");
 });
 
 test("OrderDetailSheet: the frame wraps the head, the body and the off-screen print sources; the payment and move dialogs stay beside it (mounted once at every width)", () => {
@@ -214,7 +160,7 @@ test("OrderDetailSheet: the frame wraps the head, the body and the off-screen pr
   assert.ok(ret.length > 0, "landmark: the sheet's return opens with the frame");
   const frameEnd = ret.indexOf("</DetailFrame>");
   const inside = ret.slice(0, frameEnd);
-  assert.match(inside, /<OrderDetailHead\b/, "the head inside the frame");
+  assert.match(inside, /<OrderDetailHead order=\{order\} now=\{now\}/, "the head inside the frame, on the page's tick when given");
   assert.ok(inside.includes('className="pointer-events-none absolute left-[-9999px] top-0" aria-hidden'), "the print sources inside the frame");
   assert.match(inside, /onClose=\{frame === "column" \? undefined : \(\) => onOpenChange\(false\)\}/, "the ✕ in the sheets only (no ✕ in the column)");
   assert.match(inside, /<div data-ui="order-detail-scroll" className=\{ORDER_DETAIL_SCROLL_CLASS\}>/, "under the head the rest scrolls (values 11.1)");
@@ -225,9 +171,36 @@ test("OrderDetailSheet: the frame wraps the head, the body and the off-screen pr
   assert.equal(src.split("<OrderReceipt ").length - 1, 1, "one set of print sources");
 });
 
+test("KeepWhileClosing: through a sheet's close the last head and body stay drawn; the buttons and the print sources always follow the live order (the print guards unchanged)", () => {
+  const src = read(SHEET);
+  const keep = functionSrc(src, "KeepWhileClosing");
+  assert.match(keep, /useLayoutEffect\(\(\) => \{\s*if \(show\) last\.current = children;\s*\}\);/, "the last shown children, kept after each commit with an order");
+  assert.match(keep, /return show \? children : last\.current;/, "drawn only while the panel closes");
+  const ret = src.slice(src.indexOf("  return (\n    <>\n      <DetailFrame"), src.indexOf("</DetailFrame>"));
+  const kept = [...ret.matchAll(/<KeepWhileClosing show=\{!!order\}>([\s\S]*?)<\/KeepWhileClosing>/g)].map((m) => m[1]);
+  assert.equal(kept.length, 2, "two kept parts: the head and today's body");
+  assert.match(kept[0], /^\s*\{order && <OrderDetailHead\b/, "the head");
+  assert.match(kept[1], /^\s*\{order && \(\s*<div className="flex flex-1 flex-col gap-4 p-4 text-sm">/, "today's body");
+  for (const part of kept) {
+    for (const live of ["<SheetFooter", "onClick={printBill}", "onClick={printKitchenSlip}", "onClick={printToken}", "<OrderReceipt", "<KOTReceipt", "<TokenSlip", "openSettle"]) {
+      assert.ok(!part.includes(live), `${live} is never kept: it follows the live order`);
+    }
+  }
+  const guard = functionSrc(src, "OrderDetailSheet");
+  assert.match(guard, /const printBill = \(\) => \{[\s\S]*?if \(!order\) \{\s*toast\.error\(PRINT_ORDER_CHANGED_MESSAGE\);/, "landmark: Print still refuses a closed order (the live `order`)");
+  assert.match(guard, /useLayoutEffect\(\(\) => \{\s*shownOrderRef\.current = order;\s*\}, \[order\]\);/, "landmark: localPrintOf still compares against the live order");
+});
+
+test("OrderDetailHead: the page's tick when given, else a minute tick of its own (the dashboard)", () => {
+  const head = read("components/orders/OrderDetailHead.tsx");
+  assert.match(head, /return now \? <HeadAt \{\.\.\.props\} now=\{now\} \/> : <HeadTicking \{\.\.\.props\} \/>;/, "one timer per page: the head ticks only without the page's");
+  assert.match(head, /function HeadTicking\(props: Omit<OrderDetailHeadProps, "now">\) \{\s*return <HeadAt \{\.\.\.props\} now=\{useNow\(HEAD_CLOCK_MS\) \?\? new Date\(\)\} \/>;/, "its own minute");
+  assert.match(head, /const HEAD_CLOCK_MS = 60_000;/, "once a minute, as the Orders page's");
+});
+
 // ── The pages (design 6.6, 6.11) ───────────────────────────────────────────────────────────────────────────────────
 
-test("the /orders page: the detail mounts in the 400px column slot as place=\"page\" with the page's tick; the slot keeps a press or focus inside as the operator's", () => {
+test("the /orders page: the detail mounts in the 400px column slot as place=\"page\" with the page's tick and its pending list; the slot keeps a press or focus inside as the operator's", () => {
   const src = read(PAGE);
   const slot = src.indexOf('<div data-ui="orders-detail-column" className={ORDERS_DETAIL_COLUMN_CLASS}');
   assert.ok(slot >= 0, "landmark: the column slot");
@@ -238,19 +211,33 @@ test("the /orders page: the detail mounts in the 400px column slot as place=\"pa
   assert.ok(src.indexOf("<OrderDetailSheet") > slot && src.indexOf("</div>", slot) > src.indexOf("<OrderDetailSheet"), "the detail inside the slot");
   assert.match(sheet, /\bplace="page"/, "the column frame from 1280px");
   assert.match(sheet, /\bnow=\{now\}/, "the meta clock reads the page's minute tick");
+  assert.match(sheet, /\blistPending=\{listPending\}/, "the column waits for the list's answer");
   assert.match(sheet, /\border=\{liveOrderOf\(detail, list\)\}/, "the live row (P10)");
   assert.match(sheet, /\bonSettled=\{setDetail\}/, "a settle or a move keeps the fresher order chosen");
   assert.equal(src.split("<OrderDetailSheet").length - 1, 1, "one detail on the page");
 });
 
-test("the /orders page: the choice settles during render through settleChoice (the auto-pick fills only an empty choice), the window read once", () => {
+test("the /orders page (ruling P11): the choice is keyed on the filter edits and the TYPED phone; the debounced search landing is not an edit; no row is taken until the list has answered; a tap or a settle reads the latest key", () => {
   const src = read(PAGE);
+  assert.match(src, /const \[filterEdits, setFilterEdits\] = useState\(0\);/, "the edits count");
+  assert.match(src, /const editFilters = \(update: \(f: OrdersFilterState\) => OrdersFilterState\) => \{\s*setFilters\(update\);\s*setFilterEdits\(\(n\) => n \+ 1\);\s*\};/, "an edit sets the filters and counts once");
+  assert.match(src, /const setFilter = \(patch: Partial<OrdersFilterState>\) => editFilters\(\(f\) => \(\{ \.\.\.f, \.\.\.patch \}\)\);/, "lane, date, payment, table, chips, the search ✕: edits");
+  const clear = src.slice(src.indexOf("const clearFilters"), src.indexOf("};", src.indexOf("const clearFilters")));
+  assert.ok(clear.includes("editFilters(clearAllFilters)"), "Clear all / Reset: an edit");
+  const debounce = src.slice(src.indexOf("const t = setTimeout(() => {"), src.indexOf("}, PHONE_DEBOUNCE_MS);"));
+  assert.ok(debounce.includes("setFilters((f) => (f.phone === phone ? f : { ...f, phone }));"), "landmark: the debounced phone lands in the filters");
+  assert.ok(!/editFilters|setFilterEdits/.test(debounce), "the debounced search landing is not an edit (it never drops the choice)");
+  const seed = src.slice(src.indexOf("seedFromUrl(window.location.search)"), src.indexOf("}, []);", src.indexOf("seedFromUrl(window.location.search)")));
+  assert.ok(seed.includes("setFilterEdits((n) => n + 1)"), "the URL seed is an edit (a row taken from the unseeded list goes)");
+  assert.match(src, /const key = choiceKey\(filterEdits, phoneInput\);/, "the key: the edits and the typed phone");
+  assert.match(src, /const listPending = orders\.data === undefined \|\| phoneInput\.trim\(\) !== filters\.phone;/, "pending: no answer yet, or a typed phone not searched yet");
   assert.match(src, /const xl = useMediaQuery\(ORDERS_XL_QUERY\);/, "the 1280px line");
-  assert.match(src, /const \[held, setHeld\] = useState<OrdersChoice>\(\(\) => noChoice\(filters\)\);/, "the stored choice");
-  assert.match(src, /const choice = settleChoice\(held, filters, xl, shown\[0\]\);/, "settled for the filters, the width and the first row shown");
+  assert.match(src, /const \[held, setHeld\] = useState<OrdersChoice>\(\(\) => noChoice\(key\)\);/, "the stored choice");
+  assert.match(src, /const choice = settleChoice\(held, key, xl, listPending \? undefined : shown\[0\]\);/, "no first row from a pending list (the rows shown are the old search's)");
   assert.match(src, /if \(choice !== held\) setHeld\(choice\);/, "stored only when it changes (no loop; no frame ever shows a stale choice)");
   assert.match(src, /const detail = choice\.order;/, "the detail is the settled choice");
-  assert.match(src, /const setDetail = \(order: Order \| null\) => setHeld\(tappedChoice\(order, filters\)\);/, "a tap (or a settle) chooses");
+  assert.match(src, /const keyRef = useRef\(key\);\s*useLayoutEffect\(\(\) => \{\s*keyRef\.current = key;\s*\}\);/, "the latest key, after each commit");
+  assert.match(src, /const setDetail = \(order: Order \| null\) => setHeld\(tappedChoice\(order, keyRef\.current\)\);/, "a tap, or a settle landing later, is stored under the latest key");
   assert.match(src, /const engage = \(\) => setHeld\(engageChoice\);/, "engaging keeps it");
   assert.ok(!/\[detail, setDetail\] = useState/.test(src), "no second detail state");
 });
@@ -260,5 +247,6 @@ test("the dashboard passes nothing new: its detail is the default overlay (a sid
   const at = dash.indexOf("<OrderDetailSheet");
   const el = dash.slice(at, dash.indexOf("/>", at) + 2);
   assert.ok(at >= 0, "landmark: the dashboard's detail");
-  for (const prop of ["place=", "onCancel=", "now="]) assert.ok(!el.includes(prop), `the dashboard passes no ${prop}`);
+  for (const prop of ["place=", "onCancel=", "now=", "listPending="]) assert.ok(!el.includes(prop), `the dashboard passes no ${prop}`);
 });
+

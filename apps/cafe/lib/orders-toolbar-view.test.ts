@@ -293,7 +293,8 @@ test("the /orders page: the toolbar, the Filters panel and the chips follow the 
   assert.match(src, /onReset=\{clearFilters\}/, "Reset is Clear all (the HTML's ov.clear)");
   const clear = src.slice(src.indexOf("const clearFilters"), src.indexOf("};", src.indexOf("const clearFilters")));
   assert.ok(clear.includes('setPhoneInput("")'), "Clear all clears the typed phone");
-  assert.ok(clear.includes("setFilters(clearAllFilters)"), "and the debounced one with payment and table (the date stays)");
+  // U2 Task 5 fix round 1: through editFilters, which also counts the edit (ruling P11: it drops the chosen order).
+  assert.ok(clear.includes("editFilters(clearAllFilters)"), "and the debounced one with payment and table (the date stays)");
   const search = src.slice(src.indexOf("const clearSearch"), src.indexOf("};", src.indexOf("const clearSearch")));
   assert.ok(search.includes('setPhoneInput("")') && /phone: ""/.test(search), "the ✕ clears the typed and the searched phone at once");
   assert.match(src, /onClearPhone=\{clearSearch\}/, "the ✕ goes through clearSearch");
