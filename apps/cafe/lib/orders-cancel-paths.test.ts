@@ -20,15 +20,37 @@ const DIALOG = "components/orders/CancelOrderDialog.tsx";
 
 // ── The pages (Ruling P6; design 6.6, 6.11; Review Focus 4) ─────────────────────────────────────────────────────────
 
-test("the /orders page: admins get the detail's cancel; after a cancel the detail shows the cancelled order the server returns, chosen like a settle", () => {
+// The final fix wave (2026-10-23; the whole-branch review's Important 1) moved the page's cancel state and its confirm
+// into hooks/use-cancel-sheet.ts over the pure controller lib/orders-cancel-sheet.ts (tested there): the same meaning —
+// admins only, the frame held while the sheet is up, the server's cancelled order chosen through setDetail — plus Escape
+// closing only an idle sheet and a late success never swapping a newer choice (the page sits at its 300-line budget).
+test("the /orders page: admins get the detail's cancel; after a cancel the detail shows the cancelled order the server returns, chosen like a settle (hooks/use-cancel-sheet.ts)", () => {
   const src = read(PAGE);
+  assert.match(src, /const cancel = useCancelSheet\(setDetail\);/, "the page's cancel sheet, choosing through setDetail");
+  assert.ok(src.indexOf("const setDetail = ") >= 0 && src.indexOf("const setDetail = ") < src.indexOf("useCancelSheet(setDetail)"), "setDetail (tappedChoice under the latest key) is the one used");
+  assert.ok(!src.includes("useCancelOrder") && !src.includes("mutateAsync"), "the request lives in the hook, not the page");
   const el = src.slice(src.indexOf("<OrderDetailSheet"), src.indexOf("/>", src.indexOf("<OrderDetailSheet")) + 2);
-  assert.match(el, /onCancel=\{isAdmin \? setCancelling : undefined\}/, "admins only (staff never see the danger link)");
-  assert.match(el, /cancelOpen=\{cancelling !== null\}/, "the frame holds while the cancel sheet is up");
-  const confirm = src.slice(src.indexOf("const confirmCancel = async (reason: string) => {"), src.indexOf("};", src.indexOf("const confirmCancel")));
-  assert.match(confirm, /setDetail\(await cancelOrder\.mutateAsync\(\{ id: cancelling\._id, data: \{ reason \} \}\)\);\s*setCancelling\(null\);/, "the cancelled order the server returns becomes the detail (design 6.6: Notify kitchen at hand)");
-  assert.ok(src.indexOf("const setDetail = ") < src.indexOf("const confirmCancel"), "setDetail (tappedChoice under the latest key) is the one used");
-  assert.match(src, /\{isAdmin && \(\s*<CancelOrderDialog\s+order=\{cancelling\}/, "the dialog mounts for admins only, as today");
+  assert.match(el, /onCancel=\{isAdmin \? cancel\.open : undefined\}/, "admins only (staff never see the danger link)");
+  assert.match(el, /cancelOpen=\{cancel\.order !== null\}/, "the frame holds while the cancel sheet is up");
+  assert.match(
+    src,
+    /\{isAdmin && \(\s*<CancelOrderDialog\s+order=\{cancel\.order\}\s+onOpenChange=\{cancel\.onOpenChange\}\s+onConfirm=\{cancel\.confirm\}\s+isPending=\{cancel\.isPending\}\s*\/>/,
+    "the dialog mounts for admins only, as today, closing and confirming through the controller",
+  );
+});
+
+test("hooks/use-cancel-sheet.ts: the controller's ports — the sheet's order mirrored in a ref read after the await, 'pending' = the cancel request's isPending, today's request and setDetail", () => {
+  const src = read("hooks/use-cancel-sheet.ts");
+  assert.match(src, /import \{ useCancelOrder \} from "@\/hooks\/use-orders";/, "today's cancel request (its toasts and invalidations)");
+  assert.match(src, /import \{ cancelSheet[^}]*\} from "@\/lib\/orders-cancel-sheet";/, "the tested controller");
+  assert.match(src, /const \[order, setOrder\] = useState<Order \| null>\(null\);/, "the sheet's order (the render's)");
+  assert.match(src, /const openFor = useRef<Order \| null>\(null\);/, "and as of now (a ref)");
+  assert.match(src, /openFor: \(\) => openFor\.current,/, "the success reads the ref, never a render's stale value");
+  assert.match(src, /setOpenFor: \(o\) => \{\s*openFor\.current = o;\s*setOrder\(o\);\s*\},/, "every open and close sets both at once");
+  assert.match(src, /pending: \(\) => cancelOrder\.isPending,/, "in flight = the request's isPending (Escape closes only an idle sheet)");
+  assert.match(src, /send: \(id, reason\) => cancelOrder\.mutateAsync\(\{ id, data: \{ reason \} \}\),/, "today's request, unchanged");
+  assert.match(src, /\bchoose,\s/, "the page's setDetail chooses the cancelled order");
+  assert.match(src, /isPending: cancelOrder\.isPending/, "the dialog's spinner and disabled states, as today");
 });
 
 test("line budgets (global constraints): the Orders page ≤ 300 lines, the cancel dialog ≤ 300 (house style)", () => {
@@ -52,7 +74,7 @@ test("CancelOrderDialog: the HTML confirm sheet (lib/sheet-frame.ts CONFIRM_SHEE
   const src = read(DIALOG);
   assert.match(src, /import \* as DialogPrimitive from "@radix-ui\/react-dialog";/, "a Radix dialog (the field takes the focus as it opens, as today)");
   const overlay = src.indexOf('<DialogPrimitive.Overlay data-ui="cancel-sheet" className={CONFIRM_SHEET_SCRIM_CLASS}>');
-  const content = src.indexOf('<DialogPrimitive.Content data-ui="cancel-panel" className={CONFIRM_SHEET_PANEL_CLASS}>');
+  const content = src.search(/<DialogPrimitive\.Content\s+data-ui="cancel-panel"\s+className=\{CONFIRM_SHEET_PANEL_CLASS\}/);
   assert.ok(overlay > 0 && content > overlay && src.indexOf("</DialogPrimitive.Overlay>") > src.indexOf("</DialogPrimitive.Content>"), "the scrim holds the panel (U1's confirm frame)");
   assert.match(src, /<DialogPrimitive\.Title className=\{CONFIRM_SHEET_TITLE_CLASS\}>Cancel \{order\.orderId\}\?<\/DialogPrimitive\.Title>/, "the title, today's words");
   assert.match(
@@ -65,6 +87,20 @@ test("CancelOrderDialog: the HTML confirm sheet (lib/sheet-frame.ts CONFIRM_SHEE
   assert.match(src, /<div data-ui="cancel-buttons" className=\{BUTTONS_CLASS\}>/, "stacked 8px apart");
   assert.match(src, /const BUTTONS_CLASS = "flex flex-col gap-2";/, "values 12.1 buttons (a literal at the call site, as the move sheet's)");
   assert.ok(!src.includes("BRAND_CONTROL_CLASS") && !src.includes("@/components/ui/dialog"), "the kit dialog and its h-10 control are gone (P22 moved on purpose)");
+});
+
+// The final fix wave (the whole-branch review's Important 1b): on touch below 1280 the sheet sits over the detail's bottom
+// sheet, and Radix defers a touch outside press to the next click, when the detail could be the top layer — so a scrim
+// tap risked closing both. As the HTML confirm and U1's ConfirmDialog look="sheet", an outside press never dismisses it:
+// "Keep order" and Escape (idle only, lib/orders-cancel-sheet.ts) are the ways out.
+test("CancelOrderDialog: an outside press (the scrim, a touch deferred to its click) never dismisses the sheet — so it can never fall through to the detail beneath", () => {
+  const src = read(DIALOG);
+  const at = src.indexOf("<DialogPrimitive.Content");
+  const content = src.slice(at, src.indexOf('<div data-ui="cancel-text">', at)); // the panel's opening tag
+  assert.ok(at > 0 && content.includes('data-ui="cancel-panel"'), "landmark: the sheet's panel");
+  assert.match(content, /onPointerDownOutside=\{\(e\) => e\.preventDefault\(\)\}/, "a press outside the panel does not close it");
+  assert.match(content, /onInteractOutside=\{\(e\) => e\.preventDefault\(\)\}/, "nor any outside interaction");
+  assert.match(src, /<DialogPrimitive\.Root open=\{!!order\} onOpenChange=\{onOpenChange\}>/, "Escape and Keep order go to the page's onOpenChange (closing only an idle sheet)");
 });
 
 test("CancelOrderDialog: 'Reason (required)' over the 48px field (SHEET_FIELD_CLASS on the kit Textarea), 200 characters; 'At least 3 characters.' in --bad-i; the same rules as today", () => {

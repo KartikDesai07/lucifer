@@ -164,9 +164,9 @@ export function OrderDetailSheet({
   // known — so the print sources, the settle latch and the payment preload exist once at any width. While the payment
   // (with the customer sheet it opens), the move sheet or the page's cancel sheet is up, the frame it opened from stays
   // (frameInUse): a frame mounted under it would take Radix's top layer and trap focus, take Escape and close the detail
-  // under the payment.
+  // under the payment. Only over an order: a detail with none holds no sheet.
   const [heldFrame, setHeldFrame] = useState(forWidth);
-  const frame = frameInUse(heldFrame, forWidth, settleOpen || moveOpen || cancelOpen);
+  const frame = frameInUse(heldFrame, forWidth, !!order && (settleOpen || moveOpen || cancelOpen));
   if (frame !== heldFrame) setHeldFrame(frame);
   // Ruling P38: the payment and move dialogs render beside the sheet (outside its panel), so a press that closes one of
   // them must not close the sheet too; the panel tells such a press from a tap outside every dialog.
@@ -176,6 +176,13 @@ export function OrderDetailSheet({
   // never a total the operator did not collect. Cleared when the popup closes.
   const [payingOrder, setPayingOrder] = useState<Order | null>(null);
   const paying = payingOrder ?? order;
+  // A detail whose order went away holds no payment or move (unreachable today; a stuck latch would pop the payment
+  // open over the next order and be hard to diagnose) — reset during render, as the frame is stored.
+  if (!order && (settleOpen || moveOpen || payingOrder)) {
+    setSettleOpen(false);
+    setMoveOpen(false);
+    setPayingOrder(null);
+  }
   // One confirmed settle (hooks/use-settle-flow.ts); outcomes show in the popup.
   // No bill prints here on a settle (owner O3) — Print stays in the footer.
   const settleFlow = useSettleFlow({

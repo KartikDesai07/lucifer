@@ -51,13 +51,16 @@ const CHIP_CLASS =
 const CHIP_X_CLASS = "flex size-[18px] items-center justify-center rounded-[50%] bg-primary/14 text-[9px]";
 const CLEAR_ALL_CLASS = "cursor-pointer border-0 bg-transparent px-1 text-[12.5px] font-medium text-muted-foreground";
 
-/** A choice pill; the rest of its props (a popover trigger's handlers, aria and ref) go to the button. */
-function Pill({ on, className, ...rest }: ComponentProps<"button"> & { on: boolean }) {
+/** A choice pill; the rest of its props (a popover trigger's handlers, aria and ref) go to the button. A Payment pill says
+ *  it is pressed (aria-pressed); a Date pill (`single`) is one of a single choice, as the date box's rows: the chosen one
+ *  aria-current, no toggle state. */
+function Pill({ on, single = false, className, ...rest }: ComponentProps<"button"> & { on: boolean; single?: boolean }) {
   return (
     <button
       type="button"
       data-ui="orders-filter-option"
-      aria-pressed={on}
+      aria-pressed={single ? undefined : on}
+      aria-current={single && on ? "true" : undefined}
       {...rest}
       className={cn(PILL_CLASS, on ? PILL_ON_CLASS : PILL_OFF_CLASS, className)}
     />
@@ -77,13 +80,16 @@ function Group({ ui, label, className, children }: { ui: string; label: string; 
   );
 }
 
-/** The phone's "Pick a day…" pill: our calendar in a popover; a picked day closes it. */
+/** The phone's "Pick a day…" pill: our calendar in a popover (aria-haspopup="dialog": it opens the calendar, as the date
+ *  box's row); a picked day closes it. */
 function DayPill({ date, onDate }: { date: OrdersDate; onDate: (date: OrdersDate) => void }) {
   const [open, setOpen] = useState(false);
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Pill on={date.kind === "day"}>{PICK_A_DAY}</Pill>
+        <Pill single on={date.kind === "day"} aria-haspopup="dialog">
+          {PICK_A_DAY}
+        </Pill>
       </PopoverTrigger>
       <PopoverContent aria-label="Pick a day" align="start" collisionPadding={ORDERS_POPOVER_EDGE_GAP_PX} className="w-auto p-0">
         <OrdersDayCalendar
@@ -116,6 +122,8 @@ interface OrdersFiltersPanelProps {
  */
 export function OrdersFiltersPanel({ filters, tables, onChange, onReset, onClose }: OrdersFiltersPanelProps) {
   const root = useRef<HTMLDivElement>(null);
+  // The Table select is named by its visible label, as the Date and Payment groups are (the name holds the words shown).
+  const tableLabelId = useId();
   const close = useStableCallback(() => onClose(root.current?.contains(document.activeElement) ?? false));
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -129,7 +137,7 @@ export function OrdersFiltersPanel({ filters, tables, onChange, onReset, onClose
     <div ref={root} id={ORDERS_FILTERS_PANEL_ID} data-ui="orders-filters" role="region" aria-label="Filters" className={PANEL_CLASS}>
       <Group ui="orders-filter-date" label="Date" className="tab:hidden">
         {ORDERS_DATE_CHOICES.map((choice) => (
-          <Pill key={choice.kind} on={filters.date.kind === choice.kind} onClick={() => onChange({ date: choice })}>
+          <Pill key={choice.kind} single on={filters.date.kind === choice.kind} onClick={() => onChange({ date: choice })}>
             {dateLabel(choice)}
           </Pill>
         ))}
@@ -146,14 +154,14 @@ export function OrdersFiltersPanel({ filters, tables, onChange, onReset, onClose
         ))}
       </Group>
       <div data-ui="orders-filter-table" className={GROUP_CLASS}>
-        <span data-ui="orders-filter-label" className={LABEL_CLASS}>
+        <span id={tableLabelId} data-ui="orders-filter-label" className={LABEL_CLASS}>
           Table
         </span>
         <Select
           value={filters.tableNo ?? ALL_TABLES}
           onValueChange={(v) => onChange({ tableNo: v === ALL_TABLES ? null : v })}
         >
-          <SelectTrigger data-ui="orders-filter-table-select" aria-label="Filter by table" className={TABLE_TRIGGER_CLASS}>
+          <SelectTrigger data-ui="orders-filter-table-select" aria-labelledby={tableLabelId} className={TABLE_TRIGGER_CLASS}>
             <SelectValue>{filters.tableNo ?? "All tables"}</SelectValue>
           </SelectTrigger>
           <SelectContent>

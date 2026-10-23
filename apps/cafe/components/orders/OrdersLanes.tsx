@@ -49,7 +49,7 @@ const COUNT_CLASS = "text-[22px] font-semibold tracking-[-0.02em]";
 const AMOUNT_CLASS = "truncate font-mono text-[13px] text-muted-foreground";
 const LINE_CLASS = "max-w-full truncate text-[12px]";
 
-// values 3.3: the phone strip (a list narrower than 560px): five tabs over the current lane's row.
+// values 3.3: the phone strip (a list narrower than 560px): five lane buttons over the current lane's row.
 const STRIP_CLASS = "flex flex-col overflow-hidden rounded-[14px] border border-border bg-card @min-[560px]:hidden";
 const TABS_CLASS = "grid grid-cols-5 border-b border-border-2";
 const TAB_CLASS =
@@ -124,15 +124,16 @@ export function OrdersLanes({ filters, rows, more, loaded, now, onLane, onChoose
       </div>
 
       <div data-ui="orders-lane-strip" className={STRIP_CLASS}>
-        <div role="tablist" aria-label="Lanes" className={TABS_CLASS}>
+        {/* The lanes as plain buttons with aria-pressed, as the cards: an ARIA tablist would promise arrow keys and tab
+            panels this strip does not have. */}
+        <div data-ui="orders-lane-tabs" role="group" aria-label="Lanes" className={TABS_CLASS}>
           {ORDERS_LANES.map((lane) => {
             const on = lane.key === chosen;
             return (
               <button
                 key={lane.key}
                 type="button"
-                role="tab"
-                aria-selected={on}
+                aria-pressed={on}
                 data-ui="orders-lane-tab"
                 data-lane={lane.key}
                 onClick={() => onLane(lane.key)}

@@ -41,9 +41,18 @@ export function OrdersDayCalendar({ date, onPick }: { date: OrdersDate; onPick: 
   );
 }
 
-function DateRow({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
+/** A row of the date list: Today / Yesterday / All dates (and a picked day) are one single choice — the chosen row
+ *  aria-current, as the phone's Date pills, never a toggle's aria-pressed; "Pick a day…" (`popup`) opens the calendar. */
+function DateRow({ label, on, popup = false, onClick }: { label: string; on: boolean; popup?: boolean; onClick: () => void }) {
   return (
-    <button type="button" data-ui="orders-date-row" aria-pressed={on} onClick={onClick} className={ROW_CLASS}>
+    <button
+      type="button"
+      data-ui="orders-date-row"
+      aria-current={on ? "true" : undefined}
+      aria-haspopup={popup ? "dialog" : undefined}
+      onClick={onClick}
+      className={ROW_CLASS}
+    >
       {label}
       {on && <Check aria-hidden="true" className="size-3.5 flex-none" />}
     </button>
@@ -94,7 +103,7 @@ export function OrdersDateBox({ date, onDate }: OrdersDateBoxProps) {
               {ORDERS_DATE_CHOICES.map((choice) => (
                 <DateRow key={choice.kind} label={dateLabel(choice)} on={date.kind === choice.kind} onClick={() => choose(choice)} />
               ))}
-              <DateRow label={PICK_A_DAY} on={date.kind === "day"} onClick={() => setPicking(true)} />
+              <DateRow label={PICK_A_DAY} on={date.kind === "day"} popup onClick={() => setPicking(true)} />
             </div>
           )}
         </PopoverContent>

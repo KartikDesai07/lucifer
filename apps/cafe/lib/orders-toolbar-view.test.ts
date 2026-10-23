@@ -78,6 +78,10 @@ test("OrdersToolbar search: the phone-only box says so (owner Q4); the round ✕
   assert.match(input, /placeholder="Search by customer phone"/, "placeholder (owner Q4, as U1 Q22)");
   assert.match(input, /aria-label="Search by customer phone"/, "its name (owner Q4)");
   assert.match(input, /inputMode="tel"|inputmode="tel"/, "the phone keypad");
+  // The final fix wave (moved on purpose): type="search" let Chrome wipe the typed phone on Escape — with the Filters
+  // panel open one Escape closed the panel AND dropped the search (and the choice). A text box keeps it; the ✕ clears.
+  assert.match(input, /type="text"/, "a plain text box: Escape never wipes the typed phone");
+  assert.ok(!/type="search"/.test(input), "not a search box (Chrome clears those on Escape)");
   assert.match(input, /value=""/, "the typed value");
   expectAll(
     input,
@@ -182,16 +186,39 @@ test("OrdersFiltersPanel pills: Date Today · Yesterday · All dates · Pick a d
   );
   const base = ["h-8", "whitespace-nowrap", "rounded-[999px]", "border", "px-3", "text-[13px]", "font-medium"];
   pills.forEach((tag, i) => expectAll(tag, base, `pill ${words[i]} (values 5.1)`));
-  const on = pills.map((tag) => /aria-pressed="true"/.test(tag));
+  // The final fix wave (moved on purpose): the Date pills are one single choice, as the date box's rows — the chosen one
+  // aria-current="true" (the repo's single-choice mark: the list rows, the /pos categories), never a toggle's
+  // aria-pressed; "Pick a day…" opens the calendar (aria-haspopup="dialog"). The Payment pills keep aria-pressed.
+  const on = pills.map((tag) => /aria-current="true"|aria-pressed="true"/.test(tag));
   assert.deepEqual(on, [false, true, false, false, false, false, false, false, true, false], "Yesterday and Due are chosen");
   for (const [i, tag] of pills.entries()) {
     expectAll(tag, on[i] ? ["border-ink", "bg-ink", "text-on-ink"] : ["border-border", "bg-card", "text-foreground"], `pill ${words[i]}'s look`);
   }
-  assert.match(pills[4], /aria-pressed="false"/, "Any is not chosen while a payment is");
+  for (const [i, tag] of pills.slice(0, 4).entries()) {
+    assert.ok(!/aria-pressed=/.test(tag), `Date pill ${words[i]}: no toggle state (one choice of four)`);
+    assert.equal(/aria-current="true"/.test(tag), on[i], `Date pill ${words[i]}: aria-current only when chosen`);
+  }
+  assert.match(pills[3], /aria-haspopup="dialog"/, "Pick a day… opens the calendar");
+  for (const [i, tag] of pills.slice(4).entries()) {
+    assert.match(tag, new RegExp(`aria-pressed="${on[i + 4]}"`), `Payment pill ${words[i + 4]}: aria-pressed, as before`);
+    assert.ok(!/aria-current=/.test(tag), `Payment pill ${words[i + 4]}: no aria-current`);
+  }
   assert.match(tagsOf(panelHtml(), "orders-filter-option")[4], /aria-pressed="true"/, "Any with no payment");
-  assert.match(tagsOf(panelHtml(), "orders-filter-option")[0], /aria-pressed="true"/, "Today by default");
-  const day = tagsOf(panelHtml({ filters: state({ date: { kind: "day", date: "2026-10-22" } }) }), "orders-filter-option")[3];
-  assert.match(day, /aria-pressed="true"/, "a picked day lights Pick a day…");
+  assert.match(tagsOf(panelHtml(), "orders-filter-option")[0], /aria-current="true"/, "Today by default");
+  const day = tagsOf(panelHtml({ filters: state({ date: { kind: "day", date: "2026-10-22" } }) }), "orders-filter-option");
+  assert.match(day[3], /aria-current="true"/, "a picked day lights Pick a day… (the current date choice)");
+  assert.ok(day.slice(0, 3).every((tag) => !/aria-current=/.test(tag)), "and no other Date pill");
+});
+
+test("OrdersDateBox rows: Today / Yesterday / All dates are one single choice (aria-current on the chosen one, never aria-pressed); 'Pick a day…' opens the calendar (aria-haspopup=\"dialog\")", () => {
+  const src = read("components/orders/OrdersDateBox.tsx");
+  assert.ok(!/aria-pressed/.test(src), "no toggle state on a date row");
+  const row = src.slice(src.indexOf("function DateRow("), src.indexOf("\n}\n", src.indexOf("function DateRow(")));
+  assert.ok(row.length > 0, "landmark: DateRow");
+  assert.match(row, /aria-current=\{on \? "true" : undefined\}/, "the chosen row says so (as the phone's Date pills)");
+  assert.match(row, /aria-haspopup=\{popup \? "dialog" : undefined\}/, "a row that opens the calendar says so");
+  assert.match(src, /<DateRow key=\{choice\.kind\} label=\{dateLabel\(choice\)\} on=\{date\.kind === choice\.kind\} onClick=\{\(\) => choose\(choice\)\} \/>/, "the three dates: no popup");
+  assert.match(src, /<DateRow label=\{PICK_A_DAY\} on=\{date\.kind === "day"\} popup onClick=\{\(\) => setPicking\(true\)\} \/>/, "Pick a day…: the calendar");
 });
 
 test("OrdersFiltersPanel Table: the kit select 260 x 38, radius 9, 13.5px 400, the 14px --text-2 chevron; 'All tables' or the table", () => {
@@ -204,7 +231,13 @@ test("OrdersFiltersPanel Table: the kit select 260 x 38, radius 9, 13.5px 400, t
     "values 5.1 table select",
   );
   assert.match(trigger, /role="combobox"/, "the kit Select (no native select, pin P13)");
-  assert.match(trigger, /aria-label="Filter by table"/, "its name");
+  // The final fix wave (moved on purpose): its name is its visible label "Table" (aria-labelledby, as the Date and Payment
+  // groups), no longer the off-screen "Filter by table" (WCAG 2.5.3: the name contains the words on screen).
+  assert.ok(!/aria-label=/.test(trigger), "no hidden name of its own");
+  const by = /aria-labelledby="([^"]+)"/.exec(trigger)?.[1] ?? "";
+  const label = tagsOf(html, "orders-filter-label")[2] ?? "";
+  assert.ok(by !== "" && label.includes(`id="${by}"`), "named by the group's visible label");
+  assert.equal(textOf(innerOf(html, "orders-filter-label", 2)), "Table", "the name: 'Table'");
   assert.equal(textOf(innerOf(html, "orders-filter-table-select")), "All tables", "no table chosen");
   assert.equal(textOf(innerOf(panelHtml({ filters: state({ tableNo: "T-4" }) }), "orders-filter-table-select")), "T-4", "the chosen table");
 });

@@ -105,15 +105,19 @@ test("OrdersLanes strip: the chosen tab shows its dot and count, the others the 
   const rows = laneRows("open", [order("3", { total: 768 }), printed("1", { total: 1063, tableNo: "T-1" })], false);
   const html = lanesHtml({ rows });
   const tabs = tagsOf(html, "orders-lane-tab");
-  assert.match(html, /role="tablist"/, "the tabs are a tablist (values 3.3)");
+  // The final fix wave (moved on purpose): the strip's lanes are plain buttons with aria-pressed, as the cards — an ARIA
+  // tablist promises arrow-key focus and tab panels (aria-controls) this strip does not have (pin N4's precedent).
+  assert.ok(!/role="tablist"|role="tab"|aria-selected=/.test(html), "no tablist, tab or aria-selected anywhere in the lanes");
+  assert.match(tagOf(html, "orders-lane-tabs"), /role="group" aria-label="Lanes"/, "the five lanes are a named group (data-ui for the probes)");
+  expectAll(tagOf(html, "orders-lane-tabs"), ["grid", "grid-cols-5", "border-b", "border-border-2"], "values 3.3 tabs row");
   tabs.forEach((tag, i) => {
-    assert.match(tag, /role="tab"/, `tab ${i + 1} is a tab`);
+    assert.match(tag, /^<button type="button"/, `lane ${i + 1} is a plain button`);
     expectAll(tag, ["relative", "flex", "h-[50px]", "min-w-0", "flex-col", "items-center", "justify-center", "gap-0.5", "px-0.5"], `tab ${i + 1} (values 3.3)`);
   });
-  assert.match(tabs[1], /aria-selected="true"/, "Open is the selected tab");
+  assert.match(tabs[1], /aria-pressed="true"/, "Open is the pressed lane");
   expectAll(tabs[1], ["bg-card"], "the chosen tab on --surface");
   for (const i of [0, 2, 3, 4]) {
-    assert.match(tabs[i], /aria-selected="false"/, `tab ${i + 1} is not selected`);
+    assert.match(tabs[i], /aria-pressed="false"/, `lane ${i + 1} is not pressed`);
     expectAll(tabs[i], ["bg-surface-2"], `tab ${i + 1} on --surface-2`);
   }
   assert.equal(tagsOf(html, "orders-lane-tab-count").length, 1, "only the chosen tab shows a count (Q1)");
@@ -172,7 +176,7 @@ test("OrdersLanes: while a phone is typed no lane is lit; the strip reads '{n} f
     assert.match(tag, /aria-pressed="false"/, `card ${i + 1} is not lit while searching`);
     assert.equal(innerOf(html, "orders-lane-num", i), "", `card ${i + 1} shows no number while searching`);
   }
-  for (const [i, tag] of tagsOf(html, "orders-lane-tab").entries()) assert.match(tag, /aria-selected="false"/, `tab ${i + 1} is not selected`);
+  for (const [i, tag] of tagsOf(html, "orders-lane-tab").entries()) assert.match(tag, /aria-pressed="false"/, `strip lane ${i + 1} is not pressed while searching`);
   assert.equal(textOf(innerOf(html, "orders-lane-current-amount")), "2 found", "the HTML's searching row");
   assert.equal(textOf(innerOf(html, "orders-lane-current-line")), "Searching all orders", "the HTML's searching line");
   assert.equal(tagOf(html, "orders-lane-settle"), "", "no action while searching");

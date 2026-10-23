@@ -160,18 +160,24 @@ const PAID_IN_FULL: Readonly<Record<string, string>> = { Cash: "Paid by Cash", O
 
 /** A settled bill's payment rows (design 6.8, Q9): a split's two parts "Paid in cash" + "Paid online", else what was
  *  paid ("Paid by Cash" / "Paid online" in full, "Paid ₹x" short of the total), then "Due at billing" for what was owed
- *  when it was settled (a due paid later goes to the customer's account, never back to the bill: so never "Still due"). */
+ *  when it was settled (a due paid later goes to the customer's account, never back to the bill: so never "Still due").
+ *  A bill cancelled after it was settled (Ruling P13 revised) keeps its paid rows, but no "Due at billing": the cancel
+ *  reversed the customer due it created (orderDue is 0 for it). */
 function paidRows(o: Order): DetailSumRow[] {
-  const due = orderDue(o);
+  const short = Math.max(0, o.total - o.paidAmount);
   const rows: DetailSumRow[] = [];
   if (o.payment === "Split" && (o.splitCash !== undefined || o.splitOnline !== undefined)) {
     rows.push(sumRow("Paid in cash", inr(o.splitCash ?? 0)), sumRow("Paid online", inr(o.splitOnline ?? 0)));
   } else if (o.paidAmount > 0) {
-    rows.push(sumRow((due === 0 && PAID_IN_FULL[o.payment]) || "Paid", inr(o.paidAmount)));
+    rows.push(sumRow((short === 0 && PAID_IN_FULL[o.payment]) || "Paid", inr(o.paidAmount)));
   }
+  const due = orderDue(o);
   if (due > 0) rows.push(sumRow("Due at billing", inr(due), "bill"));
   return rows;
 }
+
+/** The bill took money (settled; or cancelled after it was settled: something was paid, Ruling P13 revised). */
+const hasPaidRows = (o: Order): boolean => o.status === "Completed" || (o.status === "Cancelled" && o.paidAmount > 0);
 
 /**
  * The sums and the total (design 6.8, Q9; values 11.5, 11.10), all from the order's stored figures so they add up as the
@@ -179,8 +185,9 @@ function paidRows(o: Order): DetailSumRow[] {
  * "Subtotal"; the discount (discountLineLabel) "−₹x" in --bad-i; each charge of the order's snapshot; the GST when the
  * bill carries some — exclusive "GST @5%" (added: Subtotal − discount + charges + GST = the total), inclusive
  * "Incl. GST @5%" (inside the total; receiptGst's figure, the untaxed charges lifted out first); a settled bill's payment
- * rows. The total: "To pay" (an open tab), "Bill total" (settled), "Not charged" struck (cancelled: its payment is history
- * the books no longer count, so no payment rows).
+ * rows. The total: "To pay" (an open tab), "Bill total" (settled), "Not charged" struck (cancelled: the books no longer
+ * count it; a bill cancelled after it was settled keeps its paid rows as the record that money was collected, Ruling P13
+ * revised; a cancelled open tab has none).
  */
 export function detailSums(o: Order): DetailSums {
   const charges = chargesFromOrder(o);
@@ -189,7 +196,7 @@ export function detailSums(o: Order): DetailSums {
   for (const c of charges) rows.push(sumRow(c.label, inr(c.amount)));
   const gst = gstRow(o, chargesTotal(charges));
   if (gst) rows.push(gst);
-  if (o.status === "Completed") rows.push(...paidRows(o));
+  if (hasPaidRows(o)) rows.push(...paidRows(o));
   const totalLabel = o.status === "Pending" ? "To pay" : o.status === "Cancelled" ? "Not charged" : "Bill total";
   return { rows, totalLabel, total: inr(o.total), struck: o.status === "Cancelled" };
 }

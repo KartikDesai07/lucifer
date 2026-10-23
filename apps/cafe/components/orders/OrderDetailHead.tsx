@@ -64,7 +64,8 @@ interface OrderDetailHeadProps {
   /** The page's minute tick the clock's age reads (/orders: the list's own); without it the head ticks once a minute
    *  itself (the dashboard), so a page with a tick runs one timer. */
   now?: Date;
-  /** In a sheet (a dialog): its close, drawn as the HTML's ✕; the name is then the dialog's title. The column has none. */
+  /** In a sheet (a dialog): its close, drawn as the HTML's ✕; the name is then the dialog's title. The column has none
+   *  (its name is a level-2 heading). */
   onClose?: () => void;
 }
 
@@ -82,8 +83,11 @@ function HeadTicking(props: Omit<OrderDetailHeadProps, "now">) {
 function HeadAt({ order, now, onClose }: Omit<OrderDetailHeadProps, "now"> & { now: Date }) {
   const meta = detailMeta(order, now);
   const steps = detailSteps(order);
+  // In a sheet the name is the dialog's title (Radix's, an h2's level); in the column, with no dialog, it is still the
+  // detail's heading at that level.
+  const heading = onClose ? {} : ({ role: "heading", "aria-level": 2 } as const);
   const name = (
-    <span data-ui="order-detail-name" className={NAME_CLASS}>
+    <span data-ui="order-detail-name" className={NAME_CLASS} {...heading}>
       {orderTitle(order)}
     </span>
   );

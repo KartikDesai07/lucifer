@@ -88,6 +88,12 @@ test("quickActions: the token and move gates are the sheet's own (hasToken: a to
     assert.equal(keys.includes("token"), hasToken, `${what}: the token action iff hasToken`);
     assert.equal(keys.includes("move"), o.status === "Pending", `${what}: the move action iff isOpenTab`);
   }
+  // The final fix wave: the grid's gates are stated twice (quickActions' words, the sheet's own conditions), so the
+  // sheet's are pinned as this test models them.
+  const src = read(SHEET);
+  assert.ok(src.includes('const isOpenTab = order?.status === "Pending";'), "the sheet's isOpenTab: Pending (quickActions' `open`)");
+  assert.ok(src.includes('const isCancelled = order?.status === "Cancelled";'), "the sheet's isCancelled (quickActions' `cancelled`)");
+  assert.ok(src.includes("const hasToken = order?.tokenNumber !== undefined && !isCancelled;"), "the sheet's hasToken (quickActions' token gate)");
 });
 
 // ── detailFoot (design 6.9, Q7; values 11.9) ────────────────────────────────────────────────────────────────────────
@@ -229,5 +235,17 @@ test("OrderDetailSheet: the frame stays while the page's cancel sheet is up, as 
   const src = read(SHEET);
   assert.match(src, /cancelOpen\?: boolean;/, "the page says when its cancel sheet is open");
   assert.match(src, /cancelOpen = false,/, "the dashboard: never");
-  assert.match(src, /const frame = frameInUse\(heldFrame, forWidth, settleOpen \|\| moveOpen \|\| cancelOpen\);/, "a frame mounted under the open cancel sheet would take Radix's top layer");
+  assert.match(src, /const frame = frameInUse\(heldFrame, forWidth, !!order && \(settleOpen \|\| moveOpen \|\| cancelOpen\)\);/, "a frame mounted under the open cancel sheet would take Radix's top layer (only while there is an order)");
+});
+
+// The final fix wave (FIX BEFORE MERGE hardening): the latch is held only over an order, and a detail whose order went
+// away drops its payment and move state — unreachable today, but a stuck latch (a payment popping open over the next
+// order, a frame that never follows the width) would be hard to diagnose.
+test("OrderDetailSheet: with no order the latch lets go and the payment / move state resets (settleOpen, payingOrder, moveOpen), during render as the frame's own store", () => {
+  const src = read(SHEET);
+  const reset = /if \(!order && \(settleOpen \|\| moveOpen \|\| payingOrder\)\) \{\s*setSettleOpen\(false\);\s*setMoveOpen\(false\);\s*setPayingOrder\(null\);\s*\}/;
+  assert.match(src, reset, "no order: no payment open, no latched bill, no move open");
+  const at = src.search(reset);
+  assert.ok(at > src.indexOf("const [payingOrder, setPayingOrder] = useState<Order | null>(null);"), "after the latched bill's state");
+  assert.ok(at < src.indexOf("const settleFlow = useSettleFlow({"), "before the settle flow reads it");
 });

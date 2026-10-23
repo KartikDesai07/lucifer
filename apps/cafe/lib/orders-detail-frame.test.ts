@@ -123,8 +123,9 @@ test("OrderDetailSheet: one useMediaQuery(ORDERS_XL_QUERY) gives the frame for t
   assert.equal(src.split("useMediaQuery(").length - 1, 1, "one width read in the sheet");
   assert.match(src, /const forWidth = orderDetailFrame\(place, useMediaQuery\(ORDERS_XL_QUERY\)\);/, "the frame for the width");
   assert.match(src, /const \[heldFrame, setHeldFrame\] = useState\(forWidth\);/, "the frame in use is held");
-  // U2 Task 7: the page's cancel sheet joins the latch (same meaning: no frame mounts under an open nested sheet).
-  assert.match(src, /const frame = frameInUse\(heldFrame, forWidth, settleOpen \|\| moveOpen \|\| cancelOpen\);/, "kept while the payment (with its customer sheet), the move sheet or the page's cancel sheet is up");
+  // U2 Task 7: the page's cancel sheet joins the latch (same meaning: no frame mounts under an open nested sheet). The
+  // final fix wave (moved on purpose): only while there is an order — a detail with none holds no sheet.
+  assert.match(src, /const frame = frameInUse\(heldFrame, forWidth, !!order && \(settleOpen \|\| moveOpen \|\| cancelOpen\)\);/, "kept while the payment (with its customer sheet), the move sheet or the page's cancel sheet is up over an order");
   assert.match(src, /if \(frame !== heldFrame\) setHeldFrame\(frame\);/, "stored during render, only on a change");
   assert.ok(src.indexOf("const [settleOpen, setSettleOpen]") < src.indexOf("frameInUse(") && src.indexOf("const [moveOpen, setMoveOpen]") < src.indexOf("frameInUse("), "the latch reads both sheets' state");
   assert.match(src, /<DetailFrame frame=\{frame\}/, "the frame drawn is the one in use");

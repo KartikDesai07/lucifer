@@ -244,6 +244,18 @@ test("OrderDetailHead: no ✕ in the column; in a sheet the HTML's 34px round �
   assert.match(tagOf(html, "order-detail-name"), /\sid="[^"]+"/, "the name labels the dialog (Radix Title)");
 });
 
+// The final fix wave: in the ≥1280 column (no dialog, so no dialog title) the order's name is still the detail's heading.
+test("OrderDetailHead: in the column the name is a level-2 heading (role=heading, aria-level 2); in a sheet it is the dialog's title (an id, no heading role of its own)", () => {
+  const column = tagOf(headHtml(billed()), "order-detail-name");
+  assert.match(column, /role="heading"/, "the column's name is a heading");
+  assert.match(column, /aria-level="2"/, "level 2, as the sheets' Radix title (an h2's level)");
+  assert.ok(!/\sid="/.test(column), "no dialog title in the column");
+  expectAll(column, ["truncate", "text-[18px]", "font-semibold", "tracking-[-0.01em]"], "the same look (values 11.2)");
+  const sheet = tagOf(headHtml(billed(), noop), "order-detail-name");
+  assert.ok(!/role="heading"/.test(sheet), "in a sheet the Radix title names the dialog (no second heading role)");
+  assert.match(sheet, /\sid="[^"]+"/, "the dialog's title");
+});
+
 // ── U2 Task 6: the sums (design 6.8, Q9; values 11.5, 11.10; lib/receipt.ts) ────────────────────────────────────────
 
 const rowsOf = (s: DetailSums): string[] => s.rows.map((r) => `${r.label}|${r.value}|${r.tone}`);
@@ -328,12 +340,33 @@ test("detailSums: money owed at billing — a short Cash payment 'Paid ₹x' the
   for (const s of [short, due]) assert.ok(!s.rows.some((r) => /Still due/.test(r.label)), "no 'Still due' (Q9)");
 });
 
-test("detailSums: a cancelled order — the bill's rows, no Paid or Due rows (its payment is history the books no longer count), 'Not charged' struck", () => {
-  const o = order("1", { status: "Cancelled", payment: "Online", subtotal: 240, discount: 20, total: 220, paidAmount: 220, gstRate: 0, gstMode: "inclusive" });
+// Ruling P13 revised (the final fix wave; moved on purpose): a bill cancelled after it was settled keeps the record that
+// money was collected — its paid rows, plain — under 'Not charged' struck; the customer due it created was reversed with
+// the cancel, so no 'Due at billing'. A cancelled open tab (nothing paid) shows no payment rows, as before.
+test("detailSums: a cancelled open tab (nothing paid) — the bill's rows, no payment rows, 'Not charged' struck", () => {
+  const o = order("1", { status: "Cancelled", subtotal: 240, discount: 20, total: 220, gstRate: 0, gstMode: "inclusive" });
   const s = detailSums(o);
-  assert.deepEqual(rowsOf(s), ["Subtotal|₹240|plain", "Discount|−₹20|bad"], "no 'Paid online' on a cancelled bill");
+  assert.deepEqual(rowsOf(s), ["Subtotal|₹240|plain", "Discount|−₹20|bad"], "nothing paid: no payment rows");
   assert.deepEqual([s.totalLabel, s.total, s.struck], ["Not charged", "₹220", true], "values 11.10 cancelled: 'Not charged' struck");
   billRowsAddUp(s, "cancelled");
+});
+
+test("detailSums (Ruling P13 revised): a bill cancelled after it was settled keeps its paid rows, plain — 'Paid online' / 'Paid by Cash' in full, a split's two parts, 'Paid ₹x' when short — never 'Due at billing'; 'Not charged' struck", () => {
+  const online = detailSums(order("1", { status: "Cancelled", payment: "Online", subtotal: 240, discount: 20, total: 220, paidAmount: 220, gstRate: 0, gstMode: "inclusive" }));
+  assert.deepEqual(rowsOf(online), ["Subtotal|₹240|plain", "Discount|−₹20|bad", "Paid online|₹220|plain"], "paid in full online: the record stays");
+  assert.deepEqual([online.totalLabel, online.total, online.struck], ["Not charged", "₹220", true], "still 'Not charged' struck");
+  billRowsAddUp(online, "cancelled after settling");
+  const cash = detailSums(order("1", { status: "Cancelled", payment: "Cash", subtotal: 905, total: 905, paidAmount: 905 }));
+  assert.equal(rowsOf(cash).at(-1), "Paid by Cash|₹905|plain", "paid in full by cash");
+  const split = detailSums(order("1", { status: "Cancelled", payment: "Split", subtotal: 320, total: 320, paidAmount: 320, splitCash: 50, splitOnline: 270 }));
+  assert.deepEqual(rowsOf(split).slice(-2), ["Paid in cash|₹50|plain", "Paid online|₹270|plain"], "a split: its two parts");
+  const short = detailSums(order("1", { status: "Cancelled", payment: "Cash", subtotal: 240, total: 240, paidAmount: 140 }));
+  assert.deepEqual(rowsOf(short), ["Subtotal|₹240|plain", "Paid|₹140|plain"], "short: what was paid, never 'Paid by Cash' — and no 'Due at billing' (the due was reversed)");
+  const dueOnly = detailSums(order("1", { status: "Cancelled", payment: "Due", subtotal: 600, total: 600, paidAmount: 0 }));
+  assert.deepEqual(rowsOf(dueOnly), ["Subtotal|₹600|plain"], "a Due bill cancelled (nothing paid): no payment rows");
+  for (const s of [online, cash, split, short]) {
+    assert.ok(s.rows.every((r) => r.tone !== "bill"), "no row in the bill tone on a cancelled order");
+  }
 });
 
 // ── U2 Task 6: the customer row, the items head, the cancel note, a void's line (design 6.8; values 11.4-11.6) ───────

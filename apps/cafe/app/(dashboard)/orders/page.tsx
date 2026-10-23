@@ -2,7 +2,8 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import { useOrdersInfinite, useTrimOrdersListOnLeave, useCancelOrder } from "@/hooks/use-orders";
+import { useOrdersInfinite, useTrimOrdersListOnLeave } from "@/hooks/use-orders";
+import { useCancelSheet } from "@/hooks/use-cancel-sheet";
 import { dedupeOrdersById, liveOrderOf } from "@/lib/order-query";
 import { useTables } from "@/hooks/use-tables";
 import { useAuth } from "@/hooks/use-auth";
@@ -98,7 +99,6 @@ export default function OrdersPage() {
   const orders = useOrdersInfinite(ordersQuery(filters, now));
   useTrimOrdersListOnLeave();
   const { isAdmin } = useAuth();
-  const cancelOrder = useCancelOrder();
   const tables = useTables();
   const tableNos = (tables.data ?? []).map((t) => t.tableNo);
 
@@ -123,18 +123,10 @@ export default function OrdersPage() {
   });
   const setDetail = (order: Order | null) => setHeld(tappedChoice(order, keyRef.current));
   const engage = () => setHeld(engageChoice);
-  // An admin's cancel from the detail (Ruling P6): the detail then shows the cancelled order the server returns, chosen
-  // as a settle's is (design 6.6: "Notify kitchen" at hand).
-  const [cancelling, setCancelling] = useState<Order | null>(null);
-  const confirmCancel = async (reason: string) => {
-    if (!cancelling) return;
-    try {
-      setDetail(await cancelOrder.mutateAsync({ id: cancelling._id, data: { reason } }));
-      setCancelling(null);
-    } catch {
-      // the hook toasts a failure; the sheet stays open
-    }
-  };
+  // An admin's cancel from the detail (Ruling P6; hooks/use-cancel-sheet.ts): the detail then shows the cancelled order
+  // the server returns, chosen as a settle's is (design 6.6: "Notify kitchen" at hand) while the sheet is still open for
+  // it; Escape closes only an idle sheet.
+  const cancel = useCancelSheet(setDetail);
   // The list head (values 7) counts the rows shown, once the list has loaded.
   const head = orders.data === undefined ? null : listHead(filters.lane, shown.length, orders.hasNextPage, searching);
   // Ruling P5: only the payment and the table are filters for the empty words and their way-back button (never the
@@ -281,18 +273,18 @@ export default function OrdersPage() {
             listPending={listPending}
             onOpenChange={(o) => !o && setDetail(null)}
             onSettled={setDetail}
-            onCancel={isAdmin ? setCancelling : undefined}
-            cancelOpen={cancelling !== null}
+            onCancel={isAdmin ? cancel.open : undefined}
+            cancelOpen={cancel.order !== null}
           />
         </div>
       </div>
 
       {isAdmin && (
         <CancelOrderDialog
-          order={cancelling}
-          onOpenChange={(o) => !o && setCancelling(null)}
-          onConfirm={confirmCancel}
-          isPending={cancelOrder.isPending}
+          order={cancel.order}
+          onOpenChange={cancel.onOpenChange}
+          onConfirm={cancel.confirm}
+          isPending={cancel.isPending}
         />
       )}
     </div>

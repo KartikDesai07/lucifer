@@ -11,11 +11,12 @@ import { ORDERS_FILTERS_PANEL_ID } from "@/components/orders/OrdersFiltersPanel"
 const ROW_CLASS = "flex flex-wrap gap-2";
 // The search box: flex 1 1 220px (0px on the phone), 40px, 0 10px, 1px --border, radius 9, on --surface; the 15px
 // --text-3 magnifier 8px from the field, which is 14px (16px below 720px, ruling R36), no focus look on the box (the
-// HTML's). Chrome's own clear button is hidden: the round ✕ is the box's (as U1's search).
+// HTML's). The field is a plain text box, not type="search": Chrome wipes a search box on Escape, and with the Filters
+// panel open one Escape would close the panel AND drop the typed phone (and the choice). The round ✕ clears it.
 const SEARCH_CLASS =
   "flex h-10 min-w-0 flex-[1_1_220px] items-center gap-2 rounded-[9px] border border-border bg-card px-2.5 max-tab:basis-0";
 const INPUT_CLASS =
-  "min-w-0 flex-1 border-0 bg-transparent px-0.5 py-px text-[14px] leading-[normal] text-foreground outline-none placeholder:text-subtle-foreground max-tab:text-base [&::-webkit-search-cancel-button]:appearance-none";
+  "min-w-0 flex-1 border-0 bg-transparent px-0.5 py-px text-[14px] leading-[normal] text-foreground outline-none placeholder:text-subtle-foreground max-tab:text-base";
 const CLEAR_CLASS =
   "flex size-6 flex-none cursor-pointer items-center justify-center rounded-[50%] border-0 bg-surface-3 text-[11px] text-muted-foreground";
 // The Filters button: 40px, 0 13px, radius 9, 13.5px 500, its border --text while the panel is open or a chip shows
@@ -76,7 +77,7 @@ export function OrdersToolbar({
           <path d="m20 20-3.5-3.5" />
         </svg>
         <input
-          type="search"
+          type="text"
           inputMode="tel"
           enterKeyHint="search"
           autoComplete="off"

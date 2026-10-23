@@ -31,7 +31,9 @@ interface CancelOrderDialogProps {
 // look="sheet"): the scrim at z-index 50 (over the detail's bottom sheet) holds the 420px panel — the title and today's
 // sentence, our reason, then the stacked 46px buttons. Every word, rule and the request as before; admins only (the page
 // mounts it for admins). The caption over the field is the void sheet's (values 8.3); the message is the HTML's message
-// ink (values 12.2: 13px 500 --bad-i).
+// ink (values 12.2: 13px 500 --bad-i). As the HTML confirm (and ConfirmDialog look="sheet"), an outside press never
+// dismisses it, so a scrim tap over the detail's bottom sheet (touch, below 1280) can close neither layer: "Keep order"
+// and Escape are the ways out, and the page's onOpenChange closes only an idle sheet (lib/orders-cancel-sheet.ts).
 const CAPTION_CLASS = "text-[12.5px] font-semibold text-muted-foreground";
 const SHORT_CLASS = "text-[13px] font-medium text-status-bad-ink";
 // The 48px field (SHEET_FIELD_CLASS) as a textarea: one row tall at first, its 48px as the floor, growing by a drag.
@@ -69,7 +71,12 @@ export function CancelOrderDialog({
     <DialogPrimitive.Root open={!!order} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay data-ui="cancel-sheet" className={CONFIRM_SHEET_SCRIM_CLASS}>
-          <DialogPrimitive.Content data-ui="cancel-panel" className={CONFIRM_SHEET_PANEL_CLASS}>
+          <DialogPrimitive.Content
+            data-ui="cancel-panel"
+            className={CONFIRM_SHEET_PANEL_CLASS}
+            onPointerDownOutside={(e) => e.preventDefault()}
+            onInteractOutside={(e) => e.preventDefault()}
+          >
             <div data-ui="cancel-text">
               <DialogPrimitive.Title className={CONFIRM_SHEET_TITLE_CLASS}>Cancel {order.orderId}?</DialogPrimitive.Title>
               <DialogPrimitive.Description className={CONFIRM_SHEET_BODY_CLASS}>

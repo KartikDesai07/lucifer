@@ -7,8 +7,10 @@
 //
 // What differs per sheet stays a literal at its call site — the scrim's z-index, the panel's width, border, overflow,
 // gap, padding and its sheetIn — composed with cn(): none of the parts conflict under tailwind-merge, so every element
-// keeps exactly the class set it had (lib/sheet-frame.test.ts). Every string here is a plain literal, so Tailwind's
-// source scanner sees each class. Pure: no React, no fetching; client-safe.
+// keeps exactly the class set it had (lib/sheet-frame.test.ts). The confirm sheet is the one exception: its two callers
+// (ConfirmDialog look="sheet" and the Orders cancel sheet) share one frame, so its classes are composed here, once
+// (CONFIRM_SHEET_*, below). Every string here is a plain literal, so Tailwind's source scanner sees each class. Pure: no
+// React, no fetching; client-safe.
 
 import { cn } from "@/lib/utils";
 
@@ -53,13 +55,18 @@ export const SHEET_CLOSE_CLASS =
 
 // ── The confirm sheet (values 12.1; U1 Task 12; design 3, 6.12): ConfirmDialog look="sheet" and, from U2 Task 7, the
 // Orders cancel sheet (components/orders/CancelOrderDialog.tsx, design 6.10) — moved here from ConfirmDialog.tsx with
-// their strings unchanged. The buttons block and the two kinds' colours stay each caller's own literals. ──────────────
+// their strings unchanged (since then the panel adds the phone's bottom inset, Ruling P14). The buttons block and the two
+// kinds' colours stay each caller's own literals. ─────────────────────────────────────────────────────────────────────
 
 /** The scrim at z-index 50 (values 12.1). */
 export const CONFIRM_SHEET_SCRIM_CLASS = cn(SHEET_SCRIM_BASE, "z-50");
 /** The panel (values 12.1): 420px on --surface with a 1px --border, padding 20, the text and the buttons 16px apart,
- *  sheetIn .34s, content-sized (no cap). */
-export const CONFIRM_SHEET_PANEL_CLASS = cn(SHEET_PANEL_BASE, "max-w-[420px] gap-4 border border-border p-5 motion-safe:animate-sheet-in");
+ *  sheetIn .34s, content-sized (no cap). On a phone, where it lies along the window's foot, its bottom padding adds the
+ *  safe-area inset (Ruling P14; U1 P49: everything at the window's foot, every width; 0 in browsers). */
+export const CONFIRM_SHEET_PANEL_CLASS = cn(
+  SHEET_PANEL_BASE,
+  "max-w-[420px] gap-4 border border-border p-5 max-tab:pb-[calc(20px+env(safe-area-inset-bottom))] motion-safe:animate-sheet-in",
+);
 /** The title 18px 600 -.01em. */
 export const CONFIRM_SHEET_TITLE_CLASS = "text-[18px] font-semibold tracking-[-0.01em]";
 /** The body 14px --text-2, 6px under the title at 1.5, wrapped "pretty". */
