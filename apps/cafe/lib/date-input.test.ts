@@ -62,8 +62,11 @@ const readSrc = (rel: string): string => stripComments(readFileSync(path.join(RE
 // picks its range through the shared RangeBar (components/dashboard/RangeBar.tsx,
 // the Dashboard's own picker), which wraps DatePicker rather than rendering
 // one directly, so it has no call site of its own in this list.
+// U2 Task 3 (2026-10-23, owner Q5): the Orders page left this list on purpose —
+// its date box is the HTML's dropdown (Today / Yesterday / All dates / Pick a
+// day…) whose calendar is the kit's own Calendar in the box's Popover
+// (components/orders/OrdersDateBox.tsx); the pin below keeps the meaning.
 const DATE_PICKER_CALL_SITES = [
-  "apps/cafe/app/(dashboard)/orders/page.tsx",
   "apps/cafe/app/(dashboard)/reservations/page.tsx",
   "apps/cafe/components/events/EventFormSheet.tsx",
   "apps/cafe/components/reservations/ReservationFormSheet.tsx",
@@ -88,6 +91,23 @@ for (const rel of DATE_PICKER_CALL_SITES) {
     );
   });
 }
+
+test("PIN: the Orders page picks a day through its date box on the kit Calendar — no DatePicker there, never a native date input", () => {
+  const page = readSrc("apps/cafe/app/(dashboard)/orders/page.tsx");
+  assert.match(page, /<OrdersToolbar\b/, "landmark: the page renders the toolbar that holds the date box");
+  assert.ok(!/<DatePicker\b/.test(page), "the page renders no DatePicker (owner Q5: the date box)");
+  assert.ok(!page.includes("components/shared/DatePicker"), "nor imports it");
+  assert.ok(!/type="date"/.test(page), "no native type=\"date\" input on the page");
+  const box = readSrc("apps/cafe/components/orders/OrdersDateBox.tsx");
+  assert.match(box, /from "@\/components\/ui\/calendar";/, "the date box uses the kit Calendar");
+  assert.match(box, /from "@\/components\/ui\/popover";/, "in the kit Popover");
+  assert.match(
+    box,
+    /<Calendar\b[\s\S]*?mode="single"[\s\S]*?defaultMonth=\{chosen\}[\s\S]*?\/>/,
+    "one day at a time, opening on the chosen day's month (the library's default ignores `selected`)",
+  );
+  assert.ok(!/type="date"/.test(box), "no native type=\"date\" input in the date box");
+});
 
 // Review findings (2026-09-29, arbitrated against react-day-picker 9.14.0's
 // own source): getInitialMonth opens on `month || defaultMonth || today` and

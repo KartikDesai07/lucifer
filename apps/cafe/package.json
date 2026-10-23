@@ -210,6 +210,7 @@
     "lib/orders-lanes.test.ts",
     "lib/orders-lanes-summary.test.ts",
     "lib/orders-lanes-view.test.ts",
+    "lib/orders-toolbar-view.test.ts",
     "lib/pos-categories.test.ts",
     "lib/pos-price-buttons.test.ts",
     "lib/pos-cart-view.test.ts",

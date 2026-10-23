@@ -14,6 +14,10 @@ import { POS_PAGE_CLASS } from "@/lib/pos-layout";
 /** The Orders page's route. */
 export const ORDERS_PATH = "/orders";
 
+/** The HTML's phone (`ph`, below 720px: Tailwind's max-tab), as a media query for the one thing CSS cannot gate: the
+ *  date chip and the Filters count it adds on the phone only (values 6). */
+export const ORDERS_PHONE_QUERY = "(width < 45rem)";
+
 /** The route is the Orders page (or a page below it, isPosPath's rule): the shell then draws the HTML's Orders header
  *  (values 1.2: 12px between its items, New order with its label at every width). */
 export function isOrdersPath(pathname: string): boolean {

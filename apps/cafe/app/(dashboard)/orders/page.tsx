@@ -1,25 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Receipt, Search } from "lucide-react";
+import { Receipt } from "lucide-react";
 
 import { useOrdersInfinite, useTrimOrdersListOnLeave, useCancelOrder } from "@/hooks/use-orders";
 import { dedupeOrdersById, liveOrderOf } from "@/lib/order-query";
 import { useTables } from "@/hooks/use-tables";
 import { useAuth } from "@/hooks/use-auth";
-import { PAY_STYLES, SETTLEMENT_PAY_MODES, type SettlementPayMode } from "@/lib/constants";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import {
   ORDERS_BODY_CLASS,
   ORDERS_DETAIL_COLUMN_CLASS,
   ORDERS_LIST_COLUMN_CLASS,
   ORDERS_PAGE_CLASS,
+  ORDERS_PHONE_QUERY,
   ORDERS_SCROLLER_CLASS,
   ORDERS_TOP_CLASS,
 } from "@/lib/orders-layout";
 import {
+  CHIP_CLEARS,
   DEFAULT_ORDERS_FILTERS,
-  dateFilterOf,
+  clearAllFilters,
+  filterChips,
   laneRows,
   ordersQuery,
   seedFromUrl,
@@ -28,10 +31,7 @@ import {
 } from "@/lib/orders-lanes";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DatePicker } from "@/components/shared/DatePicker";
-import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
@@ -39,22 +39,19 @@ import { BRAND_CONTROL_CLASS, BRAND_PANEL_CLASS } from "@/components/brand/brand
 import { OrderDetailSheet } from "@/components/orders/OrderDetailSheet";
 import { OrderTable } from "@/components/orders/OrderTable";
 import { CancelOrderDialog } from "@/components/orders/CancelOrderDialog";
-import { ALL, FilterSelect, type FilterOption } from "@/components/orders/OrderFilterSelect";
 import { OrdersLanes } from "@/components/orders/OrdersLanes";
+import { OrdersToolbar } from "@/components/orders/OrdersToolbar";
+import { OrdersChips, OrdersFiltersPanel } from "@/components/orders/OrdersFiltersPanel";
 import type { Order } from "@/types";
 
 const PHONE_DEBOUNCE_MS = 350;
 const SKELETON_ROWS = 6;
 const POS_PATH = "/pos";
 
-// Payment filter options: the five settled modes (the value is what the list query sends, the label the word the rows
-// show). Today's "Open" (Unpaid) choice is the Open lane now (design 6.3).
-const PAYMENT_OPTIONS: FilterOption[] = SETTLEMENT_PAY_MODES.map((m) => ({ value: m, label: PAY_STYLES[m]?.label ?? m }));
-
 // The owner's HTML Orders screen (U2; values 1.1, 2.1, 2.2; design 5): the page fills the screen under the shell's
 // header like /pos (lib/orders-layout.ts); the list column (top block over the list scroller) and, from 1280px, the
-// 400px detail column. The lanes lead the top block (Task 2); today's search, filters, list and sheet stay in the list
-// column until U2 Tasks 3-5.
+// 400px detail column. The top block holds the lanes (Task 2), the toolbar, the Filters panel and the chips (Task 3);
+// today's list and sheet stay in the list column until U2 Tasks 4-5.
 export default function OrdersPage() {
   // One filter state (lib/orders-lanes.ts): the lane, the date, the payment, the table and the searched phone; the one
   // list query is ordersQuery's (the same GET /api/orders with today's filter keys only).
@@ -85,7 +82,7 @@ export default function OrdersPage() {
   const { isAdmin } = useAuth();
   const cancelOrder = useCancelOrder();
   const tables = useTables();
-  const tableOptions: FilterOption[] = (tables.data ?? []).map((t) => ({ value: t.tableNo, label: t.tableNo }));
+  const tableNos = (tables.data ?? []).map((t) => t.tableNo);
 
   const [detail, setDetail] = useState<Order | null>(null);
   const [cancelling, setCancelling] = useState<Order | null>(null);
@@ -105,14 +102,27 @@ export default function OrdersPage() {
   const list = dedupeOrdersById(orders.data?.pages ?? []);
   const searching = filters.phone !== "";
   const shown = laneRows(filters.lane, list, searching);
-  const activeFilterCount = [filters.payment, filters.tableNo, filters.phone].filter(Boolean).length;
-  const filtersActive = activeFilterCount > 0;
+  const filtersActive = [filters.payment, filters.tableNo, filters.phone].some(Boolean);
+  // The chips (values 6): the date one on the phone only; the Filters button's count is their number.
+  const phoneWidth = useMediaQuery(ORDERS_PHONE_QUERY) === true;
+  const chips = filterChips(filters, phoneWidth);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filtersButton = useRef<HTMLButtonElement>(null);
+  const closeFilters = (focusWasInside: boolean) => {
+    setFiltersOpen(false);
+    if (focusWasInside) filtersButton.current?.focus();
+  };
 
-  // Clears the payment, the table and the typed phone AND the debounced one, or the 350ms debounce would leave the old
-  // search applied for a beat after the box reads empty. The lane and the date stay (design 6.3).
+  // Clear all and Reset (the HTML's ov.clear): the payment, the table and the typed phone AND the debounced one, or the
+  // 350ms debounce would leave the old search applied for a beat after the box reads empty. The lane and the date stay.
   const clearFilters = () => {
     setPhoneInput("");
-    setFilter({ payment: null, tableNo: null, phone: "" });
+    setFilters(clearAllFilters);
+  };
+  // The search box's ✕: the typed and the searched phone at once (no 350ms ghost search).
+  const clearSearch = () => {
+    setPhoneInput("");
+    setFilter({ phone: "" });
   };
 
   // A lane tap (design 6.2): that lane, the phone search cleared (typed and searched) and the choice dropped.
@@ -137,55 +147,27 @@ export default function OrdersPage() {
               onLane={pickLane}
               onChoose={setDetail}
             />
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                inputMode="tel"
-                value={phoneInput}
-                onChange={(e) => setPhoneInput(e.target.value)}
-                placeholder="Search orders by customer phone…"
-                className={cn("pl-8", BRAND_CONTROL_CLASS)}
-                aria-label="Search orders by customer phone"
+            <OrdersToolbar
+              phone={phoneInput}
+              onPhone={setPhoneInput}
+              onClearPhone={clearSearch}
+              date={filters.date}
+              onDate={(date) => setFilter({ date })}
+              filtersOpen={filtersOpen}
+              onToggleFilters={() => setFiltersOpen((open) => !open)}
+              count={chips.length}
+              filtersRef={filtersButton}
+            />
+            {filtersOpen && (
+              <OrdersFiltersPanel
+                filters={filters}
+                tables={tableNos}
+                onChange={setFilter}
+                onReset={clearFilters}
+                onClose={closeFilters}
               />
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm font-medium">Filters</p>
-              {filtersActive && <Badge variant="secondary">{activeFilterCount} active</Badge>}
-              {filtersActive && (
-                <Button variant="ghost" className={BRAND_CONTROL_CLASS} onClick={clearFilters}>
-                  Clear all
-                </Button>
-              )}
-            </div>
-
-            {/* Until Task 3's toolbar: the payment, table and date controls on the lanes' state (a picked day is that
-                day, Clear is All dates; Today shows today's day). */}
-            <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
-              <FilterSelect
-                value={filters.payment ?? ALL}
-                onChange={(v) => setFilter({ payment: v === ALL ? null : (v as SettlementPayMode) })}
-                allLabel="All payments"
-                ariaLabel="Filter by payment"
-                options={PAYMENT_OPTIONS}
-              />
-              <FilterSelect
-                value={filters.tableNo ?? ALL}
-                onChange={(v) => setFilter({ tableNo: v === ALL ? null : v })}
-                allLabel="All tables"
-                ariaLabel="Filter by table"
-                options={tableOptions}
-              />
-              <DatePicker
-                value={dateFilterOf(filters.date, new Date()) ?? ""}
-                onChange={(day) => setFilter({ date: day ? { kind: "day", date: day } : { kind: "all" } })}
-                clearable
-                placeholder="All dates"
-                className={BRAND_CONTROL_CLASS}
-                aria-label="Filter by date"
-              />
-            </div>
+            )}
+            <OrdersChips chips={chips} onClear={(key) => setFilter(CHIP_CLEARS[key])} onClearAll={clearFilters} />
           </div>
 
           <div data-ui="orders-scroller" className={ORDERS_SCROLLER_CLASS}>

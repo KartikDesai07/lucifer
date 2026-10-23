@@ -2,8 +2,11 @@
 // Q1-Q3, Q5, Q9-Q11, 6.2, 6.12; docs/superpowers/specs/2026-10-22-orders-html-values.md 3, 17): the five lanes, the
 // page's filter state, the ONE list query each lane asks (the same GET /api/orders with today's filter keys only: Paid
 // and Due share status=Completed, Open sends no date, a typed phone sends no status), the rows a lane shows out of what
-// was loaded, the chosen lane's numbers and line, and the URL seeding of the dashboard's and the reports' links.
-// components/orders/OrdersLanes.tsx draws the cards and the phone strip; app/(dashboard)/orders/page.tsx owns the state.
+// was loaded, the chosen lane's numbers and line, and the URL seeding of the dashboard's and the reports' links. U2 Task 3
+// adds the toolbar's words: the date box's choices and words, the Filters panel's payment choices and the chips.
+// components/orders/OrdersLanes.tsx draws the cards and the phone strip; components/orders/OrdersToolbar.tsx,
+// OrdersDateBox.tsx and OrdersFiltersPanel.tsx the toolbar, the panel and the chips; app/(dashboard)/orders/page.tsx owns
+// the state.
 // Client-safe: no Mongoose, no React.
 import { format } from "date-fns";
 
@@ -35,6 +38,11 @@ export const ORDERS_LANES: ReadonlyArray<{
 
 /** The date box's choices (Q5): Today (the default), Yesterday, All dates, or a picked day ("YYYY-MM-DD", IST). */
 export type OrdersDate = { kind: "today" } | { kind: "yesterday" } | { kind: "all" } | { kind: "day"; date: string };
+
+/** The date box's quick rows and the phone's Date pills, in the HTML's order ("Last 7 days" left out: no server range),
+ *  then PICK_A_DAY (our calendar, Q5). */
+export const ORDERS_DATE_CHOICES: ReadonlyArray<OrdersDate> = [{ kind: "today" }, { kind: "yesterday" }, { kind: "all" }];
+export const PICK_A_DAY = "Pick a day…";
 
 /** Everything the list is filtered by. `phone` is the searched phone (after the page's 350 ms wait). */
 export interface OrdersFilterState {
@@ -131,6 +139,58 @@ export function laneRows(lane: OrdersLane, rows: Order[], searching: boolean): O
     return [...rows].sort((a, b) => printedFirst(a) - printedFirst(b) || openedAt(a) - openedAt(b));
   }
   return rows;
+}
+
+/** The date box's words (Q5; design 6.3): "Today", "Yesterday", "All dates", a picked day "22 Oct 2026". */
+export function dateLabel(date: OrdersDate): string {
+  if (date.kind === "today") return "Today";
+  if (date.kind === "yesterday") return "Yesterday";
+  if (date.kind === "all") return "All dates";
+  const day = parseDateInput(date.date);
+  return day ? format(day, "d MMM yyyy") : date.date;
+}
+
+/** The Filters panel's Payment pills after "Any" (design 6.3): our five settled modes; today's "Open" is the Open lane. */
+export const ORDERS_PAYMENT_CHOICES: readonly SettlementPayMode[] = ["Cash", "Online", "Split", "Due", "Credit"];
+
+export type OrdersChipKey = "payment" | "table" | "date";
+export interface OrdersChip {
+  key: OrdersChipKey;
+  label: string;
+}
+
+const PAYMENT_CHIP: Record<SettlementPayMode, string> = {
+  Cash: "Paid by Cash",
+  Online: "Paid by Online",
+  Split: "Paid by Split",
+  Due: "Due bills",
+  Credit: "Credit bills",
+};
+
+/**
+ * The chips row (values 6; design 6.3), in the HTML's order: on the phone only, the date when it is not Today (the
+ * desktop's date box never makes a chip); the payment; the table. The Filters button's count is their number. The lane
+ * and the searched phone are no chips.
+ */
+export function filterChips(s: OrdersFilterState, phone: boolean): OrdersChip[] {
+  const chips: OrdersChip[] = [];
+  if (phone && s.date.kind !== "today") chips.push({ key: "date", label: dateLabel(s.date) });
+  if (s.payment) chips.push({ key: "payment", label: PAYMENT_CHIP[s.payment] });
+  if (s.tableNo) chips.push({ key: "table", label: s.tableNo });
+  return chips;
+}
+
+/** What tapping a chip clears: its own filter (the date goes back to Today). */
+export const CHIP_CLEARS: Record<OrdersChipKey, Partial<OrdersFilterState>> = {
+  payment: { payment: null },
+  table: { tableNo: null },
+  date: { date: { kind: "today" } },
+};
+
+/** The HTML's Reset and "Clear all" (values 5.1 ov.clear): the payment, the table and the phone search cleared; the lane
+ *  and the date stay. */
+export function clearAllFilters(s: OrdersFilterState): OrdersFilterState {
+  return { ...s, payment: null, tableNo: null, phone: "" };
 }
 
 /** The words after "No payments" / "None" / "No orders" (design 6.2): "today", "yesterday", "on 22 Oct", "yet". */

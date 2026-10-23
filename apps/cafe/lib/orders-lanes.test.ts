@@ -9,10 +9,17 @@ import assert from "node:assert/strict";
 
 import { STATUS_CLASSES } from "./ui";
 import {
+  CHIP_CLEARS,
   DEFAULT_ORDERS_FILTERS,
   LANE_IDLE_LINES,
+  ORDERS_DATE_CHOICES,
   ORDERS_LANES,
+  ORDERS_PAYMENT_CHOICES,
+  PICK_A_DAY,
+  clearAllFilters,
   dateFilterOf,
+  dateLabel,
+  filterChips,
   laneRows,
   orderDue,
   ordersQuery,
@@ -234,6 +241,11 @@ test("seedFromUrl: the dashboard's and the reports' links land where they did", 
     "a status and a day",
   );
   assert.deepEqual(seedFromUrl("status=Cancelled"), { lane: "cancelled", date: { kind: "all" } }, "no leading ? is fine");
+  assert.deepEqual(
+    seedFromUrl("?payment=Unpaid&date=2026-10-18"),
+    { lane: "open", date: { kind: "day", date: "2026-10-18" } },
+    "payment Unpaid with a day and no status: the Open lane with that day (Task 2 review minor, pinned)",
+  );
 });
 
 test("seedFromUrl: plain /orders and unknown values seed nothing (Open, Today)", () => {
@@ -243,4 +255,69 @@ test("seedFromUrl: plain /orders and unknown values seed nothing (Open, Today)",
   assert.deepEqual(seedFromUrl("?date=18-10-2026"), {}, "a date in another shape");
   assert.deepEqual(seedFromUrl("?date=2026-1-8"), {}, "a date without zero padding");
   assert.deepEqual(seedFromUrl("?foo=bar"), {}, "another key");
+});
+
+// ── The toolbar's words, the Filters panel's choices and the chips (U2 Task 3; design 6.3, values 4-6) ──────────────
+
+test("dateLabel: the date box's words (owner Q5): Today, Yesterday, All dates, a picked day as '22 Oct 2026'", () => {
+  assert.equal(dateLabel({ kind: "today" }), "Today", "Today (the default)");
+  assert.equal(dateLabel({ kind: "yesterday" }), "Yesterday", "Yesterday");
+  assert.equal(dateLabel({ kind: "all" }), "All dates", "All dates");
+  assert.equal(dateLabel({ kind: "day", date: "2026-10-22" }), "22 Oct 2026", "a picked day");
+  assert.equal(dateLabel({ kind: "day", date: "2026-09-05" }), "5 Sep 2026", "no leading zero on the day");
+  assert.equal(dateLabel({ kind: "day", date: "2026-13-45" }), "2026-13-45", "a day that is no date reads as given");
+});
+
+test("ORDERS_DATE_CHOICES / PICK_A_DAY / ORDERS_PAYMENT_CHOICES: the date box's rows and the Payment group's pills", () => {
+  assert.deepEqual(
+    ORDERS_DATE_CHOICES.map(dateLabel),
+    ["Today", "Yesterday", "All dates"],
+    "the quick choices in the HTML's order ('Last 7 days' left out: no server range, Q5)",
+  );
+  assert.equal(PICK_A_DAY, "Pick a day…", "the calendar row's words (Q5), with the ellipsis character");
+  assert.deepEqual(
+    [...ORDERS_PAYMENT_CHOICES],
+    ["Cash", "Online", "Split", "Due", "Credit"],
+    "after 'Any': our five settled modes in design 6.3's order (today's 'Open' is the Open lane)",
+  );
+});
+
+test("filterChips: payment, then table; the date only on the phone and only when it is not Today", () => {
+  const chips = (over: Partial<OrdersFilterState>, phone = false) => filterChips(state(over), phone);
+  assert.deepEqual(chips({}), [], "the first view: no chip");
+  assert.deepEqual(chips({}, true), [], "the first view on the phone: Today is no chip");
+  assert.deepEqual(chips({ payment: "Cash" }), [{ key: "payment", label: "Paid by Cash" }], "Cash");
+  assert.deepEqual(chips({ payment: "Online" }), [{ key: "payment", label: "Paid by Online" }], "Online");
+  assert.deepEqual(chips({ payment: "Split" }), [{ key: "payment", label: "Paid by Split" }], "Split");
+  assert.deepEqual(chips({ payment: "Due" }), [{ key: "payment", label: "Due bills" }], "Due (the HTML's words)");
+  assert.deepEqual(chips({ payment: "Credit" }), [{ key: "payment", label: "Credit bills" }], "Credit");
+  assert.deepEqual(chips({ tableNo: "T-4" }), [{ key: "table", label: "T-4" }], "the table's own name");
+  assert.deepEqual(chips({ date: { kind: "yesterday" } }), [], "the desktop's date box never makes a chip (values 6)");
+  assert.deepEqual(chips({ date: { kind: "yesterday" } }, true), [{ key: "date", label: "Yesterday" }], "phone: Yesterday");
+  assert.deepEqual(chips({ date: { kind: "all" } }, true), [{ key: "date", label: "All dates" }], "phone: All dates");
+  assert.deepEqual(
+    chips({ date: { kind: "day", date: "2026-10-22" }, payment: "Due", tableNo: "T-4" }, true),
+    [
+      { key: "date", label: "22 Oct 2026" },
+      { key: "payment", label: "Due bills" },
+      { key: "table", label: "T-4" },
+    ],
+    "every chip, in the HTML's order (date, payment, table)",
+  );
+  assert.deepEqual(chips({ phone: "98765", lane: "paid" }, true), [], "the searched phone and the lane are no chips");
+});
+
+test("CHIP_CLEARS: each chip clears its own filter; the date goes back to Today", () => {
+  assert.deepEqual(CHIP_CLEARS, { payment: { payment: null }, table: { tableNo: null }, date: { date: { kind: "today" } } }, "one patch per chip");
+});
+
+test("clearAllFilters: payment, table and the phone search cleared; the lane and the date stay (the HTML's Reset / Clear all)", () => {
+  const before = state({ lane: "due", date: { kind: "day", date: "2026-10-22" }, payment: "Cash", tableNo: "T-4", phone: "98765" });
+  assert.deepEqual(
+    clearAllFilters(before),
+    { lane: "due", date: { kind: "day", date: "2026-10-22" }, payment: null, tableNo: null, phone: "" },
+    "the date survives (values 5.1 ov.clear)",
+  );
+  assert.equal(before.payment, "Cash", "the state it is given is not changed");
+  assert.deepEqual(clearAllFilters(DEFAULT_ORDERS_FILTERS), DEFAULT_ORDERS_FILTERS, "nothing to clear: the same values");
 });

@@ -41,7 +41,11 @@ const STAFF_PAGE = page("staff");
 const SHELL = cmp("menu/MenuPageShell.tsx");
 const BRAND = cmp("brand/brand-classes.ts");
 const ORDER_TABLE = cmp("orders/OrderTable.tsx");
-const ORDER_FILTER_SELECT = cmp("orders/OrderFilterSelect.tsx");
+// U2 Task 3 (2026-10-23): the old filter selects (OrderFilterSelect.tsx) are gone; the toolbar, the date box and the
+// Filters panel with its chips take their place, and join the copy-hygiene files.
+const ORDERS_TOOLBAR = cmp("orders/OrdersToolbar.tsx");
+const ORDERS_DATE_BOX = cmp("orders/OrdersDateBox.tsx");
+const ORDERS_FILTERS_PANEL = cmp("orders/OrdersFiltersPanel.tsx");
 const CANCEL_ORDER_DIALOG = cmp("orders/CancelOrderDialog.tsx");
 const REQUESTS_BOARD = cmp("orders/RequestsBoard.tsx");
 const ORDER_REQUEST_CARD = cmp("orders/OrderRequestCard.tsx");
@@ -925,7 +929,6 @@ const CONTROL_FILES = [
   EVENTS_PAGE,
   STAFF_PAGE,
   CUSTOMER_STATUS,
-  ORDER_FILTER_SELECT,
   CANCEL_ORDER_DIALOG,
   ORDER_REQUEST_CARD,
   RECEIVE_PAYMENT_DIALOG,
@@ -1303,7 +1306,9 @@ const COPY_FILES = [
   SHELL,
   BRAND,
   ORDER_TABLE,
-  ORDER_FILTER_SELECT,
+  ORDERS_TOOLBAR,
+  ORDERS_DATE_BOX,
+  ORDERS_FILTERS_PANEL,
   CANCEL_ORDER_DIALOG,
   REQUESTS_BOARD,
   ORDER_REQUEST_CARD,
