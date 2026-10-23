@@ -4,7 +4,8 @@
 // header like /pos and never scrolls; its body grid holds the list column and, from 1280px, the 400px detail column
 // (the owner's rule of 2026-10-22: below 1280px a right panel is never a side column or a side sheet); the list
 // scroller and the detail scroll on their own. The list's form follows the list column's own width (values 0.2: the
-// table from 700px, the Items column from 900px, the lane cards from 560px), so the column is a container.
+// table from a 700px list, the Items column from 900px; the lane cards from 560px, measured by the lanes), so the column
+// is a named container (`list`), outside the list scroller.
 //
 // One place for the class strings the page renders. Everything here is a plain literal (ORDERS_PAGE_CLASS also reads
 // lib/pos-layout.ts's POS_PAGE_CLASS), so Tailwind's source scanner sees every class name, and the pins
@@ -34,20 +35,27 @@ export const ORDERS_PAGE_CLASS = `${POS_PAGE_CLASS} flex flex-col overflow-hidde
  *  400px detail column (the HTML's from 1024px). It fills the page; the one row stretches to its height. */
 export const ORDERS_BODY_CLASS = "grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_400px]";
 
-/** The list column (values 2.2): a flex column that may shrink, holding the top block and the list scroller; a
- *  container, so the list's parts switch at the list column's own width (values 0.2). The HTML sets no line-height on
- *  this screen: normal (values 0.5). */
-export const ORDERS_LIST_COLUMN_CLASS = "@container flex min-h-0 min-w-0 flex-col leading-[normal]";
+/** The list column (values 2.2): a flex column that may shrink, holding the top block and the list scroller; the named
+ *  container `list`, so the list's form switches at the column's own width (values 0.2; components/orders/OrderTable.tsx
+ *  queries it by name). Measured here, OUTSIDE the scroller (the verification fix, V-A): a classic (Windows, Electron)
+ *  scrollbar in the scroller can never narrow what is measured, so the HTML's listW thresholds (700 / 900) sit at the
+ *  column's 740 / 940 — the scroller's 20 + 20 side padding added back (below 720px the phone is always cards). The HTML
+ *  sets no line-height on this screen: normal (values 0.5). */
+export const ORDERS_LIST_COLUMN_CLASS = "@container/list flex min-h-0 min-w-0 flex-col leading-[normal]";
 
 /** The top block (values 2.2 toolPad): the lanes, the toolbar, the Filters panel and the chips, 12px apart; padding
- *  14px 20px 12px, 10px 12px 12px on a phone. It never shrinks. */
-export const ORDERS_TOP_CLASS = "flex flex-none flex-col gap-3 px-5 pt-3.5 pb-3 max-tab:px-3 max-tab:pt-2.5";
+ *  14px 20px 12px, 10px 12px 12px on a phone. Content-sized (flex: 0 1 auto): it shrinks only when taller than the
+ *  list column — the scroller's basis is 0 — and then scrolls on its own, so in phone landscape (~862 x 390) the open
+ *  Filters panel's Reset and Done stay reachable (the verification fix, V-C F2); wherever it fits nothing moves. */
+export const ORDERS_TOP_CLASS =
+  "flex flex-[0_1_auto] flex-col gap-3 min-h-0 overflow-y-auto overflow-x-hidden px-5 pt-3.5 pb-3 max-tab:px-3 max-tab:pt-2.5";
 
-/** The list scroller (values 2.2 listPad, screenPadB): the list head and the list scroll together in it; padding 0 20px
- *  28px, 0 12px 92px on a phone (the tab bar covers its last 59px there), and its foot grows by the safe-area inset at
- *  every width (U1 ruling P49), so the last row is never under the gesture strip; 28px / 92px at an inset of 0. */
+/** The list scroller (values 2.2 listPad, screenPadB): it fills the rest of the list column (flex: 1, min-height 0);
+ *  the list head and the list scroll together in it; padding 0 20px 28px, 0 12px 92px on a phone (the tab bar covers its
+ *  last 59px there), and its foot grows by the safe-area inset at every width (U1 ruling P49), so the last row is never
+ *  under the gesture strip; 28px / 92px at an inset of 0. */
 export const ORDERS_SCROLLER_CLASS =
-  "flex-1 overflow-y-auto overflow-x-hidden px-5 pt-0 pb-[calc(28px+env(safe-area-inset-bottom))] max-tab:px-3 max-tab:pb-[calc(92px+env(safe-area-inset-bottom))]";
+  "flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-5 pt-0 pb-[calc(28px+env(safe-area-inset-bottom))] max-tab:px-3 max-tab:pb-[calc(92px+env(safe-area-inset-bottom))]";
 
 /** The detail column (values 11.1 at the HTML's `big`; owner rule 2026-10-22: from 1280px only): the body grid's second
  *  track, 400px, the surface with a 1px rule on its left, no shadow, a flex column that scrolls in parts. Below 1280px
@@ -80,9 +88,10 @@ export const ORDER_DETAIL_COLUMN_CLASS = "flex min-h-0 flex-1 flex-col leading-[
 /** The dashboard's side sheet from 1280px (design 6.6): the kit sheet on the right, over its scrim, at the column's
  *  400px on --surface with the 1px --border rule on its left, square and unpadded (the kit's radius, padding and gap
  *  go), keeping the kit's --pop shadow (the HTML's aside wears --pop whenever it lies over the page, values 11.1) and its
- *  slide. The kit's own close button (its only direct-child button) is hidden: the head's ✕ is the HTML's. */
+ *  slide. The kit's own close button (its only direct-child button) is hidden: the head's ✕ is the HTML's. The panel
+ *  takes the focus as it opens (the shared opener hook, V-C F4): no outline, as the bottom sheet's. */
 export const ORDER_DETAIL_SIDE_CLASS =
-  "flex w-[400px] flex-col gap-0 rounded-none border-l border-border bg-card p-0 font-sans leading-[normal] text-foreground sm:max-w-none [&>button]:hidden";
+  "flex w-[400px] flex-col gap-0 rounded-none border-l border-border bg-card p-0 font-sans leading-[normal] text-foreground outline-none sm:max-w-none [&>button]:hidden";
 
 /** The bottom sheet's overlay (owner rule: no scrim at any width below 1280px; at 390 the HTML's is under the sheet):
  *  the /pos cart sheet's own constant — mounted with the dialog (its scroll lock stays), never drawn. */

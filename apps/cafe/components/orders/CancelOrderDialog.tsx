@@ -15,6 +15,7 @@ import {
   CONFIRM_SHEET_TITLE_CLASS,
   SHEET_FIELD_CLASS,
 } from "@/lib/sheet-frame";
+import { useOpenerFocus } from "@/hooks/use-opener-focus";
 import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { Textarea } from "@/components/ui/textarea";
 import type { Order } from "@/types";
@@ -34,6 +35,13 @@ interface CancelOrderDialogProps {
 // ink (values 12.2: 13px 500 --bad-i). As the HTML confirm (and ConfirmDialog look="sheet"), an outside press never
 // dismisses it, so a scrim tap over the detail's bottom sheet (touch, below 1280) can close neither layer: "Keep order"
 // and Escape are the ways out, and the page's onOpenChange closes only an idle sheet (lib/orders-cancel-sheet.ts).
+// Ruling P17 (the verification fix, V-C F1): the Android keyboard never resizes the WebView, so along the window's foot
+// the sheet lay under it while the reason was typed. Below 720px it opens at the window's TOP instead (our own field; the
+// HTML confirm has none): 16px under the top edge plus the top safe-area inset, radius 14 all round, the same full width
+// and inner layout (padding 20 all round: the bottom inset is for the foot). From 720px it is U1's centred panel. Only
+// this sheet: composed over the shared CONFIRM_SHEET_* (U1's ConfirmDialog keeps its bottom frame).
+const CANCEL_SCRIM_CLASS = cn(CONFIRM_SHEET_SCRIM_CLASS, "max-tab:items-start max-tab:pt-[calc(16px+env(safe-area-inset-top))]");
+const CANCEL_PANEL_CLASS = cn(CONFIRM_SHEET_PANEL_CLASS, "max-tab:rounded-[14px] max-tab:pb-5");
 const CAPTION_CLASS = "text-[12.5px] font-semibold text-muted-foreground";
 const SHORT_CLASS = "text-[13px] font-medium text-status-bad-ink";
 // The 48px field (SHEET_FIELD_CLASS) as a textarea: one row tall at first, its 48px as the floor, growing by a drag.
@@ -61,6 +69,11 @@ export function CancelOrderDialog({
     setReason("");
   }, [order?._id]);
 
+  // V-C F4: opened from the page's state (no Radix trigger), so "Keep order" and Escape gave the focus to <body>; the
+  // shared hook gives it back to the opener (the detail's "Cancel this order"). The reason field keeps its focus on open
+  // (Radix's first control, Ruling P17): only the close half.
+  const openerFocus = useOpenerFocus({ focusPanel: false });
+
   if (!order) return null;
 
   const trimmed = reason.trim();
@@ -70,10 +83,11 @@ export function CancelOrderDialog({
   return (
     <DialogPrimitive.Root open={!!order} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay data-ui="cancel-sheet" className={CONFIRM_SHEET_SCRIM_CLASS}>
+        <DialogPrimitive.Overlay data-ui="cancel-sheet" className={CANCEL_SCRIM_CLASS}>
           <DialogPrimitive.Content
             data-ui="cancel-panel"
-            className={CONFIRM_SHEET_PANEL_CLASS}
+            {...openerFocus}
+            className={CANCEL_PANEL_CLASS}
             onPointerDownOutside={(e) => e.preventDefault()}
             onInteractOutside={(e) => e.preventDefault()}
           >

@@ -56,7 +56,7 @@ test("orderStatus: Bill printed / In kitchen for an open tab (Q11), Due for any 
   assert.deepEqual(orderStatus(order("10", { status: "Cancelled", payment: "Cash" })), { label: "Cancelled", kind: "bad" }, "cancelled");
 });
 
-test("orderAge: an open tab 'Open {m} min' / 'Open {h}h {m}m' (m = max(1, round)), --warn-i from 30, --bad-i from 60; else 'Today' / '17 Oct' and the clock", () => {
+test("orderAge: an open tab 'Open {m} min' / 'Open {h}h {m}m' (m = max(1, round)), --warn-i from 30, --bad-i from 60; else 'Today' and the clock, or '17 Oct' twice (Ruling P18)", () => {
   const openAt = (m: number) => orderAge(order("1", { createdAt: minutesBefore(m) }), NOW);
   assert.deepEqual(openAt(0.2), { text: "Open 1 min", short: "1 min", tone: "plain" }, "never under a minute");
   assert.deepEqual(openAt(1), { text: "Open 1 min", short: "1 min", tone: "plain" }, "1 minute");
@@ -69,10 +69,13 @@ test("orderAge: an open tab 'Open {m} min' / 'Open {h}h {m}m' (m = max(1, round)
   assert.deepEqual(openAt(68), { text: "Open 1h 8m", short: "1h 8m", tone: "bad" }, "the HTML's Table 1");
   const today = orderAge(settled("2", 500, 500), NOW);
   assert.deepEqual(today, { text: "Today", short: "9:25 PM", tone: "plain" }, "a settled bill of today: 'Today' and its clock time (IST)");
+  // Ruling P18 (the verification fix, V-B; moved on purpose): the card's line of a closed row from another day is its day,
+  // as the table row's (the HTML's seed holds only today's bills; ours lists older ones over All dates / a picked day).
   const older = orderAge({ ...settled("3", 500, 500), createdAt: "2026-10-17T14:46:00.000Z" }, NOW);
-  assert.deepEqual(older, { text: "17 Oct", short: "8:16 PM", tone: "plain" }, "an older day: '17 Oct' and its clock time");
+  assert.deepEqual(older, { text: "17 Oct", short: "17 Oct", tone: "plain" }, "an older day: '17 Oct' on the table row and on the card");
   const lastNight = orderAge({ ...settled("4", 500, 500), createdAt: "2026-10-18T18:29:00.000Z" }, NOW);
   assert.equal(lastNight.text, "18 Oct", "11:59 PM IST of the day before is not today (the cafe's midnight)");
+  assert.equal(lastNight.short, "18 Oct", "and its card reads the day too");
   const justAfterMidnight = orderAge({ ...settled("5", 500, 500), createdAt: "2026-10-18T18:31:00.000Z" }, NOW);
   assert.deepEqual(justAfterMidnight, { text: "Today", short: "12:01 AM", tone: "plain" }, "12:01 AM IST is today");
   const cancelled = orderAge(order("6", { status: "Cancelled", createdAt: minutesBefore(90) }), NOW);
@@ -92,6 +95,10 @@ test("orderAge / orderRowView (Ruling P8): a cancelled row's time and card age a
   const paid = { ...settled("10", 500, 500), createdAt: minutesBefore(20) };
   assert.equal(orderRowView(paid, NOW).time, "9:10 PM", "a settled row keeps createdAt");
   assert.equal(orderAge(paid, NOW).short, "9:10 PM", "and so does its card age");
+  // Ruling P18: the day is rowInstant's — a cancel of another day reads that day, even for an order opened before it.
+  const cancelledYesterday = order("11", { status: "Cancelled", createdAt: "2026-10-17T14:46:00.000Z", cancelledAt: "2026-10-18T12:00:00.000Z" });
+  assert.deepEqual(orderAge(cancelledYesterday, NOW), { text: "18 Oct", short: "18 Oct", tone: "plain" }, "cancelled yesterday: its cancel day on the row and the card");
+  assert.equal(orderRowView(cancelledYesterday, NOW).time, "5:30 PM", "the table row's time stays the cancel clock");
 });
 
 test("itemsSummary: '{qty}× {first item}' + ' +{n} more' (the HTML's), '—' for none", () => {

@@ -45,9 +45,12 @@ export function detailMeta(o: ListedOrder, now: Date): DetailMetaItem[] {
     items.push({ icon: "clock", text: `${clockTime(o.createdAt)} · ${age.short}`, tone: age.tone });
     return items;
   }
-  // A closed order (orderAge: `short` its clock time, `text` its day): the day only when it is not today.
-  const today = cafeDateString(new Date(rowInstant(o))) === cafeDateString(now);
-  items.push({ icon: "clock", text: today ? age.short : `${age.text} · ${age.short}`, tone: "plain" });
+  // A closed order (orderAge's `text` its day; the card's `short` is the day too when not today, Ruling P18): its clock
+  // time, the day first only when it is not today.
+  const instant = rowInstant(o);
+  const clock = clockTime(instant);
+  const today = cafeDateString(new Date(instant)) === cafeDateString(now);
+  items.push({ icon: "clock", text: today ? clock : `${age.text} · ${clock}`, tone: "plain" });
   return items;
 }
 

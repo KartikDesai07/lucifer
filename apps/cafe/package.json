@@ -221,6 +221,7 @@
     "lib/orders-cancel-sheet.test.ts",
     "lib/orders-choice.test.ts",
     "lib/use-media-query.test.ts",
+    "lib/use-opener-focus.test.ts",
     "lib/pos-categories.test.ts",
     "lib/pos-price-buttons.test.ts",
     "lib/pos-cart-view.test.ts",

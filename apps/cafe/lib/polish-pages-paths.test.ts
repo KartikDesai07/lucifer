@@ -857,19 +857,23 @@ const SWITCH_SPECS: ReadonlyArray<readonly [string, Breakpoint, SwitchNeed]> = [
   [STAFF_PAGE, "lg", { block: true, hidden: true }],
 ];
 
-// U2 Task 4 (2026-10-23; design 5, 6.4; values 0.2, 8, 9): the Orders list (OrderTable.tsx) sits in its own @container
-// and switches by the list's width: the table rows and head from a 700px list (`hidden @min-[700px]:grid`), the card rows
-// below it (`@min-[700px]:hidden`); no viewport block/hidden/grid/flex switch remains. Today's row icon buttons (View,
-// Settle, Cancel; P16) are gone: the whole row opens the order through its title button, the table row's "Settle"
-// opens it too (Q6), and Cancel moves into the detail (design 6.9).
+// U2 Task 4 (2026-10-23; design 5, 6.4; values 0.2, 8, 9): the Orders list (OrderTable.tsx) switches by the list's
+// width: the table rows and head from a 700px list, the card rows below it; no viewport block/hidden/grid/flex switch
+// remains. Today's row icon buttons (View, Settle, Cancel; P16) are gone: the whole row opens the order through its title
+// button, the table row's "Settle" opens it too (Q6), and Cancel moves into the detail (design 6.9). The verification fix
+// (V-A, classic scrollbars; moved on purpose): the width is the list COLUMN's — the named container `list`
+// (lib/orders-layout.ts ORDERS_LIST_COLUMN_CLASS), outside the list scroller — so the switch sits at 740px (the HTML's
+// 700px list + the scroller's 20 + 20): `hidden @min-[740px]/list:grid`, `@min-[740px]/list:hidden`; the list keeps no
+// container of its own inside the scroller, where a ~15px classic scrollbar narrowed it.
 const VIEWPORT_SWITCH_RE = /(?<![\w:@[-])(?:sm|md|lg|xl):(?:block|hidden|grid|flex)(?![\w-])/;
 const pinOrderList: Pin = (raw) => {
   const p: string[] = [];
   const s = strip(raw);
   const literals = Array.from(s.matchAll(/"([^"\n]*)"/g), (m) => m[1].split(/\s+/).filter(Boolean));
-  check(p, literals.some((t) => t.includes("@container")), "the list box must sit in its own @container (the list's width, values 0.2)");
-  check(p, literals.some((t) => t.includes("hidden") && t.includes("@min-[700px]:grid")), "a class string must carry `hidden` AND `@min-[700px]:grid` (the table)");
-  check(p, literals.some((t) => t.includes("@min-[700px]:hidden")), "a class string must carry `@min-[700px]:hidden` (the cards)");
+  check(p, !literals.some((t) => t.some((c) => c.startsWith("@container"))), "the list keeps no @container of its own inside the scroller (a classic scrollbar narrows it): it reads the list column's named `list` (values 0.2)");
+  check(p, literals.some((t) => t.includes("hidden") && t.includes("@min-[740px]/list:grid")), "a class string must carry `hidden` AND `@min-[740px]/list:grid` (the table)");
+  check(p, literals.some((t) => t.includes("@min-[740px]/list:hidden")), "a class string must carry `@min-[740px]/list:hidden` (the cards)");
+  check(p, !/@min-\[\d+px\]:/.test(s), "no unnamed container query (it would measure a nearer container, not the list column)");
   check(p, !VIEWPORT_SWITCH_RE.test(s), "no viewport block/hidden/grid/flex switch may remain (the list follows its own width)");
   check(p, s.includes('data-ui="orders-row-settle"'), "landmark: the table row's Settle exists");
   check(p, !s.includes('size="icon"') && !/\bBRAND_ROW_ACTION_CLASS\b/.test(s), "no icon-only row actions (design 6.4: the whole row opens the order)");
@@ -881,11 +885,12 @@ const ORDER_LIST_CASE: PinCase = {
   file: ORDER_TABLE,
   pin: pinOrderList,
   mutations: [
-    repEvery("the table switched at the window's xl", "@min-[700px]:grid", "xl:grid"),
-    repEvery("the cards switched at the window's xl", "@min-[700px]:hidden", "xl:hidden"),
-    repEvery("the threshold drifts (@min-[760px])", "@min-[700px]:hidden", "@min-[760px]:hidden"),
-    rep("a stale xl:hidden beside it", "@min-[700px]:hidden", "@min-[700px]:hidden xl:hidden"),
-    rep("the list box loses its own container", 'const WRAP_CLASS = "@container";', 'const WRAP_CLASS = "contents";'),
+    repEvery("the table switched at the window's xl", "@min-[740px]/list:grid", "xl:grid"),
+    repEvery("the cards switched at the window's xl", "@min-[740px]/list:hidden", "xl:hidden"),
+    repEvery("the threshold drifts back to the list's own 700px", "@min-[740px]/list:hidden", "@min-[700px]/list:hidden"),
+    rep("a stale xl:hidden beside it", "@min-[740px]/list:hidden", "@min-[740px]/list:hidden xl:hidden"),
+    rep("the list measures inside the scroller again (a container of its own)", 'const BOX_CLASS = "', 'const BOX_CLASS = "@container '),
+    repEvery("an unnamed query (the nearest container, not the list column)", "@min-[740px]/list:", "@min-[740px]:"),
     rep("a View icon comes back", 'data-ui="orders-row-settle"', 'data-ui="orders-row-settle" aria-label="View order"'),
     { name: "an icon button comes back", apply: (src) => `${src}\nexport const probe = <Button size="icon" />;\n` },
   ],
@@ -998,7 +1003,7 @@ const CONTROL_FILES = [
 // lib/orders-cancel-paths.test.ts pins it. It stays in the copy-hygiene list (P23).
 // U2 Task 4 (2026-10-23): the Orders page and OrderTable left the panel, contain and row-action lists on purpose (P6,
 // P16): the list box is the owner's HTML surface (--surface, 1px --border, radius 12; values 8.1) drawn by OrderTable.tsx,
-// not the brand paper panel; it is no kit <Table> (no inline-size containment: it sits in its own @container); its row
+// not the brand paper panel; it is no kit <Table> (no inline-size containment: it reads the list column's @container); its row
 // icon buttons are gone (design 6.4). ORDER_LIST_CASE (D5) pins the new list; the page keeps BRAND_CONTROL_CLASS on
 // "Clear filters".
 const PANEL_FILES = [

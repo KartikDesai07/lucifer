@@ -15,6 +15,7 @@ import { stripComments } from "./source-pin-utils";
 import { classesOf, expectAll, tagOf } from "./class-tags.fixtures";
 import { STATUS_CLASSES } from "./ui";
 import { listHead } from "./orders-row";
+import { ORDERS_SCROLLER_CLASS } from "./orders-layout";
 import { NOW, minutesBefore, order, printed, settled } from "./orders-lanes.fixtures";
 import { OrderTable } from "@/components/orders/OrderTable";
 import { OrdersListHead, OrdersLoadMore } from "@/components/orders/OrdersListParts";
@@ -62,17 +63,24 @@ const ROWS = [
 const COLS = "minmax(0,1.3fr)_minmax(0,1fr)_92px_124px_92px_84px";
 const COLS_ITEMS = "minmax(150px,1.3fr)_minmax(110px,1fr)_minmax(140px,1.4fr)_92px_124px_92px_84px";
 
-test("OrderTable: the list box in its own container; the table head from a 700px list (the Items cell from 900px), values 8.1", () => {
+// The verification fix (V-A, classic scrollbars; moved on purpose): the list box's own container sat INSIDE the list
+// scroller, so a classic (Windows, Electron) scrollbar of ~15px narrowed it and moved the HTML's thresholds (1024 lost the
+// Items column, 820 became cards when the list overflowed). The form is measured on the list column now — the named
+// container `list` (lib/orders-layout.ts ORDERS_LIST_COLUMN_CLASS), outside the scroller — at the HTML's listW
+// thresholds plus the scroller's 20 + 20 side padding: the table from a 740px column, the Items column from 940px.
+test("OrderTable: the list box, measured on the list column (no container of its own inside the scroller); the table head from a 740px column = a 700px list (the Items cell from 940px = 900px), values 8.1", () => {
   const html = tableHtml({ orders: ROWS });
-  expectAll(tagOf(html, "orders-list-wrap"), ["@container"], "the list measures its own width (values 0.2 listW)");
+  assert.equal(tagOf(html, "orders-list-wrap"), "", "no wrapper container of its own: the scroller's scrollbar cannot narrow what is measured");
+  assert.match(html, /^<div data-ui="orders-list-box"/, "the list box is the outermost element");
+  assert.ok(!html.includes("@container"), "no container inside the list: its queries reach the list column's named one");
   expectAll(tagOf(html, "orders-list-box"), ["overflow-hidden", "rounded-[12px]", "border", "border-border", "bg-card"], "values 8.1 list box");
   expectAll(
     tagOf(html, "orders-table-head"),
-    ["hidden", "@min-[700px]:grid", `grid-cols-[${COLS}]`, `@min-[900px]:grid-cols-[${COLS_ITEMS}]`, "gap-3", "px-4", "py-2.5", "bg-surface-2", "border-b", "border-border", "text-[11px]", "font-semibold", "tracking-[.06em]", "uppercase", "text-subtle-foreground"],
+    ["hidden", "@min-[740px]/list:grid", `grid-cols-[${COLS}]`, `@min-[940px]/list:grid-cols-[${COLS_ITEMS}]`, "gap-3", "px-4", "py-2.5", "bg-surface-2", "border-b", "border-border", "text-[11px]", "font-semibold", "tracking-[.06em]", "uppercase", "text-subtle-foreground"],
     "values 8.1 head",
   );
   assert.deepEqual(textsOf(html, "orders-table-head-cell"), ["Order", "Customer", "Items", "Time", "Status", "Amount", ""], "design 11 head words");
-  expectAll(tagOf(html, "orders-table-head-cell", 2), ["hidden", "@min-[900px]:block"], "the Items head from a 900px list");
+  expectAll(tagOf(html, "orders-table-head-cell", 2), ["hidden", "@min-[940px]/list:block"], "the Items head from a 940px column (a 900px list)");
   expectAll(tagOf(html, "orders-table-head-cell", 5), ["text-right"], "Amount right-aligned");
 });
 
@@ -83,10 +91,10 @@ test("OrderTable rows: a table row and a card row per order, switched by the lis
   assert.equal(rows.length, 4, "a table row per order");
   assert.equal(cards.length, 4, "a card row per order");
   for (const [i, tag] of rows.entries()) {
-    expectAll(tag, ["relative", "hidden", "@min-[700px]:grid", `grid-cols-[${COLS}]`, `@min-[900px]:grid-cols-[${COLS_ITEMS}]`, "items-center", "gap-3", "px-4", "py-[11px]"], `table row ${i + 1} (values 8.1)`);
+    expectAll(tag, ["relative", "hidden", "@min-[740px]/list:grid", `grid-cols-[${COLS}]`, `@min-[940px]/list:grid-cols-[${COLS_ITEMS}]`, "items-center", "gap-3", "px-4", "py-[11px]"], `table row ${i + 1} (values 8.1)`);
   }
   for (const [i, tag] of cards.entries()) {
-    expectAll(tag, ["relative", "flex", "@min-[700px]:hidden", "flex-col", "gap-1.5", "px-3.5", "py-3"], `card row ${i + 1} (values 9.1)`);
+    expectAll(tag, ["relative", "flex", "@min-[740px]/list:hidden", "flex-col", "gap-1.5", "px-3.5", "py-3"], `card row ${i + 1} (values 9.1)`);
   }
   expectAll(rows[0], ["border-t-0", "bg-accent"], "the first row has no top rule; the chosen row on --accent-t");
   expectAll(rows[1], ["border-t", "border-border-2", "hover:bg-hover"], "the next rows: a --border-2 rule, the intended --hover");
@@ -121,7 +129,7 @@ test("OrderTable row cells: tile, title, sub, customer, items, time and age, the
   assert.equal(textsOf(html, "orders-row-sub")[0], "#014 · Dine-in · Token 12", "the sub");
   assert.deepEqual(textsOf(html, "orders-row-customer"), ["Walk-in", "Walk-in", "Walk-in", "Walk-in"], "walk-ins");
   expectAll(tagOf(html, "orders-row-customer-sub"), ["block", "truncate", "text-[12px]", "text-subtle-foreground"], "values 8.1 customer sub");
-  expectAll(tagOf(html, "orders-row-items"), ["hidden", "@min-[900px]:block", "min-w-0", "truncate", "text-[13px]", "text-muted-foreground"], "the Items cell");
+  expectAll(tagOf(html, "orders-row-items"), ["hidden", "@min-[940px]/list:block", "min-w-0", "truncate", "text-[13px]", "text-muted-foreground"], "the Items cell");
   expectAll(tagOf(html, "orders-row-time"), ["block", "whitespace-nowrap", "text-[13px]"], "the time");
   assert.equal(textsOf(html, "orders-row-time")[0], "8:22 PM", "the clock time");
   assert.equal(textsOf(html, "orders-row-age")[0], "Open 1h 8m", "the age");
@@ -144,7 +152,7 @@ test("OrderTable row cells: tile, title, sub, customer, items, time and age, the
   assert.deepEqual(textsOf(html, "orders-row-settle"), ["Settle", "Settle"], "the word");
 });
 
-test("OrderTable cards: tile 38, title + number, customer · items, the amount and the age (open) or the clock (settled), the pill and the due (values 9.1)", () => {
+test("OrderTable cards: tile 38, title + number, customer · items, the amount and the age (open), the clock (closed today) or the day (closed before), the pill and the due (values 9.1, Ruling P18)", () => {
   const html = tableHtml({ orders: ROWS });
   expectAll(tagOf(html, "orders-card-tile"), ["size-[38px]", "rounded-[9px]", "text-[12px]", "font-bold"], "the 38px tile");
   expectAll(tagOf(html, "orders-card-line1"), ["block", "truncate", "text-[14.5px]", "font-semibold"], "line 1");
@@ -153,7 +161,19 @@ test("OrderTable cards: tile 38, title + number, customer · items, the amount a
   expectAll(tagOf(html, "orders-card-line2"), ["block", "truncate", "text-[12.5px]", "text-muted-foreground"], "line 2");
   assert.equal(textsOf(html, "orders-card-line2")[0], "Walk-in · —", "customer · items");
   expectAll(tagOf(html, "orders-card-amount"), ["block", "font-mono", "text-[14.5px]", "font-semibold"], "the amount");
-  assert.deepEqual(textsOf(html, "orders-card-age"), ["1h 8m", "5 min", "9:25 PM", "9:25 PM"], "the age (open) or the clock (settled)");
+  assert.deepEqual(textsOf(html, "orders-card-age"), ["1h 8m", "5 min", "9:25 PM", "9:25 PM"], "the age (open) or the clock (closed today)");
+  // Ruling P18 (the verification fix, V-B): over All dates / Yesterday / a picked day, closed rows of another day read
+  // their day ("17 Oct") where today's read the clock, so "#014" of two days never look alike; the table row's line
+  // under its time already reads the day.
+  const older = tableHtml({
+    orders: [
+      { ...settled("020", 500, 500), createdAt: "2026-10-17T14:46:00.000Z" },
+      order("021", { status: "Cancelled", createdAt: "2026-10-18T10:00:00.000Z", cancelledAt: "2026-10-18T12:00:00.000Z" }),
+    ],
+  });
+  assert.deepEqual(textsOf(older, "orders-card-age"), ["17 Oct", "18 Oct"], "a closed card of another day: its day (a cancelled one its cancel day)");
+  assert.deepEqual(textsOf(older, "orders-row-age"), ["17 Oct", "18 Oct"], "the table row's line: the same day");
+  assert.deepEqual(textsOf(older, "orders-row-time"), ["8:16 PM", "5:30 PM"], "the table row's time stays the clock");
   expectAll(tagOf(html, "orders-card-bottom"), ["flex", "items-center", "gap-2", "pl-12"], "the bottom line under the text column");
   expectAll(tagOf(html, "orders-card-pill"), ["h-[22px]", "px-2", "text-[11.5px]", "font-semibold"], "the card pill");
   assert.deepEqual(textsOf(html, "orders-card-due"), ["₹954 due"], "the due next to the pill");
@@ -164,7 +184,7 @@ test("OrderTable states: 6 skeleton rows in the current form while loading; the 
   const loading = tableHtml({ loading: true, orders: ROWS });
   assert.equal(tagsOf(loading, "orders-skeleton-row").length, 6, "6 skeleton rows");
   assert.equal(tagsOf(loading, "orders-row").length, 0, "no rows while loading");
-  expectAll(tagOf(loading, "orders-skeleton-row"), ["h-[90px]", "@min-[700px]:h-[58px]"], "the card row's 90px, the table row's 58px");
+  expectAll(tagOf(loading, "orders-skeleton-row"), ["h-[90px]", "@min-[740px]/list:h-[58px]"], "the card row's 90px, the table row's 58px");
   assert.ok(tagOf(loading, "orders-table-head").length > 0, "the table head stays");
   const action = createElement("button", { type: "button", "data-ui": "probe-action" }, "Clear filters");
   const empty = tableHtml({ empty: { title: "No due orders today", text: "They will show up here as they happen." }, emptyAction: action });
@@ -183,17 +203,55 @@ test("OrderTable states: 6 skeleton rows in the current form while loading; the 
   const at = offline.indexOf('data-ui="probe-offline"');
   assert.ok(box >= 0 && head > box && at > head, "the notice renders inside the list box, after the table head");
   assert.equal(tagsOf(offline, "orders-row").length + tagsOf(offline, "orders-skeleton-row").length + tagsOf(offline, "orders-empty").length, 0, "the notice takes the rows' place");
-  expectAll(tagOf(tableHtml({ notice: line }), "orders-list-wrap"), ["@container"], "the same list box frame");
+  expectAll(tagOf(tableHtml({ notice: line }), "orders-list-box"), ["overflow-hidden", "rounded-[12px]", "border", "bg-card"], "the same list box frame");
 });
 
 test("Ruling P7: the Order and Customer columns give way (min 0) only where the HTML's minimums would overflow; the Items variant is the HTML's", () => {
   const src = read(TABLE);
-  assert.ok(src.includes(`"grid-cols-[${COLS}] @min-[900px]:grid-cols-[${COLS_ITEMS}]"`), "COLS_CLASS: min 0 without Items, the HTML's minimums with Items");
+  assert.ok(src.includes(`"grid-cols-[${COLS}] @min-[940px]/list:grid-cols-[${COLS_ITEMS}]"`), "COLS_CLASS: min 0 without Items, the HTML's minimums with Items");
   // values 8.2: at a 764px list (c1280) the box's content is 730 - 392 fixed - 60 gaps = 278 = 2.3fr, so the fr columns
   // are 157.125 / 120.875 with either minimum; at 704 (t820) 670 - 452 = 218 < 150 + 110, so min 0 keeps Settle whole.
   const fr = (listW: number): number => (listW - 2 - 32 - 392 - 60) / 2.3;
   assert.ok(Math.abs(fr(764) * 1.3 - 157.125) < 0.01 && Math.abs(fr(764) - 120.875) < 0.01, "c1280 widths unchanged");
   assert.ok(fr(704) * 1.3 < 150 && fr(704) * 2.3 + 452 === 670, "t820: the HTML's minimums would overflow; min 0 fits the box");
+});
+
+// The verification fix (V-A): the HTML's form is a function of listW = the list column's width minus the list padding
+// (values 0.2: 20 + 20 from 720px, 12 + 12 on the phone); ours of the column's own width (a named container outside the
+// scroller, so no scrollbar takes part). For every column width they agree, and at the plan's viewports they land where
+// the compare has them: d1280 cards, c1280 table, t1024 table + Items (the owner's no-column rule), t820 table, p390 cards.
+test("the list's form on the list column equals the HTML's on listW at every width (thresholds = 700 / 900 + the scroller's 20 + 20); a scrollbar never moves them", () => {
+  const src = read(TABLE);
+  const at = (re: RegExp, what: string): number => {
+    const m = re.exec(src);
+    assert.ok(m, `landmark: ${what}`);
+    return Number(m![1]);
+  };
+  const tableFrom = at(/"hidden @min-\[(\d+)px\]\/list:grid /, "the table head's switch");
+  const itemsFrom = at(/ITEMS_CLASS = "hidden @min-\[(\d+)px\]\/list:block /, "the Items cell's switch");
+  assert.equal(at(/CARD_CLASS = "relative flex @min-\[(\d+)px\]\/list:hidden /, "the cards' switch"), tableFrom, "the cards hide exactly where the table shows");
+  // The list padding the HTML subtracts is the scroller's own (lib/orders-layout.ts): px-5 (20) from 720px, px-3 (12) below.
+  const pads = ORDERS_SCROLLER_CLASS.split(/\s+/);
+  assert.ok(pads.includes("px-5") && pads.includes("max-tab:px-3"), "the scroller's side padding: 20 + 20, 12 + 12 on the phone (values 2.2 listPad)");
+  const PHONE_BELOW = 720;
+  const html = (col: number): string => {
+    const listW = col - (col < PHONE_BELOW ? 24 : 40);
+    return listW >= 900 ? "table+items" : listW >= 700 ? "table" : "cards";
+  };
+  const ours = (col: number): string => (col >= itemsFrom ? "table+items" : col >= tableFrom ? "table" : "cards");
+  for (let col = 280; col <= 1700; col += 1) assert.equal(ours(col), html(col), `a ${col}px list column`);
+  const SCROLLBAR = 15;
+  for (const col of [744, 948]) assert.equal(ours(col), html(col), `${col}: the column is measured, so a ${SCROLLBAR}px scrollbar inside the scroller changes nothing`);
+  // The plan's viewports (values 0.2: the nav 232 / 76; the detail column 400 from 1280; none below 1280, owner rule).
+  const viewports: [string, number, string][] = [
+    ["d1280", 1280 - 232 - 400, "cards"],
+    ["c1280", 1280 - 76 - 400, "table"],
+    ["t1024", 1024 - 76, "table+items"],
+    ["t820", 820 - 76, "table"],
+    ["p390", 390, "cards"],
+    ["x1600", 1600 - 232 - 400, "table+items"],
+  ];
+  for (const [name, col, form] of viewports) assert.equal(ours(col), form, `${name} (a ${col}px column): ${form}, as the compare rows have it`);
 });
 
 test("OrdersListHead: the count in 600 --text, the scope, the sort words; the Due note under it (values 7, Q9)", () => {
@@ -230,13 +288,15 @@ test("OrdersLoadMore: a 40px button in the Filters button's look; Load more / Lo
   assert.equal(more({ more: false }), "", "nothing when nothing more can be loaded");
 });
 
-test("OrderTable source: no View / Settle / Cancel icon buttons, no xl switch, container queries at 700px and 900px (design 6.4, values 0.2)", () => {
+test("OrderTable source: no View / Settle / Cancel icon buttons, no xl switch, queries on the list column at 740px and 940px (design 6.4, values 0.2)", () => {
   const src = read(TABLE);
   assert.ok(!src.includes('aria-label="View order"'), "no 'View order' eye: the whole row opens");
   assert.ok(!src.includes('size="icon"'), "no icon buttons");
   assert.ok(!src.includes("onCancel"), "Cancel moves into the detail (design 6.9)");
-  assert.ok(src.includes("@min-[700px]:"), "the table from a 700px list");
-  assert.ok(src.includes("@min-[900px]:"), "the Items column from a 900px list");
+  assert.ok(src.includes("@min-[740px]/list:"), "the table from a 740px column (a 700px list)");
+  assert.ok(src.includes("@min-[940px]/list:"), "the Items column from a 940px column (a 900px list)");
+  assert.ok(!/@min-\[\d+px\]:/.test(src), "no unnamed container query (it would measure a nearer container)");
+  assert.ok(!src.includes("@container"), "no container of its own inside the scroller (a classic scrollbar would narrow it)");
   assert.ok(!/(?<![\w@[-])(?:md|lg|xl):(?:block|hidden|grid|flex)\b/.test(src), "no viewport breakpoint switch");
   // Each button's own handler (fix round 1): the opening tag of the element carrying the data-ui must call onChoose.
   for (const ui of ["orders-row-open", "orders-card-open", "orders-row-settle"]) {

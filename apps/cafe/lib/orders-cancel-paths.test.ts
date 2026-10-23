@@ -11,6 +11,8 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { stripComments } from "./source-pin-utils";
+import { cn } from "./utils";
+import * as frame from "./sheet-frame";
 
 const CAFE_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const read = (rel: string): string => stripComments(readFileSync(path.join(CAFE_ROOT, rel), "utf8").replace(/\r\n/g, "\n"));
@@ -73,8 +75,10 @@ test("the dashboard gives no cancel (it mounts no cancel dialog): no 'Cancel thi
 test("CancelOrderDialog: the HTML confirm sheet (lib/sheet-frame.ts CONFIRM_SHEET_*) — the scrim holds the 420px panel; title, today's sentence, the reason, then Cancel order and Keep order", () => {
   const src = read(DIALOG);
   assert.match(src, /import \* as DialogPrimitive from "@radix-ui\/react-dialog";/, "a Radix dialog (the field takes the focus as it opens, as today)");
-  const overlay = src.indexOf('<DialogPrimitive.Overlay data-ui="cancel-sheet" className={CONFIRM_SHEET_SCRIM_CLASS}>');
-  const content = src.search(/<DialogPrimitive\.Content\s+data-ui="cancel-panel"\s+className=\{CONFIRM_SHEET_PANEL_CLASS\}/);
+  // The verification fix (Ruling P17; moved on purpose): the scrim and the panel wear the cancel sheet's own classes,
+  // composed over U1's CONFIRM_SHEET_* (pinned below), so on a phone the sheet opens at the window's top.
+  const overlay = src.indexOf('<DialogPrimitive.Overlay data-ui="cancel-sheet" className={CANCEL_SCRIM_CLASS}>');
+  const content = src.search(/<DialogPrimitive\.Content\s+data-ui="cancel-panel"\s+\{\.\.\.openerFocus\}\s+className=\{CANCEL_PANEL_CLASS\}/);
   assert.ok(overlay > 0 && content > overlay && src.indexOf("</DialogPrimitive.Overlay>") > src.indexOf("</DialogPrimitive.Content>"), "the scrim holds the panel (U1's confirm frame)");
   assert.match(src, /<DialogPrimitive\.Title className=\{CONFIRM_SHEET_TITLE_CLASS\}>Cancel \{order\.orderId\}\?<\/DialogPrimitive\.Title>/, "the title, today's words");
   assert.match(
@@ -87,6 +91,66 @@ test("CancelOrderDialog: the HTML confirm sheet (lib/sheet-frame.ts CONFIRM_SHEE
   assert.match(src, /<div data-ui="cancel-buttons" className=\{BUTTONS_CLASS\}>/, "stacked 8px apart");
   assert.match(src, /const BUTTONS_CLASS = "flex flex-col gap-2";/, "values 12.1 buttons (a literal at the call site, as the move sheet's)");
   assert.ok(!src.includes("BRAND_CONTROL_CLASS") && !src.includes("@/components/ui/dialog"), "the kit dialog and its h-10 control are gone (P22 moved on purpose)");
+});
+
+// Ruling P17 (the verification fix, V-C F1): the Android keyboard never resizes the WebView, so a sheet along the
+// window's foot lies under it while the reason is typed. Below 720px the cancel sheet (our own reason field; the HTML
+// confirm has none) opens at the window's TOP instead: 16px under the top edge plus the top safe-area inset, radius 14
+// all round, the same full width and inner layout (padding 20 all round: no bottom inset away from the foot). Only this
+// sheet: U1's ConfirmDialog keeps its bottom frame (the shared CONFIRM_SHEET_* strings are pinned unchanged in
+// lib/sheet-frame.test.ts).
+const FRAME = frame as unknown as Record<string, string>;
+/** A module-level `const NAME = cn(...)` in the dialog, resolved through the real cn(): its string arguments as written,
+ *  its identifiers from lib/sheet-frame.ts — the class string the element renders. */
+function composedConst(src: string, name: string): string {
+  const m = src.match(new RegExp(`const ${name} = cn\\(([\\s\\S]*?)\\);\\n`));
+  assert.ok(m, `landmark: const ${name} = cn(...)`);
+  const args = m![1].match(/"[^"]*"|[A-Z][A-Z0-9_]*/g) ?? [];
+  return cn(
+    ...args.map((a) => {
+      if (a.startsWith('"')) return a.slice(1, -1);
+      assert.ok(a in FRAME, `${name}: ${a} comes from lib/sheet-frame.ts`);
+      return FRAME[a];
+    }),
+  );
+}
+const sorted = (cls: string): string[] => cls.split(/\s+/).filter(Boolean).sort();
+
+test("CancelOrderDialog (Ruling P17): below 720px the sheet opens at the window's top (16px + the top inset, radius 14 all round), composed over U1's confirm frame; 720px and up it is U1's centred panel", () => {
+  const src = read(DIALOG);
+  assert.match(src, /const CANCEL_SCRIM_CLASS = cn\(CONFIRM_SHEET_SCRIM_CLASS, "[^"]*"\);/, "the scrim: U1's confirm scrim plus the cancel sheet's own literal");
+  assert.match(src, /const CANCEL_PANEL_CLASS = cn\(CONFIRM_SHEET_PANEL_CLASS, "[^"]*"\);/, "the panel: U1's confirm panel plus the cancel sheet's own literal");
+  const scrim = composedConst(src, "CANCEL_SCRIM_CLASS");
+  assert.deepEqual(
+    sorted(scrim),
+    sorted("fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4 font-sans leading-[normal] text-foreground motion-safe:animate-scrim-in max-tab:items-start max-tab:p-0 max-tab:pt-[calc(16px+env(safe-area-inset-top))]"),
+    "the scrim: centred in 16px from 720px; below, the panel at the top, 16px + the top inset under the edge, full width",
+  );
+  assert.ok(!sorted(scrim).includes("max-tab:items-end"), "never along the window's foot below 720px (the keyboard would cover it)");
+  const panel = composedConst(src, "CANCEL_PANEL_CLASS");
+  assert.deepEqual(
+    sorted(panel),
+    sorted("flex w-full max-w-[420px] flex-col gap-4 rounded-[14px] border border-border bg-card p-5 [box-shadow:var(--pop)] outline-none motion-safe:animate-sheet-in max-tab:rounded-[14px] max-tab:pb-5"),
+    "the panel: U1's 420px confirm panel; below 720px radius 14 all round and padding 20 all round (no bottom inset: it is not at the foot)",
+  );
+  for (const gone of ["max-tab:rounded-[14px_14px_0_0]", "max-tab:pb-[calc(20px+env(safe-area-inset-bottom))]"]) {
+    assert.ok(!sorted(panel).includes(gone), `the foot-sheet look goes on the cancel sheet: ${gone}`);
+  }
+  assert.ok(sorted(frame.CONFIRM_SHEET_SCRIM_CLASS).includes("max-tab:items-end"), "U1's ConfirmDialog keeps its bottom frame (the shared string unchanged)");
+  assert.ok(sorted(frame.CONFIRM_SHEET_PANEL_CLASS).includes("max-tab:rounded-[14px_14px_0_0]"), "U1's confirm panel keeps its foot radius");
+});
+
+// V-C F4 (the verification fix): the sheet is opened from the page's state (no Radix trigger), so its close focus fell
+// to <body>. The shared hook (hooks/use-opener-focus.ts, U1 ruling P22) gives the focus back to the opener (the detail's
+// "Cancel this order") on "Keep order" and Escape; `focusPanel: false` keeps the reason field's focus on open (Ruling
+// P17), Radix's own first-control focus, as today.
+test("CancelOrderDialog: the focus goes back to what opened it (Keep order, Escape) through the shared opener hook; the reason field keeps the focus on open", () => {
+  const src = read(DIALOG);
+  assert.match(src, /import \{ useOpenerFocus \} from "@\/hooks\/use-opener-focus";/, "the shared hook");
+  assert.match(src, /const openerFocus = useOpenerFocus\(\{ focusPanel: false \}\);/, "the close half only: the open focus stays Radix's (the field)");
+  assert.ok(src.indexOf("useOpenerFocus({ focusPanel: false })") < src.indexOf("if (!order) return null;"), "called before the early return (one hook order every render)");
+  assert.equal(src.split("{...openerFocus}").length - 1, 1, "spread once, on the panel");
+  assert.ok(!/\bautoFocus\b|onOpenAutoFocus=|onCloseAutoFocus=/.test(src), "no other focus handling on the sheet");
 });
 
 // The final fix wave (the whole-branch review's Important 1b): on touch below 1280 the sheet sits over the detail's bottom

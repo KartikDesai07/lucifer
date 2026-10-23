@@ -74,7 +74,8 @@ export type AgeTone = "bad" | "warn" | "plain";
 export interface OrderAge {
   /** The table row's line under the time: "Open 1h 8m", or "Today" / "17 Oct". */
   text: string;
-  /** The card's line under the amount: the age without "Open ", or the clock time. */
+  /** The card's line under the amount: the age without "Open ", or the clock time today, else the day ("17 Oct",
+   *  Ruling P18). */
   short: string;
   tone: AgeTone;
 }
@@ -99,8 +100,10 @@ export function rowInstant(o: Order): string {
 
 /**
  * How old the row is (values 0.1): an open tab "Open {m} min" / "Open {h}h {m}m" with m = max(1, round(minutes)),
- * --warn-i from 30 minutes and --bad-i from 60 (600); any other order "Today" or its day ("17 Oct") with the clock time
- * on the card (rowInstant: a cancelled one its cancel time), in --text-3.
+ * --warn-i from 30 minutes and --bad-i from 60 (600); any other order "Today" with the clock time on the card, or its
+ * day ("17 Oct") on both (rowInstant: a cancelled one its cancel time), in --text-3. Ruling P18 (the verification fix,
+ * V-B): the HTML's card shows the clock (its seed holds only today's bills); ours lists older days too (All dates,
+ * Yesterday, a picked day), where the clock alone made rows of two days alike ("#014" repeats daily).
  */
 export function orderAge(o: Order, now: Date): OrderAge {
   if (o.status === "Pending") {
@@ -111,8 +114,9 @@ export function orderAge(o: Order, now: Date): OrderAge {
   }
   const instant = rowInstant(o);
   const at = new Date(instant);
-  const text = cafeDateString(at) === cafeDateString(now) ? "Today" : DAY_MONTH.format(at);
-  return { text, short: clockTime(instant), tone: "plain" };
+  if (cafeDateString(at) === cafeDateString(now)) return { text: "Today", short: clockTime(instant), tone: "plain" };
+  const day = DAY_MONTH.format(at);
+  return { text: day, short: day, tone: "plain" };
 }
 
 /** The items (the HTML's): "{qty}× {first item}" + " +{n} more" for more lines; "—" for none. */

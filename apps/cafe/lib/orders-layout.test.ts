@@ -72,13 +72,24 @@ test("ORDERS_BODY_CLASS: one column below 1280px, the list and the 400px detail 
   assert.deepEqual(cols, ["grid-cols-[minmax(0,1fr)]", "xl:grid-cols-[minmax(0,1fr)_400px]"], "no column set at any other width: below 1280px the detail is never a column");
 });
 
-test("ORDERS_LIST_COLUMN_CLASS: a container (the list's form follows its own width, values 0.2), a flex column that may shrink", () => {
-  hasAll(ORDERS_LIST_COLUMN_CLASS, ["@container", "flex", "flex-col", "min-w-0", "min-h-0"], "values 2.2 list column");
+// The verification fix (V-A, classic scrollbars; moved on purpose): the list's form is measured on the list COLUMN, a
+// named container outside the list scroller (components/orders/OrderTable.tsx reads `@…/list`), so a classic (Windows,
+// Electron) scrollbar in the scroller can never narrow what is measured; the thresholds add the scroller's side padding
+// back (lib/orders-list-view.test.ts).
+test("ORDERS_LIST_COLUMN_CLASS: the named container `list` (the list's form follows the column's width, values 0.2), a flex column that may shrink", () => {
+  hasAll(ORDERS_LIST_COLUMN_CLASS, ["@container/list", "flex", "flex-col", "min-w-0", "min-h-0"], "values 2.2 list column");
+  assert.ok(!tokens(ORDERS_LIST_COLUMN_CLASS).includes("@container"), "named, so the list's queries reach it past any nearer container");
   hasAll(ORDERS_LIST_COLUMN_CLASS, ["leading-[normal]"], "the HTML sets no line-height in the list column: normal");
 });
 
-test("ORDERS_TOP_CLASS: the top block, padding 14px 20px 12px (10px 12px 12px on a phone), its parts 12px apart", () => {
-  hasAll(ORDERS_TOP_CLASS, ["flex", "flex-none", "flex-col", "gap-3", "pt-3.5", "px-5", "pb-3", "max-tab:pt-2.5", "max-tab:px-3"], "values 2.2 top block");
+// The verification fix (V-C F2; moved on purpose): in phone landscape (~862 x 390) the open Filters panel made the top
+// block taller than the list column, and as `flex: none` its Reset / Done fell below the window, out of reach. It may
+// shrink now and scrolls when taller than the column (the scroller's basis is 0, so the top block shrinks only then);
+// wherever it fits nothing moves.
+test("ORDERS_TOP_CLASS: the top block, padding 14px 20px 12px (10px 12px 12px on a phone), its parts 12px apart; it shrinks and scrolls only when taller than the list column", () => {
+  hasAll(ORDERS_TOP_CLASS, ["flex", "flex-col", "gap-3", "pt-3.5", "px-5", "pb-3", "max-tab:pt-2.5", "max-tab:px-3"], "values 2.2 top block");
+  hasAll(ORDERS_TOP_CLASS, ["flex-[0_1_auto]", "min-h-0", "overflow-y-auto", "overflow-x-hidden"], "flex: 0 1 auto; min-height: 0; it scrolls on its own when taller than the column (the Filters panel's Reset / Done reachable)");
+  assert.ok(!tokens(ORDERS_TOP_CLASS).includes("flex-none"), "no longer flex: none (it could push the panel's foot below the window)");
 });
 
 test("ORDERS_SCROLLER_CLASS: the list scroller, padding 0 20px 28px (0 12px 92px on a phone) plus the safe-area inset at its foot", () => {
@@ -86,6 +97,7 @@ test("ORDERS_SCROLLER_CLASS: the list scroller, padding 0 20px 28px (0 12px 92px
     ORDERS_SCROLLER_CLASS,
     [
       "flex-1",
+      "min-h-0",
       "overflow-y-auto",
       "overflow-x-hidden",
       "px-5",

@@ -19,6 +19,7 @@ import { useSettleFlow } from "@/hooks/use-settle-flow";
 import { useHostRouting } from "@/hooks/use-print-routing";
 import { useTokenPrint } from "@/hooks/use-token-print";
 import { useMediaQuery } from "@/hooks/use-media-query";
+import { useOpenerFocus } from "@/hooks/use-opener-focus";
 import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { OrderReceipt } from "@/components/pos/OrderReceipt";
@@ -487,8 +488,11 @@ interface DetailFrameProps {
 // HTML's words once the list has answered (nothing before). The side sheet (the dashboard from 1280px) is the kit sheet
 // over its scrim. The bottom sheet (both pages below 1280px) is the /pos cart sheet's: a Radix dialog over the whole
 // window, its overlay mounted and never drawn. Escape and the head's ✕ close both sheets; ruling P38: a press that
-// closes a nested dialog (the payment, the move: rendered beside the frame) never closes the sheet beneath.
+// closes a nested dialog (the payment, the move: rendered beside the frame) never closes the sheet beneath. Both sheets
+// open from state, with no Radix trigger: the shared opener hook (U1 ruling P22; V-C F4) gives the focus back to what
+// opened them (a row's title or Settle, a dashboard tile) as they close, the panel taking it as they open.
 function DetailFrame({ frame, open, waiting, onOpenChange, sheetRef, children }: DetailFrameProps) {
+  const openerFocus = useOpenerFocus();
   if (frame === null) return null;
   if (frame === "column") {
     return (
@@ -508,6 +512,7 @@ function DetailFrame({ frame, open, waiting, onOpenChange, sheetRef, children }:
       {frame === "side" ? (
         <SheetContent
           ref={sheetRef}
+          {...openerFocus}
           data-ui="order-detail"
           aria-describedby={undefined}
           className={ORDER_DETAIL_SIDE_CLASS}
@@ -520,6 +525,7 @@ function DetailFrame({ frame, open, waiting, onOpenChange, sheetRef, children }:
           <DialogPrimitive.Overlay className={ORDER_DETAIL_SHEET_SCRIM_CLASS} />
           <DialogPrimitive.Content
             ref={sheetRef}
+            {...openerFocus}
             data-ui="order-detail"
             aria-describedby={undefined}
             className={ORDER_DETAIL_SHEET_CLASS}

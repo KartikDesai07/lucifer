@@ -156,6 +156,25 @@ test("DetailFrame: no frame while the width is unknown; the column is a plain di
   assert.match(read(SHEET), /waiting=\{listPending\}/, "the page's pending list reaches the column");
 });
 
+// V-C F4 (the verification fix): both sheets open from state (a row's title or Settle on /orders, Live tables or Recent
+// orders on the dashboard), with no Radix trigger, so after the head's ✕ or Escape the focus fell to <body>. The shared
+// hook (hooks/use-opener-focus.ts, U1 ruling P22, as the payment, void, table, move and item options sheets) gives it back
+// to what opened the sheet; the panel takes the focus on open (no ring on the ✕). The column (≥1280 on /orders) has no
+// close: no hook there.
+test("DetailFrame: the side and bottom sheets give the focus back to what opened them (the shared opener hook); the column has none", () => {
+  const frame = functionSrc(read(SHEET), "DetailFrame");
+  assert.match(read(SHEET), /import \{ useOpenerFocus \} from "@\/hooks\/use-opener-focus";/, "the shared hook");
+  assert.match(frame, /const openerFocus = useOpenerFocus\(\);/, "one instance, the default form (the panel on open, the opener on close)");
+  assert.ok(frame.indexOf("useOpenerFocus()") < frame.indexOf("if (frame === null) return null;"), "called before the early returns (one hook order every render)");
+  assert.match(frame, /<SheetContent\s+ref=\{sheetRef\}[^>]*\{\.\.\.openerFocus\}[^>]*className=\{ORDER_DETAIL_SIDE_CLASS\}/, "the side sheet's panel");
+  assert.match(frame, /<DialogPrimitive\.Content\s+ref=\{sheetRef\}[^>]*\{\.\.\.openerFocus\}[^>]*className=\{ORDER_DETAIL_SHEET_CLASS\}/, "the bottom sheet's panel");
+  assert.equal(frame.split("{...openerFocus}").length - 1, 2, "exactly the two sheet panels");
+  const column = frame.slice(frame.indexOf('if (frame === "column")'), frame.indexOf("<Sheet open"));
+  assert.ok(!column.includes("openerFocus"), "the column branch: no dialog, no close, no focus handling");
+  hasAll(ORDER_DETAIL_SIDE_CLASS, ["outline-none"], "the side panel takes the focus on open with no outline (the bottom sheet's POS_CART_SHEET_CLASS has its own)");
+  hasAll(ORDER_DETAIL_SHEET_CLASS, ["outline-none"], "the bottom panel takes the focus on open with no outline");
+});
+
 test("OrderDetailSheet: the frame wraps the head, the body and the off-screen print sources; the payment and move dialogs stay beside it (mounted once at every width)", () => {
   const src = read(SHEET);
   const ret = src.slice(src.indexOf("  return (\n    <>\n      <DetailFrame"));

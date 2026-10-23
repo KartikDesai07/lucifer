@@ -8,33 +8,36 @@ import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Order } from "@/types";
 
-// The owner's HTML list (values 7-9, 10.3, 13; design 6.4, 6.5). The list box sits in its own container, so its form
-// follows the list's own width (values 0.2 listW): the table from 700px (the Items column from 900px), else the cards.
-// Both forms are drawn per row and one is hidden, as the HTML's. The list head, Load more and the offline line around
-// the box: OrdersListParts.tsx.
-const WRAP_CLASS = "@container";
+// The owner's HTML list (values 7-9, 10.3, 13; design 6.4, 6.5). Its form follows the list's own width (values 0.2
+// listW = the list column minus the scroller's 20 + 20 side padding): the table from a 700px list (the Items column from
+// 900px), else the cards. It is measured on the list column — the named container `list` (lib/orders-layout.ts
+// ORDERS_LIST_COLUMN_CLASS), outside the list scroller, so a classic (Windows, Electron) scrollbar can never narrow it
+// (the verification fix, V-A) — at the column's 740px / 940px; below 720px the phone is always cards. Both forms are
+// drawn per row and one is hidden, as the HTML's. The list head, Load more and the offline line around the box:
+// OrdersListParts.tsx.
 const BOX_CLASS = "overflow-hidden rounded-[12px] border border-border bg-card";
 // values 8.1's columns, except (Ruling P7) the Order and Customer columns may give way below the HTML's 150 / 110: at a
 // 704px list (t820) its minimums need 712px in a 670px box and clip "Settle"; at 764px (c1280) they are 157.125 /
-// 120.875 either way. With the Items column (a 900px list) the HTML's minimums always fit, so they stay.
+// 120.875 either way (a classic scrollbar's 15px narrower list still fits: min 0). With the Items column (a 900px list)
+// the HTML's minimums always fit, so they stay.
 const COLS_CLASS =
-  "grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_92px_124px_92px_84px] @min-[900px]:grid-cols-[minmax(150px,1.3fr)_minmax(110px,1fr)_minmax(140px,1.4fr)_92px_124px_92px_84px]";
+  "grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_92px_124px_92px_84px] @min-[940px]/list:grid-cols-[minmax(150px,1.3fr)_minmax(110px,1fr)_minmax(140px,1.4fr)_92px_124px_92px_84px]";
 const HEAD_CLASS =
-  "hidden @min-[700px]:grid gap-3 border-b border-border bg-surface-2 px-4 py-2.5 text-[11px] font-semibold tracking-[.06em] uppercase text-subtle-foreground";
+  "hidden @min-[740px]/list:grid gap-3 border-b border-border bg-surface-2 px-4 py-2.5 text-[11px] font-semibold tracking-[.06em] uppercase text-subtle-foreground";
 const HEAD_CELLS = [
   { label: "Order", className: "" },
   { label: "Customer", className: "" },
-  { label: "Items", className: "hidden @min-[900px]:block" },
+  { label: "Items", className: "hidden @min-[940px]/list:block" },
   { label: "Time", className: "" },
   { label: "Status", className: "" },
   { label: "Amount", className: "text-right" },
   { label: "", className: "" },
 ];
-const ITEMS_CLASS = "hidden @min-[900px]:block min-w-0 truncate text-[13px] text-muted-foreground";
+const ITEMS_CLASS = "hidden @min-[940px]/list:block min-w-0 truncate text-[13px] text-muted-foreground";
 // A row (values 8.1 / 9.1): its title is a real button stretched over the row by an ::after layer, so a tap anywhere
 // opens the order; "Settle" sits above that layer (no control inside another). The ring shows on the whole row.
-const ROW_CLASS = "relative hidden @min-[700px]:grid cursor-pointer items-center gap-3 px-4 py-[11px]";
-const CARD_CLASS = "relative flex @min-[700px]:hidden cursor-pointer flex-col gap-1.5 px-3.5 py-3";
+const ROW_CLASS = "relative hidden @min-[740px]/list:grid cursor-pointer items-center gap-3 px-4 py-[11px]";
+const CARD_CLASS = "relative flex @min-[740px]/list:hidden cursor-pointer flex-col gap-1.5 px-3.5 py-3";
 const RULE_CLASS = "border-t border-border-2";
 const OPEN_CLASS =
   "block w-full cursor-pointer text-left outline-none after:absolute after:inset-0 focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring";
@@ -220,57 +223,55 @@ interface OrderTableProps {
 /** The list box (values 8-9, 13): the table head (table form), then a notice, the skeleton, the empty box or the rows. */
 export function OrderTable({ orders, now, chosenId, onChoose, loading, empty, emptyAction, notice }: OrderTableProps) {
   return (
-    <div data-ui="orders-list-wrap" className={WRAP_CLASS}>
-      <div data-ui="orders-list-box" className={BOX_CLASS}>
-        <div data-ui="orders-table-head" className={cn(HEAD_CLASS, COLS_CLASS)}>
-          {HEAD_CELLS.map((cell, i) => (
-            <span key={i} data-ui="orders-table-head-cell" className={cell.className || undefined}>
-              {cell.label}
-            </span>
-          ))}
-        </div>
-        {notice ? (
-          notice
-        ) : loading ? (
-          Array.from({ length: SKELETON_ROWS }, (_, i) => (
-            <div
-              key={i}
-              data-ui="orders-skeleton-row"
-              aria-hidden
-              className={cn("flex h-[90px] items-center gap-2.5 px-3.5 @min-[700px]:h-[58px] @min-[700px]:px-4", i > 0 && RULE_CLASS)}
-            >
-              <Skeleton className="size-[38px] flex-none rounded-[9px] @min-[700px]:size-9" />
-              <div className="flex min-w-0 flex-1 flex-col gap-2">
-                <Skeleton className="h-3.5 w-2/5" />
-                <Skeleton className="h-3 w-3/5" />
-              </div>
-            </div>
-          ))
-        ) : orders.length === 0 ? (
-          empty && (
-            <div data-ui="orders-empty" className="flex flex-col items-center gap-1.5 px-4 py-14 text-center">
-              <span data-ui="orders-empty-title" className="text-[14px] font-semibold">
-                {empty.title}
-              </span>
-              <span data-ui="orders-empty-text" className="text-[13px] text-muted-foreground">
-                {empty.text}
-              </span>
-              {emptyAction}
-            </div>
-          )
-        ) : (
-          orders.map((order, i) => {
-            const view = orderRowView(order, now);
-            const row = { order, view, first: i === 0, chosen: view.key === chosenId, onChoose };
-            return (
-              <Fragment key={view.key}>
-                <TableRow {...row} />
-                <CardRow {...row} />
-              </Fragment>
-            );
-          })
-        )}
+    <div data-ui="orders-list-box" className={BOX_CLASS}>
+      <div data-ui="orders-table-head" className={cn(HEAD_CLASS, COLS_CLASS)}>
+        {HEAD_CELLS.map((cell, i) => (
+          <span key={i} data-ui="orders-table-head-cell" className={cell.className || undefined}>
+            {cell.label}
+          </span>
+        ))}
       </div>
+      {notice ? (
+        notice
+      ) : loading ? (
+        Array.from({ length: SKELETON_ROWS }, (_, i) => (
+          <div
+            key={i}
+            data-ui="orders-skeleton-row"
+            aria-hidden
+            className={cn("flex h-[90px] items-center gap-2.5 px-3.5 @min-[740px]/list:h-[58px] @min-[740px]/list:px-4", i > 0 && RULE_CLASS)}
+          >
+            <Skeleton className="size-[38px] flex-none rounded-[9px] @min-[740px]/list:size-9" />
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+              <Skeleton className="h-3.5 w-2/5" />
+              <Skeleton className="h-3 w-3/5" />
+            </div>
+          </div>
+        ))
+      ) : orders.length === 0 ? (
+        empty && (
+          <div data-ui="orders-empty" className="flex flex-col items-center gap-1.5 px-4 py-14 text-center">
+            <span data-ui="orders-empty-title" className="text-[14px] font-semibold">
+              {empty.title}
+            </span>
+            <span data-ui="orders-empty-text" className="text-[13px] text-muted-foreground">
+              {empty.text}
+            </span>
+            {emptyAction}
+          </div>
+        )
+      ) : (
+        orders.map((order, i) => {
+          const view = orderRowView(order, now);
+          const row = { order, view, first: i === 0, chosen: view.key === chosenId, onChoose };
+          return (
+            <Fragment key={view.key}>
+              <TableRow {...row} />
+              <CardRow {...row} />
+            </Fragment>
+          );
+        })
+      )}
     </div>
   );
 }
