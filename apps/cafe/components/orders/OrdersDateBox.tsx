@@ -15,7 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 // select, pin P13), each row 36px, the chosen one ticked.
 const WRAP_CLASS = "relative flex min-w-[130px] flex-[0_1_160px] max-tab:hidden";
 const BOX_CLASS =
-  "flex h-10 w-full min-w-0 cursor-pointer items-center rounded-[9px] border border-border bg-card pl-3 pr-8 text-left text-[13.5px] font-medium text-foreground outline-none";
+  "flex h-10 w-full min-w-0 cursor-pointer items-center rounded-[9px] border border-border bg-card pl-3 pr-8 text-left text-[13.5px] font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const CHEVRON_CLASS = "pointer-events-none absolute top-[13px] right-[11px] text-muted-foreground";
 const ROW_CLASS =
   "flex h-9 w-full cursor-pointer items-center justify-between gap-3 rounded-[8px] border-0 bg-transparent px-2.5 text-left text-[13.5px] font-medium whitespace-nowrap text-foreground hover:bg-hover";
@@ -82,6 +82,7 @@ export function OrdersDateBox({ date, onDate }: OrdersDateBoxProps) {
           </button>
         </PopoverTrigger>
         <PopoverContent
+          aria-label={picking ? "Pick a day" : "Date"}
           align="start"
           collisionPadding={ORDERS_POPOVER_EDGE_GAP_PX}
           className={cn("w-auto", picking ? "p-0" : "min-w-(--radix-popover-trigger-width) p-1")}

@@ -1,8 +1,7 @@
 // U2 Task 3 (2026-10-23): the Orders toolbar, the Filters panel and the chips as drawn
 // (docs/superpowers/specs/2026-10-22-orders-html-values.md 4 toolbar, 5 Filters panel, 6 chips;
-// docs/superpowers/specs/2026-10-23-orders-match-html-design.md Q4, Q5, 6.3, 6.13): renders of
-// components/orders/OrdersToolbar.tsx, OrdersDateBox.tsx and OrdersFiltersPanel.tsx, and source pins on
-// app/(dashboard)/orders/page.tsx, which owns the state (the old search, selects, DatePicker and "{n} active" go).
+// docs/superpowers/specs/2026-10-23-orders-match-html-design.md Q4, Q5, 6.3, 6.13): renders of OrdersToolbar.tsx,
+// OrdersDateBox.tsx and OrdersFiltersPanel.tsx, and pins on the page (the old search, selects, DatePicker, "{n} active" go).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -32,15 +31,10 @@ const tagsOf = (html: string, name: string): string[] => html.match(new RegExp(`
 const innerOf = (html: string, name: string, nth = 0): string => {
   const open = [...html.matchAll(new RegExp(`<([a-z0-9]+) [^>]*data-ui="${name}"[^>]*>`, "g"))][nth];
   assert.ok(open, `landmark: data-ui="${name}" #${nth + 1} renders`);
-  const tagName = open[1];
-  let depth = 1;
   const i = (open.index ?? 0) + open[0].length;
-  const re = new RegExp(`<(/?)${tagName}\\b[^>]*>`, "g");
+  const re = new RegExp(`<(/?)${open[1]}\\b[^>]*>`, "g");
   re.lastIndex = i;
-  for (let m = re.exec(html); m; m = re.exec(html)) {
-    depth += m[1] ? -1 : 1;
-    if (depth === 0) return html.slice(i, m.index);
-  }
+  for (let m = re.exec(html), depth = 1; m; m = re.exec(html)) if ((depth += m[1] ? -1 : 1) === 0) return html.slice(i, m.index);
   return html.slice(i);
 };
 const textOf = (h: string): string => h.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"');
@@ -116,6 +110,7 @@ test("OrdersToolbar date box: the chosen date's words, 13.5px 500, the chevron a
     ["flex", "h-10", "w-full", "items-center", "rounded-[9px]", "border", "border-border", "bg-card", "pl-3", "pr-8", "text-[13.5px]", "font-medium", "text-foreground"],
     "values 4.1 date select",
   );
+  expectAll(box, ["outline-none", "focus-visible:ring-2", "focus-visible:ring-ring"], "a keyboard focus ring in place of the outline (WCAG 2.4.7, U1's pattern)");
   assert.match(box, /aria-label="Date: Today"/, "named with its value");
   assert.equal(textOf(innerOf(html, "orders-date-box")), "Today", "opens on Today (owner Q5)");
   expectAll(tagOf(html, "orders-date-chevron"), ["pointer-events-none", "absolute", "top-[13px]", "right-[11px]", "text-muted-foreground"], "values 4.1 chevron");
@@ -164,6 +159,11 @@ test("OrdersFiltersPanel: in the page flow, radius 12, padding 14, groups 14px a
   assert.ok(!html.includes("Order type") && !html.includes("All types"), "no Order type group (design 7)");
   const labels = tagsOf(html, "orders-filter-label").map((_, i) => textOf(innerOf(html, "orders-filter-label", i)));
   assert.deepEqual(labels, ["Date", "Payment", "Table"], "the groups' labels");
+  for (const [i, ui] of ["orders-filter-date", "orders-filter-payment"].entries()) {
+    const by = /aria-labelledby="([^"]+)"/.exec(tagOf(html, ui))?.[1] ?? "";
+    assert.ok(by && !/aria-label=/.test(tagOf(html, ui)), `${ui} is named by its visible label, not a repeated aria-label`);
+    assert.ok(tagsOf(html, "orders-filter-label")[i].includes(`id="${by}"`), `${ui}'s label carries that id`);
+  }
   expectAll(
     tagOf(html, "orders-filter-label"),
     ["text-[11.5px]", "font-semibold", "tracking-[.06em]", "uppercase", "text-subtle-foreground"],
@@ -228,6 +228,20 @@ test("OrdersFiltersPanel: Escape closes it unless a popover or select inside too
   const page = read(PAGE);
   assert.match(page, /if \(focusWasInside\) filtersButton\.current\?\.focus\(\);/, "the focus goes back to the Filters button only from inside the panel");
   assert.match(page, /filtersRef=\{filtersButton\}/, "the toolbar hands its Filters button to the page");
+});
+
+test("the popovers are named dialogs (axe aria-dialog-name), and no new control drops its outline without a focus ring", () => {
+  const box = read("components/orders/OrdersDateBox.tsx");
+  assert.match(box, /<PopoverContent\s+aria-label=\{picking \? "Pick a day" : "Date"\}/, "the date box's popover: 'Date', then 'Pick a day' for the calendar");
+  assert.match(read(PANEL), /<PopoverContent aria-label="Pick a day"/, "the phone's Pick a day popover");
+  assert.match(read(PANEL), /role="region" aria-label="Filters"/, "the Filters panel is a named region");
+  // The search input alone keeps no focus look (values 4.1: the HTML's box has none; its caret shows the focus).
+  for (const file of ["components/orders/OrdersToolbar.tsx", "components/orders/OrdersDateBox.tsx", PANEL]) {
+    for (const cls of read(file).match(/"[^"\n]*\boutline-none\b[^"\n]*"/g) ?? []) {
+      if (cls.includes("placeholder:text-subtle-foreground")) continue;
+      assert.ok(cls.includes("focus-visible:ring-2"), `${file}: ${cls} drops the outline without a focus-visible ring`);
+    }
+  }
 });
 
 // ── The chips (values 6) ──────────────────────────────────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from "react";
 
 import { useStableCallback } from "@/hooks/use-stable-callback";
 import {
@@ -64,10 +64,12 @@ function Pill({ on, className, ...rest }: ComponentProps<"button"> & { on: boole
   );
 }
 
+/** A group of pills, named by its visible label (aria-labelledby, so the name is the words on screen). */
 function Group({ ui, label, className, children }: { ui: string; label: string; className?: string; children: ReactNode }) {
+  const labelId = useId();
   return (
-    <div data-ui={ui} role="group" aria-label={label} className={cn(GROUP_CLASS, className)}>
-      <span data-ui="orders-filter-label" className={LABEL_CLASS}>
+    <div data-ui={ui} role="group" aria-labelledby={labelId} className={cn(GROUP_CLASS, className)}>
+      <span id={labelId} data-ui="orders-filter-label" className={LABEL_CLASS}>
         {label}
       </span>
       <div className={OPTIONS_CLASS}>{children}</div>
@@ -83,7 +85,7 @@ function DayPill({ date, onDate }: { date: OrdersDate; onDate: (date: OrdersDate
       <PopoverTrigger asChild>
         <Pill on={date.kind === "day"}>{PICK_A_DAY}</Pill>
       </PopoverTrigger>
-      <PopoverContent align="start" collisionPadding={ORDERS_POPOVER_EDGE_GAP_PX} className="w-auto p-0">
+      <PopoverContent aria-label="Pick a day" align="start" collisionPadding={ORDERS_POPOVER_EDGE_GAP_PX} className="w-auto p-0">
         <OrdersDayCalendar
           date={date}
           onPick={(day) => {
