@@ -9,8 +9,20 @@ import { renderToStaticMarkup } from "react-dom/server";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 
 import { SELF_ORDER_SOURCE } from "@pos/shared/public";
-import { expectAll, tagOf } from "./class-tags.fixtures";
-import { detailMeta, detailSteps, type DetailMetaItem, type DetailStep } from "./order-detail-view";
+import { expectAll, tagOf, tagsOf, textOf } from "./class-tags.fixtures";
+import {
+  cancelNote,
+  detailCustomer,
+  detailItemsHead,
+  detailMeta,
+  detailSteps,
+  detailSums,
+  voidLineNote,
+  type DetailMetaItem,
+  type DetailStep,
+  type DetailSums,
+} from "./order-detail-view";
+import { computeOrderTotals, receiptGst } from "./receipt";
 import { NOW, minutesBefore, order, printed, settled } from "./orders-lanes.fixtures";
 import { OrderDetailHead } from "@/components/orders/OrderDetailHead";
 import type { Order } from "@/types";
@@ -117,21 +129,6 @@ const noop = (): void => undefined;
 const headHtml = (o: Order, onClose?: () => void): string => {
   const head = createElement(OrderDetailHead, { order: o, now: NOW, onClose });
   return renderToStaticMarkup(onClose ? createElement(DialogPrimitive.Root, { open: true }, head) : head);
-};
-const tagsOf = (html: string, name: string): string[] => html.match(new RegExp(`<[a-z0-9]+ [^>]*data-ui="${name}"[^>]*>`, "g")) ?? [];
-/** The text of the nth element carrying data-ui="<name>" (its own closing tag found by nesting depth). */
-const textOf = (html: string, name: string, nth = 0): string => {
-  const open = [...html.matchAll(new RegExp(`<([a-z0-9]+) [^>]*data-ui="${name}"[^>]*>`, "g"))][nth];
-  assert.ok(open, `landmark: data-ui="${name}" #${nth + 1} renders`);
-  const start = (open.index ?? 0) + open[0].length;
-  const re = new RegExp(`<(/?)${open[1]}\\b[^>]*>`, "g");
-  re.lastIndex = start;
-  let depth = 1;
-  for (let m = re.exec(html); m; m = re.exec(html)) {
-    depth += m[1] ? -1 : 1;
-    if (depth === 0) return html.slice(start, m.index).replace(/<[^>]+>/g, "").replace(/&amp;/g, "&");
-  }
-  return "";
 };
 const billed = (): Order => printed("014", { tableNo: "T-1", receiver: "Sana", tokenNumber: 12, createdAt: minutesBefore(68), items: [fired()] });
 
@@ -243,4 +240,114 @@ test("OrderDetailHead: no ✕ in the column; in a sheet the HTML's 34px round �
   assert.match(close, /aria-label="Close"/, "named for a screen reader (not 'multiplication x')");
   assert.equal(textOf(html, "order-detail-close"), "✕", "the HTML's glyph");
   assert.match(tagOf(html, "order-detail-name"), /\sid="[^"]+"/, "the name labels the dialog (Radix Title)");
+});
+
+// ── U2 Task 6: the sums (design 6.8, Q9; values 11.5, 11.10; lib/receipt.ts) ────────────────────────────────────────
+
+const rowsOf = (s: DetailSums): string[] => s.rows.map((r) => `${r.label}|${r.value}|${r.tone}`);
+/** A row's rupees, signed ("−₹50" → -50). */
+const rupees = (value: string): number => Number(value.replace(/[^\d]/g, "")) * (value.startsWith("−") ? -1 : 1);
+/** The bill's own rows (Subtotal, the discount, the charges, an exclusive GST) add up to the total. */
+const billRowsAddUp = (s: DetailSums, what: string): void => {
+  const bill = s.rows.filter((r) => !/^(Incl\. GST|Paid|Due at billing)/.test(r.label));
+  assert.equal(bill.reduce((n, r) => n + rupees(r.value), 0), rupees(s.total), `${what}: ${rowsOf(s).join(", ")} add up to ${s.total}`);
+};
+const TABLE = { type: "table", label: "Table charge", amount: 30 };
+
+test("detailSums: an open tab with a discount, a table charge and exclusive GST — Subtotal, the discount −₹x in --bad-i, the charge, 'GST @5%'; 'To pay' the total, and the rows add up (computeOrderTotals)", () => {
+  const t = computeOrderTotals({ items: [{ price: 250, qty: 2 }], discount: 50, discountKind: undefined, charge: 30, cfg: { gstEnabled: true, gstRate: 5, gstMode: "exclusive" } });
+  assert.deepEqual([t.subtotal, t.discount, t.gstAmount, t.charge, t.total], [500, 50, 23, 30, 503], "landmark: the bill's own figures");
+  const o = order("1", { subtotal: t.subtotal, discount: t.discount, gstAmount: t.gstAmount, gstRate: 5, gstMode: "exclusive", charges: [TABLE], chargeAmount: 30, chargeLabel: "Table charge", total: t.total });
+  const s = detailSums(o);
+  assert.deepEqual(rowsOf(s), ["Subtotal|₹500|plain", "Discount|−₹50|bad", "Table charge|₹30|plain", "GST @5%|₹23|plain"], "the HTML's open rows, our labels");
+  assert.deepEqual([s.totalLabel, s.total, s.struck], ["To pay", "₹503", false], "values 11.5: 'To pay' · the total");
+  billRowsAddUp(s, "exclusive");
+});
+
+test("detailSums: every charge of the order's snapshot in its order (table, then the extras); a legacy order's one scalar charge reads 'Table charge'", () => {
+  const extra = { type: "extra", label: "Packing", amount: 20 };
+  const o = order("1", { subtotal: 300, charges: [extra, TABLE], chargeAmount: 50, total: 350, gstRate: 0, gstMode: "exclusive" });
+  assert.deepEqual(rowsOf(detailSums(o)), ["Subtotal|₹300|plain", "Table charge|₹30|plain", "Packing|₹20|plain"], "chargesFromOrder's order");
+  billRowsAddUp(detailSums(o), "two charges, no GST");
+  const legacy = order("1", { subtotal: 855, chargeAmount: 50, total: 905 });
+  assert.deepEqual(rowsOf(detailSums(legacy)), ["Subtotal|₹855|plain", "Table charge|₹50|plain"], "no snapshot of GST: no GST row; the scalar charge");
+});
+
+test("detailSums: inclusive GST is a row inside the total, 'Incl. GST @5%', the bill's own figure (receiptGst: the charge lifted out first)", () => {
+  const plain = order("1", { subtotal: 490, gstAmount: 0, gstRate: 5, gstMode: "inclusive", total: 490 });
+  assert.deepEqual(rowsOf(detailSums(plain)), ["Subtotal|₹490|plain", "Incl. GST @5%|₹23|plain"], "490 incl. 5%: ₹23 of it is GST");
+  billRowsAddUp(detailSums(plain), "inclusive");
+  const charged = order("1", { subtotal: 855, gstAmount: 0, gstRate: 5, gstMode: "inclusive", chargeAmount: 50, total: 905 });
+  const bill = receiptGst(charged, { gstEnabled: false, gstRate: 0, gstMode: "inclusive" });
+  assert.deepEqual(rowsOf(detailSums(charged)), ["Subtotal|₹855|plain", "Table charge|₹50|plain", `Incl. GST @5%|₹${bill.gstAmount}|plain`], "the printed bill's GST (the untaxed charge lifted out)");
+  assert.equal(bill.gstAmount, 41, "landmark: 855 incl. 5%");
+  const noGst = order("1", { subtotal: 200, gstAmount: 0, gstRate: 0, gstMode: "inclusive", total: 200 });
+  assert.deepEqual(rowsOf(detailSums(noGst)), ["Subtotal|₹200|plain"], "GST off when the order was taken: no GST row");
+});
+
+test("detailSums: the discount reads as the bill does (discountLineLabel: Discount / GST Discount / Reward)", () => {
+  const label = (discountKind?: string) => detailSums(order("1", { subtotal: 880, discount: 42, discountKind, total: 838 })).rows[1];
+  assert.deepEqual(label(), { label: "Discount", value: "−₹42", tone: "bad" }, "a manual discount");
+  assert.equal(label("gst").label, "GST Discount", "the GST preset");
+  assert.equal(label("reward").label, "Reward", "a redeemed reward");
+});
+
+test("detailSums: a settled bill — 'Bill total'; paid in full by Cash 'Paid by Cash', Online 'Paid online'; a split 'Paid in cash' + 'Paid online' (its split amounts)", () => {
+  const cash = detailSums({ ...settled("1", 905, 905, "Cash"), subtotal: 855, chargeAmount: 50 });
+  assert.deepEqual(rowsOf(cash), ["Subtotal|₹855|plain", "Table charge|₹50|plain", "Paid by Cash|₹905|plain"], "cash");
+  assert.deepEqual([cash.totalLabel, cash.total, cash.struck], ["Bill total", "₹905", false], "values 11.10 paid: 'Bill total'");
+  assert.equal(detailSums({ ...settled("1", 940, 940, "Online"), subtotal: 940 }).rows.at(-1)?.label, "Paid online", "online");
+  const split = detailSums({ ...settled("1", 320, 320, "Split"), subtotal: 320, splitCash: 50, splitOnline: 270, gstRate: 5, gstMode: "inclusive" });
+  assert.deepEqual(rowsOf(split), ["Subtotal|₹320|plain", "Incl. GST @5%|₹15|plain", "Paid in cash|₹50|plain", "Paid online|₹270|plain"], "split");
+  assert.equal(split.totalLabel, "Bill total", "split: 'Bill total'");
+});
+
+test("detailSums: money owed at billing — a short Cash payment 'Paid ₹x' then 'Due at billing' in --bill-i (Q9); a Due or Credit bill only 'Due at billing'", () => {
+  const short = detailSums({ ...settled("1", 240, 140, "Cash"), subtotal: 240 });
+  assert.deepEqual(rowsOf(short), ["Subtotal|₹240|plain", "Paid|₹140|plain", "Due at billing|₹100|bill"], "a short payment: what was paid, then what was owed");
+  assert.equal(short.totalLabel, "Bill total", "still the bill's total");
+  const due = detailSums({ ...settled("1", 600, 0, "Due"), subtotal: 600 });
+  assert.deepEqual(rowsOf(due), ["Subtotal|₹600|plain", "Due at billing|₹600|bill"], "Due mode: nothing paid, all owed (never 'Still due': a due paid later goes to the customer's account)");
+  assert.deepEqual(rowsOf(detailSums({ ...settled("1", 258, 0, "Credit"), subtotal: 258 })), ["Subtotal|₹258|plain", "Due at billing|₹258|bill"], "Credit mode");
+  for (const s of [short, due]) assert.ok(!s.rows.some((r) => /Still due/.test(r.label)), "no 'Still due' (Q9)");
+});
+
+test("detailSums: a cancelled order — the bill's rows, no Paid or Due rows (its payment is history the books no longer count), 'Not charged' struck", () => {
+  const o = order("1", { status: "Cancelled", payment: "Online", subtotal: 240, discount: 20, total: 220, paidAmount: 220, gstRate: 0, gstMode: "inclusive" });
+  const s = detailSums(o);
+  assert.deepEqual(rowsOf(s), ["Subtotal|₹240|plain", "Discount|−₹20|bad"], "no 'Paid online' on a cancelled bill");
+  assert.deepEqual([s.totalLabel, s.total, s.struck], ["Not charged", "₹220", true], "values 11.10 cancelled: 'Not charged' struck");
+  billRowsAddUp(s, "cancelled");
+});
+
+// ── U2 Task 6: the customer row, the items head, the cancel note, a void's line (design 6.8; values 11.4-11.6) ───────
+
+test("detailCustomer: a named customer — the initials of the first two words, the name, no second line; a walk-in — '?', 'Walk-in customer', 'No customer added'", () => {
+  assert.deepEqual(detailCustomer(order("1", { customerId: "c1", customerName: "Neha Joshi" })), { initials: "NJ", name: "Neha Joshi", sub: null, named: true }, "values 11.4 'NJ'");
+  assert.equal(detailCustomer(order("1", { customerId: "c1", customerName: "Ravi Kumar Sharma" })).initials, "RK", "the first two words");
+  assert.equal(detailCustomer(order("1", { customerId: "c1", customerName: "  neha  " })).initials, "N", "one word: its initial");
+  const walkIn = { initials: "?", name: "Walk-in customer", sub: "No customer added", named: false };
+  assert.deepEqual(detailCustomer(order("1", { customerName: "Walk-In" })), walkIn, "no customer attached: a walk-in (the HTML's words; no phone line)");
+  assert.deepEqual(detailCustomer(order("1", { customerId: "c1", customerName: " " })), walkIn, "an attached customer with no name reads as a walk-in");
+});
+
+test("detailItemsHead: Σ quantity, '1 item' / 'n items' (values 11.5)", () => {
+  const items = (...qty: number[]) => order("1", { items: qty.map((q) => ({ productId: "p", name: "Tea", price: 10, qty: q, modifiers: [], instructions: "", kotRound: 1 })) });
+  assert.equal(detailItemsHead(items(1, 4, 1)), "6 items", "values 11.5 '6 items'");
+  assert.equal(detailItemsHead(items(1)), "1 item", "singular");
+  assert.equal(detailItemsHead(items()), "0 items", "none");
+});
+
+test("cancelNote: our words — 'Cancelled at {time} by {who}.' (the cancel time, Ruling P8) and 'Reason: {reason}'; nothing for an order not cancelled", () => {
+  const o = (over: Record<string, unknown>) => order("1", { status: "Cancelled", createdAt: minutesBefore(90), ...over });
+  assert.deepEqual(cancelNote(o({ cancelledAt: minutesBefore(0), cancelledBy: "Rohan", cancelReason: "Guest left" })), { text: "Cancelled at 9:30 PM by Rohan.", reason: "Reason: Guest left" }, "design 6.8");
+  assert.deepEqual(cancelNote(o({})), { text: "Cancelled at 8:00 PM.", reason: null }, "no cancel time stored: when it was opened; no name, no reason: none said");
+  assert.equal(cancelNote(order("1", { cancelReason: "x" })), null, "an open tab has no note");
+  assert.equal(cancelNote(settled("1", 100, 100)), null, "a settled bill has no note");
+});
+
+test("voidLineNote: 'round {n} · {reason} — {who}, {date}' under a voided line (design 6.8); no round named when the line carries none", () => {
+  const v = { productId: "p", name: "Hot Cappuccino", price: 130, qty: 1, kotRound: 2, reason: "Customer sent it back", voidedBy: "Priya Shah", at: "2026-10-14T07:47:24.000Z" };
+  assert.equal(voidLineNote(v), "round 2 · Customer sent it back — Priya Shah, 14 Oct 2026", "today's words with the round first");
+  assert.equal(voidLineNote({ ...v, kotRound: 0 }), "Customer sent it back — Priya Shah, 14 Oct 2026", "no round");
 });

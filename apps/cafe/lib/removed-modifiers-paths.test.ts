@@ -89,7 +89,8 @@ const DISPLAY_SURFACES = [
   // CartLine renders; the pin below keeps CartLine on it.
   "lib/pos-cart-view.ts",
   "components/kitchen/KitchenLineCard.tsx",
-  "components/orders/OrderDetailSheet.tsx",
+  // U2 Task 6: the Orders detail's item lines moved with its body into OrderDetailBody.tsx.
+  "components/orders/OrderDetailBody.tsx",
   "components/orders/OrderRequestCard.tsx",
   "components/public/PublicCartLine.tsx",
   "components/public/PublicStatusItemRow.tsx",

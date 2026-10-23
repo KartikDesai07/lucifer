@@ -7,10 +7,8 @@ import { useReactToPrint } from "react-to-print";
 import { Printer, ChefHat, MessageCircle, HandCoins, Replace, Ticket } from "lucide-react";
 import { toast } from "sonner";
 
-import { orderItemLabel, orderItemModifierLines, discountLineLabel } from "@pos/shared/utils";
-import { REWARD_ITEM_LINE_NOTE } from "@pos/shared/reward-redemption";
 import { chargesFromOrder } from "@pos/shared/order-charges";
-import { PAY_STYLES, type SettlementPayMode } from "@/lib/constants";
+import type { SettlementPayMode } from "@/lib/constants";
 import { inr, formatDate, cn } from "@/lib/utils";
 import { slipPrintOptions } from "@/lib/desktop-shell";
 import { printConfigOf, receiptPageStyle } from "@/lib/print";
@@ -22,14 +20,12 @@ import { useTokenPrint } from "@/hooks/use-token-print";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetFooter } from "@/components/ui/sheet";
 import { OrderReceipt } from "@/components/pos/OrderReceipt";
 import { KOTReceipt } from "@/components/pos/KOTReceipt";
 import { TokenSlip } from "@/components/print/slip/TokenSlip";
 import { OrderDetailHead } from "@/components/orders/OrderDetailHead";
-import { OrderVoidTrail } from "@/components/orders/OrderVoidTrail";
+import { OrderDetailBody } from "@/components/orders/OrderDetailBody";
 import { MoveTableDialog } from "@/components/orders/MoveTableDialog";
 import type { PaymentResult } from "@/components/pos/PaymentModal";
 import { collectedAmount } from "@/lib/payment-result";
@@ -229,8 +225,6 @@ export function OrderDetailSheet({
     pageStyle: receiptPageStyle(printCfg.kot.paperWidth),
   }));
 
-  const due = order ? order.total - order.paidAmount : 0;
-  const payStyle = order ? PAY_STYLES[order.payment] : undefined;
   const restaurantName = settings.data?.restaurantName?.trim() ?? "";
   const receiptFooter = settings.data?.receiptFooter?.trim() ?? "";
   const isOpenTab = order?.status === "Pending";
@@ -321,128 +315,11 @@ export function OrderDetailSheet({
           {order && <OrderDetailHead order={order} now={now} onClose={frame === "column" ? undefined : () => onOpenChange(false)} />}
         </KeepWhileClosing>
 
-        {/* Under the head the rest scrolls (values 11.1): today's body and buttons until U2 Tasks 6-7 rebuild them. */}
+        {/* Under the head the body scrolls (values 11.1, 11.4): the customer row, the items box with the sums and the
+            void trail, the cancel note (OrderDetailBody, U2 Task 6); today's buttons until U2 Task 7 rebuilds them. */}
         <div data-ui="order-detail-scroll" className={ORDER_DETAIL_SCROLL_CLASS}>
           <KeepWhileClosing show={!!order}>
-            {order && (
-              <div className="flex flex-1 flex-col gap-4 p-4 text-sm">
-                <div className="flex flex-wrap gap-2">
-                  <Badge
-                    variant={order.status === "Completed" ? "default" : "secondary"}
-                    className={cn(
-                      order.status === "Pending" && "bg-amber-100 text-amber-800",
-                      order.status === "Completed" && "bg-green-100 text-green-800",
-                      order.status === "Cancelled" && "bg-gray-100 text-gray-800",
-                    )}
-                  >
-                    {order.status}
-                  </Badge>
-                  <Badge variant="outline" className={cn(payStyle?.color)}>
-                    {payStyle?.label ?? order.payment}
-                  </Badge>
-                  <Badge variant="outline">{order.tableNo ?? "Walk-In"}</Badge>
-                </div>
-
-                {/* Colour alone never carries this — the heading names it too, and
-                    the reason/who/when make the cancellation legible on its own. */}
-                {order.status === "Cancelled" && (
-                  <div className="space-y-1 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-destructive">
-                    <p className="font-semibold">Cancelled</p>
-                    {order.cancelReason && <p>{order.cancelReason}</p>}
-                    <p className="text-xs opacity-80">
-                      {order.cancelledBy ?? "Unknown"}
-                      {order.cancelledAt && ` · ${formatDate(order.cancelledAt)}`}
-                    </p>
-                  </div>
-                )}
-
-                <div className="space-y-1">
-                  <Row label="Customer" value={order.customerName} />
-                  <Row label="Served by" value={order.receiver} />
-                </div>
-
-                <Separator />
-
-                <div className="space-y-2">
-                  {order.items.map((item, i) => (
-                    <div key={`${item.productId}-${i}`} className="flex justify-between gap-3">
-                      <div className="min-w-0">
-                        <span className="font-medium">
-                          {orderItemLabel(item)}
-                          {item.qty > 1 ? ` ×${item.qty}` : ""}
-                        </span>
-                        {orderItemModifierLines(item).map((line) => (
-                          <div key={line} className="text-xs text-muted-foreground">
-                            {line}
-                          </div>
-                        ))}
-                        {item.instructions && (
-                          <div className="text-xs italic text-muted-foreground">
-                            {item.instructions}
-                          </div>
-                        )}
-                        {/* CB-5B — a reward line's money is excluded from the
-                            subtotal (lib/receipt.ts's reducer skips it), so
-                            showing its real price here would make the amounts
-                            below visibly not add up. The stored `note` is
-                            preferred over the live constant so a settled order
-                            reads the same note it was issued with; only a
-                            pre-S14 reward line (stored before this field
-                            existed) falls back to it. */}
-                        {item.reward && (
-                          <div className="text-xs italic text-muted-foreground">
-                            {item.note ?? REWARD_ITEM_LINE_NOTE}
-                          </div>
-                        )}
-                      </div>
-                      {item.reward ? (
-                        <span className="whitespace-nowrap">
-                          <span className="line-through opacity-60">{inr(item.price * item.qty)}</span>{" "}
-                          FREE
-                        </span>
-                      ) : (
-                        <span>{inr(item.price * item.qty)}</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                <Separator />
-
-                <div className="space-y-1">
-                  <Row label="Subtotal" value={inr(order.subtotal)} />
-                  {order.discount > 0 && (
-                    <Row label={discountLineLabel(order.discountKind)} value={`−${inr(order.discount)}`} />
-                  )}
-                  {/* CB-CHG — every charge line (table + staff-entered extras),
-                      from the order's own snapshot, so this sheet reads the same
-                      as the slip that was printed for the customer, even if the
-                      table has since changed what it charges. A legacy order
-                      derives to exactly the one line the old conditional showed. */}
-                  {chargesFromOrder(order).map((c, i) => (
-                    <Row key={`${c.label}-${i}`} label={c.label} value={`+${inr(c.amount)}`} />
-                  ))}
-                  <div className="flex justify-between gap-3 text-base font-bold">
-                    <span>Total</span>
-                    <span>{inr(order.total)}</span>
-                  </div>
-                  <Row label="Paid" value={inr(order.paidAmount)} />
-                  {due > 0 && order.status === "Completed" && (
-                    <div className="flex justify-between gap-3 font-medium text-destructive">
-                      <span>Due</span>
-                      <span>{inr(due)}</span>
-                    </div>
-                  )}
-                </div>
-
-                {order.voids && order.voids.length > 0 && (
-                  <>
-                    <Separator />
-                    <OrderVoidTrail voids={order.voids} />
-                  </>
-                )}
-              </div>
-            )}
+            {order && <OrderDetailBody order={order} />}
           </KeepWhileClosing>
 
           {/* Two rows at EVERY width. The panel is 400px wide (or the whole
@@ -451,8 +328,9 @@ export function OrderDetailSheet({
               overlapped their icons and truncated "Share" (owner screenshots,
               2026-09-08). The secondary actions share one grid (2 columns when
               Move table joins them, 3 otherwise) and Settle & Pay keeps a full
-              row of its own, so the primary action is never squeezed. */}
-          <SheetFooter className="flex-col gap-2 px-4 sm:flex-col sm:justify-start sm:space-x-0">
+              row of its own, so the primary action is never squeezed. Its
+              side inset is the body's 18px (U2 Task 6) until Task 7. */}
+          <SheetFooter className="flex-col gap-2 sm:flex-col sm:justify-start sm:space-x-0">
             <div className={cn("grid gap-2", isOpenTab ? "grid-cols-2" : "grid-cols-3")}>
               <Button variant="outline" onClick={printBill} disabled={enqueuePending} className={BRAND_CONTROL_CLASS}>
                 <Printer className="mr-2 h-4 w-4" /> Print
@@ -628,13 +506,4 @@ function KeepWhileClosing({ show, children }: { show: boolean; children: ReactNo
     if (show) last.current = children;
   });
   return show ? children : last.current;
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between gap-3">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="min-w-0 break-words">{value}</span>
-    </div>
-  );
 }

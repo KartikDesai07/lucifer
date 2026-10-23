@@ -92,10 +92,10 @@ test("ORDER_DETAIL_SHEET_CLASS: the bottom sheet over the whole window at z 15, 
   assert.equal(ORDER_DETAIL_SHEET_SCRIM_CLASS, "hidden", "no scrim drawn (values 12 at 390: the sheet covers it; owner rule)");
 });
 
-test("ORDER_DETAIL_SCROLL_CLASS: under the head the rest scrolls (values 11.1); its foot clears the window's safe-area inset (U1 P49)", () => {
+test("ORDER_DETAIL_SCROLL_CLASS: under the head the rest scrolls (values 11.1), the HTML's body (values 11.4, U2 Task 6): padding 14 18 18, the parts 14px apart; its foot clears the window's safe-area inset (U1 P49)", () => {
   hasAll(
     ORDER_DETAIL_SCROLL_CLASS,
-    ["flex", "min-h-0", "flex-1", "flex-col", "overflow-y-auto", "overflow-x-hidden", "pb-[calc(16px+env(safe-area-inset-bottom))]"],
+    ["flex", "min-h-0", "flex-1", "flex-col", "gap-3.5", "overflow-y-auto", "overflow-x-hidden", "px-[18px]", "pt-3.5", "pb-[calc(18px+env(safe-area-inset-bottom))]"],
     "the detail's scrolling part",
   );
 });
@@ -178,9 +178,9 @@ test("KeepWhileClosing: through a sheet's close the last head and body stay draw
   assert.match(keep, /return show \? children : last\.current;/, "drawn only while the panel closes");
   const ret = src.slice(src.indexOf("  return (\n    <>\n      <DetailFrame"), src.indexOf("</DetailFrame>"));
   const kept = [...ret.matchAll(/<KeepWhileClosing show=\{!!order\}>([\s\S]*?)<\/KeepWhileClosing>/g)].map((m) => m[1]);
-  assert.equal(kept.length, 2, "two kept parts: the head and today's body");
+  assert.equal(kept.length, 2, "two kept parts: the head and the body");
   assert.match(kept[0], /^\s*\{order && <OrderDetailHead\b/, "the head");
-  assert.match(kept[1], /^\s*\{order && \(\s*<div className="flex flex-1 flex-col gap-4 p-4 text-sm">/, "today's body");
+  assert.match(kept[1], /^\s*\{order && <OrderDetailBody order=\{order\} \/>\}\s*$/, "the body (U2 Task 6: OrderDetailBody)");
   for (const part of kept) {
     for (const live of ["<SheetFooter", "onClick={printBill}", "onClick={printKitchenSlip}", "onClick={printToken}", "<OrderReceipt", "<KOTReceipt", "<TokenSlip", "openSettle"]) {
       assert.ok(!part.includes(live), `${live} is never kept: it follows the live order`);

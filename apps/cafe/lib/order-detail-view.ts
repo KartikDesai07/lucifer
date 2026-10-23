@@ -1,16 +1,20 @@
-// The order detail's head as a pure model (U2 Task 5, 2026-10-23; docs/superpowers/specs/2026-10-23-orders-match-html-design.md
-// 6.7; docs/superpowers/specs/2026-10-22-orders-html-values.md 0.1 clock, 11.2 head, 11.10 per kind): the meta row and the
-// steps components/orders/OrderDetailHead.tsx draws. The code tile, the title and the number are the list row's
-// (lib/orders-row.ts), so the head names an order exactly as its row does. Client-safe: no Mongoose, no React.
+// The order detail's head and body as a pure model (U2 Tasks 5-6, 2026-10-23; docs/superpowers/specs/
+// 2026-10-23-orders-match-html-design.md 6.7-6.8, Q9; docs/superpowers/specs/2026-10-22-orders-html-values.md 0.1 clock,
+// 11.2 head, 11.4-11.6 body, 11.10 per kind): the meta row and the steps components/orders/OrderDetailHead.tsx draws, the
+// customer row, the items head, the sums, the cancel note and a void's line components/orders/OrderDetailBody.tsx and
+// OrderVoidTrail.tsx draw. The code tile, the title and the number are the list row's (lib/orders-row.ts), so the head
+// names an order exactly as its row does. Client-safe: no Mongoose, no React.
 import { CHANNEL_LABELS } from "@/lib/dashboard/fold";
 import { channelOf } from "@/lib/dashboard/channel";
 import { billPrintedNow } from "@/lib/dashboard/live-tables";
 import { orderSkipsKitchen } from "@/lib/kitchen-lines";
 import { orderDue } from "@/lib/orders-lanes";
 import { clockTime, orderAge, rowInstant, type AgeTone, type ListedOrder } from "@/lib/orders-row";
+import { receiptGst, type GstConfig } from "@/lib/receipt";
 import { tokenLabelOf } from "@/lib/token-view";
-import { cafeDateString } from "@pos/shared/utils";
-import type { Order } from "@/types";
+import { chargesFromOrder, chargesTotal } from "@pos/shared/order-charges";
+import { cafeDateString, discountLineLabel, formatDate, inr } from "@pos/shared/utils";
+import type { Order, OrderVoid } from "@/types";
 
 /** The meta item's icon: the HTML's table, person and clock glyphs, and our ticket glyph for the token. */
 export type DetailMetaIcon = "type" | "staff" | "token" | "clock";
@@ -85,4 +89,113 @@ export function detailSteps(o: Order): DetailStep[] {
   return seq.map(([label, done, time], i) =>
     step(label, done ? "done" : i === current ? "cur" : "todo", i === current && !time ? "Next" : time),
   );
+}
+
+// ── The body (U2 Task 6; design 6.8; values 11.4-11.6, 11.10) ───────────────────────────────────────────────────────
+
+/** The customer row (values 11.4): a named customer's initials on --accent-t; a walk-in "?" on --surface-3. */
+export interface DetailCustomer {
+  initials: string;
+  name: string;
+  /** The line under the name: a walk-in's "No customer added" (we hold no phone or visits for a named customer). */
+  sub: string | null;
+  named: boolean;
+}
+
+/** The customer row (values 11.4; design 6.8): the initials of the first two words of an attached customer's name and
+ *  the name; else the HTML's walk-in "?" and "Walk-in customer" with our "No customer added" under it (our data has no
+ *  phone, so the HTML's "No phone · bill can’t be sent" is not used). */
+export function detailCustomer(o: Order): DetailCustomer {
+  const name = o.customerId ? o.customerName.trim() : "";
+  if (!name) return { initials: "?", name: "Walk-in customer", sub: "No customer added", named: false };
+  const initials = name.split(/\s+/).slice(0, 2).map((w) => w.charAt(0)).join("").toUpperCase();
+  return { initials, name, sub: null, named: true };
+}
+
+/** The items box's head (values 11.5): Σ quantity, "1 item" / "6 items". */
+export function detailItemsHead(o: Order): string {
+  const n = o.items.reduce((sum, it) => sum + it.qty, 0);
+  return `${n} ${n === 1 ? "item" : "items"}`;
+}
+
+/** A sums row's colour (values 11.5): the discount --bad-i, "Due at billing" --bill-i, else the sums' --text-2. */
+export type DetailSumTone = "bad" | "bill" | "plain";
+
+export interface DetailSumRow {
+  label: string;
+  value: string;
+  tone: DetailSumTone;
+}
+
+export interface DetailSums {
+  rows: DetailSumRow[];
+  totalLabel: "To pay" | "Bill total" | "Not charged";
+  total: string;
+  /** A cancelled order's total is struck in --text-3. */
+  struck: boolean;
+}
+
+const sumRow = (label: string, value: string, tone: DetailSumTone = "plain"): DetailSumRow => ({ label, value, tone });
+
+/** No live settings here: an order taken before the GST snapshot existed (always settled long ago) shows no GST row. */
+const NO_LIVE_GST: GstConfig = { gstEnabled: false, gstRate: 0, gstMode: "inclusive" };
+
+/** A bill paid in full in one mode (design 6.8): "Paid by Cash" / "Paid online". */
+const PAID_IN_FULL: Readonly<Record<string, string>> = { Cash: "Paid by Cash", Online: "Paid online" };
+
+/** A settled bill's payment rows (design 6.8, Q9): a split's two parts "Paid in cash" + "Paid online", else what was
+ *  paid ("Paid by Cash" / "Paid online" in full, "Paid ₹x" short of the total), then "Due at billing" for what was owed
+ *  when it was settled (a due paid later goes to the customer's account, never back to the bill: so never "Still due"). */
+function paidRows(o: Order): DetailSumRow[] {
+  const due = orderDue(o);
+  const rows: DetailSumRow[] = [];
+  if (o.payment === "Split" && (o.splitCash !== undefined || o.splitOnline !== undefined)) {
+    rows.push(sumRow("Paid in cash", inr(o.splitCash ?? 0)), sumRow("Paid online", inr(o.splitOnline ?? 0)));
+  } else if (o.paidAmount > 0) {
+    rows.push(sumRow((due === 0 && PAID_IN_FULL[o.payment]) || "Paid", inr(o.paidAmount)));
+  }
+  if (due > 0) rows.push(sumRow("Due at billing", inr(due), "bill"));
+  return rows;
+}
+
+/**
+ * The sums and the total (design 6.8, Q9; values 11.5, 11.10), all from the order's stored figures so they add up as the
+ * printed bill does (lib/receipt.ts; the HTML's settled sums skip charges and tax, values 20 #15, not copied):
+ * "Subtotal"; the discount (discountLineLabel) "−₹x" in --bad-i; each charge of the order's snapshot; the GST when the
+ * bill carries some — exclusive "GST @5%" (added: Subtotal − discount + charges + GST = the total), inclusive
+ * "Incl. GST @5%" (inside the total; receiptGst's figure, the untaxed charges lifted out first); a settled bill's payment
+ * rows. The total: "To pay" (an open tab), "Bill total" (settled), "Not charged" struck (cancelled: its payment is history
+ * the books no longer count, so no payment rows).
+ */
+export function detailSums(o: Order): DetailSums {
+  const charges = chargesFromOrder(o);
+  const rows: DetailSumRow[] = [sumRow("Subtotal", inr(o.subtotal))];
+  if (o.discount > 0) rows.push(sumRow(discountLineLabel(o.discountKind), `−${inr(o.discount)}`, "bad"));
+  for (const c of charges) rows.push(sumRow(c.label, inr(c.amount)));
+  const gst = receiptGst({ ...o, chargeAmount: chargesTotal(charges) }, NO_LIVE_GST);
+  if (gst.show && gst.gstAmount > 0) rows.push(sumRow(`${gst.inclusive ? "Incl. GST" : "GST"} @${gst.rate}%`, inr(gst.gstAmount)));
+  if (o.status === "Completed") rows.push(...paidRows(o));
+  const totalLabel = o.status === "Pending" ? "To pay" : o.status === "Cancelled" ? "Not charged" : "Bill total";
+  return { rows, totalLabel, total: inr(o.total), struck: o.status === "Cancelled" };
+}
+
+/** The red note under a cancelled order's items (values 11.6 in our words, design 6.8). */
+export interface DetailCancelNote {
+  text: string;
+  reason: string | null;
+}
+
+/** "Cancelled at {time} by {who}." (the cancel time, else when it was opened: Ruling P8) and "Reason: {reason}"; who and
+ *  why only when they were stored. Nothing for an order not cancelled. */
+export function cancelNote(o: Order): DetailCancelNote | null {
+  if (o.status !== "Cancelled") return null;
+  const who = o.cancelledBy?.trim();
+  const reason = o.cancelReason?.trim();
+  return { text: `Cancelled at ${clockTime(rowInstant(o))}${who ? ` by ${who}` : ""}.`, reason: reason ? `Reason: ${reason}` : null };
+}
+
+/** The line under a voided line in the trail (design 6.8): "round {n} · {reason} — {who}, {date}" (today's words, the
+ *  round first; none named when the line carries no round). */
+export function voidLineNote(v: OrderVoid): string {
+  return `${v.kotRound > 0 ? `round ${v.kotRound} · ` : ""}${v.reason} — ${v.voidedBy}, ${formatDate(v.at)}`;
 }

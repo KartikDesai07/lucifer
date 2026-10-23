@@ -256,8 +256,10 @@ test("PIN: the void payload's .strict() line sub-schema ACCEPTS a reward:true li
 
 // ── (f) the two staff surfaces branch on item.reward with a FREE landmark ──
 
-test("SOURCE PIN: OrderDetailSheet.tsx branches on item.reward with a struck-through worth + FREE landmark", () => {
-  const src = stripComments(readSrc("components/orders/OrderDetailSheet.tsx"));
+// U2 Task 6: the detail's item lines moved with its body from OrderDetailSheet.tsx into OrderDetailBody.tsx (design 6.8);
+// the pin moved with them, same meaning.
+test("SOURCE PIN: OrderDetailBody.tsx (the Orders detail's item lines) branches on item.reward with a struck-through worth + FREE landmark", () => {
+  const src = stripComments(readSrc("components/orders/OrderDetailBody.tsx"));
   assert.match(src, /orderItemLabel\(item\)/, "landmark: the item list must still render item labels");
   // Bound to the CONSEQUENT arm: the separate needles below passed even with the
   // ternary's arms SWAPPED — i.e. against the very bug they exist to catch.

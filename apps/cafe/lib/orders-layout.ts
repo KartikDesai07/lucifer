@@ -101,7 +101,22 @@ export function frameInUse(held: OrderDetailFrame | null, forWidth: OrderDetailF
   return nestedOpen ? held : forWidth;
 }
 
-/** Under the head (values 11.1: the head never shrinks, the rest scrolls): today's body and buttons until U2 Tasks 6-7
- *  rebuild them, with room under the last button that clears the window's foot and its safe-area inset (U1 P49). */
+/** Under the head (values 11.1: the head never shrinks, the rest scrolls) the HTML's body (values 11.4, U2 Task 6): a
+ *  flex column, padding 14px 18px 18px, its parts 14px apart (none of them shrinks: each is flex-none), the bottom room
+ *  growing by the window's safe-area inset (U1 P49). Today's buttons stay in it until U2 Task 7 rebuilds them. */
 export const ORDER_DETAIL_SCROLL_CLASS =
-  "flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pb-[calc(16px+env(safe-area-inset-bottom))]";
+  "flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto overflow-x-hidden px-[18px] pt-3.5 pb-[calc(18px+env(safe-area-inset-bottom))]";
+
+// ── The detail's items box (U2 Task 6; values 11.5; design 6.8): shared by its lines and the void trail inside it ─────
+
+/** The items box's head and the void trail's caption (values 11.5): 11.5px 600 uppercase, .06em, --text-3, 4px above
+ *  the first line; the two words at either end, on one baseline. */
+export const ORDER_DETAIL_BOX_HEAD_CLASS =
+  "flex items-baseline justify-between pb-1 text-[11.5px] font-semibold uppercase tracking-[0.06em] text-subtle-foreground";
+/** A line (values 11.5): the 28px quantity, the name column, the amount, 2px 8px apart and 8px above and below, on the
+ *  text's baseline. */
+export const ORDER_DETAIL_LINE_CLASS = "grid grid-cols-[28px_minmax(0,1fr)_auto] items-baseline gap-x-2 gap-y-0.5 py-2";
+/** A line's "{qty}×" (values 11.5): Geist Mono 13px 600 in --text-2. */
+export const ORDER_DETAIL_QTY_CLASS = "font-mono text-[13px] font-semibold text-muted-foreground";
+/** The box's dashed rule (values 11.5: 1.5px dashed --border, drawn 1px at DPR 1); its margins are its place's. */
+export const ORDER_DETAIL_RULE_CLASS = "border-t-[1.5px] border-dashed border-border";

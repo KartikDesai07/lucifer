@@ -618,7 +618,8 @@ test("PIN: the three renderers call discountLineLabel(...) and none contains the
     "components/pos/OrderReceipt.tsx",
     // The payment popup's summary card moved out of PaymentModal.tsx (F8/F1 split).
     "components/pos/PaymentSummary.tsx",
-    "components/orders/OrderDetailSheet.tsx",
+    // U2 Task 6: the Orders detail's sums are built in lib/order-detail-view.ts (detailSums), which the body renders.
+    "lib/order-detail-view.ts",
   ];
   for (const file of files) {
     const src = stripComments(readSrc(file));

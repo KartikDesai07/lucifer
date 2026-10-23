@@ -214,6 +214,7 @@
     "lib/orders-row.test.ts",
     "lib/orders-list-view.test.ts",
     "lib/order-detail-view.test.ts",
+    "lib/order-detail-body.test.ts",
     "lib/orders-detail-frame.test.ts",
     "lib/orders-choice.test.ts",
     "lib/use-media-query.test.ts",
