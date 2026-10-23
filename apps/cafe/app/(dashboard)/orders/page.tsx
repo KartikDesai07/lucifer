@@ -16,7 +16,9 @@ import {
   ORDERS_PHONE_QUERY,
   ORDERS_SCROLLER_CLASS,
   ORDERS_TOP_CLASS,
+  ORDERS_XL_QUERY,
 } from "@/lib/orders-layout";
+import { engageChoice, noChoice, settleChoice, tappedChoice, type OrdersChoice } from "@/lib/orders-choice";
 import {
   CHIP_CLEARS,
   DEFAULT_ORDERS_FILTERS,
@@ -54,7 +56,8 @@ const MINUTE_TICK_MS = 60_000;
 // The owner's HTML Orders screen (U2; values 1.1, 2.1, 2.2; design 5): the page fills the screen under the shell's
 // header like /pos (lib/orders-layout.ts); the list column (top block over the list scroller) and, from 1280px, the
 // 400px detail column. The top block holds the lanes (Task 2), the toolbar, the Filters panel and the chips (Task 3);
-// the scroller the list head, the list box and Load more (Task 4); today's sheet stays until U2 Task 5.
+// the scroller the list head, the list box and Load more (Task 4); the detail fills the column, or below 1280px opens
+// full screen from the window's foot (Task 5).
 export default function OrdersPage() {
   // One filter state (lib/orders-lanes.ts): the lane, the date, the payment, the table and the searched phone; the one
   // list query is ordersQuery's (the same GET /api/orders with today's filter keys only).
@@ -90,7 +93,6 @@ export default function OrdersPage() {
   const tables = useTables();
   const tableNos = (tables.data ?? []).map((t) => t.tableNo);
 
-  const [detail, setDetail] = useState<Order | null>(null);
   const [cancelling, setCancelling] = useState<Order | null>(null);
 
   const confirmCancel = async (reason: string) => {
@@ -108,6 +110,16 @@ export default function OrdersPage() {
   const list = dedupeOrdersById(orders.data?.pages ?? []);
   const searching = filters.phone !== "";
   const shown = laneRows(filters.lane, list, searching);
+  // The chosen order (design 6.6, ruling P9; lib/orders-choice.ts): from 1280px an empty choice takes the first row
+  // shown, once (a refresh never swaps it); a tap chooses; any filter change drops it; below 1280px an auto-picked row
+  // gives way. Settled during render and stored only on a change, so no frame ever shows a stale choice.
+  const xl = useMediaQuery(ORDERS_XL_QUERY);
+  const [held, setHeld] = useState<OrdersChoice>(() => noChoice(filters));
+  const choice = settleChoice(held, filters, xl, shown[0]);
+  if (choice !== held) setHeld(choice);
+  const detail = choice.order;
+  const setDetail = (order: Order | null) => setHeld(tappedChoice(order, filters));
+  const engage = () => setHeld(engageChoice);
   // The list head (values 7) counts the rows shown, once the list has loaded.
   const head = orders.data === undefined ? null : listHead(filters.lane, shown.length, orders.hasNextPage, searching);
   // Ruling P5: only the payment and the table are filters for the empty words and their way-back button (never the
@@ -135,11 +147,10 @@ export default function OrdersPage() {
     setFilter({ phone: "" });
   };
 
-  // A lane tap (design 6.2): that lane, the phone search cleared (typed and searched) and the choice dropped.
+  // A lane tap (design 6.2): that lane and the phone search cleared (typed and searched); the new filters drop the choice.
   const pickLane = (lane: OrdersLane) => {
     setPhoneInput("");
     setFilter({ lane, phone: "" });
-    setDetail(null);
   };
 
   return (
@@ -245,16 +256,20 @@ export default function OrdersPage() {
             )}
           </div>
         </div>
-        <div data-ui="orders-detail-column" className={ORDERS_DETAIL_COLUMN_CLASS} />
+        {/* The detail (design 6.6): from 1280px it fills this column; below, it opens full screen from the window's foot
+            through its own portal — one frame at a time. A press or focus inside it (or a sheet it opened) keeps an
+            auto-picked order chosen. It follows the live row (a tab another device grew or settled) and latches its
+            own copy while paying. */}
+        <div data-ui="orders-detail-column" className={ORDERS_DETAIL_COLUMN_CLASS} onPointerDownCapture={engage} onFocusCapture={engage}>
+          <OrderDetailSheet
+            place="page"
+            order={liveOrderOf(detail, list)}
+            now={now}
+            onOpenChange={(o) => !o && setDetail(null)}
+            onSettled={setDetail}
+          />
+        </div>
       </div>
-
-      {/* The sheet follows the live row (a tab another device grew or settled);
-          it latches its own copy while paying. */}
-      <OrderDetailSheet
-        order={liveOrderOf(detail, list)}
-        onOpenChange={(o) => !o && setDetail(null)}
-        onSettled={setDetail}
-      />
 
       {isAdmin && (
         <CancelOrderDialog

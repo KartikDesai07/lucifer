@@ -50,5 +50,51 @@ export const ORDERS_SCROLLER_CLASS =
 
 /** The detail column (values 11.1 at the HTML's `big`; owner rule 2026-10-22: from 1280px only): the body grid's second
  *  track, 400px, the surface with a 1px rule on its left, no shadow, a flex column that scrolls in parts. Below 1280px
- *  it is not drawn (the detail opens full screen from the bottom, Task 5). */
+ *  it is not drawn (the detail opens full screen from the bottom, its own portal). */
 export const ORDERS_DETAIL_COLUMN_CLASS = "relative z-[1] hidden min-h-0 min-w-0 flex-col border-l border-border bg-card xl:flex";
+
+// ── The order detail's frames (U2 Task 5; design 6.6, Q8; values 11.1, 12) ──────────────────────────────────────────
+
+/** From here (the owner's rule of 2026-10-22) a right panel may be a column or a side sheet; below it the detail opens
+ *  full screen from the window's foot. */
+export const ORDERS_XL_QUERY = "(min-width: 1280px)";
+
+/** Where the detail opens: in the /orders page's column, or over another page (the dashboard). */
+export type OrderDetailPlace = "page" | "overlay";
+/** The detail's frame: the page's 400px column, a 400px side sheet over a scrim, or the full-screen bottom sheet. */
+export type OrderDetailFrame = "column" | "side" | "bottom";
+
+/** The one frame for the width (design 6.6, Q8): from 1280px the column on /orders and a side sheet elsewhere; below
+ *  1280px the bottom sheet on both; none while the width is not known (the server render). */
+export function orderDetailFrame(place: OrderDetailPlace, xl: boolean | null): OrderDetailFrame | null {
+  if (xl === null) return null;
+  if (!xl) return "bottom";
+  return place === "page" ? "column" : "side";
+}
+
+/** The column frame: it fills the page's detail column (ORDERS_DETAIL_COLUMN_CLASS), which carries the surface and its
+ *  left rule, so there is one column frame, never two. The HTML sets no line-height on the detail: normal. */
+export const ORDER_DETAIL_COLUMN_CLASS = "flex min-h-0 flex-1 flex-col leading-[normal]";
+
+/** The dashboard's side sheet from 1280px (design 6.6): the kit sheet on the right, over its scrim, at the column's
+ *  400px on --surface with the 1px --border rule on its left, square and unpadded (the kit's radius, padding and gap
+ *  go), keeping the kit's --pop shadow (the HTML's aside wears --pop whenever it lies over the page, values 11.1) and its
+ *  slide. The kit's own close button (its only direct-child button) is hidden: the head's ✕ is the HTML's. */
+export const ORDER_DETAIL_SIDE_CLASS =
+  "flex w-[400px] flex-col gap-0 rounded-none border-l border-border bg-card p-0 font-sans leading-[normal] text-foreground sm:max-w-none [&>button]:hidden";
+
+/** The bottom sheet's overlay (owner rule: no scrim at any width below 1280px; at 390 the HTML's is under the sheet):
+ *  mounted with the dialog (its scroll lock stays), never drawn — as the /pos cart sheet's. */
+export const ORDER_DETAIL_SHEET_SCRIM_CLASS = "hidden";
+/** The bottom sheet below 1280px on both pages (values 12 and 11.1 at 390; owner rule 2026-10-22): over the whole window
+ *  (fixed, inset 0) at z-index 15, over the header, the rail and the tab bar (12), under the sheets it opens; --surface
+ *  with the 1px --border rule on its left (the HTML's phone content starts at x 1); no shadow. It slides up from the
+ *  window's foot and back down with the /pos cart sheet's slides (lib/pos-layout.ts POS_CART_SHEET_CLASS: the same
+ *  keyframes, Radix's data-state picks one, motion-safe). The HTML sets no line-height: normal. */
+export const ORDER_DETAIL_SHEET_CLASS =
+  "fixed inset-0 z-[15] flex flex-col border-l border-border bg-card font-sans leading-[normal] text-foreground outline-none motion-safe:data-[state=open]:animate-cart-sheet-up motion-safe:data-[state=closed]:animate-cart-sheet-down";
+
+/** Under the head (values 11.1: the head never shrinks, the rest scrolls): today's body and buttons until U2 Tasks 6-7
+ *  rebuild them, with room under the last button that clears the window's foot and its safe-area inset (U1 P49). */
+export const ORDER_DETAIL_SCROLL_CLASS =
+  "flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pb-[calc(16px+env(safe-area-inset-bottom))]";

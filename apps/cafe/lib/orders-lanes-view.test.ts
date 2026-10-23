@@ -103,8 +103,7 @@ test("OrdersLanes cards: the chosen lane (Open) has the 2px --text outline, its 
 
 test("OrdersLanes strip: the chosen tab shows its dot and count, the others the dot alone; the current row the total, the line and Settle {code}", () => {
   const rows = laneRows("open", [order("3", { total: 768 }), printed("1", { total: 1063, tableNo: "T-1" })], false);
-  const chosen: Order[] = [];
-  const html = lanesHtml({ rows, onChoose: (o) => chosen.push(o) });
+  const html = lanesHtml({ rows });
   const tabs = tagsOf(html, "orders-lane-tab");
   assert.match(html, /role="tablist"/, "the tabs are a tablist (values 3.3)");
   tabs.forEach((tag, i) => {
@@ -126,6 +125,27 @@ test("OrdersLanes strip: the chosen tab shows its dot and count, the others the 
   const settle = tagOf(html, "orders-lane-settle");
   expectAll(settle, ["flex", "h-[30px]", "flex-none", "items-center", "rounded-[8px]", "bg-ink", "px-[11px]", "text-[12.5px]", "font-semibold", "text-on-ink", "whitespace-nowrap"], "values 3.3 action (text centred, design 8)");
   assert.equal(textOf(innerOf(html, "orders-lane-settle")), "Settle T1", "Settle {code} for the first printed bill (recentOrderCode)");
+});
+
+/** Every element in a tree (OrdersLanes calls no hook, so calling it returns its own element tree to inspect). */
+function elementsOf(node: React.ReactNode): React.ReactElement<Record<string, unknown>>[] {
+  if (Array.isArray(node)) return node.flatMap(elementsOf);
+  if (!React.isValidElement<Record<string, unknown>>(node)) return [];
+  return [node, ...elementsOf(node.props.children as React.ReactNode)];
+}
+
+// U2 Task 5 (carried from Task 2's review): a static render cannot click, so the strip action's wiring is checked on the
+// element itself — its onClick hands the printed bill to onChoose (the page's setDetail: that order's detail opens).
+test("OrdersLanes strip: 'Settle {code}' hands that printed bill to onChoose (design 6.2: its detail opens)", () => {
+  const bill = printed("1", { total: 1063, tableNo: "T-1" });
+  const rows = laneRows("open", [order("3", { total: 768 }), bill], false);
+  const chosen: Order[] = [];
+  const tree = OrdersLanes({ filters: DEFAULT_ORDERS_FILTERS, rows, more: false, loaded: true, now: NOW, onLane: noop, onChoose: (o) => chosen.push(o) });
+  const settle = elementsOf(tree).find((el) => el.props["data-ui"] === "orders-lane-settle");
+  assert.ok(settle, "landmark: the strip's Settle action");
+  assert.equal(typeof settle.props.onClick, "function", "the action has its own handler");
+  (settle.props.onClick as () => void)();
+  assert.deepEqual(chosen, [bill], "the printed bill is chosen, once");
 });
 
 test("OrdersLanes: no Settle action without a printed bill or on another lane; the chosen card stays plain before the list loads", () => {
@@ -180,5 +200,8 @@ test("the /orders page: the lanes lead the top block; the status select is gone 
   const pick = src.slice(src.indexOf("const pickLane"), src.indexOf("};", src.indexOf("const pickLane")));
   assert.ok(pick.includes('setPhoneInput("")'), "a lane tap clears the typed phone");
   assert.ok(/phone: ""/.test(pick), "and the searched phone (no 350 ms ghost)");
-  assert.ok(pick.includes("setDetail(null)"), "and the choice");
+  // U2 Task 5: the choice is dropped by the new filter state itself (lib/orders-choice.ts settleChoice: a different
+  // filters object drops it, for the lane as for the date, a filter or the search; lib/orders-detail-frame.test.ts).
+  assert.ok(/setFilter\(\{ lane, phone: "" \}\)/.test(pick), "and the choice, through the new filters (settleChoice)");
+  assert.match(src, /settleChoice\(held, filters, xl, shown\[0\]\)/, "landmark: the page settles its choice on the filters");
 });

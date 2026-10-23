@@ -23,6 +23,7 @@ const KITCHEN_CARD = "components/kitchen/KitchenOrderCard.tsx";
 const ORDER_TABLE = "components/orders/OrderTable.tsx";
 const ORDERS_ROW = "lib/orders-row.ts";
 const ORDER_SHEET = "components/orders/OrderDetailSheet.tsx";
+const ORDER_DETAIL_VIEW = "lib/order-detail-view.ts";
 
 /** The text of one top-level function: from `function NAME(` to the next top-level function / interface (or file end). */
 function functionBody(src: string, name: string): string {
@@ -200,12 +201,15 @@ function assertGuardedLabels(rel: string, arg: string, expectedCalls: number): v
 
 // U2 Task 4 (2026-10-23): the Orders list's table row and card row read ONE row view (lib/orders-row.ts orderRowView,
 // its sub "#014 · Dine-in · Token 12"), so the label moved there with its guard: one call instead of OrderTable's two,
-// and OrderTable renders no label of its own.
-test("KitchenOrderCard / the Orders row view (lib/orders-row.ts) / OrderDetailSheet render tokenLabelOf only under a defined/number check", () => {
+// and OrderTable renders no label of its own. U2 Task 5 (2026-10-23): the order detail's "Token 12" moved from the
+// sheet's description line into the head's meta row (lib/order-detail-view.ts detailMeta), with its guard: the sheet
+// renders no label of its own.
+test("KitchenOrderCard / the Orders row view (lib/orders-row.ts) / the detail's meta (lib/order-detail-view.ts) render tokenLabelOf only under a defined/number check", () => {
   assertGuardedLabels(KITCHEN_CARD, "card.tokenNumber", 1);
   assertGuardedLabels(ORDERS_ROW, "o.tokenNumber", 1);
   assert.ok(!read(ORDER_TABLE).includes("tokenLabelOf("), "OrderTable draws the row view's sub, never a label of its own");
-  assertGuardedLabels(ORDER_SHEET, "order.tokenNumber", 1);
+  assertGuardedLabels(ORDER_DETAIL_VIEW, "o.tokenNumber", 1);
+  assert.ok(!read(ORDER_SHEET).includes("tokenLabelOf("), "OrderDetailSheet draws the head's meta, never a label of its own");
 });
 
 // ── The client bundle boundary ─────────────────────────────────────────────────────────────────────────────────────
@@ -238,6 +242,7 @@ test("bundle boundary: no UI file imports lib/token-board, lib/token-board-serve
   assert.match(read(HOOKS), /from "@\/lib\/token-view"/);
   assert.match(read(ROWS), /from "@\/lib\/token-view"/);
   assert.match(read(ORDERS_ROW), /from "@\/lib\/token-view"/, "the Orders row view (U2 Task 4) reads the label from the client-safe module");
+  assert.match(read(ORDER_DETAIL_VIEW), /from "@\/lib\/token-view"/, "the detail's meta (U2 Task 5) reads the label from the client-safe module");
 });
 
 // ── The hooks ──────────────────────────────────────────────────────────────────────────────────────────────────────

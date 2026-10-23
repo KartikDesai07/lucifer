@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import dynamic from "next/dynamic";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useReactToPrint } from "react-to-print";
 import { Printer, ChefHat, MessageCircle, HandCoins, Replace, Ticket } from "lucide-react";
 import { toast } from "sonner";
@@ -18,26 +19,32 @@ import { useSettings } from "@/hooks/use-settings";
 import { useSettleFlow } from "@/hooks/use-settle-flow";
 import { useHostRouting } from "@/hooks/use-print-routing";
 import { useTokenPrint } from "@/hooks/use-token-print";
+import { useMediaQuery } from "@/hooks/use-media-query";
+import { useNow } from "@/hooks/use-now";
 import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetFooter } from "@/components/ui/sheet";
 import { OrderReceipt } from "@/components/pos/OrderReceipt";
 import { KOTReceipt } from "@/components/pos/KOTReceipt";
 import { TokenSlip } from "@/components/print/slip/TokenSlip";
+import { OrderDetailHead } from "@/components/orders/OrderDetailHead";
 import { OrderVoidTrail } from "@/components/orders/OrderVoidTrail";
 import { MoveTableDialog } from "@/components/orders/MoveTableDialog";
 import type { PaymentResult } from "@/components/pos/PaymentModal";
 import { collectedAmount } from "@/lib/payment-result";
-import { tokenLabelOf } from "@/lib/token-view";
+import {
+  ORDERS_XL_QUERY,
+  ORDER_DETAIL_COLUMN_CLASS,
+  ORDER_DETAIL_SCROLL_CLASS,
+  ORDER_DETAIL_SHEET_CLASS,
+  ORDER_DETAIL_SHEET_SCRIM_CLASS,
+  ORDER_DETAIL_SIDE_CLASS,
+  orderDetailFrame,
+  type OrderDetailFrame,
+  type OrderDetailPlace,
+} from "@/lib/orders-layout";
 import { KITCHEN_NOTHING_TO_SEND_MESSAGE, kitchenOrderOf, orderSkipsKitchen } from "@/lib/kitchen-lines";
 import { keepOpenForNestedDialog } from "@/lib/nested-dialog";
 import type { Customer, Order, SettleOrderInput } from "@/types";
@@ -101,6 +108,9 @@ function sheetSettlePayload(order: Order, result: PaymentResult, picked: Custome
   };
 }
 
+/** The meta clock's own tick where the page passes none (the dashboard): once a minute, as the Orders page's. */
+const DETAIL_CLOCK_MS = 60_000;
+
 interface OrderDetailSheetProps {
   order: Order | null;
   onOpenChange: (open: boolean) => void;
@@ -109,13 +119,27 @@ interface OrderDetailSheetProps {
   // order, Print available) or a table move — so the parent can refresh the
   // snapshot it is passing back in. Named for the settle that came first.
   onSettled?: (order: Order) => void;
+  /** Where it opens (U2 Task 5; design 6.6, Q8): "page" = the /orders column from 1280px; "overlay" (the default, the
+   *  dashboard) = a 400px side sheet from 1280px. Below 1280px both open full screen from the window's foot. */
+  place?: OrderDetailPlace;
+  /** The page's cancel (admins on /orders; U2 Task 7 draws its "Cancel this order"). The dashboard provides none. */
+  onCancel?: (order: Order) => void;
+  /** The page's minute tick for the meta clock, so the head's age reads as the list's (the Orders page's useNow). */
+  now?: Date;
 }
 
 export function OrderDetailSheet({
   order,
   onOpenChange,
   onSettled,
+  place = "overlay",
+  now,
 }: OrderDetailSheetProps) {
+  // One frame for the width (design 6.6): the column, the side sheet or the bottom sheet — none until the width is
+  // known — so the print sources, the settle latch and the payment preload exist once at any width.
+  const frame = orderDetailFrame(place, useMediaQuery(ORDERS_XL_QUERY));
+  const ownClock = useNow(DETAIL_CLOCK_MS);
+  const clock = now ?? ownClock ?? new Date();
   const settings = useSettings();
   // Both buttons in this sheet's footer are INDEPENDENT print sites: they fire
   // their own useReactToPrint triggers straight from onClick and never touch
@@ -285,198 +309,183 @@ export function OrderDetailSheet({
   };
 
   return (
-    <Sheet open={!!order} onOpenChange={onOpenChange}>
-      <SheetContent
-        ref={sheetRef}
-        className="flex w-full flex-col gap-0 overflow-y-auto sm:max-w-md"
-        onInteractOutside={(e) => keepOpenForNestedDialog(e, sheetRef.current)}
-      >
-        <SheetHeader>
-          <SheetTitle>{order?.orderId}</SheetTitle>
-          <SheetDescription>
-            {order && (
-              <>
-                {formatDate(order.createdAt)} ·{" "}
-                {new Date(order.createdAt).toLocaleTimeString("en-IN", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-                {typeof order.tokenNumber === "number" && ` · ${tokenLabelOf(order.tokenNumber)}`}
-              </>
-            )}
-          </SheetDescription>
-        </SheetHeader>
+    <>
+      <DetailFrame frame={frame} open={!!order} onOpenChange={onOpenChange} sheetRef={sheetRef}>
+        {order && <OrderDetailHead order={order} now={clock} onClose={frame === "column" ? undefined : () => onOpenChange(false)} />}
 
-        {order && (
-          <div className="flex flex-1 flex-col gap-4 p-4 text-sm">
-            <div className="flex flex-wrap gap-2">
-              <Badge
-                variant={order.status === "Completed" ? "default" : "secondary"}
-                className={cn(
-                  order.status === "Pending" && "bg-amber-100 text-amber-800",
-                  order.status === "Completed" && "bg-green-100 text-green-800",
-                  order.status === "Cancelled" && "bg-gray-100 text-gray-800",
-                )}
-              >
-                {order.status}
-              </Badge>
-              <Badge variant="outline" className={cn(payStyle?.color)}>
-                {payStyle?.label ?? order.payment}
-              </Badge>
-              <Badge variant="outline">{order.tableNo ?? "Walk-In"}</Badge>
-            </div>
-
-            {/* Colour alone never carries this — the heading names it too, and
-                the reason/who/when make the cancellation legible on its own. */}
-            {order.status === "Cancelled" && (
-              <div className="space-y-1 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-destructive">
-                <p className="font-semibold">Cancelled</p>
-                {order.cancelReason && <p>{order.cancelReason}</p>}
-                <p className="text-xs opacity-80">
-                  {order.cancelledBy ?? "Unknown"}
-                  {order.cancelledAt && ` · ${formatDate(order.cancelledAt)}`}
-                </p>
+        {/* Under the head the rest scrolls (values 11.1): today's body and buttons until U2 Tasks 6-7 rebuild them. */}
+        <div data-ui="order-detail-scroll" className={ORDER_DETAIL_SCROLL_CLASS}>
+          {order && (
+            <div className="flex flex-1 flex-col gap-4 p-4 text-sm">
+              <div className="flex flex-wrap gap-2">
+                <Badge
+                  variant={order.status === "Completed" ? "default" : "secondary"}
+                  className={cn(
+                    order.status === "Pending" && "bg-amber-100 text-amber-800",
+                    order.status === "Completed" && "bg-green-100 text-green-800",
+                    order.status === "Cancelled" && "bg-gray-100 text-gray-800",
+                  )}
+                >
+                  {order.status}
+                </Badge>
+                <Badge variant="outline" className={cn(payStyle?.color)}>
+                  {payStyle?.label ?? order.payment}
+                </Badge>
+                <Badge variant="outline">{order.tableNo ?? "Walk-In"}</Badge>
               </div>
-            )}
 
-            <div className="space-y-1">
-              <Row label="Customer" value={order.customerName} />
-              <Row label="Served by" value={order.receiver} />
-            </div>
+              {/* Colour alone never carries this — the heading names it too, and
+                  the reason/who/when make the cancellation legible on its own. */}
+              {order.status === "Cancelled" && (
+                <div className="space-y-1 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-destructive">
+                  <p className="font-semibold">Cancelled</p>
+                  {order.cancelReason && <p>{order.cancelReason}</p>}
+                  <p className="text-xs opacity-80">
+                    {order.cancelledBy ?? "Unknown"}
+                    {order.cancelledAt && ` · ${formatDate(order.cancelledAt)}`}
+                  </p>
+                </div>
+              )}
 
-            <Separator />
+              <div className="space-y-1">
+                <Row label="Customer" value={order.customerName} />
+                <Row label="Served by" value={order.receiver} />
+              </div>
 
-            <div className="space-y-2">
-              {order.items.map((item, i) => (
-                <div key={`${item.productId}-${i}`} className="flex justify-between gap-3">
-                  <div className="min-w-0">
-                    <span className="font-medium">
-                      {orderItemLabel(item)}
-                      {item.qty > 1 ? ` ×${item.qty}` : ""}
-                    </span>
-                    {orderItemModifierLines(item).map((line) => (
-                      <div key={line} className="text-xs text-muted-foreground">
-                        {line}
-                      </div>
-                    ))}
-                    {item.instructions && (
-                      <div className="text-xs italic text-muted-foreground">
-                        {item.instructions}
-                      </div>
-                    )}
-                    {/* CB-5B — a reward line's money is excluded from the
-                        subtotal (lib/receipt.ts's reducer skips it), so
-                        showing its real price here would make the amounts
-                        below visibly not add up. The stored `note` is
-                        preferred over the live constant so a settled order
-                        reads the same note it was issued with; only a
-                        pre-S14 reward line (stored before this field
-                        existed) falls back to it. */}
-                    {item.reward && (
-                      <div className="text-xs italic text-muted-foreground">
-                        {item.note ?? REWARD_ITEM_LINE_NOTE}
-                      </div>
+              <Separator />
+
+              <div className="space-y-2">
+                {order.items.map((item, i) => (
+                  <div key={`${item.productId}-${i}`} className="flex justify-between gap-3">
+                    <div className="min-w-0">
+                      <span className="font-medium">
+                        {orderItemLabel(item)}
+                        {item.qty > 1 ? ` ×${item.qty}` : ""}
+                      </span>
+                      {orderItemModifierLines(item).map((line) => (
+                        <div key={line} className="text-xs text-muted-foreground">
+                          {line}
+                        </div>
+                      ))}
+                      {item.instructions && (
+                        <div className="text-xs italic text-muted-foreground">
+                          {item.instructions}
+                        </div>
+                      )}
+                      {/* CB-5B — a reward line's money is excluded from the
+                          subtotal (lib/receipt.ts's reducer skips it), so
+                          showing its real price here would make the amounts
+                          below visibly not add up. The stored `note` is
+                          preferred over the live constant so a settled order
+                          reads the same note it was issued with; only a
+                          pre-S14 reward line (stored before this field
+                          existed) falls back to it. */}
+                      {item.reward && (
+                        <div className="text-xs italic text-muted-foreground">
+                          {item.note ?? REWARD_ITEM_LINE_NOTE}
+                        </div>
+                      )}
+                    </div>
+                    {item.reward ? (
+                      <span className="whitespace-nowrap">
+                        <span className="line-through opacity-60">{inr(item.price * item.qty)}</span>{" "}
+                        FREE
+                      </span>
+                    ) : (
+                      <span>{inr(item.price * item.qty)}</span>
                     )}
                   </div>
-                  {item.reward ? (
-                    <span className="whitespace-nowrap">
-                      <span className="line-through opacity-60">{inr(item.price * item.qty)}</span>{" "}
-                      FREE
-                    </span>
-                  ) : (
-                    <span>{inr(item.price * item.qty)}</span>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            <Separator />
-
-            <div className="space-y-1">
-              <Row label="Subtotal" value={inr(order.subtotal)} />
-              {order.discount > 0 && (
-                <Row label={discountLineLabel(order.discountKind)} value={`−${inr(order.discount)}`} />
-              )}
-              {/* CB-CHG — every charge line (table + staff-entered extras),
-                  from the order's own snapshot, so this sheet reads the same
-                  as the slip that was printed for the customer, even if the
-                  table has since changed what it charges. A legacy order
-                  derives to exactly the one line the old conditional showed. */}
-              {chargesFromOrder(order).map((c, i) => (
-                <Row key={`${c.label}-${i}`} label={c.label} value={`+${inr(c.amount)}`} />
-              ))}
-              <div className="flex justify-between gap-3 text-base font-bold">
-                <span>Total</span>
-                <span>{inr(order.total)}</span>
+                ))}
               </div>
-              <Row label="Paid" value={inr(order.paidAmount)} />
-              {due > 0 && order.status === "Completed" && (
-                <div className="flex justify-between gap-3 font-medium text-destructive">
-                  <span>Due</span>
-                  <span>{inr(due)}</span>
+
+              <Separator />
+
+              <div className="space-y-1">
+                <Row label="Subtotal" value={inr(order.subtotal)} />
+                {order.discount > 0 && (
+                  <Row label={discountLineLabel(order.discountKind)} value={`−${inr(order.discount)}`} />
+                )}
+                {/* CB-CHG — every charge line (table + staff-entered extras),
+                    from the order's own snapshot, so this sheet reads the same
+                    as the slip that was printed for the customer, even if the
+                    table has since changed what it charges. A legacy order
+                    derives to exactly the one line the old conditional showed. */}
+                {chargesFromOrder(order).map((c, i) => (
+                  <Row key={`${c.label}-${i}`} label={c.label} value={`+${inr(c.amount)}`} />
+                ))}
+                <div className="flex justify-between gap-3 text-base font-bold">
+                  <span>Total</span>
+                  <span>{inr(order.total)}</span>
                 </div>
+                <Row label="Paid" value={inr(order.paidAmount)} />
+                {due > 0 && order.status === "Completed" && (
+                  <div className="flex justify-between gap-3 font-medium text-destructive">
+                    <span>Due</span>
+                    <span>{inr(due)}</span>
+                  </div>
+                )}
+              </div>
+
+              {order.voids && order.voids.length > 0 && (
+                <>
+                  <Separator />
+                  <OrderVoidTrail voids={order.voids} />
+                </>
               )}
             </div>
-
-            {order.voids && order.voids.length > 0 && (
-              <>
-                <Separator />
-                <OrderVoidTrail voids={order.voids} />
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Two rows at EVERY width. The sheet is at most 28rem wide
-            (sm:max-w-md above), but the SheetFooter primitive switches to a
-            single sm:flex-row line at >=640px — five buttons in 448px
-            overlapped their icons and truncated "Share" (owner screenshots,
-            2026-09-08). The secondary actions share one grid (2 columns when
-            Move table joins them, 3 otherwise) and Settle & Pay keeps a full
-            row of its own, so the primary action is never squeezed. */}
-        <SheetFooter className="flex-col gap-2 px-4 sm:flex-col sm:justify-start sm:space-x-0">
-          <div className={cn("grid gap-2", isOpenTab ? "grid-cols-2" : "grid-cols-3")}>
-            <Button variant="outline" onClick={printBill} disabled={enqueuePending} className={BRAND_CONTROL_CLASS}>
-              <Printer className="mr-2 h-4 w-4" /> Print
-            </Button>
-            <Button variant="outline" onClick={printKitchenSlip} disabled={enqueuePending} className={BRAND_CONTROL_CLASS}>
-              <ChefHat className="mr-2 h-4 w-4" /> {isCancelled ? "Notify Kitchen" : "KOT"}
-            </Button>
-            <Button variant="outline" asChild className={BRAND_CONTROL_CLASS}>
-              <a
-                href={
-                  order
-                    ? whatsAppLink(order, restaurantName, receiptFooter)
-                    : "#"
-                }
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <MessageCircle className="mr-2 h-4 w-4" /> Share
-              </a>
-            </Button>
-            {hasToken && (
-              <Button variant="outline" onClick={printToken} disabled={enqueuePending} aria-label="Print token again" className={BRAND_CONTROL_CLASS}>
-                <Ticket className="mr-2 h-4 w-4" /> Token
-              </Button>
-            )}
-            {/* Same live-tab gate as Settle & Pay. A walk-in open tab still
-                gets this entry point — MoveTableDialog now serves ASSIGN
-                (claim a table) for a tab with none, same as it serves MOVE
-                for a seated one. Owner decision: all staff, no admin gate
-                (matches Settle, not Cancel). */}
-            {isOpenTab && (
-              <Button variant="outline" className={BRAND_CONTROL_CLASS} onClick={() => setMoveOpen(true)}>
-                <Replace className="mr-2 h-4 w-4" /> {order.tableNo ? "Move table" : "Assign table"}
-              </Button>
-            )}
-          </div>
-          {isOpenTab && (
-            <Button className={cn("w-full", BRAND_CONTROL_CLASS)} onClick={openSettle}>
-              <HandCoins className="mr-2 h-4 w-4" /> Settle &amp; Pay
-            </Button>
           )}
-        </SheetFooter>
+
+          {/* Two rows at EVERY width. The panel is 400px wide (or the whole
+              window below 1280px), but the SheetFooter primitive switches to a
+              single sm:flex-row line at >=640px — five buttons in 448px
+              overlapped their icons and truncated "Share" (owner screenshots,
+              2026-09-08). The secondary actions share one grid (2 columns when
+              Move table joins them, 3 otherwise) and Settle & Pay keeps a full
+              row of its own, so the primary action is never squeezed. */}
+          <SheetFooter className="flex-col gap-2 px-4 sm:flex-col sm:justify-start sm:space-x-0">
+            <div className={cn("grid gap-2", isOpenTab ? "grid-cols-2" : "grid-cols-3")}>
+              <Button variant="outline" onClick={printBill} disabled={enqueuePending} className={BRAND_CONTROL_CLASS}>
+                <Printer className="mr-2 h-4 w-4" /> Print
+              </Button>
+              <Button variant="outline" onClick={printKitchenSlip} disabled={enqueuePending} className={BRAND_CONTROL_CLASS}>
+                <ChefHat className="mr-2 h-4 w-4" /> {isCancelled ? "Notify Kitchen" : "KOT"}
+              </Button>
+              <Button variant="outline" asChild className={BRAND_CONTROL_CLASS}>
+                <a
+                  href={
+                    order
+                      ? whatsAppLink(order, restaurantName, receiptFooter)
+                      : "#"
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <MessageCircle className="mr-2 h-4 w-4" /> Share
+                </a>
+              </Button>
+              {hasToken && (
+                <Button variant="outline" onClick={printToken} disabled={enqueuePending} aria-label="Print token again" className={BRAND_CONTROL_CLASS}>
+                  <Ticket className="mr-2 h-4 w-4" /> Token
+                </Button>
+              )}
+              {/* Same live-tab gate as Settle & Pay. A walk-in open tab still
+                  gets this entry point — MoveTableDialog now serves ASSIGN
+                  (claim a table) for a tab with none, same as it serves MOVE
+                  for a seated one. Owner decision: all staff, no admin gate
+                  (matches Settle, not Cancel). */}
+              {isOpenTab && (
+                <Button variant="outline" className={BRAND_CONTROL_CLASS} onClick={() => setMoveOpen(true)}>
+                  <Replace className="mr-2 h-4 w-4" /> {order.tableNo ? "Move table" : "Assign table"}
+                </Button>
+              )}
+            </div>
+            {isOpenTab && (
+              <Button className={cn("w-full", BRAND_CONTROL_CLASS)} onClick={openSettle}>
+                <HandCoins className="mr-2 h-4 w-4" /> Settle &amp; Pay
+              </Button>
+            )}
+          </SheetFooter>
+        </div>
 
         {/* Off-screen print sources — cloned by react-to-print. */}
         <div className="pointer-events-none absolute left-[-9999px] top-0" aria-hidden>
@@ -490,7 +499,7 @@ export function OrderDetailSheet({
           />
           {hasToken && <TokenSlip order={order} settings={settings.data} ref={tokenRef} />}
         </div>
-      </SheetContent>
+      </DetailFrame>
 
       {order && paying && (
         <PaymentModal
@@ -533,6 +542,66 @@ export function OrderDetailSheet({
         onOpenChange={setMoveOpen}
         onMoved={(moved) => onSettled?.(moved)}
       />
+    </>
+  );
+}
+
+interface DetailFrameProps {
+  frame: OrderDetailFrame | null;
+  /** An order is shown (the sheets open with it). */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  sheetRef: RefObject<HTMLDivElement | null>;
+  children: ReactNode;
+}
+
+// The detail's three frames (U2 Task 5; design 6.6; values 11.1, 12, 13), one per width. The column (/orders from
+// 1280px) is a plain flex column filling the page's 400px column, no dialog and no ✕; with nothing chosen it shows the
+// HTML's words. The side sheet (the dashboard from 1280px) is the kit sheet over its scrim. The bottom sheet (both pages
+// below 1280px) is the /pos cart sheet's: a Radix dialog over the whole window, its overlay mounted and never drawn.
+// Escape and the head's ✕ close both sheets; ruling P38: a press that closes a nested dialog (the payment, the move:
+// rendered beside the frame) never closes the sheet beneath.
+function DetailFrame({ frame, open, onOpenChange, sheetRef, children }: DetailFrameProps) {
+  if (frame === null) return null;
+  if (frame === "column") {
+    return (
+      <div data-ui="order-detail" className={ORDER_DETAIL_COLUMN_CLASS}>
+        {open ? (
+          children
+        ) : (
+          <p data-ui="order-detail-none" className="m-auto p-6 text-center text-[14px] text-muted-foreground">
+            Select an order to see its details.
+          </p>
+        )}
+      </div>
+    );
+  }
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      {frame === "side" ? (
+        <SheetContent
+          ref={sheetRef}
+          data-ui="order-detail"
+          aria-describedby={undefined}
+          className={ORDER_DETAIL_SIDE_CLASS}
+          onInteractOutside={(e) => keepOpenForNestedDialog(e, sheetRef.current)}
+        >
+          {children}
+        </SheetContent>
+      ) : (
+        <DialogPrimitive.Portal>
+          <DialogPrimitive.Overlay className={ORDER_DETAIL_SHEET_SCRIM_CLASS} />
+          <DialogPrimitive.Content
+            ref={sheetRef}
+            data-ui="order-detail"
+            aria-describedby={undefined}
+            className={ORDER_DETAIL_SHEET_CLASS}
+            onInteractOutside={(e) => keepOpenForNestedDialog(e, sheetRef.current)}
+          >
+            {children}
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+      )}
     </Sheet>
   );
 }
