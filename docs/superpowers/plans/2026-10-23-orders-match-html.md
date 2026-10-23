@@ -454,4 +454,74 @@ page: `D:\kd\pos-dev-keep\ui-redesign\current-orders\`; the HTML's shots: `desig
 
 ## Results
 
-(filled in at the end)
+(2026-10-22 → 24, branch `feat/ui-orders`, base main `3d72d4d`; 16 commits, 66 files, +8788 / −978 before this Results
+commit. Not merged, not pushed. Ledger with every ruling and review: `.superpowers/sdd/2026-10-23-orders-match-html/progress.md`,
+copied to `D:\kd\pos-dev-keep\ui-redesign\reviews\u2\`.)
+
+### Commits
+- Docs: `3c662db` (values + design), `b095871` (this plan).
+- Tasks: T1 `296d23c` frame + header · T2 `06f6a90` lanes + query · T3 `4b08830` + `09e7db7` toolbar, date box, Filters,
+  chips · T4 `2d23928` + `c19eba0` + `d56a628` the list · T5 `dd6fed3` + `7056d7f` detail frames, choice, head, steps ·
+  T6 `5adb2ea` detail body · T7 `8b78f67` quick actions, Cancel this order, cancel sheet, foot.
+- Final fix wave (after the Claude Fable 5.1 review): `2c9a152`.
+- Verification fixes: `903914c`, `274f413`.
+
+### Tests and checks
+- Cafe chain at `274f413`: 6835 tests / 6834 pass / 0 fail / 1 skipped (main `3d72d4d`: 6639); tsc clean (incremental and
+  full); lint 0 errors, the 2 old warnings; shared 1015; print-tools 11; release-native 12. Mobile, desktop, hub,
+  packages untouched.
+- Live legs (V-A, at `2c9a152`): 22 legs, 1387 checks, 0 failed (the U1 set + dues + money).
+- The paper: S1 43/43 SHA-256 unchanged, `print-budget.test.ts` unchanged, no slip / printer / print-routing / receipt
+  file in the diff.
+- Requests: idle /orders 240 s = main's build (pulse 12, orders 8, tables 8; the first view asks `status=Pending&limit=50`);
+  a run can also catch the six one-time warm-route prefetches (one pass per session at the first pulse the sidebar sees;
+  refills after 30 min; warm-routes unchanged — U1's /pos audit counted the same six on main); dashboard = U1. No new or
+  faster request.
+- Write paths for real on uimatch (V-D, 1280 and 390, /orders and the dashboard): 10 settles (cash, split, short + due,
+  Due mode), 4 moves / assigns, 4 cancels with a reason (open and settled), 13 print jobs (bill, KOT, token, the cancel
+  notice, moved slips), Edit items via the Floor hand-off, staff without Cancel: 0 requests different from main.
+- Measured match (V-B, production build): U2 probes 116 differences in 12,813 checks, every one an accepted mapped row;
+  U0 shell probes 217 in 14,959, all classed (U1 rows, the /orders header items of design 6.1, the reseed's data); 355
+  side-by-side pairs: `D:\kd\pos-dev-keep\ui-redesign\match\orders\final\shots\index.html`. First screens: 76 routes
+  200, console identical to U1. A11y: 0 axe violations (12 screens, 19 open states, + 6 after the verification fixes).
+  /m unchanged.
+- Laptop fit 1366×768, 1280×800 (open / collapsed), 1100×800, 1024×768, 820×1180, 390×844: no page scroll; the column's
+  foot on screen at ≥1280; the bottom sheet's foot below. Bottom inset (25 px) respected everywhere on /orders.
+- Emulator: WebView 109 portrait and landscape (/orders, the bottom sheet, payment / move / cancel over it, the dashboard's
+  detail) and 154 (safe area): pass; payment / move sheets 99.14 % on 109 (R41).
+- Production build of `274f413` in `D:\kd\uib`: the owner's preview on :3110 (uibase) and the check twin on :3130.
+
+### Reviews
+- Seven task reviews (fix rounds: T3 ×1, T4 ×1, T5 ×1; controller rulings applied in T4 before review); final Claude
+  Fable 5.1 whole-branch review: With fixes, 0 C / 1 I / 10 m (chain, tsc, eslint and 8 mutation probes clean) → one fix
+  wave (10 items) → re-review (Fable): all addressed; the verification fixes reviewed: Approved, their minors re-reviewed
+  clean.
+
+### What the owner will see differently from the HTML (mapped, each with its ruling)
+Five lanes with numbers on the chosen lane only (Q1, Q2); Due = money owed at billing with its own words (Q3, Q9); the
+phone-only search (Q4); the date box with "Pick a day…" (Q5); row Settle opens the detail (Q6); Edit items only for
+table tabs (Q7); below 1280 the detail is full screen from the bottom, never a column or side sheet (owner rule); our
+titles / channel words / Token / void trail / cancel note / reason field; the HTML's clipped quick actions and clipped
+row Settle not copied (P7); the card's day on older rows (P18); the cancel sheet at the top on phones and in short
+windows (P17); the cancel sheet never closes on an outside tap (P16).
+
+### Owner notes (decisions or pre-existing items, nothing changed for them)
+- The detail is a snapshot: the list rows carry no `updatedAt`, so another device's change shows in the detail only after
+  a tap or a settle / move / cancel here (pre-existing, inventory 8.1; now visible all day in the ≥1280 column; the real
+  fix is the server sending `updatedAt` on list rows). After a print the detail keeps "Print bill" until the 30 s list
+  refresh.
+- "Print bill" on a never-printed open tab prints a slip headed DUPLICATE (main's `reprint: true`, kept).
+- Days-old open tabs read "Open 720h 5m" (the HTML's formula, P15).
+- Phone landscape: the Android keyboard leaves ~122 CSS px, so the cancel sheet's field is under it even at the top (a
+  keyboard-aware layout would be new work). WebView 154 reports a 52 px top inset, so the cancel sheet opens 68 px down.
+- WebView 109 draws only ~1 frame of the bottom sheet's slide (as U1's cart sheet; 154 smooth).
+- With classic Windows scrollbars the table's Items tracks can run up to 13 px into the row's right padding at
+  940–952 px columns (nothing clipped).
+- The U0 nav's account row ends 12 px above the window's foot at 820 / 1024 / 1280 (inside a 25 px inset on tablets that
+  report one): shell, not this page.
+- The Filters panel's Payment pills still say "pressed" to screen readers for a single choice (minor).
+- Scratch databases left by V-A: eight `pos_scratch_va_u2_*` (not dropped; the owner's OK needed, with U0's three).
+
+### Left for later
+The next page session (prompt `D:\kd\pos-dev-keep\ui-redesign\prompt-u3.md`); the owner's merge OK and, separately, the
+push.
