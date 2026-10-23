@@ -6,6 +6,7 @@ import { PAY_PILL_KIND, STATUS_CLASSES, type StatusKind } from "@/lib/ui";
 import { CHANNEL_LABELS } from "@/lib/dashboard/fold";
 import { plural } from "@/lib/dashboard/format";
 import { channelOf } from "@/lib/dashboard/channel";
+import { recentOrderCode } from "@/lib/orders-row";
 import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { DASH_PILL_CLASS, DashCard } from "@/components/dashboard/DashCard";
 import type { Order } from "@/types";
@@ -23,27 +24,6 @@ interface RecentOrdersProps {
 const MAX_ROWS = 5;
 /** A row (values 3.7): 10px + the 40px tile + 10px, over its 1px rule. */
 const ROW_PX = 61;
-
-/** The order's channel as the API returns it: `source` and `parcel` ride on the list rows (GET /api/orders). */
-type ListedOrder = Order & { source?: string; parcel?: boolean };
-
-/** The most digits the 40px tile holds after the "T" at 12.5/600. */
-const CODE_DIGITS = 3;
-
-/**
- * The HTML's code tile, our closest codes: T + the first run of digits in the table's name ("T-12" → "T12", "Patio 2
- * seat 4" → "T2", at most three digits; a table named without digits shows its first two letters), TA a takeaway, QR a
- * diner's QR order, WI a walk-in at the counter.
- */
-export function recentOrderCode(order: ListedOrder): string {
-  const channel = channelOf(order);
-  if (channel === "takeaway") return "TA";
-  if (channel === "qr") return "QR";
-  if (channel === "counter") return "WI";
-  const table = order.tableNo ?? "";
-  const digits = /\d+/.exec(table)?.[0];
-  return digits ? `T${digits.slice(0, CODE_DIGITS)}` : table.replace(/[^\p{L}]/gu, "").slice(0, 2).toUpperCase() || "T";
-}
 
 /** Our payment kinds in the HTML's pill colours: Online the HTML's UPI blue, Cash ok, Split the HTML's Card purple, Due
  *  bill, Credit and an open tab warn, a cancelled bill bad (the HTML's Refunded). */

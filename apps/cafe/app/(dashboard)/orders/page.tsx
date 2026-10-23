@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
-import { Receipt } from "lucide-react";
 
 import { useOrdersInfinite, useTrimOrdersListOnLeave, useCancelOrder } from "@/hooks/use-orders";
 import { dedupeOrdersById, liveOrderOf } from "@/lib/order-query";
 import { useTables } from "@/hooks/use-tables";
 import { useAuth } from "@/hooks/use-auth";
 import { useMediaQuery } from "@/hooks/use-media-query";
+import { useNow } from "@/hooks/use-now";
 import {
   ORDERS_BODY_CLASS,
   ORDERS_DETAIL_COLUMN_CLASS,
@@ -29,15 +28,19 @@ import {
   type OrdersFilterState,
   type OrdersLane,
 } from "@/lib/orders-lanes";
+import { emptyText, listHead } from "@/lib/orders-row";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
-import { BRAND_CONTROL_CLASS, BRAND_PANEL_CLASS } from "@/components/brand/brand-classes";
+import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 import { OrderDetailSheet } from "@/components/orders/OrderDetailSheet";
 import { OrderTable } from "@/components/orders/OrderTable";
+import {
+  ORDERS_OFFLINE_CLASS,
+  ORDERS_OUTLINE_BUTTON_CLASS,
+  OrdersListHead,
+  OrdersLoadMore,
+} from "@/components/orders/OrdersListParts";
 import { CancelOrderDialog } from "@/components/orders/CancelOrderDialog";
 import { OrdersLanes } from "@/components/orders/OrdersLanes";
 import { OrdersToolbar } from "@/components/orders/OrdersToolbar";
@@ -45,13 +48,13 @@ import { OrdersChips, OrdersFiltersPanel } from "@/components/orders/OrdersFilte
 import type { Order } from "@/types";
 
 const PHONE_DEBOUNCE_MS = 350;
-const SKELETON_ROWS = 6;
-const POS_PATH = "/pos";
+/** The page's clock tick: the query's day, the Open card's 30+ min line and the rows' ages move once a minute. */
+const MINUTE_TICK_MS = 60_000;
 
 // The owner's HTML Orders screen (U2; values 1.1, 2.1, 2.2; design 5): the page fills the screen under the shell's
 // header like /pos (lib/orders-layout.ts); the list column (top block over the list scroller) and, from 1280px, the
 // 400px detail column. The top block holds the lanes (Task 2), the toolbar, the Filters panel and the chips (Task 3);
-// today's list and sheet stay in the list column until U2 Tasks 4-5.
+// the scroller the list head, the list box and Load more (Task 4); today's sheet stays until U2 Task 5.
 export default function OrdersPage() {
   // One filter state (lib/orders-lanes.ts): the lane, the date, the payment, the table and the searched phone; the one
   // list query is ordersQuery's (the same GET /api/orders with today's filter keys only).
@@ -77,7 +80,10 @@ export default function OrdersPage() {
     if (Object.keys(seed).length > 0) setFilters((f) => ({ ...f, ...seed }));
   }, []);
 
-  const orders = useOrdersInfinite(ordersQuery(filters, new Date()));
+  // One clock for the page, re-read once a minute (no request): ordersQuery's key changes only when the cafe's day does,
+  // so past midnight "Today" asks for the new day; the lanes' line and the rows' ages move with it.
+  const now = useNow(MINUTE_TICK_MS) ?? new Date();
+  const orders = useOrdersInfinite(ordersQuery(filters, now));
   useTrimOrdersListOnLeave();
   const { isAdmin } = useAuth();
   const cancelOrder = useCancelOrder();
@@ -102,6 +108,8 @@ export default function OrdersPage() {
   const list = dedupeOrdersById(orders.data?.pages ?? []);
   const searching = filters.phone !== "";
   const shown = laneRows(filters.lane, list, searching);
+  // The list head (values 7) counts the rows shown, once the list has loaded.
+  const head = orders.data === undefined ? null : listHead(filters.lane, shown.length, orders.hasNextPage, searching);
   const filtersActive = [filters.payment, filters.tableNo, filters.phone].some(Boolean);
   // The chips (values 6): the date one on the phone only; the Filters button's count is their number.
   const phoneWidth = useMediaQuery(ORDERS_PHONE_QUERY) === true;
@@ -144,6 +152,7 @@ export default function OrdersPage() {
               rows={shown}
               more={orders.hasNextPage}
               loaded={orders.data !== undefined}
+              now={now}
               onLane={pickLane}
               onChoose={setDetail}
             />
@@ -171,15 +180,9 @@ export default function OrdersPage() {
           </div>
 
           <div data-ui="orders-scroller" className={ORDERS_SCROLLER_CLASS}>
-            {orders.isLoading ? (
-              <div className={cn("space-y-2 rounded-lg border p-4", BRAND_PANEL_CLASS)}>
-                {Array.from({ length: SKELETON_ROWS }).map((_, i) => (
-                  <Skeleton key={i} className="h-12 w-full" />
-                ))}
-              </div>
-            ) : orders.isError && !orders.data ? (
+            {orders.isError && !orders.data ? (
               // A first-load failure has no pages to fall back on — this is the
-              // only case that should erase the table with a full-page error.
+              // only case that should erase the list with a full-page error.
               <ErrorState
                 title="Couldn't load orders"
                 description="Check the internet connection, then try again."
@@ -188,71 +191,52 @@ export default function OrdersPage() {
               />
             ) : orders.isPaused && !orders.data ? (
               // A parked (offline) query has no data AND no error — without this
-              // branch the page would say "No orders yet".
-              <p role="status" className="text-sm text-muted-foreground">
+              // branch the list would read as empty.
+              <p role="status" className={ORDERS_OFFLINE_CLASS}>
                 You appear to be offline. Orders will load when the connection is back.
               </p>
-            ) : shown.length === 0 ? (
-              <EmptyState
-                icon={<Receipt className="h-8 w-8" />}
-                title={filtersActive ? "No matching orders" : "No orders yet"}
-                description={
-                  filtersActive
-                    ? "Try clearing or changing the filters."
-                    : "Orders placed from New Order will appear here."
-                }
-                action={
-                  filtersActive ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className={cn("mt-2", BRAND_CONTROL_CLASS)}
-                      onClick={clearFilters}
-                    >
-                      Clear filters
-                    </Button>
-                  ) : (
-                    <Button asChild className={cn("mt-2", BRAND_CONTROL_CLASS)}>
-                      <Link href={POS_PATH} prefetch={false}>
-                        New order
-                      </Link>
-                    </Button>
-                  )
-                }
-              />
             ) : (
-              <div className="flex flex-col gap-4">
+              <>
+                <OrdersListHead head={head} />
                 <OrderTable
                   orders={shown}
-                  onView={setDetail}
-                  onSettle={setDetail}
-                  onCancel={setCancelling}
-                  isAdmin={isAdmin}
+                  now={now}
+                  chosenId={detail?._id ?? null}
+                  onChoose={setDetail}
+                  loading={orders.isLoading}
+                  empty={
+                    shown.length === 0
+                      ? emptyText({
+                          lane: filters.lane,
+                          searching: filters.phone,
+                          filtersOn: chips.length > 0,
+                          more: orders.hasNextPage,
+                          loaded: list.length,
+                          date: filters.date,
+                        })
+                      : null
+                  }
+                  emptyAction={
+                    filtersActive ? (
+                      <button
+                        type="button"
+                        onClick={clearFilters}
+                        className={cn("mt-2", BRAND_CONTROL_CLASS, ORDERS_OUTLINE_BUTTON_CLASS)}
+                      >
+                        Clear filters
+                      </button>
+                    ) : null
+                  }
                 />
-                {/* A failed Load-more keeps every already-loaded page — flip only an
-                    inline retry, never the full-page error, so the table stays. */}
-                {orders.isFetchNextPageError && (
-                  <p className="text-center text-sm text-destructive">
-                    Couldn&apos;t load more orders. Check the connection, then tap Retry.
-                  </p>
-                )}
-                {orders.hasNextPage && (
-                  <div className="flex justify-center">
-                    <Button
-                      variant="outline"
-                      className={BRAND_CONTROL_CLASS}
-                      onClick={() => orders.fetchNextPage()}
-                      disabled={orders.isFetchingNextPage}
-                    >
-                      {orders.isFetchingNextPage
-                        ? "Loading…"
-                        : orders.isFetchNextPageError
-                          ? "Retry"
-                          : "Load more"}
-                    </Button>
-                  </div>
-                )}
-              </div>
+                {/* Also under an empty Paid / Due list (Q10). A failed Load-more keeps every already-loaded page —
+                    only an inline retry, never the full-page error, so the list stays. */}
+                <OrdersLoadMore
+                  more={orders.hasNextPage}
+                  loading={orders.isFetchingNextPage}
+                  failed={orders.isFetchNextPageError}
+                  onMore={() => orders.fetchNextPage()}
+                />
+              </>
             )}
           </div>
         </div>

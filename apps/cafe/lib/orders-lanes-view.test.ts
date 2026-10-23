@@ -14,7 +14,7 @@ import { stripComments } from "./source-pin-utils";
 import { classesOf, expectAll, tagOf } from "./class-tags.fixtures";
 import { STATUS_CLASSES } from "./ui";
 import { DEFAULT_ORDERS_FILTERS, laneRows } from "./orders-lanes";
-import { order, printed, settled, state } from "./orders-lanes.fixtures";
+import { NOW, minutesBefore, order, printed, settled, state } from "./orders-lanes.fixtures";
 import { OrdersLanes } from "@/components/orders/OrdersLanes";
 import type { Order } from "@/types";
 
@@ -35,6 +35,7 @@ const lanesHtml = (props: Partial<Parameters<typeof OrdersLanes>[0]> = {}): stri
       rows: [],
       more: false,
       loaded: true,
+      now: NOW,
       onLane: noop,
       onChoose: noop,
       ...props,
@@ -138,6 +139,13 @@ test("OrdersLanes: no Settle action without a printed bill or on another lane; t
   assert.equal(textOf(innerOf(loading, "orders-lane-line", 1)), "Tabs at the tables now", "and its fixed line");
 });
 
+test("OrdersLanes: the Open card's '30+ min' line reads the page's tick (`now`), not a clock of its own (U2 Task 4)", () => {
+  const rows = laneRows("open", [order("1", { createdAt: minutesBefore(25) })], false);
+  assert.equal(textOf(innerOf(lanesHtml({ rows }), "orders-lane-line", 1)), "All in service", "25 minutes open at the tick");
+  const later = new Date(NOW.getTime() + 10 * 60_000);
+  assert.equal(textOf(innerOf(lanesHtml({ rows, now: later }), "orders-lane-line", 1)), "1 open 30+ min", "ten minutes later, the same rows");
+});
+
 test("OrdersLanes: while a phone is typed no lane is lit; the strip reads '{n} found' / 'Searching all orders'", () => {
   const html = lanesHtml({ filters: state({ lane: "paid", phone: "98765" }), rows: [settled("1", 879, 879), order("2")] });
   for (const [i, tag] of tagsOf(html, "orders-lane-card").entries()) {
@@ -158,7 +166,8 @@ test("the /orders page: the lanes lead the top block; the status select is gone 
   assert.ok(!src.includes('allLabel="All statuses"'), "no 'All statuses' choice");
   assert.ok(!/\bORDER_STATUSES\b|\bSTATUS_OPTIONS\b/.test(src), "no status options");
   assert.match(src, /useState<OrdersFilterState>\(DEFAULT_ORDERS_FILTERS\)/, "the page's filter state is OrdersFilterState");
-  assert.match(src, /useOrdersInfinite\(ordersQuery\(filters, new Date\(\)\)\)/, "the one list query is ordersQuery's (no new request)");
+  // U2 Task 4: the query's day reads the page's minute tick (`now`), so past the cafe's midnight Today is the new day.
+  assert.match(src, /useOrdersInfinite\(ordersQuery\(filters, now\)\)/, "the one list query is ordersQuery's (no new request)");
   assert.match(src, /seedFromUrl\(window\.location\.search\)/, "the URL seeding goes through seedFromUrl");
   assert.match(src, /laneRows\(filters\.lane, list, searching\)/, "the rows shown are the lane's");
   assert.match(

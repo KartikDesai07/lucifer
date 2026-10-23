@@ -10,8 +10,8 @@ import {
   type OrdersFilterState,
   type OrdersLane,
 } from "@/lib/orders-lanes";
+import { recentOrderCode } from "@/lib/orders-row";
 import { cn } from "@/lib/utils";
-import { recentOrderCode } from "@/components/dashboard/RecentOrders";
 import type { Order } from "@/types";
 
 interface OrdersLanesProps {
@@ -22,6 +22,8 @@ interface OrdersLanesProps {
   more: boolean;
   /** The list has loaded at least once; before that the chosen card shows no number. */
   loaded: boolean;
+  /** The page's minute tick: the Open card's "{n} open 30+ min" line moves with it (no request). */
+  now: Date;
   onLane: (lane: OrdersLane) => void;
   /** The strip's "Settle {code}": that order is chosen (design 6.2; its detail opens). */
   onChoose: (order: Order) => void;
@@ -70,10 +72,10 @@ const SETTLE_CLASS =
  * which show their name, dot and a fixed line); while a phone is typed no lane is lit (owner Q4). On Open with a printed
  * bill (owner Q11) the strip offers "Settle {code}", which chooses that order.
  */
-export function OrdersLanes({ filters, rows, more, loaded, onLane, onChoose }: OrdersLanesProps) {
+export function OrdersLanes({ filters, rows, more, loaded, now, onLane, onChoose }: OrdersLanesProps) {
   const searching = filters.phone !== "";
   const chosen = searching ? null : filters.lane;
-  const summary: LaneSummary | null = chosen && loaded ? laneSummary(chosen, rows, more, filters.date, new Date()) : null;
+  const summary: LaneSummary | null = chosen && loaded ? laneSummary(chosen, rows, more, filters.date, now) : null;
   const settle = chosen === "open" && summary ? rows.find((o) => billPrintedNow(o)) : undefined;
   const current = searching
     ? { amount: `${rows.length}${more ? "+" : ""} found`, line: "Searching all orders", tone: "plain" as const }

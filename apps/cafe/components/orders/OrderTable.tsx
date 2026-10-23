@@ -1,270 +1,269 @@
 "use client";
 
-import { Eye, Ban, HandCoins } from "lucide-react";
+import { Fragment, type ReactNode } from "react";
 
-import { PAY_STYLES } from "@/lib/constants";
-import { inr, formatDate, cn } from "@/lib/utils";
-import { BRAND_PANEL_CLASS, BRAND_ROW_ACTION_CLASS, BRAND_TABLE_CONTAIN_CLASS } from "@/components/brand/brand-classes";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { tokenLabelOf } from "@/lib/token-view";
+import { orderRowView, type AgeTone, type OrderRowView } from "@/lib/orders-row";
+import { STATUS_CLASSES } from "@/lib/ui";
+import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { Order } from "@/types";
 
-interface OrderTableProps {
-  orders: Order[];
-  onView: (order: Order) => void;
-  // Open the order (an open tab is settled from its detail sheet's "Settle & Pay").
-  onSettle: (order: Order) => void;
-  // Admin-only break-glass replacement for the old destructive delete (CR1.3):
-  // the order stays on the ledger with a reason, rather than disappearing.
-  onCancel: (order: Order) => void;
-  isAdmin: boolean;
+// The owner's HTML list (values 7-9, 10.3, 13; design 6.4, 6.5). The list box sits in its own container, so its form
+// follows the list's own width (values 0.2 listW): the table from 700px (the Items column from 900px), else the cards.
+// Both forms are drawn per row and one is hidden, as the HTML's. The list head, Load more and the offline line around
+// the box: OrdersListParts.tsx.
+const WRAP_CLASS = "@container";
+const BOX_CLASS = "overflow-hidden rounded-[12px] border border-border bg-card";
+const COLS_CLASS =
+  "grid-cols-[minmax(150px,1.3fr)_minmax(110px,1fr)_92px_124px_92px_84px] @min-[900px]:grid-cols-[minmax(150px,1.3fr)_minmax(110px,1fr)_minmax(140px,1.4fr)_92px_124px_92px_84px]";
+const HEAD_CLASS =
+  "hidden @min-[700px]:grid gap-3 border-b border-border bg-surface-2 px-4 py-2.5 text-[11px] font-semibold tracking-[.06em] uppercase text-subtle-foreground";
+const HEAD_CELLS = [
+  { label: "Order", className: "" },
+  { label: "Customer", className: "" },
+  { label: "Items", className: "hidden @min-[900px]:block" },
+  { label: "Time", className: "" },
+  { label: "Status", className: "" },
+  { label: "Amount", className: "text-right" },
+  { label: "", className: "" },
+];
+const ITEMS_CLASS = "hidden @min-[900px]:block min-w-0 truncate text-[13px] text-muted-foreground";
+// A row (values 8.1 / 9.1): its title is a real button stretched over the row by an ::after layer, so a tap anywhere
+// opens the order; "Settle" sits above that layer (no control inside another). The ring shows on the whole row.
+const ROW_CLASS = "relative hidden @min-[700px]:grid cursor-pointer items-center gap-3 px-4 py-[11px]";
+const CARD_CLASS = "relative flex @min-[700px]:hidden cursor-pointer flex-col gap-1.5 px-3.5 py-3";
+const RULE_CLASS = "border-t border-border-2";
+const OPEN_CLASS =
+  "block w-full cursor-pointer text-left outline-none after:absolute after:inset-0 focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring";
+const BAR_CLASS = "absolute left-0 w-[3px] rounded-r-[3px] bg-primary";
+const TILE_CLASS = "flex flex-none items-center justify-center rounded-[9px] text-[12px] font-bold";
+const TILE_TONE = { bill: "bg-status-bill-tint text-status-bill-ink", plain: "bg-surface-3 text-foreground" } as const;
+const PILL_CLASS = "inline-flex items-center gap-1.5 rounded-[999px] font-semibold whitespace-nowrap";
+const DOT_CLASS = "size-1.5 rounded-[50%]";
+const STRUCK_CLASS = "text-subtle-foreground line-through";
+const AGE_TONE: Record<AgeTone, string> = {
+  bad: "font-semibold text-status-bad-ink",
+  warn: "font-semibold text-status-warn-ink",
+  plain: "font-normal text-subtle-foreground",
+};
+/** The row's "Settle" (values 8.1): 32px, its text centred (design 8: the HTML's top-aligned text is not copied). */
+const SETTLE_CLASS =
+  "relative z-[1] flex h-8 cursor-pointer items-center rounded-[8px] border border-border bg-card px-3 text-[12.5px] font-semibold whitespace-nowrap text-foreground hover:border-ink hover:bg-ink hover:text-on-ink";
+
+const SKELETON_ROWS = 6;
+
+interface RowProps {
+  order: Order;
+  view: OrderRowView;
+  first: boolean;
+  chosen: boolean;
+  onChoose: (order: Order) => void;
 }
 
-// One row (table or phone card) needs everything the table takes EXCEPT the
-// list itself.
-type OrderRowProps = Omit<OrderTableProps, "orders"> & { order: Order };
-
-// Shared by the table row and the phone card so the two branches can never
-// drift apart on what "due" or "payment style" means for a given order.
-function deriveOrderRow(order: Order) {
-  // An open tab (Pending) isn't a "due" — payment just hasn't been taken yet.
-  // Only a Completed order with a shortfall shows a due.
-  const due =
-    order.status === "Completed" ? order.total - order.paidAmount : 0;
-  const payStyle = PAY_STYLES[order.payment];
-  const preview = order.items[0]?.name ?? "";
-  const more = order.items.length - 1;
-  return { due, payStyle, preview, more };
-}
-
-// Hover/long-press text for a truncated first-item preview.
-function previewTitle(preview: string, more: number) {
-  return `${preview}${more > 0 ? ` +${more}` : ""}`;
-}
-
-// Colour is a reinforcement, not the only signal — the label itself always
-// names the status (cafe.md palette).
-function statusBadgeClass(status: Order["status"]) {
-  return cn(
-    status === "Pending" && "bg-amber-100 text-amber-800",
-    status === "Completed" && "bg-green-100 text-green-800",
-    status === "Cancelled" && "bg-gray-100 text-gray-800",
+function Pill({ ui, view, className }: { ui: string; view: OrderRowView; className: string }) {
+  const kind = STATUS_CLASSES[view.status.kind];
+  return (
+    <span data-ui={`${ui}-pill`} className={cn(PILL_CLASS, className, kind.pill)}>
+      <span data-ui={`${ui}-dot`} aria-hidden className={cn(DOT_CLASS, kind.dot)} />
+      {view.status.label}
+    </span>
   );
 }
 
-function OrderRowActions({
-  order,
-  onView,
-  onSettle,
-  onCancel,
-  isAdmin,
-}: OrderRowProps) {
+function TableRow({ order, view, first, chosen, onChoose }: RowProps) {
   return (
-    <>
-      <Button
-        variant="ghost"
-        size="icon"
-        className={BRAND_ROW_ACTION_CLASS}
-        onClick={() => onView(order)}
-        aria-label="View order"
-        title="View order"
-      >
-        <Eye className="h-4 w-4" />
-      </Button>
-      {order.status === "Pending" && (
-        <Button
-          variant="ghost"
-          size="icon"
-          className={BRAND_ROW_ACTION_CLASS}
-          onClick={() => onSettle(order)}
-          aria-label="Settle order"
-          title="Settle & pay"
-        >
-          <HandCoins className="h-4 w-4 text-brand-primary" />
-        </Button>
-      )}
-      {isAdmin && order.status !== "Cancelled" && (
-        <Button
-          variant="ghost"
-          size="icon"
-          className={BRAND_ROW_ACTION_CLASS}
-          onClick={() => onCancel(order)}
-          aria-label="Cancel order"
-          title="Cancel order"
-        >
-          <Ban className="h-4 w-4 text-destructive" />
-        </Button>
-      )}
-    </>
-  );
-}
-
-function OrderRowCard({
-  order,
-  onView,
-  onSettle,
-  onCancel,
-  isAdmin,
-}: OrderRowProps) {
-  const { due, payStyle, preview, more } = deriveOrderRow(order);
-  return (
-    <div className={cn("rounded-lg border p-3", BRAND_PANEL_CLASS)}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="font-medium">{order.orderId}</div>
-          <div className="break-words text-xs text-muted-foreground">
-            {formatDate(order.createdAt)} · {order.tableNo ?? "Walk-In"}
-            {typeof order.tokenNumber === "number" && ` · ${tokenLabelOf(order.tokenNumber)}`}
-          </div>
-        </div>
-        <Badge
-          variant="secondary"
-          className={cn("shrink-0", statusBadgeClass(order.status))}
-        >
-          {order.status}
-        </Badge>
-      </div>
-      <div className="mt-2 break-words text-sm">{order.customerName}</div>
-      <div className="min-w-0 truncate text-sm text-muted-foreground" title={previewTitle(preview, more)}>
-        {preview}
-        {more > 0 && ` +${more}`}
-      </div>
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="font-medium">{inr(order.total)}</span>
-          {due > 0 && (
-            <span className="text-sm font-medium text-destructive">
-              Due {inr(due)}
+    <div data-ui="orders-row" className={cn(ROW_CLASS, COLS_CLASS, first ? "border-t-0" : RULE_CLASS, chosen ? "bg-accent" : "hover:bg-hover")}>
+      {chosen && <span data-ui="orders-row-bar" aria-hidden className={cn(BAR_CLASS, "top-2 bottom-2")} />}
+      <span className="flex min-w-0 items-center gap-2.5">
+        <span data-ui="orders-row-tile" className={cn(TILE_CLASS, "size-9", TILE_TONE[view.codeTone])}>
+          {view.code}
+        </span>
+        <span className="min-w-0">
+          <button
+            type="button"
+            data-ui="orders-row-open"
+            aria-label={`${view.title} ${view.number}`}
+            aria-current={chosen ? "true" : undefined}
+            onClick={() => onChoose(order)}
+            className={OPEN_CLASS}
+          >
+            <span data-ui="orders-row-title" className="block truncate text-[14px] font-semibold">
+              {view.title}
             </span>
-          )}
-        </div>
-        <Badge variant="outline" className={cn(payStyle?.color)}>
-          {payStyle?.label ?? order.payment}
-        </Badge>
-      </div>
-      <div className="mt-2 flex justify-end gap-2 border-t pt-2">
-        <OrderRowActions
-          order={order}
-          onView={onView}
-          onSettle={onSettle}
-          onCancel={onCancel}
-          isAdmin={isAdmin}
-        />
-      </div>
+          </button>
+          <span data-ui="orders-row-sub" className="block truncate font-mono text-[11.5px] text-subtle-foreground">
+            {view.sub}
+          </span>
+        </span>
+      </span>
+      <span className="min-w-0">
+        <span data-ui="orders-row-customer" className="block truncate text-[13.5px]">
+          {view.customer}
+        </span>
+        {view.customerSub && (
+          <span data-ui="orders-row-customer-sub" className="block truncate text-[12px] text-subtle-foreground">
+            {view.customerSub}
+          </span>
+        )}
+      </span>
+      <span data-ui="orders-row-items" className={ITEMS_CLASS}>
+        {view.items}
+      </span>
+      <span className="min-w-0">
+        <span data-ui="orders-row-time" className="block whitespace-nowrap text-[13px]">
+          {view.time}
+        </span>
+        <span data-ui="orders-row-age" className={cn("block whitespace-nowrap text-[12px]", AGE_TONE[view.age.tone])}>
+          {view.age.text}
+        </span>
+      </span>
+      <span>
+        <Pill ui="orders-row" view={view} className="h-6 px-[9px] text-[12px]" />
+      </span>
+      <span className="min-w-0 text-right">
+        <span data-ui="orders-row-amount" className={cn("block font-mono text-[14px] font-semibold", view.struck && STRUCK_CLASS)}>
+          {view.amount}
+        </span>
+        {view.dueText && (
+          <span data-ui="orders-row-due" className="block text-[11.5px] font-semibold text-status-bill-ink">
+            {view.dueText}
+          </span>
+        )}
+      </span>
+      <span className="flex justify-end">
+        {view.settle && (
+          <button
+            type="button"
+            data-ui="orders-row-settle"
+            aria-label={`Settle ${view.title} ${view.number}`}
+            onClick={() => onChoose(order)}
+            className={SETTLE_CLASS}
+          >
+            Settle
+          </button>
+        )}
+      </span>
     </div>
   );
 }
 
-export function OrderTable({
-  orders,
-  onView,
-  onSettle,
-  onCancel,
-  isAdmin,
-}: OrderTableProps) {
+function CardRow({ order, view, first, chosen, onChoose }: RowProps) {
   return (
-    <>
-      <div className="hidden xl:block">
-        <div className={cn("rounded-lg border", BRAND_PANEL_CLASS, BRAND_TABLE_CONTAIN_CLASS)}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Order</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead>Items</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="text-right">Due</TableHead>
-                <TableHead>Payment</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-36 text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {orders.map((order) => {
-                const { due, payStyle, preview, more } = deriveOrderRow(order);
-                return (
-                  <TableRow key={order._id}>
-                    <TableCell>
-                      <div className="font-medium">{order.orderId}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {formatDate(order.createdAt)} ·{" "}
-                        {order.tableNo ?? "Walk-In"}
-                        {typeof order.tokenNumber === "number" && ` · ${tokenLabelOf(order.tokenNumber)}`}
-                      </div>
-                    </TableCell>
-                    <TableCell>{order.customerName}</TableCell>
-                    <TableCell
-                      className="max-w-[12rem] truncate text-muted-foreground"
-                      title={previewTitle(preview, more)}
-                    >
-                      {preview}
-                      {more > 0 && ` +${more}`}
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {inr(order.total)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {due > 0 ? (
-                        <span className="font-medium text-destructive">
-                          {inr(due)}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={cn(payStyle?.color)}>
-                        {payStyle?.label ?? order.payment}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="secondary"
-                        className={statusBadgeClass(order.status)}
-                      >
-                        {order.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <OrderRowActions
-                          order={order}
-                          onView={onView}
-                          onSettle={onSettle}
-                          onCancel={onCancel}
-                          isAdmin={isAdmin}
-                        />
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
+    <div data-ui="orders-card" className={cn(CARD_CLASS, first ? "border-t-0" : RULE_CLASS, chosen && "bg-accent")}>
+      {chosen && <span data-ui="orders-card-bar" aria-hidden className={cn(BAR_CLASS, "top-2.5 bottom-2.5")} />}
+      <span data-ui="orders-card-top" className="flex min-w-0 items-center gap-2.5">
+        <span data-ui="orders-card-tile" className={cn(TILE_CLASS, "size-[38px]", TILE_TONE[view.codeTone])}>
+          {view.code}
+        </span>
+        <span className="min-w-0 flex-1">
+          <button
+            type="button"
+            data-ui="orders-card-open"
+            aria-label={`${view.title} ${view.number}`}
+            aria-current={chosen ? "true" : undefined}
+            onClick={() => onChoose(order)}
+            className={OPEN_CLASS}
+          >
+            <span data-ui="orders-card-line1" className="block truncate text-[14.5px] font-semibold">
+              {view.title}{" "}
+              <span data-ui="orders-card-number" className="font-mono text-[11.5px] font-normal text-subtle-foreground">
+                {view.number}
+              </span>
+            </span>
+          </button>
+          <span data-ui="orders-card-line2" className="block truncate text-[12.5px] text-muted-foreground">
+            {`${view.customer} · ${view.items}`}
+          </span>
+        </span>
+        <span className="flex-none text-right">
+          <span data-ui="orders-card-amount" className={cn("block font-mono text-[14.5px] font-semibold", view.struck && STRUCK_CLASS)}>
+            {view.amount}
+          </span>
+          <span data-ui="orders-card-age" className={cn("block text-[11.5px]", AGE_TONE[view.age.tone])}>
+            {view.age.short}
+          </span>
+        </span>
+      </span>
+      <span data-ui="orders-card-bottom" className="flex items-center gap-2 pl-12">
+        <Pill ui="orders-card" view={view} className="h-[22px] px-2 text-[11.5px]" />
+        {view.dueText && (
+          <span data-ui="orders-card-due" className="text-[12px] font-semibold text-status-bill-ink">
+            {view.dueText}
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
 
-      <div className="space-y-2 xl:hidden">
-        {orders.map((order) => (
-          <OrderRowCard
-            key={order._id}
-            order={order}
-            onView={onView}
-            onSettle={onSettle}
-            onCancel={onCancel}
-            isAdmin={isAdmin}
-          />
-        ))}
+interface OrderTableProps {
+  /** The rows the list shows (laneRows). */
+  orders: Order[];
+  /** The page's minute tick: the open tabs' ages move with it. */
+  now: Date;
+  /** The chosen order (the bar, the tint, aria-current). */
+  chosenId: string | null;
+  /** A row (its title, anywhere on it) or its "Settle": open that order (Q6: Settle opens the detail). */
+  onChoose: (order: Order) => void;
+  loading: boolean;
+  /** The empty box's words when no row shows. */
+  empty: { title: string; text: string } | null;
+  /** Our way back under the words (Clear filters). */
+  emptyAction?: ReactNode;
+}
+
+/** The list box (values 8-9, 13): the table head (table form), then the skeleton, the empty box or the rows. */
+export function OrderTable({ orders, now, chosenId, onChoose, loading, empty, emptyAction }: OrderTableProps) {
+  return (
+    <div data-ui="orders-list-wrap" className={WRAP_CLASS}>
+      <div data-ui="orders-list-box" className={BOX_CLASS}>
+        <div data-ui="orders-table-head" className={cn(HEAD_CLASS, COLS_CLASS)}>
+          {HEAD_CELLS.map((cell, i) => (
+            <span key={i} data-ui="orders-table-head-cell" className={cell.className || undefined}>
+              {cell.label}
+            </span>
+          ))}
+        </div>
+        {loading ? (
+          Array.from({ length: SKELETON_ROWS }, (_, i) => (
+            <div
+              key={i}
+              data-ui="orders-skeleton-row"
+              aria-hidden
+              className={cn("flex h-[90px] items-center gap-2.5 px-3.5 @min-[700px]:h-[58px] @min-[700px]:px-4", i > 0 && RULE_CLASS)}
+            >
+              <Skeleton className="size-[38px] flex-none rounded-[9px] @min-[700px]:size-9" />
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <Skeleton className="h-3.5 w-2/5" />
+                <Skeleton className="h-3 w-3/5" />
+              </div>
+            </div>
+          ))
+        ) : orders.length === 0 ? (
+          empty && (
+            <div data-ui="orders-empty" className="flex flex-col items-center gap-1.5 px-4 py-14 text-center">
+              <span data-ui="orders-empty-title" className="text-[14px] font-semibold">
+                {empty.title}
+              </span>
+              <span data-ui="orders-empty-text" className="text-[13px] text-muted-foreground">
+                {empty.text}
+              </span>
+              {emptyAction}
+            </div>
+          )
+        ) : (
+          orders.map((order, i) => {
+            const view = orderRowView(order, now);
+            const row = { order, view, first: i === 0, chosen: view.key === chosenId, onChoose };
+            return (
+              <Fragment key={view.key}>
+                <TableRow {...row} />
+                <CardRow {...row} />
+              </Fragment>
+            );
+          })
+        )}
       </div>
-    </>
+    </div>
   );
 }
