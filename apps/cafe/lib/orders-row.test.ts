@@ -76,7 +76,22 @@ test("orderAge: an open tab 'Open {m} min' / 'Open {h}h {m}m' (m = max(1, round)
   const justAfterMidnight = orderAge({ ...settled("5", 500, 500), createdAt: "2026-10-18T18:31:00.000Z" }, NOW);
   assert.deepEqual(justAfterMidnight, { text: "Today", short: "12:01 AM", tone: "plain" }, "12:01 AM IST is today");
   const cancelled = orderAge(order("6", { status: "Cancelled", createdAt: minutesBefore(90) }), NOW);
-  assert.deepEqual(cancelled, { text: "Today", short: "8:00 PM", tone: "plain" }, "a cancelled order reads like a settled one");
+  assert.deepEqual(cancelled, { text: "Today", short: "8:00 PM", tone: "plain" }, "a cancelled order with no cancel time falls back to its opening");
+});
+
+// Ruling P8 (2026-10-23): a cancelled row shows its cancel time (the HTML's closed rows show the cancel time, values
+// 10.3), falling back to createdAt; settled rows keep createdAt.
+test("orderAge / orderRowView (Ruling P8): a cancelled row's time and card age are its cancelledAt; settled rows keep createdAt", () => {
+  const cancelled = order("7", { status: "Cancelled", createdAt: minutesBefore(90), cancelledAt: minutesBefore(10) });
+  assert.deepEqual(orderAge(cancelled, NOW), { text: "Today", short: "9:20 PM", tone: "plain" }, "the card's age: the cancel time");
+  assert.equal(orderRowView(cancelled, NOW).time, "9:20 PM", "the table row's time: the cancel time");
+  const overnight = order("8", { status: "Cancelled", createdAt: "2026-10-18T16:30:00.000Z", cancelledAt: minutesBefore(30) });
+  assert.deepEqual(orderAge(overnight, NOW), { text: "Today", short: "9:00 PM", tone: "plain" }, "opened yesterday, cancelled today: Today and the cancel time");
+  const noStamp = order("9", { status: "Cancelled", createdAt: minutesBefore(45) });
+  assert.equal(orderRowView(noStamp, NOW).time, "8:45 PM", "no cancelledAt: the opening time");
+  const paid = { ...settled("10", 500, 500), createdAt: minutesBefore(20) };
+  assert.equal(orderRowView(paid, NOW).time, "9:10 PM", "a settled row keeps createdAt");
+  assert.equal(orderAge(paid, NOW).short, "9:10 PM", "and so does its card age");
 });
 
 test("itemsSummary: '{qty}× {first item}' + ' +{n} more' (the HTML's), '—' for none", () => {
@@ -148,14 +163,14 @@ test("recentOrderCode lives in lib/orders-row.ts now, same output (the dashboard
 test("listHead: '{n} {lane} orders' ('{n}+' while more can be loaded), '{n} matches in all orders' while searching; the sort words; the Due note", () => {
   assert.deepEqual(
     listHead("open", 8, false, false),
-    { count: "8", left: "8 open orders", right: "Bills printed first, then oldest", dueNote: false },
+    { count: "8", scope: "open orders", left: "8 open orders", right: "Bills printed first, then oldest", dueNote: false },
     "the HTML's first view",
   );
-  assert.deepEqual(listHead("paid", 12, true, false), { count: "12+", left: "12+ paid orders", right: "Newest first", dueNote: false }, "more to load");
-  assert.deepEqual(listHead("open", 1, false, true), { count: "1", left: "1 match in all orders", right: "Newest first", dueNote: false }, "one match");
-  assert.deepEqual(listHead("paid", 4, false, true), { count: "4", left: "4 matches in all orders", right: "Newest first", dueNote: false }, "matches");
+  assert.deepEqual(listHead("paid", 12, true, false), { count: "12+", scope: "paid orders", left: "12+ paid orders", right: "Newest first", dueNote: false }, "more to load");
+  assert.deepEqual(listHead("open", 1, false, true), { count: "1", scope: "match in all orders", left: "1 match in all orders", right: "Newest first", dueNote: false }, "one match");
+  assert.deepEqual(listHead("paid", 4, false, true), { count: "4", scope: "matches in all orders", left: "4 matches in all orders", right: "Newest first", dueNote: false }, "matches");
   assert.equal(listHead("cancelled", 1, true, true).left, "1+ matches in all orders", "'1+' reads plural");
-  assert.deepEqual(listHead("due", 1, false, false), { count: "1", left: "1 due order", right: "Newest first", dueNote: true }, "Due: singular, the note (Q9)");
+  assert.deepEqual(listHead("due", 1, false, false), { count: "1", scope: "due order", left: "1 due order", right: "Newest first", dueNote: true }, "Due: singular, the note (Q9)");
   assert.equal(listHead("due", 0, false, false).left, "0 due orders", "zero is plural");
   assert.equal(listHead("due", 3, false, true).dueNote, false, "no Due note while searching (the lane is set aside)");
   assert.equal(listHead("cancelled", 2, false, false).left, "2 cancelled orders", "cancelled");

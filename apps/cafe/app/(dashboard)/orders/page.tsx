@@ -191,12 +191,6 @@ export default function OrdersPage() {
                 onRetry={() => void orders.refetch()}
                 retryLabel="Try again"
               />
-            ) : orders.isPaused && !orders.data ? (
-              // A parked (offline) query has no data AND no error — without this
-              // branch the list would read as empty.
-              <p role="status" className={ORDERS_OFFLINE_CLASS}>
-                You appear to be offline. Orders will load when the connection is back.
-              </p>
             ) : (
               <>
                 <OrdersListHead head={head} />
@@ -206,6 +200,15 @@ export default function OrdersPage() {
                   chosenId={detail?._id ?? null}
                   onChoose={setDetail}
                   loading={orders.isLoading}
+                  // A parked (offline) query has no data AND no error — without this line the list would read as
+                  // empty. It sits inside the list box, under the table head (design 6.5).
+                  notice={
+                    orders.isPaused && !orders.data ? (
+                      <p role="status" className={ORDERS_OFFLINE_CLASS}>
+                        You appear to be offline. Orders will load when the connection is back.
+                      </p>
+                    ) : null
+                  }
                   empty={
                     shown.length === 0
                       ? emptyText({

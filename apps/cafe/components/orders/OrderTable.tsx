@@ -14,8 +14,11 @@ import type { Order } from "@/types";
 // the box: OrdersListParts.tsx.
 const WRAP_CLASS = "@container";
 const BOX_CLASS = "overflow-hidden rounded-[12px] border border-border bg-card";
+// values 8.1's columns, except (Ruling P7) the Order and Customer columns may give way below the HTML's 150 / 110: at a
+// 704px list (t820) its minimums need 712px in a 670px box and clip "Settle"; at 764px (c1280) they are 157.125 /
+// 120.875 either way. With the Items column (a 900px list) the HTML's minimums always fit, so they stay.
 const COLS_CLASS =
-  "grid-cols-[minmax(150px,1.3fr)_minmax(110px,1fr)_92px_124px_92px_84px] @min-[900px]:grid-cols-[minmax(150px,1.3fr)_minmax(110px,1fr)_minmax(140px,1.4fr)_92px_124px_92px_84px]";
+  "grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_92px_124px_92px_84px] @min-[900px]:grid-cols-[minmax(150px,1.3fr)_minmax(110px,1fr)_minmax(140px,1.4fr)_92px_124px_92px_84px]";
 const HEAD_CLASS =
   "hidden @min-[700px]:grid gap-3 border-b border-border bg-surface-2 px-4 py-2.5 text-[11px] font-semibold tracking-[.06em] uppercase text-subtle-foreground";
 const HEAD_CELLS = [
@@ -210,10 +213,12 @@ interface OrderTableProps {
   empty: { title: string; text: string } | null;
   /** Our way back under the words (Clear filters). */
   emptyAction?: ReactNode;
+  /** A line in the rows' place, under the table head (design 6.5: the offline line). */
+  notice?: ReactNode;
 }
 
-/** The list box (values 8-9, 13): the table head (table form), then the skeleton, the empty box or the rows. */
-export function OrderTable({ orders, now, chosenId, onChoose, loading, empty, emptyAction }: OrderTableProps) {
+/** The list box (values 8-9, 13): the table head (table form), then a notice, the skeleton, the empty box or the rows. */
+export function OrderTable({ orders, now, chosenId, onChoose, loading, empty, emptyAction, notice }: OrderTableProps) {
   return (
     <div data-ui="orders-list-wrap" className={WRAP_CLASS}>
       <div data-ui="orders-list-box" className={BOX_CLASS}>
@@ -224,7 +229,9 @@ export function OrderTable({ orders, now, chosenId, onChoose, loading, empty, em
             </span>
           ))}
         </div>
-        {loading ? (
+        {notice ? (
+          notice
+        ) : loading ? (
           Array.from({ length: SKELETON_ROWS }, (_, i) => (
             <div
               key={i}

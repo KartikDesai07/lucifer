@@ -57,7 +57,9 @@ const ROWS = [
   settled("016", 954, 0, "Due"),
   order("017", { status: "Cancelled", total: 768 }),
 ];
-const COLS = "minmax(150px,1.3fr)_minmax(110px,1fr)_92px_124px_92px_84px";
+// Ruling P7: the Order and Customer columns give way (min 0) where the HTML's 150 / 110 minimums would overflow the
+// box (t820: the HTML clips Settle); at a 764px list they are still 157.125 / 120.875. The Items variant is the HTML's.
+const COLS = "minmax(0,1.3fr)_minmax(0,1fr)_92px_124px_92px_84px";
 const COLS_ITEMS = "minmax(150px,1.3fr)_minmax(110px,1fr)_minmax(140px,1.4fr)_92px_124px_92px_84px";
 
 test("OrderTable: the list box in its own container; the table head from a 700px list (the Items cell from 900px), values 8.1", () => {
@@ -173,6 +175,25 @@ test("OrderTable states: 6 skeleton rows in the current form while loading; the 
   expectAll(tagOf(empty, "orders-empty-text"), ["text-[13px]", "text-muted-foreground"], "13px --text-2");
   assert.ok(empty.indexOf("probe-action") > empty.indexOf("orders-empty-text"), "our action under the words");
   assert.ok(empty.indexOf("orders-empty") > empty.indexOf("orders-list-box"), "inside the list box, after the head");
+  // design 6.5 (fix round 1): the offline line sits INSIDE the list box, under the table head, in place of the rows.
+  const line = createElement("p", { role: "status", "data-ui": "probe-offline" }, "You appear to be offline.");
+  const offline = tableHtml({ notice: line, orders: ROWS, loading: true, empty: { title: "x", text: "y" } });
+  const box = offline.indexOf('data-ui="orders-list-box"');
+  const head = offline.indexOf('data-ui="orders-table-head"');
+  const at = offline.indexOf('data-ui="probe-offline"');
+  assert.ok(box >= 0 && head > box && at > head, "the notice renders inside the list box, after the table head");
+  assert.equal(tagsOf(offline, "orders-row").length + tagsOf(offline, "orders-skeleton-row").length + tagsOf(offline, "orders-empty").length, 0, "the notice takes the rows' place");
+  expectAll(tagOf(tableHtml({ notice: line }), "orders-list-wrap"), ["@container"], "the same list box frame");
+});
+
+test("Ruling P7: the Order and Customer columns give way (min 0) only where the HTML's minimums would overflow; the Items variant is the HTML's", () => {
+  const src = read(TABLE);
+  assert.ok(src.includes(`"grid-cols-[${COLS}] @min-[900px]:grid-cols-[${COLS_ITEMS}]"`), "COLS_CLASS: min 0 without Items, the HTML's minimums with Items");
+  // values 8.2: at a 764px list (c1280) the box's content is 730 - 392 fixed - 60 gaps = 278 = 2.3fr, so the fr columns
+  // are 157.125 / 120.875 with either minimum; at 704 (t820) 670 - 452 = 218 < 150 + 110, so min 0 keeps Settle whole.
+  const fr = (listW: number): number => (listW - 2 - 32 - 392 - 60) / 2.3;
+  assert.ok(Math.abs(fr(764) * 1.3 - 157.125) < 0.01 && Math.abs(fr(764) - 120.875) < 0.01, "c1280 widths unchanged");
+  assert.ok(fr(704) * 1.3 < 150 && fr(704) * 2.3 + 452 === 670, "t820: the HTML's minimums would overflow; min 0 fits the box");
 });
 
 test("OrdersListHead: the count in 600 --text, the scope, the sort words; the Due note under it (values 7, Q9)", () => {
@@ -181,6 +202,8 @@ test("OrdersListHead: the count in 600 --text, the scope, the sort words; the Du
   assert.deepEqual(textsOf(html, "orders-list-head-count"), ["3+"], "the count");
   expectAll(tagOf(html, "orders-list-head-count"), ["font-semibold", "text-foreground"], "600 --text");
   assert.match(html.replace(/<[^>]+>/g, ""), /^3\+ due orders/, "the left words");
+  assert.deepEqual(textsOf(html, "orders-list-head-scope"), ["due orders"], "the scope words, their own field (listHead's scope)");
+  assert.ok(!read("components/orders/OrdersListParts.tsx").includes(".slice(head.count.length)"), "no slicing of the left line");
   assert.deepEqual(textsOf(html, "orders-list-head-sort"), ["Newest first"], "the sort words");
   assert.deepEqual(textsOf(html, "orders-list-due-note"), ["Dues paid later are on the Customers page."], "the Due note (Q9)");
   expectAll(tagOf(html, "orders-list-due-note"), ["text-[12.5px]", "text-subtle-foreground"], "12.5px --text-3");
@@ -215,7 +238,14 @@ test("OrderTable source: no View / Settle / Cancel icon buttons, no xl switch, c
   assert.ok(src.includes("@min-[700px]:"), "the table from a 700px list");
   assert.ok(src.includes("@min-[900px]:"), "the Items column from a 900px list");
   assert.ok(!/(?<![\w@[-])(?:md|lg|xl):(?:block|hidden|grid|flex)\b/.test(src), "no viewport breakpoint switch");
-  assert.match(src, /onClick=\{\(\) => onChoose\(order\)\}/, "the title button and Settle call onChoose(order) (Q6)");
+  // Each button's own handler (fix round 1): the opening tag of the element carrying the data-ui must call onChoose.
+  for (const ui of ["orders-row-open", "orders-card-open", "orders-row-settle"]) {
+    const at = src.indexOf(`data-ui="${ui}"`);
+    assert.ok(at > 0, `landmark: ${ui}`);
+    const start = src.lastIndexOf("<button", at);
+    const tag = src.slice(start, src.indexOf(">\n", at) + 1);
+    assert.match(tag, /\sonClick=\{\(\) => onChoose\(order\)\}/, `${ui} itself calls onChoose(order) (Q6: Settle opens the detail)`);
+  }
 });
 
 // ── The page places them (design 6.5) and reads the clock once a minute ──────────────────────────────────────────
@@ -250,6 +280,11 @@ test("the /orders page: the list head, the list box, Load more under it (also un
   assert.ok(!/filtersOn: chips\.length/.test(src), "the chips (the phone's date chip among them) never make the filters words");
   assert.match(src, /emptyAction=\{\s*filtersOn && !searching \?/, "Clear filters with the filters words only (a search's words win)");
   assert.match(src, /<OrderTable[^>]*\bonChoose=\{setDetail\}/, "a row opens the order (Task 5 owns the choice)");
+  assert.match(
+    src,
+    /<OrderTable\b[\s\S]*?\bnotice=\{\s*orders\.isPaused && !orders\.data \? \(\s*<p role="status" className=\{ORDERS_OFFLINE_CLASS\}>/,
+    "the offline line goes INTO the list box (design 6.5), under the table head",
+  );
   const tableEnd = src.indexOf("/>", src.indexOf("<OrderTable"));
   const more = src.indexOf("<OrdersLoadMore");
   assert.ok(tableEnd > 0 && more > tableEnd, "Load more under the list box");

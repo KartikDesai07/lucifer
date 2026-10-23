@@ -3,15 +3,16 @@
 import type { ListHead } from "@/lib/orders-row";
 
 // The parts around the Orders list box (U2 Task 4; values 7; design 6.5): the list head over it, Load more under it,
-// and the offline line in its place. The list box itself is OrderTable.tsx.
+// and the offline line's look (it sits inside the box, OrderTable's notice). The list box itself is OrderTable.tsx.
 
 /** Our 40px outline buttons under and in the list (Load more, Clear filters): the HTML's Filters button look (values 4.1:
  *  radius 9, 1px --border, 13.5px 500). */
 export const ORDERS_OUTLINE_BUTTON_CLASS =
   "flex h-10 cursor-pointer items-center justify-center rounded-[9px] border border-border bg-card px-4 text-[13.5px] font-medium text-foreground hover:border-subtle-foreground disabled:cursor-default disabled:opacity-60";
 
-/** The offline line where the list box sits, in the HTML's empty style (design 6.5: one line, 13px --text-2). */
-export const ORDERS_OFFLINE_CLASS = "rounded-[12px] border border-border bg-card px-4 py-14 text-center text-[13px] text-muted-foreground";
+/** The offline line inside the list box, under the table head, in the HTML's empty style (values 13: padding 56 16,
+ *  centred; design 6.5: one line, 13px --text-2). */
+export const ORDERS_OFFLINE_CLASS = "px-4 py-14 text-center text-[13px] text-muted-foreground";
 
 /** values 7: "{n} {lane} orders" (the count 600 --text) and the sort words; on Due the note under it (Q9). Before the
  *  list loads it keeps its 25px. */
@@ -23,8 +24,8 @@ export function OrdersListHead({ head }: { head: ListHead | null }) {
         <span>
           <b data-ui="orders-list-head-count" className="font-semibold text-foreground">
             {head.count}
-          </b>
-          {head.left.slice(head.count.length)}
+          </b>{" "}
+          <span data-ui="orders-list-head-scope">{head.scope}</span>
         </span>
         <span data-ui="orders-list-head-sort">{head.right}</span>
       </div>

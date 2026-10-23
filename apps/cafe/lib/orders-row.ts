@@ -91,10 +91,16 @@ export function clockTime(iso: string): string {
   return timeLabel(CLOCK_24.format(new Date(iso)));
 }
 
+/** The instant a row's time shows (Ruling P8): a cancelled order its cancel time (the HTML's closed rows show the
+ *  cancel time, values 10.3), else when it was opened; a settled bill its opening (we store no paid-at time). */
+export function rowInstant(o: Order): string {
+  return (o.status === "Cancelled" && o.cancelledAt) || o.createdAt;
+}
+
 /**
  * How old the row is (values 0.1): an open tab "Open {m} min" / "Open {h}h {m}m" with m = max(1, round(minutes)),
  * --warn-i from 30 minutes and --bad-i from 60 (600); any other order "Today" or its day ("17 Oct") with the clock time
- * on the card, in --text-3.
+ * on the card (rowInstant: a cancelled one its cancel time), in --text-3.
  */
 export function orderAge(o: Order, now: Date): OrderAge {
   if (o.status === "Pending") {
@@ -103,9 +109,10 @@ export function orderAge(o: Order, now: Date): OrderAge {
     const tone: AgeTone = m >= HOUR_MINUTES ? "bad" : m >= LATE_MINUTES ? "warn" : "plain";
     return { text: `Open ${short}`, short, tone };
   }
-  const at = new Date(o.createdAt);
+  const instant = rowInstant(o);
+  const at = new Date(instant);
   const text = cafeDateString(at) === cafeDateString(now) ? "Today" : DAY_MONTH.format(at);
-  return { text, short: clockTime(o.createdAt), tone: "plain" };
+  return { text, short: clockTime(instant), tone: "plain" };
 }
 
 /** The items (the HTML's): "{qty}× {first item}" + " +{n} more" for more lines; "—" for none. */
@@ -156,7 +163,7 @@ export function orderRowView(o: ListedOrder, now: Date): OrderRowView {
     customer: o.customerId ? o.customerName : "Walk-in",
     customerSub: o.customerId ? null : "No customer added",
     items: itemsSummary(o),
-    time: clockTime(o.createdAt),
+    time: clockTime(rowInstant(o)),
     age: orderAge(o, now),
     status: orderStatus(o),
     amount: inr(o.total),
@@ -171,6 +178,8 @@ export function orderRowView(o: ListedOrder, now: Date): OrderRowView {
 export interface ListHead {
   /** The bold count: "8", "12+" while more can be loaded. */
   count: string;
+  /** The words after the count: "open orders", "match in all orders". */
+  scope: string;
   /** The whole left line, the count first: "8 open orders", "1 match in all orders". */
   left: string;
   right: string;
@@ -188,6 +197,7 @@ export function listHead(lane: OrdersLane, count: number, more: boolean, searchi
     : `${lane === "all" ? "" : `${lane} `}${one ? "order" : "orders"}`;
   return {
     count: n,
+    scope,
     left: `${n} ${scope}`,
     right: !searching && lane === "open" ? "Bills printed first, then oldest" : "Newest first",
     dueNote: !searching && lane === "due",
