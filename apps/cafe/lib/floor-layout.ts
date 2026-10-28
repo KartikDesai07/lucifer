@@ -9,7 +9,8 @@
 // One place for the class strings the page renders. Every class name is written out here or in the shared constant it
 // reads (POS_PAGE_CLASS, HTML_PRESS_CLASS, STATUS_CLASSES), so Tailwind's source scanner sees each one, and the pins
 // (lib/floor-layout.test.ts, lib/floor-controls.test.ts) read the SAME constants the page renders. U3 Task 2 adds the
-// controls row (the area tabs, the status pills, their fades) and the two scroll helpers; Task 5 the refresh strip.
+// controls row (the area tabs, the status pills, their fades) and the two scroll helpers; Task 5 the refresh strip; Task 6
+// the empty and skeleton classes.
 import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
 import type { FloorFilter } from "@/lib/floor-tiles";
 import { POS_PAGE_CLASS } from "@/lib/pos-layout";
@@ -67,6 +68,28 @@ export const FLOOR_REFRESH_STRIP_BUTTON_CLASS =
  *  strip's last line and the area stays clear of the words above. */
 export const FLOOR_REFRESH_STRIP_HIT_CLASS =
   "relative pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-top-[5px] pointer-coarse:after:h-11";
+
+// ── The loading and empty states (U3 Task 6; values 5.2, design 6.7) ──────────────────────────────────────────────────
+// The HTML's empty line (values 5.2: `text-align:center; padding:48px 0; color:var(--text-2); font-size:14px`, one line of
+// 18px at line-height normal, the scroller's) holding U2's empty box's parts (components/orders/OrderTable.tsx, not
+// exported: a centred column 6px apart, the title 14px 600, our way back 8px further down). U2's box pads 56px 16px with
+// 13px words (the Orders values); values 5.2's numbers win here. lib/floor-states.test.ts holds the buttons to U2's.
+
+/** The box (values 5.2 row: centred, padding 48px 0, 14px --text-2), U2's column 6px apart. */
+export const FLOOR_EMPTY_CLASS = "flex flex-col items-center gap-1.5 py-12 text-center text-[14px] text-muted-foreground";
+/** The title where we have one, no tables (design 6.7; U2's empty title row: 14px 600), in --text. */
+export const FLOOR_EMPTY_TITLE_CLASS = "text-[14px] font-semibold text-foreground";
+/** Show all tables (design 6.7: ours, as U2's Clear filters): U2's 40px outline button (ORDERS_OUTLINE_BUTTON_CLASS, the
+ *  HTML Orders' Filters look: radius 9, 1px --border, 0 16px, 13.5px 500; never disabled here) with U2's mt-2. */
+export const FLOOR_EMPTY_OUTLINE_BUTTON_CLASS =
+  "mt-2 flex h-10 cursor-pointer items-center justify-center rounded-[9px] border border-border bg-card px-4 text-[13.5px] font-medium text-foreground hover:border-subtle-foreground";
+/** Open Setup (design 6.7: a 40px accent button): the same button in the accent, the confirm's kind 1 (--accent fill and
+ *  rule, --on-accent words) with the header New order's hover. */
+export const FLOOR_EMPTY_ACCENT_BUTTON_CLASS =
+  "mt-2 flex h-10 cursor-pointer items-center justify-center rounded-[9px] border border-primary bg-primary px-4 text-[13.5px] font-medium text-primary-foreground hover:bg-primary-hover";
+/** A skeleton tile (design 6.7): the tile's shape (values 0.3 tileH 112px, 100px on a phone; values 4.1 radius 14) on the
+ *  kit Skeleton's pulse, in the floor grid. */
+export const FLOOR_SKELETON_TILE_CLASS = "h-[112px] rounded-[14px] max-tab:h-[100px]";
 
 // ── The controls row (U3 Task 2; values 2.2-2.6, design 6.3, owner Q4) ──────────────────────────────────────────────
 

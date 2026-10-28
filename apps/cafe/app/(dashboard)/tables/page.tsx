@@ -1,10 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import Link from "next/link";
-import { LayoutGrid } from "lucide-react";
 
-import { useAuth } from "@/hooks/use-auth";
 import { useFloorActions } from "@/hooks/use-floor-actions";
 import { useNow } from "@/hooks/use-now";
 import { useOrders, OPEN_TABS_QUERY_OPTIONS } from "@/hooks/use-orders";
@@ -14,7 +11,6 @@ import { useTableAreas } from "@/hooks/use-table-areas";
 import { useTables } from "@/hooks/use-tables";
 import {
   FLOOR_CLOCK_TICK_MS,
-  FLOOR_EMPTY_FILTER_TEXT,
   FLOOR_GRID_CLASS,
   buildFloorTiles,
   filterTiles,
@@ -28,25 +24,17 @@ import { FLOOR_ALL_AREAS, effectiveArea, floorAreaTabs, floorSections, tilesInAr
 import { FLOOR_BODY_CLASS, FLOOR_CONTROLS_CLASS, FLOOR_PAGE_CLASS, FLOOR_SCROLLER_CLASS } from "@/lib/floor-layout";
 import { riseIndexFor } from "@/lib/floor-rise";
 import { OPEN_TABS_FILTERS } from "@/lib/table-pick";
-import { TABLES_SETUP_PATH } from "@/lib/table-sections";
 import { longStayMinutesOf } from "@/lib/table-status";
 import { cafeDateString } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { FloorAreaSections } from "@/components/tables/FloorAreaSections";
 import { FloorAreaTabs } from "@/components/tables/FloorAreaTabs";
 import { FloorDialogs } from "@/components/tables/FloorDialogs";
 import { FloorRefreshStrip } from "@/components/tables/FloorRefreshStrip";
+import { FloorEmptyState, FloorFilterEmpty, FloorSkeleton } from "@/components/tables/FloorStates";
 import { FloorStatusChips } from "@/components/tables/FloorStatusChips";
 import { FloorTile } from "@/components/tables/FloorTile";
-
-// Loading shape only: a cafe's real table count is dynamic. Same size and corner
-// as a tile, so the grid does not jump when the tables arrive.
-const SKELETON_TILES = 8;
-const SKELETON_TILE_CLASS = "h-28 w-full rounded-lg";
 
 export default function TablesPage() {
   return <FloorContent />;
@@ -66,44 +54,6 @@ function FloorFrame({ children, strip }: { children: ReactNode; strip?: ReactNod
         </div>
       </div>
     </div>
-  );
-}
-
-function FloorSkeleton() {
-  return (
-    <div className={FLOOR_GRID_CLASS} aria-hidden>
-      {Array.from({ length: SKELETON_TILES }).map((_, i) => (
-        <Skeleton key={i} className={SKELETON_TILE_CLASS} />
-      ))}
-    </div>
-  );
-}
-
-// The ONLY role-dependent part of the Floor: every tile action is a staff
-// action, so admins and staff see identical tiles. Waits for the session so
-// the copy never flips from the staff wording to the admin one.
-function FloorEmptyState() {
-  const { isAdmin, isLoading: authLoading } = useAuth();
-  if (authLoading) return <FloorSkeleton />;
-  return (
-    <EmptyState
-      icon={<LayoutGrid className="h-8 w-8" />}
-      title={isAdmin ? "No tables yet" : "Floor plan not set up"}
-      description={
-        isAdmin
-          ? "Add your tables on the Setup page to see them here."
-          : "Ask an admin to add tables on the Setup page."
-      }
-      action={
-        isAdmin ? (
-          <Button asChild className="mt-2">
-            <Link href={TABLES_SETUP_PATH} prefetch={false}>
-              Open Setup
-            </Link>
-          </Button>
-        ) : undefined
-      }
-    />
   );
 }
 
@@ -228,15 +178,7 @@ function FloorContent() {
       ) : list.length === 0 ? (
         <FloorEmptyState />
       ) : visible.length === 0 ? (
-        <EmptyState
-          icon={<LayoutGrid className="h-8 w-8" />}
-          title={FLOOR_EMPTY_FILTER_TEXT}
-          action={
-            <Button type="button" variant="outline" className="mt-2" onClick={showAllTables}>
-              Show all tables
-            </Button>
-          }
-        />
+        <FloorFilterEmpty onShowAll={showAllTables} />
       ) : sections.showHeadings ? (
         <FloorAreaSections groups={sections.groups} renderTile={renderTile} />
       ) : (

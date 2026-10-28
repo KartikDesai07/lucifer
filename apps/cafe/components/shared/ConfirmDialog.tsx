@@ -34,7 +34,8 @@ interface ConfirmDialogProps {
   destructive?: boolean;
   isLoading?: boolean;
   onConfirm: () => void;
-  /** "sheet" = the owner's HTML confirm (U1 Task 12; only the POS prompts and the send-discard confirm ask for it). */
+  /** "sheet" = the owner's HTML confirm (U1 Task 12; only the POS prompts, the send-discard confirm and, from U3 Task 6,
+   *  the Floor's Seat now / Free table confirm ask for it). */
   look?: "default" | "sheet";
 }
 

@@ -38,13 +38,14 @@ const VIEW_LIB = "apps/cafe/lib/floor-view.ts";
 const TILE_CLASSES_LIB = "apps/cafe/lib/floor-tile-classes.ts";
 // U3 Task 4 fix round 2 (2026-10-28): the rise cascade's window and each table's first index (re-review M1).
 const RISE_LIB = "apps/cafe/lib/floor-rise.ts";
+const STATES = "apps/cafe/components/tables/FloorStates.tsx"; // U3 Task 6: the skeleton and the two empty states
 const LIVE_PANEL = "apps/cafe/components/dashboard/LiveFloorPanel.tsx";
 const TABLES_DIR = "apps/cafe/components/tables";
 
 // Every file that makes up the Floor screen.
 const FLOOR_FILES = [
   PAGE, STATUS_HOOK, ACTIONS_HOOK, TILE, TILE_MENU, CHIPS, INDICATOR, DIALOGS, FLOOR_LIB, SECTIONS, LAYOUT_LIB, AREA_TABS, SCROLL_FADES, AREAS_LIB,
-  VIEW_LIB, TILE_CLASSES_LIB, RISE_LIB,
+  VIEW_LIB, TILE_CLASSES_LIB, RISE_LIB, STATES,
 ];
 
 function count(haystack: string, needle: string): number {
@@ -91,10 +92,12 @@ test("PIN: the full error screen shows only when there is no list to keep showin
   assert.ok(condition.includes("data === undefined"), "…and only when no data is cached");
 });
 
+// U3 Task 6 (P4's needles moved on purpose, the meaning kept): FloorEmptyState moved to FloorStates.tsx (a Next page
+// exports only its default, so it could not be rendered in tests) in the HTML's empty style (design 6.7).
 test("PIN: the Floor has no role-dependent controls outside the empty state", () => {
-  const src = readStripped(PAGE);
-  const empty = bodyAfter(src, "function FloorEmptyState()");
-  assert.ok(empty.includes("<EmptyState"), "landmark: the empty-state block");
+  const src = readStripped(STATES);
+  const empty = bodyAfter(src, "export function FloorEmptyState()");
+  assert.ok(empty.includes('data-ui="floor-empty"'), "landmark: the empty-state block");
   assert.ok(empty.includes("isAdmin"), "landmark: the empty state is where the role split lives");
   assert.ok(empty.includes("authLoading"), "the empty state waits for the session");
   const rest = src.replace(empty, "");
@@ -102,7 +105,7 @@ test("PIN: the Floor has no role-dependent controls outside the empty state", ()
   // destructured `role` would make a Floor control role-dependent just the same.
   const roleRead = /\bisAdmin\b|\.role\b|\brole\s*[!=]==|\{\s*[^}]*\brole\b[^}]*\}\s*=\s*useAuth/;
   assert.ok(!roleRead.test(rest), "a role read outside FloorEmptyState would make a Floor control role-dependent");
-  for (const f of FLOOR_FILES.filter((x) => x !== PAGE)) {
+  for (const f of FLOOR_FILES.filter((x) => x !== STATES)) {
     assert.ok(!roleRead.test(readStripped(f)), `${f} must not branch on the role`);
   }
 });
@@ -229,7 +232,8 @@ test("PIN: the page groups, counts and filters by shownArea (effectiveArea), nev
   assert.ok(page.includes("{areaTabs.length > 0 && <FloorAreaTabs tabs={areaTabs} value={shownArea} onChange={setArea} />}"), "tabs only with two groups");
   const reset = bodyAfter(page, "const showAllTables = () =>");
   assert.ok(reset.includes('setFilter("all")') && reset.includes("setArea(FLOOR_ALL_AREAS)"), "Show all tables resets the pill and the area");
-  assert.ok(page.includes("title={FLOOR_EMPTY_FILTER_TEXT}") && page.includes("onClick={showAllTables}"), "the HTML's line and our reset");
+  const states = readStripped(STATES); // U3 Task 6 (moved on purpose, the meaning kept): FloorFilterEmpty, design 6.7
+  assert.ok(page.includes("<FloorFilterEmpty onShowAll={showAllTables} />") && states.includes("{FLOOR_EMPTY_FILTER_TEXT}") && states.includes("onClick={onShowAll}"), "the HTML's line and our reset");
 });
 
 test("PIN: area sections - one tile renderer, headings only when floorSections says so, flat grid otherwise", () => {

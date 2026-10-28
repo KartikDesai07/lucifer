@@ -36,6 +36,9 @@ function copyFor(dialog: FloorDialog | null): { title: string; description: stri
 // The Floor's one confirm dialog: Free table (a Reserved hold, or an Occupied
 // table whose bill is already gone) and Seat now. The write itself, and the
 // open-bill check that runs first, live in hooks/use-floor-actions.
+// U3 Task 6 (design 6.6): in the HTML confirm sheet (U1's look="sheet": 420px, the stacked 46px buttons, a bottom sheet
+// below 720px over the safe-area inset); Seat now in the accent, Free table in --bad (destructive), Cancel --surface-3.
+// Its Escape and Cancel only call onOpenChange(false), which the hook ignores while the write runs.
 export function FloorDialogs({ dialog, busy, onConfirm, onOpenChange }: FloorDialogsProps) {
   // The copy keeps the last dialog while it fades out: `dialog` turns null the
   // moment it closes, which would otherwise flash "Free ?" during the exit.
@@ -52,6 +55,7 @@ export function FloorDialogs({ dialog, busy, onConfirm, onOpenChange }: FloorDia
       destructive={copy.destructive}
       isLoading={busy}
       onConfirm={onConfirm}
+      look="sheet"
     />
   );
 }
