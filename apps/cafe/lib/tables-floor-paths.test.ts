@@ -271,6 +271,11 @@ test("PIN: the tile's status word is never clipped", () => {
   assert.ok(!/\btruncate\b|overflow-hidden|text-ellipsis/.test(line), "the status line never cuts the word");
 });
 
+// keep-4: P17's word left the tile (U3 Task 3); "Free table" stays on the ⋯ menu and the free confirm (design 11).
+test("PIN: the word Free table stays on the ⋯ menu and the free confirm", () => {
+  assert.ok(readStripped(TILE_MENU).includes('free: "Free table"') && readStripped(DIALOGS).includes('confirmLabel: "Free table"'), "the menu's free label and the free confirm's label read Free table");
+});
+
 // Owner, 2026-10-02: the Floor moved into the sidebar's Service group, right under New Order and Orders — the
 // eyebrow names the group the page sits in, as on every screen (polish-pages-paths pins the one-header pages).
 test("PIN: both Floor headers carry the Service eyebrow and the Floor title", () => {

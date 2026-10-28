@@ -22,12 +22,14 @@ export const FLOOR_SECTION_COUNT_CLASS = "flex-none text-[12px] text-muted-foreg
 /**
  * The tile's surface (values 4.1): a column, its top row and bottom block pushed apart (8px at least), a 1.5px border
  * (Chrome draws 1px, values 0.5), radius 14, padding 12, 112px tall (100 on the phone; content never grows it), the
- * HTML's --text and normal line-height. Today's 2px focus ring, on the primary token (Task 4 owns the focus look).
+ * HTML's --text and normal line-height. It fills its grid cell (h-full), so a tile that grows grows its whole row as the
+ * HTML's (values 4.7). Today's 2px focus ring, on the primary token (Task 4 owns the focus look).
  */
 export const FLOOR_TILE_CLASS =
-  "flex min-h-[112px] w-full flex-col justify-between gap-2 rounded-[14px] border-[1.5px] p-3 text-left leading-[normal] text-foreground max-tab:min-h-[100px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1";
-/** The top row (values 4.1): the name left, the seats right, top-aligned; 8px apart so a long name never touches them. */
-export const FLOOR_TILE_TOP_CLASS = "flex items-start justify-between gap-2";
+  "flex h-full min-h-[112px] w-full flex-col justify-between gap-2 rounded-[14px] border-[1.5px] p-3 text-left leading-[normal] text-foreground max-tab:min-h-[100px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1";
+/** The top row (values 4.1): the name left, the seats right, top-aligned, with the HTML's no gap (ruling F9: "T-16" and
+ *  "6 seats" fit the 88px phone row); a name that does truncate meets the seats, the HTML's own geometry (values 4.7). */
+export const FLOOR_TILE_TOP_CLASS = "flex items-start justify-between";
 /** The table's full name (design 6.5: `tableNo`, not the HTML's "T{n}"): 20px 600 -0.01em; truncates (Review Focus 3). */
 export const FLOOR_TILE_NAME_CLASS = "min-w-0 truncate text-[20px] font-semibold tracking-[-0.01em]";
 /** "{n} seats" (values 4.1): 12px --text-2; never shrinks or wraps (values 12 #21 not copied: the name gives way). */

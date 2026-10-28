@@ -38,7 +38,7 @@ export interface FloorTileView {
   seats: string;
   /** The bill has been open past the cafe's long-stay setting (today's rule): the stay turns red. */
   longStay: boolean;
-  /** "{tableNo}, {word}, {detail}[, long stay][ — {what a tap does}]". */
+  /** "{tableNo}, {seats}, {word}, {detail}[, long stay][ — {what a tap does}]" (the seats: ruling F10). */
   accessibleName: string;
 }
 
@@ -49,6 +49,8 @@ const HELD_TEXT = "Held";
 const SEAT_TEXT = "Tap to seat guests";
 const SEAT_PHONE_TEXT = "Tap to seat";
 const LONG_STAY_WORDS = "long stay";
+/** The stay before the clock exists or on a bad date ("—"): the accessible name leaves it out (logic-4). */
+const NO_STAY = formatStayMinutes(null);
 
 function toneLabel(tone: FloorTone): string {
   return FLOOR_FILTERS.find((f) => f.key === tone)?.label ?? tone;
@@ -75,7 +77,7 @@ function detailOf(tile: FloorTileModel, tabsFailed: boolean): FloorDetail {
 function detailWords(detail: FloorDetail): string | null {
   switch (detail.kind) {
     case "money":
-      return `${detail.amount}, ${detail.stay}`;
+      return detail.stay === NO_STAY ? detail.amount : `${detail.amount}, ${detail.stay}`;
     case "text":
       return detail.text;
     case "skeleton":
@@ -89,8 +91,10 @@ export function floorTileView(tile: FloorTileModel, tabsFailed: boolean): FloorT
   const label = toneLabel(tone);
   const detail = detailOf(tile, tabsFailed);
   const words = detailWords(detail);
+  const seats = seatsText(tile.table.capacity);
   const hint = FLOOR_TAP_HINT[tile.primary];
-  let accessibleName = [tile.table.tableNo, label, ...(words ? [words] : []), ...(tile.longStay ? [LONG_STAY_WORDS] : [])].join(", ");
+  // Ruling F10: the seats after the name, as today's surface and U1's table picker announce them.
+  let accessibleName = [tile.table.tableNo, seats, label, ...(words ? [words] : []), ...(tile.longStay ? [LONG_STAY_WORDS] : [])].join(", ");
   if (hint) accessibleName += ` — ${hint}`;
-  return { tone, label, detail, seats: seatsText(tile.table.capacity), longStay: tile.longStay, accessibleName };
+  return { tone, label, detail, seats, longStay: tile.longStay, accessibleName };
 }

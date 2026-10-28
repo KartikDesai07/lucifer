@@ -107,6 +107,13 @@ export function FloorTile({ tile, busy, tabsFailed, onTap, onMenu }: FloorTilePr
     </>
   );
 
+  // Ruling F12 part 1: a long stay is said on a div surface (K10, or any busy tile), which has no aria-label; a Link or
+  // button tile says it in its aria-label (view.accessibleName), so the word renders on the div surfaces only, never twice.
+  const longStayNote = view.longStay ? (
+    <span data-ui="floor-tile-long-stay" className="sr-only">
+      Long stay
+    </span>
+  ) : null;
   const className = cn(FLOOR_TILE_CLASS, tone.tile, busy && "opacity-70");
   let surface: ReactNode;
   // While this table's own write (or its open-bill check) runs, the tile is not
@@ -116,6 +123,7 @@ export function FloorTile({ tile, busy, tabsFailed, onTap, onMenu }: FloorTilePr
     surface = (
       <div aria-busy data-ui="floor-tile" data-tone={view.tone} className={className}>
         {content}
+        {longStayNote}
       </div>
     );
   } else if (primary === "open" || primary === "new-order") {
@@ -149,6 +157,7 @@ export function FloorTile({ tile, busy, tabsFailed, onTap, onMenu }: FloorTilePr
     surface = (
       <div data-ui="floor-tile" data-tone={view.tone} className={className}>
         {content}
+        {longStayNote}
       </div>
     );
   }

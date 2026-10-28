@@ -15,7 +15,7 @@ import {
   FLOOR_TILE_DOT_CLASS, FLOOR_TILE_NAME_CLASS, FLOOR_TILE_SEATS_CLASS, FLOOR_TILE_STATUS_CLASS, FLOOR_TILE_TOP_CLASS,
   FLOOR_TILE_WORD_CLASS,
 } from "./floor-tile-classes";
-import { FLOOR_GRID_CLASS, type FloorTileModel } from "./floor-tiles";
+import { FLOOR_GRID_CLASS, FLOOR_TAP_HINT, type FloorTileModel } from "./floor-tiles";
 import { FLOOR_TILE_TONES, floorTileView, type FloorDetail, type FloorTone } from "./floor-view";
 import { build, printed, reservation, tab, table } from "./floor-tiles.fixtures";
 import type { Order, Reservation, Table } from "@/types";
@@ -29,8 +29,9 @@ const tokens = (cls: string): string[] => cls.split(/\s+/).filter(Boolean);
 function hasAll(cls: string, needles: string[], what: string): void {
   for (const n of needles) assert.ok(tokens(cls).includes(n), `${what}: "${n}" (has "${cls}")`);
 }
-function one(t: Table, tabs: Order[] | undefined, reservations?: Reservation[]): FloorTileModel {
-  const tiles = build([t], tabs, reservations);
+// `nowMs` null: before the client clock exists (no stay yet); left out, the fixtures' fixed clock.
+function one(t: Table, tabs: Order[] | undefined, reservations?: Reservation[], nowMs?: number | null): FloorTileModel {
+  const tiles = build([t], tabs, reservations, nowMs);
   assert.equal(tiles.length, 1, "one tile");
   return tiles[0];
 }
@@ -41,12 +42,18 @@ const KINDS = {
   K1: one(table("T-3", "Occupied"), [tab("T-3", 27, { total: 955 })]),
   K1P: one(table("T-3", "Occupied"), [printed(tab("T-3", 27, { total: 955 }))]),
   K1L: one(table("T-3", "Occupied"), [tab("T-3", 68, { total: 1063 })]),
+  K1H: one(table("T-3", "Occupied"), [tab("T-3", 72, { total: 1063 })]),
+  // No stay known (logic-4): before the clock exists (one seat, F10's singular), or a bill whose date does not parse.
+  K1N: one(table("T-3", "Occupied", { capacity: 1 }), [tab("T-3", 27, { total: 955 })], undefined, null),
+  K1B: one(table("T-3", "Occupied"), [tab("T-3", 27, { total: 955, createdAt: "not a date" })]),
   K2: one(table("T-2", "Occupied"), []),
   K3: one(table("T-2", "Occupied"), undefined),
+  K4: one(table("T-2", "Occupied"), undefined),
   K5: one(table("T-5", "Available"), []),
   K5C: one(table("T-5", "Available", { chargeLabel: "AC charge", chargeAmount: 50 }), []),
   K6: one(table("T-5", "Available"), undefined),
   K7: one(table("T-6", "Available"), [tab("T-6", 12, { total: 420 })]),
+  K7L: one(table("T-6", "Available"), [tab("T-6", 90, { total: 420 })]),
   K8: one(table("T-1", "Reserved", { capacity: 2 }), [], BOOKING),
   K8H: one(table("T-1", "Reserved", { capacity: 2 }), []),
   K9: one(table("T-1", "Reserved", { capacity: 2 }), undefined, BOOKING),
@@ -55,22 +62,27 @@ const KINDS = {
 const money = (amount: string, stay: string): FloorDetail => ({ kind: "money", amount, stay });
 const text = (words: string, phoneText?: string): FloorDetail => (phoneText ? { kind: "text", text: words, phoneText } : { kind: "text", text: words });
 type Row = [keyof typeof KINDS, boolean, FloorTone, string, FloorDetail, boolean, string];
-// [kind, tabsFailed, tone, label, detail, longStay, accessible name]
+// [kind, tabsFailed, tone, label, detail, longStay, accessible name: the seats after the name, ruling F10]
 const ROWS: Row[] = [
-  ["K1", false, "occupied", "Occupied", money("₹955", "27 min"), false, "T-3, Occupied, ₹955, 27 min — open the bill"],
-  ["K1P", false, "billed", "Bill printed", money("₹955", "27 min"), false, "T-3, Bill printed, ₹955, 27 min — open the bill"],
-  ["K1L", false, "occupied", "Occupied", money("₹1,063", "1h 8m"), true, "T-3, Occupied, ₹1,063, 1h 8m, long stay — open the bill"],
-  ["K2", false, "occupied", "Occupied", text("No open bill"), false, "T-2, Occupied, No open bill — free the table"],
-  ["K3", false, "occupied", "Occupied", { kind: "skeleton" }, false, "T-2, Occupied — open the bill"],
-  ["K3", true, "occupied", "Occupied", text("Bill not loaded"), false, "T-2, Occupied, Bill not loaded — open the bill"],
-  ["K5", false, "free", "Available", text("Tap to seat guests", "Tap to seat"), false, "T-5, Available, Tap to seat guests — start a new order"],
-  ["K5C", false, "free", "Available", text("AC charge ₹50"), false, "T-5, Available, AC charge ₹50 — start a new order"],
-  ["K6", false, "free", "Available", text("Tap to seat guests", "Tap to seat"), false, "T-5, Available, Tap to seat guests — start a new order"],
-  ["K7", false, "free", "Available", money("₹420", "12 min"), false, "T-6, Available, ₹420, 12 min — open the bill"],
-  ["K8", false, "reserved", "Reserved", text("9:45 PM · Rahul Mehta"), false, "T-1, Reserved, 9:45 PM · Rahul Mehta — seat guests"],
-  ["K8H", false, "reserved", "Reserved", text("Held"), false, "T-1, Reserved, Held — seat guests"],
-  ["K9", false, "reserved", "Reserved", text("9:45 PM · Rahul Mehta"), false, "T-1, Reserved, 9:45 PM · Rahul Mehta"],
-  ["K10", false, "reserved", "Reserved", text("Held"), true, "T-1, Reserved, Held, long stay"],
+  ["K1", false, "occupied", "Occupied", money("₹955", "27 min"), false, "T-3, 4 seats, Occupied, ₹955, 27 min — open the bill"],
+  ["K1P", false, "billed", "Bill printed", money("₹955", "27 min"), false, "T-3, 4 seats, Bill printed, ₹955, 27 min — open the bill"],
+  ["K1L", false, "occupied", "Occupied", money("₹1,063", "1h 8m"), true, "T-3, 4 seats, Occupied, ₹1,063, 1h 8m, long stay — open the bill"],
+  ["K1H", false, "occupied", "Occupied", money("₹1,063", "1h 12m"), true, "T-3, 4 seats, Occupied, ₹1,063, 1h 12m, long stay — open the bill"],
+  ["K1N", false, "occupied", "Occupied", money("₹955", "—"), false, "T-3, 1 seat, Occupied, ₹955 — open the bill"],
+  ["K1B", false, "occupied", "Occupied", money("₹955", "—"), false, "T-3, 4 seats, Occupied, ₹955 — open the bill"],
+  ["K2", false, "occupied", "Occupied", text("No open bill"), false, "T-2, 4 seats, Occupied, No open bill — free the table"],
+  ["K3", false, "occupied", "Occupied", { kind: "skeleton" }, false, "T-2, 4 seats, Occupied — open the bill"],
+  ["K4", true, "occupied", "Occupied", text("Bill not loaded"), false, "T-2, 4 seats, Occupied, Bill not loaded — open the bill"],
+  ["K5", false, "free", "Available", text("Tap to seat guests", "Tap to seat"), false, "T-5, 4 seats, Available, Tap to seat guests — start a new order"],
+  ["K5C", false, "free", "Available", text("AC charge ₹50"), false, "T-5, 4 seats, Available, AC charge ₹50 — start a new order"],
+  ["K6", false, "free", "Available", text("Tap to seat guests", "Tap to seat"), false, "T-5, 4 seats, Available, Tap to seat guests — start a new order"],
+  ["K6", true, "free", "Available", text("Tap to seat guests", "Tap to seat"), false, "T-5, 4 seats, Available, Tap to seat guests — start a new order"],
+  ["K7", false, "free", "Available", money("₹420", "12 min"), false, "T-6, 4 seats, Available, ₹420, 12 min — open the bill"],
+  ["K7L", false, "free", "Available", money("₹420", "1h 30m"), true, "T-6, 4 seats, Available, ₹420, 1h 30m, long stay — open the bill"],
+  ["K8", false, "reserved", "Reserved", text("9:45 PM · Rahul Mehta"), false, "T-1, 2 seats, Reserved, 9:45 PM · Rahul Mehta — seat guests"],
+  ["K8H", false, "reserved", "Reserved", text("Held"), false, "T-1, 2 seats, Reserved, Held — seat guests"],
+  ["K9", false, "reserved", "Reserved", text("9:45 PM · Rahul Mehta"), false, "T-1, 2 seats, Reserved, 9:45 PM · Rahul Mehta"],
+  ["K10", false, "reserved", "Reserved", text("Held"), true, "T-1, 2 seats, Reserved, Held, long stay"],
 ];
 
 test("floorTileView: one row per kind of design 6.5's table (tone, word, detail, long stay, accessible name)", () => {
@@ -105,8 +117,10 @@ test("FLOOR_TILE_TONES: the HTML's four looks (values 4.2) from tokens; the dots
 });
 
 test("the tile's classes: the HTML's anatomy (values 4.1, 4.4); Review Focus 3: the name truncates, seats and word never wrap", () => {
-  hasAll(FLOOR_TILE_CLASS, ["flex", "flex-col", "justify-between", "gap-2", "border-[1.5px]", "rounded-[14px]", "p-3", "min-h-[112px]", "max-tab:min-h-[100px]", "w-full", "text-left", "text-foreground", "leading-[normal]"], "values 4.1 tile");
-  assert.equal(FLOOR_TILE_TOP_CLASS, "flex items-start justify-between gap-2", "the top row: name left, seats right, 8px apart");
+  // h-full (logic-6): the surface fills its grid cell, so a tile that grows grows its row-mates (values 4.7).
+  hasAll(FLOOR_TILE_CLASS, ["flex", "flex-col", "justify-between", "gap-2", "border-[1.5px]", "rounded-[14px]", "p-3", "min-h-[112px]", "max-tab:min-h-[100px]", "w-full", "h-full", "text-left", "text-foreground", "leading-[normal]"], "values 4.1 tile");
+  // Ruling F9: the HTML's top row has no gap (values 4.1, computed `normal`), so "T-16" + "6 seats" fits the 88px phone row.
+  assert.equal(FLOOR_TILE_TOP_CLASS, "flex items-start justify-between", "the top row: name left, seats right, no gap (values 4.1)");
   assert.equal(FLOOR_TILE_NAME_CLASS, "min-w-0 truncate text-[20px] font-semibold tracking-[-0.01em]", "the name: 20px 600 -0.01em, truncating");
   assert.equal(FLOOR_TILE_SEATS_CLASS, "flex-none whitespace-nowrap text-[12px] text-muted-foreground", "the seats: 12px --text-2, never shrinking or wrapping");
   assert.equal(FLOOR_TILE_BOTTOM_CLASS, "flex flex-col gap-0.5", "the bottom block: 2px between its lines");
@@ -169,7 +183,8 @@ test("FloorTile: the phone word below 720px, the long word from 720px (K5 with n
 });
 
 test("FloorTile: the stay turns red and bold on a long stay only (ruling F3); the skeleton keeps the 17px line (K3)", () => {
-  expectAll(tagOf(renderTile(KINDS.K1L), "floor-tile-stay"), tokens(FLOOR_STAY_LONG_CLASS), "K1 long stay");
+  for (const kind of ["K1L", "K1H", "K7L"] as const) expectAll(tagOf(renderTile(KINDS[kind]), "floor-tile-stay"), tokens(FLOOR_STAY_LONG_CLASS), `${kind} long stay`);
+  expectAll(tagOf(renderTile(KINDS.K7L), "floor-tile"), tokens(FLOOR_TILE_TONES.free.tile), "K7 long stay: the red time on the free tone");
   assert.ok(!classesOf(tagOf(renderTile(KINDS.K1), "floor-tile-stay")).includes("text-status-bad-ink"), "K1 at 27 min: plain");
   assert.equal(textOf(renderTile(KINDS.K1), "floor-tile-stay"), "27 min", "the stay part");
   expectAll(tagOf(renderTile(KINDS.K3), "floor-tile-detail"), ["h-[17px]", "w-16", "animate-pulse"], "K3: a short skeleton bar the line's height");
@@ -186,10 +201,38 @@ test("FloorTile: the surface keeps today's element per tap (Link, button, div) a
   for (const kind of ["K1", "K2", "K5", "K8"] as const) expectAll(surface(KINDS[kind]), ["cursor-pointer"], `${kind}: the HTML's hand cursor on a tap target`);
   for (const kind of ["K9", "K10"] as const) assert.ok(!classesOf(surface(KINDS[kind])).includes("cursor-pointer"), `${kind}: no hand on a display tile`);
   assert.match(surface(KINDS.K5, true), /^<div [^>]*aria-busy="true"/, "a busy tile is no target");
-  assert.match(surface(KINDS.K1), /aria-label="T-3, Occupied, ₹955, 27 min — open the bill"/, "the link says what a tap does");
-  assert.match(surface(KINDS.K2), /aria-label="T-2, Occupied, No open bill — free the table"/, "the button says what a tap does");
+  assert.match(surface(KINDS.K1), /aria-label="T-3, 4 seats, Occupied, ₹955, 27 min — open the bill"/, "the link says what a tap does");
+  assert.match(surface(KINDS.K2), /aria-label="T-2, 4 seats, Occupied, No open bill — free the table"/, "the button says what a tap does");
   const k5 = renderTile(KINDS.K5);
   assert.ok(k5.indexOf("</a>") < k5.indexOf('aria-label="More actions for T-5"'), "the ⋯ is a sibling after the link, never inside it");
+});
+
+test("FloorTile: a busy tile shows the spinner and names no tap (logic-7)", () => {
+  for (const kind of ["K1", "K2", "K5", "K8"] as const) {
+    const html = renderTile(KINDS[kind], false, true);
+    const statusLine = html.slice(html.indexOf('data-ui="floor-tile-status"'), html.indexOf('data-ui="floor-tile-detail"'));
+    assert.match(statusLine, /<svg [^>]*animate-spin/, `${kind} busy: the spinner on the status line`);
+    assert.ok(!/aria-label=/.test(tagOf(html, "floor-tile")), `${kind} busy: no aria-label on the surface`);
+    for (const hint of Object.values(FLOOR_TAP_HINT)) if (hint) assert.ok(!html.includes(` — ${hint}`), `${kind} busy: no tap hint "${hint}"`);
+    assert.ok(!renderTile(KINDS[kind]).includes("animate-spin"), `${kind} at rest: no spinner`);
+  }
+});
+
+// Ruling F12 part 1 (spec-3, logic-3, keep-3): K10's long stay is said on the plain-div surface (no aria-label there);
+// a Link or button tile says it in its aria-label, so the sr-only word renders on div surfaces only, never twice.
+test("FloorTile: a long stay on a div surface (K10, a busy tile) is said by an sr-only 'Long stay'; never on a named surface", () => {
+  for (const [what, html] of [["K10", renderTile(KINDS.K10)], ["K1L busy", renderTile(KINDS.K1L, false, true)]] as const) {
+    assert.match(tagOf(html, "floor-tile"), /^<div /, `${what}: a div surface`);
+    expectAll(tagOf(html, "floor-tile-long-stay"), ["sr-only"], `${what}: the sr-only word`);
+    assert.equal(textOf(html, "floor-tile-long-stay"), "Long stay", `${what}: the word`);
+    assert.ok(textOf(html, "floor-tile").includes("Long stay"), `${what}: inside the surface's content`);
+  }
+  for (const kind of ["K1L", "K1H", "K7L"] as const) {
+    const html = renderTile(KINDS[kind]);
+    assert.equal(tagsOf(html, "floor-tile-long-stay").length, 0, `${kind}: no sr-only word on a link (its aria-label says it)`);
+    assert.match(tagOf(html, "floor-tile"), /aria-label="[^"]*, long stay — /, `${kind}: the aria-label says long stay`);
+  }
+  for (const kind of ["K9", "K8H"] as const) assert.equal(tagsOf(renderTile(KINDS[kind]), "floor-tile-long-stay").length, 0, `${kind}: no long stay, no word`);
 });
 
 // ── FloorAreaSections, rendered ─────────────────────────────────────────────────────────────────────────────────────
