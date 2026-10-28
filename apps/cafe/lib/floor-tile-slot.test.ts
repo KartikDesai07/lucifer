@@ -94,10 +94,12 @@ test("the right slot's classes: the room, the slot, the clock, the spinners, the
   assert.equal(FLOOR_TILE_SPINNER_CLASS, "size-3.5 animate-spin", "today's 14px spinner");
   assert.equal(
     FLOOR_TILE_TRIGGER_CLASS,
-    "absolute bottom-[30px] right-0 flex cursor-pointer items-end justify-end rounded-[8px] pb-[2.5px] pr-[13px] text-muted-foreground size-11 pointer-fine:size-8 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-default disabled:pointer-events-none disabled:opacity-70",
+    "absolute bottom-[30px] right-0 flex cursor-pointer items-end justify-end rounded-[8px] pb-[2.5px] pr-[13px] text-muted-foreground size-11 pointer-fine:size-8 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:pointer-events-none disabled:opacity-70",
     "the tile's right edge, its foot on the detail line's top, 44 / 32px, the glyph on the status line's centre and the tile's inner edge",
   );
   assert.ok(!/\bh-10\b|\bw-10\b/.test(FLOOR_TILE_TRIGGER_CLASS), "no longer today's 40px corner target");
+  // Fix round 2 (M2): a busy ⋯ takes no pointer, so the cursor is the surface's below; a disabled cursor would be dead.
+  assert.ok(!tokens(FLOOR_TILE_TRIGGER_CLASS).includes("disabled:cursor-default"), "no dead cursor class next to disabled:pointer-events-none");
   // Fix round 1 (logic-4): 44px for every pointer that is not fine ((pointer: none) included), 32px with a fine one.
   assert.ok(tokens(FLOOR_TILE_TRIGGER_CLASS).includes("size-11") && !FLOOR_TILE_TRIGGER_CLASS.includes("pointer-coarse:"), "a base 44px, not only under (pointer: coarse)");
   // Fix round 1 (spec-1, ruling F16): busy, a press goes to the busy surface (no target), today's kit; the surface's dim.

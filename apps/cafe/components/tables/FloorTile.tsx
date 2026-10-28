@@ -43,8 +43,9 @@ interface FloorTileProps {
   busy: boolean;
   /** The open bills failed to load and there is no older list to show. */
   tabsFailed: boolean;
-  /** Its place in its section (after the filters): its step in the rise's cascade (values 7). */
-  riseIndex: number;
+  /** Its step in the rise's cascade (values 7): its table's place in its section (after the filters) on the first render
+   *  the table appeared in (lib/floor-rise.ts, re-review M1); null past the cascade's window (no rise). */
+  riseIndex: number | null;
   /** The ms since the page's cascade clock started (its first render with tiles, ruling F15), read by the render that
    *  renders this tile. */
   riseElapsedMs: number;
@@ -73,10 +74,12 @@ function surfaceOf(busy: boolean, primary: FloorPrimary): FloorSurface {
 
 /**
  * The rise's animation-delay for a tile mounting `elapsedMs` into the page's cascade (ruling F15), or null when its rise
- * would already be over: its tileDelay step (ruling P52) less the time elapsed, counted in tileDelay's 10ms steps (its
- * two decimals). A negative delay starts the rise part-way: a tile remounted mid-cascade continues rather than restarts.
+ * would already be over (or the page gives no index): its tileDelay step (ruling P52) less the time elapsed, counted in
+ * tileDelay's 10ms steps (its two decimals). A negative delay starts the rise part-way: a tile remounted mid-cascade
+ * continues rather than restarts.
  */
-function riseDelayAtMount(index: number, elapsedMs: number): string | null {
+function riseDelayAtMount(index: number | null, elapsedMs: number): string | null {
+  if (index === null) return null;
   const delayMs = Math.round(tileDelaySeconds(index) * 1000) - Math.floor(elapsedMs / 10) * 10;
   return delayMs + FLOOR_TILE_RISE_SECONDS * 1000 > 0 ? `${(delayMs / 1000).toFixed(2)}s` : null;
 }

@@ -36,13 +36,15 @@ const AREAS_LIB = "apps/cafe/lib/floor-areas.ts";
 // U3 Task 3 (2026-10-28): the tile's view (tone, words, accessible name) and the tile / section classes (ruling F1).
 const VIEW_LIB = "apps/cafe/lib/floor-view.ts";
 const TILE_CLASSES_LIB = "apps/cafe/lib/floor-tile-classes.ts";
+// U3 Task 4 fix round 2 (2026-10-28): the rise cascade's window and each table's first index (re-review M1).
+const RISE_LIB = "apps/cafe/lib/floor-rise.ts";
 const LIVE_PANEL = "apps/cafe/components/dashboard/LiveFloorPanel.tsx";
 const TABLES_DIR = "apps/cafe/components/tables";
 
 // Every file that makes up the Floor screen.
 const FLOOR_FILES = [
   PAGE, STATUS_HOOK, ACTIONS_HOOK, TILE, TILE_MENU, CHIPS, INDICATOR, DIALOGS, FLOOR_LIB, SECTIONS, LAYOUT_LIB, AREA_TABS, SCROLL_FADES, AREAS_LIB,
-  VIEW_LIB, TILE_CLASSES_LIB,
+  VIEW_LIB, TILE_CLASSES_LIB, RISE_LIB,
 ];
 
 function count(haystack: string, needle: string): number {

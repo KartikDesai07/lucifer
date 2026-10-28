@@ -25,6 +25,7 @@ import {
 } from "@/lib/floor-tiles";
 import { FLOOR_ALL_AREAS, effectiveArea, floorAreaTabs, floorSections, tilesInArea } from "@/lib/floor-areas";
 import { FLOOR_BODY_CLASS, FLOOR_CONTROLS_CLASS, FLOOR_PAGE_CLASS, FLOOR_SCROLLER_CLASS } from "@/lib/floor-layout";
+import { riseIndexFor } from "@/lib/floor-rise";
 import { OPEN_TABS_FILTERS } from "@/lib/table-pick";
 import { TABLES_SETUP_PATH } from "@/lib/table-sections";
 import { longStayMinutesOf } from "@/lib/table-status";
@@ -142,8 +143,11 @@ function FloorContent() {
   // table changing section) joins it part-way; a tile mounted after that (a tab / pill change after the cascade, a table
   // added later) appears at once, so nothing replays (values 12 #19 not copied). The clock is read once per render: the
   // tiles one render mounts commit, and start their rise, together, so they share one reading and the cascade's steps
-  // stay even however long the render takes (0 on the first paint).
+  // stay even however long the render takes (0 on the first paint). A remount can give a table another index (re-review
+  // M1), so while the cascade runs each table keeps the index of the first render it appeared in (lib/floor-rise.ts): its
+  // remounted tile continues at its own point on its own curve. The record is dropped once the cascade's window passes.
   const riseStart = useRef<number | null>(null);
+  const firstRiseIndex = useRef(new Map<string, number>());
   const hasTiles = tiles.length > 0;
   const riseReadAt = performance.now();
   if (riseStart.current === null && hasTiles) riseStart.current = riseReadAt;
@@ -189,7 +193,7 @@ function FloorContent() {
       tile={tile}
       busy={actions.isBusy(tile.table.tableNo)}
       tabsFailed={tabsFailed}
-      riseIndex={index}
+      riseIndex={riseIndexFor(firstRiseIndex.current, tile.table._id, index, riseElapsedMs)}
       riseElapsedMs={riseElapsedMs}
       onTap={actions.tapPrimary}
       onMenu={(t, action) => actions.pickMenu(t.table, action)}

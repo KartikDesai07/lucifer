@@ -103,7 +103,7 @@ export const FLOOR_TILE_SPINNER_CLASS = "size-3.5 animate-spin";
  * (ruling F16).
  */
 export const FLOOR_TILE_TRIGGER_CLASS =
-  "absolute bottom-[30px] right-0 flex cursor-pointer items-end justify-end rounded-[8px] pb-[2.5px] pr-[13px] text-muted-foreground size-11 pointer-fine:size-8 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-default disabled:pointer-events-none disabled:opacity-70";
+  "absolute bottom-[30px] right-0 flex cursor-pointer items-end justify-end rounded-[8px] pb-[2.5px] pr-[13px] text-muted-foreground size-11 pointer-fine:size-8 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:pointer-events-none disabled:opacity-70";
 /** The ⋯ glyph (lucide Ellipsis), 16px. */
 export const FLOOR_TILE_GLYPH_CLASS = "size-4";
 /** The trigger's spinner while busy: 14px, 1px up, so its centre is the glyph's (on the status line's centre). */
