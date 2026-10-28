@@ -194,7 +194,7 @@ function FloorContent() {
               counts over the area shown (design 6.3). */}
           <div data-ui="floor-controls" className={FLOOR_CONTROLS_CLASS}>
             {areaTabs.length > 0 && <FloorAreaTabs tabs={areaTabs} value={shownArea} onChange={setArea} />}
-            <FloorStatusChips counts={floorCounts(inArea)} value={filter} onChange={setFilter} />
+            <FloorStatusChips counts={floorCounts(inArea)} value={filter} revealKey={shownArea} onChange={setFilter} />
           </div>
           {/* Today's freshness line and refresh failure, on its own line until Task 5 moves them (the header's second
               line and the strip above the scroller). */}

@@ -43,7 +43,14 @@ test("the area track and its tabs: the HTML's segmented control, 36 / 32px, the 
   hasAll(FLOOR_TABS_TRACK_CLASS, ["flex", "bg-surface-3", "rounded-[8px]", "p-0.5", "gap-0.5", "max-w-full", "overflow-x-auto"], "values 2.3 track");
   hasAll(FLOOR_TAB_CLASS, ["h-8", "rounded-[6px]", "border-0", "px-3.5", "text-[13.5px]", "font-medium", "text-foreground", "whitespace-nowrap", "cursor-pointer"], "values 2.3 tab");
   assert.ok(!tokens(FLOOR_TAB_CLASS).includes("flex-none"), "the HTML's tab keeps the flex default (shrink 1; its pill is flex:none)");
-  assert.equal(FLOOR_TAB_ON_CLASS, "bg-seg [box-shadow:var(--seg-sh)]", "SEG_ON: --seg and --seg-sh exactly (no empty ring layers)");
+  // Fix round 1 (spec-2, pin moved on purpose): --tw-shadow carries --seg-sh, so the focus ring's composite keeps the
+  // chip's shadow; at rest the arbitrary box-shadow still wins, so the computed string stays exact.
+  assert.equal(
+    FLOOR_TAB_ON_CLASS,
+    "bg-seg [box-shadow:var(--seg-sh)] [--tw-shadow:var(--seg-sh)]",
+    "SEG_ON: --seg and --seg-sh exactly at rest (no empty ring layers); under keyboard focus the ring plus --seg-sh",
+  );
+  assert.ok(!FLOOR_TAB_ON_CLASS.includes("focus-visible:"), "no focus-visible box-shadow: it would tie with focus-visible:ring-2");
   assert.equal(FLOOR_TAB_OFF_CLASS, "bg-transparent hover:bg-hover", "SEG_OFF, plus the kit's hover where a pointer can hover (design 8 #12)");
 });
 
@@ -111,7 +118,8 @@ test("--on-ink-muted: #a9a9b2 light, #52525b dark, registered, >= 4.5:1 on --ink
 // ── The controls, rendered ──────────────────────────────────────────────────────────────────────────────────────────
 
 const COUNTS: Record<FloorFilter, number> = { all: 10, free: 6, occupied: 2, billed: 1, reserved: 1 };
-const pills = (value: FloorFilter) => renderToStaticMarkup(createElement(FloorStatusChips, { counts: COUNTS, value, onChange: () => {} }));
+const pills = (value: FloorFilter) =>
+  renderToStaticMarkup(createElement(FloorStatusChips, { counts: COUNTS, value, revealKey: FLOOR_ALL_AREAS, onChange: () => {} }));
 
 test("FloorStatusChips: the five pills in the HTML's order and words, each with its count; the chosen one pressed and on ink", () => {
   const html = pills("billed");
@@ -168,10 +176,20 @@ test("both controls: the row's own scrollLeft reveals the chosen one (first pain
   assert.ok(reveal.includes("revealScrollLeft(el, pressed, FLOOR_REVEAL_MARGIN)"), "the reveal: the pressed button, clear of the fades");
   assert.ok(reveal.includes("el.scrollLeft = next;"), "the row's own scroll, never the page's");
   assert.match(reveal, /\}, \[row, chosen\]\);/, "on first paint and on every change of the chosen value");
+  // Fix round 1 (keep-1): keyboard focus moves the row by the same rule, so a focused tab or pill never sits under a
+  // fade; a click's focus does not (the row must not move under the pointer between press and release).
+  assert.ok(reveal.includes('el.addEventListener("focusin", revealFocused)'), "a focusin listener on the row");
+  assert.ok(reveal.includes('el.removeEventListener("focusin", revealFocused)'), "removed on cleanup");
+  assert.ok(reveal.includes("revealScrollLeft(el, target, FLOOR_REVEAL_MARGIN)"), "the focused button, clear of the fades");
+  assert.ok(reveal.includes('target.matches(":focus-visible")'), "keyboard focus only");
+  assert.match(reveal, /\}, \[row\]\);/, "one listener per row");
   for (const file of ["components/tables/FloorAreaTabs.tsx", "components/tables/FloorStatusChips.tsx"]) {
     const src = stripComments(read(file));
     assert.ok(src.includes("useScrollFades(rowRef)"), `${file}: the fades follow the row`);
-    assert.ok(src.includes("useRevealPressed(rowRef, value)"), `${file}: the chosen one revealed`);
     assert.ok(src.includes("ref={rowRef}") && src.includes("{fades.start && ") && src.includes("{fades.end && "), `${file}: the fades drawn`);
   }
+  // Fix round 1 (logic-1, pins moved on purpose): the chosen pill is revealed again when the area shown changes (its
+  // counts change width), keyed on that user choice only: never on a count change, which would undo a swipe each poll.
+  assert.ok(stripComments(read("components/tables/FloorAreaTabs.tsx")).includes("useRevealPressed(rowRef, value)"), "the chosen tab revealed");
+  assert.ok(stripComments(read("components/tables/FloorStatusChips.tsx")).includes("useRevealPressed(rowRef, `${value}|${revealKey}`)"), "the chosen pill revealed, per area");
 });

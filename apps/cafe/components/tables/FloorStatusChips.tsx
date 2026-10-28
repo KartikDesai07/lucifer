@@ -21,6 +21,9 @@ import { cn } from "@/lib/utils";
 interface FloorStatusChipsProps {
   counts: Record<FloorFilter, number>;
   value: FloorFilter;
+  /** The area shown: a change of it (a user choice) re-reveals the chosen pill, whose neighbours' counts change width.
+   *  A count change alone (a poll) never does: it would undo the user's swipe. */
+  revealKey: string;
   onChange: (next: FloorFilter) => void;
 }
 
@@ -28,10 +31,10 @@ interface FloorStatusChipsProps {
 // with its count over the area shown; they filter the grid and are its colour legend (each dot the state's colour, each
 // word its name). The chosen one is the ink pill. On a narrow screen the row scrolls sideways with a fade at the edge
 // that hides a pill, and the chosen pill is scrolled into view on its own (owner Q4).
-export function FloorStatusChips({ counts, value, onChange }: FloorStatusChipsProps) {
+export function FloorStatusChips({ counts, value, revealKey, onChange }: FloorStatusChipsProps) {
   const rowRef = useRef<HTMLDivElement>(null);
   const fades = useScrollFades(rowRef);
-  useRevealPressed(rowRef, value);
+  useRevealPressed(rowRef, `${value}|${revealKey}`);
 
   return (
     <div className={FLOOR_FADE_WRAP_CLASS}>

@@ -61,8 +61,9 @@ export const FLOOR_TABS_TRACK_CLASS = `flex gap-0.5 rounded-[8px] bg-surface-3 p
 /** A tab (values 2.3): 32px, radius 6, 0 14px, 13.5px 500 in --text, never wrapping (the flex default: its one-line
  *  word is its minimum, so it never shrinks below it). */
 export const FLOOR_TAB_CLASS = `h-8 cursor-pointer whitespace-nowrap rounded-[6px] border-0 px-3.5 text-[13.5px] font-medium text-foreground ${FOCUS_RING} ${HTML_PRESS_CLASS}`;
-/** The chosen tab: SEG_ON, the white chip with --seg-sh exactly (Tailwind's shadow-* would add four empty ring layers). */
-export const FLOOR_TAB_ON_CLASS = "bg-seg [box-shadow:var(--seg-sh)]";
+/** The chosen tab: SEG_ON, the white chip with --seg-sh exactly (Tailwind's shadow-* would add four empty ring layers).
+ *  --tw-shadow carries --seg-sh into the focus ring's composite, so under keyboard focus the chip keeps its shadow. */
+export const FLOOR_TAB_ON_CLASS = "bg-seg [box-shadow:var(--seg-sh)] [--tw-shadow:var(--seg-sh)]";
 /** The others: SEG_OFF, plus the kit's --hover where a pointer can hover (design 8 #12: the HTML has none). */
 export const FLOOR_TAB_OFF_CLASS = "bg-transparent hover:bg-hover";
 

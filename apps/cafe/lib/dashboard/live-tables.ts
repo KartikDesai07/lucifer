@@ -4,6 +4,7 @@
 // components/dashboard/LiveFloorPanel.tsx draws what this returns. Client-safe: no Mongoose (lib/bill-first-print is
 // server-only, so its freshness rule is mirrored here and pinned against it in live-tables.test.ts).
 import { formatTime, inr } from "@/lib/utils";
+// import cycle with lib/floor-tiles.ts: use its exports only inside functions
 import { minutesOpen, reservationForTable } from "@/lib/floor-tiles";
 import { NO_AREA_KEY, NO_AREA_LABEL, groupTablesByArea, showAreaHeadings } from "@/lib/table-areas";
 import type { Area, Order, Reservation, Table } from "@/types";

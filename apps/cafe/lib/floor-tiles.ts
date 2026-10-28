@@ -4,6 +4,7 @@
 // components/tables/Floor* and the page render what this returns, and
 // lib/floor-tiles.test.ts pins every row. The area tabs and the sections are
 // lib/floor-areas.ts (U3 Task 2).
+// import cycle with lib/dashboard/live-tables.ts: use its exports only inside functions
 import { billPrintedNow } from "@/lib/dashboard/live-tables";
 import { openTabForTable } from "@/lib/table-pick";
 import { inr } from "@/lib/utils";

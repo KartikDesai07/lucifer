@@ -172,29 +172,34 @@ test("FLOOR_FILTERS: the HTML's pills, in its order and words (values 2.4)", () 
   );
 });
 
-// One tile of each kind the pills sort (inventory K1-K8): K1 with a bill printed for its total, K1 not printed, K1
-// printed before the bill grew (a new round), K2 (no bill), K5, K7 (Available holding a bill), K8.
+// One tile of each kind the pills sort (inventory K1-K10): K1 with a bill printed for its total, K1 not printed, K1
+// printed before the bill grew (a new round), K2 (no bill), K5, K7 (Available holding a bill), K8, K10 (Reserved
+// holding a printed bill: the status decides, so a reorder that asks billPrintedNow first would misfile it).
 const KINDS = build(
   [
     table("K1", "Occupied"), table("K1P", "Occupied"), table("K1S", "Occupied"), table("K2", "Occupied"),
-    table("K5", "Available"), table("K7", "Available"), table("K8", "Reserved"),
+    table("K5", "Available"), table("K7", "Available"), table("K8", "Reserved"), table("K10", "Reserved"),
   ],
-  [tab("K1", 5), printed(tab("K1P", 5)), { ...printed(tab("K1S", 5)), total: 900 }, tab("K7", 5)],
+  [tab("K1", 5), printed(tab("K1P", 5)), { ...printed(tab("K1S", 5)), total: 900 }, tab("K7", 5), printed(tab("K10", 5))],
 );
 
 test("floorFilterOf: Bill printed only when the server knows of the print (billPrintedNow); K7 is Available", () => {
   assert.deepEqual(
     KINDS.map((t) => [t.table.tableNo, floorFilterOf(t)]),
-    [["K1", "occupied"], ["K1P", "billed"], ["K1S", "occupied"], ["K2", "occupied"], ["K5", "free"], ["K7", "free"], ["K8", "reserved"]],
-    "Occupied → billed with a print for this total (U2 Q11), else occupied; Available → free (K7 too); Reserved → reserved",
+    [
+      ["K1", "occupied"], ["K1P", "billed"], ["K1S", "occupied"], ["K2", "occupied"], ["K5", "free"], ["K7", "free"],
+      ["K8", "reserved"], ["K10", "reserved"],
+    ],
+    "Occupied → billed with a print for this total (U2 Q11), else occupied; Available → free (K7 too); Reserved → reserved (K10 too)",
   );
+  assert.ok(KINDS.find((t) => t.table.tableNo === "K10")?.tab, "K10 holds its printed bill (the fixture is the real kind)");
   // Bills not loaded yet (K3, K6, K9): the table's own status.
   const unknown = build([table("K3", "Occupied"), table("K6", "Available"), table("K9", "Reserved")], undefined);
   assert.deepEqual(unknown.map(floorFilterOf), ["occupied", "free", "reserved"], "no bill known: the status alone");
 });
 
 test("floorCounts: every table counts once, a printed bill under Bill printed only; filterTiles keeps the order", () => {
-  assert.deepEqual(floorCounts(KINDS), { all: 7, free: 2, occupied: 3, billed: 1, reserved: 1 }, "K1P is billed, not occupied too");
+  assert.deepEqual(floorCounts(KINDS), { all: 8, free: 2, occupied: 3, billed: 1, reserved: 2 }, "K1P is billed, not occupied too; K10 is reserved, not billed");
   assert.deepEqual(floorCounts([]), { all: 0, free: 0, occupied: 0, billed: 0, reserved: 0 }, "an empty floor counts zeros");
   assert.deepEqual(filterTiles(KINDS, "all"), KINDS, "All shows every tile, in order");
   assert.notEqual(filterTiles(KINDS, "all"), KINDS, "a copy, never the caller's array");
@@ -202,7 +207,7 @@ test("floorCounts: every table counts once, a printed bill under Bill printed on
   assert.deepEqual(nos("occupied"), ["K1", "K1S", "K2"], "Occupied: without a printed bill");
   assert.deepEqual(nos("billed"), ["K1P"], "Bill printed: the printed one alone");
   assert.deepEqual(nos("free"), ["K5", "K7"], "Available: K7 with its bill too");
-  assert.deepEqual(nos("reserved"), ["K8"], "Reserved");
+  assert.deepEqual(nos("reserved"), ["K8", "K10"], "Reserved: K10 with its printed bill too");
 });
 
 test("FLOOR_EMPTY_FILTER_TEXT: the HTML's empty line (values 5.2)", () => {

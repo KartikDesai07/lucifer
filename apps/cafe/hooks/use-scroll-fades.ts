@@ -50,6 +50,10 @@ export function useScrollFades(row: RefObject<HTMLElement | null>): ScrollFades 
 /**
  * On first paint and whenever `chosen` changes, the row's own scrollLeft shows its pressed button whole, clear of the
  * fades (revealScrollLeft). Never scrollIntoView: it would scroll the page and the shell too.
+ * Keyboard focus moves the row by the same rule: the browser's own focus scroll knows nothing of the fades (and leaves
+ * a partly shown button where it is), so a focused tab or pill could sit under one. Keyboard focus only (:focus-visible):
+ * a press's focus comes between press and release, and moving the row then puts another button under the pointer, so
+ * the click is lost (measured at 390: a tap on a half-hidden pill chose nothing); a press reveals through `chosen`.
  */
 export function useRevealPressed(row: RefObject<HTMLElement | null>, chosen: string): void {
   useEffect(() => {
@@ -59,4 +63,17 @@ export function useRevealPressed(row: RefObject<HTMLElement | null>, chosen: str
     const next = revealScrollLeft(el, pressed, FLOOR_REVEAL_MARGIN);
     if (next !== el.scrollLeft) el.scrollLeft = next;
   }, [row, chosen]);
+
+  useEffect(() => {
+    const el = row.current;
+    if (!el) return;
+    const revealFocused = (event: FocusEvent) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement) || target === el || !target.matches(":focus-visible")) return;
+      const next = revealScrollLeft(el, target, FLOOR_REVEAL_MARGIN);
+      if (next !== el.scrollLeft) el.scrollLeft = next;
+    };
+    el.addEventListener("focusin", revealFocused);
+    return () => el.removeEventListener("focusin", revealFocused);
+  }, [row]);
 }

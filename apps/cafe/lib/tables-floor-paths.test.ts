@@ -188,7 +188,10 @@ test("PIN: no Floor file scrolls the page to reveal a control", () => {
   const banned = "scrollInto" + "View(";
   for (const f of FLOOR_FILES) assert.ok(!readStripped(f).includes(banned), `${f} must not call ${banned}`);
   assert.ok(readStripped(SCROLL_FADES).includes("revealScrollLeft("), "landmark: the reveal is the row's own scrollLeft");
-  for (const f of [CHIPS, AREA_TABS]) assert.ok(readStripped(f).includes("useRevealPressed(rowRef, value)"), `landmark: ${f} reveals through its row`);
+  // Fix round 1 (logic-1, pin moved on purpose): the pills' reveal is keyed on the area shown too.
+  assert.ok(readStripped(AREA_TABS).includes("useRevealPressed(rowRef, value)"), `landmark: ${AREA_TABS} reveals through its row`);
+  assert.ok(readStripped(CHIPS).includes("useRevealPressed(rowRef, `${value}|${revealKey}`)"), `landmark: ${CHIPS} reveals through its row`);
+  assert.ok(readStripped(SCROLL_FADES).includes('addEventListener("focusin", '), "landmark: keyboard focus reveals through the row too");
 });
 
 // Review Focus 1 (design 6.3): the chosen area is kept as a choice, but the page shows only the area it still holds.
@@ -199,6 +202,10 @@ test("PIN: the page groups, counts and filters by shownArea (effectiveArea), nev
   assert.equal(count(page, "const shownArea = effectiveArea(area, areaTabs);"), 1, "the area shown");
   assert.equal(count(page, "tilesInArea(tiles, areas.data, shownArea)"), 1, "the pills count the area shown");
   assert.equal(count(page, "floorCounts(inArea)"), 1, "landmark: the counts follow the area (design 6.3)");
+  // Fix round 1 (logic-2): the empty check and the flat grid read the area shown too, so an area + pill with no match
+  // shows the empty line and Show all tables, never a blank body.
+  assert.equal(count(page, "const visible = filterTiles(inArea, filter);"), 1, "the empty check and the flat grid filter the area shown");
+  assert.ok(page.includes("<FloorStatusChips counts={floorCounts(inArea)} value={filter} revealKey={shownArea} onChange={setFilter} />"), "the pills re-reveal the chosen one per area shown (logic-1)");
   for (const raw of ["floorSections(tiles, areas.data, filter, area)", "tilesInArea(tiles, areas.data, area)", "value={area}"]) {
     assert.ok(!page.includes(raw), `the raw choice never reaches ${raw}`);
   }
