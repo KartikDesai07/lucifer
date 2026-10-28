@@ -79,14 +79,15 @@ export const FLOOR_REFRESH_STRIP_HIT_CLASS =
 export const FLOOR_EMPTY_CLASS = "flex flex-col items-center gap-1.5 py-12 text-center text-[14px] text-muted-foreground";
 /** The title where we have one, no tables (design 6.7; U2's empty title row: 14px 600), in --text. */
 export const FLOOR_EMPTY_TITLE_CLASS = "text-[14px] font-semibold text-foreground";
+/** Both buttons' keyboard focus: the tiles' 2px accent ring, 1px out (design 6.5: today's ring on every Floor control; U2's
+ *  outline button has none). */
+const EMPTY_FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1";
 /** Show all tables (design 6.7: ours, as U2's Clear filters): U2's 40px outline button (ORDERS_OUTLINE_BUTTON_CLASS, the
  *  HTML Orders' Filters look: radius 9, 1px --border, 0 16px, 13.5px 500; never disabled here) with U2's mt-2. */
-export const FLOOR_EMPTY_OUTLINE_BUTTON_CLASS =
-  "mt-2 flex h-10 cursor-pointer items-center justify-center rounded-[9px] border border-border bg-card px-4 text-[13.5px] font-medium text-foreground hover:border-subtle-foreground";
+export const FLOOR_EMPTY_OUTLINE_BUTTON_CLASS = `mt-2 flex h-10 cursor-pointer items-center justify-center rounded-[9px] border border-border bg-card px-4 text-[13.5px] font-medium text-foreground hover:border-subtle-foreground ${EMPTY_FOCUS_RING}`;
 /** Open Setup (design 6.7: a 40px accent button): the same button in the accent, the confirm's kind 1 (--accent fill and
- *  rule, --on-accent words) with the header New order's hover. */
-export const FLOOR_EMPTY_ACCENT_BUTTON_CLASS =
-  "mt-2 flex h-10 cursor-pointer items-center justify-center rounded-[9px] border border-primary bg-primary px-4 text-[13.5px] font-medium text-primary-foreground hover:bg-primary-hover";
+ *  rule, --on-accent words) with the header New order's hover, its rule hovering with the fill (no ring around it). */
+export const FLOOR_EMPTY_ACCENT_BUTTON_CLASS = `mt-2 flex h-10 cursor-pointer items-center justify-center rounded-[9px] border border-primary bg-primary px-4 text-[13.5px] font-medium text-primary-foreground hover:border-primary-hover hover:bg-primary-hover ${EMPTY_FOCUS_RING}`;
 /** A skeleton tile (design 6.7): the tile's shape (values 0.3 tileH 112px, 100px on a phone; values 4.1 radius 14) on the
  *  kit Skeleton's pulse, in the floor grid. */
 export const FLOOR_SKELETON_TILE_CLASS = "h-[112px] rounded-[14px] max-tab:h-[100px]";

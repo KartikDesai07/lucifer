@@ -21,6 +21,7 @@ import {
   FLOOR_EMPTY_ACCENT_BUTTON_CLASS, FLOOR_EMPTY_CLASS, FLOOR_EMPTY_OUTLINE_BUTTON_CLASS, FLOOR_EMPTY_TITLE_CLASS,
   FLOOR_SKELETON_TILE_CLASS,
 } from "./floor-layout";
+import { FLOOR_TILE_CLASS } from "./floor-tile-classes";
 import { FLOOR_EMPTY_FILTER_TEXT, FLOOR_GRID_CLASS } from "./floor-tiles";
 import { TABLES_SETUP_PATH } from "./table-sections";
 import { ORDERS_OUTLINE_BUTTON_CLASS } from "@/components/orders/OrdersListParts";
@@ -67,15 +68,25 @@ test("values 5.2: the empty box is the HTML's empty line - centred, padding 48 0
 
 test("design 6.7: Show all tables is U2's 40px outline button (Clear filters), 8px past the column's gap; Open Setup the same in the accent", () => {
   const u2 = tokens(ORDERS_OUTLINE_BUTTON_CLASS).filter((t) => !t.startsWith("disabled:"));
-  assert.deepEqual(sorted(tokens(FLOOR_EMPTY_OUTLINE_BUTTON_CLASS)), sorted(["mt-2", ...u2]), "U2's outline button exactly (never disabled here), with U2's mt-2");
+  // The focus ring is the Floor's own (next test): U2's outline button has none, and that page is not edited here.
+  const look = tokens(FLOOR_EMPTY_OUTLINE_BUTTON_CLASS).filter((t) => !t.startsWith("focus-visible:"));
+  assert.deepEqual(sorted(look), sorted(["mt-2", ...u2]), "U2's outline button exactly (never disabled here), with U2's mt-2");
   assert.ok(tokens(FLOOR_EMPTY_OUTLINE_BUTTON_CLASS).includes("h-10"), "40px (global constraints: as U2's empty-state buttons)");
   const accent = tokens(FLOOR_EMPTY_ACCENT_BUTTON_CLASS);
   const shape = u2.filter((t) => !/^(border-border|bg-card|text-foreground|hover:)/.test(t));
   for (const t of ["mt-2", ...shape]) assert.ok(accent.includes(t), `Open Setup keeps the 40px button's shape: ${t}`);
-  for (const t of ["border-primary", "bg-primary", "text-primary-foreground", "hover:bg-primary-hover"]) {
-    assert.ok(accent.includes(t), `Open Setup in the accent (the confirm's kind 1, the header's hover): ${t}`);
+  for (const t of ["border-primary", "bg-primary", "text-primary-foreground", "hover:bg-primary-hover", "hover:border-primary-hover"]) {
+    assert.ok(accent.includes(t), `Open Setup in the accent (the confirm's kind 1, the header's hover; the rule hovers with the fill, no ring): ${t}`);
   }
   for (const t of ["border-border", "bg-card", "text-foreground"]) assert.ok(!accent.includes(t), `Open Setup is not the outline: no ${t}`);
+});
+
+test("design 6.5: both empty-state buttons wear the tiles' 2px accent focus ring (today's kit ring, the whole page alike)", () => {
+  const ring = tokens(FLOOR_TILE_CLASS).filter((t) => t.startsWith("focus-visible:"));
+  assert.deepEqual(sorted(ring), sorted(["focus-visible:outline-none", "focus-visible:ring-2", "focus-visible:ring-primary", "focus-visible:ring-offset-1"]), "landmark: the tile's ring");
+  for (const [name, cls] of [["Show all tables", FLOOR_EMPTY_OUTLINE_BUTTON_CLASS], ["Open Setup", FLOOR_EMPTY_ACCENT_BUTTON_CLASS]] as const) {
+    for (const t of ring) assert.ok(tokens(cls).includes(t), `${name}: ${t} (not the browser's outline)`);
+  }
 });
 
 test("design 6.7: a skeleton tile is the new tile's shape - 112px, 100px below 720px, radius 14", () => {
@@ -248,6 +259,12 @@ test("the brief's check: in the sheet, Escape and Cancel only ask to close; the 
   const hook = code(ACTIONS_HOOK);
   assert.ok(bodyAfter(hook, "const onDialogOpenChange = (open: boolean) =>").includes("if (!open && !confirmingRef.current) setDialog(null);"), "a close while confirming is ignored");
   const run = bodyAfter(hook, "const confirm = async () =>");
-  assert.ok(run.indexOf("confirmingRef.current = true;") < run.indexOf("await cleared(table)"), "confirming from before the open-bill check");
-  assert.ok(run.indexOf("confirmingRef.current = false;") > run.indexOf("finally"), "until the write ends");
+  const at = (needle: string): number => {
+    const i = run.indexOf(needle);
+    assert.ok(i >= 0, `landmark: ${needle} in confirm`);
+    return i;
+  };
+  const [on, check, fin, off] = [at("confirmingRef.current = true;"), at("await cleared(table)"), at("finally"), at("confirmingRef.current = false;")];
+  assert.ok(on < check, "confirming from before the open-bill check");
+  assert.ok(off > fin, "until the write ends");
 });
