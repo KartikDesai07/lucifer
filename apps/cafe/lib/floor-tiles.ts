@@ -204,13 +204,14 @@ export function filterTiles(tiles: readonly FloorTileModel[], filter: FloorFilte
 
 /** "3 of 10 occupied · 1 reserved · ₹1,787 running" (design 6.2, owner Q3): the HTML's counts over the whole floor
  *  (values 1.4: a table whose bill printed is still Occupied), then ours, the open bills on Occupied tables, only once
- *  the bills have loaded and above ₹0 (never "₹0 running"). */
+ *  the bills have loaded and the shown amount is above ₹0 (never "₹0 running": inr() shows whole rupees, rounding half
+ *  away from zero, which on a sum of totals is Math.round, so a sum under ₹0.50 shows no money). */
 export function floorSummaryText(tiles: readonly FloorTileModel[], tabsKnown: boolean): string {
   const occupied = tiles.filter((t) => t.table.status === "Occupied");
   const reserved = tiles.filter((t) => t.table.status === "Reserved").length;
   const summary = `${occupied.length} of ${tiles.length} occupied · ${reserved} reserved`;
   const running = tabsKnown ? occupied.reduce((sum, t) => sum + (t.tab?.total ?? 0), 0) : 0;
-  return running > 0 ? `${summary} · ${inr(running)} running` : summary;
+  return Math.round(running) > 0 ? `${summary} · ${inr(running)} running` : summary;
 }
 
 /** How fresh the floor is (design 6.2: today's rule, its first words shortened to fit the line). Under a minute, or a

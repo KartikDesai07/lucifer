@@ -24,6 +24,7 @@ import {
   type FloorTileModel,
 } from "@/lib/floor-tiles";
 import { MIN, NOW, build, printed, reservation, tab, table } from "@/lib/floor-tiles.fixtures";
+import { inr } from "@/lib/utils";
 import type { TableStatus } from "@/lib/constants";
 
 function only(tiles: FloorTileModel[]): FloorTileModel {
@@ -200,6 +201,15 @@ test("floorSummaryText: the HTML's counts, then the running money only when know
   assert.equal(floorSummaryText(build(ten, []), true), "3 of 10 occupied · 1 reserved", "no open bill: never ₹0 running");
   assert.equal(floorSummaryText([], true), "0 of 0 occupied · 0 reserved", "an empty floor");
   assert.equal(floorSummaryText(build([table("A", "Available")], []), true), "0 of 1 occupied · 0 reserved", "one table");
+});
+
+// Task 5 fix round 1 (logic-2): inr() shows whole rupees (Intl's halfExpand), so a sum under ₹0.50 would print "₹0".
+test("floorSummaryText: never ₹0 running after inr's rounding; ₹0.50 and up show as ₹1", () => {
+  const line = (total: number): string => floorSummaryText(build([table("A", "Occupied")], [tab("A", 5, { total })]), true);
+  assert.equal(inr(0.4), "₹0", "landmark: inr shows ₹0.40 as ₹0");
+  assert.equal(line(0.4), "1 of 1 occupied · 0 reserved", "₹0.40 shows as ₹0: no money");
+  assert.equal(line(0.5), "1 of 1 occupied · 0 reserved · ₹1 running", "₹0.50 shows as ₹1");
+  assert.equal(line(1), "1 of 1 occupied · 0 reserved · ₹1 running", "₹1");
 });
 
 // U3 Task 2 (design 6.3, values 2.4 / 5.2; pins moved on purpose, P25: the chips' three statuses become the HTML's five

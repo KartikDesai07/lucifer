@@ -60,8 +60,11 @@ export const FLOOR_REFRESH_STRIP_BUTTON_CLASS =
 /** Its 44px hit area on touch (ruling R1: our control, no HTML element), drawn by an ::after so neither the button nor the
  *  strip grows. It starts 4px above the button (-5px from its padding box, inside the 1px border): on the 40px line the
  *  button sits 4.5px down (py-1 plus half the pixel the hairline leaves), so the area starts 0.5px inside the strip and the
- *  page's overflow clip never cuts it; it ends 10px past the button's foot, in the scroller's 20 / 16px top padding where
- *  nothing sits. Wrapped on a phone, the button is the strip's last line and the area stays clear of the words above. */
+ *  page's overflow clip never cuts it; it ends 10px past the button's foot, 4.5-5px into the scroller. That top area is
+ *  empty only at scrollTop 0 (the body's 20 / 16px top padding). Scrolled, positioned content (the tile wraps, the tabs
+ *  track, the pills' fade wrap) paints above the overhang and keeps its own taps, so the band is about 40px there; a
+ *  non-positioned element loses its top 4.5px to a harmless refetch (ruling F19). Wrapped on a phone, the button is the
+ *  strip's last line and the area stays clear of the words above. */
 export const FLOOR_REFRESH_STRIP_HIT_CLASS =
   "relative pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-top-[5px] pointer-coarse:after:h-11";
 

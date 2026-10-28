@@ -132,6 +132,9 @@ test("FloorRefreshStrip: a status region in the U0 strip's look, the glyph, the 
   assert.match(button, /type="button"/, "never a submit");
   const drawn = tokens(cn(buttonVariants({ variant: "outline" }), FLOOR_REFRESH_STRIP_BUTTON_CLASS, FLOOR_REFRESH_STRIP_HIT_CLASS));
   assert.deepEqual([...classesOf(button)].sort(), [...drawn].sort(), "the kit outline Button with the U0 strip's classes and the hit area");
+  // Fix round 1 (keep-1): the 44px touch target read off the rendered button itself, not through the same cn() the kit runs.
+  for (const t of tokens(FLOOR_REFRESH_STRIP_HIT_CLASS)) assert.ok(classesOf(button).includes(t), `the rendered Try again keeps ${t} (ruling R1: 44px on touch)`);
+  assert.ok(!classesOf(button).includes("overflow-hidden"), "the rendered Try again never clips its ::after (no overflow-hidden)");
   assert.equal(textOf(html, "floor-refresh-retry"), "Try again", "today's word");
   assert.ok(html.indexOf('data-ui="floor-refresh-message"') < html.indexOf('data-ui="floor-refresh-retry"'), "the words, then Try again (design 6.10's tab order)");
 });
