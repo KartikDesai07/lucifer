@@ -14,6 +14,7 @@ import {
   floorFilterOf,
   floorSummaryText,
   formatStayMinutes,
+  formatStayMinutesShort,
   itemCountOf,
   longStay,
   minutesOpen,
@@ -144,6 +145,21 @@ test("formatStayMinutes: Just now, {m} min, {h}h {m}m, a dash without a clock", 
   assert.equal(formatStayMinutes(120), "2h 0m", "two hours");
   assert.equal(formatStayMinutes(Number.NaN), "—", "not a number");
   assert.equal(formatStayMinutes(null), "—", "no clock yet");
+});
+
+// The owner's answer 2026-10-28 (design 6.5): below 720px the stay is whole minutes and "m", so a 4-digit bill fits the
+// 88px phone line ("₹1,063 · 72m" 74px, "₹4,872 · 125m" 82.6px); from 720px the words above stay.
+test("formatStayMinutesShort: the phone's whole minutes and 'm', no hour rollover; the same dash without a clock", () => {
+  assert.equal(formatStayMinutesShort(null), "—", "no clock yet: formatStayMinutes' dash");
+  assert.equal(formatStayMinutesShort(Number.NaN), "—", "not a number");
+  assert.equal(formatStayMinutesShort(0), "0m", "under a minute (Just now from 720px)");
+  assert.equal(formatStayMinutesShort(0.6), "0m", "a part minute is not a minute");
+  assert.equal(formatStayMinutesShort(-3), "0m", "a negative stay reads as formatStayMinutes' Just now");
+  assert.equal(formatStayMinutesShort(8), "8m", "minutes");
+  assert.equal(formatStayMinutesShort(59), "59m", "the last minute before the hour");
+  assert.equal(formatStayMinutesShort(60), "60m", "the hour: still minutes");
+  assert.equal(formatStayMinutesShort(72), "72m", "the 72-min bill on the phone");
+  assert.equal(formatStayMinutesShort(605), "605m", "past ten hours: still minutes");
 });
 
 test("item count sums the quantities, not the lines", () => {

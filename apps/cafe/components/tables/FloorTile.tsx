@@ -53,12 +53,14 @@ function TileDetail({ detail, longStay }: { detail: FloorDetail; longStay: boole
   if (detail.kind === "skeleton") return <Skeleton data-ui="floor-tile-detail" className={FLOOR_DETAIL_SKELETON_CLASS} />;
   let words: ReactNode = detail.kind === "text" ? detail.text : null;
   if (detail.kind === "money") {
+    // The owner's answer 2026-10-28: the stay as two spans, the K5 pair's way: its words from 720px, the phone's minutes
+    // below 720px (one shows at a width); a long stay's red bold on both; the whole line still cuts with one ellipsis.
+    const long = longStay ? FLOOR_STAY_LONG_CLASS : undefined;
     words = (
       <>
         {`${detail.amount} · `}
-        <span data-ui="floor-tile-stay" className={longStay ? FLOOR_STAY_LONG_CLASS : undefined}>
-          {detail.stay}
-        </span>
+        <span data-ui="floor-tile-stay-wide" className={cn(FLOOR_DETAIL_WIDE_CLASS, long)}>{detail.stay}</span>
+        <span data-ui="floor-tile-stay-phone" className={cn(FLOOR_DETAIL_PHONE_CLASS, long)}>{detail.phoneStay}</span>
       </>
     );
   } else if (detail.phoneText) {

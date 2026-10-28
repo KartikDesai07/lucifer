@@ -6,7 +6,7 @@
 // Pure: no React, no fetching; lib/floor-view.test.ts pins every row. The tones live here, never in TABLE_STATUS_META,
 // which Setup and the dashboard read.
 import { FLOOR_FILTER_DOT } from "@/lib/floor-layout";
-import { FLOOR_FILTERS, FLOOR_TAP_HINT, floorFilterOf, formatStayMinutes, type FloorTileModel } from "@/lib/floor-tiles";
+import { FLOOR_FILTERS, FLOOR_TAP_HINT, floorFilterOf, formatStayMinutes, formatStayMinutesShort, type FloorTileModel } from "@/lib/floor-tiles";
 import { tableChargeOf } from "@/lib/receipt";
 import { seatsText } from "@/lib/table-sheet";
 import { formatTime, inr } from "@/lib/utils";
@@ -23,9 +23,10 @@ export const FLOOR_TILE_TONES: Record<FloorTone, { tile: string; dot: string; la
   reserved: { tile: "border-status-reserved-border bg-status-reserved-tint", dot: FLOOR_FILTER_DOT.reserved, label: "text-status-reserved-ink" },
 };
 
-/** The tile's one detail line (design 6.5): a bill and its stay, words (with a shorter phone form), or a loading bar. */
+/** The tile's one detail line (design 6.5): a bill and its stay, words (with a shorter phone form), or a loading bar. The
+ *  stay has a phone form too (the owner's answer 2026-10-28): `phoneStay` below 720px ("72m"), `stay` from 720px. */
 export type FloorDetail =
-  | { kind: "money"; amount: string; stay: string }
+  | { kind: "money"; amount: string; stay: string; phoneStay: string }
   | { kind: "text"; text: string; phoneText?: string }
   | { kind: "skeleton" };
 
@@ -64,7 +65,10 @@ function detailOf(tile: FloorTileModel, tabsFailed: boolean): FloorDetail {
   if (table.status === "Reserved") {
     return { kind: "text", text: reservation ? `${formatTime(reservation.time)} · ${reservation.name}` : HELD_TEXT };
   }
-  if (tab) return { kind: "money", amount: inr(tab.total), stay: formatStayMinutes(tile.minutesOpen) };
+  if (tab) {
+    const m = tile.minutesOpen;
+    return { kind: "money", amount: inr(tab.total), stay: formatStayMinutes(m), phoneStay: formatStayMinutesShort(m) };
+  }
   if (table.status === "Occupied") {
     if (tile.tabsKnown) return { kind: "text", text: NO_BILL_TEXT };
     return tabsFailed ? { kind: "text", text: BILL_FAILED_TEXT } : { kind: "skeleton" };

@@ -124,6 +124,15 @@ export function formatStayMinutes(minutes: number | null): string {
   return `${Math.floor(minutes / MINUTES_PER_HOUR)}h ${minutes % MINUTES_PER_HOUR}m`;
 }
 
+/** The phone's stay words, below 720px (the owner's answer 2026-10-28, design 6.5): whole minutes and "m", no hour
+ *  rollover ("0m", "72m", "125m"), so a 4-digit bill and its stay fit the 88px phone line. The same dash without a
+ *  clock, and under a minute (a negative skew included) "0m" where formatStayMinutes says "Just now". */
+export function formatStayMinutesShort(minutes: number | null): string {
+  if (minutes === null || !Number.isFinite(minutes)) return NO_STAY_TEXT;
+  if (minutes < 1) return "0m";
+  return `${Math.floor(minutes)}m`;
+}
+
 // The tap rules. Free / Reserve / Seat now are NEVER offered while a matching
 // bill exists or the bills are unknown: freeing a table that still holds a bill
 // orphans it. A Pay Now sale leaves its table Occupied pointing at a Completed

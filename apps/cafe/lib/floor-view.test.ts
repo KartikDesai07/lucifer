@@ -59,17 +59,18 @@ const KINDS = {
   K9: one(table("T-1", "Reserved", { capacity: 2 }), undefined, BOOKING),
   K10: one(table("T-1", "Reserved", { capacity: 2 }), [tab("T-1", 72)]),
 };
-const money = (amount: string, stay: string): FloorDetail => ({ kind: "money", amount, stay });
+// The stay in its two forms: the words from 720px and the phone's whole minutes (the owner's answer 2026-10-28).
+const money = (amount: string, stay: string, phoneStay: string): FloorDetail => ({ kind: "money", amount, stay, phoneStay });
 const text = (words: string, phoneText?: string): FloorDetail => (phoneText ? { kind: "text", text: words, phoneText } : { kind: "text", text: words });
 type Row = [keyof typeof KINDS, boolean, FloorTone, string, FloorDetail, boolean, string];
 // [kind, tabsFailed, tone, label, detail, longStay, accessible name: the seats after the name, ruling F10]
 const ROWS: Row[] = [
-  ["K1", false, "occupied", "Occupied", money("₹955", "27 min"), false, "T-3, 4 seats, Occupied, ₹955, 27 min — open the bill"],
-  ["K1P", false, "billed", "Bill printed", money("₹955", "27 min"), false, "T-3, 4 seats, Bill printed, ₹955, 27 min — open the bill"],
-  ["K1L", false, "occupied", "Occupied", money("₹1,063", "1h 8m"), true, "T-3, 4 seats, Occupied, ₹1,063, 1h 8m, long stay — open the bill"],
-  ["K1H", false, "occupied", "Occupied", money("₹1,063", "1h 12m"), true, "T-3, 4 seats, Occupied, ₹1,063, 1h 12m, long stay — open the bill"],
-  ["K1N", false, "occupied", "Occupied", money("₹955", "—"), false, "T-3, 1 seat, Occupied, ₹955 — open the bill"],
-  ["K1B", false, "occupied", "Occupied", money("₹955", "—"), false, "T-3, 4 seats, Occupied, ₹955 — open the bill"],
+  ["K1", false, "occupied", "Occupied", money("₹955", "27 min", "27m"), false, "T-3, 4 seats, Occupied, ₹955, 27 min — open the bill"],
+  ["K1P", false, "billed", "Bill printed", money("₹955", "27 min", "27m"), false, "T-3, 4 seats, Bill printed, ₹955, 27 min — open the bill"],
+  ["K1L", false, "occupied", "Occupied", money("₹1,063", "1h 8m", "68m"), true, "T-3, 4 seats, Occupied, ₹1,063, 1h 8m, long stay — open the bill"],
+  ["K1H", false, "occupied", "Occupied", money("₹1,063", "1h 12m", "72m"), true, "T-3, 4 seats, Occupied, ₹1,063, 1h 12m, long stay — open the bill"],
+  ["K1N", false, "occupied", "Occupied", money("₹955", "—", "—"), false, "T-3, 1 seat, Occupied, ₹955 — open the bill"],
+  ["K1B", false, "occupied", "Occupied", money("₹955", "—", "—"), false, "T-3, 4 seats, Occupied, ₹955 — open the bill"],
   ["K2", false, "occupied", "Occupied", text("No open bill"), false, "T-2, 4 seats, Occupied, No open bill — free the table"],
   ["K3", false, "occupied", "Occupied", { kind: "skeleton" }, false, "T-2, 4 seats, Occupied — open the bill"],
   ["K4", true, "occupied", "Occupied", text("Bill not loaded"), false, "T-2, 4 seats, Occupied, Bill not loaded — open the bill"],
@@ -77,8 +78,8 @@ const ROWS: Row[] = [
   ["K5C", false, "free", "Available", text("AC charge ₹50"), false, "T-5, 4 seats, Available, AC charge ₹50 — start a new order"],
   ["K6", false, "free", "Available", text("Tap to seat guests", "Tap to seat"), false, "T-5, 4 seats, Available, Tap to seat guests — start a new order"],
   ["K6", true, "free", "Available", text("Tap to seat guests", "Tap to seat"), false, "T-5, 4 seats, Available, Tap to seat guests — start a new order"],
-  ["K7", false, "free", "Available", money("₹420", "12 min"), false, "T-6, 4 seats, Available, ₹420, 12 min — open the bill"],
-  ["K7L", false, "free", "Available", money("₹420", "1h 30m"), true, "T-6, 4 seats, Available, ₹420, 1h 30m, long stay — open the bill"],
+  ["K7", false, "free", "Available", money("₹420", "12 min", "12m"), false, "T-6, 4 seats, Available, ₹420, 12 min — open the bill"],
+  ["K7L", false, "free", "Available", money("₹420", "1h 30m", "90m"), true, "T-6, 4 seats, Available, ₹420, 1h 30m, long stay — open the bill"],
   ["K8", false, "reserved", "Reserved", text("9:45 PM · Rahul Mehta"), false, "T-1, 2 seats, Reserved, 9:45 PM · Rahul Mehta — seat guests"],
   ["K8H", false, "reserved", "Reserved", text("Held"), false, "T-1, 2 seats, Reserved, Held — seat guests"],
   ["K9", false, "reserved", "Reserved", text("9:45 PM · Rahul Mehta"), false, "T-1, 2 seats, Reserved, 9:45 PM · Rahul Mehta"],
@@ -166,7 +167,8 @@ test("FloorTile: every kind draws its word, its detail and its tone; no action w
     assert.equal(textOf(html, "floor-tile-name"), KINDS[kind].table.tableNo, `${what}: the full name`);
     assert.match(tagOf(html, "floor-tile-name"), new RegExp(`title="${KINDS[kind].table.tableNo}"`), `${what}: the name's title`);
     expectAll(tagOf(html, "floor-tile-seats"), tokens(FLOOR_TILE_SEATS_CLASS), `${what}: the seats`);
-    const words = detail.kind === "money" ? `${detail.amount} · ${detail.stay}` : detail.kind === "text" ? `${detail.text}${detail.phoneText ?? ""}` : "";
+    // Both forms are in the markup (one shows per width): the stay's words then its phone minutes, the K5 pair's words.
+    const words = detail.kind === "money" ? `${detail.amount} · ${detail.stay}${detail.phoneStay}` : detail.kind === "text" ? `${detail.text}${detail.phoneText ?? ""}` : "";
     assert.equal(textOf(html, "floor-tile-detail"), words, `${what}: the detail line`);
     assert.ok(!ACTION_WORDS.test(textOf(html, "floor-tile")), `${what}: no action word (got "${textOf(html, "floor-tile")}")`);
     assert.ok(!html.includes("lucide-chevron-right"), `${what}: no action chevron`);
@@ -182,11 +184,26 @@ test("FloorTile: the phone word below 720px, the long word from 720px (K5 with n
   assert.equal(tagsOf(renderTile(KINDS.K5C), "floor-tile-detail-phone").length, 0, "a charge line has one form only");
 });
 
-test("FloorTile: the stay turns red and bold on a long stay only (ruling F3); the skeleton keeps the 17px line (K3)", () => {
-  for (const kind of ["K1L", "K1H", "K7L"] as const) expectAll(tagOf(renderTile(KINDS[kind]), "floor-tile-stay"), tokens(FLOOR_STAY_LONG_CLASS), `${kind} long stay`);
+// The owner's answer 2026-10-28 (design 6.5): the stay as the K5 pair, its words from 720px and the phone's whole minutes
+// below; exactly one shows at a width, a long stay's red bold (ruling F3) is on both, and the one detail line still cuts.
+test("FloorTile: the stay's two forms, '1h 12m' from 720px and '72m' below; a long stay red and bold on both (K1, K7)", () => {
+  for (const [kind, amount, wide, phone] of [["K1H", "₹1,063", "1h 12m", "72m"], ["K7L", "₹420", "1h 30m", "90m"], ["K1L", "₹1,063", "1h 8m", "68m"]] as const) {
+    const html = renderTile(KINDS[kind]);
+    const [w, ph] = [tagOf(html, "floor-tile-stay-wide"), tagOf(html, "floor-tile-stay-phone")];
+    expectAll(w, [FLOOR_DETAIL_WIDE_CLASS, ...tokens(FLOOR_STAY_LONG_CLASS)], `${kind}: the words from 720px, red and bold`);
+    expectAll(ph, [FLOOR_DETAIL_PHONE_CLASS, ...tokens(FLOOR_STAY_LONG_CLASS)], `${kind}: the minutes below 720px, red and bold`);
+    assert.ok(!classesOf(w).includes(FLOOR_DETAIL_PHONE_CLASS) && !classesOf(ph).includes(FLOOR_DETAIL_WIDE_CLASS), `${kind}: never both shown`);
+    assert.equal(textOf(html, "floor-tile-stay-wide"), wide, `${kind}: the words`);
+    assert.equal(textOf(html, "floor-tile-stay-phone"), phone, `${kind}: the phone's minutes`);
+    assert.equal(textOf(html, "floor-tile-detail"), `${amount} · ${wide}${phone}`, `${kind}: both inside the one truncating line`);
+    for (const t of [w, ph]) assert.ok(!classesOf(t).includes("truncate"), `${kind}: the line cuts, not a form`);
+    assert.match(tagOf(html, "floor-tile"), new RegExp(`aria-label="[^"]*, ${wide}, long stay — `), `${kind}: the accessible name keeps the words`);
+    assert.ok(!tagOf(html, "floor-tile").includes(phone), `${kind}: never the phone's minutes in the accessible name`);
+  }
   expectAll(tagOf(renderTile(KINDS.K7L), "floor-tile"), tokens(FLOOR_TILE_TONES.free.tile), "K7 long stay: the red time on the free tone");
-  assert.ok(!classesOf(tagOf(renderTile(KINDS.K1), "floor-tile-stay")).includes("text-status-bad-ink"), "K1 at 27 min: plain");
-  assert.equal(textOf(renderTile(KINDS.K1), "floor-tile-stay"), "27 min", "the stay part");
+  const k1 = renderTile(KINDS.K1);
+  for (const form of ["floor-tile-stay-wide", "floor-tile-stay-phone"]) assert.ok(!classesOf(tagOf(k1, form)).includes("text-status-bad-ink"), `K1 at 27 min: ${form} plain`);
+  assert.deepEqual([textOf(k1, "floor-tile-stay-wide"), textOf(k1, "floor-tile-stay-phone")], ["27 min", "27m"], "K1 at 27 min: both forms");
   expectAll(tagOf(renderTile(KINDS.K3), "floor-tile-detail"), ["h-[17px]", "w-16", "animate-pulse"], "K3: a short skeleton bar the line's height");
 });
 

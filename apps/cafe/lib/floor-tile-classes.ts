@@ -45,9 +45,10 @@ export const FLOOR_TILE_WORD_CLASS = "whitespace-nowrap";
 export const FLOOR_TILE_DOT_CLASS = "size-[7px] flex-none rounded-[50%]";
 /** The detail line (values 4.1): 12.5px --text-2, one line, an ellipsis when it does not fit. */
 export const FLOOR_TILE_DETAIL_CLASS = "truncate text-[12.5px] text-muted-foreground";
-/** The detail's long word, from 720px ("Tap to seat guests"). */
+/** The detail's long word, from 720px ("Tap to seat guests"; a stay's "1h 12m"). */
 export const FLOOR_DETAIL_WIDE_CLASS = "max-tab:hidden";
-/** The detail's phone word, below 720px ("Tap to seat": the HTML's "Tap to seat gu…" is not copied, design 8 #1). */
+/** The detail's phone word, below 720px ("Tap to seat": the HTML's "Tap to seat gu…" is not copied, design 8 #1; a stay's
+ *  "72m", the owner's answer 2026-10-28). */
 export const FLOOR_DETAIL_PHONE_CLASS = "tab:hidden";
 /** A long stay (design 6.5, ruling F3): the time on the detail line in --bad-i, 600. Task 4 adds the clock mark. */
 export const FLOOR_STAY_LONG_CLASS = "font-semibold text-status-bad-ink";
