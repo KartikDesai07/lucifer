@@ -8,7 +8,7 @@ import {
   FLOOR_EMPTY_FILTER_TEXT,
   FLOOR_FILTERS,
   FLOOR_GRID_CLASS,
-  FLOOR_PRIMARY_LABEL,
+  FLOOR_TAP_HINT,
   filterTiles,
   floorCounts,
   floorFilterOf,
@@ -29,8 +29,14 @@ function only(tiles: FloorTileModel[]): FloorTileModel {
   return tiles[0];
 }
 
-test("the grid class keeps auto-fill with a 9.5rem floor (6 wide on a PC, 2 on a phone)", () => {
-  assert.match(FLOOR_GRID_CLASS, /repeat\(auto-fill,minmax\(9\.5rem,1fr\)\)/);
+// U3 Task 3 (P16 moved on purpose, values 0.2 / 3.1, design 5): the HTML's grid, 140px tracks 10px apart; below 720px
+// 114px (the HTML's 104 at 390 gives the same 3 x 114; below 390 two columns, design 5).
+test("the grid class: the HTML's auto-fill, 140px minimum, gap 10; 114px below 720px (values 0.2, design 5)", () => {
+  assert.equal(
+    FLOOR_GRID_CLASS,
+    "grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(140px,1fr))] max-tab:[grid-template-columns:repeat(auto-fill,minmax(114px,1fr))]",
+    "values 0.2: 6 x 158.33 at 1280, 3 x 114 at 390; two columns below 390",
+  );
 });
 
 test("tap rules: Occupied with an open bill opens it", () => {
@@ -41,9 +47,19 @@ test("tap rules: Occupied with an open bill opens it", () => {
 
 test("tap rules: Occupied whose bill is gone (Pay Now left the pointer) offers Free table", () => {
   const t = only(build([table("T-1", "Occupied", { currentOrderId: "ORD-DONE" })], []));
-  assert.equal(t.primary, "free");
-  assert.equal(FLOOR_PRIMARY_LABEL[t.primary], "Free table");
-  assert.deepEqual(t.menu, []);
+  assert.equal(t.primary, "free", "the tap frees the table");
+  // U3 Task 3 (P17's word moved on purpose, design 6.5 / 11): the action word leaves the tile; the tile's accessible
+  // name says what the tap does.
+  assert.equal(FLOOR_TAP_HINT.free, "free the table", "the tap hint for Free");
+  assert.deepEqual(t.menu, [], "no menu");
+});
+
+test("FLOOR_TAP_HINT: what each tap does, in words for the tile's accessible name (design 6.5); none for a display tile", () => {
+  assert.deepEqual(
+    FLOOR_TAP_HINT,
+    { open: "open the bill", "new-order": "start a new order", "seat-now": "seat guests", free: "free the table", none: null },
+    "design 6.5: one hint per tap; a display-only tile has none",
+  );
 });
 
 test("tap rules: Occupied with the bills not loaded yet opens (never Free)", () => {
@@ -116,14 +132,18 @@ test("minutesOpen: clock skew reads Just now, a bad date is null", () => {
   assert.equal(minutesOpen(new Date(NOW - 90 * 1000).toISOString(), NOW), 1);
 });
 
-test("formatStayMinutes", () => {
-  assert.equal(formatStayMinutes(0), "Just now");
-  assert.equal(formatStayMinutes(38), "38 min");
-  assert.equal(formatStayMinutes(59), "59 min");
-  assert.equal(formatStayMinutes(60), "1 h");
-  assert.equal(formatStayMinutes(72), "1 h 12 min");
-  assert.equal(formatStayMinutes(120), "2 h");
-  assert.equal(formatStayMinutes(Number.NaN), "—");
+// U3 Task 3 (stay words moved on purpose, design 6.5 "Time words"): "{m} min" under an hour (the HTML's), "{h}h {m}m"
+// from an hour (U2's Orders age shape; the HTML writes "68 min", values 12 #11), so "₹1,063 · 1h 8m" fits the phone line.
+test("formatStayMinutes: Just now, {m} min, {h}h {m}m, a dash without a clock", () => {
+  assert.equal(formatStayMinutes(0), "Just now", "under a minute");
+  assert.equal(formatStayMinutes(38), "38 min", "under an hour");
+  assert.equal(formatStayMinutes(59), "59 min", "the last minute before the hour");
+  assert.equal(formatStayMinutes(60), "1h 0m", "the hour, with its 0 minutes");
+  assert.equal(formatStayMinutes(68), "1h 8m", "design 6.5's example");
+  assert.equal(formatStayMinutes(72), "1h 12m", "hours and minutes");
+  assert.equal(formatStayMinutes(120), "2h 0m", "two hours");
+  assert.equal(formatStayMinutes(Number.NaN), "—", "not a number");
+  assert.equal(formatStayMinutes(null), "—", "no clock yet");
 });
 
 test("item count sums the quantities, not the lines", () => {

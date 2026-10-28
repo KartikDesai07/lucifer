@@ -3,7 +3,8 @@
 // counts, and the summary / freshness text. No React, no fetching —
 // components/tables/Floor* and the page render what this returns, and
 // lib/floor-tiles.test.ts pins every row. The area tabs and the sections are
-// lib/floor-areas.ts (U3 Task 2).
+// lib/floor-areas.ts (U3 Task 2); a tile's tone, words and accessible name are
+// lib/floor-view.ts (U3 Task 3).
 // import cycle with lib/dashboard/live-tables.ts: use its exports only inside functions
 import { billPrintedNow } from "@/lib/dashboard/live-tables";
 import { openTabForTable } from "@/lib/table-pick";
@@ -14,8 +15,11 @@ import type { Order, OrderItem, Reservation, Table } from "@/types";
 // need a per-second tick, and the table poll itself runs every 30 s.
 export const FLOOR_CLOCK_TICK_MS = 30_000;
 
-// Measured: 6 columns on a 1366 px PC with the sidebar open, 2 on phones.
-export const FLOOR_GRID_CLASS = "grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]";
+// The HTML's grid (values 0.2, 3.1): auto-fill 140px tracks, 10px apart (6 x 158.33 at 1280 with the nav open). Below
+// 720px 114px, not the HTML's 104 (design 5): the same 3 x 114 at 390, two columns below 390, where three tiles' 78-83px
+// lines could not hold a status word and the ⋯.
+export const FLOOR_GRID_CLASS =
+  "grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(140px,1fr))] max-tab:[grid-template-columns:repeat(auto-fill,minmax(114px,1fr))]";
 
 // Where a tile tap goes for "Open" / "New order". NEVER carries the table in the
 // URL: a query string makes Next fetch the page again on every tap (see
@@ -46,11 +50,13 @@ export const FLOOR_FILTERS: readonly { key: FloorFilter; label: string }[] = [
 /** The empty line when the area and the pill leave nothing (values 5.2). */
 export const FLOOR_EMPTY_FILTER_TEXT = "No tables match this filter.";
 
-export const FLOOR_PRIMARY_LABEL: Record<FloorPrimary, string | null> = {
-  open: "Open",
-  "new-order": "New order",
-  "seat-now": "Seat now",
-  free: "Free table",
+/** What a tap on the tile does, in words for its accessible name (design 6.5: the action words left the tile, owner Q2);
+ *  a display-only tile has none. */
+export const FLOOR_TAP_HINT: Record<FloorPrimary, string | null> = {
+  open: "open the bill",
+  "new-order": "start a new order",
+  "seat-now": "seat guests",
+  free: "free the table",
   none: null,
 };
 
@@ -109,13 +115,13 @@ export function longStay(minutes: number | null, thresholdMinutes: number): bool
   return minutes !== null && minutes >= thresholdMinutes;
 }
 
+/** The stay words (design 6.5): "Just now", "{m} min" under an hour (the HTML's), then "{h}h {m}m" ("1h 0m", "1h 8m": U2's
+ *  Orders age shape, so "₹1,063 · 1h 8m" fits the phone line; the HTML's "68 min" has no hour rollover, values 12 #11). */
 export function formatStayMinutes(minutes: number | null): string {
   if (minutes === null || !Number.isFinite(minutes)) return NO_STAY_TEXT;
   if (minutes < 1) return "Just now";
   if (minutes < MINUTES_PER_HOUR) return `${minutes} min`;
-  const hours = Math.floor(minutes / MINUTES_PER_HOUR);
-  const rest = minutes % MINUTES_PER_HOUR;
-  return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
+  return `${Math.floor(minutes / MINUTES_PER_HOUR)}h ${minutes % MINUTES_PER_HOUR}m`;
 }
 
 // The tap rules. Free / Reserve / Seat now are NEVER offered while a matching

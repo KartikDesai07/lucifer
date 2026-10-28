@@ -33,12 +33,16 @@ const LAYOUT_LIB = "apps/cafe/lib/floor-layout.ts";
 const AREA_TABS = "apps/cafe/components/tables/FloorAreaTabs.tsx";
 const SCROLL_FADES = "apps/cafe/hooks/use-scroll-fades.ts";
 const AREAS_LIB = "apps/cafe/lib/floor-areas.ts";
+// U3 Task 3 (2026-10-28): the tile's view (tone, words, accessible name) and the tile / section classes (ruling F1).
+const VIEW_LIB = "apps/cafe/lib/floor-view.ts";
+const TILE_CLASSES_LIB = "apps/cafe/lib/floor-tile-classes.ts";
 const LIVE_PANEL = "apps/cafe/components/dashboard/LiveFloorPanel.tsx";
 const TABLES_DIR = "apps/cafe/components/tables";
 
 // Every file that makes up the Floor screen.
 const FLOOR_FILES = [
   PAGE, STATUS_HOOK, ACTIONS_HOOK, TILE, TILE_MENU, CHIPS, INDICATOR, DIALOGS, FLOOR_LIB, SECTIONS, LAYOUT_LIB, AREA_TABS, SCROLL_FADES, AREAS_LIB,
+  VIEW_LIB, TILE_CLASSES_LIB,
 ];
 
 function count(haystack: string, needle: string): number {
@@ -108,13 +112,20 @@ test("PIN: the Floor runs exactly one shared clock", () => {
   assert.equal(count(readStripped(PAGE), "useNow(FLOOR_CLOCK_TICK_MS)"), 1);
 });
 
+// U3 Task 3 (P6 moved on purpose, design 6.5 / values 4.2): the tile's look is the HTML's per-state tone (a Floor map in
+// lib/floor-view.ts, never TABLE_STATUS_META, which Setup and the dashboard read) and its word the pills' word, Bill
+// printed included. Kept: the status is TEXT next to its colour, the tint and the word from the same tone entry.
 test("PIN: every tile shows its status as TEXT, not colour alone", () => {
   const src = readStripped(TILE);
-  assert.ok(src.includes("const meta = TABLE_STATUS_META[table.status];"), "the tile reads the shared vocabulary");
-  // Floor redesign (2026-10-02, owner: "looks AI generated"): the chip + dot + stripe became the tile's tint plus the
-  // status word in its bottom row — still text next to the colour, both from the same vocabulary entry.
-  assert.match(src, /meta\.textClass\)\}>\s*\{meta\.label\}\s*<\/span>/, "the status label renders as text in its status colour");
-  assert.ok(src.includes("cn(TILE_CLASS, meta.tileClass"), "the tint comes from the same vocabulary entry as the label");
+  assert.ok(src.includes("const view = floorTileView(tile, tabsFailed);"), "the tile reads its view (tone, word, detail)");
+  assert.ok(src.includes("const tone = FLOOR_TILE_TONES[view.tone];"), "the tile reads the Floor's tone map");
+  assert.match(
+    src,
+    /className=\{cn\(FLOOR_TILE_STATUS_CLASS, tone\.label\)\}>[\s\S]*?className=\{FLOOR_TILE_WORD_CLASS\}>\s*\{view\.label\}\s*<\/span>/,
+    "the status word renders as text inside the line that wears the state's ink",
+  );
+  assert.ok(src.includes("cn(FLOOR_TILE_CLASS, tone.tile"), "the tint comes from the same tone entry as the word's ink");
+  assert.ok(readStripped(VIEW_LIB).includes("const tone = floorFilterOf(tile);"), "the tone is the pill the tile counts in (counts and tiles agree)");
 });
 
 test("PIN: Free, Seat now and Reserve re-read the open bills first and fail closed", () => {
@@ -144,7 +155,10 @@ test("PIN: table status colours come only from the shared vocabulary", () => {
   for (const f of files) assert.ok(!banned.test(readSrc(`${TABLES_DIR}/${f}`)), `${f} carries a raw status colour`);
   assert.ok(!banned.test(readSrc(LIVE_PANEL)), "LiveFloorPanel carries a raw status colour");
   assert.ok(readSrc(LIVE_PANEL).includes("TABLE_STATUS_META"), "landmark: LiveFloorPanel uses the shared vocabulary");
-  assert.ok(readSrc(TILE).includes("TABLE_STATUS_META"), "landmark: the tile uses the shared vocabulary");
+  // U3 Task 3 (P8 landmark moved on purpose, design 6.5): the tile's colours are the Floor's tone map of status tokens.
+  assert.ok(readSrc(TILE).includes("FLOOR_TILE_TONES"), "landmark: the tile uses the Floor's tone map");
+  assert.ok(!banned.test(readSrc(VIEW_LIB)), "the tone map carries no raw status colour");
+  assert.ok(readSrc(VIEW_LIB).includes("bg-status-info-tint"), "landmark: the tone map is status tokens");
 });
 
 test("PIN: the tile link offers the hand-off only for a plain primary click", () => {
@@ -232,7 +246,10 @@ test("PIN: area sections - one tile renderer, headings only when floorSections s
   assert.ok(sections.includes("aria-labelledby={headingId}") && sections.includes("id={headingId}"));
   assert.ok(sections.includes("<h2") && sections.includes("group.summary") && sections.includes("title={group.name}"));
   assert.equal(count(sections, "className={FLOOR_GRID_CLASS}"), 1, "every section reuses the one grid class");
-  assert.ok(sections.includes("border-brand-rule"), "a divider between sections, brand token");
+  // U3 Task 3 (P12's divider needle retired on purpose, design 6.4 / values 3.1): the HTML's sections have no divider;
+  // the body's 16px gap parts them.
+  assert.ok(sections.includes("className={FLOOR_SECTION_CLASS}"), "landmark: each section wears the HTML's section class");
+  assert.ok(!/border-t|divide-|brand-rule/.test(sections), "no divider between sections");
   // The screen never reads a table's area link itself: grouping is lib/table-areas + floorSections.
   const bare = /\bareaId\b/;
   for (const f of [PAGE, SECTIONS, TILE, AREA_TABS]) assert.ok(!bare.test(readStripped(f)), `${f} must not read the area link`);
@@ -241,12 +258,17 @@ test("PIN: area sections - one tile renderer, headings only when floorSections s
 });
 
 // Review finding (2026-10-02), MEASURED at 360 px: "Available" + "New order ›" was 3 px wider than the tile, so the
-// status word — the tile's only text signal — truncated to an ellipsis. The row now wraps and the action stays right.
-test("PIN: the tile's bottom row wraps instead of clipping the status word", () => {
+// status word — the tile's only text signal — truncated to an ellipsis. U3 Task 3 (P13 moved on purpose, design 6.5):
+// the action word left the tile; the meaning stays — the status word never wraps and is never cut.
+test("PIN: the tile's status word is never clipped", () => {
   const src = readStripped(TILE);
-  assert.ok(src.includes("{meta.label}"), "landmark: the status word is in the tile");
-  assert.match(src, /<span className="mt-auto flex flex-wrap [^"]*">/, "the status row wraps on a narrow tile");
-  assert.ok(src.includes('cn("ml-auto inline-flex shrink-0'), "a wrapped action keeps to the right");
+  assert.ok(src.includes("{view.label}"), "landmark: the status word is in the tile");
+  assert.ok(src.includes("<span data-ui=\"floor-tile-word\" className={FLOOR_TILE_WORD_CLASS}>"), "the word wears its own class");
+  const classes = readStripped(TILE_CLASSES_LIB);
+  assert.match(classes, /export const FLOOR_TILE_WORD_CLASS = "whitespace-nowrap";/, "the word never wraps");
+  const line = /export const FLOOR_TILE_STATUS_CLASS = "([^"]*)";/.exec(classes)?.[1] ?? "";
+  assert.ok(line.includes("flex"), "landmark: the status line's class");
+  assert.ok(!/\btruncate\b|overflow-hidden|text-ellipsis/.test(line), "the status line never cuts the word");
 });
 
 // Owner, 2026-10-02: the Floor moved into the sidebar's Service group, right under New Order and Orders — the
