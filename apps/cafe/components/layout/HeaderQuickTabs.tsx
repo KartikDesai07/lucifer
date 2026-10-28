@@ -65,7 +65,8 @@ export function HeaderQuickTabs() {
             aria-label={tab.title}
             data-ui={tab.primary ? "header-new-order" : "header-tables"}
             className={cn(
-              buttonVariants({ variant: tab.primary ? "default" : "outline" }),
+              // New order is the kit's filled button everywhere but /tables, where it is the outline (owner Q1).
+              buttonVariants({ variant: tab.primary && !floor ? "default" : "outline" }),
               tab.primary ? (floor ? HEADER_FLOOR_NEW_ORDER_CLASS : HEADER_PRIMARY_BUTTON_CLASS) : HEADER_OUTLINE_BUTTON_CLASS,
               tab.primary ? "inline-flex" : "hidden tab:inline-flex",
             )}

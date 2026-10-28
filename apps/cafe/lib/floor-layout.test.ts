@@ -10,6 +10,8 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+// next/navigation's usePathname() reads this context (Next's own module): the render tests below provide the path the
+// header's quick links read. A Next upgrade that moves it breaks only this import.
 import { PathnameContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 
 import { stripComments } from "./source-pin-utils";
@@ -114,14 +116,17 @@ test("HEADER_FLOOR_NEW_ORDER_CLASS: the HTML Floor button's outline look — 36p
     ["h-9", "flex-none", "px-3", "py-0", "gap-1.5", "text-[13.5px]", "font-medium", "[&_svg]:size-[14px]"],
     "values 1.2 Takeaway: height 36, padding 0 12px, 13.5px 500, gap 6px, the 14px plus",
   );
-  hasAll(HEADER_FLOOR_NEW_ORDER_CLASS, ["border", "border-border", "bg-card", "text-foreground", "hover:bg-surface-2"], "values 1.2: 1px --border, --surface, --text; hover --surface-2");
+  hasAll(HEADER_FLOOR_NEW_ORDER_CLASS, ["hover:bg-surface-2"], "values 1.2: hover --surface-2");
+  // Its border, surface and text are the kit outline's (the Button variant it is laid over): none of its own.
+  const own = tokens(HEADER_FLOOR_NEW_ORDER_CLASS).filter((t) => /^(?:border|bg-|text-(?!\[))/.test(t));
+  assert.deepEqual(own, [], "no colour or border of its own: the kit outline's");
   assert.ok(HEADER_FLOOR_NEW_ORDER_CLASS.endsWith(` ${HTML_PRESS_CLASS}`), "it presses like the HTML's buttons (values 6.2)");
   assert.notEqual(HEADER_FLOOR_NEW_ORDER_CLASS, HEADER_PRIMARY_BUTTON_CLASS, "landmark: not the filled New order of every other page");
 });
 
-test("HEADER_FLOOR_NEW_ORDER_CLASS over the kit's primary Button: no accent fill, no kit hover or press survives the merge", () => {
-  const merged = tokens(cn(buttonVariants({ variant: "default" }), HEADER_FLOOR_NEW_ORDER_CLASS));
-  for (const gone of ["bg-primary", "text-primary-foreground", "hover:bg-primary/90", "transition-colors", "motion-safe:active:scale-[0.97]", "[&_svg]:size-4", "text-sm", "px-4", "py-2"]) {
+test("HEADER_FLOOR_NEW_ORDER_CLASS over the kit's outline Button: the outline's border / surface / text, the HTML's hover and press", () => {
+  const merged = tokens(cn(buttonVariants({ variant: "outline" }), HEADER_FLOOR_NEW_ORDER_CLASS));
+  for (const gone of ["bg-primary", "text-primary-foreground", "hover:bg-muted", "transition-colors", "motion-safe:active:scale-[0.97]", "[&_svg]:size-4", "text-sm", "px-4", "py-2"]) {
     assert.ok(!merged.includes(gone), `the kit's "${gone}" gives way (got "${merged.join(" ")}")`);
   }
   for (const kept of ["border", "border-border", "bg-card", "text-foreground", "hover:bg-surface-2", "h-9", "px-3", "py-0", "gap-1.5", "rounded-md", ...tokens(HTML_PRESS_CLASS)]) {
@@ -141,10 +146,10 @@ test("on /tables the header draws New order alone, in the Floor look, with its l
     const link = tagOf(html, "header-new-order");
     assert.match(link, /href="\/pos"/, `${at}: the same link to /pos as every page (Q1)`);
     const have = classesOf(link);
-    for (const t of tokens(cn(buttonVariants({ variant: "default" }), HEADER_FLOOR_NEW_ORDER_CLASS))) {
+    for (const t of tokens(cn(buttonVariants({ variant: "outline" }), HEADER_FLOOR_NEW_ORDER_CLASS))) {
       assert.ok(have.includes(t), `${at}: New order carries the Floor look's "${t}"`);
     }
-    for (const gone of ["bg-primary", "hover:bg-primary-hover", "font-semibold"]) assert.ok(!have.includes(gone), `${at}: not the filled button's "${gone}"`);
+    for (const gone of ["bg-primary", "hover:bg-primary-hover", "font-semibold", "hover:bg-muted"]) assert.ok(!have.includes(gone), `${at}: not the filled button's or the kit outline's "${gone}"`);
     assert.match(html, /<span class="inline">New order<\/span>/, `${at}: the label at every width, the phone too (Q1, values 1.2)`);
     assert.equal(textOf(html, "header-new-order"), "New order", `${at}: the word stays ours (Q1)`);
   }
@@ -158,6 +163,10 @@ test("every other page keeps U0's two links: /tables/setup, /tables/qr, /orders 
     const have = classesOf(tagOf(html, "header-new-order"));
     for (const t of ["bg-primary", "hover:bg-primary-hover", "font-semibold", "px-3.5"]) assert.ok(have.includes(t), `${at}: New order is U0's filled button ("${t}")`);
     assert.ok(!have.includes("hover:bg-surface-2"), `${at}: never the Floor look`);
+    // The label: at every width on /orders (U2, Orders values 1.2), from 720px elsewhere (U0 values 2.5: the plus alone).
+    const label = at === "/orders" ? "inline" : "hidden tab:inline";
+    assert.match(html, new RegExp(`<span class="${label}">New order</span>`), `${at}: New order's label is "${label}"`);
+    assert.match(html, new RegExp(`<span class="${label}">Tables</span>`), `${at}: Tables' label is "${label}"`);
   }
   assert.equal(linksAt("/pos"), "", "landmark: /pos draws neither (U1)");
 });
