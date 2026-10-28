@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { LayoutGrid } from "lucide-react";
 
@@ -135,14 +135,19 @@ function FloorContent() {
     [tables.data, openTabs.data, reservations.data, nowMs, longStayMinutes],
   );
 
-  // The HTML's rise on the grid's first paint only (design 6.5; values 7): the first render with tiles gives each tile its
-  // index in its section (after the filters); once that render is on screen the ref turns off and every later render
-  // gives null, so a tab / pill change never replays it and a tile mounted later appears at once (values 12 #19).
-  const firstPaint = useRef(true);
+  // The HTML's rise, the grid's first paint's cascade (design 6.5; values 7; ruling F15): one clock for the page, started
+  // by the first render with tiles and never reset. Each tile gets its index in its section (after the filters) and the
+  // clock's reading, and fixes its rise when it mounts: a tile mounted while its own rise would still run (the first
+  // paint; a remount as the areas land a tick after the tables and the flat grid turns into sections, the area heal, a
+  // table changing section) joins it part-way; a tile mounted after that (a tab / pill change after the cascade, a table
+  // added later) appears at once, so nothing replays (values 12 #19 not copied). The clock is read once per render: the
+  // tiles one render mounts commit, and start their rise, together, so they share one reading and the cascade's steps
+  // stay even however long the render takes (0 on the first paint).
+  const riseStart = useRef<number | null>(null);
   const hasTiles = tiles.length > 0;
-  useEffect(() => {
-    if (hasTiles) firstPaint.current = false;
-  }, [hasTiles]);
+  const riseReadAt = performance.now();
+  if (riseStart.current === null && hasTiles) riseStart.current = riseReadAt;
+  const riseElapsedMs = riseReadAt - (riseStart.current ?? riseReadAt);
 
   const retryAll = () => {
     void tables.refetch();
@@ -178,14 +183,14 @@ function FloorContent() {
     setArea(FLOOR_ALL_AREAS);
   };
 
-  const rising = firstPaint.current;
   const renderTile = (tile: FloorTileModel, index: number) => (
     <FloorTile
       key={tile.table._id}
       tile={tile}
       busy={actions.isBusy(tile.table.tableNo)}
       tabsFailed={tabsFailed}
-      riseIndex={rising ? index : null}
+      riseIndex={index}
+      riseElapsedMs={riseElapsedMs}
       onTap={actions.tapPrimary}
       onMenu={(t, action) => actions.pickMenu(t.table, action)}
     />

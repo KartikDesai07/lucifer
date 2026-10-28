@@ -149,7 +149,7 @@ test("the section's classes: the HTML's head over the grid, 10px apart, no divid
 // ── FloorTile, rendered per kind ──────────────────────────────────────────────────────────────────────────────────────
 
 const renderTile = (tile: FloorTileModel, tabsFailed = false, busy = false) =>
-  renderToStaticMarkup(createElement(FloorTile, { tile, busy, tabsFailed, riseIndex: null, onTap: () => {}, onMenu: () => {} }));
+  renderToStaticMarkup(createElement(FloorTile, { tile, busy, tabsFailed, riseIndex: 0, riseElapsedMs: 60_000, onTap: () => {}, onMenu: () => {} }));
 const ACTION_WORDS = /\bOpen\b|New order|Seat now|Free table/;
 
 test("FloorTile: every kind draws its word, its detail and its tone; no action word on any tile (design 6.5, 11)", () => {

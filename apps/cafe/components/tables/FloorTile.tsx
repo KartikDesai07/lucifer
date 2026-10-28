@@ -22,6 +22,7 @@ import {
   FLOOR_TILE_NAME_CLASS,
   FLOOR_TILE_PRESS_CLASS,
   FLOOR_TILE_RISE_CLASS,
+  FLOOR_TILE_RISE_SECONDS,
   FLOOR_TILE_SEATS_CLASS,
   FLOOR_TILE_SLOT_CLASS,
   FLOOR_TILE_SPINNER_CLASS,
@@ -32,7 +33,7 @@ import {
 } from "@/lib/floor-tile-classes";
 import { FLOOR_TILE_TONES, floorTileView, type FloorDetail } from "@/lib/floor-view";
 import { offerPosTable } from "@/lib/pos-table-handoff";
-import { tileDelay } from "@/lib/table-sheet";
+import { tileDelaySeconds } from "@/lib/table-sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FloorTileMenu } from "@/components/tables/FloorTileMenu";
 
@@ -42,8 +43,11 @@ interface FloorTileProps {
   busy: boolean;
   /** The open bills failed to load and there is no older list to show. */
   tabsFailed: boolean;
-  /** Its place in its section on the grid's first paint (the rise's delay); null afterwards (no rise, design 6.5). */
-  riseIndex: number | null;
+  /** Its place in its section (after the filters): its step in the rise's cascade (values 7). */
+  riseIndex: number;
+  /** The ms since the page's cascade clock started (its first render with tiles, ruling F15), read by the render that
+   *  renders this tile. */
+  riseElapsedMs: number;
   onTap: (tile: FloorTileModel) => void;
   onMenu: (tile: FloorTileModel, action: FloorMenuAction) => void;
 }
@@ -65,6 +69,16 @@ function surfaceOf(busy: boolean, primary: FloorPrimary): FloorSurface {
     case "none":
       return "div";
   }
+}
+
+/**
+ * The rise's animation-delay for a tile mounting `elapsedMs` into the page's cascade (ruling F15), or null when its rise
+ * would already be over: its tileDelay step (ruling P52) less the time elapsed, counted in tileDelay's 10ms steps (its
+ * two decimals). A negative delay starts the rise part-way: a tile remounted mid-cascade continues rather than restarts.
+ */
+function riseDelayAtMount(index: number, elapsedMs: number): string | null {
+  const delayMs = Math.round(tileDelaySeconds(index) * 1000) - Math.floor(elapsedMs / 10) * 10;
+  return delayMs + FLOOR_TILE_RISE_SECONDS * 1000 > 0 ? `${(delayMs / 1000).toFixed(2)}s` : null;
 }
 
 /** What the right slot holds (design 6.5): the ⋯ (a sibling, outside the surface), else inside the surface a busy tile's
@@ -122,7 +136,7 @@ function TileDetail({ detail, longStay, readsText }: { detail: FloorDetail; long
 // One table on the live floor, the owner's HTML tile (values 4.1, design 6.5): the full name and the seats on top; the
 // state's dot and word over one detail line below; the state's tone on the surface. The whole tile is the primary tap
 // target (a link to New Order, or a button that opens a confirm), and the ⋯ menu is a sibling in the right slot.
-export function FloorTile({ tile, busy, tabsFailed, riseIndex, onTap, onMenu }: FloorTileProps) {
+export function FloorTile({ tile, busy, tabsFailed, riseIndex, riseElapsedMs, onTap, onMenu }: FloorTileProps) {
   const { table, primary, menu } = tile;
   const view = floorTileView(tile, tabsFailed);
   const tone = FLOOR_TILE_TONES[view.tone];
@@ -130,9 +144,10 @@ export function FloorTile({ tile, busy, tabsFailed, riseIndex, onTap, onMenu }: 
   const kind = surfaceOf(busy, primary);
   // A div surface has no aria-label (a Link or button names itself), so a screen reader reads its text.
   const readsText = kind === "div";
-  // The rise is fixed when the tile mounts: the page gives an index on the grid's first paint only, and a re-render during
-  // the cascade (the bills arriving) must not cut it; a tile mounted later never rises (design 6.5).
-  const [riseAt] = useState(riseIndex);
+  // The rise is fixed when the tile mounts, against the page's cascade clock (ruling F15): a re-render during the cascade
+  // (the bills arriving) never cuts it; a tile mounted while its rise would still run joins it part-way; one mounted
+  // later (a tab / pill change after the cascade, a table added) appears at once, so nothing replays (design 6.5).
+  const [riseDelay] = useState(() => riseDelayAtMount(riseIndex, riseElapsedMs));
 
   const slot: FloorSlot = hasMenu ? "menu" : busy ? "spinner" : view.longStay ? "clock" : null;
   // The clock shows from 720px, where the line has room (the phone keeps the red time: "Bill printed" + a clock does not
@@ -222,13 +237,13 @@ export function FloorTile({ tile, busy, tabsFailed, riseIndex, onTap, onMenu }: 
       break;
   }
 
-  // The grid item (design 6.5): the rise (first paint only) and, on a tile a tap acts on, the hover lift move the surface
-  // and its ⋯ together; the ⋯ stays a sibling after the surface, never inside it (P11).
+  // The grid item (design 6.5): the rise (the first paint's cascade) and, on a tile a tap acts on, the hover lift move the
+  // surface and its ⋯ together; the ⋯ stays a sibling after the surface, never inside it (P11).
   return (
     <div
       data-ui="floor-tile-wrap"
-      className={cn(FLOOR_TILE_WRAP_CLASS, riseAt !== null && FLOOR_TILE_RISE_CLASS, kind !== "div" && FLOOR_TILE_LIFT_CLASS)}
-      style={riseAt === null ? undefined : { animationDelay: tileDelay(riseAt) }}
+      className={cn(FLOOR_TILE_WRAP_CLASS, riseDelay !== null && FLOOR_TILE_RISE_CLASS, kind !== "div" && FLOOR_TILE_LIFT_CLASS)}
+      style={riseDelay === null ? undefined : { animationDelay: riseDelay }}
     >
       {surface}
       {hasMenu && <FloorTileMenu tableNo={table.tableNo} actions={menu} busy={busy} onPick={(a) => onMenu(tile, a)} />}

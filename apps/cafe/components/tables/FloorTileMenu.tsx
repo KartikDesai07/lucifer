@@ -27,14 +27,15 @@ const MENU_LABEL: Record<FloorMenuAction, string> = {
 // The tile's secondary actions. A SIBLING of the tile's link (never nested in it: a button inside a link is invalid and a
 // tap would do both), in the tile's right slot (design 6.5): a 16px ⋯ on the status line, its 44px touch target (32px
 // with a fine pointer) reaching up from the detail line's top, never over it. While busy it stays mounted and disabled
-// (today's), its ⋯ swapped for the spinner, so a keyboard user's focus is not lost.
+// (today's), its ⋯ swapped for the spinner, so a keyboard user's focus is not lost. The disabled goes on Radix's trigger
+// itself: only that guards its pointerdown and keydown (a disabled <button> still gets pointerdown, and React still runs
+// onPointerDown), and Radix hands it on to the button (disabled, data-disabled).
 export function FloorTileMenu({ tableNo, actions, busy, onPick }: FloorTileMenuProps) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+      <DropdownMenuTrigger asChild disabled={busy}>
         <button
           type="button"
-          disabled={busy}
           data-ui="floor-tile-more"
           className={FLOOR_TILE_TRIGGER_CLASS}
           aria-label={`More actions for ${tableNo}`}

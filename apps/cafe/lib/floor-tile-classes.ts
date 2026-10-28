@@ -60,17 +60,24 @@ export const FLOOR_DETAIL_SKELETON_CLASS = "h-[17px] w-16";
 /** The tile's grid item: it holds the surface and its ⋯ sibling, so the rise and the lift move both (design 6.5); the
  *  tile's 14px radius, so the lift's shadow follows its corners. */
 export const FLOOR_TILE_WRAP_CLASS = "relative rounded-[14px]";
-/** The HTML's rise (values 7: opacity 0 → 1, 12px up, .5s cubic-bezier(.2,.8,.2,1) both), on the grid's first paint only,
- *  its delay tileDelay(index) inline (ruling P52); none with reduced motion (values 12 #23 not copied). */
+/** The HTML's rise (values 7: opacity 0 → 1, 12px up, .5s cubic-bezier(.2,.8,.2,1) both), the grid's first paint's
+ *  cascade only: its delay inline, its tileDelay step (ruling P52) on the page's cascade clock (ruling F15, components/
+ *  tables/FloorTile.tsx); none with reduced motion (values 12 #23 not copied). */
 export const FLOOR_TILE_RISE_CLASS = "motion-safe:animate-html-rise-floor";
+/** The rise's length in seconds, the token's (app/globals.css --animate-html-rise-floor, pinned equal): a tile mounted
+ *  this long past its own start would rise no more, so it appears at once (ruling F15). */
+export const FLOOR_TILE_RISE_SECONDS = 0.5;
 /** The HTML's hover lift (values 6.1: 3px up, 0 12px 28px rgba(0,0,0,.1); its transition, values 0.5: the move .3s on
  *  cubic-bezier(.2,.8,.2,1), the shadow .3s ease) where a pointer can hover, on a tile a tap acts on. Tailwind's lift is
  *  the translate property, so it composes with the rise's held transform (the HTML needs !important for that). While the
- *  surface is pressed the lift gives way (values 6.2: the press replaces the hover's translate; its shadow stays). */
+ *  surface is pressed the lift gives way (values 6.2: the press replaces the hover's translate; its shadow stays). With
+ *  reduced motion it moves without the glide (values 7: the HTML's every transition 0.01ms; U1's ProductCard's way). */
 export const FLOOR_TILE_LIFT_CLASS =
-  "transition-[translate,box-shadow] duration-300 ease-[cubic-bezier(.2,.8,.2,1),ease] hover:-translate-y-[3px] hover:[box-shadow:0_12px_28px_rgba(0,0,0,0.1)] has-[[data-ui=floor-tile]:active]:translate-y-0";
-/** A tap target's surface (values 4.1, 6.2): the HTML's hand cursor and its press, scale(.98) on the tile's .3s curve. */
-export const FLOOR_TILE_PRESS_CLASS = "cursor-pointer transition-[scale] duration-300 ease-[cubic-bezier(.2,.8,.2,1)] active:scale-[.98]";
+  "transition-[translate,box-shadow] duration-300 ease-[cubic-bezier(.2,.8,.2,1),ease] motion-reduce:transition-none hover:-translate-y-[3px] hover:[box-shadow:0_12px_28px_rgba(0,0,0,0.1)] has-[[data-ui=floor-tile]:active]:translate-y-0";
+/** A tap target's surface (values 4.1, 6.2): the HTML's hand cursor and its press, scale(.98) on the tile's .3s curve;
+ *  no glide with reduced motion (values 7). */
+export const FLOOR_TILE_PRESS_CLASS =
+  "cursor-pointer transition-[scale] duration-300 ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none active:scale-[.98]";
 
 // ── The right slot (design 6.5) ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -88,12 +95,15 @@ export const FLOOR_LONG_STAY_CLOCK_CLASS = "size-3.5 text-status-bad-ink";
 export const FLOOR_TILE_SPINNER_CLASS = "size-3.5 animate-spin";
 /**
  * The ⋯ trigger, a sibling after the surface (design 6.5; the 44px rule, ruling R1): at the tile's right edge, its foot
- * 30px above the tile's (the detail line's top on 112 and 100px tiles, so it never covers the detail), 44 × 44 on touch,
- * 32 × 32 with a fine pointer; the glyph at its bottom-right, 13px in (the 1px border + 12px padding) and 2.5px up, so
- * its centre sits on the status line's centre. Today's ghost look in tokens: --text-2, --text on hover, the accent ring.
+ * 30px above the tile's (the detail line's top on 112 and 100px tiles, so it never covers the detail), 44 × 44 (any
+ * pointer that is not fine, a (pointer: none) device too), 32 × 32 with a fine pointer; the glyph at its bottom-right,
+ * 13px in (the 1px border + 12px padding) and 2.5px up, so its centre sits on the status line's centre. Today's ghost
+ * look in tokens: --text-2, --text on hover, the accent ring. Busy (disabled): no target, a press goes to the busy
+ * surface below (today's kit button), and the surface's 70% dim, so the spinner reads the same with or without the ⋯
+ * (ruling F16).
  */
 export const FLOOR_TILE_TRIGGER_CLASS =
-  "absolute bottom-[30px] right-0 flex cursor-pointer items-end justify-end rounded-[8px] pb-[2.5px] pr-[13px] text-muted-foreground pointer-coarse:size-11 pointer-fine:size-8 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-default";
+  "absolute bottom-[30px] right-0 flex cursor-pointer items-end justify-end rounded-[8px] pb-[2.5px] pr-[13px] text-muted-foreground size-11 pointer-fine:size-8 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-default disabled:pointer-events-none disabled:opacity-70";
 /** The ⋯ glyph (lucide Ellipsis), 16px. */
 export const FLOOR_TILE_GLYPH_CLASS = "size-4";
 /** The trigger's spinner while busy: 14px, 1px up, so its centre is the glyph's (on the status line's centre). */
