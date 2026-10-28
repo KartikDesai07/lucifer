@@ -51,6 +51,7 @@ nothing; the S1 43-file pin and `print-budget.test.ts` stay untouched).
 | Q2 | Tile content | **The HTML tile, our data folded in**: 112 px (100 on the phone), name + seats on top, dot + status word, one detail line. Bill "₹955 · 27 min", booking "8:00 PM · Pooja Nair" / "Held", "No open bill" (the preview's "· tap to free" does not fit the line: it moved into the tile's accessible name, builder check), the table charge. Long stay = the time in red, bold, plus a clock mark (not on the phone grid, where it does not fit beside the status word: the red time alone). The ⋯ menu at the right end of the status line. "{n} items · {customer}" and the action words ("Open ›", "New order ›", "Seat now ›", "Free table ›") leave the tile; every tap does exactly what it does today. |
 | Q3 | Header's second line, freshness | **The HTML's words plus ours on the same line**: "3 of 10 occupied · 1 reserved · ₹1,787 running · Updated just now" (cut with an ellipsis when narrow). A failed refresh shows a slim warn strip under the header, "Couldn't refresh the floor. Showing the last update." with "Try again" (the alert strip's look). The controls row stays the HTML's. |
 | Q4 | Pills on the phone | **Sideways scroll with a cue**: the HTML's scrolling row, plus a soft fade at the right edge while more pills are hidden, and the chosen pill scrolled into view on its own. The area tabs do the same. |
+| Q5 | The stay on the phone (asked during the build, 2026-10-28) | **Short minutes below 720 px**: "0m", "8m", "72m", "125m", so "₹1,063 · 72m" fits the 88 px phone line for every ₹1,000–9,999 bill, also in the long stay's red bold (measured 74.77 px; "₹1,063 · 1h 12m" was 91.88 px and "₹1,063 · Just now" 100.89 px, both cut). From 720 px the words stay "Just now" / "{m} min" / "{h}h {m}m". A 5-digit bill past 99 minutes still cuts (accepted with the option). |
 | – | Words (standing, U0 / U1 / U2) | The HTML's words where the HTML has the same element; our words for our own features and data (section 11 lists every visible word that changes). |
 | – | "Bill printed" (U2 Q11, standing) | Shown only when the server knows of the print (`billPrintedNow`, `lib/dashboard/live-tables.ts`: print host / agent / settle prints), as the dashboard and Orders. A device that prints straight from the browser keeps its tables "Occupied". |
 
@@ -171,7 +172,9 @@ and Setup read):
 
 - **Time words** (my call): today's minutes (floored), "Just now" under a minute, "{m} min" under an hour (the HTML's),
   "{h}h {m}m" from an hour ("1h 0m", "1h 8m": the shape of U2's Orders age; the HTML's floor writes "68 min", values §12
-  #11), so "₹1,063 · 1h 8m" fits the 88 px phone line. The stay-word pins move on purpose.
+  #11). Below 720 px the stay reads whole minutes + "m" ("0m", "72m": the owner's Q5, section 4; the hour form did not
+  fit the phone line once the minutes had two digits). The tile's accessible name keeps the long words at every width.
+  The stay-word pins move on purpose.
 - **Long stay** (today's setting rule): the detail's time part in `--bad-i` 600 and, where the status line has room for
   it (tiles of the ≥ 720 px grid), a 14 px clock mark in the right slot, `--bad-i`, with "Long stay" as its accessible
   name and `title`; on the phone grid only the red time (the status word is never cut: "Bill printed" + a clock does not
@@ -290,7 +293,7 @@ match this filter." ("Show all tables" stays); tile "{n} seats" moves to the top
 items · {customer}" and the action words "Open", "New order", "Seat now", "Free table" leave the tile (the dialogs and the
 menu keep "Seat now" and "Free table"; the tile's accessible name says what a tap does); "No open bill" + "Tap to free
 this table" → "No open bill"; Available with a bill "Open bill · ₹x" → "₹x · {stay}"; Reserved "{name}" + "{time} · {n}
-seats" → "{time} · {name}" (or "Held"); stay "1 h 12 min" → "1h 12m"; the "Long stay" word → the red time and (≥ 720 px)
+seats" → "{time} · {name}" (or "Held"); stay "1 h 12 min" → "1h 12m" ("72m" below 720 px, the owner's Q5); the "Long stay" word → the red time and (≥ 720 px)
 the clock mark named "Long stay"; Available gains "Tap to seat guests" ("Tap to seat" on the phone) when the table has no
 charge; header "Tables" link not on /tables, "New order" label on the phone on /tables.
 Kept true elsewhere (my call, as U2 kept its hint lines true): Settings → Business details hint "An occupied table shows
@@ -301,3 +304,16 @@ Words that stay — test-pinned today: "Service", "Floor", "Filter tables by sta
 "Occupied" / "Available" / "Reserved", the /pos refusals naming the "Tables floor", Settings' "Tables screen" card
 title; not pinned today but kept (the plan adds pins where a task touches them): "Bill not loaded", "Held", "Loading
 tables…", every toast, every dialog word, the empty and error words, "Show all tables", "Open Setup", "Try again".
+
+## 12. Changes during the build (2026-10-28)
+Decided while building, recorded so the design stays the reference (the SDD ledger keeps every ruling):
+- The owner's Q5 (section 4): the stay below 720 px reads whole minutes + "m".
+- The tile's top row has no gap: the HTML's value (values §4.1, computed `normal`). An 8 px gap cut every two-digit name
+  ("T-10" … "T-99") to "T-…" on the 390 phone; a long name that is cut now meets the seats, the HTML's own geometry
+  (values §4.7).
+- The tile's accessible name carries the seats after the name: "T-5, 4 seats, Available, Tap to seat guests — start a new
+  order" (today's tile announced its capacity; U1's table picker does). With no known stay it leaves the dash out.
+- K10 (a Reserved table holding a long-open bill, display only) keeps its long-stay signal: an sr-only "Long stay" on
+  its surface and the clock mark in its free right slot at every width ("Reserved" + the clock fits 88 px; K10's detail
+  has no time to turn red).
+- A busy or display-only money tile below 720 px gives screen readers the long stay words, never "72m".
