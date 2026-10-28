@@ -57,7 +57,7 @@ function TokensForm({ settings, section }: { settings: Settings; section: Settin
             >
               <PreviewLoadNotice template={design.draft} needsCode={tokenTemplateNeedsSlipCode} />
               <TokenSlipPreview control={control} settings={{ ...settings, tokenTemplate: design.draft }} />
-              <p className={HINT_CLASS}>It prints on the same paper as the bill. To see it on paper, save, then press Token on any order in Orders.</p>
+              <p className={HINT_CLASS}>It prints on the same paper as the bill. To see it on paper, save, then press Reprint token on any order in Orders.</p>
             </SettingsGroup>
           </div>
         </div>

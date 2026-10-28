@@ -143,20 +143,45 @@ test("PIN: the void dialog draws its scrim, panel, ✕, stepper, reason field an
   }
 });
 
-test("PIN: the confirm sheet draws its scrim and panel from the shared frame, classes unchanged", () => {
+// U2 Task 7 (2026-10-23; design 6.10): the confirm sheet's classes moved here from ConfirmDialog.tsx so the Orders cancel
+// sheet (components/orders/CancelOrderDialog.tsx) wears the same frame — the strings exactly U1's (pinned before in
+// ConfirmDialog.tsx; moved on purpose, same strings). The final fix wave (Ruling P14; moved on purpose): the panel adds
+// the bottom safe-area inset on phones, where it lies along the window's foot (U1 P49: everything at the window's foot,
+// every width) — for both callers at once; the insets are 0 in browsers, so nothing moves there.
+test("PIN: the confirm sheet's classes live in the shared frame, U1's strings with the phone's bottom inset (Ruling P14) (ConfirmDialog and the Orders cancel sheet import them)", () => {
+  const own = readSrc("lib/sheet-frame.ts");
+  assert.ok(own.includes('export const CONFIRM_SHEET_SCRIM_CLASS = cn(SHEET_SCRIM_BASE, "z-50");'), "the scrim at 50");
+  assert.match(
+    own,
+    /export const CONFIRM_SHEET_PANEL_CLASS = cn\(\s*SHEET_PANEL_BASE,\s*"max-w-\[420px\] gap-4 border border-border p-5 max-tab:pb-\[calc\(20px\+env\(safe-area-inset-bottom\)\)\] motion-safe:animate-sheet-in",?\s*\);/,
+    "the 420px bordered panel, padding 20 (20 + the bottom inset on a phone), gap 16, uncapped",
+  );
+  assertSameSet(frame.CONFIRM_SHEET_SCRIM_CLASS, "fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4 font-sans leading-[normal] text-foreground motion-safe:animate-scrim-in max-tab:items-end max-tab:p-0", "confirm scrim");
+  assert.deepEqual(
+    sorted(frame.CONFIRM_SHEET_PANEL_CLASS),
+    sorted("flex w-full max-w-[420px] flex-col gap-4 rounded-[14px] border border-border bg-card p-5 [box-shadow:var(--pop)] outline-none motion-safe:animate-sheet-in max-tab:rounded-[14px_14px_0_0] max-tab:pb-[calc(20px+env(safe-area-inset-bottom))]"),
+    "confirm panel: U1's classes plus the phone's bottom inset (Ruling P14)",
+  );
+  assert.ok(frame.CONFIRM_SHEET_PANEL_CLASS.includes("p-5"), "padding 20 everywhere else (tailwind-merge keeps p-5 beside the phone's pb)");
+  assert.equal(frame.CONFIRM_SHEET_TITLE_CLASS, "text-[18px] font-semibold tracking-[-0.01em]", "values 12.1 title: 18px 600 -.01em");
+  assert.equal(frame.CONFIRM_SHEET_BODY_CLASS, "mt-1.5 text-[14px] leading-[1.5] text-pretty text-muted-foreground", "values 12.1 body: 14px --text-2, 6px under the title, 1.5, pretty");
+  assert.equal(
+    frame.CONFIRM_SHEET_BUTTON_CLASS,
+    "flex h-[46px] w-full cursor-pointer items-center justify-center rounded-[10px] border px-1.5 py-px text-[14.5px] font-semibold disabled:cursor-not-allowed disabled:opacity-50",
+    "values 12.1 button: 46px, a 1px rule, radius 10, 14.5px 600, the UA's 1px 6px",
+  );
+  assert.equal(frame.CONFIRM_SHEET_DESTRUCTIVE_CLASS, "border-status-bad bg-status-bad text-white", "design 6.12: a destructive action in --bad with white text");
   const src = readSrc(CONFIRM);
-  assert.match(src, /import \{ SHEET_PANEL_BASE, SHEET_SCRIM_BASE \} from "@\/lib\/sheet-frame";/, "the import");
-  assert.ok(src.includes('const SHEET_SCRIM_CLASS = cn(SHEET_SCRIM_BASE, "z-50");'), "the scrim at 50");
-  assert.ok(
-    src.includes('const SHEET_PANEL_CLASS = cn(SHEET_PANEL_BASE, "max-w-[420px] gap-4 border border-border p-5 motion-safe:animate-sheet-in");'),
-    "the 420px bordered panel, padding 20, gap 16, uncapped",
-  );
-  assertSameSet(composedConst(src, "SHEET_SCRIM_CLASS"), "fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4 font-sans leading-[normal] text-foreground motion-safe:animate-scrim-in max-tab:items-end max-tab:p-0", "confirm scrim");
-  assertSameSet(
-    composedConst(src, "SHEET_PANEL_CLASS"),
-    "flex w-full max-w-[420px] flex-col gap-4 rounded-[14px] border border-border bg-card p-5 [box-shadow:var(--pop)] outline-none motion-safe:animate-sheet-in max-tab:rounded-[14px_14px_0_0]",
-    "confirm panel",
-  );
+  for (const name of ["CONFIRM_SHEET_SCRIM_CLASS", "CONFIRM_SHEET_PANEL_CLASS", "CONFIRM_SHEET_TITLE_CLASS", "CONFIRM_SHEET_BODY_CLASS", "CONFIRM_SHEET_BUTTON_CLASS", "CONFIRM_SHEET_DESTRUCTIVE_CLASS"]) {
+    assert.match(src, new RegExp(`import \\{[^}]*\\b${name}\\b[^}]*\\} from "@/lib/sheet-frame";`), `ConfirmDialog imports ${name}`);
+  }
+  for (const gone of ["const SHEET_SCRIM_CLASS", "const SHEET_PANEL_CLASS", "const SHEET_TITLE_CLASS", "const SHEET_BODY_CLASS", "const SHEET_BUTTON_CLASS", "const SHEET_DESTRUCTIVE_CLASS"]) {
+    assert.ok(!src.includes(gone), `no local copy in ConfirmDialog: ${gone}`);
+  }
+  const cancel = readSrc("components/orders/CancelOrderDialog.tsx");
+  for (const name of ["CONFIRM_SHEET_SCRIM_CLASS", "CONFIRM_SHEET_PANEL_CLASS", "CONFIRM_SHEET_TITLE_CLASS", "CONFIRM_SHEET_BODY_CLASS", "CONFIRM_SHEET_BUTTON_CLASS", "CONFIRM_SHEET_DESTRUCTIVE_CLASS", "SHEET_FIELD_CLASS"]) {
+    assert.match(cancel, new RegExp(`import \\{[^}]*\\b${name}\\b[^}]*\\} from "@/lib/sheet-frame";`), `the Orders cancel sheet imports ${name}`);
+  }
 });
 
 test("PIN: the item options modal draws its scrim, panel, note field and stepper from the shared frame, classes unchanged", () => {

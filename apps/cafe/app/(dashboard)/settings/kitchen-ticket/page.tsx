@@ -59,7 +59,7 @@ function KitchenTicketForm({ settings, section }: { settings: Settings; section:
             >
               <PreviewLoadNotice template={design.draft} />
               <KitchenTicketPreview control={control} settings={{ ...settings, kotTemplate: design.draft }} />
-              <p className={HINT_CLASS}>To see it on paper, save, then press KOT on any order in Orders.</p>
+              <p className={HINT_CLASS}>To see it on paper, save, then press Reprint KOT on any order in Orders.</p>
             </SettingsGroup>
           </div>
         </div>

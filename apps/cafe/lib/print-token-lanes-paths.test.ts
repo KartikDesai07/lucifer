@@ -108,7 +108,9 @@ test("PrintSources renders the token only for a tokenRef AND a token number; the
 test("Orders: the Token button needs a token number on a live order and is disabled while a print is being queued; reprint is always reprint:true at the bill width", () => {
   const sheet = code("components/orders/OrderDetailSheet.tsx");
   assert.ok(sheet.includes("const hasToken = order?.tokenNumber !== undefined && !isCancelled;"), "the gate");
-  assert.ok(/\{hasToken && \(\s*<Button variant="outline" onClick=\{printToken\} disabled=\{enqueuePending\}/.test(sheet), "the button: gated, disabled={enqueuePending}");
+  // U2 Task 7: the kit <Button variant="outline"> became the HTML's quick action (the tag moved on purpose; the gate and
+  // the attribute pair keep their meaning).
+  assert.ok(/\{hasToken && \(\s*<QuickAction onClick=\{printToken\} disabled=\{enqueuePending\}/.test(sheet), "the button: gated, disabled={enqueuePending}");
   assert.ok(sheet.includes("{hasToken && <TokenSlip order={order} settings={settings.data} ref={tokenRef} />}"), "the off-screen slip under the same gate");
   assert.ok(sheet.includes("useTokenPrint({ order, routePrint, localPrintOf, billPaperWidth: printCfg.bill.paperWidth })"), "the sheet's own routePrint and the BILL width");
   const hook = code("hooks/use-token-print.ts");

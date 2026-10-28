@@ -87,6 +87,13 @@ test("PIN: both parent sheets guard their outside interactions with the shared h
     /<SheetContent\s+ref=\{sheetRef\}[^>]*onInteractOutside=\{\(e\) => keepOpenForNestedDialog\(e, sheetRef\.current\)\}/,
     "the order sheet's panel ignores a press that lands in its payment or move dialog",
   );
+  // U2 Task 5: the order detail has two sheet frames (design 6.6) — the kit side sheet above (the dashboard from 1280px)
+  // and, below 1280px on both pages, the full-screen bottom sheet (the /pos cart sheet's Radix panel): the same rule.
+  assert.match(
+    order,
+    /<DialogPrimitive\.Content\s+ref=\{sheetRef\}[^>]*onInteractOutside=\{\(e\) => keepOpenForNestedDialog\(e, sheetRef\.current\)\}/,
+    "the order detail's bottom sheet ignores a nested press too",
+  );
   for (const [file, src] of [["MobileCartBar", bar], ["OrderDetailSheet", order]] as const) {
     assert.ok(!src.includes("onEscapeKeyDown"), `${file}: Escape is untouched (the top layer alone answers it, as today)`);
   }

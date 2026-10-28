@@ -1438,8 +1438,9 @@ test("LeaksCard: the HTML's Money leaks - the lost-total pill, rows of a 32px ti
 
 // Fix round 1 (item 6): the code tile takes the FIRST run of digits of the table's name, never more than fits the 40px
 // tile (T + three digits).
+// U2 Task 4 (2026-10-23): the pure helper moved to lib/orders-row.ts (the Orders rows share it); same function, same output.
 test("recentOrderCode: T + the first digit run of the table name (at most three digits); the name's letters without one", async () => {
-  const { recentOrderCode } = await import("@/components/dashboard/RecentOrders");
+  const { recentOrderCode } = await import("@/lib/orders-row");
   const at = (tableNo: string) => recentOrderCode(recentOrder("001", { tableNo }));
   assert.equal(at("T-12"), "T12", "T-12 -> T12");
   assert.equal(at("Patio 2 seat 4"), "T2", "the first run of digits only");

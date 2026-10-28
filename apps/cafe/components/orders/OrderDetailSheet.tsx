@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useReactToPrint } from "react-to-print";
-import { Printer, ChefHat, MessageCircle, HandCoins, Replace, Ticket } from "lucide-react";
+import { Ticket } from "lucide-react";
 import { toast } from "sonner";
 
-import { orderItemLabel, orderItemModifierLines, discountLineLabel } from "@pos/shared/utils";
-import { REWARD_ITEM_LINE_NOTE } from "@pos/shared/reward-redemption";
 import { chargesFromOrder } from "@pos/shared/order-charges";
-import { PAY_STYLES, type SettlementPayMode } from "@/lib/constants";
+import type { SettlementPayMode } from "@/lib/constants";
 import { inr, formatDate, cn } from "@/lib/utils";
 import { slipPrintOptions } from "@/lib/desktop-shell";
 import { printConfigOf, receiptPageStyle } from "@/lib/print";
@@ -18,26 +18,40 @@ import { useSettings } from "@/hooks/use-settings";
 import { useSettleFlow } from "@/hooks/use-settle-flow";
 import { useHostRouting } from "@/hooks/use-print-routing";
 import { useTokenPrint } from "@/hooks/use-token-print";
-import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { useMediaQuery } from "@/hooks/use-media-query";
+import { useOpenerFocus } from "@/hooks/use-opener-focus";
+import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { OrderReceipt } from "@/components/pos/OrderReceipt";
 import { KOTReceipt } from "@/components/pos/KOTReceipt";
 import { TokenSlip } from "@/components/print/slip/TokenSlip";
-import { OrderVoidTrail } from "@/components/orders/OrderVoidTrail";
+import { OrderDetailHead } from "@/components/orders/OrderDetailHead";
+import { OrderDetailBody } from "@/components/orders/OrderDetailBody";
 import { MoveTableDialog } from "@/components/orders/MoveTableDialog";
 import type { PaymentResult } from "@/components/pos/PaymentModal";
 import { collectedAmount } from "@/lib/payment-result";
-import { tokenLabelOf } from "@/lib/token-view";
+import {
+  ORDERS_XL_QUERY,
+  ORDER_DANGER_CLASS,
+  ORDER_DETAIL_COLUMN_CLASS,
+  ORDER_DETAIL_SCROLL_CLASS,
+  ORDER_DETAIL_SCROLL_OVER_FOOT_CLASS,
+  ORDER_DETAIL_SHEET_CLASS,
+  ORDER_DETAIL_SHEET_SCRIM_CLASS,
+  ORDER_DETAIL_SIDE_CLASS,
+  ORDER_EDIT_ITEMS_CLASS,
+  ORDER_QUICK_ACTION_CLASS,
+  ORDER_QUICK_LABEL_CLASS,
+  ORDER_SETTLE_CLASS,
+  detailFootClass,
+  frameInUse,
+  orderDetailFrame,
+  quickGridClass,
+  type OrderDetailFrame,
+  type OrderDetailPlace,
+} from "@/lib/orders-layout";
+import { detailFoot, quickActions, type QuickActionKey } from "@/lib/order-detail-view";
+import { offerPosTable } from "@/lib/pos-table-handoff";
 import { KITCHEN_NOTHING_TO_SEND_MESSAGE, kitchenOrderOf, orderSkipsKitchen } from "@/lib/kitchen-lines";
 import { keepOpenForNestedDialog } from "@/lib/nested-dialog";
 import type { Customer, Order, SettleOrderInput } from "@/types";
@@ -109,13 +123,33 @@ interface OrderDetailSheetProps {
   // order, Print available) or a table move — so the parent can refresh the
   // snapshot it is passing back in. Named for the settle that came first.
   onSettled?: (order: Order) => void;
+  /** Where it opens (U2 Task 5; design 6.6, Q8): "page" = the /orders column from 1280px; "overlay" (the default, the
+   *  dashboard) = a 400px side sheet from 1280px. Below 1280px both open full screen from the window's foot. */
+  place?: OrderDetailPlace;
+  /** The page's cancel (admins on /orders): the detail then offers "Cancel this order" (U2 Task 7, Ruling P6). The
+   *  dashboard provides none, so it shows none. */
+  onCancel?: (order: Order) => void;
+  /** The page's cancel sheet is open over this detail: the frame stays, as for the payment and move sheets. */
+  cancelOpen?: boolean;
+  /** The page's minute tick for the meta clock, so the head's age reads as the list's (the Orders page's useNow); without
+   *  it (the dashboard) the head keeps its own. */
+  now?: Date;
+  /** The page's list has not answered yet (a first or uncached load, a typed phone not searched yet): the column shows
+   *  nothing rather than "Select an order to see its details." */
+  listPending?: boolean;
 }
 
 export function OrderDetailSheet({
   order,
   onOpenChange,
   onSettled,
+  place = "overlay",
+  onCancel,
+  cancelOpen = false,
+  now,
+  listPending = false,
 }: OrderDetailSheetProps) {
+  const forWidth = orderDetailFrame(place, useMediaQuery(ORDERS_XL_QUERY));
   const settings = useSettings();
   // Both buttons in this sheet's footer are INDEPENDENT print sites: they fire
   // their own useReactToPrint triggers straight from onClick and never touch
@@ -127,6 +161,14 @@ export function OrderDetailSheet({
   const { routePrint, enqueuePending } = useHostRouting();
   const [settleOpen, setSettleOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
+  // One frame for the width (design 6.6): the column, the side sheet or the bottom sheet — none until the width is
+  // known — so the print sources, the settle latch and the payment preload exist once at any width. While the payment
+  // (with the customer sheet it opens), the move sheet or the page's cancel sheet is up, the frame it opened from stays
+  // (frameInUse): a frame mounted under it would take Radix's top layer and trap focus, take Escape and close the detail
+  // under the payment. Only over an order: a detail with none holds no sheet.
+  const [heldFrame, setHeldFrame] = useState(forWidth);
+  const frame = frameInUse(heldFrame, forWidth, !!order && (settleOpen || moveOpen || cancelOpen));
+  if (frame !== heldFrame) setHeldFrame(frame);
   // Ruling P38: the payment and move dialogs render beside the sheet (outside its panel), so a press that closes one of
   // them must not close the sheet too; the panel tells such a press from a tap outside every dialog.
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -135,6 +177,13 @@ export function OrderDetailSheet({
   // never a total the operator did not collect. Cleared when the popup closes.
   const [payingOrder, setPayingOrder] = useState<Order | null>(null);
   const paying = payingOrder ?? order;
+  // A detail whose order went away holds no payment or move (unreachable today; a stuck latch would pop the payment
+  // open over the next order and be hard to diagnose) — reset during render, as the frame is stored.
+  if (!order && (settleOpen || moveOpen || payingOrder)) {
+    setSettleOpen(false);
+    setMoveOpen(false);
+    setPayingOrder(null);
+  }
   // One confirmed settle (hooks/use-settle-flow.ts); outcomes show in the popup.
   // No bill prints here on a settle (owner O3) — Print stays in the footer.
   const settleFlow = useSettleFlow({
@@ -200,8 +249,6 @@ export function OrderDetailSheet({
     pageStyle: receiptPageStyle(printCfg.kot.paperWidth),
   }));
 
-  const due = order ? order.total - order.paidAmount : 0;
-  const payStyle = order ? PAY_STYLES[order.payment] : undefined;
   const restaurantName = settings.data?.restaurantName?.trim() ?? "";
   const receiptFooter = settings.data?.receiptFooter?.trim() ?? "";
   const isOpenTab = order?.status === "Pending";
@@ -235,6 +282,11 @@ export function OrderDetailSheet({
 
   const { tokenRef, printToken } = useTokenPrint({ order, routePrint, localPrintOf, billPaperWidth: printCfg.bill.paperWidth });
   const hasToken = order?.tokenNumber !== undefined && !isCancelled;
+  // The actions' words and the foot (lib/order-detail-view.ts; design 6.9): the live order's, none while a sheet closes.
+  const quick = order ? quickActions(order) : [];
+  const quickLabel = (key: QuickActionKey): string => quick.find((a) => a.key === key)?.label ?? "";
+  const foot = order ? detailFoot(order) : null;
+  const editTable = foot?.editTable ?? null;
 
   // Staff asked for this bill by tapping Print, so it is always a duplicate:
   // `reprint: true` (D-10). Without the flag the job carries the same dedupe
@@ -285,198 +337,81 @@ export function OrderDetailSheet({
   };
 
   return (
-    <Sheet open={!!order} onOpenChange={onOpenChange}>
-      <SheetContent
-        ref={sheetRef}
-        className="flex w-full flex-col gap-0 overflow-y-auto sm:max-w-md"
-        onInteractOutside={(e) => keepOpenForNestedDialog(e, sheetRef.current)}
-      >
-        <SheetHeader>
-          <SheetTitle>{order?.orderId}</SheetTitle>
-          <SheetDescription>
-            {order && (
-              <>
-                {formatDate(order.createdAt)} ·{" "}
-                {new Date(order.createdAt).toLocaleTimeString("en-IN", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-                {typeof order.tokenNumber === "number" && ` · ${tokenLabelOf(order.tokenNumber)}`}
-              </>
-            )}
-          </SheetDescription>
-        </SheetHeader>
+    <>
+      <DetailFrame frame={frame} open={!!order} waiting={listPending} onOpenChange={onOpenChange} sheetRef={sheetRef}>
+        {/* Through a sheet's close the last order stays drawn; the buttons and the print sources follow the live one. */}
+        <KeepWhileClosing show={!!order}>
+          {order && <OrderDetailHead order={order} now={now} onClose={frame === "column" ? undefined : () => onOpenChange(false)} />}
+        </KeepWhileClosing>
 
-        {order && (
-          <div className="flex flex-1 flex-col gap-4 p-4 text-sm">
-            <div className="flex flex-wrap gap-2">
-              <Badge
-                variant={order.status === "Completed" ? "default" : "secondary"}
-                className={cn(
-                  order.status === "Pending" && "bg-amber-100 text-amber-800",
-                  order.status === "Completed" && "bg-green-100 text-green-800",
-                  order.status === "Cancelled" && "bg-gray-100 text-gray-800",
-                )}
-              >
-                {order.status}
-              </Badge>
-              <Badge variant="outline" className={cn(payStyle?.color)}>
-                {payStyle?.label ?? order.payment}
-              </Badge>
-              <Badge variant="outline">{order.tableNo ?? "Walk-In"}</Badge>
-            </div>
+        {/* Under the head the body scrolls (values 11.1, 11.4): the customer row, the items box with the sums and the
+            void trail, the cancel note (OrderDetailBody, U2 Task 6), then the quick actions and "Cancel this order"
+            (U2 Task 7, values 11.7-11.8). The actions follow the live order: through a sheet's close there are none, so
+            a tap never prints a closed order. */}
+        <div data-ui="order-detail-scroll" className={cn(ORDER_DETAIL_SCROLL_CLASS, foot && ORDER_DETAIL_SCROLL_OVER_FOOT_CLASS)}>
+          <KeepWhileClosing show={!!order}>
+            {order && <OrderDetailBody order={order} />}
+          </KeepWhileClosing>
 
-            {/* Colour alone never carries this — the heading names it too, and
-                the reason/who/when make the cancellation legible on its own. */}
-            {order.status === "Cancelled" && (
-              <div className="space-y-1 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-destructive">
-                <p className="font-semibold">Cancelled</p>
-                {order.cancelReason && <p>{order.cancelReason}</p>}
-                <p className="text-xs opacity-80">
-                  {order.cancelledBy ?? "Unknown"}
-                  {order.cancelledAt && ` · ${formatDate(order.cancelledAt)}`}
-                </p>
-              </div>
-            )}
-
-            <div className="space-y-1">
-              <Row label="Customer" value={order.customerName} />
-              <Row label="Served by" value={order.receiver} />
-            </div>
-
-            <Separator />
-
-            <div className="space-y-2">
-              {order.items.map((item, i) => (
-                <div key={`${item.productId}-${i}`} className="flex justify-between gap-3">
-                  <div className="min-w-0">
-                    <span className="font-medium">
-                      {orderItemLabel(item)}
-                      {item.qty > 1 ? ` ×${item.qty}` : ""}
-                    </span>
-                    {orderItemModifierLines(item).map((line) => (
-                      <div key={line} className="text-xs text-muted-foreground">
-                        {line}
-                      </div>
-                    ))}
-                    {item.instructions && (
-                      <div className="text-xs italic text-muted-foreground">
-                        {item.instructions}
-                      </div>
-                    )}
-                    {/* CB-5B — a reward line's money is excluded from the
-                        subtotal (lib/receipt.ts's reducer skips it), so
-                        showing its real price here would make the amounts
-                        below visibly not add up. The stored `note` is
-                        preferred over the live constant so a settled order
-                        reads the same note it was issued with; only a
-                        pre-S14 reward line (stored before this field
-                        existed) falls back to it. */}
-                    {item.reward && (
-                      <div className="text-xs italic text-muted-foreground">
-                        {item.note ?? REWARD_ITEM_LINE_NOTE}
-                      </div>
-                    )}
-                  </div>
-                  {item.reward ? (
-                    <span className="whitespace-nowrap">
-                      <span className="line-through opacity-60">{inr(item.price * item.qty)}</span>{" "}
-                      FREE
-                    </span>
-                  ) : (
-                    <span>{inr(item.price * item.qty)}</span>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            <Separator />
-
-            <div className="space-y-1">
-              <Row label="Subtotal" value={inr(order.subtotal)} />
-              {order.discount > 0 && (
-                <Row label={discountLineLabel(order.discountKind)} value={`−${inr(order.discount)}`} />
-              )}
-              {/* CB-CHG — every charge line (table + staff-entered extras),
-                  from the order's own snapshot, so this sheet reads the same
-                  as the slip that was printed for the customer, even if the
-                  table has since changed what it charges. A legacy order
-                  derives to exactly the one line the old conditional showed. */}
-              {chargesFromOrder(order).map((c, i) => (
-                <Row key={`${c.label}-${i}`} label={c.label} value={`+${inr(c.amount)}`} />
-              ))}
-              <div className="flex justify-between gap-3 text-base font-bold">
-                <span>Total</span>
-                <span>{inr(order.total)}</span>
-              </div>
-              <Row label="Paid" value={inr(order.paidAmount)} />
-              {due > 0 && order.status === "Completed" && (
-                <div className="flex justify-between gap-3 font-medium text-destructive">
-                  <span>Due</span>
-                  <span>{inr(due)}</span>
-                </div>
-              )}
-            </div>
-
-            {order.voids && order.voids.length > 0 && (
-              <>
-                <Separator />
-                <OrderVoidTrail voids={order.voids} />
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Two rows at EVERY width. The sheet is at most 28rem wide
-            (sm:max-w-md above), but the SheetFooter primitive switches to a
-            single sm:flex-row line at >=640px — five buttons in 448px
-            overlapped their icons and truncated "Share" (owner screenshots,
-            2026-09-08). The secondary actions share one grid (2 columns when
-            Move table joins them, 3 otherwise) and Settle & Pay keeps a full
-            row of its own, so the primary action is never squeezed. */}
-        <SheetFooter className="flex-col gap-2 px-4 sm:flex-col sm:justify-start sm:space-x-0">
-          <div className={cn("grid gap-2", isOpenTab ? "grid-cols-2" : "grid-cols-3")}>
-            <Button variant="outline" onClick={printBill} disabled={enqueuePending} className={BRAND_CONTROL_CLASS}>
-              <Printer className="mr-2 h-4 w-4" /> Print
-            </Button>
-            <Button variant="outline" onClick={printKitchenSlip} disabled={enqueuePending} className={BRAND_CONTROL_CLASS}>
-              <ChefHat className="mr-2 h-4 w-4" /> {isCancelled ? "Notify Kitchen" : "KOT"}
-            </Button>
-            <Button variant="outline" asChild className={BRAND_CONTROL_CLASS}>
+          {/* Today's buttons under the HTML's words (design 6.9; quickActions): Print bill / Reprint bill (always a
+              duplicate), Reprint KOT / Notify kitchen, Share bill, Reprint token, Move / Assign table (all staff, no
+              admin gate: matches Settle, not Cancel). A print button is off while a print is being queued (PH-8). */}
+          {order && (
+            <div data-ui="order-detail-quick" className={quickGridClass(quick.length)}>
+              <QuickAction onClick={printBill} disabled={enqueuePending} label={quickLabel("bill")} icon={<Glyph path={QUICK_PATHS.bill} />} />
+              <QuickAction onClick={printKitchenSlip} disabled={enqueuePending} label={quickLabel("kot")} icon={<Glyph path={QUICK_PATHS.kot} />} />
               <a
-                href={
-                  order
-                    ? whatsAppLink(order, restaurantName, receiptFooter)
-                    : "#"
-                }
+                href={whatsAppLink(order, restaurantName, receiptFooter)}
                 target="_blank"
                 rel="noopener noreferrer"
+                data-ui="order-detail-quick-action"
+                className={cn(ORDER_QUICK_ACTION_CLASS, BRAND_PRESS_CLASS)}
               >
-                <MessageCircle className="mr-2 h-4 w-4" /> Share
+                <Glyph path={QUICK_PATHS.share} />
+                <span data-ui="order-detail-quick-label" className={ORDER_QUICK_LABEL_CLASS}>{quickLabel("share")}</span>
               </a>
-            </Button>
-            {hasToken && (
-              <Button variant="outline" onClick={printToken} disabled={enqueuePending} aria-label="Print token again" className={BRAND_CONTROL_CLASS}>
-                <Ticket className="mr-2 h-4 w-4" /> Token
-              </Button>
-            )}
-            {/* Same live-tab gate as Settle & Pay. A walk-in open tab still
-                gets this entry point — MoveTableDialog now serves ASSIGN
-                (claim a table) for a tab with none, same as it serves MOVE
-                for a seated one. Owner decision: all staff, no admin gate
-                (matches Settle, not Cancel). */}
-            {isOpenTab && (
-              <Button variant="outline" className={BRAND_CONTROL_CLASS} onClick={() => setMoveOpen(true)}>
-                <Replace className="mr-2 h-4 w-4" /> {order.tableNo ? "Move table" : "Assign table"}
-              </Button>
-            )}
-          </div>
-          {isOpenTab && (
-            <Button className={cn("w-full", BRAND_CONTROL_CLASS)} onClick={openSettle}>
-              <HandCoins className="mr-2 h-4 w-4" /> Settle &amp; Pay
-            </Button>
+              {hasToken && (
+                <QuickAction onClick={printToken} disabled={enqueuePending} label={quickLabel("token")} icon={<Ticket size={18} strokeWidth={1.8} aria-hidden className="flex-none" />} />
+              )}
+              {isOpenTab && (
+                <QuickAction onClick={() => setMoveOpen(true)} label={quickLabel("move")} icon={<Glyph path={QUICK_PATHS.move} />} />
+              )}
+            </div>
           )}
-        </SheetFooter>
+
+          {/* Ruling P6: the page's cancel (admins on /orders; the dashboard gives none), on an order not cancelled. */}
+          {order && onCancel && !isCancelled && (
+            <button type="button" data-ui="order-detail-danger" onClick={() => onCancel(order)} className={cn(ORDER_DANGER_CLASS, BRAND_PRESS_CLASS)}>
+              <Glyph path={QUICK_PATHS.ban} size={15} stroke={1.9} />
+              Cancel this order
+            </button>
+          )}
+        </div>
+
+        {/* The foot at the window's foot (values 11.9; design 6.9, Q7), an open tab only: Edit items for a tab at a
+            table — a plain /pos link (its warm prefetch reused, no ?table=) whose plain click hands the table to New
+            Order (the Floor's hand-off, no request) — then Settle & pay (today's Settle & Pay: the same latch). */}
+        {foot && (
+          <div data-ui="order-detail-foot" className={detailFootClass(editTable !== null)}>
+            {editTable !== null && (
+              <Link
+                href="/pos"
+                prefetch={false}
+                data-ui="order-detail-edit"
+                onClick={(e) => {
+                  if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) offerPosTable(editTable, Date.now());
+                }}
+                className={cn(ORDER_EDIT_ITEMS_CLASS, BRAND_PRESS_CLASS)}
+              >
+                <Glyph path={QUICK_PATHS.pencil} size={16} stroke={1.9} />
+                Edit items
+              </Link>
+            )}
+            <button type="button" data-ui="order-detail-settle" onClick={openSettle} className={cn(ORDER_SETTLE_CLASS, BRAND_PRESS_CLASS)}>
+              {foot.settleLabel}
+            </button>
+          </div>
+        )}
 
         {/* Off-screen print sources — cloned by react-to-print. */}
         <div className="pointer-events-none absolute left-[-9999px] top-0" aria-hidden>
@@ -490,7 +425,7 @@ export function OrderDetailSheet({
           />
           {hasToken && <TokenSlip order={order} settings={settings.data} ref={tokenRef} />}
         </div>
-      </SheetContent>
+      </DetailFrame>
 
       {order && paying && (
         <PaymentModal
@@ -533,15 +468,128 @@ export function OrderDetailSheet({
         onOpenChange={setMoveOpen}
         onMoved={(moved) => onSettled?.(moved)}
       />
+    </>
+  );
+}
+
+interface DetailFrameProps {
+  frame: OrderDetailFrame | null;
+  /** An order is shown (the sheets open with it). */
+  open: boolean;
+  /** The page's list has not answered yet: the column shows nothing. */
+  waiting: boolean;
+  onOpenChange: (open: boolean) => void;
+  sheetRef: RefObject<HTMLDivElement | null>;
+  children: ReactNode;
+}
+
+// The detail's three frames (U2 Task 5; design 6.6; values 11.1, 12, 13), one per width. The column (/orders from
+// 1280px) is a plain flex column filling the page's 400px column, no dialog and no ✕; with nothing chosen it shows the
+// HTML's words once the list has answered (nothing before). The side sheet (the dashboard from 1280px) is the kit sheet
+// over its scrim. The bottom sheet (both pages below 1280px) is the /pos cart sheet's: a Radix dialog over the whole
+// window, its overlay mounted and never drawn. Escape and the head's ✕ close both sheets; ruling P38: a press that
+// closes a nested dialog (the payment, the move: rendered beside the frame) never closes the sheet beneath. Both sheets
+// open from state, with no Radix trigger: the shared opener hook (U1 ruling P22; V-C F4) gives the focus back to what
+// opened them (a row's title or Settle, a dashboard tile) as they close, the panel taking it as they open.
+function DetailFrame({ frame, open, waiting, onOpenChange, sheetRef, children }: DetailFrameProps) {
+  const openerFocus = useOpenerFocus();
+  if (frame === null) return null;
+  if (frame === "column") {
+    return (
+      <div data-ui="order-detail" className={ORDER_DETAIL_COLUMN_CLASS}>
+        {open ? (
+          children
+        ) : waiting ? null : (
+          <p data-ui="order-detail-none" className="m-auto p-6 text-center text-[14px] text-muted-foreground">
+            Select an order to see its details.
+          </p>
+        )}
+      </div>
+    );
+  }
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      {frame === "side" ? (
+        <SheetContent
+          ref={sheetRef}
+          {...openerFocus}
+          data-ui="order-detail"
+          aria-describedby={undefined}
+          className={ORDER_DETAIL_SIDE_CLASS}
+          onInteractOutside={(e) => keepOpenForNestedDialog(e, sheetRef.current)}
+        >
+          {children}
+        </SheetContent>
+      ) : (
+        <DialogPrimitive.Portal>
+          <DialogPrimitive.Overlay className={ORDER_DETAIL_SHEET_SCRIM_CLASS} />
+          <DialogPrimitive.Content
+            ref={sheetRef}
+            {...openerFocus}
+            data-ui="order-detail"
+            aria-describedby={undefined}
+            className={ORDER_DETAIL_SHEET_CLASS}
+            onInteractOutside={(e) => keepOpenForNestedDialog(e, sheetRef.current)}
+          >
+            {children}
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+      )}
     </Sheet>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+// Radix keeps a closing sheet's panel mounted while it slides away, but by then `order` is null: this keeps the last
+// shown head and body on screen through that close (set after each commit with an order, so a render that is thrown
+// away never changes it). Only the display: the buttons, their guards and the print sources always follow the live
+// `order`, so a tap during the slide still refuses a closed order (PRINT_ORDER_CHANGED_MESSAGE).
+function KeepWhileClosing({ show, children }: { show: boolean; children: ReactNode }) {
+  const last = useRef<ReactNode>(null);
+  useLayoutEffect(() => {
+    if (show) last.current = children;
+  });
+  return show ? children : last.current;
+}
+
+/** The HTML's action glyphs (values 11.7 `IP`, 11.8, 11.9), 24x24 outline paths: the printer, the cloche, the speech
+ *  bubble, the two arrows, the ban sign and the pencil (the token's is our ticket glyph, lucide's Ticket). */
+const QUICK_PATHS = {
+  bill: "M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z",
+  kot: "M6 13a6 6 0 1 1 12 0v2H6zM5 19h14M12 7V4",
+  share: "M21 12a9 9 0 0 1-13.5 7.8L3 21l1.2-4.5A9 9 0 1 1 21 12z",
+  move: "M5 9l-3 3 3 3M19 9l3 3-3 3M2 12h20",
+  ban: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM5.6 5.6l12.8 12.8",
+  pencil: "M4 20h4L19 9l-4-4L4 16zM14 6l4 4",
+} as const;
+
+/** One glyph: round caps and joins, never shrinking; a quick action's 18px at stroke 1.8 unless told otherwise. */
+function Glyph({ path, size = 18, stroke = 1.8 }: { path: string; size?: number; stroke?: number }) {
   return (
-    <div className="flex justify-between gap-3">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="min-w-0 break-words">{value}</span>
-    </div>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round" aria-hidden className="flex-none">
+      <path d={path} />
+    </svg>
+  );
+}
+
+interface QuickActionProps {
+  onClick: () => void;
+  disabled?: boolean;
+  label: string;
+  icon: ReactNode;
+}
+
+/** A quick action (values 11.7): the HTML's 62px cell, its icon over its label, with the HTML's press. */
+function QuickAction({ onClick, disabled, label, icon }: QuickActionProps) {
+  return (
+    <button
+      type="button"
+      data-ui="order-detail-quick-action"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(ORDER_QUICK_ACTION_CLASS, BRAND_PRESS_CLASS)}
+    >
+      {icon}
+      <span data-ui="order-detail-quick-label" className={ORDER_QUICK_LABEL_CLASS}>{label}</span>
+    </button>
   );
 }

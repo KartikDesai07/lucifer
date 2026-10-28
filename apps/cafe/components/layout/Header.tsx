@@ -16,6 +16,7 @@ import { useSettings } from "@/hooks/use-settings";
 import { APP_NAME } from "@/lib/constants";
 import { productImageUrl } from "@/lib/images";
 import { headerWordsFor } from "@/lib/page-titles";
+import { isOrdersPath } from "@/lib/orders-layout";
 import { isPosPath } from "@/lib/pos-layout";
 import type { PrinterDotTone } from "@/lib/printer/printer-dot";
 
@@ -34,9 +35,13 @@ const HEADER_CLOCK_MS = 60_000;
 // right-aligned, with the page's switch-order button in it (U1 Task 6: the HTML's own 42px button, so the box drops the
 // header-button look there); the clock block follows; no quick links. While the room rule has a part out
 // (data-room-out), the header is that part's positioned ancestor.
+// On /orders (U2 Task 1; the Orders values 1.2, design 6.1) it is the HTML's Orders header: the title header with
+// data-orders making its gaps 12px (U0's 10px on every other page); New order keeps its label on the phone there
+// (HeaderQuickTabs).
 export function Header() {
   const pathname = usePathname() ?? "";
   const pos = isPosPath(pathname);
+  const orders = isOrdersPath(pathname);
   const settings = useSettings();
   const name = settings.data?.restaurantName?.trim() || APP_NAME;
   // The cafe's own logo only (ruling R3), as the nav's brand tile.
@@ -53,7 +58,7 @@ export function Header() {
   const room = usePosHeaderRoom(pos, actionsBox);
 
   return (
-    <header className="sticky top-0 z-[3] flex min-h-14 items-center gap-2.5 border-b border-border bg-card px-3 leading-[normal] text-foreground tab:px-5 data-pos:static data-pos:z-auto data-pos:h-14 data-pos:min-w-0 data-pos:gap-4 data-room-out:relative" data-ui="header" data-pos={pos ? "" : undefined} data-room-out={room.level > 0 ? "" : undefined}>
+    <header className="sticky top-0 z-[3] flex min-h-14 items-center gap-2.5 border-b border-border bg-card px-3 leading-[normal] text-foreground tab:px-5 data-pos:static data-pos:z-auto data-pos:h-14 data-pos:min-w-0 data-pos:gap-4 data-orders:gap-3 data-room-out:relative" data-ui="header" data-pos={pos ? "" : undefined} data-orders={orders ? "" : undefined} data-room-out={room.level > 0 ? "" : undefined}>
       {pos ? (
         <PosHeaderBrand name={name} logoUrl={logoUrl} room={room} />
       ) : (

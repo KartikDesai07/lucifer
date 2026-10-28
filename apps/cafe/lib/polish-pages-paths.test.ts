@@ -41,7 +41,15 @@ const STAFF_PAGE = page("staff");
 const SHELL = cmp("menu/MenuPageShell.tsx");
 const BRAND = cmp("brand/brand-classes.ts");
 const ORDER_TABLE = cmp("orders/OrderTable.tsx");
-const ORDER_FILTER_SELECT = cmp("orders/OrderFilterSelect.tsx");
+// U2 Task 4 (2026-10-23): the Orders list's words (rows, list head, empty box) and the parts around the list box join the
+// copy-hygiene files.
+const ORDERS_ROW = "apps/cafe/lib/orders-row.ts";
+const ORDERS_LIST_PARTS = cmp("orders/OrdersListParts.tsx");
+// U2 Task 3 (2026-10-23): the old filter selects (OrderFilterSelect.tsx) are gone; the toolbar, the date box and the
+// Filters panel with its chips take their place, and join the copy-hygiene files.
+const ORDERS_TOOLBAR = cmp("orders/OrdersToolbar.tsx");
+const ORDERS_DATE_BOX = cmp("orders/OrdersDateBox.tsx");
+const ORDERS_FILTERS_PANEL = cmp("orders/OrdersFiltersPanel.tsx");
 const CANCEL_ORDER_DIALOG = cmp("orders/CancelOrderDialog.tsx");
 const REQUESTS_BOARD = cmp("orders/RequestsBoard.tsx");
 const ORDER_REQUEST_CARD = cmp("orders/OrderRequestCard.tsx");
@@ -219,8 +227,47 @@ const shellMutations = (wide: boolean): Mutation[] => {
   ];
 };
 
+// U2 Task 1 (2026-10-23; design 5, values 1.1 / 2.1 in docs/superpowers/specs/2026-10-22-orders-html-values.md): Orders
+// left MenuPageShell. The owner's HTML Orders screen fills the screen under the shell's header like /pos (no paper
+// frame, no 1440px cap): its own frame from lib/orders-layout.ts, whose classes lib/orders-layout.test.ts pins. This
+// pin keeps the frame in the page and MenuPageShell out of it.
+const ORDERS_FRAME_OPEN = '<div data-ui="orders-page" className={ORDERS_PAGE_CLASS}>';
+const ORDERS_FRAME_RETURN_RE = /return \(\s*<div data-ui="orders-page" className=\{ORDERS_PAGE_CLASS\}>\s*<PageHeader(?![\w$])/;
+const ORDERS_LAYOUT_IMPORT_RE = /import\s*\{[^}]*\bORDERS_PAGE_CLASS\b[^}]*\}\s*from\s*"@\/lib\/orders-layout"/;
+const ORDERS_FRAME_REGIONS = [
+  'data-ui="orders-body" className={ORDERS_BODY_CLASS}',
+  'data-ui="orders-list" className={ORDERS_LIST_COLUMN_CLASS}',
+  'data-ui="orders-detail-column" className={ORDERS_DETAIL_COLUMN_CLASS}',
+];
+
+const pinOrdersFrame: Pin = (raw) => {
+  const p: string[] = [];
+  const s = strip(raw);
+  check(p, !/\bMenuPageShell\b/.test(s), "Orders must not use MenuPageShell (design 5: the HTML's screen fills the screen, no 1440px cap)");
+  check(p, ORDERS_LAYOUT_IMPORT_RE.test(s), 'must import ORDERS_PAGE_CLASS from "@/lib/orders-layout"');
+  const body = bodyAfter(s, "export default function");
+  check(p, body !== null, "landmark: a default-exported page function must exist");
+  if (body === null) return p;
+  check(p, ORDERS_FRAME_RETURN_RE.test(body), "the default export must return the frame (orders-page, ORDERS_PAGE_CLASS) with <PageHeader> as its first child");
+  for (const region of ORDERS_FRAME_REGIONS) check(p, body.includes(region), `the frame must render ${region}`);
+  return p;
+};
+
+const ORDERS_FRAME_CASE: PinCase = {
+  file: ORDERS_PAGE,
+  pin: pinOrdersFrame,
+  mutations: [
+    rep("wrap the frame in MenuPageShell again", ORDERS_FRAME_OPEN, `<MenuPageShell>${ORDERS_FRAME_OPEN}`),
+    { name: "the MenuPageShell import comes back", apply: (src) => `${SHELL_IMPORT_LINE}\n${src}` },
+    rep("drop the page's frame class", "className={ORDERS_PAGE_CLASS}", 'className="flex flex-col"'),
+    rep("a body row before the header (PageHeader no longer the frame's first child)", ORDERS_FRAME_OPEN, `${ORDERS_FRAME_OPEN}\n      <div />`),
+    rep("the body grid's class swapped for a literal", "className={ORDERS_BODY_CLASS}", 'className="grid"'),
+    rep("drop the detail column slot's name", 'data-ui="orders-detail-column" ', ""),
+    rep("the frame's classes imported from elsewhere", 'from "@/lib/orders-layout"', 'from "@/lib/pos-layout"'),
+  ],
+};
+
 const SHELL_PAGES: ReadonlyArray<readonly [string, boolean]> = [
-  [ORDERS_PAGE, false],
   [REQUESTS_PAGE, false],
   [KITCHEN_PAGE, true],
   [RESERVATIONS_PAGE, false],
@@ -230,6 +277,7 @@ const SHELL_PAGES: ReadonlyArray<readonly [string, boolean]> = [
 
 const SHELL_CASES: PinCase[] = [
   ...SHELL_PAGES.map(([file, wide]): PinCase => ({ file, pin: pinPageShell(wide), mutations: shellMutations(wide) })),
+  ORDERS_FRAME_CASE,
   {
     file: STAFF_PAGE,
     pin: pinStaffShell,
@@ -364,11 +412,22 @@ const pinHeaderFirst =
     return p;
   };
 
-const earlyReturn = (anchorJsx: string): Mutation =>
+/** How a page's return opens before its <PageHeader>: a fragment, or (U2 Task 1) the Orders frame. */
+interface ReturnOpen {
+  re: RegExp;
+  head: string;
+}
+const FRAGMENT_OPEN: ReturnOpen = { re: /return \(\s*<>\s*<PageHeader/, head: "<>" };
+const ORDERS_RETURN_OPEN: ReturnOpen = {
+  re: /return \(\s*<div data-ui="orders-page" className=\{ORDERS_PAGE_CLASS\}>\s*<PageHeader/,
+  head: '<div data-ui="orders-page" className={ORDERS_PAGE_CLASS}>',
+};
+
+const earlyReturn = (anchorJsx: string, open: ReturnOpen = FRAGMENT_OPEN): Mutation =>
   repRe(
     `an early return renders ${anchorJsx} before the header`,
-    /return \(\s*<>\s*<PageHeader/,
-    `if (failed) { return ${anchorJsx}; }\n  return (<><PageHeader`,
+    open.re,
+    `if (failed) { return ${anchorJsx}; }\n  return (${open.head}<PageHeader`,
   );
 
 const RETRY_MUTATIONS: Mutation[] = [
@@ -389,7 +448,7 @@ const ERROR_CASES: PinCase[] = [
       ...RETRY_MUTATIONS,
       rep("drop the no-data half of the guard", "orders.isError && !orders.data", "orders.isError"),
       rep("rename `orders.data` in the guard (substring trap)", "!orders.data ?", "!orders.dataset ?"),
-      earlyReturn("<ErrorState />"),
+      earlyReturn("<ErrorState />", ORDERS_RETURN_OPEN),
     ],
   },
   {
@@ -580,7 +639,9 @@ const offlineTernaryCase = (file: string, obj: string, empty: string, dataGuard:
 };
 
 const OFFLINE_CASES: PinCase[] = [
-  offlineTernaryCase(ORDERS_PAGE, "orders", "list.length === 0", "!orders.data"),
+  // U2 Task 2 (owner Q2, Q3): the empty state reads the rows the chosen lane shows (`shown`, laneRows of the loaded
+  // `list`), so a Paid / Due page with no row of its own is empty; same pin, the branch head moved with the code.
+  offlineTernaryCase(ORDERS_PAGE, "orders", "shown.length === 0", "!orders.data"),
   offlineTernaryCase(RESERVATIONS_PAGE, "reservations", "list.length === 0 && isFiltered", "reservations.data === undefined"),
   offlineTernaryCase(EVENTS_PAGE, "events", "list.length === 0 && status !== ALL", "events.data === undefined"),
   {
@@ -635,6 +696,8 @@ interface FilterEmptySpec {
   label: string;
   handler: string;
   branch?: { cond: string; before: string };
+  /** The element that draws the empty state (default the shared <EmptyState>). */
+  landmark?: string;
 }
 
 const pinFilterEmpty =
@@ -642,7 +705,8 @@ const pinFilterEmpty =
   (raw) => {
     const p: string[] = [];
     const s = strip(raw);
-    check(p, s.includes("<EmptyState"), "landmark: an <EmptyState> must exist");
+    const landmark = spec.landmark ?? "<EmptyState";
+    check(p, s.includes(landmark), `landmark: ${landmark} must exist (it draws the empty state)`);
     for (const title of spec.titles) check(p, s.includes(`"${title}"`), `the filter-empty title "${title}" must exist`);
     const hit = new RegExp(`>\\s*${escapeRe(spec.label)}\\s*<`).exec(s);
     check(p, hit !== null, `the way-back button "${spec.label}" must exist`);
@@ -661,13 +725,29 @@ const pinFilterEmpty =
   };
 
 const FILTER_EMPTY_CASES: PinCase[] = [
+  // U2 Task 4 (2026-10-23; design 6.5, 11; values 13): the empty box is the HTML's, drawn inside the list box by
+  // OrderTable.tsx; its words come from lib/orders-row.ts emptyText ("No matching orders" became the HTML's "No orders
+  // match these filters" / "Remove a filter to see more.", unit-pinned in orders-row.test.ts). The page keeps our way
+  // back: "Clear filters" wired to clearFilters. Ruling P5: only the payment and the table are filters (never the date,
+  // the phone's date chip included; a typed phone keeps its own words), and the way back shows exactly with the
+  // filters words.
   {
     file: ORDERS_PAGE,
-    pin: pinFilterEmpty({ titles: ["No matching orders"], label: "Clear filters", handler: "onClick={clearFilters}" }),
+    pin: all(
+      pinFilterEmpty({ titles: [], label: "Clear filters", handler: "onClick={clearFilters}", landmark: "<OrderTable" }),
+      pinRegexes([
+        [/\bconst filtersOn = Boolean\(filters\.payment \|\| filters\.tableNo\);/, "filters = the payment and the table only (Ruling P5)"],
+        [/\bemptyText\(\{[^}]*\bfiltersOn,/, "the empty words read filtersOn"],
+        [/\bemptyAction=\{\s*filtersOn && !searching \?/, "the way back shows exactly with the filters words (emptyAction={filtersOn && !searching ? ...)"],
+      ]),
+    ),
     mutations: [
       rep('rename "Clear filters"', "Clear filters", "Reset"),
       repEvery("unwire the handler", "onClick={clearFilters}", "onClick={undefined}"),
-      rep("drop the filtered title", 'filtersActive ? "No matching orders" : "No orders yet"', '"No orders yet"'),
+      rep("the date chips count again", "const filtersOn = Boolean(filters.payment || filters.tableNo);", "const filtersOn = chips.length > 0;"),
+      rep("the words never know about filters", "                          filtersOn,", "                          filtersOn: false,"),
+      rep("the way back shows over a search's words", "filtersOn && !searching ?", "filtersOn ?"),
+      repRe("the way back never shows", /emptyAction=\{\s*filtersOn && !searching \?/, "emptyAction={false ?"),
     ],
   },
   {
@@ -715,7 +795,7 @@ const FILTER_EMPTY_CASES: PinCase[] = [
   },
 ];
 
-// ── D5: table -> cards at its breakpoint (lg; xl for Orders and Events) ──────
+// ── D5: table -> cards at its breakpoint (lg; xl for Events; Orders by its list's width, U2) ──────
 type Breakpoint = "md" | "lg" | "xl";
 const BREAKPOINTS: readonly Breakpoint[] = ["md", "lg", "xl"];
 
@@ -766,8 +846,9 @@ const switchMutations = (bp: Breakpoint, need: SwitchNeed): Mutation[] => {
   return ms;
 };
 
+// U2 Task 4 (2026-10-23): OrderTable left this list on purpose (P15): the owner's HTML switches the Orders list by the
+// list's own width, not the window's (ORDER_LIST_CASE below).
 const SWITCH_SPECS: ReadonlyArray<readonly [string, Breakpoint, SwitchNeed]> = [
-  [ORDER_TABLE, "xl", { block: true, hidden: true }],
   [RESERVATIONS_PAGE, "lg", { block: false, hidden: true }],
   [RESERVATIONS_TABLE, "lg", { block: true, hidden: false }],
   [EVENTS_PAGE, "xl", { block: false, hidden: true }],
@@ -776,11 +857,53 @@ const SWITCH_SPECS: ReadonlyArray<readonly [string, Breakpoint, SwitchNeed]> = [
   [STAFF_PAGE, "lg", { block: true, hidden: true }],
 ];
 
-const SWITCH_CASES: PinCase[] = SWITCH_SPECS.map(([file, bp, need]) => ({
-  file,
-  pin: pinSwitch(bp, need),
-  mutations: switchMutations(bp, need),
-}));
+// U2 Task 4 (2026-10-23; design 5, 6.4; values 0.2, 8, 9): the Orders list (OrderTable.tsx) switches by the list's
+// width: the table rows and head from a 700px list, the card rows below it; no viewport block/hidden/grid/flex switch
+// remains. Today's row icon buttons (View, Settle, Cancel; P16) are gone: the whole row opens the order through its title
+// button, the table row's "Settle" opens it too (Q6), and Cancel moves into the detail (design 6.9). The verification fix
+// (V-A, classic scrollbars; moved on purpose): the width is the list COLUMN's — the named container `list`
+// (lib/orders-layout.ts ORDERS_LIST_COLUMN_CLASS), outside the list scroller — so the switch sits at 740px (the HTML's
+// 700px list + the scroller's 20 + 20): `hidden @min-[740px]/list:grid`, `@min-[740px]/list:hidden`; the list keeps no
+// container of its own inside the scroller, where a ~15px classic scrollbar narrowed it.
+const VIEWPORT_SWITCH_RE = /(?<![\w:@[-])(?:sm|md|lg|xl):(?:block|hidden|grid|flex)(?![\w-])/;
+const pinOrderList: Pin = (raw) => {
+  const p: string[] = [];
+  const s = strip(raw);
+  const literals = Array.from(s.matchAll(/"([^"\n]*)"/g), (m) => m[1].split(/\s+/).filter(Boolean));
+  check(p, !literals.some((t) => t.some((c) => c.startsWith("@container"))), "the list keeps no @container of its own inside the scroller (a classic scrollbar narrows it): it reads the list column's named `list` (values 0.2)");
+  check(p, literals.some((t) => t.includes("hidden") && t.includes("@min-[740px]/list:grid")), "a class string must carry `hidden` AND `@min-[740px]/list:grid` (the table)");
+  check(p, literals.some((t) => t.includes("@min-[740px]/list:hidden")), "a class string must carry `@min-[740px]/list:hidden` (the cards)");
+  check(p, !/@min-\[\d+px\]:/.test(s), "no unnamed container query (it would measure a nearer container, not the list column)");
+  check(p, !VIEWPORT_SWITCH_RE.test(s), "no viewport block/hidden/grid/flex switch may remain (the list follows its own width)");
+  check(p, s.includes('data-ui="orders-row-settle"'), "landmark: the table row's Settle exists");
+  check(p, !s.includes('size="icon"') && !/\bBRAND_ROW_ACTION_CLASS\b/.test(s), "no icon-only row actions (design 6.4: the whole row opens the order)");
+  check(p, !s.includes('aria-label="View order"') && !s.includes('aria-label="Cancel order"'), "no View / Cancel row icons");
+  return p;
+};
+
+const ORDER_LIST_CASE: PinCase = {
+  file: ORDER_TABLE,
+  pin: pinOrderList,
+  mutations: [
+    repEvery("the table switched at the window's xl", "@min-[740px]/list:grid", "xl:grid"),
+    repEvery("the cards switched at the window's xl", "@min-[740px]/list:hidden", "xl:hidden"),
+    repEvery("the threshold drifts back to the list's own 700px", "@min-[740px]/list:hidden", "@min-[700px]/list:hidden"),
+    rep("a stale xl:hidden beside it", "@min-[740px]/list:hidden", "@min-[740px]/list:hidden xl:hidden"),
+    rep("the list measures inside the scroller again (a container of its own)", 'const BOX_CLASS = "', 'const BOX_CLASS = "@container '),
+    repEvery("an unnamed query (the nearest container, not the list column)", "@min-[740px]/list:", "@min-[740px]:"),
+    rep("a View icon comes back", 'data-ui="orders-row-settle"', 'data-ui="orders-row-settle" aria-label="View order"'),
+    { name: "an icon button comes back", apply: (src) => `${src}\nexport const probe = <Button size="icon" />;\n` },
+  ],
+};
+
+const SWITCH_CASES: PinCase[] = [
+  ...SWITCH_SPECS.map(([file, bp, need]) => ({
+    file,
+    pin: pinSwitch(bp, need),
+    mutations: switchMutations(bp, need),
+  })),
+  ORDER_LIST_CASE,
+];
 
 // ── D3: shared brand constants ──────────────────────────────────────────────
 const CLASS_TOKENS: ReadonlyArray<readonly [string, string[]]> = [
@@ -872,18 +995,22 @@ const CONTROL_FILES = [
   EVENTS_PAGE,
   STAFF_PAGE,
   CUSTOMER_STATUS,
-  ORDER_FILTER_SELECT,
-  CANCEL_ORDER_DIALOG,
   ORDER_REQUEST_CARD,
   RECEIVE_PAYMENT_DIALOG,
 ];
+// U2 Task 7 (2026-10-23; design 6.10): CancelOrderDialog left the control list on purpose (P22): it is the owner's HTML
+// confirm sheet now (lib/sheet-frame.ts CONFIRM_SHEET_*: its 48px field and 46px buttons, no h-10 kit control);
+// lib/orders-cancel-paths.test.ts pins it. It stays in the copy-hygiene list (P23).
+// U2 Task 4 (2026-10-23): the Orders page and OrderTable left the panel, contain and row-action lists on purpose (P6,
+// P16): the list box is the owner's HTML surface (--surface, 1px --border, radius 12; values 8.1) drawn by OrderTable.tsx,
+// not the brand paper panel; it is no kit <Table> (no inline-size containment: it reads the list column's @container); its row
+// icon buttons are gone (design 6.4). ORDER_LIST_CASE (D5) pins the new list; the page keeps BRAND_CONTROL_CLASS on
+// "Clear filters".
 const PANEL_FILES = [
-  ORDERS_PAGE,
   RESERVATIONS_PAGE,
   EVENTS_PAGE,
   CUSTOMERS_PAGE,
   STAFF_PAGE,
-  ORDER_TABLE,
   ORDER_REQUEST_CARD,
   KITCHEN_ORDER,
   RESERVATIONS_TABLE,
@@ -896,9 +1023,8 @@ const PANEL_FILES = [
   STAFF_STATUS,
   STAFF_CARD,
 ];
-const TABLE_CONTAIN_FILES = [ORDER_TABLE, RESERVATIONS_TABLE, EVENTS_TABLE, CUSTOMER_TABLE, STAFF_PAGE];
+const TABLE_CONTAIN_FILES = [RESERVATIONS_TABLE, EVENTS_TABLE, CUSTOMER_TABLE, STAFF_PAGE];
 const ROW_ACTION_FILES = [
-  ORDER_TABLE,
   RESERVATIONS_TABLE,
   RESERVATION_CARD,
   EVENTS_TABLE,
@@ -1250,7 +1376,11 @@ const COPY_FILES = [
   SHELL,
   BRAND,
   ORDER_TABLE,
-  ORDER_FILTER_SELECT,
+  ORDERS_ROW,
+  ORDERS_LIST_PARTS,
+  ORDERS_TOOLBAR,
+  ORDERS_DATE_BOX,
+  ORDERS_FILTERS_PANEL,
   CANCEL_ORDER_DIALOG,
   REQUESTS_BOARD,
   ORDER_REQUEST_CARD,
@@ -1292,7 +1422,8 @@ interface Group {
 
 const GROUPS: Group[] = [
   {
-    title: "PIN D1: every page renders inside MenuPageShell (Kitchen wide, Staff guard outside) and the shell takes `wide`",
+    title:
+      "PIN D1: every page renders inside MenuPageShell (Kitchen wide, Staff guard outside) and the shell takes `wide`; Orders fills the screen in its own frame (U2)",
     cases: SHELL_CASES,
   },
   { title: "PIN D2: PageHeader carries the sidebar-group eyebrow and the sidebar-row title", cases: HEADER_CASES },
@@ -1305,7 +1436,7 @@ const GROUPS: Group[] = [
     title: "PIN D4: a filter or search that matches nothing has its own empty state with a way back",
     cases: FILTER_EMPTY_CASES,
   },
-  { title: "PIN D5: tables become cards at their breakpoint (xl for Orders and Events, lg for the rest), no stale switch", cases: SWITCH_CASES },
+  { title: "PIN D5: tables become cards at their breakpoint (xl for Events, lg for the rest; Orders by its list's own width, U2), no stale switch", cases: SWITCH_CASES },
   { title: "PIN D3: the shared brand constants are defined and used where the plan says", cases: BRAND_CASES },
   {
     title: "PIN D6: Cancel reservation, Cancel event and Receive balance run from the ConfirmDialog, never the row button",
