@@ -252,6 +252,20 @@ test("FloorTile: a long stay on a div surface (K10, a busy tile) is said by an s
   for (const kind of ["K9", "K8H"] as const) assert.equal(tagsOf(renderTile(KINDS[kind]), "floor-tile-long-stay").length, 0, `${kind}: no long stay, no word`);
 });
 
+// Re-review 2 N2: a div surface reads its own text, so below 720px a reader would say "72m" ("72 metres"); there the
+// phone's minutes are hidden from readers and an sr-only copy of the words is read, below 720px only (never twice).
+test("FloorTile: a busy money tile says '1h 12m' below 720px, never '72m'; a link has no spoken copy (its aria-label wins)", () => {
+  const busy = renderTile(KINDS.K1H, false, true);
+  assert.match(tagOf(busy, "floor-tile"), /^<div /, "busy K1H: a div surface");
+  assert.match(tagOf(busy, "floor-tile-stay-phone"), /aria-hidden="true"/, "busy K1H: the phone's minutes hidden from readers");
+  assert.ok(!tagOf(busy, "floor-tile-stay-wide").includes("aria-hidden"), "busy K1H: the words from 720px read as shown");
+  expectAll(tagOf(busy, "floor-tile-spoken-stay"), ["sr-only", FLOOR_DETAIL_PHONE_CLASS], "busy K1H: the sr-only words, below 720px only");
+  assert.equal(textOf(busy, "floor-tile-spoken-stay"), "1h 12m", "busy K1H: the long words");
+  const link = renderTile(KINDS.K1H);
+  assert.match(tagOf(link, "floor-tile"), /^<a /, "K1H: a link surface");
+  assert.equal(tagsOf(link, "floor-tile-spoken-stay").length, 0, "K1H link: no spoken copy (its aria-label wins)");
+});
+
 // ── FloorAreaSections, rendered ─────────────────────────────────────────────────────────────────────────────────────
 
 test("FloorAreaSections: per area the HTML's head (name, '{n} tables' / '1 table') over the shared grid, no divider", () => {

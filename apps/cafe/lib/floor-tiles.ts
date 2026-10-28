@@ -115,8 +115,9 @@ export function longStay(minutes: number | null, thresholdMinutes: number): bool
   return minutes !== null && minutes >= thresholdMinutes;
 }
 
-/** The stay words (design 6.5): "Just now", "{m} min" under an hour (the HTML's), then "{h}h {m}m" ("1h 0m", "1h 8m": U2's
- *  Orders age shape, so "₹1,063 · 1h 8m" fits the phone line; the HTML's "68 min" has no hour rollover, values 12 #11). */
+/** The stay words (design 6.5): "Just now", "{m} min" under an hour (the HTML's), then "{h}h {m}m" ("1h 0m", "1h 8m", U2's
+ *  Orders age shape; the HTML's "68 min" has no hour rollover, values 12 #11). The hour form is the stay from 720px; below
+ *  720px the tile shows formatStayMinutesShort ("68m", the owner's answer 2026-10-28). */
 export function formatStayMinutes(minutes: number | null): string {
   if (minutes === null || !Number.isFinite(minutes)) return NO_STAY_TEXT;
   if (minutes < 1) return "Just now";

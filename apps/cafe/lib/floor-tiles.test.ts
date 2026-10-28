@@ -134,7 +134,7 @@ test("minutesOpen: clock skew reads Just now, a bad date is null", () => {
 });
 
 // U3 Task 3 (stay words moved on purpose, design 6.5 "Time words"): "{m} min" under an hour (the HTML's), "{h}h {m}m"
-// from an hour (U2's Orders age shape; the HTML writes "68 min", values 12 #11), so "₹1,063 · 1h 8m" fits the phone line.
+// from an hour (U2's Orders age shape; the HTML writes "68 min", values 12 #11), the stay from 720px (below: the next test).
 test("formatStayMinutes: Just now, {m} min, {h}h {m}m, a dash without a clock", () => {
   assert.equal(formatStayMinutes(0), "Just now", "under a minute");
   assert.equal(formatStayMinutes(38), "38 min", "under an hour");

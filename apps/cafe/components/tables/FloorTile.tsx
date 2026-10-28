@@ -48,19 +48,29 @@ function offerOnPlainClick(e: MouseEvent<HTMLAnchorElement>, tableNo: string) {
 }
 
 // The detail line (design 6.5): the bill and its stay (red and bold on a long stay, ruling F3), the words (the phone's
-// shorter form below 720px), or a short bar while the bills load.
-function TileDetail({ detail, longStay }: { detail: FloorDetail; longStay: boolean }) {
+// shorter form below 720px), or a short bar while the bills load. `readsText`: the surface is a div (busy, or display
+// only) with no aria-label, so a screen reader reads this line itself.
+function TileDetail({ detail, longStay, readsText }: { detail: FloorDetail; longStay: boolean; readsText: boolean }) {
   if (detail.kind === "skeleton") return <Skeleton data-ui="floor-tile-detail" className={FLOOR_DETAIL_SKELETON_CLASS} />;
   let words: ReactNode = detail.kind === "text" ? detail.text : null;
   if (detail.kind === "money") {
     // The owner's answer 2026-10-28: the stay as two spans, the K5 pair's way: its words from 720px, the phone's minutes
     // below 720px (one shows at a width); a long stay's red bold on both; the whole line still cuts with one ellipsis.
+    // Re-review 2 N2: where the line is read, "72m" (said "72 metres" by some readers) is hidden from readers and an
+    // sr-only copy of the words is read instead, below 720px only (the phone form's breakpoint), so nothing is read twice.
     const long = longStay ? FLOOR_STAY_LONG_CLASS : undefined;
     words = (
       <>
         {`${detail.amount} · `}
         <span data-ui="floor-tile-stay-wide" className={cn(FLOOR_DETAIL_WIDE_CLASS, long)}>{detail.stay}</span>
-        <span data-ui="floor-tile-stay-phone" className={cn(FLOOR_DETAIL_PHONE_CLASS, long)}>{detail.phoneStay}</span>
+        <span data-ui="floor-tile-stay-phone" className={cn(FLOOR_DETAIL_PHONE_CLASS, long)} aria-hidden={readsText || undefined}>
+          {detail.phoneStay}
+        </span>
+        {readsText && (
+          <span data-ui="floor-tile-spoken-stay" className={cn("sr-only", FLOOR_DETAIL_PHONE_CLASS)}>
+            {detail.stay}
+          </span>
+        )}
       </>
     );
   } else if (detail.phoneText) {
@@ -86,6 +96,8 @@ export function FloorTile({ tile, busy, tabsFailed, onTap, onMenu }: FloorTilePr
   const view = floorTileView(tile, tabsFailed);
   const tone = FLOOR_TILE_TONES[view.tone];
   const hasMenu = menu.length > 0;
+  // The surface below is a div (no aria-label) while busy or for a tile with no tap; a Link or button names itself.
+  const readsText = busy || primary === "none";
 
   const content = (
     <>
@@ -104,7 +116,7 @@ export function FloorTile({ tile, busy, tabsFailed, onTap, onMenu }: FloorTilePr
           {/* Today's busy spinner, at the line's end until Task 4's right slot holds it. */}
           {busy && <Loader2 className="ml-auto h-3.5 w-3.5 flex-none animate-spin" aria-hidden />}
         </span>
-        <TileDetail detail={view.detail} longStay={view.longStay} />
+        <TileDetail detail={view.detail} longStay={view.longStay} readsText={readsText} />
       </span>
     </>
   );
