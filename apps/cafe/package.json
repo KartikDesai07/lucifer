@@ -430,6 +430,7 @@
     "lib/floor-view.test.ts",
     "lib/floor-tile-slot.test.ts",
     "lib/floor-tile-rise.test.ts",
+    "lib/floor-refresh-strip.test.ts",
     "lib/tables-setup-paths.test.ts",
     "lib/pos-handoff-paths.test.ts",
     "lib/tables-route-paths.test.ts",

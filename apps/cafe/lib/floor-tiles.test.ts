@@ -12,6 +12,7 @@ import {
   filterTiles,
   floorCounts,
   floorFilterOf,
+  floorHeaderLine,
   floorSummaryText,
   formatStayMinutes,
   formatStayMinutesShort,
@@ -184,17 +185,21 @@ test("reservation: earliest Booked booking for THAT table; Seated, Cancelled and
   assert.equal(only(build([table("T-4", "Available")], [], list)).reservation, undefined);
 });
 
-test("summary text: plural, singular, running total rules", () => {
-  const tables = [table("A", "Occupied"), table("B", "Occupied"), table("C", "Available")];
-  const tabs = [tab("A", 5, { total: 640 }), tab("B", 5, { total: 4740 })];
-  assert.equal(floorSummaryText(build(tables, tabs), true), "3 tables · 2 occupied · ₹5,380 running");
-  assert.equal(floorSummaryText(build(tables, undefined), false), "3 tables · 2 occupied");
-  assert.equal(floorSummaryText(build([table("C", "Available")], []), true), "1 table · 0 occupied");
-  // A tab on an Available table is not "running" money.
-  assert.equal(
-    floorSummaryText(build([table("A", "Occupied"), table("C", "Available")], [tab("A", 1, { total: 100 }), tab("C", 1, { total: 900 })]), true),
-    "2 tables · 1 occupied · ₹100 running",
-  );
+// U3 Task 5 (moved on purpose, design 6.2 / 11, owner Q3): the HTML's "{o} of {n} occupied · {r} reserved" over the whole
+// floor (a printed bill's table counts as occupied, as the HTML's header), then ours: the running money only once the
+// bills are known and above ₹0 (today's line could read "₹0 running", inventory 11.13).
+test("floorSummaryText: the HTML's counts, then the running money only when known and above ₹0", () => {
+  const ten = [
+    table("A", "Occupied"), table("B", "Occupied"), table("C", "Occupied"), table("D", "Reserved"), table("E", "Available"),
+    table("F", "Available"), table("G", "Available"), table("H", "Available"), table("I", "Available"), table("J", "Available"),
+  ];
+  // A printed bill (B), a plain one, and an Available table holding a bill (E, K7): its money is not "running".
+  const bills = [tab("A", 5, { total: 439 }), printed(tab("B", 5, { total: 1063 })), tab("C", 5, { total: 285 }), tab("E", 5, { total: 900 })];
+  assert.equal(floorSummaryText(build(ten, bills), true), "3 of 10 occupied · 1 reserved · ₹1,787 running", "design 6.2's line");
+  assert.equal(floorSummaryText(build(ten, undefined), false), "3 of 10 occupied · 1 reserved", "the bills unknown: no money");
+  assert.equal(floorSummaryText(build(ten, []), true), "3 of 10 occupied · 1 reserved", "no open bill: never ₹0 running");
+  assert.equal(floorSummaryText([], true), "0 of 0 occupied · 0 reserved", "an empty floor");
+  assert.equal(floorSummaryText(build([table("A", "Available")], []), true), "0 of 1 occupied · 0 reserved", "one table");
 });
 
 // U3 Task 2 (design 6.3, values 2.4 / 5.2; pins moved on purpose, P25: the chips' three statuses become the HTML's five
@@ -250,11 +255,24 @@ test("FLOOR_EMPTY_FILTER_TEXT: the HTML's empty line (values 5.2)", () => {
   assert.equal(FLOOR_EMPTY_FILTER_TEXT, "No tables match this filter.", "values 5.2, design 11");
 });
 
-test("updatedLabel", () => {
-  assert.equal(updatedLabel(NOW, NOW), "Live · updated just now");
-  assert.equal(updatedLabel(NOW - 59_999, NOW), "Live · updated just now");
-  assert.equal(updatedLabel(NOW + 5_000, NOW), "Live · updated just now");
-  assert.equal(updatedLabel(NOW - 60_000, NOW), "Updated 1 min ago");
-  assert.equal(updatedLabel(NOW - 59 * MIN, NOW), "Updated 59 min ago");
-  assert.equal(updatedLabel(NOW - 60 * MIN, NOW), "Updated over an hour ago");
+// U3 Task 5 (moved on purpose, design 6.2 / 11): today's freshness rule, its first words shortened to fit the line.
+test("updatedLabel: Updated just now under a minute (or a future stamp), then minutes, then over an hour", () => {
+  assert.equal(updatedLabel(NOW, NOW), "Updated just now", "at once");
+  assert.equal(updatedLabel(NOW - 59_999, NOW), "Updated just now", "under a minute");
+  assert.equal(updatedLabel(NOW + 5_000, NOW), "Updated just now", "a future stamp (clock skew) reads as fresh");
+  assert.equal(updatedLabel(NOW - 60_000, NOW), "Updated 1 min ago", "the minute");
+  assert.equal(updatedLabel(NOW - 59 * MIN, NOW), "Updated 59 min ago", "the last minute before the hour");
+  assert.equal(updatedLabel(NOW - 60 * MIN, NOW), "Updated over an hour ago", "the hour");
+});
+
+// U3 Task 5 (design 6.2, owner Q3): the header's second line, the summary then the freshness on the same line.
+test("floorHeaderLine: the summary, then ' · ' and the freshness once the floor has a stamp", () => {
+  const tiles = build([table("A", "Occupied"), table("B", "Reserved"), table("C", "Available")], [tab("A", 5, { total: 640 })]);
+  assert.equal(
+    floorHeaderLine({ tiles, tabsKnown: true, updatedAtMs: NOW - 2 * MIN, nowMs: NOW }),
+    "1 of 3 occupied · 1 reserved · ₹640 running · Updated 2 min ago",
+    "the HTML's words, ours, the freshness",
+  );
+  assert.equal(floorHeaderLine({ tiles, tabsKnown: true, updatedAtMs: NOW - 2 * MIN, nowMs: null }), "1 of 3 occupied · 1 reserved · ₹640 running · Updated just now", "no clock yet: the stamp's own time");
+  assert.equal(floorHeaderLine({ tiles, tabsKnown: false, updatedAtMs: 0, nowMs: NOW }), "1 of 3 occupied · 1 reserved", "no stamp: the summary alone");
 });

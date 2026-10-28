@@ -4,6 +4,7 @@ import type { ComponentProps, CSSProperties } from "react";
 import { usePathname } from "next/navigation";
 
 import { Toaster } from "@/components/ui/sonner";
+import { isFloorPath } from "@/lib/floor-layout";
 import { isPosPath } from "@/lib/pos-layout";
 
 // The one toaster, mounted by the root layout (U0 Task 4, ruling R8). The staff screens get the owner's HTML toast
@@ -57,9 +58,25 @@ export const POS_TOASTER_PROPS: ComponentProps<typeof Toaster> = {
     "toaster group bottom-[calc(140px+env(safe-area-inset-bottom))]! tab:bottom-[calc(92px+env(safe-area-inset-bottom))]! xl:bottom-[24px]!",
 };
 
+/** /tables (U3 Task 5; design 6.8): the staff offsets 140 / 92 / 24px at the same breakpoints, each plus the bottom
+ *  safe-area inset, so the toasts clear the window's foot at every width as the Floor's own foot and its refresh strip do
+ *  (U1 P49; 140 / 92 / 24px at inset 0). Every other staff page keeps the staff set (an app-wide fix is the owner's open
+ *  shell item). */
+export const FLOOR_TOASTER_PROPS: ComponentProps<typeof Toaster> = {
+  ...STAFF_TOASTER_PROPS,
+  className:
+    "toaster group bottom-[calc(140px+env(safe-area-inset-bottom))]! tab:bottom-[calc(92px+env(safe-area-inset-bottom))]! lg:bottom-[calc(24px+env(safe-area-inset-bottom))]!",
+};
+
+/** A staff page's toaster props: /pos's, the Floor's, or the staff set. */
+export function toasterPropsFor(pathname: string): ComponentProps<typeof Toaster> {
+  return isPosPath(pathname) ? POS_TOASTER_PROPS : isFloorPath(pathname) ? FLOOR_TOASTER_PROPS : STAFF_TOASTER_PROPS;
+}
+
 export function AppToaster() {
   const pathname = usePathname() ?? "";
   if (isDinerRoute(pathname)) return <Toaster richColors position="top-right" />;
-  // One element for every staff page: moving to or from /pos only changes its offset (no remount, no toast lost).
-  return <Toaster {...(isPosPath(pathname) ? POS_TOASTER_PROPS : STAFF_TOASTER_PROPS)} />;
+  // One element for every staff page: moving to or from /pos or /tables only changes its offset (no remount, no toast
+  // lost).
+  return <Toaster {...toasterPropsFor(pathname)} />;
 }

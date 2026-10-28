@@ -204,7 +204,7 @@ test("the /tables page: no MenuPageShell; the frame (page → scroller → body)
   const src = read(PAGE);
   assert.ok(!src.includes("MenuPageShell"), "the paper frame with the 1440px cap goes (design 5)");
   assert.match(src, /import \{[^}]*\bFLOOR_PAGE_CLASS\b[^}]*\} from "@\/lib\/floor-layout";/, "the frame's classes come from lib/floor-layout.ts");
-  const frame = bodyAfter(src, "function FloorFrame({ children }: { children: ReactNode })");
+  const frame = bodyAfter(src, "function FloorFrame({ children, strip }: { children: ReactNode; strip?: ReactNode })");
   inOrder(
     frame,
     [
@@ -219,12 +219,12 @@ test("the /tables page: no MenuPageShell; the frame (page → scroller → body)
     "floor-page wraps floor-scroller, which wraps floor-body, which holds the page's content",
   );
   // The error branch renders inside the same frame and scroller as the live floor (the brief), each with its header.
-  assert.equal(src.split("<FloorFrame>").length - 1, 2, "both branches render inside the frame");
-  const error = src.slice(src.indexOf("<FloorFrame>"), src.indexOf("</FloorFrame>"));
+  assert.equal(src.split("<FloorFrame").length - 1, 2, "both branches render inside the frame (Task 5: the live one with its strip)");
+  const error = src.slice(src.indexOf("<FloorFrame"), src.indexOf("</FloorFrame>"));
   assert.ok(error.includes("<ErrorState"), "the first frame is the error branch");
   assert.match(error, /<PageHeader\s+eyebrow="Service"\s+title="Floor"/, "the error branch keeps the header words (P14)");
-  const live = src.slice(src.lastIndexOf("<FloorFrame>"));
-  assert.match(live, /^<FloorFrame>\s*<PageHeader\s+eyebrow="Service"\s+title="Floor"/, "the live floor opens its frame with the PageHeader (P55)");
+  const live = src.slice(src.lastIndexOf("<FloorFrame"));
+  assert.match(live, /^<FloorFrame strip=\{strip\}>\s*<PageHeader\s+eyebrow="Service"\s+title="Floor"/, "the live floor opens its frame with the PageHeader (P55)");
 });
 
 // ── The header on /tables (values 1.2; design 6.1) ─────────────────────────────────────────────────────────────────

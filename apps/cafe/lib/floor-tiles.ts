@@ -1,6 +1,7 @@
 // The live Floor screen's rules as pure functions (Tables redesign, 2026-09-30):
 // what each tile shows, what a tap on it does, the status pills' filter and
-// counts, and the summary / freshness text. No React, no fetching —
+// counts, the header's second line (summary / freshness, U3 Task 5) and the
+// refresh strip's rule. No React, no fetching —
 // components/tables/Floor* and the page render what this returns, and
 // lib/floor-tiles.test.ts pins every row. The area tabs and the sections are
 // lib/floor-areas.ts (U3 Task 2); a tile's tone, words and accessible name are
@@ -29,7 +30,6 @@ export const FLOOR_POS_PATH = "/pos";
 const MS_PER_MINUTE = 60_000;
 const MINUTES_PER_HOUR = 60;
 const NO_STAY_TEXT = "—";
-const LIVE_LABEL_MAX_AGE_MS = 60_000;
 
 /** What a tap on the whole tile does. "none" = the tile is only a display. */
 export type FloorPrimary = "open" | "new-order" | "seat-now" | "free" | "none";
@@ -202,22 +202,41 @@ export function filterTiles(tiles: readonly FloorTileModel[], filter: FloorFilte
   return filter === "all" ? [...tiles] : tiles.filter((t) => floorFilterOf(t) === filter);
 }
 
-/** "12 tables · 5 occupied · ₹5,380 running". The running total is left out
- *  until the open bills have loaded, and when nothing is occupied. */
+/** "3 of 10 occupied · 1 reserved · ₹1,787 running" (design 6.2, owner Q3): the HTML's counts over the whole floor
+ *  (values 1.4: a table whose bill printed is still Occupied), then ours, the open bills on Occupied tables, only once
+ *  the bills have loaded and above ₹0 (never "₹0 running"). */
 export function floorSummaryText(tiles: readonly FloorTileModel[], tabsKnown: boolean): string {
   const occupied = tiles.filter((t) => t.table.status === "Occupied");
-  const parts = [`${tiles.length} ${tiles.length === 1 ? "table" : "tables"}`, `${occupied.length} occupied`];
-  if (tabsKnown && occupied.length > 0) {
-    const running = occupied.reduce((sum, t) => sum + (t.tab?.total ?? 0), 0);
-    parts.push(`${inr(running)} running`);
-  }
-  return parts.join(" · ");
+  const reserved = tiles.filter((t) => t.table.status === "Reserved").length;
+  const summary = `${occupied.length} of ${tiles.length} occupied · ${reserved} reserved`;
+  const running = tabsKnown ? occupied.reduce((sum, t) => sum + (t.tab?.total ?? 0), 0) : 0;
+  return running > 0 ? `${summary} · ${inr(running)} running` : summary;
 }
 
-/** How fresh the floor is. A time in the future (clock skew) reads as fresh. */
+/** How fresh the floor is (design 6.2: today's rule, its first words shortened to fit the line). Under a minute, or a
+ *  time in the future (clock skew), reads as fresh. */
 export function updatedLabel(atMs: number, nowMs: number): string {
-  const age = nowMs - atMs;
-  if (age < LIVE_LABEL_MAX_AGE_MS) return "Live · updated just now";
-  const minutes = Math.floor(age / MS_PER_MINUTE);
+  const minutes = Math.floor((nowMs - atMs) / MS_PER_MINUTE);
+  if (minutes < 1) return "Updated just now";
   return minutes < MINUTES_PER_HOUR ? `Updated ${minutes} min ago` : "Updated over an hour ago";
+}
+
+/** The header's second line (design 6.2, owner Q3): the summary, then the freshness once the floor has a stamp
+ *  (updatedAtMs > 0; before the clock exists the stamp's own time, so "Updated just now"). One line, cut with an
+ *  ellipsis by the header when narrow. */
+export function floorHeaderLine(input: {
+  tiles: readonly FloorTileModel[];
+  tabsKnown: boolean;
+  updatedAtMs: number;
+  nowMs: number | null;
+}): string {
+  const summary = floorSummaryText(input.tiles, input.tabsKnown);
+  return input.updatedAtMs > 0 ? `${summary} · ${updatedLabel(input.updatedAtMs, input.nowMs ?? input.updatedAtMs)}` : summary;
+}
+
+/** The refresh strip's rule (design 6.2, today's; Review Focus 5): tables on screen and a read of the tables or the open
+ *  bills failed (each query's own retry included). A first load that failed is the error screen; a floor still loading
+ *  or with no table shows no strip. */
+export function floorRefreshFailed(input: { tables: readonly Table[] | undefined; tablesError: boolean; tabsError: boolean }): boolean {
+  return input.tables !== undefined && input.tables.length > 0 && (input.tablesError || input.tabsError);
 }

@@ -19,7 +19,8 @@ import {
   buildFloorTiles,
   filterTiles,
   floorCounts,
-  floorSummaryText,
+  floorHeaderLine,
+  floorRefreshFailed,
   type FloorFilter,
   type FloorTileModel,
 } from "@/lib/floor-tiles";
@@ -38,7 +39,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { FloorAreaSections } from "@/components/tables/FloorAreaSections";
 import { FloorAreaTabs } from "@/components/tables/FloorAreaTabs";
 import { FloorDialogs } from "@/components/tables/FloorDialogs";
-import { FloorLiveIndicator } from "@/components/tables/FloorLiveIndicator";
+import { FloorRefreshStrip } from "@/components/tables/FloorRefreshStrip";
 import { FloorStatusChips } from "@/components/tables/FloorStatusChips";
 import { FloorTile } from "@/components/tables/FloorTile";
 
@@ -53,10 +54,12 @@ export default function TablesPage() {
 
 // The page's frame (U3 Task 1; the Floor values 1.1, 2.1, design 5): under the shell header the page fills the screen
 // (the paper frame with its 1440px cap goes) and never scrolls itself; its scroller holds the HTML's body. Every branch
-// of the content renders inside it.
-function FloorFrame({ children }: { children: ReactNode }) {
+// of the content renders inside it. The live floor's refresh strip (Task 5, design 6.2) is its first child, above the
+// scroller, so it sits flush under the shell header (or the U0 request strip) and never scrolls away.
+function FloorFrame({ children, strip }: { children: ReactNode; strip?: ReactNode }) {
   return (
     <div data-ui="floor-page" className={FLOOR_PAGE_CLASS}>
+      {strip}
       <div data-ui="floor-scroller" className={FLOOR_SCROLLER_CLASS}>
         <div data-ui="floor-body" className={FLOOR_BODY_CLASS}>
           {children}
@@ -159,7 +162,7 @@ function FloorContent() {
   };
 
   // A full error screen only when there is nothing to keep showing: with a
-  // list already loaded the grid stays and the indicator carries the failure.
+  // list already loaded the grid stays and the refresh strip carries the failure.
   if (tables.isError && tables.data === undefined) {
     return (
       <FloorFrame>
@@ -181,7 +184,10 @@ function FloorContent() {
   const inArea = tilesInArea(tiles, areas.data, shownArea);
   const visible = filterTiles(inArea, filter);
   const sections = floorSections(tiles, areas.data, filter, shownArea);
+  // The header's second line (design 6.2): its freshness is the older of the two reads, as today; 0 = never loaded.
   const stamps = [tables.dataUpdatedAt, openTabs.dataUpdatedAt].filter((at) => at > 0);
+  const updatedAtMs = stamps.length > 0 ? Math.min(...stamps) : 0;
+  const strip = <FloorRefreshStrip show={floorRefreshFailed({ tables: list, tablesError: tables.isError, tabsError: openTabs.isError })} onRetry={retryAll} />;
   const showAllTables = () => {
     setFilter("all");
     setArea(FLOOR_ALL_AREAS);
@@ -201,30 +207,20 @@ function FloorContent() {
   );
 
   return (
-    <FloorFrame>
+    <FloorFrame strip={strip}>
       <PageHeader
         eyebrow="Service"
         title="Floor"
-        description={list ? floorSummaryText(tiles, tabsKnown) : "Loading tables…"}
+        description={list ? floorHeaderLine({ tiles, tabsKnown, updatedAtMs, nowMs }) : "Loading tables…"}
       />
 
+      {/* The HTML's controls row (values 2.2): the area tabs left (two or more groups), the status pills right, their
+          counts over the area shown (design 6.3). */}
       {list !== undefined && list.length > 0 && (
-        <>
-          {/* The HTML's controls row (values 2.2): the area tabs left (two or more groups), the status pills right, their
-              counts over the area shown (design 6.3). */}
-          <div data-ui="floor-controls" className={FLOOR_CONTROLS_CLASS}>
-            {areaTabs.length > 0 && <FloorAreaTabs tabs={areaTabs} value={shownArea} onChange={setArea} />}
-            <FloorStatusChips counts={floorCounts(inArea)} value={filter} revealKey={shownArea} onChange={setFilter} />
-          </div>
-          {/* Today's freshness line and refresh failure, on its own line until Task 5 moves them (the header's second
-              line and the strip above the scroller). */}
-          <FloorLiveIndicator
-            updatedAtMs={stamps.length > 0 ? Math.min(...stamps) : 0}
-            nowMs={nowMs}
-            refreshFailed={tables.isError || openTabs.isError}
-            onRetry={retryAll}
-          />
-        </>
+        <div data-ui="floor-controls" className={FLOOR_CONTROLS_CLASS}>
+          {areaTabs.length > 0 && <FloorAreaTabs tabs={areaTabs} value={shownArea} onChange={setArea} />}
+          <FloorStatusChips counts={floorCounts(inArea)} value={filter} revealKey={shownArea} onChange={setFilter} />
+        </div>
       )}
 
       {list === undefined ? (
