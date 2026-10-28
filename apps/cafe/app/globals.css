@@ -105,6 +105,7 @@
   --color-status-reserved-border: var(--status-reserved-border);
   --color-ink: var(--ink);
   --color-on-ink: var(--on-ink);
+  --color-on-ink-muted: var(--on-ink-muted);
   --color-on-ink-up: var(--on-ink-up);
   --color-on-ink-down: var(--on-ink-down);
   --color-on-ink-up-tint: var(--on-ink-up-tint);
@@ -449,6 +450,9 @@
   --ring: var(--brand-accent);
   --ink: #18181b;
   --on-ink: #ffffff;
+  /* A quieter word on an --ink fill: the Floor's chosen pill's count (U3 design 8 #7: the HTML's --text-3 grey reads
+     3.36:1 there; this reads 7.6:1, and the dark pair 7:1). */
+  --on-ink-muted: #a9a9b2;
   /* Change colours on the dark Net sales hero (values 3.3: the HTML's #6FDC8C / #FF8389, and its 16 % pills
      rgba(66,190,101,.16) / rgba(250,77,86,.16) flattened over the hero's --nav #111113). */
   --on-ink-up: #6fdc8c;
@@ -566,6 +570,7 @@
   --ring: #4589ff;
   --ink: #f4f4f5;
   --on-ink: #0e0e10;
+  --on-ink-muted: #52525b;
   /* The hero is the light card in dark mode: the light page's darker pair. */
   --on-ink-up: #16733a;
   --on-ink-down: #a2191f;

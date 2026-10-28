@@ -14,17 +14,17 @@ import { useTableAreas } from "@/hooks/use-table-areas";
 import { useTables } from "@/hooks/use-tables";
 import {
   FLOOR_CLOCK_TICK_MS,
+  FLOOR_EMPTY_FILTER_TEXT,
   FLOOR_GRID_CLASS,
   buildFloorTiles,
-  emptyFilterText,
   filterTiles,
-  floorSections,
+  floorCounts,
   floorSummaryText,
-  statusCounts,
   type FloorFilter,
   type FloorTileModel,
 } from "@/lib/floor-tiles";
-import { FLOOR_BODY_CLASS, FLOOR_PAGE_CLASS, FLOOR_SCROLLER_CLASS } from "@/lib/floor-layout";
+import { FLOOR_ALL_AREAS, effectiveArea, floorAreaTabs, floorSections, tilesInArea } from "@/lib/floor-areas";
+import { FLOOR_BODY_CLASS, FLOOR_CONTROLS_CLASS, FLOOR_PAGE_CLASS, FLOOR_SCROLLER_CLASS } from "@/lib/floor-layout";
 import { OPEN_TABS_FILTERS } from "@/lib/table-pick";
 import { TABLES_SETUP_PATH } from "@/lib/table-sections";
 import { longStayMinutesOf } from "@/lib/table-status";
@@ -35,6 +35,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { FloorAreaSections } from "@/components/tables/FloorAreaSections";
+import { FloorAreaTabs } from "@/components/tables/FloorAreaTabs";
 import { FloorDialogs } from "@/components/tables/FloorDialogs";
 import { FloorLiveIndicator } from "@/components/tables/FloorLiveIndicator";
 import { FloorStatusChips } from "@/components/tables/FloorStatusChips";
@@ -110,7 +111,10 @@ function FloorContent() {
   const settings = useSettings();
   const now = useNow(FLOOR_CLOCK_TICK_MS);
   const actions = useFloorActions(openTabs);
+  // The pill and the area tab reset on every visit (design 6.9); the area is kept as a choice, but the page shows it only
+  // while it is still a group (effectiveArea below).
   const [filter, setFilter] = useState<FloorFilter>("all");
+  const [area, setArea] = useState(FLOOR_ALL_AREAS);
 
   const nowMs = now?.getTime() ?? null;
   const longStayMinutes = longStayMinutesOf(settings.data);
@@ -153,9 +157,17 @@ function FloorContent() {
   }
 
   const list = tables.data;
-  const visible = filterTiles(tiles, filter);
-  const sections = floorSections(tiles, areas.data, filter);
+  // Review Focus 1: everything below reads the area shown, never the raw choice (a removed or emptied area shows All).
+  const areaTabs = floorAreaTabs(tiles, areas.data);
+  const shownArea = effectiveArea(area, areaTabs);
+  const inArea = tilesInArea(tiles, areas.data, shownArea);
+  const visible = filterTiles(inArea, filter);
+  const sections = floorSections(tiles, areas.data, filter, shownArea);
   const stamps = [tables.dataUpdatedAt, openTabs.dataUpdatedAt].filter((at) => at > 0);
+  const showAllTables = () => {
+    setFilter("all");
+    setArea(FLOOR_ALL_AREAS);
+  };
 
   const renderTile = (tile: FloorTileModel) => (
     <FloorTile
@@ -177,15 +189,22 @@ function FloorContent() {
       />
 
       {list !== undefined && list.length > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <FloorStatusChips counts={statusCounts(list)} value={filter} onChange={setFilter} />
+        <>
+          {/* The HTML's controls row (values 2.2): the area tabs left (two or more groups), the status pills right, their
+              counts over the area shown (design 6.3). */}
+          <div data-ui="floor-controls" className={FLOOR_CONTROLS_CLASS}>
+            {areaTabs.length > 0 && <FloorAreaTabs tabs={areaTabs} value={shownArea} onChange={setArea} />}
+            <FloorStatusChips counts={floorCounts(inArea)} value={filter} onChange={setFilter} />
+          </div>
+          {/* Today's freshness line and refresh failure, on its own line until Task 5 moves them (the header's second
+              line and the strip above the scroller). */}
           <FloorLiveIndicator
             updatedAtMs={stamps.length > 0 ? Math.min(...stamps) : 0}
             nowMs={nowMs}
             refreshFailed={tables.isError || openTabs.isError}
             onRetry={retryAll}
           />
-        </div>
+        </>
       )}
 
       {list === undefined ? (
@@ -195,9 +214,9 @@ function FloorContent() {
       ) : visible.length === 0 ? (
         <EmptyState
           icon={<LayoutGrid className="h-8 w-8" />}
-          title={filter === "all" ? "No tables" : emptyFilterText(filter)}
+          title={FLOOR_EMPTY_FILTER_TEXT}
           action={
-            <Button type="button" variant="outline" className="mt-2" onClick={() => setFilter("all")}>
+            <Button type="button" variant="outline" className="mt-2" onClick={showAllTables}>
               Show all tables
             </Button>
           }

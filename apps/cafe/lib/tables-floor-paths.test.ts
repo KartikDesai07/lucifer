@@ -10,6 +10,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
+import { FLOOR_PILLS_ROW_CLASS } from "@/lib/floor-layout";
 import { stripComments } from "@/lib/source-pin-utils";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
@@ -28,11 +29,17 @@ const FLOOR_LIB = "apps/cafe/lib/floor-tiles.ts";
 const SECTIONS = "apps/cafe/components/tables/FloorAreaSections.tsx";
 // U3 Task 1 (2026-10-28): the Floor's frame classes and route (the page, the scroller, the body; isFloorPath).
 const LAYOUT_LIB = "apps/cafe/lib/floor-layout.ts";
+// U3 Task 2 (2026-10-28): the area tabs, the rows' fades, and the area rules (tabs, the shown area, the sections).
+const AREA_TABS = "apps/cafe/components/tables/FloorAreaTabs.tsx";
+const SCROLL_FADES = "apps/cafe/hooks/use-scroll-fades.ts";
+const AREAS_LIB = "apps/cafe/lib/floor-areas.ts";
 const LIVE_PANEL = "apps/cafe/components/dashboard/LiveFloorPanel.tsx";
 const TABLES_DIR = "apps/cafe/components/tables";
 
 // Every file that makes up the Floor screen.
-const FLOOR_FILES = [PAGE, STATUS_HOOK, ACTIONS_HOOK, TILE, TILE_MENU, CHIPS, INDICATOR, DIALOGS, FLOOR_LIB, SECTIONS, LAYOUT_LIB];
+const FLOOR_FILES = [
+  PAGE, STATUS_HOOK, ACTIONS_HOOK, TILE, TILE_MENU, CHIPS, INDICATOR, DIALOGS, FLOOR_LIB, SECTIONS, LAYOUT_LIB, AREA_TABS, SCROLL_FADES, AREAS_LIB,
+];
 
 function count(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1;
@@ -159,15 +166,46 @@ test("PIN: the table never rides in the URL (a query string costs a round trip p
   assert.match(readStripped(FLOOR_LIB), /FLOOR_POS_PATH = "\/pos";/);
 });
 
-test("PIN: chips wrap (never scroll sideways) and the ⋯ menu is a 40 px sibling of the tile link", () => {
+// U3 Task 2 (P11 moved on purpose, owner Q4 / design 6.3): the pills no longer wrap; they scroll sideways as the HTML's
+// row, with a fade at the edge that hides one and the chosen pill scrolled into view ("chips never hide a state
+// off-screen" is retired by Q4). Kept: the group label, the pressed state, the ⋯ beside (never inside) the tile.
+test("PIN: the pills scroll sideways with the group label and aria-pressed; the area tabs name their group; the ⋯ menu is a 40 px sibling of the tile link", () => {
   const chips = readStripped(CHIPS);
-  assert.ok(chips.includes('role="group" aria-label="Filter tables by status"'));
-  assert.ok(chips.includes("flex flex-wrap gap-2"));
-  assert.ok(!chips.includes("overflow-x"), "a scrolling chip row hides the last state");
-  assert.ok(chips.includes("aria-pressed") && chips.includes("min-h-10"));
+  assert.ok(chips.includes('role="group" aria-label="Filter tables by status"'), "the pills' group label");
+  assert.ok(chips.includes("className={FLOOR_PILLS_ROW_CLASS}"), "the row wears the pills row class");
+  assert.ok(FLOOR_PILLS_ROW_CLASS.split(/\s+/).includes("overflow-x-auto"), "the HTML's sideways row (Q4)");
+  assert.ok(chips.includes("aria-pressed={on}"), "each pill says whether it is chosen");
+  const tabs = readStripped(AREA_TABS);
+  assert.ok(tabs.includes('role="group" aria-label="Filter tables by area"'), "the area tabs' group label");
+  assert.ok(tabs.includes("aria-pressed={on}"), "each tab says whether it is chosen");
   assert.ok(readStripped(TILE_MENU).includes("h-10 w-10"), "the menu trigger is a 40 px target");
   const tile = readStripped(TILE);
   assert.ok(tile.indexOf("{surface}") < tile.indexOf("<FloorTileMenu"), "the menu is rendered after (beside) the link, not inside it");
+});
+
+// Q4: the chosen tab / pill is revealed by its row's own scrollLeft; scrollIntoView would scroll the page (and the shell).
+test("PIN: no Floor file scrolls the page to reveal a control", () => {
+  const banned = "scrollInto" + "View(";
+  for (const f of FLOOR_FILES) assert.ok(!readStripped(f).includes(banned), `${f} must not call ${banned}`);
+  assert.ok(readStripped(SCROLL_FADES).includes("revealScrollLeft("), "landmark: the reveal is the row's own scrollLeft");
+  for (const f of [CHIPS, AREA_TABS]) assert.ok(readStripped(f).includes("useRevealPressed(rowRef, value)"), `landmark: ${f} reveals through its row`);
+});
+
+// Review Focus 1 (design 6.3): the chosen area is kept as a choice, but the page shows only the area it still holds.
+test("PIN: the page groups, counts and filters by shownArea (effectiveArea), never the raw choice; Show all tables resets both", () => {
+  const page = readStripped(PAGE);
+  assert.equal(count(page, "const [area, setArea] = useState(FLOOR_ALL_AREAS);"), 1, "the choice resets on every visit");
+  assert.equal(count(page, "const areaTabs = floorAreaTabs(tiles, areas.data);"), 1, "the tabs from every tile");
+  assert.equal(count(page, "const shownArea = effectiveArea(area, areaTabs);"), 1, "the area shown");
+  assert.equal(count(page, "tilesInArea(tiles, areas.data, shownArea)"), 1, "the pills count the area shown");
+  assert.equal(count(page, "floorCounts(inArea)"), 1, "landmark: the counts follow the area (design 6.3)");
+  for (const raw of ["floorSections(tiles, areas.data, filter, area)", "tilesInArea(tiles, areas.data, area)", "value={area}"]) {
+    assert.ok(!page.includes(raw), `the raw choice never reaches ${raw}`);
+  }
+  assert.ok(page.includes("{areaTabs.length > 0 && <FloorAreaTabs tabs={areaTabs} value={shownArea} onChange={setArea} />}"), "tabs only with two groups");
+  const reset = bodyAfter(page, "const showAllTables = () =>");
+  assert.ok(reset.includes('setFilter("all")') && reset.includes("setArea(FLOOR_ALL_AREAS)"), "Show all tables resets the pill and the area");
+  assert.ok(page.includes("title={FLOOR_EMPTY_FILTER_TEXT}") && page.includes("onClick={showAllTables}"), "the HTML's line and our reset");
 });
 
 test("PIN: area sections - one tile renderer, headings only when floorSections says so, flat grid otherwise", () => {
@@ -175,7 +213,8 @@ test("PIN: area sections - one tile renderer, headings only when floorSections s
   const sections = readStripped(SECTIONS);
   assert.equal(count(page, "<FloorTile"), 1, "landmark: ONE tile call site (the renderTile closure) - sections and the flat grid share it");
   assert.equal(count(page, "useTableAreas(tables.data)"), 1, "the page heals/reads areas through the one hook");
-  assert.equal(count(page, "floorSections(tiles, areas.data, filter)"), 1, "the page groups through floorSections");
+  // U3 Task 2 (P12 literal moved on purpose): the sections take the area shown (Review Focus 1).
+  assert.equal(count(page, "floorSections(tiles, areas.data, filter, shownArea)"), 1, "the page groups through floorSections");
   assert.equal(count(page, "<FloorAreaSections groups={sections.groups} renderTile={renderTile} />"), 1);
   // Branch order: the empty state comes first, then headings, then today's flat grid.
   const empty = page.indexOf("visible.length === 0");
@@ -189,8 +228,9 @@ test("PIN: area sections - one tile renderer, headings only when floorSections s
   assert.ok(sections.includes("border-brand-rule"), "a divider between sections, brand token");
   // The screen never reads a table's area link itself: grouping is lib/table-areas + floorSections.
   const bare = /\bareaId\b/;
-  for (const f of [PAGE, SECTIONS, TILE]) assert.ok(!bare.test(readStripped(f)), `${f} must not read the area link`);
-  assert.ok(readStripped(FLOOR_LIB).includes("groupByArea(tiles, (tile) => tableAreaIdOf(tile.table), areas)"), "landmark: floorSections groups via the shared helpers");
+  for (const f of [PAGE, SECTIONS, TILE, AREA_TABS]) assert.ok(!bare.test(readStripped(f)), `${f} must not read the area link`);
+  // U3 Task 2 (ruling F1): the grouping moved with floorSections to lib/floor-areas.ts, same helpers.
+  assert.ok(readStripped(AREAS_LIB).includes("groupByArea(tiles, (tile) => tableAreaIdOf(tile.table), areas)"), "landmark: floorSections groups via the shared helpers");
 });
 
 // Review finding (2026-10-02), MEASURED at 360 px: "Available" + "New order ›" was 3 px wider than the tile, so the

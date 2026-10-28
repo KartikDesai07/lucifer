@@ -18,7 +18,7 @@ import { stripComments } from "./source-pin-utils";
 import { cn } from "./utils";
 import { POS_PAGE_CLASS } from "./pos-layout";
 import { classesOf, tagOf, tagsOf, textOf } from "./class-tags.fixtures";
-import { FLOOR_BODY_CLASS, FLOOR_PAGE_CLASS, FLOOR_PATH, FLOOR_SCROLLER_CLASS, isFloorPath } from "./floor-layout";
+import { FLOOR_BODY_CLASS, FLOOR_PAGE_CLASS, FLOOR_PATH, FLOOR_SCROLLER_CLASS, edgeFades, isFloorPath, revealScrollLeft } from "./floor-layout";
 import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { buttonVariants } from "@/components/ui/button";
 import { HEADER_FLOOR_NEW_ORDER_CLASS, HEADER_PRIMARY_BUTTON_CLASS } from "@/components/layout/header-classes";
@@ -106,6 +106,33 @@ test("FLOOR_SCROLLER_CLASS: the HTML's body padding, its foot plus the safe-area
 
 test("FLOOR_BODY_CLASS: the HTML's body, a flex column 16px apart (values 2.1)", () => {
   assert.equal(FLOOR_BODY_CLASS, "flex flex-col gap-4", "values 2.1: display flex, column, gap 16px");
+});
+
+// ── The sideways rows' cue and reveal (U3 Task 2; owner Q4, design 6.3) ──────────────────────────────────────────────
+
+test("edgeFades: a fade at each edge that hides something, with a 1px tolerance", () => {
+  const row = (scrollLeft: number) => edgeFades({ scrollLeft, scrollWidth: 557, clientWidth: 362 });
+  assert.deepEqual(row(0), { start: false, end: true }, "at rest: the end hides pills");
+  assert.deepEqual(row(100), { start: true, end: true }, "scrolled mid: both edges hide pills");
+  assert.deepEqual(row(195), { start: true, end: false }, "at the end: the start alone");
+  assert.deepEqual(edgeFades({ scrollLeft: 0, scrollWidth: 262, clientWidth: 262 }), { start: false, end: false }, "fits: no fade");
+  assert.deepEqual(row(0.5), { start: false, end: true }, "a half-pixel scroll is still at rest");
+  assert.deepEqual(row(194.5), { start: true, end: false }, "half a pixel short of the end is the end");
+  assert.deepEqual(edgeFades({ scrollLeft: 0, scrollWidth: 363, clientWidth: 362 }), { start: false, end: false }, "a 1px overflow hides nothing");
+});
+
+test("revealScrollLeft: the smallest change that shows the item whole, margin px clear of each edge", () => {
+  const view = (scrollLeft: number) => ({ scrollLeft, clientWidth: 362 });
+  const item = { offsetLeft: 444, offsetWidth: 113 };
+  assert.equal(revealScrollLeft(view(0), item, 26), 444 + 113 + 26 - 362, "hidden right: its end lands 26px inside the right edge");
+  assert.equal(revealScrollLeft(view(300), { offsetLeft: 70, offsetWidth: 119 }, 26), 70 - 26, "hidden left: its start lands 26px inside");
+  assert.equal(revealScrollLeft(view(120), item, 26), 221, "partly hidden right: the same rule (444 + 113 + 26 - 362)");
+  assert.equal(revealScrollLeft(view(250), item, 26), 250, "already whole and clear of both edges: unchanged");
+  assert.equal(revealScrollLeft(view(0), { offsetLeft: 0, offsetWidth: 64 }, 26), 0, "the first item at rest: never below 0");
+  assert.equal(revealScrollLeft(view(190), { offsetLeft: 300, offsetWidth: 113 }, 26), 190, "300-190 = 110 ≥ 26 and 413-190 = 223 ≤ 336");
+  assert.equal(revealScrollLeft(view(200), { offsetLeft: 210, offsetWidth: 113 }, 26), 184, "inside the view but under the start fade: 26px clear");
+  assert.equal(revealScrollLeft(view(0), { offsetLeft: 250, offsetWidth: 100 }, 26), 14, "inside the view but under the end fade: 26px clear");
+  assert.equal(revealScrollLeft(view(0), { offsetLeft: 500, offsetWidth: 400 }, 26), 474, "wider than the view: its start shows");
 });
 
 // ── The header's New order on /tables (values 1.2 Takeaway; owner Q1, design 6.1) ─────────────────────────────────

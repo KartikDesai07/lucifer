@@ -1,56 +1,28 @@
 // Pure-rule tests for the live Floor (lib/floor-tiles.ts): the tap table row by
-// row, long stay at its boundary, summary / freshness strings, filters.
+// row, long stay at its boundary, summary / freshness strings, filters. The area
+// tabs and the sections are lib/floor-areas.test.ts's (U3 Task 2, ruling F1).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  FLOOR_EMPTY_FILTER_TEXT,
+  FLOOR_FILTERS,
   FLOOR_GRID_CLASS,
   FLOOR_PRIMARY_LABEL,
-  buildFloorTiles,
-  emptyFilterText,
   filterTiles,
-  floorSections,
+  floorCounts,
+  floorFilterOf,
   floorSummaryText,
   formatStayMinutes,
   itemCountOf,
   longStay,
   minutesOpen,
   reservationForTable,
-  statusCounts,
   updatedLabel,
   type FloorTileModel,
 } from "@/lib/floor-tiles";
+import { MIN, NOW, build, printed, reservation, tab, table } from "@/lib/floor-tiles.fixtures";
 import type { TableStatus } from "@/lib/constants";
-import type { Area, Order, Reservation, Table } from "@/types";
-
-const NOW = Date.parse("2026-09-30T12:00:00.000Z");
-const MIN = 60_000;
-const LONG_STAY = 60;
-
-function table(tableNo: string, status: TableStatus, extra: Partial<Table> = {}): Table {
-  return { _id: `id-${tableNo}`, tableNo, status, capacity: 4, ...extra } as Table;
-}
-
-function tab(tableNo: string, minutesAgo: number, extra: Partial<Order> = {}): Order {
-  return {
-    _id: `o-${tableNo}`,
-    orderId: `ORD-${tableNo}`,
-    tableNo,
-    customerName: "Rahul",
-    total: 640,
-    items: [{ qty: 2 }, { qty: 1 }],
-    createdAt: new Date(NOW - minutesAgo * MIN).toISOString(),
-    ...extra,
-  } as Order;
-}
-
-function reservation(tableNo: string, time: string, extra: Partial<Reservation> = {}): Reservation {
-  return { _id: `r-${tableNo}-${time}`, name: "Asha", tableNo, time, status: "Booked", ...extra } as Reservation;
-}
-
-function build(tables: Table[], tabs: Order[] | undefined, reservations?: Reservation[], nowMs: number | null = NOW) {
-  return buildFloorTiles({ tables, tabs, reservations, nowMs, longStayMinutes: LONG_STAY });
-}
 
 function only(tiles: FloorTileModel[]): FloorTileModel {
   assert.equal(tiles.length, 1);
@@ -189,91 +161,52 @@ test("summary text: plural, singular, running total rules", () => {
   );
 });
 
-test("counts and filter", () => {
-  const tiles = build([table("A", "Occupied"), table("B", "Available"), table("C", "Available"), table("D", "Reserved")], []);
-  assert.deepEqual(statusCounts(tiles.map((t) => t.table)), { all: 4, Occupied: 1, Available: 2, Reserved: 1 });
-  assert.equal(filterTiles(tiles, "all").length, 4);
-  assert.deepEqual(filterTiles(tiles, "Available").map((t) => t.table.tableNo), ["B", "C"]);
-  assert.equal(emptyFilterText("Occupied"), "No occupied tables right now.");
+// U3 Task 2 (design 6.3, values 2.4 / 5.2; pins moved on purpose, P25: the chips' three statuses become the HTML's five
+// pills, statusCounts → floorCounts, emptyFilterText → the HTML's one line). The P25 meaning stays: every table counts
+// in exactly one state, and a filter shows the tiles of that state.
+test("FLOOR_FILTERS: the HTML's pills, in its order and words (values 2.4)", () => {
+  assert.deepEqual(
+    FLOOR_FILTERS.map((f) => [f.key, f.label]),
+    [["all", "All"], ["free", "Available"], ["occupied", "Occupied"], ["billed", "Bill printed"], ["reserved", "Reserved"]],
+    "values 2.4: All, Available, Occupied, Bill printed, Reserved",
+  );
 });
 
-function area(id: string, name: string): Area {
-  return { _id: id, name, displayOrder: 0, createdAt: "", updatedAt: "" };
-}
-
-const HALL = area("area-hall", "AC Hall");
-const GARDEN = area("area-garden", "Garden");
-const UNUSED = area("area-unused", "Rooftop");
-
-// Two areas listed Garden-first so AREA order (not table order) is what the test sees.
-const AREAS = [GARDEN, HALL, UNUSED];
-const FLOOR = build(
+// One tile of each kind the pills sort (inventory K1-K8): K1 with a bill printed for its total, K1 not printed, K1
+// printed before the bill grew (a new round), K2 (no bill), K5, K7 (Available holding a bill), K8.
+const KINDS = build(
   [
-    table("H-1", "Occupied", { areaId: HALL._id }),
-    table("G-1", "Available", { areaId: GARDEN._id }),
-    table("H-2", "Available", { areaId: HALL._id }),
-    table("G-2", "Available", { areaId: GARDEN._id }),
-    table("H-3", "Reserved", { areaId: HALL._id }),
-    table("X-1", "Occupied"),
-    table("X-2", "Available", { areaId: "area-deleted" }),
+    table("K1", "Occupied"), table("K1P", "Occupied"), table("K1S", "Occupied"), table("K2", "Occupied"),
+    table("K5", "Available"), table("K7", "Available"), table("K8", "Reserved"),
   ],
-  [],
+  [tab("K1", 5), printed(tab("K1P", 5)), { ...printed(tab("K1S", 5)), total: 900 }, tab("K7", 5)],
 );
-const nosOf = (tiles: FloorTileModel[]) => tiles.map((t) => t.table.tableNo);
 
-test("floorSections: groups follow AREA order, unassigned and dangling last under Other tables", () => {
-  const s = floorSections(FLOOR, AREAS, "all");
-  assert.equal(s.showHeadings, true);
-  assert.deepEqual(s.groups.map((g) => g.name), ["Garden", "AC Hall", "Other tables"]);
-  assert.deepEqual(s.groups.map((g) => nosOf(g.tiles)), [["G-1", "G-2"], ["H-1", "H-2", "H-3"], ["X-1", "X-2"]]);
-  assert.equal(s.groups[0].key, GARDEN._id);
-  assert.equal(s.groups[2].key, "none");
-  assert.ok(!s.groups.some((g) => g.key === UNUSED._id), "an area no table uses has no heading");
+test("floorFilterOf: Bill printed only when the server knows of the print (billPrintedNow); K7 is Available", () => {
+  assert.deepEqual(
+    KINDS.map((t) => [t.table.tableNo, floorFilterOf(t)]),
+    [["K1", "occupied"], ["K1P", "billed"], ["K1S", "occupied"], ["K2", "occupied"], ["K5", "free"], ["K7", "free"], ["K8", "reserved"]],
+    "Occupied → billed with a print for this total (U2 Q11), else occupied; Available → free (K7 too); Reserved → reserved",
+  );
+  // Bills not loaded yet (K3, K6, K9): the table's own status.
+  const unknown = build([table("K3", "Occupied"), table("K6", "Available"), table("K9", "Reserved")], undefined);
+  assert.deepEqual(unknown.map(floorFilterOf), ["occupied", "free", "reserved"], "no bill known: the status alone");
 });
 
-test("floorSections: summaries with filter All read '4 tables · 2 occupied'", () => {
-  const s = floorSections(FLOOR, AREAS, "all");
-  assert.deepEqual(s.groups.map((g) => g.summary), ["2 tables · 0 occupied", "3 tables · 1 occupied", "2 tables · 1 occupied"]);
-  const one = floorSections(build([table("A", "Occupied", { areaId: HALL._id })], []), AREAS, "all");
-  assert.equal(one.groups[0].summary, "1 table · 1 occupied");
+test("floorCounts: every table counts once, a printed bill under Bill printed only; filterTiles keeps the order", () => {
+  assert.deepEqual(floorCounts(KINDS), { all: 7, free: 2, occupied: 3, billed: 1, reserved: 1 }, "K1P is billed, not occupied too");
+  assert.deepEqual(floorCounts([]), { all: 0, free: 0, occupied: 0, billed: 0, reserved: 0 }, "an empty floor counts zeros");
+  assert.deepEqual(filterTiles(KINDS, "all"), KINDS, "All shows every tile, in order");
+  assert.notEqual(filterTiles(KINDS, "all"), KINDS, "a copy, never the caller's array");
+  const nos = (filter: Parameters<typeof filterTiles>[1]) => filterTiles(KINDS, filter).map((t) => t.table.tableNo);
+  assert.deepEqual(nos("occupied"), ["K1", "K1S", "K2"], "Occupied: without a printed bill");
+  assert.deepEqual(nos("billed"), ["K1P"], "Bill printed: the printed one alone");
+  assert.deepEqual(nos("free"), ["K5", "K7"], "Available: K7 with its bill too");
+  assert.deepEqual(nos("reserved"), ["K8"], "Reserved");
 });
 
-test("floorSections: a status filter runs INSIDE every area and the summary reads 'shown of total'", () => {
-  const s = floorSections(FLOOR, AREAS, "Available");
-  assert.deepEqual(s.groups.map((g) => nosOf(g.tiles)), [["G-1", "G-2"], ["H-2"], ["X-2"]]);
-  assert.deepEqual(s.groups.map((g) => g.summary), ["2 of 2 tables", "1 of 3 tables", "1 of 2 tables"]);
-});
-
-test("floorSections: an area with no tile in the filter is hidden, and the headings stay judged from the unfiltered list", () => {
-  const s = floorSections(FLOOR, AREAS, "Reserved");
-  assert.deepEqual(s.groups.map((g) => g.name), ["AC Hall"], "Garden and Other tables have no Reserved tile");
-  assert.deepEqual(nosOf(s.groups[0].tiles), ["H-3"]);
-  assert.equal(s.showHeadings, true);
-  // Every table in the filter belongs to no area, but the floor still HAS areas: headings stay.
-  const skewed = build([table("H-1", "Occupied", { areaId: HALL._id }), table("X-1", "Available")], []);
-  const only = floorSections(skewed, AREAS, "Available");
-  assert.equal(only.showHeadings, true, "judged before the filter");
-  assert.deepEqual(only.groups.map((g) => g.name), ["Other tables"]);
-  const none = floorSections(skewed, AREAS, "Reserved");
-  assert.deepEqual(none.groups, []);
-  assert.equal(none.showHeadings, true);
-});
-
-test("floorSections: zero areas (or areas nobody uses) is today's flat list, no headings", () => {
-  const flat = build([table("A", "Occupied"), table("B", "Available"), table("C", "Available")], []);
-  for (const areas of [undefined, [], [UNUSED]]) {
-    for (const filter of ["all", "Available", "Occupied", "Reserved"] as const) {
-      const s = floorSections(flat, areas, filter);
-      assert.equal(s.showHeadings, false);
-      const expected = filterTiles(flat, filter);
-      if (expected.length === 0) assert.deepEqual(s.groups, []);
-      else {
-        assert.equal(s.groups.length, 1);
-        assert.deepEqual(s.groups[0].tiles, expected);
-      }
-    }
-  }
-  assert.deepEqual(floorSections([], AREAS, "all"), { showHeadings: false, groups: [] });
+test("FLOOR_EMPTY_FILTER_TEXT: the HTML's empty line (values 5.2)", () => {
+  assert.equal(FLOOR_EMPTY_FILTER_TEXT, "No tables match this filter.", "values 5.2, design 11");
 });
 
 test("updatedLabel", () => {

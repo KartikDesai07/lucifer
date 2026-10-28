@@ -1,12 +1,13 @@
 // The live Floor screen's rules as pure functions (Tables redesign, 2026-09-30):
-// what each tile shows, what a tap on it does, and the summary / freshness
-// text. No React, no fetching — components/tables/Floor* and the page render
-// what this returns, and lib/floor-tiles.test.ts pins every row.
-import type { TableStatus } from "@/lib/constants";
+// what each tile shows, what a tap on it does, the status pills' filter and
+// counts, and the summary / freshness text. No React, no fetching —
+// components/tables/Floor* and the page render what this returns, and
+// lib/floor-tiles.test.ts pins every row. The area tabs and the sections are
+// lib/floor-areas.ts (U3 Task 2).
+import { billPrintedNow } from "@/lib/dashboard/live-tables";
 import { openTabForTable } from "@/lib/table-pick";
-import { areaSummaryText, groupByArea, showAreaHeadings, tableAreaIdOf, tableCountText } from "@/lib/table-areas";
 import { inr } from "@/lib/utils";
-import type { Area, Order, OrderItem, Reservation, Table } from "@/types";
+import type { Order, OrderItem, Reservation, Table } from "@/types";
 
 // One shared clock for the minutes-open figures: a minute-level number does not
 // need a per-second tick, and the table poll itself runs every 30 s.
@@ -29,7 +30,20 @@ const LIVE_LABEL_MAX_AGE_MS = 60_000;
 export type FloorPrimary = "open" | "new-order" | "seat-now" | "free" | "none";
 /** What the ⋯ menu offers (a sibling of the tile, never nested in it). */
 export type FloorMenuAction = "reserve" | "free";
-export type FloorFilter = "all" | TableStatus;
+
+/** The status pills (U3 Task 2; values 2.4, design 6.3): the HTML's five, its order and words. "Bill printed" is an
+ *  Occupied table whose running bill the server knows has printed (U2 Q11); we have no "KOT pending". */
+export type FloorFilter = "all" | "free" | "occupied" | "billed" | "reserved";
+export const FLOOR_FILTERS: readonly { key: FloorFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "free", label: "Available" },
+  { key: "occupied", label: "Occupied" },
+  { key: "billed", label: "Bill printed" },
+  { key: "reserved", label: "Reserved" },
+];
+
+/** The empty line when the area and the pill leave nothing (values 5.2). */
+export const FLOOR_EMPTY_FILTER_TEXT = "No tables match this filter.";
 
 export const FLOOR_PRIMARY_LABEL: Record<FloorPrimary, string | null> = {
   open: "Open",
@@ -146,61 +160,29 @@ export function buildFloorTiles(input: BuildFloorTilesInput): FloorTileModel[] {
   });
 }
 
-export function statusCounts(tables: readonly Pick<Table, "status">[]): Record<FloorFilter, number> {
-  const counts: Record<FloorFilter, number> = { all: tables.length, Occupied: 0, Available: 0, Reserved: 0 };
-  for (const t of tables) counts[t.status] += 1;
+/** The pill a tile counts in: exactly one. An Occupied table is "billed" once the server knows its running bill printed
+ *  for this total (billPrintedNow, the dashboard's and Orders' rule), else "occupied"; an Available table is "free" even
+ *  while it holds a bill (K7, R18); a Reserved one "reserved". */
+export function floorFilterOf(tile: FloorTileModel): Exclude<FloorFilter, "all"> {
+  switch (tile.table.status) {
+    case "Occupied":
+      return tile.tab && billPrintedNow(tile.tab) ? "billed" : "occupied";
+    case "Available":
+      return "free";
+    case "Reserved":
+      return "reserved";
+  }
+}
+
+/** Each pill's count over these tiles (the page passes the area shown, design 6.3). */
+export function floorCounts(tiles: readonly FloorTileModel[]): Record<FloorFilter, number> {
+  const counts: Record<FloorFilter, number> = { all: tiles.length, free: 0, occupied: 0, billed: 0, reserved: 0 };
+  for (const tile of tiles) counts[floorFilterOf(tile)] += 1;
   return counts;
 }
 
 export function filterTiles(tiles: readonly FloorTileModel[], filter: FloorFilter): FloorTileModel[] {
-  return filter === "all" ? [...tiles] : tiles.filter((t) => t.table.status === filter);
-}
-
-export interface FloorSection {
-  /** An Area._id, or the trailing "Other tables" key. */
-  key: string;
-  name: string;
-  /** "4 tables · 2 occupied", or "1 of 4 tables" while a status chip filters. */
-  summary: string;
-  /** The area's tiles that pass the filter (never empty). */
-  tiles: FloorTileModel[];
-}
-
-export interface FloorSections {
-  /** Headings show only once a table sits in a KNOWN area - judged BEFORE the filter. */
-  showHeadings: boolean;
-  groups: FloorSection[];
-}
-
-/**
- * The Floor's tiles laid out under their area headings. ALL tiles are grouped
- * first (so the summary counts the whole area and headings do not appear or
- * vanish as a chip is pressed), then the status filter runs inside each group;
- * an area with no matching tile is dropped. With no areas the result is one
- * group holding exactly filterTiles(tiles, filter) - today's flat list.
- */
-export function floorSections(
-  tiles: readonly FloorTileModel[],
-  areas: readonly Area[] | undefined,
-  filter: FloorFilter,
-): FloorSections {
-  const all = groupByArea(tiles, (tile) => tableAreaIdOf(tile.table), areas);
-  const groups: FloorSection[] = [];
-  for (const group of all) {
-    const shown = filterTiles(group.items, filter);
-    if (shown.length === 0) continue;
-    const total = group.items.length;
-    const summary =
-      filter === "all"
-        ? areaSummaryText(total, statusCounts(group.items.map((t) => t.table)).Occupied)
-        : `${shown.length} of ${tableCountText(total)}`;
-    groups.push({ key: group.key, name: group.name, summary, tiles: shown });
-  }
-  return { showHeadings: showAreaHeadings(all), groups };
-}
-
-export function emptyFilterText(filter: TableStatus): string {
-  return `No ${filter.toLowerCase()} tables right now.`;
+  return filter === "all" ? [...tiles] : tiles.filter((t) => floorFilterOf(t) === filter);
 }
 
 /** "12 tables · 5 occupied · ₹5,380 running". The running total is left out

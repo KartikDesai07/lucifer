@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
-import { FLOOR_GRID_CLASS, type FloorSection, type FloorTileModel } from "@/lib/floor-tiles";
+import type { FloorSection } from "@/lib/floor-areas";
+import { FLOOR_GRID_CLASS, type FloorTileModel } from "@/lib/floor-tiles";
 
 interface FloorAreaSectionsProps {
   groups: readonly FloorSection[];

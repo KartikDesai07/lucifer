@@ -425,6 +425,8 @@
     "lib/floor-tiles.test.ts",
     "lib/tables-floor-paths.test.ts",
     "lib/floor-layout.test.ts",
+    "lib/floor-areas.test.ts",
+    "lib/floor-controls.test.ts",
     "lib/tables-setup-paths.test.ts",
     "lib/pos-handoff-paths.test.ts",
     "lib/tables-route-paths.test.ts",

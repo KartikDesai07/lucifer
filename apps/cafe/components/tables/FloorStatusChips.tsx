@@ -1,9 +1,22 @@
 "use client";
 
+import { useRef } from "react";
+
+import { useRevealPressed, useScrollFades } from "@/hooks/use-scroll-fades";
+import {
+  FLOOR_FADE_PILLS,
+  FLOOR_FADE_WRAP_CLASS,
+  FLOOR_FILTER_DOT,
+  FLOOR_PILLS_ROW_CLASS,
+  FLOOR_PILL_CLASS,
+  FLOOR_PILL_COUNT_OFF_CLASS,
+  FLOOR_PILL_COUNT_ON_CLASS,
+  FLOOR_PILL_DOT_CLASS,
+  FLOOR_PILL_OFF_CLASS,
+  FLOOR_PILL_ON_CLASS,
+} from "@/lib/floor-layout";
+import { FLOOR_FILTERS, type FloorFilter } from "@/lib/floor-tiles";
 import { cn } from "@/lib/utils";
-import type { TableStatus } from "@/lib/constants";
-import type { FloorFilter } from "@/lib/floor-tiles";
-import { TABLE_STATUS_META } from "@/lib/table-status";
 
 interface FloorStatusChipsProps {
   counts: Record<FloorFilter, number>;
@@ -11,44 +24,40 @@ interface FloorStatusChipsProps {
   onChange: (next: FloorFilter) => void;
 }
 
-// State-count filters: they filter the grid AND are the colour legend (each
-// swatch is the status colour, each label its status text). They WRAP onto a
-// second line on a narrow phone — a sideways-scrolling row hides the last state.
-// One selected style for every filter, All included.
-const CHIP_ORDER: readonly TableStatus[] = ["Occupied", "Available", "Reserved"];
-const CHIP_BASE =
-  "inline-flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm text-brand-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent";
-const CHIP_IDLE = "border-brand-rule bg-brand-slip hover:bg-brand-wash";
-const CHIP_SELECTED = "border-brand-primary bg-brand-primary-soft font-semibold";
-const COUNT_CLASS = "tabular-nums text-brand-muted";
-
+// The HTML's status pills (U3 Task 2; values 2.4, design 6.3): All, Available, Occupied, Bill printed, Reserved, each
+// with its count over the area shown; they filter the grid and are its colour legend (each dot the state's colour, each
+// word its name). The chosen one is the ink pill. On a narrow screen the row scrolls sideways with a fade at the edge
+// that hides a pill, and the chosen pill is scrolled into view on its own (owner Q4).
 export function FloorStatusChips({ counts, value, onChange }: FloorStatusChipsProps) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  const fades = useScrollFades(rowRef);
+  useRevealPressed(rowRef, value);
+
   return (
-    <div role="group" aria-label="Filter tables by status" className="flex flex-wrap gap-2">
-      <button
-        type="button"
-        aria-pressed={value === "all"}
-        onClick={() => onChange("all")}
-        className={cn(CHIP_BASE, value === "all" ? CHIP_SELECTED : CHIP_IDLE)}
-      >
-        All <span className={COUNT_CLASS}>{counts.all}</span>
-      </button>
-      {CHIP_ORDER.map((status) => {
-        const meta = TABLE_STATUS_META[status];
-        const selected = value === status;
-        return (
-          <button
-            key={status}
-            type="button"
-            aria-pressed={selected}
-            onClick={() => onChange(status)}
-            className={cn(CHIP_BASE, selected ? CHIP_SELECTED : CHIP_IDLE)}
-          >
-            <span className={cn("h-2.5 w-2.5 shrink-0 rounded-[3px]", meta.dotClass)} aria-hidden />
-            {meta.label} <span className={COUNT_CLASS}>{counts[status]}</span>
-          </button>
-        );
-      })}
+    <div className={FLOOR_FADE_WRAP_CLASS}>
+      <div ref={rowRef} role="group" aria-label="Filter tables by status" data-ui="floor-pills" className={FLOOR_PILLS_ROW_CLASS}>
+        {FLOOR_FILTERS.map(({ key, label }) => {
+          const on = key === value;
+          return (
+            <button
+              key={key}
+              type="button"
+              data-ui="floor-pill"
+              aria-pressed={on}
+              onClick={() => onChange(key)}
+              className={cn(FLOOR_PILL_CLASS, on ? FLOOR_PILL_ON_CLASS : FLOOR_PILL_OFF_CLASS)}
+            >
+              {key !== "all" && <span aria-hidden data-ui="floor-pill-dot" className={cn(FLOOR_PILL_DOT_CLASS, FLOOR_FILTER_DOT[key])} />}
+              {label}
+              <span data-ui="floor-pill-count" className={on ? FLOOR_PILL_COUNT_ON_CLASS : FLOOR_PILL_COUNT_OFF_CLASS}>
+                {counts[key]}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {fades.start && <span aria-hidden data-ui="floor-fade-start" className={FLOOR_FADE_PILLS.start} />}
+      {fades.end && <span aria-hidden data-ui="floor-fade-end" className={FLOOR_FADE_PILLS.end} />}
     </div>
   );
 }
