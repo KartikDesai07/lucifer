@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { LayoutGrid } from "lucide-react";
 
@@ -135,6 +135,15 @@ function FloorContent() {
     [tables.data, openTabs.data, reservations.data, nowMs, longStayMinutes],
   );
 
+  // The HTML's rise on the grid's first paint only (design 6.5; values 7): the first render with tiles gives each tile its
+  // index in its section (after the filters); once that render is on screen the ref turns off and every later render
+  // gives null, so a tab / pill change never replays it and a tile mounted later appears at once (values 12 #19).
+  const firstPaint = useRef(true);
+  const hasTiles = tiles.length > 0;
+  useEffect(() => {
+    if (hasTiles) firstPaint.current = false;
+  }, [hasTiles]);
+
   const retryAll = () => {
     void tables.refetch();
     void openTabs.refetch();
@@ -169,12 +178,14 @@ function FloorContent() {
     setArea(FLOOR_ALL_AREAS);
   };
 
-  const renderTile = (tile: FloorTileModel) => (
+  const rising = firstPaint.current;
+  const renderTile = (tile: FloorTileModel, index: number) => (
     <FloorTile
       key={tile.table._id}
       tile={tile}
       busy={actions.isBusy(tile.table.tableNo)}
       tabsFailed={tabsFailed}
+      riseIndex={rising ? index : null}
       onTap={actions.tapPrimary}
       onMenu={(t, action) => actions.pickMenu(t.table, action)}
     />
@@ -224,7 +235,7 @@ function FloorContent() {
       ) : sections.showHeadings ? (
         <FloorAreaSections groups={sections.groups} renderTile={renderTile} />
       ) : (
-        <div className={FLOOR_GRID_CLASS}>{visible.map((tile) => renderTile(tile))}</div>
+        <div className={FLOOR_GRID_CLASS}>{visible.map((tile, index) => renderTile(tile, index))}</div>
       )}
 
       <FloorDialogs

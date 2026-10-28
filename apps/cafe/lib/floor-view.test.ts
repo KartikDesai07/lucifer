@@ -149,7 +149,7 @@ test("the section's classes: the HTML's head over the grid, 10px apart, no divid
 // ── FloorTile, rendered per kind ──────────────────────────────────────────────────────────────────────────────────────
 
 const renderTile = (tile: FloorTileModel, tabsFailed = false, busy = false) =>
-  renderToStaticMarkup(createElement(FloorTile, { tile, busy, tabsFailed, onTap: () => {}, onMenu: () => {} }));
+  renderToStaticMarkup(createElement(FloorTile, { tile, busy, tabsFailed, riseIndex: null, onTap: () => {}, onMenu: () => {} }));
 const ACTION_WORDS = /\bOpen\b|New order|Seat now|Free table/;
 
 test("FloorTile: every kind draws its word, its detail and its tone; no action word on any tile (design 6.5, 11)", () => {
@@ -227,8 +227,9 @@ test("FloorTile: the surface keeps today's element per tap (Link, button, div) a
 test("FloorTile: a busy tile shows the spinner and names no tap (logic-7)", () => {
   for (const kind of ["K1", "K2", "K5", "K8"] as const) {
     const html = renderTile(KINDS[kind], false, true);
-    const statusLine = html.slice(html.indexOf('data-ui="floor-tile-status"'), html.indexOf('data-ui="floor-tile-detail"'));
-    assert.match(statusLine, /<svg [^>]*animate-spin/, `${kind} busy: the spinner on the status line`);
+    // Task 4 (moved on purpose, design 6.5): the spinner holds the right slot, the surface's or, beside a ⋯, the trigger's.
+    const slot = KINDS[kind].menu.length > 0 ? html.slice(html.indexOf('data-ui="floor-tile-more"')) : html.slice(html.indexOf('data-ui="floor-tile-status"'), html.indexOf('data-ui="floor-tile-detail"'));
+    assert.match(slot, /<svg [^>]*animate-spin/, `${kind} busy: the spinner in the right slot`);
     assert.ok(!/aria-label=/.test(tagOf(html, "floor-tile")), `${kind} busy: no aria-label on the surface`);
     for (const hint of Object.values(FLOOR_TAP_HINT)) if (hint) assert.ok(!html.includes(` — ${hint}`), `${kind} busy: no tap hint "${hint}"`);
     assert.ok(!renderTile(KINDS[kind]).includes("animate-spin"), `${kind} at rest: no spinner`);

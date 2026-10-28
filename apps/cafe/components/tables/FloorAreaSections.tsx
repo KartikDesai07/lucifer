@@ -11,8 +11,9 @@ import { FLOOR_GRID_CLASS, type FloorTileModel } from "@/lib/floor-tiles";
 
 interface FloorAreaSectionsProps {
   groups: readonly FloorSection[];
-  /** Renders one tile; the page owns the actions, this file only lays out. */
-  renderTile: (tile: FloorTileModel) => ReactNode;
+  /** Renders one tile (its index in its section: the rise's delay, values 7); the page owns the actions, this file only
+   *  lays out. */
+  renderTile: (tile: FloorTileModel, index: number) => ReactNode;
 }
 
 // One section per area (the owner's "sections" choice), the HTML's (values 3.1, design 6.4): a head with the area's name
@@ -33,7 +34,7 @@ export function FloorAreaSections({ groups, renderTile }: FloorAreaSectionsProps
               </span>
             </div>
             <div data-ui="floor-grid" className={FLOOR_GRID_CLASS}>
-              {group.tiles.map((tile) => renderTile(tile))}
+              {group.tiles.map((tile, index) => renderTile(tile, index))}
             </div>
           </section>
         );

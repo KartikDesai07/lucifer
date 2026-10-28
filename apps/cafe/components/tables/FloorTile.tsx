@@ -1,28 +1,38 @@
 "use client";
 
-import type { MouseEvent, ReactNode } from "react";
+import { useState, type MouseEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { Loader2 } from "lucide-react";
+import { Clock, Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { FLOOR_POS_PATH, type FloorMenuAction, type FloorTileModel } from "@/lib/floor-tiles";
+import { FLOOR_POS_PATH, type FloorMenuAction, type FloorPrimary, type FloorTileModel } from "@/lib/floor-tiles";
 import {
   FLOOR_DETAIL_PHONE_CLASS,
   FLOOR_DETAIL_SKELETON_CLASS,
   FLOOR_DETAIL_WIDE_CLASS,
+  FLOOR_LONG_STAY_CLOCK_CLASS,
+  FLOOR_STATUS_ROOM_CLASS,
+  FLOOR_STATUS_ROOM_WIDE_CLASS,
   FLOOR_STAY_LONG_CLASS,
   FLOOR_TILE_BOTTOM_CLASS,
   FLOOR_TILE_CLASS,
   FLOOR_TILE_DETAIL_CLASS,
   FLOOR_TILE_DOT_CLASS,
+  FLOOR_TILE_LIFT_CLASS,
   FLOOR_TILE_NAME_CLASS,
+  FLOOR_TILE_PRESS_CLASS,
+  FLOOR_TILE_RISE_CLASS,
   FLOOR_TILE_SEATS_CLASS,
+  FLOOR_TILE_SLOT_CLASS,
+  FLOOR_TILE_SPINNER_CLASS,
   FLOOR_TILE_STATUS_CLASS,
   FLOOR_TILE_TOP_CLASS,
   FLOOR_TILE_WORD_CLASS,
+  FLOOR_TILE_WRAP_CLASS,
 } from "@/lib/floor-tile-classes";
 import { FLOOR_TILE_TONES, floorTileView, type FloorDetail } from "@/lib/floor-view";
 import { offerPosTable } from "@/lib/pos-table-handoff";
+import { tileDelay } from "@/lib/table-sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FloorTileMenu } from "@/components/tables/FloorTileMenu";
 
@@ -32,13 +42,34 @@ interface FloorTileProps {
   busy: boolean;
   /** The open bills failed to load and there is no older list to show. */
   tabsFailed: boolean;
+  /** Its place in its section on the grid's first paint (the rise's delay); null afterwards (no rise, design 6.5). */
+  riseIndex: number | null;
   onTap: (tile: FloorTileModel) => void;
   onMenu: (tile: FloorTileModel, action: FloorMenuAction) => void;
 }
 
-// Only a surface that does something on a tap reacts to the pointer, with the HTML's hand cursor (values 4.1; a <button>
-// would show the default arrow). Task 4 moves the HTML's lift to the wrapper.
-const TAPPABLE_CLASS = "cursor-pointer transition-shadow hover:shadow-md active:shadow-none";
+/** The surface's element, decided once (Task 3 re-review N1): a Link to /pos, a button that opens a confirm, or a div
+ *  that is no target. The switch is exhaustive, so a new FloorPrimary must be placed here. */
+type FloorSurface = "link" | "button" | "div";
+function surfaceOf(busy: boolean, primary: FloorPrimary): FloorSurface {
+  // While this table's own write (or its open-bill check) runs, the tile is not a target at all: a tap would race the
+  // write (e.g. hand a table that is being reserved to New Order, which would then refuse it).
+  if (busy) return "div";
+  switch (primary) {
+    case "open":
+    case "new-order":
+      return "link";
+    case "seat-now":
+    case "free":
+      return "button";
+    case "none":
+      return "div";
+  }
+}
+
+/** What the right slot holds (design 6.5): the ⋯ (a sibling, outside the surface), else inside the surface a busy tile's
+ *  spinner or a long stay's clock. */
+type FloorSlot = "menu" | "spinner" | "clock" | null;
 
 // The hand-off is offered only for a plain primary click: a middle / modifier
 // click opens a plain New Order in a new tab, which must not carry the table.
@@ -90,14 +121,33 @@ function TileDetail({ detail, longStay, readsText }: { detail: FloorDetail; long
 
 // One table on the live floor, the owner's HTML tile (values 4.1, design 6.5): the full name and the seats on top; the
 // state's dot and word over one detail line below; the state's tone on the surface. The whole tile is the primary tap
-// target (a link to New Order, or a button that opens a confirm), and the ⋯ menu is a sibling.
-export function FloorTile({ tile, busy, tabsFailed, onTap, onMenu }: FloorTileProps) {
+// target (a link to New Order, or a button that opens a confirm), and the ⋯ menu is a sibling in the right slot.
+export function FloorTile({ tile, busy, tabsFailed, riseIndex, onTap, onMenu }: FloorTileProps) {
   const { table, primary, menu } = tile;
   const view = floorTileView(tile, tabsFailed);
   const tone = FLOOR_TILE_TONES[view.tone];
   const hasMenu = menu.length > 0;
-  // The surface below is a div (no aria-label) while busy or for a tile with no tap; a Link or button names itself.
-  const readsText = busy || primary === "none";
+  const kind = surfaceOf(busy, primary);
+  // A div surface has no aria-label (a Link or button names itself), so a screen reader reads its text.
+  const readsText = kind === "div";
+  // The rise is fixed when the tile mounts: the page gives an index on the grid's first paint only, and a re-render during
+  // the cascade (the bills arriving) must not cut it; a tile mounted later never rises (design 6.5).
+  const [riseAt] = useState(riseIndex);
+
+  const slot: FloorSlot = hasMenu ? "menu" : busy ? "spinner" : view.longStay ? "clock" : null;
+  // The clock shows from 720px, where the line has room (the phone keeps the red time: "Bill printed" + a clock does not
+  // fit 88px); K10's detail has no time to turn red, so its clock shows at every width (ruling F12 part 2).
+  const clockEveryWidth = view.detail.kind !== "money";
+  const slotRoom = slot === null ? undefined : slot === "clock" && !clockEveryWidth ? FLOOR_STATUS_ROOM_WIDE_CLASS : FLOOR_STATUS_ROOM_CLASS;
+  // Ruling F12: a div surface says "Long stay" once — the clock's own word where it shows at every width (K10), else an
+  // sr-only word (a busy tile, its spinner in the slot). A Link or button says it in its aria-label (view.accessibleName).
+  const saysLongStay = readsText && view.longStay;
+  const clockSpeaks = saysLongStay && slot === "clock" && clockEveryWidth;
+  const longStayWord = (
+    <span data-ui="floor-tile-long-stay" className="sr-only">
+      Long stay
+    </span>
+  );
 
   const content = (
     <>
@@ -110,78 +160,78 @@ export function FloorTile({ tile, busy, tabsFailed, onTap, onMenu }: FloorTilePr
         </span>
       </span>
       <span data-ui="floor-tile-bottom" className={FLOOR_TILE_BOTTOM_CLASS}>
-        <span data-ui="floor-tile-status" className={cn(FLOOR_TILE_STATUS_CLASS, tone.label)}>
+        <span data-ui="floor-tile-status" className={cn(FLOOR_TILE_STATUS_CLASS, tone.label, slotRoom)}>
           <span data-ui="floor-tile-dot" className={cn(FLOOR_TILE_DOT_CLASS, tone.dot)} aria-hidden />
           <span data-ui="floor-tile-word" className={FLOOR_TILE_WORD_CLASS}>{view.label}</span>
-          {/* Today's busy spinner, at the line's end until Task 4's right slot holds it. */}
-          {busy && <Loader2 className="ml-auto h-3.5 w-3.5 flex-none animate-spin" aria-hidden />}
+          {slot === "spinner" && (
+            <span data-ui="floor-tile-slot" className={FLOOR_TILE_SLOT_CLASS}>
+              <Loader2 className={FLOOR_TILE_SPINNER_CLASS} aria-hidden />
+            </span>
+          )}
+          {slot === "clock" && (
+            <span data-ui="floor-tile-clock" title="Long stay" className={cn(FLOOR_TILE_SLOT_CLASS, !clockEveryWidth && FLOOR_DETAIL_WIDE_CLASS)}>
+              <Clock className={FLOOR_LONG_STAY_CLOCK_CLASS} aria-hidden />
+              {clockSpeaks && longStayWord}
+            </span>
+          )}
         </span>
         <TileDetail detail={view.detail} longStay={view.longStay} readsText={readsText} />
       </span>
     </>
   );
 
-  // Ruling F12 part 1: a long stay is said on a div surface (K10, or any busy tile), which has no aria-label; a Link or
-  // button tile says it in its aria-label (view.accessibleName), so the word renders on the div surfaces only, never twice.
-  const longStayNote = view.longStay ? (
-    <span data-ui="floor-tile-long-stay" className="sr-only">
-      Long stay
-    </span>
-  ) : null;
   const className = cn(FLOOR_TILE_CLASS, tone.tile, busy && "opacity-70");
   let surface: ReactNode;
-  // While this table's own write (or its open-bill check) runs, the tile is not
-  // a target at all: a tap would race the write (e.g. hand a table that is
-  // being reserved to New Order, which would then refuse it).
-  if (busy) {
-    surface = (
-      <div aria-busy data-ui="floor-tile" data-tone={view.tone} className={className}>
-        {content}
-        {longStayNote}
-      </div>
-    );
-  } else if (primary === "open" || primary === "new-order") {
-    surface = (
-      <Link
-        href={FLOOR_POS_PATH}
-        prefetch={false}
-        onClick={(e) => offerOnPlainClick(e, table.tableNo)}
-        aria-label={view.accessibleName}
-        data-ui="floor-tile"
-        data-tone={view.tone}
-        className={cn(className, TAPPABLE_CLASS)}
-      >
-        {content}
-      </Link>
-    );
-  } else if (primary === "seat-now" || primary === "free") {
-    surface = (
-      <button
-        type="button"
-        onClick={() => onTap(tile)}
-        aria-label={view.accessibleName}
-        data-ui="floor-tile"
-        data-tone={view.tone}
-        className={cn(className, TAPPABLE_CLASS)}
-      >
-        {content}
-      </button>
-    );
-  } else {
-    surface = (
-      <div data-ui="floor-tile" data-tone={view.tone} className={className}>
-        {content}
-        {longStayNote}
-      </div>
-    );
+  switch (kind) {
+    case "link":
+      surface = (
+        <Link
+          href={FLOOR_POS_PATH}
+          prefetch={false}
+          onClick={(e) => offerOnPlainClick(e, table.tableNo)}
+          aria-label={view.accessibleName}
+          data-ui="floor-tile"
+          data-tone={view.tone}
+          className={cn(className, FLOOR_TILE_PRESS_CLASS)}
+        >
+          {content}
+        </Link>
+      );
+      break;
+    case "button":
+      surface = (
+        <button
+          type="button"
+          onClick={() => onTap(tile)}
+          aria-label={view.accessibleName}
+          data-ui="floor-tile"
+          data-tone={view.tone}
+          className={cn(className, FLOOR_TILE_PRESS_CLASS)}
+        >
+          {content}
+        </button>
+      );
+      break;
+    case "div":
+      surface = (
+        <div aria-busy={busy || undefined} data-ui="floor-tile" data-tone={view.tone} className={className}>
+          {content}
+          {saysLongStay && !clockSpeaks && longStayWord}
+        </div>
+      );
+      break;
   }
 
+  // The grid item (design 6.5): the rise (first paint only) and, on a tile a tap acts on, the hover lift move the surface
+  // and its ⋯ together; the ⋯ stays a sibling after the surface, never inside it (P11).
   return (
-    <div className="relative">
+    <div
+      data-ui="floor-tile-wrap"
+      className={cn(FLOOR_TILE_WRAP_CLASS, riseAt !== null && FLOOR_TILE_RISE_CLASS, kind !== "div" && FLOOR_TILE_LIFT_CLASS)}
+      style={riseAt === null ? undefined : { animationDelay: tileDelay(riseAt) }}
+    >
       {surface}
-      {hasMenu && (
-        <FloorTileMenu tableNo={table.tableNo} actions={menu} disabled={busy} onPick={(a) => onMenu(tile, a)} />
-      )}
+      {hasMenu && <FloorTileMenu tableNo={table.tableNo} actions={menu} busy={busy} onPick={(a) => onMenu(tile, a)} />}
     </div>
   );
 }

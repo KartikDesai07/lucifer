@@ -4,7 +4,7 @@
 // within 300 lines), in its style: every class name is written out here, so Tailwind's source scanner sees each one, and
 // the pins (lib/floor-view.test.ts) read the SAME constants the tile and the sections render. The per-state colours are
 // lib/floor-view.ts's FLOOR_TILE_TONES; the grid is lib/floor-tiles.ts's FLOOR_GRID_CLASS. U3 Task 4 adds the tile's
-// right slot and the ⋯ trigger here.
+// wrapper and motion, its right slot and the ⋯ trigger (design 6.5; values 4.1, 6.1-6.3, 7).
 
 // ── The area sections (values 3.1-3.2, design 6.4) ──────────────────────────────────────────────────────────────────
 
@@ -23,7 +23,7 @@ export const FLOOR_SECTION_COUNT_CLASS = "flex-none text-[12px] text-muted-foreg
  * The tile's surface (values 4.1): a column, its top row and bottom block pushed apart (8px at least), a 1.5px border
  * (Chrome draws 1px, values 0.5), radius 14, padding 12, 112px tall (100 on the phone; content never grows it), the
  * HTML's --text and normal line-height. It fills its grid cell (h-full), so a tile that grows grows its whole row as the
- * HTML's (values 4.7). Today's 2px focus ring, on the primary token (Task 4 owns the focus look).
+ * HTML's (values 4.7). Today's 2px accent focus ring, 1px out (design 6.5: the HTML draws none, values 12 #9).
  */
 export const FLOOR_TILE_CLASS =
   "flex h-full min-h-[112px] w-full flex-col justify-between gap-2 rounded-[14px] border-[1.5px] p-3 text-left leading-[normal] text-foreground max-tab:min-h-[100px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1";
@@ -50,7 +50,51 @@ export const FLOOR_DETAIL_WIDE_CLASS = "max-tab:hidden";
 /** The detail's phone word, below 720px ("Tap to seat": the HTML's "Tap to seat gu…" is not copied, design 8 #1; a stay's
  *  "72m", the owner's answer 2026-10-28). */
 export const FLOOR_DETAIL_PHONE_CLASS = "tab:hidden";
-/** A long stay (design 6.5, ruling F3): the time on the detail line in --bad-i, 600. Task 4 adds the clock mark. */
+/** A long stay (design 6.5, ruling F3): the time on the detail line in --bad-i, 600; the clock mark is the right slot's. */
 export const FLOOR_STAY_LONG_CLASS = "font-semibold text-status-bad-ink";
 /** The bills still loading (K3, design 6.5): a short bar the detail line's height, so the tile keeps its rhythm. */
 export const FLOOR_DETAIL_SKELETON_CLASS = "h-[17px] w-16";
+
+// ── The wrapper and its motion (design 6.5; values 6.1-6.3, 7) ───────────────────────────────────────────────────────
+
+/** The tile's grid item: it holds the surface and its ⋯ sibling, so the rise and the lift move both (design 6.5); the
+ *  tile's 14px radius, so the lift's shadow follows its corners. */
+export const FLOOR_TILE_WRAP_CLASS = "relative rounded-[14px]";
+/** The HTML's rise (values 7: opacity 0 → 1, 12px up, .5s cubic-bezier(.2,.8,.2,1) both), on the grid's first paint only,
+ *  its delay tileDelay(index) inline (ruling P52); none with reduced motion (values 12 #23 not copied). */
+export const FLOOR_TILE_RISE_CLASS = "motion-safe:animate-html-rise-floor";
+/** The HTML's hover lift (values 6.1: 3px up, 0 12px 28px rgba(0,0,0,.1); its transition, values 0.5: the move .3s on
+ *  cubic-bezier(.2,.8,.2,1), the shadow .3s ease) where a pointer can hover, on a tile a tap acts on. Tailwind's lift is
+ *  the translate property, so it composes with the rise's held transform (the HTML needs !important for that). While the
+ *  surface is pressed the lift gives way (values 6.2: the press replaces the hover's translate; its shadow stays). */
+export const FLOOR_TILE_LIFT_CLASS =
+  "transition-[translate,box-shadow] duration-300 ease-[cubic-bezier(.2,.8,.2,1),ease] hover:-translate-y-[3px] hover:[box-shadow:0_12px_28px_rgba(0,0,0,0.1)] has-[[data-ui=floor-tile]:active]:translate-y-0";
+/** A tap target's surface (values 4.1, 6.2): the HTML's hand cursor and its press, scale(.98) on the tile's .3s curve. */
+export const FLOOR_TILE_PRESS_CLASS = "cursor-pointer transition-[scale] duration-300 ease-[cubic-bezier(.2,.8,.2,1)] active:scale-[.98]";
+
+// ── The right slot (design 6.5) ──────────────────────────────────────────────────────────────────────────────────────
+
+/** The status line's room for the slot (the 16px glyph and 6px), so "Reserved" + ⋯ fit the 88px phone line; positioned,
+ *  so the surface's own slot sits at its right end. */
+export const FLOOR_STATUS_ROOM_CLASS = "relative pr-[22px]";
+/** The same room from 720px only, for a slot that shows only there (a long stay's clock on a money line). */
+export const FLOOR_STATUS_ROOM_WIDE_CLASS = "relative tab:pr-[22px]";
+/** The surface's slot (a busy tile's spinner, a long stay's clock): at the status line's right end, its glyph centred on
+ *  the line and its right edge on the tile's inner edge, the ⋯ glyph's place. */
+export const FLOOR_TILE_SLOT_CLASS = "absolute inset-y-0 right-0 flex items-center";
+/** The long-stay mark (design 6.5): a 14px clock in --bad-i. */
+export const FLOOR_LONG_STAY_CLOCK_CLASS = "size-3.5 text-status-bad-ink";
+/** A busy tile's spinner (today's), 14px. */
+export const FLOOR_TILE_SPINNER_CLASS = "size-3.5 animate-spin";
+/**
+ * The ⋯ trigger, a sibling after the surface (design 6.5; the 44px rule, ruling R1): at the tile's right edge, its foot
+ * 30px above the tile's (the detail line's top on 112 and 100px tiles, so it never covers the detail), 44 × 44 on touch,
+ * 32 × 32 with a fine pointer; the glyph at its bottom-right, 13px in (the 1px border + 12px padding) and 2.5px up, so
+ * its centre sits on the status line's centre. Today's ghost look in tokens: --text-2, --text on hover, the accent ring.
+ */
+export const FLOOR_TILE_TRIGGER_CLASS =
+  "absolute bottom-[30px] right-0 flex cursor-pointer items-end justify-end rounded-[8px] pb-[2.5px] pr-[13px] text-muted-foreground pointer-coarse:size-11 pointer-fine:size-8 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-default";
+/** The ⋯ glyph (lucide Ellipsis), 16px. */
+export const FLOOR_TILE_GLYPH_CLASS = "size-4";
+/** The trigger's spinner while busy: 14px, 1px up, so its centre is the glyph's (on the status line's centre). */
+export const FLOOR_TILE_TRIGGER_SPINNER_CLASS = "mb-px size-3.5 animate-spin";

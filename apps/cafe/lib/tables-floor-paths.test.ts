@@ -121,7 +121,7 @@ test("PIN: every tile shows its status as TEXT, not colour alone", () => {
   assert.ok(src.includes("const tone = FLOOR_TILE_TONES[view.tone];"), "the tile reads the Floor's tone map");
   assert.match(
     src,
-    /className=\{cn\(FLOOR_TILE_STATUS_CLASS, tone\.label\)\}>[\s\S]*?className=\{FLOOR_TILE_WORD_CLASS\}>\s*\{view\.label\}\s*<\/span>/,
+    /className=\{cn\(FLOOR_TILE_STATUS_CLASS, tone\.label, slotRoom\)\}>[\s\S]*?className=\{FLOOR_TILE_WORD_CLASS\}>\s*\{view\.label\}\s*<\/span>/,
     "the status word renders as text inside the line that wears the state's ink",
   );
   assert.ok(src.includes("cn(FLOOR_TILE_CLASS, tone.tile"), "the tint comes from the same tone entry as the word's ink");
@@ -180,10 +180,10 @@ test("PIN: the table never rides in the URL (a query string costs a round trip p
   assert.match(readStripped(FLOOR_LIB), /FLOOR_POS_PATH = "\/pos";/);
 });
 
-// U3 Task 2 (P11 moved on purpose, owner Q4 / design 6.3): the pills no longer wrap; they scroll sideways as the HTML's
-// row, with a fade at the edge that hides one and the chosen pill scrolled into view ("chips never hide a state
-// off-screen" is retired by Q4). Kept: the group label, the pressed state, the ⋯ beside (never inside) the tile.
-test("PIN: the pills scroll sideways with the group label and aria-pressed; the area tabs name their group; the ⋯ menu is a 40 px sibling of the tile link", () => {
+// U3 Task 2 (P11 moved on purpose, owner Q4 / design 6.3): the pills scroll sideways as the HTML's row, with an edge fade
+// and the chosen pill scrolled into view ("chips never hide a state off-screen" is retired by Q4). Kept: the group label,
+// the pressed state, the ⋯ beside (never inside) the tile; U3 Task 4 moves its 40px needle to 44 / 32 (design 6.5).
+test("PIN: the pills scroll sideways with the group label and aria-pressed; the area tabs name their group; the ⋯ menu is a 44 / 32 px sibling of the tile link", () => {
   const chips = readStripped(CHIPS);
   assert.ok(chips.includes('role="group" aria-label="Filter tables by status"'), "the pills' group label");
   assert.ok(chips.includes("className={FLOOR_PILLS_ROW_CLASS}"), "the row wears the pills row class");
@@ -192,7 +192,7 @@ test("PIN: the pills scroll sideways with the group label and aria-pressed; the 
   const tabs = readStripped(AREA_TABS);
   assert.ok(tabs.includes('role="group" aria-label="Filter tables by area"'), "the area tabs' group label");
   assert.ok(tabs.includes("aria-pressed={on}"), "each tab says whether it is chosen");
-  assert.ok(readStripped(TILE_MENU).includes("h-10 w-10"), "the menu trigger is a 40 px target");
+  assert.ok(readStripped(TILE_MENU).includes("className={FLOOR_TILE_TRIGGER_CLASS}") && /pointer-coarse:size-11 pointer-fine:size-8/.test(readStripped(TILE_CLASSES_LIB)), "the menu trigger is 44 px on touch, 32 px with a fine pointer");
   const tile = readStripped(TILE);
   assert.ok(tile.indexOf("{surface}") < tile.indexOf("<FloorTileMenu"), "the menu is rendered after (beside) the link, not inside it");
 });

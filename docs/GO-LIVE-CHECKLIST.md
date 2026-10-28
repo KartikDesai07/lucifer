@@ -670,9 +670,9 @@ view every role sees), **Setup** and **QR codes** (both admin only).
       order on that table; a running table opens its open bill.
 - [ ] **Free table** always asks first, and is only offered when the table has
       no open bill (a Pay Now sale leaves its table occupied until freed).
-- [ ] A running table shows **Long stay** once its bill has been open for the
-      minutes set in `Settings` → `Business details` → *Tables screen* (60 by
-      default).
+- [ ] A running table's time turns red, with a **Long stay** clock, once its
+      bill has been open for the minutes set in `Settings` → `Business details`
+      → *Tables screen* (60 by default).
 
 ### Moving a live tab to another table (ANY staff)
 

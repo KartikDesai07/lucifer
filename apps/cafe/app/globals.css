@@ -220,6 +220,8 @@
   --animate-html-rise-tile: brand-rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   /* The HTML's rise at .25s (Orders values 5.1): the /orders Filters panel rises in. */
   --animate-html-rise-fast: brand-rise 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* The HTML's tile rise at .5s (Floor values 7): a /tables tile on the grid's first paint, each with its own delay. */
+  --animate-html-rise-floor: brand-rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   /* The HTML's pop (POS values 4.1): the /pos card's qty badge springs in. */
   --animate-html-pop: html-pop 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   /* The HTML's lineIn (POS values 5.4): a /pos cart line slides in from the right as it arrives. */
