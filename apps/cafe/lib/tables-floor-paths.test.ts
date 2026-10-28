@@ -26,11 +26,13 @@ const INDICATOR = "apps/cafe/components/tables/FloorLiveIndicator.tsx";
 const DIALOGS = "apps/cafe/components/tables/FloorDialogs.tsx";
 const FLOOR_LIB = "apps/cafe/lib/floor-tiles.ts";
 const SECTIONS = "apps/cafe/components/tables/FloorAreaSections.tsx";
+// U3 Task 1 (2026-10-28): the Floor's frame classes and route (the page, the scroller, the body; isFloorPath).
+const LAYOUT_LIB = "apps/cafe/lib/floor-layout.ts";
 const LIVE_PANEL = "apps/cafe/components/dashboard/LiveFloorPanel.tsx";
 const TABLES_DIR = "apps/cafe/components/tables";
 
 // Every file that makes up the Floor screen.
-const FLOOR_FILES = [PAGE, STATUS_HOOK, ACTIONS_HOOK, TILE, TILE_MENU, CHIPS, INDICATOR, DIALOGS, FLOOR_LIB, SECTIONS];
+const FLOOR_FILES = [PAGE, STATUS_HOOK, ACTIONS_HOOK, TILE, TILE_MENU, CHIPS, INDICATOR, DIALOGS, FLOOR_LIB, SECTIONS, LAYOUT_LIB];
 
 function count(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1;

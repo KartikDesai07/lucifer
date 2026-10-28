@@ -3,13 +3,18 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { FLOOR_PATH, isFloorPath } from "@/lib/floor-layout";
 import { isActivePath } from "@/lib/nav-active";
 import { isOrdersPath } from "@/lib/orders-layout";
 import { isPosPath } from "@/lib/pos-layout";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 import { GlyphPlus, NavFloor, type NavIcon } from "@/components/layout/nav-icons";
-import { HEADER_OUTLINE_BUTTON_CLASS, HEADER_PRIMARY_BUTTON_CLASS } from "@/components/layout/header-classes";
+import {
+  HEADER_FLOOR_NEW_ORDER_CLASS,
+  HEADER_OUTLINE_BUTTON_CLASS,
+  HEADER_PRIMARY_BUTTON_CLASS,
+} from "@/components/layout/header-classes";
 
 // The header's two quick links (owner, 2026-10-11): the Floor and a new order, the same targets as the sidebar's
 // Floor and Order rows. U0 Task 3 (values 2.5, design 5.3) draws them as the HTML's header buttons, after the page's
@@ -18,7 +23,9 @@ import { HEADER_OUTLINE_BUTTON_CLASS, HEADER_PRIMARY_BUTTON_CLASS } from "@/comp
 // design 6.1, the HTML's Orders header keeps the label at every width). The current page is marked for screen readers
 // as in the sidebar; the HTML's header buttons have no lit look. Not on /pos (U1 Task 1, design 6.1): the HTML's Order
 // header has no place for them; the Floor is in the nav and behind the cart's table cell, and a new order starts from
-// the cart.
+// the cart. On /tables (U3 Task 1; owner Q1, the Floor values 1.2, design 6.1) the HTML's Floor header: Tables is that
+// page, so it is not drawn; New order (our word, the same link) wears the HTML Floor button's outline look with its
+// label at every width.
 
 export interface HeaderQuickTab {
   title: string;
@@ -38,10 +45,13 @@ export const HEADER_QUICK_TABS: readonly HeaderQuickTab[] = [
 export function HeaderQuickTabs() {
   const pathname = usePathname() ?? "";
   if (isPosPath(pathname)) return null;
-  const labelClass = isOrdersPath(pathname) ? "inline" : "hidden tab:inline";
+  const floor = isFloorPath(pathname);
+  const labelClass = isOrdersPath(pathname) || floor ? "inline" : "hidden tab:inline";
   return (
     <>
       {HEADER_QUICK_TABS.map((tab) => {
+        // The Floor does not link to itself (owner Q1).
+        if (floor && tab.url === FLOOR_PATH) return null;
         const active = tab.exact ? pathname === tab.url : isActivePath(pathname, tab.url);
         const Icon = tab.icon;
         return (
@@ -56,7 +66,7 @@ export function HeaderQuickTabs() {
             data-ui={tab.primary ? "header-new-order" : "header-tables"}
             className={cn(
               buttonVariants({ variant: tab.primary ? "default" : "outline" }),
-              tab.primary ? HEADER_PRIMARY_BUTTON_CLASS : HEADER_OUTLINE_BUTTON_CLASS,
+              tab.primary ? (floor ? HEADER_FLOOR_NEW_ORDER_CLASS : HEADER_PRIMARY_BUTTON_CLASS) : HEADER_OUTLINE_BUTTON_CLASS,
               tab.primary ? "inline-flex" : "hidden tab:inline-flex",
             )}
           >

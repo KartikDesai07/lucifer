@@ -9,7 +9,8 @@ import { isActivePath } from "./nav-active";
 // 2026-10-11 (owner, PetPooja-style): the top bar's quick links to the Floor and the POS. U0 Task 3 (values 2.5,
 // design 5.3) draws them as the HTML's header buttons, in the design's order: Tables (outline) then New order (the
 // HTML's primary button and word). They must open exactly the pages the sidebar's Floor and Order rows open, mark the
-// current page the same way, and sit in the header every dashboard screen renders.
+// current page the same way, and sit in the header every dashboard screen renders — but /pos (U1: none) and /tables
+// (U3 Task 1, owner Q1 2026-10-28: Tables is that page, so only New order, in the HTML Floor button's look).
 
 const CAFE_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const read = (rel: string): string => stripComments(readFileSync(path.join(CAFE_ROOT, rel), "utf8"));
@@ -51,20 +52,28 @@ test("PIN: a button marks the current page like the sidebar — New order on /po
   assert.equal(lights("/tables", false, "/tables/setup"), true, "landmark: without exact, Setup would mark Tables");
 });
 
-test("PIN: every dashboard screen gets the two buttons — the shared Header renders them, and only two of them", () => {
+// Moved on purpose (U3 Task 1; owner Q1 2026-10-28, design 4 and 6.9): "every dashboard screen gets both buttons"
+// becomes "every one but /pos and /tables" — the Floor does not link to itself. The pair itself stays exactly two.
+test("PIN: every dashboard screen but /pos and /tables gets the two buttons — the shared Header renders them, and only two of them", () => {
   const header = read(HEADER);
   assert.ok(header.includes('import { HeaderQuickTabs } from "@/components/layout/HeaderQuickTabs";'), "the header imports them");
   assert.equal(header.split("<HeaderQuickTabs />").length - 1, 1, "rendered once");
   const tabs = read(TABS);
   assert.equal(tabs.split("{ title: ").length - 1, 2, "exactly the two buttons the owner asked for");
+  // The two exceptions, and nothing else: /pos draws none (U1), /tables leaves out Tables only (Q1). The rendered
+  // behaviour on real paths is pinned in lib/floor-layout.test.ts.
+  assert.match(tabs, /if \(isPosPath\(pathname\)\) return null;/, "none on /pos");
+  assert.match(tabs, /if \(floor && tab\.url === FLOOR_PATH\) return null;/, "Tables is not drawn on /tables");
+  assert.equal(tabs.split("return null;").length - 1, 2, "no other page drops a button");
 });
 
 // U2 Task 1 (Orders values 1.2, design 6.1): the HTML's Orders header keeps New order's label on the phone too, so on
-// /orders the label shows at every width; every other page keeps U0's plus alone below 720px.
-test("PIN: on a phone Tables hides (the tab bar has Floor) and New order shows only its plus (values 2.5), except on /orders", () => {
+// /orders the label shows at every width; U3 Task 1 (Floor values 1.2, owner Q1) the same on /tables. Every other page
+// keeps U0's plus alone below 720px.
+test("PIN: on a phone Tables hides (the tab bar has Floor) and New order shows only its plus (values 2.5), except on /orders and /tables", () => {
   const tabs = read(TABS);
   assert.match(tabs, /tab\.primary \? "inline-flex" : "hidden tab:inline-flex"/, "Tables is hidden below 720px, New order always shows");
-  assert.match(tabs, /const labelClass = isOrdersPath\(pathname\) \? "inline" : "hidden tab:inline";/, "the label shows from 720px, and at every width on /orders");
+  assert.match(tabs, /const labelClass = isOrdersPath\(pathname\) \|\| floor \? "inline" : "hidden tab:inline";/, "the label shows from 720px, and at every width on /orders and /tables");
   assert.match(tabs, /<span className=\{labelClass\}>\{tab\.title\}<\/span>/, "the label takes that class");
   assert.match(tabs, /aria-label=\{tab\.title\}/, "the plus alone still has a name");
 });

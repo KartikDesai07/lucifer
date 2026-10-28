@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { LayoutGrid } from "lucide-react";
 
@@ -24,6 +24,7 @@ import {
   type FloorFilter,
   type FloorTileModel,
 } from "@/lib/floor-tiles";
+import { FLOOR_BODY_CLASS, FLOOR_PAGE_CLASS, FLOOR_SCROLLER_CLASS } from "@/lib/floor-layout";
 import { OPEN_TABS_FILTERS } from "@/lib/table-pick";
 import { TABLES_SETUP_PATH } from "@/lib/table-sections";
 import { longStayMinutesOf } from "@/lib/table-status";
@@ -33,7 +34,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { MenuPageShell } from "@/components/menu/MenuPageShell";
 import { FloorAreaSections } from "@/components/tables/FloorAreaSections";
 import { FloorDialogs } from "@/components/tables/FloorDialogs";
 import { FloorLiveIndicator } from "@/components/tables/FloorLiveIndicator";
@@ -46,10 +46,21 @@ const SKELETON_TILES = 8;
 const SKELETON_TILE_CLASS = "h-28 w-full rounded-lg";
 
 export default function TablesPage() {
+  return <FloorContent />;
+}
+
+// The page's frame (U3 Task 1; the Floor values 1.1, 2.1, design 5): under the shell header the page fills the screen
+// (the paper frame with its 1440px cap goes) and never scrolls itself; its scroller holds the HTML's body. Every branch
+// of the content renders inside it.
+function FloorFrame({ children }: { children: ReactNode }) {
   return (
-    <MenuPageShell>
-      <FloorContent />
-    </MenuPageShell>
+    <div data-ui="floor-page" className={FLOOR_PAGE_CLASS}>
+      <div data-ui="floor-scroller" className={FLOOR_SCROLLER_CLASS}>
+        <div data-ui="floor-body" className={FLOOR_BODY_CLASS}>
+          {children}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -129,7 +140,7 @@ function FloorContent() {
   // list already loaded the grid stays and the indicator carries the failure.
   if (tables.isError && tables.data === undefined) {
     return (
-      <div className="space-y-4">
+      <FloorFrame>
         <PageHeader eyebrow="Service" title="Floor" />
         <ErrorState
           title="Couldn't load the floor"
@@ -137,7 +148,7 @@ function FloorContent() {
           onRetry={retryAll}
           retryLabel="Try again"
         />
-      </div>
+      </FloorFrame>
     );
   }
 
@@ -158,7 +169,7 @@ function FloorContent() {
   );
 
   return (
-    <div className="space-y-4">
+    <FloorFrame>
       <PageHeader
         eyebrow="Service"
         title="Floor"
@@ -203,6 +214,6 @@ function FloorContent() {
         onConfirm={actions.confirm}
         onOpenChange={actions.onDialogOpenChange}
       />
-    </div>
+    </FloorFrame>
   );
 }
