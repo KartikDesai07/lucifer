@@ -99,6 +99,8 @@ function FloorContent() {
   // stay even however long the render takes (0 on the first paint). A remount can give a table another index (re-review
   // M1), so while the cascade runs each table keeps the index of the first render it appeared in (lib/floor-rise.ts): its
   // remounted tile continues at its own point on its own curve. The record is dropped once the cascade's window passes.
+  // React's Compiler and eslint-plugin-react-hooks 7's purity / refs rules would flag this render-time read and write
+  // (rulings F15 / F17 accept it: idempotent under StrictMode; a discarded render only records a start a few ms early).
   const riseStart = useRef<number | null>(null);
   const firstRiseIndex = useRef(new Map<string, number>());
   const hasTiles = tiles.length > 0;

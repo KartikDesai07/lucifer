@@ -21,7 +21,7 @@ import {
   FLOOR_EMPTY_ACCENT_BUTTON_CLASS, FLOOR_EMPTY_CLASS, FLOOR_EMPTY_OUTLINE_BUTTON_CLASS, FLOOR_EMPTY_TITLE_CLASS,
   FLOOR_SKELETON_TILE_CLASS,
 } from "./floor-layout";
-import { FLOOR_TILE_CLASS } from "./floor-tile-classes";
+import { FLOOR_FOCUS_RING_CLASS, FLOOR_TILE_CLASS } from "./floor-tile-classes";
 import { FLOOR_EMPTY_FILTER_TEXT, FLOOR_GRID_CLASS } from "./floor-tiles";
 import { TABLES_SETUP_PATH } from "./table-sections";
 import { ORDERS_OUTLINE_BUTTON_CLASS } from "@/components/orders/OrdersListParts";
@@ -81,11 +81,13 @@ test("design 6.7: Show all tables is U2's 40px outline button (Clear filters), 8
   for (const t of ["border-border", "bg-card", "text-foreground"]) assert.ok(!accent.includes(t), `Open Setup is not the outline: no ${t}`);
 });
 
-test("design 6.5: both empty-state buttons wear the tiles' 2px accent focus ring (today's kit ring, the whole page alike)", () => {
-  const ring = tokens(FLOOR_TILE_CLASS).filter((t) => t.startsWith("focus-visible:"));
-  assert.deepEqual(sorted(ring), sorted(["focus-visible:outline-none", "focus-visible:ring-2", "focus-visible:ring-primary", "focus-visible:ring-offset-1"]), "landmark: the tile's ring");
+test("design 6.5: both empty-state buttons wear exactly the tiles' 2px accent focus ring (today's kit ring, the whole page alike)", () => {
+  const ring = sorted(tokens(FLOOR_TILE_CLASS).filter((t) => t.startsWith("focus-visible:")));
+  assert.deepEqual(ring, sorted(["focus-visible:outline-none", "focus-visible:ring-2", "focus-visible:ring-primary", "focus-visible:ring-offset-1"]), "landmark: the tile's ring");
+  assert.deepEqual(sorted(tokens(FLOOR_FOCUS_RING_CLASS)), ring, "M2: the ring is written once, the tile's");
   for (const [name, cls] of [["Show all tables", FLOOR_EMPTY_OUTLINE_BUTTON_CLASS], ["Open Setup", FLOOR_EMPTY_ACCENT_BUTTON_CLASS]] as const) {
-    for (const t of ring) assert.ok(tokens(cls).includes(t), `${name}: ${t} (not the browser's outline)`);
+    const focus = sorted(tokens(cls).filter((t) => t.startsWith("focus-visible:")));
+    assert.deepEqual(focus, ring, `${name}: exactly the tile's ring, no other focus token (M2; not the browser's outline)`);
   }
 });
 

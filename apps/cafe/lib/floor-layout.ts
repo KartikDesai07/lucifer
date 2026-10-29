@@ -7,11 +7,12 @@
 // moves 8px beside a classic scrollbar: values 12 #25, not copied).
 //
 // One place for the class strings the page renders. Every class name is written out here or in the shared constant it
-// reads (POS_PAGE_CLASS, HTML_PRESS_CLASS, STATUS_CLASSES), so Tailwind's source scanner sees each one, and the pins
-// (lib/floor-layout.test.ts, lib/floor-controls.test.ts) read the SAME constants the page renders. U3 Task 2 adds the
-// controls row (the area tabs, the status pills, their fades) and the two scroll helpers; Task 5 the refresh strip; Task 6
-// the empty and skeleton classes.
+// reads (POS_PAGE_CLASS, HTML_PRESS_CLASS, STATUS_CLASSES, FLOOR_FOCUS_RING_CLASS), so Tailwind's source scanner sees each
+// one, and the pins (lib/floor-layout.test.ts, lib/floor-controls.test.ts) read the SAME constants the page renders. U3
+// Task 2 adds the controls row (the area tabs, the status pills, their fades) and the two scroll helpers; Task 5 the
+// refresh strip; Task 6 the empty and skeleton classes.
 import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
+import { FLOOR_FOCUS_RING_CLASS } from "@/lib/floor-tile-classes";
 import type { FloorFilter } from "@/lib/floor-tiles";
 import { POS_PAGE_CLASS } from "@/lib/pos-layout";
 import { TABLES_FLOOR_PATH } from "@/lib/table-sections";
@@ -79,9 +80,9 @@ export const FLOOR_REFRESH_STRIP_HIT_CLASS =
 export const FLOOR_EMPTY_CLASS = "flex flex-col items-center gap-1.5 py-12 text-center text-[14px] text-muted-foreground";
 /** The title where we have one, no tables (design 6.7; U2's empty title row: 14px 600), in --text. */
 export const FLOOR_EMPTY_TITLE_CLASS = "text-[14px] font-semibold text-foreground";
-/** Both buttons' keyboard focus: the tiles' 2px accent ring, 1px out (design 6.5: today's ring on every Floor control; U2's
- *  outline button has none). */
-const EMPTY_FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1";
+/** Both buttons' keyboard focus: the tiles' 2px accent ring, 1px out, the one shared constant (design 6.5: today's ring on
+ *  every Floor control; U2's outline button has none). */
+const EMPTY_FOCUS_RING = FLOOR_FOCUS_RING_CLASS;
 /** Show all tables (design 6.7: ours, as U2's Clear filters): U2's 40px outline button (ORDERS_OUTLINE_BUTTON_CLASS, the
  *  HTML Orders' Filters look: radius 9, 1px --border, 0 16px, 13.5px 500; never disabled here) with U2's mt-2. */
 export const FLOOR_EMPTY_OUTLINE_BUTTON_CLASS = `mt-2 flex h-10 cursor-pointer items-center justify-center rounded-[9px] border border-border bg-card px-4 text-[13.5px] font-medium text-foreground hover:border-subtle-foreground ${EMPTY_FOCUS_RING}`;

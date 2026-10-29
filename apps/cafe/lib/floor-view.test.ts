@@ -1,7 +1,7 @@
 // U3 Task 3 (2026-10-28): the Floor's tiles and area sections, the owner's HTML (docs/superpowers/specs/2026-10-28-floor-html-values.md
 // 3.1-3.2 sections, 4.1-4.5 tiles; design 6.4 / 6.5 in docs/superpowers/specs/2026-10-28-floor-match-html-design.md, owner
 // Q2). floorTileView row by row (design 6.5's table, today's kinds K1-K10), the tones, the class strings, then renders of
-// FloorTile per kind and of FloorAreaSections. Review Focus 3: the name truncates, the seats and the status word never wrap.
+// FloorTile per kind and of FloorAreaSections. The owner's Q6: the name first; the seats and the status word never wrap.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import React, { createElement } from "react";
@@ -117,12 +117,14 @@ test("FLOOR_TILE_TONES: the HTML's four looks (values 4.2) from tokens; the dots
   );
 });
 
-test("the tile's classes: the HTML's anatomy (values 4.1, 4.4); Review Focus 3: the name truncates, seats and word never wrap", () => {
+test("the tile's classes: the HTML's anatomy (values 4.1, 4.4); the owner's Q6: the name first, seats and word never wrap", () => {
   // h-full (logic-6): the surface fills its grid cell, so a tile that grows grows its row-mates (values 4.7).
   hasAll(FLOOR_TILE_CLASS, ["flex", "flex-col", "justify-between", "gap-2", "border-[1.5px]", "rounded-[14px]", "p-3", "min-h-[112px]", "max-tab:min-h-[100px]", "w-full", "h-full", "text-left", "text-foreground", "leading-[normal]"], "values 4.1 tile");
   // Ruling F9: the HTML's top row has no gap (values 4.1, computed `normal`), so "T-16" + "6 seats" fits the 88px phone row.
-  assert.equal(FLOOR_TILE_TOP_CLASS, "flex items-start justify-between", "the top row: name left, seats right, no gap (values 4.1)");
-  assert.equal(FLOOR_TILE_NAME_CLASS, "min-w-0 truncate text-[20px] font-semibold tracking-[-0.01em]", "the name: 20px 600 -0.01em, truncating");
+  // The owner's Q6 (design 6.5): the row wraps one 26px line (the name box, measured) and clips the rest, so seats that do
+  // not fit beside the name drop out of sight; the name stops at the row's width, so only a longer name truncates.
+  assert.equal(FLOOR_TILE_TOP_CLASS, "flex h-[26px] flex-wrap content-start items-start justify-between overflow-hidden", "the top row: name left, seats right, no gap (values 4.1); one clipped 26px line (Q6)");
+  assert.equal(FLOOR_TILE_NAME_CLASS, "min-w-0 max-w-full truncate text-[20px] font-semibold tracking-[-0.01em]", "the name: 20px 600 -0.01em, truncating only past the whole row (Q6)");
   assert.equal(FLOOR_TILE_SEATS_CLASS, "flex-none whitespace-nowrap text-[12px] text-muted-foreground", "the seats: 12px --text-2, never shrinking or wrapping");
   assert.equal(FLOOR_TILE_BOTTOM_CLASS, "flex flex-col gap-0.5", "the bottom block: 2px between its lines");
   assert.equal(FLOOR_TILE_STATUS_CLASS, "flex items-center gap-1.5 text-[12.5px] font-medium", "the status line: dot, 6px, word");
@@ -167,6 +169,11 @@ test("FloorTile: every kind draws its word, its detail and its tone; no action w
     assert.equal(textOf(html, "floor-tile-name"), KINDS[kind].table.tableNo, `${what}: the full name`);
     assert.match(tagOf(html, "floor-tile-name"), new RegExp(`title="${KINDS[kind].table.tableNo}"`), `${what}: the name's title`);
     expectAll(tagOf(html, "floor-tile-seats"), tokens(FLOOR_TILE_SEATS_CLASS), `${what}: the seats`);
+    // The owner's Q6: the top row wraps and clips (seats that do not fit give way), the name stops at the row's width; the
+    // seats stay in the markup for screen readers (a clip, never aria-hidden).
+    expectAll(tagOf(html, "floor-tile-top"), ["flex-wrap", "content-start", "h-[26px]", "overflow-hidden"], `${what}: the top row wraps one clipped line (Q6)`);
+    expectAll(tagOf(html, "floor-tile-name"), ["max-w-full", "min-w-0", "truncate"], `${what}: the name never wider than the row (Q6)`);
+    assert.ok(!/aria-hidden/.test(tagOf(html, "floor-tile-seats")) && textOf(html, "floor-tile-seats") === floorTileView(KINDS[kind], tabsFailed).seats, `${what}: the seats in the markup`);
     // Both forms are in the markup (one shows per width): the stay's words then its phone minutes, the K5 pair's words.
     const words = detail.kind === "money" ? `${detail.amount} · ${detail.stay}${detail.phoneStay}` : detail.kind === "text" ? `${detail.text}${detail.phoneText ?? ""}` : "";
     assert.equal(textOf(html, "floor-tile-detail"), words, `${what}: the detail line`);
