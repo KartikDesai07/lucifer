@@ -35,11 +35,13 @@ export const FLOOR_TILE_CLASS = `flex h-full min-h-[112px] w-full flex-col justi
  *  lines packed at the top, and shows one 26px line (the name box's height at the HTML's normal line-height, measured at
  *  every width) with the rest clipped, so seats that do not fit beside the name drop to the hidden second line and that
  *  tile shows the name whole. Its height is fixed, so the row never grows. The seats stay in the markup (the tile's
- *  aria-label carries them; a div surface reads them). */
-export const FLOOR_TILE_TOP_CLASS = "flex h-[26px] flex-wrap content-start items-start justify-between overflow-hidden";
+ *  aria-label carries them; a div surface reads them). Clip, not hidden (final re-review N1): a hidden box can still be
+ *  scrolled by a script, a text link or a screen reader's reveal, which would slide the name up and the seats in. */
+export const FLOOR_TILE_TOP_CLASS = "flex h-[26px] flex-wrap content-start items-start justify-between overflow-clip";
 /** The table's full name (design 6.5: `tableNo`, not the HTML's "T{n}"): 20px 600 -0.01em; never wider than the row, so
- *  only a name wider than the whole row truncates (the owner's Q6; Review Focus 3). */
-export const FLOOR_TILE_NAME_CLASS = "min-w-0 max-w-full truncate text-[20px] font-semibold tracking-[-0.01em]";
+ *  only a name wider than the whole row truncates (the owner's Q6; Review Focus 3). At least the row's 26px (final
+ *  re-review N2), so a shorter fallback face during the font swap still starts the hidden seats below the clip. */
+export const FLOOR_TILE_NAME_CLASS = "min-h-[26px] min-w-0 max-w-full truncate text-[20px] font-semibold tracking-[-0.01em]";
 /** "{n} seats" (values 4.1): 12px --text-2; never shrinks or wraps (values 12 #21 not copied): when the name and the
  *  seats do not both fit, the seats give way (the owner's Q6, the top row's clip). */
 export const FLOOR_TILE_SEATS_CLASS = "flex-none whitespace-nowrap text-[12px] text-muted-foreground";
