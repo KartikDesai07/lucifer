@@ -23,11 +23,13 @@ export const FLOOR_TILE_TONES: Record<FloorTone, { tile: string; dot: string; la
   reserved: { tile: "border-status-reserved-border bg-status-reserved-tint", dot: FLOOR_FILTER_DOT.reserved, label: "text-status-reserved-ink" },
 };
 
-/** The tile's one detail line (design 6.5): a bill and its stay, words (with a shorter phone form), or a loading bar. The
- *  stay has a phone form too (the owner's answer 2026-10-28): `phoneStay` below 720px ("72m"), `stay` from 720px. */
+/** The tile's one detail line (design 6.5): a bill and its stay, words (with a shorter phone form), the table charge, or a
+ *  loading bar. The stay has a phone form too (the owner's answer 2026-10-28): `phoneStay` below 720px ("72m"), `stay`
+ *  from 720px. The charge keeps its label and amount apart, so only the label is cut (the owner's Q7). */
 export type FloorDetail =
   | { kind: "money"; amount: string; stay: string; phoneStay: string }
   | { kind: "text"; text: string; phoneText?: string }
+  | { kind: "charge"; label: string; amount: string }
   | { kind: "skeleton" };
 
 export interface FloorTileView {
@@ -74,7 +76,7 @@ function detailOf(tile: FloorTileModel, tabsFailed: boolean): FloorDetail {
     return tabsFailed ? { kind: "text", text: BILL_FAILED_TEXT } : { kind: "skeleton" };
   }
   const charge = tableChargeOf(table);
-  if (charge.amount > 0) return { kind: "text", text: `${charge.label} ${inr(charge.amount)}` };
+  if (charge.amount > 0) return { kind: "charge", label: charge.label, amount: inr(charge.amount) };
   return { kind: "text", text: SEAT_TEXT, phoneText: SEAT_PHONE_TEXT };
 }
 
@@ -84,6 +86,8 @@ function detailWords(detail: FloorDetail): string | null {
       return detail.stay === NO_STAY ? detail.amount : `${detail.amount}, ${detail.stay}`;
     case "text":
       return detail.text;
+    case "charge":
+      return `${detail.label} ${detail.amount}`;
     case "skeleton":
       return null;
   }

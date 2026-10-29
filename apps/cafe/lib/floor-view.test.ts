@@ -75,7 +75,7 @@ const ROWS: Row[] = [
   ["K3", false, "occupied", "Occupied", { kind: "skeleton" }, false, "T-2, 4 seats, Occupied — open the bill"],
   ["K4", true, "occupied", "Occupied", text("Bill not loaded"), false, "T-2, 4 seats, Occupied, Bill not loaded — open the bill"],
   ["K5", false, "free", "Available", text("Tap to seat guests", "Tap to seat"), false, "T-5, 4 seats, Available, Tap to seat guests — start a new order"],
-  ["K5C", false, "free", "Available", text("AC charge ₹50"), false, "T-5, 4 seats, Available, AC charge ₹50 — start a new order"],
+  ["K5C", false, "free", "Available", { kind: "charge", label: "AC charge", amount: "₹50" }, false, "T-5, 4 seats, Available, AC charge ₹50 — start a new order"],
   ["K6", false, "free", "Available", text("Tap to seat guests", "Tap to seat"), false, "T-5, 4 seats, Available, Tap to seat guests — start a new order"],
   ["K6", true, "free", "Available", text("Tap to seat guests", "Tap to seat"), false, "T-5, 4 seats, Available, Tap to seat guests — start a new order"],
   ["K7", false, "free", "Available", money("₹420", "12 min", "12m"), false, "T-6, 4 seats, Available, ₹420, 12 min — open the bill"],
@@ -123,10 +123,10 @@ test("the tile's classes: the HTML's anatomy (values 4.1, 4.4); the owner's Q6: 
   // Ruling F9: the HTML's top row has no gap (values 4.1, computed `normal`), so "T-16" + "6 seats" fits the 88px phone row.
   // The owner's Q6 (design 6.5): the row wraps one 26px line (the name box, measured) and clips the rest, so seats that do
   // not fit beside the name drop out of sight; the name stops at the row's width, so only a longer name truncates.
-  assert.equal(FLOOR_TILE_TOP_CLASS, "flex h-[26px] flex-wrap content-start items-start justify-between overflow-clip", "the top row: name left, seats right, no gap (values 4.1); one clipped 26px line no reveal can scroll (Q6, N1)");
+  assert.equal(FLOOR_TILE_TOP_CLASS, "flex h-[26px] w-full flex-wrap content-start items-start justify-between overflow-clip", "the top row: name left, seats right, no gap, the HTML's width:100% (values 4.1; VC-1: WebView 109's button rule); one clipped 26px line no reveal can scroll (Q6, N1)");
   assert.equal(FLOOR_TILE_NAME_CLASS, "min-h-[26px] min-w-0 max-w-full truncate text-[20px] font-semibold tracking-[-0.01em]", "the name: 20px 600 -0.01em, truncating only past the whole row, at least the row's 26px (Q6, N2)");
   assert.equal(FLOOR_TILE_SEATS_CLASS, "flex-none whitespace-nowrap text-[12px] text-muted-foreground", "the seats: 12px --text-2, never shrinking or wrapping");
-  assert.equal(FLOOR_TILE_BOTTOM_CLASS, "flex flex-col gap-0.5", "the bottom block: 2px between its lines");
+  assert.equal(FLOOR_TILE_BOTTOM_CLASS, "flex w-full flex-col gap-0.5", "the bottom block: 2px between its lines, the HTML's width:100% (values 4.1; VC-1: WebView 109's button rule)");
   assert.equal(FLOOR_TILE_STATUS_CLASS, "flex items-center gap-1.5 text-[12.5px] font-medium", "the status line: dot, 6px, word");
   assert.equal(FLOOR_TILE_WORD_CLASS, "whitespace-nowrap", "the status word never wraps (P13)");
   for (const [what, cls] of [["status line", FLOOR_TILE_STATUS_CLASS], ["word", FLOOR_TILE_WORD_CLASS], ["seats", FLOOR_TILE_SEATS_CLASS]]) {
@@ -170,12 +170,12 @@ test("FloorTile: every kind draws its word, its detail and its tone; no action w
     assert.match(tagOf(html, "floor-tile-name"), new RegExp(`title="${KINDS[kind].table.tableNo}"`), `${what}: the name's title`);
     expectAll(tagOf(html, "floor-tile-seats"), tokens(FLOOR_TILE_SEATS_CLASS), `${what}: the seats`);
     // The owner's Q6: the top row wraps and clips (seats that do not fit give way), the name stops at the row's width; the
-    // seats stay in the markup for screen readers (a clip, never aria-hidden).
-    expectAll(tagOf(html, "floor-tile-top"), ["flex-wrap", "content-start", "h-[26px]", "overflow-clip"], `${what}: the top row wraps one clipped line (Q6, N1)`);
+    // seats stay in the markup for screen readers (a clip, never aria-hidden). VC-1: both blocks span the tile on any engine.
+    for (const [part, need] of [["floor-tile-top", ["w-full", "flex-wrap", "content-start", "h-[26px]", "overflow-clip"]], ["floor-tile-bottom", ["w-full", "flex-col"]]] as const) expectAll(tagOf(html, part), [...need], `${what}: ${part} as wide as the tile (VC-1); the top row one clipped line (Q6, N1)`);
     expectAll(tagOf(html, "floor-tile-name"), ["max-w-full", "min-w-0", "truncate", "min-h-[26px]"], `${what}: the name never wider than the row, never shorter (Q6, N2)`);
     assert.ok(!/aria-hidden/.test(tagOf(html, "floor-tile-seats")) && textOf(html, "floor-tile-seats") === floorTileView(KINDS[kind], tabsFailed).seats, `${what}: the seats in the markup`);
     // Both forms are in the markup (one shows per width): the stay's words then its phone minutes, the K5 pair's words.
-    const words = detail.kind === "money" ? `${detail.amount} · ${detail.stay}${detail.phoneStay}` : detail.kind === "text" ? `${detail.text}${detail.phoneText ?? ""}` : "";
+    const words = detail.kind === "money" ? `${detail.amount} · ${detail.stay}${detail.phoneStay}` : detail.kind === "text" ? `${detail.text}${detail.phoneText ?? ""}` : detail.kind === "charge" ? `${detail.label} ${detail.amount}` : "";
     assert.equal(textOf(html, "floor-tile-detail"), words, `${what}: the detail line`);
     assert.ok(!ACTION_WORDS.test(textOf(html, "floor-tile")), `${what}: no action word (got "${textOf(html, "floor-tile")}")`);
     assert.ok(!html.includes("lucide-chevron-right"), `${what}: no action chevron`);

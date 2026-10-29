@@ -7,6 +7,9 @@ import { Clock, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FLOOR_POS_PATH, type FloorMenuAction, type FloorPrimary, type FloorTileModel } from "@/lib/floor-tiles";
 import {
+  FLOOR_CHARGE_AMOUNT_CLASS,
+  FLOOR_CHARGE_LABEL_CLASS,
+  FLOOR_DETAIL_CHARGE_CLASS,
   FLOOR_DETAIL_PHONE_CLASS,
   FLOOR_DETAIL_SKELETON_CLASS,
   FLOOR_DETAIL_WIDE_CLASS,
@@ -96,10 +99,20 @@ function offerOnPlainClick(e: MouseEvent<HTMLAnchorElement>, tableNo: string) {
 }
 
 // The detail line (design 6.5): the bill and its stay (red and bold on a long stay, ruling F3), the words (the phone's
-// shorter form below 720px), or a short bar while the bills load. `readsText`: the surface is a div (busy, or display
-// only) with no aria-label, so a screen reader reads this line itself.
+// shorter form below 720px), the table charge, or a short bar while the bills load. `readsText`: the surface is a div
+// (busy, or display only) with no aria-label, so a screen reader reads this line itself.
 function TileDetail({ detail, longStay, readsText }: { detail: FloorDetail; longStay: boolean; readsText: boolean }) {
   if (detail.kind === "skeleton") return <Skeleton data-ui="floor-tile-detail" className={FLOOR_DETAIL_SKELETON_CLASS} />;
+  if (detail.kind === "charge") {
+    // The owner's Q7 (design 6.5 K5): the same line, its label and its amount side by side; when they do not fit, only
+    // the label is cut ("Rooftop se… ₹50"). The space leads the amount, so the line still reads "{label} ₹x".
+    return (
+      <span data-ui="floor-tile-detail" className={cn(FLOOR_TILE_DETAIL_CLASS, FLOOR_DETAIL_CHARGE_CLASS)}>
+        <span data-ui="floor-tile-charge-label" className={FLOOR_CHARGE_LABEL_CLASS}>{detail.label}</span>
+        <span data-ui="floor-tile-charge-amount" className={FLOOR_CHARGE_AMOUNT_CLASS}>{` ${detail.amount}`}</span>
+      </span>
+    );
+  }
   let words: ReactNode = detail.kind === "text" ? detail.text : null;
   if (detail.kind === "money") {
     // The owner's answer 2026-10-28: the stay as two spans, the K5 pair's way: its words from 720px, the phone's minutes

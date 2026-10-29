@@ -433,6 +433,8 @@
     "lib/floor-refresh-strip.test.ts",
     "lib/floor-states.test.ts",
     "lib/floor-dialogs.test.ts",
+    "lib/floor-charge.test.ts",
+    "lib/floor-sections.test.ts",
     "lib/tables-setup-paths.test.ts",
     "lib/pos-handoff-paths.test.ts",
     "lib/tables-route-paths.test.ts",

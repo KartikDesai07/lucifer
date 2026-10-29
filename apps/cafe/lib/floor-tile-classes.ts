@@ -16,6 +16,12 @@ export const FLOOR_SECTION_HEAD_CLASS = "flex items-baseline gap-2";
 export const FLOOR_SECTION_NAME_CLASS = "min-w-0 truncate text-[15px] font-semibold";
 /** The HTML's count of the tiles shown (values 3.1): 12px --text-2; it keeps its width beside a long name. */
 export const FLOOR_SECTION_COUNT_CLASS = "flex-none text-[12px] text-muted-foreground";
+/** The permanent list that holds the sections (VC-3, rulings F33 / F35; components/tables/FloorAreaSections.tsx says
+ *  why): the body's own column (lib/floor-layout.ts FLOOR_BODY_CLASS, pinned equal), so the sections stay 16px apart. */
+export const FLOOR_SECTIONS_CLASS = "flex flex-col gap-4";
+/** Each section's permanent inner column around its head and grid (VC-3): the section's own column (FLOOR_SECTION_CLASS,
+ *  pinned equal), so the head and the grid stay 10px apart. */
+export const FLOOR_SECTION_INNER_CLASS = "flex flex-col gap-2.5";
 
 // ── The tile (values 4.1, 4.4; design 6.5, owner Q2) ────────────────────────────────────────────────────────────────
 
@@ -36,8 +42,10 @@ export const FLOOR_TILE_CLASS = `flex h-full min-h-[112px] w-full flex-col justi
  *  every width) with the rest clipped, so seats that do not fit beside the name drop to the hidden second line and that
  *  tile shows the name whole. Its height is fixed, so the row never grows. The seats stay in the markup (the tile's
  *  aria-label carries them; a div surface reads them). Clip, not hidden (final re-review N1): a hidden box can still be
- *  scrolled by a script, a text link or a screen reader's reveal, which would slide the name up and the seats in. */
-export const FLOOR_TILE_TOP_CLASS = "flex h-[26px] flex-wrap content-start items-start justify-between overflow-clip";
+ *  scrolled by a script, a text link or a screen reader's reveal, which would slide the name up and the seats in. The
+ *  HTML's width:100% (VC-1): WebView 109's UA sheet gives a <button> align-items:flex-start, which shrank this row (and
+ *  the bottom block) to its content on a button tile (Seat now, Free table); full width, it spans the tile everywhere. */
+export const FLOOR_TILE_TOP_CLASS = "flex h-[26px] w-full flex-wrap content-start items-start justify-between overflow-clip";
 /** The table's full name (design 6.5: `tableNo`, not the HTML's "T{n}"): 20px 600 -0.01em; never wider than the row, so
  *  only a name wider than the whole row truncates (the owner's Q6; Review Focus 3). At least the row's 26px (final
  *  re-review N2), so a shorter fallback face during the font swap still starts the hidden seats below the clip. */
@@ -45,8 +53,9 @@ export const FLOOR_TILE_NAME_CLASS = "min-h-[26px] min-w-0 max-w-full truncate t
 /** "{n} seats" (values 4.1): 12px --text-2; never shrinks or wraps (values 12 #21 not copied): when the name and the
  *  seats do not both fit, the seats give way (the owner's Q6, the top row's clip). */
 export const FLOOR_TILE_SEATS_CLASS = "flex-none whitespace-nowrap text-[12px] text-muted-foreground";
-/** The bottom block (values 4.1): the status line over the detail line, 2px apart. */
-export const FLOOR_TILE_BOTTOM_CLASS = "flex flex-col gap-0.5";
+/** The bottom block (values 4.1): the status line over the detail line, 2px apart, the HTML's width:100% (VC-1, as the
+ *  top row: so the detail line cuts at the tile's edge on WebView 109's button tiles too). */
+export const FLOOR_TILE_BOTTOM_CLASS = "flex w-full flex-col gap-0.5";
 /** The status line (values 4.1): the 7px dot, 6px, the word; 12.5px 500 in the state's ink (the tone's label class). */
 export const FLOOR_TILE_STATUS_CLASS = "flex items-center gap-1.5 text-[12.5px] font-medium";
 /** The status word: never wraps and is never cut (P13's meaning; the tile's text signal). */
@@ -56,6 +65,14 @@ export const FLOOR_TILE_WORD_CLASS = "whitespace-nowrap";
 export const FLOOR_TILE_DOT_CLASS = "size-[7px] flex-none rounded-[50%]";
 /** The detail line (values 4.1): 12.5px --text-2, one line, an ellipsis when it does not fit. */
 export const FLOOR_TILE_DETAIL_CLASS = "truncate text-[12.5px] text-muted-foreground";
+/** The table charge line (the owner's Q7, design 6.5 K5): the detail line laid out as a row of its label and its amount,
+ *  so the label alone gives way ("Rooftop se… ₹50"); its box, font and colour stay the detail line's. */
+export const FLOOR_DETAIL_CHARGE_CLASS = "flex";
+/** The charge's label: shrinks below its words and cuts with the ellipsis, first and alone. */
+export const FLOOR_CHARGE_LABEL_CLASS = "min-w-0 truncate";
+/** The charge's amount: never shrinks, so it always shows whole; the one space before it is its own first character
+ *  (kept, where a flex item's leading space would be dropped), so the line reads "{label} ₹x" as before. */
+export const FLOOR_CHARGE_AMOUNT_CLASS = "flex-none whitespace-pre";
 /** The detail's long word, from 720px ("Tap to seat guests"; a stay's "1h 12m"). */
 export const FLOOR_DETAIL_WIDE_CLASS = "max-tab:hidden";
 /** The detail's phone word, below 720px ("Tap to seat": the HTML's "Tap to seat gu…" is not copied, design 8 #1; a stay's
