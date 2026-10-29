@@ -52,6 +52,7 @@ nothing; the S1 43-file pin and `print-budget.test.ts` stay untouched).
 | Q3 | Header's second line, freshness | **The HTML's words plus ours on the same line**: "3 of 10 occupied · 1 reserved · ₹1,787 running · Updated just now" (cut with an ellipsis when narrow). A failed refresh shows a slim warn strip under the header, "Couldn't refresh the floor. Showing the last update." with "Try again" (the alert strip's look). The controls row stays the HTML's. |
 | Q4 | Pills on the phone | **Sideways scroll with a cue**: the HTML's scrolling row, plus a soft fade at the right edge while more pills are hidden, and the chosen pill scrolled into view on its own. The area tabs do the same. |
 | Q5 | The stay on the phone (asked during the build, 2026-10-28) | **Short minutes below 720 px**: "0m", "8m", "72m", "125m", so "₹1,063 · 72m" fits the 88 px phone line for every ₹1,000–9,999 bill, also in the long stay's red bold (measured 74.77 px; "₹1,063 · 1h 12m" was 91.88 px and "₹1,063 · Just now" 100.89 px, both cut). From 720 px the words stay "Just now" / "{m} min" / "{h}h {m}m". A 5-digit bill past 99 minutes still cuts (accepted with the option). |
+| Q6 | A long name on a narrow tile (asked after the final review, 2026-10-29) | **The name first**: on a 3-column phone grid (390–430) the name had ~48–55 px beside "4 seats", so "Patio 1" / "Patio 2" both read "Pat…" (and "Garden 2" read "Garde…" at 1024); today's 2-column phone showed them whole. When the name and the seats do not both fit, that tile's seats give way (hidden there, still read by screen readers) and the name shows whole (~88 px on the phone, ~117 px at 1024); a 24-character name still truncates. The 3-column grid and the tile size stay the HTML's; "T-1" … "T-99" tiles are unchanged. |
 | – | Words (standing, U0 / U1 / U2) | The HTML's words where the HTML has the same element; our words for our own features and data (section 11 lists every visible word that changes). |
 | – | "Bill printed" (U2 Q11, standing) | Shown only when the server knows of the print (`billPrintedNow`, `lib/dashboard/live-tables.ts`: print host / agent / settle prints), as the dashboard and Orders. A device that prints straight from the browser keeps its tables "Occupied". |
 
@@ -146,9 +147,11 @@ HTML's). "Other tables" last. With no area in use, one flat grid with no head (t
 
 ### 6.5 Tiles (Q2)
 **Anatomy** (values §4.1, §4.4): 1.5 px border, radius 14, padding 12, min-height 112 (100 on the phone), flex column,
-space-between, gap 8. Top row: the table's **full name** (`tableNo`, 20 px 600, −0.01em, `--text`, truncates; our names
+space-between, gap 8. Top row: the table's **full name** (`tableNo`, 20 px 600, −0.01em, `--text`; our names
 are free text, so the HTML's "T{n}" short code could collide — "Patio 2" / "Garden 2"; my call) and "{n} seats" (12 px
-`--text-2`, right, never wraps; "1 seat" for one: the HTML's and today's "1 seats" slip, my call). Bottom block (gap 2):
+`--text-2`, right, never wraps; "1 seat" for one: the HTML's and today's "1 seats" slip, my call). **The name comes first
+(the owner's Q6):** when the name and the seats do not both fit the row, that tile's seats give way (hidden on that tile,
+still in its accessible name) and the name shows whole; only a name wider than the whole row truncates. Bottom block (gap 2):
 the status line (7 px dot, gap 6, 12.5 px 500 in the state's ink) with a right-end slot, and the detail line (12.5 px
 `--text-2`, one line, ellipsis).
 
@@ -256,7 +259,8 @@ names in a reservation note still truncate, as data); the pill counts ignoring t
 no hour rollover (#11); no hover on tabs and pills (#12: they take the kit's hover `--hover` where a pointer can hover;
 my call); the phone subtitle cut by 2 px (#13: ours is our own line, ellipsis by design); the half-replaying animations
 and the cascade under reduced motion (#19, #23); 3-digit names wrapping the seats onto two lines and growing the row
-(#21: seats never wrap, the name truncates); the header's 8 px shift beside a classic scrollbar (#25: our page scroller
+(#21: seats never wrap; the owner's Q6: the seats give way on that tile and the name shows whole, truncating only past
+the whole row); the header's 8 px shift beside a classic scrollbar (#25: our page scroller
 sits under the shell header, section 5). Out of our reach or not ours: #2–#5, #10, #15–#18, #20, #24, #26 (no Geist
 Mono: the tile money stays Geist with tabular figures, the HTML's own Floor value).
 
@@ -317,3 +321,7 @@ Decided while building, recorded so the design stays the reference (the SDD ledg
   its surface and the clock mark in its free right slot at every width ("Reserved" + the clock fits 88 px; K10's detail
   has no time to turn red).
 - A busy or display-only money tile below 720 px gives screen readers the long stay words, never "72m".
+- The owner's Q6 (section 4, 2026-10-29, after the final review): the name comes first; a tile whose name and seats do
+  not both fit hides its seats and shows the name whole.
+- The confirm sheet's body keeps a hyphenated table name whole (a word joiner after each hyphen, invisible, in the body
+  only): the 420 px sheet split "T-" / "3" from 720 px up.
