@@ -335,4 +335,9 @@ Decided while building, recorded so the design stays the reference (the SDD ledg
 - VC-3 (the verification, WebView 109's accessibility tree): the area sections sit in one permanent list wrapper, and
   each section's head and grid in one permanent inner column (the same 16 px and 10 px gaps, so the layout is unchanged).
   WebView 109 left the tiles and whole sections that a filter round trip or a poll re-inserted out of its accessibility
-  tree; with the two wrappers a measured replica of the page kept every tile and section on 109 and 154.
+  tree; with the two wrappers a measured replica of the page kept every tile and section on 109 and 154, and the smoke
+  on the emulator confirmed it on the real page.
+- The charge line where it fits (Q7, measured after the fix): the box, the words and the label's pixels are as before;
+  the amount, now its own box, can sit 1/64 CSS px from where the one-run line put it, so on some label / width pairs
+  its glyphs anti-alias differently (no glyph moves a device pixel; invisible). Every layout that lets only the label
+  truncate gives the same pixels.

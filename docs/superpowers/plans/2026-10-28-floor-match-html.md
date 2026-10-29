@@ -453,4 +453,125 @@ shots of today's page: `D:\kd\pos-dev-keep\ui-redesign\current-floor\`; the HTML
 
 ## Results
 
-(filled in at the end)
+(2026-10-28 → 29, branch `feat/ui-floor`, base main `445ed96`; 23 commits, 51 files, +5163 / −591 before this Results
+commit. Not merged, not pushed. Ledger with every ruling (F1–F38) and review:
+`.superpowers/sdd/2026-10-28-floor-match-html/progress.md`, copied with the briefs and reports to
+`D:\kd\pos-dev-keep\ui-redesign\reviews\u3\`.)
+
+### Commits
+- Docs: `23062d1` (values + design), `bad8a1d` (this plan), `f7b4735` (the owner's Q5 and the build's changes),
+  `4c2e3ea` (the owner's Q6 and the confirm body's whole name), `429efde` (the owner's Q7, VC-1, VC-3).
+- Tasks: T1 `528c8e5` + `2493599` frame + header · T2 `669facf` + `24c2343` filters, counts, area tabs, pills · T3
+  `fe37b94` + `e2e8bbf` + `691e8b0` + `f4fd054` sections and tiles · T4 `b13ca92` + `680575f` + `8211925` the tile's slot,
+  rise, lift, press, focus · T5 `725bb31` + `f58f2e3` the second line, the refresh strip, the toaster · T6 `80eef8d` +
+  `ba05e7b` the confirm sheet and the loading / no-tables / filtered-empty states.
+- Final fix wave (after the Claude Fable 5.1 review): `77b4a69` (the owner's Q6, M2, M4) + `4d1015d` (its re-review's
+  N1 / N2).
+- Verification fixes: `0009ba5` (VC-1, the owner's Q7, VC-3).
+
+### Tests and checks
+- Cafe chain at `0009ba5`: 6934 tests / 6933 pass / 0 fail / 1 skipped (main `445ed96`: 6835); typecheck clean; lint 0
+  errors, the 2 old warnings. At `4d1015d` (V-A): the full `tsc --noEmit`, shared 1015, print-tools 11, release-native 12
+  (`0009ba5` touches apps/cafe only). Mobile, desktop, hub, packages untouched. Eleven new test files in testChain:
+  floor-layout, floor-areas, floor-controls, floor-view, floor-tile-slot, floor-tile-rise, floor-refresh-strip,
+  floor-states, floor-dialogs, floor-charge, floor-sections (tables-floor-paths was extended).
+- Live legs (V-A, at `4d1015d`): 22 legs, 1387 checks, 0 failed (`verify:tables-floor:live` 48 and `verify:tables:live`
+  14 first, then U2's set).
+- The paper: S1 43/43 SHA-256 unchanged, `print-budget.test.ts` unchanged, no slip / printer / print-routing / receipt
+  file in the diff.
+- Requests: idle /tables 240 s = main's build's BASE (9 kinds, 34 requests: pulse 12, tables 8, orders 8, and the six
+  one-time warm-route prefetches /, /pos, /orders, /requests, /kitchen, /reservations once each); a run can fall on the
+  other side of U2's known race and miss the six (V-A run 1). V-A run 2 at `4d1015d` and S-D at `0009ba5` equal BASE
+  exactly. The dashboard = U2; /tables at 390 with the Seat now sheet open 120 s: no extra kind. No new or faster request.
+- Write paths for real on uimatch (V-D at `4d1015d`, 1280 and 390): Reserve; Free from Reserved and from Occupied (the
+  open-bill check, the found-bill hand-off); Seat now (the write before /pos opens, no order); taps into a bill and a new
+  order; a write in flight (busy tile, inert ⋯, the sheet held); staff priya the same as main's staff view. In all, 18
+  runs, 147 checks, 22 PUTs (admin, priya 7, a second device 2), 0 requests different from main. Again at 390 on
+  `0009ba5` (S-D): 29 checks, 0 failed.
+- Measured match (V-B at `4d1015d`, production build): U3 probes 446 differences in 13,800 checks, every one an accepted
+  mapped row; the narrow phones 360 / 375; the owner's Q6 132 / 132 tiles on the rule; U0 shell probes 199 in 14,959
+  (U2's rows + the reseed's data and clock); 455 side-by-side pairs: `D:\kd\pos-dev-keep\ui-redesign\match\floor\final\shots\index.html`.
+  First screens: 76 routes 200, console identical to U2; the dashboard's Live tables unchanged. A11y: 0 axe violations on
+  /tables (1280, 390) and 11 of 15 open states; the 4 menu-open states hit the kit's modal-menu rule (VB-1, pre-existing,
+  below). /m unchanged. On `0009ba5` (S-D): the same 446 / 13,800 rows, Q6 0 / 120 off, axe 0.
+- Laptop fit 1366×768, 1280×800 (open / collapsed), 1100×800, 1024×768, 820×1180, 390×844, 375×812, 360×800: no
+  sideways scroll; the shell header still while the scroller (with the controls row, the HTML's body) moves. A classic
+  scrollbar at 1280: 6 × 157 px; the header and the area tabs do not move; with a long floor the right-aligned pills end
+  8 px further left (owner note). The bottom inset (25 px) respected by the scroller's foot, the refresh strip, the
+  toasts and the phone sheet.
+- Emulator (V-C at `4d1015d`, then smoke S-E at `0009ba5`): WebView 109 portrait / landscape and 154: the header,
+  controls, pill fades, ⋯ menu, the confirm sheets, the hand-off taps (GETs only); the button-tile layout (VC-1, 109
+  only) fixed on 109; the a11y tree after filters and a poll (VC-3) and the charge line (Q7) right on the real page on
+  both WebViews; the Seat now sheet 99.14 % opaque on 109 (R41).
+- Production build of `0009ba5` in `D:\kd\uib` (BUILD_ID `a2mtK-i0oJl-TY1ZGpsc_`): the owner's preview on :3110 (uibase)
+  and the check twin on :3130 (uimatch, reseeded after the smoke's writes).
+
+### Reviews
+- Six task reviews: Task 1 one opus reviewer; Tasks 2–6 three lenses, a skeptic per Critical / Important finding and one
+  for the minors (ruling F5). Fix rounds: T1 ×1, T2 ×1, T3 ×3, T4 ×2, T5 ×1, T6 ×1.
+- The final Claude Fable 5.1 whole-branch review: With fixes, 0 C / 1 I / 6 M; two-lens checks: I1 → the owner's Q6, M2
+  and M4 fixed, M1 / M5 / M6 refuted, M3 later → one fix wave → its re-review: all addressed, N1 fixed (overflow-clip),
+  N2 refuted with a free guard (min-h on the name).
+- Verification (V-A, V-B, V-D PASS; V-C three findings, each checked by two lenses; V-B and V-D needed a second run after
+  an API error cut them off, and the VC-3 emulator study was cut off by the session limit during its put-back) → one fix
+  round (its implementer was cut off by the session limit; the controller finished it, ruling F36) → in parallel the
+  Fable re-review (all addressed; its N1, the round's pixel comparer reading only alpha, corrected; its N2, sub-pixel
+  glyphs, accepted) and smokes S-E and S-D (PASS; S-E also put the emulator back).
+
+### What the owner will see differently from the HTML (mapped, each with its ruling)
+The header's New order in the HTML's outline look (Q1); the HTML's tile with our kinds folded in: the full table name,
+the bill and its stay, bookings, "Held", the table charge, the long-stay clock, the ⋯ menu (Q2); the HTML's words plus
+ours in the summary line, cut with an ellipsis on the phone ("5 of 10 occupied · 1 r…") (Q3); the phone pills scroll
+with an edge cue (Q4); the phone stay in whole minutes "{m}m" (Q5); a long name comes first and its seats give way on
+that tile, at any width where they do not fit (Q6); the charge line keeps its amount, only the label is cut (Q7); two
+tile columns below 390 px (design §5); area tabs only with two or more groups and "Other tables"; the pill counts follow
+the chosen area, and Bill printed counts a print only when the server knows of it (§6.3); no "KOT pending" status (§7);
+Seat now / Free table in U1's confirm sheet (centred 420 px from 720 px, a bottom sheet on phones); the refresh strip
+above the scroller; the loading, error, no-tables and filtered-empty states; hover and focus rings on tabs and pills;
+the HTML's own slips not copied (design §8: "Tap to seat gu…", wrapping seats, the chosen pill's lighter count and the
+others listed there).
+
+### Owner notes (decisions or pre-existing items, nothing changed for them)
+- The tile skeleton's bg-muted on the page is ~1.02:1 (today's look, kept; F22).
+- U2's /orders outline buttons have no focus ring (a later /orders polish; note T6).
+- The floor-tiles ↔ live-tables import cycle stays documented; a leaf module later (M3, F24).
+- With a tile's ⋯ menu open, axe flags the shell hidden behind Radix's modal menu (aria-hidden-focus): main's kit menu on
+  every page (/products, /expenses, /tables/setup the same); focus and pointer stay in the menu, so no one reaches the
+  hidden part (VB-1, F34). An app-wide kit change if ever wanted.
+- WebView 109 gives every `<button>` `align-items: flex-start`: flex buttons without an explicit `items-*` lay out
+  differently there (main's Floor "Seat now ›" did). Fixed on /tables (VC-1); worth a check on each later page.
+- WebView 109's accessibility tree also drops nodes re-inserted into a container that stayed (fixed on /tables, VC-3; a
+  tile-level part of it is main's too); a later page with filtered lists may need the same wrappers.
+- The charge line's ellipsis is the browser's character cut: at 390 / 412 "Rooftop seating ₹50" can read "Rooftop …" with
+  "₹50" about 10 px further on (the label box keeps the free room); at 720 / 1024 "Rooftop seati… ₹50". Where it fits,
+  the amount's glyphs may anti-alias differently by 1/64 px (N2, F38).
+- Seat now frees the table and leaves its booking "Booked"; the Floor then no longer shows the booking (main's behaviour:
+  the action writes the table only).
+- An "Occupied with no open bill" tile (Free table) arises only from a Pay-now sale answered "Keep Occupied" (a settle or
+  a cancel frees the table on the server); its tap opens the Free sheet at once, and the open-bill check runs when Free
+  table is pressed (main's order).
+- On a phone a persistent print-alarm toast (with its Show action, 140 px up: main's offset) covers the last tile row's
+  centre and its ⋯ until dismissed; a short toast leaves the row clear.
+- Old bills read long stays: on the owner's preview (uibase, week-old bills) "176h 44m" from 720 px and "10592m" on the
+  phone; a 4-digit amount with a 5-digit stay is cut ("₹1,230 · 1005…").
+- After a scrim press, and while a write runs, focus sits on the page body (U1's shared sheet; main's dialog the same).
+- Pre-existing on WebView 109 / Android: Back with a menu or sheet open goes back in history; no focus after Cancel on
+  touch; the sheet ~0.86 % see-through (R41). The tile rise (new) plays coarsely on the emulator's software GPU.
+- The U0 nav's account row ends 12 px above the window's foot at 820 / 1024 / 1280 (inside a 25 px tablet inset); with
+  classic scrollbars on an 800 px window the nav list shows its own bar and cuts "Reports": shell.
+- The shell's "2 new order requests" link reads as a 132×17 small target while requests are pending (RequestAlertBar).
+- Every page load logs Chrome's "The AudioContext was not allowed to start…" warning (the order-request sound).
+- The bootstrap re-seeds the tables list on a page load, replacing an earlier /api/tables answer until the next poll
+  (seen only with patched answers).
+- /settings/notifications' first screen depends on timing (U1's known redirect race).
+- The dashboard's "Where orders came from" bar draws no fill below 0.5 % (RangeCards rounds the width; pre-existing).
+- The emulator's WebView remembers "Admin" on the staff picker after sign-outs; the Play Store may update WebView 154 → 155
+  on a later boot.
+- Line budgets for a later Floor change: tables-floor-paths.test.ts is at 298 lines and floor-view.test.ts at 299 (split
+  before adding a pin); pos-frame.test.ts (349) and shell-look-paths.test.ts (317) stay over the cap (F4).
+- Scratch databases left by V-A (the owner's OK needed to drop them, with U0's and U2's): `pos_scratch_va_u3_appearance`,
+  `_bootstrap`, `_dues`, `_money`, `_reward_assign`, `_reward_item`, `_reward_redeem`.
+
+### Left for later
+The next page session (prompt `D:\kd\pos-dev-keep\ui-redesign\prompt-u4.md`); the owner's merge OK and, separately, the
+push.
