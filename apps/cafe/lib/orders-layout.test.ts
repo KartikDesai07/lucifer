@@ -166,7 +166,8 @@ test("Header: data-orders on /orders gives the bar the HTML's 12px gap; every ot
 test("HeaderQuickTabs: on /orders New order keeps its label on the phone too (values 1.2, design 6.1); Tables still hides there", () => {
   const src = read(QUICK_TABS);
   assert.match(src, /import \{ isOrdersPath \} from "@\/lib\/orders-layout";/, "the quick links read the route through isOrdersPath");
-  assert.match(src, /const labelClass = isOrdersPath\(pathname\) \? "inline" : "hidden tab:inline";/, "the label at every width on /orders, from 720px elsewhere");
+  // Moved on purpose (U3 Task 1, Floor values 1.2, owner Q1): /tables shows the label at every width too.
+  assert.match(src, /const labelClass = isOrdersPath\(pathname\) \|\| floor \? "inline" : "hidden tab:inline";/, "the label at every width on /orders (and /tables), from 720px elsewhere");
   assert.match(src, /<span className=\{labelClass\}>\{tab\.title\}<\/span>/, "the label takes that class");
   assert.match(src, /tab\.primary \? "inline-flex" : "hidden tab:inline-flex"/, "landmark: Tables stays hidden below 720px (the tab bar has Floor)");
 });

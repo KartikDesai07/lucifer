@@ -1,19 +1,26 @@
 // The live Floor screen's rules as pure functions (Tables redesign, 2026-09-30):
-// what each tile shows, what a tap on it does, and the summary / freshness
-// text. No React, no fetching — components/tables/Floor* and the page render
-// what this returns, and lib/floor-tiles.test.ts pins every row.
-import type { TableStatus } from "@/lib/constants";
+// what each tile shows, what a tap on it does, the status pills' filter and
+// counts, the header's second line (summary / freshness, U3 Task 5) and the
+// refresh strip's rule. No React, no fetching —
+// components/tables/Floor* and the page render what this returns, and
+// lib/floor-tiles.test.ts pins every row. The area tabs and the sections are
+// lib/floor-areas.ts (U3 Task 2); a tile's tone, words and accessible name are
+// lib/floor-view.ts (U3 Task 3).
+// import cycle with lib/dashboard/live-tables.ts: use its exports only inside functions
+import { billPrintedNow } from "@/lib/dashboard/live-tables";
 import { openTabForTable } from "@/lib/table-pick";
-import { areaSummaryText, groupByArea, showAreaHeadings, tableAreaIdOf, tableCountText } from "@/lib/table-areas";
 import { inr } from "@/lib/utils";
-import type { Area, Order, OrderItem, Reservation, Table } from "@/types";
+import type { Order, OrderItem, Reservation, Table } from "@/types";
 
 // One shared clock for the minutes-open figures: a minute-level number does not
 // need a per-second tick, and the table poll itself runs every 30 s.
 export const FLOOR_CLOCK_TICK_MS = 30_000;
 
-// Measured: 6 columns on a 1366 px PC with the sidebar open, 2 on phones.
-export const FLOOR_GRID_CLASS = "grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]";
+// The HTML's grid (values 0.2, 3.1): auto-fill 140px tracks, 10px apart (6 x 158.33 at 1280 with the nav open). Below
+// 720px 114px, not the HTML's 104 (design 5): the same 3 x 114 at 390, two columns below 390, where three tiles' 78-83px
+// lines could not hold a status word and the ⋯.
+export const FLOOR_GRID_CLASS =
+  "grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(140px,1fr))] max-tab:[grid-template-columns:repeat(auto-fill,minmax(114px,1fr))]";
 
 // Where a tile tap goes for "Open" / "New order". NEVER carries the table in the
 // URL: a query string makes Next fetch the page again on every tap (see
@@ -23,19 +30,33 @@ export const FLOOR_POS_PATH = "/pos";
 const MS_PER_MINUTE = 60_000;
 const MINUTES_PER_HOUR = 60;
 const NO_STAY_TEXT = "—";
-const LIVE_LABEL_MAX_AGE_MS = 60_000;
 
 /** What a tap on the whole tile does. "none" = the tile is only a display. */
 export type FloorPrimary = "open" | "new-order" | "seat-now" | "free" | "none";
 /** What the ⋯ menu offers (a sibling of the tile, never nested in it). */
 export type FloorMenuAction = "reserve" | "free";
-export type FloorFilter = "all" | TableStatus;
 
-export const FLOOR_PRIMARY_LABEL: Record<FloorPrimary, string | null> = {
-  open: "Open",
-  "new-order": "New order",
-  "seat-now": "Seat now",
-  free: "Free table",
+/** The status pills (U3 Task 2; values 2.4, design 6.3): the HTML's five, its order and words. "Bill printed" is an
+ *  Occupied table whose running bill the server knows has printed (U2 Q11); we have no "KOT pending". */
+export type FloorFilter = "all" | "free" | "occupied" | "billed" | "reserved";
+export const FLOOR_FILTERS: readonly { key: FloorFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "free", label: "Available" },
+  { key: "occupied", label: "Occupied" },
+  { key: "billed", label: "Bill printed" },
+  { key: "reserved", label: "Reserved" },
+];
+
+/** The empty line when the area and the pill leave nothing (values 5.2). */
+export const FLOOR_EMPTY_FILTER_TEXT = "No tables match this filter.";
+
+/** What a tap on the tile does, in words for its accessible name (design 6.5: the action words left the tile, owner Q2);
+ *  a display-only tile has none. */
+export const FLOOR_TAP_HINT: Record<FloorPrimary, string | null> = {
+  open: "open the bill",
+  "new-order": "start a new order",
+  "seat-now": "seat guests",
+  free: "free the table",
   none: null,
 };
 
@@ -94,13 +115,23 @@ export function longStay(minutes: number | null, thresholdMinutes: number): bool
   return minutes !== null && minutes >= thresholdMinutes;
 }
 
+/** The stay words (design 6.5): "Just now", "{m} min" under an hour (the HTML's), then "{h}h {m}m" ("1h 0m", "1h 8m", U2's
+ *  Orders age shape; the HTML's "68 min" has no hour rollover, values 12 #11). The hour form is the stay from 720px; below
+ *  720px the tile shows formatStayMinutesShort ("68m", the owner's answer 2026-10-28). */
 export function formatStayMinutes(minutes: number | null): string {
   if (minutes === null || !Number.isFinite(minutes)) return NO_STAY_TEXT;
   if (minutes < 1) return "Just now";
   if (minutes < MINUTES_PER_HOUR) return `${minutes} min`;
-  const hours = Math.floor(minutes / MINUTES_PER_HOUR);
-  const rest = minutes % MINUTES_PER_HOUR;
-  return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
+  return `${Math.floor(minutes / MINUTES_PER_HOUR)}h ${minutes % MINUTES_PER_HOUR}m`;
+}
+
+/** The phone's stay words, below 720px (the owner's answer 2026-10-28, design 6.5): whole minutes and "m", no hour
+ *  rollover ("0m", "72m", "125m"), so a 4-digit bill and its stay fit the 88px phone line. The same dash without a
+ *  clock, and under a minute (a negative skew included) "0m" where formatStayMinutes says "Just now". */
+export function formatStayMinutesShort(minutes: number | null): string {
+  if (minutes === null || !Number.isFinite(minutes)) return NO_STAY_TEXT;
+  if (minutes < 1) return "0m";
+  return `${Math.floor(minutes)}m`;
 }
 
 // The tap rules. Free / Reserve / Seat now are NEVER offered while a matching
@@ -146,79 +177,67 @@ export function buildFloorTiles(input: BuildFloorTilesInput): FloorTileModel[] {
   });
 }
 
-export function statusCounts(tables: readonly Pick<Table, "status">[]): Record<FloorFilter, number> {
-  const counts: Record<FloorFilter, number> = { all: tables.length, Occupied: 0, Available: 0, Reserved: 0 };
-  for (const t of tables) counts[t.status] += 1;
+/** The pill a tile counts in: exactly one. An Occupied table is "billed" once the server knows its running bill printed
+ *  for this total (billPrintedNow, the dashboard's and Orders' rule), else "occupied"; an Available table is "free" even
+ *  while it holds a bill (K7, R18); a Reserved one "reserved". */
+export function floorFilterOf(tile: FloorTileModel): Exclude<FloorFilter, "all"> {
+  switch (tile.table.status) {
+    case "Occupied":
+      return tile.tab && billPrintedNow(tile.tab) ? "billed" : "occupied";
+    case "Available":
+      return "free";
+    case "Reserved":
+      return "reserved";
+  }
+}
+
+/** Each pill's count over these tiles (the page passes the area shown, design 6.3). */
+export function floorCounts(tiles: readonly FloorTileModel[]): Record<FloorFilter, number> {
+  const counts: Record<FloorFilter, number> = { all: tiles.length, free: 0, occupied: 0, billed: 0, reserved: 0 };
+  for (const tile of tiles) counts[floorFilterOf(tile)] += 1;
   return counts;
 }
 
 export function filterTiles(tiles: readonly FloorTileModel[], filter: FloorFilter): FloorTileModel[] {
-  return filter === "all" ? [...tiles] : tiles.filter((t) => t.table.status === filter);
+  return filter === "all" ? [...tiles] : tiles.filter((t) => floorFilterOf(t) === filter);
 }
 
-export interface FloorSection {
-  /** An Area._id, or the trailing "Other tables" key. */
-  key: string;
-  name: string;
-  /** "4 tables · 2 occupied", or "1 of 4 tables" while a status chip filters. */
-  summary: string;
-  /** The area's tiles that pass the filter (never empty). */
-  tiles: FloorTileModel[];
-}
-
-export interface FloorSections {
-  /** Headings show only once a table sits in a KNOWN area - judged BEFORE the filter. */
-  showHeadings: boolean;
-  groups: FloorSection[];
-}
-
-/**
- * The Floor's tiles laid out under their area headings. ALL tiles are grouped
- * first (so the summary counts the whole area and headings do not appear or
- * vanish as a chip is pressed), then the status filter runs inside each group;
- * an area with no matching tile is dropped. With no areas the result is one
- * group holding exactly filterTiles(tiles, filter) - today's flat list.
- */
-export function floorSections(
-  tiles: readonly FloorTileModel[],
-  areas: readonly Area[] | undefined,
-  filter: FloorFilter,
-): FloorSections {
-  const all = groupByArea(tiles, (tile) => tableAreaIdOf(tile.table), areas);
-  const groups: FloorSection[] = [];
-  for (const group of all) {
-    const shown = filterTiles(group.items, filter);
-    if (shown.length === 0) continue;
-    const total = group.items.length;
-    const summary =
-      filter === "all"
-        ? areaSummaryText(total, statusCounts(group.items.map((t) => t.table)).Occupied)
-        : `${shown.length} of ${tableCountText(total)}`;
-    groups.push({ key: group.key, name: group.name, summary, tiles: shown });
-  }
-  return { showHeadings: showAreaHeadings(all), groups };
-}
-
-export function emptyFilterText(filter: TableStatus): string {
-  return `No ${filter.toLowerCase()} tables right now.`;
-}
-
-/** "12 tables · 5 occupied · ₹5,380 running". The running total is left out
- *  until the open bills have loaded, and when nothing is occupied. */
+/** "3 of 10 occupied · 1 reserved · ₹1,787 running" (design 6.2, owner Q3): the HTML's counts over the whole floor
+ *  (values 1.4: a table whose bill printed is still Occupied), then ours, the open bills on Occupied tables, only once
+ *  the bills have loaded and the shown amount is above ₹0 (never "₹0 running": inr() shows whole rupees, rounding half
+ *  away from zero, which on a sum of totals is Math.round, so a sum under ₹0.50 shows no money). */
 export function floorSummaryText(tiles: readonly FloorTileModel[], tabsKnown: boolean): string {
   const occupied = tiles.filter((t) => t.table.status === "Occupied");
-  const parts = [`${tiles.length} ${tiles.length === 1 ? "table" : "tables"}`, `${occupied.length} occupied`];
-  if (tabsKnown && occupied.length > 0) {
-    const running = occupied.reduce((sum, t) => sum + (t.tab?.total ?? 0), 0);
-    parts.push(`${inr(running)} running`);
-  }
-  return parts.join(" · ");
+  const reserved = tiles.filter((t) => t.table.status === "Reserved").length;
+  const summary = `${occupied.length} of ${tiles.length} occupied · ${reserved} reserved`;
+  const running = tabsKnown ? occupied.reduce((sum, t) => sum + (t.tab?.total ?? 0), 0) : 0;
+  return Math.round(running) > 0 ? `${summary} · ${inr(running)} running` : summary;
 }
 
-/** How fresh the floor is. A time in the future (clock skew) reads as fresh. */
+/** How fresh the floor is (design 6.2: today's rule, its first words shortened to fit the line). Under a minute, or a
+ *  time in the future (clock skew), reads as fresh. */
 export function updatedLabel(atMs: number, nowMs: number): string {
-  const age = nowMs - atMs;
-  if (age < LIVE_LABEL_MAX_AGE_MS) return "Live · updated just now";
-  const minutes = Math.floor(age / MS_PER_MINUTE);
+  const minutes = Math.floor((nowMs - atMs) / MS_PER_MINUTE);
+  if (minutes < 1) return "Updated just now";
   return minutes < MINUTES_PER_HOUR ? `Updated ${minutes} min ago` : "Updated over an hour ago";
+}
+
+/** The header's second line (design 6.2, owner Q3): the summary, then the freshness once the floor has a stamp
+ *  (updatedAtMs > 0; before the clock exists the stamp's own time, so "Updated just now"). One line, cut with an
+ *  ellipsis by the header when narrow. */
+export function floorHeaderLine(input: {
+  tiles: readonly FloorTileModel[];
+  tabsKnown: boolean;
+  updatedAtMs: number;
+  nowMs: number | null;
+}): string {
+  const summary = floorSummaryText(input.tiles, input.tabsKnown);
+  return input.updatedAtMs > 0 ? `${summary} · ${updatedLabel(input.updatedAtMs, input.nowMs ?? input.updatedAtMs)}` : summary;
+}
+
+/** The refresh strip's rule (design 6.2, today's; Review Focus 5): tables on screen and a read of the tables or the open
+ *  bills failed (each query's own retry included). A first load that failed is the error screen; a floor still loading
+ *  or with no table shows no strip. */
+export function floorRefreshFailed(input: { tables: readonly Table[] | undefined; tablesError: boolean; tabsError: boolean }): boolean {
+  return input.tables !== undefined && input.tables.length > 0 && (input.tablesError || input.tabsError);
 }

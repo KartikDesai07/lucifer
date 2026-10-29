@@ -170,7 +170,7 @@ export function BusinessDetailsFields({
           label="Long stay alert"
           htmlFor="settings-long-stay"
           error={errors.tableLongStayMinutes?.message}
-          hint={`An occupied table shows a Long stay label once its bill has been open this long. ${TABLE_LONG_STAY_MIN_MINUTES} to ${TABLE_LONG_STAY_MAX_MINUTES} minutes.`}
+          hint={`An occupied table's time turns red, with a Long stay clock, once its bill has been open this long. ${TABLE_LONG_STAY_MIN_MINUTES} to ${TABLE_LONG_STAY_MAX_MINUTES} minutes.`}
         >
           <div className="flex items-center gap-2">
             <Input

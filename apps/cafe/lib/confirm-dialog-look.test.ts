@@ -1,8 +1,9 @@
 // U1 Task 12 (2026-10-22): the shared ConfirmDialog takes an optional `look="sheet"` = the owner's HTML confirm (values
 // 12.1 in docs/superpowers/specs/2026-10-20-pos-html-values.md; values 0.3 sheetAlign / sheetPad / sheetRadius; design 3,
-// 4 Q4, 6.12). Only the three POS prompts (components/pos/PosPrompts.tsx) and the send-discard confirm
-// (components/pos/SendDiscard.tsx) pass it; the default look stays today's, byte for byte, for every other caller (about
-// 30: deletes, cancels, the leave guard, the floor, settings). No React test framework here: raw readFileSync pins.
+// 4 Q4, 6.12). Only the three POS prompts (components/pos/PosPrompts.tsx), the send-discard confirm
+// (components/pos/SendDiscard.tsx) and, from U3 Task 6, the Floor's Seat now / Free table confirm
+// (components/tables/FloorDialogs.tsx, U3 design 6.6) pass it; the default look stays today's, byte for byte, for every
+// other caller (about 30: deletes, cancels, the leave guard, settings). No React test framework here: raw readFileSync pins.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -18,6 +19,7 @@ const readSrc = (rel: string): string => stripComments(readRaw(rel));
 const CONFIRM = "components/shared/ConfirmDialog.tsx";
 const PROMPTS = "components/pos/PosPrompts.tsx";
 const DISCARD = "components/pos/SendDiscard.tsx";
+const FLOOR_DIALOGS = "components/tables/FloorDialogs.tsx";
 
 /** Whitespace-insensitive form of a raw JSX block (its comment included): only the indentation may differ. */
 const normalise = (src: string): string => src.replace(/\s+/g, " ").trim();
@@ -89,7 +91,9 @@ test("PIN (U1 Task 12, design 3): the default look is today's tree, unchanged fo
   }
 });
 
-test("PIN (U1 Task 12, owner Q4): only the POS prompts and the send-discard confirm wear the sheet; no other caller changes", () => {
+// U3 Task 6 (moved on purpose, U3 design 6.6, as U2's cancel sheet): the Floor's Seat now / Free table confirm joins the
+// sheet's users; every other caller keeps the default look.
+test("PIN (U1 Task 12, owner Q4; U3 Task 6): only the POS prompts, the send-discard confirm and the Floor's confirm wear the sheet; no other caller changes", () => {
   const files: string[] = [];
   walk(path.join(CAFE_ROOT, "components"), files);
   walk(path.join(CAFE_ROOT, "app"), files);
@@ -107,9 +111,10 @@ test("PIN (U1 Task 12, owner Q4): only the POS prompts and the send-discard conf
   assert.ok(callers >= 20, `landmark: the shared confirm has many callers, found ${callers}`);
   assert.deepStrictEqual(
     [...new Set(sheetUsers)].sort(),
-    [DISCARD, PROMPTS].sort(),
-    "a look is passed only by PosPrompts and SendDiscard (design 3: default unchanged for everyone else)",
+    [DISCARD, FLOOR_DIALOGS, PROMPTS].sort(),
+    "a look is passed only by PosPrompts, SendDiscard and FloorDialogs (design 3: default unchanged for everyone else)",
   );
+  assert.equal(readSrc(FLOOR_DIALOGS).split('look="sheet"').length - 1, 1, 'the Floor\'s one confirm passes look="sheet" (U3 design 6.6)');
   const prompts = readSrc(PROMPTS);
   assert.equal(prompts.split('look="sheet"').length - 1, 3, 'every one of the three POS prompts passes look="sheet"');
   const discard = readSrc(DISCARD);

@@ -258,7 +258,8 @@ test("the header's buttons are the HTML's 36px outline (13.5/500, gap 7, 15px ic
     assert.ok(primary.includes(needle), `HEADER_PRIMARY_BUTTON_CLASS carries ${needle}`);
   }
   assert.ok(![...outline, ...primary].some((t) => t.startsWith("pointer-coarse:")), "the HTML's sizes on touch too (R1)");
-  assert.match(TABS, /buttonVariants\(\{ variant: tab\.primary \? "default" : "outline" \}\)/, "the tabs draw the kit's outline / primary look under those sizes");
+  // Moved on purpose (U3 Task 1 fix round 1; owner Q1, Floor values 1.2): on /tables New order is the outline too.
+  assert.match(TABS, /buttonVariants\(\{ variant: tab\.primary && !floor \? "default" : "outline" \}\)/, "the tabs draw the kit's outline / primary look under those sizes (New order outline on /tables)");
 });
 
 // Design 5.3: the order-request strip under the header, in the HTML's warn colours: one 40px line on wide screens

@@ -16,3 +16,9 @@ export const HEADER_OUTLINE_BUTTON_CLASS =
 /** The primary button (the HTML's New order): accent, hover accent-h, padding 0 14px, 13.5px/600, a 14px plus 6px away. */
 export const HEADER_PRIMARY_BUTTON_CLASS =
   "h-9 flex-none gap-1.5 px-3.5 py-0 text-[13.5px] font-semibold hover:bg-primary-hover [&_svg]:size-[14px]" + " " + HTML_PRESS_CLASS;
+
+/** New order on /tables (U3 Task 1; the Floor values 1.2, the HTML Floor header's "Takeaway" button; owner Q1, design
+ *  6.1), laid over the kit's outline Button (its 1px --border, --surface, --text, radius 8): 36px, padding 0 12px,
+ *  13.5px/500, the 14px plus 6px away; hover --surface-2 (the HTML's, not the kit outline's --hover). */
+export const HEADER_FLOOR_NEW_ORDER_CLASS =
+  "h-9 flex-none gap-1.5 px-3 py-0 text-[13.5px] font-medium hover:bg-surface-2 [&_svg]:size-[14px]" + " " + HTML_PRESS_CLASS;

@@ -69,7 +69,12 @@ export function freeTileCount(kinds: readonly TableTileKind[]): number {
  *  Open orders rows: lib/pos-open-orders.ts) — the HTML's demo floor has about 12 tables, a real cafe's 40 or more, whose
  *  last tiles would otherwise wait most of a second to show. */
 export function tileDelay(index: number): string {
-  return `${Math.min(index * 0.02, 0.3).toFixed(2)}s`;
+  return `${tileDelaySeconds(index).toFixed(2)}s`;
+}
+
+/** tileDelay in seconds, for a delay counted against a clock (the Floor's rise, U3 ruling F15). */
+export function tileDelaySeconds(index: number): number {
+  return Math.min(index * 0.02, 0.3);
 }
 
 // ── the tile rules (behaviour unchanged: the rules TableSelector and MoveTablePicker ran inline) ─────────────────

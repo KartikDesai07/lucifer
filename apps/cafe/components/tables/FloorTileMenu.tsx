@@ -1,20 +1,21 @@
 "use client";
 
-import { Check, Clock, MoreVertical } from "lucide-react";
+import { Check, Clock, Ellipsis, Loader2 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { FLOOR_TILE_GLYPH_CLASS, FLOOR_TILE_TRIGGER_CLASS, FLOOR_TILE_TRIGGER_SPINNER_CLASS } from "@/lib/floor-tile-classes";
 import type { FloorMenuAction } from "@/lib/floor-tiles";
 
 interface FloorTileMenuProps {
   tableNo: string;
   actions: readonly FloorMenuAction[];
-  disabled: boolean;
+  /** A write (or its open-bill check) runs for this table: the trigger stays, disabled, with the spinner. */
+  busy: boolean;
   onPick: (action: FloorMenuAction) => void;
 }
 
@@ -23,23 +24,28 @@ const MENU_LABEL: Record<FloorMenuAction, string> = {
   free: "Free table",
 };
 
-// The tile's secondary actions. A SIBLING of the tile's link (never nested in
-// it: a button inside a link is invalid and a tap would do both), pinned to the
-// tile's top-right corner at a 40 px target.
-export function FloorTileMenu({ tableNo, actions, disabled, onPick }: FloorTileMenuProps) {
+// The tile's secondary actions. A SIBLING of the tile's link (never nested in it: a button inside a link is invalid and a
+// tap would do both), in the tile's right slot (design 6.5): a 16px ⋯ on the status line, its 44px touch target (32px
+// with a fine pointer) reaching up from the detail line's top, never over it. While busy it stays mounted and disabled
+// (today's), its ⋯ swapped for the spinner, so a keyboard user's focus is not lost. The disabled goes on Radix's trigger
+// itself: only that guards its pointerdown and keydown (a disabled <button> still gets pointerdown, and React still runs
+// onPointerDown), and Radix hands it on to the button (disabled, data-disabled).
+export function FloorTileMenu({ tableNo, actions, busy, onPick }: FloorTileMenuProps) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
+      <DropdownMenuTrigger asChild disabled={busy}>
+        <button
           type="button"
-          variant="ghost"
-          size="icon"
-          disabled={disabled}
-          className="absolute right-1 top-1 h-10 w-10 text-brand-muted"
+          data-ui="floor-tile-more"
+          className={FLOOR_TILE_TRIGGER_CLASS}
           aria-label={`More actions for ${tableNo}`}
         >
-          <MoreVertical className="h-4 w-4" aria-hidden />
-        </Button>
+          {busy ? (
+            <Loader2 className={FLOOR_TILE_TRIGGER_SPINNER_CLASS} aria-hidden />
+          ) : (
+            <Ellipsis className={FLOOR_TILE_GLYPH_CLASS} aria-hidden />
+          )}
+        </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {actions.map((a) => (

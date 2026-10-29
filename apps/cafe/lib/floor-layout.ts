@@ -1,0 +1,186 @@
+// The Floor page's (/tables) layout contract. Its frame is the owner's HTML Floor screen (U3 Task 1, 2026-10-28;
+// docs/superpowers/specs/2026-10-28-floor-html-values.md values 0.3, 1.1, 2.1, 9.1, 13.1; design 5 and 6.1 in
+// docs/superpowers/specs/2026-10-28-floor-match-html-design.md): the page fills the screen under the shell's 56px header
+// like /pos and /orders (the paper frame with its 1440px cap goes) and never scrolls itself; the HTML's screen is its own
+// scroller, so ours is a flex column whose scroller (below the refresh strip, Task 5) holds the HTML's body with its
+// padding and its 8px scrollbar. The shell header stays put above it (the HTML's header, sticky inside its scroller,
+// moves 8px beside a classic scrollbar: values 12 #25, not copied).
+//
+// One place for the class strings the page renders. Every class name is written out here or in the shared constant it
+// reads (POS_PAGE_CLASS, HTML_PRESS_CLASS, STATUS_CLASSES, FLOOR_FOCUS_RING_CLASS), so Tailwind's source scanner sees each
+// one, and the pins (lib/floor-layout.test.ts, lib/floor-controls.test.ts) read the SAME constants the page renders. U3
+// Task 2 adds the controls row (the area tabs, the status pills, their fades) and the two scroll helpers; Task 5 the
+// refresh strip; Task 6 the empty and skeleton classes.
+import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
+import { FLOOR_FOCUS_RING_CLASS } from "@/lib/floor-tile-classes";
+import type { FloorFilter } from "@/lib/floor-tiles";
+import { POS_PAGE_CLASS } from "@/lib/pos-layout";
+import { TABLES_FLOOR_PATH } from "@/lib/table-sections";
+import { STATUS_CLASSES } from "@/lib/ui/status";
+
+/** The Floor's route (the Tables screens' own constant, lib/table-sections.ts). */
+export const FLOOR_PATH = TABLES_FLOOR_PATH;
+
+/** The route is the Floor itself: the shell then draws the HTML's Floor header (values 1.2: 12px between its items, New
+ *  order in the HTML Floor button's look with its label at every width, no Tables link; owner Q1). Only /tables: its
+ *  admin pages below it (Setup, QR codes) are not in the HTML and keep U0's header. */
+export function isFloorPath(pathname: string): boolean {
+  return pathname === FLOOR_PATH || pathname === `${FLOOR_PATH}/`;
+}
+
+/** The page (values 1.1, design 5): the /pos frame — exactly the screen under the 56px header and the alert strip,
+ *  bleeding over <main>'s padding at every width (on a phone it runs under the 59px tab bar to the window's foot, as the
+ *  HTML's) — as a flex column that never scrolls itself: the refresh strip (Task 5) above, the scroller below. */
+export const FLOOR_PAGE_CLASS = `${POS_PAGE_CLASS} flex flex-col overflow-hidden`;
+
+/** The scroller (values 1.1, 0.3, 9.1): it fills the rest of the page and scrolls the HTML's body; its padding is the
+ *  HTML's body padding, 20px 24px 28px (pagePad, screenPadB), 16px 14px 92px on a phone (the tab bar covers its last
+ *  59px there), the foot growing by the safe-area inset at every width (U1 ruling P49); 28px / 92px at an inset of 0.
+ *  The HTML's thin bar, scoped to this element (U0 values 1.4's global rule): 8px wide, a --border thumb with radius 8,
+ *  no track colour, no sideways bar. The HTML sets no line-height on this screen: normal (values 0.5). */
+export const FLOOR_SCROLLER_CLASS =
+  "min-h-0 flex-1 overflow-y-auto overflow-x-hidden leading-[normal] pt-5 px-6 pb-[calc(28px+env(safe-area-inset-bottom))] max-tab:pt-4 max-tab:px-3.5 max-tab:pb-[calc(92px+env(safe-area-inset-bottom))] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar]:h-0 [&::-webkit-scrollbar-thumb]:rounded-[8px] [&::-webkit-scrollbar-thumb]:bg-border";
+
+/** The body (values 2.1): a flex column, its parts 16px apart — the controls row, the area sections (or the flat grid),
+ *  the empty and error states. */
+export const FLOOR_BODY_CLASS = "flex flex-col gap-4";
+
+// ── The refresh strip (U3 Task 5; design 6.2, owner Q3) ────────────────────────────────────────────────────────────────
+// Ours (the HTML has none), in the U0 order-request strip's look exactly (components/orders/RequestAlertBar.tsx, U0 design
+// 5.3). Its class strings are written out again here (the U0 strip's file keeps its markup untouched);
+// lib/floor-refresh-strip.test.ts holds both to the same tokens, so they never drift.
+
+/** The band: one 40px line (min-h-10, py-1) from 720px, wrapping on a phone; the warn tint, its 13px ink, the hairline. */
+export const FLOOR_REFRESH_STRIP_CLASS =
+  "flex min-h-10 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-status-warn-tint px-3 py-1 text-[13px] leading-[normal] text-status-warn-ink tab:px-5";
+/** The 14px warn glyph and the words, 6px apart (the U0 button's icon gap). */
+export const FLOOR_REFRESH_STRIP_MESSAGE_CLASS = "flex items-center gap-1.5";
+export const FLOOR_REFRESH_STRIP_GLYPH_CLASS = "size-[14px] flex-none";
+/** Try again: the U0 strip's 30px outline button (Enable sound), on the kit's outline Button. */
+export const FLOOR_REFRESH_STRIP_BUTTON_CLASS =
+  "h-[30px] gap-1.5 rounded-[8px] border border-border bg-card px-2.5 py-0 text-[13px] font-medium text-foreground hover:bg-hover [&_svg]:size-[14px]";
+/** Its 44px hit area on touch (ruling R1: our control, no HTML element), drawn by an ::after so neither the button nor the
+ *  strip grows. It starts 4px above the button (-5px from its padding box, inside the 1px border): on the 40px line the
+ *  button sits 4.5px down (py-1 plus half the pixel the hairline leaves), so the area starts 0.5px inside the strip and the
+ *  page's overflow clip never cuts it; it ends 10px past the button's foot, 4.5-5px into the scroller. That top area is
+ *  empty only at scrollTop 0 (the body's 20 / 16px top padding). Scrolled, positioned content (the tile wraps, the tabs
+ *  track, the pills' fade wrap) paints above the overhang and keeps its own taps, so the band is about 40px there; a
+ *  non-positioned element loses its top 4.5px to a harmless refetch (ruling F19). Wrapped on a phone, the button is the
+ *  strip's last line and the area stays clear of the words above. */
+export const FLOOR_REFRESH_STRIP_HIT_CLASS =
+  "relative pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-top-[5px] pointer-coarse:after:h-11";
+
+// ── The loading and empty states (U3 Task 6; values 5.2, design 6.7) ──────────────────────────────────────────────────
+// The HTML's empty line (values 5.2: `text-align:center; padding:48px 0; color:var(--text-2); font-size:14px`, one line of
+// 18px at line-height normal, the scroller's) holding U2's empty box's parts (components/orders/OrderTable.tsx, not
+// exported: a centred column 6px apart, the title 14px 600, our way back 8px further down). U2's box pads 56px 16px with
+// 13px words (the Orders values); values 5.2's numbers win here. lib/floor-states.test.ts holds the buttons to U2's.
+
+/** The box (values 5.2 row: centred, padding 48px 0, 14px --text-2), U2's column 6px apart. */
+export const FLOOR_EMPTY_CLASS = "flex flex-col items-center gap-1.5 py-12 text-center text-[14px] text-muted-foreground";
+/** The title where we have one, no tables (design 6.7; U2's empty title row: 14px 600), in --text. */
+export const FLOOR_EMPTY_TITLE_CLASS = "text-[14px] font-semibold text-foreground";
+/** Both buttons' keyboard focus: the tiles' 2px accent ring, 1px out, the one shared constant (design 6.5: today's ring on
+ *  every Floor control; U2's outline button has none). */
+const EMPTY_FOCUS_RING = FLOOR_FOCUS_RING_CLASS;
+/** Show all tables (design 6.7: ours, as U2's Clear filters): U2's 40px outline button (ORDERS_OUTLINE_BUTTON_CLASS, the
+ *  HTML Orders' Filters look: radius 9, 1px --border, 0 16px, 13.5px 500; never disabled here) with U2's mt-2. */
+export const FLOOR_EMPTY_OUTLINE_BUTTON_CLASS = `mt-2 flex h-10 cursor-pointer items-center justify-center rounded-[9px] border border-border bg-card px-4 text-[13.5px] font-medium text-foreground hover:border-subtle-foreground ${EMPTY_FOCUS_RING}`;
+/** Open Setup (design 6.7: a 40px accent button): the same button in the accent, the confirm's kind 1 (--accent fill and
+ *  rule, --on-accent words) with the header New order's hover, its rule hovering with the fill (no ring around it). */
+export const FLOOR_EMPTY_ACCENT_BUTTON_CLASS = `mt-2 flex h-10 cursor-pointer items-center justify-center rounded-[9px] border border-primary bg-primary px-4 text-[13.5px] font-medium text-primary-foreground hover:border-primary-hover hover:bg-primary-hover ${EMPTY_FOCUS_RING}`;
+/** A skeleton tile (design 6.7): the tile's shape (values 0.3 tileH 112px, 100px on a phone; values 4.1 radius 14) on the
+ *  kit Skeleton's pulse, in the floor grid. */
+export const FLOOR_SKELETON_TILE_CLASS = "h-[112px] rounded-[14px] max-tab:h-[100px]";
+
+// ── The controls row (U3 Task 2; values 2.2-2.6, design 6.3, owner Q4) ──────────────────────────────────────────────
+
+/** The row (values 2.2): the area tabs left, the status pills right, 10px apart; the pills take a second line (at the
+ *  left) when both do not fit (820 and the phone with three areas). */
+export const FLOOR_CONTROLS_CLASS = "flex flex-wrap items-center justify-between gap-2.5";
+
+// Both rows scroll sideways when they do not fit, with no visible bar (values 2.4: the HTML's horizontal bar is 0 tall),
+// and are each the positioned parent their buttons' offsetLeft is measured from (revealScrollLeft). A tab or a pill
+// focused from the keyboard wears an inset 2px ring, so the row's scroll box never clips it and no padding changes the
+// HTML's 36 / 32px heights (values 12 #9, not copied). Each presses like the HTML's buttons (values 6.2).
+const ROW_SCROLL = "relative max-w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
+const FOCUS_RING = "outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary";
+
+/** The area track (values 2.3): the HTML's segmented control, --surface-3, radius 8, padding 2, 2px between tabs. */
+export const FLOOR_TABS_TRACK_CLASS = `flex gap-0.5 rounded-[8px] bg-surface-3 p-0.5 ${ROW_SCROLL}`;
+/** A tab (values 2.3): 32px, radius 6, 0 14px, 13.5px 500 in --text, never wrapping (the flex default: its one-line
+ *  word is its minimum, so it never shrinks below it). */
+export const FLOOR_TAB_CLASS = `h-8 cursor-pointer whitespace-nowrap rounded-[6px] border-0 px-3.5 text-[13.5px] font-medium text-foreground ${FOCUS_RING} ${HTML_PRESS_CLASS}`;
+/** The chosen tab: SEG_ON, the white chip with --seg-sh exactly (Tailwind's shadow-* would add four empty ring layers).
+ *  --tw-shadow carries --seg-sh into the focus ring's composite, so under keyboard focus the chip keeps its shadow. */
+export const FLOOR_TAB_ON_CLASS = "bg-seg [box-shadow:var(--seg-sh)] [--tw-shadow:var(--seg-sh)]";
+/** The others: SEG_OFF, plus the kit's --hover where a pointer can hover (design 8 #12: the HTML has none). */
+export const FLOOR_TAB_OFF_CLASS = "bg-transparent hover:bg-hover";
+
+/** The pills row (values 2.4): 6px apart. */
+export const FLOOR_PILLS_ROW_CLASS = `flex gap-1.5 ${ROW_SCROLL}`;
+/** A pill (values 2.4): 32px, radius 999, a 1px border, 0 12px, 13px 500; dot, word and count 7px apart. */
+export const FLOOR_PILL_CLASS = `flex h-8 flex-none cursor-pointer items-center gap-[7px] whitespace-nowrap rounded-[999px] border px-3 text-[13px] font-medium ${FOCUS_RING} ${HTML_PRESS_CLASS}`;
+/** The chosen pill: --ink with on-ink text (values 2.4; on-ink, not the HTML's --surface, values 12 #24). */
+export const FLOOR_PILL_ON_CLASS = "border-ink bg-ink text-on-ink";
+/** The others: --surface, --border, --ink text, plus the kit's hover (design 8 #12). */
+export const FLOOR_PILL_OFF_CLASS = "border-border bg-card text-ink hover:bg-hover";
+/** The chosen pill's count: a grey that reads on ink, >= 4.5:1 from a token (design 8 #7: the HTML's is 3.36:1). */
+export const FLOOR_PILL_COUNT_ON_CLASS = "text-on-ink-muted";
+/** A pill's count: --text-3 (values 2.4). */
+export const FLOOR_PILL_COUNT_OFF_CLASS = "text-subtle-foreground";
+/** The pill's 8px dot (values 2.4); "All" has none. */
+export const FLOOR_PILL_DOT_CLASS = "size-2 flex-none rounded-[50%]";
+
+/** The status dots (values 2.4: --ok, --info, --bill, --res), the shared status vocabulary's. The one place the Floor
+ *  names them: the tiles' tones read these too (ruling F2). */
+export const FLOOR_FILTER_DOT: Record<Exclude<FloorFilter, "all">, string> = {
+  free: STATUS_CLASSES.ok.dot,
+  occupied: STATUS_CLASSES.info.dot,
+  billed: STATUS_CLASSES.bill.dot,
+  reserved: STATUS_CLASSES.reserved.dot,
+};
+
+/** The fades' frame (owner Q4): the row's own box, not scrolling, so a fade stays at the row's edge. */
+export const FLOOR_FADE_WRAP_CLASS = "relative min-w-0 max-w-full";
+const FADE = "pointer-events-none absolute w-6";
+/** The pills' 24px fades into the page's --background (plain stops: WebView 109 has no mask-image / color-mix). */
+export const FLOOR_FADE_PILLS = {
+  start: `${FADE} inset-y-0 left-0 [background:linear-gradient(to_right,var(--background),transparent)]`,
+  end: `${FADE} inset-y-0 right-0 [background:linear-gradient(to_left,var(--background),transparent)]`,
+} as const;
+/** The tabs' 24px fades into the track's own --surface-3, inside its 2px padding, so its rounded ends stay grey. */
+export const FLOOR_FADE_TABS = {
+  start: `${FADE} inset-y-0.5 left-0.5 rounded-l-[6px] [background:linear-gradient(to_right,var(--surface-3),transparent)]`,
+  end: `${FADE} inset-y-0.5 right-0.5 rounded-r-[6px] [background:linear-gradient(to_left,var(--surface-3),transparent)]`,
+} as const;
+
+/** How far inside the row a revealed tab or pill lands: clear of the 24px fade and the track's 2px padding. */
+export const FLOOR_REVEAL_MARGIN = 26;
+
+/** Below this many px of hidden row a fade is not worth drawing (a rounding remainder, not a hidden pill). */
+const FADE_TOLERANCE_PX = 1;
+
+/** Which edges of a sideways row hide something (owner Q4): the start once scrolled, the end while more is to the right;
+ *  none when it fits. */
+export function edgeFades(m: { scrollLeft: number; scrollWidth: number; clientWidth: number }): { start: boolean; end: boolean } {
+  const hidden = m.scrollWidth - m.clientWidth;
+  return { start: m.scrollLeft > FADE_TOLERANCE_PX, end: hidden - m.scrollLeft > FADE_TOLERANCE_PX };
+}
+
+/**
+ * The row's scrollLeft that shows the item whole, `margin` px clear of each edge, by the smallest change: unchanged when
+ * it already is, else just far enough (its start first when it is wider than the row); never below 0 (the browser caps
+ * the far end). The row's own scroll, never scrollIntoView, which would also scroll the page.
+ */
+export function revealScrollLeft(
+  view: { scrollLeft: number; clientWidth: number },
+  item: { offsetLeft: number; offsetWidth: number },
+  margin: number,
+): number {
+  const start = item.offsetLeft - margin;
+  const end = item.offsetLeft + item.offsetWidth + margin;
+  if (start < view.scrollLeft) return Math.max(0, start);
+  if (end > view.scrollLeft + view.clientWidth) return Math.max(0, Math.min(start, end - view.clientWidth));
+  return view.scrollLeft;
+}
