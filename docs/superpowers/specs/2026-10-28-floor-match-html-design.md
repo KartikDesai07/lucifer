@@ -53,6 +53,7 @@ nothing; the S1 43-file pin and `print-budget.test.ts` stay untouched).
 | Q4 | Pills on the phone | **Sideways scroll with a cue**: the HTML's scrolling row, plus a soft fade at the right edge while more pills are hidden, and the chosen pill scrolled into view on its own. The area tabs do the same. |
 | Q5 | The stay on the phone (asked during the build, 2026-10-28) | **Short minutes below 720 px**: "0m", "8m", "72m", "125m", so "₹1,063 · 72m" fits the 88 px phone line for every ₹1,000–9,999 bill, also in the long stay's red bold (measured 74.77 px; "₹1,063 · 1h 12m" was 91.88 px and "₹1,063 · Just now" 100.89 px, both cut). From 720 px the words stay "Just now" / "{m} min" / "{h}h {m}m". A 5-digit bill past 99 minutes still cuts (accepted with the option). |
 | Q6 | A long name on a narrow tile (asked after the final review, 2026-10-29) | **The name first**: on a 3-column phone grid (390–430) the name had ~48–55 px beside "4 seats", so "Patio 1" / "Patio 2" both read "Pat…" (and "Garden 2" read "Garde…" at 1024); today's 2-column phone showed them whole. When the name and the seats do not both fit, that tile's seats give way (hidden there, still read by screen readers) and the name shows whole (~88 px on the phone, ~117 px at 1024); a 24-character name still truncates. The 3-column grid and the tile size stay the HTML's; "T-1" … "T-99" tiles are unchanged. |
+| Q7 | The table charge line on a narrow tile (asked after the verification, 2026-10-29) | **Only the label truncates, the amount always shows**: the line keeps K5's order "{label} ₹x"; when it does not fit, the label alone truncates with the ellipsis and the amount shows whole ("Rooftop se… ₹50"); where it fits, exactly as before. On the 3-column phone grid (390–719) and near the column breaks from 720 (1024 among them) "Rooftop seating ₹50" (117.5 px) had read "Rooftop seati…", the amount lost. The words and the tile's accessible name are unchanged. |
 | – | Words (standing, U0 / U1 / U2) | The HTML's words where the HTML has the same element; our words for our own features and data (section 11 lists every visible word that changes). |
 | – | "Bill printed" (U2 Q11, standing) | Shown only when the server knows of the print (`billPrintedNow`, `lib/dashboard/live-tables.ts`: print host / agent / settle prints), as the dashboard and Orders. A device that prints straight from the browser keeps its tables "Occupied". |
 
@@ -166,7 +167,7 @@ and Setup read):
 | K2 Occupied, no bill | "Occupied" | "No open bill" (the confirm explains; "tap to free" in its accessible name) | — | Free table confirm (D2) |
 | K3 Occupied, bills loading | "Occupied" | a short skeleton bar | — | /pos (as today) |
 | K4 Occupied, bills failed | "Occupied" | "Bill not loaded" | — | /pos (as today) |
-| K5 Available | `--ok` "Available" | the table charge "{label} ₹x" if set, else "Tap to seat guests" (phone: "Tap to seat", see 8) | ⋯ (Reserve table) | /pos, the table picked |
+| K5 Available | `--ok` "Available" | the table charge "{label} ₹x" if set (the owner's Q7: only the label truncates, the amount always shows), else "Tap to seat guests" (phone: "Tap to seat", see 8) | ⋯ (Reserve table) | /pos, the table picked |
 | K6 Available, bills unknown | "Available" | as K5 | — | as K5 |
 | K7 Available + a bill (R18) | "Available" | "₹x · 12 min" (as K1, so the money fits the phone line) | Long stay mark | /pos, the bill resumed |
 | K8 Reserved | `--res` "Reserved" | "{h:mm AM} · {booking name}" (the HTML's note) or "Held" | ⋯ (Free table) | Seat now confirm (D1) |
@@ -325,3 +326,13 @@ Decided while building, recorded so the design stays the reference (the SDD ledg
   not both fit hides its seats and shows the name whole.
 - The confirm sheet's body keeps a hyphenated table name whole (a word joiner after each hyphen, invisible, in the body
   only): the 420 px sheet split "T-" / "3" from 720 px up.
+- The owner's Q7 (section 4, 2026-10-29, after the verification): the table charge line keeps "{label} ₹x"; when it does
+  not fit, only the label truncates and the amount always shows.
+- VC-1 (the verification, WebView 109): the tile's top row and bottom block are `w-full`, the HTML's own `width:100%`
+  (values §4.1). WebView 109's UA sheet gives `<button>` `align-items: flex-start`, so on a button tile (Seat now, Free
+  table) both had shrunk to their content: the seats right after the name, a booking detail past the tile with no
+  ellipsis, a long name not cut. Current Chrome draws the same either way.
+- VC-3 (the verification, WebView 109's accessibility tree): the area sections sit in one permanent list wrapper, and
+  each section's head and grid in one permanent inner column (the same 16 px and 10 px gaps, so the layout is unchanged).
+  WebView 109 left the tiles and whole sections that a filter round trip or a poll re-inserted out of its accessibility
+  tree; with the two wrappers a measured replica of the page kept every tile and section on 109 and 154.
