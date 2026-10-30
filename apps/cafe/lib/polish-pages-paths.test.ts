@@ -61,6 +61,8 @@ const KITCHEN_BODY = cmp("kitchen/KitchenBoardBody.tsx");
 const KITCHEN_STATES = cmp("kitchen/KitchenBoardStates.tsx");
 const KITCHEN_TYPE_FILTER = cmp("kitchen/KitchenTypeFilter.tsx");
 const KITCHEN_HEADER_LIB = "apps/cafe/lib/kitchen-header.ts";
+// U4 Task 3 (2026-10-30): the card's words (code, where line, pill, footer, Mark ready) join the copy-hygiene files.
+const KITCHEN_VIEW_LIB = "apps/cafe/lib/kitchen-view.ts";
 const KITCHEN_CHIP = cmp("kitchen/KitchenFreshnessChip.tsx");
 const KITCHEN_LINE = cmp("kitchen/KitchenLineCard.tsx");
 const KITCHEN_ORDER = cmp("kitchen/KitchenOrderCard.tsx");
@@ -1029,13 +1031,15 @@ const CONTROL_FILES = [
 // not the brand paper panel; it is no kit <Table> (no inline-size containment: it reads the list column's @container); its row
 // icon buttons are gone (design 6.4). ORDER_LIST_CASE (D5) pins the new list; the page keeps BRAND_CONTROL_CLASS on
 // "Clear filters".
+// U4 Task 3 (2026-10-30; design 6.3): KitchenOrderCard left the panel list on purpose (P46): the card is the owner's HTML
+// ticket card (--surface, 1px --border or --bad when late, radius 12; values 4.1), not the brand paper panel;
+// lib/kitchen-view.test.ts pins its frame from lib/kitchen-layout.ts. It stays in the copy-hygiene list (P50).
 const PANEL_FILES = [
   RESERVATIONS_PAGE,
   EVENTS_PAGE,
   CUSTOMERS_PAGE,
   STAFF_PAGE,
   ORDER_REQUEST_CARD,
-  KITCHEN_ORDER,
   RESERVATIONS_TABLE,
   RESERVATION_CARD,
   EVENTS_TABLE,
@@ -1419,6 +1423,7 @@ const COPY_FILES = [
   KITCHEN_STATES,
   KITCHEN_TYPE_FILTER,
   KITCHEN_HEADER_LIB,
+  KITCHEN_VIEW_LIB,
   RESERVATIONS_TABLE,
   RESERVATION_CARD,
   EVENTS_TABLE,

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useMarkOrderReady, useTickKitchenLine } from "@/hooks/use-kitchen";
 import type { KitchenRow } from "@/lib/kitchen-board";
 import { readyToastMessage, type KitchenOrderCard as KitchenOrderCardData } from "@/lib/kitchen-cards";
+import { kitchenCardCode } from "@/lib/kitchen-view";
 
 /** What the Kitchen board's cards do: tick / un-tick a line, Mark ready, and which of those writes are in flight. */
 export interface KitchenActions {
@@ -76,8 +77,9 @@ export function useKitchenActions(): KitchenActions {
       },
     );
     // The message distinguishes a finished card from one cleared with lines
-    // still open — see readyToastMessage for why that matters now.
-    toast(readyToastMessage(card), {
+    // still open — see readyToastMessage for why that matters now. It names the
+    // card by its code (U4 Task 3, owner Q9): "Parcel", "Token 12", the table.
+    toast(readyToastMessage({ ...card, tableLabel: kitchenCardCode(card) }), {
       action: {
         label: "Undo",
         onClick: () => ready.mutate({ orderId: card.orderId, ready: false }),

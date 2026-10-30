@@ -38,6 +38,9 @@ const KITCHEN_TYPE_FILTER = "apps/cafe/components/kitchen/KitchenTypeFilter.tsx"
 const KITCHEN_STATES = "apps/cafe/components/kitchen/KitchenBoardStates.tsx";
 const REFRESH_STRIP = "apps/cafe/components/shared/RefreshStrip.tsx";
 const REFRESH_STRIP_CLASSES = "apps/cafe/lib/ui/refresh-strip.ts";
+// U4 Task 3: the card's words (code, where line, pill, footer, button) and the card itself (rebuilt to the HTML's).
+const KITCHEN_VIEW = "apps/cafe/lib/kitchen-view.ts";
+const KITCHEN_ORDER_CARD = "apps/cafe/components/kitchen/KitchenOrderCard.tsx";
 const ITEMS_ROUTE = "apps/cafe/app/api/orders/[id]/items/route.ts";
 const ADDROUND = "apps/cafe/lib/order-request-accept-addround.ts";
 
@@ -146,12 +149,13 @@ test("PIN (18b): kitchen/page.tsx contains no AdminGuard (staff and admin both u
 
 // ── (19) hygiene: no console., no hardcoded cafe name ───────────────────────
 
-test("PIN (19): use-kitchen.ts, kitchen/page.tsx, KitchenBoardBody.tsx, KitchenLineCard.tsx, KitchenFreshnessChip.tsx, use-kitchen-actions.ts, kitchen-layout.ts, kitchen-header.ts, KitchenTypeFilter.tsx, KitchenBoardStates.tsx, RefreshStrip.tsx, ui/refresh-strip.ts contain no console. and no hardcoded cafe name", () => {
+test("PIN (19): use-kitchen.ts, kitchen/page.tsx, KitchenBoardBody.tsx, KitchenLineCard.tsx, KitchenFreshnessChip.tsx, use-kitchen-actions.ts, kitchen-layout.ts, kitchen-header.ts, KitchenTypeFilter.tsx, KitchenBoardStates.tsx, RefreshStrip.tsx, ui/refresh-strip.ts, kitchen-view.ts, KitchenOrderCard.tsx contain no console. and no hardcoded cafe name", () => {
   const consoleNeedle = "console" + ".";
   const luciferNeedle = "Luci" + "fer";
   const files = [
     USE_KITCHEN, KITCHEN_PAGE, KITCHEN_BODY, KITCHEN_CARD, KITCHEN_CHIP, KITCHEN_ACTIONS, KITCHEN_LAYOUT,
-    KITCHEN_HEADER, KITCHEN_TYPE_FILTER, KITCHEN_STATES, REFRESH_STRIP, REFRESH_STRIP_CLASSES,
+    KITCHEN_HEADER, KITCHEN_TYPE_FILTER, KITCHEN_STATES, REFRESH_STRIP, REFRESH_STRIP_CLASSES, KITCHEN_VIEW,
+    KITCHEN_ORDER_CARD,
   ];
   for (const rel of files) {
     const raw = readSrc(rel);
@@ -172,6 +176,8 @@ test("PIN (19): use-kitchen.ts, kitchen/page.tsx, KitchenBoardBody.tsx, KitchenL
   assert.match(readSrc(KITCHEN_STATES), /export function KitchenBoardStates\(/, "positive landmark: KitchenBoardStates.tsx must export KitchenBoardStates(");
   assert.match(readSrc(REFRESH_STRIP), /export function RefreshStrip\(/, "positive landmark: RefreshStrip.tsx must export RefreshStrip(");
   assert.match(readSrc(REFRESH_STRIP_CLASSES), /export const REFRESH_STRIP_CLASS =/, "positive landmark: ui/refresh-strip.ts must export REFRESH_STRIP_CLASS");
+  assert.match(readSrc(KITCHEN_VIEW), /export function kitchenCardCode\(/, "positive landmark: kitchen-view.ts must export kitchenCardCode(");
+  assert.match(readSrc(KITCHEN_ORDER_CARD), /export function KitchenOrderCard\(/, "positive landmark: KitchenOrderCard.tsx must export KitchenOrderCard(");
 });
 
 // ── (20) freshness chip decoupling ──────────────────────────────────────────
@@ -215,6 +221,10 @@ test("PIN (21): each new UI-slice file stays within its stated line budget +20%"
     [KITCHEN_STATES, 100],
     [REFRESH_STRIP, 50],
     [REFRESH_STRIP_CLASSES, 30],
+    // U4 Task 3 (2026-10-30): the card's words (<= 144; Task 4 adds the round groups there) and the card (<= 156; Task 4
+    // rebuilds its lines and round dividers in it). The card had no budget before.
+    [KITCHEN_VIEW, 120],
+    [KITCHEN_ORDER_CARD, 130],
   ];
   for (const [rel, budget] of budgets) {
     const cap = Math.ceil(budget * 1.2);
@@ -291,8 +301,6 @@ test("PIN: KitchenLineCard must NOT re-append row.variation — buildKitchenRows
 
 // ── (22) Ready is never blocked by unticked lines (owner decision 2026-09-26) ──
 
-const KITCHEN_ORDER_CARD = "apps/cafe/components/kitchen/KitchenOrderCard.tsx";
-
 test("PIN (22): the Ready button is NOT gated on allDone — a rush leaves no time to tick, and a card that cannot be cleared strands the board", () => {
   const src = stripComments(readSrc(KITCHEN_ORDER_CARD));
 
@@ -314,9 +322,12 @@ test("PIN (22): the Ready button is NOT gated on allDone — a rush leaves no ti
     'the retired "Tick every line first" label must not come back — it described a block that no longer exists',
   );
 
-  // The nudge survives the block: a part-done card still says what is being skipped.
+  // The nudge survives the block: a part-done card still says what is being skipped. U4 Task 3 MOVED the label with the
+  // code: the card draws lib/kitchen-view.ts's kitchenButton(card) ("Mark ready · {n} not ticked"), which computes the
+  // open count; the meaning is unchanged.
+  assert.match(src, /kitchenButton\(card\)/, "landmark: the card's button label comes from kitchenButton(card)");
   assert.match(
-    src,
+    stripComments(readSrc(KITCHEN_VIEW)),
     /card\.totalCount\s*-\s*card\.doneCount/,
     "the Ready label must still name how many lines are unticked, so a cook knows what they are skipping",
   );
@@ -327,9 +338,14 @@ test("PIN (22b): readyToastMessage distinguishes a finished card from one cleare
   assert.match(src, /export function readyToastMessage/, "kitchen-cards.ts must export readyToastMessage");
 
   // U4 Task 1 MOVED this pin with the code: the page's handlers live in useKitchenActions (hooks/use-kitchen-actions.ts),
-  // which the page calls; the meaning is unchanged.
+  // which the page calls; the meaning is unchanged. U4 Task 3 (owner Q9): the toast reads the same card with its where
+  // set to the card's code ("Parcel", "Token 12", the table), so the message is still readyToastMessage's.
   const actionsSrc = stripComments(readSrc(KITCHEN_ACTIONS));
-  assert.match(actionsSrc, /readyToastMessage\(card\)/, "the kitchen's ready toast must use readyToastMessage(card)");
+  assert.match(
+    actionsSrc,
+    /readyToastMessage\(\{ \.\.\.card, tableLabel: kitchenCardCode\(card\) \}\)/,
+    "the kitchen's ready toast must use readyToastMessage on the card, named by its code",
+  );
   assert.match(actionsSrc, /label:\s*"Undo"/, "the ready toast must still offer Undo — clearing the wrong card must stay recoverable");
   assert.match(stripComments(readSrc(KITCHEN_PAGE)), /useKitchenActions\(\)/, "landmark: the kitchen page uses those handlers");
 });

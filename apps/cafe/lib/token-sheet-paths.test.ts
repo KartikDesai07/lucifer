@@ -20,6 +20,7 @@ const ROWS = "components/pos/TokenSheetRows.tsx";
 const HOOKS = "hooks/use-tokens.ts";
 const HEADER = "components/layout/Header.tsx";
 const KITCHEN_CARD = "components/kitchen/KitchenOrderCard.tsx";
+const KITCHEN_VIEW = "lib/kitchen-view.ts";
 const ORDER_TABLE = "components/orders/OrderTable.tsx";
 const ORDERS_ROW = "lib/orders-row.ts";
 const ORDER_SHEET = "components/orders/OrderDetailSheet.tsx";
@@ -204,8 +205,12 @@ function assertGuardedLabels(rel: string, arg: string, expectedCalls: number): v
 // and OrderTable renders no label of its own. U2 Task 5 (2026-10-23): the order detail's "Token 12" moved from the
 // sheet's description line into the head's meta row (lib/order-detail-view.ts detailMeta), with its guard: the sheet
 // renders no label of its own.
-test("KitchenOrderCard / the Orders row view (lib/orders-row.ts) / the detail's meta (lib/order-detail-view.ts) render tokenLabelOf only under a defined/number check", () => {
-  assertGuardedLabels(KITCHEN_CARD, "card.tokenNumber", 1);
+// U4 Task 3 (2026-10-30; design 6.3, owner Q9): the Kitchen card's token moved into its view (lib/kitchen-view.ts: the code
+// "Token 12" of a card with no table, or the where line's "· Token 12" on a table card), read once behind its guard; the
+// card renders no label of its own.
+test("the Kitchen card's view (lib/kitchen-view.ts) / the Orders row view (lib/orders-row.ts) / the detail's meta (lib/order-detail-view.ts) render tokenLabelOf only under a defined/number check", () => {
+  assertGuardedLabels(KITCHEN_VIEW, "card.tokenNumber", 1);
+  assert.ok(!read(KITCHEN_CARD).includes("tokenLabelOf("), "KitchenOrderCard draws the view's code and where line, never a label of its own");
   assertGuardedLabels(ORDERS_ROW, "o.tokenNumber", 1);
   assert.ok(!read(ORDER_TABLE).includes("tokenLabelOf("), "OrderTable draws the row view's sub, never a label of its own");
   assertGuardedLabels(ORDER_DETAIL_VIEW, "o.tokenNumber", 1);

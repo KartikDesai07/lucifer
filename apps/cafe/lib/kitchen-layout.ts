@@ -12,6 +12,7 @@
 // states' classes.
 import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { FLOOR_TAB_ON_CLASS } from "@/lib/floor-layout";
+import { FLOOR_FOCUS_RING_CLASS } from "@/lib/floor-tile-classes";
 import { POS_PAGE_CLASS } from "@/lib/pos-layout";
 
 /** The Kitchen's route. Only here, in lib/: a quoted "/kitchen" in app/, components/ or hooks/ is a nav source, and the
@@ -75,3 +76,48 @@ export const KITCHEN_FILTER_TAB_OFF_CLASS = "bg-transparent pointer-fine:hover:b
  *  28px 12px, centred 13px --text-3 at the board's line-height normal (75px tall). The filtered-empty "No orders here"
  *  (Task 2); Task 5 gives "All caught up" the same box. */
 export const KITCHEN_EMPTY_BOX_CLASS = "rounded-[12px] border-[1.5px] border-dashed border-border px-3 py-7 text-center text-[13px] text-subtle-foreground";
+
+// ── The card (U4 Task 3; values 4.1, 4.2, 4.4, 4.5; design 6.3, owner Q5) ─────────────────────────────────────────────
+// Card height = 149 + the item list (1 + head 64 + list + footer 19 + 6 + button 46 + 12 + 1; the HTML's 157 + rows with
+// its list's 4px paddings). The words: lib/kitchen-view.ts.
+
+/** The frame (values 4.1): --surface, a 1px border, radius 12, a flex column; `overflow: clip` (the HTML's hidden would make
+ *  a scroll container, U3's lesson). No hover, no shadow. Its border colour is KITCHEN_CARD_EDGE_CLASS's. */
+export const KITCHEN_CARD_CLASS = "flex flex-col overflow-clip rounded-[12px] border bg-card";
+/** The border (design 6.3): --border, or --bad while late with lines open (lib/kitchen-view.ts kitchenCardLate). */
+export const KITCHEN_CARD_EDGE_CLASS = { normal: "border-border", late: "border-status-bad" } as const;
+/** The HTML's rise (values 7: .35s, the shared curve, no delay) when a card first appears; none with reduced motion. */
+export const KITCHEN_CARD_RISE_CLASS = "motion-safe:animate-html-rise-row";
+/** The head row (values 4.1): the title block and the pill top-aligned, 10px apart, padding 12px 12px 10px, a --border-2
+ *  hairline under it (64px with a one-line code). */
+export const KITCHEN_CARD_HEAD_CLASS = "flex items-start gap-2.5 border-b border-border-2 px-3 pt-3 pb-2.5";
+/** The title block (values 4.1): takes the room the pill leaves. */
+export const KITCHEN_CARD_TITLE_CLASS = "min-w-0 flex-1";
+/** The code (values 4.1): 20px 700, -0.01em, line-height 1.1 (22px), --text; it wraps, an unbreakable name anywhere
+ *  (values 10 #13: never clipped). overflow-wrap anywhere alone: Tailwind 4.3 writes .break-words after the arbitrary
+ *  property, so the pair would compute break-word. */
+export const KITCHEN_CARD_CODE_CLASS = "text-[20px] font-bold leading-[1.1] tracking-[-0.01em] [overflow-wrap:anywhere]";
+/** The where line (values 4.1): 12px --text-2, 3px under the code, line-height normal (16px); it wraps (anywhere). */
+export const KITCHEN_CARD_WHERE_CLASS = "mt-[3px] text-[12px] text-muted-foreground [overflow-wrap:anywhere]";
+/** The time pill (values 4.1): 26px, 0 9px, radius 999 (the HTML's own; rounded-full computes another value), 12.5px 700,
+ *  its words centred; never shrinks. A span: " Late" for screen readers sits in it (sr-only). */
+export const KITCHEN_PILL_CLASS = "flex h-[26px] flex-none items-center rounded-[999px] px-[9px] text-[12.5px] font-bold";
+/** The pill's tints per band (values 4.4): --ok-t / --ok-i, --warn-t / --warn-i, --bad-t / --bad-i. */
+export const KITCHEN_PILL_BAND_CLASS = {
+  fresh: "bg-status-ok-tint text-status-ok-ink",
+  warn: "bg-status-warn-tint text-status-warn-ink",
+  late: "bg-status-bad-tint text-status-bad-ink",
+} as const;
+/** The item list (values 4.1): a column, 4px above and below its rows. */
+export const KITCHEN_CARD_LINES_CLASS = "flex flex-col py-1";
+/** The footer (values 4.1): the ticket numbers and time left, the count right, 8px apart at least, padding 0 12px 4px,
+ *  11.5px --text-3 (15px lines, a 19px row). */
+export const KITCHEN_CARD_FOOTER_CLASS = "flex items-center justify-between gap-2 px-3 pb-1 text-[11.5px] text-subtle-foreground";
+/** Mark ready (values 4.1 / 4.5): margin 6px 12px 12px (the card's width minus 24), 46px, no border, radius 10, 14.5px 600,
+ *  the UA's 1px 6px padding, its words centred by the button itself (no flex, so nothing to stretch on WebView 109). No
+ *  hover look (the HTML's); the HTML's press; our 2px accent focus ring (the HTML's is invisible on ink, values 10 #17);
+ *  today's kit look while its own write runs. Its fill is KITCHEN_READY_KIND_CLASS's. */
+export const KITCHEN_READY_CLASS = `mx-3 mt-1.5 mb-3 h-[46px] cursor-pointer rounded-[10px] border-0 px-1.5 py-px text-[14.5px] font-semibold disabled:pointer-events-none disabled:opacity-50 ${FLOOR_FOCUS_RING_CLASS} ${HTML_PRESS_CLASS}`;
+/** The button's fill (Q5): lines open, --ink with --on-ink; every line ticked, the darker green (#198038, 5.0:1 with white;
+ *  the HTML's --ok is 3.35:1, values 10 #18) with white. */
+export const KITCHEN_READY_KIND_CLASS = { open: "bg-ink text-on-ink", done: "bg-status-ok-ink text-white" } as const;

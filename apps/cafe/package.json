@@ -364,6 +364,7 @@
     "lib/kitchen-layout.test.ts",
     "lib/kitchen-header.test.ts",
     "lib/kitchen-filter-states.test.ts",
+    "lib/kitchen-view.test.ts",
     "lib/token-board.test.ts",
     "lib/token-routes-paths.test.ts",
     "lib/token-sheet-paths.test.ts",
