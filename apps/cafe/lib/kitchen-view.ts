@@ -21,10 +21,13 @@ function tokenOf(card: Pick<KitchenOrderCard, "tokenNumber">): string | false {
   return card.tokenNumber !== undefined && tokenLabelOf(card.tokenNumber);
 }
 
-const atTable = (card: Pick<KitchenOrderCard, "tableLabel">): boolean => kitchenFilterOf(card) === "tables";
+/** A table card: the header filter's Tables (one rule, lib/kitchen-header.ts). A parcel order is never one, whatever its
+ *  table (ruling K4: today's card let `parcel` win; the table is not named). */
+const atTable = (card: Pick<KitchenOrderCard, "tableLabel" | "parcel">): boolean => kitchenFilterOf(card) === "tables";
 
-/** The big code (design 6.3, Q9): a table card its table's name ("T-4"); a card with no table its token ("Token 12") when
- *  it has one, else "Parcel" for a parcel order and "Walk-In" for the rest. The Ready toast names the card by it. */
+/** The big code (design 6.3, Q9): a table card its table's name ("T-4"); any other card (no table, or a parcel) its token
+ *  ("Token 12") when it has one, else "Parcel" for a parcel order and "Walk-In" for the rest. The Ready toast names the
+ *  card by it. */
 export function kitchenCardCode(card: KitchenOrderCard): string {
   if (atTable(card)) return card.tableLabel;
   return tokenOf(card) || (card.parcel ? "Parcel" : "Walk-In");
@@ -69,16 +72,21 @@ export function kitchenCardLate(card: KitchenOrderCard, nowMs: number): boolean 
   return kitchenAgeBand(card.cardFiredAt, new Date(nowMs)).key === "late" && !card.allDone;
 }
 
-/** The footer (design 6.3): left "KOT #9, #12 · 9:26 PM" (the card's ticket numbers, the first round's fire time in the
- *  cafe's time zone, "~" first when that round is approximate), "Sent 9:26 PM" with ticket numbers off; right the HTML's
- *  "{d} of {n} done". */
+/** A fire stamp as the card shows it: "9:26 PM" in the cafe's time zone, "~" first when approximate; "" for a stamp that
+ *  does not parse (the clock's formatter would throw and take the whole board down; the round dividers reuse this). */
+export function kitchenFireTime(iso: string, approx: boolean): string {
+  return Number.isFinite(Date.parse(iso)) ? `${approx ? "~" : ""}${clockTime(iso)}` : "";
+}
+
+/** The footer (design 6.3): left "KOT #9, #12 · 9:26 PM" (the card's ticket numbers, the first round's fire time), "Sent
+ *  9:26 PM" with ticket numbers off; with a stamp that does not parse, "KOT #9" or nothing; right the HTML's "{d} of {n}
+ *  done". */
 export function kitchenFooter(card: KitchenOrderCard): { left: string; right: string } {
   const first = card.lines.reduce<KitchenOrderCard["lines"][number] | undefined>((min, l) => (min && min.round <= l.round ? min : l), undefined);
-  const at = first ? first.firedAt : card.cardFiredAt;
-  const approx = first ? first.firedAtApprox : card.cardFiredAtApprox;
-  const time = `${approx ? "~" : ""}${clockTime(at)}`;
+  const time = first ? kitchenFireTime(first.firedAt, first.firedAtApprox) : kitchenFireTime(card.cardFiredAt, card.cardFiredAtApprox);
   const kot = card.ticketNumbers.map((n) => `#${n}`).join(", ");
-  return { left: kot ? `KOT ${kot} · ${time}` : `Sent ${time}`, right: `${card.doneCount} of ${card.totalCount} done` };
+  const left = kot ? [`KOT ${kot}`, time].filter(Boolean).join(" · ") : time && `Sent ${time}`;
+  return { left, right: `${card.doneCount} of ${card.totalCount} done` };
 }
 
 /** The Mark ready button (Q5): lines still open, ink "Mark ready · {n} not ticked" (the nudge stays, the button never

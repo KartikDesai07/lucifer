@@ -20,10 +20,11 @@ export const KITCHEN_FILTERS: readonly { key: KitchenFilter; label: string }[] =
 /** The server's label for an order with no table (lib/kitchen-board.ts buildKitchenRows: `order.tableNo ?? "Walk-In"`). */
 const NO_TABLE_LABEL = "Walk-In";
 
-/** Which tab a card counts under: no table (a walk-in, a parcel, a token order) is Walk-In (owner Q2); a card at a table
- *  is Tables, whatever else it is (its code is the table's name, design 6.3). */
-export function kitchenFilterOf(card: Pick<KitchenOrderCard, "tableLabel">): Exclude<KitchenFilter, "all"> {
-  return card.tableLabel === NO_TABLE_LABEL ? "walkin" : "tables";
+/** Which tab a card counts under: a parcel, whatever its table, and a card with no table (a walk-in, a token order) are
+ *  Walk-In (owner Q2; ruling K4: a parcel order is a Parcel card, today's card and U2's orderTitle); the other cards at a
+ *  table are Tables (their code is the table's name, design 6.3; lib/kitchen-view.ts reads this same rule). */
+export function kitchenFilterOf(card: Pick<KitchenOrderCard, "tableLabel" | "parcel">): Exclude<KitchenFilter, "all"> {
+  return card.parcel || card.tableLabel === NO_TABLE_LABEL ? "walkin" : "tables";
 }
 
 /** The cards the board shows under a filter, in the board's own order (oldest first). All returns the board itself. */

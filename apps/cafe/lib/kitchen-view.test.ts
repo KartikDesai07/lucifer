@@ -92,7 +92,10 @@ test("kitchenCardCode / kitchenWhereLine: every table / token / parcel / self-or
       "T-6",
       "Table · Order #015 · Token 15 · Self-order",
     ],
-    ["a parcel at a table: the table's name", card("Garden 2", "016", 4, { parcel: true }), "Garden 2", "Table · Order #016"],
+    // Ruling K4 (fix 1): a parcel order is a Parcel card whatever its table (today's card; the table is not named).
+    ["a parcel at a table: a Parcel card", card("Garden 2", "016", 4, { parcel: true }), "Parcel", "Order #016"],
+    ["a parcel at a table with a token", card("Garden 2", "016", 4, { parcel: true, tokenNumber: 16 }), "Token 16", "Parcel · Order #016"],
+    ["a self-order parcel at a table", card("T-3", "018", 4, { parcel: true, selfOrder: true }), "Parcel", "Order #018 · Self-order"],
     ["a token 0 is a token", card("Walk-In", "017", 4, { tokenNumber: 0 }), "Token 0", "Walk-In · Order #017"],
     ["a legacy order id", kitchenCard("T-2", 4, { orderNo: "LEGACY" }), "T-2", "Table · Order #LEGACY"],
   ];
@@ -277,4 +280,16 @@ test("KitchenOrderCard's source: tokens only (no raw palette colour), no paper p
   for (const fn of ["kitchenCardCode(", "kitchenWhereLine(", "kitchenPill(", "kitchenCardLate(", "kitchenFooter(", "kitchenButton("]) {
     assert.ok(src.includes(fn), `the card draws lib/kitchen-view.ts's ${fn.slice(0, -1)}`);
   }
+});
+
+test("an unparseable fire stamp never throws (fix 1): the footer leaves the time out, the pill reads Now, never late", () => {
+  const bad = (extra: Partial<Card>) => card("T-4", "012", 4, { cardFiredAt: "not-a-date", lines: [line(1, 4, { firedAt: "not-a-date" })], ...extra });
+  assert.deepEqual(kitchenFooter(bad({ ticketNumbers: [9] })), { left: "KOT #9", right: "0 of 1 done" }, "numbers on: 'KOT #9', no ' · time'");
+  assert.equal(kitchenFooter(bad({})).left, "", "numbers off: nothing ('Sent' never alone)");
+  assert.equal(kitchenFooter(card("T-4", "012", 4, { cardFiredAt: "", ticketNumbers: [9] })).left, "KOT #9", "no line and an empty card stamp");
+  const pill = kitchenPill(bad({}), NOW);
+  assert.deepEqual([pill.text, pill.band, pill.srLate], ["Now", "fresh", false], "the pill: Now, fresh");
+  assert.equal(kitchenCardLate(bad({}), NOW), false, "never late on a bad stamp");
+  assert.doesNotThrow(() => render(bad({ ticketNumbers: [9] })), "the card renders (one bad stamp never takes the board down)");
+  assert.equal(textOf(render(bad({ ticketNumbers: [9] })), "kitchen-card-footer"), "KOT #90 of 1 done", "its footer");
 });

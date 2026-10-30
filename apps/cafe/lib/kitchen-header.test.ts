@@ -38,12 +38,15 @@ test("KITCHEN_FILTERS: All · Tables · Walk-In (U1's Open orders words), in tha
   );
 });
 
-test("kitchenFilterOf: a table card is Tables; the server's no-table label 'Walk-In' is Walk-In, a parcel with no table too", () => {
+test("kitchenFilterOf: a table card is Tables; the server's no-table label 'Walk-In' is Walk-In; every parcel is Walk-In", () => {
   assert.equal(kitchenFilterOf(card("T-4", 3)), "tables", "a table card");
   assert.equal(kitchenFilterOf(card("Walk-In", 3)), "walkin", "no table (lib/kitchen-board.ts: tableNo ?? 'Walk-In')");
   assert.equal(kitchenFilterOf(card("Walk-In", 3, { parcel: true })), "walkin", "owner Q2: a parcel with no table counts under Walk-In");
   assert.equal(kitchenFilterOf(card("Walk-In", 3, { tokenNumber: 12 })), "walkin", "a token order with no table is Walk-In");
-  assert.equal(kitchenFilterOf(card("Garden 2", 3, { parcel: true })), "tables", "a parcel at a table is a table card (its code is the table's name)");
+  // Ruling K4 (U4 Task 3 fix 1): a parcel order is a Parcel card whatever its table (today's card and U2's orderTitle).
+  assert.equal(kitchenFilterOf(card("Garden 2", 3, { parcel: true })), "walkin", "a parcel at a table counts under Walk-In (Q2, K4)");
+  assert.equal(kitchenFilterOf(card("Garden 2", 3, { parcel: true, tokenNumber: 7 })), "walkin", "a parcel at a table with a token too");
+  assert.equal(kitchenFilterOf(card("Garden 2", 3, { tokenNumber: 7 })), "tables", "a table card with a token stays a table card");
 });
 
 test("filterCards: All keeps the board as it is; Tables / Walk-In keep their cards in board order; a poll's new card joins", () => {
@@ -58,6 +61,10 @@ test("filterCards: All keeps the board as it is; Tables / Walk-In keep their car
   // Review Focus 2: a poll adds a matching card -> it shows (the filter runs over every answer, nothing is kept).
   const arrived = card("Walk-In", 1);
   assert.deepEqual(filterCards([t3, t6, arrived], "walkin"), [arrived], "a walk-in card arriving with the next poll shows under Walk-In");
+  // Ruling K4: a parcel at a table is not under Tables; it is under Walk-In.
+  const parcelAtTable = card("T-9", 15, { parcel: true });
+  assert.deepEqual(filterCards([t3, parcelAtTable, t6], "tables"), [t3, t6], "Tables: never a parcel, even at a table");
+  assert.deepEqual(filterCards([t3, parcelAtTable, t6], "walkin"), [parcelAtTable], "Walk-In: the parcel at a table");
 });
 
 test("KITCHEN_EMPTY_FILTER_TEXT: 'No orders here' (design 6.5 / 11: the HTML's 'No tickets here' in our unit)", () => {
