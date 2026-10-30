@@ -1,9 +1,10 @@
 // The Kitchen card's words as a pure model (U4 Task 3, 2026-10-30; owner Q5 / Q6 / Q9; design 6.3, 6.4, 6.6 and 11 in
 // docs/superpowers/specs/2026-10-30-kitchen-match-html-design.md; values 4.1-4.5 in
 // docs/superpowers/specs/2026-10-29-kitchen-html-values.md): the code, the where line, the time pill, the late border, the
-// footer and the Mark ready button, as components/kitchen/KitchenOrderCard.tsx draws them. Everything comes from the card the
-// payload already carries (no new request). Client-safe: no Mongoose, no React. lib/kitchen-view.test.ts pins every row.
-import { kitchenAgeBand, type KitchenAgeBand } from "@/lib/kitchen-board";
+// footer and the Mark ready button, and (Task 4) the lines' round groups with their dividers, as
+// components/kitchen/KitchenOrderCard.tsx draws them. Everything comes from the card the payload already carries (no new
+// request). Client-safe: no Mongoose, no React. lib/kitchen-view.test.ts and lib/kitchen-rows.test.ts pin every row.
+import { kitchenAgeBand, type KitchenAgeBand, type KitchenRow } from "@/lib/kitchen-board";
 import type { KitchenOrderCard } from "@/lib/kitchen-cards";
 import { kitchenAgeWords, kitchenFilterOf } from "@/lib/kitchen-header";
 import { clockTime, orderNumberOf } from "@/lib/orders-row";
@@ -87,6 +88,30 @@ export function kitchenFooter(card: KitchenOrderCard): { left: string; right: st
   const kot = card.ticketNumbers.map((n) => `#${n}`).join(", ");
   const left = kot ? [`KOT ${kot}`, time].filter(Boolean).join(" · ") : time && `Sent ${time}`;
   return { left, right: `${card.doneCount} of ${card.totalCount} done` };
+}
+
+/** One round's lines on the card, and the divider before them (null: none). */
+export interface KitchenRoundGroup {
+  round: number;
+  label: string | null;
+  lines: KitchenRow[];
+}
+
+/** The card's lines by round (owner Q6, design 6.3): rounds ascending, each round's lines in today's order; before each
+ *  later round a divider "Round 2 · KOT #12 · 9:41 PM" ("KOT #" left out with ticket numbers off, "~" before an approximate
+ *  time, no time for a stamp that does not parse). The first round, and a one-round card, have none. */
+export function kitchenRoundGroups(card: KitchenOrderCard): KitchenRoundGroup[] {
+  const byRound = new Map<number, KitchenRow[]>();
+  for (const line of card.lines) byRound.set(line.round, [...(byRound.get(line.round) ?? []), line]);
+  return [...byRound.keys()]
+    .sort((a, b) => a - b)
+    .map((round, i) => {
+      const lines = byRound.get(round) ?? [];
+      const kot = lines.find((l) => l.ticketNumber !== undefined)?.ticketNumber;
+      const time = kitchenFireTime(lines[0].firedAt, lines[0].firedAtApprox);
+      const label = [`Round ${round}`, kot !== undefined && `KOT #${kot}`, time].filter(Boolean).join(" · ");
+      return { round, label: i === 0 ? null : label, lines };
+    });
 }
 
 /** The Mark ready button (Q5): lines still open, ink "Mark ready · {n} not ticked" (the nudge stays, the button never

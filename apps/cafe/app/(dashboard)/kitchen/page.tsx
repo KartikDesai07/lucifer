@@ -76,6 +76,7 @@ function KitchenBoard() {
           hasData={board.data !== undefined}
           isError={board.isError}
           isPaused={board.isPaused}
+          boardCards={board.data?.cards}
           cards={cards}
           filtered={cards.length < allCards.length}
           now={now}

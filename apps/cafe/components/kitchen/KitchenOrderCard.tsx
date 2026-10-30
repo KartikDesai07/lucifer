@@ -1,5 +1,7 @@
 "use client";
 
+import { Fragment, useState } from "react";
+
 import type { KitchenRow } from "@/lib/kitchen-board";
 import type { KitchenOrderCard as KitchenOrderCardData } from "@/lib/kitchen-cards";
 import {
@@ -16,8 +18,9 @@ import {
   KITCHEN_PILL_CLASS,
   KITCHEN_READY_CLASS,
   KITCHEN_READY_KIND_CLASS,
+  KITCHEN_ROUND_CLASS,
 } from "@/lib/kitchen-layout";
-import { kitchenButton, kitchenCardCode, kitchenCardLate, kitchenFooter, kitchenPill, kitchenWhereLine } from "@/lib/kitchen-view";
+import { kitchenButton, kitchenCardCode, kitchenCardLate, kitchenFooter, kitchenPill, kitchenRoundGroups, kitchenWhereLine } from "@/lib/kitchen-view";
 import { KitchenLineCard } from "@/components/kitchen/KitchenLineCard";
 import { cn } from "@/lib/utils";
 
@@ -28,13 +31,14 @@ interface KitchenOrderCardProps {
   onReady: (card: KitchenOrderCardData) => void;
   lineInFlight: (line: KitchenRow) => boolean;
   readyInFlight: boolean;
-  /** The HTML's rise when the card first appears (U4 Task 4 decides when). */
+  /** The HTML's rise: the card is new in this answer (lib/kitchen-rise.ts; the board body decides). Read when it mounts. */
   rise?: boolean;
 }
 
 // One ORDER's card, the owner's HTML ticket card (U4 Task 3; values 4.1-4.5, design 6.3): the head row (the code, the
-// where line, the time pill), the lines, the footer and Mark ready. Every word comes from lib/kitchen-view.ts, every class
-// from lib/kitchen-layout.ts. Late is never colour alone: the pill's words, the red border and "Late" read to screen readers.
+// where line, the time pill), the lines (Task 4: the HTML's rows, a divider before each later round), the footer and Mark
+// ready. Every word comes from lib/kitchen-view.ts, every class from lib/kitchen-layout.ts. Late is never colour alone: the
+// pill's words, the red border and "Late" read to screen readers.
 export function KitchenOrderCard({
   card,
   now,
@@ -49,9 +53,12 @@ export function KitchenOrderCard({
   const footer = kitchenFooter(card);
   const button = kitchenButton(card);
   const edge = kitchenCardLate(card, nowMs) ? KITCHEN_CARD_EDGE_CLASS.late : KITCHEN_CARD_EDGE_CLASS.normal;
+  // The rise is fixed when the card mounts (U3's FloorTile pattern): a later render (a tick, the 30s clock, the next poll)
+  // never cuts it, and a card mounted by a filter change was told no.
+  const [rises] = useState(rise);
 
   return (
-    <div data-ui="kitchen-card" className={cn(KITCHEN_CARD_CLASS, edge, rise && KITCHEN_CARD_RISE_CLASS)}>
+    <div data-ui="kitchen-card" className={cn(KITCHEN_CARD_CLASS, edge, rises && KITCHEN_CARD_RISE_CLASS)}>
       {/* The head: WHERE before WHAT — the code is the biggest thing on the card. */}
       <div data-ui="kitchen-card-head" className={KITCHEN_CARD_HEAD_CLASS}>
         <div className={KITCHEN_CARD_TITLE_CLASS}>
@@ -68,16 +75,19 @@ export function KitchenOrderCard({
         </span>
       </div>
 
-      {/* The lines: today's rows until U4 Task 4 rebuilds them as the HTML's. */}
+      {/* The lines, the HTML's rows by round: before each later round a divider "Round 2 · KOT #12 · 9:41 PM" (owner Q6). */}
       <div data-ui="kitchen-card-lines" className={KITCHEN_CARD_LINES_CLASS}>
-        {card.lines.map((line) => (
-          <KitchenLineCard
-            key={line.id}
-            row={line}
-            now={now}
-            onToggle={onToggleLine}
-            pending={lineInFlight(line)}
-          />
+        {kitchenRoundGroups(card).map((group) => (
+          <Fragment key={group.round}>
+            {group.label && (
+              <div data-ui="kitchen-card-round" className={KITCHEN_ROUND_CLASS}>
+                {group.label}
+              </div>
+            )}
+            {group.lines.map((line) => (
+              <KitchenLineCard key={line.id} row={line} onToggle={onToggleLine} pending={lineInFlight(line)} />
+            ))}
+          </Fragment>
         ))}
       </div>
 

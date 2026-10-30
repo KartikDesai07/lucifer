@@ -41,6 +41,8 @@ const REFRESH_STRIP_CLASSES = "apps/cafe/lib/ui/refresh-strip.ts";
 // U4 Task 3: the card's words (code, where line, pill, footer, button) and the card itself (rebuilt to the HTML's).
 const KITCHEN_VIEW = "apps/cafe/lib/kitchen-view.ts";
 const KITCHEN_ORDER_CARD = "apps/cafe/components/kitchen/KitchenOrderCard.tsx";
+// U4 Task 4: when a card rises (the record of seen ids the board body keeps).
+const KITCHEN_RISE = "apps/cafe/lib/kitchen-rise.ts";
 const ITEMS_ROUTE = "apps/cafe/app/api/orders/[id]/items/route.ts";
 const ADDROUND = "apps/cafe/lib/order-request-accept-addround.ts";
 
@@ -149,13 +151,13 @@ test("PIN (18b): kitchen/page.tsx contains no AdminGuard (staff and admin both u
 
 // ── (19) hygiene: no console., no hardcoded cafe name ───────────────────────
 
-test("PIN (19): use-kitchen.ts, kitchen/page.tsx, KitchenBoardBody.tsx, KitchenLineCard.tsx, KitchenFreshnessChip.tsx, use-kitchen-actions.ts, kitchen-layout.ts, kitchen-header.ts, KitchenTypeFilter.tsx, KitchenBoardStates.tsx, RefreshStrip.tsx, ui/refresh-strip.ts, kitchen-view.ts, KitchenOrderCard.tsx contain no console. and no hardcoded cafe name", () => {
+test("PIN (19): use-kitchen.ts, kitchen/page.tsx, KitchenBoardBody.tsx, KitchenLineCard.tsx, KitchenFreshnessChip.tsx, use-kitchen-actions.ts, kitchen-layout.ts, kitchen-header.ts, KitchenTypeFilter.tsx, KitchenBoardStates.tsx, RefreshStrip.tsx, ui/refresh-strip.ts, kitchen-view.ts, KitchenOrderCard.tsx, kitchen-rise.ts contain no console. and no hardcoded cafe name", () => {
   const consoleNeedle = "console" + ".";
   const luciferNeedle = "Luci" + "fer";
   const files = [
     USE_KITCHEN, KITCHEN_PAGE, KITCHEN_BODY, KITCHEN_CARD, KITCHEN_CHIP, KITCHEN_ACTIONS, KITCHEN_LAYOUT,
     KITCHEN_HEADER, KITCHEN_TYPE_FILTER, KITCHEN_STATES, REFRESH_STRIP, REFRESH_STRIP_CLASSES, KITCHEN_VIEW,
-    KITCHEN_ORDER_CARD,
+    KITCHEN_ORDER_CARD, KITCHEN_RISE,
   ];
   for (const rel of files) {
     const raw = readSrc(rel);
@@ -178,6 +180,7 @@ test("PIN (19): use-kitchen.ts, kitchen/page.tsx, KitchenBoardBody.tsx, KitchenL
   assert.match(readSrc(REFRESH_STRIP_CLASSES), /export const REFRESH_STRIP_CLASS =/, "positive landmark: ui/refresh-strip.ts must export REFRESH_STRIP_CLASS");
   assert.match(readSrc(KITCHEN_VIEW), /export function kitchenCardCode\(/, "positive landmark: kitchen-view.ts must export kitchenCardCode(");
   assert.match(readSrc(KITCHEN_ORDER_CARD), /export function KitchenOrderCard\(/, "positive landmark: KitchenOrderCard.tsx must export KitchenOrderCard(");
+  assert.match(readSrc(KITCHEN_RISE), /export function kitchenRiseOf\(/, "positive landmark: kitchen-rise.ts must export kitchenRiseOf(");
 });
 
 // ── (20) freshness chip decoupling ──────────────────────────────────────────
@@ -225,6 +228,8 @@ test("PIN (21): each new UI-slice file stays within its stated line budget +20%"
     // rebuilds its lines and round dividers in it). The card had no budget before.
     [KITCHEN_VIEW, 120],
     [KITCHEN_ORDER_CARD, 130],
+    // U4 Task 4 (2026-10-30): the rise's record (<= 42). New, with its own budget; no budget above loosened.
+    [KITCHEN_RISE, 35],
   ];
   for (const [rel, budget] of budgets) {
     const cap = Math.ceil(budget * 1.2);

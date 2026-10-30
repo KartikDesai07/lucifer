@@ -1318,17 +1318,26 @@ const pinKitchenSummary: Pin = (raw) => {
   return p;
 };
 
-const pinLineLabel: Pin = (raw) => {
+// U4 Task 4 (Kitchen design 6.3, values 4.1 / 4.2; P49 MOVED on purpose): the 40px label around a 20px checkbox became the
+// HTML's row — ONE button across the card, so the whole row is the hit area (38px for a one-line name: the HTML's own size,
+// ruling R1; the row's classes are pinned in lib/kitchen-rows.test.ts). The meaning kept: a big target that toggles the
+// line, a checkbox to assistive tech, disabled only while its own write runs.
+const pinLineRow: Pin = (raw) => {
   const p: string[] = [];
   const s = strip(raw);
-  check(p, /<Checkbox\b/.test(s), "landmark: the line checkbox must exist");
-  const m = /<label\b([^>]*)>\s*<Checkbox\b[\s\S]*?\/>\s*<\/label>/.exec(s);
-  check(p, m !== null, "the line checkbox must sit inside a <label> hit area");
+  // The opening tag: "=>" inside an attribute (the onClick arrow) is not its end.
+  const m = /<button\b((?:=>|[^>])*)>/.exec(s);
+  check(p, m !== null, "landmark: the line is a <button>");
   if (m !== null) {
-    const tokens = (/\bclassName="([^"]*)"/.exec(m[1])?.[1] ?? "").split(/\s+/);
-    check(p, tokens.includes("min-h-10") && tokens.includes("min-w-10"), "the label must be at least 40px (min-h-10 min-w-10)");
-    check(p, /\bonCheckedChange=/.test(m[0]), "the checkbox inside the label must keep its onCheckedChange");
+    const attrs = m[1];
+    check(p, /\btype="button"/.test(attrs), "the row is never a submit");
+    check(p, /\brole="checkbox"/.test(attrs), "the row is announced as a checkbox");
+    check(p, /\baria-checked=\{row\.done\}/.test(attrs), "the row says whether the line is ticked");
+    check(p, /\bdisabled=\{pending\}/.test(attrs), "the row is disabled only while its own write runs");
+    check(p, /\bonClick=\{\(\) => onToggle\(row, !row\.done\)\}/.test(attrs), "a tap anywhere on the row toggles the tick");
+    check(p, /\bclassName=\{cn\(KITCHEN_ROW_CLASS\b/.test(attrs), "the row is the HTML's full-width row (KITCHEN_ROW_CLASS)");
   }
+  check(p, !/<label\b/.test(s) && !/<Checkbox\b/.test(s), "no small checkbox in a label any more: the whole row is the target");
   return p;
 };
 
@@ -1369,12 +1378,16 @@ const KITCHEN_CASES: PinCase[] = [
   },
   {
     file: KITCHEN_LINE,
-    pin: pinLineLabel,
+    pin: pinLineRow,
     mutations: [
-      chain("label becomes a div", repEvery("open", "<label", "<div"), repEvery("close", "</label>", "</div>")),
-      rep("the checkbox leaves the label", "<Checkbox", "</label><Checkbox"),
-      rep("label shrinks below 40px", "min-h-10", "min-h-5"),
-      rep("rename the min width token (token trap)", "min-w-10", "min-w-100"),
+      chain("the row becomes a div", repEvery("open", "<button", "<div"), repEvery("close", "</button>", "</div>")),
+      rep("the row loses its checkbox role", 'role="checkbox"', 'role="button"'),
+      rep("the row stops saying it is ticked", "aria-checked={row.done}", "aria-checked={pending}"),
+      rep("the row is disabled for good", "disabled={pending}", "disabled={true}"),
+      rep("a tap re-sends the same state", "onToggle(row, !row.done)", "onToggle(row, row.done)"),
+      rep("the row loses the HTML's full-width class", "cn(KITCHEN_ROW_CLASS,", "cn(KITCHEN_ROW_DONE_CLASS,"),
+      rep("a submit button", 'type="button"', 'type="submit"'),
+      rep("a small box in a label comes back", "<span aria-hidden", '<label className="grid min-h-10 min-w-10"></label><span aria-hidden'),
     ],
   },
 ];
@@ -1479,7 +1492,7 @@ const GROUPS: Group[] = [
   },
   { title: "PIN D7: due and total amounts carry their words", cases: STATUS_WORD_CASES },
   {
-    title: "PIN kitchen: the chip keeps its place at dataUpdatedAt 0, the summary holds while loading, the line checkbox sits in a label",
+    title: "PIN kitchen: the chip keeps its place at dataUpdatedAt 0, the summary holds while loading, the line is the HTML's whole-row button",
     cases: KITCHEN_CASES,
   },
   {
