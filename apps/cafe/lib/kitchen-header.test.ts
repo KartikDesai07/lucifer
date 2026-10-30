@@ -99,7 +99,12 @@ test("kitchenHeaderLine: '{n} active order(s) · average wait {m} · Updated …
     "3 cards, the last good answer 70s old",
   );
   assert.equal(kitchenHeaderLine({ cards: [card("T-1", 75)], updatedAtMs: NOW, nowMs: NOW }), "1 active order · average wait 1h 15m · Updated just now", "the hour form");
-  assert.equal(kitchenHeaderLine({ cards: [card("T-1", 0.2)], updatedAtMs: NOW, nowMs: NOW }), "1 active order · average wait Now · Updated just now", "under a minute: the pill's words (design 6.4)");
+  // Ruling K3: an average under a minute reads "0 min" (the HTML's own words for an average of 0, values 2.3), never the
+  // pill's "Now" ("average wait Now" does not read as a duration); the pill keeps "Now" (kitchenAgeWords above).
+  assert.equal(kitchenHeaderLine({ cards: [card("T-1", 0.2)], updatedAtMs: NOW, nowMs: NOW }), "1 active order · average wait 0 min · Updated just now", "under a minute: 0 min (ruling K3)");
+  assert.equal(kitchenHeaderLine({ cards: [card("T-1", 0.2), card("T-2", 0.6)], updatedAtMs: NOW, nowMs: NOW }), "2 active orders · average wait 0 min · Updated just now", "a mean of 0.4 min rounds to 0: 0 min");
+  assert.equal(kitchenHeaderLine({ cards: [card("T-1", 0.4), card("T-2", 0.8)], updatedAtMs: NOW, nowMs: NOW }), "2 active orders · average wait 1 min · Updated just now", "a mean of 0.6 min rounds to 1: 1 min");
+  assert.equal(kitchenHeaderLine({ cards: [card("T-1", -3)], updatedAtMs: NOW, nowMs: NOW }), "1 active order · average wait 0 min · Updated just now", "a clock behind the server: 0 min, never negative");
   assert.equal(kitchenHeaderLine({ cards: [card("T-1", 4)], updatedAtMs: NOW - 3_700_000, nowMs: NOW }), "1 active order · average wait 4 min · Updated over an hour ago", "U3's words");
 });
 

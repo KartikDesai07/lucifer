@@ -44,7 +44,8 @@ export function averageWaitMinutes(cards: readonly Pick<KitchenOrderCard, "cardF
 }
 
 /** The Kitchen's time words (design 6.4), for the card's pill and the average: whole minutes, "Now" under a minute (the
- *  HTML's), "{m} min" under an hour, then U3's hour form "{h}h {m}m" (the HTML's "135 min" has none, values 10 #24). */
+ *  HTML's; the pill only: the average reads "0 min" there, ruling K3), "{m} min" under an hour, then U3's hour form
+ *  "{h}h {m}m" (the HTML's "135 min" has none, values 10 #24). */
 export function kitchenAgeWords(minutes: number): string {
   const whole = Math.floor(minutes);
   if (!(whole >= 1)) return "Now";
@@ -53,13 +54,14 @@ export function kitchenAgeWords(minutes: number): string {
 }
 
 /** The header's second line (owner Q3, design 6.2): the cards shown (after the filter; the HTML counts the whole board,
- *  values 10 #6, not copied), "1 active order" for one, their average wait (left out with no card), then U3's freshness
- *  words once there is a good answer. One line, cut with an ellipsis by the header when narrow. */
+ *  values 10 #6, not copied), "1 active order" for one, their average wait (left out with no card; under a minute
+ *  "0 min", the HTML's own words for an average of 0, values 2.3, ruling K3: "average wait Now" is no duration), then
+ *  U3's freshness words once there is a good answer. One line, cut with an ellipsis by the header when narrow. */
 export function kitchenHeaderLine(input: { cards: readonly KitchenOrderCard[]; updatedAtMs: number; nowMs: number }): string {
   const n = input.cards.length;
   const parts = [`${n} active ${n === 1 ? "order" : "orders"}`];
   const average = averageWaitMinutes(input.cards, input.nowMs);
-  if (average !== null) parts.push(`average wait ${kitchenAgeWords(average)}`);
+  if (average !== null) parts.push(`average wait ${average < 1 ? "0 min" : kitchenAgeWords(average)}`);
   if (input.updatedAtMs > 0) parts.push(updatedLabel(input.updatedAtMs, input.nowMs));
   return parts.join(" · ");
 }
