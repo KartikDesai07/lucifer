@@ -19,6 +19,7 @@ import {
   kitchenFilterOf,
   kitchenHeaderLine,
   kitchenStale,
+  kitchenStripShows,
 } from "./kitchen-header";
 import { KITCHEN_NOW as NOW, kitchenCard as card } from "./kitchen-header.fixtures";
 
@@ -95,36 +96,54 @@ test("averageWaitMinutes: the mean of the cards' exact ages, then rounded (value
 
 test("kitchenHeaderLine: '{n} active order(s) · average wait {m} · Updated …'; no average with no card", () => {
   assert.equal(
-    kitchenHeaderLine({ cards: [card("T-7", 4)], updatedAtMs: NOW, nowMs: NOW }),
+    kitchenHeaderLine({ cards: [card("T-7", 4)], updatedAtMs: NOW, nowMs: NOW, phone: false }),
     "1 active order · average wait 4 min · Updated just now",
     "one card: singular (the HTML's '1 active tickets' is not copied, values 10 #2)",
   );
-  assert.equal(kitchenHeaderLine({ cards: [], updatedAtMs: NOW, nowMs: NOW }), "0 active orders · Updated just now", "none: the average is left out");
+  assert.equal(kitchenHeaderLine({ cards: [], updatedAtMs: NOW, nowMs: NOW, phone: false }), "0 active orders · Updated just now", "none: the average is left out");
   assert.equal(
-    kitchenHeaderLine({ cards: [card("T-1", 4), card("T-2", 2), card("T-3", 24)], updatedAtMs: NOW - 70_000, nowMs: NOW }),
+    kitchenHeaderLine({ cards: [card("T-1", 4), card("T-2", 2), card("T-3", 24)], updatedAtMs: NOW - 70_000, nowMs: NOW, phone: false }),
     "3 active orders · average wait 10 min · Updated 1 min ago",
     "3 cards, the last good answer 70s old",
   );
-  assert.equal(kitchenHeaderLine({ cards: [card("T-1", 75)], updatedAtMs: NOW, nowMs: NOW }), "1 active order · average wait 1h 15m · Updated just now", "the hour form");
+  assert.equal(kitchenHeaderLine({ cards: [card("T-1", 75)], updatedAtMs: NOW, nowMs: NOW, phone: false }), "1 active order · average wait 1h 15m · Updated just now", "the hour form");
   // Ruling K3: an average under a minute reads "0 min" (the HTML's own words for an average of 0, values 2.3), never the
   // pill's "Now" ("average wait Now" does not read as a duration); the pill keeps "Now" (kitchenAgeWords above).
-  assert.equal(kitchenHeaderLine({ cards: [card("T-1", 0.2)], updatedAtMs: NOW, nowMs: NOW }), "1 active order · average wait 0 min · Updated just now", "under a minute: 0 min (ruling K3)");
-  assert.equal(kitchenHeaderLine({ cards: [card("T-1", 0.2), card("T-2", 0.6)], updatedAtMs: NOW, nowMs: NOW }), "2 active orders · average wait 0 min · Updated just now", "a mean of 0.4 min rounds to 0: 0 min");
-  assert.equal(kitchenHeaderLine({ cards: [card("T-1", 0.4), card("T-2", 0.8)], updatedAtMs: NOW, nowMs: NOW }), "2 active orders · average wait 1 min · Updated just now", "a mean of 0.6 min rounds to 1: 1 min");
-  assert.equal(kitchenHeaderLine({ cards: [card("T-1", -3)], updatedAtMs: NOW, nowMs: NOW }), "1 active order · average wait 0 min · Updated just now", "a clock behind the server: 0 min, never negative");
-  assert.equal(kitchenHeaderLine({ cards: [card("T-1", 4)], updatedAtMs: NOW - 3_700_000, nowMs: NOW }), "1 active order · average wait 4 min · Updated over an hour ago", "U3's words");
+  assert.equal(kitchenHeaderLine({ cards: [card("T-1", 0.2)], updatedAtMs: NOW, nowMs: NOW, phone: false }), "1 active order · average wait 0 min · Updated just now", "under a minute: 0 min (ruling K3)");
+  assert.equal(kitchenHeaderLine({ cards: [card("T-1", 0.2), card("T-2", 0.6)], updatedAtMs: NOW, nowMs: NOW, phone: false }), "2 active orders · average wait 0 min · Updated just now", "a mean of 0.4 min rounds to 0: 0 min");
+  assert.equal(kitchenHeaderLine({ cards: [card("T-1", 0.4), card("T-2", 0.8)], updatedAtMs: NOW, nowMs: NOW, phone: false }), "2 active orders · average wait 1 min · Updated just now", "a mean of 0.6 min rounds to 1: 1 min");
+  assert.equal(kitchenHeaderLine({ cards: [card("T-1", -3)], updatedAtMs: NOW, nowMs: NOW, phone: false }), "1 active order · average wait 0 min · Updated just now", "a clock behind the server: 0 min, never negative");
+  assert.equal(kitchenHeaderLine({ cards: [card("T-1", 4)], updatedAtMs: NOW - 3_700_000, nowMs: NOW, phone: false }), "1 active order · average wait 4 min · Updated over an hour ago", "U3's words");
 });
 
 test("Review Focus 2: the line counts and averages what is shown (the filter), not the whole board", () => {
   const board = [card("T-3", 30), card("Walk-In", 20, { parcel: true }), card("T-6", 10)];
-  const line = (filter: "all" | "tables" | "walkin") => kitchenHeaderLine({ cards: filterCards(board, filter), updatedAtMs: NOW, nowMs: NOW });
+  const line = (filter: "all" | "tables" | "walkin") => kitchenHeaderLine({ cards: filterCards(board, filter), updatedAtMs: NOW, nowMs: NOW, phone: false });
   assert.equal(line("all"), "3 active orders · average wait 20 min · Updated just now", "All: every card");
   assert.equal(line("tables"), "2 active orders · average wait 20 min · Updated just now", "Tables: 30 and 10");
   assert.equal(line("walkin"), "1 active order · average wait 20 min · Updated just now", "Walk-In: the parcel");
   assert.equal(
-    kitchenHeaderLine({ cards: filterCards([card("T-3", 30)], "walkin"), updatedAtMs: NOW, nowMs: NOW }),
+    kitchenHeaderLine({ cards: filterCards([card("T-3", 30)], "walkin"), updatedAtMs: NOW, nowMs: NOW, phone: false }),
     "0 active orders · Updated just now",
     "a filter that matches nothing: 0, no average (the HTML counts the whole board, values 10 #6: not copied)",
+  );
+});
+
+// Owner Q11 (2026-10-30, final review I2): below 720px the line is "{n} active order(s) · avg wait {m}" — no freshness part
+// (the strip is the failure signal there, as in the HTML's phone line) and "avg wait" for "average wait", so it fits the
+// phone's title block; the average's words stay (K3's "0 min", "{m} min", the hour form). From 720px: unchanged (above).
+test("kitchenHeaderLine, phone (owner Q11): '{n} active order(s) · avg wait {m}', never 'Updated …'; wide unchanged", () => {
+  const phone = (cards: ReturnType<typeof card>[], updatedAtMs = NOW) => kitchenHeaderLine({ cards, updatedAtMs, nowMs: NOW, phone: true });
+  assert.equal(phone([card("T-1", 14), card("T-2", 14)]), "2 active orders · avg wait 14 min", "two cards: 'avg wait', no freshness");
+  assert.equal(phone([card("T-1", 0.2)]), "1 active order · avg wait 0 min", "one card under a minute: singular, 0 min (ruling K3)");
+  assert.equal(phone([]), "0 active orders", "no card: the count alone (no average, no freshness)");
+  assert.equal(phone(Array.from({ length: 12 }, (_, i) => card(`T-${i + 1}`, 75))), "12 active orders · avg wait 1h 15m", "the hour form");
+  assert.equal(phone([card("T-1", 4)], NOW - 3_700_000), "1 active order · avg wait 4 min", "an old answer: still no freshness (the strip carries a failure)");
+  assert.equal(phone([card("T-1", 4)], 0), "1 active order · avg wait 4 min", "the same words whatever the stamp");
+  assert.equal(
+    kitchenHeaderLine({ cards: [card("T-1", 14), card("T-2", 14)], updatedAtMs: NOW, nowMs: NOW, phone: false }),
+    "2 active orders · average wait 14 min · Updated just now",
+    "from 720px the line is unchanged",
   );
 });
 
@@ -139,12 +158,32 @@ test("kitchenStale: the last good answer at least KITCHEN_STALE_MS (60s) old; ne
   assert.equal(kitchenStale(NOW + 5_000, NOW), false, "an answer newer than the page's 30s clock: fresh");
 });
 
+// Final review I1: the strip says "Couldn't refresh", so it needs a failure, not only an old answer. TanStack keeps the
+// board 10 min after the page is left: a return renders the cached answer (60s+ old) while the mount refetch runs, and a
+// throttled background tab's answer ages past 60s between polls — neither failed. A failed poll keeps status "error" with
+// its data until a success; an offline device's poll is paused: both still show the strip from 60s, as before.
+test("kitchenStripShows: stale (60s+) AND the board's query failed or is paused; a healthy or in-flight refetch never shows it", () => {
+  const shows = (ageMs: number | null, isError: boolean, isPaused: boolean) =>
+    kitchenStripShows({ updatedAtMs: ageMs === null ? 0 : NOW - ageMs, nowMs: NOW, isError, isPaused });
+  assert.equal(shows(65_000, false, false), false, "a return from the cache, 65s old, the mount refetch in flight: no strip (I1)");
+  assert.equal(shows(600_000, false, false), false, "a background tab's throttled answer, 10 min old, nothing failed: no strip (I1)");
+  assert.equal(shows(10_000, false, false), false, "fresh, healthy: no strip");
+  assert.equal(shows(60_000, true, false), true, "stale + a failed poll: the strip (design 6.2)");
+  assert.equal(shows(90_000, true, false), true, "90s + a failed poll: the strip");
+  assert.equal(shows(60_000, false, true), true, "stale + offline (the poll paused): the strip (design 6.2)");
+  assert.equal(shows(70_000, true, true), true, "stale + failed + paused: the strip");
+  assert.equal(shows(59_999, true, false), false, "fresh + a failed poll: not yet (today's 60s rule)");
+  assert.equal(shows(59_999, false, true), false, "fresh + paused: not yet");
+  assert.equal(shows(null, true, false), false, "never loaded + error: no strip (the first-load error screen)");
+  assert.equal(shows(null, false, true), false, "never loaded + offline: no strip (the offline screen)");
+});
+
 // ── The page (design 6.1, 6.2; Review Focus 2 and 5) ─────────────────────────────────────────────────────────────────
 
-test("the page: the strip is kitchen-page's first child, above the board; it shows on kitchenStale and Try again refetches", () => {
+test("the page: the strip is kitchen-page's first child, above the board; it shows on kitchenStripShows and Try again refetches", () => {
   const src = code(PAGE);
   const strip =
-    '<RefreshStrip\n        ui="kitchen"\n        show={kitchenStale(board.dataUpdatedAt, nowMs)}\n        message="Couldn\'t refresh the kitchen board. Showing the last update."\n        onRetry={() => void board.refetch()}\n      />';
+    '<RefreshStrip\n        ui="kitchen"\n        show={kitchenStripShows({ updatedAtMs: board.dataUpdatedAt, nowMs, isError: board.isError, isPaused: board.isPaused })}\n        message="Couldn\'t refresh the kitchen board. Showing the last update."\n        onRetry={() => void board.refetch()}\n      />';
   assert.equal(count(src, "<RefreshStrip"), 1, "one strip");
   const open = '<div data-ui="kitchen-page" className={KITCHEN_PAGE_CLASS}>';
   const page = src.indexOf(open);
@@ -159,9 +198,9 @@ test("the page: the second line is kitchenHeaderLine over the shown cards; 'Load
   const src = code(PAGE);
   assert.ok(
     src.includes(
-      'description={board.data !== undefined ? kitchenHeaderLine({ cards, updatedAtMs: board.dataUpdatedAt, nowMs }) : board.isLoading ? "Loading orders…" : undefined}',
+      'description={board.data !== undefined ? kitchenHeaderLine({ cards, updatedAtMs: board.dataUpdatedAt, nowMs, phone: !wide }) : board.isLoading ? "Loading orders…" : undefined}',
     ),
-    "design 6.2: the line once loaded, today's loading words while loading, nothing on the error / offline branches",
+    "design 6.2: the line once loaded (owner Q11: the phone's short line below 720px, the control's own flag), today's loading words while loading, nothing on the error / offline branches",
   );
   assert.ok(src.includes("const nowMs = now.getTime();"), "the page's 30s clock drives the freshness, the average and the strip");
   for (const gone of ["KitchenFreshnessChip", "tabCount", "itemCount", "open tabs", "Every fired order, oldest first"]) {
@@ -182,7 +221,7 @@ test("the page: the filter is page state reset per visit; below 720px the board 
   );
   for (const imp of [
     'import { useMediaQuery } from "@/hooks/use-media-query";',
-    'import { filterCards, kitchenHeaderLine, kitchenStale, type KitchenFilter } from "@/lib/kitchen-header";',
+    'import { filterCards, kitchenHeaderLine, kitchenStripShows, type KitchenFilter } from "@/lib/kitchen-header";',
     'import { RefreshStrip } from "@/components/shared/RefreshStrip";',
     'import { KitchenTypeFilter } from "@/components/kitchen/KitchenTypeFilter";',
   ]) {

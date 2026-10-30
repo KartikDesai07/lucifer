@@ -1,8 +1,10 @@
 // The Kitchen header's rules as pure functions (U4 Task 2, 2026-10-30; owner Q2 / Q3; design 6.1, 6.2, 6.4, 6.5 and 11 in
 // docs/superpowers/specs/2026-10-30-kitchen-match-html-design.md; values 2.3, 9.3): the type filter (All · Tables ·
-// Walk-In), the second line ("{n} active orders · average wait {m} min · Updated just now"), the time words the card's
-// pill shares, and the refresh strip's rule. No React, no fetching: the filter, the counts, the average and the freshness
-// all come from the payload the page already loads (no new request). lib/kitchen-header.test.ts pins every row.
+// Walk-In), the second line ("{n} active orders · average wait {m} min · Updated just now"; below 720px
+// "{n} active orders · avg wait {m} min", owner Q11), the time words the card's pill shares, and the refresh strip's rule
+// (stale and the board's query failed or paused, final review I1). No React, no fetching: the filter, the counts, the
+// average and the freshness all come from the payload the page already loads (no new request).
+// lib/kitchen-header.test.ts pins every row.
 import { updatedLabel } from "@/lib/floor-tiles";
 import { KITCHEN_STALE_MS } from "@/lib/kitchen-board";
 import type { KitchenOrderCard } from "@/lib/kitchen-cards";
@@ -57,21 +59,30 @@ export function kitchenAgeWords(minutes: number): string {
 /** The header's second line (owner Q3, design 6.2): the cards shown (after the filter; the HTML counts the whole board,
  *  values 10 #6, not copied), "1 active order" for one, their average wait (left out with no card; under a minute
  *  "0 min", the HTML's own words for an average of 0, values 2.3, ruling K3: "average wait Now" is no duration), then
- *  U3's freshness words once there is a good answer. One line, cut with an ellipsis by the header when narrow. */
-export function kitchenHeaderLine(input: { cards: readonly KitchenOrderCard[]; updatedAtMs: number; nowMs: number }): string {
+ *  U3's freshness words once there is a good answer. One line, cut with an ellipsis by the header when narrow. Below
+ *  720px (`phone`, owner Q11): "{n} active order(s) · avg wait {m}", no freshness part, so it fits the phone's title
+ *  block (the strip is the failure signal there, as in the HTML's phone line). */
+export function kitchenHeaderLine(input: { cards: readonly KitchenOrderCard[]; updatedAtMs: number; nowMs: number; phone: boolean }): string {
   const n = input.cards.length;
   const parts = [`${n} active ${n === 1 ? "order" : "orders"}`];
   const average = averageWaitMinutes(input.cards, input.nowMs);
-  if (average !== null) parts.push(`average wait ${average < 1 ? "0 min" : kitchenAgeWords(average)}`);
-  if (input.updatedAtMs > 0) parts.push(updatedLabel(input.updatedAtMs, input.nowMs));
+  if (average !== null) parts.push(`${input.phone ? "avg wait" : "average wait"} ${average < 1 ? "0 min" : kitchenAgeWords(average)}`);
+  if (!input.phone && input.updatedAtMs > 0) parts.push(updatedLabel(input.updatedAtMs, input.nowMs));
   return parts.join(" · ");
 }
 
-/** The refresh strip's rule (design 6.2: today's Stale rule; Review Focus 5): the last good answer is at least
- *  KITCHEN_STALE_MS old on the page's clock, so a failed poll and an offline device both show it. Never before a first
- *  answer (dataUpdatedAt 0): a failed first load is the error screen. */
+/** The last good answer is at least KITCHEN_STALE_MS old on the page's clock (design 6.2: today's Stale rule). Never
+ *  before a first answer (dataUpdatedAt 0): a failed first load is the error screen. */
 export function kitchenStale(updatedAtMs: number, nowMs: number): boolean {
   return updatedAtMs > 0 && nowMs - updatedAtMs >= KITCHEN_STALE_MS;
+}
+
+/** The refresh strip's rule (design 6.2, Review Focus 5; final review I1): the answer is stale AND the board's query has
+ *  failed (a failed poll keeps status "error" with its data until a success) or is paused (an offline device), so both
+ *  show it at 60–90s. A healthy or in-flight refetch never does: a return from the cache (the answer 60s+ old until the
+ *  mount refetch lands) and a throttled background tab's polls are no failure. */
+export function kitchenStripShows(input: { updatedAtMs: number; nowMs: number; isError: boolean; isPaused: boolean }): boolean {
+  return kitchenStale(input.updatedAtMs, input.nowMs) && (input.isError || input.isPaused);
 }
 
 /** The filtered-empty box's words (design 6.5: the HTML's "No tickets here" in our unit). */
