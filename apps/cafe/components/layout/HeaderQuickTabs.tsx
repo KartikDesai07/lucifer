@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { FLOOR_PATH, isFloorPath } from "@/lib/floor-layout";
+import { isKitchenPath } from "@/lib/kitchen-layout";
 import { isActivePath } from "@/lib/nav-active";
 import { isOrdersPath } from "@/lib/orders-layout";
 import { isPosPath } from "@/lib/pos-layout";
@@ -25,7 +26,8 @@ import {
 // header has no place for them; the Floor is in the nav and behind the cart's table cell, and a new order starts from
 // the cart. On /tables (U3 Task 1; owner Q1, the Floor values 1.2, design 6.1) the HTML's Floor header: Tables is that
 // page, so it is not drawn; New order (our word, the same link) wears the HTML Floor button's outline look with its
-// label at every width.
+// label at every width. On /kitchen (U4 Task 1; owner Q8, Kitchen design 6.1) both keep today's look and place from
+// 1280px (the owner's PC width) and are not drawn below it: the HTML's Kitchen header has neither.
 
 export interface HeaderQuickTab {
   title: string;
@@ -46,6 +48,7 @@ export function HeaderQuickTabs() {
   const pathname = usePathname() ?? "";
   if (isPosPath(pathname)) return null;
   const floor = isFloorPath(pathname);
+  const kitchen = isKitchenPath(pathname);
   const labelClass = isOrdersPath(pathname) || floor ? "inline" : "hidden tab:inline";
   return (
     <>
@@ -68,7 +71,7 @@ export function HeaderQuickTabs() {
               // New order is the kit's filled button everywhere but /tables, where it is the outline (owner Q1).
               buttonVariants({ variant: tab.primary && !floor ? "default" : "outline" }),
               tab.primary ? (floor ? HEADER_FLOOR_NEW_ORDER_CLASS : HEADER_PRIMARY_BUTTON_CLASS) : HEADER_OUTLINE_BUTTON_CLASS,
-              tab.primary ? "inline-flex" : "hidden tab:inline-flex",
+              kitchen ? "hidden xl:inline-flex" : tab.primary ? "inline-flex" : "hidden tab:inline-flex",
             )}
           >
             <Icon aria-hidden="true" strokeWidth={tab.primary ? 2.4 : 1.8} />

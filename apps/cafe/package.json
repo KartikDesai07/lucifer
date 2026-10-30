@@ -361,6 +361,7 @@
     "lib/settle-guard.test.ts",
     "lib/kot-tick-model.test.ts",
     "lib/kitchen-paths.test.ts",
+    "lib/kitchen-layout.test.ts",
     "lib/token-board.test.ts",
     "lib/token-routes-paths.test.ts",
     "lib/token-sheet-paths.test.ts",

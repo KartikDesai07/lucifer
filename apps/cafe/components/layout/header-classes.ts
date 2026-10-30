@@ -22,3 +22,9 @@ export const HEADER_PRIMARY_BUTTON_CLASS =
  *  13.5px/500, the 14px plus 6px away; hover --surface-2 (the HTML's, not the kit outline's --hover). */
 export const HEADER_FLOOR_NEW_ORDER_CLASS =
   "h-9 flex-none gap-1.5 px-3 py-0 text-[13.5px] font-medium hover:bg-surface-2 [&_svg]:size-[14px]" + " " + HTML_PRESS_CLASS;
+
+/** The same look for a page's own action (U4 Task 1: the Kitchen's Now Serving, Kitchen design 6.1). A page's actions sit
+ *  in the header's actions slot, whose unlayered button rule (app/globals.css [data-header-actions], ruling R6) outranks
+ *  every utility and would give U0's 7px gap, 15px icon and --hover; those three are made important here so the look
+ *  holds there. The rest the slot's rule gives alike (36px, 0 12px, 13.5px/500, the kit outline's border / surface). */
+export const HEADER_ACTION_FLOOR_OUTLINE_CLASS = `${HEADER_FLOOR_NEW_ORDER_CLASS} gap-1.5! hover:bg-surface-2! [&_svg]:size-[14px]!`;

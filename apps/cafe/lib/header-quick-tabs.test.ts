@@ -70,9 +70,18 @@ test("PIN: every dashboard screen but /pos and /tables gets the two buttons — 
 // U2 Task 1 (Orders values 1.2, design 6.1): the HTML's Orders header keeps New order's label on the phone too, so on
 // /orders the label shows at every width; U3 Task 1 (Floor values 1.2, owner Q1) the same on /tables. Every other page
 // keeps U0's plus alone below 720px.
-test("PIN: on a phone Tables hides (the tab bar has Floor) and New order shows only its plus (values 2.5), except on /orders and /tables", () => {
+// Moved on purpose (U4 Task 1; owner Q8 2026-10-30, Kitchen design 6.1): on /kitchen both links keep today's look and
+// place from 1280px (the owner's PC width) and are not drawn below it (tablets and phones). The rendered behaviour is
+// pinned in lib/kitchen-layout.test.ts.
+test("PIN: on a phone Tables hides (the tab bar has Floor) and New order shows only its plus (values 2.5), except on /orders and /tables; on /kitchen both show from 1280px only", () => {
   const tabs = read(TABS);
-  assert.match(tabs, /tab\.primary \? "inline-flex" : "hidden tab:inline-flex"/, "Tables is hidden below 720px, New order always shows");
+  assert.match(tabs, /import \{ isKitchenPath \} from "@\/lib\/kitchen-layout";/, "the quick links read the Kitchen's route through isKitchenPath");
+  assert.match(tabs, /const kitchen = isKitchenPath\(pathname\);/, "one flag for the Kitchen");
+  assert.match(
+    tabs,
+    /kitchen \? "hidden xl:inline-flex" : tab\.primary \? "inline-flex" : "hidden tab:inline-flex"/,
+    "on /kitchen both from 1280px only (Q8); elsewhere Tables is hidden below 720px, New order always shows",
+  );
   assert.match(tabs, /const labelClass = isOrdersPath\(pathname\) \|\| floor \? "inline" : "hidden tab:inline";/, "the label shows from 720px, and at every width on /orders and /tables");
   assert.match(tabs, /<span className=\{labelClass\}>\{tab\.title\}<\/span>/, "the label takes that class");
   assert.match(tabs, /aria-label=\{tab\.title\}/, "the plus alone still has a name");

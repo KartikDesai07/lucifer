@@ -267,9 +267,12 @@ const ORDERS_FRAME_CASE: PinCase = {
   ],
 };
 
+// U4 Task 1 (2026-10-30; Kitchen design 5, values 1.1 / 6.1 in docs/superpowers/specs/2026-10-29-kitchen-html-values.md):
+// the Kitchen left MenuPageShell (P41 moved on purpose). The owner's HTML Kitchen screen fills the screen under the
+// shell's header like /pos, /orders and /tables (no paper frame, no 1440px cap): its own frame from lib/kitchen-layout.ts,
+// whose classes and markup lib/kitchen-layout.test.ts pins.
 const SHELL_PAGES: ReadonlyArray<readonly [string, boolean]> = [
   [REQUESTS_PAGE, false],
-  [KITCHEN_PAGE, true],
   [RESERVATIONS_PAGE, false],
   [CUSTOMERS_PAGE, false],
   [EVENTS_PAGE, false],
@@ -422,6 +425,11 @@ const ORDERS_RETURN_OPEN: ReturnOpen = {
   re: /return \(\s*<div data-ui="orders-page" className=\{ORDERS_PAGE_CLASS\}>\s*<PageHeader/,
   head: '<div data-ui="orders-page" className={ORDERS_PAGE_CLASS}>',
 };
+/** U4 Task 1: the Kitchen's frame, the header first inside the board (lib/kitchen-layout.test.ts). */
+const KITCHEN_RETURN_OPEN: ReturnOpen = {
+  re: /return \(\s*<div data-ui="kitchen-page" className=\{KITCHEN_PAGE_CLASS\}>\s*<div data-ui="kitchen-board" className=\{KITCHEN_BOARD_CLASS\}>\s*<PageHeader/,
+  head: '<div data-ui="kitchen-page" className={KITCHEN_PAGE_CLASS}><div data-ui="kitchen-board" className={KITCHEN_BOARD_CLASS}>',
+};
 
 const earlyReturn = (anchorJsx: string, open: ReturnOpen = FRAGMENT_OPEN): Mutation =>
   repRe(
@@ -495,7 +503,7 @@ const ERROR_CASES: PinCase[] = [
       rep("hasData hard-wired false", "hasData={board.data !== undefined}", "hasData={false}"),
       rep("isError hard-wired false", "isError={board.isError}", "isError={false}"),
       rep("retry stops refetching", "void board.refetch()", "void 0"),
-      earlyReturn("<KitchenBoardBody />"),
+      earlyReturn("<KitchenBoardBody />", KITCHEN_RETURN_OPEN),
     ],
   },
   {
@@ -1423,7 +1431,7 @@ interface Group {
 const GROUPS: Group[] = [
   {
     title:
-      "PIN D1: every page renders inside MenuPageShell (Kitchen wide, Staff guard outside) and the shell takes `wide`; Orders fills the screen in its own frame (U2)",
+      "PIN D1: every page renders inside MenuPageShell (Staff guard outside) and the shell takes `wide`; Orders fills the screen in its own frame (U2), the Kitchen in its own (U4, lib/kitchen-layout.test.ts)",
     cases: SHELL_CASES,
   },
   { title: "PIN D2: PageHeader carries the sidebar-group eyebrow and the sidebar-row title", cases: HEADER_CASES },

@@ -4,13 +4,13 @@ import { ChefHat } from "lucide-react";
 
 import type { KitchenRow } from "@/lib/kitchen-board";
 import type { KitchenOrderCard as KitchenOrderCardData } from "@/lib/kitchen-cards";
+import { KITCHEN_GRID_CLASS } from "@/lib/kitchen-layout";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { KitchenOrderCard } from "@/components/kitchen/KitchenOrderCard";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const SKELETON_CARDS = 6; // loading shape only: the real order count is dynamic
-const BOARD_GRID_CLASS = "grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4";
 
 interface KitchenBoardBodyProps {
   isLoading: boolean;
@@ -23,14 +23,14 @@ interface KitchenBoardBodyProps {
   now: Date;
   onToggleLine: (line: KitchenRow, done: boolean) => void;
   onReady: (card: KitchenOrderCardData) => void;
-  // Row ids / order ids with a write in flight — owned by the page.
-  inFlight: ReadonlySet<string>;
-  readyInFlight: ReadonlySet<string>;
+  // A row id / an order id with a write in flight — owned by useKitchenActions.
+  lineInFlight: (id: string) => boolean;
+  readyInFlight: (orderId: string) => boolean;
   onRetry: () => void;
 }
 
-// The board's skeleton / error / offline / empty / grid, split out of kitchen/page.tsx to keep it
-// inside its line budget. Handlers, toasts, the realtime connection and in-flight sets stay there.
+// The board's skeleton / error / offline / empty / grid, split out of kitchen/page.tsx to keep it inside its line
+// budget. Handlers, toasts and in-flight sets live in useKitchenActions; the realtime connection in the page.
 export function KitchenBoardBody({
   isLoading,
   hasData,
@@ -40,13 +40,13 @@ export function KitchenBoardBody({
   now,
   onToggleLine,
   onReady,
-  inFlight,
+  lineInFlight,
   readyInFlight,
   onRetry,
 }: KitchenBoardBodyProps) {
   if (isLoading) {
     return (
-      <div className={BOARD_GRID_CLASS} aria-hidden>
+      <div className={KITCHEN_GRID_CLASS} aria-hidden>
         {Array.from({ length: SKELETON_CARDS }).map((_, i) => (
           <Skeleton key={i} className="h-64 w-full rounded-lg" />
         ))}
@@ -84,7 +84,7 @@ export function KitchenBoardBody({
   }
 
   return (
-    <div className={BOARD_GRID_CLASS}>
+    <div data-ui="kitchen-grid" className={KITCHEN_GRID_CLASS}>
       {cards.map((card) => (
         <KitchenOrderCard
           key={card.orderId}
@@ -92,8 +92,8 @@ export function KitchenBoardBody({
           now={now}
           onToggleLine={onToggleLine}
           onReady={onReady}
-          lineInFlight={(line) => inFlight.has(line.id)}
-          readyInFlight={readyInFlight.has(card.orderId)}
+          lineInFlight={(line) => lineInFlight(line.id)}
+          readyInFlight={readyInFlight(card.orderId)}
         />
       ))}
     </div>
