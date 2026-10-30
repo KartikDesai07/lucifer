@@ -1,6 +1,6 @@
 # U4: the Kitchen (/kitchen) rebuilt to the owner's HTML (design)
 
-Status: for the owner's approval, 2026-10-30. Branch `feat/ui-kitchen` from main `736566b` (U0–U3 merged). Nothing is
+Status: APPROVED by the owner on 2026-10-30 ("proper easy to use, easy to understand and proper smooth working backend frontend ho so ye design approve hai"). Branch `feat/ui-kitchen` from main `736566b` (U0–U3 merged). Nothing is
 coded before the owner approves this document. The owner's answers (2026-10-29/30) are in section 4; "my call" marks a
 decision of mine the owner can still change.
 
