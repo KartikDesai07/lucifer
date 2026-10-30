@@ -142,6 +142,9 @@ export const KITCHEN_ROW_NAME_CLASS = "block text-[15px] font-medium [overflow-w
 export const KITCHEN_ROW_MOD_CLASS = "block text-[12.5px] [overflow-wrap:anywhere]";
 /** Additions in --text-2 (the HTML's meta); a "NO …" removal in --text 600 (today's emphasis: what the cook must not miss). */
 export const KITCHEN_ROW_MOD_KIND_CLASS = { added: "text-muted-foreground", removed: "font-semibold text-foreground" } as const;
+/** The modifier lines and the note together (the row's accessible description, Task 4 fix 1): a plain block, so the lines
+ *  lay out as the HTML's meta and note under the name. */
+export const KITCHEN_ROW_MORE_CLASS = "block";
 /** The instruction "Note: …" (values 4.1): 12.5px 600 in --warn-i. */
 export const KITCHEN_ROW_NOTE_CLASS = "block text-[12.5px] font-semibold text-status-warn-ink [overflow-wrap:anywhere]";
 /** A round divider (owner Q6, design 6.3, ours): the footer's type (11.5px --text-3, 15px lines), padding 6px 12px 2px. */

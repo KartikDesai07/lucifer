@@ -26,6 +26,7 @@ import {
   KITCHEN_ROW_DONE_CLASS,
   KITCHEN_ROW_MOD_CLASS,
   KITCHEN_ROW_MOD_KIND_CLASS,
+  KITCHEN_ROW_MORE_CLASS,
   KITCHEN_ROW_NAME_CLASS,
   KITCHEN_ROW_NOTE_CLASS,
   KITCHEN_ROW_QTY_CLASS,
@@ -196,6 +197,32 @@ test("KitchenLineCard: the shared formatter's lines (a NO line in ink 600), 'Not
   expectAll(tagOf(html, "kitchen-line-qty"), tokens(KITCHEN_ROW_QTY_CLASS), "the quantity");
   assert.equal(textOf(html, "kitchen-line-name"), "Margherita (Large)", "the name with its variation once (P11)");
   assert.equal(tagsOf(renderRow(line(1, 4)), "kitchen-line-note").length, 0, "no note: no note line");
+});
+
+// Fix 1 (logic-1 / keep-1): a checkbox's content is presentational and its aria-label is its whole name, so everything a
+// cook hears beyond "Mark {name} done" is its description: the quantity, the formatter's lines and the note.
+test("KitchenLineCard: the row's description reads the quantity, the NO / + lines and the note; every id resolves, none for a part not drawn", () => {
+  const html = renderRow(line(1, 4, { name: "Margherita (Large)", qty: 2, modifiers: ["Extra cheese"], removedModifiers: ["Mushroom"], instructions: "Less sugar" }));
+  const row = tagOf(html, "kitchen-line");
+  assert.match(row, /aria-label="Mark Margherita \(Large\) done"/, "the name stays today's (test-used)");
+  const ids = (/aria-describedby="([^"]*)"/.exec(row)?.[1] ?? "").split(" ").filter(Boolean);
+  assert.equal(ids.length, 2, `the quantity and the lines under the name (got "${ids.join(" ")}")`);
+  for (const id of ids) assert.equal(html.split(`id="${id}"`).length - 1, 1, `the description id ${id} names one element`);
+  assert.match(tagOf(html, "kitchen-line-qty"), new RegExp(`id="${ids[0]}"`), "the first is the quantity");
+  assert.equal(textOf(html, "kitchen-line-qty"), "2×", "its words");
+  const more = tagOf(html, "kitchen-line-more");
+  assert.match(more, new RegExp(`id="${ids[1]}"`), "the second wraps the modifier lines and the note");
+  expectAll(more, tokens(KITCHEN_ROW_MORE_CLASS), "a plain block (no visible change)");
+  assert.equal(textOf(html, "kitchen-line-more"), "NO Mushroom+ Extra cheeseNote: Less sugar", "the NO line, the + line, the note");
+  assert.ok(!textOf(html, "kitchen-line-more").includes("Margherita"), "the name is not repeated");
+  const bare = renderRow(line(1, 4, { qty: 3 }));
+  const bareIds = (/aria-describedby="([^"]*)"/.exec(tagOf(bare, "kitchen-line"))?.[1] ?? "").split(" ").filter(Boolean);
+  assert.equal(bareIds.length, 1, "no modifiers and no note: the quantity only");
+  assert.equal(bare.split(`id="${bareIds[0]}"`).length - 1, 1, "and it resolves");
+  assert.equal(tagsOf(bare, "kitchen-line-more").length, 0, "no empty wrapper");
+  const twoRows = renderToStaticMarkup(createElement("div", null, createElement(KitchenLineCard, { row: line(1, 4), onToggle: () => {}, pending: false }), createElement(KitchenLineCard, { row: line(1, 4), onToggle: () => {}, pending: false })));
+  const describedBy = [...twoRows.matchAll(/aria-describedby="([^"]*)"/g)].map((m) => m[1]);
+  assert.notEqual(describedBy[0], describedBy[1], "two rows never share an id");
 });
 
 // ── The card's lines and dividers, and its rise (design 6.3) ────────────────────────────────────────────────────────
