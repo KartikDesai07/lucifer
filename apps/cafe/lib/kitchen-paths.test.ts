@@ -31,6 +31,13 @@ const KITCHEN_BOARD_LIB = "apps/cafe/lib/kitchen-board.ts";
 // U4 Task 1: the page's tick / Ready handlers moved into their own hook, and the page's layout classes into a lib.
 const KITCHEN_ACTIONS = "apps/cafe/hooks/use-kitchen-actions.ts";
 const KITCHEN_LAYOUT = "apps/cafe/lib/kitchen-layout.ts";
+// U4 Task 2: the header's rules (filter, second line, strip rule), the type filter, the board's states (ruling K1: split
+// out of KitchenBoardBody), and the refresh strip shared with the Floor (its component and its classes).
+const KITCHEN_HEADER = "apps/cafe/lib/kitchen-header.ts";
+const KITCHEN_TYPE_FILTER = "apps/cafe/components/kitchen/KitchenTypeFilter.tsx";
+const KITCHEN_STATES = "apps/cafe/components/kitchen/KitchenBoardStates.tsx";
+const REFRESH_STRIP = "apps/cafe/components/shared/RefreshStrip.tsx";
+const REFRESH_STRIP_CLASSES = "apps/cafe/lib/ui/refresh-strip.ts";
 const ITEMS_ROUTE = "apps/cafe/app/api/orders/[id]/items/route.ts";
 const ADDROUND = "apps/cafe/lib/order-request-accept-addround.ts";
 
@@ -139,10 +146,13 @@ test("PIN (18b): kitchen/page.tsx contains no AdminGuard (staff and admin both u
 
 // ── (19) hygiene: no console., no hardcoded cafe name ───────────────────────
 
-test("PIN (19): use-kitchen.ts, kitchen/page.tsx, KitchenBoardBody.tsx, KitchenLineCard.tsx, KitchenFreshnessChip.tsx, use-kitchen-actions.ts, kitchen-layout.ts contain no console. and no hardcoded cafe name", () => {
+test("PIN (19): use-kitchen.ts, kitchen/page.tsx, KitchenBoardBody.tsx, KitchenLineCard.tsx, KitchenFreshnessChip.tsx, use-kitchen-actions.ts, kitchen-layout.ts, kitchen-header.ts, KitchenTypeFilter.tsx, KitchenBoardStates.tsx, RefreshStrip.tsx, ui/refresh-strip.ts contain no console. and no hardcoded cafe name", () => {
   const consoleNeedle = "console" + ".";
   const luciferNeedle = "Luci" + "fer";
-  const files = [USE_KITCHEN, KITCHEN_PAGE, KITCHEN_BODY, KITCHEN_CARD, KITCHEN_CHIP, KITCHEN_ACTIONS, KITCHEN_LAYOUT];
+  const files = [
+    USE_KITCHEN, KITCHEN_PAGE, KITCHEN_BODY, KITCHEN_CARD, KITCHEN_CHIP, KITCHEN_ACTIONS, KITCHEN_LAYOUT,
+    KITCHEN_HEADER, KITCHEN_TYPE_FILTER, KITCHEN_STATES, REFRESH_STRIP, REFRESH_STRIP_CLASSES,
+  ];
   for (const rel of files) {
     const raw = readSrc(rel);
     assert.ok(!raw.includes(consoleNeedle), `${rel} must NOT contain ${consoleNeedle} anywhere, not even in a comment`);
@@ -157,6 +167,11 @@ test("PIN (19): use-kitchen.ts, kitchen/page.tsx, KitchenBoardBody.tsx, KitchenL
   assert.match(readSrc(KITCHEN_CHIP), /export function KitchenFreshnessChip\(/, "positive landmark: KitchenFreshnessChip.tsx must export KitchenFreshnessChip(");
   assert.match(readSrc(KITCHEN_ACTIONS), /export function useKitchenActions\(/, "positive landmark: use-kitchen-actions.ts must export useKitchenActions(");
   assert.match(readSrc(KITCHEN_LAYOUT), /export function isKitchenPath\(/, "positive landmark: kitchen-layout.ts must export isKitchenPath(");
+  assert.match(readSrc(KITCHEN_HEADER), /export function kitchenHeaderLine\(/, "positive landmark: kitchen-header.ts must export kitchenHeaderLine(");
+  assert.match(readSrc(KITCHEN_TYPE_FILTER), /export function KitchenTypeFilter\(/, "positive landmark: KitchenTypeFilter.tsx must export KitchenTypeFilter(");
+  assert.match(readSrc(KITCHEN_STATES), /export function KitchenBoardStates\(/, "positive landmark: KitchenBoardStates.tsx must export KitchenBoardStates(");
+  assert.match(readSrc(REFRESH_STRIP), /export function RefreshStrip\(/, "positive landmark: RefreshStrip.tsx must export RefreshStrip(");
+  assert.match(readSrc(REFRESH_STRIP_CLASSES), /export const REFRESH_STRIP_CLASS =/, "positive landmark: ui/refresh-strip.ts must export REFRESH_STRIP_CLASS");
 });
 
 // ── (20) freshness chip decoupling ──────────────────────────────────────────
@@ -192,6 +207,14 @@ test("PIN (21): each new UI-slice file stays within its stated line budget +20%"
     // classes, which Tasks 2-5 grow (<= 300 lines, the house limit).
     [KITCHEN_ACTIONS, 100],
     [KITCHEN_LAYOUT, 250],
+    // U4 Task 2 (2026-10-30): the header's rules (<= 120), the type filter (<= 60), the board's states split out of
+    // KitchenBoardBody (ruling K1; <= 120: Task 5 restyles the skeleton and the empty board there; the body keeps its 85,
+    // <= 102), the refresh strip shared with the Floor (<= 60) and its classes (<= 36).
+    [KITCHEN_HEADER, 100],
+    [KITCHEN_TYPE_FILTER, 50],
+    [KITCHEN_STATES, 100],
+    [REFRESH_STRIP, 50],
+    [REFRESH_STRIP_CLASSES, 30],
   ];
   for (const [rel, budget] of budgets) {
     const cap = Math.ceil(budget * 1.2);

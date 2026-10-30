@@ -55,6 +55,12 @@ const REQUESTS_BOARD = cmp("orders/RequestsBoard.tsx");
 const ORDER_REQUEST_CARD = cmp("orders/OrderRequestCard.tsx");
 const DEVICE_ALERT_DIALOG = cmp("orders/DeviceAlertSettingsDialog.tsx");
 const KITCHEN_BODY = cmp("kitchen/KitchenBoardBody.tsx");
+// U4 Task 2 (2026-10-30, ruling K1): the board's states (skeleton, error, offline, empty, filtered empty) left
+// KitchenBoardBody for their own file; the D4 error / offline pins (P44 / P45) moved with them, the same meaning. The type
+// filter and the header's words (lib/kitchen-header.ts) join the copy-hygiene files.
+const KITCHEN_STATES = cmp("kitchen/KitchenBoardStates.tsx");
+const KITCHEN_TYPE_FILTER = cmp("kitchen/KitchenTypeFilter.tsx");
+const KITCHEN_HEADER_LIB = "apps/cafe/lib/kitchen-header.ts";
 const KITCHEN_CHIP = cmp("kitchen/KitchenFreshnessChip.tsx");
 const KITCHEN_LINE = cmp("kitchen/KitchenLineCard.tsx");
 const KITCHEN_ORDER = cmp("kitchen/KitchenOrderCard.tsx");
@@ -425,9 +431,10 @@ const ORDERS_RETURN_OPEN: ReturnOpen = {
   re: /return \(\s*<div data-ui="orders-page" className=\{ORDERS_PAGE_CLASS\}>\s*<PageHeader/,
   head: '<div data-ui="orders-page" className={ORDERS_PAGE_CLASS}>',
 };
-/** U4 Task 1: the Kitchen's frame, the header first inside the board (lib/kitchen-layout.test.ts). */
+/** U4 Task 1: the Kitchen's frame, the header first inside the board (lib/kitchen-layout.test.ts). U4 Task 2: the
+ *  refresh strip is the page's first child, above the board (Kitchen design 6.2). */
 const KITCHEN_RETURN_OPEN: ReturnOpen = {
-  re: /return \(\s*<div data-ui="kitchen-page" className=\{KITCHEN_PAGE_CLASS\}>\s*<div data-ui="kitchen-board" className=\{KITCHEN_BOARD_CLASS\}>\s*<PageHeader/,
+  re: /return \(\s*<div data-ui="kitchen-page" className=\{KITCHEN_PAGE_CLASS\}>\s*<RefreshStrip\b[\s\S]*?\/>\s*<div data-ui="kitchen-board" className=\{KITCHEN_BOARD_CLASS\}>\s*<PageHeader/,
   head: '<div data-ui="kitchen-page" className={KITCHEN_PAGE_CLASS}><div data-ui="kitchen-board" className={KITCHEN_BOARD_CLASS}>',
 };
 
@@ -491,23 +498,31 @@ const ERROR_CASES: PinCase[] = [
   },
   {
     file: KITCHEN_PAGE,
+    // U4 Task 2: the refresh strip's Try again refetches the board too, so the three props are read on the body's own
+    // element (P43, the same meaning: the board body's error screen gets these).
     pin: all(
-      pinRegexes([
-        [/\bhasData=\{board\.data !== undefined\}/, "hasData must be derived from board.data !== undefined"],
-        [/\bisError=\{board\.isError\}/, "the body must receive isError={board.isError}"],
-        [/\bonRetry=\{\(\) => void board\.refetch\(\)\}/, "onRetry must refetch the board query"],
-      ]),
+      (raw) => {
+        const body = /<KitchenBoardBody\b[\s\S]*?\/>/.exec(strip(raw))?.[0] ?? "";
+        return [
+          ...(body ? [] : ["landmark: the <KitchenBoardBody /> element"]),
+          ...pinRegexes([
+            [/\bhasData=\{board\.data !== undefined\}/, "hasData must be derived from board.data !== undefined"],
+            [/\bisError=\{board\.isError\}/, "the body must receive isError={board.isError}"],
+            [/\bonRetry=\{\(\) => void board\.refetch\(\)\}/, "onRetry must refetch the board query"],
+          ])(body),
+        ];
+      },
       pinHeaderFirst("<KitchenBoardBody"),
     ),
     mutations: [
       rep("hasData hard-wired false", "hasData={board.data !== undefined}", "hasData={false}"),
       rep("isError hard-wired false", "isError={board.isError}", "isError={false}"),
-      rep("retry stops refetching", "void board.refetch()", "void 0"),
+      repRe("the body's retry stops refetching", /(<KitchenBoardBody\b[\s\S]*?)void board\.refetch\(\)/, (_m, head) => `${head}void 0`),
       earlyReturn("<KitchenBoardBody />", KITCHEN_RETURN_OPEN),
     ],
   },
   {
-    file: KITCHEN_BODY,
+    file: KITCHEN_STATES,
     pin: all(pinErrorRetry, pinGuardBefore("<ErrorState", "isError && !hasData")),
     mutations: [
       ...RETRY_MUTATIONS,
@@ -685,7 +700,7 @@ const OFFLINE_CASES: PinCase[] = [
     ],
   },
   {
-    file: KITCHEN_BODY,
+    file: KITCHEN_STATES,
     pin: pinOfflineBranch({ guard: "if (isPaused && !hasData)", before: "if (cards.length === 0)", after: "<ErrorState" }),
     mutations: [
       ...OFFLINE_COMMON,
@@ -1285,13 +1300,16 @@ const pinFreshnessChip: Pin = (raw) => {
   return p;
 };
 
+// U4 Task 2 (Kitchen design 6.2, owner Q3; P48 moved, the same meaning): the summary is the header's second line now, the
+// PageHeader's description: the loaded line first, "Loading orders…" while the first load runs, nothing otherwise (the
+// first-load error and offline branches).
 const pinKitchenSummary: Pin = (raw) => {
   const p: string[] = [];
   const s = strip(raw);
-  const data = /\{board\.data !== undefined\s*\?\s*\(/.exec(s);
-  check(p, data !== null, "landmark: the summary ternary must start with a board.data !== undefined branch");
-  const loading = /:\s*board\.isLoading\s*\?\s*\(\s*<div\b[^>]*>\s*Loading orders[^<]*<\/div>/.exec(s);
-  check(p, loading !== null, 'the summary must hold its place with a board.isLoading branch rendering "Loading orders"');
+  const data = /\bdescription=\{board\.data !== undefined\s*\?\s*kitchenHeaderLine\(/.exec(s);
+  check(p, data !== null, "landmark: the second line's ternary must start with a board.data !== undefined branch");
+  const loading = /:\s*board\.isLoading\s*\?\s*"Loading orders[^"]*"\s*:\s*undefined\s*\}/.exec(s);
+  check(p, loading !== null, 'the line must read "Loading orders" under a board.isLoading branch, and nothing after it');
   if (data !== null && loading !== null) check(p, data.index < loading.index, "the loaded branch must come before the loading branch");
   return p;
 };
@@ -1338,10 +1356,11 @@ const KITCHEN_CASES: PinCase[] = [
     file: KITCHEN_PAGE,
     pin: pinKitchenSummary,
     mutations: [
-      repRe("loading branch removed", /\) : board\.isLoading \? \(\s*<div[^>]*>Loading orders[^<]*<\/div>\s*\) : null\}/, ") : null}"),
-      rep("rename the loading flag", ") : board.isLoading ? (", ") : board.isFetching ? ("),
+      repRe("loading branch removed", / : board\.isLoading \? "Loading orders[^"]*" : undefined\}/, " : undefined}"),
+      rep("rename the loading flag", ": board.isLoading ? \"Loading", ": board.isFetching ? \"Loading"),
       rep("loading text renamed", "Loading orders", "Please wait"),
-      rep("loaded branch loses its data check", "{board.data !== undefined ? (", "{board.isSuccess ? ("),
+      rep("the error / offline branches get the loading words", '"Loading orders…" : undefined}', '"Loading orders…" : "Loading orders…"}'),
+      rep("loaded branch loses its data check", "description={board.data !== undefined ? ", "description={board.isSuccess ? "),
     ],
   },
   {
@@ -1397,6 +1416,9 @@ const COPY_FILES = [
   KITCHEN_CHIP,
   KITCHEN_LINE,
   KITCHEN_ORDER,
+  KITCHEN_STATES,
+  KITCHEN_TYPE_FILTER,
+  KITCHEN_HEADER_LIB,
   RESERVATIONS_TABLE,
   RESERVATION_CARD,
   EVENTS_TABLE,

@@ -289,10 +289,14 @@ test("NowServingLink: the button is U3's outline header button, hidden below 720
   assert.ok(src.includes('className={cn(HINT_LINK_CLASS, "inline-flex min-h-11 items-center")}'), "landmark: the hint link keeps its 44px look");
 });
 
-test("links: exactly one NowServingLink on the Kitchen header (button, wrapping the chip) and one under the token settings (hint)", () => {
+// U4 Task 2 (Kitchen design 6.2 / 11, owner Q3; P55 moved on purpose): the freshness chip leaves the Kitchen header (the
+// second line says "Updated …" and the refresh strip carries a failure), so the button no longer wraps it; the chip stays
+// unchanged for /now-serving (P52 above).
+test("links: exactly one NowServingLink on the Kitchen header (button, after the type filter, no chip) and one under the token settings (hint)", () => {
   const kitchen = read(KITCHEN_PAGE);
   assert.equal(count(kitchen, "<NowServingLink"), 1);
-  assert.ok(kitchen.includes('<NowServingLink variant="button"><KitchenFreshnessChip dataUpdatedAt={board.dataUpdatedAt} /></NowServingLink>'));
+  assert.ok(kitchen.includes('actions={<><KitchenTypeFilter value={filter} onChange={setFilter} /><NowServingLink variant="button" /></>}'), "the header's actions: the filter, then Now Serving");
+  assert.ok(!kitchen.includes("KitchenFreshnessChip"), "the chip is not drawn on /kitchen");
   const tokens = read(TOKENS_PAGE);
   assert.equal(count(tokens, "<NowServingLink"), 1);
   assert.ok(tokens.includes('<NowServingLink variant="hint" />'));

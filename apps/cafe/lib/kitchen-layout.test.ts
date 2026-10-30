@@ -144,7 +144,9 @@ test("HEADER_ACTION_FLOOR_OUTLINE_CLASS: U3's New order look, its gap / icon / h
 
 // ── The page (design 5; values 1.1, 6.1) ───────────────────────────────────────────────────────────────────────────
 
-test("the /kitchen page: no MenuPageShell; kitchen-page wraps kitchen-board, which holds the header, the summary and the body", () => {
+// U4 Task 2 (design 6.2): the refresh strip joins the frame as kitchen-page's first child, above the board; the summary is
+// the header's second line (lib/kitchen-header.test.ts pins both).
+test("the /kitchen page: no MenuPageShell; kitchen-page holds the strip, then kitchen-board with the header and the body", () => {
   const src = read(PAGE);
   assert.ok(!src.includes("MenuPageShell"), "the paper frame goes (design 5; P41 moved on purpose)");
   assert.match(src, /import \{ KITCHEN_BOARD_CLASS, KITCHEN_PAGE_CLASS \} from "@\/lib\/kitchen-layout";/, "the frame's classes come from lib/kitchen-layout.ts");
@@ -152,6 +154,7 @@ test("the /kitchen page: no MenuPageShell; kitchen-page wraps kitchen-board, whi
     src,
     [
       '<div data-ui="kitchen-page" className={KITCHEN_PAGE_CLASS}>',
+      "<RefreshStrip",
       '<div data-ui="kitchen-board" className={KITCHEN_BOARD_CLASS}>',
       "<PageHeader",
       "Loading orders",
@@ -159,7 +162,7 @@ test("the /kitchen page: no MenuPageShell; kitchen-page wraps kitchen-board, whi
       "</div>",
       "</div>",
     ],
-    "kitchen-page wraps kitchen-board (the only scroller), which holds the header, the summary line and the board body",
+    "kitchen-page holds the strip and kitchen-board (the only scroller), which holds the header (its second line) and the board body",
   );
   assert.equal(src.split('data-ui="kitchen-board"').length - 1, 1, "one board: every branch of the body renders inside it");
   assert.match(src, /export default function KitchenPage\(/, "landmark (P5): the default export");

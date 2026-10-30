@@ -362,6 +362,8 @@
     "lib/kot-tick-model.test.ts",
     "lib/kitchen-paths.test.ts",
     "lib/kitchen-layout.test.ts",
+    "lib/kitchen-header.test.ts",
+    "lib/kitchen-filter-states.test.ts",
     "lib/token-board.test.ts",
     "lib/token-routes-paths.test.ts",
     "lib/token-sheet-paths.test.ts",
