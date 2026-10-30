@@ -307,4 +307,101 @@ shots of today's page `D:\kd\pos-dev-keep\ui-redesign\current-kitchen\`; the HTM
 
 ## Results
 
-(Filled at the end.)
+(2026-10-29 → 30, branch `feat/ui-kitchen`, base main `736566b`; 14 commits, 40 files, +4043 / −509 before this Results
+commit. Not merged, not pushed. Ledger with every ruling (K1–K7) and review:
+`.superpowers/sdd/2026-10-30-kitchen-match-html/progress.md`, copied with the briefs and reports to
+`D:\kd\pos-dev-keep\ui-redesign\reviews\u4\`.)
+
+### Commits
+- Docs: `9f5f691` (values + design), `c406963` (approved + this plan), `3831c8c` (design §12, the build's changes).
+- Tasks: T1 `e9fc3a8` frame, board, grid, header buttons, toasts · T2 `85f22ec` + `c49d17e` second line, filter, refresh
+  strip · T3 `331bbf1` + `5a5ad45` the card's frame, head, footer, Mark ready · T4 `d55177e` + `fd4b3d5` + `cf86c7e` the
+  line rows, round dividers, rise, the in-flight fix · T5 `7ca5595` loading / error / offline / empty states.
+- Final fix wave (after the Claude Fable 5.1 review): `aa8c735` (I1 the strip's rule; I2 → the owner's Q11).
+- Verification fix: `9fcb4d0` (VC-1, the pill's screen-reader ", Late").
+
+### Tests and checks
+- Cafe chain at `9fcb4d0`: 7009 tests / 7008 pass / 0 fail / 1 skipped (main `736566b`: 6934); typecheck and the full
+  `tsc --noEmit` clean; lint 0 errors, the 2 old warnings (on this PC `npm run lint` can crash natively:
+  `NODE_OPTIONS=--max-old-space-size=6144 npx eslint .`). Shared 1015, print-tools 11, release-native 12; mobile,
+  desktop, hub, packages untouched. New test files in testChain: kitchen-layout, kitchen-header, kitchen-filter-states,
+  kitchen-view, kitchen-rows, kitchen-actions (kitchen-paths extended).
+- Live legs (V-A at `aa8c735`): 18 legs, every exit 0 (kitchen, kitchen-ready, tokens, skip-kot, slips, print-template,
+  tables-floor, tables, staff-pin, bootstrap, dashboard, print, appearance, orders, orders-idem, table-move, menu-orders,
+  money).
+- The paper: S1 43/43 SHA-256 unchanged, `print-budget.test.ts` unchanged; no slip / printer / print-routing / receipt
+  file and no kitchen API / payload lib (`app/api/kitchen/route.ts`, `lib/kitchen-board.ts`, `lib/kitchen-cards.ts`,
+  `lib/kitchen-lines*.ts`) in the diff.
+- Requests: idle /kitchen 240 s = main's build's BASE exactly (`GET /api/kitchen` 24, `GET /api/order-requests/pulse`
+  12; `match\kitchen\final\idle-base-kitchen.json` / `idle-new-kitchen.json`). No new or faster request.
+- Write paths for real on uimatch (V-D at `aa8c735`, 1280 and 390): tick, un-tick, the tick's Undo, two quick ticks and
+  Mark ready + Undo with the writes slowed (Q7), Mark ready with lines open and all ticked, the filter and Try again,
+  staff priya: 40 `POST /api/kitchen`, one per press, every body byte-identical to main's, 0 differences, no print.
+- Measured match (V-B at `aa8c735`, production build): U4 probes 126 differences in 6,252 checks, every one an accepted
+  mapped row or the owner's Q11; the Floor's shared refresh strip 0 / 441; U0 shell probes 215 / 14,959 (U3's rows and
+  the reseed's data); 323 side-by-side pairs: `D:\kd\pos-dev-keep\ui-redesign\match\kitchen\final\shots\index.html`.
+  First screens: 76 routes 200, logs byte-identical to U3's. A11y: 0 axe violations in 13 /kitchen states (1280, 390),
+  the rows' descriptions read, "Late" once. /m unchanged.
+- Laptop fit 1366×768, 1280×800 (open / collapsed), 1100×800, 1024×768, 820×1180, 430×932, 390×844, 375×812, 360×800 with
+  tokens on and off: no sideways scroll, cards per row 3 × 325.33 / 3 × 377.33 / 3 × 292 / 2 × 347 / 1, the phone line
+  whole, the quick links only from 1280, Now Serving only from 720. A classic scrollbar at 1280: 3 × 322.656, the header
+  still. The bottom inset (25 px) respected by the board's foot, the strip and the toasts.
+- Emulator (V-C at `aa8c735`, smoke S-E at `9fcb4d0`; the app on :3130 because another project holds 127.0.0.1:3110):
+  WebView 109 portrait / landscape and 154: the header, board, rows (109's button rule within ~1 CSS px of Chrome), the
+  filter round trips (a mixed board with a walk-in card: every card stays in 109's and 154's accessibility tree), the
+  rise, no console errors; VC-1 fixed on 154.
+- Production build of `9fcb4d0` in `D:\kd\uib` (BUILD_ID `oMexRQld8t5ZJtorRg9Uf`): the owner's preview on :3110 (uibase)
+  and the check twin on :3130 (uimatch, reseeded 2026-10-30 after the writing runs).
+- Smoke S-D (desktop, `9fcb4d0`, uimatch reseeded): 0 DEFECT. Idle /kitchen 240 s × 3: `GET /api/kitchen` 24 and pulse
+  12 every run (= BASE), each run also catching the shell's six one-time warm-route prefetches (`/`, `/tables`, `/pos`,
+  `/orders`, `/requests`, `/reservations` once each: U2's known first-load race, /tables shows the same six). U4 probes
+  task-1…5 equal V-B's rows plus VC-1's ", Late" in the task-3 words check (the probe literal updated after) and the
+  reseed's order-requests strip moving the task-5 states 40 px down (data). a11y 0 violations at 1280 / 390 in 7 states;
+  the Late pill reads "25 min, Late" once.
+
+### Reviews
+- Five task reviews, each three lenses (spec, logic, keep) and a skeptic check per Important finding. Fix rounds: T2 ×1
+  (K3), T3 ×1 (K4 + the bad-stamp guard), T4 ×2 (the rows' accessible description, K5).
+- The final Claude Fable 5.1 whole-branch review: With fixes, 0 C / 2 I / 3 M (M1–M3 LATER); I1 fixed, I2 → the owner's
+  Q11 → one fix wave → its Fable re-review: all addressed, no new breakage.
+- Verification (V-A, V-B, V-D PASS; V-C two minors: VC-1 fixed, VC-2 LATER, K7) → one fix round (re-reviewed) → smokes
+  S-E (cut by the account's session limit once, resumed) and S-D.
+
+### What the owner will see differently from the HTML (mapped, each with its decision or ruling)
+One board instead of the three status columns, no column heads or tabs (Q1); the filter "All · Tables · Walk-In" (Q2);
+the second line "{n} active orders · average wait {m} min · Updated …" and, on phones, "{n} active orders · avg wait {m}"
+(Q3, Q11); the refresh strip under the header on a failed or offline refresh (Q3, I1); "Mark ready" (ink while lines are
+open with "· {n} not ticked", a darker green when all are ticked) instead of Start cooking / Mark ready / Served (Q5);
+our codes (table name, Token {n}, Parcel, Walk-In), the where line "Table · Order #012 · Token 12 · Self-order", "Note: …",
+"NO …" lines, round dividers, the footer "KOT #9, #12 · 9:26 PM" (Q6, Q9, K4); the quick links only from 1280 (Q8) and Now
+Serving from 720 (Q10); "1h 15m" past an hour; a ticked line dims its words, not the whole row (K5); cards keep their own
+heights; the HTML's own slips not copied (design §8).
+
+### Owner notes (decisions or pre-existing items, nothing changed for them)
+- Every new order's first round gets no fire stamp from the server, so every first-round card shows "~" before its age
+  and the hover title "approximate — fired before age tracking" (main the same); on WebView 109 a screen reader then hears
+  only that title (VC-2, K7). A server stamp for round 1 (outside this UI phase) or a UI tweak (the title on the "~" only)
+  is the owner's call.
+- The wide second line's "Updated …" tail is cut by the ellipsis at 1280 with the nav open and at 820 with tokens on
+  (counts and average whole).
+- The average has no "~" even when every card's age is approximate.
+- An empty board under Tables / Walk-In shows "All caught up" (the "No orders here" box only when the filter hides cards).
+- The filter's Walk-In test reads the server's "Walk-In" label: a table literally named "Walk-In" counts as walk-in.
+- Enter toggles a line too (the HTML's row button; today's checkbox took Space only).
+- On a first-load error or offline before the first load the header shows the shell's default line "{cafe} · {date}"
+  (K6).
+- The phone board shows its thin 8 px scrollbar; the Walk-In filter comes back when a phone screen widens to 720+.
+- The kit skeleton barely shows on the page background (F22, app-wide); the offline line stays 14 px.
+- Deferred minors for a later pass (final review M1–M3 and the task reviews): the R6 actions row inside the board with no
+  gap (720–745 px in the app with tokens on), a failed Mark ready's restore rises the card, an optimistic write resets the
+  freshness clock during an outage, a row in flight keeps its pointer and hover, a card whose first round is 2+ gets no
+  divider, two test gaps (the tick's Undo while pending, the idle fall-through row).
+- Another project of the owner (a vite server) now listens on 127.0.0.1:3110: a browser on `localhost:3110` may reach it
+  instead of the preview; the preview answers on `http://localhost:3110` over IPv6 and the twin on :3130.
+- The U0 nav's account row sits inside a 25 px tablet inset (shell, open U0 item).
+- Scratch databases left by V-A (the owner's OK needed to drop them, with the older ones): `pos_scratch_va_u4_bootstrap`,
+  `_kitchen`, `_money`.
+
+### Left for later
+The next page session (prompt `D:\kd\pos-dev-keep\ui-redesign\prompt-u5.md`, the owner picks the page); the owner's merge
+OK and, separately, the push.
