@@ -287,8 +287,28 @@ filtered empty "No orders here" (new); the header's "Tables" / "New order" not d
 Words that stay: "Kitchen", "Service", "Loading orders…", "All caught up" and its line, the error / offline words, "Try
 again", "Now Serving", every toast's words (apart from the parcel's where), "Mark {name} done", "Undo".
 
-## 12. Changes during the build
-(Filled during the build.)
+## 12. Changes during the build (2026-10-30)
+Decided while building, recorded so the design stays the reference (the SDD ledger keeps every ruling):
+- The owner's Q11 (2026-10-30, after the final review measured the phone line cut at every phone width, the average cut
+  mid-number with tokens on): below 720 px the second line is "{n} active order(s) · avg wait {m}" with no freshness
+  part (the refresh strip is the failure signal there); from 720 px unchanged. Measured whole at 360–430 with tokens on
+  and off ("2 active orders · avg wait 14 min" 175.9 px; "12 active orders · avg wait 1h 15m" 187.4 px in 193–316 px).
+- The refresh strip (6.2) shows only when the last good answer is at least 60 s old AND the board's read has failed or
+  is paused (offline): a return to /kitchen from the cache or a background tab's slowed polls showed it while nothing
+  had failed (final review I1). A failed poll and an offline device still show it 60–90 s after the last success.
+- The average under a minute reads "0 min" ("average wait 0 min", the HTML's own words for an average of 0); the time
+  pill keeps "Now" (ruling K3).
+- A parcel order is a Parcel card whatever its table (today's priority): code = its token when it has one, else
+  "Parcel"; the where line "Parcel · Order #…" when the code is the token, else "Order #…"; the filter counts every
+  parcel under Walk-In (ruling K4; our data can hold a parcel with a table).
+- A fire time that does not parse leaves the time out of the footer / divider words instead of throwing (one bad stamp
+  would have crashed the whole board).
+- A ticked line dims its words to --text-3 (5.3:1) instead of the HTML's whole-row opacity .5 (~3.4:1, which fails the
+  4.5:1 contrast); the box keeps its full green with the white tick (ruling K5).
+- A line row keeps its accessible name "Mark {name} done" and gets its quantity, modifier lines and note as its
+  accessible description (a checkbox's inner text is not read by screen readers).
+- On a first-load error and offline before the first load the header shows the shell's default second line
+  ("{cafe} · {date}"), never a kitchen count (ruling K6).
 
 ## 13. The builder check (2026-10-30)
 A fresh builder read this document, the values, the inventory and the code. Its three questions were the owner's and are
