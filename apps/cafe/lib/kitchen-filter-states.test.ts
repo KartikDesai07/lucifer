@@ -226,7 +226,8 @@ test("KitchenBoardStates: the filtered-empty box only when the filter hides ever
 
 test("KitchenBoardStates: today's branch order — loading, first-load error, offline, then empty (P44 / P45 kept)", () => {
   const loading = renderStates({ isLoading: true });
-  assert.ok(loading.startsWith(`<div class="${KITCHEN_GRID_CLASS}" aria-hidden="true">`), "loading: the skeleton grid");
+  // U4 Task 5 moved this look pin: the skeleton grid carries the cards' grid name too (lib/kitchen-layout.test.ts).
+  assert.ok(loading.startsWith(`<div data-ui="kitchen-grid" class="${KITCHEN_GRID_CLASS}" aria-hidden="true">`), "loading: the skeleton grid");
   const error = renderStates({ isError: true, hasData: false });
   assert.ok(error.includes("Couldn&#x27;t load the kitchen board") && error.includes("Try again"), "a failed first load: the error screen");
   assert.ok(!error.includes("kitchen-refresh-strip"), "never the strip");

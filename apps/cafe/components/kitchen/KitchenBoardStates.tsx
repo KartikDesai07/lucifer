@@ -1,12 +1,10 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ChefHat } from "lucide-react";
 
 import type { KitchenOrderCard as KitchenOrderCardData } from "@/lib/kitchen-cards";
 import { KITCHEN_EMPTY_FILTER_TEXT } from "@/lib/kitchen-header";
-import { KITCHEN_EMPTY_BOX_CLASS, KITCHEN_GRID_CLASS } from "@/lib/kitchen-layout";
-import { EmptyState } from "@/components/shared/EmptyState";
+import { KITCHEN_EMPTY_BOX_CLASS, KITCHEN_EMPTY_TITLE_CLASS, KITCHEN_GRID_CLASS, KITCHEN_SKELETON_CARD_CLASS } from "@/lib/kitchen-layout";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -30,14 +28,16 @@ interface KitchenBoardStatesProps {
 
 // The board's states, split out of KitchenBoardBody (U4 Task 2, ruling K1) in today's branch order: the skeleton while
 // loading, the error screen for a failed first load, the offline line when never loaded, then the empty board; otherwise
-// the grid (children). The filtered-empty box is the HTML's empty box (values 3.6, ruling K2; design 6.5): Tables or
-// Walk-In chosen with none of its cards on a board that has others — "All" is one tap away in the header.
+// the grid (children). Each sits in the board at its padding, as the cards do (design 6.5). The skeleton is six cards of
+// the HTML's one-line card in the cards' own grid (one grid, one name); the empty board and the filtered-empty box are
+// the HTML's empty box (values 3.6, ruling K2): "All caught up" over today's line, or "No orders here" when Tables or
+// Walk-In is chosen with none of its cards on a board that has others ("All" is one tap away in the header).
 export function KitchenBoardStates({ isLoading, hasData, isError, isPaused, cards, filtered, onRetry, children }: KitchenBoardStatesProps) {
   if (isLoading) {
     return (
-      <div className={KITCHEN_GRID_CLASS} aria-hidden>
+      <div data-ui="kitchen-grid" className={KITCHEN_GRID_CLASS} aria-hidden>
         {Array.from({ length: SKELETON_CARDS }).map((_, i) => (
-          <Skeleton key={i} className="h-64 w-full rounded-lg" />
+          <Skeleton key={i} data-ui="kitchen-skeleton-card" className={KITCHEN_SKELETON_CARD_CLASS} />
         ))}
       </div>
     );
@@ -65,11 +65,12 @@ export function KitchenBoardStates({ isLoading, hasData, isError, isPaused, card
   if (cards.length === 0) {
     if (filtered) return <div data-ui="kitchen-filter-empty" className={KITCHEN_EMPTY_BOX_CLASS}>{KITCHEN_EMPTY_FILTER_TEXT}</div>;
     return (
-      <EmptyState
-        icon={<ChefHat className="h-8 w-8" />}
-        title="All caught up"
-        description="Fired orders appear here the moment a round is sent to the kitchen."
-      />
+      <div data-ui="kitchen-empty" className={KITCHEN_EMPTY_BOX_CLASS}>
+        <p data-ui="kitchen-empty-title" className={KITCHEN_EMPTY_TITLE_CLASS}>
+          All caught up
+        </p>
+        <p>Fired orders appear here the moment a round is sent to the kitchen.</p>
+      </div>
     );
   }
 

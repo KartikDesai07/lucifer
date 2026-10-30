@@ -3,6 +3,8 @@
 // 1.1 page, 1.2 regions, 2.1-2.2 header, 6.1 board, 6.3 scrollbar; docs/superpowers/specs/2026-10-30-kitchen-match-html-
 // design.md 4 Q1 / Q8 / Q10, 5 layout, 6.1 header). Pure pins on lib/kitchen-layout.ts, a render of the header's quick
 // links on /kitchen, then source pins on the markup that renders them (the page, the board body, the header).
+// U4 Task 5 (design 6.5; values 3.6, 4.1, 4.2): the board's states rendered — the skeleton in the new card shape, "All
+// caught up" in the HTML's empty box, today's error and offline words, and today's branch order (P44 / P45).
 // Moved on purpose here (design 5, 6.7): P41 (`<MenuPageShell wide>`, lib/polish-pages-paths.test.ts): the page leaves the
 // paper frame for its own, pinned below.
 import { test } from "node:test";
@@ -18,10 +20,21 @@ import { PathnameContext } from "next/dist/shared/lib/hooks-client-context.share
 import { stripComments } from "./source-pin-utils";
 import { POS_PAGE_CLASS } from "./pos-layout";
 import { FLOOR_SCROLLER_CLASS } from "./floor-layout";
-import { classesOf, tagOf, tagsOf } from "./class-tags.fixtures";
-import { KITCHEN_BOARD_CLASS, KITCHEN_GRID_CLASS, KITCHEN_PAGE_CLASS, KITCHEN_PATH, isKitchenPath } from "./kitchen-layout";
+import { classesOf, expectAll, tagOf, tagsOf, textOf } from "./class-tags.fixtures";
+import { kitchenCard } from "./kitchen-header.fixtures";
+import {
+  KITCHEN_BOARD_CLASS,
+  KITCHEN_EMPTY_BOX_CLASS,
+  KITCHEN_EMPTY_TITLE_CLASS,
+  KITCHEN_GRID_CLASS,
+  KITCHEN_PAGE_CLASS,
+  KITCHEN_PATH,
+  KITCHEN_SKELETON_CARD_CLASS,
+  isKitchenPath,
+} from "./kitchen-layout";
 import { HeaderQuickTabs } from "@/components/layout/HeaderQuickTabs";
 import { HEADER_ACTION_FLOOR_OUTLINE_CLASS, HEADER_FLOOR_NEW_ORDER_CLASS } from "@/components/layout/header-classes";
+import { KitchenBoardStates } from "@/components/kitchen/KitchenBoardStates";
 
 // jsx:"preserve" -> React.createElement, so a global React is needed at render time (lib/common-components.test.ts).
 (globalThis as { React?: typeof React }).React = React;
@@ -107,6 +120,77 @@ test("KITCHEN_GRID_CLASS: the two grids of design 5 (columns 16 / rows 10 from 1
   // design 5: a 1920px wall TV adds columns instead of stretching three cards (board 1920 - nav - 40).
   assert.deepEqual(lg(1920 - 232 - 40), { n: 4, width: 400 }, "1920 with the sidebar: 4 x 400");
   assert.deepEqual(lg(1920 - 76 - 40), { n: 5, width: 348 }, "1920 with the rail: 5 x 348");
+});
+
+// ── The board's states (U4 Task 5; design 6.5; values 3.6, 4.1, 4.2) ───────────────────────────────────────────────
+
+test("the state classes: the skeleton card is the HTML's one-line card, 'All caught up' is the box's 13px in 600 --text-2", () => {
+  // 195 = 149 (the card's frame) + one 38px row in the list's 4px paddings; radius 12 (values 4.1 / 4.2). The kit
+  // Skeleton keeps its pulse and colour (the app-wide owner note F22).
+  assert.deepEqual(tokens(KITCHEN_SKELETON_CARD_CLASS).sort(), ["h-[195px]", "rounded-[12px]"], "design 6.5: 195px, radius 12, nothing else");
+  assert.deepEqual(tokens(KITCHEN_EMPTY_TITLE_CLASS).sort(), ["font-semibold", "text-muted-foreground"], "design 6.5: 600 in --text-2");
+  hasAll(KITCHEN_EMPTY_BOX_CLASS, ["border-[1.5px]", "border-dashed", "border-border", "rounded-[12px]", "px-3", "py-7", "text-center", "text-[13px]", "text-subtle-foreground"], "values 3.6: the title's 13px is the box's");
+});
+
+type StatesProps = Parameters<typeof KitchenBoardStates>[0];
+const GRID = createElement("div", { "data-ui": "kitchen-test-grid" }, "cards");
+const states = (over: Partial<Omit<StatesProps, "children">>): string => {
+  const props = { isLoading: false, hasData: true, isError: false, isPaused: false, cards: [], filtered: false, onRetry: () => {}, ...over };
+  return renderToStaticMarkup(createElement(KitchenBoardStates, props as StatesProps, GRID));
+};
+const EMPTY_LINE = "Fired orders appear here the moment a round is sent to the kitchen.";
+const OFFLINE_LINE = "You appear to be offline. The kitchen board will load when the connection is back.";
+
+test("loading: six skeleton cards of the new shape in the cards' own grid (data-ui kitchen-grid), hidden from screen readers", () => {
+  const html = states({ isLoading: true, hasData: false });
+  const grid = tagOf(html, "kitchen-grid");
+  assert.deepEqual(classesOf(grid), tokens(KITCHEN_GRID_CLASS), "the skeleton grid is KITCHEN_GRID_CLASS, one grid with one name (Task 1 minor spec-1)");
+  assert.match(grid, /aria-hidden="true"/, "the loading shape is not read out");
+  const cards = tagsOf(html, "kitchen-skeleton-card");
+  assert.equal(cards.length, 6, "six skeleton cards");
+  for (const card of cards) {
+    expectAll(card, [...tokens(KITCHEN_SKELETON_CARD_CLASS), "animate-pulse", "bg-muted"], "a skeleton card on the kit's pulse");
+    for (const old of ["h-64", "rounded-lg", "rounded-md", "w-full"]) assert.ok(!classesOf(card).includes(old), `today's ${old} is gone`);
+  }
+});
+
+test("an empty board: 'All caught up' over today's line in the HTML's empty box, no icon (design 6.5)", () => {
+  const html = states({ cards: [] });
+  assert.deepEqual(classesOf(tagOf(html, "kitchen-empty")), tokens(KITCHEN_EMPTY_BOX_CLASS), "the filtered box's class itself (ruling K2), one constant");
+  assert.deepEqual(classesOf(tagOf(html, "kitchen-empty-title")), tokens(KITCHEN_EMPTY_TITLE_CLASS), "the title");
+  assert.equal(textOf(html, "kitchen-empty-title"), "All caught up", "today's title (a test-used name)");
+  assert.equal(textOf(html, "kitchen-empty"), `All caught up${EMPTY_LINE}`, "the title, then today's line in the box's own type");
+  assert.ok(!html.includes("<svg"), "no icon (values 3.6: the HTML's box has none)");
+  assert.equal(tagsOf(html, "kitchen-filter-empty").length, 0, "not the filtered box");
+});
+
+test("a failed first load and offline-never-loaded keep today's words and components (P44 / P45)", () => {
+  const error = states({ isError: true, hasData: false });
+  for (const words of ["Couldn&#x27;t load the kitchen board", "Check the internet connection, then try again.", ">Try again</button>"]) {
+    assert.ok(error.includes(words), `the error screen says ${words}`);
+  }
+  assert.ok(error.includes("border-destructive/40"), "landmark: the shared ErrorState draws it");
+  assert.equal(states({ isPaused: true, hasData: false }), `<p role="status" class="text-sm text-muted-foreground">${OFFLINE_LINE}</p>`, "today's offline line");
+});
+
+test("today's branch order: loading, error without data, offline without data, then empty (filtered: No orders here), else the grid", () => {
+  const which = (html: string): string =>
+    html.includes("kitchen-skeleton-card") ? "loading"
+    : html.includes("Couldn&#x27;t load") ? "error"
+    : html.includes(OFFLINE_LINE) ? "offline"
+    : html.includes('data-ui="kitchen-filter-empty"') ? "filtered"
+    : html.includes('data-ui="kitchen-empty"') ? "empty"
+    : html === renderToStaticMarkup(GRID) ? "grid" : html;
+  const card = kitchenCard("T-4", 3);
+  const cases: Array<[Partial<StatesProps>, string, string]> = [
+    [{ isLoading: true, hasData: false, isError: true, isPaused: true }, "loading", "loading comes first"],
+    [{ hasData: false, isError: true, isPaused: true }, "error", "a failed first load before offline"],
+    [{ hasData: false, isPaused: true, filtered: true }, "offline", "offline, never loaded, before any empty box"],
+    [{ isError: true, isPaused: true }, "empty", "a failed poll or offline with data: the board, here empty"],
+    [{ filtered: true }, "filtered", "the filter hides every card"],
+    [{ cards: [card], isError: true, isPaused: true, filtered: true }, "grid", "cards on screen: the grid"],
+  ];
+  for (const [over, want, why] of cases) assert.equal(which(states(over)), want, why);
 });
 
 // ── The header's quick links on /kitchen, rendered (owner Q8; design 6.1) ─────────────────────────────────────────

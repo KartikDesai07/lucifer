@@ -8,8 +8,8 @@
 //
 // One place for the class strings the page renders, so Tailwind's source scanner sees each one and the pins
 // (lib/kitchen-layout.test.ts, lib/kitchen-filter-states.test.ts) read the SAME constants the page renders. Task 2 adds the
-// type filter and the filtered-empty box (the strip is the shared lib/ui/refresh-strip.ts); Tasks 3-5 the card and the
-// states' classes.
+// type filter and the filtered-empty box (the strip is the shared lib/ui/refresh-strip.ts); Tasks 3-4 the card, Task 5 the
+// states' classes (the empty board, the skeleton).
 import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { FLOOR_TAB_ON_CLASS } from "@/lib/floor-layout";
 import { FLOOR_FOCUS_RING_CLASS } from "@/lib/floor-tile-classes";
@@ -70,12 +70,19 @@ export const KITCHEN_FILTER_TAB_ON_CLASS = FLOOR_TAB_ON_CLASS;
 /** The others: SEG_OFF, plus the kit's --hover where a pointer can hover (design 6.1; the HTML has none, values 10 #17). */
 export const KITCHEN_FILTER_TAB_OFF_CLASS = "bg-transparent pointer-fine:hover:bg-hover";
 
-// ── The empty boxes (values 3.6; design 6.5; ruling K2) ───────────────────────────────────────────────────────────────
+// ── The board's states (values 3.6, 4.1, 4.2; design 6.5; ruling K2) ─────────────────────────────────────────────────
 
 /** The HTML's empty box, across the board: a dashed 1.5px --border (drawn 1px in Chrome, values 0.5), radius 12, padding
- *  28px 12px, centred 13px --text-3 at the board's line-height normal (75px tall). The filtered-empty "No orders here"
- *  (Task 2); Task 5 gives "All caught up" the same box. */
+ *  28px 12px, centred 13px --text-3 at the board's line-height normal (75px tall with one line). The filtered-empty "No
+ *  orders here" (Task 2) and the empty board's "All caught up" over today's line (Task 5: 92px, 109 when the line wraps). */
 export const KITCHEN_EMPTY_BOX_CLASS = "rounded-[12px] border-[1.5px] border-dashed border-border px-3 py-7 text-center text-[13px] text-subtle-foreground";
+/** "All caught up" in the empty box (design 6.5): the box's 13px, 600, in --text-2; today's line under it in the box's
+ *  --text-3. */
+export const KITCHEN_EMPTY_TITLE_CLASS = "font-semibold text-muted-foreground";
+/** A loading card (design 6.5), six in KITCHEN_GRID_CLASS: the HTML's one-line card, 195px (149 + one 38px row in the
+ *  list's 4px paddings, values 4.2) with its radius 12 (values 4.1), on the kit Skeleton's pulse and colour (the app-wide
+ *  owner note F22: the kit is not changed here). A grid item stretches to its track: no width of its own. */
+export const KITCHEN_SKELETON_CARD_CLASS = "h-[195px] rounded-[12px]";
 
 // ── The card (U4 Task 3; values 4.1, 4.2, 4.4, 4.5; design 6.3, owner Q5) ─────────────────────────────────────────────
 // Card height = 149 + the item list (1 + head 64 + list + footer 19 + 6 + button 46 + 12 + 1; the HTML's 157 + rows with
