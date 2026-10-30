@@ -1335,7 +1335,7 @@ const pinLineRow: Pin = (raw) => {
     check(p, /\baria-checked=\{row\.done\}/.test(attrs), "the row says whether the line is ticked");
     check(p, /\bdisabled=\{pending\}/.test(attrs), "the row is disabled only while its own write runs");
     check(p, /\bonClick=\{\(\) => onToggle\(row, !row\.done\)\}/.test(attrs), "a tap anywhere on the row toggles the tick");
-    check(p, /\bclassName=\{cn\(KITCHEN_ROW_CLASS\b/.test(attrs), "the row is the HTML's full-width row (KITCHEN_ROW_CLASS)");
+    check(p, /\bclassName=\{KITCHEN_ROW_CLASS\}/.test(attrs), "the row is the HTML's full-width row (KITCHEN_ROW_CLASS)");
   }
   check(p, !/<label\b/.test(s) && !/<Checkbox\b/.test(s), "no small checkbox in a label any more: the whole row is the target");
   return p;
@@ -1385,7 +1385,7 @@ const KITCHEN_CASES: PinCase[] = [
       rep("the row stops saying it is ticked", "aria-checked={row.done}", "aria-checked={pending}"),
       rep("the row is disabled for good", "disabled={pending}", "disabled={true}"),
       rep("a tap re-sends the same state", "onToggle(row, !row.done)", "onToggle(row, row.done)"),
-      rep("the row loses the HTML's full-width class", "cn(KITCHEN_ROW_CLASS,", "cn(KITCHEN_ROW_DONE_CLASS,"),
+      rep("the row loses the HTML's full-width class", "className={KITCHEN_ROW_CLASS}", "className={KITCHEN_ROW_TEXT_CLASS}"),
       rep("a submit button", 'type="button"', 'type="submit"'),
       rep("a small box in a label comes back", "<span aria-hidden", '<label className="grid min-h-10 min-w-10"></label><span aria-hidden'),
     ],

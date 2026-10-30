@@ -23,12 +23,14 @@ import {
   KITCHEN_ROW_BOX_CLASS,
   KITCHEN_ROW_BOX_KIND_CLASS,
   KITCHEN_ROW_CLASS,
-  KITCHEN_ROW_DONE_CLASS,
+  KITCHEN_ROW_DONE_TEXT_CLASS,
   KITCHEN_ROW_MOD_CLASS,
   KITCHEN_ROW_MOD_KIND_CLASS,
   KITCHEN_ROW_MORE_CLASS,
   KITCHEN_ROW_NAME_CLASS,
+  KITCHEN_ROW_NAME_DONE_CLASS,
   KITCHEN_ROW_NOTE_CLASS,
+  KITCHEN_ROW_NOTE_TONE_CLASS,
   KITCHEN_ROW_QTY_CLASS,
   KITCHEN_ROW_TEXT_CLASS,
 } from "./kitchen-layout";
@@ -126,7 +128,9 @@ test("the row's classes: the HTML's full-width button, its box, quantity, text c
   expectAll(`<i class="${KITCHEN_ROW_CLASS}">`, ["outline-none", "focus-visible:ring-2", "focus-visible:ring-inset", "focus-visible:ring-primary"], "the row's ring");
   assert.ok(!tokens(KITCHEN_ROW_CLASS).some((t) => t.startsWith("hover:")), "hover only where a pointer can hover (R14)");
   assert.ok(!tokens(KITCHEN_ROW_CLASS).some((t) => t.startsWith("disabled:")), "no look of its own while its write runs (design 6.3)");
-  assert.equal(KITCHEN_ROW_DONE_CLASS, "opacity-50", "a ticked line: the whole row at .5 (values 4.6)");
+  assert.ok(!tokens(KITCHEN_ROW_CLASS).some((t) => t.startsWith("opacity-")), "the row is never dimmed as a whole (ruling K5)");
+  assert.equal(KITCHEN_ROW_DONE_TEXT_CLASS, "text-subtle-foreground", "a ticked line's text: --text-3, 5.3:1 (ruling K5)");
+  assert.equal(KITCHEN_ROW_NAME_DONE_CLASS, "line-through text-subtle-foreground", "a ticked name: struck, in --text-3");
   expectAll(
     `<i class="${KITCHEN_ROW_BOX_CLASS}">`,
     ["flex", "flex-none", "items-center", "justify-center", "size-[18px]", "mt-0.5", "rounded-[5px]", "border-[1.5px]", "text-white"],
@@ -137,8 +141,16 @@ test("the row's classes: the HTML's full-width button, its box, quantity, text c
   expectAll(`<i class="${KITCHEN_ROW_TEXT_CLASS}">`, ["min-w-0", "flex-1", "w-full"], "the text column (w-full: WebView 109, VC-1)");
   expectAll(`<i class="${KITCHEN_ROW_NAME_CLASS}">`, ["block", "text-[15px]", "font-medium", ANYWHERE], "the name");
   expectAll(`<i class="${KITCHEN_ROW_MOD_CLASS}">`, ["block", "text-[12.5px]", ANYWHERE], "a modifier line");
-  assert.deepEqual(KITCHEN_ROW_MOD_KIND_CLASS, { added: "text-muted-foreground", removed: "font-semibold text-foreground" }, "the HTML's meta; a NO line in ink");
-  expectAll(`<i class="${KITCHEN_ROW_NOTE_CLASS}">`, ["block", "text-[12.5px]", "font-semibold", "text-status-warn-ink", ANYWHERE], "the note");
+  assert.deepEqual(
+    KITCHEN_ROW_MOD_KIND_CLASS,
+    {
+      open: { added: "text-muted-foreground", removed: "font-semibold text-foreground" },
+      done: { added: "text-subtle-foreground", removed: "font-semibold text-subtle-foreground" },
+    },
+    "the HTML's meta, a NO line in ink 600; ticked, both --text-3 (the NO line still 600)",
+  );
+  expectAll(`<i class="${KITCHEN_ROW_NOTE_CLASS}">`, ["block", "text-[12.5px]", "font-semibold", ANYWHERE], "the note");
+  assert.deepEqual(KITCHEN_ROW_NOTE_TONE_CLASS, { open: "text-status-warn-ink", done: "text-subtle-foreground" }, "--warn-i, then --text-3");
   expectAll(`<i class="${KITCHEN_ROUND_CLASS}">`, ["px-3", "pt-1.5", "pb-0.5", "text-[11.5px]", "text-subtle-foreground", ANYWHERE], "a round divider (the footer's type)");
   for (const cls of [KITCHEN_ROW_QTY_CLASS, KITCHEN_ROW_NAME_CLASS, KITCHEN_ROW_MOD_CLASS, KITCHEN_ROW_NOTE_CLASS, KITCHEN_ROUND_CLASS]) {
     assert.ok(!tokens(cls).some((t) => t === "break-words" || t === "wrap-break-word"), `overflow-wrap anywhere alone (Task 3's lesson): "${cls}"`);
@@ -155,7 +167,7 @@ test("KitchenLineCard: an open line is one button across the card, a checkbox to
   const row = tagOf(html, "kitchen-line");
   assert.match(row, /^<button type="button" role="checkbox" aria-checked="false" aria-label="Mark Chicken Zinger done"/, "the row button, today's name");
   expectAll(row, tokens(KITCHEN_ROW_CLASS), "the row");
-  assert.ok(!classesOf(row).includes(KITCHEN_ROW_DONE_CLASS), "full opacity while open");
+  assert.ok(!classesOf(tagOf(html, "kitchen-line-qty")).includes(KITCHEN_ROW_DONE_TEXT_CLASS), "the quantity in --text while open");
   assert.ok(!/ disabled=""/.test(row), "enabled while no write runs");
   const box = tagOf(html, "kitchen-line-box");
   expectAll(box, [...tokens(KITCHEN_ROW_BOX_CLASS), KITCHEN_ROW_BOX_KIND_CLASS.open], "the open box");
@@ -167,13 +179,22 @@ test("KitchenLineCard: an open line is one button across the card, a checkbox to
   for (const gone of ["<label", "min-h-10", "min-w-10", "Round 1", "Self-order"]) assert.ok(!html.includes(gone), `no "${gone}" (P49 moved; the meta goes)`);
 });
 
-test("KitchenLineCard: a ticked line at half opacity, struck, the --ok box with the HTML's 11px white tick; in flight it is disabled", () => {
-  const html = renderRow(line(1, 4, { name: "Butter Naan", qty: 3, done: true }));
+test("KitchenLineCard: a ticked line dims its text to --text-3 (ruling K5), struck, the full --ok box with the HTML's tick; in flight it is disabled", () => {
+  const html = renderRow(line(1, 4, { name: "Butter Naan", qty: 3, done: true, modifiers: ["Ghee"], removedModifiers: ["Garlic"], instructions: "Crisp" }));
   const row = tagOf(html, "kitchen-line");
   assert.match(row, /aria-checked="true"/, "it says it is ticked");
   assert.match(row, /aria-label="Mark Butter Naan done"/, "the same accessible name when ticked (today's)");
-  expectAll(row, [KITCHEN_ROW_DONE_CLASS], "half opacity");
-  expectAll(tagOf(html, "kitchen-line-box"), [...tokens(KITCHEN_ROW_BOX_KIND_CLASS.done)], "the ticked box");
+  assert.ok(!classesOf(row).some((t) => t.startsWith("opacity-")), "no opacity on the row (the HTML's .5 is about 3.4:1, ruling K5)");
+  expectAll(tagOf(html, "kitchen-line-qty"), [KITCHEN_ROW_DONE_TEXT_CLASS], "the quantity in --text-3");
+  expectAll(tagOf(html, "kitchen-line-name"), tokens(KITCHEN_ROW_NAME_DONE_CLASS), "the name struck, in --text-3");
+  expectAll(tagsOf(html, "kitchen-line-mod")[0], tokens(KITCHEN_ROW_MOD_KIND_CLASS.done.removed), "the NO line in --text-3, still 600");
+  expectAll(tagsOf(html, "kitchen-line-mod")[1], tokens(KITCHEN_ROW_MOD_KIND_CLASS.done.added), "the + line in --text-3");
+  expectAll(tagOf(html, "kitchen-line-note"), [KITCHEN_ROW_NOTE_TONE_CLASS.done], "the note in --text-3");
+  const openInk = ["text-muted-foreground", "text-foreground", "text-status-warn-ink"];
+  for (const tag of [tagOf(html, "kitchen-line-qty"), tagOf(html, "kitchen-line-name"), tagOf(html, "kitchen-line-note"), ...tagsOf(html, "kitchen-line-mod")]) {
+    assert.ok(!classesOf(tag).some((t) => openInk.includes(t)), `no open ink on a ticked line's text (${tag.slice(0, 60)})`);
+  }
+  expectAll(tagOf(html, "kitchen-line-box"), [...tokens(KITCHEN_ROW_BOX_KIND_CLASS.done)], "the ticked box keeps its full --ok fill and border");
   assert.match(
     html,
     /<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"[^>]*><path d="M5 12l5 5L20 7"><\/path><\/svg>/,
@@ -188,11 +209,11 @@ test("KitchenLineCard: the shared formatter's lines (a NO line in ink 600), 'Not
   const mods = tagsOf(html, "kitchen-line-mod");
   assert.equal(mods.length, 2, "one line per formatter line");
   assert.equal(textOf(html, "kitchen-line-mod", 0), "NO Mushroom, NO Onion", "the removals first (orderItemModifierLines)");
-  expectAll(mods[0], [...tokens(KITCHEN_ROW_MOD_CLASS), ...tokens(KITCHEN_ROW_MOD_KIND_CLASS.removed)], "a NO line");
+  expectAll(mods[0], [...tokens(KITCHEN_ROW_MOD_CLASS), ...tokens(KITCHEN_ROW_MOD_KIND_CLASS.open.removed)], "a NO line");
   assert.equal(textOf(html, "kitchen-line-mod", 1), "+ Extra cheese, Jalapeños", "the additions");
-  expectAll(mods[1], [...tokens(KITCHEN_ROW_MOD_CLASS), KITCHEN_ROW_MOD_KIND_CLASS.added], "an added line: the HTML's meta");
+  expectAll(mods[1], [...tokens(KITCHEN_ROW_MOD_CLASS), KITCHEN_ROW_MOD_KIND_CLASS.open.added], "an added line: the HTML's meta");
   assert.equal(textOf(html, "kitchen-line-note"), "Note: Less sugar, no ice", "the HTML's note words");
-  expectAll(tagOf(html, "kitchen-line-note"), tokens(KITCHEN_ROW_NOTE_CLASS), "the note");
+  expectAll(tagOf(html, "kitchen-line-note"), [...tokens(KITCHEN_ROW_NOTE_CLASS), KITCHEN_ROW_NOTE_TONE_CLASS.open], "the note in --warn-i");
   expectAll(tagOf(html, "kitchen-line-text"), tokens(KITCHEN_ROW_TEXT_CLASS), "the text column");
   expectAll(tagOf(html, "kitchen-line-qty"), tokens(KITCHEN_ROW_QTY_CLASS), "the quantity");
   assert.equal(textOf(html, "kitchen-line-name"), "Margherita (Large)", "the name with its variation once (P11)");

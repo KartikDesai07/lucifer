@@ -7,12 +7,14 @@ import {
   KITCHEN_ROW_BOX_CLASS,
   KITCHEN_ROW_BOX_KIND_CLASS,
   KITCHEN_ROW_CLASS,
-  KITCHEN_ROW_DONE_CLASS,
+  KITCHEN_ROW_DONE_TEXT_CLASS,
   KITCHEN_ROW_MOD_CLASS,
   KITCHEN_ROW_MOD_KIND_CLASS,
   KITCHEN_ROW_MORE_CLASS,
   KITCHEN_ROW_NAME_CLASS,
+  KITCHEN_ROW_NAME_DONE_CLASS,
   KITCHEN_ROW_NOTE_CLASS,
+  KITCHEN_ROW_NOTE_TONE_CLASS,
   KITCHEN_ROW_QTY_CLASS,
   KITCHEN_ROW_TEXT_CLASS,
 } from "@/lib/kitchen-layout";
@@ -30,7 +32,8 @@ interface KitchenLineCardProps {
 // the whole row is the tap target (P49 moved on purpose: no 40px label around a small box) — toggling the tick exactly as
 // today's checkbox did (same request, toast and Undo: useKitchenActions). A checkbox to assistive tech, with today's name
 // "Mark {name} done". The round, ticket number, self-order and age left the line for the card (its dividers, where line and
-// pill, design 11). Every class: lib/kitchen-layout.ts.
+// pill, design 11). A ticked line keeps its box green and dims its text to --text-3, never the whole row (ruling K5: the
+// HTML's opacity .5 reads about 3.4:1). Every class: lib/kitchen-layout.ts.
 export function KitchenLineCard({ row, onToggle, pending }: KitchenLineCardProps) {
   // A checkbox's content is presentational and its aria-label is its whole name, so the quantity, the modifier lines and
   // the note (today sibling text outside the checkbox) are its description: "2×, NO Mushroom, + Extra cheese, Note: …".
@@ -40,6 +43,7 @@ export function KitchenLineCard({ row, onToggle, pending }: KitchenLineCardProps
   const hasMore = modifierLines.length > 0 || Boolean(row.instructions);
   const qtyId = `${id}-qty`;
   const moreId = `${id}-more`;
+  const state = row.done ? "done" : "open";
   return (
     <button
       type="button"
@@ -49,26 +53,26 @@ export function KitchenLineCard({ row, onToggle, pending }: KitchenLineCardProps
       aria-describedby={hasMore ? `${qtyId} ${moreId}` : qtyId}
       data-ui="kitchen-line"
       disabled={pending}
-      className={cn(KITCHEN_ROW_CLASS, row.done && KITCHEN_ROW_DONE_CLASS)}
+      className={KITCHEN_ROW_CLASS}
       onClick={() => onToggle(row, !row.done)}
     >
       {/* The drawn box is decoration (the row carries the state). The HTML draws its white tick always, invisible on an
           open box over white (a ticked look in the dark theme, values 10 #1): ours only when ticked. */}
-      <span aria-hidden="true" data-ui="kitchen-line-box" className={cn(KITCHEN_ROW_BOX_CLASS, KITCHEN_ROW_BOX_KIND_CLASS[row.done ? "done" : "open"])}>
+      <span aria-hidden="true" data-ui="kitchen-line-box" className={cn(KITCHEN_ROW_BOX_CLASS, KITCHEN_ROW_BOX_KIND_CLASS[state])}>
         {row.done && (
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M5 12l5 5L20 7" />
           </svg>
         )}
       </span>
-      <span id={qtyId} data-ui="kitchen-line-qty" className={KITCHEN_ROW_QTY_CLASS}>
+      <span id={qtyId} data-ui="kitchen-line-qty" className={cn(KITCHEN_ROW_QTY_CLASS, row.done && KITCHEN_ROW_DONE_TEXT_CLASS)}>
         {row.qty}×
       </span>
       <span data-ui="kitchen-line-text" className={KITCHEN_ROW_TEXT_CLASS}>
         {/* `row.name` ALREADY carries the variation — buildKitchenRows builds it with orderItemLabel(), which appends
             "(Large)" itself. Appending row.variation here too printed it twice ("Café Latte (Large) (Large)"). The field
             stays on the row for callers that need the parts separately; this renderer must not re-add it. */}
-        <span data-ui="kitchen-line-name" className={cn(KITCHEN_ROW_NAME_CLASS, row.done && "line-through")}>
+        <span data-ui="kitchen-line-name" className={cn(KITCHEN_ROW_NAME_CLASS, row.done && KITCHEN_ROW_NAME_DONE_CLASS)}>
           {row.name}
         </span>
         {/* The words come from the shared formatter (the KOT prints the same lines). A removal ("NO Mushroom") is what the
@@ -80,13 +84,13 @@ export function KitchenLineCard({ row, onToggle, pending }: KitchenLineCardProps
               <span
                 key={line}
                 data-ui="kitchen-line-mod"
-                className={cn(KITCHEN_ROW_MOD_CLASS, KITCHEN_ROW_MOD_KIND_CLASS[line.startsWith(`${REMOVED_MODIFIER_PREFIX} `) ? "removed" : "added"])}
+                className={cn(KITCHEN_ROW_MOD_CLASS, KITCHEN_ROW_MOD_KIND_CLASS[state][line.startsWith(`${REMOVED_MODIFIER_PREFIX} `) ? "removed" : "added"])}
               >
                 {line}
               </span>
             ))}
             {row.instructions && (
-              <span data-ui="kitchen-line-note" className={KITCHEN_ROW_NOTE_CLASS}>
+              <span data-ui="kitchen-line-note" className={cn(KITCHEN_ROW_NOTE_CLASS, KITCHEN_ROW_NOTE_TONE_CLASS[state])}>
                 Note: {row.instructions}
               </span>
             )}

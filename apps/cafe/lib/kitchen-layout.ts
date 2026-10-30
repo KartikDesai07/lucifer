@@ -120,12 +120,14 @@ export const KITCHEN_CARD_LINES_CLASS = "flex flex-col py-1";
 
 /** A line: the HTML's row, ONE button across the card (edge to edge inside its border, square corners), its parts
  *  top-aligned (written: WebView 109's UA gives buttons flex-start too, U3 VC-1) 10px apart, padding 9px 12px, text left in
- *  --text. Hover --hover where a pointer can hover (R14; the HTML's scp4), the HTML's button feel (its opacity fades .16s
- *  on a tick; the press), an inset 2px keyboard ring (the card clips: an outer ring would be cut at its edges; the HTML's
- *  is Chrome's default, values 10 #17). No look of its own while its write runs (design 6.3: the optimistic tick shows). */
+ *  --text. Hover --hover where a pointer can hover (R14; the HTML's scp4), the HTML's button feel (the press), an inset 2px
+ *  keyboard ring (the card clips: an outer ring would be cut at its edges; the HTML's is Chrome's default, values 10 #17).
+ *  No look of its own while its write runs (design 6.3: the optimistic tick shows). Never dimmed as a whole (ruling K5). */
 export const KITCHEN_ROW_CLASS = `flex w-full cursor-pointer items-start gap-2.5 border-0 bg-transparent px-3 py-[9px] text-left text-foreground pointer-fine:hover:bg-hover outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${HTML_PRESS_CLASS}`;
-/** A ticked line (values 4.6): the whole row at half opacity. */
-export const KITCHEN_ROW_DONE_CLASS = "opacity-50";
+/** A ticked line's text (ruling K5, design 8): the quantity, the struck name, every modifier line and the note in --text-3
+ *  (5.3:1 on white); the box keeps its full --ok fill. Not the HTML's whole row at opacity .5 (values 4.6: about 3.4:1, an
+ *  HTML slip not copied). */
+export const KITCHEN_ROW_DONE_TEXT_CLASS = "text-subtle-foreground";
 /** The box (values 4.1): 18px, 2px below the row's text top, radius 5, a 1.5px border (drawn 1px, values 0.5), the
  *  HTML's white tick centred in it. Its colours are KITCHEN_ROW_BOX_KIND_CLASS's. */
 export const KITCHEN_ROW_BOX_CLASS = "mt-0.5 flex size-[18px] flex-none items-center justify-center rounded-[5px] border-[1.5px] text-white";
@@ -136,17 +138,23 @@ export const KITCHEN_ROW_QTY_CLASS = "min-w-[26px] text-[15px] font-bold [overfl
 /** The text column (values 4.1): the room the box and the quantity leave (w-full is WebView 109's stretch rule, U3 VC-1;
  *  flex-1's 0% basis decides the width everywhere). */
 export const KITCHEN_ROW_TEXT_CLASS = "w-full min-w-0 flex-1";
-/** The name (values 4.1): 15px 500 (19px lines), struck through when ticked. */
+/** The name (values 4.1): 15px 500 (19px lines); ticked, struck through in --text-3 (KITCHEN_ROW_NAME_DONE_CLASS). */
 export const KITCHEN_ROW_NAME_CLASS = "block text-[15px] font-medium [overflow-wrap:anywhere]";
+export const KITCHEN_ROW_NAME_DONE_CLASS = `line-through ${KITCHEN_ROW_DONE_TEXT_CLASS}`;
 /** A modifier line from the shared formatter (values 4.1 meta): 12.5px (17px lines); its colour per kind. */
 export const KITCHEN_ROW_MOD_CLASS = "block text-[12.5px] [overflow-wrap:anywhere]";
-/** Additions in --text-2 (the HTML's meta); a "NO …" removal in --text 600 (today's emphasis: what the cook must not miss). */
-export const KITCHEN_ROW_MOD_KIND_CLASS = { added: "text-muted-foreground", removed: "font-semibold text-foreground" } as const;
+/** Open: additions in --text-2 (the HTML's meta), a "NO …" removal in --text 600 (today's emphasis: what the cook must not
+ *  miss). Ticked: both in --text-3, the removal still 600 (ruling K5). */
+export const KITCHEN_ROW_MOD_KIND_CLASS = {
+  open: { added: "text-muted-foreground", removed: "font-semibold text-foreground" },
+  done: { added: KITCHEN_ROW_DONE_TEXT_CLASS, removed: `font-semibold ${KITCHEN_ROW_DONE_TEXT_CLASS}` },
+} as const;
 /** The modifier lines and the note together (the row's accessible description, Task 4 fix 1): a plain block, so the lines
  *  lay out as the HTML's meta and note under the name. */
 export const KITCHEN_ROW_MORE_CLASS = "block";
-/** The instruction "Note: …" (values 4.1): 12.5px 600 in --warn-i. */
-export const KITCHEN_ROW_NOTE_CLASS = "block text-[12.5px] font-semibold text-status-warn-ink [overflow-wrap:anywhere]";
+/** The instruction "Note: …" (values 4.1): 12.5px 600; --warn-i while open, --text-3 when ticked (ruling K5). */
+export const KITCHEN_ROW_NOTE_CLASS = "block text-[12.5px] font-semibold [overflow-wrap:anywhere]";
+export const KITCHEN_ROW_NOTE_TONE_CLASS = { open: "text-status-warn-ink", done: KITCHEN_ROW_DONE_TEXT_CLASS } as const;
 /** A round divider (owner Q6, design 6.3, ours): the footer's type (11.5px --text-3, 15px lines), padding 6px 12px 2px. */
 export const KITCHEN_ROUND_CLASS = "px-3 pt-1.5 pb-0.5 text-[11.5px] text-subtle-foreground [overflow-wrap:anywhere]";
 /** The footer (values 4.1): the ticket numbers and time left, the count right, 8px apart at least, padding 0 12px 4px,
