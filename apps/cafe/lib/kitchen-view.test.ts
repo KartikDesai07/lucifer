@@ -239,8 +239,8 @@ test("KitchenOrderCard renders the view: code, where, pill with 'Late' for scree
   expectAll(tagOf(html, "kitchen-card-code"), tokens(KITCHEN_CARD_CODE_CLASS), "the code");
   assert.equal(textOf(html, "kitchen-card-where"), "Table · Order #012 · Token 12", "the where line");
   expectAll(tagOf(html, "kitchen-card-pill"), [...tokens(KITCHEN_PILL_CLASS), ...tokens(KITCHEN_PILL_BAND_CLASS.late)], "the late pill");
-  assert.equal(textOf(html, "kitchen-card-pill"), "25 min Late", "the pill's words, 'Late' after them");
-  assert.match(html, /<span class="sr-only"> Late<\/span>/, "'Late' is read to screen readers only");
+  assert.equal(textOf(html, "kitchen-card-pill"), "25 min, Late", "the pill's words, ', Late' after them");
+  assert.match(html, /<span class="sr-only">, Late<\/span>/, "', Late' is read to screen readers only");
   expectAll(tagOf(html, "kitchen-card-lines"), tokens(KITCHEN_CARD_LINES_CLASS), "the item list");
   assert.equal(tagsOf(html, "kitchen-card-lines").length, 1, "one item list");
   expectAll(tagOf(html, "kitchen-card-footer"), tokens(KITCHEN_CARD_FOOTER_CLASS), "the footer");

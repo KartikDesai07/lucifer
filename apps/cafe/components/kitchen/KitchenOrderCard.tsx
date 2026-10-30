@@ -71,7 +71,7 @@ export function KitchenOrderCard({
         </div>
         <span data-ui="kitchen-card-pill" className={cn(KITCHEN_PILL_CLASS, KITCHEN_PILL_BAND_CLASS[pill.band])} title={pill.title}>
           {pill.text}
-          {pill.srLate && <span className="sr-only"> Late</span>}
+          {pill.srLate && <span className="sr-only">, Late</span>}
         </span>
       </div>
 
