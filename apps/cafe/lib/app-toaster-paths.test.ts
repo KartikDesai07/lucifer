@@ -77,7 +77,7 @@ test("PIN: owner Q19 — on /pos the toast clears the order bar and the sheet's 
   }
   assert.ok(!pos.includes("tab:bottom-[92px]!"), "not the plain 92px on /pos (ruling P49)");
   assert.ok(!pos.includes("bottom-[140px]!"), "not the plain 140px on /pos (ruling P56)");
-  assert.ok(tokens(STAFF_TOASTER_PROPS.className).includes("bottom-[140px]!"), "every other page keeps the staff toaster's plain 140px (P56: /pos and, U3 Task 5, /tables only)");
+  assert.ok(tokens(STAFF_TOASTER_PROPS.className).includes("bottom-[140px]!"), "every other page keeps the staff toaster's plain 140px (P56: /pos and, U3 Task 5 / U4 Task 1, /tables and /kitchen only)");
   assert.ok(!pos.includes("lg:bottom-[24px]!"), "no 24px from 1024px on /pos: the bar and the sheet's buttons are there up to 1279px");
   assert.equal(pos.length, tokens(STAFF_TOASTER_PROPS.className).length, "the same five tokens, only the 24px cut-off moves");
   assert.ok(tokens(STAFF_TOASTER_PROPS.className).includes("lg:bottom-[24px]!"), "every other page keeps the HTML's 24px from 1024px");
@@ -88,22 +88,25 @@ test("PIN: owner Q19 — on /pos the toast clears the order bar and the sheet's 
   assert.ok(92 > 14 + 50, "92px clears the sheet's Send KOT / Pay (50px tall, 14px above the foot: cartFootB)");
   assert.equal(POS_CART_COLUMN_MIN_PX, 80 * 16, "xl: (80rem) is where the cart column takes over on /pos");
   // U3 Task 5 (moved on purpose, design 6.8: "/pos only" → "/pos and /tables"): one element picks among three sets.
+  // U4 Task 1 (moved on purpose, Kitchen design 6.6): /kitchen takes the /tables set.
   const src = read("components/layout/AppToaster.tsx");
   assert.match(src, /import \{ isPosPath \} from "@\/lib\/pos-layout";/, "the route read through isPosPath");
   assert.match(src, /import \{ isFloorPath \} from "@\/lib\/floor-layout";/, "and through isFloorPath");
+  assert.match(src, /import \{ isKitchenPath \} from "@\/lib\/kitchen-layout";/, "and through isKitchenPath");
   assert.match(
     src,
-    /return isPosPath\(pathname\) \? POS_TOASTER_PROPS : isFloorPath\(pathname\) \? FLOOR_TOASTER_PROPS : STAFF_TOASTER_PROPS;/,
-    "the three-way choice: /pos, /tables, every other staff page",
+    /if \(isPosPath\(pathname\)\) return POS_TOASTER_PROPS;\s*return isFloorPath\(pathname\) \|\| isKitchenPath\(pathname\) \? FLOOR_TOASTER_PROPS : STAFF_TOASTER_PROPS;/,
+    "the three-way choice: /pos, /tables and /kitchen, every other staff page",
   );
   assert.equal(count(src, "<Toaster {...toasterPropsFor(pathname)} />"), 1, "one Toaster element for all three (a navigation only changes its offset, no remount)");
   assert.equal(count(src, "<Toaster"), 2, "landmark: that element and the diner menu's");
 });
 
 // U3 Task 5 (design 6.8, U1 P49): on /tables the toasts sit at the staff offsets, each plus the bottom safe-area inset at
-// every width (the page's foot and the strip respect it; no existing set did at every width). Every other staff page keeps
-// the staff set (an app-wide fix is the owner's open shell item).
-test("PIN: /tables gets the staff toaster with each offset plus the safe-area inset; /pos keeps its set, every other page the staff set", () => {
+// every width (the page's foot and the strip respect it; no existing set did at every width). U4 Task 1 (moved on purpose,
+// Kitchen design 6.6): /kitchen, whose board foot and strip respect the inset too, takes the same set. Every other staff
+// page keeps the staff set (an app-wide fix is the owner's open shell item).
+test("PIN: /tables and /kitchen get the staff toaster with each offset plus the safe-area inset; /pos keeps its set, every other page the staff set", () => {
   assert.deepEqual(
     tokens(FLOOR_TOASTER_PROPS.className),
     [
@@ -118,8 +121,10 @@ test("PIN: /tables gets the staff toaster with each offset plus the safe-area in
   assert.deepEqual(withoutOffset(FLOOR_TOASTER_PROPS), withoutOffset(STAFF_TOASTER_PROPS), "the /tables toaster is the staff toaster but for its offset (one look)");
   assert.equal(toasterPropsFor("/tables"), FLOOR_TOASTER_PROPS, "/tables: the Floor's set");
   assert.equal(toasterPropsFor("/tables/"), FLOOR_TOASTER_PROPS, "/tables/: the Floor's set");
+  assert.equal(toasterPropsFor("/kitchen"), FLOOR_TOASTER_PROPS, "/kitchen: the same inset set (Kitchen design 6.6)");
+  assert.equal(toasterPropsFor("/kitchen/"), FLOOR_TOASTER_PROPS, "/kitchen/: the same inset set");
   assert.equal(toasterPropsFor("/pos"), POS_TOASTER_PROPS, "/pos keeps its own set (owner Q19, P49, P56)");
-  for (const p of ["/", "/orders", "/tables/setup", "/tables/qr", "/customers", "/requests"]) {
+  for (const p of ["/", "/orders", "/tables/setup", "/tables/qr", "/customers", "/requests", "/kitchenx", "/settings/kitchen-ticket", "/now-serving"]) {
     assert.equal(toasterPropsFor(p), STAFF_TOASTER_PROPS, `${p} keeps the staff set`);
   }
 });

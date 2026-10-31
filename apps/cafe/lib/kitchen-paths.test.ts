@@ -28,6 +28,21 @@ const KITCHEN_CARD = "apps/cafe/components/kitchen/KitchenLineCard.tsx";
 const KITCHEN_CHIP = "apps/cafe/components/kitchen/KitchenFreshnessChip.tsx";
 const KITCHEN_BODY = "apps/cafe/components/kitchen/KitchenBoardBody.tsx";
 const KITCHEN_BOARD_LIB = "apps/cafe/lib/kitchen-board.ts";
+// U4 Task 1: the page's tick / Ready handlers moved into their own hook, and the page's layout classes into a lib.
+const KITCHEN_ACTIONS = "apps/cafe/hooks/use-kitchen-actions.ts";
+const KITCHEN_LAYOUT = "apps/cafe/lib/kitchen-layout.ts";
+// U4 Task 2: the header's rules (filter, second line, strip rule), the type filter, the board's states (ruling K1: split
+// out of KitchenBoardBody), and the refresh strip shared with the Floor (its component and its classes).
+const KITCHEN_HEADER = "apps/cafe/lib/kitchen-header.ts";
+const KITCHEN_TYPE_FILTER = "apps/cafe/components/kitchen/KitchenTypeFilter.tsx";
+const KITCHEN_STATES = "apps/cafe/components/kitchen/KitchenBoardStates.tsx";
+const REFRESH_STRIP = "apps/cafe/components/shared/RefreshStrip.tsx";
+const REFRESH_STRIP_CLASSES = "apps/cafe/lib/ui/refresh-strip.ts";
+// U4 Task 3: the card's words (code, where line, pill, footer, button) and the card itself (rebuilt to the HTML's).
+const KITCHEN_VIEW = "apps/cafe/lib/kitchen-view.ts";
+const KITCHEN_ORDER_CARD = "apps/cafe/components/kitchen/KitchenOrderCard.tsx";
+// U4 Task 4: when a card rises (the record of seen ids the board body keeps).
+const KITCHEN_RISE = "apps/cafe/lib/kitchen-rise.ts";
 const ITEMS_ROUTE = "apps/cafe/app/api/orders/[id]/items/route.ts";
 const ADDROUND = "apps/cafe/lib/order-request-accept-addround.ts";
 
@@ -136,10 +151,14 @@ test("PIN (18b): kitchen/page.tsx contains no AdminGuard (staff and admin both u
 
 // ── (19) hygiene: no console., no hardcoded cafe name ───────────────────────
 
-test("PIN (19): use-kitchen.ts, kitchen/page.tsx, KitchenBoardBody.tsx, KitchenLineCard.tsx, KitchenFreshnessChip.tsx contain no console. and no hardcoded cafe name", () => {
+test("PIN (19): use-kitchen.ts, kitchen/page.tsx, KitchenBoardBody.tsx, KitchenLineCard.tsx, KitchenFreshnessChip.tsx, use-kitchen-actions.ts, kitchen-layout.ts, kitchen-header.ts, KitchenTypeFilter.tsx, KitchenBoardStates.tsx, RefreshStrip.tsx, ui/refresh-strip.ts, kitchen-view.ts, KitchenOrderCard.tsx, kitchen-rise.ts contain no console. and no hardcoded cafe name", () => {
   const consoleNeedle = "console" + ".";
   const luciferNeedle = "Luci" + "fer";
-  const files = [USE_KITCHEN, KITCHEN_PAGE, KITCHEN_BODY, KITCHEN_CARD, KITCHEN_CHIP];
+  const files = [
+    USE_KITCHEN, KITCHEN_PAGE, KITCHEN_BODY, KITCHEN_CARD, KITCHEN_CHIP, KITCHEN_ACTIONS, KITCHEN_LAYOUT,
+    KITCHEN_HEADER, KITCHEN_TYPE_FILTER, KITCHEN_STATES, REFRESH_STRIP, REFRESH_STRIP_CLASSES, KITCHEN_VIEW,
+    KITCHEN_ORDER_CARD, KITCHEN_RISE,
+  ];
   for (const rel of files) {
     const raw = readSrc(rel);
     assert.ok(!raw.includes(consoleNeedle), `${rel} must NOT contain ${consoleNeedle} anywhere, not even in a comment`);
@@ -152,6 +171,16 @@ test("PIN (19): use-kitchen.ts, kitchen/page.tsx, KitchenBoardBody.tsx, KitchenL
   assert.match(readSrc(KITCHEN_BODY), /export function KitchenBoardBody\(/, "positive landmark: KitchenBoardBody.tsx must export KitchenBoardBody(");
   assert.match(readSrc(KITCHEN_CARD), /export function KitchenLineCard\(/, "positive landmark: KitchenLineCard.tsx must export KitchenLineCard(");
   assert.match(readSrc(KITCHEN_CHIP), /export function KitchenFreshnessChip\(/, "positive landmark: KitchenFreshnessChip.tsx must export KitchenFreshnessChip(");
+  assert.match(readSrc(KITCHEN_ACTIONS), /export function useKitchenActions\(/, "positive landmark: use-kitchen-actions.ts must export useKitchenActions(");
+  assert.match(readSrc(KITCHEN_LAYOUT), /export function isKitchenPath\(/, "positive landmark: kitchen-layout.ts must export isKitchenPath(");
+  assert.match(readSrc(KITCHEN_HEADER), /export function kitchenHeaderLine\(/, "positive landmark: kitchen-header.ts must export kitchenHeaderLine(");
+  assert.match(readSrc(KITCHEN_TYPE_FILTER), /export function KitchenTypeFilter\(/, "positive landmark: KitchenTypeFilter.tsx must export KitchenTypeFilter(");
+  assert.match(readSrc(KITCHEN_STATES), /export function KitchenBoardStates\(/, "positive landmark: KitchenBoardStates.tsx must export KitchenBoardStates(");
+  assert.match(readSrc(REFRESH_STRIP), /export function RefreshStrip\(/, "positive landmark: RefreshStrip.tsx must export RefreshStrip(");
+  assert.match(readSrc(REFRESH_STRIP_CLASSES), /export const REFRESH_STRIP_CLASS =/, "positive landmark: ui/refresh-strip.ts must export REFRESH_STRIP_CLASS");
+  assert.match(readSrc(KITCHEN_VIEW), /export function kitchenCardCode\(/, "positive landmark: kitchen-view.ts must export kitchenCardCode(");
+  assert.match(readSrc(KITCHEN_ORDER_CARD), /export function KitchenOrderCard\(/, "positive landmark: KitchenOrderCard.tsx must export KitchenOrderCard(");
+  assert.match(readSrc(KITCHEN_RISE), /export function kitchenRiseOf\(/, "positive landmark: kitchen-rise.ts must export kitchenRiseOf(");
 });
 
 // ── (20) freshness chip decoupling ──────────────────────────────────────────
@@ -183,6 +212,24 @@ test("PIN (21): each new UI-slice file stays within its stated line budget +20%"
     // Polish pass (2026-10-01): the board's skeleton / error / empty / grid,
     // extracted from kitchen/page.tsx so the page keeps its own budget.
     [KITCHEN_BODY, 85],
+    // U4 Task 1 (2026-10-30): today's tick / Ready handlers, moved out of the page (<= 120 lines), and the page's layout
+    // classes, which Tasks 2-5 grow (<= 300 lines, the house limit).
+    [KITCHEN_ACTIONS, 100],
+    [KITCHEN_LAYOUT, 250],
+    // U4 Task 2 (2026-10-30): the header's rules (<= 120), the type filter (<= 60), the board's states split out of
+    // KitchenBoardBody (ruling K1; <= 120: Task 5 restyles the skeleton and the empty board there; the body keeps its 85,
+    // <= 102), the refresh strip shared with the Floor (<= 60) and its classes (<= 36).
+    [KITCHEN_HEADER, 100],
+    [KITCHEN_TYPE_FILTER, 50],
+    [KITCHEN_STATES, 100],
+    [REFRESH_STRIP, 50],
+    [REFRESH_STRIP_CLASSES, 30],
+    // U4 Task 3 (2026-10-30): the card's words (<= 144; Task 4 adds the round groups there) and the card (<= 156; Task 4
+    // rebuilds its lines and round dividers in it). The card had no budget before.
+    [KITCHEN_VIEW, 120],
+    [KITCHEN_ORDER_CARD, 130],
+    // U4 Task 4 (2026-10-30): the rise's record (<= 42). New, with its own budget; no budget above loosened.
+    [KITCHEN_RISE, 35],
   ];
   for (const [rel, budget] of budgets) {
     const cap = Math.ceil(budget * 1.2);
@@ -259,8 +306,6 @@ test("PIN: KitchenLineCard must NOT re-append row.variation — buildKitchenRows
 
 // ── (22) Ready is never blocked by unticked lines (owner decision 2026-09-26) ──
 
-const KITCHEN_ORDER_CARD = "apps/cafe/components/kitchen/KitchenOrderCard.tsx";
-
 test("PIN (22): the Ready button is NOT gated on allDone — a rush leaves no time to tick, and a card that cannot be cleared strands the board", () => {
   const src = stripComments(readSrc(KITCHEN_ORDER_CARD));
 
@@ -282,9 +327,12 @@ test("PIN (22): the Ready button is NOT gated on allDone — a rush leaves no ti
     'the retired "Tick every line first" label must not come back — it described a block that no longer exists',
   );
 
-  // The nudge survives the block: a part-done card still says what is being skipped.
+  // The nudge survives the block: a part-done card still says what is being skipped. U4 Task 3 MOVED the label with the
+  // code: the card draws lib/kitchen-view.ts's kitchenButton(card) ("Mark ready · {n} not ticked"), which computes the
+  // open count; the meaning is unchanged.
+  assert.match(src, /kitchenButton\(card\)/, "landmark: the card's button label comes from kitchenButton(card)");
   assert.match(
-    src,
+    stripComments(readSrc(KITCHEN_VIEW)),
     /card\.totalCount\s*-\s*card\.doneCount/,
     "the Ready label must still name how many lines are unticked, so a cook knows what they are skipping",
   );
@@ -294,9 +342,17 @@ test("PIN (22b): readyToastMessage distinguishes a finished card from one cleare
   const src = stripComments(readSrc("apps/cafe/lib/kitchen-cards.ts"));
   assert.match(src, /export function readyToastMessage/, "kitchen-cards.ts must export readyToastMessage");
 
-  const pageSrc = stripComments(readSrc(KITCHEN_PAGE));
-  assert.match(pageSrc, /readyToastMessage\(card\)/, "the kitchen page's ready toast must use readyToastMessage(card)");
-  assert.match(pageSrc, /label:\s*"Undo"/, "the ready toast must still offer Undo — clearing the wrong card must stay recoverable");
+  // U4 Task 1 MOVED this pin with the code: the page's handlers live in useKitchenActions (hooks/use-kitchen-actions.ts),
+  // which the page calls; the meaning is unchanged. U4 Task 3 (owner Q9): the toast reads the same card with its where
+  // set to the card's code ("Parcel", "Token 12", the table), so the message is still readyToastMessage's.
+  const actionsSrc = stripComments(readSrc(KITCHEN_ACTIONS));
+  assert.match(
+    actionsSrc,
+    /readyToastMessage\(\{ \.\.\.card, tableLabel: kitchenCardCode\(card\) \}\)/,
+    "the kitchen's ready toast must use readyToastMessage on the card, named by its code",
+  );
+  assert.match(actionsSrc, /label:\s*"Undo"/, "the ready toast must still offer Undo — clearing the wrong card must stay recoverable");
+  assert.match(stripComments(readSrc(KITCHEN_PAGE)), /useKitchenActions\(\)/, "landmark: the kitchen page uses those handlers");
 });
 
 test("PIN (23): P4-C — the ready write stamps the instant the cook SAW, clamped to now, so a round fired since the last refresh is never buried", () => {
@@ -340,9 +396,10 @@ test("PIN (23): P4-C — the ready write stamps the instant the cook SAW, clampe
   assert.match(serverSrc, /readyUpdateOf\(ready,\s*seenFiredAt,\s*Date\.now\(\)\)/, "the writer passes the caller's seenFiredAt and the server clock");
   assert.match(serverSrc, /\{\s*upsert:\s*true\s*\}/, "ready upserts the tick doc");
 
-  // The client must actually SEND it, keyed on the card's newest instant.
-  const pageSrc = stripComments(readSrc(KITCHEN_PAGE));
-  assert.match(pageSrc, /seenFiredAt:\s*card\.newestFiredAt/,
+  // The client must actually SEND it, keyed on the card's newest instant. U4 Task 1 MOVED the send with the code: the
+  // Ready handler lives in useKitchenActions now (the page calls it; P13's landmark above).
+  const actionsSrc = stripComments(readSrc(KITCHEN_ACTIONS));
+  assert.match(actionsSrc, /seenFiredAt:\s*card\.newestFiredAt/,
     "the Ready tap must send card.newestFiredAt — cardFiredAt is the OLDEST unfinished line and would stamp far too early");
   const cardsSrc = stripComments(readSrc("apps/cafe/lib/kitchen-cards.ts"));
   assert.match(cardsSrc, /newestFiredAt:/, "buildKitchenCards must publish newestFiredAt on every card");

@@ -17,6 +17,7 @@ import { APP_NAME } from "@/lib/constants";
 import { productImageUrl } from "@/lib/images";
 import { headerWordsFor } from "@/lib/page-titles";
 import { isFloorPath } from "@/lib/floor-layout";
+import { isKitchenPath } from "@/lib/kitchen-layout";
 import { isOrdersPath } from "@/lib/orders-layout";
 import { isPosPath } from "@/lib/pos-layout";
 import type { PrinterDotTone } from "@/lib/printer/printer-dot";
@@ -41,11 +42,14 @@ const HEADER_CLOCK_MS = 60_000;
 // (HeaderQuickTabs).
 // On /tables (U3 Task 1; the Floor values 1.2, design 6.1) it is the HTML's Floor header: data-floor making its gaps 12px
 // as on /orders; New order alone (no Tables link: owner Q1) in the HTML Floor button's outline look (HeaderQuickTabs).
+// On /kitchen (U4 Task 1; the Kitchen values 2.1-2.2, design 6.1) it is the HTML's Kitchen header: data-kitchen making its
+// gaps 12px; the quick links only from 1280px (owner Q8, HeaderQuickTabs).
 export function Header() {
   const pathname = usePathname() ?? "";
   const pos = isPosPath(pathname);
   const orders = isOrdersPath(pathname);
   const floor = isFloorPath(pathname);
+  const kitchen = isKitchenPath(pathname);
   const settings = useSettings();
   const name = settings.data?.restaurantName?.trim() || APP_NAME;
   // The cafe's own logo only (ruling R3), as the nav's brand tile.
@@ -62,7 +66,7 @@ export function Header() {
   const room = usePosHeaderRoom(pos, actionsBox);
 
   return (
-    <header className="sticky top-0 z-[3] flex min-h-14 items-center gap-2.5 border-b border-border bg-card px-3 leading-[normal] text-foreground tab:px-5 data-pos:static data-pos:z-auto data-pos:h-14 data-pos:min-w-0 data-pos:gap-4 data-orders:gap-3 data-floor:gap-3 data-room-out:relative" data-ui="header" data-pos={pos ? "" : undefined} data-orders={orders ? "" : undefined} data-floor={floor ? "" : undefined} data-room-out={room.level > 0 ? "" : undefined}>
+    <header className="sticky top-0 z-[3] flex min-h-14 items-center gap-2.5 border-b border-border bg-card px-3 leading-[normal] text-foreground tab:px-5 data-pos:static data-pos:z-auto data-pos:h-14 data-pos:min-w-0 data-pos:gap-4 data-orders:gap-3 data-floor:gap-3 data-kitchen:gap-3 data-room-out:relative" data-ui="header" data-pos={pos ? "" : undefined} data-orders={orders ? "" : undefined} data-floor={floor ? "" : undefined} data-kitchen={kitchen ? "" : undefined} data-room-out={room.level > 0 ? "" : undefined}>
       {pos ? (
         <PosHeaderBrand name={name} logoUrl={logoUrl} room={room} />
       ) : (

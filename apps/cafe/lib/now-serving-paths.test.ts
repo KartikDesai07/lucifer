@@ -279,10 +279,24 @@ test("NowServingLink: reads settings first, then returns only its children while
   assert.ok(read("components/settings/SettingsFields.tsx").includes("export { HINT_CLASS, HINT_LINK_CLASS };"), "SettingsFields re-exports the same styles");
 });
 
-test("links: exactly one NowServingLink on the Kitchen header (button, wrapping the chip) and one under the token settings (hint)", () => {
+// U4 Task 1 (Kitchen design 6.1, owner Q10): the Kitchen header's button wears U3's outline header look (the HTML Floor
+// button's: 36px, 0 12px, 13.5px/500, a 14px icon 6px away, hover --surface-2), made to hold inside the header's actions
+// slot, and is not drawn below 720px (the More sheet's Now Serving tile is the way there on a phone).
+test("NowServingLink: the button is U3's outline header button, hidden below 720px; the hint keeps its own look", () => {
+  const src = read(LINK);
+  assert.ok(src.includes('import { HEADER_ACTION_FLOOR_OUTLINE_CLASS } from "@/components/layout/header-classes";'), "the look comes from the header's classes");
+  assert.equal(count(src, '<Button asChild variant="outline" className={cn(HEADER_ACTION_FLOOR_OUTLINE_CLASS, "max-tab:hidden")}>'), 1, "the kit outline Button in that look, hidden below 720px (Q10)");
+  assert.ok(src.includes('className={cn(HINT_LINK_CLASS, "inline-flex min-h-11 items-center")}'), "landmark: the hint link keeps its 44px look");
+});
+
+// U4 Task 2 (Kitchen design 6.2 / 11, owner Q3; P55 moved on purpose): the freshness chip leaves the Kitchen header (the
+// second line says "Updated …" and the refresh strip carries a failure), so the button no longer wraps it; the chip stays
+// unchanged for /now-serving (P52 above).
+test("links: exactly one NowServingLink on the Kitchen header (button, after the type filter, no chip) and one under the token settings (hint)", () => {
   const kitchen = read(KITCHEN_PAGE);
   assert.equal(count(kitchen, "<NowServingLink"), 1);
-  assert.ok(kitchen.includes('<NowServingLink variant="button"><KitchenFreshnessChip dataUpdatedAt={board.dataUpdatedAt} /></NowServingLink>'));
+  assert.ok(kitchen.includes('actions={<><KitchenTypeFilter value={filter} onChange={setFilter} /><NowServingLink variant="button" /></>}'), "the header's actions: the filter, then Now Serving");
+  assert.ok(!kitchen.includes("KitchenFreshnessChip"), "the chip is not drawn on /kitchen");
   const tokens = read(TOKENS_PAGE);
   assert.equal(count(tokens, "<NowServingLink"), 1);
   assert.ok(tokens.includes('<NowServingLink variant="hint" />'));

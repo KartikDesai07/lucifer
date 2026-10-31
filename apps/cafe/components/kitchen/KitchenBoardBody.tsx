@@ -1,101 +1,84 @@
 "use client";
 
-import { ChefHat } from "lucide-react";
+import { useEffect, useRef } from "react";
 
 import type { KitchenRow } from "@/lib/kitchen-board";
 import type { KitchenOrderCard as KitchenOrderCardData } from "@/lib/kitchen-cards";
-import { EmptyState } from "@/components/shared/EmptyState";
-import { ErrorState } from "@/components/shared/ErrorState";
+import { KITCHEN_GRID_CLASS } from "@/lib/kitchen-layout";
+import { KITCHEN_RISE_NONE, kitchenRiseOf, kitchenRiseSpent } from "@/lib/kitchen-rise";
+import { KitchenBoardStates } from "@/components/kitchen/KitchenBoardStates";
 import { KitchenOrderCard } from "@/components/kitchen/KitchenOrderCard";
-import { Skeleton } from "@/components/ui/skeleton";
-
-const SKELETON_CARDS = 6; // loading shape only: the real order count is dynamic
-const BOARD_GRID_CLASS = "grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4";
 
 interface KitchenBoardBodyProps {
   isLoading: boolean;
-  // Loaded at least once: a failed 10s poll then keeps the cards (the chip flips to "Stale").
+  // Loaded at least once: a failed 10s poll then keeps the cards (the refresh strip shows above the board).
   hasData: boolean;
   isError: boolean;
   // Offline and never loaded (a parked query: no data, no error) — never "All caught up".
   isPaused: boolean;
+  /** Every card of the latest answer, before the header's filter (undefined before the first): the rise's record. */
+  boardCards: readonly KitchenOrderCardData[] | undefined;
+  /** The cards shown: the board after the header's type filter. */
   cards: KitchenOrderCardData[];
+  /** The type filter hides cards (the filtered-empty box when it hides them all). */
+  filtered: boolean;
   now: Date;
   onToggleLine: (line: KitchenRow, done: boolean) => void;
   onReady: (card: KitchenOrderCardData) => void;
-  // Row ids / order ids with a write in flight — owned by the page.
-  inFlight: ReadonlySet<string>;
-  readyInFlight: ReadonlySet<string>;
+  // A row id / an order id with a write in flight — owned by useKitchenActions.
+  lineInFlight: (id: string) => boolean;
+  readyInFlight: (orderId: string) => boolean;
   onRetry: () => void;
 }
 
-// The board's skeleton / error / offline / empty / grid, split out of kitchen/page.tsx to keep it
-// inside its line budget. Handlers, toasts, the realtime connection and in-flight sets stay there.
+// The board: its states (KitchenBoardStates: skeleton / error / offline / empty / filtered empty, split out in U4 Task 2,
+// ruling K1) or the cards' grid. Handlers, toasts and in-flight sets live in useKitchenActions; the realtime connection
+// in the page.
 export function KitchenBoardBody({
   isLoading,
   hasData,
   isError,
   isPaused,
+  boardCards,
   cards,
+  filtered,
   now,
   onToggleLine,
   onReady,
-  inFlight,
+  lineInFlight,
   readyInFlight,
   onRetry,
 }: KitchenBoardBodyProps) {
-  if (isLoading) {
-    return (
-      <div className={BOARD_GRID_CLASS} aria-hidden>
-        {Array.from({ length: SKELETON_CARDS }).map((_, i) => (
-          <Skeleton key={i} className="h-64 w-full rounded-lg" />
-        ))}
-      </div>
-    );
-  }
+  // The rise (U4 Task 4; design 6.3 Motion; lib/kitchen-rise.ts): the cards new in this answer rise, on the render that
+  // shows the answer; once it is on screen the record is spent, so a filter change never rises. Read and written while
+  // rendering on purpose (as U3's rise clock, rulings F15 / F17): a re-render of the same answer gets the same record.
+  const rise = useRef(KITCHEN_RISE_NONE);
+  rise.current = kitchenRiseOf(rise.current, boardCards);
+  useEffect(() => {
+    rise.current = kitchenRiseSpent(rise.current);
+  }, [boardCards]);
 
-  if (isError && !hasData) {
-    return (
-      <ErrorState
-        title="Couldn't load the kitchen board"
-        description="Check the internet connection, then try again."
-        onRetry={onRetry}
-        retryLabel="Try again"
-      />
-    );
-  }
-
-  if (isPaused && !hasData) {
-    return (
-      <p role="status" className="text-sm text-muted-foreground">
-        You appear to be offline. The kitchen board will load when the connection is back.
-      </p>
-    );
-  }
-
-  if (cards.length === 0) {
-    return (
-      <EmptyState
-        icon={<ChefHat className="h-8 w-8" />}
-        title="All caught up"
-        description="Fired orders appear here the moment a round is sent to the kitchen."
-      />
-    );
-  }
-
+  // One permanent wrapper around every state and the grid (U3 VC-3): WebView 109's accessibility tree dropped tiles that
+  // a filter round trip or a poll inserted into a container that stayed, until the Floor's lists sat in permanent
+  // wrappers. A plain block: the layout is the board's as before.
   return (
-    <div className={BOARD_GRID_CLASS}>
-      {cards.map((card) => (
-        <KitchenOrderCard
-          key={card.orderId}
-          card={card}
-          now={now}
-          onToggleLine={onToggleLine}
-          onReady={onReady}
-          lineInFlight={(line) => inFlight.has(line.id)}
-          readyInFlight={readyInFlight.has(card.orderId)}
-        />
-      ))}
+    <div data-ui="kitchen-cards">
+      <KitchenBoardStates isLoading={isLoading} hasData={hasData} isError={isError} isPaused={isPaused} cards={cards} filtered={filtered} onRetry={onRetry}>
+        <div data-ui="kitchen-grid" className={KITCHEN_GRID_CLASS}>
+          {cards.map((card) => (
+            <KitchenOrderCard
+              key={card.orderId}
+              card={card}
+              now={now}
+              onToggleLine={onToggleLine}
+              onReady={onReady}
+              lineInFlight={(line) => lineInFlight(line.id)}
+              readyInFlight={readyInFlight(card.orderId)}
+              rise={rise.current.rising.has(card.orderId)}
+            />
+          ))}
+        </div>
+      </KitchenBoardStates>
     </div>
   );
 }

@@ -1,117 +1,102 @@
 "use client";
 
-import { AlertTriangle, Clock, QrCode } from "lucide-react";
+import { useId } from "react";
 
-import { kitchenAgeBand, type KitchenRow } from "@/lib/kitchen-board";
-import { BRAND_CHECKBOX_SQUARE_CLASS } from "@/components/brand/brand-classes";
-import { Checkbox } from "@/components/ui/checkbox";
+import type { KitchenRow } from "@/lib/kitchen-board";
+import {
+  KITCHEN_ROW_BOX_CLASS,
+  KITCHEN_ROW_BOX_KIND_CLASS,
+  KITCHEN_ROW_CLASS,
+  KITCHEN_ROW_DONE_TEXT_CLASS,
+  KITCHEN_ROW_MOD_CLASS,
+  KITCHEN_ROW_MOD_KIND_CLASS,
+  KITCHEN_ROW_MORE_CLASS,
+  KITCHEN_ROW_NAME_CLASS,
+  KITCHEN_ROW_NAME_DONE_CLASS,
+  KITCHEN_ROW_NOTE_CLASS,
+  KITCHEN_ROW_NOTE_TONE_CLASS,
+  KITCHEN_ROW_QTY_CLASS,
+  KITCHEN_ROW_TEXT_CLASS,
+} from "@/lib/kitchen-layout";
 import { orderItemModifierLines, REMOVED_MODIFIER_PREFIX } from "@pos/shared/utils";
 import { cn } from "@/lib/utils";
 
-// P4-A — one row of the kitchen board. Every status channel (self-order,
-// age) pairs an icon + a colour + literal text, never colour alone (cafe.md
-// UI rule); no emoji anywhere, lucide only.
-const AGE_ICON = {
-  none: null,
-  Clock,
-  AlertTriangle,
-} as const;
-
 interface KitchenLineCardProps {
   row: KitchenRow;
-  now: Date;
   onToggle: (row: KitchenRow, done: boolean) => void;
+  /** Its own tick write is in flight (useKitchenActions): disabled until that write ends. */
   pending: boolean;
 }
 
-export function KitchenLineCard({ row, now, onToggle, pending }: KitchenLineCardProps) {
-  const band = kitchenAgeBand(row.firedAt, now);
-  const AgeIcon = AGE_ICON[band.icon];
-  // `row.firedAt` is an ISO string off the wire — parsed at the use site.
-  const ageMinutes = Math.max(
-    0,
-    Math.floor((now.getTime() - new Date(row.firedAt).getTime()) / 60_000),
-  );
-  const ageText = `${row.firedAtApprox ? "~" : ""}${ageMinutes}m`;
-
-  // No border of its own: the CARD draws one box and divides the lines inside
-  // it. A bordered row inside a bordered card was double chrome and made every
-  // line read like a separate order.
+// One line of a Kitchen card, the owner's HTML row (U4 Task 4; values 4.1, 4.6; design 6.3): ONE button across the card —
+// the whole row is the tap target (P49 moved on purpose: no 40px label around a small box) — toggling the tick exactly as
+// today's checkbox did (same request, toast and Undo: useKitchenActions). A checkbox to assistive tech, with today's name
+// "Mark {name} done". The round, ticket number, self-order and age left the line for the card (its dividers, where line and
+// pill, design 11). A ticked line keeps its box green and dims its text to --text-3, never the whole row (ruling K5: the
+// HTML's opacity .5 reads about 3.4:1). Every class: lib/kitchen-layout.ts.
+export function KitchenLineCard({ row, onToggle, pending }: KitchenLineCardProps) {
+  // A checkbox's content is presentational and its aria-label is its whole name, so the quantity, the modifier lines and
+  // the note (today sibling text outside the checkbox) are its description: "2×, NO Mushroom, + Extra cheese, Note: …".
+  // The name is not repeated; an id only for a part that is drawn.
+  const id = useId();
+  const modifierLines = orderItemModifierLines(row);
+  const hasMore = modifierLines.length > 0 || Boolean(row.instructions);
+  const qtyId = `${id}-qty`;
+  const moreId = `${id}-more`;
+  const state = row.done ? "done" : "open";
   return (
-    <div className="flex items-start gap-2 p-2">
-      {/* A label, so a tap anywhere in the 40px box toggles the 20px checkbox. */}
-      <label className="grid min-h-10 min-w-10 shrink-0 cursor-pointer place-items-center">
-        <Checkbox
-          className={BRAND_CHECKBOX_SQUARE_CLASS}
-          checked={row.done}
-          disabled={pending}
-          onCheckedChange={(checked) => onToggle(row, checked === true)}
-          aria-label={`Mark ${row.name} done`}
-        />
-      </label>
-
-      <div className="min-w-0 flex-1 space-y-1">
-        <div
-          className={cn(
-            "text-sm font-semibold sm:text-base",
-            row.done && "text-muted-foreground line-through",
-          )}
-        >
-          {/* `row.name` ALREADY carries the variation — buildKitchenRows builds it
-              with orderItemLabel(), which appends "(Large)" itself. Appending
-              row.variation here too printed it twice ("Café Latte (Large)
-              (Large)"). The field stays on the row for callers that need the
-              parts separately; this renderer must not re-add it. */}
-          <span className="font-black tabular-nums">{row.qty}</span> × {row.name}
-        </div>
-
-        {/* The words come from the shared formatter (the KOT prints the same
-            lines). A removal ("NO Mushroom") is what the cook must not miss,
-            so it reads in ink and bold; additions stay muted as before. */}
-        {orderItemModifierLines(row).map((line) => (
-          <div
-            key={line}
-            className={cn(
-              "text-sm",
-              line.startsWith(`${REMOVED_MODIFIER_PREFIX} `) ? "font-semibold" : "text-muted-foreground",
-            )}
-          >
-            {line}
-          </div>
-        ))}
-
-        {row.instructions && (
-          <div className="text-sm font-semibold italic">{row.instructions}</div>
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={row.done}
+      aria-label={`Mark ${row.name} done`}
+      aria-describedby={hasMore ? `${qtyId} ${moreId}` : qtyId}
+      data-ui="kitchen-line"
+      disabled={pending}
+      className={KITCHEN_ROW_CLASS}
+      onClick={() => onToggle(row, !row.done)}
+    >
+      {/* The drawn box is decoration (the row carries the state). The HTML draws its white tick always, invisible on an
+          open box over white (a ticked look in the dark theme, values 10 #1): ours only when ticked. */}
+      <span aria-hidden="true" data-ui="kitchen-line-box" className={cn(KITCHEN_ROW_BOX_CLASS, KITCHEN_ROW_BOX_KIND_CLASS[state])}>
+        {row.done && (
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12l5 5L20 7" />
+          </svg>
         )}
-
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-          {/* Rounds genuinely differ within a card, so this stays per-line. The
-              order number and table label are now the CARD's job — repeating
-              them on every line would just echo the same string. */}
-          <span>Round {row.round}</span>
-          {row.ticketNumber !== undefined && <span>#{row.ticketNumber}</span>}
-
-          {row.selfOrder && (
-            <span className="flex items-center gap-1 text-blue-600">
-              <QrCode className="h-3.5 w-3.5" />
-              Self-order
-            </span>
-          )}
-
-          <span
-            className={cn(
-              "flex items-center gap-1",
-              band.key === "late" && "font-semibold text-red-600",
-              band.key === "warn" && "text-amber-700",
+      </span>
+      <span id={qtyId} data-ui="kitchen-line-qty" className={cn(KITCHEN_ROW_QTY_CLASS, row.done && KITCHEN_ROW_DONE_TEXT_CLASS)}>
+        {row.qty}×
+      </span>
+      <span data-ui="kitchen-line-text" className={KITCHEN_ROW_TEXT_CLASS}>
+        {/* `row.name` ALREADY carries the variation — buildKitchenRows builds it with orderItemLabel(), which appends
+            "(Large)" itself. Appending row.variation here too printed it twice ("Café Latte (Large) (Large)"). The field
+            stays on the row for callers that need the parts separately; this renderer must not re-add it. */}
+        <span data-ui="kitchen-line-name" className={cn(KITCHEN_ROW_NAME_CLASS, row.done && KITCHEN_ROW_NAME_DONE_CLASS)}>
+          {row.name}
+        </span>
+        {/* The words come from the shared formatter (the KOT prints the same lines). A removal ("NO Mushroom") is what the
+            cook must not miss, so it reads in ink and bold; additions are the HTML's meta. One wrapper (the row's
+            description) holds them and the note, drawn only when there is one of them. */}
+        {hasMore && (
+          <span id={moreId} data-ui="kitchen-line-more" className={KITCHEN_ROW_MORE_CLASS}>
+            {modifierLines.map((line) => (
+              <span
+                key={line}
+                data-ui="kitchen-line-mod"
+                className={cn(KITCHEN_ROW_MOD_CLASS, KITCHEN_ROW_MOD_KIND_CLASS[state][line.startsWith(`${REMOVED_MODIFIER_PREFIX} `) ? "removed" : "added"])}
+              >
+                {line}
+              </span>
+            ))}
+            {row.instructions && (
+              <span data-ui="kitchen-line-note" className={cn(KITCHEN_ROW_NOTE_CLASS, KITCHEN_ROW_NOTE_TONE_CLASS[state])}>
+                Note: {row.instructions}
+              </span>
             )}
-            title={row.firedAtApprox ? "approximate — fired before age tracking" : undefined}
-          >
-            {AgeIcon && <AgeIcon className="h-3.5 w-3.5" />}
-            {ageText}
-            {band.key === "late" && " Late"}
           </span>
-        </div>
-      </div>
-    </div>
+        )}
+      </span>
+    </button>
   );
 }

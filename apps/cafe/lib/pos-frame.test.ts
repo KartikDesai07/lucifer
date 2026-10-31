@@ -242,8 +242,9 @@ test("Header: on /pos the HTML's Order header (brand, the actions box, the clock
 test("Header: the /pos bar is 56px tall with 16px gaps, not sticky; its actions box takes the free width, right-aligned", () => {
   const src = read(HEADER);
   // U2 Task 1: data-orders (the /orders variant's 12px gap, lib/orders-layout.test.ts) sits between the two; U3 Task 1:
-  // data-floor (the /tables variant's 12px gap, lib/floor-layout.test.ts) after it.
-  assert.match(src, /<header className="[^"]*" data-ui="header" data-pos=\{pos \? "" : undefined\} data-orders=\{orders \? "" : undefined\} data-floor=\{floor \? "" : undefined\} data-room-out=\{room\.level > 0 \? "" : undefined\}>/, "the header carries data-pos on /pos, and data-room-out while the room rule has a part out");
+  // data-floor (the /tables variant's 12px gap, lib/floor-layout.test.ts) after it; U4 Task 1: data-kitchen (the /kitchen
+  // variant's 12px gap, lib/kitchen-layout.test.ts) after that.
+  assert.match(src, /<header className="[^"]*" data-ui="header" data-pos=\{pos \? "" : undefined\} data-orders=\{orders \? "" : undefined\} data-floor=\{floor \? "" : undefined\} data-kitchen=\{kitchen \? "" : undefined\} data-room-out=\{room\.level > 0 \? "" : undefined\}>/, "the header carries data-pos on /pos, and data-room-out while the room rule has a part out");
   const bar = tokens(src.match(/<header className="([^"]*)"/)?.[1] ?? "");
   for (const t of ["data-pos:h-14", "data-pos:min-w-0", "data-pos:gap-4", "data-pos:static", "data-pos:z-auto", "border-b", "border-border", "bg-card", "px-3", "tab:px-5"]) {
     assert.ok(bar.includes(t), `the /pos header (values 1.2): "${t}"`);

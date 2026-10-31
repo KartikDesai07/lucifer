@@ -1,0 +1,122 @@
+// The Kitchen card's words as a pure model (U4 Task 3, 2026-10-30; owner Q5 / Q6 / Q9; design 6.3, 6.4, 6.6 and 11 in
+// docs/superpowers/specs/2026-10-30-kitchen-match-html-design.md; values 4.1-4.5 in
+// docs/superpowers/specs/2026-10-29-kitchen-html-values.md): the code, the where line, the time pill, the late border, the
+// footer and the Mark ready button, and (Task 4) the lines' round groups with their dividers, as
+// components/kitchen/KitchenOrderCard.tsx draws them. Everything comes from the card the payload already carries (no new
+// request). Client-safe: no Mongoose, no React. lib/kitchen-view.test.ts and lib/kitchen-rows.test.ts pin every row.
+import { kitchenAgeBand, type KitchenAgeBand, type KitchenRow } from "@/lib/kitchen-board";
+import type { KitchenOrderCard } from "@/lib/kitchen-cards";
+import { kitchenAgeWords, kitchenFilterOf } from "@/lib/kitchen-header";
+import { clockTime, orderNumberOf } from "@/lib/orders-row";
+import { tokenLabelOf } from "@/lib/token-view";
+
+/** The pill's band (today's `kitchenAgeBand`: under 10 / 10-19 / from 20 minutes, the HTML's thresholds). */
+export type KitchenBand = KitchenAgeBand["key"];
+
+const MINUTE_MS = 60_000;
+/** Today's title on an age fired before age tracking (kept, design 6.3). */
+const APPROX_TITLE = "approximate — fired before age tracking";
+
+/** The card's token label when the order has one (tokens on: the server adds `tokenNumber`), else false. */
+function tokenOf(card: Pick<KitchenOrderCard, "tokenNumber">): string | false {
+  return card.tokenNumber !== undefined && tokenLabelOf(card.tokenNumber);
+}
+
+/** A table card: the header filter's Tables (one rule, lib/kitchen-header.ts). A parcel order is never one, whatever its
+ *  table (ruling K4: today's card let `parcel` win; the table is not named). */
+const atTable = (card: Pick<KitchenOrderCard, "tableLabel" | "parcel">): boolean => kitchenFilterOf(card) === "tables";
+
+/** The big code (design 6.3, Q9): a table card its table's name ("T-4"); any other card (no table, or a parcel) its token
+ *  ("Token 12") when it has one, else "Parcel" for a parcel order and "Walk-In" for the rest. The Ready toast names the
+ *  card by it. */
+export function kitchenCardCode(card: KitchenOrderCard): string {
+  if (atTable(card)) return card.tableLabel;
+  return tokenOf(card) || (card.parcel ? "Parcel" : "Walk-In");
+}
+
+/** The where line (design 6.3): "{type} · Order #{n}[ · Token {t}][ · Self-order]". The type is "Table" on a table card;
+ *  with no table, "Parcel" / "Walk-In" when the code is the token, and nothing when the code already says it. The token
+ *  only on a table card (elsewhere it is the code); "Self-order" once per card. */
+export function kitchenWhereLine(card: KitchenOrderCard): string {
+  const table = atTable(card);
+  const token = tokenOf(card);
+  const type = table ? "Table" : token ? (card.parcel ? "Parcel" : "Walk-In") : false;
+  return [type, `Order ${orderNumberOf(card.orderNo)}`, table && token, card.selfOrder && "Self-order"].filter(Boolean).join(" · ");
+}
+
+export interface KitchenPill {
+  /** "Now", "{m} min", "{h}h {m}m" (design 6.4), "~" first when approximate. */
+  text: string;
+  band: KitchenBand;
+  /** Today's title on an approximate age. */
+  title?: string;
+  /** " Late" read to screen readers (the red pill and border say it on screen). */
+  srLate: boolean;
+}
+
+/** The time pill (design 6.3 / 6.4; values 4.4): the card's age from `cardFiredAt` in whole minutes (floored; a card
+ *  "fired in the future" by a device clock behind the server reads "Now"), its band, and today's "~" and title. */
+export function kitchenPill(card: KitchenOrderCard, nowMs: number): KitchenPill {
+  const band = kitchenAgeBand(card.cardFiredAt, new Date(nowMs)).key;
+  const words = kitchenAgeWords((nowMs - Date.parse(card.cardFiredAt)) / MINUTE_MS);
+  return {
+    text: `${card.cardFiredAtApprox ? "~" : ""}${words}`,
+    band,
+    ...(card.cardFiredAtApprox ? { title: APPROX_TITLE } : {}),
+    srLate: band === "late",
+  };
+}
+
+/** The red border (design 6.3): late and not every line ticked (the HTML's "late and not in Ready", Ready read as every
+ *  line ticked; the pill stays red). */
+export function kitchenCardLate(card: KitchenOrderCard, nowMs: number): boolean {
+  return kitchenAgeBand(card.cardFiredAt, new Date(nowMs)).key === "late" && !card.allDone;
+}
+
+/** A fire stamp as the card shows it: "9:26 PM" in the cafe's time zone, "~" first when approximate; "" for a stamp that
+ *  does not parse (the clock's formatter would throw and take the whole board down; the round dividers reuse this). */
+export function kitchenFireTime(iso: string, approx: boolean): string {
+  return Number.isFinite(Date.parse(iso)) ? `${approx ? "~" : ""}${clockTime(iso)}` : "";
+}
+
+/** The footer (design 6.3): left "KOT #9, #12 · 9:26 PM" (the card's ticket numbers, the first round's fire time), "Sent
+ *  9:26 PM" with ticket numbers off; with a stamp that does not parse, "KOT #9" or nothing; right the HTML's "{d} of {n}
+ *  done". */
+export function kitchenFooter(card: KitchenOrderCard): { left: string; right: string } {
+  const first = card.lines.reduce<KitchenOrderCard["lines"][number] | undefined>((min, l) => (min && min.round <= l.round ? min : l), undefined);
+  const time = first ? kitchenFireTime(first.firedAt, first.firedAtApprox) : kitchenFireTime(card.cardFiredAt, card.cardFiredAtApprox);
+  const kot = card.ticketNumbers.map((n) => `#${n}`).join(", ");
+  const left = kot ? [`KOT ${kot}`, time].filter(Boolean).join(" · ") : time && `Sent ${time}`;
+  return { left, right: `${card.doneCount} of ${card.totalCount} done` };
+}
+
+/** One round's lines on the card, and the divider before them (null: none). */
+export interface KitchenRoundGroup {
+  round: number;
+  label: string | null;
+  lines: KitchenRow[];
+}
+
+/** The card's lines by round (owner Q6, design 6.3): rounds ascending, each round's lines in today's order; before each
+ *  later round a divider "Round 2 · KOT #12 · 9:41 PM" ("KOT #" left out with ticket numbers off, "~" before an approximate
+ *  time, no time for a stamp that does not parse). The first round, and a one-round card, have none. */
+export function kitchenRoundGroups(card: KitchenOrderCard): KitchenRoundGroup[] {
+  const byRound = new Map<number, KitchenRow[]>();
+  for (const line of card.lines) byRound.set(line.round, [...(byRound.get(line.round) ?? []), line]);
+  return [...byRound.keys()]
+    .sort((a, b) => a - b)
+    .map((round, i) => {
+      const lines = byRound.get(round) ?? [];
+      const kot = lines.find((l) => l.ticketNumber !== undefined)?.ticketNumber;
+      const time = kitchenFireTime(lines[0].firedAt, lines[0].firedAtApprox);
+      const label = [`Round ${round}`, kot !== undefined && `KOT #${kot}`, time].filter(Boolean).join(" · ");
+      return { round, label: i === 0 ? null : label, lines };
+    });
+}
+
+/** The Mark ready button (Q5): lines still open, ink "Mark ready · {n} not ticked" (the nudge stays, the button never
+ *  blocks: P12); every line ticked, the green "Mark ready". */
+export function kitchenButton(card: KitchenOrderCard): { label: string; kind: "open" | "done" } {
+  if (card.allDone) return { label: "Mark ready", kind: "done" };
+  return { label: `Mark ready · ${card.totalCount - card.doneCount} not ticked`, kind: "open" };
+}

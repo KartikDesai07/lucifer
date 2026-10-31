@@ -45,9 +45,15 @@ export function orderTitle(o: ListedOrder): string {
   return channel === "qr" ? "QR order" : "Walk-In";
 }
 
-/** "#" + the order id's last segment, its number of the day ("ORD-20261019-014" → "#014"). */
+/** "#" + an order id's last segment, its number of the day ("ORD-20261019-014" → "#014"); the Kitchen card's where line
+ *  reads it from the card's printed number (U4 Task 3, lib/kitchen-view.ts). */
+export function orderNumberOf(orderId: string): string {
+  return `#${orderId.split("-").pop() ?? orderId}`;
+}
+
+/** The order's number of the day ("#014"). */
 export function orderNumber(o: Order): string {
-  return `#${o.orderId.split("-").pop() ?? o.orderId}`;
+  return orderNumberOf(o.orderId);
 }
 
 export interface OrderStatusPill {

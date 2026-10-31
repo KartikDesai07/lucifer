@@ -55,6 +55,14 @@ const REQUESTS_BOARD = cmp("orders/RequestsBoard.tsx");
 const ORDER_REQUEST_CARD = cmp("orders/OrderRequestCard.tsx");
 const DEVICE_ALERT_DIALOG = cmp("orders/DeviceAlertSettingsDialog.tsx");
 const KITCHEN_BODY = cmp("kitchen/KitchenBoardBody.tsx");
+// U4 Task 2 (2026-10-30, ruling K1): the board's states (skeleton, error, offline, empty, filtered empty) left
+// KitchenBoardBody for their own file; the D4 error / offline pins (P44 / P45) moved with them, the same meaning. The type
+// filter and the header's words (lib/kitchen-header.ts) join the copy-hygiene files.
+const KITCHEN_STATES = cmp("kitchen/KitchenBoardStates.tsx");
+const KITCHEN_TYPE_FILTER = cmp("kitchen/KitchenTypeFilter.tsx");
+const KITCHEN_HEADER_LIB = "apps/cafe/lib/kitchen-header.ts";
+// U4 Task 3 (2026-10-30): the card's words (code, where line, pill, footer, Mark ready) join the copy-hygiene files.
+const KITCHEN_VIEW_LIB = "apps/cafe/lib/kitchen-view.ts";
 const KITCHEN_CHIP = cmp("kitchen/KitchenFreshnessChip.tsx");
 const KITCHEN_LINE = cmp("kitchen/KitchenLineCard.tsx");
 const KITCHEN_ORDER = cmp("kitchen/KitchenOrderCard.tsx");
@@ -267,9 +275,12 @@ const ORDERS_FRAME_CASE: PinCase = {
   ],
 };
 
+// U4 Task 1 (2026-10-30; Kitchen design 5, values 1.1 / 6.1 in docs/superpowers/specs/2026-10-29-kitchen-html-values.md):
+// the Kitchen left MenuPageShell (P41 moved on purpose). The owner's HTML Kitchen screen fills the screen under the
+// shell's header like /pos, /orders and /tables (no paper frame, no 1440px cap): its own frame from lib/kitchen-layout.ts,
+// whose classes and markup lib/kitchen-layout.test.ts pins.
 const SHELL_PAGES: ReadonlyArray<readonly [string, boolean]> = [
   [REQUESTS_PAGE, false],
-  [KITCHEN_PAGE, true],
   [RESERVATIONS_PAGE, false],
   [CUSTOMERS_PAGE, false],
   [EVENTS_PAGE, false],
@@ -422,6 +433,12 @@ const ORDERS_RETURN_OPEN: ReturnOpen = {
   re: /return \(\s*<div data-ui="orders-page" className=\{ORDERS_PAGE_CLASS\}>\s*<PageHeader/,
   head: '<div data-ui="orders-page" className={ORDERS_PAGE_CLASS}>',
 };
+/** U4 Task 1: the Kitchen's frame, the header first inside the board (lib/kitchen-layout.test.ts). U4 Task 2: the
+ *  refresh strip is the page's first child, above the board (Kitchen design 6.2). */
+const KITCHEN_RETURN_OPEN: ReturnOpen = {
+  re: /return \(\s*<div data-ui="kitchen-page" className=\{KITCHEN_PAGE_CLASS\}>\s*<RefreshStrip\b[\s\S]*?\/>\s*<div data-ui="kitchen-board" className=\{KITCHEN_BOARD_CLASS\}>\s*<PageHeader/,
+  head: '<div data-ui="kitchen-page" className={KITCHEN_PAGE_CLASS}><div data-ui="kitchen-board" className={KITCHEN_BOARD_CLASS}>',
+};
 
 const earlyReturn = (anchorJsx: string, open: ReturnOpen = FRAGMENT_OPEN): Mutation =>
   repRe(
@@ -483,23 +500,31 @@ const ERROR_CASES: PinCase[] = [
   },
   {
     file: KITCHEN_PAGE,
+    // U4 Task 2: the refresh strip's Try again refetches the board too, so the three props are read on the body's own
+    // element (P43, the same meaning: the board body's error screen gets these).
     pin: all(
-      pinRegexes([
-        [/\bhasData=\{board\.data !== undefined\}/, "hasData must be derived from board.data !== undefined"],
-        [/\bisError=\{board\.isError\}/, "the body must receive isError={board.isError}"],
-        [/\bonRetry=\{\(\) => void board\.refetch\(\)\}/, "onRetry must refetch the board query"],
-      ]),
+      (raw) => {
+        const body = /<KitchenBoardBody\b[\s\S]*?\/>/.exec(strip(raw))?.[0] ?? "";
+        return [
+          ...(body ? [] : ["landmark: the <KitchenBoardBody /> element"]),
+          ...pinRegexes([
+            [/\bhasData=\{board\.data !== undefined\}/, "hasData must be derived from board.data !== undefined"],
+            [/\bisError=\{board\.isError\}/, "the body must receive isError={board.isError}"],
+            [/\bonRetry=\{\(\) => void board\.refetch\(\)\}/, "onRetry must refetch the board query"],
+          ])(body),
+        ];
+      },
       pinHeaderFirst("<KitchenBoardBody"),
     ),
     mutations: [
       rep("hasData hard-wired false", "hasData={board.data !== undefined}", "hasData={false}"),
       rep("isError hard-wired false", "isError={board.isError}", "isError={false}"),
-      rep("retry stops refetching", "void board.refetch()", "void 0"),
-      earlyReturn("<KitchenBoardBody />"),
+      repRe("the body's retry stops refetching", /(<KitchenBoardBody\b[\s\S]*?)void board\.refetch\(\)/, (_m, head) => `${head}void 0`),
+      earlyReturn("<KitchenBoardBody />", KITCHEN_RETURN_OPEN),
     ],
   },
   {
-    file: KITCHEN_BODY,
+    file: KITCHEN_STATES,
     pin: all(pinErrorRetry, pinGuardBefore("<ErrorState", "isError && !hasData")),
     mutations: [
       ...RETRY_MUTATIONS,
@@ -677,7 +702,7 @@ const OFFLINE_CASES: PinCase[] = [
     ],
   },
   {
-    file: KITCHEN_BODY,
+    file: KITCHEN_STATES,
     pin: pinOfflineBranch({ guard: "if (isPaused && !hasData)", before: "if (cards.length === 0)", after: "<ErrorState" }),
     mutations: [
       ...OFFLINE_COMMON,
@@ -1006,13 +1031,15 @@ const CONTROL_FILES = [
 // not the brand paper panel; it is no kit <Table> (no inline-size containment: it reads the list column's @container); its row
 // icon buttons are gone (design 6.4). ORDER_LIST_CASE (D5) pins the new list; the page keeps BRAND_CONTROL_CLASS on
 // "Clear filters".
+// U4 Task 3 (2026-10-30; design 6.3): KitchenOrderCard left the panel list on purpose (P46): the card is the owner's HTML
+// ticket card (--surface, 1px --border or --bad when late, radius 12; values 4.1), not the brand paper panel;
+// lib/kitchen-view.test.ts pins its frame from lib/kitchen-layout.ts. It stays in the copy-hygiene list (P50).
 const PANEL_FILES = [
   RESERVATIONS_PAGE,
   EVENTS_PAGE,
   CUSTOMERS_PAGE,
   STAFF_PAGE,
   ORDER_REQUEST_CARD,
-  KITCHEN_ORDER,
   RESERVATIONS_TABLE,
   RESERVATION_CARD,
   EVENTS_TABLE,
@@ -1277,28 +1304,40 @@ const pinFreshnessChip: Pin = (raw) => {
   return p;
 };
 
+// U4 Task 2 (Kitchen design 6.2, owner Q3; P48 moved, the same meaning): the summary is the header's second line now, the
+// PageHeader's description: the loaded line first, "Loading orders…" while the first load runs, nothing otherwise (the
+// first-load error and offline branches).
 const pinKitchenSummary: Pin = (raw) => {
   const p: string[] = [];
   const s = strip(raw);
-  const data = /\{board\.data !== undefined\s*\?\s*\(/.exec(s);
-  check(p, data !== null, "landmark: the summary ternary must start with a board.data !== undefined branch");
-  const loading = /:\s*board\.isLoading\s*\?\s*\(\s*<div\b[^>]*>\s*Loading orders[^<]*<\/div>/.exec(s);
-  check(p, loading !== null, 'the summary must hold its place with a board.isLoading branch rendering "Loading orders"');
+  const data = /\bdescription=\{board\.data !== undefined\s*\?\s*kitchenHeaderLine\(/.exec(s);
+  check(p, data !== null, "landmark: the second line's ternary must start with a board.data !== undefined branch");
+  const loading = /:\s*board\.isLoading\s*\?\s*"Loading orders[^"]*"\s*:\s*undefined\s*\}/.exec(s);
+  check(p, loading !== null, 'the line must read "Loading orders" under a board.isLoading branch, and nothing after it');
   if (data !== null && loading !== null) check(p, data.index < loading.index, "the loaded branch must come before the loading branch");
   return p;
 };
 
-const pinLineLabel: Pin = (raw) => {
+// U4 Task 4 (Kitchen design 6.3, values 4.1 / 4.2; P49 MOVED on purpose): the 40px label around a 20px checkbox became the
+// HTML's row — ONE button across the card, so the whole row is the hit area (38px for a one-line name: the HTML's own size,
+// ruling R1; the row's classes are pinned in lib/kitchen-rows.test.ts). The meaning kept: a big target that toggles the
+// line, a checkbox to assistive tech, disabled only while its own write runs.
+const pinLineRow: Pin = (raw) => {
   const p: string[] = [];
   const s = strip(raw);
-  check(p, /<Checkbox\b/.test(s), "landmark: the line checkbox must exist");
-  const m = /<label\b([^>]*)>\s*<Checkbox\b[\s\S]*?\/>\s*<\/label>/.exec(s);
-  check(p, m !== null, "the line checkbox must sit inside a <label> hit area");
+  // The opening tag: "=>" inside an attribute (the onClick arrow) is not its end.
+  const m = /<button\b((?:=>|[^>])*)>/.exec(s);
+  check(p, m !== null, "landmark: the line is a <button>");
   if (m !== null) {
-    const tokens = (/\bclassName="([^"]*)"/.exec(m[1])?.[1] ?? "").split(/\s+/);
-    check(p, tokens.includes("min-h-10") && tokens.includes("min-w-10"), "the label must be at least 40px (min-h-10 min-w-10)");
-    check(p, /\bonCheckedChange=/.test(m[0]), "the checkbox inside the label must keep its onCheckedChange");
+    const attrs = m[1];
+    check(p, /\btype="button"/.test(attrs), "the row is never a submit");
+    check(p, /\brole="checkbox"/.test(attrs), "the row is announced as a checkbox");
+    check(p, /\baria-checked=\{row\.done\}/.test(attrs), "the row says whether the line is ticked");
+    check(p, /\bdisabled=\{pending\}/.test(attrs), "the row is disabled only while its own write runs");
+    check(p, /\bonClick=\{\(\) => onToggle\(row, !row\.done\)\}/.test(attrs), "a tap anywhere on the row toggles the tick");
+    check(p, /\bclassName=\{KITCHEN_ROW_CLASS\}/.test(attrs), "the row is the HTML's full-width row (KITCHEN_ROW_CLASS)");
   }
+  check(p, !/<label\b/.test(s) && !/<Checkbox\b/.test(s), "no small checkbox in a label any more: the whole row is the target");
   return p;
 };
 
@@ -1330,20 +1369,25 @@ const KITCHEN_CASES: PinCase[] = [
     file: KITCHEN_PAGE,
     pin: pinKitchenSummary,
     mutations: [
-      repRe("loading branch removed", /\) : board\.isLoading \? \(\s*<div[^>]*>Loading orders[^<]*<\/div>\s*\) : null\}/, ") : null}"),
-      rep("rename the loading flag", ") : board.isLoading ? (", ") : board.isFetching ? ("),
+      repRe("loading branch removed", / : board\.isLoading \? "Loading orders[^"]*" : undefined\}/, " : undefined}"),
+      rep("rename the loading flag", ": board.isLoading ? \"Loading", ": board.isFetching ? \"Loading"),
       rep("loading text renamed", "Loading orders", "Please wait"),
-      rep("loaded branch loses its data check", "{board.data !== undefined ? (", "{board.isSuccess ? ("),
+      rep("the error / offline branches get the loading words", '"Loading orders…" : undefined}', '"Loading orders…" : "Loading orders…"}'),
+      rep("loaded branch loses its data check", "description={board.data !== undefined ? ", "description={board.isSuccess ? "),
     ],
   },
   {
     file: KITCHEN_LINE,
-    pin: pinLineLabel,
+    pin: pinLineRow,
     mutations: [
-      chain("label becomes a div", repEvery("open", "<label", "<div"), repEvery("close", "</label>", "</div>")),
-      rep("the checkbox leaves the label", "<Checkbox", "</label><Checkbox"),
-      rep("label shrinks below 40px", "min-h-10", "min-h-5"),
-      rep("rename the min width token (token trap)", "min-w-10", "min-w-100"),
+      chain("the row becomes a div", repEvery("open", "<button", "<div"), repEvery("close", "</button>", "</div>")),
+      rep("the row loses its checkbox role", 'role="checkbox"', 'role="button"'),
+      rep("the row stops saying it is ticked", "aria-checked={row.done}", "aria-checked={pending}"),
+      rep("the row is disabled for good", "disabled={pending}", "disabled={true}"),
+      rep("a tap re-sends the same state", "onToggle(row, !row.done)", "onToggle(row, row.done)"),
+      rep("the row loses the HTML's full-width class", "className={KITCHEN_ROW_CLASS}", "className={KITCHEN_ROW_TEXT_CLASS}"),
+      rep("a submit button", 'type="button"', 'type="submit"'),
+      rep("a small box in a label comes back", "<span aria-hidden", '<label className="grid min-h-10 min-w-10"></label><span aria-hidden'),
     ],
   },
 ];
@@ -1389,6 +1433,10 @@ const COPY_FILES = [
   KITCHEN_CHIP,
   KITCHEN_LINE,
   KITCHEN_ORDER,
+  KITCHEN_STATES,
+  KITCHEN_TYPE_FILTER,
+  KITCHEN_HEADER_LIB,
+  KITCHEN_VIEW_LIB,
   RESERVATIONS_TABLE,
   RESERVATION_CARD,
   EVENTS_TABLE,
@@ -1423,7 +1471,7 @@ interface Group {
 const GROUPS: Group[] = [
   {
     title:
-      "PIN D1: every page renders inside MenuPageShell (Kitchen wide, Staff guard outside) and the shell takes `wide`; Orders fills the screen in its own frame (U2)",
+      "PIN D1: every page renders inside MenuPageShell (Staff guard outside) and the shell takes `wide`; Orders fills the screen in its own frame (U2), the Kitchen in its own (U4, lib/kitchen-layout.test.ts)",
     cases: SHELL_CASES,
   },
   { title: "PIN D2: PageHeader carries the sidebar-group eyebrow and the sidebar-row title", cases: HEADER_CASES },
@@ -1444,7 +1492,7 @@ const GROUPS: Group[] = [
   },
   { title: "PIN D7: due and total amounts carry their words", cases: STATUS_WORD_CASES },
   {
-    title: "PIN kitchen: the chip keeps its place at dataUpdatedAt 0, the summary holds while loading, the line checkbox sits in a label",
+    title: "PIN kitchen: the chip keeps its place at dataUpdatedAt 0, the summary holds while loading, the line is the HTML's whole-row button",
     cases: KITCHEN_CASES,
   },
   {
