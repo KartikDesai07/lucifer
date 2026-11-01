@@ -456,4 +456,95 @@ every test pin: `D:\kd\pos-dev-keep\ui-redesign\inventory\menu-features.md` ("me
 
 ## Results
 
-(filled at the end of the session)
+(2026-10-31 → 11-02, branch `feat/ui-menu-printer`, base main `fe6cff9`; 11 commits, 115 files, +7034 / −2251 before
+this Results commit. Not merged, not pushed. Ledger with every ruling (M1–M9) and review:
+`.superpowers/sdd/2026-11-01-menu-printer-match-html/progress.md`, copied with the briefs and reports to
+`D:\kd\pos-dev-keep\ui-redesign\reviews\u5\`.)
+
+### Commits
+- Docs: `b4c7653` (values + design draft), `c624bc4` (design approved + this plan).
+- Tasks: T1 `134bc9d` the Menu frame, header, view switch, toolbar, rail, states (both routes) · T2 `8f07c68` + `d3f8669`
+  the list (table, cards, badges, switches, toasts, the ink bulk bar) · T3 `329b857` + `5af9474` the item editor and its
+  dialogs (Q9, Archive / Restore from the editor) · T4 `bb64227` /categories (rows, category editor, delete check) · T5
+  `1cf1537` the printer panel (look only).
+- Final fix wave (after the Claude Fable 5.1 review): `af6fa92` (the Edit button's hidden "Rename" word, the search
+  clear's focus, Filters' aria-controls).
+- Verification fix: `eb16e66` (M8 the table head sticks at the scroller's top, M9 archived rows dim with tokens, the item
+  editor's Kitchen station / Modifiers labels and the modifier chips' "Remove {modifier}").
+
+### Tests and checks
+- Cafe chain at `eb16e66`: 7101 tests / 7100 pass / 0 fail / 1 skipped (main `fe6cff9`: 7009); typecheck and the full
+  `tsc --noEmit` clean; lint 0 errors, the 2 old warnings. Shared 1015 (print-budget green), print-tools 11,
+  release-native 12; mobile, desktop, hub, packages untouched. New test files in testChain: menu-layout, menu-view,
+  menu-list-layout, menu-editor-layout, product-form-values, menu-categories-layout, printer-panel-layout.
+- Live legs (V-1 at `af6fa92`): 12 legs, every exit 0 (menu, menu-orders, variations, removed-modifiers, public,
+  skip-kot, print, slips, bootstrap, staff-pin, orders-idem, money).
+- The paper: the S1 pin passes, `print-budget.test.ts` unchanged; the printer panel's diff is markup and classes only
+  (every hook, lib, bridge, request and printer call line unchanged; `lib/printer/*` byte-identical; P118 / P40 / the
+  focus targets / the banner pins kept).
+- Requests: idle /products and /categories 240 s each = main's build's BASE exactly (pulse 12 + the shell's 7 one-time
+  warm route GETs; `match\menu\final\idle\base-*.json` / `new-*.json`). No new or faster request.
+- Write paths for real on uimatch (V-1 at `af6fa92`, 1280 and 390): product create (single / sizes), edit, the stock and
+  QR switches, single Archive (confirm) / Restore from the editor, bulk sold out / back in stock / move / archive /
+  restore, the import wizard opened and cancelled, category create / edit / arrange / delete (both branches), the printer
+  panel opened, More options, Done: 0 request differences from main except the designed Q9 `price: 0` for a new sized
+  item; window.print 0; printer settings unchanged; staff options = main's.
+- Measured match (V-1, production build): every probe row of Tasks 1–5 at five viewports equal to its accepted mapped
+  row; U0 shell probes: only the dashboard's data / clock rows (reseed, today Monday); 356 side-by-side pairs:
+  `D:\kd\pos-dev-keep\ui-redesign\match\menu\final\shots\index.html`. A11y: 0 axe violations on every Menu, dialog and
+  printer state after the verification fix (M9 and the editor's labels); the usual pages and /m identical to U4's.
+- Fit 1366×768 … 360×800 with a 64-character name, a 42-character word, a 24-character category, tokens on and off: no
+  sideways scroll, no name cut (Q2); the table at 816 / cards at 815; the Category column at 862 / not 861; the rail from
+  cw 1024 (not scanned at exactly 1000); the phone header's title floor 64 held. The bottom inset (25 px) respected by the
+  list foot, the bulk bar, the toasts, the item editor's footer, the printer panel's foot and the phone bottom sheets.
+- Emulator (V-2 at `af6fa92`; the app on :3130): WebView 109 portrait / 862 landscape and 154: /products (cards, the
+  table at 862, select mode + the bulk bar), 109's button rule, filter / chip round trips (all 105 cards stay in 109's
+  accessibility tree), the item editor (focus in Item name, Cancel / ✕ / Back, the icon picker over it: a tap on its scrim
+  closes only the picker), /categories, the printer panel, no console errors; 154's first screens and the bottom inset.
+- Production build of `eb16e66` in `D:\kd\uib` (BUILD_ID `HcAxCb4LYABz03aucFk9A`): the owner's preview on :3110 (uibase)
+  and the check twin on :3130 (uimatch, reseeded 2026-11-02 after the writing runs).
+- Smoke (desktop, `eb16e66`, uimatch reseeded, 0 writes): the table head meets the scroller's top after a scroll at
+  1280, 1280 collapsed, 1024 and 862 (no row above it), and sits where it did at rest; a11y 0 (axe, contrast, orphaned,
+  unnamed) in the Archived view (badges, hovered and selected rows) and the item editor Add / Edit at 1280 and 390;
+  every probe of Tasks 1–5 at five viewports equal to V-1's accepted rows (0 changed, 0 new, 0 gone); /products and
+  /categories 200 with 0 console errors.
+
+### Reviews
+- Five task reviews (one sonnet reviewer per task: spec + logic + keep in one pass). Fix rounds: T2 ×1 (bulk move /
+  archive / restore toasts back to today's words), T3 ×1 (Item name keeps today's autoFocus, M6); T1, T4, T5 clean.
+- The final Claude Fable 5.1 whole-branch review: With fixes, 0 C / 0 I / 7 M (M1, M2 FIX BEFORE MERGE; M5 taken in;
+  M3, M4, M6, M7 LATER); rulings M1–M7 all sound → one fix wave → its scoped re-review: all addressed.
+- Verification (V-1 PASS 0 DEFECT, V-2 PASS) → one check per finding → one fix round (M8, M9, the editor's labels;
+  reviewed: all good) → the desktop smoke.
+
+### What the owner will see differently from the HTML (mapped, each with its decision or ruling)
+Items in the categories' arranged order (Q1); a long name never cut, badges on line 2 (Q2); a 34 px art tile where the
+HTML's veg mark sits, no veg / popular / new marks or filters (Q3, design §9: no data); the table from 816 px and its
+Category column only from a 738 px list (Q4); on the phone the switch + Add in the header, Import CSV a 38 px icon (Q5);
+the ink bulk bar sticky at the list's foot (Q6); the Tables / New order quick links on the Menu routes only from 1280
+(Q8); the base price hidden in Sizes mode (Q9); our extra fields in the editor (discount, photo / icon, modifiers,
+kitchen station, KOT) in the HTML's language; Archive keeps today's confirm; the category editor keeps our station + KOT
+card (no colour group: no data); the printer panel keeps our lanes, words and states in the HTML's frame (design §7); the
+table head sticks at the top (M8) and archived rows dim their words, not the whole row (M9); the HTML's own slips not
+copied (design §10).
+
+### Owner notes (decisions or pre-existing items, nothing changed for them)
+- In the Archived view the header's "{n} items · {k} sold out" reads the active list from the cache: after a Restore
+  there it stays one behind until you switch back to All (no request may be added).
+- A deleted category's `?category=` link titles "All items" (as today).
+- Single Archive / Restore and the category editor keep today's validation (no inline "Enter a category name" /
+  duplicate errors: the server's toast as today); the last size row cannot be removed (today's schema).
+- Android Back with an editor or the printer panel open leaves the page (pre-existing, the U0–U4 open list); WebView 109
+  exposes no sorted state for the sort heads (our ARIA is right); 109's sheets ghost faintly (R41).
+- The printer panel closes without a slide (the HTML has none) and replays its slide when a window crosses 1280 while
+  open; the header's waiting badge keeps its own red (the header button is unchanged by design).
+- Deferred minors for a later pass: ImageUpload at 312 lines (303 on main; a Settings-shared split), the editor reads
+  its opener during render, /categories' first-load error header has no Items / Categories switch, the printer panel's
+  primary / Remove hover on touch (an app-wide sweep), the unused NoKotTag component, the category arrows' 28×22 touch
+  size (R1), `categorySavedToast` trusts the PUT response's name.
+- Not done by the verifiers: the classic-scrollbar run, the rail at exactly cw 1000, the phone bulk restore (desktop
+  passed); on the device the Archive confirm was not pressed (desktop real writes cover it).
+
+### Left for later
+The next page session U6 = Reservations (prompt `D:\kd\pos-dev-keep\ui-redesign\prompt-u6.md`); the owner's merge OK
+and, separately, the push.
