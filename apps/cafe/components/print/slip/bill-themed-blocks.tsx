@@ -6,6 +6,7 @@ import { chargesFromOrder } from "@pos/shared/order-charges";
 import { halfGst } from "@/lib/gst-half";
 import { printFontStack, type PrintFontFace } from "@pos/shared/print-fonts";
 import { inr } from "@/lib/utils";
+import { billLinesOf } from "@/lib/bill-lines"; // owner 2026-11-02: a repeated item is one bill line
 import { PRINT_LOGO_CLASS } from "@/lib/print";
 import { BANNER_STYLE } from "@/components/pos/PrintBanner";
 import type { OrderItem } from "@/types";
@@ -200,7 +201,7 @@ export function billThemedBlocks(theme: BillTheme): BillRenderers {
     // (the subtotal skips it, so a real price in the amount column would make the bill fail to add up).
     items: (_block, { order }) => (
       <div className="flex flex-col gap-1">
-        {order.items.map((item, i) => (
+        {billLinesOf(order.items).map((item, i) => (
           <div key={`${item.productId}-${i}`}>
             <LeaderRow
               className={theme.itemClass}

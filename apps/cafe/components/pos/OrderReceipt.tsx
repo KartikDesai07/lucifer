@@ -18,6 +18,7 @@ import { BillSlip } from "@/components/print/slip/SlipEngine";
 import { SlipSkeleton } from "@/components/print/slip/SlipSkeleton";
 import { useSlipView } from "@/components/print/slip/slip-view";
 import { billTemplateOf } from "@/lib/print-template-resolve";
+import { billLinesOf } from "@/lib/bill-lines"; // owner 2026-11-02: a repeated item is one bill line
 import {
   printConfigOf,
   PAPER_WIDTH_CLASS,
@@ -182,7 +183,7 @@ export function OrderReceipt({ order, settings, banner, ref }: OrderReceiptProps
           <Divider />
 
           <div className="space-y-1">
-            {order.items.map((item, i) => (
+            {billLinesOf(order.items).map((item, i) => (
               <div key={`${item.productId}-${i}`}>
                 <div className="flex justify-between">
                   <span className="pr-2">

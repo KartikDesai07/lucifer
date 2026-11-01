@@ -532,6 +532,8 @@
     "lib/skip-kot-paths.test.ts",
     "lib/kitchen-order-routing.test.ts",
     "lib/kitchen-order-ui-paths.test.ts",
+    "lib/bill-lines.test.ts",
+    "lib/bill-lines-render.test.ts",
     "lib/expenses/expenses.test.ts",
     "lib/expenses/expenses-report.test.ts",
     "lib/expenses/expenses-pins.test.ts",

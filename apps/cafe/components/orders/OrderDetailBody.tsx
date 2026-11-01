@@ -10,6 +10,7 @@ import {
 } from "@/lib/orders-layout";
 import { STATUS_CLASSES } from "@/lib/ui";
 import { cn, inr } from "@/lib/utils";
+import { billLinesOf } from "@/lib/bill-lines";
 import { OrderVoidTrail } from "@/components/orders/OrderVoidTrail";
 import type { Order } from "@/types";
 
@@ -70,7 +71,8 @@ function ItemsBox({ order }: { order: Order }) {
         <span>{detailItemsHead(order)}</span>
         <span>Amount</span>
       </div>
-      {order.items.map((item, i) => {
+      {/* Owner 2026-11-02: the same item from different rounds is one line here, as on the bill. */}
+      {billLinesOf(order.items).map((item, i) => {
         const meta = detailLineMeta(item);
         return (
           <div key={`${item.productId}-${i}`} data-ui="order-detail-line" className={ORDER_DETAIL_LINE_CLASS}>

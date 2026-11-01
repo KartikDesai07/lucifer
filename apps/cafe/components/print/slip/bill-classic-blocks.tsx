@@ -7,6 +7,7 @@ import type { BillBlockOf, BillBlockType } from "@pos/shared/print-template";
 import { CAFE_TIMEZONE } from "@/lib/constants";
 import type { PrintLogoSize } from "@/lib/constants";
 import { inr } from "@/lib/utils";
+import { billLinesOf } from "@/lib/bill-lines"; // owner 2026-11-02: a repeated item is one bill line
 import { PRINT_LOGO_CLASS } from "@/lib/print";
 import { GstSplitLines, InvoiceNoRow } from "@/components/pos/slip-gst-lines";
 import { BillTokenRow } from "@/components/pos/slip-token-lines";
@@ -155,7 +156,7 @@ export const BILL_CLASSIC_BLOCKS: ClassicBillRenderers = {
     ),
   items: (_block, { order }) => (
     <div className="space-y-1">
-      {order.items.map((item, i) => (
+      {billLinesOf(order.items).map((item, i) => (
         <div key={`${item.productId}-${i}`}>
           <div className="flex justify-between">
             {/* min-w-0 (A4): an unbroken long dish name wraps inside the slip instead of pushing the price off it. */}
