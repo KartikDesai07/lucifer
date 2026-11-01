@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useRef, useState } from "react";
 import { ListChecks, Upload } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -78,6 +78,9 @@ export function ItemsToolbar({
   onImport,
 }: ItemsToolbarProps) {
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const filtersId = useId();
+  // The clear ✕ unmounts itself once the search is empty, so it hands the focus back to the input (never body).
+  const searchRef = useRef<HTMLInputElement>(null);
   // Staff never reach "Archived" (admin-only view, per the Items page's own status validation).
   const options = FILTER_ORDER.filter((f) => f !== "archived" || isAdmin);
   // N2 - no counts in the Archived view (they would be computed from the archived list, not the one the words describe).
@@ -94,6 +97,7 @@ export function ItemsToolbar({
               <MagnifierIcon />
             </span>
             <input
+              ref={searchRef}
               type="text"
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}
@@ -103,7 +107,7 @@ export function ItemsToolbar({
               className={MENU_SEARCH_INPUT_CLASS}
             />
             {trimmed && (
-              <button type="button" data-ui="menu-search-clear" title="Clear search" aria-label="Clear search" onClick={() => onSearchChange("")} className={MENU_SEARCH_CLEAR_CLASS}>
+              <button type="button" data-ui="menu-search-clear" title="Clear search" aria-label="Clear search" onClick={() => { onSearchChange(""); searchRef.current?.focus(); }} className={MENU_SEARCH_CLEAR_CLASS}>
                 ✕
               </button>
             )}
@@ -116,6 +120,7 @@ export function ItemsToolbar({
             title="Filters"
             aria-label="Filters"
             aria-expanded={filtersOpen}
+            aria-controls={filtersId}
             onClick={() => setFiltersOpen((v) => !v)}
             className={cn(MENU_ICON_BUTTON_CLASS, "tab:hidden", (filtersOpen || filterActive) && "border-foreground", filtersOpen && "bg-surface-3")}
           >
@@ -143,7 +148,7 @@ export function ItemsToolbar({
           )}
         </div>
 
-        <div className={cn(filtersOpen ? "flex" : "hidden", MENU_TOOLBAR_WRAP_CLASS)}>
+        <div id={filtersId} className={cn(filtersOpen ? "flex" : "hidden", MENU_TOOLBAR_WRAP_CLASS)}>
           <MenuSelect
             dataUi="menu-category-select"
             className={MENU_CATEGORY_SELECT_CLASS}

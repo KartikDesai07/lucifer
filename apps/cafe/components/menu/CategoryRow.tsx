@@ -153,7 +153,7 @@ export function CategoryRow({ category, index, total, counts, soldOut, hue, stat
         </span>
       )}
 
-      <button type="button" title="Edit category" aria-label={`Rename ${category.name}`} onClick={onEdit} className={CATEGORY_EDIT_CLASS}>
+      <button type="button" title="Edit category" aria-label={`Edit ${category.name}`} onClick={onEdit} className={CATEGORY_EDIT_CLASS}>
         <PencilIcon size={16} />
       </button>
       <button

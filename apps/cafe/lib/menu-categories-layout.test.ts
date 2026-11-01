@@ -102,6 +102,8 @@ test("render: a row has the grip, both arrows, the dot, the name link with its m
   assert.match(html, /aria-label="Drag to reorder Starters"/, "the grip keeps its label");
   assert.match(html, /aria-label="Move Starters up"/, "the up arrow keeps its label");
   assert.match(html, /aria-label="Move Starters down"/, "the down arrow keeps its label");
+  assert.match(html, /title="Edit category" aria-label="Edit Starters"/, "the Edit button's hidden name says Edit, as its title (design 12: Rename -> Edit category)");
+  assert.ok(!html.includes("Rename"), "no hidden Rename word is left on the row");
   assert.match(html, /href="\/products\?category=c1"/, "the name block opens the category's items (today's count link destination)");
   assert.match(html, /3 items/, "the meta");
   assert.match(tagOf(html, "category-station"), /title="Kitchen station"/, "the station chip's title");

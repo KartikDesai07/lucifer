@@ -176,6 +176,14 @@ test("PIN: the header is the one MenuPageHeader on both routes (title Menu, phon
   assert.match(toolbar, /isAdmin/, "Import CSV and Archived stay admin-only");
 });
 
+test("PIN: the toolbar's focus (final review M2 / M5): the search clear hands the focus back to the input; Filters names the wrap it opens", () => {
+  const toolbar = stripComments(read("components/menu/ItemsToolbar.tsx"));
+  assert.match(toolbar, /ref=\{searchRef\}/, "the search input carries the ref");
+  assert.match(toolbar, /onSearchChange\(""\);\s*searchRef\.current\?\.focus\(\);/, "the clear unmounts itself, so it refocuses the input first-hand (never body)");
+  assert.match(toolbar, /aria-controls=\{filtersId\}/, "Filters points at the wrap it opens");
+  assert.match(toolbar, /<div id=\{filtersId\}/, "the wrap carries that id");
+});
+
 test("PIN: Archived round trip (review focus 1): the header line reads the ACTIVE list from the cache in the Archived view, with no new query", () => {
   const state = read("hooks/use-items-page-state.ts");
   assert.match(state, /getQueryData<Product\[\]>\(PRODUCT_KEYS\.all\)/, "the active list is read from the query cache");
