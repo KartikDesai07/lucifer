@@ -8,12 +8,14 @@ import { Badge } from "@/components/ui/badge";
 import { MENU_EDITOR_INPUT_CLASS } from "@/lib/menu-editor-layout";
 
 interface ModifierInputProps {
+  /** The input's id, so the field's label names it. */
+  id?: string;
   value: string[];
   onChange: (next: string[]) => void;
 }
 
 // Type a modifier + Enter (or comma) to add it; click × to remove.
-export function ModifierInput({ value, onChange }: ModifierInputProps) {
+export function ModifierInput({ id, value, onChange }: ModifierInputProps) {
   const [text, setText] = useState("");
 
   const add = () => {
@@ -34,6 +36,7 @@ export function ModifierInput({ value, onChange }: ModifierInputProps) {
   return (
     <div>
       <Input
+        id={id}
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKeyDown}
@@ -48,6 +51,7 @@ export function ModifierInput({ value, onChange }: ModifierInputProps) {
               {tag}
               <button
                 type="button"
+                aria-label={`Remove ${tag}`}
                 onClick={() => onChange(value.filter((t) => t !== tag))}
                 className="text-muted-foreground hover:text-foreground"
               >

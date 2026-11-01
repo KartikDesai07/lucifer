@@ -239,8 +239,8 @@ export function ProductFormSheet({
         <ProductArtField control={control} />
       </EditorField>
 
-      <EditorField label="Modifiers" error={errors.modifiers?.message as string}>
-        <Controller control={control} name="modifiers" render={({ field }) => <ModifierInput value={field.value ?? []} onChange={field.onChange} />} />
+      <EditorField label="Modifiers" htmlFor="product-modifiers" error={errors.modifiers?.message as string}>
+        <Controller control={control} name="modifiers" render={({ field }) => <ModifierInput id="product-modifiers" value={field.value ?? []} onChange={field.onChange} />} />
       </EditorField>
       <Controller
         control={control}
@@ -252,7 +252,7 @@ export function ProductFormSheet({
 
       <ItemSwitchesField control={control} />
 
-      <EditorField label="Kitchen station">
+      <EditorField label="Kitchen station" htmlFor="product-station">
         <Controller
           control={control}
           name="stationId"

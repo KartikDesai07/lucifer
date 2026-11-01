@@ -71,11 +71,17 @@ test("the grid (values 5.1, Q4): 18 | 2fr item | [1fr category] | 110 | 72 | 72 
   hasAll(L.MENU_CATEGORY_CELL_CLASS, ["hidden", "@[738px]/list:flex"], "the Category cell");
 });
 
-test("the head and rows (values 5.1, 5.2): head 9px 14px --surface-2 sticky top-0; rows 10px 14px, --accent-t selected, archived .6, hover --hover on hover devices", () => {
-  hasAll(L.MENU_HEAD_CLASS, ["sticky", "top-0", "bg-surface-2", "px-3.5", "py-[9px]", "text-[12.5px]", "font-medium", "text-muted-foreground", "border-b", "border-border"], "the head");
+test("the head and rows (values 5.1, 5.2): head 9px 14px --surface-2 sticky; rows 10px 14px, --accent-t selected, archived dimmed, hover --hover on hover devices", () => {
+  // Ruling M8 (V-2's V2-3): the HTML's head sticks 20px below the header and rows show through that strip (the scroller's top
+  // padding): not copied, the head sticks at the scroller's top edge (the table shows only from 816px, where the padding is 20px).
+  hasAll(L.MENU_HEAD_CLASS, ["sticky", "top-[-20px]", "bg-surface-2", "px-3.5", "py-[9px]", "text-[12.5px]", "font-medium", "text-muted-foreground", "border-b", "border-border"], "the head");
   hasAll(L.MENU_ROW_CLASS, ["px-3.5", "py-2.5", "pointer-fine:hover:bg-hover"], "a row");
   assert.equal(L.MENU_ROW_SELECTED_CLASS, "bg-status-info-tint", "selected = the HTML's --accent-t");
-  assert.equal(L.MENU_ARCHIVED_CLASS, "opacity-60", "archived rows at .6");
+  assert.ok(!L.MENU_HEAD_CLASS.includes("top-0"), "the head no longer stops 20px below the header");
+  hasAll(MENU_LIST_SCROLLER_CLASS, ["pt-5"], "the offset is the scroller's top padding from 720px");
+  // Ruling M9 (V-1 a11y): the HTML's opacity .6 fails 4.5:1 (U4 K5): archived rows dim with tokens, the photo stays faded.
+  hasAll(L.MENU_ARCHIVED_CLASS, ["text-muted-foreground", "[&_.text-foreground]:text-muted-foreground!", "[&_img]:opacity-60"], "archived rows dim with tokens");
+  assert.ok(!L.MENU_ARCHIVED_CLASS.split(/\s+/).includes("opacity-60"), "never the row's own opacity (it fails contrast)");
   hasAll(L.MENU_ROWS_CLASS, ["[&>:not(:first-child)]:border-t", "[&>:not(:first-child)]:border-border-2"], "rows are divided by --border-2, none above the first");
   hasAll(L.MENU_LIST_BOX_CLASS, ["rounded-[12px]", "border", "border-border", "bg-card", "overflow-clip"], "the white list (clip, never hidden)");
 });
@@ -171,7 +177,8 @@ test("table render: head words and sorts, a row's cells, the Category cell only 
   assert.match(table({}, [product({ publicVisible: false })]), /Hidden on QR/, "a hidden item wears its badge");
   const arch = table({ archived: true });
   assert.ok(!arch.includes("In stock: Crispy"), "an archived row has no stock switch");
-  assert.match(arch, /opacity-60/, "and is dimmed");
+  const archRow = arch.replace(/&amp;/g, "&");
+  for (const token of L.MENU_ARCHIVED_CLASS.split(/\s+/)) assert.ok(archRow.includes(token), `an archived row carries ${token}`);
 });
 
 test("select-all (values 5.1): the head box is empty / dash / tick for none / some / all of the listed rows", () => {

@@ -23,9 +23,11 @@ export const MENU_ROW_GRID_CLASS =
   "grid grid-cols-[18px_minmax(200px,2fr)_110px_72px_72px_32px] items-center gap-3.5 @[738px]/list:grid-cols-[18px_minmax(200px,2fr)_minmax(120px,1fr)_110px_72px_72px_32px]";
 export const MENU_ROW_GRID_NO_CATEGORY_CLASS = "grid grid-cols-[18px_minmax(200px,2fr)_110px_72px_72px_32px] items-center gap-3.5";
 
-/** The head (values 5.1): sticky, --surface-2, padding 9px 14px, 12.5px 500 --text-2, 1px --border below. */
+/** The head (values 5.1): sticky, --surface-2, padding 9px 14px, 12.5px 500 --text-2, 1px --border below. It sticks at the
+ *  scroller's top edge (ruling M8: -20px = the scroller's top padding where the table shows, from 816px), not 20px lower as in
+ *  the HTML, where rows show through that strip above the head. */
 export const MENU_HEAD_CLASS =
-  "sticky top-0 z-[1] border-b border-border bg-surface-2 px-3.5 py-[9px] text-[12.5px] font-medium text-muted-foreground";
+  "sticky top-[-20px] z-[1] border-b border-border bg-surface-2 px-3.5 py-[9px] text-[12.5px] font-medium text-muted-foreground";
 /** A sort button in the head: the label, 5px, its icon; --text while it is the sort. */
 export const MENU_HEAD_SORT_CLASS = `flex min-w-0 cursor-pointer items-center gap-[5px] rounded-[6px] border-0 bg-transparent p-0 font-medium ${FLOOR_FOCUS_RING_CLASS}`;
 export const MENU_HEAD_SORT_ON_CLASS = "text-foreground";
@@ -36,7 +38,9 @@ export const MENU_ROWS_CLASS = "[&>:not(:first-child)]:border-t [&>:not(:first-c
  *  replacing the selected row's blue (the HTML's `!important`: it is last in the order). */
 export const MENU_ROW_CLASS = "px-3.5 py-2.5 pointer-fine:hover:bg-hover";
 export const MENU_ROW_SELECTED_CLASS = "bg-status-info-tint";
-export const MENU_ARCHIVED_CLASS = "opacity-60";
+/** An archived row (ruling M9): the HTML fades it with opacity .6, which takes its words under 4.5:1 (U4 K5); the words dim
+ *  to --text-2 instead and only the photo keeps the fade. */
+export const MENU_ARCHIVED_CLASS = "text-muted-foreground [&_.text-foreground]:text-muted-foreground! [&_img]:opacity-60";
 
 /** The 18px box (values 5.1 select-all, 5.2 check): radius 5, 1.5px border, a white tick (an off box shows none). */
 export const MENU_CHECK_CLASS = `flex size-[18px] flex-none cursor-pointer items-center justify-center rounded-[5px] border-[1.5px] p-0 text-[11px] leading-none text-white ${FLOOR_FOCUS_RING_CLASS}`;

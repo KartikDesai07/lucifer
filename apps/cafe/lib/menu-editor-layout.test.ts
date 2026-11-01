@@ -114,3 +114,14 @@ test("source: the sheet is the frame, the archive confirm opens from the editor,
   assert.match(frame, /keepOpenForNestedDialog/, "a press in a dialog opened over the editor never closes it");
   assert.match(frame, /useMediaQuery\(MENU_EDITOR_XL_QUERY\)/, "the 1280px split by the shared media query");
 });
+
+test("V-1 a11y (pre-existing, fixed with the editor): Kitchen station and Modifiers are named by their labels; a modifier chip's remove names its modifier", async () => {
+  const sheet = read("components/products/ProductFormSheet.tsx");
+  assert.match(sheet, /<EditorField label="Kitchen station" htmlFor="product-station">/, "the label names the station trigger (id product-station)");
+  assert.match(sheet, /<EditorField label="Modifiers" htmlFor="product-modifiers"/, "the label names the modifiers input");
+  assert.match(sheet, /<ModifierInput id="product-modifiers"/, "the input carries that id");
+  const { ModifierInput } = await import("@/components/products/ModifierInput");
+  const html = renderToStaticMarkup(createElement(ModifierInput, { id: "product-modifiers", value: ["Extra cheese"], onChange: () => {} }));
+  assert.match(html, /<input[^>]*id="product-modifiers"/, "the input renders the id");
+  assert.match(html, /aria-label="Remove Extra cheese"/, "the chip's remove button names what it removes");
+});
