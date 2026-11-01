@@ -124,8 +124,16 @@ test("bulkToastText: the HTML's words with today's matched counts, singular righ
   assert.equal(bulkToastText(r("out-of-stock", 2)), "2 items marked sold out", "two");
   assert.equal(bulkToastText(r("in-stock", 3)), "3 items back in stock", "back in stock");
   assert.equal(bulkToastText(r("in-stock", 1)), "1 item back in stock", "back in stock, singular");
-  assert.equal(bulkToastText(r("move", 2)), "2 items moved", "moved");
-  assert.equal(bulkToastText(r("archive", 1)), "1 item archived", "archived");
-  assert.equal(bulkToastText(r("restore", 4)), "4 items restored", "restored");
+  assert.equal(bulkToastText(r("move", 2)), "Moved 2 items", "moved keeps today's words");
+  assert.equal(bulkToastText(r("archive", 1)), "Archived 1 item", "archived keeps today's words");
+  assert.equal(bulkToastText(r("restore", 4)), "Restored 4 items", "restored keeps today's words");
   assert.equal(bulkToastText(r("other", 4)), "Updated 4 items", "an unknown action keeps today's fallback");
+});
+
+test("bulkToastText: move / archive / restore keep today's words (design 12 changes only the stock toasts)", () => {
+  const r = (action: string, matched: number) => ({ action, requested: matched, matched, modified: matched });
+  assert.equal(bulkToastText(r("move", 2)), "Moved 2 items", "move, plural");
+  assert.equal(bulkToastText(r("move", 1)), "Moved 1 item", "move, singular");
+  assert.equal(bulkToastText(r("archive", 1)), "Archived 1 item", "archive, singular");
+  assert.equal(bulkToastText(r("restore", 3)), "Restored 3 items", "restore, plural");
 });

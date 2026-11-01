@@ -108,7 +108,7 @@ export function menuItemBadges(p: Product, ctx: { archived: boolean; skipsKitche
   return out;
 }
 
-/** The bulk toast (design 6.7, 12): the HTML's words with today's counts, which are the items the action applied to
+/** The bulk toast (design 6.7, 12): the HTML's words for sold out / back in stock (design 12), today's words for the rest, with the counts, which are the items the action applied to
  *  (`matched`), singular right. */
 export function bulkToastText(result: ProductBulkResult, action: string = result.action): string {
   const n = result.matched;
@@ -119,11 +119,11 @@ export function bulkToastText(result: ProductBulkResult, action: string = result
     case "in-stock":
       return `${items} back in stock`;
     case "move":
-      return `${items} moved`;
+      return `Moved ${items}`;
     case "archive":
-      return `${items} archived`;
+      return `Archived ${items}`;
     case "restore":
-      return `${items} restored`;
+      return `Restored ${items}`;
     default:
       return `Updated ${items}`;
   }

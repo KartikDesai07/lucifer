@@ -5,7 +5,7 @@ import { ArrowDown, ArrowUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ProductSort, ProductSortKey } from "@/lib/products-sort";
 import {
-    MENU_CATEGORY_CELL_HIDE_CLASS,
+  MENU_CATEGORY_CELL_HIDE_CLASS,
   MENU_HEAD_CLASS,
   MENU_HEAD_SORT_CLASS,
   MENU_HEAD_SORT_ON_CLASS,
