@@ -4,6 +4,7 @@ import { Archive as ArchiveIcon, Plus, Tags, UtensilsCrossed } from "lucide-reac
 
 import { MENU_EMPTY_SUB, menuEmptyTitle } from "@/lib/menu-view";
 import { MENU_SKELETON_LIST_CLASS, MENU_SKELETON_ROW_CLASS } from "@/lib/menu-layout";
+import { MENU_CARDS_SSR_CLASS, MENU_LIST_BOX_CLASS, MENU_TABLE_QUERY, MENU_TABLE_SSR_CLASS } from "@/lib/menu-list-layout";
 import type { ProductSort, ProductSortKey } from "@/lib/products-sort";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,7 +13,7 @@ import { MagnifierIcon } from "@/components/menu/menu-icons";
 import { MenuEmptyBox } from "@/components/menu/MenuEmptyBox";
 import { ItemsTable } from "@/components/menu/ItemsTable";
 import { ItemCards } from "@/components/menu/ItemCards";
-import { useMediaQuery, LG_UP_QUERY } from "@/hooks/use-media-query";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import type { Category, Product } from "@/types";
 
 // The skeleton in the list's shape (design 6.8): the white list box (radius 12, 1px --border) of rows, each a 34px art tile
@@ -46,11 +47,14 @@ interface ItemsListSectionProps {
   search: string;
   filtered: Product[];
   categoryMap: Map<string, Category>;
+  /** Each category's dot hue by _id (the rail's). */
+  hues: Map<string, string>;
+  /** A category is picked: the table has no Category column. */
+  categoryPicked: boolean;
   selected: Set<string>;
   onToggleSelect: (id: string) => void;
+  onToggleAll: () => void;
   onEdit: (product: Product) => void;
-  onArchive: (product: Product) => void;
-  onRestore: (product: Product) => void;
   onToggleAvailable: (id: string, available: boolean) => void;
   onToggleQrVisible: (id: string, visible: boolean) => void;
   pendingAvailabilityId?: string;
@@ -63,7 +67,7 @@ interface ItemsListSectionProps {
 }
 
 // The Items page's body: skeleton -> error -> every guided empty state (R16) in the HTML's empty box (U5 Task 1) -> the
-// table (lg+) / cards (below lg) pair. Pulled out of the page itself to keep that file under its line budget.
+// table (816px and up) / cards (below) pair, one mounted. Pulled out of the page itself to keep that file under its line budget.
 export function ItemsListSection({
   isLoading,
   showFullError,
@@ -75,11 +79,12 @@ export function ItemsListSection({
   search,
   filtered,
   categoryMap,
+  hues,
+  categoryPicked,
   selected,
   onToggleSelect,
+  onToggleAll,
   onEdit,
-  onArchive,
-  onRestore,
   onToggleAvailable,
   onToggleQrVisible,
   pendingAvailabilityId,
@@ -90,8 +95,7 @@ export function ItemsListSection({
   onAddItem,
   onClearFilters,
 }: ItemsListSectionProps) {
-  // Only the list for the current width mounts (null = unknown: both, CSS-gated).
-  const wide = useMediaQuery(LG_UP_QUERY);
+  const wide = useMediaQuery(MENU_TABLE_QUERY);
   if (isLoading) return <ListSkeleton />;
   if (showFullError) {
     return (
@@ -159,43 +163,48 @@ export function ItemsListSection({
     );
   }
 
+  // Only the list for the current width mounts (null = unknown: both, the page box picks one).
+  const gate = wide === null;
   return (
-    <>
-      {wide !== false && <div className="hidden overflow-x-auto rounded-lg [contain:inline-size] lg:block">
-        <ItemsTable
-          products={filtered}
-          archived={isArchived}
-          isAdmin={isAdmin}
-          categoryMap={categoryMap}
-          selected={selected}
-          onToggleSelect={onToggleSelect}
-          onEdit={onEdit}
-          onArchive={onArchive}
-          onRestore={onRestore}
-          onToggleAvailable={onToggleAvailable}
-          onToggleQrVisible={onToggleQrVisible}
-          pendingAvailabilityId={pendingAvailabilityId}
-          pendingQrId={pendingQrId}
-          sort={sort}
-          onSortChange={onSortChange}
-        />
-      </div>}
-      {wide !== true && <div className="lg:hidden">
-        <ItemCards
-          products={filtered}
-          archived={isArchived}
-          isAdmin={isAdmin}
-          categoryMap={categoryMap}
-          selectMode={selectMode}
-          selected={selected}
-          onToggleSelect={onToggleSelect}
-          onEdit={onEdit}
-          onArchive={onArchive}
-          onRestore={onRestore}
-          onToggleAvailable={onToggleAvailable}
-          pendingAvailabilityId={pendingAvailabilityId}
-        />
-      </div>}
-    </>
+    <div data-ui="menu-list-box" className={MENU_LIST_BOX_CLASS}>
+      {wide !== false && (
+        <div className={gate ? MENU_TABLE_SSR_CLASS : undefined}>
+          <ItemsTable
+            products={filtered}
+            archived={isArchived}
+            isAdmin={isAdmin}
+            categoryMap={categoryMap}
+            hues={hues}
+            categoryPicked={categoryPicked}
+            selected={selected}
+            onToggleSelect={onToggleSelect}
+            onToggleAll={onToggleAll}
+            onEdit={onEdit}
+            onToggleAvailable={onToggleAvailable}
+            onToggleQrVisible={onToggleQrVisible}
+            pendingAvailabilityId={pendingAvailabilityId}
+            pendingQrId={pendingQrId}
+            sort={sort}
+            onSortChange={onSortChange}
+          />
+        </div>
+      )}
+      {wide !== true && (
+        <div className={gate ? MENU_CARDS_SSR_CLASS : undefined}>
+          <ItemCards
+            products={filtered}
+            archived={isArchived}
+            isAdmin={isAdmin}
+            categoryMap={categoryMap}
+            selectMode={selectMode}
+            selected={selected}
+            onToggleSelect={onToggleSelect}
+            onEdit={onEdit}
+            onToggleAvailable={onToggleAvailable}
+            pendingAvailabilityId={pendingAvailabilityId}
+          />
+        </div>
+      )}
+    </div>
   );
 }

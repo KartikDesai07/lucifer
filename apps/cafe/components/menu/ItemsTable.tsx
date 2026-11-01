@@ -1,26 +1,39 @@
 "use client";
 
-import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
-
 import { categoryNameOf } from "@/lib/category-map";
-import { priceDisplayOf, itemSubLine, isOutOfStock, isHiddenFromQr } from "@/lib/menu-items";
-import { inr, cn } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { isHiddenFromQr } from "@/lib/menu-items";
+import { menuItemBadges, menuPriceText, menuSizesText } from "@/lib/menu-view";
 import type { ProductSort, ProductSortKey } from "@/lib/products-sort";
-import { Checkbox } from "@/components/ui/checkbox";
-import { BRAND_CHECKBOX_SQUARE_CLASS } from "@/components/brand/brand-classes";
-import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  MENU_ARCHIVED_CLASS,
+  MENU_CATEGORY_CELL_CLASS,
+  MENU_CATEGORY_DOT_CLASS,
+  MENU_EDIT_CLASS,
+  MENU_LINE2_CATEGORY_CLASS,
+  MENU_LINE2_CLASS,
+  MENU_NAME_BLOCK_CLASS,
+  MENU_NAME_BOX_CLASS,
+  MENU_NAME_BUTTON_CLASS,
+  MENU_NAME_CLASS,
+  MENU_PRICE_CELL_CLASS,
+  MENU_PRICE_STRUCK_CLASS,
+  MENU_QR_WORDS_CLASS,
+  MENU_ROWS_CLASS,
+  MENU_ROW_CLASS,
+  MENU_ROW_GRID_CLASS,
+  MENU_ROW_GRID_NO_CATEGORY_CLASS,
+  MENU_ROW_SELECTED_CLASS,
+  MENU_SIZES_CLASS,
+  MENU_SWITCH_CELL_CLASS,
+} from "@/lib/menu-list-layout";
 import { ItemArt } from "@/components/menu/ItemArt";
-import { ItemRowMenu } from "@/components/menu/ItemRowMenu";
-import { NoKotTag, itemSkipsKitchen } from "@/components/menu/NoKotTag";
+import { ItemBadges } from "@/components/menu/ItemBadges";
+import { ItemsTableHead } from "@/components/menu/ItemsTableHead";
+import { MenuCheck } from "@/components/menu/MenuCheck";
+import { MenuSwitch } from "@/components/menu/MenuSwitch";
+import { PencilIcon } from "@/components/menu/menu-icons";
+import { itemSkipsKitchen } from "@/components/menu/NoKotTag";
 import type { Category, Product } from "@/types";
 
 interface ItemsTableProps {
@@ -28,11 +41,14 @@ interface ItemsTableProps {
   archived: boolean;
   isAdmin: boolean;
   categoryMap: Map<string, Category>;
+  /** Each category's dot hue by _id (the rail's, lib/pos-categories.ts). */
+  hues: Map<string, string>;
+  /** A category is picked: no Category column (values 5.1). */
+  categoryPicked: boolean;
   selected: Set<string>;
   onToggleSelect: (id: string) => void;
+  onToggleAll: () => void;
   onEdit: (product: Product) => void;
-  onArchive: (product: Product) => void;
-  onRestore: (product: Product) => void;
   onToggleAvailable: (id: string, available: boolean) => void;
   onToggleQrVisible: (id: string, visible: boolean) => void;
   pendingAvailabilityId?: string;
@@ -41,80 +57,20 @@ interface ItemsTableProps {
   onSortChange: (key: ProductSortKey) => void;
 }
 
-function SortableHead({
-  label,
-  sortKey,
-  sort,
-  onSortChange,
-  className,
-}: {
-  label: string;
-  sortKey: ProductSortKey;
-  sort: ProductSort;
-  onSortChange: (key: ProductSortKey) => void;
-  className?: string;
-}) {
-  const active = sort.key === sortKey;
-  const Icon = !active ? ChevronsUpDown : sort.dir === "asc" ? ArrowUp : ArrowDown;
-  return (
-    <TableHead className={className} aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
-      <button
-        type="button"
-        onClick={() => onSortChange(sortKey)}
-        className={cn(
-          "inline-flex min-h-9 items-center gap-1 rounded-md font-medium hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-          active ? "text-foreground" : "text-muted-foreground",
-        )}
-      >
-        {label}
-        <Icon className={cn("h-3.5 w-3.5", active ? "opacity-100" : "opacity-50")} aria-hidden="true" />
-      </button>
-    </TableHead>
-  );
-}
-
-function PriceCell({ product }: { product: Product }) {
-  const p = priceDisplayOf(product);
-  const struckThrough = p.discount > 0;
-  return (
-    <div>
-      <p className="tabular-nums">
-        {p.hasRange ? (
-          <>
-            {inr(p.min)} – {inr(p.max)}
-          </>
-        ) : (
-          inr(p.min)
-        )}
-      </p>
-      {struckThrough && (
-        <p className="text-xs tabular-nums text-muted-foreground line-through">
-          {p.hasRange ? (
-            <>
-              {inr(p.raw.min)} – {inr(p.raw.max)}
-            </>
-          ) : (
-            inr(p.raw.min)
-          )}
-        </p>
-      )}
-    </div>
-  );
-}
-
-// Dense table (R14 — lg and up only; below lg the page renders ItemCards
-// instead). Lives inside the caller's overflow-x-auto [contain:inline-size]
-// scroll wrapper (the ReportTable.tsx precedent).
+// The table from 816px (U5 Task 2; values 5, design 6.4): the HTML's grid rows in the page's white list, which the caller
+// draws. G4: every role selects (staff reach the two stock bulk actions through the check); the QR switch and the Edit
+// pencil are admin-only, staff read "Shown" / "Hidden" (R20) and the name is plain text.
 export function ItemsTable({
   products,
   archived,
   isAdmin,
   categoryMap,
+  hues,
+  categoryPicked,
   selected,
   onToggleSelect,
+  onToggleAll,
   onEdit,
-  onArchive,
-  onRestore,
   onToggleAvailable,
   onToggleQrVisible,
   pendingAvailabilityId,
@@ -122,96 +78,100 @@ export function ItemsTable({
   sort,
   onSortChange,
 }: ItemsTableProps) {
+  const ticked = products.filter((p) => selected.has(p._id)).length;
+  const allState = ticked === 0 ? "off" : ticked === products.length ? "on" : "some";
+  const grid = categoryPicked ? MENU_ROW_GRID_NO_CATEGORY_CLASS : MENU_ROW_GRID_CLASS;
   return (
-    <div className="rounded-lg border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {/* G4 — staff select too (the two stock bulk actions must stay
-                reachable for them); ⋯/QR-switch stay admin-only below. */}
-            <TableHead className="w-10" />
-            <TableHead className="w-14" />
-            <SortableHead label="Name" sortKey="name" sort={sort} onSortChange={onSortChange} />
-            <SortableHead label="Category" sortKey="category" sort={sort} onSortChange={onSortChange} />
-            <SortableHead label="Price" sortKey="price" sort={sort} onSortChange={onSortChange} className="text-right" />
-            <SortableHead label="In stock" sortKey="available" sort={sort} onSortChange={onSortChange} className="w-28 text-right" />
-            <TableHead className="w-28 text-right">QR menu</TableHead>
-            {isAdmin && <TableHead className="w-12 text-right" />}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {products.map((product) => {
-            const available = product.available !== false;
-            const qrVisible = !isHiddenFromQr(product);
-            const subLine = itemSubLine(product);
-            return (
-              <TableRow key={product._id}>
-                <TableCell>
-                  <Checkbox
-                    className={BRAND_CHECKBOX_SQUARE_CLASS}
-                    checked={selected.has(product._id)}
-                    onCheckedChange={() => onToggleSelect(product._id)}
-                    aria-label={`Select ${product.name}`}
-                  />
-                </TableCell>
-                <TableCell>
-                  <ItemArt name={product.name} image={product.image} icon={product.icon} size={40} className="rounded-md" />
-                </TableCell>
-                <TableCell className="font-medium">
-                  <p>{product.name}</p>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {subLine && <span className="text-xs font-normal text-muted-foreground">{subLine}</span>}
-                    {isOutOfStock(product) && (
-                      <Badge variant="destructive" className="text-[10px]">Out of stock</Badge>
-                    )}
-                    {isHiddenFromQr(product) && (
-                      <Badge variant="outline" className="text-[10px]">Hidden from QR</Badge>
-                    )}
-                    <NoKotTag skips={itemSkipsKitchen(product, categoryMap)} />
+    <div role="table" aria-label="Menu items" data-ui="menu-table">
+      <ItemsTableHead allState={allState} onToggleAll={onToggleAll} categoryPicked={categoryPicked} sort={sort} onSortChange={onSortChange} />
+      <div role="rowgroup" className={MENU_ROWS_CLASS}>
+        {products.map((product) => {
+          const isSelected = selected.has(product._id);
+          const qrVisible = !isHiddenFromQr(product);
+          const categoryName = categoryNameOf(categoryMap, product.categoryId);
+          const price = menuPriceText(product);
+          const badges = menuItemBadges(product, { archived, skipsKitchen: itemSkipsKitchen(product, categoryMap) });
+          const text = (
+            <>
+              <span className={MENU_NAME_CLASS}>{product.name}</span>
+              <span className={MENU_LINE2_CLASS}>
+                <ItemBadges badges={badges} size="table" />
+                <span data-ui="menu-sizes" className={MENU_SIZES_CLASS}>
+                  {!categoryPicked && <span className={MENU_LINE2_CATEGORY_CLASS}>{categoryName} · </span>}
+                  {menuSizesText(product)}
+                </span>
+              </span>
+            </>
+          );
+          return (
+            <div
+              key={product._id}
+              role="row"
+              data-ui="menu-row"
+              className={cn(grid, MENU_ROW_CLASS, isSelected && MENU_ROW_SELECTED_CLASS, archived && MENU_ARCHIVED_CLASS)}
+            >
+              <div role="cell" className="flex">
+                <MenuCheck state={isSelected ? "on" : "off"} label={`Select ${product.name}`} onToggle={() => onToggleSelect(product._id)} />
+              </div>
+              <div role="cell" className="min-w-0">
+                {isAdmin ? (
+                  <button type="button" onClick={() => onEdit(product)} className={cn(MENU_NAME_BOX_CLASS, MENU_NAME_BUTTON_CLASS)}>
+                    <ItemArt name={product.name} image={product.image} icon={product.icon} size={34} />
+                    <span className={MENU_NAME_BLOCK_CLASS}>{text}</span>
+                  </button>
+                ) : (
+                  <div className={MENU_NAME_BOX_CLASS}>
+                    <ItemArt name={product.name} image={product.image} icon={product.icon} size={34} />
+                    <div className={MENU_NAME_BLOCK_CLASS}>{text}</div>
                   </div>
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {categoryNameOf(categoryMap, product.categoryId)}
-                </TableCell>
-                <TableCell className="text-right">
-                  <PriceCell product={product} />
-                </TableCell>
-                <TableCell className="text-right">
-                  {archived ? (
-                    <Badge variant="outline">Archived</Badge>
-                  ) : (
-                    <Switch
-                      checked={available}
-                      disabled={pendingAvailabilityId === product._id}
-                      onCheckedChange={(v) => onToggleAvailable(product._id, v)}
-                      aria-label={`In stock: ${product.name}`}
-                    />
-                  )}
-                </TableCell>
-                <TableCell className="text-right">
-                  {isAdmin ? (
-                    <Switch
-                      checked={qrVisible}
-                      disabled={pendingQrId === product._id}
-                      onCheckedChange={(v) => onToggleQrVisible(product._id, v)}
-                      aria-label={`Shown on QR menu: ${product.name}`}
-                    />
-                  ) : (
-                    // R20 — staff get a read-only label, not a disabled switch
-                    // (a `title` tooltip never surfaces on a touch device).
-                    <span className="text-sm text-muted-foreground">{qrVisible ? "Shown" : "Hidden"}</span>
-                  )}
-                </TableCell>
-                {isAdmin && (
-                  <TableCell className="text-right">
-                    <ItemRowMenu product={product} archived={archived} onEdit={onEdit} onArchive={onArchive} onRestore={onRestore} />
-                  </TableCell>
                 )}
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+              </div>
+              {!categoryPicked && (
+                <div role="cell" className={MENU_CATEGORY_CELL_CLASS}>
+                  <span className={MENU_CATEGORY_DOT_CLASS} style={{ background: hues.get(product.categoryId) ?? "var(--border)" }} aria-hidden="true" />
+                  <span className="min-w-0 truncate">{categoryName}</span>
+                </div>
+              )}
+              <div role="cell" className={MENU_PRICE_CELL_CLASS}>
+                {price.text}
+                {price.struck && <span className={MENU_PRICE_STRUCK_CLASS}>{price.struck}</span>}
+              </div>
+              <div role="cell" className={MENU_SWITCH_CELL_CLASS}>
+                {!archived && (
+                  <MenuSwitch
+                    tone="ok"
+                    checked={product.available !== false}
+                    disabled={pendingAvailabilityId === product._id}
+                    onCheckedChange={(v) => onToggleAvailable(product._id, v)}
+                    aria-label={`In stock: ${product.name}`}
+                  />
+                )}
+              </div>
+              <div role="cell" className={MENU_SWITCH_CELL_CLASS}>
+                {isAdmin ? (
+                  <MenuSwitch
+                    tone="accent"
+                    checked={qrVisible}
+                    disabled={pendingQrId === product._id}
+                    onCheckedChange={(v) => onToggleQrVisible(product._id, v)}
+                    aria-label={`Shown on QR menu: ${product.name}`}
+                  />
+                ) : (
+                  // R20 — staff get a read-only label, not a disabled switch (a `title` never surfaces on touch).
+                  <span className={MENU_QR_WORDS_CLASS}>{qrVisible ? "Shown" : "Hidden"}</span>
+                )}
+              </div>
+              <div role="cell" className="flex justify-center">
+                {isAdmin && (
+                  <button type="button" title="Edit item" aria-label={`Edit ${product.name}`} onClick={() => onEdit(product)} className={MENU_EDIT_CLASS}>
+                    <PencilIcon size={16} />
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

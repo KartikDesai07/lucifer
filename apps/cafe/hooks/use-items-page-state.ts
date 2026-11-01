@@ -109,6 +109,13 @@ export function useItemsPageState({ isAdmin, authLoading }: { isAdmin: boolean; 
       else next.add(id);
       return next;
     });
+  // The table head's select-all (values 5.1): every LISTED item (after the filters and the search), or none when all of them
+  // are on. The 500 cap stays the bar's words (a bigger list can be ticked; the actions then disable).
+  const toggleSelectAll = () => {
+    const ids = filtered.map((p) => p._id);
+    const allOn = ids.length > 0 && ids.every((id) => effectiveSelected.has(id));
+    setSelected(allOn ? new Set() : new Set(ids));
+  };
   // A rail row, a chip or the select: today's category filter, and the selection clears (the HTML's pick).
   const pickCategory = (id: string | null) => {
     setCategoryId(id);
@@ -130,6 +137,7 @@ export function useItemsPageState({ isAdmin, authLoading }: { isAdmin: boolean; 
     toggleSelectMode: () => setSelectMode((v) => !v),
     effectiveSelected,
     toggleSelect,
+    toggleSelectAll,
     clearSelection,
     filtered,
     counts,

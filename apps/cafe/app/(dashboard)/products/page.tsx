@@ -1,11 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 
 import {
-  useArchiveProduct,
-  useRestoreProduct,
   useSetProductAvailability,
   useSetProductQrVisibility,
   useBulkProducts,
@@ -13,9 +11,9 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useItemsPageState } from "@/hooks/use-items-page-state";
 import { menuStripShows, MENU_STRIP_MESSAGE } from "@/lib/menu-view";
+import { categoryHueMap } from "@/lib/pos-categories";
 import { MENU_BODY_CLASS, MENU_LIST_SCROLLER_CLASS, MENU_PAGE_CLASS } from "@/lib/menu-layout";
 import type { ProductBulkAction } from "@pos/shared/schemas";
-import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { RefreshStrip } from "@/components/shared/RefreshStrip";
 import { CategoryRail } from "@/components/menu/CategoryRail";
 import { ItemsToolbar } from "@/components/menu/ItemsToolbar";
@@ -41,16 +39,14 @@ export default function ProductsPage() {
   // The view, the query, the filters, the selection and the derived rows and counts (U5 ruling M1: their own hook).
   const state = useItemsPageState({ isAdmin, authLoading });
   const { isArchived, products, categoryMap, categories, categoryId, status, effectiveSelected, clearSelection } = state;
-  const archiveProduct = useArchiveProduct();
-  const restoreProduct = useRestoreProduct();
   const setAvailability = useSetProductAvailability();
   const setQrVisibility = useSetProductQrVisibility();
   const bulkProducts = useBulkProducts();
 
+  const hues = useMemo(() => categoryHueMap(categories), [categories]);
   const [formOpen, setFormOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
-  const [archiving, setArchiving] = useState<Product | null>(null);
   const [movingIds, setMovingIds] = useState<string[] | null>(null);
   const [archivingIds, setArchivingIds] = useState<string[] | null>(null);
 
@@ -61,16 +57,6 @@ export default function ProductsPage() {
   const openEdit = (product: Product) => {
     setEditing(product);
     setFormOpen(true);
-  };
-
-  const confirmArchive = async () => {
-    if (!archiving) return;
-    try {
-      await archiveProduct.mutateAsync(archiving._id);
-      setArchiving(null);
-    } catch {
-      // hook toasts on error
-    }
   };
 
   // Bulk actions: the two stock toggles + restore fire straight away; move
@@ -158,10 +144,11 @@ export default function ProductsPage() {
             filtered={state.filtered}
             categoryMap={categoryMap}
             selected={effectiveSelected}
+            hues={hues}
+            categoryPicked={categoryId !== null}
             onToggleSelect={state.toggleSelect}
+            onToggleAll={state.toggleSelectAll}
             onEdit={openEdit}
-            onArchive={setArchiving}
-            onRestore={(p) => restoreProduct.mutate(p._id)}
             onToggleAvailable={(id, available) => setAvailability.mutate({ id, available })}
             onToggleQrVisible={(id, visible) => setQrVisibility.mutate({ id, visible })}
             pendingAvailabilityId={setAvailability.isPending ? setAvailability.variables?.id : undefined}
@@ -197,16 +184,6 @@ export default function ProductsPage() {
       <ProductFormSheet open={formOpen} onOpenChange={setFormOpen} product={editing} categories={categories} />
 
       <ImportProductsDialog open={importOpen} onOpenChange={setImportOpen} />
-
-      <ConfirmDialog
-        open={!!archiving}
-        onOpenChange={(o) => !o && setArchiving(null)}
-        title="Archive item?"
-        description={`"${archiving?.name}" will be hidden from the menu. You can restore it from the Archived view.`}
-        confirmLabel="Archive"
-        isLoading={archiveProduct.isPending}
-        onConfirm={confirmArchive}
-      />
     </div>
   );
 }

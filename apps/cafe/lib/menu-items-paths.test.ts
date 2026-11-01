@@ -7,6 +7,7 @@ import path from "node:path";
 import { stripComments } from "@/lib/source-pin-utils";
 import { STAFF_PRODUCT_BULK_ACTIONS } from "@pos/shared/schemas";
 import { MENU_CHIPS_CLASS, MENU_LIST_SCROLLER_CLASS, MENU_PAGE_CLASS } from "@/lib/menu-layout";
+import { MENU_BULK_BAR_CLASS, MENU_CARD_STRUCK_CLASS } from "@/lib/menu-list-layout";
 
 // Slice B source pins (Menu redesign, 2026-09-30) — the Items page, its
 // admin/staff gating, the icon render order, and the editor's icon sentinel.
@@ -16,7 +17,6 @@ import { MENU_CHIPS_CLASS, MENU_LIST_SCROLLER_CLASS, MENU_PAGE_CLASS } from "@/l
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel), "utf8");
 
-const ITEM_ROW_MENU = "apps/cafe/components/menu/ItemRowMenu.tsx";
 const ITEM_CARDS = "apps/cafe/components/menu/ItemCards.tsx";
 const ITEMS_TABLE = "apps/cafe/components/menu/ItemsTable.tsx";
 const ITEMS_TOOLBAR = "apps/cafe/components/menu/ItemsToolbar.tsx";
@@ -30,30 +30,24 @@ const PRODUCT_FORM_SHEET = "apps/cafe/components/products/ProductFormSheet.tsx";
 
 // ── C17 replacement: archived items keep Edit + Restore, on BOTH surfaces ──
 
-test("PIN: ItemRowMenu renders Edit UNCONDITIONALLY (before the archived ternary) plus Restore (not Archive) when archived — the C17 replacement, G8", () => {
-  const src = stripComments(readSrc(ITEM_ROW_MENU));
-  assert.match(src, /archived\s*\?/, "positive landmark: ItemRowMenu must branch on the archived prop");
-  assert.match(src, /onRestore\(product\)/, "ItemRowMenu must call onRestore in its archived branch");
-  assert.match(src, /ArchiveRestore/, "ItemRowMenu must use the ArchiveRestore icon for the archived branch");
-  // Mutation this catches: removing the archived branch entirely, which would
-  // leave every row -- even an archived one -- offering only Archive again,
-  // silently reintroducing C17 (an archived item unreachable for re-homing).
-  assert.match(src, /onArchive\(product\)/, "positive landmark: the non-archived branch must still offer Archive");
-  // G8 — Edit must sit BEFORE the archived ternary (rendered on every row,
-  // not moved inside just the non-archived branch). Mutation this catches:
-  // hoisting Edit into only the `archived ? (...) : (` branch, which would
-  // silently drop Edit from every archived row while this file's other
-  // assertions above still pass.
-  const editIdx = src.indexOf("onEdit(product)");
-  const ternaryIdx = src.search(/archived\s*\?/);
-  assert.ok(editIdx >= 0 && ternaryIdx >= 0, "both onEdit(product) and the archived ternary must be present");
-  assert.ok(editIdx < ternaryIdx, "onEdit(product) must appear BEFORE the archived ternary — Edit must render on every row, archived or not");
+// Moved on purpose (U5 Task 2, ruling M3; menu P3): the row menu is gone, the Edit pencil replaced it. Same meaning (C17): an
+// archived item stays reachable to edit, and Restore stays reachable (the bulk bar's, until the editor carries it, Task 3).
+test("PIN: C17 replacement — the table's Edit pencil renders on every row, archived or not (admin), and the bulk bar offers Restore in the Archived view", () => {
+  const table = stripComments(readSrc(ITEMS_TABLE));
+  assert.match(table, /\{isAdmin && \(\s*<button type="button" title="Edit item"/, "the pencil is gated on isAdmin only, never on archived");
+  assert.ok(!/archived\s*&&\s*\(\s*<button type="button" title="Edit item"/.test(table), "an archived row keeps its pencil");
+  const bar = stripComments(readSrc(BULK_BAR));
+  assert.match(bar, /archived \? \(\s*<BulkButton label="Restore"/, "the Archived view's bar offers Restore");
+  assert.match(bar, /onClick=\{\(\) => onAction\("restore"\)\}/, "and it runs the restore action");
 });
 
-test("PIN: ItemCards mounts the admin ItemRowMenu (the C17 replacement covers the phone surface too)", () => {
+// Moved on purpose (U5 Task 2, ruling M3; menu P4): the card's ⋯ menu is gone (the HTML has none); an admin's tap on the card
+// opens the editor, which is the phone's way to Edit.
+test("PIN: ItemCards has no row menu: an admin's tap on the card opens the editor, a select-mode tap toggles", () => {
   const src = stripComments(readSrc(ITEM_CARDS));
-  assert.match(src, /<ItemRowMenu\b/, "ItemCards.tsx must mount ItemRowMenu — the ux-owner-fidelity MAJOR finding: a phone admin had no Edit/Archive/Restore reach at all");
-  assert.match(src, /isAdmin\s*&&\s*!selectMode/, "the ItemRowMenu mount must be gated to admin AND out of Select mode (a select-mode tap toggles selection, not the menu)");
+  assert.ok(!/ItemRowMenu|MoreVertical/.test(src), "no row menu on a card");
+  assert.match(src, /if \(isAdmin\) onEdit\(product\);/, "the tap opens the editor for an admin");
+  assert.match(src, /const tappable = selectMode \|\| isAdmin;/, "tappable for an admin, and for everyone in Select mode");
 });
 
 // ── R13 / G4: phone tap opens the editor (admin) or toggles selection ───────
@@ -72,12 +66,12 @@ test("PIN: ItemCards — a tap toggles selection in Select mode for EVERY role (
   assert.ok(!/if\s*\(!isAdmin\)\s*return;/.test(src), "the handler must NOT bail out on staff before checking selectMode (that was the G4 bug)");
 });
 
-test("PIN: ItemCards' In stock switch stops propagation (must not also fire the card's tap handler)", () => {
+test("PIN: ItemCards' stock cell stops propagation (a switch tap must not also fire the card's tap handler)", () => {
   const src = stripComments(readSrc(ITEM_CARDS));
   assert.match(
     src,
-    /onClick=\{\(e\)\s*=>\s*e\.stopPropagation\(\)\}\s*\n\s*aria-label=\{`In stock/,
-    "the In stock Switch must call e.stopPropagation() on click, immediately before its aria-label prop",
+    /<div className=\{MENU_CARD_STOCK_CLASS\} onClick=\{\(e\) => e\.stopPropagation\(\)\}>[\s\S]*?aria-label=\{`In stock: \$\{product\.name\}`\}/,
+    "the cell holding the In stock switch must call e.stopPropagation() on click",
   );
 });
 
@@ -89,10 +83,11 @@ test("PIN: N5 — ItemCards' card carries no role=\"button\" / tabIndex / onKeyD
   assert.ok(!/onKeyDown=\{/.test(src), "the card must carry no onKeyDown handler at all — keyboard users select via the Checkbox and edit via the ⋯ menu's Edit item");
 });
 
-test("PIN: G11 — ItemCards shows the struck-through raw price on a discount, same rule as ItemsTable's PriceCell (R11)", () => {
+test("PIN: G11 — ItemCards shows the struck-through raw price on a discount, same rule as ItemsTable's price cell (R11)", () => {
   const src = stripComments(readSrc(ITEM_CARDS));
-  assert.match(src, /price\.discount > 0 &&/, "ItemCards must branch on price.discount > 0, the same predicate PriceCell uses");
-  assert.match(src, /text-muted-foreground line-through/, "the raw price must render with the line-through class");
+  assert.match(src, /price\.struck &&/, "ItemCards must branch on the struck text, which menuPriceText gives only when discounted");
+  assert.ok(MENU_CARD_STRUCK_CLASS.split(" ").includes("line-through"), "the raw price must render with the line-through class");
+  assert.match(stripComments(readSrc(ITEMS_TABLE)), /price\.struck &&/, "the table's price cell uses the same rule");
 });
 
 // ── Admin gating: ⋯ / Import / Add / empty-state CTAs ──────────────────────
@@ -110,25 +105,22 @@ test("PIN: the Items page shows Import CSV + Add item only inside an isAdmin bra
   assert.match(page, /onImport=\{\(\) => setImportOpen\(true\)\}/, "the toolbar's Import opens the import wizard");
 });
 
-test("PIN: ItemsTable renders the checkbox column for EVERY role (G4 — staff need it to reach the two stock bulk actions), but keeps the QR switch and row menu admin-only (staff see a read-only QR label, no menu)", () => {
+// Moved on purpose (U5 Task 2; menu P8): the row's check is the HTML's 18px MenuCheck, the Edit pencil replaced the row menu. Same
+// meaning: every role selects (G4), the QR switch and the pencil are admin-only, staff read Shown / Hidden (R20).
+test("PIN: ItemsTable renders the check column for EVERY role (G4 — staff need it to reach the two stock bulk actions), but keeps the QR switch and the Edit pencil admin-only (staff see a read-only QR label)", () => {
   const src = stripComments(readSrc(ITEMS_TABLE));
-  // G4: the checkbox column header and each row's Checkbox must NOT be
-  // isAdmin-gated — mutation this catches: re-adding an `isAdmin &&` guard
-  // around either, which would make the staff bulk actions unreachable again.
-  assert.match(src, /<TableHead className="w-10" \/>/, "the selection checkbox column header must exist");
-  assert.ok(!/\{isAdmin\s*&&\s*<TableHead className="w-10"/.test(src), "the checkbox column header must NOT be gated behind isAdmin");
-  assert.match(src, /<Checkbox\s*\n\s*className=\{BRAND_CHECKBOX_SQUARE_CLASS\}/, "every row must render a Checkbox");
-  assert.ok(!/\{isAdmin\s*&&\s*\(\s*<TableCell>\s*<Checkbox/.test(src), "the row Checkbox must NOT be gated behind isAdmin");
-  assert.match(src, /isAdmin\s*\?\s*\(\s*<Switch/, "the QR column must render a live Switch only when isAdmin");
+  assert.match(src, /<MenuCheck state=\{isSelected \? "on" : "off"\}/, "every row must render a check");
+  assert.ok(!/\{isAdmin\s*&&\s*\(\s*<div role="cell" className="flex">\s*<MenuCheck/.test(src), "the row check must NOT be gated behind isAdmin");
+  assert.match(readSrc("apps/cafe/components/menu/ItemsTableHead.tsx"), /<MenuCheck state=\{allState\}/, "the head's select-all is there for every role");
+  assert.match(src, /isAdmin \? \(\s*<MenuSwitch\s*\n\s*tone="accent"/, "the QR column must render a live switch only when isAdmin");
   assert.match(src, />\{qrVisible \? "Shown" : "Hidden"\}<\/span>/, "R20: staff must see a read-only Shown/Hidden label, not a disabled switch");
-  assert.match(src, /\{isAdmin\s*&&\s*\(\s*<TableCell className="text-right">\s*<ItemRowMenu/, "the ⋯ row menu column must be admin-only");
+  assert.match(src, /\{isAdmin && \(\s*<button type="button" title="Edit item"/, "the Edit pencil must be admin-only");
 });
 
-test("PIN: ItemCards shows the Select checkbox for EVERY role once Select mode is on (G4), but the ⋯ row menu stays admin-only", () => {
+test("PIN: ItemCards shows the Select check for EVERY role once Select mode is on (G4)", () => {
   const src = stripComments(readSrc(ITEM_CARDS));
-  assert.match(src, /\{selectMode\s*&&\s*\(\s*<Checkbox/, "the card checkbox must render whenever selectMode is on, regardless of role");
-  assert.ok(!/\{isAdmin\s*&&\s*selectMode\s*&&\s*\(\s*<Checkbox/.test(src), "the card checkbox must NOT additionally require isAdmin");
-  assert.match(src, /\{isAdmin\s*&&\s*!selectMode\s*&&\s*\(\s*<ItemRowMenu/, "the ⋯ row menu must stay admin-only");
+  assert.match(src, /\{selectMode && <MenuCheck/, "the card check must render whenever selectMode is on, regardless of role");
+  assert.ok(!/\{isAdmin\s*&&\s*selectMode\s*&&/.test(src), "the card check must NOT additionally require isAdmin");
 });
 
 test("PIN: ItemsToolbar hides the Archived status option from staff but shows the phone Select toggle to EVERY role (G4)", () => {
@@ -149,19 +141,20 @@ test("PIN: ItemsToolbar hides the Archived status option from staff but shows th
 
 // ── Staff QR read-only (R20) + bulk actions ⊆ STAFF_PRODUCT_BULK_ACTIONS ────
 
-test("PIN: BulkBar only offers Move/Archive (and lg+ inline duplicates) inside isAdmin branches — staff get just the two stock actions", () => {
+// Moved on purpose (U5 Task 2; menu P11): the words are the HTML's ("Mark sold out" / "Back in stock") and every button shows inline
+// (the "More" menu and its lg split are gone). Same meaning: Move / Archive are admin-only, staff get the two stock actions.
+test("PIN: BulkBar only offers Move/Archive inside isAdmin branches — staff get just the two stock actions", () => {
   const src = stripComments(readSrc(BULK_BAR));
-  assert.match(src, /Out of stock/, "positive landmark: the out-of-stock action must exist");
-  assert.match(src, /In stock/, "positive landmark: the in-stock action must exist");
+  assert.match(src, /label="Mark sold out"/, "positive landmark: the out-of-stock action must exist");
+  assert.match(src, /label="Back in stock"/, "positive landmark: the in-stock action must exist");
   assert.match(
     src,
     /\{isAdmin\s*&&\s*!archived\s*&&\s*\(/,
-    "Move/Archive (and the More menu holding them) must be gated behind isAdmin && !archived",
+    "Move/Archive must be gated behind isAdmin && !archived",
   );
-  // Vision guard on the shared source of truth: the two actions BulkBar always
-  // offers must be exactly STAFF_PRODUCT_BULK_ACTIONS — if a route ever adds a
-  // third staff-safe action without updating this component, that drift shows
-  // up as a real UI/contract mismatch, not a passing-by-accident test.
+  assert.ok(!/DropdownMenu|More/.test(src), "no More menu");
+  // Vision guard on the shared source of truth: the two actions BulkBar always offers must be exactly
+  // STAFF_PRODUCT_BULK_ACTIONS.
   assert.deepEqual(
     [...STAFF_PRODUCT_BULK_ACTIONS].sort(),
     ["in-stock", "out-of-stock"],
@@ -272,9 +265,10 @@ test("PIN: G18 — the Items page's full-page ErrorState uses item-worded copy a
   assert.match(src, /retryLabel="Try again"/, "the full ErrorState must pass retryLabel=\"Try again\"");
 });
 
-test("PIN: G20 — BulkBar's action row carries flex-wrap as an overflow safety net", () => {
-  const src = stripComments(readSrc(BULK_BAR));
-  assert.match(src, /className="flex w-full min-w-0 flex-wrap items-center gap-2"/, "the bulk bar's action row must include flex-wrap");
+// Moved on purpose (U5 Task 2; menu P19): the bar's class string is a constant (the HTML's wrapping ink bar), the pin reads it.
+test("PIN: G20 — the bulk bar wraps (flex-wrap) as an overflow safety net", () => {
+  assert.ok(MENU_BULK_BAR_CLASS.split(/\s+/).includes("flex-wrap"), "the bulk bar must include flex-wrap");
+  assert.match(stripComments(readSrc(BULK_BAR)), /className=\{MENU_BULK_BAR_CLASS\}/, "BulkBar renders that constant");
 });
 
 test("PIN: item 1 — the one horizontally scrolling row (the phone's category chips) is contained ([contain:inline-size] on its own overflow-x-auto box), and the frame down to it never stretches", () => {
@@ -350,12 +344,12 @@ test("PIN: N3 — the empty-state title never reads a stale status: ItemsListSec
 // Perf (s58 browser probe): below lg the page built all 105 table rows hidden
 // next to the cards (210 In stock switches in the DOM). Once the width is known
 // only one list mounts; null (server) keeps both, CSS-gated.
-test("PIN: ItemsListSection mounts only the list for the current width (useMediaQuery(LG_UP_QUERY))", () => {
+// Moved on purpose (U5 Task 2; menu P74): the table's breakpoint is 816px (the HTML's listW >= 700), not lg; one list mounts.
+test("PIN: ItemsListSection mounts only the list for the current width (useMediaQuery(MENU_TABLE_QUERY))", () => {
   const src = stripComments(readSrc("apps/cafe/components/menu/ItemsListSection.tsx"));
-  assert.match(src, /const wide = useMediaQuery\(LG_UP_QUERY\)/, "the section must read the lg media query");
-  assert.match(src, /\{wide !== false && <div className="hidden[^"]*lg:block">\s*<ItemsTable/, "the table mounts only when wide is not false");
-  assert.match(src, /\{wide !== true && <div className="lg:hidden">\s*<ItemCards/, "the cards mount only when wide is not true");
+  assert.match(src, /const wide = useMediaQuery\(MENU_TABLE_QUERY\)/, "the section must read the table media query");
+  assert.match(src, /\{wide !== false && \(\s*<div className=\{gate \? MENU_TABLE_SSR_CLASS : undefined\}>\s*<ItemsTable/, "the table mounts only when wide is not false");
+  assert.match(src, /\{wide !== true && \(\s*<div className=\{gate \? MENU_CARDS_SSR_CLASS : undefined\}>\s*<ItemCards/, "the cards mount only when wide is not true");
   const hook = stripComments(readSrc("apps/cafe/hooks/use-media-query.ts"));
-  assert.match(hook, /LG_UP_QUERY = "\(min-width: 1024px\)"/, "LG_UP_QUERY must equal Tailwind's lg breakpoint");
   assert.match(hook, /\(\) => null,?\s*\)/, "the server snapshot must be null (unknown width -> both lists, CSS-gated)");
 });

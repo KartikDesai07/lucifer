@@ -84,8 +84,12 @@ test("PIN (skip-KOT): the item form's Kitchen ticket: Same as its category sends
 
 test("PIN (skip-KOT): the \"No KOT\" tag sits on the Categories and both Items layouts, and the item rule is its own choice over its category", () => {
   assert.match(src("components/menu/CategoryRow.tsx"), /<NoKotTag skips=\{category\.noKot === true\} \/>/);
-  assert.match(src("components/menu/ItemsTable.tsx"), /<NoKotTag skips=\{itemSkipsKitchen\(product, categoryMap\)\} \/>/);
-  assert.match(src("components/menu/ItemCards.tsx"), /<NoKotTag skips=\{itemSkipsKitchen\(product, categoryMap\)\} \/>/);
+  // Moved on purpose (U5 Task 2; the item tag is the HTML's badge row now): each Items layout asks menuItemBadges for the item's
+  // badges with the same rule, and ItemBadges draws "No KOT" from it. Same meaning, same rule.
+  assert.match(src("components/menu/ItemsTable.tsx"), /menuItemBadges\(product, \{ archived, skipsKitchen: itemSkipsKitchen\(product, categoryMap\) \}\)/);
+  assert.match(src("components/menu/ItemCards.tsx"), /menuItemBadges\(product, \{ archived, skipsKitchen: itemSkipsKitchen\(product, categoryMap\) \}\)/);
+  assert.match(src("lib/menu-view.ts"), /if \(ctx\.skipsKitchen\) out\.push\("no-kot"\);/);
+  assert.match(src("components/menu/ItemBadges.tsx"), /"no-kot": KITCHEN_NO_KOT_TAG/);
   const tag = src("components/menu/NoKotTag.tsx");
   assert.match(tag, /skipsKitchenTicket\(\{ noKot: product\.noKot \?\? categoryMap\.get\(product\.categoryId\)\?\.noKot \}\)/);
   assert.match(tag, /KITCHEN_NO_KOT_TAG/);

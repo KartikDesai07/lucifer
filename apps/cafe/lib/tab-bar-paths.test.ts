@@ -187,11 +187,18 @@ test("PIN: the dashboard layout mounts one tab bar, and a phone's page keeps 92p
 test("PIN: every sticky bar at a page's foot stops on the tab bar on a phone (Settings' save bar, the menu's bulk bar, the POS cart bar)", async () => {
   const { ABOVE_TAB_BAR_STICKY_CLASS, TAB_BAR_HEIGHT_PX } = await import("@/lib/shell-layout");
   assert.equal(ABOVE_TAB_BAR_STICKY_CLASS, `max-tab:bottom-[${TAB_BAR_HEIGHT_PX}px]`, "the offset is the bar's 59px");
-  for (const file of ["components/settings/SettingsSaveBar.tsx", "components/menu/BulkBar.tsx"]) {
-    const src = read(file);
-    assert.match(src, /import \{ ABOVE_TAB_BAR_STICKY_CLASS \} from "@\/lib\/shell-layout";/, `${file} reads the shell's offset`);
-    assert.match(src, /ABOVE_TAB_BAR_STICKY_CLASS,\s*\)\}/, `${file} applies it to its sticky bar`);
-  }
+  const saveBar = read("components/settings/SettingsSaveBar.tsx");
+  assert.match(saveBar, /import \{ ABOVE_TAB_BAR_STICKY_CLASS \} from "@\/lib\/shell-layout";/, "components/settings/SettingsSaveBar.tsx reads the shell's offset");
+  assert.match(saveBar, /ABOVE_TAB_BAR_STICKY_CLASS,\s*\)\}/, "components/settings/SettingsSaveBar.tsx applies it to its sticky bar");
+  // Moved on purpose (U5 Task 2, owner Q6): the menu's bulk bar is the HTML's ink bar at the list scroller's foot. A sticky offset
+  // counts from the scroller's padding edge and the phone's foot padding (92px + the inset) already clears the tab bar
+  // (59px + its inset), so the bar takes `bottom-0` and no offset of its own (with the shell's 59px added it floated 92px up).
+  const { MENU_BULK_BAR_CLASS } = await import("@/lib/menu-list-layout");
+  const { MENU_LIST_SCROLLER_CLASS } = await import("@/lib/menu-layout");
+  assert.ok(MENU_BULK_BAR_CLASS.split(/\s+/).includes("bottom-0"), "the menu's bulk bar sticks at the scroller's foot");
+  assert.ok(MENU_LIST_SCROLLER_CLASS.split(/\s+/).includes("max-tab:pb-[calc(92px+env(safe-area-inset-bottom))]"), "whose phone foot padding clears the tab bar and its inset");
+  assert.ok(92 >= TAB_BAR_HEIGHT_PX, "92px is past the tab bar's 59px");
+  assert.match(read("components/menu/BulkBar.tsx"), /className=\{MENU_BULK_BAR_CLASS\}/, "BulkBar renders that class");
   // Ruling P44: the POS cart bar lies UNDER the tab bar (z-index 10 < 12), so it also rides up by the safe-area inset
   // the tab bar grows by (its bottom padding); at inset 0 it is the same 59px. The two sticky bars above keep the shell's.
   const { POS_MOBILE_BAR_CLASS } = await import("@/lib/pos-layout");

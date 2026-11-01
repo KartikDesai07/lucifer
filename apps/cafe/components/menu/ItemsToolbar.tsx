@@ -122,8 +122,9 @@ export function ItemsToolbar({
             <FunnelIcon size={16} strokeWidth={1.9} />
             {filterActive && <span data-ui="menu-filters-badge" className={MENU_FILTER_BADGE_CLASS}>1</span>}
           </button>
-          {/* A staff toggle too (G4): staff select rows to run the two stock bulk actions. Cards (below 1024px for now)
-              are where it is needed; the table has its own checkboxes. */}
+          {/* A staff toggle too (G4): staff select rows to run the two stock bulk actions. Cards (below 816px) are
+              where it is needed; the table has its own checkboxes, so the button hides exactly where the table shows (a page
+              box of 740px, the 816px window less the 76px nav: ruling M5). */}
           <button
             type="button"
             data-ui="menu-select-mode"
@@ -131,7 +132,7 @@ export function ItemsToolbar({
             aria-label="Select"
             aria-pressed={selectMode}
             onClick={onToggleSelectMode}
-            className={cn(MENU_ICON_BUTTON_CLASS, "lg:hidden", selectMode && MENU_ICON_BUTTON_ON_CLASS)}
+            className={cn(MENU_ICON_BUTTON_CLASS, "@[740px]/menu:hidden", selectMode && MENU_ICON_BUTTON_ON_CLASS)}
           >
             <ListChecks aria-hidden="true" className="size-4" strokeWidth={1.9} />
           </button>

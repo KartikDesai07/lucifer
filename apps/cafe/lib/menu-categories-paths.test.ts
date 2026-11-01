@@ -195,10 +195,15 @@ test("PIN: a new category's order comes from nextCategoryOrder(list), not list.l
 // Skip-KOT smoke s12 (2026-10-08): the shadcn Badge behind NoKotTag renders a <div>, and a <div> inside a <p> is invalid
 // HTML that React reports as a hydration error on /categories. Every element that holds the tag must be a non-<p> box.
 test("PIN: the No KOT tag never sits inside a <p> (Badge is a <div>: hydration error)", () => {
-  const files = ["apps/cafe/components/menu/CategoryRow.tsx", "apps/cafe/components/menu/ItemCards.tsx", "apps/cafe/components/menu/ItemsTable.tsx"];
-  for (const rel of files) {
+  // Moved on purpose (U5 Task 2): an item's No KOT tag is a span of ItemBadges (the HTML's badge row), not NoKotTag; the rule
+  // is unchanged, no element that holds it is a <p>.
+  const files = [
+    ["apps/cafe/components/menu/CategoryRow.tsx", "<NoKotTag"],
+    ["apps/cafe/components/menu/ItemBadges.tsx", "<span key={b}"],
+  ];
+  for (const [rel, landmark] of files) {
     const src = readStripped(rel);
-    const at = src.indexOf("<NoKotTag");
+    const at = src.indexOf(landmark);
     assert.ok(at !== -1, `landmark: ${rel} renders the tag`);
     const before = src.slice(0, at);
     const openP = before.lastIndexOf("<p");

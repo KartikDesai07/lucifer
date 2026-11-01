@@ -34,9 +34,10 @@ export const MENU_BODY_CLASS =
 /** The list column, the page's only scroller (values 0.3 pagePad / screenPadB, 1.2): padding 20px 24px 28px from 720px,
  *  16px 14px 92px on a phone (the tab bar covers its last 59px), each foot growing by the safe-area inset at every width
  *  (U1 P49), the children 12px apart (the HTML's column gap), U3's 8px scrollbar (the Floor scroller's four classes).
- *  `overflow-x-clip`, never hidden (WebView 109). The HTML sets no line-height here: normal. */
+ *  `overflow-x-clip`, never hidden (WebView 109). The HTML sets no line-height here: normal. It is also the container `list`
+ *  (U5 Task 2): its content box is the list box, which the table's Category column and the bulk bar's labels ask. */
 export const MENU_LIST_SCROLLER_CLASS =
-  "flex min-h-0 min-w-0 flex-col gap-3 overflow-y-auto overflow-x-clip leading-[normal] pt-5 px-6 pb-[calc(28px+env(safe-area-inset-bottom))] max-tab:pt-4 max-tab:px-3.5 max-tab:pb-[calc(92px+env(safe-area-inset-bottom))] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar]:h-0 [&::-webkit-scrollbar-thumb]:rounded-[8px] [&::-webkit-scrollbar-thumb]:bg-border";
+  "@container/list flex min-h-0 min-w-0 flex-col gap-3 overflow-y-auto overflow-x-clip leading-[normal] pt-5 px-6 pb-[calc(28px+env(safe-area-inset-bottom))] max-tab:pt-4 max-tab:px-3.5 max-tab:pb-[calc(92px+env(safe-area-inset-bottom))] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar]:h-0 [&::-webkit-scrollbar-thumb]:rounded-[8px] [&::-webkit-scrollbar-thumb]:bg-border";
 
 // ── The header's view switch and Add (values 2) ───────────────────────────────────────────────────────────────────────
 // A page's actions sit in the header's actions slot, whose unlayered button rule (app/globals.css [data-header-actions],
