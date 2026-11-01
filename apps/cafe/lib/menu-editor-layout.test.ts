@@ -108,6 +108,8 @@ test("source: the sheet is the frame, the archive confirm opens from the editor,
   for (const file of ["components/products/IconPicker.tsx", "components/menu/MoveItemsDialog.tsx", "components/products/ImportProductsDialog.tsx"]) {
     assert.match(read(file), /MenuDialog/, `${file} draws the HTML's dialog box`);
   }
+  assert.match(sheet, /<Input id="product-name" autoFocus /, "the Name input carries autoFocus (today's, inventory E109)");
+  assert.match(sheet, /focusPanel={false}/, "the editor does not force the panel focus");
   const frame = read("components/products/ItemEditorFrame.tsx");
   assert.match(frame, /keepOpenForNestedDialog/, "a press in a dialog opened over the editor never closes it");
   assert.match(frame, /useMediaQuery\(MENU_EDITOR_XL_QUERY\)/, "the 1280px split by the shared media query");

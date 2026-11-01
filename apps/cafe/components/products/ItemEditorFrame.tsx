@@ -33,16 +33,30 @@ interface ItemEditorFrameProps {
   children: ReactNode;
   /** The form's submit (the footer's Save is its submit button). */
   onSubmit?: FormEventHandler<HTMLFormElement>;
+  /** true (default): the panel takes the focus as it opens. false: Radix's own open focus stays, so a field with autoFocus keeps
+   *  it (the item editor's Name, inventory E109); the opener is remembered and refocused on close either way. */
+  focusPanel?: boolean;
 }
 
 // The item editor's frame (values 9.1; design 6.9; owner rule 2026-10-22): the HTML's 500px aside over its scrim from 1280px,
 // U2's full-screen bottom sheet below; one Radix dialog whose classes follow the width, so a resize never remounts the form.
 // A press that lands in a dialog opened over it (the icon picker, the archive confirm) never closes it.
-export function ItemEditorFrame({ open, onOpenChange, title, sub, footer, children, onSubmit }: ItemEditorFrameProps) {
+export function ItemEditorFrame({ open, onOpenChange, title, sub, footer, children, onSubmit, focusPanel = true }: ItemEditorFrameProps) {
   const side = useMediaQuery(MENU_EDITOR_XL_QUERY);
-  // The panel takes the focus as it opens (no ring on the first field, no phone keyboard: the HTML shows no focused field) and
-  // the focus goes back to what opened it (U1 ruling P22).
-  const openerFocus = useOpenerFocus();
+  const panelFocus = useOpenerFocus({ focusPanel });
+  // With Radix's own open focus the Name (autoFocus) is already focused when the hook looks, so the opener is read here, on the
+  // render that opens the editor, before anything inside mounts; closing hands the focus back to it.
+  const openerRef = useRef<HTMLElement | null>(null);
+  if (open && openerRef.current === null && document.activeElement instanceof HTMLElement && document.activeElement !== document.body) openerRef.current = document.activeElement;
+  const openerFocus = focusPanel
+    ? panelFocus
+    : {
+        onCloseAutoFocus: (e: Event) => {
+          e.preventDefault();
+          if (openerRef.current?.isConnected) openerRef.current.focus();
+          openerRef.current = null;
+        },
+      };
   const panelRef = useRef<HTMLDivElement>(null);
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>

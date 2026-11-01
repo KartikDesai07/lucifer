@@ -186,10 +186,11 @@ export function ProductFormSheet({
       title={isEdit ? "Edit item" : "Add item"}
       sub={isEdit ? (categoryName ? `${product.name} · ${categoryName}` : product.name) : "Add a new item to the menu"}
       onSubmit={handleSubmit(onSubmit)}
+      focusPanel={false}
       footer={<ItemEditorFooter onCancel={() => onOpenChange(false)} saving={saving} submitLabel={isEdit ? "Save changes" : "Add to menu"} />}
     >
       <EditorField label="Item name" htmlFor="product-name" error={errors.name?.message}>
-        <Input id="product-name" placeholder="e.g. Margherita" className={MENU_EDITOR_INPUT_CLASS} aria-invalid={!!errors.name} {...register("name")} />
+        <Input id="product-name" autoFocus placeholder="e.g. Margherita" className={MENU_EDITOR_INPUT_CLASS} aria-invalid={!!errors.name} {...register("name")} />
       </EditorField>
 
       <EditorField label="Category" error={errors.categoryId?.message}>
