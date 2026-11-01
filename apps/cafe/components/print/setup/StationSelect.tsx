@@ -11,6 +11,8 @@ interface StationSelectProps {
   stations: readonly StationConfig[];
   /** What "" means here: the default station (a category), or the category's station (an item). */
   inheritLabel: string;
+  /** The trigger's own classes (the Menu editor's 38px look); none = the kit's. */
+  triggerClassName?: string;
 }
 
 // The Select's own value for "": an empty string is not a value a Select item may carry.
@@ -20,11 +22,11 @@ const INHERIT = "inherit";
 // inherited one (absent on the record, so it follows a moved default or the category's own choice). A saved id not
 // in the list (still loading, or gone) shows as inherited and is kept as it is until changed, as routing reads it
 // (an unknown station falls back the same way).
-export function StationSelect({ id, value, onChange, stations, inheritLabel }: StationSelectProps) {
+export function StationSelect({ id, value, onChange, stations, inheritLabel, triggerClassName }: StationSelectProps) {
   const shown = value !== "" && stations.some((station) => station.id === value) ? value : INHERIT;
   return (
     <Select value={shown} onValueChange={(next) => onChange(next === INHERIT ? "" : next)}>
-      <SelectTrigger id={id}>
+      <SelectTrigger id={id} className={triggerClassName}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

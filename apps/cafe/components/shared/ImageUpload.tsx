@@ -17,6 +17,7 @@ import { productImageUrl } from "@/lib/images";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
+import { MENU_EDITOR_ART_TILE_CLASS, MENU_EDITOR_OUTLINE_BUTTON_CLASS } from "@/lib/menu-editor-layout";
 
 interface ImageUploadProps {
   value: string; // opaque image ref — "r2:<key>" or a legacy Cloudinary public_id ("" if none)
@@ -34,6 +35,11 @@ interface ImageUploadProps {
   aspect?: "square" | "wide";
   // Placeholder instead of ImagePlus with no photo (an item's icon/initial).
   emptyPreview?: React.ReactNode;
+  // The Menu item editor's look (U5 Task 3; values 9.2 #5): the 72px radius-12 tile and 36px outline buttons. Every other
+  // call site keeps today's look (no look).
+  look?: "menu";
+  // More actions in the buttons' column (the editor's "Choose icon").
+  extraActions?: React.ReactNode;
 }
 
 const PREVIEW_BOX_CLASSNAMES: Record<"square" | "wide", string> = {
@@ -180,6 +186,8 @@ export function ImageUpload({
   slot,
   aspect = "square",
   emptyPreview,
+  look,
+  extraActions,
 }: ImageUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -245,13 +253,13 @@ export function ImageUpload({
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <div className={cn(PREVIEW_BOX_CLASSNAMES[aspect], uploading && "opacity-70")}>
+      <div className={cn(look === "menu" ? MENU_EDITOR_ART_TILE_CLASS : PREVIEW_BOX_CLASSNAMES[aspect], uploading && "opacity-70")}>
         {shownUrl ? (
           <Image
             src={shownUrl}
             alt={alt}
             fill
-            sizes={PREVIEW_SIZES[aspect]}
+            sizes={look === "menu" ? "72px" : PREVIEW_SIZES[aspect]}
             className={slot ? "object-contain" : "object-cover"}
             // Local object-URL previews can't go through the image optimizer;
             // stored image URLs (allowlisted hosts) are optimized normally.
@@ -281,7 +289,7 @@ export function ImageUpload({
         <Button
           type="button"
           variant="outline"
-          className={BRAND_CONTROL_CLASS}
+          className={look === "menu" ? MENU_EDITOR_OUTLINE_BUTTON_CLASS : BRAND_CONTROL_CLASS}
           disabled={disabled || uploading}
           onClick={() => inputRef.current?.click()}
         >
@@ -291,12 +299,13 @@ export function ImageUpload({
           <Button
             type="button"
             variant="ghost"
-            className={cn(BRAND_CONTROL_CLASS, "text-muted-foreground")}
+            className={cn(look === "menu" ? MENU_EDITOR_OUTLINE_BUTTON_CLASS : BRAND_CONTROL_CLASS, "text-muted-foreground")}
             onClick={remove}
           >
             <X className="mr-1 h-3.5 w-3.5" /> Remove
           </Button>
         )}
+        {extraActions}
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { MENU_EDITOR_INPUT_CLASS } from "@/lib/menu-editor-layout";
 
 interface ModifierInputProps {
   value: string[];
@@ -37,6 +38,7 @@ export function ModifierInput({ value, onChange }: ModifierInputProps) {
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKeyDown}
         onBlur={add}
+        className={MENU_EDITOR_INPUT_CLASS}
         placeholder="e.g. Extra cheese — type and press Enter"
       />
       {value.length > 0 && (

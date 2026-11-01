@@ -3,28 +3,31 @@
 import { useEffect } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 
 import { createProductSchema, type CreateProductInput } from "@/schemas";
 import { isProductIconKey } from "@pos/shared/product-icons";
 import { useCreateProduct, useUpdateProduct } from "@/hooks/use-products";
 import { useStations } from "@/hooks/use-print-setup";
+import { priceForSave, valuesForValidation, type ProductFormValues } from "@/lib/product-form-values";
+import { MENU_SELECT_TRIGGER_CLASS } from "@/lib/menu-layout";
+import {
+  MENU_EDITOR_CELL_RIGHT_CLASS,
+  MENU_EDITOR_INPUT_CLASS,
+  MENU_EDITOR_NUMBER_CLASS,
+  MENU_EDITOR_PERCENT_BOX_CLASS,
+  MENU_EDITOR_SELECT_CLASS,
+} from "@/lib/menu-editor-layout";
+import { cn } from "@/lib/utils";
 import { StationSelect } from "@/components/print/setup/StationSelect";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { FormSheet } from "@/components/shared/FormSheet";
-import { FormField } from "@/components/shared/FormField";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { EditorField } from "@/components/products/EditorField";
+import { ItemEditorFooter, ItemEditorFrame } from "@/components/products/ItemEditorFrame";
+import { ItemSwitchesField } from "@/components/products/ItemSwitchesCard";
+import { ItemArchiveLink } from "@/components/products/ItemArchiveLink";
+import { PriceModeField } from "@/components/products/PriceModeField";
 import { ModifierInput } from "@/components/products/ModifierInput";
 import { ProductArtField } from "@/components/products/ProductArtField";
-import { VariationsField } from "@/components/products/VariationsField";
-import { PublicVisibleField } from "@/components/products/PublicVisibleField";
 import { KitchenTicketField } from "@/components/products/KitchenTicketField";
 import { ModifiersPreselectedField, modifiersPreselectedToSave } from "@/components/products/ModifiersPreselectedField";
 import type { Category, Product } from "@/types";
@@ -34,11 +37,15 @@ interface ProductFormSheetProps {
   onOpenChange: (open: boolean) => void;
   product: Product | null; // null → create
   categories: Category[];
+  /** Archive item (an active item being edited): the page opens today's confirm over the editor. */
+  onArchive?: (product: Product) => void;
+  /** Restore item (an archived item being edited): the page restores at once. */
+  onRestore?: (product: Product) => void;
+  restoring?: boolean;
 }
 
-// Several fields carry zod defaults, so the form holds the (looser) input type
+// Several fields carry zod defaults, so the form holds the (looser) input type (ProductFormValues, lib/product-form-values.ts)
 // while submit receives the transformed output (CreateProductInput).
-type ProductFormValues = z.input<typeof createProductSchema>;
 
 const emptyValues: ProductFormValues = {
   name: "",
@@ -55,11 +62,16 @@ const emptyValues: ProductFormValues = {
   modifiersPreselected: false,
 };
 
+const schemaResolver = zodResolver(createProductSchema);
+
 export function ProductFormSheet({
   open,
   onOpenChange,
   product,
   categories,
+  onArchive,
+  onRestore,
+  restoring = false,
 }: ProductFormSheetProps) {
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
@@ -72,9 +84,12 @@ export function ProductFormSheet({
     handleSubmit,
     control,
     reset,
+    getValues,
+    setValue,
     formState: { errors },
   } = useForm<ProductFormValues, unknown, CreateProductInput>({
-    resolver: zodResolver(createProductSchema),
+    // A base-price problem in Sizes mode (its box is not drawn) never blocks Save: lib/product-form-values.ts.
+    resolver: (values, context, options) => schemaResolver(valuesForValidation(values), context, options),
     defaultValues: emptyValues,
   });
 
@@ -106,10 +121,6 @@ export function ProductFormSheet({
     );
   }, [open, product, reset]);
 
-  // Drives the "Has variations" hint below Price — read separately from the
-  // Controller VariationsField owns so the hint doesn't need its own.
-  const variations = useWatch({ control, name: "variations" });
-  const hasVariations = Array.isArray(variations);
   const modifierCount = useWatch({ control, name: "modifiers" })?.length ?? 0;
 
   const onSubmit = async (values: CreateProductInput) => {
@@ -122,7 +133,7 @@ export function ProductFormSheet({
           data: {
             name: values.name,
             categoryId: values.categoryId,
-            price: values.price,
+            price: priceForSave({ hasVariations: values.variations !== undefined, price: values.price }, false),
             // `null`, never undefined, when the switch is OFF: JSON.stringify drops
             // an undefined key, so an absent one reads as "leave the stored sizes
             // alone" and the toggle would do nothing at all. null is the explicit
@@ -151,6 +162,7 @@ export function ProductFormSheet({
       } else {
         await createProduct.mutateAsync({
           ...values,
+          price: priceForSave({ hasVariations: values.variations !== undefined, price: values.price }, true),
           modifiersPreselected: modifiersPreselectedToSave(values),
         });
       }
@@ -162,32 +174,31 @@ export function ProductFormSheet({
 
   const saving = createProduct.isPending || updateProduct.isPending;
 
+
+  const categoryName = product ? categories.find((c) => c._id === product.categoryId)?.name : undefined;
+
+  // The HTML's editor (values 9; design 6.9): the frame (aside from 1280px, bottom sheet below), then the fields in the
+  // design's order, each in the 42px / 38px look. Every field, rule and message is today's.
   return (
-    <FormSheet
+    <ItemEditorFrame
       open={open}
       onOpenChange={onOpenChange}
       title={isEdit ? "Edit item" : "Add item"}
-      description={
-        isEdit ? "Update this menu item's details." : "Add a new item to the menu."
-      }
-      submitLabel={isEdit ? "Save changes" : "Add item"}
-      saving={saving}
+      sub={isEdit ? (categoryName ? `${product.name} · ${categoryName}` : product.name) : "Add a new item to the menu"}
       onSubmit={handleSubmit(onSubmit)}
-      contentClassName="overflow-y-auto"
+      footer={<ItemEditorFooter onCancel={() => onOpenChange(false)} saving={saving} submitLabel={isEdit ? "Save changes" : "Add to menu"} />}
     >
-      <ProductArtField control={control} />
+      <EditorField label="Item name" htmlFor="product-name" error={errors.name?.message}>
+        <Input id="product-name" placeholder="e.g. Margherita" className={MENU_EDITOR_INPUT_CLASS} aria-invalid={!!errors.name} {...register("name")} />
+      </EditorField>
 
-      <FormField label="Name" error={errors.name?.message}>
-        <Input autoFocus aria-invalid={!!errors.name} {...register("name")} />
-      </FormField>
-
-      <FormField label="Category" error={errors.categoryId?.message}>
+      <EditorField label="Category" error={errors.categoryId?.message}>
         <Controller
           control={control}
           name="categoryId"
           render={({ field }) => (
             <Select value={field.value} onValueChange={field.onChange}>
-              <SelectTrigger aria-invalid={!!errors.categoryId}>
+              <SelectTrigger aria-label="Category" aria-invalid={!!errors.categoryId} className={cn(MENU_SELECT_TRIGGER_CLASS, MENU_EDITOR_SELECT_CLASS)}>
                 <SelectValue placeholder="Select a category" />
               </SelectTrigger>
               <SelectContent>
@@ -200,42 +211,36 @@ export function ProductFormSheet({
             </Select>
           )}
         />
-      </FormField>
+      </EditorField>
 
-      <div className="grid grid-cols-2 gap-3">
-        <FormField label="Price (₹)" error={errors.price?.message}>
-          <Input
+      <PriceModeField control={control} register={register} errors={errors} getValues={getValues} setValue={setValue} storedPrice={product?.price ?? 0} />
+
+      <EditorField label="Discount %" htmlFor="product-discount" error={errors.discount?.message}>
+        <div className={MENU_EDITOR_PERCENT_BOX_CLASS}>
+          <input
+            id="product-discount"
             type="number"
-            min={0}
-            aria-invalid={!!errors.price}
-            {...register("price", { valueAsNumber: true })}
-          />
-          {hasVariations && (
-            <p className="text-xs text-muted-foreground">
-              Variations set the price — this is only the base/reference
-              price.
-            </p>
-          )}
-        </FormField>
-        <FormField label="Discount %" error={errors.discount?.message}>
-          <Input
-            type="number"
+            inputMode="decimal"
             min={0}
             max={100}
+            placeholder="0"
+            aria-invalid={!!errors.discount}
+            className={MENU_EDITOR_NUMBER_CLASS}
             {...register("discount", { valueAsNumber: true })}
           />
-        </FormField>
-      </div>
+          <span aria-hidden="true" className={MENU_EDITOR_CELL_RIGHT_CLASS}>
+            %
+          </span>
+        </div>
+      </EditorField>
 
-      <FormField label="Modifiers" error={errors.modifiers?.message as string}>
-        <Controller
-          control={control}
-          name="modifiers"
-          render={({ field }) => (
-            <ModifierInput value={field.value ?? []} onChange={field.onChange} />
-          )}
-        />
-      </FormField>
+      <EditorField label="Photo and icon">
+        <ProductArtField control={control} />
+      </EditorField>
+
+      <EditorField label="Modifiers" error={errors.modifiers?.message as string}>
+        <Controller control={control} name="modifiers" render={({ field }) => <ModifierInput value={field.value ?? []} onChange={field.onChange} />} />
+      </EditorField>
       <Controller
         control={control}
         name="modifiersPreselected"
@@ -244,36 +249,9 @@ export function ProductFormSheet({
         )}
       />
 
-      <VariationsField control={control} errors={errors} />
+      <ItemSwitchesField control={control} />
 
-      <Controller
-        control={control}
-        name="available"
-        render={({ field }) => (
-          <div className="flex items-center justify-between rounded-lg border p-3">
-            <div>
-              <p className="text-sm font-medium">In stock</p>
-              <p className="text-xs text-muted-foreground">
-                Turn off to mark out of stock — disabled in the POS, still on
-                the menu.
-              </p>
-            </div>
-            <Switch
-              aria-label="In stock"
-              checked={field.value ?? true}
-              onCheckedChange={field.onChange}
-            />
-          </div>
-        )}
-      />
-
-      <Controller
-        control={control}
-        name="publicVisible"
-        render={({ field }) => <PublicVisibleField value={field.value} onChange={field.onChange} />}
-      />
-
-      <FormField label="Kitchen station">
+      <EditorField label="Kitchen station">
         <Controller
           control={control}
           name="stationId"
@@ -284,12 +262,17 @@ export function ProductFormSheet({
               onChange={(next) => field.onChange(next === "" ? undefined : next)}
               stations={stations}
               inheritLabel="Use the category's station"
+              triggerClassName={cn(MENU_SELECT_TRIGGER_CLASS, MENU_EDITOR_SELECT_CLASS)}
             />
           )}
         />
-      </FormField>
+      </EditorField>
 
       <KitchenTicketField control={control} categories={categories} />
-    </FormSheet>
+
+      {product && onArchive && onRestore && (
+        <ItemArchiveLink product={product} onArchive={onArchive} onRestore={onRestore} restoring={restoring} />
+      )}
+    </ItemEditorFrame>
   );
 }

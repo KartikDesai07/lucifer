@@ -416,6 +416,8 @@
     "lib/menu-layout.test.ts",
     "lib/menu-view.test.ts",
     "lib/menu-list-layout.test.ts",
+    "lib/menu-editor-layout.test.ts",
+    "lib/product-form-values.test.ts",
     "lib/product-icon-map.test.ts",
     "lib/menu-items-paths.test.ts",
     "lib/category-arrange.test.ts",

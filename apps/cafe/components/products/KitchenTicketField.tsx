@@ -4,7 +4,10 @@ import { useController, useWatch, type Control } from "react-hook-form";
 import type { z } from "zod";
 
 import type { createProductSchema } from "@/schemas";
-import { FormField } from "@/components/shared/FormField";
+import { EditorField } from "@/components/products/EditorField";
+import { MENU_SELECT_TRIGGER_CLASS } from "@/lib/menu-layout";
+import { MENU_EDITOR_SELECT_CLASS } from "@/lib/menu-editor-layout";
+import { cn } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   KITCHEN_ITEM_ALWAYS_LABEL,
@@ -45,9 +48,9 @@ export function KitchenTicketField({ control, categories }: KitchenTicketFieldPr
   const categoryId = useWatch({ control, name: "categoryId" });
   const categorySkips = categories.find((category) => category._id === categoryId)?.noKot === true;
   return (
-    <FormField label={KITCHEN_ITEM_SELECT_LABEL} htmlFor="product-kitchen-ticket">
+    <EditorField label={KITCHEN_ITEM_SELECT_LABEL} htmlFor="product-kitchen-ticket">
       <Select value={choiceOf(field.value)} onValueChange={(choice) => field.onChange(noKotOf(choice))}>
-        <SelectTrigger id="product-kitchen-ticket" className="min-h-11">
+        <SelectTrigger id="product-kitchen-ticket" className={cn(MENU_SELECT_TRIGGER_CLASS, MENU_EDITOR_SELECT_CLASS)}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -56,6 +59,6 @@ export function KitchenTicketField({ control, categories }: KitchenTicketFieldPr
           <SelectItem value={NEVER}>{KITCHEN_ITEM_NEVER_LABEL}</SelectItem>
         </SelectContent>
       </Select>
-    </FormField>
+    </EditorField>
   );
 }

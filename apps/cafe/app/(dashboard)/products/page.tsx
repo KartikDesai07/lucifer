@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 
 import {
+  useArchiveProduct,
+  useRestoreProduct,
   useSetProductAvailability,
   useSetProductQrVisibility,
   useBulkProducts,
@@ -15,6 +17,7 @@ import { categoryHueMap } from "@/lib/pos-categories";
 import { MENU_BODY_CLASS, MENU_LIST_SCROLLER_CLASS, MENU_PAGE_CLASS } from "@/lib/menu-layout";
 import type { ProductBulkAction } from "@pos/shared/schemas";
 import { RefreshStrip } from "@/components/shared/RefreshStrip";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { CategoryRail } from "@/components/menu/CategoryRail";
 import { ItemsToolbar } from "@/components/menu/ItemsToolbar";
 import { ItemsTitleRow } from "@/components/menu/ItemsTitleRow";
@@ -42,6 +45,8 @@ export default function ProductsPage() {
   const setAvailability = useSetProductAvailability();
   const setQrVisibility = useSetProductQrVisibility();
   const bulkProducts = useBulkProducts();
+  const archiveProduct = useArchiveProduct();
+  const restoreProduct = useRestoreProduct();
 
   const hues = useMemo(() => categoryHueMap(categories), [categories]);
   const [formOpen, setFormOpen] = useState(false);
@@ -49,6 +54,8 @@ export default function ProductsPage() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [movingIds, setMovingIds] = useState<string[] | null>(null);
   const [archivingIds, setArchivingIds] = useState<string[] | null>(null);
+  // The one item whose "Archive item?" confirm is open over the editor (Archive item lives in the editor, design 6.9).
+  const [archiving, setArchiving] = useState<Product | null>(null);
 
   const openAdd = () => {
     setEditing(null);
@@ -58,6 +65,21 @@ export default function ProductsPage() {
     setEditing(product);
     setFormOpen(true);
   };
+
+  const confirmArchive = async () => {
+    if (!archiving) return;
+    try {
+      await archiveProduct.mutateAsync(archiving._id);
+      setArchiving(null);
+      // The item leaves this view (the HTML closes the editor on Archive / Restore, values 9.2 #6).
+      setFormOpen(false);
+    } catch {
+      // hook toasts on error
+    }
+  };
+
+  // Restore fires at once, as the old row menu did (no confirm); the editor closes when it worked.
+  const restoreItem = (product: Product) => restoreProduct.mutate(product._id, { onSuccess: () => setFormOpen(false) });
 
   // Bulk actions: the two stock toggles + restore fire straight away; move
   // and archive open a confirming dialog first (BulkBar's onAction never
@@ -181,9 +203,27 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      <ProductFormSheet open={formOpen} onOpenChange={setFormOpen} product={editing} categories={categories} />
+      <ProductFormSheet
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        product={editing}
+        categories={categories}
+        onArchive={setArchiving}
+        onRestore={restoreItem}
+        restoring={restoreProduct.isPending}
+      />
 
       <ImportProductsDialog open={importOpen} onOpenChange={setImportOpen} />
+
+      <ConfirmDialog
+        open={!!archiving}
+        onOpenChange={(o) => !o && setArchiving(null)}
+        title="Archive item?"
+        description={`"${archiving?.name}" will be hidden from the menu. You can restore it from the Archived view.`}
+        confirmLabel="Archive"
+        isLoading={archiveProduct.isPending}
+        onConfirm={confirmArchive}
+      />
     </div>
   );
 }
