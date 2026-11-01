@@ -18,6 +18,7 @@ import {
   roundSkipsKitchen,
   skipsKitchenTicket,
   stampKitchenFlags,
+  withKotRank,
   withNoKot,
   type ProductKitchenFacts,
 } from "./kitchen-lines";
@@ -211,6 +212,110 @@ test("stampKitchenFlags: re-stamping clears a stale flag when the menu now says 
   const r = stampKitchenFlags([{ productId: "p-burger", name: "Burger", noKot: true }], menu, skipCats);
   assert.ok(!("noKot" in r.lines[0]));
   assert.equal(r.kitchen, true);
+});
+
+// ── KOT kitchen order: the category rank stamp and the in-round sort ─────────
+
+interface RankedLine extends Line {
+  kotRank?: number;
+}
+const dish = (name: string, kotRank: number | undefined, kotRound = 1, over: Partial<RankedLine> = {}): RankedLine => ({
+  productId: `p-${name}`,
+  name,
+  kotRound,
+  ...(kotRank !== undefined ? { kotRank } : {}),
+  ...over,
+});
+const names = (lines: readonly RankedLine[]) => lines.map((l) => l.name);
+
+test("withKotRank: stamps a rank, clears a stray key, and returns the SAME object when nothing changes", () => {
+  const plain: RankedLine = burger();
+  assert.equal(withKotRank(plain, undefined), plain, "no rank, no key: same object");
+  const ranked = withKotRank(plain, 2);
+  assert.equal(ranked.kotRank, 2);
+  assert.ok(!("kotRank" in plain), "the input is not mutated");
+  assert.equal(withKotRank(ranked, 2), ranked, "same rank: same object");
+  assert.equal(withKotRank(ranked, 0).kotRank, 0, "rank 0 is a real rank (the first placed category)");
+  const cleared = withKotRank(ranked, undefined);
+  assert.ok(!("kotRank" in cleared), "a rank the menu no longer gives is removed, not set to undefined");
+});
+
+test("kitchenLinesOf: no line carries a rank -> the SAME array (every order before this feature prints as today)", () => {
+  const lines = [dish("Soup", undefined), dish("Naan", undefined), dish("Tea", undefined)];
+  assert.equal(kitchenLinesOf(lines), lines);
+});
+
+test("kitchenLinesOf: one round ranks [3,1,-,1] -> 1,1,3,- (ties and unplaced in the order added)", () => {
+  const lines = [dish("Dessert", 3), dish("Starter", 1), dish("Unplaced", undefined), dish("Soup", 1)];
+  assert.deepEqual(names(kitchenLinesOf(lines)), ["Starter", "Soup", "Dessert", "Unplaced"]);
+  assert.deepEqual(names(lines), ["Dessert", "Starter", "Unplaced", "Soup"], "the input array is not reordered");
+});
+
+test("kitchenLinesOf: ranked lines already in order -> the SAME array (nothing moves, nothing allocated)", () => {
+  const lines = [dish("Starter", 0), dish("Main", 1), dish("Unplaced", undefined)];
+  assert.equal(kitchenLinesOf(lines), lines);
+});
+
+test("kitchenLinesOf: rounds stay together in the order they first appear; the sort is inside each round", () => {
+  const lines = [dish("R1-Dessert", 2, 1), dish("R1-Starter", 0, 1), dish("R2-Main", 1, 2), dish("R2-Starter", 0, 2)];
+  assert.deepEqual(names(kitchenLinesOf(lines)), ["R1-Starter", "R1-Dessert", "R2-Starter", "R2-Main"]);
+});
+
+test("kitchenLinesOf: skip lines are dropped, then the kitchen lines are sorted", () => {
+  const lines = [dish("Dessert", 2), water(), dish("Starter", 0)];
+  assert.deepEqual(names(kitchenLinesOf(lines)), ["Starter", "Dessert"]);
+});
+
+test("kitchenOrderOf: a ranked order comes back sorted (new object), every other key kept; unranked -> SAME object", () => {
+  const order = { orderId: "ORD-9", total: 300, items: [dish("Dessert", 2), dish("Starter", 0)] };
+  const out = kitchenOrderOf(order);
+  assert.notEqual(out, order);
+  assert.deepEqual(names(out.items), ["Starter", "Dessert"]);
+  assert.equal(out.total, 300);
+  assert.deepEqual(names(order.items), ["Dessert", "Starter"], "the input order is untouched");
+  const plain = { orderId: "ORD-10", items: [dish("A", undefined), dish("B", undefined)] };
+  assert.equal(kitchenOrderOf(plain), plain);
+});
+
+const RANK_STARTER = 0;
+const RANK_MAIN = 1;
+const ranks = new Map<string, number>([
+  [KITCHEN_CAT, RANK_MAIN],
+  [SKIP_CAT, RANK_STARTER], // a ranked category that skips: its skip lines still never get a rank
+  ["cat-starter", RANK_STARTER],
+]);
+const rankedMenu = new Map<string, ProductKitchenFacts>([...menu, ["p-samosa", { categoryId: "cat-starter" }]]);
+
+test("stampKitchenFlags: kitchen lines get their category rank, unranked/unknown get no key, skip lines never a rank", () => {
+  const lines: RankedLine[] = [
+    { productId: "p-burger", name: "Burger" },
+    { productId: "p-samosa", name: "Samosa" },
+    { productId: "p-water", name: "Water" },
+    { productId: "p-coffee", name: "Coffee" }, // in the skipping category but "always send": a kitchen line, ranked
+    { productId: "p-orphan", name: "Orphan" },
+    { productId: "p-ghost", name: "Ghost" },
+  ];
+  const r = stampKitchenFlags(lines, rankedMenu, skipCats, ranks);
+  assert.deepEqual(
+    r.lines.map((l) => [l.name, l.kotRank]),
+    [
+      ["Burger", RANK_MAIN],
+      ["Samosa", RANK_STARTER],
+      ["Water", undefined],
+      ["Coffee", RANK_STARTER],
+      ["Orphan", undefined],
+      ["Ghost", undefined],
+    ],
+  );
+  assert.ok(!("kotRank" in r.lines[2]) && !("kotRank" in r.lines[4]) && !("kotRank" in r.lines[5]), "omit-empty");
+  assert.equal(r.lines[2].noKot, true, "landmark: the water is still a skip line");
+});
+
+test("stampKitchenFlags: with no rank map (no kitchen order set) no line gets a key; a stray client rank is cleared", () => {
+  const r = stampKitchenFlags<RankedLine>([{ productId: "p-burger", name: "Burger", kotRank: 7 }], menu, skipCats);
+  assert.ok(!("kotRank" in r.lines[0]), "the server's stamp overwrites whatever the line carried");
+  const unset = stampKitchenFlags<RankedLine>([{ productId: "p-burger", name: "Burger" }], menu, skipCats);
+  assert.ok(!("kotRank" in unset.lines[0]));
 });
 
 // ── copy ─────────────────────────────────────────────────────────────────────

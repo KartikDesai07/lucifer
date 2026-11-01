@@ -1,7 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { createCategorySchema, reorderCategoriesSchema, updateCategorySchema } from "./category.schema";
+import {
+  arrangeCategoriesSchema,
+  clearKitchenOrderSchema,
+  createCategorySchema,
+  reorderCategoriesSchema,
+  updateCategorySchema,
+} from "./category.schema";
 import { CATEGORY_REORDER_MAX } from "../constants";
 import { MAX_IMPORT_ROWS } from "../product-import";
 
@@ -45,6 +51,42 @@ test("reorderCategoriesSchema rejects a malformed id", () => {
 test("reorderCategoriesSchema is strict — an extra key is rejected", () => {
   const r = reorderCategoriesSchema.safeParse({ ids: [ID1], extra: true });
   assert.equal(r.success, false);
+});
+
+// ── KOT kitchen order: which list the ids arrange, and the kitchen clear ────
+
+test("reorderCategoriesSchema: list is optional (absent = the menu order, today); menu and kitchen parse; others refused", () => {
+  const plain = reorderCategoriesSchema.safeParse({ ids: [ID1, ID2] });
+  assert.ok(plain.success && !("list" in plain.data), "no list key: the menu order, byte for byte today");
+  const kitchen = reorderCategoriesSchema.safeParse({ ids: [ID1, ID2], list: "kitchen" });
+  assert.ok(kitchen.success && kitchen.data.list === "kitchen");
+  assert.ok(reorderCategoriesSchema.safeParse({ ids: [ID1], list: "menu" }).success);
+  assert.equal(reorderCategoriesSchema.safeParse({ ids: [ID1], list: "bill" }).success, false);
+});
+
+test("clearKitchenOrderSchema: only {list:kitchen, clear:true}; the menu order can never be cleared", () => {
+  assert.ok(clearKitchenOrderSchema.safeParse({ list: "kitchen", clear: true }).success);
+  assert.equal(clearKitchenOrderSchema.safeParse({ list: "menu", clear: true }).success, false);
+  assert.equal(clearKitchenOrderSchema.safeParse({ list: "kitchen", clear: false }).success, false);
+  assert.equal(clearKitchenOrderSchema.safeParse({ clear: true }).success, false);
+});
+
+test("arrangeCategoriesSchema: an arrangement or the clear, never both; an ids error keeps its 'ids' path", () => {
+  assert.ok(arrangeCategoriesSchema.safeParse({ ids: [ID1] }).success);
+  assert.ok(arrangeCategoriesSchema.safeParse({ ids: [ID1], list: "kitchen" }).success);
+  assert.ok(arrangeCategoriesSchema.safeParse({ list: "kitchen", clear: true }).success);
+  assert.equal(arrangeCategoriesSchema.safeParse({ ids: [ID1], list: "kitchen", clear: true }).success, false);
+  assert.equal(arrangeCategoriesSchema.safeParse({}).success, false);
+  const dup = arrangeCategoriesSchema.safeParse({ ids: [ID1, ID1], list: "kitchen" });
+  assert.ok(!dup.success && dup.error.flatten().fieldErrors.ids?.length, "validateBody surfaces only fieldErrors");
+});
+
+test("create/update category schemas never carry kotOrder (only the arrange PATCH writes it)", () => {
+  const created = createCategorySchema.safeParse({ name: "Starters", kotOrder: 0 });
+  assert.ok(created.success && created.data.name === "Starters", "landmark: the create parsed");
+  assert.ok(created.success && !("kotOrder" in created.data));
+  const updated = updateCategorySchema.safeParse({ name: "Starters", kotOrder: 0 });
+  assert.ok(updated.success && updated.data.name === "Starters" && !("kotOrder" in updated.data));
 });
 
 // A CSV import can create one category per row, and the list must stay

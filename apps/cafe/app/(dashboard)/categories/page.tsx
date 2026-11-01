@@ -41,7 +41,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { AdminGuard } from "@/components/shared/AdminGuard";
 import { MenuPageShell } from "@/components/menu/MenuPageShell";
-import { CategoryArrangeList } from "@/components/menu/CategoryArrangeList";
+import { KitchenOrderPanel } from "@/components/menu/KitchenOrderPanel";
 import { nextCategoryOrder, itemCountsByCategory } from "@/lib/category-arrange";
 import { menuItemsHref } from "@/lib/menu-sections";
 import type { Category } from "@/types";
@@ -210,7 +210,7 @@ function CategoriesPageContent() {
           }
         />
       ) : (
-        <CategoryArrangeList
+        <KitchenOrderPanel
           categories={list}
           activeProducts={active}
           archivedProducts={archived}

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { sameIdSet, categoryReorderOps, CATEGORY_LIST_CHANGED_ERROR } from "./category-order";
+import { sameIdSet, categoryReorderOps, kitchenOrderOps, CATEGORY_LIST_CHANGED_ERROR } from "./category-order";
 
 // Menu redesign (owner, 2026-09-30) — PATCH /api/categories's pure helpers.
 // Pure shaping/comparison only; the route (category-routes-pins.test.ts /
@@ -56,6 +56,17 @@ test("categoryReorderOps: a single id gets order 0", () => {
   assert.deepEqual(categoryReorderOps([A]), [
     { updateOne: { filter: { _id: A }, update: { $set: { order: 0 } } } },
   ]);
+});
+
+// ── kitchenOrderOps (KOT kitchen order) ──────────────────────────────────────
+
+test("kitchenOrderOps: kotOrder 0..n-1 by array position, one updateOne per id, the menu order untouched", () => {
+  assert.deepEqual(kitchenOrderOps([B, C, A]), [
+    { updateOne: { filter: { _id: B }, update: { $set: { kotOrder: 0 } } } },
+    { updateOne: { filter: { _id: C }, update: { $set: { kotOrder: 1 } } } },
+    { updateOne: { filter: { _id: A }, update: { $set: { kotOrder: 2 } } } },
+  ]);
+  assert.deepEqual(kitchenOrderOps([]), []);
 });
 
 // ── CATEGORY_LIST_CHANGED_ERROR (R22) ───────────────────────────────────────

@@ -6,7 +6,7 @@
 import type { Types } from "mongoose";
 import { kotLineRef, orderItemLabel } from "@pos/shared/utils";
 import { SELF_ORDER_SOURCE } from "@pos/shared/public";
-import { skipsKitchenTicket } from "@/lib/kitchen-lines";
+import { kitchenRankOf, skipsKitchenTicket } from "@/lib/kitchen-lines";
 
 // P4-A — pure board-builder for the kitchen line view. NO DB, NO React, NO
 // fetch: the route calls this with plain data it already fetched, and the
@@ -26,6 +26,7 @@ export interface FiredItem {
   instructions?: string;
   kotRound: number; // 0 = not yet fired / legacy — filtered out below
   noKot?: boolean; // skip-KOT: a "no kitchen ticket" line — never a board row
+  kotRank?: number; // KOT kitchen order: the in-round tie-break only, never on the row itself
 }
 
 // The subset of an Order the board needs — deliberately narrow (matches the
@@ -157,6 +158,8 @@ export function buildKitchenRows({
   capRows = true,
 }: BuildKitchenRowsInput): KitchenRow[] {
   const rows: KitchenRow[] = [];
+  // KOT kitchen order: each row's rank (from its first line), kept beside the row so the wire shape stays.
+  const rankByRowId = new Map<string, number>();
 
   for (const order of orders) {
     const orderId = String(order._id);
@@ -195,6 +198,7 @@ export function buildKitchenRows({
       const stamped = order.kotFiredAt?.[round - 1];
       const firedAt = stamped ?? order.createdAt;
 
+      rankByRowId.set(`${orderId}:${ref}`, kitchenRankOf(item));
       byRef.set(ref, {
         orderId,
         orderNo: order.orderId,
@@ -221,8 +225,9 @@ export function buildKitchenRows({
     rows.push(...byRef.values());
   }
 
-  // Oldest fired line first; ties broken by orderId then ref so the render
-  // order is deterministic across otherwise-identical fire times.
+  // Oldest fired line first; ties broken by orderId, then the Kitchen order
+  // rank (unplaced last; one round shares one fire time), then ref, so the
+  // render order is deterministic across otherwise-identical fire times.
   rows.sort((a, b) => {
     // `firedAt` is an ISO-8601 UTC string (always `toISOString()`, fixed width,
     // always `Z`), so a lexicographic compare IS the chronological compare —
@@ -231,6 +236,8 @@ export function buildKitchenRows({
     if (byAge !== 0) return byAge;
     const byOrder = a.orderId.localeCompare(b.orderId);
     if (byOrder !== 0) return byOrder;
+    const byRank = (rankByRowId.get(a.id) ?? 0) - (rankByRowId.get(b.id) ?? 0);
+    if (byRank !== 0) return byRank;
     return a.ref.localeCompare(b.ref);
   });
 

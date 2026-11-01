@@ -53,6 +53,7 @@ export interface IOrderItem {
   // dropped this silently on every claim while `reward` itself stored fine.
   note?: string;
   noKot?: boolean; // skip-KOT: server-stamped, never on a kitchen ticket; absent on a kitchen line
+  kotRank?: number; // KOT kitchen order: server-stamped from the category's kotOrder; absent = not placed
 }
 
 // Append-only void trail (CR1.3). A snapshot, not a reference: `qty` is what was
@@ -263,6 +264,7 @@ const orderItemSchema = new Schema<IOrderItem>(
     // the paper as issued even if the constant is reworded later.
     note: { type: String },
     noKot: { type: Boolean }, // skip-KOT, no default (omit-empty): only ever true, stamped server-side
+    kotRank: { type: Number }, // KOT kitchen order, no default (omit-empty): stamped server-side at write time
   },
   { _id: false }, // embedded — no _id needed
 );

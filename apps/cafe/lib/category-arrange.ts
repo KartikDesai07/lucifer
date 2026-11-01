@@ -15,6 +15,25 @@ export function moveId(ids: readonly string[], id: string, delta: -1 | 1): strin
   return next;
 }
 
+const isPlaced = (c: Category): boolean => typeof c.kotOrder === "number" && Number.isFinite(c.kotOrder);
+
+/** True when any category has a place in the kitchen order. */
+export function kitchenOrderIsSet(categories: readonly Category[]): boolean {
+  return categories.some(isPlaced);
+}
+
+/** Category ids in KITCHEN order: placed ones by kotOrder ascending (ties keep
+ * their input position), then the unplaced ones in input (= menu) order. */
+export function kitchenArrangement(categories: readonly Category[]): string[] {
+  const placed = categories
+    .map((c, index) => ({ c, index }))
+    .filter(({ c }) => isPlaced(c))
+    .sort((a, b) => (a.c.kotOrder as number) - (b.c.kotOrder as number) || a.index - b.index)
+    .map(({ c }) => c._id);
+  const unplaced = categories.filter((c) => !isPlaced(c)).map((c) => c._id);
+  return [...placed, ...unplaced];
+}
+
 /** A new category goes after the last one (max + 1) — stable even after a
  * delete leaves a gap, unlike the old `list.length` (owner clause 3e/5). */
 export function nextCategoryOrder(list: readonly Category[]): number {

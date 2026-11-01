@@ -9,6 +9,10 @@ export interface ICategory extends Document {
   // Skip-KOT: true = this category's items never go on a kitchen ticket. ABSENT = they do (omit-empty,
   // no default below: every existing category keeps meaning that).
   noKot?: boolean;
+  // KOT kitchen order: this category's place on every kitchen ticket (0 = first). ABSENT = not placed
+  // (no default: until an admin saves a Kitchen order, every KOT prints in the order items were added).
+  // Written ONLY by PATCH /api/categories { list: "kitchen" }; stamped onto order lines as `kotRank`.
+  kotOrder?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -22,6 +26,7 @@ export const categorySchema = new Schema<ICategory>(
     order: { type: Number, default: 0 },
     stationId: { type: Schema.Types.ObjectId },
     noKot: { type: Boolean },
+    kotOrder: { type: Number },
   },
   { timestamps: true },
 );

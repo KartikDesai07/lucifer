@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useIsMutating } from "@tanstack/react-query";
 import {
   DndContext,
   closestCenter,
@@ -13,10 +14,12 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinates, arrayMove } from "@dnd-kit/sortable";
 
-import { useReorderCategories } from "@/hooks/use-categories";
+import { CATEGORY_KEYS, useReorderCategories } from "@/hooks/use-categories";
+import type { CategoryArrangeListKind } from "@/schemas";
 import { CategoryRow } from "@/components/menu/CategoryRow";
 import {
   moveId,
+  kitchenArrangement,
   itemCountsByCategory,
   pickedUpAnnouncement,
   movedAnnouncement,
@@ -36,6 +39,8 @@ interface CategoryArrangeListProps {
   archivedProducts: Product[];
   onEdit: (category: Category) => void;
   onDelete: (category: Category) => void;
+  // Which arrangement this list edits; "kitchen" = the order dishes print on KOTs.
+  list?: CategoryArrangeListKind;
 }
 
 // DndContext + SortableContext wrapper for the Categories arrangement list.
@@ -43,13 +48,14 @@ interface CategoryArrangeListProps {
 // ids; a failed save rolls the local order back explicitly (TableArrangeList
 // precedent — the re-seed effect is NOT a substitute for that, since a failed
 // save leaves the server's ids unchanged and so never re-fires the effect).
-export function CategoryArrangeList({ categories, activeProducts, archivedProducts, onEdit, onDelete }: CategoryArrangeListProps) {
-  const reorder = useReorderCategories();
-  const [order, setOrder] = useState<string[]>(() => categories.map((c) => c._id));
+export function CategoryArrangeList({ categories, activeProducts, archivedProducts, onEdit, onDelete, list = "menu" }: CategoryArrangeListProps) {
+  const reorder = useReorderCategories(list);
+  const idsOf = (): string[] => (list === "kitchen" ? kitchenArrangement(categories) : categories.map((c) => c._id));
+  const [order, setOrder] = useState<string[]>(idsOf);
 
-  const serverOrder = categories.map((c) => c._id).join("|");
+  const serverOrder = idsOf().join("|");
   useEffect(() => {
-    setOrder(categories.map((c) => c._id));
+    setOrder(idsOf());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverOrder]);
 
@@ -61,12 +67,13 @@ export function CategoryArrangeList({ categories, activeProducts, archivedProduc
   // Kept current every render (never read in a dependency array) so the
   // rollback always lands on whatever the server most recently confirmed,
   // whether that arrived before or after this callback runs.
-  const latestServerIdsRef = useRef<string[]>(categories.map((c) => c._id));
-  latestServerIdsRef.current = categories.map((c) => c._id);
+  const latestServerIdsRef = useRef<string[]>(idsOf());
+  latestServerIdsRef.current = idsOf();
 
   const byId = new Map(categories.map((c) => [c._id, c]));
   const counts = itemCountsByCategory(activeProducts, archivedProducts);
-  const saving = reorder.isPending;
+  // Any arrangement write (this list's save, or a kitchen Clear) pauses dragging and the arrows.
+  const saving = useIsMutating({ mutationKey: CATEGORY_KEYS.arrange }) > 0;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),

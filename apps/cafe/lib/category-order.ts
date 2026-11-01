@@ -26,3 +26,12 @@ export function categoryReorderOps(ids: readonly string[]) {
     updateOne: { filter: { _id: id }, update: { $set: { order: index } } },
   }));
 }
+
+// KOT kitchen order: the same single-round-trip shape for the Kitchen order
+// list — `kotOrder` = index (0 = first on every kitchen ticket). The menu
+// `order` is never touched by it.
+export function kitchenOrderOps(ids: readonly string[]) {
+  return ids.map((id, index) => ({
+    updateOne: { filter: { _id: id }, update: { $set: { kotOrder: index } } },
+  }));
+}

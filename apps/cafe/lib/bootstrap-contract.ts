@@ -41,7 +41,9 @@ import type { Area, Category, Product, Settings, Staff, Table } from "@/types";
 // levels as never configured after the owner saved a set - v14 blobs are discarded.
 // PIN lock (2026-10-16): Staff gains hasPin and pinBlocked; Settings gains screenLockMinutes. A v15 blob has none, so the
 // Staff page would show no PIN state and a device would never auto-lock from it - v15 blobs are discarded.
-export const BOOTSTRAP_VERSION = 16;
+// KOT kitchen order (2026-11-01): Category gained `kotOrder`. A v16 blob has none, so the Categories page would show the
+// Kitchen order as not set (and a drag would start from the menu order) after the owner saved one - v16 blobs are discarded.
+export const BOOTSTRAP_VERSION = 17;
 
 // Device storage key (the browser's persistent per-origin store — survives a
 // reload, a closed tab and a restart of the app shell; cleared on logout and

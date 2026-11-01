@@ -132,6 +132,8 @@ export interface Category {
   stationId?: string;
   // Skip-KOT: true = this category's items never go on a kitchen ticket; ABSENT = they do.
   noKot?: true;
+  // KOT kitchen order: its place on every kitchen ticket (0 = first); ABSENT = not placed.
+  kotOrder?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -225,6 +227,9 @@ export interface OrderItem {
   // Skip-KOT: stamped by the SERVER at write time (never client-declared, see orderItemSchema) on a
   // line that never goes to the kitchen. Omit-empty: a kitchen line carries no key.
   noKot?: true;
+  // KOT kitchen order: stamped by the SERVER at write time from the line's category kotOrder (never
+  // client-declared). Omit-empty; read only through apps/cafe/lib/kitchen-lines.ts (the KOT line sort).
+  kotRank?: number;
 }
 
 // One append-only entry in an order's void trail (CR1.3): a snapshot of what was

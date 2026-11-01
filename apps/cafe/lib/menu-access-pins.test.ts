@@ -241,6 +241,21 @@ test("PIN: PATCH /api/categories returns 409 CATEGORY_LIST_CHANGED_ERROR via sam
   assert.ok(patchBody.includes(CACHE_KEY_NEEDLE), "PATCH must also clear the public menu cache");
 });
 
+// KOT kitchen order: the same admin route saves the Kitchen order (same exact-set
+// 409, kotOrder ops) and clears it; the menu order still clears the public menu.
+test("PIN: PATCH /api/categories kitchen list: one parse, the exact-set 409 guards BOTH lists, clear unsets kotOrder", () => {
+  const src = readStripped(CATEGORIES_ROUTE);
+  const patchBody = src.slice(src.indexOf("export async function PATCH("));
+  assert.ok(patchBody.indexOf("requireAdmin()") < patchBody.indexOf("validateBody(req, arrangeCategoriesSchema)"), "admin first");
+  const check = patchBody.indexOf("sameIdSet(body.ids, currentIds)");
+  const write = patchBody.indexOf('bulkWrite(body.list === "kitchen" ? kitchenOrderOps(body.ids) : categoryReorderOps(body.ids))');
+  assert.ok(check >= 0 && write > check, "one bulkWrite for both lists, after the exact-set check");
+  // Mutation pass M4: the check must guard EVERY list (no `body.list` condition may narrow it).
+  assert.ok(patchBody.includes("if (!sameIdSet(body.ids, currentIds)) {"), "the exact-set 409 is unconditional");
+  assert.ok(patchBody.includes("updateMany({ kotOrder: { $exists: true } }, { $unset: { kotOrder: 1 } })"), "clear = $unset");
+  assert.ok(patchBody.includes('if (body.list !== "kitchen") cache.del(' + CACHE_KEY_NEEDLE + ")"), "a menu save still clears the public menu");
+});
+
 test("PIN: GET /api/categories supports an uncached ?fresh=1 read via listFilter", () => {
   const src = readStripped(CATEGORIES_ROUTE);
   assert.match(src, /sp\.get\("fresh"\) === "1"/, "GET must offer a ?fresh=1 uncached read (R12)");
