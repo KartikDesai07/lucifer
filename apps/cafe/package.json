@@ -422,6 +422,7 @@
     "lib/menu-items-paths.test.ts",
     "lib/category-arrange.test.ts",
     "lib/menu-categories-paths.test.ts",
+    "lib/menu-categories-layout.test.ts",
     "lib/category-arrange-hook-paths.test.ts",
     "lib/order-availability.test.ts",
     "lib/order-availability-paths.test.ts",

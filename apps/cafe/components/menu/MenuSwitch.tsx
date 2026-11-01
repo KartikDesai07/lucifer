@@ -12,12 +12,15 @@ export function MenuSwitch({
   onCheckedChange,
   tone,
   disabled,
+  id,
   "aria-label": ariaLabel,
 }: {
   checked: boolean;
   onCheckedChange: (v: boolean) => void;
   tone: "ok" | "accent";
   disabled?: boolean;
+  /** For a <label htmlFor> that wraps the row (the category editor's KOT card). */
+  id?: string;
   "aria-label": string;
 }) {
   return (
@@ -25,6 +28,7 @@ export function MenuSwitch({
       checked={checked}
       onCheckedChange={onCheckedChange}
       disabled={disabled}
+      id={id}
       aria-label={ariaLabel}
       className={cn(MENU_SWITCH_CLASS, MENU_SWITCH_ON_CLASS[tone])}
     >

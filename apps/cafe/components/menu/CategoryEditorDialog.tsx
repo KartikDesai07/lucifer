@@ -7,17 +7,18 @@ import { useCreateCategory, useUpdateCategory } from "@/hooks/use-categories";
 import { useStations } from "@/hooks/use-print-setup";
 import { StationSelect } from "@/components/print/setup/StationSelect";
 import { CategoryKitchenTicketField } from "@/components/menu/CategoryKitchenTicketField";
-import { Button } from "@/components/ui/button";
+import { MenuDialog } from "@/components/menu/MenuDialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  MENU_EDITOR_FIELD_CLASS,
+  MENU_EDITOR_HINT_CLASS,
+  MENU_EDITOR_INPUT_CLASS,
+  MENU_EDITOR_LABEL_CLASS,
+  MENU_EDITOR_SAVE_CLASS,
+  MENU_EDITOR_SELECT_CLASS,
+} from "@/lib/menu-editor-layout";
+import { MENU_SELECT_TRIGGER_CLASS } from "@/lib/menu-layout";
+import { cn } from "@/lib/utils";
 import { nextCategoryOrder } from "@/lib/category-arrange";
 import type { Category } from "@/types";
 
@@ -30,9 +31,12 @@ interface CategoryEditorDialogProps {
   categories: Category[];
 }
 
-// Today's Add / Rename category dialog, moved out of app/(dashboard)/categories/page.tsx unchanged (U5 ruling M2: the page
-// keeps room while Task 1 changes its header and frame; Task 4 restyles this dialog to the HTML's category editor). It owns
-// its form state and its two writes, which it makes exactly as the page did.
+// The category editor in the HTML's dialog box (U5 Task 4; values 10, design 6.11): the 440px box (the phone's bottom sheet),
+// "Add category" / "Edit category", Name (42px), Kitchen station (38px kit select), the KOT card, Save (46px). Moved out of
+// app/(dashboard)/categories/page.tsx verbatim by Task 1 (ruling M2); it owns its form state and its two writes, which it
+// makes exactly as before (the stations read is the dialog's, always mounted: the same request timing). The HTML's Colour
+// group is not drawn (no data, design 9); its name errors have no counterpart either: Save stays off until the name has a
+// character, today's rule, and a duplicate name is the server's answer, toasted.
 export function CategoryEditorDialog({ open: formOpen, onOpenChange: setFormOpen, editing, categories: list }: CategoryEditorDialogProps) {
   const createCategory = useCreateCategory();
   const updateCategory = useUpdateCategory();
@@ -75,50 +79,55 @@ export function CategoryEditorDialog({ open: formOpen, onOpenChange: setFormOpen
     }
   };
 
+  const pending = createCategory.isPending || updateCategory.isPending;
+
   return (
-    <Dialog open={formOpen} onOpenChange={setFormOpen}>
-      <DialogContent className="sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle>{editing ? "Rename category" : "Add category"}</DialogTitle>
-          <DialogDescription>
-            {editing
-              ? "Items keep their link to this category, so the new name shows everywhere."
-              : "Categories group menu items in the POS."}
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            submit();
-          }}
-          className="space-y-2"
-        >
-          <Label htmlFor="category-name">Name</Label>
+    <MenuDialog
+      open={formOpen}
+      onOpenChange={setFormOpen}
+      title={editing ? "Edit category" : "Add category"}
+      sub="Categories group items in New Order and the QR menu."
+    >
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+        className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto"
+      >
+        <div className={MENU_EDITOR_FIELD_CLASS}>
+          <label htmlFor="category-name" className={MENU_EDITOR_LABEL_CLASS}>
+            Name
+          </label>
           <Input
             id="category-name"
             autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Beverages"
+            className={MENU_EDITOR_INPUT_CLASS}
           />
-          <Label htmlFor="category-station">Kitchen station</Label>
+        </div>
+        <div className={MENU_EDITOR_FIELD_CLASS}>
+          <label htmlFor="category-station" className={MENU_EDITOR_LABEL_CLASS}>
+            Kitchen station
+          </label>
           <StationSelect
             id="category-station"
             value={stationId}
             onChange={setStationId}
             stations={stations}
             inheritLabel={`Default station (${defaultStation?.name ?? "Kitchen"})`}
+            triggerClassName={cn(MENU_SELECT_TRIGGER_CLASS, MENU_EDITOR_SELECT_CLASS)}
           />
-          <p className="text-xs text-muted-foreground">Where this category&apos;s KOTs print once printers are set up (Printer setup).</p>
-          <CategoryKitchenTicketField id="category-no-kot" noKot={noKot} onChange={setNoKot} />
-          <DialogFooter className="pt-2">
-            <Button type="submit" disabled={!name.trim() || createCategory.isPending || updateCategory.isPending}>
-              {(createCategory.isPending || updateCategory.isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {editing ? "Save" : "Add"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+          <span className={MENU_EDITOR_HINT_CLASS}>Where this category’s KOTs print.</span>
+        </div>
+        <CategoryKitchenTicketField id="category-no-kot" noKot={noKot} onChange={setNoKot} />
+        <button type="submit" data-ui="category-save" className={cn(MENU_EDITOR_SAVE_CLASS, "flex-none")} disabled={!name.trim() || pending}>
+          {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+          {editing ? "Save changes" : "Add category"}
+        </button>
+      </form>
+    </MenuDialog>
   );
 }

@@ -12,6 +12,12 @@ import {
   menuSizesText,
   menuStripShows,
   bulkToastText,
+  categoriesHeaderLine,
+  categoryAddedToast,
+  categoryDeletedToast,
+  categoryMetaText,
+  categorySavedToast,
+  MENU_LOADING_LINE,
   menuTitleCount,
 } from "./menu-view";
 import { MENU_STATUS_FILTERS } from "./menu-items";
@@ -136,4 +142,34 @@ test("bulkToastText: move / archive / restore keep today's words (design 12 chan
   assert.equal(bulkToastText(r("move", 1)), "Moved 1 item", "move, singular");
   assert.equal(bulkToastText(r("archive", 1)), "Archived 1 item", "archive, singular");
   assert.equal(bulkToastText(r("restore", 3)), "Restored 3 items", "restore, plural");
+});
+
+// ── U5 Task 4: /categories (values 11; design 6.10, 6.11, 12) ─────────────────────────────────────────────────────────
+
+test("categoryMetaText: '{n} item(s)[ · {o} sold out][ · {a} archived]' and ' · No KOT' on a phone only (values 11)", () => {
+  const base = { items: 3, soldOut: 0, archived: 0, noKot: false, phone: false };
+  assert.equal(categoryMetaText(base), "3 items", "plural");
+  assert.equal(categoryMetaText({ ...base, items: 1 }), "1 item", "singular");
+  assert.equal(categoryMetaText({ ...base, items: 0 }), "0 items", "an empty category");
+  assert.equal(categoryMetaText({ ...base, items: 5, soldOut: 1 }), "5 items · 1 sold out", "sold out");
+  assert.equal(categoryMetaText({ ...base, archived: 1 }), "3 items · 1 archived", "archived");
+  assert.equal(categoryMetaText({ ...base, items: 5, soldOut: 2, archived: 1 }), "5 items · 2 sold out · 1 archived", "both, sold out first");
+  assert.equal(categoryMetaText({ ...base, noKot: true }), "3 items", "No KOT is a chip off the phone");
+  assert.equal(categoryMetaText({ ...base, noKot: true, phone: true }), "3 items · No KOT", "the phone has no chip: the meta carries it");
+  assert.equal(categoryMetaText({ ...base, phone: true }), "3 items", "a kitchen category says nothing on the phone");
+});
+
+test("category toasts: the HTML's words with the name (design 12); the error words stay today's", () => {
+  assert.equal(categoryAddedToast("Beverages"), "Beverages added · add items to it from Items", "added");
+  assert.equal(categorySavedToast("Beverages"), "Beverages saved", "saved");
+  assert.equal(categoryDeletedToast("Beverages"), "Beverages deleted", "deleted");
+});
+
+test("categoriesHeaderLine: the Menu's line from the active items; the shell's default (undefined) when the items read failed on first load (T1 logic-1)", () => {
+  const items = [product({ _id: "a" }), product({ _id: "b", available: false })];
+  assert.equal(categoriesHeaderLine({ products: { data: items, isError: false }, categories: 4, categoriesLoading: false }), "2 items · 4 categories · 1 sold out", "known");
+  assert.equal(categoriesHeaderLine({ products: { data: undefined, isError: false }, categories: 4, categoriesLoading: false }), MENU_LOADING_LINE, "still loading");
+  assert.equal(categoriesHeaderLine({ products: { data: items, isError: false }, categories: 0, categoriesLoading: true }), MENU_LOADING_LINE, "categories loading");
+  assert.equal(categoriesHeaderLine({ products: { data: undefined, isError: true }, categories: 4, categoriesLoading: false }), undefined, "a first-load error: no 'Loading items…' forever");
+  assert.equal(categoriesHeaderLine({ products: { data: items, isError: true }, categories: 4, categoriesLoading: false }), "2 items · 4 categories · 1 sold out", "a failed refresh keeps the line");
 });

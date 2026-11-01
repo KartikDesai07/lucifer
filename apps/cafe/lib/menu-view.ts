@@ -128,3 +128,39 @@ export function bulkToastText(result: ProductBulkResult, action: string = result
       return `Updated ${items}`;
   }
 }
+
+// ── The Categories view (U5 Task 4; values 11, 10; design 6.10, 12) ───────────────────────────────────────────────────
+
+/** A row's meta (values 11): "{n} item(s)[ · {o} sold out][ · {a} archived]", plus " · No KOT" on a phone only (the chip is
+ *  not drawn there). */
+export function categoryMetaText(c: { items: number; soldOut: number; archived: number; noKot: boolean; phone: boolean }): string {
+  let text = countLabel(c.items, "item");
+  if (c.soldOut > 0) text += ` · ${c.soldOut} sold out`;
+  if (c.archived > 0) text += ` · ${c.archived} archived`;
+  if (c.phone && c.noKot) text += " · No KOT";
+  return text;
+}
+
+/** The category toasts (design 12, values 10 and 11): the HTML's words with the name; the error words stay today's. */
+export const categoryAddedToast = (name: string): string => `${name} added · add items to it from Items`;
+export const categorySavedToast = (name: string): string => `${name} saved`;
+export const categoryDeletedToast = (name: string): string => `${name} deleted`;
+
+/** Per category id: its sold-out items in the active list (the meta's "· n sold out"). */
+export function soldOutByCategory(active: readonly Product[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const p of active) if (isOutOfStock(p)) out.set(p.categoryId, (out.get(p.categoryId) ?? 0) + 1);
+  return out;
+}
+
+/** /categories' header line: the Menu's (design 6.1) from the active items; "Loading items…" while they or the categories
+ *  load; undefined (the shell's default line) when the items read failed on first load, as the Items page (T1 logic-1). */
+export function categoriesHeaderLine(input: {
+  products: { data: readonly Product[] | undefined; isError: boolean };
+  categories: number;
+  categoriesLoading: boolean;
+}): string | undefined {
+  if (input.products.isError && input.products.data === undefined) return undefined;
+  const counts = menuHeaderCounts(input.products.data);
+  return counts && !input.categoriesLoading ? menuHeaderLine({ ...counts, categories: input.categories }) : MENU_LOADING_LINE;
+}

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { apiGet, apiSend, ApiError } from "@/lib/api-client";
 import { createCrudHooks } from "@/hooks/create-crud-hooks";
 import { STALE_TIMES, GC_TIMES } from "@/lib/query";
+import { categoryAddedToast, categoryDeletedToast, categorySavedToast } from "@/lib/menu-view";
 import { PRODUCT_KEYS } from "@/hooks/use-products";
 import type {
   Category,
@@ -67,6 +68,7 @@ const categoryHooks = createCrudHooks<
   rootKey: CATEGORY_KEYS.all,
   staleTime: STALE_TIMES.MASTERS,
   gcTime: GC_TIMES.MASTERS,
+  // Only the list is used from the factory now; add / update / delete are hand-written below (the toasts carry the name).
   messages: {
     created: "Category added",
     updated: "Category updated",
@@ -79,8 +81,37 @@ const categoryHooks = createCrudHooks<
 });
 
 export const useCategories = categoryHooks.useList;
-export const useUpdateCategory = categoryHooks.useUpdate;
-export const useDeleteCategory = categoryHooks.useRemove;
+
+// Update and delete: the factory's useUpdate / useRemove, written out so the success toast can carry the category's name
+// (U5 Task 4, design 12: "{name} saved" / "{name} deleted"; the factory's messages are fixed strings). The requests, the
+// error toast and the invalidates are the factory's, unchanged.
+export function useUpdateCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateCategoryInput }) =>
+      apiSend<Category>(`/api/categories/${id}`, "PUT", data),
+    onSuccess: (saved) => toast.success(categorySavedToast(saved.name)),
+    onError: (err: Error) => toast.error(err.message || "Could not update category"),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: CATEGORY_KEYS.all });
+    },
+  });
+}
+
+export function useDeleteCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    // The name is for the toast only; the request carries the id, as before.
+    mutationFn: ({ id }: { id: string; name: string }) =>
+      apiSend<{ deleted: true }>(`/api/categories/${id}`, "DELETE"),
+    onSuccess: (_result, { name }) => toast.success(categoryDeletedToast(name)),
+    onError: (err: Error) => toast.error(err.message || "Could not remove category"),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: CATEGORY_KEYS.all });
+      qc.invalidateQueries({ queryKey: PRODUCT_KEYS.all });
+    },
+  });
+}
 
 // Hand-written (not the factory's useCreate): on success the returned doc is
 // appended straight to the cached list rather than relying on an invalidate's
@@ -94,7 +125,7 @@ export function useCreateCategory() {
     mutationFn: (data: CreateCategoryInput) =>
       apiSend<Category>("/api/categories", "POST", data),
     onSuccess: (created) => {
-      toast.success("Category added");
+      toast.success(categoryAddedToast(created.name));
       const prev = qc.getQueryData<Category[]>(CATEGORY_KEYS.all);
       // A concurrent cancel of the categories read can reject this commit; the
       // read that cancelled it lands the live list (with this category) itself.

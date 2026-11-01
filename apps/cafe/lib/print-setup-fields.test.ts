@@ -62,7 +62,8 @@ test("PIN (skip-KOT): the category dialog renders the kitchen switch from state 
   const field = src("components/menu/CategoryKitchenTicketField.tsx");
   assert.match(field, /checked=\{!noKot\}/, "ON means sent to the kitchen");
   assert.match(field, /onCheckedChange=\{\(sendToKitchen\) => onChange\(!sendToKitchen\)\}/);
-  assert.match(field, /\{noKot && <p className="text-xs text-muted-foreground">\{KITCHEN_CATEGORY_OFF_HINT\}<\/p>\}/, "the hint shows only while off");
+  // Moved on purpose (U5 Task 4; a look pin): the hint's class is the Menu editor's hint (12px --text-3).
+  assert.match(field, /\{noKot && <p className=\{MENU_EDITOR_HINT_CLASS\}>\{KITCHEN_CATEGORY_OFF_HINT\}<\/p>\}/, "the hint shows only while off");
   assert.match(field, /KITCHEN_CATEGORY_SWITCH_LABEL/);
   assert.match(field, /min-h-11/, "a 44px target");
   assert.ok(!field.includes("components/ui/") || /from "@\/components\/ui\/(label|switch)"/.test(field), "shadcn primitives only");
@@ -83,7 +84,9 @@ test("PIN (skip-KOT): the item form's Kitchen ticket: Same as its category sends
 });
 
 test("PIN (skip-KOT): the \"No KOT\" tag sits on the Categories and both Items layouts, and the item rule is its own choice over its category", () => {
-  assert.match(src("components/menu/CategoryRow.tsx"), /<NoKotTag skips=\{category\.noKot === true\} \/>/);
+  // Moved on purpose (U5 Task 4; the category's tag is the HTML's No KOT chip now): the row draws it when the category's flag is on.
+  assert.match(src("components/menu/CategoryRow.tsx"), /const noKot = category\.noKot === true;/);
+  assert.match(src("components/menu/CategoryRow.tsx"), /\{noKot && \(\s*<span data-ui="category-no-kot"/);
   // Moved on purpose (U5 Task 2; the item tag is the HTML's badge row now): each Items layout asks menuItemBadges for the item's
   // badges with the same rule, and ItemBadges draws "No KOT" from it. Same meaning, same rule.
   assert.match(src("components/menu/ItemsTable.tsx"), /menuItemBadges\(product, \{ archived, skipsKitchen: itemSkipsKitchen\(product, categoryMap\) \}\)/);
