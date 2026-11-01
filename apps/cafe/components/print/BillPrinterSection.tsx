@@ -5,8 +5,8 @@ import { ReceiptText } from "lucide-react";
 
 import { defaultBillPrinterOf, printersModeOn, routablePrinters } from "@pos/shared/print-printers";
 import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
-import { PrinterSection } from "@/components/print/PrinterSection";
-import { PRINTER_INPUT_CLASS } from "@/components/print/printer-classes";
+import { PanelSection } from "@/components/print/PanelSection";
+import { PRINTER_NOTE_CLASS, PRINTER_SELECT_CLASS } from "@/components/print/printer-classes";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePrintersRead } from "@/hooks/use-agent-printers";
 import { BILL_PRINTER_DEFAULT, billPrinterChoiceOf, readBillPrinterId, writeBillPrinterId } from "@/lib/print-bill-printer";
@@ -39,9 +39,9 @@ export function BillPrinterSection() {
   };
 
   return (
-    <PrinterSection icon={ReceiptText} title="Bill printer for this device" description={DESCRIPTION}>
+    <PanelSection icon={<ReceiptText />} title="Bill printer for this device" sub={DESCRIPTION}>
       <Select value={value} onValueChange={choose}>
-        <SelectTrigger aria-label="Bill printer for this device" className={PRINTER_INPUT_CLASS}>
+        <SelectTrigger aria-label="Bill printer for this device" className={PRINTER_SELECT_CLASS}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -53,7 +53,7 @@ export function BillPrinterSection() {
           ))}
         </SelectContent>
       </Select>
-      {note !== null && <p className="text-xs text-brand-muted">{note}</p>}
-    </PrinterSection>
+      {note !== null && <p className={PRINTER_NOTE_CLASS}>{note}</p>}
+    </PanelSection>
   );
 }

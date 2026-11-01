@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { PRINTER_ACTION_CLASS } from "@/components/print/printer-classes";
+import {
+  PRINTER_BUTTON_CLASS,
+  PRINTER_WAITING_CARD_CLASS,
+  PRINTER_WAITING_ROW_CLASS,
+} from "@/components/print/printer-classes";
 import { usePrintersRead } from "@/hooks/use-agent-printers";
 import { usePrintJobActions } from "@/hooks/use-print-job-actions";
 import { printWaitingGroups, printerNameOf, type PrintWaitingGroup } from "@/lib/print-waiting";
@@ -54,17 +58,17 @@ export function WaitingSlipsCard({ pulse }: { pulse: PosPulseData | undefined })
     const { id, label } = row;
     const off = tapped.has(id);
     const clear = (
-      <Button variant="outline" className={PRINTER_ACTION_CLASS} disabled={off} aria-label={`Clear ${label}`} onClick={() => tap(id, () => dismiss(id))}>
+      <Button variant="outline" className={PRINTER_BUTTON_CLASS} disabled={off} aria-label={`Clear ${label}`} onClick={() => tap(id, () => dismiss(id))}>
         Clear
       </Button>
     );
     if (group === "bill") {
       return (
         <>
-          <Button className={PRINTER_ACTION_CLASS} disabled={off} aria-label={`Print again ${label}`} onClick={() => tap(id, () => confirm(id, "reprint"))}>
+          <Button className={PRINTER_BUTTON_CLASS} disabled={off} aria-label={`Print again ${label}`} onClick={() => tap(id, () => confirm(id, "reprint"))}>
             Print again
           </Button>
-          <Button variant="outline" className={PRINTER_ACTION_CLASS} disabled={off} aria-label={`It printed ${label}`} onClick={() => tap(id, () => confirm(id, "printed"))}>
+          <Button variant="outline" className={PRINTER_BUTTON_CLASS} disabled={off} aria-label={`It printed ${label}`} onClick={() => tap(id, () => confirm(id, "printed"))}>
             It printed
           </Button>
           {clear}
@@ -74,7 +78,7 @@ export function WaitingSlipsCard({ pulse }: { pulse: PosPulseData | undefined })
     const verb = group === "failed" ? "Retry" : "Print now";
     return (
       <>
-        <Button className={PRINTER_ACTION_CLASS} disabled={off} aria-label={`${verb} ${label}`} onClick={() => tap(id, () => retry(id))}>
+        <Button className={PRINTER_BUTTON_CLASS} disabled={off} aria-label={`${verb} ${label}`} onClick={() => tap(id, () => retry(id))}>
           {verb}
         </Button>
         {clear}
@@ -83,21 +87,21 @@ export function WaitingSlipsCard({ pulse }: { pulse: PosPulseData | undefined })
   };
 
   return (
-    <section aria-label={SECTION_TITLE} className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40">
-      <h3 className="text-base font-semibold">
+    <section aria-label={SECTION_TITLE} className={PRINTER_WAITING_CARD_CLASS}>
+      <h3 className="text-[14px] font-semibold text-status-warn-ink">
         {SECTION_TITLE}
         {pulse?.printAttentionTruncated ? " (the latest 20)" : ""}
       </h3>
       {groups.map((section) => (
-        <div key={section.group} className="space-y-2">
-          <p className="text-sm font-semibold">
+        <div key={section.group} className="flex flex-col gap-2">
+          <p className="text-[12.5px] font-semibold">
             {section.title} ({section.rows.length})
           </p>
-          <ul className="space-y-2">
+          <ul className="flex flex-col gap-2">
             {section.rows.map(({ row, reason, age }) => (
-              <li key={row.id} className="rounded-md bg-background p-3">
-                <p className="text-base font-medium">{row.label}</p>
-                <p className="text-sm text-muted-foreground">
+              <li key={row.id} className={PRINTER_WAITING_ROW_CLASS}>
+                <p className="text-[13.5px] font-medium">{row.label}</p>
+                <p className="text-[12px] text-subtle-foreground">
                   {age} · {reason}
                   {printerNameOf(printers, row.printerId) !== null ? ` · ${printerNameOf(printers, row.printerId)}` : ""}
                 </p>

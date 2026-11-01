@@ -14,6 +14,13 @@ import {
   type DesktopPrinterApi,
 } from "@/lib/desktop-shell-printer";
 import { refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import {
+  PRINTER_BLOCK_TITLE_CLASS,
+  PRINTER_MODE_DOT_CLASS,
+  PRINTER_MODE_RING_CLASS,
+  PRINTER_MODE_ROW_CLASS,
+  PRINTER_NOTE_CLASS,
+} from "@/components/print/printer-classes";
 
 const SAVE_MODE_FAILED_MESSAGE = "Could not save the print method — try again.";
 const SAVE_MODE_SUCCESS_MESSAGE = "Print method saved.";
@@ -56,10 +63,10 @@ export function DesktopPrintMethod({ savePrintMode, printMode }: DesktopPrintMet
   };
 
   return (
-    <div className="space-y-2 border-t pt-3">
-      <p className="font-medium">Print method</p>
+    <div className="flex flex-col gap-2 border-t border-border-2 pt-3">
+      <p className={PRINTER_BLOCK_TITLE_CLASS}>Print method</p>
       {DESKTOP_PRINT_MODES.map((value) => (
-        <label key={value} className="flex min-h-11 cursor-pointer items-start gap-2 py-1 text-sm">
+        <label key={value} className={PRINTER_MODE_ROW_CLASS}>
           <input
             type="radio"
             name="desktop-print-mode"
@@ -67,11 +74,14 @@ export function DesktopPrintMethod({ savePrintMode, printMode }: DesktopPrintMet
             checked={mode === value}
             disabled={saving}
             onChange={() => void choose(value)}
-            className="mt-1"
+            className="peer sr-only"
           />
-          <span>
-            <span className="block">{MODE_LABELS[value]}</span>
-            <span className="block text-xs text-muted-foreground">{MODE_DESCRIPTIONS[value]}</span>
+          <span aria-hidden="true" className={PRINTER_MODE_RING_CLASS}>
+            <span className={PRINTER_MODE_DOT_CLASS} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13.5px] font-semibold">{MODE_LABELS[value]}</span>
+            <span className={`mt-px block ${PRINTER_NOTE_CLASS}`}>{MODE_DESCRIPTIONS[value]}</span>
           </span>
         </label>
       ))}

@@ -83,7 +83,8 @@ const panelPin: Pin = (raw) => {
   for (const n of readers) check(p, count(code, n) === 1, `must call ${n} exactly once`);
   check(p, count(code, "printerDotOf({") === 1 && code.includes("local: snapshot.status"), "printerDotOf gets the snapshot STATUS as local");
   check(p, code.includes("printerHeadlineOf(dot, {"), "the copy comes from printerHeadlineOf");
-  check(p, /<div data-printer-panel className="space-y-4">/.test(code), "W-P: the root carries data-printer-panel (the banner looks inside it)");
+  // U5 Task 5 (printer P24, the root's class moved on purpose: the HTML body's 12px column).
+  check(p, /<div data-printer-panel className="flex flex-col gap-3">/.test(code), "W-P: the root carries data-printer-panel (the banner looks inside it)");
   check(p, count(code, "useDesktopPrinterChosen()") === 1 && code.includes("desktopChosen }") && code.includes('desktopNoPrinter: lane === "desktop" && desktopChosen === "none"'), "W-L: the dot and the copy get the desktop shell's printer choice");
   check(p, count(code, "useCanPrintNow()") === 1 && code.includes("canPrintHere,"), "W-T: the copy knows whether this device can print");
   check(p, /printerName: snapshot\.printer\?\.name \?\? null,\s*localStatus: snapshot\.status,/.test(code), "R2-W8: the copy knows the saved printer's status on this device");
@@ -93,7 +94,9 @@ const panelPin: Pin = (raw) => {
   const banner = code.search(/<PrinterStatusBanner\s/);
   const card = code.search(/<PrinterSetupCard\s*\/>/);
   check(p, banner >= 0 && card >= 0 && banner < card, `the banner (${banner}) must come BEFORE the card (${card})`);
-  check(p, /onDone !== undefined && \(/.test(code) && code.includes("onClick={onDone}"), "a Done button when onDone is passed");
+  // U5 Task 5 (printer P24, moved on purpose: same meaning): "a Done only in the sheet, none on /printers" now holds because the
+  // Done is the FRAME's fixed foot (PrinterPanelFrame, pinned in printer-dot-ui-paths and printer-panel-layout); the panel has none.
+  check(p, !/onDone|>\s*Done\s*</.test(code), "the panel has no Done of its own: the frame's foot closes the sheet, /printers draws none");
   return p;
 };
 
@@ -107,7 +110,7 @@ const wherePin: Pin = (raw) => {
   check(p, own >= 0 && loading > own, "this device is the printing device is decided BEFORE the unresolved-pulse line");
   check(p, code.includes('role="status"') && code.includes("online ? CHECKING_MESSAGE : OFFLINE_MESSAGE"), "PR3: offline reads as a status line");
   check(p, !/still loading/i.test(raw), "never a 'still loading' line");
-  const needles = ["Where slips print", "This device prints all slips.", "All slips print at {hostLabel}.", "Each device prints its own slips.", "Name for this device", "Print all slips on this device", "Print on this device instead", "is printing now. Move printing to this device?", "<PrinterSection", "Use one device for all printing", "Good for a Counter PC with the printer: orders from phones print there."];
+  const needles = ["Where slips print", "This device prints all slips.", "All slips print at {hostLabel}.", "Each device prints its own slips.", "Name for this device", "Print all slips on this device", "Print on this device instead", "is printing now. Move printing to this device?", "<PanelSection", "Use one device for all printing", "Good for a Counter PC with the printer: orders from phones print there."];
   for (const n of needles) check(p, code.includes(n), `must contain ${n}`);
   return p;
 };
@@ -138,7 +141,7 @@ const devicePin: Pin = (raw) => {
   const buttons = code.split("<Button").slice(1).map((chunk) => chunk.slice(0, chunk.indexOf("</Button>")));
   // The connect buttons moved to BrowserPrinterConnect (connectPin); the saved printer's three stay here.
   check(p, buttons.length >= 3 && buttons.every((b) => b.includes("disabled={locked}")), "every printer button is disabled while locked");
-  check(p, count(code, "<BrowserPrinterConnect") === 1 && count(code, "<PrinterSection") === 1, "one connect block, one section shell");
+  check(p, count(code, "<BrowserPrinterConnect") === 1 && count(code, "<PanelSection") === 1, "one connect block, one section shell");
   check(p, /lane === "desktop" \? \(\s*<DesktopPrinterPicker \/>/.test(code) && code.includes("caps.native") && code.includes("<NativePrinterPicker"), "desktop picker / app picker by capability");
   check(p, code.includes("devicePrinter().setPaper(paper)") && code.includes("<PaperSizeToggle") && code.includes("devicePrinter().forget()"), "paper toggle and remove are wired");
   for (const n of ["Printer on this device", "Change printer", "Keep this printer","from this device?", "This browser or app cannot connect to a printer directly", "PRINTER_ELSEWHERE_STATUS_MESSAGE"]) {
@@ -181,7 +184,7 @@ const sectionPin: Pin = (raw) => {
 const partsPin: Pin = (raw) => {
   const p: string[] = [];
   const code = stripComments(raw);
-  for (const n of ['"Connected"', '"Connecting…"', '"Not connected"', "{printerTypeLabel(printer)} · ", "printerTypeIcon(printer)", "break-words font-medium"]) check(p, code.includes(n), "must contain " + n);
+  for (const n of ['"Connected"', '"Connecting…"', '"Not connected"', "{printerTypeLabel(printer)} · ", "printerTypeIcon(printer)", "PRINTER_ROW_NAME_CLASS"]) check(p, code.includes(n), "must contain " + n);
   // Review 2026-10-02: every status has its own words; another tab holding the printer is never "Not connected".
   for (const n of ['elsewhere: "In another tab"', '"needs-tap": "Tap Reconnect"', "STATUS_LABEL[status]", "Record<PrinterStatus, string>"]) check(p, code.includes(n), "must contain " + n);
   return p;
@@ -252,7 +255,7 @@ const goneFromSettingsPin: Pin = (raw) => {
   return p;
 };
 
-// Every control 44px (PR1/PR2), no jargon (PR6), no console, no cafe name.
+// Every control a shared size class (U5 Task 5: the HTML's 40 / 36 / 32px; was 44px, PR1/PR2), no jargon (PR6), no console, no cafe name.
 function hygienePin(budget: number, usesAction: boolean): Pin {
   return (raw) => {
     const p: string[] = [];
@@ -263,7 +266,9 @@ function hygienePin(budget: number, usesAction: boolean): Pin {
     const copy = stripComments(raw);
     for (const word of ["print " + "host", "silent " + "printing", "dia" + "log"]) check(p, !new RegExp(word, "i").test(copy), `no jargon: ${word}`);
     check(p, !raw.includes('size="' + 'sm"') && !/\bh-(8|9|10)\b/.test(raw), "no sub-44px control size");
-    if (usesAction) check(p, count(raw, "PRINTER_ACTION_CLASS") >= 2, "controls take the shared 44px class");
+    // U5 Task 5 (printer P40, moved on purpose): the panel's controls take the HTML's sizes from printer-classes.ts (40 / 36 /
+    // 32px buttons, 42px fields, 38px selects, the segmented and switch looks), never a size of their own in these files.
+    if (usesAction) check(p, /\bPRINTER_(BUTTON|FIELD|SELECT|SEG|SWITCH|MORE|FOUND|MODE)\w*_CLASS\b/.test(raw), "controls take the panel's shared size classes");
     return p;
   };
 }
@@ -271,7 +276,7 @@ function hygienePin(budget: number, usesAction: boolean): Pin {
 // the separate Refresh flag; the pure rules live in lib/printer/native-picker-state.ts.
 const HYGIENE: [string, number, boolean][] = [
   // F.native 290 (was 280): Session 2F1's add (a printer joins the POS app's printers on bridge v2).
-  [F.panel, 90, true], [F.where, 150, true], [F.device, 220, true], [F.native, 290, true], [F.paper, 60, true],
+  [F.panel, 90, false], [F.where, 150, true], [F.device, 220, true], [F.native, 290, true], [F.paper, 60, true],
   [F.tips, 50, false], [F.advanced, 100, true], [F.card, 260, true], [F.parts, 100, true], [F.picker, 160, false],
   [F.connect, 110, true], [F.section, 50, false], [F.type, 60, false],
   // Session 1D: the waiting-slips panel follows the same rules (44px controls, no jargon).
@@ -291,7 +296,7 @@ const hygieneMutations = [
 const slipPin = pinNeedles(['TEST_SLIP_HEADING = "Test slip"', 'TEST_SLIP_BODY = "If you can read this, this printer works."', "APP_NAME"]);
 const pickerPin: Pin = (raw) => {
   const p: string[] = [];
-  check(p, /<SelectTrigger[^>]*className="h-11 [^"]*text-base"/.test(raw), "the printer select is 44px with text-base (PR2)");
+  check(p, /<SelectTrigger[^>]*className=\{PRINTER_SELECT_CLASS\}/.test(raw), "the printer select is the HTML's 38px (U5 Task 5, printer P36 moved on purpose; was 44px)");
   check(p, /<SelectTrigger[^>]*aria-label="Printer"/.test(raw), "W-W: the select has a name a screen reader can read");
   check(p, /<SelectItem[^>]*className="pointer-coarse:min-h-11"/.test(raw), "the printer items are 44px on touch");
   check(p, !/<select\b/.test(raw), "never the browser's own select popup");
@@ -339,7 +344,7 @@ const CASES: PinCase[] = [
     mut("host check renamed", "isHostDevice ? (", "isHostDeviceX ? ("),
     mut("a loading line", "Checking where slips print…", "Still loading"),
     mut("the one-device help dropped", "Good for a Counter PC with the printer: orders from phones print there.", "Every slip prints here."),
-    mut("the shell dropped", "<PrinterSection id", "<section id"),
+    mut("the shell dropped", "<PanelSection id", "<section id"),
   ] },
   { file: F.device, pin: devicePin, mutations: [
     // Re-anchored 2026-10-02 (one primary "Connect printer"): the old serial/ble click cases became these.
@@ -385,7 +390,7 @@ const CASES: PinCase[] = [
     mut("the primary button left enabled", "onClick={onConnect} disabled={locked}", "onClick={onConnect}"),
     mut("the nearby row always shown", "{nearby && (", "{true && ("),
     mut("a radio name back", "Search nearby printers", "Bluetooth LE printers"),
-    mut("the hint is no status line", '<p role="status" className="rounded-md', '<p className="rounded-md'),
+    mut("the hint is no status line", '<p role="status" className={PRINTER_HINT_CLASS}', '<p className={PRINTER_HINT_CLASS}'),
     mut("step 3 changed", "Tap Connect printer, then pick your printer from the list.", "Tap the button."),
     mut("step 2 ignores the browser", "paired ? STEP_PAIR : STEP_CLOSE", "STEP_PAIR"),
     mut("a BLE-only browser told to pair first", "paired ? NOT_SEEN_PAIRED : NOT_SEEN_NEARBY_ONLY", "NOT_SEEN_PAIRED"),
@@ -411,7 +416,8 @@ const CASES: PinCase[] = [
     mut("battery shown on every app", 'native && nativeHasFeature("battery")', "native"),
     mut("battery asks nothing", 'nativeRequest("app.battery")', "Promise.resolve()"),
   ] },
-  { file: F.paper, pin: pinNeedles(["aria-pressed", "grid-cols-2", "PAPER_WIDTHS.map"]), mutations: [mut("grid dropped", "grid-cols-2", "flex")] },
+  // U5 Task 5 (printer P34, grid-cols-2 moved on purpose): the HTML's 32px segmented control; the label is the HTML's "Paper width".
+  { file: F.paper, pin: pinNeedles(["aria-pressed", "PRINTER_SEG_TRACK_CLASS", "PAPER_WIDTHS.map", 'PAPER_QUESTION = "Paper width"']), mutations: [mut("track dropped", /PRINTER_SEG_TRACK_CLASS/g, "PRINTER_TRACK"), mut("the old word back", 'PAPER_QUESTION = "Paper width"', 'PAPER_QUESTION = "Paper size"')] },
   { file: F.card, pin: cardPin, mutations: [
     mut("raster No reports", 'if (!silentMode && lane === "raster")', 'if (silentMode && lane === "raster")'),
     mut("non-host guard dropped", "if (!isHostDevice)", "if (isHostDevice === undefined)"),
@@ -441,7 +447,7 @@ const CASES: PinCase[] = [
     append("the description back", "const D = \"" + PRINTING_DESCRIPTION + "\";"),
   ] },
   { file: F.picker, pin: pickerPin, mutations: [
-    mut("small select back", "h-11 w-full max-w-sm", "h-9 w-full max-w-sm"),
+    mut("a select of its own size", "className={PRINTER_SELECT_CLASS}", 'className="h-7 w-full"'),
     mut("select unnamed", 'aria-label="Printer"', ""),
     mut("choice not re-read", "void refreshDesktopPrinterChosen();", ""),
     mut("result not published", "      publishDesktopPrinterSelection(result.selected);\n", ""),

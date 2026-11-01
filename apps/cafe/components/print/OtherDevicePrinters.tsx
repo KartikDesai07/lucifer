@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import { InlineConfirm } from "@/components/print/PrintHostCardParts";
 import { NativePrinterPicker } from "@/components/print/NativePrinterPicker";
-import { PRINTER_ACTION_CLASS, PRINTER_DOT_BAD_CLASS, PRINTER_DOT_OK_CLASS } from "@/components/print/printer-classes";
+import { PRINTER_BLOCK_CLASS, PRINTER_BUTTON_CLASS, PRINTER_BUTTON_REMOVE_CLASS, PRINTER_DOT_BAD_CLASS, PRINTER_DOT_OK_CLASS, PRINTER_LABEL_CLASS, PRINTER_NOTE_CLASS, PRINTER_ROW_NAME_CLASS } from "@/components/print/printer-classes";
 import { NATIVE_TYPE_LABELS } from "@/components/print/printer-type";
 import { Button } from "@/components/ui/button";
 import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
@@ -79,34 +79,34 @@ export function OtherDevicePrinters({ paper, locked }: { paper: PaperWidth; lock
   };
 
   return (
-    <div className="space-y-3" data-other-printers>
-      <p className="font-medium text-brand-ink">{TITLE}</p>
+    <div className="flex flex-col gap-3" data-other-printers>
+      <p className={PRINTER_LABEL_CLASS}>{TITLE}</p>
       {others.map((entry) => (
-        <div key={entry.id} className="space-y-2 rounded-md border border-brand-rule p-3">
+        <div key={entry.id} className={PRINTER_BLOCK_CLASS}>
           <div className="flex flex-wrap items-center gap-2">
-            <p className="min-w-0 flex-1 break-words font-medium text-brand-ink">
+            <p className={cn("min-w-0 flex-1", PRINTER_ROW_NAME_CLASS)}>
               {entry.printer.name} · {NATIVE_TYPE_LABELS[entry.printer.transport]}
               {entry.printer.transport === "tcp" ? ` ${entry.id.slice("tcp:".length)}` : ""}
             </p>
-            <span className="flex items-center gap-1.5 text-brand-muted">
+            <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
               <span aria-hidden="true" className={cn("h-2.5 w-2.5 rounded-full", entry.status === "connected" ? PRINTER_DOT_OK_CLASS : PRINTER_DOT_BAD_CLASS)} />
               {STATUS_WORDS[entry.status]}
             </span>
           </div>
-          {entry.message !== null && <p role="status" className="text-brand-muted">{entry.message}</p>}
+          {entry.message !== null && <p role="status" className="text-muted-foreground">{entry.message}</p>}
           {removing === entry.id ? (
             <InlineConfirm question={`Remove ${entry.printer.name} from this device?`} yes="Yes, remove" no="No" disabled={disabled} onYes={() => void remove(entry.id)} onNo={() => setRemoving(null)} />
           ) : (
             <div className="flex flex-wrap gap-2">
-              <Button className={PRINTER_ACTION_CLASS} variant={entry.status === "connected" ? "outline" : "default"} disabled={disabled} onClick={() => void settle(nativePool().reconnect(entry.id), RECONNECTED, entry.message ?? PRINTER_CONNECT_FAILED_MESSAGE)}>
+              <Button className={PRINTER_BUTTON_CLASS} variant={entry.status === "connected" ? "outline" : "default"} disabled={disabled} onClick={() => void settle(nativePool().reconnect(entry.id), RECONNECTED, entry.message ?? PRINTER_CONNECT_FAILED_MESSAGE)}>
                 Reconnect
               </Button>
               {inSetup.has(entry.id) ? (
-                <p className="text-xs text-brand-muted">{IN_SETUP}</p>
+                <p className={PRINTER_NOTE_CLASS}>{IN_SETUP}</p>
               ) : takeover.has(entry.id) ? (
-                <p className="text-xs text-brand-muted">{TAKEOVER}</p>
+                <p className={PRINTER_NOTE_CLASS}>{TAKEOVER}</p>
               ) : known ? (
-                <Button className={PRINTER_ACTION_CLASS} variant="outline" disabled={disabled} onClick={() => setRemoving(entry.id)}>
+                <Button className={PRINTER_BUTTON_REMOVE_CLASS} variant="outline" disabled={disabled} onClick={() => setRemoving(entry.id)}>
                   Remove
                 </Button>
               ) : null}
@@ -114,8 +114,8 @@ export function OtherDevicePrinters({ paper, locked }: { paper: PaperWidth; lock
           )}
         </div>
       ))}
-      <p className="text-xs text-brand-muted">{NOTE}</p>
-      <Button className={PRINTER_ACTION_CLASS} variant="outline" disabled={disabled} onClick={() => setAdding((open) => !open)}>
+      <p className={PRINTER_NOTE_CLASS}>{NOTE}</p>
+      <Button className={PRINTER_BUTTON_CLASS} variant="outline" disabled={disabled} onClick={() => setAdding((open) => !open)}>
         {adding ? "Close the printer list" : "Add another printer"}
       </Button>
       {adding && <NativePrinterPicker paper={paper} busy={disabled} onAttempt={(attempt) => settle(attempt, ADDED, NOT_YET)} add={(target) => nativePool().add(target)} />}

@@ -1,5 +1,7 @@
 "use client";
 
+import { PRINTER_HINT_CLASS } from "@/components/print/printer-classes";
+
 const TIPS_TITLE = "If the slip did not print";
 const TIPS: readonly string[] = [
   "Check the printer is on and has paper.",
@@ -12,8 +14,8 @@ const TIPS: readonly string[] = [
 // only: nothing is sent to the server, no state of its own.
 export function PrinterTestTips() {
   return (
-    <div role="status" className="space-y-1 rounded-md bg-brand-wash p-3 text-sm text-brand-ink">
-      <p className="font-medium">{TIPS_TITLE}</p>
+    <div role="status" className={`${PRINTER_HINT_CLASS} flex flex-col gap-1`}>
+      <p className="font-semibold">{TIPS_TITLE}</p>
       <ul className="list-disc space-y-1 pl-5">
         {TIPS.map((tip) => (
           <li key={tip}>{tip}</li>

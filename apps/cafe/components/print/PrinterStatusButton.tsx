@@ -5,11 +5,11 @@ import { useEffect, useLayoutEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { GlyphPrinter } from "@/components/layout/nav-icons";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
 import { usePrintHostDot } from "@/components/layout/print-host-dot-context";
 import { usePrintWaitingCount } from "@/components/layout/print-waiting-context";
 import { PrinterPanel } from "@/components/print/PrinterPanel";
+import { PrinterPanelFrame } from "@/components/print/PrinterPanelFrame";
 import {
   PRINTER_DOT_CLASS,
   PRINTER_DOT_OK_CLASS,
@@ -26,10 +26,8 @@ import { cn } from "@/lib/utils";
 // The top-bar printer button (all staff). Reads NARROW inputs only — the dot
 // context, this device's host flag, the device printer, the lane and the
 // network — never the wide pulse, so a quiet pulse tick re-renders nothing
-// here. The sheet's panel (mounted only while open) is the one that reads the
+// here. The frame's panel (mounted only while open) is the one that reads the
 // pulse for the labels.
-const SHEET_TITLE = "Printer";
-const SHEET_DESCRIPTION = "Printer status and setup for this device.";
 
 export function PrinterStatusButton({ onToneChange }: { onToneChange?: (tone: PrinterDotTone) => void } = {}) {
   const [open, setOpen] = useState(false);
@@ -54,8 +52,10 @@ export function PrinterStatusButton({ onToneChange }: { onToneChange?: (tone: Pr
   useLayoutEffect(() => onToneChange?.(tone), [onToneChange, tone]);
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
+    <PrinterPanelFrame
+      open={open}
+      onOpenChange={setOpen}
+      trigger={
         <Button
           type="button"
           variant="outline"
@@ -84,14 +84,9 @@ export function PrinterStatusButton({ onToneChange }: { onToneChange?: (tone: Pr
             </span>
           )}
         </Button>
-      </SheetTrigger>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
-        <SheetHeader>
-          <SheetTitle>{SHEET_TITLE}</SheetTitle>
-          <SheetDescription>{SHEET_DESCRIPTION}</SheetDescription>
-        </SheetHeader>
-        <PrinterPanel onDone={() => setOpen(false)} />
-      </SheetContent>
-    </Sheet>
+      }
+    >
+      <PrinterPanel />
+    </PrinterPanelFrame>
   );
 }

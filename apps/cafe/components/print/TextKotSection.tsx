@@ -10,9 +10,17 @@ import { Zap } from "lucide-react";
 
 import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
 import { InlineConfirm } from "@/components/print/PrintHostCardParts";
-import { PrinterSection } from "@/components/print/PrinterSection";
-import { PRINTER_ACTION_CLASS } from "@/components/print/printer-classes";
-import { Button } from "@/components/ui/button";
+import { PanelSection } from "@/components/print/PanelSection";
+import {
+  PRINTER_BLOCK_CLASS,
+  PRINTER_ERROR_CLASS,
+  PRINTER_NOTE_CLASS,
+  PRINTER_SEG_BUTTON_CLASS,
+  PRINTER_SEG_OFF_CLASS,
+  PRINTER_SEG_ON_CLASS,
+  PRINTER_SEG_TRACK_CLASS,
+  PRINTER_SWITCH_CLASS,
+} from "@/components/print/printer-classes";
 import { Switch } from "@/components/ui/switch";
 import { useSettings } from "@/hooks/use-settings";
 import { useTextKot, useTextKotPrinters } from "@/hooks/use-text-kot-printers";
@@ -21,6 +29,7 @@ import { textColumnsOf } from "@/lib/printer/kot-text/text-layout";
 import type { TextKotPrinter } from "@/lib/printer/kot-text/text-kot-printers";
 import { writeTextKot } from "@/lib/printer/kot-text/text-kot-store";
 import { textTestJob } from "@/lib/printer/kot-text/text-test-slip";
+import { cn } from "@/lib/utils";
 
 const TITLE = "Fast text KOTs (English only)";
 const DESCRIPTION =
@@ -41,11 +50,11 @@ export function TextKotSection() {
   const printers = useTextKotPrinters();
   if (printers.length === 0) return null;
   return (
-    <PrinterSection icon={Zap} title={TITLE} description={DESCRIPTION}>
+    <PanelSection icon={<Zap />} title={TITLE} sub={DESCRIPTION}>
       {printers.map((printer) => (
         <TextKotRow key={printer.key} printer={printer} />
       ))}
-    </PrinterSection>
+    </PanelSection>
   );
 }
 
@@ -100,14 +109,15 @@ function TextKotRow({ printer }: { printer: TextKotPrinter }) {
 
   const busy = phase === "printing" || phase === "confirm";
   return (
-    <div className="space-y-2 rounded-md border border-brand-rule p-3">
-      <div className="flex min-h-11 items-center gap-3">
+    <div className={PRINTER_BLOCK_CLASS}>
+      <div className="flex items-center gap-3">
         <label htmlFor={switchId} className="min-w-0 flex-1 cursor-pointer">
-          <span className="block font-medium text-brand-ink">{printer.name}</span>
-          <span className="block text-xs text-brand-muted">{printer.paper === "80mm" ? "80 mm" : "58 mm"}</span>
+          <span className="block break-words text-[13.5px]">{printer.name}</span>
+          <span className={`block ${PRINTER_NOTE_CLASS}`}>{printer.paper === "80mm" ? "80 mm" : "58 mm"}</span>
         </label>
         <Switch
           id={switchId}
+          className={PRINTER_SWITCH_CLASS}
           checked={on}
           aria-label={`${SWITCH_LABEL}: ${printer.name}`}
           disabled={!on && (busy || current !== null)}
@@ -115,33 +125,32 @@ function TextKotRow({ printer }: { printer: TextKotPrinter }) {
         />
       </div>
       {wide && (
-        <div role="group" aria-label={COLUMNS_LABEL} className="space-y-1">
-          <p className="text-xs font-medium text-brand-ink">{COLUMNS_LABEL}</p>
-          <div className="grid grid-cols-2 gap-2">
+        <div role="group" aria-label={COLUMNS_LABEL} className="flex items-center justify-between gap-3">
+          <p className="text-[13.5px]">{COLUMNS_LABEL}</p>
+          <div className={PRINTER_SEG_TRACK_CLASS}>
             {[false, true].map((narrow) => {
               const chosen = choice !== null ? choice.narrow80 === narrow : narrow80 === narrow;
               return (
-                <Button
+                <button
                   key={narrow ? "42" : "auto"}
                   type="button"
-                  variant={chosen ? "default" : "outline"}
                   aria-pressed={chosen}
                   disabled={on || busy}
                   onClick={() => setNarrow80(narrow)}
-                  className={PRINTER_ACTION_CLASS}
+                  className={cn(PRINTER_SEG_BUTTON_CLASS, chosen ? PRINTER_SEG_ON_CLASS : PRINTER_SEG_OFF_CLASS)}
                 >
                   {narrow ? "42" : "Automatic"}
-                </Button>
+                </button>
               );
             })}
           </div>
         </div>
       )}
-      {phase === "printing" && <p className="text-xs text-brand-muted">{PRINTING}</p>}
+      {phase === "printing" && <p className={PRINTER_NOTE_CLASS}>{PRINTING}</p>}
       {phase === "confirm" && <InlineConfirm question={QUESTION} yes="Yes" no="No" disabled={false} onYes={() => answer(true)} onNo={() => answer(false)} />}
-      {phase === "kept-off" && <p className="text-xs text-brand-muted">{wide && !narrow80 ? TRY_42 : KEPT_OFF}</p>}
-      {on && phase === "idle" && <p className="text-xs text-brand-muted">{ON_MESSAGE}</p>}
-      {error !== null && <p role="alert" className="text-xs text-brand-danger">{error}</p>}
+      {phase === "kept-off" && <p className={PRINTER_NOTE_CLASS}>{wide && !narrow80 ? TRY_42 : KEPT_OFF}</p>}
+      {on && phase === "idle" && <p className={PRINTER_NOTE_CLASS}>{ON_MESSAGE}</p>}
+      {error !== null && <p role="alert" className={PRINTER_ERROR_CLASS}>{error}</p>}
     </div>
   );
 }

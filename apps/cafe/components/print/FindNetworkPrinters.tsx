@@ -8,9 +8,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Search } from "lucide-react";
 
 import type { PrinterConfig } from "@pos/shared/print-printers";
-import { PRINTER_ACTION_CLASS } from "@/components/print/printer-classes";
+import { PRINTER_BUTTON_CLASS, PRINTER_FOUND_ROW_CLASS, PRINTER_NOTE_CLASS } from "@/components/print/printer-classes";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { PRINTERS_KEYS } from "@/hooks/use-agent-printers";
 import { useNativePool } from "@/hooks/use-device-printer";
 import {
@@ -56,21 +55,21 @@ export function FindNetworkPrinters({ onPick, disabled = false }: FindNetworkPri
   const known = knownLanPrinters(setup, pool.printers.map((printer) => ({ id: printer.id, name: printer.printer.name })));
   const rows = outcome?.kind === "found" ? lanFoundRows(outcome.printers, known) : [];
   return (
-    <div className="space-y-2">
-      <Button type="button" variant="outline" className={PRINTER_ACTION_CLASS} disabled={disabled || scanning} onClick={() => void find()}>
+    <div className="flex flex-col gap-2">
+      <Button type="button" variant="outline" className={PRINTER_BUTTON_CLASS} disabled={disabled || scanning} onClick={() => void find()}>
         {scanning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : <Search className="mr-2 h-4 w-4" aria-hidden />}
         {FIND_NETWORK_PRINTERS_LABEL}
       </Button>
-      {scanning && <p role="status" className="text-xs text-brand-muted">{LAN_SCANNING_MESSAGE}</p>}
-      {outcome?.kind === "none" && <p role="status" className="text-xs text-brand-muted">{LAN_NONE_FOUND_MESSAGE}</p>}
-      {outcome?.kind === "no-network" && <p role="status" className="text-xs text-brand-muted">{LAN_NO_NETWORK_MESSAGE}</p>}
+      {scanning && <p role="status" className={PRINTER_NOTE_CLASS}>{LAN_SCANNING_MESSAGE}</p>}
+      {outcome?.kind === "none" && <p role="status" className={PRINTER_NOTE_CLASS}>{LAN_NONE_FOUND_MESSAGE}</p>}
+      {outcome?.kind === "no-network" && <p role="status" className={PRINTER_NOTE_CLASS}>{LAN_NO_NETWORK_MESSAGE}</p>}
       {rows.length > 0 && (
-        <ul className="space-y-1">
+        <ul className="flex flex-col gap-1.5">
           {rows.map((row) => (
             <li key={`${row.host}:${row.port}`}>
-              <Button type="button" variant="ghost" className={cn(PRINTER_ACTION_CLASS, "h-auto min-h-11 w-full flex-col items-start justify-center")} disabled={disabled} onClick={() => onPick(row.host, row.port)}>
-                <span className="text-sm text-brand-ink">{row.label}</span>
-                {row.alreadyAdded !== null && <span className="text-xs text-brand-muted">{alreadyAddedText(row.alreadyAdded)}</span>}
+              <Button type="button" variant="ghost" className={PRINTER_FOUND_ROW_CLASS} disabled={disabled} onClick={() => onPick(row.host, row.port)}>
+                <span className="block">{row.label}</span>
+                {row.alreadyAdded !== null && <span className={`block ${PRINTER_NOTE_CLASS} font-normal`}>{alreadyAddedText(row.alreadyAdded)}</span>}
               </Button>
             </li>
           ))}
