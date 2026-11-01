@@ -1,7 +1,7 @@
 # U5: the Menu (/products, /categories, the item and category editors) and the Printer panel rebuilt to the owner's HTML (design)
 
-Status: DRAFT for the owner's approval. Branch `feat/ui-menu-printer` from main `fe6cff9` (U0–U4 merged). Nothing is
-coded before the owner approves this document. The owner's answers (2026-10-31) are in section 4; "my call" marks a
+Status: APPROVED by the owner on 2026-11-01 ("Han, approve hai", with my calls listed in the hand-over). Branch
+`feat/ui-menu-printer` from main `fe6cff9` (U0–U4 merged). The owner's answers (2026-10-31) are in section 4; "my call" marks a
 decision of mine the owner can still change.
 
 ## 1. Why, and the rule
