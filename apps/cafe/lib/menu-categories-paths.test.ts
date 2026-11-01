@@ -23,6 +23,8 @@ const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel),
 const readStripped = (rel: string): string => stripComments(readSrc(rel));
 
 const CATEGORIES_PAGE = "apps/cafe/app/(dashboard)/categories/page.tsx";
+// Moved on purpose (U5 Task 1, ruling M2): the Add / Rename dialog and its writes are CategoryEditorDialog, verbatim.
+const CATEGORY_EDITOR = "apps/cafe/components/menu/CategoryEditorDialog.tsx";
 
 // ══════════════════════════════════════════════════════════════════════════
 // C16 replacement — the delete/rename copy, reworded "products" -> "items"
@@ -142,7 +144,7 @@ test("PIN: the delete dialog shows an offline notice when either item count is a
 });
 
 test("PIN: the categories page's rename copy says items keep their link, not that renaming updates all products", () => {
-  const src = readStripped(CATEGORIES_PAGE);
+  const src = readStripped(CATEGORY_EDITOR);
 
   assert.match(src, /editing\s*\?\s*"/, "the rename/add DialogDescription's ternary must still exist");
   assert.ok(
@@ -181,7 +183,7 @@ test("PIN: MENU_SECTIONS' adminOnly set is exactly ADMIN_ROUTES intersected with
 
 // Changed in Phase 2 Session 2D: a new category may carry its kitchen station after its order; skip-KOT then added the noKot spread.
 test("PIN: a new category's order comes from nextCategoryOrder(list), not list.length", () => {
-  const src = readStripped(CATEGORIES_PAGE);
+  const src = readStripped(CATEGORY_EDITOR);
   assert.match(
     src,
     /createCategory\.mutateAsync\(\{\s*name:\s*trimmed,\s*order:\s*nextCategoryOrder\(list\)(,\s*\.\.\.\(stationId !== "" \? \{ stationId \} : \{\}\))?(,\s*\.\.\.\(noKot \? \{ noKot \} : \{\}\))?\s*\}\)/,

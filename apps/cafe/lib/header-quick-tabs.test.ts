@@ -76,11 +76,13 @@ test("PIN: every dashboard screen but /pos and /tables gets the two buttons — 
 test("PIN: on a phone Tables hides (the tab bar has Floor) and New order shows only its plus (values 2.5), except on /orders and /tables; on /kitchen both show from 1280px only", () => {
   const tabs = read(TABS);
   assert.match(tabs, /import \{ isKitchenPath \} from "@\/lib\/kitchen-layout";/, "the quick links read the Kitchen's route through isKitchenPath");
-  assert.match(tabs, /const kitchen = isKitchenPath\(pathname\);/, "one flag for the Kitchen");
+  // Moved on purpose (U5 Task 1; owner Q5 / Q8, Menu design 6.1): /products and /categories take the /kitchen rule.
+  assert.match(tabs, /import \{ isMenuPagePath \} from "@\/lib\/menu-layout";/, "the Menu routes are read through isMenuPagePath");
+  assert.match(tabs, /const wideOnly = isKitchenPath\(pathname\) \|\| isMenuPagePath\(pathname\);/, "one flag for the Kitchen and the Menu");
   assert.match(
     tabs,
-    /kitchen \? "hidden xl:inline-flex" : tab\.primary \? "inline-flex" : "hidden tab:inline-flex"/,
-    "on /kitchen both from 1280px only (Q8); elsewhere Tables is hidden below 720px, New order always shows",
+    /wideOnly \? "hidden xl:inline-flex" : tab\.primary \? "inline-flex" : "hidden tab:inline-flex"/,
+    "on /kitchen and the Menu both from 1280px only (Q8); elsewhere Tables is hidden below 720px, New order always shows",
   );
   assert.match(tabs, /const labelClass = isOrdersPath\(pathname\) \|\| floor \? "inline" : "hidden tab:inline";/, "the label shows from 720px, and at every width on /orders and /tables");
   assert.match(tabs, /<span className=\{labelClass\}>\{tab\.title\}<\/span>/, "the label takes that class");

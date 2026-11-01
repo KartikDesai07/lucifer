@@ -413,6 +413,8 @@
     "lib/category-order.test.ts",
     "lib/menu-access-pins.test.ts",
     "lib/menu-items.test.ts",
+    "lib/menu-layout.test.ts",
+    "lib/menu-view.test.ts",
     "lib/product-icon-map.test.ts",
     "lib/menu-items-paths.test.ts",
     "lib/category-arrange.test.ts",

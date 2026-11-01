@@ -18,8 +18,8 @@ import type { Category, Product } from "@/types";
 // they can be pinned here rather than asserted through a rendered table.
 
 const CATEGORIES = new Map<string, Category>([
-  ["c1", { _id: "c1", name: "Brew" } as Category],
-  ["c2", { _id: "c2", name: "Balls" } as Category],
+  ["c1", { _id: "c1", name: "Brew", order: 1 } as Category],
+  ["c2", { _id: "c2", name: "Balls", order: 7 } as Category],
 ]);
 
 function product(over: Partial<Product> & { _id: string; name: string }): Product {
@@ -39,15 +39,30 @@ const ROWS = [COLD, VANILLA, AERO];
 
 const names = (rows: Product[]): string[] => rows.map((p) => p.name);
 
-test("products-sort: the DEFAULT is the pre-existing shipped order — category name, then product name", () => {
-  // Mutation this catches: changing the default seed, which would silently
-  // re-order every operator's Menu screen on first paint.
+test("products-sort: the DEFAULT is the categories' ARRANGED order (U5 Q1), then the item name", () => {
+  // Mutation this catches: sorting the default by category NAME (the old order), which ignores the operator's arrangement.
   assert.deepEqual(DEFAULT_PRODUCT_SORT, { key: "category", dir: "asc" });
   assert.deepEqual(names(sortProducts(ROWS, DEFAULT_PRODUCT_SORT, CATEGORIES)), [
-    "Vanilla Balls", // Balls
-    "Aero Press", // Brew
+    "Aero Press", // Brew, order 1 (Balls is order 7: the names would put it first)
     "Cold Brew",
+    "Vanilla Balls", // Balls, order 7
   ]);
+});
+
+test("products-sort: an unknown category goes last, and desc reverses the categories only (names stay A to Z inside one)", () => {
+  const stray = product({ _id: "9", name: "Aaa Stray", categoryId: "gone" });
+  assert.deepEqual(names(sortProducts([stray, VANILLA, COLD, AERO], DEFAULT_PRODUCT_SORT, CATEGORIES)), [
+    "Aero Press",
+    "Cold Brew",
+    "Vanilla Balls",
+    "Aaa Stray",
+  ], "asc: the arranged order, the unknown category last");
+  assert.deepEqual(names(sortProducts([stray, VANILLA, COLD, AERO], { key: "category", dir: "desc" }, CATEGORIES)), [
+    "Aaa Stray",
+    "Vanilla Balls",
+    "Aero Press",
+    "Cold Brew",
+  ], "desc: the categories reversed, the item names still A to Z inside Brew");
 });
 
 test("products-sort: name ascending and descending", () => {

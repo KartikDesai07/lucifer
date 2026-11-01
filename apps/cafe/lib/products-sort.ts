@@ -5,9 +5,8 @@ import type { Category, Product } from "@/types";
 // the page owns the {key, dir} state, this module owns the ORDER, so the rule
 // is unit-testable and the table stays presentational.
 //
-// The default (category, then name) is the pre-existing shipped order — it is
-// the "grouped by category" look the page has always had, so an operator who
-// never touches a header sees exactly what they saw before.
+// The default (category, then name) is the "grouped by category" look the page has always had; since U5 (owner Q1) the
+// categories come in their ARRANGED order (the Categories screen's drag order, as New Order), not alphabetically.
 
 export const PRODUCT_SORT_KEYS = ["name", "category", "price", "available"] as const;
 export type ProductSortKey = (typeof PRODUCT_SORT_KEYS)[number];
@@ -43,9 +42,16 @@ function compareBy(key: ProductSortKey, a: Product, b: Product, categoryMap: Map
   if (key === "name") return a.name.localeCompare(b.name);
   if (key === "price") return sortPriceOf(a) - sortPriceOf(b);
   if (key === "available") return availableOf(a) - availableOf(b);
-  return categoryNameOf(categoryMap, a.categoryId).localeCompare(
-    categoryNameOf(categoryMap, b.categoryId),
-  );
+  // U5 Q1: the default is the categories' ARRANGED order (the operator's drag arrangement, the order New Order shows),
+  // an unknown category last; the category NAME only breaks a tie between two categories that share an order.
+  const byOrder = categoryOrderOf(a, categoryMap) - categoryOrderOf(b, categoryMap);
+  if (byOrder !== 0) return byOrder;
+  return categoryNameOf(categoryMap, a.categoryId).localeCompare(categoryNameOf(categoryMap, b.categoryId));
+}
+
+const UNKNOWN_CATEGORY_ORDER = Number.MAX_SAFE_INTEGER;
+function categoryOrderOf(product: Product, categoryMap: Map<string, Category>): number {
+  return categoryMap.get(product.categoryId)?.order ?? UNKNOWN_CATEGORY_ORDER;
 }
 
 // Returns a NEW array — never sorts the caller's (a TanStack query's cached

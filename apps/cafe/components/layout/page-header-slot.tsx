@@ -39,6 +39,10 @@ export interface PageHeaderInfo {
   /** A section eyebrow ("Service"): not shown (the HTML header has no section line), read before the title. */
   eyebrow?: string;
   back?: PageHeaderBack;
+  /** U5 (owner Q5): the narrowest title block this page accepts beside its actions ON A PHONE. A page that sets it keeps
+   *  its actions in the header below 720px while the title block holds at least this many px (the Menu: 64, the word
+   *  "Menu" whole), else in the body row; a page that does not always puts them in the body row there (R6 unchanged). */
+  phoneTitleMinPx?: number;
 }
 
 /** The page's side of the slot. */
@@ -77,9 +81,15 @@ const HEADER_GAP_PX = 10;
  *  would be left after them and one gap, were they moved up. The two agree at the boundary, so nothing flaps, because
  *  the body row lays the actions out the same 10px apart as the header's actions box (PageHeader's and Header's
  *  gap-2.5; final review I1: 8px there flipped two actions every frame in a 2px window). */
-export function actionsFitBesideTitle(m: { actionsInHeader: boolean; titleWidth: number; actionsWidth: number }): boolean {
+export function actionsFitBesideTitle(m: {
+  actionsInHeader: boolean;
+  titleWidth: number;
+  actionsWidth: number;
+  /** The floor to keep; R6's 140px when a page gives none. */
+  minTitle?: number;
+}): boolean {
   const titleBesideActions = m.actionsInHeader ? m.titleWidth : m.titleWidth - m.actionsWidth - HEADER_GAP_PX;
-  return titleBesideActions >= HEADER_TITLE_MIN_PX;
+  return titleBesideActions >= (m.minTitle ?? HEADER_TITLE_MIN_PX);
 }
 
 /** The width the body row's children take on one line (the row itself is full width). */
@@ -107,7 +117,9 @@ export function PageHeaderSlotProvider({ children }: { children: ReactNode }) {
   const [target, setTarget] = useState<HTMLElement | null>(null);
   const [titleEl, setTitleEl] = useState<HTMLElement | null>(null);
   const [bodyRow, setBodyRow] = useState<HTMLElement | null>(null);
-  const actionsInHeader = wide && room;
+  // From 720px every page with actions is measured (R6); below it only a page that gave its own phone floor (U5, the Menu).
+  const phoneFloor = info?.phoneTitleMinPx;
+  const actionsInHeader = (wide || phoneFloor !== undefined) && room;
 
   const register = useCallback((next: PageHeaderInfo) => {
     setInfo(next);
@@ -118,11 +130,11 @@ export function PageHeaderSlotProvider({ children }: { children: ReactNode }) {
   // Ruling R6: measured before the first paint and again whenever the title block or the body row resizes. With no
   // actions on the page there is nothing to place (no body row, a free title block), so nothing changes.
   const measure = useCallback(() => {
-    if (!wide || !titleEl || (!actionsInHeader && !bodyRow)) return;
+    if ((!wide && phoneFloor === undefined) || !titleEl || (!actionsInHeader && !bodyRow)) return;
     const titleWidth = titleEl.getBoundingClientRect().width;
     const actionsWidth = actionsInHeader || !bodyRow ? 0 : childrenWidth(bodyRow);
-    setRoom(actionsFitBesideTitle({ actionsInHeader, titleWidth, actionsWidth }));
-  }, [wide, titleEl, bodyRow, actionsInHeader]);
+    setRoom(actionsFitBesideTitle({ actionsInHeader, titleWidth, actionsWidth, minTitle: wide ? undefined : phoneFloor }));
+  }, [wide, phoneFloor, titleEl, bodyRow, actionsInHeader]);
   useLayoutEffect(() => {
     measure();
     if (typeof ResizeObserver === "undefined") return;

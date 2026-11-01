@@ -13,6 +13,9 @@ interface PageHeaderProps {
   /** Actions that stay in the header at every width, first (ruling R13: the HTML's phone header keeps the dashboard's
    *  End of day icon); they never move to the body row. Outside the shell they sit in the body row, first. */
   phoneActions?: ReactNode;
+  /** The narrowest title block (px) the actions may leave on a phone (U5, the Menu): below 720px they stay in the header
+   *  while it holds, else drop to the body row; without it they always sit in the body row there. */
+  phoneTitleMinPx?: number;
   className?: string;
 }
 
@@ -26,7 +29,7 @@ interface PageHeaderProps {
 // they take the HTML's 36px header-button look (data-header-actions, app/globals.css). Outside the shell they stay in
 // the body.
 // `phoneActions` (ruling R13) sit in the header at every width, before the actions when those are there too.
-export function PageHeader({ title, eyebrow, description, actions, phoneActions, className }: PageHeaderProps) {
+export function PageHeader({ title, eyebrow, description, actions, phoneActions, phoneTitleMinPx, className }: PageHeaderProps) {
   const slot = usePageHeaderSlot();
   const register = slot?.register;
   const eyebrowText = typeof eyebrow === "string" ? eyebrow : undefined;
@@ -37,8 +40,8 @@ export function PageHeader({ title, eyebrow, description, actions, phoneActions,
   useLayoutEffect(() => {
     if (!register) return;
     const back = backHref === undefined ? undefined : { href: backHref, label: backLabel ?? "" };
-    return register({ title, description, eyebrow: eyebrowText, back });
-  }, [register, title, description, eyebrowText, backHref, backLabel]);
+    return register({ title, description, eyebrow: eyebrowText, back, phoneTitleMinPx });
+  }, [register, title, description, eyebrowText, backHref, backLabel, phoneTitleMinPx]);
 
   const inHeader = !!slot?.actionsInHeader;
   // One portal with a fixed shape, so the phoneActions stay mounted while the actions move between header and body.

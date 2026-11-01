@@ -30,8 +30,9 @@ function product(overrides: Partial<Product> = {}): Product {
   };
 }
 
-test("isMenuStatusFilter: accepts only the four declared filters", () => {
-  for (const f of MENU_STATUS_FILTERS) assert.ok(isMenuStatusFilter(f));
+test("isMenuStatusFilter: accepts only the five declared filters (U5: In stock joins them)", () => {
+  for (const f of MENU_STATUS_FILTERS) assert.ok(isMenuStatusFilter(f), `${f} is a filter`);
+  assert.ok(isMenuStatusFilter("in-stock"), "in-stock is one (the HTML's In stock)");
   assert.equal(isMenuStatusFilter("bogus"), false);
   assert.equal(isMenuStatusFilter(undefined), false);
 });
@@ -140,4 +141,18 @@ test("itemSubLine: lists size count and modifier count, omitting whichever doesn
     ),
     "1 size · 2 modifiers",
   );
+});
+
+test("filterItems: 'in-stock' keeps available !== false (an absent flag is in stock), and statusCounts gains inStock", () => {
+  const absent = product({ _id: "c" });
+  delete (absent as { available?: boolean }).available;
+  const rows = [product({ _id: "a", available: false }), product({ _id: "b", available: true }), absent];
+  assert.deepEqual(
+    filterItems(rows, { search: "", categoryId: null, status: "in-stock" }).map((p) => p._id),
+    ["b", "c"],
+    "only an explicit false is out",
+  );
+  const counts = statusCounts(rows, "", null);
+  assert.equal(counts.inStock, 2, "inStock counts the same rows");
+  assert.equal(counts.outOfStock, 1, "outOfStock unchanged");
 });

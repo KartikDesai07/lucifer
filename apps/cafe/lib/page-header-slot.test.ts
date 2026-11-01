@@ -187,6 +187,31 @@ test("actionsFitBesideTitle: in the header while the title keeps 140px; moved up
   }
 });
 
+// U5 Task 1 (design 6.1, owner Q5): a page may set its own floor for the phone (the Menu's 64px: the word "Menu" whole);
+// the rule is the same, only the floor differs, and the default stays R6's 140px.
+test("actionsFitBesideTitle takes a floor of its own (U5: minTitle 64 on the Menu's phone header); the default stays 140", () => {
+  assert.equal(actionsFitBesideTitle({ actionsInHeader: true, titleWidth: 70, actionsWidth: 170, minTitle: 64 }), true, "70px >= 64: stays in the header");
+  assert.equal(actionsFitBesideTitle({ actionsInHeader: true, titleWidth: 49, actionsWidth: 170, minTitle: 64 }), false, "49px < 64: goes to the body row");
+  assert.equal(actionsFitBesideTitle({ actionsInHeader: true, titleWidth: 70, actionsWidth: 170 }), false, "no floor given: R6's 140px still applies");
+  assert.equal(actionsFitBesideTitle({ actionsInHeader: false, titleWidth: 250, actionsWidth: 176, minTitle: 64 }), true, "250 - 176 - 10 = 64: moves up");
+  assert.equal(actionsFitBesideTitle({ actionsInHeader: false, titleWidth: 249, actionsWidth: 176, minTitle: 64 }), false, "63 left: stays in the body");
+  for (const total of [230, 249, 250, 251, 400]) {
+    const up = actionsFitBesideTitle({ actionsInHeader: false, titleWidth: total, actionsWidth: 176, minTitle: 64 });
+    const stays = actionsFitBesideTitle({ actionsInHeader: true, titleWidth: total - 176 - 10, actionsWidth: 0, minTitle: 64 });
+    assert.equal(up, stays, `title block ${total}px: moving up and staying up agree with a floor of 64 (never flaps)`);
+  }
+});
+
+test("PIN: a page's phoneTitleMinPx reaches the slot (PageHeader registers it) and decides the phone placement, not a bare width check", () => {
+  const slot = read(path.join(CAFE_ROOT, "components/layout/page-header-slot.tsx"));
+  assert.match(slot, /phoneTitleMinPx\?: number;/, "PageHeaderInfo carries the floor");
+  assert.match(slot, /const actionsInHeader = \(wide \|\| phoneFloor !== undefined\) && room;/, "below 720 a page with a floor is measured like R6; the others stay in the body row");
+  assert.match(slot, /minTitle: wide \? undefined : phoneFloor/, "from 720 the R6 floor, below it the page's own");
+  const page = read(path.join(CAFE_ROOT, "components/shared/PageHeader.tsx"));
+  assert.match(page, /phoneTitleMinPx\?: number;/, "PageHeader takes it");
+  assert.match(page, /register\(\{ title, description, eyebrow: eyebrowText, back, phoneTitleMinPx \}\)/, "and registers it with the page's words");
+});
+
 // Final review I1: the rule reads the actions' width in the body row and predicts the title's width in the header, so
 // the two placements must lay the actions out the same gap apart; with 8px in the body row and 10px in the header's
 // box, two actions flipped every frame in a 2px viewport window (and remounted, closing an open dialog or menu).
@@ -241,7 +266,8 @@ test("the body row's gap is a default the page's className still overrides (the 
 
 test("PIN: the provider decides once for the shell — the 720px media query and the measured room — with a ResizeObserver", () => {
   const src = read(path.join(CAFE_ROOT, "components/layout/page-header-slot.tsx"));
-  assert.match(src, /const actionsInHeader = wide && room;/, "in the header only from 720px and only with room");
+  // Moved on purpose (U5 Task 1, owner Q5): below 720px a page that gave a phone floor (the Menu) is measured too.
+  assert.match(src, /const actionsInHeader = \(wide \|\| phoneFloor !== undefined\) && room;/, "in the header from 720px (or on a phone for a page with its own floor) and only with room");
   assert.match(src, /new ResizeObserver\(measure\)/, "re-measured as the header or the body row resizes");
   assert.match(src, /setRoom\(\s*actionsFitBesideTitle\(/, "the rule above decides");
   const page = read(path.join(CAFE_ROOT, "components/shared/PageHeader.tsx"));
@@ -372,7 +398,8 @@ test("PIN: the header composes the registered words, the actions box (min-w-0, t
   assert.match(box, /className="[^"]*\bmin-w-0\b[^"]*"/, "min-w-0: it never pushes the printer button off screen");
   const page = read(path.join(CAFE_ROOT, "components/shared/PageHeader.tsx"));
   assert.match(page, /useLayoutEffect\(/, "the page registers before the first paint (no subtitle flash)");
-  assert.match(page, /register\(\{ title, description, eyebrow: eyebrowText, back \}\)/, "it registers its title, subtitle and eyebrow");
+  // Moved on purpose (U5 Task 1, owner Q5): the registration also carries the page's phone floor (phoneTitleMinPx).
+  assert.match(page, /register\(\{ title, description, eyebrow: eyebrowText, back, phoneTitleMinPx \}\)/, "it registers its title, subtitle, eyebrow and phone floor");
 });
 
 // U0 Task 4 retired ruling R5's interim menu button: a phone's nav is the tab bar now (lib/tab-bar-paths.test.ts), so
@@ -388,8 +415,10 @@ test("ruling R4: no page shows its title twice — POS, Items and every report n
   const report = read(path.join(CAFE_ROOT, "components/reports/ReportHeader.tsx"));
   assert.match(report, /<PageHeader\s+eyebrow="Reports"\s+title=\{title\}\s+description=\{description\}\s+actions=\{/, "a report's title, line and Download CSV go to the header");
   assert.ok(report.includes("Download CSV") && report.includes("<RangeBar"), "Download CSV stays its action; the range row stays in the body");
-  const items = read(path.join(CAFE_ROOT, "app/(dashboard)/products/page.tsx"));
-  assert.match(items, /<PageHeader\s+eyebrow="Menu"\s+title="Items"\s+description=\{/, "the Items page's title block goes to the header");
+  // Moved on purpose (U5 Task 1; menu P7 / P62 / P63): the title is "Menu" on both routes (the sr-only eyebrow goes), through
+  // the one MenuPageHeader both pages render.
+  const items = read(path.join(CAFE_ROOT, "components/menu/MenuPageHeader.tsx"));
+  assert.match(items, /<PageHeader\s+title="Menu"\s+description=\{line\}/, "the Menu's title block goes to the header");
   // Only the shell's header writes an <h1> on a staff page (the Dashboard's own title row moved there in Task 5): its
   // title block, and on /pos (U1 Task 1) the header itself, for screen readers only (the HTML's Order header has no
   // title block; lib/pos-frame.test.ts pins it).

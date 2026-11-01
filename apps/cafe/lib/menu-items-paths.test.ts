@@ -6,6 +6,7 @@ import path from "node:path";
 
 import { stripComments } from "@/lib/source-pin-utils";
 import { STAFF_PRODUCT_BULK_ACTIONS } from "@pos/shared/schemas";
+import { MENU_CHIPS_CLASS, MENU_LIST_SCROLLER_CLASS, MENU_PAGE_CLASS } from "@/lib/menu-layout";
 
 // Slice B source pins (Menu redesign, 2026-09-30) — the Items page, its
 // admin/staff gating, the icon render order, and the editor's icon sentinel.
@@ -21,6 +22,7 @@ const ITEMS_TABLE = "apps/cafe/components/menu/ItemsTable.tsx";
 const ITEMS_TOOLBAR = "apps/cafe/components/menu/ItemsToolbar.tsx";
 const BULK_BAR = "apps/cafe/components/menu/BulkBar.tsx";
 const PRODUCTS_PAGE = "apps/cafe/app/(dashboard)/products/page.tsx";
+const ITEMS_PAGE_STATE = "apps/cafe/hooks/use-items-page-state.ts";
 const ITEM_ART = "apps/cafe/components/menu/ItemArt.tsx";
 const PRODUCT_CARD = "apps/cafe/components/pos/ProductCard.tsx";
 const PUBLIC_INITIAL_TILE = "apps/cafe/components/public/PublicInitialTile.tsx";
@@ -95,15 +97,17 @@ test("PIN: G11 — ItemCards shows the struck-through raw price on a discount, s
 
 // ── Admin gating: ⋯ / Import / Add / empty-state CTAs ──────────────────────
 
+// Moved on purpose (U5 Task 1; menu P62 / P63): Add item is the shared MenuPageHeader's action (with the view switch) and
+// Import CSV is the toolbar's, where the HTML's Veg control sits (owner Q5). Same meaning: admin only, both.
 test("PIN: the Items page shows Import CSV + Add item only inside an isAdmin branch", () => {
-  const src = stripComments(readSrc(PRODUCTS_PAGE));
-  assert.match(src, /Import CSV/, "positive landmark: Import CSV must still exist");
-  assert.match(src, /Add item/, "positive landmark: Add item must still exist");
-  assert.match(
-    src,
-    /\{isAdmin\s*&&\s*\(\s*<div className="flex items-center gap-2">\s*<Button variant="outline" onClick=\{\(\) => setImportOpen\(true\)\}>\s*<Upload[^/]*\/> Import CSV/,
-    "Import CSV + Add item must be gated behind isAdmin &&, not rendered unconditionally",
-  );
+  const header = stripComments(readSrc("apps/cafe/components/menu/MenuPageHeader.tsx"));
+  assert.match(header, /Add item/, "positive landmark: Add item must still exist");
+  assert.match(header, /actions=\{isAdmin && \(\s*<>\s*<MenuViewSwitch/, "the switch and Add must be gated behind isAdmin &&, not rendered unconditionally");
+  const toolbar = stripComments(readSrc(ITEMS_TOOLBAR));
+  assert.match(toolbar, /Import CSV/, "positive landmark: Import CSV must still exist");
+  assert.equal((toolbar.match(/\{isAdmin && \(\s*<button type="button" data-ui="menu-import/g) ?? []).length, 2, "both Import CSV buttons (the label and the phone's icon) are gated behind isAdmin &&");
+  const page = stripComments(readSrc(PRODUCTS_PAGE));
+  assert.match(page, /onImport=\{\(\) => setImportOpen\(true\)\}/, "the toolbar's Import opens the import wizard");
 });
 
 test("PIN: ItemsTable renders the checkbox column for EVERY role (G4 — staff need it to reach the two stock bulk actions), but keeps the QR switch and row menu admin-only (staff see a read-only QR label, no menu)", () => {
@@ -129,10 +133,11 @@ test("PIN: ItemCards shows the Select checkbox for EVERY role once Select mode i
 
 test("PIN: ItemsToolbar hides the Archived status option from staff but shows the phone Select toggle to EVERY role (G4)", () => {
   const src = stripComments(readSrc(ITEMS_TOOLBAR));
+  // Moved on purpose (U5 Task 1; menu P20 / P21 / P24): the status control is the filter select now, same rule.
   assert.match(
     src,
-    /options\s*=\s*STATUS_OPTIONS\.filter\(\(o\)\s*=>\s*o\.value\s*!==\s*"archived"\s*\|\|\s*isAdmin\)/,
-    "the status option list must filter out 'archived' for non-admins",
+    /options\s*=\s*FILTER_ORDER\.filter\(\(f\)\s*=>\s*f\s*!==\s*"archived"\s*\|\|\s*isAdmin\)/,
+    "the filter option list must filter out 'archived' for non-admins",
   );
   // G4 — a staff member must be able to enter Select mode too (it's their
   // only way to reach the two stock bulk actions), so this button must NOT
@@ -236,7 +241,6 @@ test("PIN: ProductFormSheet resets an unknown stored icon to undefined via isPro
 
 const MOVE_ITEMS_DIALOG = "apps/cafe/components/menu/MoveItemsDialog.tsx";
 const ITEMS_LIST_SECTION = "apps/cafe/components/menu/ItemsListSection.tsx";
-const MENU_PAGE_SHELL = "apps/cafe/components/menu/MenuPageShell.tsx";
 const MENU_ITEMS_LIB = "apps/cafe/lib/menu-items.ts";
 
 test("PIN: G12 — MoveItemsDialog resets its category selection on OPEN (an effect keyed on `open`), not only on close", () => {
@@ -273,49 +277,45 @@ test("PIN: G20 — BulkBar's action row carries flex-wrap as an overflow safety 
   assert.match(src, /className="flex w-full min-w-0 flex-wrap items-center gap-2"/, "the bulk bar's action row must include flex-wrap");
 });
 
-test("PIN: item 1 — every horizontally scrolling row in ItemsToolbar is contained (its own overflow-x-auto box carries [contain:inline-size]), and every flex ancestor down to it carries min-w-0", () => {
-  const src = stripComments(readSrc(ITEMS_TOOLBAR));
-  // Two scrolling rows: the category chip row and the status segmented
-  // control. Both need [contain:inline-size] co-located with overflow-x-auto
-  // on their own scroll box (class order may differ between the two, so this
-  // checks each occurrence contains both tokens rather than an exact string).
-  const scrollBoxes = [...src.matchAll(/className="([^"]*overflow-x-auto[^"]*)"/g)].map((m) => m[1]);
-  assert.equal(scrollBoxes.length, 2, `ItemsToolbar must have exactly 2 horizontally scrolling boxes (chip row + status control), found ${scrollBoxes.length}`);
-  for (const cls of scrollBoxes) {
-    assert.ok(cls.includes("[contain:inline-size]"), `every overflow-x-auto box must also carry [contain:inline-size], got "${cls}"`);
-  }
-  // The outermost wrapper must carry min-w-0 — a scroll box's own
-  // overflow-x-auto does not, by itself, stop a WIDE ancestor from being
-  // stretched by the box's min-content (measured: 1024px page width at
-  // 768-800px before this fix).
-  assert.match(src, /className="min-w-0 space-y-2"/, "the toolbar's root wrapper must carry min-w-0");
-
-  const shellSrc = stripComments(readSrc(MENU_PAGE_SHELL));
-  assert.match(shellSrc, /flex min-w-0 max-w-\[1440px\] flex-col/, "MenuPageShell's flex column must carry min-w-0 so no wide descendant can stretch the page");
+test("PIN: item 1 — the one horizontally scrolling row (the phone's category chips) is contained ([contain:inline-size] on its own overflow-x-auto box), and the frame down to it never stretches", () => {
+  // Moved on purpose (U5 Task 1; menu P20-P24, the chip row's pin): the status segmented control is a select now, so one
+  // scroll box is left, the chips; the paper shell's min-w-0 column is the Menu frame (no scroll of its own) and the list
+  // column (min-w-0, overflow-x clip) the chips live in. Same meaning: nothing in the toolbar can widen the page.
+  const tokens = (cls: string): string[] => cls.split(/\s+/);
+  assert.ok(tokens(MENU_CHIPS_CLASS).includes("overflow-x-auto") && tokens(MENU_CHIPS_CLASS).includes("[contain:inline-size]"), "the chip row's scroll box carries [contain:inline-size]");
+  const toolbar = stripComments(readSrc(ITEMS_TOOLBAR));
+  assert.equal([...toolbar.matchAll(/overflow-x-auto/g)].length, 0, "ItemsToolbar draws no scroll box of its own: the chip row is its own component");
+  assert.ok(tokens(MENU_LIST_SCROLLER_CLASS).includes("min-w-0") && tokens(MENU_LIST_SCROLLER_CLASS).includes("overflow-x-clip"), "the list column carries min-w-0 and clips sideways");
+  assert.ok(tokens(MENU_PAGE_CLASS).includes("overflow-hidden"), "the page frame never scrolls or stretches");
+  assert.match(toolbar, /flex min-w-0|MENU_TOOLBAR_START_CLASS/, "the toolbar's start group is min-w-0");
 });
 
-test("PIN: N4 — ItemsToolbar's status control is a FILTER (role=group + aria-pressed toggle buttons, the RangeBar.tsx precedent), never role=tablist/tab (which carries a roving-tabindex/arrow-key/tabpanel contract this control doesn't implement)", () => {
+test("PIN: N4 — the status control is a FILTER (one kit select driving the filter and the view), never role=tablist/tab (which carries a roving-tabindex/arrow-key/tabpanel contract this control doesn't implement)", () => {
+  // Moved on purpose (U5 Task 1; menu P20 / P21 / P24): the segmented group became the HTML's filter select (a kit dropdown);
+  // it is still a filter, never tabs, and still ONE control for the status filter and the active / archived view.
   const src = stripComments(readSrc(ITEMS_TOOLBAR));
-  assert.match(src, /role="group" aria-label="Status"/, "the status control must be a single role=group region");
-  assert.match(src, /aria-pressed=\{status === o\.value\}/, "each option must expose aria-pressed keyed on the shared status value");
+  assert.match(src, /ariaLabel="Show"[\s\S]{0,80}value=\{isArchived \? "archived" : status\}/, "the filter select shows the status, Archived while that view is on");
+  assert.match(src, /onValueChange=\{\(v\) => onStatusChange\(v as MenuStatusFilter\)\}/, "and routes every pick through the one status handler");
   assert.ok(!/role="tablist"/.test(src), 'role="tablist" must not appear — this is a filter, not a tab panel switch');
   assert.ok(!/role="tab"/.test(src), 'role="tab" must not appear on the option buttons');
-  assert.ok(!/aria-selected=/.test(src), "aria-selected must not appear — aria-pressed is the correct toggle-button state for a filter");
-  // Vision guard: the old dual-control shape (a status Select PLUS separate
-  // Active/Archived buttons) must be gone from this file.
-  assert.ok(!/<SelectTrigger className="sm:w-52">/.test(src), "the old standalone status Select must be removed");
+  assert.ok(!/aria-selected=/.test(src), "aria-selected must not appear");
+  assert.ok(!/role="group" aria-label="Status"/.test(src), "the old segmented group is gone");
+  assert.ok(!/<select\b/.test(src), "never a native select");
 
-  const pageSrc = stripComments(readSrc(PRODUCTS_PAGE));
+  const hookSrc = stripComments(readSrc(ITEMS_PAGE_STATE));
   assert.match(
-    pageSrc,
+    hookSrc,
     /const handleStatusChange = \(next: MenuStatusFilter\) => \{/,
-    "the page must own ONE handler that both the status filter and the active/archived view route through",
+    "the page's state must own ONE handler that both the status filter and the active/archived view route through",
   );
+  const pageSrc = stripComments(readSrc(PRODUCTS_PAGE));
+  assert.match(pageSrc, /onStatusChange=\{state\.handleStatusChange\}/, "the page wires it to the toolbar");
   assert.ok(!/variant=\{isArchived \? "outline" : "secondary"\}/.test(pageSrc), "the old separate Active/Archived button pair must be removed");
 });
 
-test("PIN: item 2 (deep link timing) — the products page applies ?status= only once auth is resolved, and an admin-only archived link still applies then", () => {
-  const src = stripComments(readSrc(PRODUCTS_PAGE));
+test("PIN: item 2 (deep link timing) — the Items page applies ?status= only once auth is resolved, and an admin-only archived link still applies then", () => {
+  // Moved with the code (U5 Task 1, ruling M1): the effect lives in the page's state hook.
+  const src = stripComments(readSrc(ITEMS_PAGE_STATE));
   assert.match(src, /if\s*\(authLoading\)\s*return;/, "the ?status= effect must bail out while auth is still loading");
   assert.match(src, /\}, \[authLoading, isAdmin\]\);/, "the effect must be keyed on [authLoading, isAdmin] so it re-applies once the session resolves");
   assert.match(src, /if\s*\(isAdmin\)\s*setView\("archived"\);/, "an archived deep link must still switch the view once isAdmin resolves true");
@@ -329,24 +329,22 @@ test("PIN: wording — itemSubLine uses \"modifier(s)\", never \"add-on(s)\"", (
 
 // ── Second fresh-eyes round (N2, N3) ────────────────────────────────────────
 
-test('PIN: N2 — ItemsToolbar\'s status labels drop their counts in the Archived view (labelCounts is null when isArchived, so "Out of stock" never shows a number computed from the wrong list)', () => {
+test('PIN: N2 — the filter select\'s labels drop their counts in the Archived view (labelCounts is null when isArchived, so "Sold out" never shows a number computed from the wrong list)', () => {
   const src = stripComments(readSrc(ITEMS_TOOLBAR));
   assert.match(src, /const labelCounts = isArchived \? null : counts;/, "labelCounts must be null in the Archived view");
-  assert.match(src, /\{o\.label\(labelCounts\)\}/, "the rendered label call must read labelCounts, not counts directly");
-  // Vision guard: every STATUS_OPTIONS label function must handle the null
-  // case (no crash, no count) — a mutation that reverted one option's
-  // fallback would still leave the others passing this string check, so this
-  // also asserts all three counted options keep their `(c ? ... : ...)` shape.
-  assert.equal((src.match(/label:\s*\(c\)\s*=>\s*\(c\s*\?/g) ?? []).length, 3, "all 3 counted status options must branch on a null counts arg");
+  assert.match(src, /const n = labelCounts \? countOf\(f, labelCounts\) : null;/, "the label's count reads labelCounts, not counts directly");
+  // Moved on purpose (U5 Task 1): countOf answers null for Archived (it never has a count) and every other filter a number.
+  assert.match(src, /return null;\s*\}/, "Archived carries no count");
+  assert.equal((src.match(/if \(filter === "[a-z-]+"\) return c\./g) ?? []).length, 4, "all four counted filters read their own count");
 });
 
-test("PIN: N3 — the products page passes status=\"all\" to ItemsListSection while the Archived view is on, so its empty-state title never reads a stale non-archived status", () => {
+test("PIN: N3 — the empty-state title never reads a stale status: ItemsListSection takes no status (its words come from the search), and the title row's filter is archived while the Archived view is on", () => {
+  // Moved on purpose (U5 Task 1; menu P4x): the per-status empty words ("Nothing is out of stock.") became the HTML's "No items
+  // here" + "Try another search or filter.", so the status prop is gone; the same guarantee, one place down.
+  const list = stripComments(readSrc(ITEMS_LIST_SECTION));
+  assert.ok(!/status: MenuStatusFilter/.test(list), "ItemsListSection takes no status prop");
   const src = stripComments(readSrc(PRODUCTS_PAGE));
-  assert.match(
-    src,
-    /status=\{isArchived \? "all" : status\}/,
-    'the ItemsListSection status prop must be isArchived ? "all" : status',
-  );
+  assert.match(src, /filter=\{isArchived \? "archived" : status\}/, "the title row reads archived while the Archived view is on");
 });
 
 // Perf (s58 browser probe): below lg the page built all 105 table rows hidden

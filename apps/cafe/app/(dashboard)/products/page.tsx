@@ -1,41 +1,28 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import dynamic from "next/dynamic";
-import { Plus, Upload } from "lucide-react";
 
 import {
-  useProducts,
   useArchiveProduct,
   useRestoreProduct,
   useSetProductAvailability,
   useSetProductQrVisibility,
   useBulkProducts,
 } from "@/hooks/use-products";
-import { useCategoryMap } from "@/hooks/use-category-map";
 import { useAuth } from "@/hooks/use-auth";
-import { MENU_STATUS_PARAM, MENU_CATEGORY_PARAM } from "@/lib/menu-sections";
-import {
-  isMenuStatusFilter,
-  filterItems,
-  statusCounts,
-  type MenuStatusFilter,
-} from "@/lib/menu-items";
-import {
-  DEFAULT_PRODUCT_SORT,
-  nextProductSort,
-  sortProducts,
-  type ProductSort,
-  type ProductSortKey,
-} from "@/lib/products-sort";
+import { useItemsPageState } from "@/hooks/use-items-page-state";
+import { menuStripShows, MENU_STRIP_MESSAGE } from "@/lib/menu-view";
+import { MENU_BODY_CLASS, MENU_LIST_SCROLLER_CLASS, MENU_PAGE_CLASS } from "@/lib/menu-layout";
 import type { ProductBulkAction } from "@pos/shared/schemas";
-import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
-import { PageHeader } from "@/components/shared/PageHeader";
-import { MenuPageShell } from "@/components/menu/MenuPageShell";
+import { RefreshStrip } from "@/components/shared/RefreshStrip";
+import { CategoryRail } from "@/components/menu/CategoryRail";
 import { ItemsToolbar } from "@/components/menu/ItemsToolbar";
+import { ItemsTitleRow } from "@/components/menu/ItemsTitleRow";
 import { ItemsListSection } from "@/components/menu/ItemsListSection";
 import { ItemsBulkSection } from "@/components/menu/ItemsBulkSection";
+import { MenuPageHeader } from "@/components/menu/MenuPageHeader";
 import { ProductFormSheet } from "@/components/products/ProductFormSheet";
 import type { Product } from "@/types";
 
@@ -49,100 +36,23 @@ const ImportProductsDialog = dynamic(
   { ssr: false },
 );
 
-const countLabel = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-
 export default function ProductsPage() {
   const { isAdmin, isLoading: authLoading } = useAuth();
-  const [view, setView] = useState<"active" | "archived">("active");
-  const isArchived = view === "archived";
-
-  const products = useProducts(isArchived ? { archived: true } : {});
-  const { map: categoryMap, categories } = useCategoryMap();
+  // The view, the query, the filters, the selection and the derived rows and counts (U5 ruling M1: their own hook).
+  const state = useItemsPageState({ isAdmin, authLoading });
+  const { isArchived, products, categoryMap, categories, categoryId, status, effectiveSelected, clearSelection } = state;
   const archiveProduct = useArchiveProduct();
   const restoreProduct = useRestoreProduct();
   const setAvailability = useSetProductAvailability();
   const setQrVisibility = useSetProductQrVisibility();
   const bulkProducts = useBulkProducts();
 
-  const [search, setSearch] = useState("");
-  const [categoryId, setCategoryId] = useState<string | null>(null);
-  const [status, setStatus] = useState<MenuStatusFilter>("all");
-  const [selectMode, setSelectMode] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [formOpen, setFormOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [archiving, setArchiving] = useState<Product | null>(null);
   const [movingIds, setMovingIds] = useState<string[] | null>(null);
   const [archivingIds, setArchivingIds] = useState<string[] | null>(null);
-  const [sort, setSort] = useState<ProductSort>(DEFAULT_PRODUCT_SORT);
-
-  // Read ?status= — but only once isAdmin is KNOWN (useAuth().isLoading
-  // false), so a staff link to an admin-only "archived" deep link is ignored
-  // rather than raced against a session that hasn't resolved yet, and an
-  // admin's own link still applies once that resolution lands (not just on
-  // whatever the first render happened to be).
-  useEffect(() => {
-    if (authLoading) return;
-    const params = new URLSearchParams(window.location.search);
-    const s = params.get(MENU_STATUS_PARAM);
-    if (!s || !isMenuStatusFilter(s)) return;
-    if (s === "archived") {
-      if (isAdmin) setView("archived");
-      return;
-    }
-    setStatus(s);
-  }, [authLoading, isAdmin]);
-
-  useEffect(() => {
-    if (categories.length === 0) return;
-    const params = new URLSearchParams(window.location.search);
-    const c = params.get(MENU_CATEGORY_PARAM);
-    if (c && categories.some((cat) => cat._id === c)) setCategoryId(c);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categories.length > 0]);
-
-  // Selection clears on an active/archived switch.
-  useEffect(() => setSelected(new Set()), [view]);
-
-  const filtered = useMemo(() => {
-    const rows = filterItems(products.data ?? [], { search, categoryId, status: isArchived ? "all" : status });
-    return sortProducts(rows, sort, categoryMap);
-  }, [products.data, search, categoryId, status, isArchived, sort, categoryMap]);
-
-  // Selection intersected with the visible rows — a filter/search change can
-  // only ever shrink the checked set, never leave a phantom id behind.
-  const effectiveSelected = useMemo(() => {
-    const visible = new Set(filtered.map((p) => p._id));
-    return new Set([...selected].filter((id) => visible.has(id)));
-  }, [selected, filtered]);
-
-  const counts = useMemo(
-    () => statusCounts(products.data ?? [], search, categoryId),
-    [products.data, search, categoryId],
-  );
-
-  // The ONE segmented control drives both the status filter and the
-  // active/archived view (G5/G6, M1 fidelity — no separate view toggle):
-  // picking "Archived" switches the query view; any other value switches
-  // back to the active view with that status filter applied.
-  const handleStatusChange = (next: MenuStatusFilter) => {
-    if (next === "archived") {
-      setView("archived");
-      return;
-    }
-    setView("active");
-    setStatus(next);
-  };
-
-  const toggleSelect = (id: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  const clearSelection = () => setSelected(new Set());
 
   const openAdd = () => {
     setEditing(null);
@@ -191,94 +101,98 @@ export default function ProductsPage() {
   };
 
   return (
-    <MenuPageShell>
-      {/* U0 Task 3 (ruling R4): the title and the count line are the page header's; the admin buttons are its
-          actions (in the header from 720px, in a row at the top of the page on a phone). */}
-      <PageHeader
-        eyebrow="Menu"
-        title="Items"
-        description={`${countLabel(products.data?.length ?? 0, "item")} · ${countLabel(categories.length, "category", "categories")}`}
-        actions={isAdmin && (
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setImportOpen(true)}>
-              <Upload className="mr-2 h-4 w-4" /> Import CSV
-            </Button>
-            <Button onClick={openAdd}>
-              <Plus className="mr-2 h-4 w-4" /> Add item
-            </Button>
-          </div>
-        )}
+    <div data-ui="menu-page" className={MENU_PAGE_CLASS}>
+      {/* A failed or paused read with the list on screen: the shared strip at the page's top (design 6.8; U4's pattern). */}
+      <RefreshStrip
+        ui="menu"
+        show={menuStripShows({ hasData: products.data !== undefined, isError: products.isError, isPaused: products.isPaused })}
+        message={MENU_STRIP_MESSAGE}
+        onRetry={() => void products.refetch()}
       />
+      <div data-ui="menu-body" className={MENU_BODY_CLASS}>
+        <CategoryRail
+          categories={categories}
+          counts={state.categoryTotals.byId}
+          allCount={state.categoryTotals.all}
+          allSoldOut={state.categoryTotals.allSoldOut}
+          selectedId={categoryId}
+          onSelect={state.pickCategory}
+        />
+        <div data-ui="menu-list" className={MENU_LIST_SCROLLER_CLASS}>
+          <MenuPageHeader current="items" line={state.headerLine} isAdmin={isAdmin} onAdd={openAdd} />
 
-      <ItemsToolbar
-        search={search}
-        onSearchChange={setSearch}
-        categoryId={categoryId}
-        onCategoryChange={setCategoryId}
-        categories={categories}
-        status={isArchived ? "archived" : status}
-        onStatusChange={handleStatusChange}
-        counts={counts}
-        isArchived={isArchived}
-        isAdmin={isAdmin}
-        selectMode={selectMode}
-        onToggleSelectMode={() => setSelectMode((v) => !v)}
-      />
+          <ItemsToolbar
+            search={state.search}
+            onSearchChange={state.setSearch}
+            categoryId={categoryId}
+            onCategoryChange={state.pickCategory}
+            categories={categories}
+            categoryCounts={state.categoryTotals}
+            status={isArchived ? "archived" : status}
+            onStatusChange={state.handleStatusChange}
+            counts={state.counts}
+            isArchived={isArchived}
+            isAdmin={isAdmin}
+            selectMode={state.selectMode}
+            onToggleSelectMode={state.toggleSelectMode}
+            onImport={() => setImportOpen(true)}
+          />
 
-      {products.isError && products.data !== undefined && (
-        <p className="text-sm text-destructive">
-          Couldn&apos;t refresh ·{" "}
-          <button type="button" className="underline" onClick={() => products.refetch()}>
-            Try again
-          </button>
-        </p>
-      )}
+          {products.data !== undefined && (
+            <ItemsTitleRow
+              title={(categoryId && categoryMap.get(categoryId)?.name) || "All items"}
+              count={state.filtered.length}
+              filter={isArchived ? "archived" : status}
+            />
+          )}
 
-      <ItemsListSection
-        isLoading={products.isLoading}
-        showFullError={products.isError && products.data === undefined}
-        onRetry={() => products.refetch()}
-        noCategories={categories.length === 0}
-        hasProducts={(products.data?.length ?? 0) > 0}
-        isArchived={isArchived}
-        isAdmin={isAdmin}
-        status={isArchived ? "all" : status}
-        filtered={filtered}
-        categoryMap={categoryMap}
-        selected={effectiveSelected}
-        onToggleSelect={toggleSelect}
-        onEdit={openEdit}
-        onArchive={setArchiving}
-        onRestore={(p) => restoreProduct.mutate(p._id)}
-        onToggleAvailable={(id, available) => setAvailability.mutate({ id, available })}
-        onToggleQrVisible={(id, visible) => setQrVisibility.mutate({ id, visible })}
-        pendingAvailabilityId={setAvailability.isPending ? setAvailability.variables?.id : undefined}
-        pendingQrId={setQrVisibility.isPending ? setQrVisibility.variables?.id : undefined}
-        selectMode={selectMode}
-        sort={sort}
-        onSortChange={(key: ProductSortKey) => setSort((current) => nextProductSort(current, key))}
-        onAddItem={openAdd}
-        onClearFilters={() => { setSearch(""); setCategoryId(null); setStatus("all"); }}
-      />
+          <ItemsListSection
+            isLoading={products.isLoading}
+            showFullError={products.isError && products.data === undefined}
+            onRetry={() => products.refetch()}
+            noCategories={categories.length === 0}
+            hasProducts={(products.data?.length ?? 0) > 0}
+            isArchived={isArchived}
+            isAdmin={isAdmin}
+            search={state.search}
+            filtered={state.filtered}
+            categoryMap={categoryMap}
+            selected={effectiveSelected}
+            onToggleSelect={state.toggleSelect}
+            onEdit={openEdit}
+            onArchive={setArchiving}
+            onRestore={(p) => restoreProduct.mutate(p._id)}
+            onToggleAvailable={(id, available) => setAvailability.mutate({ id, available })}
+            onToggleQrVisible={(id, visible) => setQrVisibility.mutate({ id, visible })}
+            pendingAvailabilityId={setAvailability.isPending ? setAvailability.variables?.id : undefined}
+            pendingQrId={setQrVisibility.isPending ? setQrVisibility.variables?.id : undefined}
+            selectMode={state.selectMode}
+            sort={state.sort}
+            onSortChange={state.changeSort}
+            onAddItem={openAdd}
+            onClearFilters={state.clearFilters}
+          />
 
-      <ItemsBulkSection
-        count={effectiveSelected.size}
-        isAdmin={isAdmin}
-        archived={isArchived}
-        isPending={bulkProducts.isPending}
-        onAction={runBulk}
-        onClear={clearSelection}
-        categories={categories}
-        movingIds={movingIds}
-        onMoveOpenChange={(o) => !o && setMovingIds(null)}
-        onMove={() => setMovingIds(Array.from(effectiveSelected))}
-        onConfirmMove={confirmMove}
-        archivingCount={archivingIds?.length ?? 0}
-        archivingOpen={!!archivingIds}
-        onArchiveOpenChange={(o) => !o && setArchivingIds(null)}
-        onArchive={() => setArchivingIds(Array.from(effectiveSelected))}
-        onConfirmArchive={confirmBulkArchive}
-      />
+          <ItemsBulkSection
+            count={effectiveSelected.size}
+            isAdmin={isAdmin}
+            archived={isArchived}
+            isPending={bulkProducts.isPending}
+            onAction={runBulk}
+            onClear={clearSelection}
+            categories={categories}
+            movingIds={movingIds}
+            onMoveOpenChange={(o) => !o && setMovingIds(null)}
+            onMove={() => setMovingIds(Array.from(effectiveSelected))}
+            onConfirmMove={confirmMove}
+            archivingCount={archivingIds?.length ?? 0}
+            archivingOpen={!!archivingIds}
+            onArchiveOpenChange={(o) => !o && setArchivingIds(null)}
+            onArchive={() => setArchivingIds(Array.from(effectiveSelected))}
+            onConfirmArchive={confirmBulkArchive}
+          />
+        </div>
+      </div>
 
       <ProductFormSheet open={formOpen} onOpenChange={setFormOpen} product={editing} categories={categories} />
 
@@ -293,6 +207,6 @@ export default function ProductsPage() {
         isLoading={archiveProduct.isPending}
         onConfirm={confirmArchive}
       />
-    </MenuPageShell>
+    </div>
   );
 }

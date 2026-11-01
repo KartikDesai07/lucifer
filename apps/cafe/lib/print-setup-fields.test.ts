@@ -13,7 +13,8 @@ const CAFE = process.cwd();
 const src = (rel: string): string => stripComments(readFileSync(path.join(CAFE, rel), "utf8"));
 
 test("PIN (2D): the category dialog's Kitchen station: the default unless chosen; an edit back to the default sends null, a new category omits it", () => {
-  const page = src("app/(dashboard)/categories/page.tsx");
+  // Moved on purpose (U5 Task 1, ruling M2): the dialog, its state and its writes live in CategoryEditorDialog, verbatim.
+  const page = src("components/menu/CategoryEditorDialog.tsx");
   assert.match(page, /<StationSelect\s+id="category-station"\s+value=\{stationId\}\s+onChange=\{setStationId\}\s+stations=\{stations\}/, "every station, the default too (the 2D gate's review, I-2)");
   assert.match(page, /inheritLabel=\{`Default station \(\$\{defaultStation\?\.name \?\? "Kitchen"\}\)`\}/, "the default by name");
   assert.match(page, /data: \{ name: trimmed, stationId: stationId === "" \? null : stationId, noKot: noKot \? true : null \}/, "an edit says which station (or null for the default) and the kitchen switch (true, or null = back ON)");
@@ -53,7 +54,8 @@ test("PIN (2D, decision 7): this device's bill printer: printers mode only, rout
 
 // Skip-KOT S5 (plan 12): the category switch, the item's three-way choice, the "No KOT" tags, and the two hints.
 test("PIN (skip-KOT): the category dialog renders the kitchen switch from state loaded with the dialog, sent on save", () => {
-  const page = src("app/(dashboard)/categories/page.tsx");
+  // Moved on purpose (U5 Task 1, ruling M2): the dialog, its state and its writes live in CategoryEditorDialog, verbatim.
+  const page = src("components/menu/CategoryEditorDialog.tsx");
   assert.match(page, /const \[noKot, setNoKot\] = useState\(false\);/, "off by default: a new category sends to the kitchen");
   assert.match(page, /if \(formOpen\) setNoKot\(editing\?\.noKot === true\);/, "the saved flag as it is on open");
   assert.match(page, /<CategoryKitchenTicketField id="category-no-kot" noKot=\{noKot\} onChange=\{setNoKot\} \/>/);

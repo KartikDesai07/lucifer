@@ -1,31 +1,34 @@
 "use client";
 
-import { Archive as ArchiveIcon, Plus } from "lucide-react";
+import { Archive as ArchiveIcon, Plus, Tags, UtensilsCrossed } from "lucide-react";
 
-import type { MenuStatusFilter } from "@/lib/menu-items";
+import { MENU_EMPTY_SUB, menuEmptyTitle } from "@/lib/menu-view";
+import { MENU_SKELETON_LIST_CLASS, MENU_SKELETON_ROW_CLASS } from "@/lib/menu-layout";
 import type { ProductSort, ProductSortKey } from "@/lib/products-sort";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
+import { MagnifierIcon } from "@/components/menu/menu-icons";
+import { MenuEmptyBox } from "@/components/menu/MenuEmptyBox";
 import { ItemsTable } from "@/components/menu/ItemsTable";
 import { ItemCards } from "@/components/menu/ItemCards";
 import { useMediaQuery, LG_UP_QUERY } from "@/hooks/use-media-query";
 import type { Category, Product } from "@/types";
 
-// R16 — a per-status message when one applies; otherwise the generic
-// "No items match." (search/category filters with no status narrowing).
-function emptyMatchTitle(status: MenuStatusFilter): string {
-  if (status === "out-of-stock") return "Nothing is out of stock.";
-  if (status === "hidden") return "No items are hidden from the QR menu.";
-  return "No items match.";
-}
-
+// The skeleton in the list's shape (design 6.8): the white list box (radius 12, 1px --border) of rows, each a 34px art tile
+// and two lines, as Task 2's rows.
 function ListSkeleton() {
   return (
-    <div className="space-y-2 rounded-lg border p-4">
-      {Array.from({ length: 6 }).map((_, i) => (
-        <Skeleton key={i} className="h-12 w-full" />
+    <div data-ui="menu-skeleton" aria-hidden="true" className={MENU_SKELETON_LIST_CLASS}>
+      {Array.from({ length: 7 }).map((_, i) => (
+        <div key={i} className={MENU_SKELETON_ROW_CLASS}>
+          <Skeleton className="size-[34px] flex-none rounded-[8px]" />
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <Skeleton className="h-3.5 w-2/5" />
+            <Skeleton className="h-3 w-1/4" />
+          </div>
+          <Skeleton className="h-3.5 w-14 flex-none" />
+        </div>
       ))}
     </div>
   );
@@ -39,7 +42,8 @@ interface ItemsListSectionProps {
   hasProducts: boolean;
   isArchived: boolean;
   isAdmin: boolean;
-  status: MenuStatusFilter;
+  /** The search text: the filtered empty names it (values 4.7). */
+  search: string;
   filtered: Product[];
   categoryMap: Map<string, Category>;
   selected: Set<string>;
@@ -58,9 +62,8 @@ interface ItemsListSectionProps {
   onClearFilters: () => void;
 }
 
-// The Items page's body: skeleton -> error -> every guided empty state (R16)
-// -> the table (lg+) / cards (below lg) pair. Pulled out of the page itself
-// to keep that file under its line budget.
+// The Items page's body: skeleton -> error -> every guided empty state (R16) in the HTML's empty box (U5 Task 1) -> the
+// table (lg+) / cards (below lg) pair. Pulled out of the page itself to keep that file under its line budget.
 export function ItemsListSection({
   isLoading,
   showFullError,
@@ -69,7 +72,7 @@ export function ItemsListSection({
   hasProducts,
   isArchived,
   isAdmin,
-  status,
+  search,
   filtered,
   categoryMap,
   selected,
@@ -103,7 +106,8 @@ export function ItemsListSection({
 
   if (noCategories && !isArchived) {
     return (
-      <EmptyState
+      <MenuEmptyBox
+        icon={<Tags className="size-5" />}
         title="No categories yet"
         description={isAdmin ? "Add a category before adding items." : "Ask an admin to add items."}
         action={
@@ -119,13 +123,14 @@ export function ItemsListSection({
 
   if (!hasProducts) {
     return isArchived ? (
-      <EmptyState
-        icon={<ArchiveIcon className="h-8 w-8" />}
+      <MenuEmptyBox
+        icon={<ArchiveIcon className="size-5" />}
         title="No archived items"
         description="Items you archive will appear here and can be restored."
       />
     ) : (
-      <EmptyState
+      <MenuEmptyBox
+        icon={<UtensilsCrossed className="size-5" />}
         title="No items on the menu yet"
         description={isAdmin ? "Add your first menu item to start taking orders." : "Ask an admin to add them."}
         action={
@@ -141,8 +146,10 @@ export function ItemsListSection({
 
   if (filtered.length === 0) {
     return (
-      <EmptyState
-        title={emptyMatchTitle(status)}
+      <MenuEmptyBox
+        icon={<MagnifierIcon size={20} />}
+        title={menuEmptyTitle(search)}
+        description={MENU_EMPTY_SUB}
         action={
           <Button variant="outline" size="sm" className="mt-2" onClick={onClearFilters}>
             Clear filters

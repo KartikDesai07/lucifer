@@ -18,8 +18,8 @@ interface RefreshStripProps {
   message: string;
   /** Today's Try again: re-read what the page shows. */
   onRetry: () => void;
-  /** The page, for the data-ui names: floor-refresh-strip / -message / -retry, kitchen-refresh-strip / … */
-  ui: "floor" | "kitchen";
+  /** The page, for the data-ui names: floor-refresh-strip / -message / -retry, kitchen-refresh-strip / …, menu-refresh-strip / … */
+  ui: "floor" | "kitchen" | "menu";
 }
 
 // A live page's refresh failure (U3 Task 5 for the Floor, design 6.2; shared with the Kitchen in U4 Task 2, Kitchen design
