@@ -5,22 +5,28 @@
 //        predicate: an infinite list that grew to two pages meanwhile is
 //        dropped, never refetched page by page.
 //   R2 — a hidden-tab round only marks the targets stale; when the tab is shown
-//        again ONE round runs at once (coalesced) and arms the late tables
-//        refetch. The tab is simulated the way the other suites do it:
+//        again ONE round runs at once (coalesced) and its tables refetch reads
+//        the floor fresh. The tab is simulated the way the other suites do it:
 //        focusManager.setFocused (TanStack's own visibilitychange handler
 //        feeds the same listeners).
+//   F7 (perf P1) — the spec's onRound runs once at the start of every visible
+//        pass (never a hidden one), so LIVE_STATE_REALTIME's tables refetch
+//        reads /api/tables?fresh=1 and the 6 s late tables refetch is gone.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { QueryClient, QueryObserver, InfiniteQueryObserver, focusManager, type InvalidateQueryFilters, type QueryKey } from "@tanstack/react-query";
 
-import { createRealtimeInvalidator, type NudgeTimers } from "@/lib/realtime-invalidate";
-import { LIVE_STATE_EVENT_KINDS, LIVE_STATE_REALTIME, REALTIME_NUDGE_COALESCE_MS, TABLES_LATE_REFETCH_MS } from "@/hooks/use-realtime";
+import { createRealtimeInvalidator, type NudgeTimers, type RealtimeInvalidateSpec } from "@/lib/realtime-invalidate";
+import { takeTablesFreshRead } from "@/lib/tables-fresh-read";
+import { LIVE_STATE_EVENT_KINDS, LIVE_STATE_REALTIME, REALTIME_NUDGE_COALESCE_MS } from "@/hooks/use-realtime";
 import { ORDER_KEYS } from "@/hooks/use-orders";
 import { TABLE_KEYS } from "@/hooks/use-tables";
 
 const WINDOW = REALTIME_NUDGE_COALESCE_MS;
 const MAX_TICKS = 50;
+/** The late tables refetch F7 removed (TABLES_LATE_REFETCH_MS) — nothing may happen at or after it. */
+const LATE_WAS_MS = 6000;
 const OPEN_TABS = ORDER_KEYS.list({ payment: "Unpaid", status: "Pending" });
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -47,7 +53,8 @@ function timeClock() {
   return { timers, advance, armed: () => [...armed.values()].map((t) => t.ms) };
 }
 
-function setup() {
+function setup(spec: RealtimeInvalidateSpec = LIVE_STATE_REALTIME) {
+  takeTablesFreshRead(); // F7: every case starts with the module's one-shot flag clear
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   const calls: InvalidateQueryFilters[] = [];
   const real = qc.invalidateQueries.bind(qc);
@@ -56,7 +63,7 @@ function setup() {
     return real(filters, options);
   }) as QueryClient["invalidateQueries"];
   const clock = timeClock();
-  return { qc, calls, clock, nudger: createRealtimeInvalidator(qc, LIVE_STATE_EVENT_KINDS, LIVE_STATE_REALTIME, clock.timers) };
+  return { qc, calls, clock, nudger: createRealtimeInvalidator(qc, LIVE_STATE_EVENT_KINDS, spec, clock.timers) };
 }
 
 async function idle(qc: QueryClient, queryKey: QueryKey) {
@@ -69,6 +76,13 @@ function quickQuery(qc: QueryClient, queryKey: QueryKey) {
   let fetches = 0;
   const unsubscribe = new QueryObserver(qc, { queryKey, queryFn: async () => (fetches++, []) }).subscribe(() => {});
   return { count: () => fetches, unsubscribe };
+}
+
+/** The tables query as useTables runs it: each fetch takes the one-shot fresh-read flag (F7). */
+function floorQuery(qc: QueryClient) {
+  const reads: boolean[] = [];
+  const unsubscribe = new QueryObserver(qc, { queryKey: TABLE_KEYS.all, queryFn: async () => (reads.push(takeTablesFreshRead()), []) }).subscribe(() => {});
+  return { reads, count: () => reads.length, unsubscribe };
 }
 
 test("R1 a one-page list fetching its next page during a round is NOT refetched once it settles with two pages", async () => {
@@ -111,9 +125,9 @@ test("R1 a one-page list fetching its next page during a round is NOT refetched 
   }
 });
 
-test("R2 hidden rounds, then the tab is shown: the stale tables refetch ONCE at once, and the late refetch is armed then", async () => {
+test("R2 hidden rounds, then the tab is shown: the stale tables refetch ONCE at once, reading the floor fresh — and no late refetch after (F7)", async () => {
   const { qc, clock, nudger } = setup();
-  const tables = quickQuery(qc, TABLE_KEYS.all);
+  const floor = floorQuery(qc);
   try {
     await idle(qc, TABLE_KEYS.all);
     focusManager.setFocused(false);
@@ -123,24 +137,102 @@ test("R2 hidden rounds, then the tab is shown: the stale tables refetch ONCE at 
     }
     await tick();
     assert.equal(qc.getQueryState(TABLE_KEYS.all)?.isInvalidated, true, "precondition: hidden rounds mark the tables stale");
-    assert.equal(tables.count(), 1, "precondition: nothing refetched while hidden");
-    assert.deepEqual(clock.armed(), [], "precondition: no late refetch while hidden");
+    assert.equal(floor.count(), 1, "precondition: nothing refetched while hidden");
+    assert.deepEqual(clock.armed(), [], "precondition: nothing armed while hidden");
     focusManager.setFocused(true);
     await idle(qc, TABLE_KEYS.all);
-    assert.equal(tables.count(), 2, "shown: one refetch for both hidden rounds, without waiting a window");
-    assert.deepEqual(clock.armed(), [TABLES_LATE_REFETCH_MS], "shown: the late tables refetch is armed");
-    clock.advance(TABLES_LATE_REFETCH_MS);
-    await idle(qc, TABLE_KEYS.all);
-    assert.equal(tables.count(), 3, "one late tables refetch");
+    assert.deepEqual(floor.reads, [false, true], "shown: one refetch for both hidden rounds, at once, past the instance cache");
+    assert.deepEqual(clock.armed(), [], "F7: no late tables refetch is armed");
     focusManager.setFocused(false);
     focusManager.setFocused(true);
-    clock.advance(TABLES_LATE_REFETCH_MS * 5);
+    clock.advance(LATE_WAS_MS * 5);
     await tick();
-    assert.equal(tables.count(), 3, "showing the tab again with no hidden round since refetches nothing");
+    assert.equal(floor.count(), 2, "showing the tab again with no hidden round since refetches nothing");
   } finally {
     nudger.dispose();
-    tables.unsubscribe();
+    floor.unsubscribe();
     focusManager.setFocused(undefined);
+  }
+});
+
+test("F7 a visible round calls onRound ONCE, before it invalidates anything; a hidden round never calls it", () => {
+  const seen: number[] = [];
+  const { calls, clock, nudger } = setup({ ...LIVE_STATE_REALTIME, onRound: () => seen.push(calls.length) });
+  const targets = LIVE_STATE_REALTIME.targets.length;
+  try {
+    nudger.onKind("order-changed");
+    nudger.onKind("kot-fired");
+    clock.advance(WINDOW);
+    assert.equal(calls.length, targets, "precondition: the round ran");
+    assert.deepEqual(seen, [0], "one call for the round, before its first invalidation");
+    focusManager.setFocused(false);
+    nudger.onKind("order-changed");
+    clock.advance(WINDOW);
+    assert.equal(calls.length, targets * 2, "precondition: the hidden round marked the targets stale");
+    assert.deepEqual(seen, [0], "a hidden (mark-stale) round never calls onRound");
+  } finally {
+    nudger.dispose();
+    focusManager.setFocused(undefined);
+  }
+});
+
+test("F7 (generic) an immediate (uncoalesced) spec calls onRound once per frame, before its invalidation", () => {
+  const seen: number[] = [];
+  const { calls, clock, nudger } = setup({ targets: [{ queryKey: TABLE_KEYS.all }], onRound: () => seen.push(calls.length) });
+  nudger.onKind("order-changed");
+  assert.deepEqual(seen, [0], "before the frame's one invalidation");
+  assert.equal(calls.length, 1, "precondition: the immediate invalidation ran");
+  assert.deepEqual(clock.armed(), [], "no window: an immediate spec");
+  nudger.dispose();
+});
+
+test("F7 LIVE_STATE: the round's own tables refetch reads fresh, a later fetch reads the plain route, and nothing follows 6 s later", async () => {
+  const { qc, calls, clock, nudger } = setup();
+  const floor = floorQuery(qc);
+  const tableCalls = () => calls.filter((c) => c.queryKey?.[0] === TABLE_KEYS.all[0]).length;
+  try {
+    await idle(qc, TABLE_KEYS.all);
+    nudger.onKind("order-changed");
+    clock.advance(WINDOW);
+    await idle(qc, TABLE_KEYS.all);
+    assert.deepEqual(floor.reads, [false, true], "mount: the plain read; the nudge round's refetch: past the instance cache");
+    const afterRound = tableCalls();
+    clock.advance(LATE_WAS_MS * 5);
+    await tick();
+    assert.equal(floor.count(), 2, "no late tables refetch");
+    assert.equal(tableCalls(), afterRound, "no second tables invalidation 6 s later");
+    assert.deepEqual(clock.armed(), [], "nothing armed");
+    await qc.refetchQueries({ queryKey: TABLE_KEYS.all });
+    assert.deepEqual(floor.reads, [false, true, false], "one-shot: the next fetch (a poll, a focus) is the plain cached read");
+  } finally {
+    nudger.dispose();
+    floor.unsubscribe();
+  }
+});
+
+test("F7 a tables fetch in flight during the round is re-checked a window later, and the re-check marks the fresh read again", async () => {
+  const { qc, clock, nudger } = setup();
+  const reads: boolean[] = [];
+  const gates: Array<() => void> = [];
+  const queryFn = () => (reads.push(takeTablesFreshRead()), new Promise<unknown[]>((resolve) => gates.push(() => resolve([]))));
+  const unsubscribe = new QueryObserver(qc, { queryKey: TABLE_KEYS.all, queryFn }).subscribe(() => {});
+  try {
+    assert.deepEqual(reads, [false], "precondition: the mount fetch is in flight");
+    nudger.onKind("order-changed");
+    clock.advance(WINDOW);
+    assert.deepEqual(clock.armed(), [WINDOW], "precondition: the in-flight floor was deferred to a re-check");
+    assert.equal(takeTablesFreshRead(), true, "the round marked it; another fetch (a mount, a focus) takes it meanwhile");
+    gates[0]();
+    await idle(qc, TABLE_KEYS.all);
+    clock.advance(WINDOW);
+    for (let i = 0; i < MAX_TICKS / 5 && reads.length < 2; i++) await tick();
+    assert.deepEqual(reads, [false, true], "the re-check's refetch still reads past the instance cache");
+    gates[1]();
+    await idle(qc, TABLE_KEYS.all);
+    assert.deepEqual(clock.armed(), [], "nothing left armed");
+  } finally {
+    nudger.dispose();
+    unsubscribe();
   }
 });
 

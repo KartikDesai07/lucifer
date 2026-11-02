@@ -241,7 +241,7 @@ test("PIN: open tabs and the Orders list poll on the live beat — the infinite 
   const fnStart = hooks.indexOf("export function useOrdersInfinite");
   const fnBody = hooks.slice(fnStart, hooks.indexOf("\nexport function", fnStart + 1));
   assert.ok(fnStart >= 0, "landmark: useOrdersInfinite exists");
-  assert.match(fnBody, /refetchInterval: isMutating \? false : \(query\) => \(onePageAtMost\(query\.state\.data\) \? REFETCH_INTERVALS\.LIVE_LISTS : false\),/);
+  assert.match(fnBody, /refetchInterval: isMutating \? false : \(query\) => \(onePageAtMost\(query\.state\.data\) \? livePoll\(REFETCH_INTERVALS\.LIVE_LISTS\)\(\) : false\),/, "the live beat through livePoll (D3: 120 s only while the room is proven up), one page only");
   // Exported for the POS and Dashboard, and declared AFTER the constant it reads.
   const gcAt = hooks.indexOf("export const ORDERS_LIST_GC_MS = ");
   const optsAt = hooks.indexOf("export const OPEN_TABS_QUERY_OPTIONS = { refetchInterval: REFETCH_INTERVALS.LIVE_LISTS, gcTime: ORDERS_LIST_GC_MS } as const;");

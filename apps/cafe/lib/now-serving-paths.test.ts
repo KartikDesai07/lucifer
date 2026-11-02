@@ -76,9 +76,9 @@ test("page: the sound settings open ONLY from the settings button (owner s83) an
   assert.ok(src.includes("<KitchenFreshnessChip dataUpdatedAt={q.dataUpdatedAt} />"), "freshness is the Kitchen chip");
 });
 
-test("use-tokens: the board still polls on the Kitchen interval and keeps polling in a background tab when asked", () => {
+test("use-tokens: the board still polls on the Kitchen interval (the Kitchen rule since D3: 120 s only while the room is proven up) and keeps polling in a background tab when asked", () => {
   const src = read("hooks/use-tokens.ts");
-  assert.ok(src.includes("refetchInterval: enabled ? REFETCH_INTERVALS.KITCHEN : false"));
+  assert.ok(src.includes("refetchInterval: enabled ? livePoll(REFETCH_INTERVALS.KITCHEN) : false"), "D3: the token board follows the Kitchen board's livePoll");
   assert.ok(src.includes("refetchIntervalInBackground: background"));
 });
 

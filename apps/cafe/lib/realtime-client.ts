@@ -52,6 +52,8 @@ const RECONNECT_MAX_MS = 60_000;
 export type RealtimeListener = (kind: string, message: Readonly<Record<string, unknown>>) => void;
 
 const listeners = new Set<RealtimeListener>();
+/** Perf P1 F6 — told once per healthy→down transition (subscribeRealtimeDown). */
+const downListeners = new Set<() => void>();
 let socket: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 let pingTimer: ReturnType<typeof setInterval> | undefined;
@@ -90,12 +92,25 @@ function dropAndReconnect(): void {
   clearTimers();
   const dying = socket;
   socket = null;
+  // Read BEFORE the reset: the dying socket had proof of life, so the room was up.
+  const wasUp = lastSeenAt > 0;
   // Stale immediately: a torn-down socket must never read as healthy.
   lastSeenAt = 0;
   try {
     dying?.close();
   } catch {
     // Already closed.
+  }
+  // Once per healthy→down transition: a reconnect attempt that never opened has
+  // no proof of life, so it never fires again. Health already reads false here.
+  if (wasUp) {
+    for (const listener of [...downListeners]) {
+      try {
+        listener();
+      } catch {
+        // One bad subscriber cannot break the reconnect.
+      }
+    }
   }
   if (listeners.size === 0) return; // nobody is listening any more
   const delay = Math.min(RECONNECT_BASE_MS * 2 ** retry, RECONNECT_MAX_MS);
@@ -180,6 +195,18 @@ function connect(): void {
       // Already closing.
     }
   });
+}
+
+/**
+ * Perf P1 F6 (D3) — told when the room goes DOWN: a close or a missed pong on a
+ * socket that had proof of life, once per healthy→down transition. Never opens
+ * a socket itself (the room's own subscribers do). Returns an unsubscribe.
+ */
+export function subscribeRealtimeDown(listener: () => void): () => void {
+  downListeners.add(listener);
+  return () => {
+    downListeners.delete(listener);
+  };
 }
 
 /**

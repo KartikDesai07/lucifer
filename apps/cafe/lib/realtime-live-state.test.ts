@@ -254,13 +254,15 @@ const DASHBOARD = "apps/cafe/app/(dashboard)/page.tsx";
 const ORDERS_PAGE = "apps/cafe/app/(dashboard)/orders/page.tsx";
 const count = (src: string, needle: RegExp) => (src.match(new RegExp(needle.source, "g")) ?? []).length;
 
-test("PIN: PosPulseProvider calls useLiveStateRealtime() and usePosPulseRealtime() exactly once each, inside the provider, and the layout mounts the provider once", () => {
+test("PIN: PosPulseProvider calls useLiveStateRealtime(), usePosPulseRealtime() and (F6, D3) useRealtimeCatchUp() exactly once each, inside the provider, and the layout mounts the provider once", () => {
   const src = stripComments(readSrc(PROVIDER));
-  assert.match(src, /import \{ useLiveStateRealtime, usePosPulseRealtime \} from "@\/hooks\/use-realtime";/);
+  assert.match(src, /import \{ useLiveStateRealtime, usePosPulseRealtime, useRealtimeCatchUp \} from "@\/hooks\/use-realtime";/);
   const body = src.slice(src.indexOf("export function PosPulseProvider("));
   assert.ok(body.includes("const { data } = usePosPulse();"), "positive landmark: the provider body");
   assert.equal(count(body, /\buseLiveStateRealtime\(\);/), 1);
   assert.equal(count(body, /\busePosPulseRealtime\(\);/), 1);
+  assert.equal(count(body, /\buseRealtimeCatchUp\(\);/), 1, "F6: one catch-up round per drop, per tab");
+  assert.match(body, /useLiveStateRealtime\(\);\s*useRealtimeCatchUp\(\);/, "D3: the catch-up is mounted next to the live-state nudger");
   const layout = stripComments(readSrc(LAYOUT));
   assert.equal(count(layout, /<PosPulseProvider>/), 1, "the provider (and so the nudger) is mounted once per tab");
 });

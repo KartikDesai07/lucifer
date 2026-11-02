@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiGet, apiSend } from "@/lib/api-client";
 import { STALE_TIMES, REFETCH_INTERVALS } from "@/lib/query";
+import { livePoll } from "@/lib/live-poll";
 import { KITCHEN_KEYS } from "@/hooks/use-kitchen";
 import { applyTokenAction, type TokenAction, type TokenBoard } from "@/lib/token-view";
 
@@ -23,14 +24,14 @@ interface UseTokenBoardOptions {
 }
 
 // Same cadence as the Kitchen board (REFETCH_INTERVALS.KITCHEN, 01-PLAN §3.6): realtime nudges come first, the poll
-// is the fallback and the source of truth.
+// is the fallback and the source of truth. D3: the Kitchen rule — 120 s while the room is proven up (lib/live-poll.ts).
 export function useTokenBoard({ enabled, background = false }: UseTokenBoardOptions) {
   return useQuery({
     queryKey: TOKEN_KEYS.all,
     queryFn: () => apiGet<TokenBoard>("/api/tokens"),
     enabled,
     staleTime: STALE_TIMES.LIVE,
-    refetchInterval: enabled ? REFETCH_INTERVALS.KITCHEN : false,
+    refetchInterval: enabled ? livePoll(REFETCH_INTERVALS.KITCHEN) : false,
     refetchIntervalInBackground: background,
   });
 }

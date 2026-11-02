@@ -265,7 +265,7 @@ test("use-tokens: TOKEN_KEYS.action sits under TOKEN_KEYS.all; the board polls o
   assert.match(src, /mutationKey:\s*TOKEN_KEYS\.action/);
   assert.match(src, /queryKey:\s*TOKEN_KEYS\.all/);
   assert.match(src, /staleTime:\s*STALE_TIMES\.LIVE/);
-  assert.match(src, /refetchInterval:\s*enabled \? REFETCH_INTERVALS\.KITCHEN : false/);
+  assert.match(src, /refetchInterval:\s*enabled \? livePoll\(REFETCH_INTERVALS\.KITCHEN\) : false/, "the Kitchen's cadence through livePoll (D3: 120 s only while the room is proven up)");
   assert.match(src, /refetchIntervalInBackground:\s*background/, "a wall screen can keep polling in the background");
   assert.match(src, /background = false/, "and the POS sheet does not by default");
   assert.ok(!/\b\d{4,}\b/.test(src), "no raw millisecond literal — the cadence constants only");

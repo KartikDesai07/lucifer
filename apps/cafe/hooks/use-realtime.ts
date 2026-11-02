@@ -9,9 +9,10 @@ import { ORDER_KEYS } from "@/hooks/use-orders";
 import { TABLE_KEYS } from "@/hooks/use-tables";
 import { DASHBOARD_KEYS } from "@/hooks/use-dashboard";
 import { TOKEN_KEYS } from "@/hooks/use-tokens";
-import { subscribeRealtime } from "@/lib/realtime-client";
+import { subscribeRealtime, subscribeRealtimeDown } from "@/lib/realtime-client";
 import { onePageAtMost } from "@/lib/order-query";
 import { createRealtimeInvalidator, type RealtimeInvalidateSpec } from "@/lib/realtime-invalidate";
+import { markTablesFreshRead } from "@/lib/tables-fresh-read";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Realtime nudges — the per-surface subscriptions.
@@ -23,10 +24,15 @@ import { createRealtimeInvalidator, type RealtimeInvalidateSpec } from "@/lib/re
 // socket.
 //
 // A SUPPLEMENT TO THE POLL, NEVER A REPLACEMENT. Every surface keeps its own
-// refetchInterval. The Kitchen board's stays 10s unconditionally. The print
-// host's relaxes 3s → 60s ONLY while the socket is PROVEN healthy, and snaps
-// back the instant it is not (see use-print-host-wake.ts). Flag off, Worker
-// down, or socket half-open ⇒ exactly today's shipped behaviour.
+// refetchInterval. The safety-net polls (the live lists, tables, dashboard,
+// day summary, Kitchen and token boards) step back to 120 s ONLY while the
+// room is PROVEN up — isRealtimeHealthy(), re-read on every tick
+// (lib/live-poll.ts; the owner's D3) — and are today's 30 s / 10 s the moment
+// it is not, with ONE catch-up round on the drop (useRealtimeCatchUp). The
+// print host's relaxes 3s → 60s on the same proof (use-print-host-wake.ts);
+// the pulse never changes. Flag off or Worker down ⇒ exactly today's shipped
+// behaviour; a half-open socket reads healthy until its next missed pong
+// (≤ REALTIME_HEALTH_TTL_MS), the print host's known bound too.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Kinds that change the Kitchen board. MIRRORS CAFE_EVENT_KINDS in
@@ -54,12 +60,6 @@ export const LIVE_STATE_EVENT_KINDS = ["kot-fired", "order-changed"] as const;
 /** The live-state window: a burst of nudges inside it is ONE refetch round. */
 export const REALTIME_NUDGE_COALESCE_MS = 1000;
 
-/** GET /api/tables is served from a per-instance cache (TTL.TABLES, 5 s), so a
- *  nudge-driven tables refetch can land on a warm instance still holding the
- *  old floor. One more tables refetch this long after a visible round reads
- *  past that cache. MUST stay > TTL.TABLES * 1000 (pinned in the tests). */
-export const TABLES_LATE_REFETCH_MS = 6000;
-
 // One immediate invalidate of the surface's own key per frame — unchanged. The
 // Kitchen board's is held while a tick or a Ready is in flight (KITCHEN_KEYS.all
 // prefixes both of their mutationKeys): a refetch then would bounce the
@@ -78,9 +78,11 @@ export const PRINT_REALTIME: RealtimeInvalidateSpec = { targets: [{ queryKey: PR
 export const PULSE_REALTIME: RealtimeInvalidateSpec = { targets: [{ queryKey: POS_PULSE_KEYS.all }] };
 
 // Every order list, the Orders page's infinite list only while one page is
-// loaded (never re-fetch every loaded page on a nudge), and the tables — plus
-// one late tables refetch past the per-instance cache. Never the day summary:
-// it is server-cached, so a nudge cannot make it fresher.
+// loaded (never re-fetch every loaded page on a nudge), and the tables — whose
+// refetch after a visible round reads /api/tables?fresh=1, past the 5 s
+// per-instance cache (F7: onRound; it replaced a second "late" tables refetch
+// 6 s later). Never the day summary: it is server-cached, so a nudge cannot
+// make it fresher.
 export const LIVE_STATE_REALTIME: RealtimeInvalidateSpec = {
   targets: [
     { queryKey: ORDER_KEYS.lists },
@@ -93,7 +95,7 @@ export const LIVE_STATE_REALTIME: RealtimeInvalidateSpec = {
   coalesceMs: REALTIME_NUDGE_COALESCE_MS,
   holdWhileMutating: ORDER_KEYS.mutation,
   staleOnlyWhenHidden: true,
-  lateRefetch: { queryKey: TABLE_KEYS.all, afterMs: TABLES_LATE_REFETCH_MS },
+  onRound: markTablesFreshRead,
 };
 
 function useRealtimeInvalidate(kinds: readonly string[], spec: RealtimeInvalidateSpec): void {
@@ -161,4 +163,44 @@ export const DASHBOARD_REALTIME: RealtimeInvalidateSpec = {
 /** Dashboard page only — refreshes the "Needs attention" strip on a nudge. */
 export function useDashboardRealtime(): void {
   useRealtimeInvalidate(DASHBOARD_EVENT_KINDS, DASHBOARD_REALTIME);
+}
+
+/** Perf P1 F6 — the synthetic kind the room's down event feeds the catch-up
+ *  invalidator. Never a room kind: no frame can reach that invalidator. */
+export const REALTIME_DOWN_KIND = "lane-down";
+
+// The catch-up (the owner's D3): while the room was up the safety-net polls
+// stepped back to 120 s, so a drop may have hidden writes for up to that long.
+// ONE round over everything those polls cover (the live lists, the floor, the
+// one-page Orders list, the Kitchen board, the dashboard, the token board),
+// coalesced, held and hidden-tab-gentle like a live-state nudge; its floor read
+// skips the instance cache. Its refetch also re-arms each poll, which now reads
+// isRealtimeHealthy() false: today's 30 s / 10 s. Never the summary (server
+// cached) or the pulse (its own 20 s, never nudged by an order change).
+export const CATCH_UP_REALTIME: RealtimeInvalidateSpec = {
+  targets: [
+    ...LIVE_STATE_REALTIME.targets,
+    { queryKey: KITCHEN_KEYS.all },
+    { queryKey: DASHBOARD_KEYS.all },
+    { queryKey: TOKEN_KEYS.all },
+  ],
+  coalesceMs: REALTIME_NUDGE_COALESCE_MS,
+  holdWhileMutating: ORDER_KEYS.mutation,
+  staleOnlyWhenHidden: true,
+  onRound: markTablesFreshRead,
+};
+
+/** One catch-up round per drop of the room (lib/realtime-client.ts
+ *  subscribeRealtimeDown). Mounted once, in PosPulseProvider, next to
+ *  useLiveStateRealtime; inert with realtime off (the room never goes up). */
+export function useRealtimeCatchUp(): void {
+  const qc = useQueryClient();
+  useEffect(() => {
+    const invalidator = createRealtimeInvalidator(qc, [REALTIME_DOWN_KIND], CATCH_UP_REALTIME);
+    const unsubscribe = subscribeRealtimeDown(() => invalidator.onKind(REALTIME_DOWN_KIND));
+    return () => {
+      unsubscribe();
+      invalidator.dispose();
+    };
+  }, [qc]);
 }

@@ -29,8 +29,13 @@ import { focusManager, matchQuery, type Query, type QueryClient, type QueryKey }
 //   * `lateRefetch` → after a coalesced round that refetched that key on a
 //     visible tab, ONE more invalidation of it `afterMs` later (a new round
 //     re-arms it). For a server read cached per instance, whose first refetch
-//     can land on a warm instance still holding the old value.
-// Every poll stays exactly as it is. A lost frame costs one poll interval.
+//     can land on a warm instance still holding the old value;
+//   * `onRound` → called ONCE at the start of every pass that refetches on a
+//     visible tab (a round, a deferred re-check), before it invalidates;
+//     never on a hidden tab's mark-stale round (perf P1 F7: the live-state
+//     round marks the next tables fetch to read past the instance cache).
+// The polls keep running — a lost frame costs one poll interval: 120 s while
+// the room is proven up (D3, lib/live-poll.ts), today's otherwise.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface RealtimeTarget {
@@ -45,6 +50,7 @@ export interface RealtimeInvalidateSpec {
   holdWhileMutating?: QueryKey;
   staleOnlyWhenHidden?: boolean;
   lateRefetch?: { queryKey: QueryKey; afterMs: number };
+  onRound?: () => void;
 }
 
 /** Injected so the tests drive the window by hand. */
@@ -94,8 +100,14 @@ export function createRealtimeInvalidator(
 
   const hidden = (): boolean => spec.staleOnlyWhenHidden === true && !focusManager.isFocused();
 
+  // Once per visible pass, before its first invalidation; never while hidden.
+  const startPass = (): void => {
+    if (!hidden()) spec.onRound?.();
+  };
+
   // The immediate specs: today's exact call, once per target.
   const invalidateNow = (): void => {
+    startPass();
     if (hidden()) staleWhileHidden = true;
     const refetchType = hidden() ? { refetchType: "none" as const } : {};
     for (const target of spec.targets) {
@@ -150,6 +162,7 @@ export function createRealtimeInvalidator(
   const recheck = (): void => {
     const due = [...deferred];
     deferred.clear();
+    if (due.length > 0) startPass();
     for (const [query, { armsLate, select }] of due) {
       // Gone from the cache (garbage-collected) → nothing to refetch.
       if (cache.get(query.queryHash) === query) refresh(query.queryKey, select, armsLate, query);
@@ -171,6 +184,7 @@ export function createRealtimeInvalidator(
       // A round covers every target, so it re-decides every deferred query.
       pending = false;
       deferred.clear();
+      startPass();
       for (const target of spec.targets) refresh(target.queryKey, target.predicate ?? everyQuery, true);
     } else {
       recheck();
