@@ -8,6 +8,7 @@
 import { updatedLabel } from "@/lib/floor-tiles";
 import { KITCHEN_STALE_MS } from "@/lib/kitchen-board";
 import type { KitchenOrderCard } from "@/lib/kitchen-cards";
+import { liveStaleMs } from "@/lib/live-poll";
 
 /** The header's type filter (owner Q2): every card, the table cards, or the cards with no table. */
 export type KitchenFilter = "all" | "tables" | "walkin";
@@ -72,17 +73,18 @@ export function kitchenHeaderLine(input: { cards: readonly KitchenOrderCard[]; u
 }
 
 /** The last good answer is at least KITCHEN_STALE_MS old on the page's clock (design 6.2: today's Stale rule). Never
- *  before a first answer (dataUpdatedAt 0): a failed first load is the error screen. */
-export function kitchenStale(updatedAtMs: number, nowMs: number): boolean {
-  return updatedAtMs > 0 && nowMs - updatedAtMs >= KITCHEN_STALE_MS;
+ *  before a first answer (dataUpdatedAt 0): a failed first load is the error screen. D3 (perf P1): `healthy` is the
+ *  realtime room proven up, read by the page at render; the board then polls every 120 s, so stale at 180 s. */
+export function kitchenStale(updatedAtMs: number, nowMs: number, healthy: boolean): boolean {
+  return updatedAtMs > 0 && nowMs - updatedAtMs >= liveStaleMs(KITCHEN_STALE_MS, healthy);
 }
 
 /** The refresh strip's rule (design 6.2, Review Focus 5; final review I1): the answer is stale AND the board's query has
  *  failed (a failed poll keeps status "error" with its data until a success) or is paused (an offline device), so both
  *  show it at 60–90s. A healthy or in-flight refetch never does: a return from the cache (the answer 60s+ old until the
  *  mount refetch lands) and a throttled background tab's polls are no failure. */
-export function kitchenStripShows(input: { updatedAtMs: number; nowMs: number; isError: boolean; isPaused: boolean }): boolean {
-  return kitchenStale(input.updatedAtMs, input.nowMs) && (input.isError || input.isPaused);
+export function kitchenStripShows(input: { updatedAtMs: number; nowMs: number; isError: boolean; isPaused: boolean; healthy: boolean }): boolean {
+  return kitchenStale(input.updatedAtMs, input.nowMs, input.healthy) && (input.isError || input.isPaused);
 }
 
 /** The filtered-empty box's words (design 6.5: the HTML's "No tickets here" in our unit). */

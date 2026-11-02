@@ -187,8 +187,17 @@ function connect(): void {
     }
   });
 
-  ws.addEventListener("close", () => dropAndReconnect());
+  // Only the CURRENT socket's close / error counts (perf P1 fix C2): a superseded
+  // socket's close can land long after its teardown (a half-open link's close
+  // handshake), and must neither tear down the newer proven socket nor fire a
+  // second down event. dropAndReconnect nulls `socket` first, so its own
+  // synchronous close() of the dying socket is ignored here too.
+  ws.addEventListener("close", () => {
+    if (socket !== ws) return;
+    dropAndReconnect();
+  });
   ws.addEventListener("error", () => {
+    if (socket !== ws) return;
     try {
       ws.close(); // makes the close path deterministic
     } catch {

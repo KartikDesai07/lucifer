@@ -33,3 +33,10 @@ export function livePollMs(normalMs: number, healthy: boolean): number {
 export function livePoll(normalMs: number): () => number {
   return () => livePollMs(normalMs, isRealtimeHealthy());
 }
+
+/** How old a polled board's answer may be before it reads "Stale" (perf P1 fix I1): while the room is proven up the
+ *  board polls every 120 s, so one relaxed poll later than today's `baseMs`; otherwise `baseMs`, unchanged. The caller
+ *  reads isRealtimeHealthy() at render (the Now Serving chip, the Kitchen page's strip). */
+export function liveStaleMs(baseMs: number, healthy: boolean): number {
+  return healthy ? REALTIME_RELAXED_POLL_MS + baseMs : baseMs;
+}

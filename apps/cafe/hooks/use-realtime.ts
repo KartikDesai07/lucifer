@@ -172,17 +172,20 @@ export const REALTIME_DOWN_KIND = "lane-down";
 // The catch-up (the owner's D3): while the room was up the safety-net polls
 // stepped back to 120 s, so a drop may have hidden writes for up to that long.
 // ONE round over everything those polls cover (the live lists, the floor, the
-// one-page Orders list, the Kitchen board, the dashboard, the token board),
-// coalesced, held and hidden-tab-gentle like a live-state nudge; its floor read
-// skips the instance cache. Its refetch also re-arms each poll, which now reads
-// isRealtimeHealthy() false: today's 30 s / 10 s. Never the summary (server
-// cached) or the pulse (its own 20 s, never nudged by an order change).
+// one-page Orders list, the Kitchen board, the dashboard, the token board,
+// today's day summary), coalesced, held and hidden-tab-gentle like a live-state
+// nudge; its floor read skips the instance cache. Its refetch also re-arms each
+// poll, which now reads isRealtimeHealthy() false: today's 30 s / 10 s at once
+// (the summary is server-cached, so its refetch may bring the cached figure,
+// but its poll is back on 30 s now, not one more 120 s tick later). Never a past
+// day's summary (it never polls) or the pulse (its own 20 s, never nudged).
 export const CATCH_UP_REALTIME: RealtimeInvalidateSpec = {
   targets: [
     ...LIVE_STATE_REALTIME.targets,
     { queryKey: KITCHEN_KEYS.all },
     { queryKey: DASHBOARD_KEYS.all },
     { queryKey: TOKEN_KEYS.all },
+    { queryKey: ORDER_KEYS.summary() },
   ],
   coalesceMs: REALTIME_NUDGE_COALESCE_MS,
   holdWhileMutating: ORDER_KEYS.mutation,

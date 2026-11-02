@@ -46,6 +46,8 @@ class FakeWebSocket {
   static readonly CLOSED = 3;
   static instances: FakeWebSocket[] = [];
   readyState = FakeWebSocket.CONNECTING;
+  /** A browser's close(): CLOSING now, the close event later (finishClose) — a half-open link's handshake can take long. */
+  deferClose = false;
   private readonly listeners: Record<string, Array<(arg?: unknown) => void>> = {};
   constructor(readonly url: string) {
     FakeWebSocket.instances.push(this);
@@ -55,13 +57,20 @@ class FakeWebSocket {
   }
   send(): void {}
   close(): void {
-    if (this.readyState === FakeWebSocket.CLOSED) return;
+    if (this.readyState >= FakeWebSocket.CLOSING) return;
+    if (this.deferClose) this.readyState = FakeWebSocket.CLOSING;
+    else this.finishClose();
+  }
+  finishClose(): void {
     this.readyState = FakeWebSocket.CLOSED;
-    for (const fn of [...(this.listeners.close ?? [])]) fn();
+    this.fire("close");
   }
   open(): void {
     this.readyState = FakeWebSocket.OPEN;
-    for (const fn of [...(this.listeners.open ?? [])]) fn();
+    this.fire("open");
+  }
+  fire(type: string): void {
+    for (const fn of [...(this.listeners[type] ?? [])]) fn();
   }
 }
 
@@ -122,6 +131,39 @@ test("F6: the down event fires once per healthy→down transition — a missed p
   });
 });
 
+test("F6 (fix C2): a superseded socket's late error / close never tears down the newer proven socket, and fires no second down event", async () => {
+  await withFakeSocket(() => {
+    mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: CLOCK_START });
+    let downs = 0;
+    const stopDown = subscribeRealtimeDown(() => downs++);
+    const unsub = subscribeRealtime(() => {});
+    try {
+      const a = socketAt(0);
+      a.deferClose = true;
+      a.open();
+      mock.timers.tick(REALTIME_PING_INTERVAL_MS);
+      mock.timers.tick(REALTIME_PONG_TIMEOUT_MS + 1);
+      assert.equal(a.readyState, FakeWebSocket.CLOSING, "precondition: A's close handshake is still pending");
+      assert.equal(downs, 1, "precondition: the missed pong is the one down event");
+      mock.timers.tick(PAST_ANY_BACKOFF_MS);
+      const b = socketAt(1);
+      b.open();
+      assert.equal(isRealtimeHealthy(), true, "precondition: B is current and proven up");
+      a.fire("error");
+      a.finishClose();
+      assert.equal(b.readyState, FakeWebSocket.OPEN, "A's late error / close leaves B open");
+      assert.equal(isRealtimeHealthy(), true, "and the room still reads proven up");
+      assert.equal(downs, 1, "no second down event, so no extra catch-up round");
+      mock.timers.tick(PAST_ANY_BACKOFF_MS);
+      assert.equal(FakeWebSocket.instances.length, 2, "no reconnect was scheduled over B");
+    } finally {
+      unsub();
+      stopDown();
+      mock.timers.reset();
+    }
+  });
+});
+
 test("F6: an unsubscribed down listener is never called, and a down subscription alone opens no socket", async () => {
   await withFakeSocket(() => {
     let downs = 0;
@@ -171,13 +213,15 @@ function handClock() {
   return { timers, fire, armed: () => [...armed.values()].map((t) => t.ms) };
 }
 
-test("F6 catch-up: a drop runs ONE coalesced round over the live queries (lists, floor, one-page Orders list, kitchen, dashboard, tokens) — never the summary, the pulse or the print host", async () => {
+// Fix M1: today's day summary polls through livePoll too, so it joins the catch-up (its refetch re-arms its poll at
+// today's 30 s at once, D3); a past day's summary never polls and is left alone.
+test("F6 catch-up: a drop runs ONE coalesced round over the live queries (lists, floor, one-page Orders list, kitchen, dashboard, tokens, today's summary) — never a past day, the pulse or the print host", async () => {
   await withFakeSocket(() => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
     const onePage = ORDER_KEYS.infiniteList({});
     const twoPages = ORDER_KEYS.infiniteList({ status: "Completed" });
-    const caught = [ORDER_KEYS.list({ payment: "Unpaid", status: "Pending" }), TABLE_KEYS.all, onePage, KITCHEN_KEYS.all, DASHBOARD_KEYS.live, DASHBOARD_KEYS.range({ from: "2026-11-02", to: "2026-11-02" }), TOKEN_KEYS.all];
-    const untouched = [ORDER_KEYS.summary(), POS_PULSE_KEYS.all, PRINT_WAKE_KEYS.all, twoPages];
+    const caught = [ORDER_KEYS.list({ payment: "Unpaid", status: "Pending" }), TABLE_KEYS.all, onePage, KITCHEN_KEYS.all, DASHBOARD_KEYS.live, DASHBOARD_KEYS.range({ from: "2026-11-02", to: "2026-11-02" }), TOKEN_KEYS.all, ORDER_KEYS.summary()];
+    const untouched = [ORDER_KEYS.summary("2026-10-01"), POS_PULSE_KEYS.all, PRINT_WAKE_KEYS.all, twoPages];
     for (const key of [...caught, ...untouched]) qc.setQueryData(key, []);
     qc.setQueryData<InfiniteData<unknown[]>>(onePage, { pages: [[]], pageParams: [undefined] });
     qc.setQueryData<InfiniteData<unknown[]>>(twoPages, { pages: [[], []], pageParams: [undefined, "c"] });
@@ -212,6 +256,7 @@ test("PIN (F6): CATCH_UP_REALTIME is coalesced, held by an order write, stale-on
   assert.equal(CATCH_UP_REALTIME.staleOnlyWhenHidden, true, "a hidden tab only marks stale; showing it runs the round");
   assert.equal(CATCH_UP_REALTIME.onRound, markTablesFreshRead, "the catch-up reads the floor fresh");
   assert.equal(CATCH_UP_REALTIME.lateRefetch, undefined, "no late refetch");
+  assert.ok(CATCH_UP_REALTIME.targets.some((t) => JSON.stringify(t.queryKey) === JSON.stringify(ORDER_KEYS.summary())), "fix M1 (D3): today's summary is a catch-up target");
   assert.ok(!(CAFE_EVENT_KINDS as readonly string[]).includes(REALTIME_DOWN_KIND), "lane-down is synthetic, never a room kind");
 });
 

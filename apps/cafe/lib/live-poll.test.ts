@@ -10,8 +10,9 @@ import { fileURLToPath } from "node:url";
 
 import { stripComments } from "@/lib/source-pin-utils";
 import { REFETCH_INTERVALS } from "@/lib/query";
-import { REALTIME_RELAXED_POLL_MS, livePoll, livePollMs } from "@/lib/live-poll";
+import { REALTIME_RELAXED_POLL_MS, livePoll, livePollMs, liveStaleMs } from "@/lib/live-poll";
 import { markTablesFreshRead, takeTablesFreshRead } from "@/lib/tables-fresh-read";
+import { KITCHEN_STALE_MS } from "@/lib/kitchen-board";
 
 const src = (rel: string): string => stripComments(readFileSync(fileURLToPath(new URL(`../${rel}`, import.meta.url)), "utf8"));
 
@@ -31,6 +32,24 @@ test("D3: livePoll fails closed — with no realtime URL configured it answers t
   assert.equal(typeof poll, "function", "a refetchInterval function, re-read on every tick (never a cached number)");
   assert.equal(poll(), REFETCH_INTERVALS.LIVE_LISTS, "realtime off: today's 30 s");
   assert.equal(poll(), REFETCH_INTERVALS.LIVE_LISTS, "and again on the next tick");
+});
+
+test("D3 (fix I1): a board reads Stale one relaxed poll later while the room is proven up — 180 s, else today's 60 s", () => {
+  assert.equal(KITCHEN_STALE_MS, 60_000, "landmark: today's Kitchen stale rule");
+  assert.equal(liveStaleMs(KITCHEN_STALE_MS, false), 60_000, "room down / flag off: today's 60 s");
+  assert.equal(liveStaleMs(KITCHEN_STALE_MS, true), 180_000, "room up: REALTIME_RELAXED_POLL_MS + KITCHEN_STALE_MS");
+  assert.equal(liveStaleMs(KITCHEN_STALE_MS, true), REALTIME_RELAXED_POLL_MS + KITCHEN_STALE_MS, "D3: the threshold follows the 120 s poll");
+});
+
+test("PIN (D3, fix I1): the Now Serving chip and the Kitchen strip both judge Stale through liveStaleMs, reading the room's health at render", () => {
+  const chip = src("components/kitchen/KitchenFreshnessChip.tsx");
+  assert.match(chip, /import \{ liveStaleMs \} from "@\/lib\/live-poll";/, "the chip imports the one helper");
+  assert.match(chip, /const stale = dataUpdatedAt > 0 && ageMs >= liveStaleMs\(KITCHEN_STALE_MS, isRealtimeHealthy\(\)\);/, "D3: the chip's Stale follows the live poll");
+  const header = src("lib/kitchen-header.ts");
+  assert.match(header, /return updatedAtMs > 0 && nowMs - updatedAtMs >= liveStaleMs\(KITCHEN_STALE_MS, healthy\);/, "D3: kitchenStale through the one helper");
+  assert.ok(!header.includes("isRealtimeHealthy"), "kitchen-header.ts stays pure: the page passes the health in");
+  const page = src("app/(dashboard)/kitchen/page.tsx");
+  assert.match(page, /kitchenStripShows\(\{ [^}]*healthy: isRealtimeHealthy\(\) \}\)/, "D3: the Kitchen page reads the room's health at render for its strip");
 });
 
 test("D3: tables-fresh-read is one-shot", () => {
