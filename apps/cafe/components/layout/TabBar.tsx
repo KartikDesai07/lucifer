@@ -15,7 +15,7 @@ import { NAV_SECTIONS, navSubPages, visibleNavSections, type NavItemDef } from "
 import { GlyphMore } from "@/components/layout/nav-icons";
 import { ProfileSheet, isMoreItemActive, type MoreItem } from "@/components/layout/ProfileSheet";
 
-// The phone's nav (the owner's HTML, values 2.6; design 5.4; U0 Task 4): below 720px a glass bar fixed at the foot,
+// The phone's nav (the owner's HTML, values 2.6; design 5.4; U0 Task 4): below 720px a solid (bg-card) bar fixed at the foot,
 // Home, Floor, Order, Orders and More for both roles (each is open to both), and the More sheet (the profile sheet
 // with the grid of every other page this person may open). Everything comes from the nav's own rows (NAV_SECTIONS):
 // the words, the glyphs, who sees what, and the pages under Menu, Tables, Reports and Settings.
@@ -70,7 +70,7 @@ export function TabBarNav({ pathname, moreActive, moreOpen, onMore }: TabBarNavP
     <nav
       aria-label="Main"
       data-ui="tab-bar"
-      className="fixed inset-x-0 bottom-0 z-[12] grid grid-cols-5 border-t border-border bg-glass pt-0.5 pb-[env(safe-area-inset-bottom)] font-sans leading-[normal] [backdrop-filter:saturate(180%)_blur(20px)] [-webkit-backdrop-filter:saturate(180%)_blur(20px)] tab:hidden"
+      className="fixed inset-x-0 bottom-0 z-[12] grid grid-cols-5 border-t border-border bg-card pt-0.5 pb-[env(safe-area-inset-bottom)] font-sans leading-[normal] tab:hidden"
     >
       {TAB_BAR_ITEMS.map((tab) => {
         const active = isTabActive(tab, pathname);

@@ -431,15 +431,15 @@ test("PIN: POS_MOBILE_BAR_CLASS is the HTML's glass bar lying over the page's fo
     "gap-3",
     "border-t",
     "border-border",
-    "bg-glass",
+    "bg-card",
     "px-3.5",
     "py-2.5",
     "leading-[normal]",
-    "[backdrop-filter:saturate(180%)_blur(20px)]",
-    "[-webkit-backdrop-filter:saturate(180%)_blur(20px)]",
   ]) {
     assert.ok(bar.includes(t), `values 6.1 bar: "${t}"`);
   }
+  assert.ok(!POS_MOBILE_BAR_CLASS.includes("backdrop-filter"), "owner D2 (2026-11-02): solid, no backdrop filter (either form)");
+  assert.ok(!bar.includes("bg-glass"), "owner D2: the see-through glass is gone");
   const button = tokens(POS_MOBILE_BAR_BUTTON_CLASS);
   for (const t of ["h-11", "rounded-[10px]", "bg-primary", "text-primary-foreground", "px-5", "text-[15px]", "font-semibold", "cursor-pointer"]) {
     assert.ok(button.includes(t), `values 6.1 Review order: "${t}"`);

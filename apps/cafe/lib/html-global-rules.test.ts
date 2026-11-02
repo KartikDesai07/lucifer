@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { stripComments } from "@/lib/source-pin-utils";
 import { PAPER_WIDTH_CLASS } from "@/lib/print";
+import { acquireHtmlRules, HTML_RULES_ATTR } from "@/lib/html-rules-scope";
 
 // Ruling R24 (U0 match Task 9 fix round 1): the staff screens take the owner's HTML's global rules (values 1.4) —
 // font-variant-numeric: tabular-nums on html/body and on button/input, and the body stack
@@ -22,7 +23,7 @@ const CAFE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const raw = (rel: string) => readFileSync(path.join(CAFE, rel), "utf8");
 const src = (rel: string) => stripComments(raw(rel));
 const CSS = stripComments(raw("app/globals.css"));
-const SCOPE = "html:has([data-html-rules])";
+const SCOPE = "html[data-html-rules]";
 
 /** The brace depth at an index of the stylesheet (0 = a top-level, unlayered rule). */
 function depthAt(css: string, at: number): number {
@@ -72,10 +73,28 @@ test("the slips keep their own figures: every paper width's root resets them (th
   assert.ok(selector.includes(".bg-white") && selector.includes(".text-black"), "only a slip root: white paper, black ink, a paper width");
 });
 
-test("the marker renders hidden, on the dashboard shell and the sign-in screen only — never in the /m diner flow", async () => {
+test("F1: no :has([data-html-rules]) is left in globals.css", () => {
+  assert.ok(!CSS.includes(":has([data-html-rules])"), "the scope is a plain html[data-html-rules] attribute selector");
+});
+
+test("F1: the scope is ref-counted — the lock closing over the dashboard keeps the rules; the last one out removes them", () => {
+  const attrs = new Set<string>();
+  const root = { setAttribute: (n: string) => void attrs.add(n), removeAttribute: (n: string) => void attrs.delete(n) };
+  const shell = acquireHtmlRules(root);
+  const lock = acquireHtmlRules(root);
+  assert.ok(attrs.has(HTML_RULES_ATTR), "set on the first acquire");
+  lock(); lock();
+  assert.ok(attrs.has(HTML_RULES_ATTR), "a release (even twice) while another scope is mounted keeps it");
+  shell();
+  assert.ok(!attrs.has(HTML_RULES_ATTR), "removed when the last scope unmounts (dashboard → /m)");
+});
+
+test("the attribute is set on the dashboard shell and the sign-in screen only — never in the /m diner flow", async () => {
   const { HtmlRulesScope } = await import("@/components/layout/HtmlRulesScope");
-  assert.equal(renderToStaticMarkup(createElement(HtmlRulesScope)), '<span hidden="" data-html-rules=""></span>', "an empty hidden span");
+  assert.equal(renderToStaticMarkup(createElement(HtmlRulesScope)), "", "renders nothing; the attribute goes on <html>");
+  assert.match(src("app/(dashboard)/layout.tsx"), /<script>\{HTML_RULES_SCRIPT\}<\/script>/, "dashboard: set before first paint");
   assert.match(src("app/(dashboard)/layout.tsx"), /<HtmlRulesScope \/>/, "the dashboard shell (every staff page, the lock, their dialogs)");
+  assert.match(src("app/(auth)/login/page.tsx"), /<script>\{HTML_RULES_SCRIPT\}<\/script>/, "login: set before first paint");
   assert.match(src("components/auth/AuthShell.tsx"), /<HtmlRulesScope \/>/, "the sign-in screen");
   const files: string[] = [];
   const walk = (dir: string) => {
