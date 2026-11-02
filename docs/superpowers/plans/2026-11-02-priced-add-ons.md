@@ -3,6 +3,10 @@
 > 2026-11-02, planned on main after `4e322d8`, re-checked on `27507c2`; to be built in the next session. Tier **L** (money, order writes,
 > public writes, printing, a cross-app print contract). Owner ask, decisions, design, slices, checks, verify.
 > Pre-code review done (one read-only opus reviewer, tree hash before = after): 1 HIGH + 5 MED + 4 LOW, all folded in.
+>
+> **DONE & VERIFIED 2026-11-03** (s99): built per the slices below, deep review clean, deployed posdemo ONLY on the owner's
+> OK (dpl_7x6WUngASXYKLbeYkJC9USawWu2a, READY, health ok/db up), main a070087. Evidence + review decisions + corrected
+> rollout facts: "Results" at the end. lucifer007 not deployed (never).
 
 ## The owner's ask (verbatim) and decisions
 
