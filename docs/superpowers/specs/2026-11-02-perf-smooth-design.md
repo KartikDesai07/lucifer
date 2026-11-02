@@ -1,6 +1,6 @@
 # P1 Smooth + fast: the root causes of the slow app, and their fixes (design)
 
-Status: DRAFT for the owner's approval (2026-11-02). Branch `feat/perf-smooth` from local main `e877f7a`. The owner's
+Status: APPROVED by the owner on 2026-11-02 (F1–F9; proposal P1 not taken). Branch `feat/perf-smooth` from local main `e877f7a`. The owner's
 answers of 2026-11-02 are in section 4; "my ruling" marks a call of mine the owner can still change. The numbers are in
 `docs/perf/2026-11-02-p1-measurements.md` ("report §N"); the scripts in `D:\kd\pos-dev-keep\perf\`.
 
