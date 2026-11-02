@@ -263,14 +263,15 @@ test("PIN: no sidebar Link prefetches on its own — every one says prefetch={fa
   }
 });
 
-test("PIN: next.config lengthens only the FULL-prefetch reuse window — staleTimes carries `static` and never `dynamic`", () => {
+test("PIN (F4): staleTimes reuses visited screens for the same window as prefetched ones", () => {
   const src = stripComments(readSrc(NEXT_CONFIG));
   const block = src.match(/staleTimes:\s*\{([^}]*)\}/);
   assert.ok(block, "next.config.ts must set experimental.staleTimes");
   assert.match(block![1], /static:\s*PREFETCH_REUSE_SECONDS/);
-  // Mutation this catches: adding `dynamic` — every page a user VISITED would
-  // then be re-shown from cache, which for any server-data page means stale data.
-  assert.ok(!/dynamic/.test(block![1]), "staleTimes must not set `dynamic`");
+  // Mutation this catches: dropping `dynamic` — the start screen's initial-load entry is then never reusable and
+  // every return to /pos waits for a server round trip (report docs/perf/2026-11-02-p1-measurements.md §4). Safe
+  // because every staff page is a client page whose data comes from its own queries.
+  assert.match(block![1], /dynamic:\s*PREFETCH_REUSE_SECONDS/);
 });
 
 test("PIN: the brand block is a link to the Dashboard; its tile shows an uploaded logo, else the cafe's initial (and the initial when the logo fails to load)", () => {

@@ -676,3 +676,9 @@ test("a password switch: the cover lifts only once the page holds the staff memb
   assert.equal(r.weekLeft, undefined, "the admin's 7-day figures are gone from the cache");
   assert.equal(r.ordersLeft, "orders", "a query that is not person-scoped is left alone");
 });
+
+test("PIN (F4): a person switch drops the router cache", () => {
+  const src = read(COVER);
+  assert.match(src, /if \(plan\.switched\) \{[\s\S]*router\.refresh\(\);/, "F4: a person switch drops the router cache — no shell of the last person is reused");
+  assert.ok(src.indexOf("router.refresh();") < src.indexOf("close();", src.indexOf("const unlocked")), "refresh runs before the cover closes");
+});

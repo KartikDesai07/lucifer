@@ -6,7 +6,8 @@ import { AppToaster } from "@/components/layout/AppToaster";
 import { Providers } from "@/components/providers";
 import { readSettings } from "@/lib/settings";
 import { APP_NAME } from "@/lib/constants";
-import { brandingUrl, productImageUrl } from "@/lib/images";
+import { DEFAULT_PRODUCT_LOGO_URL } from "@/lib/branding-default-logo";
+import { productImageUrl } from "@/lib/images";
 import "./globals.css";
 
 const METADATA_DESCRIPTION =
@@ -29,7 +30,7 @@ export async function generateMetadata(): Promise<Metadata> {
     // ICON as well as its name. Same defensive read the sidebar already uses.
     const title = settings?.restaurantName?.trim() || APP_NAME;
     const iconHref =
-      productImageUrl(settings?.productLogo) ?? brandingUrl("productLogo");
+      productImageUrl(settings?.productLogo) ?? DEFAULT_PRODUCT_LOGO_URL;
     return {
       title,
       description: METADATA_DESCRIPTION,
@@ -43,7 +44,7 @@ export async function generateMetadata(): Promise<Metadata> {
     return {
       title: APP_NAME,
       description: METADATA_DESCRIPTION,
-      icons: { icon: [{ url: brandingUrl("productLogo") }] },
+      icons: { icon: [{ url: DEFAULT_PRODUCT_LOGO_URL }] },
     };
   }
 }

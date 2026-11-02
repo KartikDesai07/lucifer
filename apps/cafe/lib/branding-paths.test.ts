@@ -297,8 +297,8 @@ test("PIN: app/layout.tsx's generateMetadata reads Settings inside a try whose c
   // productImageUrl, which is what turns the ref into a real, versioned URL.
   assert.match(
     tryBody,
-    /const iconHref =\s*productImageUrl\(settings\?\.productLogo\) \?\? brandingUrl\("productLogo"\);/,
-    "the try branch's iconHref must derive from productImageUrl(settings?.productLogo), falling back to brandingUrl(\"productLogo\") when unset",
+    /const iconHref =\s*productImageUrl\(settings\?\.productLogo\) \?\? DEFAULT_PRODUCT_LOGO_URL;/,
+    "the try branch's iconHref must derive from productImageUrl(settings?.productLogo), falling back to DEFAULT_PRODUCT_LOGO_URL (F5) when unset",
   );
   assert.match(
     tryBody,
@@ -307,7 +307,7 @@ test("PIN: app/layout.tsx's generateMetadata reads Settings inside a try whose c
   );
   assert.match(
     catchBody,
-    /icons: \{ icon: \[\{ url: brandingUrl\("productLogo"\) \}\] \},/,
+    /icons: \{ icon: \[\{ url: DEFAULT_PRODUCT_LOGO_URL \}\] \},/,
     "the catch branch's fallback metadata must still set an icon via brandingUrl(\"productLogo\") — a DB-down login page must not lose its tab icon too",
   );
 });
@@ -808,5 +808,28 @@ test('PIN: the login form declares method="post" — a submit before hydration m
   for (const [name, mutated] of mutations) {
     assert.notEqual(mutated, src, `mutation "${name}" must change the source`);
     assert.ok(loginFormProblems(mutated).length > 0, `mutation "${name}" must be caught`);
+  }
+});
+
+test("PIN (F5): the built-in logo's version-stamped URL is served immutable before any store read; both layouts fall back to it", async () => {
+  const { DEFAULT_PRODUCT_LOGO, DEFAULT_PRODUCT_LOGO_URL } = await import("@/lib/branding-default-logo");
+  assert.match(DEFAULT_PRODUCT_LOGO_URL, /^\/api\/branding\/productLogo\?v=[0-9a-f]{12}$/);
+  assert.equal(DEFAULT_PRODUCT_LOGO_URL, `/api/branding/productLogo?v=${DEFAULT_PRODUCT_LOGO.version}`);
+
+  const src = stripComments(readSrc(BRANDING_ROUTE));
+  const get = src.slice(src.indexOf("export async function GET"), src.indexOf("export async function PUT"));
+  const branch = get.indexOf('slot === "productLogo" && requested === DEFAULT_PRODUCT_LOGO.version');
+  assert.ok(branch >= 0, "F5: GET names the built-in version");
+  assert.match(
+    get.slice(branch, branch + 200),
+    /return imageResponse\(DEFAULT_PRODUCT_LOGO, IMMUTABLE_CACHE, ifNoneMatch\);/,
+  );
+  assert.ok(branch < get.indexOf("getBrandingMeta("), "F5: answered before the first getBrandingMeta");
+  assert.ok(branch < get.indexOf("resolveActiveVersion("), "F5: answered before resolveActiveVersion");
+
+  for (const rel of [ROOT_LAYOUT, "apps/cafe/app/(dashboard)/layout.tsx"]) {
+    const layout = stripComments(readSrc(rel));
+    assert.match(layout, /productImageUrl\([^)]*\) \?\? DEFAULT_PRODUCT_LOGO_URL/, `${rel}: F5 icon fallback`);
+    assert.ok(!layout.includes('brandingUrl("productLogo")'), `${rel}: no unversioned icon URL`);
   }
 });

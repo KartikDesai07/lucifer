@@ -6,7 +6,8 @@ import {
   APPLE_TOUCH_ICON_PATH,
   MANIFEST_THEME_COLOR,
 } from "@/lib/pos-install";
-import { brandingUrl, productImageUrl } from "@/lib/images";
+import { DEFAULT_PRODUCT_LOGO_URL } from "@/lib/branding-default-logo";
+import { productImageUrl } from "@/lib/images";
 import { SCREEN_LOCK_SCRIPT } from "@/lib/screen-lock-script";
 import { NAV_STATE_SCRIPT } from "@/lib/nav-state-script";
 import { HTML_RULES_SCRIPT } from "@/lib/html-rules-scope";
@@ -47,7 +48,7 @@ export async function generateMetadata(): Promise<Metadata> {
       title: settings.restaurantName?.trim() || APP_NAME,
       manifest: MANIFEST_PATH,
       icons: {
-        icon: [{ url: productImageUrl(settings.productLogo) ?? brandingUrl("productLogo") }],
+        icon: [{ url: productImageUrl(settings.productLogo) ?? DEFAULT_PRODUCT_LOGO_URL }],
         apple: [{ url: APPLE_TOUCH_ICON_PATH }],
       },
     };
@@ -56,7 +57,7 @@ export async function generateMetadata(): Promise<Metadata> {
       title: APP_NAME,
       manifest: MANIFEST_PATH,
       icons: {
-        icon: [{ url: brandingUrl("productLogo") }],
+        icon: [{ url: DEFAULT_PRODUCT_LOGO_URL }],
         apple: [{ url: APPLE_TOUCH_ICON_PATH }],
       },
     };
