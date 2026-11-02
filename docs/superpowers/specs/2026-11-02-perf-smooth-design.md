@@ -92,14 +92,21 @@ route answers `immutable` (the same rule a saved logo already gets). A saved log
 The live lists (open tabs, today's orders, the Orders list's first page), tables, the dashboard (range, live, summary)
 and the kitchen board use `refetchInterval: () => isRealtimeHealthy() ? 120 s : today's interval`, the print host's
 existing idiom (`use-print-host-wake.ts`). When the socket drops (close or missed pong), the live queries refetch once
-at once (catch-up), then poll at today's rate. The pulse stays 20 s (printing and alerts). Known bounds:
+at once (catch-up), then poll at today's rate. Catch-up rounds are at least 30 s apart, today's live-list poll (a
+flapping link costs one round per 30 s, not one per reconnect; pre-merge deep review I-1); for the Kitchen and token
+boards (today's 10 s) a second drop inside that window waits up to 30 s for its round. The pulse stays 20 s (printing
+and alerts). Known bounds:
 - A half-open socket reads healthy until its next missed pong (≤ 210 s, `REALTIME_HEALTH_TTL_MS`, the print host's bound
   too); in that window a write elsewhere reaches the kitchen board / open tabs at the next 120 s poll instead of ~1 s
   (final review M6). Its KOT slip prints as today (printing rides the pulse and its own lane).
 - The socket proves the room, not the server's publish to it (final review I2): a device whose OWN order or kitchen
   write is not echoed by a live nudge within 8 s treats the room as unproven and polls at today's rate until the next
-  nudge (the echo guard). A device that never writes (a wall display) relies on the socket proof alone.
-- The freshness chips (Now Serving, the kitchen strip) call data stale at 60 s, or 180 s while the room is trusted.
+  nudge (the echo guard); the 8 s deadline itself runs one catch-up round, whose refetch re-arms every poll at once
+  (TanStack re-reads a `refetchInterval` function only on a query update or a render; pre-merge deep review I-2). A
+  device that never writes (a wall display) relies on the socket proof alone.
+- The freshness chips (Now Serving, the kitchen strip) call data stale at 60 s, or 180 s while the room is trusted; the
+  kitchen strip uses 60 s once a poll has failed or is paused offline (the board is then not being refreshed, whatever
+  the socket says; deep review M-4, N-1).
 
 ### F7 — a nudge reads the floor fresh (my ruling)
 The realtime nudge's tables refetch reads `/api/tables?fresh=1` (the route's existing cache bypass), so the second
@@ -150,6 +157,13 @@ the free-tier projection (measured on C's rush, not estimated); the idle request
 never higher; the full suites; the paper unchanged (S1 43-file pin, `print-budget.test.ts`); the U0–U5 probes: no
 difference except D1 and D2; the real write paths' requests equal main's. Then a Claude Fable 5.1 review, one fix wave,
 two verifiers, the plan's Results.
+
+Pre-merge deep review (the owner's ask, Claude Fable 5.1, read-only): 0 Critical, 2 Important (I-1, I-2 above, fixed),
+5 Minor. Parked as cost-only or cosmetic, never wrong data: M-1 the one-shot fresh floor read can be taken by an
+unrelated tables fetch (one extra DB read); M-2 `/printers` streams the app download list in its RSC, reused ≤ 30 min
+(admin links, server-cached 10 min anyway); M-3 a DB error while a page's metadata loads keeps the default tab icon for
+that page's life; M-5 the catch-up also refetches an open dashboard range and today's cached summary; and M-4's Now
+Serving side (its chip is age-only, as on main).
 
 ## 9. Left for the owner (not in this work)
 

@@ -287,7 +287,7 @@ test("PIN (F6): CATCH_UP_REALTIME is coalesced, held by an order write, stale-on
   assert.ok(!(CAFE_EVENT_KINDS as readonly string[]).includes(REALTIME_DOWN_KIND), "lane-down is synthetic, never a room kind");
 });
 
-test("PIN (F6): useRealtimeCatchUp feeds the down event into ONE invalidator as lane-down and tears both down on cleanup", () => {
+test("PIN (F6, I-1): useRealtimeCatchUp feeds the down event, spaced, into ONE invalidator as lane-down and tears all down on cleanup", () => {
   const src = stripComments(readFileSync(fileURLToPath(new URL("../hooks/use-realtime.ts", import.meta.url)), "utf8"));
   assert.match(src, /export const REALTIME_DOWN_KIND = "lane-down";/, "the synthetic kind");
   const at = src.indexOf("export function useRealtimeCatchUp(): void {");
@@ -295,6 +295,6 @@ test("PIN (F6): useRealtimeCatchUp feeds the down event into ONE invalidator as 
   const hook = src.slice(at);
   assert.ok(hook.includes("useEffect("), "positive landmark: the hook's one effect");
   assert.match(hook, /const invalidator = createRealtimeInvalidator\(qc, \[REALTIME_DOWN_KIND\], CATCH_UP_REALTIME\);/);
-  assert.match(hook, /const unsubscribe = subscribeRealtimeDown\(\(\) => invalidator\.onKind\(REALTIME_DOWN_KIND\)\);/);
-  assert.match(hook, /return \(\) => \{\s*unsubscribe\(\);\s*invalidator\.dispose\(\);\s*\};/, "cleanup: unsubscribe AND dispose");
+  assert.match(hook, /const spacer = createRoundSpacer\(\(\) => invalidator\.onKind\(REALTIME_DOWN_KIND\)\);\s*const unsubscribe = subscribeRealtimeDown\(spacer\.request\);/, "I-1: the drop reaches the invalidator through the spacer");
+  assert.match(hook, /return \(\) => \{\s*stopEcho\(\);\s*unsubscribe\(\);\s*spacer\.dispose\(\);\s*invalidator\.dispose\(\);\s*\};/, "cleanup: both feeds, the spacer AND the invalidator");
 });

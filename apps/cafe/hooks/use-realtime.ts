@@ -10,8 +10,9 @@ import { TABLE_KEYS } from "@/hooks/use-tables";
 import { DASHBOARD_KEYS } from "@/hooks/use-dashboard";
 import { TOKEN_KEYS } from "@/hooks/use-tokens";
 import { subscribeRealtime, subscribeRealtimeDown } from "@/lib/realtime-client";
-import { noteLiveNudge, noteOwnWriteSettled, noteOwnWriteStarted } from "@/lib/live-poll";
+import { echoDueAt, echoMissed, noteLiveNudge, noteOwnWriteSettled, noteOwnWriteStarted } from "@/lib/live-poll";
 import { onePageAtMost } from "@/lib/order-query";
+import { createRoundSpacer } from "@/lib/realtime-catch-up";
 import { createRealtimeInvalidator, type RealtimeInvalidateSpec } from "@/lib/realtime-invalidate";
 import { markTablesFreshRead } from "@/lib/tables-fresh-read";
 
@@ -30,13 +31,15 @@ import { markTablesFreshRead } from "@/lib/tables-fresh-read";
 // room is PROVEN up — realtimeTrusted(): no echo of this device's own write
 // overdue (I2) and isRealtimeHealthy(), re-read on every tick
 // (lib/live-poll.ts; the owner's D3) — and are today's 30 s / 10 s the moment
-// it is not, with ONE catch-up round on the drop (useRealtimeCatchUp). The
-// print host's relaxes 3s → 60s on the socket proof (use-print-host-wake.ts);
-// the pulse never changes. Flag off or Worker down ⇒ exactly today's shipped
-// behaviour; a half-open socket reads healthy until its next missed pong
+// it is not, with ONE catch-up round on the drop (useRealtimeCatchUp; rounds
+// at least 30 s apart, lib/realtime-catch-up.ts). The print host's relaxes
+// 3s → 60s on the socket proof (use-print-host-wake.ts); the pulse never
+// changes. Flag off or Worker down ⇒ exactly today's shipped behaviour; a
+// half-open socket reads healthy until its next missed pong
 // (≤ REALTIME_HEALTH_TTL_MS), the print host's known bound too. A broken
 // publish path (sockets pong, no nudge comes; final review I2) costs at most
-// REALTIME_ECHO_MS after this device's next order / Kitchen write: unechoed,
+// REALTIME_ECHO_MS after this device's next order / Kitchen write (or the end
+// of a catch-up window then running): unechoed, one catch-up round runs and
 // the polls are today's until the next nudge (watchRealtimeEcho). A device
 // that never writes (a wall display) relies on the socket proof alone.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -180,8 +183,9 @@ export const REALTIME_DOWN_KIND = "lane-down";
 // ONE round over everything those polls cover (the live lists, the floor, the
 // one-page Orders list, the Kitchen board, the dashboard, the token board,
 // today's day summary), coalesced, held and hidden-tab-gentle like a live-state
-// nudge; its floor read skips the instance cache. Its refetch also re-arms each
-// poll, which now reads isRealtimeHealthy() false: today's 30 s / 10 s at once
+// nudge; its floor read skips the instance cache. An overdue echo of this
+// device's own write runs the same round (deep review I-2). Its refetch also
+// re-arms each poll, which now reads realtimeTrusted() false: today's 30 s / 10 s at once
 // (the summary is server-cached, so its refetch may bring the cached figure,
 // but its poll is back on 30 s now, not one more 120 s tick later). Never a past
 // day's summary (it never polls) or the pulse (its own 20 s, never nudged).
@@ -215,11 +219,32 @@ type AnyMutation = Mutation<unknown, unknown, unknown, unknown>;
 
 /** I2 — feeds the echo guard (lib/live-poll.ts): this device's watched writes
  *  from the MutationCache (started on `pending`, settled on `success` /
- *  `error`), the room's live nudges from the one socket. Returns the teardown,
- *  which unsubscribes both and drops every unsettled write's start. */
-export function watchRealtimeEcho(qc: QueryClient): () => void {
+ *  `error`), the room's live nudges from the one socket. An overdue echo has
+ *  no event of its own (deep review I-2), so a timer at its deadline calls
+ *  `onMissed` once if no nudge came by then. Returns the teardown, which
+ *  unsubscribes both, clears the timer and drops every unsettled write's start. */
+export function watchRealtimeEcho(qc: QueryClient, onMissed: () => void = () => {}): () => void {
   const inFlight = new Set<AnyMutation>();
   const watched = (m: AnyMutation) => ECHOED_WRITE_KEYS.some((mutationKey) => matchMutation({ mutationKey }, m));
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  let armedFor: number | null = null;
+  // One timer per owed deadline (the guard keeps the earliest until a nudge pays it).
+  const armDeadline = () => {
+    const due = echoDueAt();
+    if (due === null || due === armedFor) return;
+    armedFor = due;
+    clearTimeout(deadline);
+    deadline = setTimeout(() => {
+      deadline = undefined;
+      if (echoMissed()) {
+        onMissed();
+        return;
+      }
+      // Paid in time (nothing owed: the next debt arms its own), or the clock was set back (still owed: the rest).
+      armedFor = null;
+      armDeadline();
+    }, Math.max(0, due - Date.now()));
+  };
   const stopWrites = qc.getMutationCache().subscribe((event) => {
     if (event.type !== "updated" || !watched(event.mutation)) return;
     const { type } = event.action;
@@ -228,6 +253,7 @@ export function watchRealtimeEcho(qc: QueryClient): () => void {
       noteOwnWriteStarted();
     } else if ((type === "success" || type === "error") && inFlight.delete(event.mutation)) {
       noteOwnWriteSettled(type === "success");
+      armDeadline();
     }
   });
   const stopNudges = subscribeRealtime((kind) => {
@@ -236,24 +262,29 @@ export function watchRealtimeEcho(qc: QueryClient): () => void {
   return () => {
     stopWrites();
     stopNudges();
+    clearTimeout(deadline);
     for (let n = inFlight.size; n > 0; n--) noteOwnWriteSettled(false); // unwatched now: owes nothing
     inFlight.clear();
   };
 }
 
 /** One catch-up round per drop of the room (lib/realtime-client.ts
- *  subscribeRealtimeDown), and the I2 echo watch. Mounted once, in
- *  PosPulseProvider, next to useLiveStateRealtime; inert with realtime off
- *  (the room never goes up). */
+ *  subscribeRealtimeDown) and per overdue echo of this device's own write (the
+ *  I2 watch), through one spacer: rounds at least 30 s apart (deep review I-1,
+ *  a flapping link). Mounted once, in PosPulseProvider, next to
+ *  useLiveStateRealtime; inert with realtime off (the room never goes up). */
 export function useRealtimeCatchUp(): void {
   const qc = useQueryClient();
   useEffect(() => {
     const invalidator = createRealtimeInvalidator(qc, [REALTIME_DOWN_KIND], CATCH_UP_REALTIME);
-    const unsubscribe = subscribeRealtimeDown(() => invalidator.onKind(REALTIME_DOWN_KIND));
+    const spacer = createRoundSpacer(() => invalidator.onKind(REALTIME_DOWN_KIND));
+    const unsubscribe = subscribeRealtimeDown(spacer.request);
+    const stopEcho = watchRealtimeEcho(qc, spacer.request);
     return () => {
+      stopEcho();
       unsubscribe();
+      spacer.dispose();
       invalidator.dispose();
     };
   }, [qc]);
-  useEffect(() => watchRealtimeEcho(qc), [qc]);
 }

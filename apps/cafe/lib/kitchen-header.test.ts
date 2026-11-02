@@ -160,13 +160,18 @@ test("kitchenStale: the last good answer at least KITCHEN_STALE_MS (60s) old; ne
 
 // D3 (perf P1 fix I1): while the realtime room is proven up the board polls every 120 s, so an answer is stale one
 // relaxed poll later (REALTIME_RELAXED_POLL_MS + KITCHEN_STALE_MS = 180 s); the moment it is not, today's 60 s.
-test("kitchenStale (D3): with the room proven up the answer is stale only at 180s; the strip follows", () => {
+// Deep review M-4, N-1: a failed or paused poll is proof the board is not being refreshed whatever the socket says (the
+// server that publishes is the one that failed, or the device is offline), so the strip then judges "old" by today's
+// 60 s even while the socket is trusted. kitchenStale itself keeps D3's 180 s (the strip needs a failed or paused poll).
+test("kitchenStale (D3): with the room proven up the answer is stale only at 180s; the strip uses today's 60s once a poll failed or paused", () => {
   assert.equal(kitchenStale(NOW - 179_999, NOW, true), false, "room up, 179.999s: fresh (the 120 s poll has not been missed)");
   assert.equal(kitchenStale(NOW - 180_000, NOW, true), true, "room up, 180s: stale");
   assert.equal(kitchenStale(0, NOW, true), false, "room up, never loaded: no strip");
-  const strip = (ageMs: number, healthy: boolean) => kitchenStripShows({ updatedAtMs: NOW - ageMs, nowMs: NOW, isError: true, isPaused: false, healthy });
-  assert.equal(strip(90_000, true), false, "room up + a failed poll at 90s: not yet (D3)");
-  assert.equal(strip(180_000, true), true, "room up + a failed poll at 180s: the strip");
+  const strip = (ageMs: number, healthy: boolean, isError = true) => kitchenStripShows({ updatedAtMs: NOW - ageMs, nowMs: NOW, isError, isPaused: !isError, healthy });
+  assert.equal(strip(120_000, true), true, "room up + the relaxed poll failed at 120s: the strip at once (M-4; was 180s)");
+  assert.equal(strip(59_999, true), false, "room up + a failed poll, 59.999s old: not yet (today's 60s rule)");
+  assert.equal(strip(60_000, true, false), true, "room up + paused (offline) at 60s: today's strip (N-1)");
+  assert.equal(strip(59_999, true, false), false, "room up + paused, 59.999s old: not yet");
   assert.equal(strip(60_000, false), true, "room down + a failed poll at 60s: today's strip");
 });
 

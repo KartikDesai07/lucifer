@@ -223,11 +223,55 @@ test("I2 wiring: a failed Kitchen tick and an unwatched write owe nothing, a Kit
   });
 });
 
-test("PIN (I2): useRealtimeCatchUp mounts watchRealtimeEcho in its own effect, and watchRealtimeEcho unsubscribes both feeds", () => {
+// Deep review I-2: an overdue echo comes with no query update, and TanStack re-reads a refetchInterval function only on
+// a query update or a render, so an idle screen's polls would keep their armed 120 s tick. The deadline itself asks for
+// ONE catch-up round (whose refetch re-arms every poll at today's rate): once per episode, never for a paid echo.
+test("I-2 wiring: an overdue echo calls onMissed once at its deadline; an echo in time, a failed write and the teardown never do", async () => {
+  await withProvenRoom(async (ws) => {
+    const qc = new QueryClient();
+    let missed = 0;
+    let stopped = false;
+    const stop = watchRealtimeEcho(qc, () => missed++);
+    try {
+      await write(qc, ORDER_KEYS.mutation, async () => {});
+      mock.timers.tick(REALTIME_ECHO_MS - 1);
+      assert.equal(missed, 0, "the echo still has time");
+      mock.timers.tick(1);
+      assert.equal(missed, 1, "I-2: the deadline itself asks for a catch-up round");
+      await write(qc, ORDER_KEYS.mutation, async () => {});
+      mock.timers.tick(REALTIME_ECHO_MS * 3);
+      assert.equal(missed, 1, "one round per episode: a second unechoed write keeps the first deadline");
+      ws.frame("order-changed");
+      await write(qc, ORDER_KEYS.mutation, async () => {});
+      ws.frame("kot-fired"); // the echo after the answer, in time
+      mock.timers.tick(REALTIME_ECHO_MS);
+      assert.equal(missed, 1, "an echo in time: nothing");
+      await write(qc, KITCHEN_KEYS.mutation, async () => {
+        throw new Error("409");
+      });
+      mock.timers.tick(REALTIME_ECHO_MS);
+      assert.equal(missed, 1, "a failed write owes nothing");
+      await write(qc, KITCHEN_KEYS.ready, async () => {});
+      mock.timers.tick(REALTIME_ECHO_MS);
+      assert.equal(missed, 2, "a new episode after a nudge: its own deadline");
+      ws.frame("order-changed");
+      await write(qc, ORDER_KEYS.mutation, async () => {});
+      stop();
+      stopped = true;
+      mock.timers.tick(REALTIME_ECHO_MS);
+      assert.equal(missed, 2, "the teardown clears a pending deadline");
+    } finally {
+      if (!stopped) stop();
+    }
+  });
+});
+
+test("PIN (I2, I-2): useRealtimeCatchUp mounts watchRealtimeEcho in its one effect, feeding the spacer, and watchRealtimeEcho unsubscribes both feeds", () => {
   const src = stripComments(readFileSync(fileURLToPath(new URL("../hooks/use-realtime.ts", import.meta.url)), "utf8"));
   const hook = src.slice(src.indexOf("export function useRealtimeCatchUp(): void {"));
   assert.ok(hook.startsWith("export function useRealtimeCatchUp"), "positive landmark: the catch-up hook");
-  assert.match(hook, /useEffect\(\(\) => watchRealtimeEcho\(qc\), \[qc\]\);/, "I2: one watch per tab, next to the catch-up, torn down on unmount");
+  assert.match(hook, /const stopEcho = watchRealtimeEcho\(qc, spacer\.request\);/, "I2 (deep review I-2): one watch per tab, in the catch-up's effect; its overdue echo asks the catch-up spacer");
+  assert.match(hook, /return \(\) => \{\s*stopEcho\(\);/, "I2: torn down on unmount");
   const watch = src.slice(src.indexOf("export function watchRealtimeEcho("), src.indexOf("export function useRealtimeCatchUp"));
   assert.match(watch, /const stopWrites = qc\.getMutationCache\(\)\.subscribe\(/, "I2: this device's writes, from the MutationCache");
   assert.match(watch, /const stopNudges = subscribeRealtime\(/, "I2: the room's nudges, from the one socket");

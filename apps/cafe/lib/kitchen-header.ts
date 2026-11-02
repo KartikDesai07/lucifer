@@ -82,9 +82,12 @@ export function kitchenStale(updatedAtMs: number, nowMs: number, healthy: boolea
 /** The refresh strip's rule (design 6.2, Review Focus 5; final review I1): the answer is stale AND the board's query has
  *  failed (a failed poll keeps status "error" with its data until a success) or is paused (an offline device), so both
  *  show it at 60–90s. A healthy or in-flight refetch never does: a return from the cache (the answer 60s+ old until the
- *  mount refetch lands) and a throttled background tab's polls are no failure. */
+ *  mount refetch lands) and a throttled background tab's polls are no failure. A failed or paused poll is also proof
+ *  the board is not being refreshed, whatever the socket says (the server that publishes is the one that failed, or
+ *  the device is offline; perf P1 deep review M-4, N-1), so a trusted room never stretches "old" past today's 60 s then. */
 export function kitchenStripShows(input: { updatedAtMs: number; nowMs: number; isError: boolean; isPaused: boolean; healthy: boolean }): boolean {
-  return kitchenStale(input.updatedAtMs, input.nowMs, input.healthy) && (input.isError || input.isPaused);
+  const notRefreshing = input.isError || input.isPaused;
+  return notRefreshing && kitchenStale(input.updatedAtMs, input.nowMs, input.healthy && !notRefreshing);
 }
 
 /** The filtered-empty box's words (design 6.5: the HTML's "No tickets here" in our unit). */

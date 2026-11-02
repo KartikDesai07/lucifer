@@ -274,6 +274,16 @@ e3fcf4d (I2 the echo-of-own-write guard).
   per screen change −53% to −85% on a CPU 6× phone with photos; idle requests per page −35% to −55% (never higher);
   the 8-device rush 132 → 97 requests / min; projected 1.95 M → 1.23 M invocations and 5.2 h → 3.7 h Active CPU a month
   for a busy 8-device cafe; the deploy build ~82 s → ~64 s; the look identical except D2.
+- **Pre-merge checks:** measurements §11 — dashboard → `/pos` faster in C on the Android engine in every case (no
+  delay 685 / 775 → 422 / 427 ms, settled emulator, B C C B), slower only on a 6×-slowed desktop Chrome with an
+  instant server (≈ +0.2–0.6 s, paint; never with a real server round trip); lossy Wi-Fi, the public screens, F1's
+  attribute, accessibility (one contrast flag fewer) and growth checked; the real Android app smoke-tested on WebView
+  154 and 109 (sign-in, add, Send KOT, Floor, Orders, Home, Kitchen).
+- **Pre-merge deep review** (the owner's ask; Claude Fable 5.1, read-only): "With fixes", 0 Critical, 2 Important,
+  5 Minor → one fix commit (I-1 catch-up rounds ≥ 30 s apart, `lib/realtime-catch-up.ts`; I-2 the echo deadline runs a
+  catch-up round; M-4 + N-1 the Kitchen strip at 60 s once a poll failed or paused; N-2, N-4) → scoped re-review
+  "Ready to merge: Yes", no new Critical / Important; M-1, M-2, M-3, M-5 parked (design §8). Suites on the fix: cafe
+  7198 tests, 7197 pass, 0 fail, 1 old skip; typecheck clean; eslint 0 errors (2 old warnings).
 - **Left for the owner (design §9):** the pulse (≈ 0.52 M invocations a month for 8 devices; printing), the write chain
   (7–28 sequential DB trips), a first open on a low-end phone on slow 4G (8–10 s, unchanged; a service worker only with
   the owner's OK).
