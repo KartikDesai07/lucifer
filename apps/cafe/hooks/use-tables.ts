@@ -11,6 +11,8 @@ import { toast } from "sonner";
 import { apiGet, apiSend, ApiError } from "@/lib/api-client";
 import { TABLES_FRESH_PARAM } from "@/lib/table-order";
 import { STALE_TIMES, REFETCH_INTERVALS } from "@/lib/query";
+import { livePoll } from "@/lib/live-poll";
+import { takeTablesFreshRead } from "@/lib/tables-fresh-read";
 import { ORDER_KEYS } from "@/hooks/use-orders";
 import type {
   CreateTableInput,
@@ -27,14 +29,16 @@ export const TABLE_KEYS = {
 // service (CLAUDE.md §9). Order mutations also invalidate ['tables']; the poll
 // and focus-refetch pause while an order write is in flight (an order grabs/frees
 // a table) so live data can't race the mutation. refetchOnWindowFocus is on so
-// returning to the tab refreshes occupancy.
+// returning to the tab refreshes occupancy. D3: the poll steps back to 120 s
+// while the realtime room is proven up (lib/live-poll.ts). F7: the fetch right
+// after a nudge round reads past the 5 s instance cache (lib/tables-fresh-read.ts).
 export function useTables() {
   const isMutating = useIsMutating({ mutationKey: ORDER_KEYS.mutation }) > 0;
   return useQuery({
     queryKey: TABLE_KEYS.all,
-    queryFn: () => apiGet<Table[]>("/api/tables"),
+    queryFn: () => apiGet<Table[]>(takeTablesFreshRead() ? `/api/tables?${TABLES_FRESH_PARAM}=1` : "/api/tables"),
     staleTime: STALE_TIMES.TABLES,
-    refetchInterval: isMutating ? false : REFETCH_INTERVALS.TABLES,
+    refetchInterval: isMutating ? false : livePoll(REFETCH_INTERVALS.TABLES),
     refetchOnWindowFocus: !isMutating,
   });
 }

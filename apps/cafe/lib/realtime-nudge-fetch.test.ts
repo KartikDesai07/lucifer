@@ -3,26 +3,26 @@
 // from realtime-live-state.test.ts to keep both files under the size cap.
 //   D-F1 — a nudge never cancels an in-flight fetch; the query is re-checked
 //          once per window and invalidated once it is idle.
-//   D-F3 — one late tables refetch past the per-instance GET /api/tables cache.
+//   D-F3 — the generic `lateRefetch`; since F7 (perf P1) LIVE_STATE_REALTIME reads the
+//          floor fresh instead and no longer uses it, so these run over LATE_SPEC below.
 //   D-F5 — Kitchen nudges hold while a Kitchen tick / ready write is in flight.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { QueryClient, QueryObserver, MutationObserver, focusManager, type InvalidateQueryFilters, type QueryKey } from "@tanstack/react-query";
 
-import { TTL } from "@/lib/cache";
 import { createRealtimeInvalidator, type NudgeTimers, type RealtimeInvalidateSpec } from "@/lib/realtime-invalidate";
-import {
-  KITCHEN_EVENT_KINDS, KITCHEN_REALTIME, LIVE_STATE_EVENT_KINDS, LIVE_STATE_REALTIME,
-  REALTIME_NUDGE_COALESCE_MS, TABLES_LATE_REFETCH_MS,
-} from "@/hooks/use-realtime";
+import { markTablesFreshRead } from "@/lib/tables-fresh-read";
+import { KITCHEN_EVENT_KINDS, KITCHEN_REALTIME, LIVE_STATE_EVENT_KINDS, LIVE_STATE_REALTIME, REALTIME_NUDGE_COALESCE_MS } from "@/hooks/use-realtime";
 import { ORDER_KEYS } from "@/hooks/use-orders";
 import { TABLE_KEYS } from "@/hooks/use-tables";
 import { KITCHEN_KEYS } from "@/hooks/use-kitchen";
 
 const WINDOW = REALTIME_NUDGE_COALESCE_MS;
 const MAX_TICKS = 50;
-const MS_PER_S = 1000;
+/** The generic option over the live-state targets (the shape LIVE_STATE_REALTIME had before F7). */
+const LATE_MS = 6000;
+const LATE_SPEC: RealtimeInvalidateSpec = { ...LIVE_STATE_REALTIME, onRound: undefined, lateRefetch: { queryKey: TABLE_KEYS.all, afterMs: LATE_MS } };
 const OPEN_TABS = ORDER_KEYS.list({ payment: "Unpaid", status: "Pending" });
 const TODAY = ORDER_KEYS.list({ date: "2026-09-29" });
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -168,13 +168,13 @@ test("D-F1 dispose() drops a deferred re-check: nothing fetches afterwards", asy
   }
 });
 
-test("D-F3 PIN: the late tables refetch waits longer than the GET /api/tables cache TTL", () => {
-  assert.ok(TTL.TABLES > 0, "positive landmark: TTL.TABLES is read");
-  assert.ok(TABLES_LATE_REFETCH_MS > TTL.TABLES * MS_PER_S, `${TABLES_LATE_REFETCH_MS} must exceed ${TTL.TABLES * MS_PER_S}`);
+test("F7 PIN: LIVE_STATE_REALTIME arms no late tables refetch — its round marks the fresh floor read instead", () => {
+  assert.equal(LIVE_STATE_REALTIME.lateRefetch, undefined, "F7: the 6 s late tables refetch is gone");
+  assert.equal(LIVE_STATE_REALTIME.onRound, markTablesFreshRead, "F7: the round's own tables refetch reads past the 5 s instance cache");
 });
 
-test("D-F3 a visible round that refetched the tables schedules exactly ONE more tables refetch, TABLES_LATE_REFETCH_MS later", async () => {
-  const { qc, calls, clock, nudger } = setup();
+test("D-F3 (generic) a visible round that refetched the late key schedules exactly ONE more refetch of it, afterMs later", async () => {
+  const { qc, calls, clock, nudger } = setup(LIVE_STATE_EVENT_KINDS, LATE_SPEC);
   const tables = quickQuery(qc, TABLE_KEYS.all);
   try {
     await idle(qc, TABLE_KEYS.all);
@@ -184,14 +184,14 @@ test("D-F3 a visible round that refetched the tables schedules exactly ONE more 
     assert.equal(tables.count(), 2, "the round refetched the tables");
     const tableCalls = () => calls.filter((c) => c.queryKey?.[0] === TABLE_KEYS.all[0]).length;
     const afterRound = tableCalls();
-    clock.advance(TABLES_LATE_REFETCH_MS - 1);
+    clock.advance(LATE_MS - 1);
     await tick();
     assert.equal(tables.count(), 2, "not before the late delay");
     clock.advance(1);
     await idle(qc, TABLE_KEYS.all);
     assert.equal(tables.count(), 3, "one late tables refetch");
     assert.equal(tableCalls(), afterRound + 1, "exactly one more tables invalidation");
-    clock.advance(TABLES_LATE_REFETCH_MS * 5);
+    clock.advance(LATE_MS * 5);
     await tick();
     assert.equal(tables.count(), 3, "the late refetch never re-arms itself");
     assert.deepEqual(clock.armed(), []);
@@ -202,7 +202,7 @@ test("D-F3 a visible round that refetched the tables schedules exactly ONE more 
 });
 
 test("D-F3 coalesced: a new round re-arms the late refetch, so two rounds give one late refetch after the second", async () => {
-  const { qc, clock, nudger } = setup();
+  const { qc, clock, nudger } = setup(LIVE_STATE_EVENT_KINDS, LATE_SPEC);
   const tables = quickQuery(qc, TABLE_KEYS.all);
   const GAP_MS = 2000;
   try {
@@ -215,13 +215,13 @@ test("D-F3 coalesced: a new round re-arms the late refetch, so two rounds give o
     clock.advance(WINDOW);
     await idle(qc, TABLE_KEYS.all);
     assert.equal(tables.count(), 3, "two rounds, two refetches");
-    clock.advance(TABLES_LATE_REFETCH_MS - 1);
+    clock.advance(LATE_MS - 1);
     await tick();
     assert.equal(tables.count(), 3, "the first round's late refetch was superseded");
     clock.advance(1);
     await idle(qc, TABLE_KEYS.all);
     assert.equal(tables.count(), 4, "one late refetch, after the second round");
-    clock.advance(TABLES_LATE_REFETCH_MS * 5);
+    clock.advance(LATE_MS * 5);
     await tick();
     assert.equal(tables.count(), 4);
   } finally {
@@ -231,17 +231,17 @@ test("D-F3 coalesced: a new round re-arms the late refetch, so two rounds give o
 });
 
 test("D-F3 dispose() cancels a pending late refetch", async () => {
-  const { qc, clock, nudger } = setup();
+  const { qc, clock, nudger } = setup(LIVE_STATE_EVENT_KINDS, LATE_SPEC);
   const tables = quickQuery(qc, TABLE_KEYS.all);
   try {
     await idle(qc, TABLE_KEYS.all);
     nudger.onKind("order-changed");
     clock.advance(WINDOW);
     await idle(qc, TABLE_KEYS.all);
-    assert.deepEqual(clock.armed(), [TABLES_LATE_REFETCH_MS], "precondition: the late refetch is armed");
+    assert.deepEqual(clock.armed(), [LATE_MS], "precondition: the late refetch is armed");
     nudger.dispose();
     assert.deepEqual(clock.armed(), [], "dispose clears it");
-    clock.advance(TABLES_LATE_REFETCH_MS * 2);
+    clock.advance(LATE_MS * 2);
     await tick();
     assert.equal(tables.count(), 2);
   } finally {
@@ -250,7 +250,7 @@ test("D-F3 dispose() cancels a pending late refetch", async () => {
 });
 
 test("D-F3 a hidden tab schedules no late refetch", async () => {
-  const { qc, calls, clock, nudger } = setup();
+  const { qc, calls, clock, nudger } = setup(LIVE_STATE_EVENT_KINDS, LATE_SPEC);
   const tables = quickQuery(qc, TABLE_KEYS.all);
   try {
     await idle(qc, TABLE_KEYS.all);
@@ -260,7 +260,7 @@ test("D-F3 a hidden tab schedules no late refetch", async () => {
     await tick();
     assert.ok(calls.some((c) => c.queryKey?.[0] === TABLE_KEYS.all[0]), "positive landmark: the hidden round did nudge the tables");
     assert.deepEqual(clock.armed(), [], "no late refetch armed");
-    clock.advance(TABLES_LATE_REFETCH_MS * 2);
+    clock.advance(LATE_MS * 2);
     await tick();
     assert.equal(tables.count(), 1, "stale only, nothing refetched");
   } finally {

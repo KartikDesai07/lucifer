@@ -708,11 +708,25 @@ test("PIN: hooks/use-realtime.ts is actually imported by the Kitchen page", () =
   assert.match(pageSrc, /useKitchenRealtime\(\)/, "kitchen/page.tsx must call useKitchenRealtime()");
 });
 
-test("PIN: the Kitchen board's poll is UNCHANGED — use-kitchen.ts still references REFETCH_INTERVALS.KITCHEN", () => {
-  const hookSrc = readSrc(USE_KITCHEN);
-  assert.match(hookSrc, /REFETCH_INTERVALS\.KITCHEN/, "use-kitchen.ts must still reference REFETCH_INTERVALS.KITCHEN — the socket is a supplement, never a replacement");
+test("PIN (D3): the Kitchen board still polls on REFETCH_INTERVALS.KITCHEN — through livePoll, so it is today's 10 s whenever the room is not proven up", () => {
+  const hookSrc = stripComments(readSrc(USE_KITCHEN));
+  assert.match(hookSrc, /livePoll\(REFETCH_INTERVALS\.KITCHEN\)/, "D3: use-kitchen.ts keeps REFETCH_INTERVALS.KITCHEN, stepped back to 120 s only while the room is proven up — the socket is a supplement, never a replacement");
   // Positive landmark: the hook is real content, not a blinded/empty read.
   assert.match(hookSrc, /export function useKitchenBoard\(/, "positive landmark: use-kitchen.ts must export useKitchenBoard(");
+});
+
+test("PIN (D3, F6, F7): use-realtime.ts's header keeps the poll a supplement — 120 s ONLY while the room is proven up — and the late tables refetch is gone", () => {
+  const raw = readSrc(USE_REALTIME);
+  const header = raw.slice(raw.indexOf("// A SUPPLEMENT TO THE POLL"), raw.indexOf("export const KITCHEN_EVENT_KINDS"));
+  assert.ok(header.includes("NEVER A REPLACEMENT"), "positive landmark: the header's supplement paragraph");
+  assert.match(header, /step back to 120 s ONLY while the\s*\/\/ room is PROVEN up/, "D3: the polls relax only on proof, never on a socket merely existing");
+  assert.match(header, /isRealtimeHealthy\(\), re-read on every tick/, "D3: health is re-read per tick, never cached");
+  assert.match(header, /today's 30 s \/ 10 s the moment\s*\/\/ it is not, with ONE catch-up round on the drop/, "D3: back to today's rate plus one catch-up");
+  assert.ok(!raw.includes("TABLES_LATE_REFETCH_MS"), "F7: the 6 s late tables refetch constant is gone");
+  const src = stripComments(raw);
+  const spec = src.slice(src.indexOf("export const LIVE_STATE_REALTIME"), src.indexOf("function useRealtimeInvalidate("));
+  assert.match(spec, /onRound: markTablesFreshRead,/, "F7: the live-state round reads the floor fresh");
+  assert.ok(!spec.includes("lateRefetch"), "F7: LIVE_STATE_REALTIME arms no late refetch");
 });
 
 // ── (6) GREP GATE ────────────────────────────────────────────────────────────

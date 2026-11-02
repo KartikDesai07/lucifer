@@ -102,7 +102,7 @@ function appBreakpointsCss(): string {
   const down = globals.match(/--animate-cart-sheet-down:[^;]*;/);
   assert.ok(tab && desk && wide, "app/globals.css declares the tab and desk breakpoints and the wide variant");
   assert.ok(up && down, "app/globals.css declares the cart sheet's two slides (owner Q19)");
-  return `@theme { ${tab![0]} ${desk![0]} ${up![0]} ${down![0]} }\n${wide![0]}\n`;
+  return `@theme { ${tab![0]} ${desk![0]} ${up![0]} ${down![0]} --color-card: var(--card); }\n${wide![0]}\n`;
 }
 
 test("PIN: real Tailwind compiles the /pos frame (page height, body grid, regions, main's foot, the bar, the cart sheet) to the exact CSS the frame pins assume — and the column sets cascade desk < xl < wide (owner Q19)", async () => {
@@ -157,7 +157,7 @@ test("PIN: real Tailwind compiles the /pos frame (page height, body grid, region
   const barOn = "@media (width < 80rem) { display: flex; }";
   // values 6.1 showBar (!cartOpen): [data-open] adds an attribute to the class, so it beats max-xl:flex in any order.
   const barAside = "&[data-open] { display: none; }";
-  const barBlur = "backdrop-filter: saturate(180%) blur(20px);";
+  const barSolid = "background-color: var(--color-card);"; // --color-card is var(--card) in globals.css (the test theme maps it)
   const sheetInset = ".inset-0 { inset: 0; }";
   const sheetUp =
     '@media (prefers-reduced-motion: no-preference) { &[data-state="open"] { animation: var(--animate-cart-sheet-up); } }';
@@ -188,7 +188,7 @@ test("PIN: real Tailwind compiles the /pos frame (page height, body grid, region
     [cartOn, "the cart column shows from 1280px (owner Q19)"],
     [barOn, "the bar shows below 1280px only (owner Q19)"],
     [barAside, "the bar steps aside while its sheet is open"],
-    [barBlur, "the bar's glass blur (values 6.1)"],
+    [barSolid, "the bar's solid card background (owner D2, 2026-11-02)"],
     [sheetInset, "the sheet: the whole screen at every width (owner Q19)"],
     ["z-index: 15;", "the sheet over the tab bar (z-index 15)"],
     [sheetUp, "the sheet slides up as it opens, motion-safe (owner Q19)"],
@@ -219,6 +219,7 @@ test("PIN: real Tailwind compiles the /pos frame (page height, body grid, region
   assert.ok(!css.includes(lgCols), "no 1024px column set (owner Q19)");
   assert.ok(!css.includes("box-shadow: var(--pop);"), "no shadow on the sheet at any width (owner Q19)");
   assert.ok(!css.includes("z-index: 14;"), "no scrim layer under the sheet (owner Q19)");
+  assert.ok(!css.includes("backdrop-filter"), "owner D2 (2026-11-02): the bar is solid, no backdrop filter, in either form");
 
   // No mangled var() emission: every "var(--pos-alert-h" opener is followed by ",0px)", once per page height token.
   const escapeRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

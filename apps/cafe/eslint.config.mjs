@@ -9,6 +9,15 @@ const compat = new FlatCompat({
   baseDirectory: __dirname,
 });
 
+// D4 (F8, fix I1): only the deploy build skips the tests. `next build` sets NODE_ENV=production at CLI
+// start, before it spawns its lint worker (NEXT_PHASE is set only after linting, so it cannot be the key).
+// `npm run lint` / `eslint .` leaves NODE_ENV unset and still lints every file; `NODE_ENV=production eslint .`
+// skips the tests on purpose, exactly as the build does.
+const buildOnlyIgnores =
+  process.env.NODE_ENV === "production"
+    ? ["**/*.test.ts", "**/*.test.tsx", "**/*.test.mjs", "**/*.fixtures.ts"]
+    : [];
+
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
@@ -35,6 +44,7 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      ...buildOnlyIgnores,
     ],
   },
 ];

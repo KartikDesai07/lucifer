@@ -165,10 +165,10 @@ test("render: the More button is a button named More that opens the sheet, lit o
 test("render: the bar is the HTML's glass strip (fixed, 5 columns, border-top, 2px top padding, phone only)", () => {
   const nav = /<nav\b[^>]*data-ui="tab-bar"[^>]*>/.exec(renderBar("/"))?.[0] ?? "";
   assert.ok(nav.length > 0, "the bar is a <nav>");
-  for (const cls of ["fixed", "inset-x-0", "bottom-0", "z-[12]", "grid", "grid-cols-5", "border-t", "border-border", "bg-glass", "pt-0.5", "pb-[env(safe-area-inset-bottom)]", "tab:hidden"]) {
+  for (const cls of ["fixed", "inset-x-0", "bottom-0", "z-[12]", "grid", "grid-cols-5", "border-t", "border-border", "bg-card", "pt-0.5", "pb-[env(safe-area-inset-bottom)]", "tab:hidden"]) {
     assert.ok(nav.split(/[\s"]/).includes(cls), `the bar carries ${cls}`);
   }
-  assert.ok(nav.includes("[backdrop-filter:saturate(180%)_blur(20px)]"), "the HTML's backdrop filter, in the HTML's order");
+  assert.ok(!nav.includes("backdrop-filter"), "owner D2 (2026-11-02): solid, no blur");
   assert.match(nav, /aria-label="Main"/, "the phone's main navigation (the side nav is hidden below 720px)");
 });
 

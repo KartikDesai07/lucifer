@@ -6,14 +6,15 @@ import {
   APPLE_TOUCH_ICON_PATH,
   MANIFEST_THEME_COLOR,
 } from "@/lib/pos-install";
-import { brandingUrl, productImageUrl } from "@/lib/images";
+import { DEFAULT_PRODUCT_LOGO_URL } from "@/lib/branding-default-logo";
+import { productImageUrl } from "@/lib/images";
 import { SCREEN_LOCK_SCRIPT } from "@/lib/screen-lock-script";
 import { NAV_STATE_SCRIPT } from "@/lib/nav-state-script";
+import { HTML_RULES_SCRIPT } from "@/lib/html-rules-scope";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Header } from "@/components/layout/Header";
 import { PageHeaderSlotProvider } from "@/components/layout/page-header-slot";
-import { PageFade } from "@/components/layout/PageFade";
 import { MasterDataProvider } from "@/components/layout/MasterDataProvider";
 import { PosPulseProvider } from "@/components/layout/PosPulseProvider";
 import { PrintHostProvider } from "@/components/layout/PrintHostProvider";
@@ -47,7 +48,7 @@ export async function generateMetadata(): Promise<Metadata> {
       title: settings.restaurantName?.trim() || APP_NAME,
       manifest: MANIFEST_PATH,
       icons: {
-        icon: [{ url: productImageUrl(settings.productLogo) ?? brandingUrl("productLogo") }],
+        icon: [{ url: productImageUrl(settings.productLogo) ?? DEFAULT_PRODUCT_LOGO_URL }],
         apple: [{ url: APPLE_TOUCH_ICON_PATH }],
       },
     };
@@ -56,7 +57,7 @@ export async function generateMetadata(): Promise<Metadata> {
       title: APP_NAME,
       manifest: MANIFEST_PATH,
       icons: {
-        icon: [{ url: brandingUrl("productLogo") }],
+        icon: [{ url: DEFAULT_PRODUCT_LOGO_URL }],
         apple: [{ url: APPLE_TOUCH_ICON_PATH }],
       },
     };
@@ -90,6 +91,8 @@ export default function DashboardLayout({
       {/* The nav's remembered collapse (U0 Task 2): marks <html> collapsed before the first paint, from the sidebar
           cookie, so the CSS shows the rail at once instead of flashing the wide sidebar. */}
       <script>{NAV_STATE_SCRIPT}</script>
+      {/* The staff rules' attribute on <html> before the first paint (F1); HtmlRulesScope below keeps it. */}
+      <script>{HTML_RULES_SCRIPT}</script>
       <SidebarProvider>
         <PosPulseProvider>
           {/* Print-host plan §B5 (PH-5): the host bridge lives in the shell so a
@@ -120,9 +123,8 @@ export default function DashboardLayout({
                   {/* The HTML's global rules (values 1.4, ruling R24) for every staff page, its lock and its dialogs. */}
                   <HtmlRulesScope />
                   {/* Below 720px the page's foot keeps 92px clear (values 2.1 screenPadB): the 59px tab bar plus air.
-                      PageFade replays the HTML's pageIn on this element when the path changes (ruling R11). */}
+                      No page fade on a screen change (owner D1, 2026-11-02). */}
                   <main className="flex-1 p-4 pb-[92px] tab:pb-4 md:p-6">
-                    <PageFade />
                     {children}
                   </main>
                   <PrintHostPrintSources />

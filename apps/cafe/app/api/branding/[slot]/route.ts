@@ -134,6 +134,12 @@ export async function GET(req: Request, { params }: Params) {
   const wantsVersion = requested !== null && VERSION_PATTERN.test(requested);
 
   try {
+    // The built-in mark's own version (F5): that URL names exactly these compile-time bytes, so it is answered
+    // immutable with no store read — the tab icon of a cafe with no logo saved costs one fetch, not one per screen.
+    if (slot === "productLogo" && requested === DEFAULT_PRODUCT_LOGO.version) {
+      return imageResponse(DEFAULT_PRODUCT_LOGO, IMMUTABLE_CACHE, ifNoneMatch);
+    }
+
     // A version that was asked for AND that we hold is the only case that earns
     // `immutable`, because it is the only case where the URL and the bytes
     // provably agree.

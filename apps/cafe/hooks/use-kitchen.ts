@@ -9,6 +9,7 @@ import {
 import { toast } from "sonner";
 import { apiGet, apiSend } from "@/lib/api-client";
 import { STALE_TIMES, REFETCH_INTERVALS } from "@/lib/query";
+import { livePoll } from "@/lib/live-poll";
 import { ORDER_KEYS } from "@/hooks/use-orders";
 import type { KitchenOrderCard } from "@/lib/kitchen-cards";
 
@@ -33,14 +34,15 @@ interface KitchenBoardData {
 
 // Live board for the wall/kitchen screen — 10s poll, kept alive even while
 // the tab is unfocused (refetchIntervalInBackground: true) because a wall
-// display is never the "focused" tab in the browser's sense.
+// display is never the "focused" tab in the browser's sense. D3: 120 s while
+// the realtime room is proven up (lib/live-poll.ts), 10 s the moment it is not.
 export function useKitchenBoard() {
   const isMutating = useIsMutating({ mutationKey: ORDER_KEYS.mutation }) > 0;
   return useQuery({
     queryKey: KITCHEN_KEYS.all,
     queryFn: () => apiGet<KitchenBoardData>("/api/kitchen"),
     staleTime: STALE_TIMES.LIVE,
-    refetchInterval: isMutating ? false : REFETCH_INTERVALS.KITCHEN,
+    refetchInterval: isMutating ? false : livePoll(REFETCH_INTERVALS.KITCHEN),
     refetchIntervalInBackground: true,
     refetchOnWindowFocus: !isMutating,
   });

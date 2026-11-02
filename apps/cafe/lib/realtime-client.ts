@@ -52,6 +52,8 @@ const RECONNECT_MAX_MS = 60_000;
 export type RealtimeListener = (kind: string, message: Readonly<Record<string, unknown>>) => void;
 
 const listeners = new Set<RealtimeListener>();
+/** Perf P1 F6 — told once per healthy→down transition (subscribeRealtimeDown). */
+const downListeners = new Set<() => void>();
 let socket: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 let pingTimer: ReturnType<typeof setInterval> | undefined;
@@ -90,12 +92,25 @@ function dropAndReconnect(): void {
   clearTimers();
   const dying = socket;
   socket = null;
+  // Read BEFORE the reset: the dying socket had proof of life, so the room was up.
+  const wasUp = lastSeenAt > 0;
   // Stale immediately: a torn-down socket must never read as healthy.
   lastSeenAt = 0;
   try {
     dying?.close();
   } catch {
     // Already closed.
+  }
+  // Once per healthy→down transition: a reconnect attempt that never opened has
+  // no proof of life, so it never fires again. Health already reads false here.
+  if (wasUp) {
+    for (const listener of [...downListeners]) {
+      try {
+        listener();
+      } catch {
+        // One bad subscriber cannot break the reconnect.
+      }
+    }
   }
   if (listeners.size === 0) return; // nobody is listening any more
   const delay = Math.min(RECONNECT_BASE_MS * 2 ** retry, RECONNECT_MAX_MS);
@@ -118,7 +133,13 @@ function connect(): void {
   }
   socket = ws;
 
+  // Only the CURRENT socket's events count (perf P1 fix C2 for close / error, final review M3 for open / message): a
+  // superseded socket's late open would clear the current socket's ping and pong timers, and its late frame would
+  // refresh the current socket's proof of life and clear its pong deadline (a half-open new socket would then survive
+  // one more ping cycle). `dropAndReconnect` and the last unsubscribe null `socket` first, so every event of a
+  // torn-down socket is ignored. (A browser never delivers a frame after close() anyway: CLOSING drops it.)
   ws.addEventListener("open", () => {
+    if (socket !== ws) return;
     retry = 0;
     lastSeenAt = Date.now(); // a completed handshake is itself proof of life
     clearTimers();
@@ -143,6 +164,7 @@ function connect(): void {
   });
 
   ws.addEventListener("message", (event) => {
+    if (socket !== ws) return;
     // ANY inbound frame proves the socket carries traffic, so it refreshes
     // proof-of-life and satisfies an outstanding ping.
     lastSeenAt = Date.now();
@@ -172,14 +194,35 @@ function connect(): void {
     }
   });
 
-  ws.addEventListener("close", () => dropAndReconnect());
+  // Only the CURRENT socket's close / error counts (perf P1 fix C2): a superseded
+  // socket's close can land long after its teardown (a half-open link's close
+  // handshake), and must neither tear down the newer proven socket nor fire a
+  // second down event. dropAndReconnect nulls `socket` first, so its own
+  // synchronous close() of the dying socket is ignored here too.
+  ws.addEventListener("close", () => {
+    if (socket !== ws) return;
+    dropAndReconnect();
+  });
   ws.addEventListener("error", () => {
+    if (socket !== ws) return;
     try {
       ws.close(); // makes the close path deterministic
     } catch {
       // Already closing.
     }
   });
+}
+
+/**
+ * Perf P1 F6 (D3) — told when the room goes DOWN: a close or a missed pong on a
+ * socket that had proof of life, once per healthy→down transition. Never opens
+ * a socket itself (the room's own subscribers do). Returns an unsubscribe.
+ */
+export function subscribeRealtimeDown(listener: () => void): () => void {
+  downListeners.add(listener);
+  return () => {
+    downListeners.delete(listener);
+  };
 }
 
 /**

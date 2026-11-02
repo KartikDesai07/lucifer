@@ -304,8 +304,8 @@ test("PIN: the four static-master hooks use STALE_TIMES.MASTERS + GC_TIMES.MASTE
   const tablesSrc = stripComments(readSrc(USE_TABLES));
   assert.match(
     tablesSrc,
-    /refetchInterval:\s*isMutating \? false : REFETCH_INTERVALS\.TABLES/,
-    "use-tables.ts must KEEP its REFETCH_INTERVALS.TABLES poll — table occupancy is live floor state; folding it into the masters would freeze the floor for a day",
+    /refetchInterval:\s*isMutating \? false : livePoll\(REFETCH_INTERVALS\.TABLES\)/,
+    "use-tables.ts must KEEP its REFETCH_INTERVALS.TABLES poll (through livePoll since D3: 120 s only while the realtime room is proven up) — table occupancy is live floor state; folding it into the masters would freeze the floor for a day",
   );
   assert.match(tablesSrc, /staleTime:\s*STALE_TIMES\.TABLES/, "use-tables.ts must keep the 30s tables staleTime, not the masters one");
 });

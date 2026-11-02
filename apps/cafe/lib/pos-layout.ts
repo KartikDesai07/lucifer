@@ -170,7 +170,7 @@ export function posOrderBarInsetsPx(viewport: NavViewport): { left: number; bott
   return { left: navWidthPx(viewport), bottom: viewport.viewportWidth < NAV_RAIL_MIN_PX ? TAB_BAR_HEIGHT_PX : 0 };
 }
 
-// The order bar (values 6.1): the HTML's glass strip — --glass behind a saturate(180%) blur(20px), a 1px --border rule
+// The order bar (values 6.1): the HTML's strip, solid (bg-card, no backdrop filter: owner D2, 2026-11-02), a 1px --border rule
 // on top, 10px 14px, its two lines and "Review order" 12px apart, centred; z-index 10, under the tab bar's 12 (they
 // never overlap). It lies over the page's foot — absolute inside the page, which runs from the nav's edge to the
 // window's right edge and foot, so its box is the HTML's fixed one (posOrderBarInsetsPx) and follows the nav by itself
@@ -184,7 +184,7 @@ export function posOrderBarInsetsPx(viewport: NavViewport): { left: number; bott
 // state (owner Q18: an empty order too) except while its sheet is open (data-open; values 6.1 showBar: !cartOpen — the
 // sheet covers the page's foot anyway). The HTML sets no line-height here: normal.
 export const POS_MOBILE_BAR_CLASS =
-  "absolute inset-x-0 bottom-0 max-tab:bottom-[calc(59px+env(safe-area-inset-bottom))] z-10 hidden items-center gap-3 border-t border-border bg-glass px-3.5 py-2.5 tab:pb-[calc(10px+env(safe-area-inset-bottom))] leading-[normal] [backdrop-filter:saturate(180%)_blur(20px)] [-webkit-backdrop-filter:saturate(180%)_blur(20px)] max-xl:flex data-open:hidden";
+  "absolute inset-x-0 bottom-0 max-tab:bottom-[calc(59px+env(safe-area-inset-bottom))] z-10 hidden items-center gap-3 border-t border-border bg-card px-3.5 py-2.5 tab:pb-[calc(10px+env(safe-area-inset-bottom))] leading-[normal] max-xl:flex data-open:hidden";
 /** "Review order" (values 6.1): 44px, radius 10, --accent with --on-accent, 0 20px, 15px 600; no hover rule. The HTML's
  *  press comes from BRAND_PRESS_CLASS (MobileCartBar), as on the cart's Send KOT and Pay. */
 export const POS_MOBILE_BAR_BUTTON_CLASS =

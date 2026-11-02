@@ -135,7 +135,7 @@ test("PIN (vendor): Next 15.5 keeps a failed prefetch as a reusable string entry
   // ...and this app does not opt into the new segment cache (landmark: the
   // staleTimes block the reuse window lives in).
   const ourConfig = stripComments(readCafe("next.config.ts"));
-  assert.match(ourConfig, /staleTimes: \{ static: PREFETCH_REUSE_SECONDS \}/);
+  assert.match(ourConfig, /staleTimes: \{ static: PREFETCH_REUSE_SECONDS, dynamic: PREFETCH_REUSE_SECONDS \}/);
   assert.doesNotMatch(ourConfig, /clientSegmentCache/);
 });
 

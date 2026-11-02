@@ -8,6 +8,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { useKitchenRealtime } from "@/hooks/use-realtime";
 import { KITCHEN_FRESHNESS_TICK_MS } from "@pos/shared/query";
 import { filterCards, kitchenHeaderLine, kitchenStripShows, type KitchenFilter } from "@/lib/kitchen-header";
+import { realtimeTrusted } from "@/lib/live-poll";
 import { KITCHEN_BOARD_CLASS, KITCHEN_PAGE_CLASS } from "@/lib/kitchen-layout";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { RefreshStrip } from "@/components/shared/RefreshStrip";
@@ -56,12 +57,14 @@ function KitchenBoard() {
   // The header's second line (owner Q3): the cards shown, their average wait and the freshness once loaded (below 720px
   // the short line, owner Q11: "avg wait", no freshness); today's loading words before the first answer; nothing on the
   // first-load error and offline branches. The strip needs an old answer AND a failed or paused poll (final review I1):
-  // a return from the cache and a throttled background tab show the last answer while a healthy refetch runs.
+  // a return from the cache and a throttled background tab show the last answer while a healthy refetch runs. D3: the
+  // room's trust (realtimeTrusted, perf final review I2) is read at render, so "old" is 180 s while it is trusted (the
+  // board then polls every 120 s).
   return (
     <div data-ui="kitchen-page" className={KITCHEN_PAGE_CLASS}>
       <RefreshStrip
         ui="kitchen"
-        show={kitchenStripShows({ updatedAtMs: board.dataUpdatedAt, nowMs, isError: board.isError, isPaused: board.isPaused })}
+        show={kitchenStripShows({ updatedAtMs: board.dataUpdatedAt, nowMs, isError: board.isError, isPaused: board.isPaused, healthy: realtimeTrusted() })}
         message="Couldn't refresh the kitchen board. Showing the last update."
         onRetry={() => void board.refetch()}
       />

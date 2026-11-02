@@ -1,18 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { stripComments } from "@/lib/source-pin-utils";
 import { cn } from "@/lib/utils";
-import { PAGE_IN_KEYFRAMES, PAGE_IN_TIMING } from "@/lib/shell-layout";
 import { buttonVariants } from "@/components/ui/button";
 import { BRAND_NAV_PRESS_CLASS, BRAND_PRESS_CLASS, HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { HEADER_ICON_BUTTON_CLASS, HEADER_OUTLINE_BUTTON_CLASS, HEADER_PRIMARY_BUTTON_CLASS } from "@/components/layout/header-classes";
 
 // U0 match Task 5, fix round 1: the HTML's motion on the rebuilt shell and dashboard — its button feel (values 1.4) and
-// its pageIn (values 1.5 / 3.0, ruling R11).
+// (its pageIn fade was removed by owner D1, 2026-11-02).
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CAFE = path.join(HERE, "..");
@@ -75,25 +74,11 @@ test("the rebuilt controls carry the press: tab bar and More, the sheets' rows a
   assert.ok(read("components/dashboard/RangeBar.tsx").includes('button: "whitespace-nowrap rounded-[7px] px-3 text-[13px] " + HTML_PRESS_CLASS,'), "the period buttons");
 });
 
-test("ruling R11: the HTML's pageIn replays on the page content when the path changes, never remounting the column", () => {
-  assert.deepEqual(
-    PAGE_IN_KEYFRAMES,
-    [
-      { opacity: 0, transform: "translateY(6px)" },
-      { opacity: 1, transform: "none" },
-    ],
-    "pageIn: from opacity 0, 6px below",
-  );
-  assert.deepEqual(PAGE_IN_TIMING, { duration: 400, easing: "cubic-bezier(.2,.8,.2,1)", fill: "backwards" }, ".4s cubic-bezier(.2,.8,.2,1) backwards");
+test("owner D1 (2026-11-02): no page fade on a screen change — <main> holds only the page", () => {
   const layout = read("app/(dashboard)/layout.tsx");
-  assert.match(layout, /<main className="flex-1 p-4 pb-\[92px\] tab:pb-4 md:p-6">\s*<PageFade \/>\s*\{children\}\s*<\/main>/, "the marker sits first in the page content");
-  assert.ok(!/\bkey=/.test(layout), "nothing in the shell is keyed (the column, its header and the strip's sound unlock stay mounted)");
-  const fade = read("components/layout/PageFade.tsx");
-  assert.ok(fade.includes("const pathname = usePathname();"), "it follows the path (a query change alone never replays it)");
-  assert.match(fade, /useLayoutEffect\(\(\) => \{[\s\S]*?\}, \[pathname\]\);/, "a layout effect on the path, before the page paints");
-  assert.ok(fade.includes("const page = marker.current?.parentElement;"), "it animates <main>, the page content, not the whole column");
-  assert.ok(fade.includes('window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;'), "no motion when the device asks for less");
-  assert.ok(fade.includes("const fade = page.animate(PAGE_IN_KEYFRAMES, PAGE_IN_TIMING);"), "the Web Animations API, with the HTML's keyframes and timing");
-  assert.ok(fade.includes("return () => fade.cancel();"), "a newer path cancels the running fade");
-  assert.ok(fade.includes('<span ref={marker} hidden aria-hidden="true" data-ui="page-fade" />'), "the marker takes no space and says nothing");
+  assert.match(layout, /<main className="flex-1 p-4 pb-\[92px\] tab:pb-4 md:p-6">\s*\{children\}\s*<\/main>/, "nothing but the page inside <main>");
+  assert.ok(!/key=/.test(layout), "nothing in the shell is keyed (the column, its header and the strip's sound unlock stay mounted)");
+  assert.ok(!existsSync(path.join(CAFE, "components/layout/PageFade.tsx")), "PageFade is gone");
+  const shell = read("lib/shell-layout.ts");
+  assert.ok(!/PAGE_IN_KEYFRAMES|PAGE_IN_TIMING/.test(shell), "the pageIn constants are gone");
 });

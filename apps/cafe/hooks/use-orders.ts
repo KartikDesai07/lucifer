@@ -15,6 +15,7 @@ import { ApiError, apiGet, apiSend } from "@/lib/api-client";
 import { printAgentRequestOptions } from "@/lib/print-agent-calls";
 import { cafeDateString } from "@/lib/utils";
 import { STALE_TIMES, GC_TIMES, REFETCH_INTERVALS } from "@/lib/query";
+import { livePoll } from "@/lib/live-poll";
 import { firstPageOnly, nextOrderCursor, onePageAtMost } from "@/lib/order-query";
 import { classifyFailure, settledMessage } from "@/lib/pending-writes";
 import { TABLE_KEYS } from "@/hooks/use-tables";
@@ -66,13 +67,15 @@ export const ORDER_KEYS = {
 // ever receives an explicit `date` for a past day (the EOD picker) — that
 // data is immutable, so the poll is wasted (a full M0 aggregation every 30s
 // for a figure that will never change); disabled whenever `date` is set.
+// D3: every live poll in this file steps back to 120 s while the realtime room
+// is proven up (lib/live-poll.ts); today's interval the moment it is not.
 export function useOrderSummary(date?: string) {
   return useQuery({
     queryKey: ORDER_KEYS.summary(date),
     queryFn: () =>
       apiGet<OrderSummary>(`/api/orders/summary${date ? `?date=${date}` : ""}`),
     staleTime: STALE_TIMES.SUMMARY,
-    refetchInterval: date ? false : REFETCH_INTERVALS.SUMMARY,
+    refetchInterval: date ? false : livePoll(REFETCH_INTERVALS.SUMMARY),
   });
 }
 
@@ -103,13 +106,15 @@ export function useOrders(
   options: { refetchInterval?: number; enabled?: boolean; gcTime?: number } = {},
 ) {
   const isMutating = useIsMutating({ mutationKey: ORDER_KEYS.mutation }) > 0;
+  // The caller's number goes through livePoll (D3); none or 0 stays "no poll".
+  const poll = options.refetchInterval ? livePoll(options.refetchInterval) : undefined;
   return useQuery({
     queryKey: ORDER_KEYS.list(filters),
     queryFn: () => apiGet<Order[]>(`/api/orders${buildQuery(filters)}`),
     staleTime: STALE_TIMES.LIVE,
     gcTime: options.gcTime ?? GC_TIMES.ORDERS,
     enabled: options.enabled,
-    refetchInterval: isMutating ? false : options.refetchInterval,
+    refetchInterval: isMutating ? false : poll,
     refetchOnWindowFocus: !isMutating,
   });
 }
@@ -148,7 +153,7 @@ export function useOrdersInfinite(filters: OrderFilters = {}) {
     getNextPageParam: (lastPage: Order[]) => nextOrderCursor(lastPage, pageSize),
     staleTime: STALE_TIMES.LIVE,
     gcTime: ORDERS_LIST_GC_MS,
-    refetchInterval: isMutating ? false : (query) => (onePageAtMost(query.state.data) ? REFETCH_INTERVALS.LIVE_LISTS : false),
+    refetchInterval: isMutating ? false : (query) => (onePageAtMost(query.state.data) ? livePoll(REFETCH_INTERVALS.LIVE_LISTS)() : false),
     refetchOnWindowFocus: !isMutating,
   });
 }

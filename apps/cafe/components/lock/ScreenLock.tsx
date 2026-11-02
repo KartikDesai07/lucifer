@@ -225,6 +225,8 @@ export function ScreenLock() {
         await refetchPersonScopedQueries(queryClient);
         clearPersonScopedQueries(queryClient, since);
       }
+      // F4: the router cache is keyed by URL, not person — drop every cached shell of the last person's session.
+      router.refresh();
       if (plan.redirectHome) router.replace("/");
       if (plan.toast) toast.success(plan.toast);
     }

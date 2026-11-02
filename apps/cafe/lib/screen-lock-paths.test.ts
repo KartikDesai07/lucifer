@@ -676,3 +676,21 @@ test("a password switch: the cover lifts only once the page holds the staff memb
   assert.equal(r.weekLeft, undefined, "the admin's 7-day figures are gone from the cache");
   assert.equal(r.ordersLeft, "orders", "a query that is not person-scoped is left alone");
 });
+
+test("PIN (F4, fix M4): a person switch drops the router cache — router.refresh() sits INSIDE the plan.switched block", () => {
+  const src = read(COVER);
+  const opener = "if (plan.switched) {";
+  const at = src.indexOf(opener);
+  assert.ok(at >= 0, "positive landmark: the switched block");
+  let depth = 0;
+  let end = -1;
+  for (let i = at + opener.length - 1; i < src.length && end < 0; i++) {
+    if (src[i] === "{") depth++;
+    else if (src[i] === "}" && --depth === 0) end = i;
+  }
+  assert.match(src.slice(end + 1), /^[^{}]*void rememberThisDevice\(\);/, "landmark: the brace match ends the block, with no other block before rememberThisDevice()");
+  const block = src.slice(at, end + 1);
+  assert.equal(count(src, "router.refresh();"), 1, "M4: one router.refresh() in the cover");
+  assert.ok(block.includes("router.refresh();"), "M4 (F4): the refresh is inside the switched block — a person switch drops the router cache, an unlock by the same person does not");
+  assert.ok(src.indexOf("router.refresh();") < src.indexOf("close();", src.indexOf("const unlocked")), "refresh runs before the cover closes");
+});
