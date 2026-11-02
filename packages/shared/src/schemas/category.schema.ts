@@ -27,6 +27,12 @@ export const updateCategorySchema = createCategorySchema.partial().extend({
 // order, and the route refuses a list that is not exactly the current set.
 // The duplicate check sits on the ARRAY so the error path is `ids` (validateBody
 // surfaces only fieldErrors) and the object stays a plain strict schema.
+// KOT kitchen order (2026-11-01): `list` says WHICH arrangement the ids are —
+// absent or "menu" = the POS/QR menu order (`order`, today); "kitchen" = the
+// order dishes print on every kitchen ticket (`kotOrder`). Same exact-set rule.
+export const CATEGORY_ARRANGE_LISTS = ["menu", "kitchen"] as const;
+export type CategoryArrangeListKind = (typeof CATEGORY_ARRANGE_LISTS)[number];
+
 export const reorderCategoriesSchema = z
   .object({
     ids: z
@@ -34,9 +40,23 @@ export const reorderCategoriesSchema = z
       .min(1, "Send the categories to arrange")
       .max(CATEGORY_REORDER_MAX, `At most ${CATEGORY_REORDER_MAX} categories`)
       .refine((ids) => new Set(ids).size === ids.length, "The same category appears twice"),
+    list: z.enum(CATEGORY_ARRANGE_LISTS).optional(),
   })
   .strict();
+
+// `{ list: "kitchen", clear: true }` — back to "not set": every KOT prints in the
+// order the items were added again. Only the kitchen list can be cleared (the
+// menu order always exists).
+export const clearKitchenOrderSchema = z
+  .object({ list: z.literal("kitchen"), clear: z.literal(true) })
+  .strict();
+
+// The PATCH /api/categories body: an arrangement OR the kitchen clear. Both
+// members are strict, so a body mixing `ids` and `clear` is refused. (Zod 3: a
+// union reports the member that got furthest, so an `ids` error keeps its path.)
+export const arrangeCategoriesSchema = z.union([reorderCategoriesSchema, clearKitchenOrderSchema]);
 
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
 export type ReorderCategoriesInput = z.infer<typeof reorderCategoriesSchema>;
+export type ArrangeCategoriesInput = z.infer<typeof arrangeCategoriesSchema>;

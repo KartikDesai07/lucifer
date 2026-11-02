@@ -134,8 +134,11 @@ test("withKitchenFlags fails OPEN: a read throw returns the lines unchanged with
   const src = code("lib/kitchen-lines-server.ts");
   const tryAt = at(src, "try {");
   const reads = at(src, 'Product.find({ _id: { $in: ids } }).select("categoryId noKot")');
-  at(src, 'Category.find({ noKot: true }).select("_id")');
-  assert.ok(tryAt < reads, "both reads run inside the try");
+  // KOT kitchen order: the one category read also brings the ranked categories (same round trip).
+  const categories = at(src, 'Category.find({ $or: [{ noKot: true }, { kotOrder: { $exists: true } }] })');
+  at(src, '.select("_id noKot kotOrder")');
+  assert.ok(tryAt < reads && tryAt < categories, "both reads run inside the try");
+  at(src, "return stampKitchenFlags(lines, facts, skipCategoryIds, categoryRanks);");
   at(src, "} catch {\n    return { lines: [...lines], kitchen: true };\n  }");
 });
 

@@ -9,6 +9,8 @@ import {
   movedAnnouncement,
   droppedAnnouncement,
   cancelledAnnouncement,
+  kitchenArrangement,
+  kitchenOrderIsSet,
 } from "./category-arrange";
 import type { Category, Product } from "@/types";
 
@@ -97,6 +99,45 @@ test("itemCountsByCategory: an archived-only category still counts toward the al
 
 test("itemCountsByCategory: empty inputs give an empty map", () => {
   assert.equal(itemCountsByCategory([], []).size, 0);
+});
+
+// ── kitchenArrangement / kitchenOrderIsSet ───────────────────────────────
+
+function kot(id: string, kotOrder?: number): Category {
+  const base: Category = { _id: id, name: id, order: 0, createdAt: "", updatedAt: "" };
+  return kotOrder === undefined ? base : { ...base, kotOrder };
+}
+
+test("kitchenArrangement: placed by kotOrder ascending, then the unplaced in menu order", () => {
+  const menu = [kot("a"), kot("b", 1), kot("c"), kot("d", 0)];
+  assert.deepEqual(kitchenArrangement(menu), ["d", "b", "a", "c"]);
+});
+
+test("kitchenArrangement: equal kotOrder ties keep their input position", () => {
+  const menu = [kot("a", 2), kot("b", 2), kot("c", 1)];
+  assert.deepEqual(kitchenArrangement(menu), ["c", "a", "b"]);
+});
+
+test("kitchenArrangement: all unplaced = the menu order", () => {
+  assert.deepEqual(kitchenArrangement([kot("a"), kot("b"), kot("c")]), ["a", "b", "c"]);
+});
+
+test("kitchenArrangement: a category added after the arrangement sits unplaced at the bottom", () => {
+  const menu = [kot("new"), kot("b", 1), kot("a", 0)];
+  assert.deepEqual(kitchenArrangement(menu), ["a", "b", "new"]);
+});
+
+test("kitchenArrangement: a non-finite kotOrder counts as unplaced; input is not mutated", () => {
+  const menu = [kot("a", Number.NaN), kot("b", 0)];
+  assert.deepEqual(kitchenArrangement(menu), ["b", "a"]);
+  assert.deepEqual(menu.map((c) => c._id), ["a", "b"]);
+});
+
+test("kitchenOrderIsSet: true when any category is placed (even at 0), false when none", () => {
+  assert.equal(kitchenOrderIsSet([kot("a"), kot("b", 0)]), true);
+  assert.equal(kitchenOrderIsSet([kot("a"), kot("b")]), false);
+  assert.equal(kitchenOrderIsSet([kot("a", Number.NaN)]), false);
+  assert.equal(kitchenOrderIsSet([]), false);
 });
 
 // ── announcement strings ─────────────────────────────────────────────────

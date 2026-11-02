@@ -12,7 +12,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { AdminGuard } from "@/components/shared/AdminGuard";
 import { RefreshStrip } from "@/components/shared/RefreshStrip";
-import { CategoryArrangeList } from "@/components/menu/CategoryArrangeList";
+import { KitchenOrderPanel } from "@/components/menu/KitchenOrderPanel";
 import { CategoryDeleteDialog } from "@/components/menu/CategoryDeleteDialog";
 import { CategoryEditorDialog } from "@/components/menu/CategoryEditorDialog";
 import { MenuPageHeader } from "@/components/menu/MenuPageHeader";
@@ -115,7 +115,8 @@ function CategoriesPageContent() {
             }
           />
         ) : (
-          <CategoryArrangeList
+          // The owner's KOT kitchen order (main 56fde33): the Menu order / Kitchen order switch over the same list.
+          <KitchenOrderPanel
             categories={list}
             activeProducts={active}
             archivedProducts={archived}

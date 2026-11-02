@@ -62,6 +62,7 @@
     "verify:slips:live": "node --import tsx scripts/verify-slip-numbers-live.ts",
     "verify:orders:idem:live": "node --import tsx scripts/verify-order-idem-live.ts",
     "verify:skip-kot:live": "node --import tsx scripts/verify-skip-kot-live.ts",
+    "verify:kitchen-order:live": "node --import tsx scripts/verify-kitchen-order-live.ts",
     "verify:expenses:live": "node --import tsx scripts/verify-expenses-live.ts",
     "verify:staff-pin:live": "node --import tsx scripts/verify-staff-pin-live.ts"
   },
@@ -536,6 +537,10 @@
     "lib/invoice-number-paths.test.ts",
     "lib/print-template-gst-bill.test.ts",
     "lib/skip-kot-paths.test.ts",
+    "lib/kitchen-order-routing.test.ts",
+    "lib/kitchen-order-ui-paths.test.ts",
+    "lib/bill-lines.test.ts",
+    "lib/bill-lines-render.test.ts",
     "lib/expenses/expenses.test.ts",
     "lib/expenses/expenses-report.test.ts",
     "lib/expenses/expenses-pins.test.ts",

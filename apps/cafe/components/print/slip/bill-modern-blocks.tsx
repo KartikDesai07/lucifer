@@ -1,5 +1,6 @@
 import { orderItemLabel, orderItemModifierLines } from "@pos/shared/utils";
 import { inr } from "@/lib/utils";
+import { billLinesOf } from "@/lib/bill-lines"; // owner 2026-11-02: a repeated item is one bill line
 import type { OrderItem } from "@/types";
 import { billThemedBlocks, type BillTheme } from "./bill-themed-blocks";
 import type { SlipDesign, BillRenderers } from "./slip-designs";
@@ -67,7 +68,7 @@ const MODERN_BLOCKS: BillRenderers = {
         <span className={AMOUNT_CELL}><span className={HEAD_CELL}>Amount</span></span>
       </div>
       <div className="flex flex-col gap-1 pt-1">
-        {order.items.map((item, i) => (
+        {billLinesOf(order.items).map((item, i) => (
           <div key={`${item.productId}-${i}`}>
             <div className="flex items-baseline">
               <span className="min-w-0 flex-1 font-bold">{orderItemLabel(item)}</span>

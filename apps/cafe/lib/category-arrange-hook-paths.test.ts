@@ -46,7 +46,8 @@ test("PIN: CategoryArrangeList rolls back to the LATEST server ids on a failed s
   // `previous` variable closed over when the drag started.
   assert.match(
     src,
-    /const latestServerIdsRef = useRef<string\[\]>\(categories\.map\(\(c\) => c\._id\)\);\s*\n\s*latestServerIdsRef\.current = categories\.map\(\(c\) => c\._id\);/,
+    // KOT kitchen order: both come from idsOf() (the menu or the kitchen arrangement of the server list).
+    /const latestServerIdsRef = useRef<string\[\]>\(idsOf\(\)\);\s*\n\s*latestServerIdsRef\.current = idsOf\(\);/,
     "a ref tracking the latest server ids must be assigned unconditionally every render (not inside useEffect)",
   );
   assert.match(
@@ -55,6 +56,12 @@ test("PIN: CategoryArrangeList rolls back to the LATEST server ids on a failed s
     "a failed save must roll back to latestServerIdsRef.current, not a pre-drag `previous` snapshot",
   );
   assert.ok(!/setOrder\(previous\)/.test(src), "the rollback must no longer reference a stale `previous` snapshot (G2 fix)");
+  // idsOf() reads the CURRENT categories prop on every call (no memo, no state); the menu arrangement is today's map.
+  assert.match(
+    src,
+    /const idsOf = \(\): string\[\] => \(list === "kitchen" \? kitchenArrangement\(categories\) : categories\.map\(\(c\) => c\._id\)\);/,
+    "idsOf must derive the ids from the current categories prop",
+  );
 });
 
 test("PIN: useReorderCategories sends the FULL ordered id list on every save, not a partial range", () => {
@@ -62,7 +69,8 @@ test("PIN: useReorderCategories sends the FULL ordered id list on every save, no
   assert.match(src, /export function useReorderCategories\(/, "useReorderCategories must be exported");
   assert.match(
     src,
-    /apiSend<Category\[\]>\("\/api\/categories",\s*"PATCH",\s*\{\s*ids\s*\}\)/,
+    // KOT kitchen order: the kitchen list adds `list`; the ids are the mutation's own whole argument either way.
+    /apiSend<Category\[\]>\("\/api\/categories",\s*"PATCH",\s*list === "kitchen" \? \{ ids, list \} : \{ ids \}\)/,
     "the PATCH body must be { ids } built from the mutation's own argument (the whole order array), not a slice of it",
   );
   // The mutationFn's parameter itself must be the whole array (ids: string[]),

@@ -1,11 +1,11 @@
 import { createCollectionRoute } from "@/lib/crud-route";
 import { CATEGORY_LIST, listSpecConfig, listCategories } from "@/lib/masters";
-import { createCategorySchema, reorderCategoriesSchema } from "@/schemas";
+import { createCategorySchema, arrangeCategoriesSchema } from "@/schemas";
 import { connectDB } from "@/lib/db";
 import { Category } from "@/models/Category";
 import cache from "@/lib/cache";
 import { success, failure, validateBody, requireAdmin, serverError } from "@/lib/api-helpers";
-import { sameIdSet, categoryReorderOps, CATEGORY_LIST_CHANGED_ERROR } from "@/lib/category-order";
+import { sameIdSet, categoryReorderOps, kitchenOrderOps, CATEGORY_LIST_CHANGED_ERROR } from "@/lib/category-order";
 import { PUBLIC_MENU_CACHE_KEY } from "@/lib/public-menu";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +17,9 @@ const CACHE_KEY = CATEGORY_LIST.cacheKey;
 //   or device just changed, so the retry can never race a stale in-process
 //   cache on THIS instance).
 // POST /api/categories — create (admin-only; clears cache)
-// PATCH /api/categories — save the drag-and-drop arrangement (admin-only)
+// PATCH /api/categories — save the drag-and-drop arrangement (admin-only):
+//   the menu order (`list` absent or "menu"), the KOT Kitchen order
+//   (`list: "kitchen"`), or `{ list: "kitchen", clear: true }` (back to "not set")
 //
 // The list itself is described once, in CATEGORY_LIST (lib/masters.ts), which
 // GET /api/bootstrap serves the categories part from too — `listSpecConfig`
@@ -50,21 +52,29 @@ export async function PATCH(req: Request) {
   const authed = await requireAdmin();
   if ("error" in authed) return authed.error;
 
-  const parsed = await validateBody(req, reorderCategoriesSchema);
+  const parsed = await validateBody(req, arrangeCategoriesSchema);
   if ("error" in parsed) return parsed.error;
+  const body = parsed.data;
 
   try {
     await connectDB();
-    const current = await Category.find().select("_id").lean();
-    const currentIds = current.map((c) => String(c._id));
+    if ("clear" in body) {
+      // KOT kitchen order cleared: every KOT prints in the order items were
+      // added again (lines already stamped keep their rank; new lines get none).
+      await Category.updateMany({ kotOrder: { $exists: true } }, { $unset: { kotOrder: 1 } });
+    } else {
+      const current = await Category.find().select("_id").lean();
+      const currentIds = current.map((c) => String(c._id));
 
-    if (!sameIdSet(parsed.data.ids, currentIds)) {
-      return failure(CATEGORY_LIST_CHANGED_ERROR, 409);
+      if (!sameIdSet(body.ids, currentIds)) {
+        return failure(CATEGORY_LIST_CHANGED_ERROR, 409);
+      }
+
+      await Category.bulkWrite(body.list === "kitchen" ? kitchenOrderOps(body.ids) : categoryReorderOps(body.ids));
     }
-
-    await Category.bulkWrite(categoryReorderOps(parsed.data.ids));
     cache.del(CACHE_KEY);
-    cache.del(PUBLIC_MENU_CACHE_KEY);
+    // The public menu shows the menu order only (never kotOrder): a kitchen save leaves its cache.
+    if (body.list !== "kitchen") cache.del(PUBLIC_MENU_CACHE_KEY);
     return success(await listCategories());
   } catch (error) {
     return serverError("Failed to save the arrangement", error);

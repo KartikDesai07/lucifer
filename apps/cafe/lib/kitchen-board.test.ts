@@ -301,3 +301,39 @@ test("S4: an all-skip order has no rows at all, so its card is dropped", () => {
   const ord = order({ items: [firedItem({ name: "Water", noKot: true }), firedItem({ productId: PRODUCT_B, name: "Juice", noKot: true })] });
   assert.equal(buildKitchenRows({ orders: [ord], ticksByOrder: {}, now: NOW }).length, 0);
 });
+
+// ── KOT kitchen order: a round's card lines follow the category rank ─────────
+
+const PRODUCT_C = "3".repeat(24);
+
+test("kitchen order: one round's lines by kotRank, unplaced last (before: by ref), and the row carries no rank", () => {
+  const ord = order({
+    items: [
+      firedItem({ productId: PRODUCT_A, name: "Unplaced" }),
+      firedItem({ productId: PRODUCT_B, name: "Dessert", kotRank: 2 }),
+      firedItem({ productId: PRODUCT_C, name: "Starter", kotRank: 0 }),
+    ],
+  });
+  const rows = buildKitchenRows({ orders: [ord], ticksByOrder: {}, now: NOW });
+  assert.deepStrictEqual(rows.map((r) => r.name), ["Starter", "Dessert", "Unplaced"]);
+  assert.ok(rows.every((r) => !("kotRank" in r)), "the wire row shape is unchanged");
+  // vision guard: the same lines with no rank keep today's ref order.
+  const plain = order({ items: ord.items.map(({ kotRank: _unused, ...line }) => line) });
+  assert.deepStrictEqual(
+    buildKitchenRows({ orders: [plain], ticksByOrder: {}, now: NOW }).map((r) => r.name),
+    ["Unplaced", "Dessert", "Starter"],
+  );
+});
+
+test("kitchen order: rounds still go oldest-fired first; the rank only orders lines inside a round", () => {
+  const ord = order({
+    items: [
+      firedItem({ productId: PRODUCT_A, name: "R1 Main", kotRound: 1, kotRank: 5 }),
+      firedItem({ productId: PRODUCT_B, name: "R2 Starter", kotRound: 2, kotRank: 0 }),
+      firedItem({ productId: PRODUCT_C, name: "R1 Starter", kotRound: 1, kotRank: 0 }),
+    ],
+    kotFiredAt: [new Date(NOW.getTime() - 60_000), NOW],
+  });
+  const rows = buildKitchenRows({ orders: [ord], ticksByOrder: {}, now: NOW });
+  assert.deepStrictEqual(rows.map((r) => r.name), ["R1 Starter", "R1 Main", "R2 Starter"]);
+});

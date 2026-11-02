@@ -261,9 +261,10 @@ test("PIN: OrderReceipt's item rows render the label ONLY via orderItemLabel(ite
   // landmark is that orderItemLabel still comes from the shared utils module.
   assert.match(src, /import \{[^}]*orderItemLabel[^}]*\} from "@pos\/shared\/utils";/);
 
-  const marker = "order.items.map((item, i) => (";
+  // Owner 2026-11-02: the rows are the bill lines (a repeated item joined into one, lib/bill-lines.ts).
+  const marker = "billLinesOf(order.items).map((item, i) => (";
   const mapStart = src.indexOf(marker);
-  assert.ok(mapStart >= 0, "the item rows must be built from order.items.map((item, i) => (...))");
+  assert.ok(mapStart >= 0, "the item rows must be built from billLinesOf(order.items).map((item, i) => (...))");
   const openParen = mapStart + marker.length - 1;
   assert.equal(src[openParen], "(", "marker must end on the JSX-wrapping opening paren");
   const closeParen = matchingParenEnd(src, openParen);

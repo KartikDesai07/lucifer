@@ -7,6 +7,7 @@ import { createCrudHooks } from "@/hooks/create-crud-hooks";
 import { STALE_TIMES, GC_TIMES } from "@/lib/query";
 import { categoryAddedToast, categoryDeletedToast, categorySavedToast } from "@/lib/menu-view";
 import { PRODUCT_KEYS } from "@/hooks/use-products";
+import type { CategoryArrangeListKind } from "@/schemas";
 import type {
   Category,
   CreateCategoryInput,
@@ -15,6 +16,10 @@ import type {
 
 export const CATEGORY_KEYS = {
   all: ["categories"] as const,
+  // Every arrangement write (menu drag, kitchen drag, kitchen clear) shares this key, so the list and
+  // the Clear button both pause while ANY of them is in flight (two crossing saves could otherwise
+  // leave the screen showing a different kitchen order from the one the server kept).
+  arrange: ["categories", "arrange"] as const,
 };
 
 // N1 (arbiter-confirmed): MasterDataProvider is the ONLY writer of the
@@ -150,10 +155,16 @@ export function useCreateCategory() {
 // the cache should hold writes it directly via commitCategories instead
 // (N1: not setQueryData, so the device blob is kept in sync too): success
 // commits the PATCH response, any error commits an uncached ?fresh=1 read.
-export function useReorderCategories() {
+//
+// `list` picks which arrangement is saved: "menu" sends exactly `{ ids }` (no
+// `list` key -- byte-for-byte the original request); "kitchen" adds the
+// `list: "kitchen"` key (the order dishes print on every kitchen ticket).
+export function useReorderCategories(list: CategoryArrangeListKind = "menu") {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (ids: string[]) => apiSend<Category[]>("/api/categories", "PATCH", { ids }),
+    mutationKey: CATEGORY_KEYS.arrange,
+    mutationFn: (ids: string[]) =>
+      apiSend<Category[]>("/api/categories", "PATCH", list === "kitchen" ? { ids, list } : { ids }),
     onSuccess: (fresh) => commitCategories(qc, fresh),
     onError: async (err: Error) => {
       try {
@@ -167,6 +178,31 @@ export function useReorderCategories() {
       // (CATEGORY_LIST_CHANGED_ERROR); anything else gets this hook's own.
       const is409 = err instanceof ApiError && err.status === 409;
       toast.error(is409 ? err.message : "Could not save the new order");
+    },
+  });
+}
+
+// "Clear kitchen order": every kitchen ticket goes back to printing items in
+// the order they were added. Same recovery shape as the reorder above (G3: no
+// onSettled invalidate; success commits the PATCH response, an error commits
+// an uncached ?fresh=1 read).
+export function useClearKitchenOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationKey: CATEGORY_KEYS.arrange,
+    mutationFn: () => apiSend<Category[]>("/api/categories", "PATCH", { list: "kitchen", clear: true }),
+    onSuccess: async (fresh) => {
+      await commitCategories(qc, fresh);
+      toast.success("Kitchen order cleared");
+    },
+    onError: async () => {
+      try {
+        const fresh = await apiGet<Category[]>("/api/categories?fresh=1");
+        await commitCategories(qc, fresh);
+      } catch {
+        // The refresh-after-error read failed too; the cache keeps its last good list.
+      }
+      toast.error("Could not clear the kitchen order");
     },
   });
 }

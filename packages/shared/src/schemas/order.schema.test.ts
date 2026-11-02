@@ -286,6 +286,18 @@ test("orderItemSchema STRIPS a client-sent noKot (and still keeps the real field
   assert.ok(r.success && !("noKot" in r.data), "a client-declared noKot never reaches the route");
 });
 
+// KOT kitchen order: the same fence for `kotRank` (the server stamps it from the category's kotOrder).
+test("orderItemSchema / createOrderSchema / addItemsSchema STRIP a client-sent kotRank", () => {
+  const line = orderItemSchema.safeParse({ ...sampleItems[0], kotRank: 0 });
+  assert.ok(line.success && line.data.name === "Chai", "landmark: the line parsed");
+  assert.ok(line.success && !("kotRank" in line.data), "a client-declared rank never reaches the route");
+  const dirty = sampleItems.map((i) => ({ ...i, kotRank: 0 }));
+  const created = createOrderSchema.safeParse({ ...sampleOrder, items: dirty });
+  assert.ok(created.success && created.data.items[0].name === "Chai" && !("kotRank" in created.data.items[0]));
+  const added = addItemsSchema.safeParse({ items: dirty });
+  assert.ok(added.success && added.data.items[0].name === "Chai" && !("kotRank" in added.data.items[0]));
+});
+
 test("createOrderSchema / addItemsSchema lines carry no client noKot either", () => {
   const dirty = sampleItems.map((i) => ({ ...i, noKot: true }));
   const created = createOrderSchema.safeParse({ ...sampleOrder, items: dirty });
