@@ -48,6 +48,7 @@ class FakeWebSocket {
   readyState = FakeWebSocket.CONNECTING;
   /** A browser's close(): CLOSING now, the close event later (finishClose) — a half-open link's handshake can take long. */
   deferClose = false;
+  sent = 0;
   private readonly listeners: Record<string, Array<(arg?: unknown) => void>> = {};
   constructor(readonly url: string) {
     FakeWebSocket.instances.push(this);
@@ -55,7 +56,7 @@ class FakeWebSocket {
   addEventListener(type: string, fn: (arg?: unknown) => void): void {
     (this.listeners[type] ??= []).push(fn);
   }
-  send(): void {}
+  send(): void { this.sent++; }
   close(): void {
     if (this.readyState >= FakeWebSocket.CLOSING) return;
     if (this.deferClose) this.readyState = FakeWebSocket.CLOSING;
@@ -69,8 +70,8 @@ class FakeWebSocket {
     this.readyState = FakeWebSocket.OPEN;
     this.fire("open");
   }
-  fire(type: string): void {
-    for (const fn of [...(this.listeners[type] ?? [])]) fn();
+  fire(type: string, arg?: unknown): void {
+    for (const fn of [...(this.listeners[type] ?? [])]) fn(arg);
   }
 }
 
@@ -159,6 +160,32 @@ test("F6 (fix C2): a superseded socket's late error / close never tears down the
     } finally {
       unsub();
       stopDown();
+      mock.timers.reset();
+    }
+  });
+});
+
+test("F6 (fix M3): a superseded socket's late open / message never touches the current socket's pings, proof or pong deadline", async () => {
+  await withFakeSocket(() => {
+    mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: CLOCK_START });
+    const kinds: string[] = [];
+    const first = subscribeRealtime(() => {});
+    const a = Object.assign(socketAt(0), { deferClose: true });
+    a.open();
+    first(); // last one out: A is torn down, its close handshake still pending
+    const unsub = subscribeRealtime((kind) => kinds.push(kind));
+    try {
+      const b = socketAt(1);
+      b.open();
+      a.fire("open");
+      mock.timers.tick(REALTIME_PING_INTERVAL_MS);
+      assert.deepEqual([a.sent, b.sent], [0, 1], "M3: A's late open leaves B's ping cycle alone (B pinged, A got no ping)");
+      a.fire("message", { data: JSON.stringify({ kind: "order-changed" }) });
+      mock.timers.tick(REALTIME_PONG_TIMEOUT_MS + 1);
+      assert.equal(isRealtimeHealthy(), false, "M3: A's frame neither refreshed B's proof nor cleared B's pong deadline: B's missed pong tore it down");
+      assert.deepEqual(kinds, [], "M3: A's frame is not fanned out (a browser never delivers one after close() anyway)");
+    } finally {
+      unsub();
       mock.timers.reset();
     }
   });

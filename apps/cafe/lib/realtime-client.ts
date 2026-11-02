@@ -133,7 +133,13 @@ function connect(): void {
   }
   socket = ws;
 
+  // Only the CURRENT socket's events count (perf P1 fix C2 for close / error, final review M3 for open / message): a
+  // superseded socket's late open would clear the current socket's ping and pong timers, and its late frame would
+  // refresh the current socket's proof of life and clear its pong deadline (a half-open new socket would then survive
+  // one more ping cycle). `dropAndReconnect` and the last unsubscribe null `socket` first, so every event of a
+  // torn-down socket is ignored. (A browser never delivers a frame after close() anyway: CLOSING drops it.)
   ws.addEventListener("open", () => {
+    if (socket !== ws) return;
     retry = 0;
     lastSeenAt = Date.now(); // a completed handshake is itself proof of life
     clearTimers();
@@ -158,6 +164,7 @@ function connect(): void {
   });
 
   ws.addEventListener("message", (event) => {
+    if (socket !== ws) return;
     // ANY inbound frame proves the socket carries traffic, so it refreshes
     // proof-of-life and satisfies an outstanding ping.
     lastSeenAt = Date.now();
