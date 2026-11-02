@@ -24,7 +24,8 @@ test("PIN: the button and its list show only where the app can scan, and a tap o
   for (const words of ["LAN_SCANNING_MESSAGE", "LAN_NONE_FOUND_MESSAGE", "LAN_NO_NETWORK_MESSAGE", "alreadyAddedText(row.alreadyAdded)"]) {
     assert.ok(find.includes(words), `the list says ${words}`);
   }
-  assert.ok(find.includes("PRINTER_ACTION_CLASS"), "44 px controls");
+  // U5 Task 5 (moved on purpose, same meaning): the controls take the panel's shared sizes (was the 44px class).
+  assert.ok(find.includes("PRINTER_BUTTON_CLASS") && find.includes("PRINTER_FOUND_ROW_CLASS"), "controls take the panel's shared size classes");
   // Session 4D's review (m-A): the panel's network form is a <form onSubmit>, and the shared Button sets no type, so a
   // button without type="button" would submit it: a tap would add the address typed before.
   assert.ok(find.includes('<Button type="button" variant="outline"'), "the Find button never submits the form around it");

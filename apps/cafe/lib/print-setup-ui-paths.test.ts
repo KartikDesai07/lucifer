@@ -112,7 +112,7 @@ test("PIN (2E): the printer form chooses one of this PC's Windows printers by na
 test("PIN (2E, spec §9.7): a browser tab that drives a printer says to keep it open, or use the POS app", () => {
   const section = src("components/print/DevicePrinterSection.tsx");
   assert.match(section, /const KEEP_TAB_OPEN = "Keep this tab open, or use the POS app: a hidden or closed tab prints late or not at all\.";/);
-  assert.match(section, /\{printer\.kind !== "native" && <p className="text-xs text-brand-muted">\{KEEP_TAB_OPEN\}<\/p>\}/, "a Web Serial or Web Bluetooth printer only");
+  assert.match(section, /\{printer\.kind !== "native" && <p className=\{PRINTER_NOTE_CLASS\}>\{KEEP_TAB_OPEN\}<\/p>\}/, "a Web Serial or Web Bluetooth printer only");
 });
 
 test("PIN (2D, the 2A gate's M5): a station's delete names the printers it leaves with nothing; the default is never deleted, said in words", () => {
@@ -166,7 +166,7 @@ test("PIN (2F1): the form chooses one of the POS app's printers; the panel lists
   const others = src("components/print/OtherDevicePrinters.tsx");
   assert.match(others, /if \(!pool\.active\) return null;/, "nothing on an app that speaks only v1");
   assert.match(others, /const others = pool\.printers\.filter\(\(entry\) => entry\.id !== pool\.defaultId\);/, "the app's own default is the device's printer above (M-6)");
-  assert.match(others, /\{inSetup\.has\(entry\.id\) \? \(\s*<p className="text-xs text-brand-muted">\{IN_SETUP\}<\/p>/, "a printer the setup names this device for is not removed here (I-3)");
+  assert.match(others, /\{inSetup\.has\(entry\.id\) \? \(\s*<p className=\{PRINTER_NOTE_CLASS\}>\{IN_SETUP\}<\/p>/, "a printer the setup names this device for is not removed here (I-3)");
   assert.match(others, /add=\{\(target\) => nativePool\(\)\.add\(target\)\}/, "a printer chosen there joins the app's printers");
   const picker = src("components/print/NativePrinterPicker.tsx");
   assert.ok(picker.includes("add !== undefined ? add({ id: printer.id }) : devicePrinter().selectNative({ id: printer.id }, paper)"), "else it replaces this device's own, as before");

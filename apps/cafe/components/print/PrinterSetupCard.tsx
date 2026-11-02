@@ -11,15 +11,14 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ReceiptText } from "lucide-react";
 import { toast } from "sonner";
 
-import { PRINTER_ACTION_CLASS } from "@/components/print/printer-classes";
-import { cn } from "@/lib/utils";
+import { PRINTER_BUTTON_CLASS, PRINTER_BUTTON_REMOVE_CLASS, PRINTER_NOTE_CLASS } from "@/components/print/printer-classes";
 import { Button } from "@/components/ui/button";
 import { usePosPulseContext } from "@/components/layout/PosPulseProvider";
 import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
 import { DevicePrinterSection } from "@/components/print/DevicePrinterSection";
 import { InlineConfirm } from "@/components/print/PrintHostCardParts";
 import { PrintWhereSection } from "@/components/print/PrintWhereSection";
-import { PrinterSection } from "@/components/print/PrinterSection";
+import { PanelSection } from "@/components/print/PanelSection";
 import { PrinterAdvanced } from "@/components/print/PrinterAdvanced";
 import { PrinterTestTips } from "@/components/print/PrinterTestTips";
 import { TextKotSection } from "@/components/print/TextKotSection";
@@ -189,19 +188,19 @@ export function PrinterSetupCard() {
     <>
       <Button
         variant="outline"
-        className={PRINTER_ACTION_CLASS}
+        className={isHostDevice ? PRINTER_BUTTON_CLASS : PRINTER_BUTTON_REMOVE_CLASS}
         onClick={() => setConfirmClear(true)}
         disabled={clear.isPending || host?.configured === false}
       >
         {isHostDevice ? "Stop printing here" : "Remove the printing device"}
       </Button>
-      {host?.configured === false && <p className="text-xs text-brand-muted">{NO_HOST_REASON}</p>}
+      {host?.configured === false && <p className={PRINTER_NOTE_CLASS}>{NO_HOST_REASON}</p>}
     </>
   );
 
   const raster = lane === "raster";
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-3">
       <PrintWhereSection
         host={host}
         hostLabel={hostLabel}
@@ -218,7 +217,7 @@ export function PrinterSetupCard() {
       <TextKotSection />
 
       {testable && (
-        <PrinterSection icon={ReceiptText} title="Test print" description={TEST_DESCRIPTION}>
+        <PanelSection icon={<ReceiptText />} title="Test print" sub={TEST_DESCRIPTION}>
           {phase === "confirm" ? (
             <InlineConfirm
               question={raster ? RASTER_QUESTION : WINDOW_QUESTION}
@@ -231,19 +230,19 @@ export function PrinterSetupCard() {
           ) : (
             <Button
               variant="outline"
-              className={cn(PRINTER_ACTION_CLASS, "w-full sm:w-auto")}
+              className={PRINTER_BUTTON_CLASS}
               onClick={() => void handleTestPrint()}
               disabled={current !== null || phase !== "idle" || beat.isPending}
             >
               {phase === "printing" ? "Printing…" : "Print test slip"}
             </Button>
           )}
-          {phase === "idle" && current !== null && <p className="text-xs text-brand-muted">{TEST_BUSY_REASON}</p>}
+          {phase === "idle" && current !== null && <p className={PRINTER_NOTE_CLASS}>{TEST_BUSY_REASON}</p>}
           {showTips && <PrinterTestTips />}
-          <p className="text-xs text-brand-muted">
+          <p className={PRINTER_NOTE_CLASS}>
             {raster ? "Prints a small slip, then asks whether it came out." : "Prints a small slip, then asks whether a print window appeared."}
           </p>
-        </PrinterSection>
+        </PanelSection>
       )}
 
       <PrinterAdvanced clearControl={isHostDevice ? null : clearControl} />

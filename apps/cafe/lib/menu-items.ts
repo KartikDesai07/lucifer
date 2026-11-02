@@ -6,7 +6,7 @@ import { effectiveUnitPrice } from "@pos/shared/public";
 import { categoryNameOf } from "@/lib/category-map";
 import type { Category, Product } from "@/types";
 
-export const MENU_STATUS_FILTERS = ["all", "out-of-stock", "hidden", "archived"] as const;
+export const MENU_STATUS_FILTERS = ["all", "in-stock", "out-of-stock", "hidden", "archived"] as const;
 export type MenuStatusFilter = (typeof MENU_STATUS_FILTERS)[number];
 
 export function isMenuStatusFilter(value: unknown): value is MenuStatusFilter {
@@ -44,6 +44,7 @@ function matchesSearchAndCategory(p: Product, input: Pick<FilterInput, "search" 
 
 function matchesStatus(p: Product, status: MenuStatusFilter): boolean {
   if (status === "all") return true;
+  if (status === "in-stock") return p.available !== false;
   if (status === "out-of-stock") return isOutOfStock(p);
   if (status === "hidden") return isHiddenFromQr(p);
   // "archived" is applied at the query level (the Items page swaps to the
@@ -59,6 +60,7 @@ export function filterItems(products: readonly Product[], input: FilterInput): P
 
 export interface MenuStatusCounts {
   all: number;
+  inStock: number;
   outOfStock: number;
   hidden: number;
 }
@@ -70,6 +72,7 @@ export function statusCounts(products: readonly Product[], search: string, categ
   const scoped = products.filter((p) => matchesSearchAndCategory(p, { search, categoryId }));
   return {
     all: scoped.length,
+    inStock: scoped.filter((p) => p.available !== false).length,
     outOfStock: scoped.filter(isOutOfStock).length,
     hidden: scoped.filter(isHiddenFromQr).length,
   };

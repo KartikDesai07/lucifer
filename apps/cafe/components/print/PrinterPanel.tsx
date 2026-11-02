@@ -1,8 +1,5 @@
 "use client";
 
-import { PRINTER_ACTION_CLASS } from "@/components/print/printer-classes";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { usePosPulseContext } from "@/components/layout/PosPulseProvider";
 import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
 import { usePrintHostDot } from "@/components/layout/print-host-dot-context";
@@ -19,11 +16,11 @@ const CHECKING_DOT: PrinterDot & { show: true } = { show: true, ok: false, reaso
 
 // The printer panel: what the printer is doing right now (the banner), then
 // everything to change it (the setup card). One panel in two homes: the top-bar
-// sheet (with a Done button) and /printers (inline, no Done). It reads
+// frame (PrinterPanelFrame: its head, scroller and Done foot) and /printers (inline, no frame and no Done). It reads
 // the pulse for the printing device's name, which only lives there — the
 // deliberate extra reader of the pulse; it mounts only where the panel is open,
 // never in the POS screen's render path.
-export function PrinterPanel({ onDone }: { onDone?: () => void }) {
+export function PrinterPanel() {
   const { pulse } = usePosPulseContext();
   const remote = usePrintHostDot();
   const { isHostDevice, deviceId } = usePrintHostContext();
@@ -48,16 +45,11 @@ export function PrinterPanel({ onDone }: { onDone?: () => void }) {
   // data-printer-panel scopes the banner's focus targets to THIS panel (the
   // sheet and /printers can both be mounted at once).
   return (
-    <div data-printer-panel className="space-y-4">
+    <div data-printer-panel className="flex flex-col gap-3">
       <WaitingSlipsCard pulse={pulse} />
       <PrinterStatusBanner dot={dot.show ? dot : CHECKING_DOT} copy={copy} />
       <PrinterSetupCard />
       <BillPrinterSection />
-      {onDone !== undefined && (
-        <Button className={cn(PRINTER_ACTION_CLASS, "w-full")} onClick={onDone}>
-          Done
-        </Button>
-      )}
     </div>
   );
 }

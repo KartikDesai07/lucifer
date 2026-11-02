@@ -226,6 +226,8 @@
   --animate-html-pop: html-pop 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   /* The HTML's lineIn (POS values 5.4): a /pos cart line slides in from the right as it arrives. */
   --animate-html-line-in: html-line-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* The same lineIn at .3s (printer values 16.1, U5 Task 5): the printer panel's side aside slides in from the right. */
+  --animate-html-line-in-panel: html-line-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   /* Owner Q19 (2026-10-22, "niche se open ho"): below 1280 px the /pos cart sheet slides up from the window's foot on
      the HTML's sheetIn easing, and back down as it closes (lib/pos-layout.ts POS_CART_SHEET_CLASS). The rise fills
      backwards only, so the settled sheet carries no transform; the fall holds at the foot until Radix unmounts it. */

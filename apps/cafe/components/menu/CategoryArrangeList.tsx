@@ -14,9 +14,15 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinates, arrayMove } from "@dnd-kit/sortable";
 
+import type { StationConfig } from "@pos/shared/print-printers";
+
 import { CATEGORY_KEYS, useReorderCategories } from "@/hooks/use-categories";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import type { CategoryArrangeListKind } from "@/schemas";
 import { CategoryRow } from "@/components/menu/CategoryRow";
+import { CATEGORY_CARD_CLASS, CATEGORY_LIST_CLASS, MENU_CATEGORIES_PHONE_QUERY } from "@/lib/menu-categories-layout";
+import { soldOutByCategory } from "@/lib/menu-view";
+import { categoryHueMap } from "@/lib/pos-categories";
 import {
   moveId,
   kitchenArrangement,
@@ -37,6 +43,8 @@ interface CategoryArrangeListProps {
   categories: Category[];
   activeProducts: Product[];
   archivedProducts: Product[];
+  /** The stations the page loads: a row's chip names its station (absent = the default station's name). */
+  stations: readonly StationConfig[];
   onEdit: (category: Category) => void;
   onDelete: (category: Category) => void;
   // Which arrangement this list edits; "kitchen" = the order dishes print on KOTs.
@@ -48,7 +56,7 @@ interface CategoryArrangeListProps {
 // ids; a failed save rolls the local order back explicitly (TableArrangeList
 // precedent — the re-seed effect is NOT a substitute for that, since a failed
 // save leaves the server's ids unchanged and so never re-fires the effect).
-export function CategoryArrangeList({ categories, activeProducts, archivedProducts, onEdit, onDelete, list = "menu" }: CategoryArrangeListProps) {
+export function CategoryArrangeList({ categories, activeProducts, archivedProducts, stations, onEdit, onDelete, list = "menu" }: CategoryArrangeListProps) {
   const reorder = useReorderCategories(list);
   const idsOf = (): string[] => (list === "kitchen" ? kitchenArrangement(categories) : categories.map((c) => c._id));
   const [order, setOrder] = useState<string[]>(idsOf);
@@ -74,6 +82,12 @@ export function CategoryArrangeList({ categories, activeProducts, archivedProduc
   const counts = itemCountsByCategory(activeProducts, archivedProducts);
   // Any arrangement write (this list's save, or a kitchen Clear) pauses dragging and the arrows.
   const saving = useIsMutating({ mutationKey: CATEGORY_KEYS.arrange }) > 0;
+  // Only the look: the rows' dots, meta and chips (values 11).
+  const hues = categoryHueMap(categories);
+  const soldOut = soldOutByCategory(activeProducts);
+  const phone = useMediaQuery(MENU_CATEGORIES_PHONE_QUERY) === true;
+  const defaultStationName = stations.find((station) => station.isDefault)?.name ?? "Kitchen";
+  const stationNameOf = (category: Category) => stations.find((station) => station.id === category.stationId)?.name ?? defaultStationName;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -129,27 +143,33 @@ export function CategoryArrangeList({ categories, activeProducts, archivedProduc
       }}
     >
       <SortableContext items={order} strategy={verticalListSortingStrategy}>
-        <ul className="divide-y rounded-lg border">
-          {order.map((id, index) => {
-            const category = byId.get(id);
-            // A category removed by another admin mid-arrange: drop its row
-            // rather than crash — the next server refresh re-seeds `order`.
-            if (!category) return null;
-            return (
-              <CategoryRow
-                key={id}
-                category={category}
-                index={index}
-                total={order.length}
-                counts={counts.get(id)}
-                disabled={saving}
-                onMove={(delta) => move(id, delta)}
-                onEdit={() => onEdit(category)}
-                onDelete={() => onDelete(category)}
-              />
-            );
-          })}
-        </ul>
+        <div data-ui="categories-card" className={CATEGORY_CARD_CLASS}>
+        <ul className={CATEGORY_LIST_CLASS}>
+            {order.map((id, index) => {
+              const category = byId.get(id);
+              // A category removed by another admin mid-arrange: drop its row
+              // rather than crash — the next server refresh re-seeds `order`.
+              if (!category) return null;
+              return (
+                <CategoryRow
+                  key={id}
+                  category={category}
+                  index={index}
+                  total={order.length}
+                  counts={counts.get(id)}
+                  soldOut={soldOut.get(id) ?? 0}
+                  hue={hues.get(id) ?? ""}
+                  stationName={stationNameOf(category)}
+                  phone={phone}
+                  disabled={saving}
+                  onMove={(delta) => move(id, delta)}
+                  onEdit={() => onEdit(category)}
+                  onDelete={() => onDelete(category)}
+                />
+              );
+            })}
+          </ul>
+        </div>
       </SortableContext>
     </DndContext>
   );

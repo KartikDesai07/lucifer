@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Toaster } from "@/components/ui/sonner";
 import { isFloorPath } from "@/lib/floor-layout";
 import { isKitchenPath } from "@/lib/kitchen-layout";
+import { isMenuPagePath } from "@/lib/menu-layout";
 import { isPosPath } from "@/lib/pos-layout";
 
 // The one toaster, mounted by the root layout (U0 Task 4, ruling R8). The staff screens get the owner's HTML toast
@@ -62,7 +63,8 @@ export const POS_TOASTER_PROPS: ComponentProps<typeof Toaster> = {
 /** /tables (U3 Task 5; design 6.8): the staff offsets 140 / 92 / 24px at the same breakpoints, each plus the bottom
  *  safe-area inset, so the toasts clear the window's foot at every width as the Floor's own foot and its refresh strip do
  *  (U1 P49; 140 / 92 / 24px at inset 0). /kitchen takes the same set (U4 Task 1, Kitchen design 6.6: its board's foot
- *  and its strip clear the inset too). Every other staff page keeps the staff set (an app-wide fix is the owner's open
+ *  and its strip clear the inset too), and so do /products and /categories (U5 Task 1, Menu design 6.6: the list's foot,
+ *  the sticky bulk bar and the strip clear it). Every other staff page keeps the staff set (an app-wide fix is the owner's open
  *  shell item). */
 export const FLOOR_TOASTER_PROPS: ComponentProps<typeof Toaster> = {
   ...STAFF_TOASTER_PROPS,
@@ -73,7 +75,7 @@ export const FLOOR_TOASTER_PROPS: ComponentProps<typeof Toaster> = {
 /** A staff page's toaster props: /pos's, the inset set (the Floor and the Kitchen), or the staff set. */
 export function toasterPropsFor(pathname: string): ComponentProps<typeof Toaster> {
   if (isPosPath(pathname)) return POS_TOASTER_PROPS;
-  return isFloorPath(pathname) || isKitchenPath(pathname) ? FLOOR_TOASTER_PROPS : STAFF_TOASTER_PROPS;
+  return isFloorPath(pathname) || isKitchenPath(pathname) || isMenuPagePath(pathname) ? FLOOR_TOASTER_PROPS : STAFF_TOASTER_PROPS;
 }
 
 export function AppToaster() {

@@ -93,10 +93,12 @@ test("PIN: owner Q19 — on /pos the toast clears the order bar and the sheet's 
   assert.match(src, /import \{ isPosPath \} from "@\/lib\/pos-layout";/, "the route read through isPosPath");
   assert.match(src, /import \{ isFloorPath \} from "@\/lib\/floor-layout";/, "and through isFloorPath");
   assert.match(src, /import \{ isKitchenPath \} from "@\/lib\/kitchen-layout";/, "and through isKitchenPath");
+  // U5 Task 1 (moved on purpose, Menu design 6.6): /products and /categories take the /tables set too.
+  assert.match(src, /import \{ isMenuPagePath \} from "@\/lib\/menu-layout";/, "and the Menu routes through isMenuPagePath");
   assert.match(
     src,
-    /if \(isPosPath\(pathname\)\) return POS_TOASTER_PROPS;\s*return isFloorPath\(pathname\) \|\| isKitchenPath\(pathname\) \? FLOOR_TOASTER_PROPS : STAFF_TOASTER_PROPS;/,
-    "the three-way choice: /pos, /tables and /kitchen, every other staff page",
+    /if \(isPosPath\(pathname\)\) return POS_TOASTER_PROPS;\s*return isFloorPath\(pathname\) \|\| isKitchenPath\(pathname\) \|\| isMenuPagePath\(pathname\) \? FLOOR_TOASTER_PROPS : STAFF_TOASTER_PROPS;/,
+    "the three-way choice: /pos, the inset set (/tables, /kitchen, the Menu), every other staff page",
   );
   assert.equal(count(src, "<Toaster {...toasterPropsFor(pathname)} />"), 1, "one Toaster element for all three (a navigation only changes its offset, no remount)");
   assert.equal(count(src, "<Toaster"), 2, "landmark: that element and the diner menu's");

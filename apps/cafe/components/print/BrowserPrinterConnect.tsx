@@ -2,11 +2,18 @@
 
 import { Printer } from "lucide-react";
 
-import { PRINTER_ACTION_CLASS } from "@/components/print/printer-classes";
+import {
+  PRINTER_BLOCK_TITLE_CLASS,
+  PRINTER_BUTTON_CLASS,
+  PRINTER_BUTTON_PRIMARY_CLASS,
+  PRINTER_HINT_CLASS,
+  PRINTER_NOTE_CLASS,
+  PRINTER_RULE_BLOCK_CLASS,
+  PRINTER_STEP_CLASS,
+  PRINTER_STEP_NUM_CLASS,
+} from "@/components/print/printer-classes";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 
-const BUTTON_CLASS = cn(PRINTER_ACTION_CLASS, "w-full sm:w-auto");
 const HOW_TITLE = "How to connect";
 const STEP_ON = "Turn the printer on and load paper.";
 const STEP_PAIR = "Bluetooth printer: pair it in this device's Bluetooth settings first. USB printer: plug it in.";
@@ -31,47 +38,44 @@ interface BrowserPrinterConnectProps {
   onSearchNearby: () => void;
 }
 
-// Connecting a printer from a browser: ONE button, three plain steps, and (only
+// Connecting a printer from a browser: ONE button (the HTML's Connect printer), three plain steps, and (only
 // where the browser can) a quiet second way for printers that need no pairing.
 // Prop-driven: the section owns the click handlers, which must start the
 // chooser with nothing awaited before it.
 export function BrowserPrinterConnect({ paired, nearby, locked, notSeen, onConnect, onSearchNearby }: BrowserPrinterConnectProps) {
   const steps = [STEP_ON, paired ? STEP_PAIR : STEP_CLOSE, STEP_TAP];
   return (
-    <div className="space-y-4">
-      <Button className={BUTTON_CLASS} onClick={onConnect} disabled={locked}>
-        <Printer className="mr-2 h-4 w-4" aria-hidden="true" />
+    <div className="flex flex-col gap-3">
+      <Button className={PRINTER_BUTTON_PRIMARY_CLASS} onClick={onConnect} disabled={locked}>
+        <Printer aria-hidden="true" />
         Connect printer
       </Button>
       {notSeen && (
-        <p role="status" className="rounded-md bg-brand-wash p-3 text-brand-ink">
+        <p role="status" className={PRINTER_HINT_CLASS}>
           {paired ? NOT_SEEN_PAIRED : NOT_SEEN_NEARBY_ONLY}
           {paired && (nearby ? " — or tap Search nearby printers." : ".")}
         </p>
       )}
-      <div className="space-y-2">
-        <p className="font-medium text-brand-ink">{HOW_TITLE}</p>
-        <ol className="space-y-2">
+      <div>
+        <p className={`${PRINTER_BLOCK_TITLE_CLASS} mb-2`}>{HOW_TITLE}</p>
+        <ol>
           {steps.map((step, index) => (
-            <li key={step} className="flex items-start gap-3">
-              <span
-                aria-hidden="true"
-                className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand-primary-soft text-xs font-semibold text-brand-primary"
-              >
+            <li key={step} className={PRINTER_STEP_CLASS}>
+              <span aria-hidden="true" className={PRINTER_STEP_NUM_CLASS}>
                 {index + 1}
               </span>
-              <span className="min-w-0 flex-1 pt-0.5">{step}</span>
+              <span className="min-w-0 flex-1">{step}</span>
             </li>
           ))}
         </ol>
       </div>
       {nearby && (
-        <div className="space-y-2 border-t border-brand-rule pt-3">
-          <p className="font-medium text-brand-ink">{NEARBY_TITLE}</p>
-          <Button className={BUTTON_CLASS} variant="outline" onClick={onSearchNearby} disabled={locked}>
+        <div className={PRINTER_RULE_BLOCK_CLASS}>
+          <p className={PRINTER_BLOCK_TITLE_CLASS}>{NEARBY_TITLE}</p>
+          <Button className={`${PRINTER_BUTTON_CLASS} self-start`} variant="outline" onClick={onSearchNearby} disabled={locked}>
             Search nearby printers
           </Button>
-          <p className="text-xs text-brand-muted">{NEARBY_HELP}</p>
+          <p className={`${PRINTER_NOTE_CLASS} -mt-0.5`}>{NEARBY_HELP}</p>
         </div>
       )}
     </div>

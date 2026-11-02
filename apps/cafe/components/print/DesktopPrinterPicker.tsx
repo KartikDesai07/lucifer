@@ -18,6 +18,13 @@ import { toast } from "sonner";
 import { desktopPrinterApi, desktopPrinterSavesToFile, type DesktopPrinter, type DesktopPrintMode } from "@/lib/desktop-shell-printer";
 import { publishDesktopPrinterSelection, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
 import { DesktopPrintMethod } from "@/components/print/DesktopPrintMethod";
+import {
+  PRINTER_LABEL_CLASS,
+  PRINTER_NOTE_CLASS,
+  PRINTER_RULE_BLOCK_CLASS,
+  PRINTER_SELECT_CLASS,
+  PRINTER_WARN_LINE_CLASS,
+} from "@/components/print/printer-classes";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const LOAD_FAILED_MESSAGE = "Could not read the printer list from the desktop app.";
@@ -87,19 +94,19 @@ export function DesktopPrinterPicker() {
   const shownPrinter = selected !== null && (printers ?? []).some((p) => p.name === selected) ? selected : NOT_CHOSEN_VALUE;
 
   return (
-    <div className="space-y-2 border-t pt-3">
-      <p className="font-medium">Printer for this PC</p>
+    <div className={PRINTER_RULE_BLOCK_CLASS}>
+      <p className={PRINTER_LABEL_CLASS}>Printer for this PC</p>
       {printers === null ? (
-        <p className="text-xs text-muted-foreground">Reading the printer list…</p>
+        <p className={PRINTER_NOTE_CLASS}>Reading the printer list…</p>
       ) : printers.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
+        <p className={PRINTER_NOTE_CLASS}>
           Windows reports no printers on this PC. Add the printer in Windows Settings, then reopen
           this page.
         </p>
       ) : (
         <>
           <Select value={shownPrinter} disabled={saving} onValueChange={(v) => void choose(v)}>
-            <SelectTrigger aria-label="Printer" className="h-11 w-full max-w-sm text-base">
+            <SelectTrigger aria-label="Printer" className={PRINTER_SELECT_CLASS}>
               <SelectValue placeholder={NOT_CHOSEN_LABEL} />
             </SelectTrigger>
             <SelectContent>
@@ -117,13 +124,13 @@ export function DesktopPrinterPicker() {
             </SelectContent>
           </Select>
           {shownPrinter === NOT_CHOSEN_VALUE && (
-            <p className="text-xs text-amber-600">
+            <p className={PRINTER_WARN_LINE_CLASS}>
               No printer is chosen, so slips will not print on this PC. Pick the thermal printer
               above.
             </p>
           )}
           {printers.every((p) => savesToFile(p.name)) && (
-            <p className="text-xs text-amber-600">
+            <p className={PRINTER_WARN_LINE_CLASS}>
               Every device on this PC saves a file instead of printing. Connect the thermal printer
               and install its driver, then reopen this page.
             </p>
@@ -133,7 +140,7 @@ export function DesktopPrinterPicker() {
           )}
         </>
       )}
-      <p className="text-xs text-muted-foreground">
+      <p className={PRINTER_NOTE_CLASS}>
         Pick the thermal printer. Devices that save a file — Microsoft Print to PDF, XPS, OneNote,
         Fax — cannot be chosen: sending a slip to one of those is why nothing came out of the
         printer, or why a &ldquo;save file&rdquo; window appeared.

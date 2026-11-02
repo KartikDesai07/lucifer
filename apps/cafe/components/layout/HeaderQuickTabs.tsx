@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 import { FLOOR_PATH, isFloorPath } from "@/lib/floor-layout";
 import { isKitchenPath } from "@/lib/kitchen-layout";
+import { isMenuPagePath } from "@/lib/menu-layout";
 import { isActivePath } from "@/lib/nav-active";
 import { isOrdersPath } from "@/lib/orders-layout";
 import { isPosPath } from "@/lib/pos-layout";
@@ -27,7 +28,9 @@ import {
 // the cart. On /tables (U3 Task 1; owner Q1, the Floor values 1.2, design 6.1) the HTML's Floor header: Tables is that
 // page, so it is not drawn; New order (our word, the same link) wears the HTML Floor button's outline look with its
 // label at every width. On /kitchen (U4 Task 1; owner Q8, Kitchen design 6.1) both keep today's look and place from
-// 1280px (the owner's PC width) and are not drawn below it: the HTML's Kitchen header has neither.
+// 1280px (the owner's PC width) and are not drawn below it: the HTML's Kitchen header has neither. /products and
+// /categories take the same rule (U5 Task 1; owner Q5 / Q8, Menu design 6.1): the HTML's Menu header has neither, and its
+// switch and Add need the room below 1280px.
 
 export interface HeaderQuickTab {
   title: string;
@@ -48,7 +51,9 @@ export function HeaderQuickTabs() {
   const pathname = usePathname() ?? "";
   if (isPosPath(pathname)) return null;
   const floor = isFloorPath(pathname);
-  const kitchen = isKitchenPath(pathname);
+  // /kitchen (owner Q8) and the Menu routes (U5 Q5 / Q8): both links from 1280px only, none below (the HTML's Menu header
+  // has neither, and the switch and Add need the room).
+  const wideOnly = isKitchenPath(pathname) || isMenuPagePath(pathname);
   const labelClass = isOrdersPath(pathname) || floor ? "inline" : "hidden tab:inline";
   return (
     <>
@@ -71,7 +76,7 @@ export function HeaderQuickTabs() {
               // New order is the kit's filled button everywhere but /tables, where it is the outline (owner Q1).
               buttonVariants({ variant: tab.primary && !floor ? "default" : "outline" }),
               tab.primary ? (floor ? HEADER_FLOOR_NEW_ORDER_CLASS : HEADER_PRIMARY_BUTTON_CLASS) : HEADER_OUTLINE_BUTTON_CLASS,
-              kitchen ? "hidden xl:inline-flex" : tab.primary ? "inline-flex" : "hidden tab:inline-flex",
+              wideOnly ? "hidden xl:inline-flex" : tab.primary ? "inline-flex" : "hidden tab:inline-flex",
             )}
           >
             <Icon aria-hidden="true" strokeWidth={tab.primary ? 2.4 : 1.8} />

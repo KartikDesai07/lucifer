@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Printer } from "lucide-react";
 import { toast } from "sonner";
 
-import { PRINTER_ACTION_CLASS } from "@/components/print/printer-classes";
+import { PRINTER_BUTTON_CLASS, PRINTER_BUTTON_REMOVE_CLASS, PRINTER_NOTE_CLASS } from "@/components/print/printer-classes";
 import { Button } from "@/components/ui/button";
 import { BrowserPrinterConnect } from "@/components/print/BrowserPrinterConnect";
 import { DesktopPrinterPicker } from "@/components/print/DesktopPrinterPicker";
@@ -13,7 +13,7 @@ import { OtherDevicePrinters } from "@/components/print/OtherDevicePrinters";
 import { toastConnectOutcome } from "@/components/print/connect-outcome";
 import { PaperSizeToggle } from "@/components/print/PaperSizeToggle";
 import { InlineConfirm, PrinterRow } from "@/components/print/PrintHostCardParts";
-import { PrinterSection } from "@/components/print/PrinterSection";
+import { PanelSection } from "@/components/print/PanelSection";
 import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
 import { useOwnPrinterInSetup } from "@/hooks/use-agent-printers";
 import { useDevicePrinter, useNativePool, usePrintCapabilities, usePrintLane } from "@/hooks/use-device-printer";
@@ -105,10 +105,10 @@ export function DevicePrinterSection() {
   const connected = status === "connected";
 
   return (
-    <PrinterSection
-      icon={Printer}
+    <PanelSection
+      icon={<Printer />}
       title="Printer on this device"
-      description={SECTION_DESCRIPTION}
+      sub={SECTION_DESCRIPTION}
       data-printer-target="device"
       tabIndex={-1}
     >
@@ -116,12 +116,12 @@ export function DevicePrinterSection() {
         <DesktopPrinterPicker />
       ) : lane === "pending" ? null : (
         <>
-          {elsewhere && <p role="status" className="text-amber-700">{PRINTER_ELSEWHERE_STATUS_MESSAGE}</p>}
+          {elsewhere && <p role="status" className="text-status-warn-ink">{PRINTER_ELSEWHERE_STATUS_MESSAGE}</p>}
           {printer !== null && (
-            <div className="space-y-3">
+            <div className="flex flex-col gap-3">
               <PrinterRow printer={printer} status={status} />
-              {printer.kind !== "native" && <p className="text-xs text-brand-muted">{KEEP_TAB_OPEN}</p>}
-              {snapshot.message !== null && !elsewhere && <p role="status" className="text-brand-muted">{snapshot.message}</p>}
+              {printer.kind !== "native" && <p className={PRINTER_NOTE_CLASS}>{KEEP_TAB_OPEN}</p>}
+              {snapshot.message !== null && !elsewhere && <p role="status" className="text-muted-foreground">{snapshot.message}</p>}
               {confirmRemove ? (
                 <InlineConfirm
                   question={`Remove ${printer.name} from this device?`}
@@ -135,7 +135,7 @@ export function DevicePrinterSection() {
                 // Sized to their words, so on a phone Reconnect and Change printer share a line.
                 <div className="flex flex-wrap gap-2">
                   <Button
-                    className={PRINTER_ACTION_CLASS}
+                    className={PRINTER_BUTTON_CLASS}
                     variant={connected ? "outline" : "default"}
                     onClick={() => void settle(devicePrinter().reconnect())}
                     disabled={locked}
@@ -143,7 +143,7 @@ export function DevicePrinterSection() {
                     Reconnect
                   </Button>
                   <Button
-                    className={PRINTER_ACTION_CLASS}
+                    className={PRINTER_BUTTON_CLASS}
                     variant="outline"
                     onClick={() => {
                       setChanging((v) => !v);
@@ -154,9 +154,9 @@ export function DevicePrinterSection() {
                     {changing ? "Keep this printer" : "Change printer"}
                   </Button>
                   {inSetup ? (
-                    <p className="text-xs text-brand-muted">{PRINTER_IN_SETUP_MESSAGE}</p>
+                    <p className={PRINTER_NOTE_CLASS}>{PRINTER_IN_SETUP_MESSAGE}</p>
                   ) : known ? (
-                    <Button className={PRINTER_ACTION_CLASS} variant="outline" onClick={() => setConfirmRemove(true)} disabled={locked}>
+                    <Button className={PRINTER_BUTTON_REMOVE_CLASS} variant="outline" onClick={() => setConfirmRemove(true)} disabled={locked}>
                       Remove
                     </Button>
                   ) : null}
@@ -176,11 +176,11 @@ export function DevicePrinterSection() {
               onSearchNearby={() => void settle(devicePrinter().connectNew("ble", paperDefault))}
             />
           )}
-          {choosing && !caps.native && !caps.serial && !caps.bluetooth && <p className="text-brand-muted">{NO_CAPABILITY_MESSAGE}</p>}
+          {choosing && !caps.native && !caps.serial && !caps.bluetooth && <p className="text-muted-foreground">{NO_CAPABILITY_MESSAGE}</p>}
           {/* Phase 2 Session 2F1 (spec §9.2): the POS app on bridge v2 drives more printers beside this device's own. */}
           {caps.native && <OtherDevicePrinters paper={paperDefault} locked={locked} />}
         </>
       )}
-    </PrinterSection>
+    </PanelSection>
   );
 }

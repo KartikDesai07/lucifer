@@ -21,6 +21,7 @@ const BUTTON = "components/print/PrinterStatusButton.tsx";
 const BANNER = "components/print/PrinterStatusBanner.tsx";
 const CONNECT_OUTCOME = "components/print/connect-outcome.ts";
 const CLASSES = "components/print/printer-classes.ts";
+const FRAME = "components/print/PrinterPanelFrame.tsx";
 const DOT_LIB = "lib/printer/printer-dot.ts";
 const ALL_FILES = [HEADER, PROVIDER, DOT_CONTEXT, BUTTON, BANNER, CONNECT_OUTCOME, CLASSES, DOT_LIB];
 
@@ -146,17 +147,23 @@ const PINS: PinCase[] = [
     mutate: (src) => src.replace("usePrintHostDot()", "usePrintHostDots()"),
   },
   {
-    name: "SheetContent is side=right, scrolls, and renders PrinterPanel with a Done that closes the sheet",
+    // U5 Task 5 (printer P8, moved on purpose: the sheet became the HTML's frame): the button hands its open state and itself
+    // (the dialog's trigger: aria-expanded, focus back on close) to the frame, whose children are the panel; the words moved
+    // into the frame (the HTML's sub has no full stop, design 7.1) and its Done foot closes it.
+    name: "the button opens PrinterPanelFrame (its trigger) around PrinterPanel; the frame holds the title, the sub and a Done that closes",
     file: BUTTON,
     check: (src) => {
-      assert.match(src, /<SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">[\s\S]*<PrinterPanel onDone=\{\(\) => setOpen\(false\)\} \/>[\s\S]*<\/SheetContent>/);
+      assert.match(src, /<PrinterPanelFrame\s+open=\{open\}\s+onOpenChange=\{setOpen\}\s+trigger=\{[\s\S]*\}\s*>\s*<PrinterPanel \/>\s*<\/PrinterPanelFrame>/);
       assert.match(src, /import \{ PrinterPanel \} from "@\/components\/print\/PrinterPanel";/);
-      assert.match(src, /<SheetTrigger asChild>/);
-      assert.ok(src.includes('SHEET_TITLE = "Printer"') && src.includes('"Printer status and setup for this device."'));
-      assert.match(src, /<SheetTitle>\{SHEET_TITLE\}<\/SheetTitle>/);
-      assert.match(src, /<SheetDescription>\{SHEET_DESCRIPTION\}<\/SheetDescription>/);
+      assert.match(src, /import \{ PrinterPanelFrame \} from "@\/components\/print\/PrinterPanelFrame";/);
+      const frame = read(FRAME);
+      assert.ok(frame.includes('TITLE = "Printer"') && frame.includes('SUB = "Printer status and setup for this device"'), "the frame's words");
+      assert.match(frame, /<DialogPrimitive\.Trigger asChild>\{trigger\}<\/DialogPrimitive\.Trigger>/);
+      assert.match(frame, /<DialogPrimitive\.Title [^>]*>\{TITLE\}<\/DialogPrimitive\.Title>/);
+      assert.match(frame, /<DialogPrimitive\.Description [^>]*>\{SUB\}<\/DialogPrimitive\.Description>/);
+      assert.match(frame, /<DialogPrimitive\.Close data-ui="printer-panel-done"[^>]*>\s*Done\s*<\/DialogPrimitive\.Close>/, "Done closes the frame");
     },
-    mutate: (src) => src.replace("<PrinterPanel onDone={() => setOpen(false)} />", ""),
+    mutate: (src) => src.replace("<PrinterPanel />", ""),
   },
   {
     name: "PosPulseProvider derives printHostDotOf( exactly once",
@@ -204,9 +211,9 @@ const PINS: PinCase[] = [
       assert.match(src, /role="status" aria-live="polite"/);
       assert.ok(src.includes("{ dot: PrinterDot & { show: true }; copy: PrinterHeadline }"));
       assert.match(src, /<span\s+aria-hidden="true"/);
-      assert.match(src, /<span aria-hidden="true" className=\{cn\(PRINTER_TILE_CLASS, tone\)\}>/, "the status tile is decoration (aria-hidden)");
+      assert.match(src, /<span aria-hidden="true" className=\{cn\(PRINTER_STATUS_CIRCLE_CLASS, tone\)\}>/, "the status circle is decoration (aria-hidden) (U5 Task 5: the HTML's 34px circle, printer P13 moved on purpose)");
       assert.equal(count(src, "<Button"), 1, "at most ONE fix button");
-      assert.ok(src.includes("PRINTER_ACTION_CLASS"), "the fix button is 44px (shared action class)");
+      assert.ok(src.includes("PRINTER_BUTTON_SMALL_CLASS"), "the fix button is the HTML's 32px (shared class, U5 Task 5)");
       assert.ok(!src.includes(POS_PULSE_CTX), "the banner takes its copy as props");
     },
     mutate: (src) => src.replace('role="status" aria-live="polite"', ""),
@@ -219,7 +226,7 @@ const PINS: PinCase[] = [
     check: (src) => {
       assert.ok(src.includes('const checking = dot.reason === "checking";'), "landmark: the checking branch");
       assert.ok(src.includes("checking ? PRINTER_TILE_NEUTRAL_CLASS : dot.ok ? PRINTER_TILE_OK_CLASS : PRINTER_TILE_BAD_CLASS"), "checking draws the neutral tone, never ok/bad");
-      assert.ok(src.includes("checking ? Loader2 : dot.ok ? CheckCircle2 : AlertCircle"), "icons: spinner / check / alert");
+      assert.ok(src.includes("checking ? Loader2 : dot.ok ? Check : Bang"), "glyphs: spinner / the HTML's check / the HTML's exclamation (U5 Task 5, printer P14 moved on purpose)");
       assert.ok(src.includes('checking && "motion-safe:animate-spin"'), "the spinner respects reduced motion");
     },
     mutate: (src) => src.replace("checking ? PRINTER_TILE_NEUTRAL_CLASS : dot.ok", "dot.ok"),

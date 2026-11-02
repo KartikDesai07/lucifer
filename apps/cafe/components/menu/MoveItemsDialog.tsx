@@ -2,22 +2,11 @@
 
 import { useEffect, useState } from "react";
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { MenuDialog } from "@/components/menu/MenuDialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { MENU_SELECT_TRIGGER_CLASS } from "@/lib/menu-layout";
+import { MENU_DIALOG_FOOT_CLASS, MENU_EDITOR_CANCEL_CLASS, MENU_EDITOR_SAVE_CLASS, MENU_EDITOR_SELECT_CLASS } from "@/lib/menu-editor-layout";
+import { cn } from "@/lib/utils";
 import type { Category } from "@/types";
 
 interface MoveItemsDialogProps {
@@ -31,6 +20,7 @@ interface MoveItemsDialogProps {
 // R10 clause of the bulk bar's Move action — a category Select plus the
 // reports note the owner asked for (clause 3e-10): moving an item also moves
 // its PAST sales in Items & categories reports (Q2, today's behaviour).
+// U5 Task 3: in the HTML's dialog box (440px, the phone's bottom sheet), its words and logic today's.
 export function MoveItemsDialog({ open, onOpenChange, categories, isPending, onConfirm }: MoveItemsDialogProps) {
   const [categoryId, setCategoryId] = useState("");
 
@@ -43,37 +33,33 @@ export function MoveItemsDialog({ open, onOpenChange, categories, isPending, onC
   }, [open]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Move to category</DialogTitle>
-          <DialogDescription>
-            Past sales of these items will show under the new category in Reports.
-          </DialogDescription>
-        </DialogHeader>
+    <MenuDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Move to category"
+      sub="Past sales of these items will show under the new category in Reports."
+    >
+      <Select value={categoryId} onValueChange={setCategoryId}>
+        <SelectTrigger aria-label="Category" className={cn(MENU_SELECT_TRIGGER_CLASS, MENU_EDITOR_SELECT_CLASS)}>
+          <SelectValue placeholder="Select a category" />
+        </SelectTrigger>
+        <SelectContent>
+          {categories.map((c) => (
+            <SelectItem key={c._id} value={c._id}>
+              {c.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
-        <Select value={categoryId} onValueChange={setCategoryId}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select a category" />
-          </SelectTrigger>
-          <SelectContent>
-            {categories.map((c) => (
-              <SelectItem key={c._id} value={c._id}>
-                {c.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <DialogFooter>
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={isPending}>
-            Cancel
-          </Button>
-          <Button type="button" disabled={!categoryId || isPending} onClick={() => onConfirm(categoryId)}>
-            Move
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      <div className={MENU_DIALOG_FOOT_CLASS}>
+        <button type="button" className={MENU_EDITOR_CANCEL_CLASS} onClick={() => onOpenChange(false)} disabled={isPending}>
+          Cancel
+        </button>
+        <button type="button" className={MENU_EDITOR_SAVE_CLASS} disabled={!categoryId || isPending} onClick={() => onConfirm(categoryId)}>
+          Move
+        </button>
+      </div>
+    </MenuDialog>
   );
 }

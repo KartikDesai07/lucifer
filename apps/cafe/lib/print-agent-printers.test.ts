@@ -307,7 +307,7 @@ test("PIN (the final Phase 2 gate, m-1, m-2): Remove and Change printer wait for
   assert.ok(others.includes('const { printers, answered } = usePrintersRead(deviceId !== "");'), "Other printers reads the same entry, with its state");
   assert.ok(others.includes('const known = deviceId === "" || answered;'), "known as the device section knows it");
   // Session 3B (deliberate change): a printer this device may take over says so instead of offering Remove.
-  assert.match(others, /\{inSetup\.has\(entry\.id\) \? \(\s*<p className="text-xs text-brand-muted">\{IN_SETUP\}<\/p>\s*\) : takeover\.has\(entry\.id\) \? \(\s*<p className="text-xs text-brand-muted">\{TAKEOVER\}<\/p>\s*\) : known \? \(\s*<Button className=\{PRINTER_ACTION_CLASS\} variant="outline" disabled=\{disabled\} onClick=\{\(\) => setRemoving\(entry\.id\)\}>/, "no Remove under Other printers before the setup is known (m-1)");
+  assert.match(others, /\{inSetup\.has\(entry\.id\) \? \(\s*<p className=\{PRINTER_NOTE_CLASS\}>\{IN_SETUP\}<\/p>\s*\) : takeover\.has\(entry\.id\) \? \(\s*<p className=\{PRINTER_NOTE_CLASS\}>\{TAKEOVER\}<\/p>\s*\) : known \? \(\s*<Button className=\{PRINTER_BUTTON_REMOVE_CLASS\} variant="outline" disabled=\{disabled\} onClick=\{\(\) => setRemoving\(entry\.id\)\}>/, "no Remove under Other printers before the setup is known (m-1)");
 });
 
 test("PIN (the 2F2 review gate, M-4, m-3): a setup printer never leaves the app from the page; an ask is forgotten once the app lists the printer; the page removes only what it added", () => {
@@ -318,7 +318,7 @@ test("PIN (the 2F2 review gate, M-4, m-3): a setup printer never leaves the app 
   assert.ok(hook.includes('const LAN_ADDED_KEY = "pos.app-lan-added.v1";'), "the record is kept on the device");
   assert.ok(hook.indexOf("added.push(`tcp:${key}`)") > 0 && hook.indexOf("added.push(`tcp:${key}`)") < hook.indexOf("void nativePool().add({ tcp: lan })"), "recorded before it is asked for");
   const section = src("apps/cafe/components/print/DevicePrinterSection.tsx");
-  assert.match(section, /\{inSetup \? \(\s*<p className="text-xs text-brand-muted">\{PRINTER_IN_SETUP_MESSAGE\}<\/p>\s*\) : known \? \(\s*<Button className=\{PRINTER_ACTION_CLASS\} variant="outline" onClick=\{\(\) => setConfirmRemove\(true\)\} disabled=\{locked\}>/, "no Remove on a setup printer (the 2E gate's I-3 sentence), and none before the setup is known");
+  assert.match(section, /\{inSetup \? \(\s*<p className=\{PRINTER_NOTE_CLASS\}>\{PRINTER_IN_SETUP_MESSAGE\}<\/p>\s*\) : known \? \(\s*<Button className=\{PRINTER_BUTTON_REMOVE_CLASS\} variant="outline" onClick=\{\(\) => setConfirmRemove\(true\)\} disabled=\{locked\}>/, "no Remove on a setup printer (the 2E gate's I-3 sentence), and none before the setup is known");
   assert.ok(section.includes("if (!listed(target)) await nativePool().add(target);\n    return devicePrinter().selectNative(target, paperDefault);"), "Change printer keeps a setup printer in the app; a listed printer is only chosen");
   assert.ok(section.includes("const keepInApp = pool.active && (inSetup || !known) ?"), "kept also while the setup is not known yet");
   // The final Phase 2 gate (m-2, deliberate change): a failed read with nothing read is no longer "known".

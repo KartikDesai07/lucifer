@@ -1,18 +1,11 @@
 "use client";
 
-import { X } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { PRODUCT_BULK_MAX } from "@pos/shared/constants";
 import type { ProductBulkAction } from "@pos/shared/schemas";
-import { ABOVE_TAB_BAR_STICKY_CLASS } from "@/lib/shell-layout";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { MENU_BULK_BAR_CLASS, MENU_BULK_BUTTON_CLASS, MENU_BULK_CAP_CLASS, MENU_BULK_CLEAR_CLASS, MENU_BULK_COUNT_CLASS, MENU_BULK_LABEL_CLASS } from "@/lib/menu-list-layout";
+import { BoxIcon, CircleSlashIcon, FolderIcon, RestoreIcon, TickIcon } from "@/components/menu/menu-icons";
 
 interface BulkBarProps {
   count: number;
@@ -25,91 +18,50 @@ interface BulkBarProps {
   onClear: () => void;
 }
 
-// R18 — sticky bottom bar. Staff get the two stock actions only (the route
-// enforces this; STAFF_PRODUCT_BULK_ACTIONS mirrors it here for what's even
-// offered). lg+ shows every action inline; below lg the extra admin actions
-// (Move/Archive/Restore) collapse into one "More" menu. Over PRODUCT_BULK_MAX
-// selected, every action disables with the capped-selection message. On a
-// phone the bar stops on the tab bar (U0 Task 4), never under it.
+function BulkButton({ label, icon, disabled, onClick }: { label: string; icon: ReactNode; disabled: boolean; onClick: () => void }) {
+  return (
+    <button type="button" title={label} aria-label={label} disabled={disabled} onClick={onClick} className={MENU_BULK_BUTTON_CLASS}>
+      {icon}
+      <span className={MENU_BULK_LABEL_CLASS}>{label}</span>
+    </button>
+  );
+}
+
+// R18 — the ink bar at the foot of the list while anything is selected (U5 Task 2; values 8, design 6.7, owner Q6): sticky
+// at the scroller's foot, on a phone above the tab bar. Staff get the two stock actions only (the route enforces this;
+// STAFF_PRODUCT_BULK_ACTIONS mirrors it for what is even offered); admins add Move to category and Archive, and the
+// Archived view offers Restore. Over PRODUCT_BULK_MAX selected, every action disables with the capped-selection words.
+// Below a 520px list the labels go and each button is an icon (still named by its aria-label).
 export function BulkBar({ count, isAdmin, archived, isPending, onAction, onMove, onArchive, onClear }: BulkBarProps) {
   if (count === 0) return null;
   const overCap = count > PRODUCT_BULK_MAX;
   const disabled = isPending || overCap;
+  const icon = { size: 14, strokeWidth: 2 };
 
   return (
-    <div
-      className={cn(
-        "sticky bottom-0 z-10 -mx-1 flex flex-col gap-2 rounded-lg border bg-background/95 px-4 py-3 shadow-sm backdrop-blur pb-[calc(0.75rem+env(safe-area-inset-bottom))]",
-        ABOVE_TAB_BAR_STICKY_CLASS,
+    <div data-ui="menu-bulk-bar" className={MENU_BULK_BAR_CLASS}>
+      <span className={MENU_BULK_COUNT_CLASS}>{count} {count === 1 ? "item" : "items"} selected</span>
+      {overCap && <p className={MENU_BULK_CAP_CLASS}>Select up to {PRODUCT_BULK_MAX} items at a time.</p>}
+
+      {archived ? (
+        <BulkButton label="Restore" icon={<RestoreIcon {...icon} />} disabled={disabled} onClick={() => onAction("restore")} />
+      ) : (
+        <>
+          <BulkButton label="Mark sold out" icon={<CircleSlashIcon {...icon} />} disabled={disabled} onClick={() => onAction("out-of-stock")} />
+          <BulkButton label="Back in stock" icon={<TickIcon {...icon} />} disabled={disabled} onClick={() => onAction("in-stock")} />
+        </>
       )}
-    >
-      {overCap && (
-        <p className="text-xs text-destructive">Select up to {PRODUCT_BULK_MAX} items at a time.</p>
+
+      {isAdmin && !archived && (
+        <>
+          <BulkButton label="Move to category" icon={<FolderIcon {...icon} />} disabled={disabled} onClick={onMove} />
+          <BulkButton label="Archive" icon={<BoxIcon {...icon} />} disabled={disabled} onClick={onArchive} />
+        </>
       )}
-      {/* G20 — flex-wrap as a safety net (measured fine at 360px, but a
-          longer locale string or a narrower device shouldn't be able to push
-          this bar sideways). */}
-      <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
-        <span className="shrink-0 text-sm font-medium">{count} selected</span>
 
-        {archived ? (
-          <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => onAction("restore")}>
-            Restore
-          </Button>
-        ) : (
-          <>
-            <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => onAction("out-of-stock")}>
-              Out of stock
-            </Button>
-            <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => onAction("in-stock")}>
-              In stock
-            </Button>
-          </>
-        )}
-
-        {isAdmin && !archived && (
-          <>
-            {/* lg+: every action inline. */}
-            <Button type="button" size="sm" variant="outline" disabled={disabled} className="hidden lg:inline-flex" onClick={onMove}>
-              Move to category
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={disabled}
-              className="hidden text-destructive lg:inline-flex"
-              onClick={onArchive}
-            >
-              Archive
-            </Button>
-
-            {/* Below lg: Move + Archive collapse into one More menu. */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button type="button" size="sm" variant="outline" disabled={disabled} className="lg:hidden">
-                  More
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuItem onClick={onMove}>Move to category</DropdownMenuItem>
-                <DropdownMenuItem onClick={onArchive} className="text-destructive">Archive</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>
-        )}
-
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          className="ml-auto shrink-0"
-          onClick={onClear}
-          aria-label="Clear selection"
-        >
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
+      <button type="button" title="Clear selection" aria-label="Clear selection" onClick={onClear} className={MENU_BULK_CLEAR_CLASS}>
+        <span aria-hidden="true">✕</span>
+      </button>
     </div>
   );
 }

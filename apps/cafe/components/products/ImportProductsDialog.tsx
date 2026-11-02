@@ -2,33 +2,21 @@
 
 import { useEffect, useState } from "react";
 import Papa from "papaparse";
-import {
-  Upload,
-  Download,
-  Loader2,
-  CheckCircle2,
-  FileText,
-} from "lucide-react";
+import { Loader2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { useImportPreview, useImportProducts } from "@/hooks/use-product-import";
+import { MAX_IMPORT_ROWS } from "@/lib/product-import";
 import {
-  buildTemplateCsv,
-  MAX_IMPORT_ROWS,
-  MODIFIER_SEPARATOR,
-} from "@/lib/product-import";
-import { downloadCsvString } from "@/lib/export";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { ImportPreviewTable } from "@/components/products/ImportPreviewTable";
+  MENU_DIALOG_BODY_CLASS,
+  MENU_DIALOG_FOOT_CLASS,
+  MENU_DIALOG_WIDE_CLASS,
+  MENU_EDITOR_CANCEL_CLASS,
+  MENU_EDITOR_SAVE_CLASS,
+} from "@/lib/menu-editor-layout";
+import { MenuDialog } from "@/components/menu/MenuDialog";
+import { ImportUploadStep } from "@/components/products/ImportUploadStep";
+import { ImportPreviewStep } from "@/components/products/ImportPreviewStep";
 import type { ImportPreview, ImportResult } from "@/types";
 
 type RawRow = Record<string, unknown>;
@@ -137,176 +125,67 @@ export function ImportProductsDialog({ open, onOpenChange }: Props) {
     });
   };
 
+  // U5 Task 3: in the HTML's dialog box at today's width (its five-column preview needs it); the steps and their words are today's.
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Import items from CSV</DialogTitle>
-          <DialogDescription>
-            {step === "upload" &&
-              "Upload a CSV to bulk add or update menu items. Items are matched by name."}
-            {step === "preview" && `Reviewing ${fileName}`}
-            {step === "result" && "Import complete."}
-          </DialogDescription>
-        </DialogHeader>
-
+    <MenuDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Import items from CSV"
+      sub={
+        step === "upload"
+          ? "Upload a CSV to bulk add or update menu items. Items are matched by name."
+          : step === "preview"
+            ? `Reviewing ${fileName}`
+            : "Import complete."
+      }
+      className={MENU_DIALOG_WIDE_CLASS}
+    >
+      <div className={MENU_DIALOG_BODY_CLASS}>
         {step === "upload" && (
-          <div className="space-y-4">
-            <div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
-              <p className="mb-1 font-medium text-foreground">CSV columns</p>
-              <p>
-                <span className="font-medium text-foreground">name</span>,{" "}
-                <span className="font-medium text-foreground">category</span>,{" "}
-                <span className="font-medium text-foreground">price</span> are
-                required. Optional: discount (%), image, modifiers, isActive.
-              </p>
-              <p className="mt-1">
-                Put multiple modifiers in one cell separated by{" "}
-                <code className="rounded bg-background px-1">
-                  {MODIFIER_SEPARATOR}
-                </code>{" "}
-                (e.g. <code className="rounded bg-background px-1">
-                  Extra Cheese|Thin Crust
-                </code>
-                ). A row whose name already exists overwrites that item with
-                every column in the row (omitted optional columns reset to their
-                defaults). New categories are created automatically.
-              </p>
-            </div>
-
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() =>
-                downloadCsvString(buildTemplateCsv(), "products-template")
-              }
-            >
-              <Download className="mr-2 h-4 w-4" /> Download template
-            </Button>
-
-            <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-8 text-center transition-colors hover:bg-muted/40">
-              {previewMutation.isPending ? (
-                <>
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">
-                    Validating {fileName}…
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Upload className="h-6 w-6 text-muted-foreground" />
-                  <span className="text-sm font-medium">
-                    Choose a CSV file
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    Up to {MAX_IMPORT_ROWS} rows
-                  </span>
-                </>
-              )}
-              <input
-                key={resetKey}
-                type="file"
-                accept=".csv,text/csv"
-                className="sr-only"
-                disabled={previewMutation.isPending}
-                onChange={handleFile}
-              />
-            </label>
-          </div>
+          <ImportUploadStep fileName={fileName} pending={previewMutation.isPending} resetKey={resetKey} onFile={handleFile} />
         )}
-
-        {step === "preview" && preview && (
-          <div className="space-y-3">
-            <div className="flex flex-wrap gap-2 text-sm">
-              <Badge className="border-transparent bg-green-100 text-green-700">
-                {preview.summary.toCreate} new
-              </Badge>
-              <Badge className="border-transparent bg-blue-100 text-blue-700">
-                {preview.summary.toUpdate} update
-              </Badge>
-              {preview.summary.duplicates > 0 && (
-                <Badge className="border-transparent bg-amber-100 text-amber-700">
-                  {preview.summary.duplicates} duplicate
-                </Badge>
-              )}
-              {preview.summary.invalid > 0 && (
-                <Badge variant="destructive">
-                  {preview.summary.invalid} error
-                </Badge>
-              )}
-            </div>
-
-            {preview.newCategories.length > 0 && (
-              <p className="text-xs text-muted-foreground">
-                <FileText className="mr-1 inline h-3 w-3" />
-                New categories to be created:{" "}
-                <span className="font-medium text-foreground">
-                  {preview.newCategories.join(", ")}
-                </span>
-              </p>
-            )}
-
-            <ImportPreviewTable rows={preview.rows} />
-
-            {preview.summary.invalid > 0 && (
-              <p className="text-xs text-muted-foreground">
-                Rows with errors are skipped — only the{" "}
-                {preview.summary.valid} valid item(s) will be imported.
-              </p>
-            )}
-          </div>
-        )}
-
+        {step === "preview" && preview && <ImportPreviewStep preview={preview} />}
         {step === "result" && result && (
           <div className="space-y-2 py-4 text-center">
-            <CheckCircle2 className="mx-auto h-10 w-10 text-green-600" />
+            <CheckCircle2 className="mx-auto h-10 w-10 text-status-ok" />
             <p className="text-lg font-semibold">
               {result.created} added · {result.updated} updated
             </p>
             <p className="text-sm text-muted-foreground">
               {result.skipped > 0 && `${result.skipped} row(s) skipped. `}
-              {result.duplicates > 0 &&
-                `${result.duplicates} duplicate row(s) ignored. `}
+              {result.duplicates > 0 && `${result.duplicates} duplicate row(s) ignored. `}
               {result.newCategories.length > 0 &&
-                `Created ${result.newCategories.length} new categor${
-                  result.newCategories.length === 1 ? "y" : "ies"
-                }.`}
+                `Created ${result.newCategories.length} new categor${result.newCategories.length === 1 ? "y" : "ies"}.`}
             </p>
           </div>
         )}
+      </div>
 
-        <DialogFooter>
+      {step !== "upload" && (
+        <div className={MENU_DIALOG_FOOT_CLASS}>
           {step === "preview" && (
             <>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={backToUpload}
-                disabled={importMutation.isPending}
-              >
+              <button type="button" className={MENU_EDITOR_CANCEL_CLASS} onClick={backToUpload} disabled={importMutation.isPending}>
                 Back
-              </Button>
-              <Button
+              </button>
+              <button
                 type="button"
+                className={MENU_EDITOR_SAVE_CLASS}
                 onClick={commit}
-                disabled={
-                  preview?.summary.valid === 0 || importMutation.isPending
-                }
+                disabled={preview?.summary.valid === 0 || importMutation.isPending}
               >
-                {importMutation.isPending && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
+                {importMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
                 Import {preview?.summary.valid ?? 0} item(s)
-              </Button>
+              </button>
             </>
           )}
           {step === "result" && (
-            <Button type="button" onClick={() => onOpenChange(false)}>
+            <button type="button" className={MENU_EDITOR_SAVE_CLASS} onClick={() => onOpenChange(false)}>
               Done
-            </Button>
+            </button>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      )}
+    </MenuDialog>
   );
 }

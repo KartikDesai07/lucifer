@@ -13,7 +13,8 @@ const CAFE = process.cwd();
 const src = (rel: string): string => stripComments(readFileSync(path.join(CAFE, rel), "utf8"));
 
 test("PIN (2D): the category dialog's Kitchen station: the default unless chosen; an edit back to the default sends null, a new category omits it", () => {
-  const page = src("app/(dashboard)/categories/page.tsx");
+  // Moved on purpose (U5 Task 1, ruling M2): the dialog, its state and its writes live in CategoryEditorDialog, verbatim.
+  const page = src("components/menu/CategoryEditorDialog.tsx");
   assert.match(page, /<StationSelect\s+id="category-station"\s+value=\{stationId\}\s+onChange=\{setStationId\}\s+stations=\{stations\}/, "every station, the default too (the 2D gate's review, I-2)");
   assert.match(page, /inheritLabel=\{`Default station \(\$\{defaultStation\?\.name \?\? "Kitchen"\}\)`\}/, "the default by name");
   assert.match(page, /data: \{ name: trimmed, stationId: stationId === "" \? null : stationId, noKot: noKot \? true : null \}/, "an edit says which station (or null for the default) and the kitchen switch (true, or null = back ON)");
@@ -53,14 +54,16 @@ test("PIN (2D, decision 7): this device's bill printer: printers mode only, rout
 
 // Skip-KOT S5 (plan 12): the category switch, the item's three-way choice, the "No KOT" tags, and the two hints.
 test("PIN (skip-KOT): the category dialog renders the kitchen switch from state loaded with the dialog, sent on save", () => {
-  const page = src("app/(dashboard)/categories/page.tsx");
+  // Moved on purpose (U5 Task 1, ruling M2): the dialog, its state and its writes live in CategoryEditorDialog, verbatim.
+  const page = src("components/menu/CategoryEditorDialog.tsx");
   assert.match(page, /const \[noKot, setNoKot\] = useState\(false\);/, "off by default: a new category sends to the kitchen");
   assert.match(page, /if \(formOpen\) setNoKot\(editing\?\.noKot === true\);/, "the saved flag as it is on open");
   assert.match(page, /<CategoryKitchenTicketField id="category-no-kot" noKot=\{noKot\} onChange=\{setNoKot\} \/>/);
   const field = src("components/menu/CategoryKitchenTicketField.tsx");
   assert.match(field, /checked=\{!noKot\}/, "ON means sent to the kitchen");
   assert.match(field, /onCheckedChange=\{\(sendToKitchen\) => onChange\(!sendToKitchen\)\}/);
-  assert.match(field, /\{noKot && <p className="text-xs text-muted-foreground">\{KITCHEN_CATEGORY_OFF_HINT\}<\/p>\}/, "the hint shows only while off");
+  // Moved on purpose (U5 Task 4; a look pin): the hint's class is the Menu editor's hint (12px --text-3).
+  assert.match(field, /\{noKot && <p className=\{MENU_EDITOR_HINT_CLASS\}>\{KITCHEN_CATEGORY_OFF_HINT\}<\/p>\}/, "the hint shows only while off");
   assert.match(field, /KITCHEN_CATEGORY_SWITCH_LABEL/);
   assert.match(field, /min-h-11/, "a 44px target");
   assert.ok(!field.includes("components/ui/") || /from "@\/components\/ui\/(label|switch)"/.test(field), "shadcn primitives only");
@@ -81,9 +84,15 @@ test("PIN (skip-KOT): the item form's Kitchen ticket: Same as its category sends
 });
 
 test("PIN (skip-KOT): the \"No KOT\" tag sits on the Categories and both Items layouts, and the item rule is its own choice over its category", () => {
-  assert.match(src("components/menu/CategoryRow.tsx"), /<NoKotTag skips=\{category\.noKot === true\} \/>/);
-  assert.match(src("components/menu/ItemsTable.tsx"), /<NoKotTag skips=\{itemSkipsKitchen\(product, categoryMap\)\} \/>/);
-  assert.match(src("components/menu/ItemCards.tsx"), /<NoKotTag skips=\{itemSkipsKitchen\(product, categoryMap\)\} \/>/);
+  // Moved on purpose (U5 Task 4; the category's tag is the HTML's No KOT chip now): the row draws it when the category's flag is on.
+  assert.match(src("components/menu/CategoryRow.tsx"), /const noKot = category\.noKot === true;/);
+  assert.match(src("components/menu/CategoryRow.tsx"), /\{noKot && \(\s*<span data-ui="category-no-kot"/);
+  // Moved on purpose (U5 Task 2; the item tag is the HTML's badge row now): each Items layout asks menuItemBadges for the item's
+  // badges with the same rule, and ItemBadges draws "No KOT" from it. Same meaning, same rule.
+  assert.match(src("components/menu/ItemsTable.tsx"), /menuItemBadges\(product, \{ archived, skipsKitchen: itemSkipsKitchen\(product, categoryMap\) \}\)/);
+  assert.match(src("components/menu/ItemCards.tsx"), /menuItemBadges\(product, \{ archived, skipsKitchen: itemSkipsKitchen\(product, categoryMap\) \}\)/);
+  assert.match(src("lib/menu-view.ts"), /if \(ctx\.skipsKitchen\) out\.push\("no-kot"\);/);
+  assert.match(src("components/menu/ItemBadges.tsx"), /"no-kot": KITCHEN_NO_KOT_TAG/);
   const tag = src("components/menu/NoKotTag.tsx");
   assert.match(tag, /skipsKitchenTicket\(\{ noKot: product\.noKot \?\? categoryMap\.get\(product\.categoryId\)\?\.noKot \}\)/);
   assert.match(tag, /KITCHEN_NO_KOT_TAG/);

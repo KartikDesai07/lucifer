@@ -125,7 +125,8 @@ test("PIN: no product-category NAME read (`.category` as a bare field, `===`, or
 // ── Positive landmarks: the categoryId-based readers this migration wired ──
 
 const PRODUCT_GRID = "apps/cafe/components/pos/ProductGrid.tsx";
-const PRODUCTS_PAGE = "apps/cafe/app/(dashboard)/products/page.tsx";
+// Moved on purpose (U5 Task 1, ruling M1): the Items page's category join lives in its state hook.
+const PRODUCTS_PAGE = "apps/cafe/hooks/use-items-page-state.ts";
 const MENU_ITEMS_LIB = "apps/cafe/lib/menu-items.ts";
 const PRODUCT_FORM_SHEET = "apps/cafe/components/products/ProductFormSheet.tsx";
 const ITEMS_TABLE = "apps/cafe/components/menu/ItemsTable.tsx";

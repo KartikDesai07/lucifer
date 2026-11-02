@@ -19,6 +19,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import type { StationConfig } from "@pos/shared/print-printers";
 import type { Category, Product } from "@/types";
 
 type OrderView = "menu" | "kitchen";
@@ -32,6 +33,8 @@ interface KitchenOrderPanelProps {
   categories: Category[];
   activeProducts: Product[];
   archivedProducts: Product[];
+  /** The stations the page loads, passed to the list for each row's station chip (U5). */
+  stations: readonly StationConfig[];
   onEdit: (category: Category) => void;
   onDelete: (category: Category) => void;
 }

@@ -12,9 +12,9 @@ import { cn } from "@/lib/utils";
 // icon bhi set kar sakta hai"). A broken photo URL falls back via onError,
 // same idea as PublicInitialTile's `failed` state.
 
+// U5 Task 2 (owner Q3): one size, the 34px tile (radius 8) the HTML's veg mark sat in; the row stays 55px.
 const SIZE_CLASS = {
-  40: "h-10 w-10 rounded-md text-sm",
-  56: "h-14 w-14 rounded-lg text-base",
+  34: "size-[34px] rounded-[8px] text-sm",
 } as const;
 
 export type ItemArtSize = keyof typeof SIZE_CLASS;
@@ -64,7 +64,7 @@ export function ItemArt({ name, image, icon, size, className }: ItemArtProps) {
         className,
       )}
     >
-      {Icon ? <Icon className={size === 40 ? "h-5 w-5" : "h-6 w-6"} /> : name.charAt(0).toUpperCase() || "•"}
+      {Icon ? <Icon className="h-4 w-4" /> : name.charAt(0).toUpperCase() || "•"}
     </span>
   );
 }

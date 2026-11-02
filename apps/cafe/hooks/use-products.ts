@@ -1,10 +1,11 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiSend } from "@/lib/api-client";
 import { createCrudHooks } from "@/hooks/create-crud-hooks";
 import { STALE_TIMES, GC_TIMES } from "@/lib/query";
+import { bulkToastText } from "@/lib/menu-view";
 import type { BulkProductsInput } from "@pos/shared/schemas";
 import type { Product, CreateProductInput, UpdateProductInput, ProductBulkResult } from "@/types";
 
@@ -57,6 +58,13 @@ export const useProducts = productHooks.useList;
 export const useCreateProduct = productHooks.useCreate;
 export const useUpdateProduct = productHooks.useUpdate;
 
+// The toasts name the item (the HTML's words, U5 Q7), read from the products cache by id: the active list, else the archived
+// one. No request. Falls back to "Item" when the cache has no such row.
+function nameOf(qc: QueryClient, id: string): string {
+  const find = (key: readonly unknown[]) => qc.getQueryData<Product[]>(key)?.find((p) => p._id === id)?.name;
+  return find(PRODUCT_KEYS.all) ?? find([...PRODUCT_KEYS.all, "archived"]) ?? "Item";
+}
+
 // Archive (soft-delete via DELETE → isActive:false). Distinct from useUpdate so
 // the toast reads "archived", not "removed/updated".
 export function useArchiveProduct() {
@@ -64,7 +72,7 @@ export function useArchiveProduct() {
   return useMutation({
     mutationFn: (id: string) =>
       apiSend<{ deleted: true }>(`/api/products/${id}`, "DELETE"),
-    onSuccess: () => toast.success("Item archived"),
+    onSuccess: (_data, id) => toast.success(`${nameOf(qc, id)} archived · hidden everywhere`),
     onError: (err: Error) =>
       toast.error(err.message || "Could not archive item"),
     onSettled: () => qc.invalidateQueries({ queryKey: PRODUCT_KEYS.all }),
@@ -77,7 +85,7 @@ export function useRestoreProduct() {
   return useMutation({
     mutationFn: (id: string) =>
       apiSend<Product>(`/api/products/${id}`, "PUT", { isActive: true }),
-    onSuccess: () => toast.success("Item restored"),
+    onSuccess: (_data, id) => toast.success(`${nameOf(qc, id)} restored`),
     onError: (err: Error) =>
       toast.error(err.message || "Could not restore item"),
     onSettled: () => qc.invalidateQueries({ queryKey: PRODUCT_KEYS.all }),
@@ -92,7 +100,7 @@ export function useSetProductAvailability() {
     mutationFn: ({ id, available }: { id: string; available: boolean }) =>
       apiSend<Product>(`/api/products/${id}`, "PUT", { available }),
     onSuccess: (_data, vars) =>
-      toast.success(vars.available ? "Marked in stock" : "Marked out of stock"),
+      toast.success(`${nameOf(qc, vars.id)} ${vars.available ? "is back in stock" : "marked sold out"}`),
     onError: (err: Error) =>
       toast.error(err.message || "Could not update stock"),
     onSettled: () => qc.invalidateQueries({ queryKey: PRODUCT_KEYS.all }),
@@ -109,34 +117,20 @@ export function useSetProductQrVisibility() {
       apiSend<Product>(`/api/products/${id}`, "PUT", {
         publicVisible: visible ? null : false,
       }),
-    onSuccess: (_data, vars) => toast.success(vars.visible ? "Shown on QR menu" : "Hidden from QR menu"),
+    onSuccess: (_data, vars) => toast.success(`${nameOf(qc, vars.id)} ${vars.visible ? "shown on QR menu" : "hidden from QR menu"}`),
     onError: (err: Error) => toast.error(err.message || "Could not update QR visibility"),
     onSettled: () => qc.invalidateQueries({ queryKey: PRODUCT_KEYS.all }),
   });
 }
 
-// R9 — the bulk bar's single mutation for all 5 actions. Toast copy reads
-// `matched` (items the action actually applied to), never `requested` or
-// `modified` (timestamps can make modified == matched, but matched is the
-// number that answers "how many of my selection changed").
-function bulkToast(result: ProductBulkResult): string {
-  const n = result.matched;
-  const label: Record<string, string> = {
-    "out-of-stock": `Marked ${n} item${n === 1 ? "" : "s"} out of stock`,
-    "in-stock": `Marked ${n} item${n === 1 ? "" : "s"} in stock`,
-    move: `Moved ${n} item${n === 1 ? "" : "s"}`,
-    archive: `Archived ${n} item${n === 1 ? "" : "s"}`,
-    restore: `Restored ${n} item${n === 1 ? "" : "s"}`,
-  };
-  return label[result.action] ?? `Updated ${n} item${n === 1 ? "" : "s"}`;
-}
-
+// R9 — the bulk bar's single mutation for all 5 actions. Toast copy reads `matched` (items the action actually applied to),
+// never `requested` or `modified` (lib/menu-view.ts bulkToastText).
 export function useBulkProducts() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: BulkProductsInput) =>
       apiSend<ProductBulkResult>("/api/products/bulk", "POST", body),
-    onSuccess: (result) => toast.success(bulkToast(result)),
+    onSuccess: (result) => toast.success(bulkToastText(result)),
     onError: (err: Error) => toast.error(err.message || "Could not update the selected items"),
     onSettled: () => qc.invalidateQueries({ queryKey: PRODUCT_KEYS.all }),
   });

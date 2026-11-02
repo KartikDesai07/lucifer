@@ -112,7 +112,10 @@ test("PIN: useReorderCategories recovers from ANY error (not just a 409) by read
 
   // G3: no onSettled invalidate -- its refetch could race a fresher
   // cache write and paint a per-instance-cached stale list back over it.
-  assert.ok(!/onSettled/.test(src), "useReorderCategories must not invalidate on settle -- every cache write goes through commitCategories directly");
+  // Scoped to the reorder hook (U5 Task 4): useUpdateCategory / useDeleteCategory, hand-written now for their named toasts,
+  // keep the factory's invalidate on settle; the reorder is the last hook in the file.
+  const reorderSrc = src.slice(src.indexOf("export function useReorderCategories"));
+  assert.ok(reorderSrc.length > 0 && !/onSettled/.test(reorderSrc), "useReorderCategories must not invalidate on settle -- every cache write goes through commitCategories directly");
 
   // N1: the reorder's own success must also commit via commitCategories, not
   // a bare setQueryData -- see the dedicated N1 test below for why.
@@ -176,7 +179,9 @@ test("PIN: CategoryRow renders up/down arrow buttons with aria-labels naming the
   const src = readStripped(CATEGORY_ROW);
   assert.match(src, /aria-label=\{`Move \$\{category\.name\} up`\}/, "the up arrow must have an aria-label naming the category");
   assert.match(src, /aria-label=\{`Move \$\{category\.name\} down`\}/, "the down arrow must have an aria-label naming the category");
-  assert.match(src, /h-11 w-11[^"]*md:h-9 md:w-9/, "the arrows must be h-11 w-11 below md and h-9 w-9 at md+ (R23)");
+  // Moved on purpose (U5 Task 4, design 6.10; a look pin): the HTML's 28x22 pair, stacked (the 44px / 36px boxes go); the
+  // sizes live in CATEGORY_ARROW_CLASS (lib/menu-categories-layout.test.ts pins them).
+  assert.match(src, /className=\{CATEGORY_ARROW_CLASS\}/, "both arrows wear the HTML's 28x22 look");
   // R23: aria-disabled + a guard, never the `disabled` attribute (which would
   // drop keyboard focus while a save is pending).
   assert.match(src, /aria-disabled=\{index === 0 \|\| disabled\}/, "the up arrow must use aria-disabled, not disabled");

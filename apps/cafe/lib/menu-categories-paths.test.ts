@@ -23,6 +23,11 @@ const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel),
 const readStripped = (rel: string): string => stripComments(readSrc(rel));
 
 const CATEGORIES_PAGE = "apps/cafe/app/(dashboard)/categories/page.tsx";
+// Moved on purpose (U5 Task 1, ruling M2): the Add / Rename dialog and its writes are CategoryEditorDialog, verbatim.
+const CATEGORY_EDITOR = "apps/cafe/components/menu/CategoryEditorDialog.tsx";
+// Moved on purpose (U5 Task 4): the delete check, its counts and its four branches are CategoryDeleteDialog, in the confirm-sheet
+// look; the pins below read it with the same meaning (the Delete conjunction and the branch order are unchanged).
+const CATEGORY_DELETE = "apps/cafe/components/menu/CategoryDeleteDialog.tsx";
 
 // ══════════════════════════════════════════════════════════════════════════
 // C16 replacement — the delete/rename copy, reworded "products" -> "items"
@@ -31,10 +36,10 @@ const CATEGORIES_PAGE = "apps/cafe/app/(dashboard)/categories/page.tsx";
 // ══════════════════════════════════════════════════════════════════════════
 
 test("PIN: the categories page's delete copy states the shipped rule in ITEM words, not the old product wording", () => {
-  const src = readStripped(CATEGORIES_PAGE);
+  const src = readStripped(CATEGORY_DELETE);
 
   // Positive landmark: the delete AlertDialog itself must still exist.
-  assert.match(src, /AlertDialogTitle>Delete category\?</, "the delete dialog must still exist");
+  assert.match(src, /Title[^>]*>Delete category\?</, "the delete dialog must still exist");
 
   assert.ok(!/moved to .{0,4}Uncategorized/i.test(src), "the delete copy must not say items are moved to Uncategorized");
   assert.ok(!/no products/i.test(src), "the delete copy must say ITEMS, not products");
@@ -46,7 +51,7 @@ test("PIN: the categories page's delete copy states the shipped rule in ITEM wor
 });
 
 test("PIN: a category with items left links to the filtered Items page instead of offering a Delete that would only fail", () => {
-  const src = readStripped(CATEGORIES_PAGE);
+  const src = readStripped(CATEGORY_DELETE);
   assert.match(src, /deletingItemCount > 0/, "landmark: the page must compute whether the category being deleted still has items");
   assert.match(
     src,
@@ -60,14 +65,14 @@ test("PIN: a category with items left links to the filtered Items page instead o
   // Vision guard for the negative below: the non-blocked branch must still
   // render a real Delete action, or this pin could pass on a page that never
   // offers Delete at all.
-  assert.match(src, /<AlertDialogAction[\s\S]{0,500}\bDelete\s*<\/AlertDialogAction>/, "a non-blocked delete must still render a Delete action");
+  assert.match(src, /<AlertDialogPrimitive\.Action[\s\S]{0,900}\bDelete\s*<\/AlertDialogPrimitive\.Action>/,"a non-blocked delete must still render a Delete action");
 });
 
 // G16 (arbiter-confirmed): the delete dialog must not guess while either
 // item-count query is still in flight or has failed -- Delete stays hidden
 // in both cases, not just while items are known to remain.
 test("PIN: the delete dialog shows a loading line while either item count is pending, an error line with Try again if either failed, and hides Delete in both cases", () => {
-  const src = readStripped(CATEGORIES_PAGE);
+  const src = readStripped(CATEGORY_DELETE);
 
   assert.match(
     src,
@@ -113,7 +118,7 @@ test("PIN: the delete dialog shows a loading line while either item count is pen
 // ══════════════════════════════════════════════════════════════════════════
 
 test("PIN: the delete dialog shows an offline notice when either item count is a paused query with no data, distinct from loading/error", () => {
-  const src = readStripped(CATEGORIES_PAGE);
+  const src = readStripped(CATEGORY_DELETE);
 
   assert.match(
     src,
@@ -141,19 +146,17 @@ test("PIN: the delete dialog shows an offline notice when either item count is a
   );
 });
 
-test("PIN: the categories page's rename copy says items keep their link, not that renaming updates all products", () => {
-  const src = readStripped(CATEGORIES_PAGE);
+// Moved on purpose (U5 Task 4, design 6.11; a look pin): the editor's sub is the HTML's one line for Add and Edit, so the
+// "items keep their link" sentence goes; the old false claim stays out.
+test("PIN: the category editor's sub is the HTML's line and never claims renaming updates all products", () => {
+  const src = readStripped(CATEGORY_EDITOR);
 
-  assert.match(src, /editing\s*\?\s*"/, "the rename/add DialogDescription's ternary must still exist");
+  assert.match(src, /editing \? "Edit category" : "Add category"/, "the title still tells Add from Edit");
   assert.ok(
     !/updates this category on all its (products|items)/i.test(src),
-    "the rename copy must not claim renaming updates the category on every item",
+    "the copy must not claim renaming updates the category on every item",
   );
-  assert.match(
-    src,
-    /items keep their link.{0,40}new name shows everywhere/i,
-    "the rename copy must say items keep their link to this category, so the new name shows everywhere",
-  );
+  assert.match(src, /sub="Categories group items in New Order and the QR menu\."/, "the sub is the HTML's line");
 });
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -181,7 +184,7 @@ test("PIN: MENU_SECTIONS' adminOnly set is exactly ADMIN_ROUTES intersected with
 
 // Changed in Phase 2 Session 2D: a new category may carry its kitchen station after its order; skip-KOT then added the noKot spread.
 test("PIN: a new category's order comes from nextCategoryOrder(list), not list.length", () => {
-  const src = readStripped(CATEGORIES_PAGE);
+  const src = readStripped(CATEGORY_EDITOR);
   assert.match(
     src,
     /createCategory\.mutateAsync\(\{\s*name:\s*trimmed,\s*order:\s*nextCategoryOrder\(list\)(,\s*\.\.\.\(stationId !== "" \? \{ stationId \} : \{\}\))?(,\s*\.\.\.\(noKot \? \{ noKot \} : \{\}\))?\s*\}\)/,
@@ -193,10 +196,15 @@ test("PIN: a new category's order comes from nextCategoryOrder(list), not list.l
 // Skip-KOT smoke s12 (2026-10-08): the shadcn Badge behind NoKotTag renders a <div>, and a <div> inside a <p> is invalid
 // HTML that React reports as a hydration error on /categories. Every element that holds the tag must be a non-<p> box.
 test("PIN: the No KOT tag never sits inside a <p> (Badge is a <div>: hydration error)", () => {
-  const files = ["apps/cafe/components/menu/CategoryRow.tsx", "apps/cafe/components/menu/ItemCards.tsx", "apps/cafe/components/menu/ItemsTable.tsx"];
-  for (const rel of files) {
+  // Moved on purpose (U5 Task 2): an item's No KOT tag is a span of ItemBadges (the HTML's badge row), not NoKotTag; the rule
+  // is unchanged, no element that holds it is a <p>.
+  const files = [
+    ["apps/cafe/components/menu/CategoryRow.tsx", 'data-ui="category-no-kot"'],
+    ["apps/cafe/components/menu/ItemBadges.tsx", "<span key={b}"],
+  ];
+  for (const [rel, landmark] of files) {
     const src = readStripped(rel);
-    const at = src.indexOf("<NoKotTag");
+    const at = src.indexOf(landmark);
     assert.ok(at !== -1, `landmark: ${rel} renders the tag`);
     const before = src.slice(0, at);
     const openP = before.lastIndexOf("<p");
