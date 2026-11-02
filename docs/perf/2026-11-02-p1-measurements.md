@@ -237,3 +237,46 @@ lint error no longer fails the deploy build, an app file with the same error sti
 differences are the owner's D2 — the phone tab bar and the POS order bar, `rgba(255,255,255,.9)` + `saturate(1.8)
 blur(20px)` → `rgb(255,255,255)`, no filter; 0 other differing values (fonts, figures, colours, sizes). D1 (no page
 fade) is a removed animation.
+
+## 11. Pre-merge checks (C = `feat/perf-smooth` d9e540c)
+
+**The one move where C is not faster everywhere: dashboard → `/pos` with an empty cart.** Median ms to data shown,
+the server on this PC (≈ 10 ms a request):
+
+| Engine, CPU, network | B | C |
+|---|---|---|
+| Android Chrome 109 emulator (≈ WebView 109), CPU 4×, no delay, settled, runs B C C B | 685 / 775 | **422 / 427** |
+| the same, Fast 4G | 805 | **316** |
+| the same, Wi-Fi 40 ms | 790 | **345** |
+| headless desktop Chrome, CPU 6×, no delay (`nav-dash20` ×2, `leak-probe` ×10) | 1219 / 1222 / 608 | 1440 / 1839 / 1217 |
+| headless desktop Chrome, CPU 6×, Wi-Fi 40 ms | 678 | 753 |
+
+On the Android engine (the app's WebView) C is faster in every case. On a desktop Chrome slowed 6× with an instant
+server, C draws the cached screen in one go and spends ≈ 150–300 ms more in paint on the `/pos` return (script time
+equal; `trace-dashe`); C without F4 measured 783 there. B pays a server round trip on every such move, and in the field
+that trip is a Vercel function (network + function time, more on a cold start), which C skips. The earlier
+zero-delay emulator runs (≈ 1.4–1.5 s for both builds) were taken while the emulator was still busy and are not used.
+With a cart, the same move is faster in C on the desktop too (`trace-dash`, `trace-dashc`). F4 stays.
+
+**A lossy counter Wi-Fi** (phone, CPU 4×, `nav-ver-phone-c4-lossy-B|C`): cold loads equal (same requests and JS ±1);
+the `/pos` returns 1032 / 641 / 622 → 424 / 605 / 573 ms, now 0 server trips (B 1 each); the other moves within the
+noise of one lossy run, except one dashboard return 1246 → 1680 ms (one sample, 1.6 s of long tasks while nine API
+answers landed together).
+
+**The public screens** (no sign-in, phone CPU 4×, Fast 4G, two runs): `/login` cold 1478 → 1504, warm 574 → 633;
+the QR menu `/m/<token>` cold 1822 → 1835, warm 1066 → 1172 ms — equal within the noise; nothing on their path
+changed but the favicon URL and the stylesheet's staff rules, which no longer apply there.
+
+**F1 on a build** (`attr-check.mjs`): `data-html-rules` is on `<html>` on `/login` and on every staff screen, stays
+on after a client navigation, and is never on the QR menu; staff buttons keep tabular figures.
+
+**Accessibility** (local axe-core WCAG 2.2 AA + Chrome's contrast audit, the same screens): C has no issue B lacks;
+B's one axe colour-contrast flag on the phone dashboard (the see-through tab bar) is gone with the solid bar.
+
+**Growth** (`leak-probe.mjs`, 10 dashboard ↔ `/pos` rounds, forced GC): heap 10 → 12.4 MB on both builds (warm-up),
+DOM nodes, `<img>` count and window/document listeners flat on both.
+
+**The real app on the emulator** (the Android app, build C behind `adb reverse`, the local scratch DB): on WebView 154
+and on the factory WebView 109 — sign-in, `/pos` with photos, add an item, the cart sheet, Send KOT (open tabs +1,
+the KOT on the kitchen board), Floor, Orders, Home, Kitchen; the tab bar and the order bar solid; the "KOT has not
+printed yet" alert shows as on main (no printer on the emulator).
