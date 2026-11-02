@@ -360,6 +360,7 @@
     "lib/realtime-visible-recheck.test.ts",
     "lib/live-poll.test.ts",
     "lib/realtime-down.test.ts",
+    "lib/realtime-echo.test.ts",
     "lib/payment-result.test.ts",
     "lib/payment-sheet.test.ts",
     "lib/settle-guard.test.ts",

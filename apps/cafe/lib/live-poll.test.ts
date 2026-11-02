@@ -41,15 +41,17 @@ test("D3 (fix I1): a board reads Stale one relaxed poll later while the room is 
   assert.equal(liveStaleMs(KITCHEN_STALE_MS, true), REALTIME_RELAXED_POLL_MS + KITCHEN_STALE_MS, "D3: the threshold follows the 120 s poll");
 });
 
-test("PIN (D3, fix I1): the Now Serving chip and the Kitchen strip both judge Stale through liveStaleMs, reading the room's health at render", () => {
+test("PIN (D3, fix I1, final review I2): the Now Serving chip and the Kitchen strip both judge Stale through liveStaleMs, reading realtimeTrusted() at render", () => {
   const chip = src("components/kitchen/KitchenFreshnessChip.tsx");
-  assert.match(chip, /import \{ liveStaleMs \} from "@\/lib\/live-poll";/, "the chip imports the one helper");
-  assert.match(chip, /const stale = dataUpdatedAt > 0 && ageMs >= liveStaleMs\(KITCHEN_STALE_MS, isRealtimeHealthy\(\)\);/, "D3: the chip's Stale follows the live poll");
+  assert.match(chip, /import \{ liveStaleMs, realtimeTrusted \} from "@\/lib\/live-poll";/, "the chip imports the one helper and the trust verdict");
+  assert.match(chip, /const stale = dataUpdatedAt > 0 && ageMs >= liveStaleMs\(KITCHEN_STALE_MS, realtimeTrusted\(\)\);/, "I2 (D3): the chip's Stale follows the live poll, which follows realtimeTrusted");
+  assert.ok(!chip.includes("isRealtimeHealthy"), "I2: the chip no longer reads the bare socket proof");
   const header = src("lib/kitchen-header.ts");
   assert.match(header, /return updatedAtMs > 0 && nowMs - updatedAtMs >= liveStaleMs\(KITCHEN_STALE_MS, healthy\);/, "D3: kitchenStale through the one helper");
-  assert.ok(!header.includes("isRealtimeHealthy"), "kitchen-header.ts stays pure: the page passes the health in");
+  assert.ok(!header.includes("isRealtimeHealthy") && !header.includes("realtimeTrusted"), "kitchen-header.ts stays pure: the page passes the verdict in");
   const page = src("app/(dashboard)/kitchen/page.tsx");
-  assert.match(page, /kitchenStripShows\(\{ [^}]*healthy: isRealtimeHealthy\(\) \}\)/, "D3: the Kitchen page reads the room's health at render for its strip");
+  assert.match(page, /kitchenStripShows\(\{ [^}]*healthy: realtimeTrusted\(\) \}\)/, "I2 (D3): the Kitchen page reads realtimeTrusted() at render for its strip");
+  assert.ok(!page.includes("isRealtimeHealthy"), "I2: the page no longer reads the bare socket proof");
 });
 
 test("D3: tables-fresh-read is one-shot", () => {

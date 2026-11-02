@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import { matchMutation, useQueryClient, type InfiniteData, type Mutation, type QueryClient } from "@tanstack/react-query";
 import { KITCHEN_KEYS } from "@/hooks/use-kitchen";
 import { PRINT_WAKE_KEYS } from "@/hooks/use-print-host-wake";
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
@@ -10,6 +10,7 @@ import { TABLE_KEYS } from "@/hooks/use-tables";
 import { DASHBOARD_KEYS } from "@/hooks/use-dashboard";
 import { TOKEN_KEYS } from "@/hooks/use-tokens";
 import { subscribeRealtime, subscribeRealtimeDown } from "@/lib/realtime-client";
+import { noteLiveNudge, noteOwnWriteSettled, noteOwnWriteStarted } from "@/lib/live-poll";
 import { onePageAtMost } from "@/lib/order-query";
 import { createRealtimeInvalidator, type RealtimeInvalidateSpec } from "@/lib/realtime-invalidate";
 import { markTablesFreshRead } from "@/lib/tables-fresh-read";
@@ -26,13 +27,18 @@ import { markTablesFreshRead } from "@/lib/tables-fresh-read";
 // A SUPPLEMENT TO THE POLL, NEVER A REPLACEMENT. Every surface keeps its own
 // refetchInterval. The safety-net polls (the live lists, tables, dashboard,
 // day summary, Kitchen and token boards) step back to 120 s ONLY while the
-// room is PROVEN up — isRealtimeHealthy(), re-read on every tick
+// room is PROVEN up — realtimeTrusted(): no echo of this device's own write
+// overdue (I2) and isRealtimeHealthy(), re-read on every tick
 // (lib/live-poll.ts; the owner's D3) — and are today's 30 s / 10 s the moment
 // it is not, with ONE catch-up round on the drop (useRealtimeCatchUp). The
-// print host's relaxes 3s → 60s on the same proof (use-print-host-wake.ts);
+// print host's relaxes 3s → 60s on the socket proof (use-print-host-wake.ts);
 // the pulse never changes. Flag off or Worker down ⇒ exactly today's shipped
 // behaviour; a half-open socket reads healthy until its next missed pong
-// (≤ REALTIME_HEALTH_TTL_MS), the print host's known bound too.
+// (≤ REALTIME_HEALTH_TTL_MS), the print host's known bound too. A broken
+// publish path (sockets pong, no nudge comes; final review I2) costs at most
+// REALTIME_ECHO_MS after this device's next order / Kitchen write: unechoed,
+// the polls are today's until the next nudge (watchRealtimeEcho). A device
+// that never writes (a wall display) relies on the socket proof alone.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Kinds that change the Kitchen board. MIRRORS CAFE_EVENT_KINDS in
@@ -193,9 +199,52 @@ export const CATCH_UP_REALTIME: RealtimeInvalidateSpec = {
   onRound: markTablesFreshRead,
 };
 
+/** Final review I2 — every kind a live surface refreshes on (live state, the
+ *  Kitchen board, the dashboard strip): any of them proves the server's publish
+ *  path. Never print-job (the print host's own lane). */
+export const REALTIME_ECHO_KINDS: readonly string[] = [
+  ...new Set<string>([...LIVE_STATE_EVENT_KINDS, ...KITCHEN_EVENT_KINDS, ...DASHBOARD_EVENT_KINDS]),
+];
+
+/** I2 — this device's writes the server always echoes: every order write
+ *  (ORDER_KEYS.mutation prefixes them all), a Kitchen tick and a Kitchen Ready
+ *  (both publish kot-ticked on success). */
+export const ECHOED_WRITE_KEYS = [ORDER_KEYS.mutation, KITCHEN_KEYS.mutation, KITCHEN_KEYS.ready] as const;
+
+type AnyMutation = Mutation<unknown, unknown, unknown, unknown>;
+
+/** I2 — feeds the echo guard (lib/live-poll.ts): this device's watched writes
+ *  from the MutationCache (started on `pending`, settled on `success` /
+ *  `error`), the room's live nudges from the one socket. Returns the teardown,
+ *  which unsubscribes both and drops every unsettled write's start. */
+export function watchRealtimeEcho(qc: QueryClient): () => void {
+  const inFlight = new Set<AnyMutation>();
+  const watched = (m: AnyMutation) => ECHOED_WRITE_KEYS.some((mutationKey) => matchMutation({ mutationKey }, m));
+  const stopWrites = qc.getMutationCache().subscribe((event) => {
+    if (event.type !== "updated" || !watched(event.mutation)) return;
+    const { type } = event.action;
+    if (type === "pending" && !inFlight.has(event.mutation)) {
+      inFlight.add(event.mutation); // `pending` fires again once onMutate returns: one start per write
+      noteOwnWriteStarted();
+    } else if ((type === "success" || type === "error") && inFlight.delete(event.mutation)) {
+      noteOwnWriteSettled(type === "success");
+    }
+  });
+  const stopNudges = subscribeRealtime((kind) => {
+    if (REALTIME_ECHO_KINDS.includes(kind)) noteLiveNudge();
+  });
+  return () => {
+    stopWrites();
+    stopNudges();
+    for (let n = inFlight.size; n > 0; n--) noteOwnWriteSettled(false); // unwatched now: owes nothing
+    inFlight.clear();
+  };
+}
+
 /** One catch-up round per drop of the room (lib/realtime-client.ts
- *  subscribeRealtimeDown). Mounted once, in PosPulseProvider, next to
- *  useLiveStateRealtime; inert with realtime off (the room never goes up). */
+ *  subscribeRealtimeDown), and the I2 echo watch. Mounted once, in
+ *  PosPulseProvider, next to useLiveStateRealtime; inert with realtime off
+ *  (the room never goes up). */
 export function useRealtimeCatchUp(): void {
   const qc = useQueryClient();
   useEffect(() => {
@@ -206,4 +255,5 @@ export function useRealtimeCatchUp(): void {
       invalidator.dispose();
     };
   }, [qc]);
+  useEffect(() => watchRealtimeEcho(qc), [qc]);
 }

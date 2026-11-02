@@ -6,8 +6,7 @@ import { WifiOff } from "lucide-react";
 import { KITCHEN_FRESHNESS_TICK_MS } from "@pos/shared/query";
 import { KITCHEN_STALE_MS } from "@/lib/kitchen-board";
 import { CAFE_TIMEZONE } from "@/lib/constants";
-import { liveStaleMs } from "@/lib/live-poll";
-import { isRealtimeHealthy } from "@/lib/realtime-client";
+import { liveStaleMs, realtimeTrusted } from "@/lib/live-poll";
 
 interface KitchenFreshnessChipProps {
   dataUpdatedAt: number;
@@ -46,10 +45,11 @@ export function KitchenFreshnessChip({ dataUpdatedAt }: KitchenFreshnessChipProp
     );
   }
 
-  // D3 (perf P1): while the realtime room is proven up the board polls every 120 s, so Stale waits one relaxed poll
-  // longer (180 s); the room's health is read here, at render, on this chip's own 30s clock.
+  // D3 (perf P1): while the realtime room is trusted (proven up, no own write's echo overdue: final review I2) the
+  // board polls every 120 s, so Stale waits one relaxed poll longer (180 s); read here, at render, on this chip's own
+  // 30s clock.
   const ageMs = now - dataUpdatedAt;
-  const stale = dataUpdatedAt > 0 && ageMs >= liveStaleMs(KITCHEN_STALE_MS, isRealtimeHealthy());
+  const stale = dataUpdatedAt > 0 && ageMs >= liveStaleMs(KITCHEN_STALE_MS, realtimeTrusted());
 
   if (stale) {
     return (

@@ -195,8 +195,8 @@ test("kitchenStripShows: stale (60s+) AND the board's query failed or is paused;
 test("the page: the strip is kitchen-page's first child, above the board; it shows on kitchenStripShows and Try again refetches", () => {
   const src = code(PAGE);
   const strip =
-    // D3 (perf P1 fix I1): the page reads the room's health at render, so the strip's Stale follows the live poll.
-    '<RefreshStrip\n        ui="kitchen"\n        show={kitchenStripShows({ updatedAtMs: board.dataUpdatedAt, nowMs, isError: board.isError, isPaused: board.isPaused, healthy: isRealtimeHealthy() })}\n        message="Couldn\'t refresh the kitchen board. Showing the last update."\n        onRetry={() => void board.refetch()}\n      />';
+    // D3 (perf P1 fix I1; final review I2): the page reads realtimeTrusted() at render, so the strip's Stale follows the live poll.
+    '<RefreshStrip\n        ui="kitchen"\n        show={kitchenStripShows({ updatedAtMs: board.dataUpdatedAt, nowMs, isError: board.isError, isPaused: board.isPaused, healthy: realtimeTrusted() })}\n        message="Couldn\'t refresh the kitchen board. Showing the last update."\n        onRetry={() => void board.refetch()}\n      />';
   assert.equal(count(src, "<RefreshStrip"), 1, "one strip");
   const open = '<div data-ui="kitchen-page" className={KITCHEN_PAGE_CLASS}>';
   const page = src.indexOf(open);
@@ -235,7 +235,7 @@ test("the page: the filter is page state reset per visit; below 720px the board 
   for (const imp of [
     'import { useMediaQuery } from "@/hooks/use-media-query";',
     'import { filterCards, kitchenHeaderLine, kitchenStripShows, type KitchenFilter } from "@/lib/kitchen-header";',
-    'import { isRealtimeHealthy } from "@/lib/realtime-client";',
+    'import { realtimeTrusted } from "@/lib/live-poll";',
     'import { RefreshStrip } from "@/components/shared/RefreshStrip";',
     'import { KitchenTypeFilter } from "@/components/kitchen/KitchenTypeFilter";',
   ]) {
