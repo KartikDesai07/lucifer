@@ -77,6 +77,12 @@ export interface ProductVariation {
   price: number;
 }
 
+// One priced add-on: whole rupees, at least 1 (decision D4).
+export interface ProductModifierPrice {
+  name: string;
+  price: number;
+}
+
 export interface Product {
   _id: string;
   name: string;
@@ -95,6 +101,10 @@ export interface Product {
   // diner menu; an unticked one becomes a line's `removedModifiers` ("NO …").
   // Absent = off — only `true` turns it on.
   modifiersPreselected?: boolean;
+  // Priced add-ons (owner, 2026-11-02): the amount an ADDED modifier carries, e.g. Cheese Burst +100.
+  // ABSENT = every add-on is free; lists only the priced ones, each naming one of `modifiers`. Never set
+  // when modifiersPreselected is on (productAddOnsError, @pos/shared/modifier-prices).
+  modifierPrices?: ProductModifierPrice[];
   isActive: boolean; // false = archived (soft-deleted)
   // Whether this item appears on the PUBLIC QR menu. ABSENT means visible — so a
   // cafe that never touches this sees its whole menu published, and only an
@@ -230,6 +240,11 @@ export interface OrderItem {
   // KOT kitchen order: stamped by the SERVER at write time from the line's category kotOrder (never
   // client-declared). Omit-empty; read only through apps/cafe/lib/kitchen-lines.ts (the KOT line sort).
   kotRank?: number;
+  // Priced add-ons: what this line's ADDED modifiers were charged per unit, stamped by the SERVER at
+  // write time from the product (never client-declared, see orderItemSchema). `price` above already
+  // includes them; this snapshot is what the bill prints beside each add-on, so a reprint years later
+  // shows what was charged. Priced picks only, sorted by name; omit-empty.
+  modifierPrices?: ProductModifierPrice[];
 }
 
 // One append-only entry in an order's void trail (CR1.3): a snapshot of what was

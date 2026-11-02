@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { buildOrderRequestBody } from "@/components/public/public-submit";
+import { buildStatusPatchBody, seedDraft } from "@/components/public/public-status-edit";
+import { createPublicOrderRequestSchema } from "@pos/shared/schemas/public-order.schema";
 import {
   classifyStatusSaveFailure,
   isPromoErrorMessage,
@@ -87,4 +90,24 @@ test("SOLD_OUT_PATTERN must NOT match unrelated messages", () => {
   assert.doesNotMatch("Please wait a moment and try again.", SOLD_OUT_PATTERN);
   assert.doesNotMatch("Add ₹50 more to use this code", SOLD_OUT_PATTERN, "promo message — must not match");
   assert.doesNotMatch("This promo code is no longer active", SOLD_OUT_PATTERN);
+});
+
+// Priced add-ons — the order schemas are .strict(): a display-only modifierPrices on a cart line or an
+// edit draft must never ride the wire (it would 400 every order). The server prices every line.
+test("buildOrderRequestBody never sends modifierPrices, and the strict order schema accepts the body", () => {
+  const cart = [
+    { lineId: "x", productId: "a".repeat(24), name: "Pizza", price: 350, qty: 1, modifiers: ["Cheese Burst"], modifierPrices: [{ name: "Cheese Burst", price: 100 }] },
+  ];
+  const body = buildOrderRequestBody({ target: { kind: "parcel" }, cart, note: "", promoCode: null, name: "Asha", mobile: "9876543210", requestedRewardAt: null });
+  assert.equal("modifierPrices" in body.items[0], false);
+  assert.equal(JSON.stringify(body).includes("modifierPrices"), false);
+  const parsed = createPublicOrderRequestSchema.safeParse(body);
+  assert.ok(parsed.success, parsed.success ? "" : JSON.stringify(parsed.error.issues));
+});
+
+test("buildStatusPatchBody never sends modifierPrices even when the seeded draft rows carry them", () => {
+  const rows = [{ productId: "a".repeat(24), name: "Pizza", price: 350, qty: 1, modifiers: ["Cheese Burst"], modifierPrices: [{ name: "Cheese Burst", price: 100 }] }];
+  const patch = buildStatusPatchBody({ draft: seedDraft(rows), noteDraft: "", promoDraft: null, promoSeed: null });
+  assert.equal("modifierPrices" in patch.items[0], false);
+  assert.equal(JSON.stringify(patch).includes("modifierPrices"), false);
 });

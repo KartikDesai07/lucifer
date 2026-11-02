@@ -429,3 +429,19 @@ test("printOrderSnapshotSchema: a snapshot carrying both invoice keys parses and
   const bill = printJobPayloadSchema.safeParse({ kind: "bill", snapshot });
   assert.equal(bill.success, true, "and a bill payload carrying the pair parses end to end");
 });
+
+// -- priced add-ons: the bill's amounts ride the snapshot ---------------------
+
+test("printOrderSnapshot carries a line's modifierPrices omit-empty, and the strict schema parses it", () => {
+  const plain = printOrderSnapshot(order());
+  assert.ok(!("modifierPrices" in plain.items[0]), "a line with no amounts snapshots byte-identically");
+  const stamp = [{ name: "Extra shot", price: 40 }];
+  const base = order();
+  const priced = printOrderSnapshot(order({ items: [{ ...base.items[0], modifierPrices: stamp }] }));
+  assert.deepEqual(priced.items[0].modifierPrices, stamp);
+  assert.equal(printOrderSnapshotSchema.safeParse(priced).success, true);
+  const empty = printOrderSnapshot(order({ items: [{ ...base.items[0], modifierPrices: [] }] }));
+  assert.ok(!("modifierPrices" in empty.items[0]), "an empty list is omitted, never written");
+  const bad = { ...priced, items: [{ ...priced.items[0], modifierPrices: [{ name: "Extra shot", price: 40, x: 1 }] }] };
+  assert.equal(printOrderSnapshotSchema.safeParse(bad).success, false, "an entry is strict");
+});

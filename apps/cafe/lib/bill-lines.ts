@@ -2,7 +2,8 @@
 // is ONE line on the bill and on the Orders page detail, qty summed ("Cold Drink x2"). PURE and client-safe.
 //
 // "The same" = everything a bill line prints: the name, the variation, the add-ons (in any order), the "NO ..."
-// removals, the instructions, the unit price, and the reward flag with its note. Anything that differs stays its own
+// removals, the instructions, the unit price,
+// the add-on amounts charged (a line charged differently stays its own), and the reward flag with its note. Anything that differs stays its own
 // line, so a note or a FREE mark can never land on the wrong dish. The bill's money never comes from these lines (the
 // totals are the order's own, lib/receipt.ts): a grouped line's amount is price x qty, the sum of the lines it holds.
 // The stored order keeps one line per round (the KOT, voids and the POS cart need them); only the bill's rows group.
@@ -15,6 +16,7 @@ export interface BillLineSource {
   variation?: string;
   modifiers?: readonly string[];
   removedModifiers?: readonly string[];
+  modifierPrices?: readonly { name: string; price: number }[];
   instructions?: string;
   reward?: boolean;
   note?: string;
@@ -27,6 +29,8 @@ function billLineKey(line: BillLineSource): string {
     line.price,
     [...(line.modifiers ?? [])].sort(),
     [...(line.removedModifiers ?? [])].sort(),
+    // name:price pairs in code-unit order, so [A,B] and [B,A] picks key alike (the server stamps them sorted anyway).
+    (line.modifierPrices ?? []).map((p) => `${p.name}:${p.price}`).sort(),
     line.instructions ?? "",
     line.reward === true,
     line.note ?? "",

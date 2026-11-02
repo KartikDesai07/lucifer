@@ -24,7 +24,7 @@ import { assignedRewardRefusal } from "@/lib/assigned-reward-gate";
 import { failure } from "@/lib/api-helpers";
 import { hitRateLimit } from "@/lib/public-rate-limit";
 import { quoteRequestTotals, type IntakeTable } from "@/lib/order-request-intake";
-import type { PricedLine } from "@/lib/public-pricing";
+import { copyModifierPrices, type PricedLine } from "@/lib/public-pricing";
 
 // Sibling of app/api/public/order-request/[shortCode]/route.ts (CR2.2d split,
 // extended CR2.3b S8) — split out purely to keep the route file under the
@@ -51,6 +51,8 @@ export function toStatusItems(items: IOrderRequestItem[]): PublicStatusItem[] {
     if (item.removedModifiers && item.removedModifiers.length > 0) {
       statusItem.removedModifiers = item.removedModifiers;
     }
+    const modifierPrices = copyModifierPrices(item.modifierPrices);
+    if (modifierPrices) statusItem.modifierPrices = modifierPrices;
     if (item.instructions) statusItem.instructions = item.instructions;
     return statusItem;
   });

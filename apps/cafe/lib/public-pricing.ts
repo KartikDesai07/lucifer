@@ -1,4 +1,6 @@
+import { addOnTotal, lineModifierPrices } from "@pos/shared/modifier-prices";
 import { effectiveUnitPrice } from "@pos/shared/public";
+import type { ProductModifierPrice } from "@pos/shared/types";
 import { removedModifiersError } from "@pos/shared/utils";
 import { checkItemVariations } from "@/lib/variations";
 import type { ProductVariation } from "@/types";
@@ -33,6 +35,7 @@ export interface PricedProductSource {
   available: boolean;
   modifiers: string[];
   modifiersPreselected?: boolean;
+  modifierPrices?: ProductModifierPrice[]; // priced add-ons; absent = every add-on free
   variations?: ProductVariation[];
 }
 
@@ -54,21 +57,61 @@ export interface PricedLine {
   modifiers: string[];
   removedModifiers?: string[]; // omit-empty — same rule as the stored order line
   instructions?: string;
+  modifierPrices?: ProductModifierPrice[]; // omit-empty — the server's stamp of the amounts charged
 }
 
 // The unit price one line bills at, mirroring hooks/use-cart.ts's addToCart
-// EXACTLY: a named variation's OWN price is what runs through the PRODUCT's
-// discount (never a separate per-variation discount — there isn't one).
+// EXACTLY: a named variation's OWN price runs through the PRODUCT's discount
+// (never a separate per-variation discount — there isn't one). Priced add-ons
+// (owner, 2026-11-02) are added AFTER that discount and never discounted:
+// unit = effectiveUnitPrice(base, discount) + addOnTotal(product, modifiers).
 // `null` means `variation` does not name anything on this product — the
 // caller must treat that as a rejection, never fall back to the base price.
 export function derivedLinePrice(
   product: PricedProductSource,
   variation?: string,
+  modifiers: readonly string[] = [],
 ): number | null {
-  if (!variation) return effectiveUnitPrice(product.price, product.discount);
+  const extra = addOnTotal(product, modifiers);
+  if (!variation) return effectiveUnitPrice(product.price, product.discount) + extra;
   const match = product.variations?.find((v) => v.name === variation);
   if (!match) return null;
-  return effectiveUnitPrice(match.price, product.discount);
+  return effectiveUnitPrice(match.price, product.discount) + extra;
+}
+
+// A fresh, plain copy of a stored add-on snapshot, or undefined when there is
+// none to carry (omit-empty). Rebuilt entry by entry: a lean/Mongoose subdoc
+// must never leak its internals into the next write or the response.
+export function copyModifierPrices(
+  prices?: readonly ProductModifierPrice[],
+): ProductModifierPrice[] | undefined {
+  if (!prices || prices.length === 0) return undefined;
+  return prices.map(({ name, price }) => ({ name, price }));
+}
+
+// The same copy as a spreadable object, for the line builders that write
+// their omit-empty keys with `...(cond ? {...} : {})`.
+export function modifierPricesPart(
+  prices?: readonly ProductModifierPrice[],
+): { modifierPrices?: ProductModifierPrice[] } {
+  const copy = copyModifierPrices(prices);
+  return copy ? { modifierPrices: copy } : {};
+}
+
+// True when two stored add-on snapshots are the same amounts (absent == []):
+// same length and the same name + price at each index (both are sorted by
+// name). Accept's drift check uses it so a moved amount with an unchanged
+// unit total still rejects.
+export function sameModifierPrices(
+  a?: readonly ProductModifierPrice[],
+  b?: readonly ProductModifierPrice[],
+): boolean {
+  const left = a ?? [];
+  const right = b ?? [];
+  return (
+    left.length === right.length &&
+    left.every((p, i) => p.name === right[i].name && p.price === right[i].price)
+  );
 }
 
 // Prices every item in one public order request against the live product
@@ -97,7 +140,7 @@ export function priceRequestItems(
     );
     if (variationError) return { error: variationError };
 
-    const price = derivedLinePrice(product, item.variation);
+    const price = derivedLinePrice(product, item.variation, item.modifiers);
     // Unreachable once checkItemVariations has passed (its unknown-variation
     // check is the same `names.includes` test derivedLinePrice makes) — kept
     // as a defensive belt-and-suspenders so the two can never silently drift
@@ -135,6 +178,8 @@ export function priceRequestItems(
       line.removedModifiers = item.removedModifiers;
     }
     if (item.instructions) line.instructions = item.instructions;
+    const stamp = lineModifierPrices(product, item.modifiers);
+    if (stamp.length > 0) line.modifierPrices = stamp;
     lines.push(line);
   }
 

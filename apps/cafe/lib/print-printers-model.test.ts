@@ -109,5 +109,5 @@ test("PIN: PUT /api/categories/[id] turns stationId:null into a removed field, n
 
 test("PIN: PUT /api/products/[id] clears stationId on null like icon and publicVisible", () => {
   const src = cafeSrc("app/api/products/[id]/route.ts");
-  assert.match(src, /nullClearsFields: \["variations", "publicVisible", "icon", "stationId", "noKot"\]/, "skip-KOT: noKot null is a real $unset (false is a stored choice)");
+  assert.match(src, /nullClearsFields: \["variations", "publicVisible", "icon", "stationId", "noKot", "modifierPrices"\]/, "skip-KOT: noKot null is a real $unset (false is a stored choice); priced add-ons: modifierPrices null clears every amount");
 });

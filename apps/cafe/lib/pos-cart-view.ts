@@ -5,7 +5,8 @@
 // 6.1); the final fix wave: where the focus goes after a line's Remove, and when the bill's details show (ruling P16);
 // the audit wave: when the cart sheet closes itself (ruling P50) and how long the details choice holds (ruling P51).
 // Pure: no React, no fetching; client-safe.
-import { inr, orderItemModifierLines, orderLineKey } from "@pos/shared/utils";
+import { billModifierLines } from "@pos/shared/modifier-prices";
+import { inr, orderLineKey } from "@pos/shared/utils";
 import { tableAreaIdOf } from "@/lib/table-areas";
 import type { Area, Order, OrderItem, Table } from "@/types";
 
@@ -14,16 +15,16 @@ export const NEW_ORDER_TITLE = "New order";
 export const WALK_IN = "Walk-In";
 
 /** The fields a line's meta reads: an order item or a cart line. */
-export type LineMetaItem = Pick<OrderItem, "price" | "variation" | "modifiers" | "removedModifiers" | "instructions">;
+export type LineMetaItem = Pick<OrderItem, "price" | "variation" | "modifiers" | "removedModifiers" | "modifierPrices" | "instructions">;
 
 /**
- * The line's one meta line (values 5.4): the variation, the add-ons ("+ a, b") and the removals ("NO a, NO b") through
- * the shared formatter (removals first, as every surface prints them), then the instructions — joined with ", " as the
+ * The line's one meta line (values 5.4): the variation, the add-ons ("+ a, b"; a priced one reads "+ a ₹100") and the
+ * removals ("NO a, NO b") through the shared bill formatter (removals first, as every surface prints them), then the instructions — joined with ", " as the
  * HTML's meta; nothing to say reads the HTML's "₹{price} each".
  */
 export function lineMeta(item: LineMetaItem): string {
   const note = item.instructions?.trim();
-  const parts = [item.variation, ...orderItemModifierLines(item), note].filter((p): p is string => !!p);
+  const parts = [item.variation, ...billModifierLines(item), note].filter((p): p is string => !!p);
   return parts.length > 0 ? parts.join(", ") : `${inr(item.price)} each`;
 }
 

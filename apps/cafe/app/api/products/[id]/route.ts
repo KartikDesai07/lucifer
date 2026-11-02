@@ -3,6 +3,7 @@ import { createItemRoute } from "@/lib/crud-route";
 import { updateProductSchema } from "@/schemas";
 import { STAFF_PRODUCT_FIELDS } from "@/lib/write-access";
 import { PUBLIC_MENU_CACHE_KEY } from "@/lib/public-menu";
+import { productUpdateAddOnsError } from "@/lib/product-addons-check";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,9 @@ export const { GET, PUT, DELETE } = createItemRoute({
   // append-only, omit-empty discipline (product-icons.ts).
   // Printing Phase 2: "Use the category's station" sends stationId: null, back to ABSENT the same way.
   // Skip-KOT: "Same as its category" sends noKot: null, back to ABSENT (false means "always send", a real value).
-  nullClearsFields: ["variations", "publicVisible", "icon", "stationId", "noKot"],
+  // Priced add-ons: clearing every add-on amount sends modifierPrices: null, back to ABSENT (= all add-ons free).
+  nullClearsFields: ["variations", "publicVisible", "icon", "stationId", "noKot", "modifierPrices"],
+  // Priced add-ons: the amounts must still pair with the add-ons once this edit is merged with the stored item.
+  validateUpdate: productUpdateAddOnsError,
   softDelete: true,
 });

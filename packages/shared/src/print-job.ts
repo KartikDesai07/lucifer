@@ -311,6 +311,10 @@ export function printOrderSnapshot(order: Order): PrintOrderSnapshot {
           : {}),
         ...(item.reward === true ? { reward: true as const } : {}),
         ...(item.note ? { note: item.note } : {}),
+        // Priced add-ons: what each add-on was charged, for the bill's "+ Cheese Burst ₹100" — same rule.
+        ...(item.modifierPrices && item.modifierPrices.length > 0
+          ? { modifierPrices: item.modifierPrices.map(({ name, price }) => ({ name, price })) }
+          : {}),
       };
     }),
   };

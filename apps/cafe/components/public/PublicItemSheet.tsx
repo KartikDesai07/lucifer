@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Minus, Plus } from "lucide-react";
 
 import { effectiveUnitPrice, PUBLIC_NOTE_MAX_LEN, PUBLIC_ORDER_MAX_QTY } from "@pos/shared/public";
+import { addOnTotal } from "@pos/shared/modifier-prices";
 import { inr, cn } from "@/lib/utils";
 import { initialSelected, pickModifierResult, modifiersPreselectedFor } from "@/lib/modifier-picker";
 import { BRAND_CHECKBOX_SQUARE_CLASS } from "@/components/brand/brand-classes";
@@ -77,11 +78,15 @@ export function PublicItemSheet({
   const chosenVariation = variation
     ? product.variations?.find((v) => v.name === variation)
     : undefined;
-  const unit = chosenVariation
+  // The item price (after its own discount) plus each picked add-on in full —
+  // the same rule the server charges (resolveUnitPrice in public-cart-math).
+  const addOns = addOnTotal(product, selected);
+  const base = chosenVariation
     ? effectiveUnitPrice(chosenVariation.price, product.discount)
     : hasVariations
       ? null
       : effectiveUnitPrice(product.price, product.discount);
+  const unit = base === null ? null : base + addOns;
   const confirmDisabled = hasVariations && !variation;
 
   const toggle = (modifier: string, checked: boolean) => {
@@ -153,16 +158,26 @@ export function PublicItemSheet({
                 </p>
               )}
               <div className="space-y-2">
-                {product.modifiers.map((modifier) => (
-                  <label key={modifier} className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      className={BRAND_CHECKBOX_SQUARE_CLASS}
-                      checked={selected.includes(modifier)}
-                      onCheckedChange={(c) => toggle(modifier, c === true)}
-                    />
-                    {modifier}
-                  </label>
-                ))}
+                {product.modifiers.map((modifier) => {
+                  // Amounts show in normal mode only — a ticked item never
+                  // carries one (the server sends none).
+                  const extra = reverseMode
+                    ? undefined
+                    : product.modifierPrices?.find((p) => p.name === modifier)?.price;
+                  return (
+                    <label key={modifier} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        className={BRAND_CHECKBOX_SQUARE_CLASS}
+                        checked={selected.includes(modifier)}
+                        onCheckedChange={(c) => toggle(modifier, c === true)}
+                      />
+                      {modifier}
+                      {extra !== undefined && (
+                        <span className="ml-auto text-xs text-muted-foreground tabular-nums">+{inr(extra)}</span>
+                      )}
+                    </label>
+                  );
+                })}
               </div>
             </div>
           )}

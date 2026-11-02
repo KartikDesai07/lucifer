@@ -6,6 +6,7 @@
 // repo's ~300-line file budget.
 
 import { TABLE_CHARGE_MAX } from "./constants";
+import type { ProductModifierPrice } from "./types";
 
 // ── The table token ─────────────────────────────────────────────────────────
 // A table's PUBLIC identity, printed into its QR sticker. Deliberately NOT the
@@ -270,6 +271,7 @@ export interface PublicStatusItem {
   variation?: string; // omit-empty
   modifiers: string[];
   removedModifiers?: string[]; // omit-empty — "NO …" on an item whose modifiers come ticked
+  modifierPrices?: ProductModifierPrice[]; // omit-empty — what each add-on was charged (the diner's bill)
   instructions?: string; // omit-empty
 }
 

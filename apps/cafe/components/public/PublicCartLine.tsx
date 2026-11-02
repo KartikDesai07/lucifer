@@ -1,7 +1,7 @@
 import { Minus, Plus, Trash2 } from "lucide-react";
 
 import { PUBLIC_ORDER_MAX_QTY } from "@pos/shared/public";
-import { orderItemModifierLines } from "@pos/shared/utils";
+import { billModifierLines } from "@pos/shared/modifier-prices";
 import { Button } from "@/components/ui/button";
 import type { CartLine } from "@/components/public/public-cart-store";
 
@@ -24,7 +24,7 @@ export function PublicCartLine({
           {line.name}
           {line.variation ? ` (${line.variation})` : ""}
         </p>
-        {orderItemModifierLines(line).map((text) => (
+        {billModifierLines(line).map((text) => (
           <p key={text} className="truncate text-xs text-muted-foreground">{text}</p>
         ))}
         {line.instructions && (

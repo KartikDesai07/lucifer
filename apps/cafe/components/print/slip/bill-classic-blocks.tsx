@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import Image from "next/image";
 
-import { orderItemLabel, orderItemModifierLines, discountLineLabel } from "@pos/shared/utils";
+import { orderItemLabel, discountLineLabel } from "@pos/shared/utils";
+import { billModifierLines } from "@pos/shared/modifier-prices";
 import { chargesFromOrder } from "@pos/shared/order-charges";
 import type { BillBlockOf, BillBlockType } from "@pos/shared/print-template";
 import { CAFE_TIMEZONE } from "@/lib/constants";
@@ -184,7 +185,7 @@ export const BILL_CLASSIC_BLOCKS: ClassicBillRenderers = {
           {item.reward && item.note && (
             <div className="pl-2 text-[0.83em] italic">{item.note}</div>
           )}
-          {orderItemModifierLines(item).map((line) => (
+          {billModifierLines(item).map((line) => (
             <div key={line} className="pl-2 text-[0.83em]">{line}</div>
           ))}
           {item.instructions && (

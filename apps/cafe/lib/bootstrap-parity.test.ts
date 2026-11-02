@@ -484,6 +484,9 @@ test("PIN: BOOTSTRAP_VERSION is at least 12 and the masters blob carries the are
   // would show no PIN state and a device would never auto-lock from it. Lowering it below 16 would revive those blobs.
   assert.ok(BOOTSTRAP_VERSION >= 16, `BOOTSTRAP_VERSION is ${BOOTSTRAP_VERSION} - Staff carrying hasPin/pinBlocked and Settings carrying screenLockMinutes (PIN lock) needs at least 16`);
   assert.ok(BOOTSTRAP_VERSION >= 17, `BOOTSTRAP_VERSION is ${BOOTSTRAP_VERSION} - Category carrying kotOrder (KOT kitchen order) needs at least 17`);
+  // Priced add-ons then added Product.modifierPrices (17 -> 18): a v17 blob has none, so a device holding one would price a priced add-on
+  // at nothing. Lowering it below 18 would revive those blobs.
+  assert.ok(BOOTSTRAP_VERSION >= 18, `BOOTSTRAP_VERSION is ${BOOTSTRAP_VERSION} - Product carrying modifierPrices (priced add-ons) needs at least 18`);
   // Positive landmark: the part the version bump was for is really in the key list.
   assert.ok((MASTERS_PART_KEYS as readonly string[]).includes("areas"), "MASTERS_PART_KEYS includes areas");
 });

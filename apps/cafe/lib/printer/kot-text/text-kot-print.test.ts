@@ -275,6 +275,8 @@ test("a printer job's slip names its printer; a simple-mode job's slip names non
 // SHA-256 as of the spec commit d21ee37 (the repo checks out LF everywhere: .gitattributes).
 // Re-pinned 2026-11-02 (owner: a repeated item is ONE bill line): OrderReceipt + the bill classic / modern / themed
 // blocks, whose item rows now go through billLinesOf (lib/bill-lines.ts). No KOT or token file changed.
+// Re-pinned 2026-11-03 (priced add-ons, D1: the bill prints "+ Cheese Burst ₹100"): the same four bill files now
+// render a line's modifiers through billModifierLines. No KOT or token file changed (the KOT hashes below held).
 const PICTURE_FILES: ReadonlyArray<readonly [string, string]> = [
   ["apps/cafe/lib/printer/escpos.ts", "a0ebdf99560951b26ab030fe2c063e32c39e2348b8267dea4ca630aa98bbacb7"],
   ["apps/cafe/lib/printer/raster.ts", "a8e28e7255671fde55fc67bcbfcfc4179a356190ff52d42db48403f4c9917a55"],
@@ -282,17 +284,17 @@ const PICTURE_FILES: ReadonlyArray<readonly [string, string]> = [
   ["apps/cafe/lib/printer/lane-print.ts", "85c2fbfe90c4ace49714f4eca7dab38ea71f518aa2e85c046f7411eab041f631"],
   ["apps/cafe/lib/desktop-shell.ts", "6500105e629eab187c941973bdf2efefb9527a864ed3c7a4344ec31ff65002a9"],
   ["apps/cafe/components/pos/KOTReceipt.tsx", "8cf5b916d92dfb849cebfc706e5092ae64a32f5543c32c3881280b75a2cc6a6c"],
-  ["apps/cafe/components/pos/OrderReceipt.tsx", "d08cde89608e2616732af413a2c4e62f00a7d7f8ff8476a87b71103ffc02cfe4"],
+  ["apps/cafe/components/pos/OrderReceipt.tsx", "3c52e53c262c00e50a3a00a272b3d42f0fcece76dce82e6068a996c9ca3dd3a4"],
   ["apps/cafe/components/pos/PrintSources.tsx", "9e48741a302e346676ab3d5743f33b71186f2ab263ada641486713e562391626"],
   ["apps/cafe/components/pos/PrintBanner.tsx", "ae64381a09a8756e96e5a8ff354dd30929ffe69157023b88d5eff34d7ac8adbb"],
   ["apps/cafe/components/print/slip/SlipEngine.tsx", "7dadadca482d807afe61af08fa5251fe6700c10b44d5e0742441c8532d0efa48"],
   ["apps/cafe/components/print/slip/SlipSkeleton.tsx", "f611392cca061ecbd578917e498bc6c2b22f9b6d82574d47377d28fee4065350"],
   ["apps/cafe/components/print/slip/TokenSlip.tsx", "dc61cf11886300c5fb1f67e25633fa81c56526944936445e12685019c8194e14"],
   ["apps/cafe/components/print/slip/bill-cafe-blocks.tsx", "52bfa8cdd7d34e936f07afe17c952417eb9cb101dc760b1d1e72b7aa0afb4edf"],
-  ["apps/cafe/components/print/slip/bill-classic-blocks.tsx", "8a0052ed726cf62456eecf6143c9c5f0305e00db629086e3a0a1f78ff2670563"],
+  ["apps/cafe/components/print/slip/bill-classic-blocks.tsx", "9754c486fa0da664ed6f8515e4dedfeb94217aa9896b6f5e584f87c9ace217ea"],
   ["apps/cafe/components/print/slip/bill-express-blocks.tsx", "cea92172ce8a542c8caec96488124b3f55a0df52bae05e273e2bb65522f5268f"],
-  ["apps/cafe/components/print/slip/bill-modern-blocks.tsx", "723ec84c63e4f444b35fc87240e759efe915769e64d52876f3448a0bf7f6a06a"],
-  ["apps/cafe/components/print/slip/bill-themed-blocks.tsx", "a149d8546c59ec064d7a45d5aea088d88c504ef27b56bffc078b522cf8edc5c1"],
+  ["apps/cafe/components/print/slip/bill-modern-blocks.tsx", "23c2e561dbb5be0625c958d28e5a62725eeae9ace19e99c6042a3ff46ffa4a53"],
+  ["apps/cafe/components/print/slip/bill-themed-blocks.tsx", "e5446ddc2eb5fab607e4af45131d43ef4ce388f05d0db7c9b81873aa5d0e82ef"],
   ["apps/cafe/components/print/slip/generic-blocks.tsx", "caf0b117be2497bb9b089ec0f2f890e1b182d84a9d828a94ea27c752fc32b5ab"],
   ["apps/cafe/components/print/slip/kot-bold-blocks.tsx", "f8cf55c4e5ad8d3b38a13ff09f79921d6954c948374c9c9ff584f80815db4957"],
   ["apps/cafe/components/print/slip/kot-classic-blocks.tsx", "398dcaff958c617b564ff4f31f10bab9722bcd5345bcd3db17610d18b9d22c9f"],

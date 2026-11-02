@@ -51,7 +51,7 @@ const gstOn = (gstRate: number, gstMode: GstConfig["gstMode"]): Partial<Settings
 });
 
 export const ITEMS: OrderItem[] = [
-  { productId: "p1", name: "Masala Chai", price: 40, qty: 2, modifiers: ["Less sugar", "Extra ginger"], instructions: "Hot please", kotRound: 1 },
+  { productId: "p1", name: "Masala Chai", price: 40, qty: 2, modifiers: ["Less sugar", "Extra ginger"], modifierPrices: [{ name: "Extra ginger", price: 10 }], instructions: "Hot please", kotRound: 1 },
   { productId: "p2", name: "Pizza", variation: "Large", price: 300, qty: 1, modifiers: [], removedModifiers: ["Onion"], instructions: "", kotRound: 1 },
   { productId: "p3", name: "Cold Coffee", price: 120, qty: 3, modifiers: [], instructions: "Extra ice", kotRound: 2 },
 ];

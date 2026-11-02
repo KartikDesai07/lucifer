@@ -2,6 +2,7 @@ import { createCollectionRoute } from "@/lib/crud-route";
 import { PRODUCT_LIST, listSpecConfig } from "@/lib/masters";
 import { createProductSchema } from "@/schemas";
 import { checkCategoryExists } from "@/lib/category-admin";
+import { productAddOnsError } from "@pos/shared/modifier-prices";
 import { PUBLIC_MENU_CACHE_KEY } from "@/lib/public-menu";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +34,8 @@ export const { GET, POST } = createCollectionRoute({
     // post-409 / focus refresh must bypass the 20 s per-instance cache).
     return { query: archived ? { isActive: false } : {}, filtered: archived || sp.get("fresh") === "1" };
   },
+  // Priced add-ons: the amounts must pair with the add-ons (productAddOnsError), then
   // C12 — reject a categoryId that names no live Category (previously a 201
   // with a dangling link) before the create even runs.
-  validate: (data) => checkCategoryExists(data.categoryId),
+  validate: async (data) => productAddOnsError(data) ?? (await checkCategoryExists(data.categoryId)),
 });

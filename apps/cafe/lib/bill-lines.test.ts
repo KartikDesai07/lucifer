@@ -85,3 +85,16 @@ test("an older line with no instructions key matches one with an empty instructi
   const items = [legacy as OrderItem, line({ kotRound: 2 })];
   assert.deepEqual(billLinesOf(items).map((l) => l.qty), [2]);
 });
+
+test("priced add-ons: the same picks in any order are one line; a different amount stays its own line; the merged line keeps the amounts", () => {
+  const prices = [{ name: "Cheese", price: 100 }, { name: "Mint", price: 20 }];
+  const a = line({ price: 160, modifiers: ["Cheese", "Mint"], modifierPrices: prices });
+  const b = line({ price: 160, modifiers: ["Mint", "Cheese"], modifierPrices: [prices[1], prices[0]], kotRound: 2 });
+  const merged = billLinesOf([a, b]);
+  assert.deepEqual(merged.map((l) => l.qty), [2], "[A,B] and [B,A] picks are one bill line");
+  assert.deepEqual(merged[0].modifierPrices, prices, "the merged line carries the amounts");
+  const dearer = line({ price: 160, modifiers: ["Cheese", "Mint"], modifierPrices: [{ name: "Cheese", price: 120 }, prices[1]], kotRound: 3 });
+  assert.equal(billLinesOf([a, dearer]).length, 2, "a line charged a different add-on amount is its own line");
+  const none = line({ price: 160, modifiers: ["Cheese", "Mint"], kotRound: 3 });
+  assert.equal(billLinesOf([a, none]).length, 2, "a line without the snapshot never joins a priced one");
+});

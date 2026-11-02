@@ -29,6 +29,12 @@ export const SAMPLE_KITCHEN_INSTRUCTION = "Less sugar";
 const SAMPLE_INVOICE_SERIAL = 1;
 const SAMPLE_KITCHEN_GST: GstConfig = { gstEnabled: false, gstRate: 0, gstMode: "inclusive" };
 
+// One sample dish carries a priced add-on (the line's price already includes it), so the preview shows the bill's
+// "+ Cheese Burst ₹100" line.
+const SAMPLE_ADD_ON = "Cheese Burst";
+const SAMPLE_ADD_ON_PRICE = 100;
+const SAMPLE_SANDWICH_PRICE = 120;
+
 // Whole rupees, like SAMPLE_ITEM_PRICE in lib/gst-sample-bill.ts.
 export const SAMPLE_BILL_ITEMS: readonly OrderItem[] = [
   {
@@ -43,9 +49,10 @@ export const SAMPLE_BILL_ITEMS: readonly OrderItem[] = [
   {
     productId: "sample-sandwich",
     name: "Veg sandwich",
-    price: 120,
+    price: SAMPLE_SANDWICH_PRICE + SAMPLE_ADD_ON_PRICE,
     qty: 1,
-    modifiers: [],
+    modifiers: [SAMPLE_ADD_ON],
+    modifierPrices: [{ name: SAMPLE_ADD_ON, price: SAMPLE_ADD_ON_PRICE }],
     instructions: "",
     kotRound: SAMPLE_KOT_ROUND,
   },

@@ -114,3 +114,25 @@ test("buildRepeatCart on an empty past order is a no-op, not an error", () => {
   assert.equal(added, 0);
   assert.equal(skipped, 0);
 });
+
+// Priced add-ons — a repeat is priced from the LIVE menu with the picks the item still offers.
+const PRICED = { modifiers: ["Cheese Burst", "Jalapeno"], modifierPrices: [{ name: "Cheese Burst", price: 100 }] };
+
+test("buildRepeatCart prices a repeated add-on at the live amount and carries the display stamp", () => {
+  const menu = [product({ id: "a", price: 250, discount: 10, ...PRICED })];
+  const past = [{ productId: "a", qty: 2, modifiers: ["Cheese Burst"] }];
+  const { next } = buildRepeatCart([], past, menu);
+  assert.equal(next[0].price, 325, "250 at 10% = 225, plus the 100 add-on");
+  assert.deepEqual(next[0].modifierPrices, [{ name: "Cheese Burst", price: 100 }]);
+});
+
+test("buildRepeatCart DROPS a vanished add-on and prices the line without it (never a free or stale add-on)", () => {
+  const menu = [product({ id: "a", price: 250, modifiers: ["Jalapeno"] })];
+  const past = [{ productId: "a", qty: 1, modifiers: ["Cheese Burst", "Jalapeno"] }];
+  const { next, added, skipped } = buildRepeatCart([], past, menu);
+  assert.equal(added, 1);
+  assert.equal(skipped, 0);
+  assert.deepEqual(next[0].modifiers, ["Jalapeno"]);
+  assert.equal(next[0].price, 250);
+  assert.equal("modifierPrices" in next[0], false);
+});

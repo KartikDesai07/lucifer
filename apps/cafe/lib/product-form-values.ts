@@ -7,10 +7,12 @@
 //  - a base-price problem nobody can see never blocks Save (valuesForValidation);
 //  - Sizes -> Single shows the stored price again (the form never dropped it).
 import type { z } from "zod";
+import { VARIATION_PRICE_MAX } from "@pos/shared/constants";
+import { productAddOnsError } from "@pos/shared/modifier-prices";
 
 import type { createProductSchema } from "@/schemas";
 import { MAX_VARIATIONS } from "@/lib/constants";
-import type { ProductVariation } from "@/types";
+import type { ProductModifierPrice, ProductVariation } from "@/types";
 
 /** The form holds the schema's (looser) INPUT type, several fields carry zod defaults; submit receives the transformed output. */
 export type ProductFormValues = z.input<typeof createProductSchema>;
@@ -48,4 +50,68 @@ export function switchPriceMode(
 export function addSizeRow(rows: ProductVariation[]): ProductVariation[] {
   if (rows.length >= MAX_VARIATIONS) return rows;
   return [...rows, { name: "", price: 0 }];
+}
+
+// Priced add-ons (owner 2026-11-02, D3, D4): an optional whole-rupee amount per add-on. The form holds `modifierPrices`
+// as the list of add-ons that HAVE an amount (empty box = free = not in the list); absent stays absent.
+
+/** The amounts the save sends: only entries whose name is exactly one of the item's add-ons, each once (an add-on
+ *  removed or renamed since its amount was typed drops it). */
+export function modifierPricesForSave(values: {
+  modifiers?: readonly string[];
+  modifierPrices?: readonly ProductModifierPrice[];
+}): ProductModifierPrice[] {
+  const known = values.modifiers ?? [];
+  const kept: ProductModifierPrice[] = [];
+  for (const { name, price } of values.modifierPrices ?? []) {
+    if (known.includes(name) && !kept.some((p) => p.name === name)) kept.push({ name, price });
+  }
+  return kept;
+}
+
+/** A create sends the list, or no key at all when no add-on has an amount. */
+export function modifierPricesForCreate(values: Parameters<typeof modifierPricesForSave>[0]): ProductModifierPrice[] | undefined {
+  const list = modifierPricesForSave(values);
+  return list.length > 0 ? list : undefined;
+}
+
+/** An edit sends the list; `null` (the PUT's clear sentinel: undefined is dropped over JSON) when the item had amounts
+ *  and now has none; nothing when it had none and has none. */
+export function modifierPricesForEdit(
+  values: Parameters<typeof modifierPricesForSave>[0],
+  stored: readonly ProductModifierPrice[] | undefined,
+): ProductModifierPrice[] | null | undefined {
+  const list = modifierPricesForSave(values);
+  if (list.length > 0) return list;
+  return (stored?.length ?? 0) > 0 ? null : undefined;
+}
+
+/** The server's add-on rule (shared productAddOnsError) judged on what the save would send, so a refusal shows before the
+ *  request. "Come ticked" counts only with at least one add-on (as modifiersPreselectedToSave). */
+export function addOnsFormError(values: {
+  modifiers?: readonly string[];
+  modifiersPreselected?: boolean;
+  modifierPrices?: readonly ProductModifierPrice[];
+}): string | null {
+  const modifiers = values.modifiers ?? [];
+  return productAddOnsError({
+    modifiers,
+    modifiersPreselected: modifiers.length > 0 && values.modifiersPreselected === true,
+    modifierPrices: modifierPricesForSave(values),
+  });
+}
+
+/** The amount boxes hold at most as many digits as the largest amount the server accepts. */
+const ADD_ON_AMOUNT_DIGITS_MAX = String(VARIATION_PRICE_MAX).length;
+
+/** Sets (or, for an empty box, clears) one add-on's amount in the form's list. Whole rupees only (D4): the box keeps its
+ *  digits and ignores anything else, so "12.5" or "abc" can never be typed. */
+export function setAddOnAmount(
+  prices: readonly ProductModifierPrice[],
+  name: string,
+  text: string,
+): ProductModifierPrice[] {
+  const rest = prices.filter((p) => p.name !== name);
+  const digits = text.replace(/\D/g, "").slice(0, ADD_ON_AMOUNT_DIGITS_MAX);
+  return digits === "" ? rest : [...rest, { name, price: Number(digits) }];
 }

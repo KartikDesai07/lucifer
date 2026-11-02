@@ -15,7 +15,8 @@ import { receiptGst, type GstConfig } from "@/lib/receipt";
 import { tokenLabelOf } from "@/lib/token-view";
 import { chargesFromOrder, chargesTotal } from "@pos/shared/order-charges";
 import { REWARD_ITEM_LINE_NOTE } from "@pos/shared/reward-redemption";
-import { cafeDateString, discountLineLabel, formatDate, inr, orderItemModifierLines } from "@pos/shared/utils";
+import { cafeDateString, discountLineLabel, formatDate, inr } from "@pos/shared/utils";
+import { billModifierLines } from "@pos/shared/modifier-prices";
 import type { Order, OrderItem, OrderVoid } from "@/types";
 
 /** The meta item's icon: the HTML's table, person and clock glyphs, and our ticket glyph for the token. */
@@ -221,11 +222,11 @@ export function cancelNote(o: Order): DetailCancelNote | null {
   return { text: `Cancelled${at}${who ? ` by ${who}` : ""}.`, reason: reason ? `Reason: ${reason}` : null };
 }
 
-/** A line's meta (values 11.5; design 6.8): our removed / added modifiers (orderItemModifierLines), the instructions and,
+/** A line's meta (values 11.5; design 6.8): our removed / added modifiers (billModifierLines: add-ons carry their amount), the instructions and,
  *  on a reward line, its stored note (a line stored before the note existed: the shared constant), joined ", ". */
 export function detailLineMeta(item: OrderItem): string {
   const rewardNote = item.reward ? (item.note ?? REWARD_ITEM_LINE_NOTE) : "";
-  return [...orderItemModifierLines(item), item.instructions?.trim() ?? "", rewardNote].filter(Boolean).join(", ");
+  return [...billModifierLines(item), item.instructions?.trim() ?? "", rewardNote].filter(Boolean).join(", ");
 }
 
 /** The line under a voided line in the trail (design 6.8): "round {n} · {reason} — {who}, {date}" (today's words, the

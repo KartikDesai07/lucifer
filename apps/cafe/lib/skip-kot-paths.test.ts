@@ -54,7 +54,8 @@ const OPENING_DRAW = "allocateOpeningSlips(";
 const WRITERS: ReadonlyArray<{ file: string; stamp: string; draw: string; gate: string; stored: string }> = [
   {
     file: ORDERS_ROUTE,
-    stamp: "const kot = await withKitchenFlags(rewardItems);",
+    // Priced add-ons (2026-11-03): the same array, first stamped with the add-on amounts (lib/modifier-price-stamp.ts).
+    stamp: "const kot = await withKitchenFlags(stampModifierPrices(rewardItems, products));",
     draw: OPENING_DRAW,
     gate: "slips = await allocateOpeningSlips(printCfg, { kitchen: kot.kitchen });",
     stored: "rewardItems = kot.lines;",

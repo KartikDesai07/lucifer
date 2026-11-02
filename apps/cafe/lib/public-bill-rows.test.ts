@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { publicCartTotals, type PublicGstConfig, type PublicOrderRequestStatusData } from "@pos/shared/public";
-import { billFromStatusData } from "@/components/public/public-bill-rows";
+import { billFromCart, billFromStatusData } from "@/components/public/public-bill-rows";
 
 // S3 — DB-free pins for the read-only bill-rows extraction. Same
 // readSrc/absence+landmark technique as public-hardening-paths.test.ts.
@@ -244,4 +244,31 @@ test("REGRESSION: a fully-explained bill gains NO reconciliation line (the guard
     !totals.some((t) => t.label === "Taxes and charges" || t.label === "Adjustment"),
     "a bill whose rows already add up must not grow a filler line",
   );
+});
+
+// Priced add-ons — the diner's bill prints the amount beside the add-on (the KOT never does).
+test("billFromStatusData: a priced add-on prints + Cheese Burst ₹100; an unpriced one stays bare", () => {
+  const { lines } = billFromStatusData(
+    baseStatusData({
+      items: [
+        {
+          productId: "p1", name: "Pizza", price: 350, qty: 1,
+          modifiers: ["Cheese Burst", "Jalapeno"],
+          modifierPrices: [{ name: "Cheese Burst", price: 100 }],
+        },
+        { productId: "p2", name: "Tea", price: 40, qty: 1, modifiers: ["Ginger"] },
+      ],
+    }),
+    NO_GST,
+  );
+  assert.match(lines[0].sub ?? "", /\+ Cheese Burst ₹100, Jalapeno/);
+  assert.equal(lines[1].sub, "+ Ginger", "a line with no stamp reads exactly as before");
+});
+
+test("billFromCart: a cart line's display stamp shows its add-on amount", () => {
+  const { lines } = billFromCart(
+    [{ lineId: "x", productId: "p1", name: "Pizza", price: 350, qty: 1, modifiers: ["Cheese Burst"], modifierPrices: [{ name: "Cheese Burst", price: 100 }] }],
+    350, null, 0, 0, 350,
+  );
+  assert.match(lines[0].sub ?? "", /\+ Cheese Burst ₹100/);
 });

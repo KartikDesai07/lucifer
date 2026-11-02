@@ -60,6 +60,14 @@ test("lineMeta: an item whose modifiers come ticked shows what was taken off as 
   );
 });
 
+test("lineMeta: a priced add-on reads \"+ Cheese Burst ₹100\" (priced add-ons, D1); a free one stays a bare name", () => {
+  const priced = item({ variation: "Large", modifiers: ["Cheese Burst", "Jalapeno"], modifierPrices: [{ name: "Cheese Burst", price: 100 }] });
+  assert.equal(lineMeta(priced), "Large, + Cheese Burst ₹100, Jalapeno");
+  assert.equal(lineMeta(item({ modifiers: ["Cheese Burst"], modifierPrices: [{ name: "Cheese Burst", price: 100 }], instructions: "hot" })), "+ Cheese Burst ₹100, hot");
+  assert.equal(lineMeta(item({ modifiers: ["Cheese Burst"] })), "+ Cheese Burst", "no stamp, no amount (an old line prints as it always did)");
+  assert.equal(lineMeta(item({ removedModifiers: ["Onion"], modifiers: ["Cheese Burst"], modifierPrices: [{ name: "Cheese Burst", price: 100 }] })), "NO Onion, + Cheese Burst ₹100", "removals first, as every surface prints them");
+});
+
 test("lineMeta: nothing to say about the line reads the HTML's \"₹{price} each\"", () => {
   assert.equal(lineMeta(item({ price: 199 })), "₹199 each", "values 5.4: RS(price)+' each' when the meta is empty");
   assert.equal(lineMeta(item({ price: 220, instructions: "   " })), "₹220 each", "a blank note is no note");

@@ -56,6 +56,10 @@ export const printOrderSnapshotItemSchema = z.object({
   // re-derived at print time, for the same reason the GST fields are: a reprint
   // years later must reproduce the paper as it was issued.
   note: z.string().optional(),
+  // Priced add-ons: the amount each add-on was charged, server-stamped on the line and printed
+  // beside it on the BILL only (billModifierLines). Omit-empty: without this key the `.strict()`
+  // parse would REJECT the snapshot of any line holding a priced add-on.
+  modifierPrices: z.array(z.object({ name: z.string(), price: z.number() }).strict()).optional(),
 }).strict();
 
 export const printOrderSnapshotSchema = z.object({

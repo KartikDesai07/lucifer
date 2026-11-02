@@ -414,3 +414,12 @@ test("detailLineMeta: our removed / added modifiers (orderItemModifierLines), th
   assert.equal(detailLineMeta(item({ reward: true })), REWARD_ITEM_LINE_NOTE, "a reward line stored before the note: the shared constant");
   assert.equal(detailLineMeta(item({ instructions: "   " })), "", "nothing to say: empty (the body draws no meta line)");
 });
+
+test("detailLineMeta: a priced add-on shows its per-unit amount (priced add-ons D1); no snapshot, names alone", () => {
+  const item = (over: Record<string, unknown>) => fired(over) as unknown as Order["items"][number];
+  assert.equal(
+    detailLineMeta(item({ modifiers: ["Cheese Burst", "Jalapeno"], modifierPrices: [{ name: "Cheese Burst", price: 100 }], removedModifiers: ["Onion"], instructions: "Hot" })),
+    "NO Onion, + Cheese Burst ₹100, Jalapeno, Hot",
+  );
+  assert.equal(detailLineMeta(item({ modifiers: ["Cheese Burst"] })), "+ Cheese Burst", "no snapshot: names alone");
+});

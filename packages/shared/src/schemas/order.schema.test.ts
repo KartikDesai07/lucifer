@@ -352,3 +352,23 @@ test("addItemsSchema: rewardPoints is refused (strict) — points never ride an 
   assert.equal(addItemsSchema.safeParse({ items: sampleItems, rewardPoints: 10 }).success, false);
   assert.equal(addItemsSchema.safeParse({ items: sampleItems }).success, true, "landmark: the round itself parses");
 });
+
+// Priced add-ons: the same fence for `modifierPrices` (the server stamps what the line was charged).
+test("orderItemSchema / createOrderSchema / addItemsSchema STRIP a client-sent modifierPrices", () => {
+  const stamp = [{ name: "Cheese Burst", price: 0 }];
+  const line = orderItemSchema.safeParse({ ...sampleItems[0], modifiers: ["Cheese Burst"], modifierPrices: stamp });
+  assert.ok(line.success && line.data.name === "Chai", "landmark: the line parsed");
+  assert.ok(line.success && !("modifierPrices" in line.data), "a client-declared amount never reaches the route");
+  const dirty = sampleItems.map((i) => ({ ...i, modifierPrices: stamp }));
+  const created = createOrderSchema.safeParse({ ...sampleOrder, items: dirty });
+  assert.ok(created.success && created.data.items[0].name === "Chai" && !("modifierPrices" in created.data.items[0]));
+  const added = addItemsSchema.safeParse({ items: dirty });
+  assert.ok(added.success && added.data.items[0].name === "Chai" && !("modifierPrices" in added.data.items[0]));
+});
+
+test("orderItemSchema refuses a line that picks the same add-on twice", () => {
+  assert.equal(orderItemSchema.safeParse({ ...sampleItems[0], modifiers: ["Cheese Burst", "Olives"] }).success, true);
+  assert.equal(orderItemSchema.safeParse({ ...sampleItems[0], modifiers: ["Cheese Burst", "Cheese Burst"] }).success, false);
+  const added = addItemsSchema.safeParse({ items: [{ ...sampleItems[0], modifiers: ["A", "A"] }] });
+  assert.equal(added.success, false);
+});

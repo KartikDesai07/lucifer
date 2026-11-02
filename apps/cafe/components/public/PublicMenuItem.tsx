@@ -1,5 +1,6 @@
 import { Minus, Plus } from "lucide-react";
 import { effectiveUnitPrice } from "@pos/shared/public";
+import type { ProductModifierPrice } from "@pos/shared/types";
 import { inr, cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,9 @@ export interface PublicMenuProduct {
   // "Modifiers come ticked" (reverse mode) — omit-empty on the wire (only
   // ever `true`, lib/public-menu.ts); an absent key reads as normal mode.
   modifiersPreselected?: boolean;
+  // Priced add-ons only (omit-empty, never on a ticked item) — lib/public-menu.ts.
+  // The tile keeps showing the base price; the sheet and cart add these in.
+  modifierPrices?: ProductModifierPrice[];
   // Item icon key, shown only when there's no photo — omit-empty on the wire
   // (lib/public-menu.ts emits it only when isProductIconKey).
   icon?: string;

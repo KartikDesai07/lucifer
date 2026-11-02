@@ -295,3 +295,50 @@ test("the CSV import never sets noKot: coerceProductRow has no such column", () 
   const parsed = importProductRowSchema.safeParse({ name: "Water", category: "Drinks", price: "20", noKot: true });
   assert.ok(parsed.success && !("noKot" in parsed.data), "the import row schema never carries one");
 });
+
+// ── Priced add-ons (owner, 2026-11-02): the amount an add-on carries ─────────
+
+test("createProductSchema: modifierPrices is optional with no default (absent = every add-on free)", () => {
+  const r = createProductSchema.safeParse(BASE);
+  assert.ok(r.success && !("modifierPrices" in r.data), "an item made without amounts has no key");
+  const priced = createProductSchema.safeParse({
+    ...BASE,
+    modifiers: ["Cheese Burst"],
+    modifierPrices: [{ name: "Cheese Burst", price: 100 }],
+  });
+  assert.ok(priced.success && priced.data.modifierPrices?.[0]?.price === 100);
+  assert.equal(createProductSchema.safeParse({ ...BASE, modifierPrices: null }).success, false, "null is an update sentinel only");
+});
+
+test("createProductSchema: each amount is whole rupees, 1..VARIATION_PRICE_MAX, and an entry carries no extra key", () => {
+  const bad = [99.5, 0, -5, VARIATION_PRICE_MAX + 1];
+  for (const price of bad) {
+    const r = createProductSchema.safeParse({ ...BASE, modifiers: ["A"], modifierPrices: [{ name: "A", price }] });
+    assert.equal(r.success, false, `price ${price} must be refused`);
+  }
+  const extra = createProductSchema.safeParse({ ...BASE, modifiers: ["A"], modifierPrices: [{ name: "A", price: 10, x: 1 }] });
+  assert.equal(extra.success, false, "a strict entry refuses an unknown key");
+  const blank = createProductSchema.safeParse({ ...BASE, modifiers: ["A"], modifierPrices: [{ name: "", price: 10 }] });
+  assert.equal(blank.success, false, "an empty name is refused");
+});
+
+test("updateProductSchema: modifierPrices:null clears every amount; absent leaves them alone", () => {
+  const cleared = updateProductSchema.safeParse({ modifierPrices: null });
+  assert.ok(cleared.success && cleared.data.modifierPrices === null);
+  const untouched = updateProductSchema.safeParse({ price: 130 });
+  assert.ok(untouched.success && !("modifierPrices" in untouched.data));
+  const set = updateProductSchema.safeParse({ modifierPrices: [{ name: "A", price: 10 }] });
+  assert.ok(set.success && set.data.modifierPrices?.length === 1);
+});
+
+test("the CSV import never sets modifierPrices: the import row schema has no such key", () => {
+  const parsed = importProductRowSchema.safeParse({
+    name: "Pizza",
+    category: "Mains",
+    price: "250",
+    modifiers: "Cheese Burst",
+    modifierPrices: [{ name: "Cheese Burst", price: 100 }],
+  });
+  assert.ok(parsed.success && parsed.data.modifiers[0] === "Cheese Burst", "landmark: the row parsed");
+  assert.ok(parsed.success && !("modifierPrices" in parsed.data), "an import row never carries amounts");
+});

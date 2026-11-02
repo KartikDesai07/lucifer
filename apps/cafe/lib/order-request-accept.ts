@@ -13,7 +13,13 @@ import { generateOrderId } from "@/lib/utils";
 import { computeOrderTotals, gstConfigFromOrder, gstConfigOfSettings } from "@/lib/receipt";
 import { derivePayment } from "@/lib/order";
 import { resolveTableCharge } from "@/lib/table-admin";
-import { priceRequestItems, PRICE_DRIFT_ERROR, type PricedProductSource } from "@/lib/public-pricing";
+import {
+  modifierPricesPart,
+  priceRequestItems,
+  PRICE_DRIFT_ERROR,
+  sameModifierPrices,
+  type PricedProductSource,
+} from "@/lib/public-pricing";
 import { PARCEL_SELECTION, SELF_ORDER_SOURCE } from "@pos/shared/public";
 import {
   REQUEST_REJECTED_ERROR,
@@ -142,7 +148,7 @@ export async function acceptOrderRequest(
   // 4. Re-validate against LIVE products — isActive only (hidden-from-menu stays POS-orderable).
   const productIds = request.items.map((it) => it.productId).filter(mongoose.isValidObjectId);
   const products = (await Product.find({ _id: { $in: productIds }, isActive: true })
-    .select("name price discount available modifiers modifiersPreselected variations")
+    .select("name price discount available modifiers modifiersPreselected modifierPrices variations")
     .lean()) as unknown as PricedProductSource[];
   const priced = priceRequestItems(
     products,
@@ -156,7 +162,11 @@ export async function acceptOrderRequest(
     })),
   );
   if ("error" in priced) return guardedReject(requestId, ctx.actor, priced.error);
-  const drifted = priced.lines.some((line, i) => line.price !== request!.items[i]?.price);
+  const drifted = priced.lines.some(
+    (line, i) =>
+      line.price !== request!.items[i]?.price ||
+      !sameModifierPrices(line.modifierPrices, request!.items[i]?.modifierPrices),
+  );
   if (drifted) return guardedReject(requestId, ctx.actor, PRICE_DRIFT_ERROR);
 
   // The ORDER's items are the STORED request lines, never `priced.lines`
@@ -173,6 +183,7 @@ export async function acceptOrderRequest(
     ...(it.removedModifiers && it.removedModifiers.length > 0
       ? { removedModifiers: it.removedModifiers }
       : {}),
+    ...modifierPricesPart(it.modifierPrices),
     instructions: it.instructions,
   }));
 

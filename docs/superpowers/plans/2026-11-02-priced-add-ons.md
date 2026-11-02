@@ -204,3 +204,41 @@ a free-RAM check (POS: pick Cheese Burst -> cart Rs 350 -> bill; QR: same), then
 money accuracy, contract parity + old tabs, spec fidelity) + arbiter + the mutation pass. Deploy: posdemo is in client
 use - demo ONLY on the owner's OK for this change after the deep review, with the reload note above; lucifer007 NEVER.
 Then commit + push main. Nothing is uploaded anywhere else (no artifacts; the tracker stays a local file).
+
+## Results (built 2026-11-02/03)
+
+S0: (a) a `validateUpdate` hook on crud-route's PUT (after auth + connectDB, before the write) + lib/product-addons-check.ts
+(reads the stored doc only when the body touches modifiers / modifiersPreselected / modifierPrices); (b) the CSV import
+prunes with an atomic `$pull: { modifierPrices: { name: { $nin: row.modifiers } } }` (no read-first race; a pipeline `$set`
+would read `$`-prefixed strings as field paths); live case 10 proves `$pull` on an upsert-insert is a no-op; (c) the live
+write routes still use models/Order.ts (lib/order-create.ts, which binds the ledger schema, has no route caller).
+Built as designed, plus: shared `packages/shared/src/modifier-prices.ts` (kept out of modifiers.ts: it needs `inr` from
+./utils, which re-exports modifiers.ts); the repeated-modifier 400 is a Zod refine on both order schemas; the stamp helper
+is lib/modifier-price-stamp.ts; `MAX_MODIFIER_PRICES = 50`. ModifierModal stayed one file (299 lines): pins read it
+directly, so the price logic moved to lib/modifier-picker.ts (`withAddOns`, `addOnAmount`) instead of a component split.
+
+Verify: shared 1048/1048, hub 288/288, cafe tsc + lint 0 errors, cafe chain green after the review fixes; live legs
+priced-addons 10/10 + variations, removed-modifiers, order-request, menu-orders, public, bootstrap, print-template,
+kitchen-order, orders:idem, orders all green. KOT files byte-identical (S1 picture hashes held); the four bill files
+re-pinned.
+
+Post-code review (3 read-only lenses, tree hash before = after): fixed — two stale skip-KOT pins (the create route now
+stamps before `withKitchenFlags`), the diner cart reconcile left two lines with one id when an unchanged twin came AFTER
+a re-keyed line (failing repro test first, now merges in both orders), and the modal / item-sheet totals had no pin.
+Accepted as documented decisions (no code):
+- Two admins saving one item at the same instant ({amounts} vs {come ticked}) can both pass the PUT check and store a
+  ticked item with amounts; every pricer then charges the add-on as free (cart, server and bill still agree). Needs two
+  simultaneous saves of one item; the admin form flags amounts on a ticked item on the next open.
+- A dish-scoped scratch-card reward (reward-redemption.ts) discounts the whole line, add-on part included. D2 covers the
+  item's own % only: OWNER QUESTION, unchanged for now.
+
+Rollout facts, corrected (supersede the list above where they differ):
+- The new "Add-on no longer on the menu" refusal applies from the deploy itself, even with no amounts set: an OLD open
+  POS tab whose unsent line keeps a since-removed modifier gets a 409 it cannot "Update" (the line must be removed by
+  hand). So reload every POS / counter / host / admin screen RIGHT AFTER the deploy, not only before the first amount.
+- An old open QR diner tab shows the base price while the server charges base + add-on (the diner never sends a price);
+  the diner's status page then shows the real total. Staff cannot reload diners' phones: set the first amount some time
+  after the deploy (e.g. the next day), when no pre-deploy diner tab is still open.
+- Rollback: besides an older server dismissing bill jobs that carry `modifierPrices`, an older server's whole-`items`
+  rewrites (add-round, void, move) may drop stored stamps; money is unaffected, but those bills reprint the add-on with
+  no amount. Clear the amounts before rolling back.

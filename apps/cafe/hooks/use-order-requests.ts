@@ -2,6 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+
+import type { ProductModifierPrice } from "@pos/shared/types";
 import { apiGet, apiSend } from "@/lib/api-client";
 import { printAgentRequestOptions } from "@/lib/print-agent-calls";
 import { STALE_TIMES } from "@/lib/query";
@@ -23,6 +25,7 @@ export interface TrayOrderRequestItem {
   variation?: string;
   modifiers: string[];
   removedModifiers?: string[]; // omit-empty — "NO …" (modifiers come ticked)
+  modifierPrices?: ProductModifierPrice[]; // omit-empty — what each priced add-on was charged (bill display)
   instructions: string;
 }
 

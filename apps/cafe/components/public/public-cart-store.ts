@@ -1,3 +1,4 @@
+import type { ProductModifierPrice } from "@pos/shared/types";
 import {
   safeRead,
   safeWrite,
@@ -103,19 +104,18 @@ export type ThemeValue = (typeof THEME_VALUES)[number];
 export interface CartLine {
   lineId: string;
   productId: string;
-  // DISPLAY-ONLY snapshots, taken at add-to-cart time — the submit body
-  // strips both (createPublicOrderRequestSchema's items carry no name/price;
-  // the server re-derives the real price from the live product at request
-  // time). Kept here only so the cart screen has something to render without
-  // a second fetch.
+  // DISPLAY-ONLY snapshots, taken at add-to-cart time — the submit body strips them (createPublicOrderRequestSchema's
+  // items carry no name/price/modifierPrices; the server re-derives the real price from the live product at request
+  // time). Kept here only so the cart screen has something to render without a second fetch.
   name: string;
   price: number;
   qty: number;
   variation?: string;
   modifiers: string[];
-  // "Modifiers come ticked" (reverse mode) — omit-empty, like every other
-  // optional field here. NO cache-version bump: an absent key on an old
-  // stored line already means "no removals", the correct meaning.
+  // Each priced add-on's per-unit amount (display only, as above), re-derived on every reprice. Omit-empty.
+  modifierPrices?: ProductModifierPrice[];
+  // "Modifiers come ticked" (reverse mode) — omit-empty like every other optional field here. NO cache-version bump:
+  // an absent key on an old stored line already means "no removals", the correct meaning (same for modifierPrices).
   removedModifiers?: string[];
   instructions?: string;
 }
