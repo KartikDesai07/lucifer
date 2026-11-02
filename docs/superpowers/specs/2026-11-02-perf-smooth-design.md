@@ -79,7 +79,10 @@ colour with no backdrop filter. The /m diner bars keep theirs (not staff; untouc
 is a client page whose data comes from its own queries, so the reused payload is only the page shell: data freshness is
 unchanged (every query keeps its own rules). Same accepted trade-off as today's prefetch: another device's tab title /
 icon can lag a rename by up to the window; after a deploy the next fresh fetch switches the tab to the new build. Data
-access stays checked by every API call.
+access stays checked by every API call. A PIN person switch calls `router.refresh()` (sign-out is a full page load and a
+sign-in refreshes), so no shell of the last person is reused. The window is global (final review M2): a diner moving
+forward to a /m page they already opened within 30 min sees the appearance / diner settings they loaded; every diner
+order is still checked by the server (back / forward restored from the cache before this work too).
 
 ### F5 — the tab icon without a function call per screen (my ruling)
 With no product logo saved, the layouts' icon points at a version-stamped URL of the built-in mark, which the branding
@@ -89,8 +92,14 @@ route answers `immutable` (the same rule a saved logo already gets). A saved log
 The live lists (open tabs, today's orders, the Orders list's first page), tables, the dashboard (range, live, summary)
 and the kitchen board use `refetchInterval: () => isRealtimeHealthy() ? 120 s : today's interval`, the print host's
 existing idiom (`use-print-host-wake.ts`). When the socket drops (close or missed pong), the live queries refetch once
-at once (catch-up), then poll at today's rate. The pulse stays 20 s (printing and alerts). Known bound (the print
-host's too): a half-open socket reads healthy until its next missed pong (≤ 210 s, `REALTIME_HEALTH_TTL_MS`).
+at once (catch-up), then poll at today's rate. The pulse stays 20 s (printing and alerts). Known bounds:
+- A half-open socket reads healthy until its next missed pong (≤ 210 s, `REALTIME_HEALTH_TTL_MS`, the print host's bound
+  too); in that window a write elsewhere reaches the kitchen board / open tabs at the next 120 s poll instead of ~1 s
+  (final review M6). Its KOT slip prints as today (printing rides the pulse and its own lane).
+- The socket proves the room, not the server's publish to it (final review I2): a device whose OWN order or kitchen
+  write is not echoed by a live nudge within 8 s treats the room as unproven and polls at today's rate until the next
+  nudge (the echo guard). A device that never writes (a wall display) relies on the socket proof alone.
+- The freshness chips (Now Serving, the kitchen strip) call data stale at 60 s, or 180 s while the room is trusted.
 
 ### F7 — a nudge reads the floor fresh (my ruling)
 The realtime nudge's tables refetch reads `/api/tables?fresh=1` (the route's existing cache bypass), so the second
