@@ -183,6 +183,57 @@ stands; decided D2).
   `packages/shared`), `@radix-ui/react-radio-group` (the void dialog). knip's mobile / desktop / worker entries are false
   positives (their own entry points).
 
-## 10. Before / after (C)
+## 10. Before / after (C = `feat/perf-smooth` e3fcf4d)
 
-(filled at the end)
+B and C on identical fresh data (the seed + the rush scenario + 100 photos, realtime room on), measured one at a time
+with nothing else running, except where noted.
+
+**The start screen (the main fix of F4), every return to `/pos` (ms, data shown; server round trips before it draws):**
+
+| Device | B | C |
+|---|---|---|
+| phone, CPU 6×, Slow 4G | 1301 / 1493 / 1378 (1 RSC each) | **631 / 900 / 867** (0) |
+| phone, CPU 4×, Fast 4G | 579 / 588 / 563 (1) | **484 / 343 / 345** (0) |
+| laptop, CPU 4×, Fast 4G | 706 / 631 / 930 (1) | 552 / 724 / 1082 (0) |
+| Android Chrome 109 (≈ WebView 109), CPU 4× | 1267 / 804 / 1044 | **470 / 388 / 454** |
+
+Across a 12-move screen sequence, RSC round trips: phone Slow 4G 10 → 6, phone Fast 4G 12 → 9.
+
+**Main thread per action, phone CPU 6×, 100 photos (mean of 2 runs; busy / style ms):**
+
+| | add ×3 | → /orders | → /tables | → /kitchen | → /pos |
+|---|---|---|---|---|---|
+| B | 957 / 114 | 1094 / 299 | 780 / 224 | 670 / 179 | 1406 / 378 |
+| C | **822 / 34** | **842 / 46** | 732 / 106 | **522 / 85** | **942 / 87** |
+
+**The main flow (`flow-fin-*`):** Send KOT tap → answer and → cart clear are the server's (unchanged, ≈ equal);
+phone CPU 6× Slow 4G: Pay → done 1918 → 1467 ms (p50), add-tap p95 192 → 136 ms; laptop CPU 4× Fast 4G: pay → done
+506 → 482 ms, add-tap p95 176 → 120 ms. The write requests (bodies, endpoints) are the same as main's.
+
+**Idle requests per page, 240 s, each page alone (`tools\net-count.mjs`):** `/pos` 34 → 22, `/orders` 34 → 22,
+`/tables` 34 → 22, `/kitchen` 42 → 20, `/` 66 → 30 — never higher; the pulse stays 12 on every page.
+
+**The rush, 8 devices, 10 min (`rush-fin-B|C.json`):** requests / min 132.2 → **97.2** (−26%); `GET /api/tables`
+43.0 → 24.4, kitchen 8.1 → 3.3, the Dashboard device 29.5 → 21.3 / min, each POS ~17 → ~13; server CPU 14.6 → 13.0 s;
+MongoDB ops 5.95 → 5.44 / s; Send KOT p50 70 → 61 ms, Pay Now p50 543 → 536 ms; 0 errors either side.
+
+**Free-tier projection** (8 devices, 12 h a day, 4 of them a rush like this; per device-hour from the idle counts):
+
+| | invocations / month | Active CPU / month |
+|---|---|---|
+| Vercel Hobby limit | 1,000,000 | 4 h |
+| B (today) | ≈ 1.95 M | ≈ 5.2 h |
+| C | ≈ 1.23 M | ≈ 3.7 h |
+
+C is under the CPU limit; an 8-device cafe open 12 h still projects over the invocation limit, and the pulse (20 s on
+every device, background too, printing) is ≈ 0.52 M of it (design §9). A 5-device cafe projects to ≈ 0.75 M. These are
+projections: Vercel's own CPU per request may differ from this PC's.
+
+**The deploy build** (two quiet runs each, the same perf config): B 91 / 73 s → C 60 / 68 s; a test file with a planted
+lint error no longer fails the deploy build, an app file with the same error still does; the upload drops 643 files /
+9.4 MB.
+
+**The look** (`style-dump.mjs` / `style-diff.mjs`, every visible element on 7 screens × laptop and phone): the only
+differences are the owner's D2 — the phone tab bar and the POS order bar, `rgba(255,255,255,.9)` + `saturate(1.8)
+blur(20px)` → `rgb(255,255,255)`, no filter; 0 other differing values (fonts, figures, colours, sizes). D1 (no page
+fade) is a removed animation.

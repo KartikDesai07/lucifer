@@ -254,5 +254,26 @@ test("D3: tables-fresh-read is one-shot", () => {
 
 ## Results
 
-(filled after verification: the before / after table per screen and device, the rush, the free-tier projection,
-the idle request counts, the suites, the review.)
+Executed 2026-11-02 (subagent-driven, fast path). Commits on `feat/perf-smooth` from e877f7a: docs 4d7da80, a3852f5,
+9f8fa6a; Task 1 8fd2616; Task 2 a47054c; Task 3 2e7d739 + fix round d52d122 (I1 stale follows the live poll, C2
+superseded-socket guard, M1 today's summary in the catch-up); Task 4 69bc1f8; final-review fix wave 5438964 (I1 the
+build lint carve-out keys on NODE_ENV, M1 tsconfig.build include), b30eb56 (M4 pin), 4c49293 (M3 open/message guard),
+e3fcf4d (I2 the echo-of-own-write guard).
+
+- **Reviews:** every task reviewed (sonnet); Task 3 one fix round; whole-branch review Claude Fable 5.1 "With fixes"
+  (0 Critical, 2 Important, 6 Minor) → one fix wave → Fable re-review: all five ADDRESSED, no new Critical/Important.
+  Rulings and parked minors: `.superpowers/sdd/2026-11-02-perf-smooth/progress.md` (copied into the hand-over).
+- **Suites (final HEAD 9f8fa6a):** cafe 7192 tests, 7191 pass, 0 fail, 1 skipped (the pre-existing go-live-dl planning
+  file skip); `npm run typecheck` clean; `eslint .` 0 errors (2 old warnings); packages/shared 1020/1020 (incl.
+  `print-budget.test.ts`); the S1 pin `text-kot-print.test.ts` 16/16 (43 picture files). No file under printing,
+  packages/shared, apps/mobile, apps/desktop, apps/hub or workers changed.
+- **I1 proven on a build:** an `any` planted in `lib/live-poll.ts` fails `next build`; the same in
+  `lib/live-poll.test.ts` passes; `tsconfig.build.json` untouched by the build.
+- **Before / after:** `docs/perf/2026-11-02-p1-measurements.md` §10 — the return to `/pos` 1.3–1.5 s → 0.6–0.9 s on a
+  low-end phone on slow 4G and 0.8–1.3 s → 0.39–0.47 s on Android Chrome 109 (0 server trips, was 1); style recalc
+  per screen change −53% to −85% on a CPU 6× phone with photos; idle requests per page −35% to −55% (never higher);
+  the 8-device rush 132 → 97 requests / min; projected 1.95 M → 1.23 M invocations and 5.2 h → 3.7 h Active CPU a month
+  for a busy 8-device cafe; the deploy build ~82 s → ~64 s; the look identical except D2.
+- **Left for the owner (design §9):** the pulse (≈ 0.52 M invocations a month for 8 devices; printing), the write chain
+  (7–28 sequential DB trips), a first open on a low-end phone on slow 4G (8–10 s, unchanged; a service worker only with
+  the owner's OK).
