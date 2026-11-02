@@ -6,6 +6,8 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
+import { stripComments } from "@/lib/source-pin-utils";
+
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const CAFE = path.join(REPO_ROOT, "apps/cafe");
 const read = (p: string): string => readFileSync(p, "utf8");
@@ -39,20 +41,34 @@ test("D4: .vercelignore drops the test globs and keeps every older line", () => 
 
 test("D4: tsconfig.build.json extends tsconfig.json and excludes node_modules, the test globs and scripts", () => {
   const cfg = JSON.parse(read(path.join(CAFE, "tsconfig.build.json"))) as { extends?: string; exclude?: string[] };
-  assert.equal(cfg.extends, "./tsconfig.json");
+  assert.equal(cfg.extends, "./tsconfig.json", "D4: the build config extends the app's own tsconfig");
   for (const e of ["node_modules", "scripts/**", ...TEST_GLOBS]) {
     assert.ok(cfg.exclude?.includes(e), `tsconfig.build.json does not exclude ${e}`);
   }
 });
 
-test("D4: next.config.ts type-checks tsconfig.build.json", () => {
-  assert.match(read(path.join(CAFE, "next.config.ts")), /typescript:\s*\{\s*tsconfigPath:\s*"tsconfig\.build\.json"\s*\}/);
+test("D4 (fix M1): tsconfig.build.json carries tsconfig.json's include itself, so next build never rewrites it", () => {
+  type Cfg = { include?: string[] };
+  const base = JSON.parse(read(path.join(CAFE, "tsconfig.json"))) as Cfg;
+  const build = JSON.parse(read(path.join(CAFE, "tsconfig.build.json"))) as Cfg;
+  assert.deepEqual(base.include, ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"], "landmark: tsconfig.json's include");
+  assert.deepEqual(build.include, base.include, "M1: next build writes an include into a raw config without one; the same list here keeps the file clean");
 });
 
-test("D4: eslint ignores the test globs only inside next build", () => {
-  const src = read(path.join(CAFE, "eslint.config.mjs"));
-  assert.match(src, /process\.env\.NEXT_PHASE\s*===\s*"phase-production-build"/);
+test("D4: next.config.ts type-checks tsconfig.build.json", () => {
+  assert.match(read(path.join(CAFE, "next.config.ts")), /typescript:\s*\{\s*tsconfigPath:\s*"tsconfig\.build\.json"\s*\}/, "D4: the build type-checks the app only");
+});
+
+test("D4 (fix I1): eslint ignores the test globs only when NODE_ENV is production — what next build sets before it lints", () => {
+  const src = stripComments(read(path.join(CAFE, "eslint.config.mjs")));
+  assert.match(
+    src,
+    /const buildOnlyIgnores =\s*process\.env\.NODE_ENV === "production"\s*\?\s*\[/,
+    "I1 (D4): next build sets NODE_ENV=production at CLI start, before its lint worker; a local `npm run lint` leaves it unset and lints every test",
+  );
+  assert.ok(!src.includes("NEXT_PHASE"), "I1: NEXT_PHASE is set only after next build has linted, so a carve-out keyed on it never fires");
   for (const g of TEST_GLOBS) assert.ok(src.includes(`"${g}"`), `eslint.config.mjs lacks ${g}`);
+  assert.match(src, /\.\.\.buildOnlyIgnores,/, "D4: the carve-out is spread into the ignores");
 });
 
 function walk(dir: string, out: string[]): string[] {
