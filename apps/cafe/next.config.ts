@@ -83,6 +83,9 @@ const publicSurfaceHeaders = [{ key: "Content-Security-Policy", value: publicSur
 const PREFETCH_REUSE_SECONDS = 30 * 60;
 
 const nextConfig: NextConfig = {
+  // D4 (F8): the deploy build type-checks tsconfig.build.json (no tests, no scripts);
+  // `npm run typecheck` still checks the full tsconfig.json.
+  typescript: { tsconfigPath: "tsconfig.build.json" },
   // The shared workspace package ships raw TypeScript (single source of truth for
   // the reused spine — schemas, constants, utils, API envelope, hook factory).
   // Next must transpile it like first-party source (build-rule #31, CODE 3).

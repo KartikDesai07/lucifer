@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "exclude": [
+    "node_modules",
+    "scripts/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.test.mjs",
+    "**/*.fixtures.ts"
+  ]
+}

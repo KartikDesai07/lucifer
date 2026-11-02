@@ -9,6 +9,13 @@ const compat = new FlatCompat({
   baseDirectory: __dirname,
 });
 
+// D4 (F8): only `next build` (which sets NEXT_PHASE before it lints) skips the tests;
+// `npm run lint` / `eslint .` still lints every file.
+const buildOnlyIgnores =
+  process.env.NEXT_PHASE === "phase-production-build"
+    ? ["**/*.test.ts", "**/*.test.tsx", "**/*.test.mjs", "**/*.fixtures.ts"]
+    : [];
+
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
@@ -35,6 +42,7 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      ...buildOnlyIgnores,
     ],
   },
 ];
