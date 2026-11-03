@@ -115,10 +115,10 @@ test("PIN (skip-KOT): createOrderPrintJobs filters through kitchenSlipsOf on the
   inOrder(fn, ["const order = wireOrderOf(input.order);", "kitchenSlipsOf(order, input.slips)", "if (wanted.length === 0) return refs;", "await readPrintRouting({"], "createOrderPrintJobs");
 });
 
-test("PIN: createOrderPrintJobs never throws, announces each new job to its device, and nudges an old host only when there is one", () => {
+test("PIN: createOrderPrintJobs never throws (but for an offline round, Phase 5), announces each new job to its device, and nudges an old host only when there is one", () => {
   const s = src("apps/cafe/lib/print-order-jobs.ts");
   const fn = s.slice(s.indexOf("export async function createOrderPrintJobs("), s.indexOf("export async function enqueueOwnPrintJob("));
-  inOrder(fn, ["try {", "const target = host?.deviceId ?? input.originDeviceId;", "await insertPrintJob({", "} catch {", "return refs;"], "createOrderPrintJobs");
+  inOrder(fn, ["try {", "const target = host?.deviceId ?? input.originDeviceId;", "await insertPrintJob({", "} catch (error) {", "if (input.offline !== undefined) throw error;", "return refs;"], "createOrderPrintJobs");
   assert.match(fn, /publishPrintStatus\(\{ id: job\.ref\.id, status: "queued", target \}\);/);
   assert.match(fn, /if \(made > 0 && host !== null\) publishCafeEvent\("print-job"\);/);
   // Session 2C moved insertPrintJob to lib/print-job-insert.ts (this file stays under its ~300-line budget).
@@ -130,11 +130,13 @@ test("PIN: createOrderPrintJobs never throws, announces each new job to its devi
   assert.match(fn, /const leaseTabId = target === input\.originDeviceId \? input\.leaseTabId : undefined;/, "never for a slip another device prints");
   assert.match(fn, /const lineFree = leaseTabId !== undefined && \(await printLineIsFree\(target, input\.nowMs\)\);/, "one read of the line, only when it can matter");
   // The token fix (2026-10-06) deliberately changed this pin: a token is never that first slip made leased.
-  assert.match(fn, /const tab = leaseTabId === undefined \|\| refs\.length > 0 \|\| tokenForTab \? \{\} : \{ tab: \{ tabId: leaseTabId, direct: lineFree \} \};/, "only the first slip of the request on the line");
-  assert.match(fn, /const tokenForTab = leaseTabId !== undefined && refs\.length === 0 && !printsDirectAtCreation\(request\.payload\.kind\);/, "never a token (print-direct.ts printsDirectAtCreation)");
+  // Phase 5 deliberately changed it again: a KOT its offline round printed (or its REPRINT) is never that first slip.
+  assert.match(fn, /const first = verdict === "new" && live === 0;/, "the first slip is the first one made as today");
+  assert.match(fn, /const tab = leaseTabId === undefined \|\| !first \|\| tokenForTab \? \{\} : \{ tab: \{ tabId: leaseTabId, direct: lineFree \} \};/, "only the first slip of the request on the line");
+  assert.match(fn, /const tokenForTab = leaseTabId !== undefined && first && !printsDirectAtCreation\(request\.payload\.kind\);/, "never a token (print-direct.ts printsDirectAtCreation)");
   assert.match(fn, /if \(job\.ref\.leased !== undefined \|\| tokenForTab\) directOnLine = true;/, "a token left for the asking tab is its own: nothing on the line is announced to it");
   assert.match(fn, /if \(announcesQueuedJob\(job, directOnLine\)\) \{/, "no realtime message to yourself");
-  assert.match(insert, /\.\.\.\(failed \?\? direct \?\? \{ \.\.\.printJobLifecycleInit\(input\.nowMs, labels\), log: \[printJobCreatedLog\(input\.nowMs, input\.originDeviceId\)\] \}\),/, "made leased (or failed, 2C) in the same write that creates it");
+  assert.match(insert, /\.\.\.\(failed \?\? offlineMade \?\? direct \?\? \{ \.\.\.printJobLifecycleInit\(input\.nowMs, labels\), log: \[printJobCreatedLog\(input\.nowMs, input\.originDeviceId\)\] \}\),/, "made leased (or failed, 2C; or printed / REPRINT from an offline round, Phase 5) in the same write that creates it");
   assert.ok(!s.includes("console."), "no console.* in a server lib");
 });
 
@@ -159,13 +161,14 @@ test("PIN: every order route opts in only through printIntentOf(req), and create
     assert.ok(!/PrintJob\./.test(s), `${rel}: no direct PrintJob access`);
   }
   for (const rel of ROUTES.slice(0, 5).map(([r]) => r)) {
-    assert.match(src(rel), /return (success|created)\(withPrintJobs\(/, `${rel}: the answer goes through withPrintJobs`);
+    assert.match(src(rel), /return (success|created)\((withOfflineEcho\()?withPrintJobs\(/, `${rel}: the answer goes through withPrintJobs`);
   }
 });
 
 test("PIN: the create and add-round CAS writes mark a round as the server's only when the request opted in", () => {
   const create = src("apps/cafe/app/api/orders/route.ts");
-  assert.match(create, /\.\.\.\(intent \? \{ kotPrintDevices: \[intent\.deviceId\] \} : \{\}\),/);
+  // Phase 5: an offline round is never the repair sweep's (spec 2026-11-03 §5.9).
+  assert.match(create, /\.\.\.\(intent && offline\.ask === undefined \? \{ kotPrintDevices: \[intent\.deviceId\] \} : \{\}\),/);
   assert.match(
     create,
     /slips: \[\.\.\.openingSlipsOf\(numbered\.value \?\? landed, 1\), \.\.\.\(printsBillNow \? \[\{ kind: "bill" as const \}\] : \[\]\)\]/,
@@ -178,7 +181,7 @@ test("PIN: the create and add-round CAS writes mark a round as the server's only
     "the Pay Now bill condition lives in one named const",
   );
   const items = src("apps/cafe/app/api/orders/[id]/items/route.ts");
-  assert.match(items, /const kotPrintDevices = buildKotPrintDevices\(old\.kotPrintDevices, round, intent\?\.deviceId\);/);
+  assert.match(items, /const kotPrintDevices = buildKotPrintDevices\(old\.kotPrintDevices, round, offline\.ask === undefined \? intent\?\.deviceId : undefined\);/);
   assert.match(items, /\.\.\.\(kotPrintDevices \? \{ kotPrintDevices \} : \{\}\),/);
   assert.match(src("apps/cafe/app/api/orders/[id]/settle/route.ts"), /slips: intent\.bill \? \[\{ kind: "bill" \}\] : \[\],/, "the settle prints the bill only when asked");
   assert.match(src("apps/cafe/models/Order.ts"), /kotPrintDevices: \{ type: \[String\], default: undefined \},/, "declared, omit-empty");
@@ -248,7 +251,7 @@ test("PIN (M-d): every ref says what state its job is in, made now or found unde
   // carrying its lease; a found job keeps its own state, plus its lease when it is still the asking tab's.
   assert.match(
     s,
-    /label: input\.request\.label,\s*status: failed !== null \? "failed" : direct === null \? "queued" : "leased",\s*\.\.\.\(direct !== null \? \{ leased: leasedJobOf\(created, direct, payload\) \} : \{\}\),\s*\.\.\.\(input\.line !== undefined \? \{ printerId: input\.line\.printerId \} : \{\}\),\s*\};\s*return \{ ref, created: true, status: ref\.status \};/,
+    /label: input\.request\.label,\s*status: failed !== null \? "failed" : \(offlineMade\?\.status \?\? \(direct === null \? "queued" : "leased"\)\),\s*\.\.\.\(direct !== null \? \{ leased: leasedJobOf\(created, direct, payload\) \} : \{\}\),\s*\.\.\.\(input\.line !== undefined \? \{ printerId: input\.line\.printerId \} : \{\}\),\s*\};\s*return \{ ref, created: true, status: ref\.status \};/,
     "a new job is queued, or made leased to the asking tab",
   );
   assert.match(s, /label: existing\.label,\s*status: existing\.status,\s*\.\.\.\(again !== null \? \{ leased: again \} : \{\}\),\s*\.\.\.\(existing\.printerId !== undefined \? \{ printerId: existing\.printerId \} : \{\}\),\s*\};/, "a found job keeps its own state");

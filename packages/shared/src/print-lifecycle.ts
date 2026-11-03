@@ -393,6 +393,39 @@ export function printJobFailedAtCreation(input: {
   };
 }
 
+/** Printing Phase 5 (spec 2026-11-03 §5.9): a KOT line the device printed while it could not reach the server is
+ *  born printed when its round arrives, so it is never leased, never announced and never printed again. */
+export function printJobPrintedAtCreation(input: {
+  labels: readonly PrintJobLabel[];
+  deviceId: string;
+  detail: string;
+  originDeviceId?: string;
+  nowMs: number;
+}): ReturnType<typeof printJobLifecycleInit> & { status: "printed"; printedAt: Date; printedBy: string; log: PrintJobLogEntry[] } {
+  return {
+    ...printJobLifecycleInit(input.nowMs, input.labels),
+    status: "printed",
+    printedAt: new Date(input.nowMs),
+    printedBy: input.deviceId,
+    log: [printJobCreatedLog(input.nowMs, input.originDeviceId), logEntry(input.nowMs, "printed", input.deviceId, input.detail)],
+  };
+}
+
+/** Printing Phase 5: a KOT line whose offline write may have put paper out is born queued as its one retry: REPRINT,
+ *  and the offline write counted as an attempt that may have reached paper (a second maybe ends it in failed). */
+export function printJobReprintAtCreation(input: {
+  labels: readonly PrintJobLabel[];
+  originDeviceId?: string;
+  nowMs: number;
+}): ReturnType<typeof printJobLifecycleInit> & { status: "queued"; log: PrintJobLogEntry[] } {
+  return {
+    ...printJobLifecycleInit(input.nowMs, addPrintLabel(input.labels, "REPRINT")),
+    status: "queued",
+    uncertainAttempts: 1,
+    log: [printJobCreatedLog(input.nowMs, input.originDeviceId)],
+  };
+}
+
 /** leased → (lease ran out) the same as a "maybe sent" failure (§7.2). */
 export function planExpiry(job: PrintJobLifecycle, nowMs: number): PrintJobPlan {
   if (job.status !== "leased" || job.lease === undefined) return { ok: false, reason: "wrong-status" };

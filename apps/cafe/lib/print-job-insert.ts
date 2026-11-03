@@ -1,7 +1,15 @@
 import { isDuplicateKeyError } from "@pos/shared/api";
 import { printJobPayloadWithinCap, type PrintJobStatus } from "@pos/shared/print-job";
 import type { PrintJobRef } from "@pos/shared/print-agent-wire";
-import { directLeaseOf, printJobCreatedLog, printJobFailedAtCreation, printJobInitialLabels, printJobLifecycleInit } from "@pos/shared/print-lifecycle";
+import {
+  directLeaseOf,
+  printJobCreatedLog,
+  printJobFailedAtCreation,
+  printJobInitialLabels,
+  printJobLifecycleInit,
+  printJobPrintedAtCreation,
+  printJobReprintAtCreation,
+} from "@pos/shared/print-lifecycle";
 import { printJobPayloadSchema, type PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 import { PrintJob } from "@/models/PrintJob";
 import { PRINT_REDELIVERY_SELECT, redeliveryOf, type PrintJobAskingTab, type PrintRedeliveryRow } from "@/lib/print-direct";
@@ -29,7 +37,8 @@ export interface InsertedPrintJob {
  *  own. With `direct` the job is made already leased to it, in this one write; and a job its key already
  *  names that is still leased to that very tab is handed back with its lease (an answer lost on the way).
  *  Session 2C: `line` is its printer and copies (printers mode); `failed` makes it failed at once (no printer
- *  takes the slip), never leased. */
+ *  takes the slip), never leased. Printing Phase 5: `offline` makes a KOT line its round printed offline born
+ *  printed, or one whose offline write may have put paper out born queued with REPRINT; neither is ever leased. */
 export async function insertPrintJob(input: {
   request: PrintJobRequest;
   /** The device whose line holds it (simple mode: the host or the asking device; printers mode: the printer's
@@ -43,6 +52,7 @@ export async function insertPrintJob(input: {
   tab?: PrintJobAskingTab;
   line?: { printerId: string; copies: number };
   failed?: string;
+  offline?: { verdict: "printed"; deviceId: string; detail: string } | { verdict: "reprint" };
   nowMs: number;
 }): Promise<InsertedPrintJob | null> {
   const parsed = printJobPayloadSchema.safeParse(input.request.payload);
@@ -54,7 +64,13 @@ export async function insertPrintJob(input: {
   const orderId = printJobOrderIdOf(payload);
   const labels = printJobInitialLabels(payload);
   const failed = input.failed === undefined ? null : printJobFailedAtCreation({ labels, error: input.failed, originDeviceId: input.originDeviceId, nowMs: input.nowMs });
-  const who = input.tab === undefined || failed !== null ? null : { deviceId: input.targetDeviceId, tabId: input.tab.tabId };
+  const offlineMade =
+    input.offline === undefined || failed !== null
+      ? null
+      : input.offline.verdict === "printed"
+        ? printJobPrintedAtCreation({ labels, deviceId: input.offline.deviceId, detail: input.offline.detail, originDeviceId: input.originDeviceId, nowMs: input.nowMs })
+        : printJobReprintAtCreation({ labels, originDeviceId: input.originDeviceId, nowMs: input.nowMs });
+  const who = input.tab === undefined || failed !== null || offlineMade !== null ? null : { deviceId: input.targetDeviceId, tabId: input.tab.tabId };
   const direct = who !== null && input.tab?.direct === true ? directLeaseOf({ labels, who, originDeviceId: input.originDeviceId, nowMs: input.nowMs }) : null;
   try {
     const created = await PrintJob.create({
@@ -70,15 +86,16 @@ export async function insertPrintJob(input: {
       copyIndex: 0,
       // Omit-empty: a simple-mode job carries neither; one copy is no copies field.
       ...(input.line !== undefined ? { printerId: input.line.printerId, ...(input.line.copies > 1 ? { copies: input.line.copies } : {}) } : {}),
-      // Made failed (no printer takes it), leased to the asking tab (its log says "direct"), or queued as in Phase 1.
-      ...(failed ?? direct ?? { ...printJobLifecycleInit(input.nowMs, labels), log: [printJobCreatedLog(input.nowMs, input.originDeviceId)] }),
+      // Made failed (no printer takes it), printed or REPRINT (an offline round), leased to the asking tab (its log
+      // says "direct"), or queued as in Phase 1.
+      ...(failed ?? offlineMade ?? direct ?? { ...printJobLifecycleInit(input.nowMs, labels), log: [printJobCreatedLog(input.nowMs, input.originDeviceId)] }),
     });
     const ref: PrintJobRef = {
       id: String(created._id),
       kind: payload.kind,
       targetDeviceId: input.targetDeviceId,
       label: input.request.label,
-      status: failed !== null ? "failed" : direct === null ? "queued" : "leased",
+      status: failed !== null ? "failed" : (offlineMade?.status ?? (direct === null ? "queued" : "leased")),
       ...(direct !== null ? { leased: leasedJobOf(created, direct, payload) } : {}),
       ...(input.line !== undefined ? { printerId: input.line.printerId } : {}),
     };

@@ -3,6 +3,7 @@ import type { PrintJobEnqueueResult } from "@pos/shared/print-job";
 import type { PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 import { announcesQueuedJob, printerLineIsFree, printsDirectAtCreation } from "@/lib/print-direct";
 import { insertPrintJob, type InsertedPrintJob } from "@/lib/print-job-insert";
+import { offlineInsertOf, offlineVerdictOf, type OfflineAsk } from "@/lib/print-offline-jobs";
 import { routePrintRequest, routedJobKey, type PrintRouting, type RoutedPrintJob } from "@/lib/print-printer-routing";
 import { printJobKeyOf } from "@/lib/print-queue";
 import { readPrintRouting } from "@/lib/print-routing-context";
@@ -61,6 +62,8 @@ export async function createRoutedPrintJobs(input: {
   originDeviceId?: string;
   leaseTabId?: string;
   readyPrinterIds?: readonly string[];
+  /** Printing Phase 5: the round's offline field, for its KOT lines only (spec 2026-11-03 §5.9). */
+  offline?: OfflineAsk;
   queuedBy: string;
   nowMs: number;
 }): Promise<{ jobs: InsertedPrintJob[]; routed: number }> {
@@ -83,6 +86,16 @@ export async function createRoutedPrintJobs(input: {
           failed: job.error ?? "",
         });
         if (made !== null) jobs.push(made);
+        continue;
+      }
+      // Phase 5: decided before askingTabOf, so a line printed offline (or a REPRINT of one) never takes the line's
+      // one direct lease, and the device's own "later" job on that printer still does (the review's I8).
+      const verdict = request.payload.kind === "kot" ? offlineVerdictOf({ printerId: job.printerId, part: job.part, targetDeviceId: job.writerDeviceId ?? "" }, input.offline) : "new";
+      if (verdict !== "new") {
+        const made = await insertPrintJob({ ...common, targetDeviceId: job.writerDeviceId ?? "", line: { printerId: job.printerId, copies: job.copies }, offline: offlineInsertOf(verdict, input.offline as OfflineAsk) });
+        if (made === null) continue;
+        jobs.push(made);
+        if (announcesQueuedJob(made, directOn.has(job.printerId))) publishPrintStatus({ id: made.ref.id, status: "queued", target: made.ref.targetDeviceId, printerId: job.printerId });
         continue;
       }
       const tabId = askingTabOf(job, asking, seen);

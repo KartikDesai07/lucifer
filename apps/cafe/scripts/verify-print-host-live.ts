@@ -55,6 +55,7 @@ import { legBD } from "./print-host-live/takeover";
 import { legBE } from "./print-host-live/candidates";
 import { legBF } from "./print-host-live/skip-interplay";
 import { legBG } from "./print-host-live/invoice-jobs";
+import { legBH } from "./print-host-live/offline";
 
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
@@ -157,6 +158,8 @@ async function main(): Promise<void> {
     // Print customization S10 leg (the GST invoice serial a bill job is stored with) — AZ on this PC before the
     // Phase 3 merge took AZ..BF; renamed BG, its own freshHost() makes it order-independent.
     await legBG(Date.now());
+    // Printing Phase 5 Session 5A leg (an offline round's jobs: printed / REPRINT / as today; no repair, no token).
+    await legBH(Date.now());
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();

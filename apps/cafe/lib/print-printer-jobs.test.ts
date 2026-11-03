@@ -96,7 +96,7 @@ test("PIN: printers mode routes every slip an order request makes; simple mode (
       "return jobs.map((job) => job.ref);",
       "const host = await PrintHost.findOne(",
       "const target = host?.deviceId ?? input.originDeviceId;",
-      "} catch {",
+      "} catch (error) {",
     ],
     "createOrderPrintJobs",
   );

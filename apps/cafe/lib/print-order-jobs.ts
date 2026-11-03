@@ -15,6 +15,7 @@ import { PrintHost } from "@/models/PrintHost";
 import { PRINT_HOST_DEVICE_ID_MAX_CHARS } from "@/lib/print-host";
 import { announcesQueuedJob, printLineIsFree, printsDirectAtCreation, type PrintJobAskingTab } from "@/lib/print-direct";
 import { insertPrintJob } from "@/lib/print-job-insert";
+import { offlineInsertOf, offlineVerdictOf, type OfflineAsk } from "@/lib/print-offline-jobs";
 import { createRoutedPrintJobs, printPayloadProductIds } from "@/lib/print-printer-jobs";
 import { printJobKeyOf } from "@/lib/print-queue";
 import { PRINT_HOST_TAB_ID_MAX_CHARS } from "@/lib/print-queue-claim";
@@ -36,7 +37,8 @@ import { orderSkipsKitchen, roundSkipsKitchen, type KitchenFlagged, type Kitchen
 //
 // createOrderPrintJobs NEVER throws: an order that landed must still answer success. A job that did
 // not get made is covered by the repair sweep (print-repair.ts) for KOT rounds, and by the client's own
-// enqueue of any slip its response did not name (Session 1C). Never calls connectDB(). No console.*.
+// enqueue of any slip its response did not name (Session 1C); an offline round (Phase 5, never repaired) rethrows
+// for the route's 503. Never calls connectDB(). No console.*.
 
 export interface PrintIntent {
   /** The asking device (x-pos-device-id). With no host it prints its own slips (§6.6). */
@@ -175,6 +177,7 @@ export async function createOrderPrintJobs(input: {
   leaseTabId?: string;
   readyPrinterIds?: string[];
   billPrinterId?: string;
+  offline?: OfflineAsk; // Printing Phase 5: the round's offline field (its KOT lines: printed / REPRINT / new)
   queuedBy: string;
   nowMs: number;
 }): Promise<PrintJobRef[]> {
@@ -200,6 +203,7 @@ export async function createOrderPrintJobs(input: {
         originDeviceId: input.originDeviceId,
         leaseTabId: input.leaseTabId,
         readyPrinterIds: input.readyPrinterIds,
+        offline: input.offline,
         queuedBy: input.queuedBy,
         nowMs: input.nowMs,
       });
@@ -214,16 +218,21 @@ export async function createOrderPrintJobs(input: {
     const lineFree = leaseTabId !== undefined && (await printLineIsFree(target, input.nowMs));
     let directOnLine = false;
     let made = 0;
+    let live = 0;
     for (const request of requests) {
       // Only the first slip of this request on the line may be leased now (§7.6: one writer, oldest first);
       // the rest are made as in Phase 1, so a collision on them never reads a payload (the 2B review, M-1).
       // The token fix (print-direct.ts): a token is never made leased; still the asking tab's, it leases it from the
-      // answer, so nothing on the line is announced to it (decision 16).
-      const tokenForTab = leaseTabId !== undefined && refs.length === 0 && !printsDirectAtCreation(request.payload.kind);
-      const tab = leaseTabId === undefined || refs.length > 0 || tokenForTab ? {} : { tab: { tabId: leaseTabId, direct: lineFree } };
-      const job = await insertPrintJob({ request, targetDeviceId: target, originDeviceId: input.originDeviceId, queuedBy: input.queuedBy, ...tab, nowMs: input.nowMs });
+      // answer, so nothing on the line is announced to it (decision 16). Phase 5: an offline verdict comes first (I8).
+      const verdict = request.payload.kind === "kot" ? offlineVerdictOf({ printerId: null, part: "-", targetDeviceId: target }, input.offline) : "new";
+      const first = verdict === "new" && live === 0;
+      const tokenForTab = leaseTabId !== undefined && first && !printsDirectAtCreation(request.payload.kind);
+      const tab = leaseTabId === undefined || !first || tokenForTab ? {} : { tab: { tabId: leaseTabId, direct: lineFree } };
+      const offline = verdict === "new" ? {} : { offline: offlineInsertOf(verdict, input.offline as OfflineAsk) };
+      const job = await insertPrintJob({ request, targetDeviceId: target, originDeviceId: input.originDeviceId, queuedBy: input.queuedBy, ...tab, ...offline, nowMs: input.nowMs });
       if (job === null) continue;
       refs.push(job.ref);
+      if (verdict === "new") live += 1;
       if (job.ref.leased !== undefined || tokenForTab) directOnLine = true;
       if (announcesQueuedJob(job, directOnLine)) {
         made += 1;
@@ -231,8 +240,8 @@ export async function createOrderPrintJobs(input: {
       }
     }
     if (made > 0 && host !== null) publishCafeEvent("print-job");
-  } catch {
-    // Never fails the order write that landed: the repair sweep or the client's own enqueue covers it.
+  } catch (error) {
+    if (input.offline !== undefined) throw error; // else never fails the order write: the repair sweep or the client covers it
   }
   return refs;
 }

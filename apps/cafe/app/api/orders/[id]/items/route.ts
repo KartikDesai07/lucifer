@@ -53,6 +53,8 @@ import { buildKotIdemKeys } from "@pos/shared/order-idem";
 import { idemGuardFilter, roundReplayResponse, roundReplayAfterMiss } from "@/lib/order-idem";
 import { settledValue } from "@/lib/settled";
 import { buildKotPrintDevices, createOrderPrintJobs, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
+import { offlineKeptAt, withOfflineEcho } from "@/lib/print-offline-jobs";
+import { offlineAskOf, offlineSlipsUnmade } from "@/lib/print-offline-replay";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +83,8 @@ export async function POST(req: Request, { params }: Params) {
   if ("error" in parsed) return parsed.error;
   // Printing Phase 1 (lib/print-order-jobs.ts): null for a tab that prints its own slips.
   const intent = printIntentOf(req);
+  const offline = offlineAskOf(req, parsed.data.offline); // Printing Phase 5: a round taken offline (400 without a device id)
+  if ("error" in offline) return offline.error;
 
   try {
     await connectDB();
@@ -254,7 +258,9 @@ export async function POST(req: Request, { params }: Params) {
       ? await nextPrintedNumber("kot", printCfg.kot)
       : undefined;
     // P4-A — this round's fire instant, stamped ONCE so every reader of "now" in this request agrees.
-    const firedAt = new Date();
+    const nowMs = Date.now();
+    const kept = offlineKeptAt(parsed.data.offline, printCfg, nowMs); // Phase 5: the taken time, the arrival's day only
+    const firedAt = new Date(kept ?? nowMs);
     // Built POSITIONALLY, not appended. The slip is read back by index (use-pos-print: kotNumbers[kotRounds - 1])
     // and a tab can carry a SHORT array (opened before numbering shipped, or rounds fired while it was off).
     // Appending would file this round's ticket under an earlier round's index. 0 is a safe "never numbered"
@@ -276,7 +282,7 @@ export async function POST(req: Request, { params }: Params) {
     const kotIdemKeys = buildKotIdemKeys(old.kotIdemKeys, round, key);
     // Printing Phase 1 — same positional idiom: this round is the server's to print (and to repair)
     // only when this call site opted in. Undefined (nothing written) otherwise.
-    const kotPrintDevices = buildKotPrintDevices(old.kotPrintDevices, round, intent?.deviceId);
+    const kotPrintDevices = buildKotPrintDevices(old.kotPrintDevices, round, offline.ask === undefined ? intent?.deviceId : undefined);
 
     // CB-CHG — the ONE helper every charge writer uses (plan §4), so this
     // route can never hand-write the mirror or pick the wrong $set/$unset arm.
@@ -360,11 +366,13 @@ export async function POST(req: Request, { params }: Params) {
           leaseTabId: intent.leaseTabId,
           readyPrinterIds: intent.readyPrinterIds,
           billPrinterId: intent.billPrinterId,
+          offline: offline.ask,
           queuedBy: authed.session.user.name ?? "",
           nowMs: Date.now(),
-        })
+        }).catch(offlineSlipsUnmade)
       : null;
-    return success(withPrintJobs(updated, printJobs));
+    if (printJobs instanceof Response) return printJobs;
+    return success(withOfflineEcho(withPrintJobs(updated, printJobs), parsed.data.offline, kept));
   } catch (error) {
     return serverError("Failed to add items", error);
   }
