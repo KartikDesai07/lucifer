@@ -184,7 +184,7 @@ export function ReservationFormSheet({ open, onOpenChange, reservation, prefill,
                 <input
                   id="res-mobile"
                   ref={field.ref}
-                  autoFocus
+                  data-autofocus=""
                   inputMode="numeric"
                   placeholder="10-digit mobile"
                   aria-invalid={errors.mobile ? true : undefined}

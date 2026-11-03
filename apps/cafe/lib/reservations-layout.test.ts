@@ -78,8 +78,9 @@ test("no constant clips with overflow-hidden (WebView 109) except the page frame
   }
 });
 
-test("the phone's select floor is B3's 116.81px; the search input is 16px below 720 and 14px from it (B23)", () => {
-  hasAll(RES_STATUS_SELECT_CLASS, ["flex-[0_0_190px]", "max-tab:min-w-[116.81px]", "max-tab:flex-[1_1_0px]"], "select cell");
+test("the status select never clips its label: it is at least its own label's width, with B3's 116.81px floor on a phone (V2-3); the search input is 16px below 720 and 14px from it (B23)", () => {
+  hasAll(RES_STATUS_SELECT_CLASS, ["flex-[0_0_190px]", "min-w-max", "max-tab:[&>button]:min-w-[116.81px]", "max-tab:flex-[1_1_0px]"], "select cell");
+  assert.ok(!tokens(RES_STATUS_SELECT_CLASS).includes("min-w-0") && !tokens(RES_STATUS_SELECT_CLASS).includes("max-tab:min-w-[116.81px]"), "no min-w-0 and no fixed floor on the cell: the cell's minimum is its label's max-content (the trigger carries the floor)");
   hasAll(RES_SEARCH_INPUT_CLASS, ["text-[16px]", "tab:text-[14px]"], "search input");
 });
 

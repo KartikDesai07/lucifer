@@ -31,10 +31,21 @@ interface ReservationFormFrameProps {
   onSubmit: FormEventHandler<HTMLFormElement>;
 }
 
+/** As the form opens, the field marked data-autofocus (the Mobile number) takes the focus. Opened from the detail sheet (below
+ *  1280px) a plain autoFocus is pulled back by that dialog's focus trap before this one traps the focus, and Radix then focuses
+ *  the first control in the head (the close button): the Edit form opened on the ✕ (V2-5). Radix runs this once its scope is
+ *  the top one, so the focus stays. */
+function focusMarkedField(e: Event) {
+  const field = e.currentTarget instanceof HTMLElement ? e.currentTarget.querySelector<HTMLElement>("[data-autofocus]") : null;
+  if (!field) return;
+  e.preventDefault();
+  field.focus();
+}
+
 /** The reservation form's frame (values 13.1; design 8.1): U5's editor at the HTML's 480px, a right aside from 1280px and U2's
  *  full-screen bottom sheet below; one Radix dialog whose classes follow the width, so a resize never remounts the form. A press
- *  that lands in a dialog opened over it (the delete confirm) never closes it. Radix's own open focus stays, so the Mobile
- *  number (autoFocus) takes it; the opener is remembered and refocused on close. */
+ *  that lands in a dialog opened over it (the delete confirm) never closes it. The marked Mobile number takes the open focus
+ *  (focusMarkedField); the opener is remembered and refocused on close. */
 export function ReservationFormFrame({ open, onOpenChange, title, sub, footer, children, onSubmit }: ReservationFormFrameProps) {
   const side = useMediaQuery(MENU_EDITOR_XL_QUERY);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -51,6 +62,7 @@ export function ReservationFormFrame({ open, onOpenChange, title, sub, footer, c
           ref={panelRef}
           data-ui="reservation-form"
           className={side ? RES_FORM_SIDE_CLASS : MENU_EDITOR_SHEET_CLASS}
+          onOpenAutoFocus={focusMarkedField}
           onCloseAutoFocus={(e) => {
             e.preventDefault();
             if (openerRef.current?.isConnected) openerRef.current.focus();

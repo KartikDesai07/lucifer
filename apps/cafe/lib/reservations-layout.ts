@@ -82,10 +82,12 @@ export const RES_DAY_ROW_CLASS =
 export const RES_CALENDAR_CELL_CLASS = "[--cell-size:2.5rem]";
 /** Keeps the day popover off the screen's edge on a phone (DatePicker's and the Orders date box's gap). */
 export const RES_POPOVER_EDGE_GAP_PX = 12;
-/** The status select's cell (values 4): 190px from 720px; on a phone it flexes with the B3 floor of 116.81px (the
- *  smallest width the HTML measures at 360), and the select and the search toggle wrap to a second row when the day group,
- *  the select and the toggle do not fit. */
-export const RES_STATUS_SELECT_CLASS = "min-w-0 flex-[0_0_190px] max-tab:min-w-[116.81px] max-tab:flex-[1_1_0px]";
+/** The status select's cell (values 4): 190px from 720px; on a phone it flexes, and the select and the search toggle wrap to
+ *  a second row when the day group, the select and the toggle do not fit (B3). The cell never shrinks below its own label
+ *  (min-w-max: the shown option's width plus the trigger's padding and chevron; V2-3: "Upcoming (3)" read "Upcoming (3"
+ *  on another day), and its trigger keeps B3's 116.81px floor (the smallest width the HTML measures at 360) for the
+ *  short labels. */
+export const RES_STATUS_SELECT_CLASS = "min-w-max flex-[0_0_190px] max-tab:[&>button]:min-w-[116.81px] max-tab:flex-[1_1_0px]";
 
 /** The search box (values 9.2): 38px, radius 9, 1px --border on --surface, 0 10px, 8px apart; from 720px it takes the
  *  row's rest (flex 1 1 220, 180 to 340); on a phone it is a full row of its own (B3), shown only while the toggle is on.

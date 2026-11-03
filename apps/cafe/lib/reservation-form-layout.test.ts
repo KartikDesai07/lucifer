@@ -82,11 +82,14 @@ test("the form: its own write instances, no request of its own, no areas, no nat
   assert.match(sheet, /createReservation\.mutateAsync\(createPayload\(v\)\)/, "create: createPayload");
   assert.match(sheet, /onCreated\(saved\.date\)/, "after a create the page shows that day (B20)");
   assert.match(sheet, /Fix the highlighted fields to continue/, "the failed-Save words");
-  assert.match(sheet, /autoFocus/, "the Mobile number takes the focus");
+  assert.match(sheet, /data-autofocus=""/, "the Mobile number is the marked field the frame focuses on open");
+  assert.ok(!/autoFocus/.test(sheet), "no plain autoFocus: opened from the detail sheet (below 1280) that dialog pulls it back and Radix then focuses the close button (V2-5)");
   assert.match(sheet, /Delete reservation/, "Delete lives in the form (ruling U7)");
   assert.match(sheet, /onDelete\(reservation\)/, "...and raises the page's confirm");
   assert.ok(!/<select|type="date"|type="time"/.test(read("components/reservations/ReservationDayTimeFields.tsx") + sheet), "no native pickers");
   const frame = read("components/reservations/ReservationFormFrame.tsx");
+  assert.match(frame, /onOpenAutoFocus=\{focusMarkedField\}/, "the frame hands the open focus to the marked field, New and Edit alike (V2-5)");
+  assert.match(frame, /querySelector<HTMLElement>\("\[data-autofocus\]"\)[\s\S]*e\.preventDefault\(\);\s*field\.focus\(\);/, "the marked field is focused and Radix's own first-control focus is cancelled");
   assert.match(frame, /keepOpenForNestedDialog\(e, panelRef\.current\)/, "a press in the delete confirm never closes the form");
 });
 
