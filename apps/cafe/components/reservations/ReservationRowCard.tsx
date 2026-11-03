@@ -41,7 +41,7 @@ export function ReservationRowCard({ r, first, nowMs, today, showDay, selected, 
   const pill = pillOf(r, nowMs, today);
   const dim = r.status === "Completed" || r.status === "Cancelled";
   const { primary } = rowActions(r, today);
-  const sub = `${showDay ? `${dayTag(r.date)} · ` : ""}${guestsWord(r.guests)} · ${r.tableNo ?? "No table"}`;
+  const sub = `${showDay ? `${dayTag(r.date)} · ` : ""}${guestsWord(r.guests)} · ${r.tableNo || "No table"}`;
   return (
     <div data-ui="reservations-card" className={cn(RES_ROW_CARD_CLASS, !first && RES_ROW_RULE_CLASS, selected && RES_ROW_SELECTED_CLASS)}>
       <span className={RES_CARD_TIME_CLASS}>

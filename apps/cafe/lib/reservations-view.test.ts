@@ -233,8 +233,8 @@ test("pastVisits: Completed bookings on the same digits, never the booking itsel
 test("rowActions per status (design 6.3): Seat only today, Open order only with a table", () => {
   assert.deepEqual(rowActions(res(), TODAY), { icons: ["cancel"], primary: "seat" }, "Booked today");
   assert.deepEqual(rowActions(res({ date: "2026-10-20" }), TODAY), { icons: ["cancel"], primary: null }, "Booked on another day has no primary");
-  assert.deepEqual(rowActions(res({ status: "Seated", tableNo: "T-3" }), TODAY), { icons: ["complete", "cancel"], primary: "openOrder" }, "Seated with a table");
-  assert.deepEqual(rowActions(res({ status: "Seated" }), TODAY), { icons: ["complete", "cancel"], primary: null }, "B26: Seated with no table has no primary");
+  assert.deepEqual(rowActions(res({ status: "Seated", tableNo: "T-3" }), TODAY), { icons: ["complete"], primary: "openOrder" }, "Seated with a table");
+  assert.deepEqual(rowActions(res({ status: "Seated" }), TODAY), { icons: ["complete"], primary: null }, "B26: Seated with no table has no primary");
   assert.deepEqual(rowActions(res({ status: "Completed" }), TODAY), { icons: [], primary: "bookAgain" }, "Completed");
   assert.deepEqual(rowActions(res({ status: "Cancelled" }), TODAY), { icons: ["restore"], primary: "bookAgain" }, "Cancelled");
 });

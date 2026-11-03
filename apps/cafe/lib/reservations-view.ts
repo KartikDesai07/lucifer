@@ -243,7 +243,7 @@ export function pastVisits(list: readonly Reservation[], mobile: string, exclude
  *  on today's bookings (the HTML); Open order needs a table (B26). */
 export function rowActions(r: Reservation, today: string): { icons: ResAction[]; primary: ResAction | null } {
   if (r.status === "Booked") return { icons: ["cancel"], primary: r.date === today ? "seat" : null };
-  if (r.status === "Seated") return { icons: ["complete", "cancel"], primary: r.tableNo ? "openOrder" : null };
+  if (r.status === "Seated") return { icons: ["complete"], primary: r.tableNo ? "openOrder" : null };
   if (r.status === "Completed") return { icons: [], primary: "bookAgain" };
   return { icons: ["restore"], primary: "bookAgain" };
 }

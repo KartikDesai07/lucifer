@@ -63,19 +63,19 @@ test("showDay (All dates / a search) puts the day tag in front of the card sub a
   assert.equal(textOf(table([r], { showDay: false }), "reservations-row-sub"), "+91 98670 04512", "no tag on a single day");
 });
 
-test("a Seated row: Open order (a /pos link) and the icons Mark completed + Cancel booking", () => {
+test("a Seated row: Open order (a /pos link) and the icon Mark completed", () => {
   const html = table([res({ status: "Seated" })]);
-  assert.deepEqual(titles(html), ["Mark completed · guests left", "Cancel booking"], "two icons, in order");
+  assert.deepEqual(titles(html), ["Mark completed · guests left"], "one icon: Cancel for a Seated booking lives in the detail (ruling U5)");
   assert.match(tagOf(html, "reservations-row-primary"), /^<a /, "Open order is a link");
   assert.match(tagOf(html, "reservations-row-primary"), /href="\/pos"/, "to /pos");
   assert.equal(textOf(html, "reservations-row-primary"), "Open order", "its word");
   assert.equal(textOf(html, "reservations-row-pill"), "Seated", "the pill");
 });
 
-test("a Seated booking with no table has no primary (B26) but keeps its icons", () => {
+test("a Seated booking with no table has no primary (B26) but keeps its icon", () => {
   const html = table([res({ status: "Seated", tableNo: undefined })]);
   assert.equal(tagOf(html, "reservations-row-primary"), "", "no Open order without a table");
-  assert.equal(titles(html).length, 2, "the two icons stay");
+  assert.equal(titles(html).length, 1, "the one icon stays");
 });
 
 test("a Completed row: Book again, no icon, no relative line", () => {
@@ -107,7 +107,7 @@ test("busy disables Seat, Complete, Cancel and Restore; Open order, Book again a
   const disabled = (html: string, title: string): boolean => /disabled=""/.test((html.match(new RegExp(`<button[^>]*title="${title}"[^>]*>`)) ?? [""])[0]);
   const seated = table([res({ status: "Seated" })], { busy: true });
   assert.ok(disabled(seated, "Mark completed · guests left"), "Complete");
-  assert.ok(disabled(seated, "Cancel booking"), "Cancel");
+  assert.ok(disabled(table([res()], { busy: true }), "Cancel booking"), "Cancel (a Booked row)");
   assert.ok(!/disabled=""/.test(tagOf(seated, "reservations-row-primary")), "Open order stays a live link");
   assert.ok(/disabled=""/.test(tagOf(table([res()], { busy: true }), "reservations-row-primary")), "Seat");
   assert.ok(disabled(table([res({ status: "Cancelled" })], { busy: true }), "Restore booking"), "Restore");
@@ -156,4 +156,10 @@ test("Completed and Cancelled pills take the neutral surface-3 look", () => {
     assert.ok(classesOf(tagOf(html, "reservations-pill")).includes("bg-surface-3"), `${kind}: surface-3`);
     assert.ok(!classesOf(tagOf(html, "reservations-pill")).includes("bg-muted"), `${kind}: not the muted tint`);
   }
+});
+
+test("an empty-string table reads No table on the card, as on the table row", () => {
+  assert.equal(textOf(card(res({ tableNo: "" })), "reservations-card-sub"), "4 guests · No table", "the card sub");
+  assert.equal(tagOf(table([res({ tableNo: "" })]), "reservations-row-table"), "", "no table name on the row");
+  assert.equal(textOf(table([res({ tableNo: "" })]), "reservations-row-assign"), "Assign", "the row offers Assign");
 });
