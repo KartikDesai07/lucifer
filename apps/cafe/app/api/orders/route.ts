@@ -15,7 +15,7 @@ import { withKitchenFlags } from "@/lib/kitchen-lines-server";
 import { stampModifierPrices } from "@/lib/modifier-price-stamp";
 import { createOrderPrintJobs, openingSlipsOf, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
 import { offlineKeptAt, offlineSaleTotalRefusal, withOfflineEcho } from "@/lib/print-offline-jobs";
-import { offlineAskOf, offlineSlipsUnmade } from "@/lib/print-offline-replay";
+import { offlineAskOf, offlineReplayAnswer, offlineSlipsUnmade } from "@/lib/print-offline-replay";
 import cache from "@/lib/cache";
 import { created, failure, validateBody, requireAuth, isDuplicateKeyError, serverError } from "@/lib/api-helpers";
 import { generateOrderId, dayRange, orderSummaryCacheKey } from "@/lib/utils";
@@ -100,7 +100,7 @@ export async function POST(req: Request) {
     // numbered by the replay once past BILL_NUMBER_SETTLE_MS. Awaited, so a
     // throw inside it still lands in this route's catch.
     const replayed = settledValue(replayR);
-    if (replayed) return await createReplayVerdict(replayed, data.items, printConfigOf(settledValue(settingsR)).bill);
+    if (replayed) return offlineReplayAnswer(await createReplayVerdict(replayed, data.items, printConfigOf(settledValue(settingsR)).bill), offline.ask, intent, authed.session.user.name);
 
     // A product sold by size must never reach the kitchen as a bare name, and a
     // variation the product does not have must never be printed as if it did —
@@ -139,7 +139,7 @@ export async function POST(req: Request) {
     // F5 — an overlap twin with the same send key may have landed while this
     // request was between its read wave and here: before refusing (or after
     // losing the insert on the key), answer with the order the twin made.
-    const lateReplay = async () => (data.idemKey ? createReplayResponse(data.idemKey, data.items, printCfg.bill) : null);
+    const lateReplay = async () => (data.idemKey ? offlineReplayAnswer(await createReplayResponse(data.idemKey, data.items, printCfg.bill), offline.ask, intent, authed.session.user.name) : null);
     // B2 - menu re-check: refuse a line whose item is gone, out of stock,
     // re-priced or renamed since the cashier picked it, before any pricing,
     // number, claim or write. lateReplay runs first so a twin of this send

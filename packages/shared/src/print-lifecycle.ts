@@ -426,6 +426,14 @@ export function printJobReprintAtCreation(input: {
   };
 }
 
+/** Printing Phase 5: the replay of an offline round (its key was used, its answer lost) whose line printed on the
+ *  device: a queued job never tried moves to printed, so it never prints a second time. A job with an attempt, or in
+ *  any other state, may already be on paper or be printing: it stays. The caller fences on attempts 0 too. */
+export function planOfflinePrinted(job: PrintJobLifecycle, deviceId: string, detail: string, nowMs: number): PrintJobPlan {
+  if (job.status !== "queued" || job.attempts !== 0) return { ok: false, reason: "wrong-status" };
+  return planned(printedPatch(nowMs, deviceId, "printed", detail));
+}
+
 /** leased → (lease ran out) the same as a "maybe sent" failure (§7.2). */
 export function planExpiry(job: PrintJobLifecycle, nowMs: number): PrintJobPlan {
   if (job.status !== "leased" || job.lease === undefined) return { ok: false, reason: "wrong-status" };

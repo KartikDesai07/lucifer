@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lifecycleOf, planLease, printJobPrintedAtCreation, printJobReprintAtCreation, PRINT_MAX_PAPER_ATTEMPTS } from "./print-lifecycle";
+import { lifecycleOf, planLease, planOfflinePrinted, printJobPrintedAtCreation, printJobReprintAtCreation, PRINT_MAX_PAPER_ATTEMPTS } from "./print-lifecycle";
 
 // Printing Phase 5 (spec 2026-11-03 §5.9): the two jobs an offline round makes besides today's. A line the device
 // printed offline is born printed (never leased, never announced); a line whose offline write may have put paper out is
@@ -41,4 +41,20 @@ test("a reprint at creation adds REPRINT once and counts one uncertain attempt",
   const row = lifecycleOf({ kind: "kot", status: made.status, createdAt: new Date(T0), epoch: made.epoch, attempts: made.attempts, uncertainAttempts: made.uncertainAttempts, nextAttemptAt: made.nextAttemptAt, labels: made.labels });
   const lease = planLease(row, { deviceId: "dev-b", tabId: "t" }, T0);
   assert.equal(lease.ok, true, "its one retry may be leased");
+});
+
+test("the replay moves a queued job never tried to printed; anything else stays", () => {
+  const queued = lifecycleOf({ kind: "kot", status: "queued", createdAt: new Date(T0), epoch: 0, attempts: 0 });
+  const plan = planOfflinePrinted(queued, "dev-a", "offline O-3", T0 + 1_000);
+  assert.ok(plan.ok, "an untried queued job moves");
+  if (!plan.ok) return;
+  assert.deepEqual([plan.patch.status, plan.patch.set.printedBy, plan.patch.set.printedAt?.getTime()], ["printed", "dev-a", T0 + 1_000], "printed by the device that printed it offline");
+  assert.deepEqual([plan.patch.log.event, plan.patch.log.deviceId, plan.patch.log.detail], ["printed", "dev-a", "offline O-3"], "its history says so");
+  assert.deepEqual(plan.patch.unset, ["lease", "lastError"], "nothing of an attempt is left");
+  const tried = lifecycleOf({ kind: "kot", status: "queued", createdAt: new Date(T0), epoch: 1, attempts: 1 });
+  assert.equal(planOfflinePrinted(tried, "dev-a", "x", T0).ok, false, "a job with an attempt may already be on paper: it stays");
+  for (const status of ["leased", "printed", "failed", "needs-confirm", "dismissed"] as const) {
+    const row = lifecycleOf({ kind: "kot", status, createdAt: new Date(T0), epoch: 0, attempts: 0 });
+    assert.equal(planOfflinePrinted(row, "dev-a", "x", T0).ok, false, `a ${status} job stays`);
+  }
 });

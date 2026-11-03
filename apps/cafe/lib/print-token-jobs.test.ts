@@ -260,6 +260,8 @@ const OPENING_SITES = [
   "apps/cafe/app/api/orders/route.ts",
   "apps/cafe/app/api/order-requests/[id]/accept/route.ts",
   "apps/cafe/lib/print-agent-server.ts",
+  // Printing Phase 5: the create's replay with the offline field makes round 1's missing opening slips.
+  "apps/cafe/lib/print-offline-replay.ts",
 ];
 const NO_TOKEN_SITES = [
   "apps/cafe/app/api/orders/[id]/items/route.ts",
@@ -270,7 +272,7 @@ const NO_TOKEN_SITES = [
   "apps/cafe/lib/print-repair.ts",
 ];
 
-test("PIN: each of the three opening-slip call sites (create, staff accept, the self-order kot-claim) calls openingSlipsOf( exactly once, with its own round", () => {
+test("PIN: each opening-slip call site (create, staff accept, the self-order kot-claim, the offline replay) calls openingSlipsOf( exactly once, with its own round", () => {
   for (const rel of OPENING_SITES) {
     const s = src(rel);
     assert.equal(count(s, "openingSlipsOf("), 1, `${rel}: exactly one call`);
@@ -280,6 +282,7 @@ test("PIN: each of the three opening-slip call sites (create, staff accept, the 
   assert.ok(src(OPENING_SITES[0]).includes("slips: [...openingSlipsOf(numbered.value ?? landed, 1), ...(printsBillNow ? [{ kind: \"bill\" as const }] : [])],"), "create: round 1 of the order as answered, then the bill");
   assert.ok(src(OPENING_SITES[1]).includes("slips: openingSlipsOf(result.order, result.order.kotRounds),"), "accept: the round it just opened");
   assert.ok(src(OPENING_SITES[2]).includes("slips: openingSlipsOf(result.order, result.kotRound),"), "kot-claim: the round it just claimed");
+  assert.ok(src(OPENING_SITES[3]).includes("[...openingSlipsOf(order, 1), ...bill]"), "offline replay: round 1 of a create, then a sale's bill");
 });
 
 test("PIN: add-round, void, settle, move, cancel and the repair sweep NEVER build a token (no openingSlipsOf( and no token slip literal), each paired with a landmark that the file still makes its own slips", () => {
@@ -299,7 +302,7 @@ test("PIN: add-round, void, settle, move, cancel and the repair sweep NEVER buil
   }
 });
 
-test("PIN: repo-wide, openingSlipsOf( is called from exactly the three opening-slip files (outside its definition and test files)", () => {
+test("PIN: repo-wide, openingSlipsOf( is called from exactly the opening-slip files (outside its definition and test files)", () => {
   const roots = ["app", "lib", "hooks", "components"].map((d) => path.join(REPO_ROOT, "apps/cafe", d));
   const callers: string[] = [];
   const walk = (dir: string): void => {

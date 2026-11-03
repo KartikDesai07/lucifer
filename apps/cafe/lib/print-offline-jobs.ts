@@ -17,6 +17,7 @@ export type OfflineVerdict = "printed" | "reprint" | "new";
 /** Simple mode's one line: the whole KOT on the device that prints it. Printers mode's full copy is "all". */
 const DEVICE_PART = "-";
 const ALL_PART = "all";
+const OBJECT_ID_RE = /^[0-9a-f]{24}$/;
 
 /** What a routed KOT line becomes (spec §5.9): printed when the device printed this very line; a REPRINT when paper
  *  may be out for it (this line "maybe", or its station covered by another line that printed or may have printed:
@@ -86,4 +87,22 @@ export function offlineInsertOf(
   ask: OfflineAsk,
 ): { verdict: "printed"; deviceId: string; detail: string } | { verdict: "reprint" } {
   return verdict === "printed" ? { verdict, deviceId: ask.deviceId, detail: offlineDetailOf(ask.round.ref) } : { verdict };
+}
+
+/** The line a KOT job of this round is on, read from its key (lib/print-queue.ts printJobKeyOf, plus routedJobKey's
+ *  printer and part in printers mode): `kot:<orderObjectId>:<round>` is simple mode's `{ null, "-" }`. The order is its
+ *  Mongo `_id`, which the key holds, never the human orderId (the review's I3). Anything else: null. */
+export function offlineLineOfJobKey(jobKey: string, orderObjectId: string, round: number): { printerId: string | null; part: string } | null {
+  if (!OBJECT_ID_RE.test(orderObjectId)) return null;
+  const parts = jobKey.split(":");
+  if (parts[0] !== "kot" || parts[1] !== orderObjectId || parts[2] !== String(round)) return null;
+  if (parts.length === 3) return { printerId: null, part: DEVICE_PART };
+  return parts.length === 5 ? { printerId: parts[3] as string, part: parts[4] as string } : null;
+}
+
+/** Whether the saved order kept the taken time (the replay's echo): round 1 fires at createdAt (the create route
+ *  writes no kotFiredAt), a later round at kotFiredAt[round - 1]. */
+export function offlineTakenAtKept(order: { createdAt?: string | Date; kotFiredAt?: ReadonlyArray<string | Date> }, round: number, takenAt: number): boolean {
+  const at = round === 1 ? order.createdAt : order.kotFiredAt?.[round - 1];
+  return at !== undefined && new Date(at).getTime() === takenAt;
 }

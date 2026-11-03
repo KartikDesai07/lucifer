@@ -3,7 +3,7 @@
  * offline makes when it arrives — a line printed on the device is born printed (never leased), one that may have put
  * paper out is born queued with REPRINT, the rest as today (bh); no repair marker, no token, the taken time kept by
  * Mongoose as the order's createdAt (bh). Run by scripts/verify-print-host-live.ts after leg bg. Each leg sets the
- * outlet up itself and ends in simple mode with no host.
+ * outlet up itself and ends in simple mode with no host. Leg bi (the replay) is in offline-replay.ts.
  *
  * (console output is intentional — this is an ops CLI script, not app code.)
  */
@@ -27,13 +27,13 @@ import { allocateOpeningSlips } from "@/lib/slip-numbers";
 import { check, resetCollections, seedPrintHost } from "./harness";
 import { HOST, STAFF, rowOf } from "./lifecycle";
 
-const COUNTER = "live-5a-counter";
+export const COUNTER = "live-5a-counter";
 const KITCHEN = "live-5a-kitchen";
 const BAR = "live-5a-bar";
 const TAB = "live-5a-counter-tab";
 const NO_SLIPS = { bill: false, kotStations: [], kotAll: false, notices: false, eod: false };
 
-interface Outlet {
+export interface Outlet {
   kitchenSt: string;
   barSt: string;
   kitchen: string;
@@ -54,7 +54,7 @@ async function idOf(made: Promise<{ ok: boolean; data?: { id: string } }>): Prom
 
 /** Three network printers: the kitchen (the kitchen station, written by the kitchen tablet), the bar (the bar
  *  station, written by the bar phone) and the counter (the full copy and bills, written by the counter device). */
-async function outlet(): Promise<Outlet> {
+export async function outlet(): Promise<Outlet> {
   await Promise.all([resetCollections(), Order.deleteMany({}), Station.deleteMany({}), Printer.deleteMany({}), Category.deleteMany({}), Product.deleteMany({})]);
   const [kitchenStation] = await listStations();
   const barSt = await idOf(createStation({ name: "Bar" }));
@@ -70,7 +70,7 @@ async function outlet(): Promise<Outlet> {
 }
 
 /** An open tab with Paneer and a Mojito in round 1, as the create route writes an offline order: no kotPrintDevices. */
-async function offlineOrder(o: Pick<Outlet, "paneer" | "mojito">, extra: Record<string, unknown> = {}): Promise<string> {
+export async function offlineOrder(o: Pick<Outlet, "paneer" | "mojito">, extra: Record<string, unknown> = {}): Promise<string> {
   const doc = await Order.create({
     orderId: `ORD-5A-${new mongoose.Types.ObjectId().toHexString()}`,
     customerName: "Walk-in",
@@ -106,10 +106,10 @@ async function make(orderId: string, ask: OfflineAsk | undefined, nowMs: number,
   });
 }
 
-const isPrintedOffline = (row: Awaited<ReturnType<typeof rowOf>>): boolean =>
+export const isPrintedOffline = (row: Awaited<ReturnType<typeof rowOf>>): boolean =>
   row?.status === "printed" && row.printedBy === COUNTER && row.epoch === 0 && row.attempts === 0 && row.lease === undefined &&
   row.log?.map((e) => e.event).join() === "created,printed" && row.log?.[1]?.detail === "offline O-3";
-const isReprint = (row: Awaited<ReturnType<typeof rowOf>>): boolean =>
+export const isReprint = (row: Awaited<ReturnType<typeof rowOf>>): boolean =>
   row?.status === "queued" && row.labels?.join() === "REPRINT" && row.uncertainAttempts === 1 && row.epoch === 0 && row.lease === undefined;
 
 export async function legBH(nowMs: number): Promise<void> {

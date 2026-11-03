@@ -45,15 +45,15 @@ function assertChain(src: string, chain: ReadonlyArray<[string, string]>, why: s
 const CREATE_REFUSAL = "orderLinesRefusal(products, data.items)";
 const CREATE_ANSWER = "if (menuRefusal) return (await lateReplay()) ?? failure(menuRefusal, MENU_REFUSAL_STATUS);";
 const ROUND_REFUSAL = "orderLinesRefusal(products, parsed.data.items)";
-const ROUND_ANSWER =
-  "if (menuRefusal) return (key ? await roundReplayAfterMiss(id, key, parsed.data.items) : null) ?? failure(menuRefusal, MENU_REFUSAL_STATUS);";
+// Printing Phase 5: the twin re-read is the route's lateRound (roundReplayAfterMiss, then the offline replay answer).
+const ROUND_ANSWER = "if (menuRefusal) return (await lateRound()) ?? failure(menuRefusal, MENU_REFUSAL_STATUS);";
 
 test("PIN (create): the menu re-check sits after every replay answer and 400, before pricing, numbers, claims and writes", () => {
   const src = read(ORDERS_ROUTE);
   const at = assertChain(
     src,
     [
-      ["if (replayed) return await createReplayVerdict(", "the top replay answer"],
+      ["if (replayed) return offlineReplayAnswer(await createReplayVerdict(", "the top replay answer"],
       ["if (bad) return failure(bad, 400);", "the variation 400"],
       ["if (badRemovals) return failure(badRemovals, 400);", "the removals 400"],
       ['if ("error" in table) return failure(table.error, 400);', "the table 400"],
@@ -93,7 +93,7 @@ test("PIN (round): the menu re-check sits after the open-tab 409 and before the 
   const at = assertChain(
     src,
     [
-      ["if (replay) return replay;", "the replay answer"],
+      ["if (replay) return offlineReplayAnswer(replay, offline.ask, intent, authed.session.user.name, key);", "the replay answer"],
       ["if (bad) return failure(bad, 400);", "the variation 400"],
       ["if (badRemovals) return failure(badRemovals, 400);", "the removals 400"],
       ['return failure("Can only add items to an open tab", 409);', "the open-tab 409"],
@@ -113,12 +113,13 @@ test("PIN (round): the menu re-check sits after the open-tab 409 and before the 
   }
 });
 
-test("PIN (round): the 409 answers a landed twin via roundReplayAfterMiss in the same statement, and the first-occurrence chains are untouched", () => {
+test("PIN (round): the 409 answers a landed twin via lateRound (roundReplayAfterMiss) in the same statement, and the first-occurrence chains are untouched", () => {
   const src = read(ITEMS_ROUTE);
   const start = mustIndexOf(src, "if (menuRefusal)", "the menu 409 statement");
   const end = mustIndexOf(src, ";\n", "its end", start);
   const stmt = src.slice(start, end + 1);
-  assert.ok(stmt.includes("roundReplayAfterMiss(id, key, parsed.data.items)"), "the twin lookup is in the menu 409 statement");
+  assert.ok(stmt.includes("(await lateRound())"), "the twin lookup is in the menu 409 statement");
+  assert.ok(src.includes("key ? offlineReplayAnswer(await roundReplayAfterMiss(id, key, parsed.data.items),"), "lateRound is the twin re-read");
   assert.ok(stmt.includes("failure(menuRefusal, MENU_REFUSAL_STATUS)"), "the refusal is the fallback answer");
   // The CAS-miss chain (write-route-paths, reward-wiring) keys on these texts.
   assert.equal(count(src, "const late = "), 1, "the CAS-miss late replay is the only `const late =`");

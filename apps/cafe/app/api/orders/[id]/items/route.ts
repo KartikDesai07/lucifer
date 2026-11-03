@@ -54,7 +54,7 @@ import { idemGuardFilter, roundReplayResponse, roundReplayAfterMiss } from "@/li
 import { settledValue } from "@/lib/settled";
 import { buildKotPrintDevices, createOrderPrintJobs, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
 import { offlineKeptAt, withOfflineEcho } from "@/lib/print-offline-jobs";
-import { offlineAskOf, offlineSlipsUnmade } from "@/lib/print-offline-replay";
+import { offlineAskOf, offlineReplayAnswer, offlineSlipsUnmade } from "@/lib/print-offline-replay";
 
 export const dynamic = "force-dynamic";
 
@@ -110,7 +110,10 @@ export async function POST(req: Request, { params }: Params) {
     if (!old) return notFound("Order not found");
     const key = parsed.data.idemKey;
     const replay = key ? roundReplayResponse(old, key, parsed.data.items) : null;
-    if (replay) return replay;
+    if (replay) return offlineReplayAnswer(replay, offline.ask, intent, authed.session.user.name, key);
+    // A twin of this send that landed first (re-read after a refusal or a lost CAS); Phase 5: with its offline field.
+    const lateRound = async () =>
+      key ? offlineReplayAnswer(await roundReplayAfterMiss(id, key, parsed.data.items), offline.ask, intent, authed.session.user.name, key) : null;
 
     // A product sold by size must never reach the kitchen as a bare name, and a
     // variation the product does not have must never be printed as if it did —
@@ -156,7 +159,7 @@ export async function POST(req: Request, { params }: Params) {
     // does not close, the race: a first try still in flight can land after
     // this 409 (same class as the stamps 409 below).
     const menuRefusal = orderLinesRefusal(products, parsed.data.items);
-    if (menuRefusal) return (key ? await roundReplayAfterMiss(id, key, parsed.data.items) : null) ?? failure(menuRefusal, MENU_REFUSAL_STATUS);
+    if (menuRefusal) return (await lateRound()) ?? failure(menuRefusal, MENU_REFUSAL_STATUS);
 
     const round = (old.kotRounds ?? 0) + 1;
     // Priced add-ons: stamp what each new line's picks were charged (the reward dish is added later and carries none).
@@ -206,7 +209,7 @@ export async function POST(req: Request, { params }: Params) {
       cfg: gstCfg,
       round,
     });
-    if (!roundReward.ok) return (key ? await roundReplayAfterMiss(id, key, parsed.data.items) : null) ?? failure(roundReward.message, roundReward.status);
+    if (!roundReward.ok) return (await lateRound()) ?? failure(roundReward.message, roundReward.status);
     fullItems = roundReward.fullItems;
     discountKind = roundReward.discountKind;
     const { resolvedClaim, card, rewardAssignment, rewardForTotals } = roundReward;
@@ -324,12 +327,12 @@ export async function POST(req: Request, { params }: Params) {
       const claimed = await claimRewardStamps(String(old.customerId), old.orderId, resolvedClaim.cost, rewardAssignment);
       // A twin with the same key may have landed (and claimed) first.
       if (!claimed) {
-        return (key ? await roundReplayAfterMiss(id, key, parsed.data.items) : null) ?? failure("Not enough stamps for that reward", 409);
+        return (await lateRound()) ?? failure("Not enough stamps for that reward", 409);
       }
     }
     // The card is claimed the same way: before the CAS, released only on its definite miss below.
     if (card && !(await claimRewardCard(String(old.customerId), card.id, old.orderId, card.now))) {
-      return (key ? await roundReplayAfterMiss(id, key, parsed.data.items) : null) ?? failure(CARD_NOT_USABLE, 409);
+      return (await lateRound()) ?? failure(CARD_NOT_USABLE, 409);
     }
     const updated = await Order.findOneAndUpdate(filter, update, {
       new: true,
@@ -345,7 +348,7 @@ export async function POST(req: Request, { params }: Params) {
       if (card) await releaseRewardCard(String(old.customerId), card.id, old.orderId);
       // F5 — the overlap twin that won this CAS may be our own send: answer
       // with the round that landed instead of a 409 the cashier would re-ring.
-      const late = key ? await roundReplayAfterMiss(id, key, parsed.data.items) : null;
+      const late = await lateRound();
       if (late) return late;
       return failure("Tab changed or already settled — reopen it and try again", 409);
     }

@@ -56,6 +56,7 @@ import { legBE } from "./print-host-live/candidates";
 import { legBF } from "./print-host-live/skip-interplay";
 import { legBG } from "./print-host-live/invoice-jobs";
 import { legBH } from "./print-host-live/offline";
+import { legBI } from "./print-host-live/offline-replay";
 
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
@@ -160,6 +161,8 @@ async function main(): Promise<void> {
     await legBG(Date.now());
     // Printing Phase 5 Session 5A leg (an offline round's jobs: printed / REPRINT / as today; no repair, no token).
     await legBH(Date.now());
+    // Printing Phase 5 Session 5A leg (the replay of an offline round: the CAS, the missing jobs, the echo).
+    await legBI(Date.now());
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
