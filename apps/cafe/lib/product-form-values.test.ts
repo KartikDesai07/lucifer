@@ -10,9 +10,12 @@ import path from "node:path";
 
 import { createProductSchema } from "@pos/shared/schemas";
 import { stripComments } from "./source-pin-utils";
+import type { Product } from "@/types";
 import {
   addOnsFormError,
   addSizeRow,
+  copyFormValues,
+  formValuesFromProduct,
   modifierPricesForCreate,
   modifierPricesForEdit,
   modifierPricesForSave,
@@ -24,6 +27,7 @@ import {
 
 const CAFE_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const sheet = stripComments(readFileSync(path.join(CAFE_ROOT, "components/products/ProductFormSheet.tsx"), "utf8").replace(/\r\n/g, "\n"));
+const builder = stripComments(readFileSync(path.join(CAFE_ROOT, "lib/product-form-values.ts"), "utf8").replace(/\r\n/g, "\n"));
 const CAT = "64b7f0c2a1d2e3f4a5b6c7d8";
 const SIZES = [
   { name: "Small", price: 99 },
@@ -138,6 +142,68 @@ test("PIN: the sheet sends modifierPrices through the helpers (create: no key wh
   assert.ok(sheet.includes("modifierPrices: modifierPricesForCreate(values),"), "a create sends the list or no key");
   assert.ok(sheet.includes("modifierPrices: modifierPricesForEdit(values, product.modifierPrices),"), "an edit sends the list, or null when cleared");
   assert.ok(sheet.includes("addOnsFormError(values)"), "the form shows the server's refusal before any request");
-  assert.ok(sheet.includes("modifierPrices: product.modifierPrices,"), "the editor opens with the stored amounts");
+  // Moved on purpose (owner C1, 2026-11-04): the stored-item mapping left the sheet for formValuesFromProduct (same line, now copied).
+  assert.ok(sheet.includes("formValuesFromProduct(product)"), "the sheet opens an edit from the builder");
+  assert.ok(builder.includes("modifierPrices: product.modifierPrices?.map((p) => ({ ...p })),"), "the editor opens with the stored amounts");
   assert.match(sheet, /<ModifierInput id="product-modifiers"[\s\S]*?prices=\{modifierPrices\}[\s\S]*?ticked=\{ticked\}/, "the input gets the amounts and the ticked switch");
+});
+
+// Clone an item (owner C1, 2026-11-04): the form opens filled from a stored item; nothing is created until Save.
+const STORED: Product = {
+  _id: "p1",
+  name: "Pizza",
+  categoryId: CAT,
+  price: 0,
+  variations: SIZES,
+  discount: 10,
+  available: false,
+  image: "r2:products/pizza.webp",
+  modifiers: ["Cheese Burst", "Jalapeno"],
+  modifierPrices: [{ name: "Cheese Burst", price: 100 }],
+  isActive: false,
+  publicVisible: false,
+  icon: "pizza",
+  stationId: "64b7f0c2a1d2e3f4a5b6c7d9",
+  noKot: true,
+  createdAt: "2026-10-01T00:00:00.000Z",
+  updatedAt: "2026-10-02T00:00:00.000Z",
+};
+
+test("copyFormValues: every copied field equals the source; the name gets (copy); add-on amounts carried", () => {
+  const out = copyFormValues(STORED);
+  assert.equal(out.name, "Pizza (copy)");
+  assert.deepEqual(
+    { ...out, name: STORED.name },
+    {
+      name: "Pizza", categoryId: CAT, price: 0, variations: SIZES, discount: 10, available: false, image: "r2:products/pizza.webp",
+      modifiers: ["Cheese Burst", "Jalapeno"], modifiersPreselected: false, modifierPrices: [{ name: "Cheese Burst", price: 100 }],
+      publicVisible: false, icon: "pizza", stationId: "64b7f0c2a1d2e3f4a5b6c7d9", noKot: true,
+    },
+  );
+  assert.equal(formValuesFromProduct(STORED).name, "Pizza", "an edit keeps the name as it is");
+});
+
+test("copyFormValues: nothing server-side carries over (no _id, timestamps or archived state)", () => {
+  const out = copyFormValues(STORED) as Record<string, unknown>;
+  for (const key of ["_id", "createdAt", "updatedAt", "isActive"]) assert.ok(!(key in out), key + " is not a form value");
+});
+
+test("copyFormValues: a stale icon key reads as none; a legacy item (available undefined) reads available", () => {
+  assert.equal(copyFormValues({ ...STORED, icon: "retired-key" }).icon, undefined);
+  assert.equal(copyFormValues({ ...STORED, available: undefined as unknown as boolean }).available, true);
+  assert.equal(copyFormValues({ ...STORED, modifiersPreselected: true }).modifiersPreselected, true, "come-ticked is carried");
+});
+
+test("copyFormValues: the lists are fresh copies, so editing the form can never mutate the cached item", () => {
+  const out = copyFormValues(STORED);
+  assert.notEqual(out.variations, STORED.variations);
+  assert.notEqual(out.variations?.[0], STORED.variations?.[0]);
+  assert.notEqual(out.modifiers, STORED.modifiers);
+  assert.notEqual(out.modifierPrices, STORED.modifierPrices);
+  assert.notEqual(out.modifierPrices?.[0], STORED.modifierPrices?.[0]);
+  out.variations?.push({ name: "Jumbo", price: 1 });
+  out.modifiers?.push("Olives");
+  assert.equal(STORED.variations?.length, 2);
+  assert.equal(STORED.modifiers.length, 2);
+  assert.equal(copyFormValues({ ...STORED, variations: undefined, modifierPrices: undefined }).variations, undefined, "absent stays absent (never [])");
 });

@@ -14,6 +14,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useItemsPageState } from "@/hooks/use-items-page-state";
 import { menuStripShows, MENU_STRIP_MESSAGE } from "@/lib/menu-view";
 import { categoryHueMap } from "@/lib/pos-categories";
+import { copyFormValues, type ProductFormValues } from "@/lib/product-form-values";
 import { MENU_BODY_CLASS, MENU_LIST_SCROLLER_CLASS, MENU_PAGE_CLASS } from "@/lib/menu-layout";
 import type { ProductBulkAction } from "@pos/shared/schemas";
 import { RefreshStrip } from "@/components/shared/RefreshStrip";
@@ -52,6 +53,8 @@ export default function ProductsPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
+  // "Copy item" (owner C1): the create form opens filled from the copied item; nothing is created until Save.
+  const [fill, setFill] = useState<ProductFormValues | null>(null);
   const [movingIds, setMovingIds] = useState<string[] | null>(null);
   const [archivingIds, setArchivingIds] = useState<string[] | null>(null);
   // The one item whose "Archive item?" confirm is open over the editor (Archive item lives in the editor, design 6.9).
@@ -59,10 +62,17 @@ export default function ProductsPage() {
 
   const openAdd = () => {
     setEditing(null);
+    setFill(null);
     setFormOpen(true);
   };
   const openEdit = (product: Product) => {
     setEditing(product);
+    setFill(null);
+    setFormOpen(true);
+  };
+  const openCopy = (product: Product) => {
+    setEditing(null);
+    setFill(copyFormValues(product));
     setFormOpen(true);
   };
 
@@ -171,6 +181,7 @@ export default function ProductsPage() {
             onToggleSelect={state.toggleSelect}
             onToggleAll={state.toggleSelectAll}
             onEdit={openEdit}
+            onCopy={openCopy}
             onToggleAvailable={(id, available) => setAvailability.mutate({ id, available })}
             onToggleQrVisible={(id, visible) => setQrVisibility.mutate({ id, visible })}
             pendingAvailabilityId={setAvailability.isPending ? setAvailability.variables?.id : undefined}
@@ -207,6 +218,7 @@ export default function ProductsPage() {
         open={formOpen}
         onOpenChange={setFormOpen}
         product={editing}
+        fill={fill}
         categories={categories}
         onArchive={setArchiving}
         onRestore={restoreItem}

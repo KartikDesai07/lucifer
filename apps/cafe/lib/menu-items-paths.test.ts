@@ -7,7 +7,7 @@ import path from "node:path";
 import { stripComments } from "@/lib/source-pin-utils";
 import { STAFF_PRODUCT_BULK_ACTIONS } from "@pos/shared/schemas";
 import { MENU_CHIPS_CLASS, MENU_LIST_SCROLLER_CLASS, MENU_PAGE_CLASS } from "@/lib/menu-layout";
-import { MENU_BULK_BAR_CLASS, MENU_CARD_STRUCK_CLASS } from "@/lib/menu-list-layout";
+import { MENU_BULK_BAR_CLASS, MENU_CARD_COPY_CLASS, MENU_CARD_STRUCK_CLASS } from "@/lib/menu-list-layout";
 
 // Slice B source pins (Menu redesign, 2026-09-30) — the Items page, its
 // admin/staff gating, the icon render order, and the editor's icon sentinel.
@@ -34,7 +34,8 @@ const PRODUCT_FORM_SHEET = "apps/cafe/components/products/ProductFormSheet.tsx";
 // archived item stays reachable to edit, and Restore stays reachable (the bulk bar's, until the editor carries it, Task 3).
 test("PIN: C17 replacement — the table's Edit pencil renders on every row, archived or not (admin), and the bulk bar offers Restore in the Archived view", () => {
   const table = stripComments(readSrc(ITEMS_TABLE));
-  assert.match(table, /\{isAdmin && \(\s*<button type="button" title="Edit item"/, "the pencil is gated on isAdmin only, never on archived");
+  // Moved on purpose (owner C1, 2026-11-04): the pencil and the Copy button share one fragment inside the same isAdmin gate.
+  assert.match(table, /\{isAdmin && \(\s*(?:<>\s*)?<button type="button" title="Edit item"/, "the pencil is gated on isAdmin only, never on archived");
   assert.ok(!/archived\s*&&\s*\(\s*<button type="button" title="Edit item"/.test(table), "an archived row keeps its pencil");
   const bar = stripComments(readSrc(BULK_BAR));
   assert.match(bar, /archived \? \(\s*<BulkButton label="Restore"/, "the Archived view's bar offers Restore");
@@ -114,7 +115,8 @@ test("PIN: ItemsTable renders the check column for EVERY role (G4 — staff need
   assert.match(readSrc("apps/cafe/components/menu/ItemsTableHead.tsx"), /<MenuCheck state=\{allState\}/, "the head's select-all is there for every role");
   assert.match(src, /isAdmin \? \(\s*<MenuSwitch\s*\n\s*tone="accent"/, "the QR column must render a live switch only when isAdmin");
   assert.match(src, />\{qrVisible \? "Shown" : "Hidden"\}<\/span>/, "R20: staff must see a read-only Shown/Hidden label, not a disabled switch");
-  assert.match(src, /\{isAdmin && \(\s*<button type="button" title="Edit item"/, "the Edit pencil must be admin-only");
+  // Moved on purpose (owner C1, 2026-11-04): the cell now holds the pencil and the Copy button in one fragment, same admin gate.
+  assert.match(src, /\{isAdmin && \(\s*<>\s*<button type="button" title="Edit item"/, "the Edit pencil must be admin-only");
 });
 
 test("PIN: ItemCards shows the Select check for EVERY role once Select mode is on (G4)", () => {
@@ -222,7 +224,9 @@ test('PIN: ProductFormSheet sends `icon: values.icon ?? null` on every edit subm
 });
 
 test("PIN: ProductFormSheet resets an unknown stored icon to undefined via isProductIconKey (a stale key must not resend and 400)", () => {
-  const src = stripComments(readSrc(PRODUCT_FORM_SHEET));
+  // Moved on purpose (owner C1, 2026-11-04): the stored-item mapping is formValuesFromProduct in lib/product-form-values.ts; the sheet calls it.
+  assert.ok(stripComments(readSrc(PRODUCT_FORM_SHEET)).includes("formValuesFromProduct(product)"), "the sheet resets an edit from the builder");
+  const src = stripComments(readSrc("apps/cafe/lib/product-form-values.ts"));
   assert.match(
     src,
     /icon:\s*isProductIconKey\(product\.icon\)\s*\?\s*product\.icon\s*:\s*undefined,/,
@@ -352,4 +356,30 @@ test("PIN: ItemsListSection mounts only the list for the current width (useMedia
   assert.match(src, /\{wide !== true && \(\s*<div className=\{gate \? MENU_CARDS_SSR_CLASS : undefined\}>\s*<ItemCards/, "the cards mount only when wide is not true");
   const hook = stripComments(readSrc("apps/cafe/hooks/use-media-query.ts"));
   assert.match(hook, /\(\) => null,?\s*\)/, "the server snapshot must be null (unknown width -> both lists, CSS-gated)");
+});
+
+// ── Copy item (owner C1, 2026-11-04): a copy icon beside the pencil, admin-only; the form opens in create mode, filled ──
+
+test("PIN: C1 - the Copy button is admin-only in the rows and on the cards, and calls onCopy", () => {
+  const table = stripComments(readSrc(ITEMS_TABLE));
+  assert.match(table, /\{isAdmin && \(\s*<>[\s\S]*?title="Copy item" aria-label=\{`Copy \$\{product\.name\}`\} onClick=\{\(\) => onCopy\(product\)\}/, "the row Copy sits in the admin gate beside the pencil and calls onCopy");
+  const cards = stripComments(readSrc(ITEM_CARDS));
+  assert.match(cards, /\{isAdmin && !selectMode && \(\s*<button[\s\S]*?aria-label=\{`Copy \$\{product\.name\}`\}[\s\S]*?e\.stopPropagation\(\);\s*onCopy\(product\);/, "the card Copy is admin-only, hidden in Select mode, stops the tap-to-edit and calls onCopy");
+  assert.ok(cards.indexOf("onCopy(product)") > cards.indexOf("</button>\n            ) : ("), "the Copy button is a sibling after the name button, never inside it");
+  const copyTokens = MENU_CARD_COPY_CLASS.split(/\s+/);
+  assert.ok(copyTokens.includes("size-11") && !copyTokens.includes("size-8"), "44px on a card (the value, so a renamed size in MENU_EDIT_CLASS cannot no-op the swap)");
+});
+
+test("PIN: C1 - the page opens the sheet in create mode with the fill (product null); a later Add or Edit clears it; Save is still createProduct", () => {
+  const page = stripComments(readSrc(PRODUCTS_PAGE));
+  assert.match(page, /const openCopy = \(product: Product\) => \{\s*setEditing\(null\);\s*setFill\(copyFormValues\(product\)\);\s*setFormOpen\(true\);\s*\};/, "a copy: no editing item, the fill, open");
+  assert.match(page, /const openAdd = \(\) => \{\s*setEditing\(null\);\s*setFill\(null\);/, "Add clears the fill");
+  assert.match(page, /const openEdit = \(product: Product\) => \{\s*setEditing\(product\);\s*setFill\(null\);/, "Edit clears the fill");
+  assert.match(page, /onCopy=\{openCopy\}/, "the list gets openCopy");
+  assert.match(page, /product=\{editing\}\s*fill=\{fill\}/, "the sheet gets the fill beside product");
+  const sheet = stripComments(readSrc(PRODUCT_FORM_SHEET));
+  assert.ok(sheet.includes("reset(product ? formValuesFromProduct(product) : (fill ?? emptyValues));"), "a fill only fills create mode");
+  assert.ok(sheet.includes("const isEdit = !!product;"), "a copy is not an edit");
+  assert.match(sheet, /\} else \{\s*await createProduct\.mutateAsync\(\{\s*\.\.\.values,/, "Save in create mode still goes through createProduct");
+  assert.equal(stripComments(readSrc(ITEMS_LIST_SECTION)).split("onCopy={onCopy}").length - 1, 2, "the list section hands onCopy to both the table and the cards");
 });

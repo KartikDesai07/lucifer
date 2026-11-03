@@ -28,7 +28,8 @@ test("PIN (2D): the item form's Kitchen station: Use the category's station send
   assert.match(form, /stationId: values\.stationId \?\? null,/, "the explicit clear, as icon and publicVisible");
   assert.match(form, /inheritLabel="Use the category's station"/);
   assert.match(form, /onChange=\{\(next\) => field\.onChange\(next === "" \? undefined : next\)\}/);
-  assert.match(form, /stationId: product\.stationId,/, "the saved id as it is on open");
+  // Moved on purpose (owner C1, 2026-11-04): the stored-item mapping is formValuesFromProduct in lib/product-form-values.ts.
+  assert.match(src("lib/product-form-values.ts"), /stationId: product\.stationId,/, "the saved id as it is on open");
   const select = src("components/print/setup/StationSelect.tsx");
   assert.match(select, /const shown = value !== "" && stations\.some\(\(station\) => station\.id === value\) \? value : INHERIT;/, "an unlisted id shows as inherited and is kept until changed");
 });
@@ -71,7 +72,8 @@ test("PIN (skip-KOT): the category dialog renders the kitchen switch from state 
 
 test("PIN (skip-KOT): the item form's Kitchen ticket: Same as its category sends null; Always = false, No kitchen ticket = true", () => {
   const form = src("components/products/ProductFormSheet.tsx");
-  assert.match(form, /noKot: product\.noKot,/, "the saved choice as it is on open");
+  // Moved on purpose (owner C1, 2026-11-04): same builder.
+  assert.match(src("lib/product-form-values.ts"), /noKot: product\.noKot,/, "the saved choice as it is on open");
   assert.match(form, /noKot: values\.noKot \?\? null,/, "the explicit clear (the PUT route $unsets a null)");
   assert.match(form, /<KitchenTicketField control=\{control\} categories=\{categories\} \/>/);
   const field = src("components/products/KitchenTicketField.tsx");
