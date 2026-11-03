@@ -5,7 +5,7 @@ import { CalendarDays } from "lucide-react";
 import { DatePicker } from "@/components/shared/DatePicker";
 import { TimePicker } from "@/components/shared/TimePicker";
 import { DINNER_SLOTS, LUNCH_SLOTS, dayChips, isSlotTime, moreLabel, slotGuests, slotPassed } from "@/lib/reservation-form";
-import { MENU_EDITOR_ERROR_CLASS, MENU_EDITOR_FIELD_CLASS, MENU_EDITOR_LABEL_CLASS } from "@/lib/menu-editor-layout";
+import { MENU_EDITOR_ERROR_CLASS, MENU_EDITOR_LABEL_CLASS } from "@/lib/menu-editor-layout";
 import {
   RES_FORM_DAY_CLASS,
   RES_FORM_DAY_NUM_CLASS,
@@ -17,6 +17,8 @@ import {
   RES_FORM_DOT_EMPTY_CLASS,
   RES_FORM_DOT_EMPTY_ON_CLASS,
   RES_FORM_DOT_LIT_CLASS,
+  RES_FORM_DOT_LIT_ON_CLASS,
+  RES_FORM_GROUP_CLASS,
   RES_FORM_HEAD_CLASS,
   RES_FORM_HINT_CLASS,
   RES_FORM_MORE_CLASS,
@@ -80,7 +82,7 @@ export function ReservationDayTimeFields({ date, time, onDate, onTime, list, edi
         <span>{clockOf(t).hm}</span>
         <span aria-hidden="true" className={RES_FORM_DOTS_CLASS}>
           {[1, 2, 3].map((i) => (
-            <span key={i} className={cn(RES_FORM_DOT_CLASS, i <= load ? RES_FORM_DOT_LIT_CLASS : picked ? RES_FORM_DOT_EMPTY_ON_CLASS : RES_FORM_DOT_EMPTY_CLASS)} />
+            <span key={i} className={cn(RES_FORM_DOT_CLASS, i <= load ? (picked ? RES_FORM_DOT_LIT_ON_CLASS : RES_FORM_DOT_LIT_CLASS) : picked ? RES_FORM_DOT_EMPTY_ON_CLASS : RES_FORM_DOT_EMPTY_CLASS)} />
           ))}
         </span>
       </button>
@@ -89,7 +91,7 @@ export function ReservationDayTimeFields({ date, time, onDate, onTime, list, edi
 
   return (
     <>
-      <div data-ui="reservation-form-date" role="group" aria-label="Date" className={MENU_EDITOR_FIELD_CLASS}>
+      <div data-ui="reservation-form-date" role="group" aria-label="Date" className={RES_FORM_GROUP_CLASS}>
         <span className={MENU_EDITOR_LABEL_CLASS}>Date</span>
         <div className={RES_FORM_DAY_ROW_CLASS}>
           <div data-ui="reservation-form-days" className={RES_FORM_DAY_STRIP_CLASS}>
@@ -125,7 +127,7 @@ export function ReservationDayTimeFields({ date, time, onDate, onTime, list, edi
         {dateError && <span className={MENU_EDITOR_ERROR_CLASS}>{dateError}</span>}
       </div>
 
-      <div data-ui="reservation-form-time" role="group" aria-label="Time" className={MENU_EDITOR_FIELD_CLASS}>
+      <div data-ui="reservation-form-time" role="group" aria-label="Time" className={RES_FORM_GROUP_CLASS}>
         <div className={RES_FORM_HEAD_CLASS}>
           <span className={MENU_EDITOR_LABEL_CLASS}>Time</span>
           <span className={RES_FORM_HINT_CLASS}>Dots show how busy each slot is</span>

@@ -3,6 +3,7 @@
 import { useRef, type FormEventHandler, type ReactNode } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 
+import { cn } from "@/lib/utils";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { keepOpenForNestedDialog } from "@/lib/nested-dialog";
 import {
@@ -59,7 +60,7 @@ export function ReservationFormFrame({ open, onOpenChange, title, sub, footer, c
         >
           <div data-ui="reservation-form-head" className={MENU_EDITOR_HEAD_CLASS}>
             <div className="min-w-0 flex-1">
-              <DialogPrimitive.Title className={MENU_EDITOR_TITLE_CLASS}>{title}</DialogPrimitive.Title>
+              <DialogPrimitive.Title className={cn(MENU_EDITOR_TITLE_CLASS, "tracking-[-.01em]")}>{title}</DialogPrimitive.Title>
               <DialogPrimitive.Description className={MENU_EDITOR_SUB_CLASS}>{sub}</DialogPrimitive.Description>
             </div>
             <DialogPrimitive.Close aria-label="Close" title="Close" className={MENU_EDITOR_CLOSE_CLASS}>

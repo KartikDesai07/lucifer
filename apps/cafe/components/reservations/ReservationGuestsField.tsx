@@ -1,8 +1,9 @@
 "use client";
 
-import { MENU_EDITOR_ERROR_CLASS, MENU_EDITOR_FIELD_CLASS, MENU_EDITOR_LABEL_CLASS } from "@/lib/menu-editor-layout";
+import { MENU_EDITOR_ERROR_CLASS, MENU_EDITOR_LABEL_CLASS } from "@/lib/menu-editor-layout";
 import {
   RES_FORM_COUNT_CLASS,
+  RES_FORM_GROUP_CLASS,
   RES_FORM_GUESTS_ROW_CLASS,
   RES_FORM_HEAD_CLASS,
   RES_FORM_HINT_CLASS,
@@ -30,7 +31,7 @@ interface ReservationGuestsFieldProps {
 export function ReservationGuestsField({ value, onChange, error }: ReservationGuestsFieldProps) {
   const set = Number.isFinite(value);
   return (
-    <div data-ui="reservation-form-guests" role="group" aria-label="Guests" className={MENU_EDITOR_FIELD_CLASS}>
+    <div data-ui="reservation-form-guests" role="group" aria-label="Guests" className={RES_FORM_GROUP_CLASS}>
       <div className={RES_FORM_HEAD_CLASS}>
         <span className={MENU_EDITOR_LABEL_CLASS}>Guests</span>
         <span className={RES_FORM_HINT_CLASS}>{set && value >= LARGE_PARTY ? "Large party · consider joining tables" : ""}</span>

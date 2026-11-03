@@ -11,6 +11,7 @@ import { MENU_EDITOR_ERROR_CLASS, MENU_EDITOR_FIELD_CLASS, MENU_EDITOR_LABEL_CLA
 import { createPayload, editPayload, formDefaults, knownName, returningGuestLine, summaryLine, type FormValues } from "@/lib/reservation-form";
 import {
   RES_FORM_DELETE_CLASS,
+  RES_FORM_GROUP_CLASS,
   RES_FORM_GUEST_INFO_CLASS,
   RES_FORM_INPUT_CLASS,
   RES_FORM_NOTE_CLASS,
@@ -242,7 +243,7 @@ export function ReservationFormSheet({ open, onOpenChange, reservation, prefill,
         nowMs={nowMs}
       />
 
-      <div className={MENU_EDITOR_FIELD_CLASS}>
+      <div className={RES_FORM_GROUP_CLASS}>
         <label htmlFor="res-notes" className={MENU_EDITOR_LABEL_CLASS}>
           Occasion &amp; requests
         </label>

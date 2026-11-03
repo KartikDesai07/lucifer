@@ -167,3 +167,9 @@ test("dayChips: seven days from today, Today / Tmrw / weekday over the day numbe
   assert.equal(isSlotTime("19:15"), false, "a quarter hour is Other time");
   assert.equal(isSlotTime("09:00"), false, "outside Lunch and Dinner is Other time");
 });
+
+test("bestFits (review logic-1): an empty / NaN guest count counts as 1, so tables with a capacity still show", () => {
+  const tables = [table("T-1", 2), table("T-2", 4), table("T-3", 0)];
+  const v = values({ time: "13:00", date: "2026-11-04", guests: Number.NaN });
+  assert.deepEqual(names(bestFits(tables, v, [], null, TODAY, NOW)), ["T-1", "T-2", "T-3"], "NaN guests: every table that seats one, then the unknown one");
+});

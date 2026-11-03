@@ -98,7 +98,9 @@ export function bestFits(
     if (near && t.status === "Occupied") return false;
     return !(v.time !== "" && conflictFor(list, editingId, t.tableNo, v.date, v.time));
   });
-  const known = free.filter((t) => t.capacity > 0 && t.capacity >= v.guests).sort((a, b) => a.capacity - b.capacity || byName(a, b));
+  // An empty count (NaN) counts as one guest, as the seat tile does.
+  const party = Number.isFinite(v.guests) ? v.guests : 1;
+  const known = free.filter((t) => t.capacity > 0 && t.capacity >= party).sort((a, b) => a.capacity - b.capacity || byName(a, b));
   const unknown = free.filter((t) => !(t.capacity > 0)).sort(byName);
   const ranked = [...known, ...unknown];
   const picked = v.tableNo ? tables.find((t) => t.tableNo === v.tableNo) : undefined;

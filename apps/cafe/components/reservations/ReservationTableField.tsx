@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 
-import { MENU_EDITOR_FIELD_CLASS, MENU_EDITOR_LABEL_CLASS } from "@/lib/menu-editor-layout";
+import { MENU_EDITOR_LABEL_CLASS } from "@/lib/menu-editor-layout";
 import { bestFits, tableMessage, type FormValues } from "@/lib/reservation-form";
 import {
+  RES_FORM_GROUP_CLASS,
   RES_FORM_HEAD_CLASS,
   RES_FORM_HINT_CLASS,
   RES_FORM_LINK_CLASS,
@@ -49,7 +50,7 @@ export function ReservationTableField({ tables, values, onPick, list, editingId,
   const chip = (on: boolean) => cn(RES_FORM_TABLE_CLASS, on ? RES_FORM_ON_CLASS : RES_FORM_OFF_CLASS);
 
   return (
-    <div data-ui="reservation-form-table" role="group" aria-label="Table" className={MENU_EDITOR_FIELD_CLASS}>
+    <div data-ui="reservation-form-table" role="group" aria-label="Table" className={RES_FORM_GROUP_CLASS}>
       <div className={RES_FORM_HEAD_CLASS}>
         <span className={MENU_EDITOR_LABEL_CLASS}>Table</span>
         <span className={RES_FORM_HINT_CLASS}>{hint}</span>
@@ -71,22 +72,24 @@ export function ReservationTableField({ tables, values, onPick, list, editingId,
           // A table that is busy (occupied, held, booked, seated) is dimmed; one that is only too small is not (values 13.6).
           const dim = tile.tone === "info" || tile.tone === "reserved" || (tile.tone === "warn" && !tile.sub.startsWith("Seats"));
           const dot = tile.tone === "warn" && dim ? "reserved" : tile.tone;
+          // The Occupied wording / rule is left as seatTile has it (a separate fix wave owns it).
+          const sub = tile.sub;
           return (
             <button
               key={t._id}
               type="button"
               data-ui="reservation-form-table-chip"
               aria-pressed={on}
-              title={t.capacity > 0 ? `${t.tableNo} · ${t.capacity} seat${t.capacity === 1 ? "" : "s"}` : t.tableNo}
+              title={[t.tableNo, t.capacity > 0 ? `${t.capacity} seat${t.capacity === 1 ? "" : "s"}` : "", sub.includes("seat") ? "" : sub].filter(Boolean).join(" · ")}
               className={cn(chip(on), dim && !on && "opacity-70")}
               onClick={() => onPick(t.tableNo)}
             >
               <span className={RES_FORM_TABLE_LABEL_CLASS}>
-                <span aria-hidden="true" className={cn("size-1.5 flex-none rounded-[50%]", on ? "bg-on-ink" : STATUS_CLASSES[dot].dot)} />
+                <span aria-hidden="true" className={cn("size-1.5 flex-none rounded-[50%]", STATUS_CLASSES[dot].dot)} />
                 <span className="min-w-0">{t.tableNo}</span>
               </span>
-              {tile.sub !== "" && (
-                <span className={cn(RES_FORM_TABLE_SUB_CLASS, on ? "text-on-ink" : tile.tone === "ok" ? "text-subtle-foreground" : RES_SEAT_SUB_INK_CLASS[tile.tone])}>{tile.sub}</span>
+              {sub !== "" && (
+                <span className={cn(RES_FORM_TABLE_SUB_CLASS, on ? "text-on-ink" : tile.tone === "ok" ? "text-subtle-foreground" : RES_SEAT_SUB_INK_CLASS[tile.tone])}>{sub}</span>
               )}
             </button>
           );

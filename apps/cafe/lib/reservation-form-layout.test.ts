@@ -61,7 +61,7 @@ test("the slot grid repeat(auto-fill,minmax(74px,1fr)) 46px; the table chips 52p
   hasAll(layout.RES_FORM_OTHER_CLASS, ["h-[46px]", "rounded-[9px]"], "Other time chip");
   hasAll(layout.RES_FORM_TABLES_CLASS, ["grid-cols-[repeat(auto-fill,minmax(92px,1fr))]", "gap-1.5"], "table grid");
   hasAll(layout.RES_FORM_TABLE_CLASS, ["min-h-[52px]", "rounded-[10px]", "px-2.5", "min-w-0"], "table chip");
-  hasAll(layout.RES_FORM_TABLE_LABEL_CLASS, ["w-full", "text-[13.5px]", "font-semibold", "[overflow-wrap:anywhere]"], "chip label (109: children stretch, long names wrap)");
+  hasAll(layout.RES_FORM_TABLE_LABEL_CLASS, ["text-[13.5px]", "font-semibold", "[overflow-wrap:anywhere]"], "chip label (long names wrap; the chip is items-start, so 109 needs no w-full)");
   hasAll(layout.RES_FORM_MESSAGE_CLASS, ["rounded-[9px]", "px-[11px]", "py-[9px]", "text-[12.5px]", "leading-[1.45]"], "message box");
   hasAll(layout.RES_FORM_NOTE_CLASS, ["min-h-16", "rounded-[10px]", "text-[14px]", "max-tab:text-base"], "note");
 });
