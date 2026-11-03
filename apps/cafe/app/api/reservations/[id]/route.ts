@@ -18,4 +18,6 @@ export const { PUT, DELETE } = createItemRoute({
   cacheKey: "reservations",
   updateSchema: updateReservationSchema,
   entity: { singular: "reservation", plural: "reservations" },
+  // Q6 (U6): the form's "Unassigned" over a saved table sends tableNo: null, back to ABSENT.
+  nullClearsFields: ["tableNo"],
 });

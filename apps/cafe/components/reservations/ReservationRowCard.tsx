@@ -1,120 +1,77 @@
-import { Armchair, Check, Pencil, Trash2, X } from "lucide-react";
+"use client";
 
-import type { ReservationStatus } from "@/lib/constants";
-import { formatDate, formatTime, cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { BRAND_PANEL_CLASS, BRAND_ROW_ACTION_CLASS } from "@/components/brand/brand-classes";
+import { RowPrimary, RowRelative, guestsWord, type RowIntent } from "@/components/reservations/ReservationRowParts";
+import { ReservationPill } from "@/components/reservations/ReservationPill";
+import {
+  RES_CARD_AP_CLASS,
+  RES_CARD_HM_CLASS,
+  RES_CARD_MIDDLE_CLASS,
+  RES_CARD_NAME_CLASS,
+  RES_CARD_RIGHT_CLASS,
+  RES_CARD_SUB_CLASS,
+  RES_CARD_TIME_CLASS,
+  RES_DIM_NAME_CLASS,
+  RES_DIM_SUB_CLASS,
+  RES_OPEN_CLASS,
+  RES_ROW_CARD_CLASS,
+  RES_ROW_RULE_CLASS,
+  RES_ROW_SELECTED_CLASS,
+} from "@/lib/reservations-layout";
+import { clockOf, dayTag, pillOf, rowActions } from "@/lib/reservations-view";
+import { cn } from "@/lib/utils";
 import type { Reservation } from "@/types";
 
-export const STATUS_VARIANTS: Record<ReservationStatus, string> = {
-  Booked: "border-blue-300 text-blue-700",
-  Seated: "border-green-300 text-green-700",
-  Completed: "border-gray-300 text-gray-600",
-  Cancelled: "border-red-300 text-red-700",
-};
-
 interface ReservationRowCardProps {
-  reservation: Reservation;
+  r: Reservation;
+  first: boolean;
+  nowMs: number;
+  today: string;
+  /** All dates or a search: "Wed 4 · " in front of the sub (design 6.3). */
+  showDay: boolean;
+  selected: boolean;
   busy: boolean;
-  onSeat: (r: Reservation) => void;
-  onComplete: (r: Reservation) => void;
-  onCancel: (r: Reservation) => void;
-  onEdit: (r: Reservation) => void;
-  onDelete: (r: Reservation) => void;
+  onOpen: (r: Reservation) => void;
+  onAction: RowIntent;
 }
 
-/** Card layout for one reservation row — mirrors the table row exactly (same handlers, same conditions). */
-export function ReservationRowCard({
-  reservation: r,
-  busy,
-  onSeat,
-  onComplete,
-  onCancel,
-  onEdit,
-  onDelete,
-}: ReservationRowCardProps) {
+/** The HTML's card row (values 8.3): the time column, the name / sub / relative line, the pill over the primary. No icon
+ *  buttons: the rest of the actions live in the detail (Task 3). The row is one real button stretched over it (B7). */
+export function ReservationRowCard({ r, first, nowMs, today, showDay, selected, busy, onOpen, onAction }: ReservationRowCardProps) {
+  const clock = clockOf(r.time);
+  const pill = pillOf(r, nowMs, today);
+  const dim = r.status === "Completed" || r.status === "Cancelled";
+  const { primary } = rowActions(r, today);
+  const sub = `${showDay ? `${dayTag(r.date)} · ` : ""}${guestsWord(r.guests)} · ${r.tableNo || "No table"}`;
   return (
-    <div className={cn("rounded-lg border p-3", BRAND_PANEL_CLASS)}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="font-medium">{formatDate(r.date)}</div>
-          <div className="text-xs text-muted-foreground">{formatTime(r.time)}</div>
-        </div>
-        <Badge variant="outline" className={cn(STATUS_VARIANTS[r.status])}>
-          {r.status}
-        </Badge>
-      </div>
-
-      <div className="mt-2">
-        <div className="font-medium">{r.name}</div>
-        <div className="text-xs text-muted-foreground">{r.mobile}</div>
-      </div>
-
-      <div className="mt-2 flex items-center gap-3 text-sm text-muted-foreground">
-        <span>Guests {r.guests}</span>
-        <span>Table {r.tableNo ?? "—"}</span>
-      </div>
-
-      <div className="mt-2 flex justify-end gap-1">
-        {r.status === "Booked" && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className={BRAND_ROW_ACTION_CLASS}
-            disabled={busy}
-            onClick={() => onSeat(r)}
-            aria-label="Seat guest"
-            title="Seat"
-          >
-            <Armchair className="h-4 w-4" />
-          </Button>
-        )}
-        {r.status === "Seated" && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className={BRAND_ROW_ACTION_CLASS}
-            disabled={busy}
-            onClick={() => onComplete(r)}
-            aria-label="Complete reservation"
-            title="Complete"
-          >
-            <Check className="h-4 w-4 text-green-600" />
-          </Button>
-        )}
-        {(r.status === "Booked" || r.status === "Seated") && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className={BRAND_ROW_ACTION_CLASS}
-            disabled={busy}
-            onClick={() => onCancel(r)}
-            aria-label="Cancel reservation"
-            title="Cancel"
-          >
-            <X className="h-4 w-4 text-destructive" />
-          </Button>
-        )}
-        <Button
-          variant="ghost"
-          size="icon"
-          className={BRAND_ROW_ACTION_CLASS}
-          onClick={() => onEdit(r)}
-          aria-label="Edit reservation"
+    <div data-ui="reservations-card" className={cn(RES_ROW_CARD_CLASS, !first && RES_ROW_RULE_CLASS, selected && RES_ROW_SELECTED_CLASS)}>
+      <span className={RES_CARD_TIME_CLASS}>
+        <span data-ui="reservations-card-time" className={cn(RES_CARD_HM_CLASS, dim && RES_DIM_NAME_CLASS, r.status === "Cancelled" && "line-through")}>
+          {clock.hm}
+        </span>
+        <span data-ui="reservations-card-ap" className={RES_CARD_AP_CLASS}>
+          {clock.ap}
+        </span>
+      </span>
+      <span className={RES_CARD_MIDDLE_CLASS}>
+        <button
+          type="button"
+          data-ui="reservations-card-open"
+          aria-label={`${r.name}, ${clock.full}, ${pill}`}
+          aria-current={selected ? "true" : undefined}
+          onClick={() => onOpen(r)}
+          className={cn(RES_OPEN_CLASS, RES_CARD_NAME_CLASS, dim && RES_DIM_NAME_CLASS)}
         >
-          <Pencil className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className={BRAND_ROW_ACTION_CLASS}
-          onClick={() => onDelete(r)}
-          aria-label="Delete reservation"
-        >
-          <Trash2 className="h-4 w-4 text-destructive" />
-        </Button>
-      </div>
+          {r.name}
+        </button>
+        <span data-ui="reservations-card-sub" className={cn(RES_CARD_SUB_CLASS, dim && RES_DIM_SUB_CLASS)}>
+          {sub}
+        </span>
+        <RowRelative r={r} nowMs={nowMs} today={today} ui="reservations-card-relative" />
+      </span>
+      <span className={RES_CARD_RIGHT_CLASS}>
+        <ReservationPill kind={pill} size="card" ui="reservations-card-pill" />
+        {primary && <RowPrimary r={r} action={primary} selected={selected} busy={busy} ui="reservations-card" onAction={onAction} />}
+      </span>
     </div>
   );
 }

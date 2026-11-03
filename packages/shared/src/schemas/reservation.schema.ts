@@ -16,7 +16,11 @@ export const createReservationSchema = z.object({
   status: z.enum(RESERVATION_STATUSES).default("Booked"),
 });
 
-export const updateReservationSchema = createReservationSchema.partial();
+// Q6 (U6, 2026-11-03): an edit may send `tableNo: null` = "Unassigned", which the item route turns into a $unset. Create
+// still refuses null (it is not nullable there).
+export const updateReservationSchema = createReservationSchema.partial().extend({
+  tableNo: tableNoSchema.nullable().optional(),
+});
 
 export type CreateReservationInput = z.infer<typeof createReservationSchema>;
 export type UpdateReservationInput = z.infer<typeof updateReservationSchema>;

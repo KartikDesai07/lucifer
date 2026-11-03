@@ -20,6 +20,8 @@ const CONFIRM = "components/shared/ConfirmDialog.tsx";
 const PROMPTS = "components/pos/PosPrompts.tsx";
 const DISCARD = "components/pos/SendDiscard.tsx";
 const FLOOR_DIALOGS = "components/tables/FloorDialogs.tsx";
+// U6 Task 1 (2026-11-03; P33 moved on purpose, Reservations design 8.3): the Reservations page's cancel and delete confirms wear the sheet too.
+const RESERVATIONS_PAGE = "app/(dashboard)/reservations/page.tsx";
 
 /** Whitespace-insensitive form of a raw JSX block (its comment included): only the indentation may differ. */
 const normalise = (src: string): string => src.replace(/\s+/g, " ").trim();
@@ -111,10 +113,11 @@ test("PIN (U1 Task 12, owner Q4; U3 Task 6): only the POS prompts, the send-disc
   assert.ok(callers >= 20, `landmark: the shared confirm has many callers, found ${callers}`);
   assert.deepStrictEqual(
     [...new Set(sheetUsers)].sort(),
-    [DISCARD, FLOOR_DIALOGS, PROMPTS].sort(),
-    "a look is passed only by PosPrompts, SendDiscard and FloorDialogs (design 3: default unchanged for everyone else)",
+    [DISCARD, FLOOR_DIALOGS, PROMPTS, RESERVATIONS_PAGE].sort(),
+    "a look is passed only by PosPrompts, SendDiscard, FloorDialogs and the Reservations page (design 3: default unchanged for everyone else)",
   );
   assert.equal(readSrc(FLOOR_DIALOGS).split('look="sheet"').length - 1, 1, 'the Floor\'s one confirm passes look="sheet" (U3 design 6.6)');
+  assert.equal(readSrc(RESERVATIONS_PAGE).split('look="sheet"').length - 1, 2, "the Reservations page's cancel and delete confirms both pass look=\"sheet\" (U6 design 8.3)");
   const prompts = readSrc(PROMPTS);
   assert.equal(prompts.split('look="sheet"').length - 1, 3, 'every one of the three POS prompts passes look="sheet"');
   const discard = readSrc(DISCARD);

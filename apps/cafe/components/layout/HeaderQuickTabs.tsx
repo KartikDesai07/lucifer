@@ -9,6 +9,7 @@ import { isMenuPagePath } from "@/lib/menu-layout";
 import { isActivePath } from "@/lib/nav-active";
 import { isOrdersPath } from "@/lib/orders-layout";
 import { isPosPath } from "@/lib/pos-layout";
+import { isReservationsPath } from "@/lib/reservations-layout";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 import { GlyphPlus, NavFloor, type NavIcon } from "@/components/layout/nav-icons";
@@ -30,7 +31,8 @@ import {
 // label at every width. On /kitchen (U4 Task 1; owner Q8, Kitchen design 6.1) both keep today's look and place from
 // 1280px (the owner's PC width) and are not drawn below it: the HTML's Kitchen header has neither. /products and
 // /categories take the same rule (U5 Task 1; owner Q5 / Q8, Menu design 6.1): the HTML's Menu header has neither, and its
-// switch and Add need the room below 1280px.
+// switch and Add need the room below 1280px. /reservations takes the same rule (U6 Task 1; Reservations design 6.1, B9): the HTML's
+// header has only its add button.
 
 export interface HeaderQuickTab {
   title: string;
@@ -51,9 +53,9 @@ export function HeaderQuickTabs() {
   const pathname = usePathname() ?? "";
   if (isPosPath(pathname)) return null;
   const floor = isFloorPath(pathname);
-  // /kitchen (owner Q8) and the Menu routes (U5 Q5 / Q8): both links from 1280px only, none below (the HTML's Menu header
+  // /kitchen (owner Q8), the Menu routes (U5 Q5 / Q8) and /reservations (U6 B9): both links from 1280px only, none below (the HTML's Menu header
   // has neither, and the switch and Add need the room).
-  const wideOnly = isKitchenPath(pathname) || isMenuPagePath(pathname);
+  const wideOnly = isKitchenPath(pathname) || isMenuPagePath(pathname) || isReservationsPath(pathname);
   const labelClass = isOrdersPath(pathname) || floor ? "inline" : "hidden tab:inline";
   return (
     <>

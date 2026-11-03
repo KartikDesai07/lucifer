@@ -53,3 +53,13 @@ export const RESERVATION_KIND: Record<ReservationStatus, StatusKind> = {
   Completed: "neutral",
   Cancelled: "bad",
 };
+
+/** The Reservations page's pills (U6 B15): our four statuses plus "Late" (a Booked booking of today 15 minutes past its
+ *  time), read through STATUS_CLASSES. RESERVATION_KIND above is the dashboard's and stays as it is. */
+export const RESERVATION_PILL_KIND: Record<"Booked" | "Late" | "Seated" | "Completed" | "Cancelled", StatusKind> = {
+  Booked: "reserved",
+  Late: "warn",
+  Seated: "ok",
+  Completed: "neutral",
+  Cancelled: "neutral",
+};

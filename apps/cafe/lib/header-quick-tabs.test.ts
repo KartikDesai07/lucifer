@@ -78,7 +78,9 @@ test("PIN: on a phone Tables hides (the tab bar has Floor) and New order shows o
   assert.match(tabs, /import \{ isKitchenPath \} from "@\/lib\/kitchen-layout";/, "the quick links read the Kitchen's route through isKitchenPath");
   // Moved on purpose (U5 Task 1; owner Q5 / Q8, Menu design 6.1): /products and /categories take the /kitchen rule.
   assert.match(tabs, /import \{ isMenuPagePath \} from "@\/lib\/menu-layout";/, "the Menu routes are read through isMenuPagePath");
-  assert.match(tabs, /const wideOnly = isKitchenPath\(pathname\) \|\| isMenuPagePath\(pathname\);/, "one flag for the Kitchen and the Menu");
+  // Moved on purpose (U6 Task 1; Reservations design 6.1, B9): /reservations takes the /kitchen rule too.
+  assert.match(tabs, /import \{ isReservationsPath \} from "@\/lib\/reservations-layout";/, "/reservations is read through isReservationsPath");
+  assert.match(tabs, /const wideOnly = isKitchenPath\(pathname\) \|\| isMenuPagePath\(pathname\) \|\| isReservationsPath\(pathname\);/, "one flag for the Kitchen, the Menu and /reservations");
   assert.match(
     tabs,
     /wideOnly \? "hidden xl:inline-flex" : tab\.primary \? "inline-flex" : "hidden tab:inline-flex"/,

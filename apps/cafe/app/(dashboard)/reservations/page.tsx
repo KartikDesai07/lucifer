@@ -1,80 +1,100 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, CalendarClock } from "lucide-react";
+import { Plus } from "lucide-react";
 
+import { useReservationChoice } from "@/hooks/use-reservation-choice";
+import { useReservationSeating } from "@/hooks/use-reservation-seating";
+import { useReservationDelete, useReservationUpdate } from "@/hooks/use-reservation-writes";
+import { useReservationsPage } from "@/hooks/use-reservations-page";
+import type { ReservationStatus } from "@/lib/constants";
 import {
-  useReservations,
-  useUpdateReservation,
-  useDeleteReservation,
-  type ReservationFilters,
-} from "@/hooks/use-reservations";
-import { RESERVATION_STATUSES, type ReservationStatus } from "@/lib/constants";
-import { formatDate, cn } from "@/lib/utils";
+  RESERVATIONS_PAGE_CLASS,
+  RES_ADD_CLASS,
+  RES_BODY_CLASS,
+  RES_DETAIL_COLUMN_CLASS,
+  RES_LIST_COLUMN_CLASS,
+  RES_OFFLINE_CLASS,
+  RES_PHONE_TITLE_MIN_PX,
+  RES_SCROLLER_CLASS,
+} from "@/lib/reservations-layout";
+import { cancelledToast, statusToast } from "@/lib/reservations-toasts";
+import { emptyWords, type ResAction } from "@/lib/reservations-view";
+import { formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { DatePicker } from "@/components/shared/DatePicker";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
-import { MenuPageShell } from "@/components/menu/MenuPageShell";
-import { BRAND_CONTROL_CLASS, BRAND_PANEL_CLASS } from "@/components/brand/brand-classes";
-import { ReservationFormSheet } from "@/components/reservations/ReservationFormSheet";
-import { ReservationRowCard } from "@/components/reservations/ReservationRowCard";
-import { ReservationsTable } from "@/components/reservations/ReservationsTable";
+import { ReservationDetail } from "@/components/reservations/ReservationDetail";
+import { ReservationDetailFrame } from "@/components/reservations/ReservationDetailFrame";
+import { ReservationFormSheet, type ReservationPrefill } from "@/components/reservations/ReservationFormSheet";
+import { ReservationSeatDialog } from "@/components/reservations/ReservationSeatDialog";
+import { ReservationsList } from "@/components/reservations/ReservationsList";
+import { ReservationsEmpty, ReservationsSkeleton } from "@/components/reservations/ReservationsStates";
+import { ReservationsToolbar } from "@/components/reservations/ReservationsToolbar";
 import type { Reservation } from "@/types";
 
-const ALL = "all";
-
+// The owner's HTML Reservations screen (U6; values 1 - 4, 9; design 5, 6): the page fills the screen under the shell's header
+// like /orders (lib/reservations-layout.ts); the list column (the toolbar over the rows) and, from 1280px, the 400px detail
+// column. The state (the day, the tab, the search, the rows, the counts, the header line) is hooks/use-reservations-page.ts
+// (ruling U2); the writes are hooks/use-reservation-writes.ts. Task 2 draws the rows and cards, Task 3 the detail and the
+// seat dialog, Task 4 the form.
 export default function ReservationsPage() {
-  return (
-    <MenuPageShell>
-      <ReservationsContent />
-    </MenuPageShell>
-  );
-}
-
-function ReservationsContent() {
-  const [status, setStatusFilter] = useState(ALL);
-  const [date, setDate] = useState("");
-
-  const filters: ReservationFilters = {
-    status: status === ALL ? undefined : status,
-    date: date || undefined,
-  };
-  const reservations = useReservations(filters);
-  const updateReservation = useUpdateReservation();
-  const deleteReservation = useDeleteReservation();
+  const state = useReservationsPage();
+  const reservations = state.status;
+  // ONE instance for every status write (Seat, Complete, Cancel, Restore): its isPending is the page-wide busy flag (B13).
+  const updateReservation = useReservationUpdate();
+  const deleteReservation = useReservationDelete();
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Reservation | null>(null);
+  const [prefill, setPrefill] = useState<ReservationPrefill | null>(null);
   const [deleting, setDeleting] = useState<Reservation | null>(null);
   const [cancelling, setCancelling] = useState<Reservation | null>(null);
 
   const openAdd = () => {
     setEditing(null);
+    setPrefill(null);
     setFormOpen(true);
   };
   const openEdit = (r: Reservation) => {
     setEditing(r);
+    setPrefill(null);
+    setFormOpen(true);
+  };
+  // Book again (owner Q4): a NEW booking seeded with the guest's name, mobile and party.
+  const bookAgain = (r: Reservation) => {
+    setEditing(null);
+    setPrefill({ name: r.name, mobile: r.mobile, guests: r.guests });
     setFormOpen(true);
   };
 
   const setStatus = (r: Reservation, next: ReservationStatus) =>
-    updateReservation.mutate({ id: r._id, data: { status: next } });
+    updateReservation.mutate({ id: r._id, data: { status: next }, toast: statusToast(next) });
+
+  // The chosen booking (Task 3; hooks/use-reservation-choice.ts, B5) and the seat / assign dialog (hooks/use-reservation-seating.ts).
+  const choice = useReservationChoice({ list: state.list, rows: state.rows, answered: reservations.data !== undefined, filterEdits: state.filterEdits, query: state.query });
+  const seating = useReservationSeating(updateReservation, state.list, reservations.data !== undefined);
+  // Assign (values 19.5): today's booking opens the dialog in assign mode; another day opens the form.
+  const assign = (r: Reservation) => (r.date === state.today ? seating.open(r, "assign") : openEdit(r));
+
+  // What a row or the detail raises. Open order is a link the surface draws itself (B17). Seat: a booking with a table is
+  // seated at once (today's body); without one the dialog picks (Q1).
+  const onRowAction = (r: Reservation, action: ResAction) => {
+    if (action === "seat") {
+      if (r.tableNo) setStatus(r, "Seated");
+      else seating.open(r, "seat");
+    } else if (action === "assign") assign(r);
+    else if (action === "complete") setStatus(r, "Completed");
+    else if (action === "restore") setStatus(r, "Booked");
+    else if (action === "cancel") setCancelling(r);
+    else if (action === "bookAgain") bookAgain(r);
+  };
 
   const confirmCancel = async () => {
     if (!cancelling) return;
     try {
-      await updateReservation.mutateAsync({ id: cancelling._id, data: { status: "Cancelled" } });
+      await updateReservation.mutateAsync({ id: cancelling._id, data: { status: "Cancelled" }, toast: cancelledToast });
       setCancelling(null);
     } catch {
       // hook toasts on error
@@ -86,143 +106,135 @@ function ReservationsContent() {
     try {
       await deleteReservation.mutateAsync(deleting._id);
       setDeleting(null);
+      setFormOpen(false);
     } catch {
       // hook toasts on error
     }
   };
 
-  const isFiltered = status !== ALL || date !== "";
-  const clearFilters = () => {
-    setStatusFilter(ALL);
-    setDate("");
-  };
-
-  const list = reservations.data ?? [];
+  const rows = state.rows;
   const busy = updateReservation.isPending;
 
   return (
-    <>
+    <div data-ui="reservations-page" className={RESERVATIONS_PAGE_CLASS}>
       <PageHeader
         eyebrow="Service"
         title="Reservations"
-        description="Manage table bookings and seating."
+        description={state.header}
+        phoneTitleMinPx={RES_PHONE_TITLE_MIN_PX}
         actions={
-          <Button onClick={openAdd} className={BRAND_CONTROL_CLASS}>
-            <Plus className="mr-2 h-4 w-4" /> New reservation
+          <Button data-ui="reservations-add" aria-label="New reservation" onClick={openAdd} className={RES_ADD_CLASS}>
+            <Plus aria-hidden="true" />
+            <span className="max-tab:hidden">New reservation</span>
+            <span className="tab:hidden">New</span>
           </Button>
         }
       />
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <Select value={status} onValueChange={setStatusFilter}>
-          <SelectTrigger className={cn(BRAND_CONTROL_CLASS, "sm:w-44")} aria-label="Filter by status">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>All statuses</SelectItem>
-            {RESERVATION_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>
-                {s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <DatePicker
-          value={date}
-          onChange={setDate}
-          aria-label="Filter by date"
-          className={cn(BRAND_CONTROL_CLASS, "sm:w-44")}
-        />
-        {date && (
-          <Button variant="ghost" className={BRAND_CONTROL_CLASS} onClick={() => setDate("")}>
-            Clear date
-          </Button>
-        )}
+      <div data-ui="reservations-body" className={RES_BODY_CLASS}>
+        <div data-ui="reservations-list" className={RES_LIST_COLUMN_CLASS}>
+          <div data-ui="reservations-scroller" className={RES_SCROLLER_CLASS}>
+            <ReservationsToolbar
+              day={state.day}
+              today={state.today}
+              onDay={state.setDay}
+              tab={state.tab}
+              onTab={state.setTab}
+              counts={state.counts}
+              query={state.query}
+              onQuery={state.setQuery}
+            />
+
+            {reservations.isLoading ? (
+              <ReservationsSkeleton />
+            ) : reservations.isError && reservations.data === undefined ? (
+              <ErrorState
+                title="Couldn't load reservations"
+                description="Check the internet connection, then try again."
+                onRetry={() => void reservations.refetch()}
+                retryLabel="Try again"
+              />
+            ) : reservations.isPaused && reservations.data === undefined ? (
+              // A parked (offline) query has no data AND no error — never the empty box.
+              <p role="status" className={RES_OFFLINE_CLASS}>
+                You appear to be offline. Reservations will load when the connection is back.
+              </p>
+            ) : state.rows.length === 0 ? (
+              <ReservationsEmpty {...emptyWords({ day: state.day, tab: state.tab, query: state.query, today: state.today })} onNew={openAdd} />
+            ) : (
+              <ReservationsList
+                rows={rows}
+                nowMs={state.nowMs}
+                today={state.today}
+                showDay={state.day === "all" || state.query.trim() !== ""}
+                selectedId={choice.selected?._id ?? null}
+                viewKey={`${state.day ?? "today"}|${state.tab}|${state.query}`}
+                busy={busy}
+                onOpen={(r) => choice.choose(r._id)}
+                onAction={onRowAction}
+              />
+            )}
+          </div>
+        </div>
+        {/* The detail (design 7): this column from 1280px, below it full screen from the foot (its own portal). A press or
+            focus inside it keeps an auto-picked booking chosen. It follows the live booking by id. */}
+        <div data-ui="reservations-detail-column" className={RES_DETAIL_COLUMN_CLASS} onPointerDownCapture={choice.engage} onFocusCapture={choice.engage}>
+          <ReservationDetailFrame
+            open={choice.selected !== null}
+            waiting={reservations.data === undefined}
+            nestedOpen={seating.target !== null || cancelling !== null || formOpen}
+            onClose={() => choice.choose(null)}
+          >
+            {(sheet) =>
+              choice.selected && (
+                <ReservationDetail
+                  r={choice.selected}
+                  list={state.list}
+                  tables={state.tables}
+                  nowMs={state.nowMs}
+                  today={state.today}
+                  busy={busy}
+                  sheet={sheet}
+                  onClose={() => choice.choose(null)}
+                  onAction={onRowAction}
+                  onEdit={openEdit}
+                  onAssign={assign}
+                />
+              )
+            }
+          </ReservationDetailFrame>
+        </div>
       </div>
 
-      {reservations.isLoading ? (
-        <div className={cn("space-y-2 rounded-lg border p-4", BRAND_PANEL_CLASS)}>
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
-          ))}
-        </div>
-      ) : reservations.isError && reservations.data === undefined ? (
-        <ErrorState
-          title="Couldn't load reservations"
-          description="Check the internet connection, then try again."
-          onRetry={() => void reservations.refetch()}
-          retryLabel="Try again"
-        />
-      ) : reservations.isPaused && reservations.data === undefined ? (
-        // A parked (offline) query has no data AND no error — never "No reservations".
-        <p role="status" className="text-sm text-muted-foreground">
-          You appear to be offline. Reservations will load when the connection is back.
-        </p>
-      ) : list.length === 0 && isFiltered ? (
-        <EmptyState
-          icon={<CalendarClock className="h-8 w-8" />}
-          title="No reservations match"
-          description="Try a different status or date."
-          action={
-            <Button
-              type="button"
-              variant="outline"
-              className={cn("mt-2", BRAND_CONTROL_CLASS)}
-              onClick={clearFilters}
-            >
-              Clear filters
-            </Button>
-          }
-        />
-      ) : list.length === 0 ? (
-        <EmptyState
-          icon={<CalendarClock className="h-8 w-8" />}
-          title="No reservations"
-          description="Bookings you add will appear here."
-          action={
-            <Button onClick={openAdd} className={cn("mt-2", BRAND_CONTROL_CLASS)}>
-              <Plus className="mr-2 h-4 w-4" /> New reservation
-            </Button>
-          }
-        />
-      ) : (
-        <>
-          <ReservationsTable
-            list={list}
-            busy={busy}
-            onSeat={(row) => setStatus(row, "Seated")}
-            onComplete={(row) => setStatus(row, "Completed")}
-            onCancel={setCancelling}
-            onEdit={openEdit}
-            onDelete={setDeleting}
-          />
-
-          <div className="space-y-2 lg:hidden">
-            {list.map((r) => (
-              <ReservationRowCard
-                key={r._id}
-                reservation={r}
-                busy={busy}
-                onSeat={(row) => setStatus(row, "Seated")}
-                onComplete={(row) => setStatus(row, "Completed")}
-                onCancel={setCancelling}
-                onEdit={openEdit}
-                onDelete={setDeleting}
-              />
-            ))}
-          </div>
-        </>
-      )}
+      <ReservationSeatDialog
+        target={seating.target}
+        list={state.list}
+        tables={state.tables}
+        today={state.today}
+        busy={busy}
+        onPick={seating.pick}
+        onSeatWithoutTable={seating.seatWithoutTable}
+        onClose={seating.close}
+      />
 
       <ReservationFormSheet
         open={formOpen}
         onOpenChange={setFormOpen}
         reservation={editing}
+        prefill={prefill ?? undefined}
+        list={state.list}
+        tables={state.tables}
+        today={state.today}
+        nowMs={state.nowMs}
+        shownDay={state.shownDay}
+        onCreated={state.reveal}
+        onDelete={setDeleting}
       />
 
       <ConfirmDialog
         open={!!cancelling}
         onOpenChange={(o) => !o && setCancelling(null)}
+        look="sheet"
         title="Cancel this reservation?"
         description={
           cancelling
@@ -238,6 +250,7 @@ function ReservationsContent() {
       <ConfirmDialog
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}
+        look="sheet"
         title="Delete reservation?"
         description={
           deleting ? `The booking for "${deleting.name}" will be permanently removed.` : undefined
@@ -246,6 +259,6 @@ function ReservationsContent() {
         isLoading={deleteReservation.isPending}
         onConfirm={confirmDelete}
       />
-    </>
+    </div>
   );
 }

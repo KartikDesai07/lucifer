@@ -1,137 +1,104 @@
-import { Armchair, Check, Pencil, Trash2, X } from "lucide-react";
+"use client";
 
-import { formatDate, formatTime, cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { RowAssign, RowIcons, RowPrimary, RowRelative, type RowIntent } from "@/components/reservations/ReservationRowParts";
+import { ReservationPill } from "@/components/reservations/ReservationPill";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { BRAND_PANEL_CLASS, BRAND_ROW_ACTION_CLASS, BRAND_TABLE_CONTAIN_CLASS } from "@/components/brand/brand-classes";
-import { STATUS_VARIANTS } from "@/components/reservations/ReservationRowCard";
+  RES_DIM_NAME_CLASS,
+  RES_DIM_SUB_CLASS,
+  RES_ICONS_CLASS,
+  RES_OPEN_CLASS,
+  RES_ROW_RULE_CLASS,
+  RES_ROW_SELECTED_CLASS,
+  RES_ROW_TABLE_CLASS,
+  RES_TABLE_HEAD_CLASS,
+  RES_TABLE_NAME_CLASS,
+  RES_TABLE_SUB_CLASS,
+  RES_TABLE_WRAP_CLASS,
+} from "@/lib/reservations-layout";
+import { clockOf, dayTag, formatMobile, pillOf, rowActions } from "@/lib/reservations-view";
+import { cn } from "@/lib/utils";
 import type { Reservation } from "@/types";
 
+const HEAD_WORDS = ["Time", "Guest", "Party", "Table", "Status", "Actions"];
+
 interface ReservationsTableProps {
-  list: Reservation[];
+  rows: Reservation[];
+  nowMs: number;
+  today: string;
+  /** All dates or a search: the day leads the sub-line (design 6.3). */
+  showDay: boolean;
+  selectedId: string | null;
   busy: boolean;
-  onSeat: (r: Reservation) => void;
-  onComplete: (r: Reservation) => void;
-  onCancel: (r: Reservation) => void;
-  onEdit: (r: Reservation) => void;
-  onDelete: (r: Reservation) => void;
+  onOpen: (r: Reservation) => void;
+  onAction: RowIntent;
 }
 
-/** Desktop table (lg and up) — same handlers and conditions as ReservationRowCard. */
-export function ReservationsTable({
-  list,
-  busy,
-  onSeat,
-  onComplete,
-  onCancel,
-  onEdit,
-  onDelete,
-}: ReservationsTableProps) {
+function TableRow({ r, first, nowMs, today, showDay, selected, busy, onOpen, onAction }: Omit<ReservationsTableProps, "rows" | "selectedId"> & { r: Reservation; first: boolean; selected: boolean }) {
+  const clock = clockOf(r.time);
+  const pill = pillOf(r, nowMs, today);
+  const dim = r.status === "Completed" || r.status === "Cancelled";
+  const { icons, primary } = rowActions(r, today);
+  const canAssign = !r.tableNo && (r.status === "Booked" || r.status === "Seated");
+  const sub = [showDay ? dayTag(r.date) : "", formatMobile(r.mobile), r.notes?.trim() ?? ""].filter(Boolean).join(" · ");
   return (
-    <div className={cn("hidden rounded-lg border lg:block", BRAND_PANEL_CLASS, BRAND_TABLE_CONTAIN_CLASS)}>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>When</TableHead>
-            <TableHead>Guest</TableHead>
-            <TableHead className="text-right">Guests</TableHead>
-            <TableHead>Table</TableHead>
-            <TableHead>Status</TableHead>
-            {/* 5 buttons x 40px + 4 gaps x 4px = 216px, plus the cell padding. */}
-            <TableHead className="w-60 text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {list.map((r) => (
-            <TableRow key={r._id}>
-              <TableCell>
-                <div className="font-medium">{formatDate(r.date)}</div>
-                <div className="text-xs text-muted-foreground">{formatTime(r.time)}</div>
-              </TableCell>
-              <TableCell>
-                <div className="font-medium">{r.name}</div>
-                <div className="text-xs text-muted-foreground">{r.mobile}</div>
-              </TableCell>
-              <TableCell className="text-right">{r.guests}</TableCell>
-              <TableCell className="text-muted-foreground">{r.tableNo ?? "—"}</TableCell>
-              <TableCell>
-                <Badge variant="outline" className={cn(STATUS_VARIANTS[r.status])}>
-                  {r.status}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-right">
-                <div className="flex justify-end gap-1">
-                  {r.status === "Booked" && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={BRAND_ROW_ACTION_CLASS}
-                      disabled={busy}
-                      onClick={() => onSeat(r)}
-                      aria-label="Seat guest"
-                      title="Seat"
-                    >
-                      <Armchair className="h-4 w-4" />
-                    </Button>
-                  )}
-                  {r.status === "Seated" && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={BRAND_ROW_ACTION_CLASS}
-                      disabled={busy}
-                      onClick={() => onComplete(r)}
-                      aria-label="Complete reservation"
-                      title="Complete"
-                    >
-                      <Check className="h-4 w-4 text-green-600" />
-                    </Button>
-                  )}
-                  {(r.status === "Booked" || r.status === "Seated") && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={BRAND_ROW_ACTION_CLASS}
-                      disabled={busy}
-                      onClick={() => onCancel(r)}
-                      aria-label="Cancel reservation"
-                      title="Cancel"
-                    >
-                      <X className="h-4 w-4 text-destructive" />
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={BRAND_ROW_ACTION_CLASS}
-                    onClick={() => onEdit(r)}
-                    aria-label="Edit reservation"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={BRAND_ROW_ACTION_CLASS}
-                    onClick={() => onDelete(r)}
-                    aria-label="Delete reservation"
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+    <div data-ui="reservations-row" className={cn(RES_ROW_TABLE_CLASS, !first && RES_ROW_RULE_CLASS, selected && RES_ROW_SELECTED_CLASS)}>
+      <span className="min-w-0">
+        <span data-ui="reservations-row-time" className={cn("block text-[14px] font-semibold", dim && RES_DIM_NAME_CLASS, r.status === "Cancelled" && "line-through")}>
+          {clock.full}
+        </span>
+        <RowRelative r={r} nowMs={nowMs} today={today} ui="reservations-row-relative" />
+      </span>
+      <span className="min-w-0">
+        <button
+          type="button"
+          data-ui="reservations-row-open"
+          aria-label={`${r.name}, ${clock.full}, ${pill}`}
+          aria-current={selected ? "true" : undefined}
+          onClick={() => onOpen(r)}
+          className={cn(RES_OPEN_CLASS, RES_TABLE_NAME_CLASS, dim && RES_DIM_NAME_CLASS)}
+        >
+          {r.name}
+        </button>
+        <span data-ui="reservations-row-sub" className={cn(RES_TABLE_SUB_CLASS, dim && RES_DIM_SUB_CLASS)}>
+          {sub}
+        </span>
+      </span>
+      <span className="text-[14px] font-medium">{r.guests}</span>
+      <span className="min-w-0">
+        {r.tableNo ? (
+          <span data-ui="reservations-row-table" className="block text-[14px] font-medium [overflow-wrap:anywhere]">
+            {r.tableNo}
+          </span>
+        ) : (
+          canAssign && <RowAssign onPress={() => onAction(r, "assign")} />
+        )}
+      </span>
+      <span>
+        <ReservationPill kind={pill} size="table" ui="reservations-row-pill" />
+      </span>
+      <span className={RES_ICONS_CLASS}>
+        <RowIcons r={r} icons={icons} busy={busy} onAction={onAction} />
+        {primary && <RowPrimary r={r} action={primary} selected={selected} busy={busy} ui="reservations-row" onAction={onAction} />}
+      </span>
+    </div>
+  );
+}
+
+/** The HTML's table form (values 8.2): the sticky head and one row per booking, in a section the list column's width shows
+ *  from 904px (B1). Rows are not targets themselves: the stretched name button is (B7). */
+export function ReservationsTable({ rows, selectedId, ...rest }: ReservationsTableProps) {
+  return (
+    <div data-ui="reservations-table" className={RES_TABLE_WRAP_CLASS}>
+      <div data-ui="reservations-table-head" className={RES_TABLE_HEAD_CLASS}>
+        {HEAD_WORDS.map((w) => (
+          <span key={w} className={w === "Actions" ? "text-right" : undefined}>
+            {w}
+          </span>
+        ))}
+      </div>
+      {rows.map((r, i) => (
+        <TableRow key={r._id} r={r} first={i === 0} selected={r._id === selectedId} {...rest} />
+      ))}
     </div>
   );
 }

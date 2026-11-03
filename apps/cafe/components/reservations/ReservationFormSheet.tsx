@@ -1,32 +1,38 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import { Loader2, Trash2 } from "lucide-react";
 
 import { createReservationSchema } from "@/schemas";
+import { useReservationCreate, useReservationUpdate } from "@/hooks/use-reservation-writes";
+import { MENU_EDITOR_ERROR_CLASS, MENU_EDITOR_FIELD_CLASS, MENU_EDITOR_LABEL_CLASS } from "@/lib/menu-editor-layout";
+import { createPayload, editPayload, formDefaults, knownName, returningGuestLine, summaryLine, type FormValues } from "@/lib/reservation-form";
 import {
-  useCreateReservation,
-  useUpdateReservation,
-} from "@/hooks/use-reservations";
-import { useTables } from "@/hooks/use-tables";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { FormSheet } from "@/components/shared/FormSheet";
-import { FormField } from "@/components/shared/FormField";
-import { DatePicker } from "@/components/shared/DatePicker";
-import { TimePicker } from "@/components/shared/TimePicker";
-import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
-import type { Reservation } from "@/types";
+  RES_FORM_DELETE_CLASS,
+  RES_FORM_GROUP_CLASS,
+  RES_FORM_GUEST_INFO_CLASS,
+  RES_FORM_INPUT_CLASS,
+  RES_FORM_NOTE_CLASS,
+  RES_FORM_PAIR_CLASS,
+  RES_FORM_PHONE_BOX_CLASS,
+  RES_FORM_PHONE_INPUT_CLASS,
+  RES_FORM_PREFIX_CLASS,
+  RES_FORM_SAVE_CLASS,
+  RES_FORM_SUMMARY_BAD_CLASS,
+  RES_FORM_SUMMARY_CLASS,
+  RES_FORM_SUMMARY_TEXT_CLASS,
+} from "@/lib/reservation-form-layout";
+import { updatedToast } from "@/lib/reservations-toasts";
+import { cn } from "@/lib/utils";
+import { ReservationDayTimeFields } from "@/components/reservations/ReservationDayTimeFields";
+import { ReservationFormFrame } from "@/components/reservations/ReservationFormFrame";
+import { ReservationGuestsField } from "@/components/reservations/ReservationGuestsField";
+import { ReservationTableField } from "@/components/reservations/ReservationTableField";
+import type { Reservation, Table } from "@/types";
 
+// The same rules as ever (today's zod messages), on the fields the form holds.
 const reservationFormSchema = createReservationSchema.pick({
   name: true,
   mobile: true,
@@ -36,70 +42,75 @@ const reservationFormSchema = createReservationSchema.pick({
   tableNo: true,
   notes: true,
 });
-type ReservationFormInput = z.infer<typeof reservationFormSchema>;
 
-// Radix Select can't use "" as an item value, so "unassigned" needs a sentinel.
-// It must be a string no real table can be called: table names are now free text
-// (CR1.1), and a cafe naming a table "none" would otherwise collide with this and
-// silently lose the assignment. TABLE_NO_PATTERN requires an alphanumeric first
-// character, so a leading underscore is unnameable by construction.
-const UNASSIGNED = "__unassigned__";
-
-const emptyValues: ReservationFormInput = {
-  name: "",
-  mobile: "",
-  date: "",
-  time: "",
-  guests: 2,
-  tableNo: undefined,
-  notes: "",
-};
+/** Book again (U6 Task 2): the guest's name, mobile and party seed a NEW booking. */
+export interface ReservationPrefill {
+  name: string;
+  mobile: string;
+  guests: number;
+}
 
 interface ReservationFormSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   reservation: Reservation | null; // null → create
+  prefill?: ReservationPrefill; // seeds a create only
+  /** The one list and the floor plan the page already holds (no request of the form's own), and the page's clock. */
+  list: readonly Reservation[];
+  tables: readonly Table[] | undefined;
+  today: string;
+  nowMs: number;
+  /** The day the page shows ("all" = All dates): a new booking opens on it when it is today or later (B20). */
+  shownDay: string | "all";
+  /** After a create: the page shows that booking's day (B20). */
+  onCreated: (day: string) => void;
+  /** Delete reservation (edit only): the page's confirm opens over the form. */
+  onDelete: (r: Reservation) => void;
 }
 
-export function ReservationFormSheet({
-  open,
-  onOpenChange,
-  reservation,
-}: ReservationFormSheetProps) {
-  const createReservation = useCreateReservation();
-  const updateReservation = useUpdateReservation();
-  const tables = useTables();
-  const isEdit = !!reservation;
+const ClockIcon = () => (
+  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="flex-none text-subtle-foreground">
+    <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2" />
+  </svg>
+);
+const PersonIcon = () => (
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="flex-none">
+    <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0" />
+  </svg>
+);
 
-  // Live floor plan, plus the reservation's own saved table if it's since been
-  // renamed or removed — the select must keep showing that value, not silently
-  // clear it out from under an existing booking. It is labelled as gone so the
-  // operator can tell a real table from a stale one and re-seat the booking.
-  const liveTableNos = (tables.data ?? []).map((t) => t.tableNo);
-  const tableOptions: { value: string; label: string }[] = liveTableNos.map((t) => ({
-    value: t,
-    label: t,
-  }));
-  if (reservation?.tableNo && !liveTableNos.includes(reservation.tableNo)) {
-    tableOptions.push({
-      value: reservation.tableNo,
-      label: `${reservation.tableNo} (no longer on the floor plan)`,
-    });
-  }
+/** The reservation form (U6 Task 4; values 13; design 8.1): create and edit in the HTML's look. The create and the edit run their
+ *  OWN write instances (the page's status instance stays the status writes' busy flag). Mobile number first: ten digits fill an
+ *  empty name from an earlier booking and show the returning-guest line. Validation is today's zod messages. */
+export function ReservationFormSheet({ open, onOpenChange, reservation, prefill, list, tables, today, nowMs, shownDay, onCreated, onDelete }: ReservationFormSheetProps) {
+  const createReservation = useReservationCreate();
+  const updateReservation = useReservationUpdate();
+  const isEdit = !!reservation;
+  const editingId = reservation?._id ?? null;
+  const [failed, setFailed] = useState(false);
 
   const {
     register,
     handleSubmit,
     control,
     reset,
+    getValues,
+    setValue,
+    watch,
     formState: { errors },
-  } = useForm<ReservationFormInput>({
+  } = useForm<FormValues>({
     resolver: zodResolver(reservationFormSchema),
-    defaultValues: emptyValues,
+    defaultValues: formDefaults({ shownDay, today }),
   });
 
+  // The opening values read the page's day and clock as they are when the form opens; a later tick never resets what is typed.
+  const latest = useRef({ shownDay, today });
+  useEffect(() => {
+    latest.current = { shownDay, today };
+  });
   useEffect(() => {
     if (!open) return;
+    setFailed(false);
     reset(
       reservation
         ? {
@@ -111,151 +122,140 @@ export function ReservationFormSheet({
             tableNo: reservation.tableNo,
             notes: reservation.notes ?? "",
           }
-        : emptyValues,
+        : formDefaults({ ...latest.current, prefill }),
     );
-  }, [open, reservation, reset]);
+  }, [open, reservation, prefill, reset]);
 
-  const onSubmit = async (values: ReservationFormInput) => {
-    const payload = {
-      ...values,
-      tableNo: values.tableNo || undefined,
-    };
+  const values = watch();
+
+  const onSubmit = async (v: FormValues) => {
+    setFailed(false);
     try {
-      if (isEdit) {
-        await updateReservation.mutateAsync({
-          id: reservation._id,
-          data: payload,
-        });
+      if (reservation) {
+        await updateReservation.mutateAsync({ id: reservation._id, data: editPayload(v, reservation), toast: updatedToast });
       } else {
-        await createReservation.mutateAsync({ ...payload, status: "Booked" });
+        const saved = await createReservation.mutateAsync(createPayload(v));
+        onCreated(saved.date);
       }
       onOpenChange(false);
     } catch {
-      // hooks toast on error
+      // the hooks toast on error; the form stays with what was typed
     }
   };
 
   const saving = createReservation.isPending || updateReservation.isPending;
+  const hasErrors = Object.keys(errors).length > 0;
+  const returning = returningGuestLine(list, values.mobile ?? "", editingId ?? "");
+  const sub = !reservation ? "Book a table for a guest" : `${reservation.name} · ${reservation.status === "Seated" ? "seated" : "booking"}`;
 
   return (
-    <FormSheet
+    <ReservationFormFrame
       open={open}
       onOpenChange={onOpenChange}
       title={isEdit ? "Edit reservation" : "New reservation"}
-      description={
-        isEdit ? "Update this booking's details." : "Book a table for a guest."
+      sub={sub}
+      onSubmit={handleSubmit(onSubmit, () => setFailed(true))}
+      footer={
+        <>
+          <div data-ui="reservation-form-summary" className={RES_FORM_SUMMARY_CLASS}>
+            <ClockIcon />
+            <span className={cn(RES_FORM_SUMMARY_TEXT_CLASS, failed && hasErrors && RES_FORM_SUMMARY_BAD_CLASS)}>
+              {failed && hasErrors ? "Fix the highlighted fields to continue" : summaryLine(values)}
+            </span>
+          </div>
+          <button type="submit" data-ui="reservation-form-save" className={RES_FORM_SAVE_CLASS} disabled={saving}>
+            {saving && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+            {isEdit ? "Save changes" : "Book table"}
+          </button>
+        </>
       }
-      submitLabel={isEdit ? "Save changes" : "Book reservation"}
-      saving={saving}
-      onSubmit={handleSubmit(onSubmit)}
-      contentClassName="overflow-y-auto"
     >
-      <FormField label="Guest name" htmlFor="res-name" error={errors.name?.message}>
-        <Input
-          id="res-name"
-          className={BRAND_CONTROL_CLASS}
-          autoFocus
-          aria-invalid={!!errors.name}
-          {...register("name")}
-        />
-      </FormField>
-
-      <FormField label="Mobile" htmlFor="res-mobile" error={errors.mobile?.message}>
-        <Input
-          id="res-mobile"
-          className={BRAND_CONTROL_CLASS}
-          inputMode="numeric"
-          aria-invalid={!!errors.mobile}
-          {...register("mobile")}
-        />
-      </FormField>
-
-      <div className="grid grid-cols-2 gap-3">
-        <FormField label="Date" htmlFor="res-date" error={errors.date?.message}>
-          <Controller
-            control={control}
-            name="date"
-            render={({ field }) => (
-              <DatePicker
-                id="res-date"
-                className={BRAND_CONTROL_CLASS}
-                value={field.value}
-                onChange={field.onChange}
-                invalid={!!errors.date}
-                ref={field.ref}
-              />
-            )}
-          />
-        </FormField>
-        <FormField label="Time" htmlFor="res-time" error={errors.time?.message}>
-          <Controller
-            control={control}
-            name="time"
-            render={({ field }) => (
-              <TimePicker
-                id="res-time"
-                className={BRAND_CONTROL_CLASS}
-                value={field.value}
-                onChange={field.onChange}
-                invalid={!!errors.time}
-                ref={field.ref}
-              />
-            )}
-          />
-        </FormField>
+      <div className={RES_FORM_PAIR_CLASS}>
+        <div className={MENU_EDITOR_FIELD_CLASS}>
+          <label htmlFor="res-mobile" className={MENU_EDITOR_LABEL_CLASS}>
+            Mobile number
+          </label>
+          <div className={RES_FORM_PHONE_BOX_CLASS}>
+            <span className={RES_FORM_PREFIX_CLASS}>+91</span>
+            <Controller
+              control={control}
+              name="mobile"
+              render={({ field }) => (
+                <input
+                  id="res-mobile"
+                  ref={field.ref}
+                  data-autofocus=""
+                  inputMode="numeric"
+                  placeholder="10-digit mobile"
+                  aria-invalid={errors.mobile ? true : undefined}
+                  className={RES_FORM_PHONE_INPUT_CLASS}
+                  value={field.value ?? ""}
+                  onBlur={field.onBlur}
+                  onChange={(e) => {
+                    field.onChange(e.target.value);
+                    // Ten digits and an empty name: the name of the earlier booking on that number.
+                    const known = knownName(list, e.target.value, editingId ?? "");
+                    if (known && getValues("name").trim() === "") setValue("name", known, { shouldValidate: !!errors.name });
+                  }}
+                />
+              )}
+            />
+          </div>
+          {returning && (
+            <div data-ui="reservation-form-returning" className={RES_FORM_GUEST_INFO_CLASS}>
+              <PersonIcon />
+              <span className="min-w-0">{returning}</span>
+            </div>
+          )}
+          {errors.mobile && <span className={MENU_EDITOR_ERROR_CLASS}>{errors.mobile.message}</span>}
+        </div>
+        <div className={MENU_EDITOR_FIELD_CLASS}>
+          <label htmlFor="res-name" className={MENU_EDITOR_LABEL_CLASS}>
+            Guest name
+          </label>
+          <input id="res-name" placeholder="Who is the booking for?" aria-invalid={errors.name ? true : undefined} className={RES_FORM_INPUT_CLASS} {...register("name")} />
+          {errors.name && <span className={MENU_EDITOR_ERROR_CLASS}>{errors.name.message}</span>}
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <FormField
-          label="Guests"
-          htmlFor="res-guests"
-          error={errors.guests?.message}
-        >
-          <Input
-            id="res-guests"
-            className={BRAND_CONTROL_CLASS}
-            type="number"
-            min={1}
-            aria-invalid={!!errors.guests}
-            {...register("guests", { valueAsNumber: true })}
-          />
-        </FormField>
-        <FormField label="Table" htmlFor="res-table">
-          <Controller
-            control={control}
-            name="tableNo"
-            render={({ field }) => (
-              <Select
-                value={field.value || UNASSIGNED}
-                onValueChange={(v) =>
-                  field.onChange(v === UNASSIGNED ? undefined : v)
-                }
-              >
-                <SelectTrigger id="res-table" className={BRAND_CONTROL_CLASS}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
-                  {tableOptions.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          />
-        </FormField>
+      <Controller control={control} name="guests" render={({ field }) => <ReservationGuestsField value={field.value} onChange={field.onChange} error={errors.guests?.message} />} />
+
+      <ReservationDayTimeFields
+        date={values.date}
+        time={values.time}
+        onDate={(d) => setValue("date", d, { shouldValidate: !!errors.date, shouldDirty: true })}
+        onTime={(t) => setValue("time", t, { shouldValidate: !!errors.time, shouldDirty: true })}
+        list={list}
+        editingId={editingId}
+        today={today}
+        nowMs={nowMs}
+        dateError={errors.date?.message}
+        timeError={errors.time?.message}
+      />
+
+      <ReservationTableField
+        tables={tables}
+        values={values}
+        onPick={(t) => setValue("tableNo", t, { shouldDirty: true })}
+        list={list}
+        editingId={editingId}
+        today={today}
+        nowMs={nowMs}
+      />
+
+      <div className={RES_FORM_GROUP_CLASS}>
+        <label htmlFor="res-notes" className={MENU_EDITOR_LABEL_CLASS}>
+          Occasion &amp; requests
+        </label>
+        <textarea id="res-notes" rows={2} placeholder="Notes for the team · e.g. cake at 9:30, allergic to peanuts" className={RES_FORM_NOTE_CLASS} {...register("notes")} />
       </div>
 
-      <FormField label="Notes" htmlFor="res-notes">
-        <Textarea
-          id="res-notes"
-          rows={2}
-          placeholder="Any special requests…"
-          {...register("notes")}
-        />
-      </FormField>
-    </FormSheet>
+      {reservation && (
+        <button type="button" data-ui="reservation-form-delete" className={RES_FORM_DELETE_CLASS} onClick={() => onDelete(reservation)}>
+          <Trash2 className="size-[15px]" strokeWidth={1.8} aria-hidden="true" />
+          Delete reservation
+        </button>
+      )}
+    </ReservationFormFrame>
   );
 }

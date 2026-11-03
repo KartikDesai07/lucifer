@@ -66,10 +66,14 @@ const readSrc = (rel: string): string => stripComments(readFileSync(path.join(RE
 // its date box is the HTML's dropdown (Today / Yesterday / All dates / Pick a
 // day…) whose calendar is the kit's own Calendar in the box's Popover
 // (components/orders/OrdersDateBox.tsx); the pin below keeps the meaning.
+// U6 Task 1 (2026-11-03, owner Q7; P21 moved on purpose for the page, its ReservationFormSheet.tsx half stays): the
+// Reservations page left this list as Orders did — its day box is the kit Popover + Calendar with an All dates row
+// (components/reservations/ReservationsDayBox.tsx); the pin below keeps the meaning.
+// U6 Task 4 (2026-11-03): the form's "More" DatePicker moved with the look into ReservationDayTimeFields.tsx (the form's
+// file split, B25); the pin follows it with the same meaning (DatePicker, never a native type=date).
 const DATE_PICKER_CALL_SITES = [
-  "apps/cafe/app/(dashboard)/reservations/page.tsx",
   "apps/cafe/components/events/EventFormSheet.tsx",
-  "apps/cafe/components/reservations/ReservationFormSheet.tsx",
+  "apps/cafe/components/reservations/ReservationDayTimeFields.tsx",
   "apps/cafe/components/reports/EndOfDayButton.tsx",
 ];
 
@@ -107,6 +111,23 @@ test("PIN: the Orders page picks a day through its date box on the kit Calendar 
     "one day at a time, opening on the chosen day's month (the library's default ignores `selected`)",
   );
   assert.ok(!/type="date"/.test(box), "no native type=\"date\" input in the date box");
+});
+
+test("PIN: the Reservations page picks a day through its day box on the kit Calendar — no DatePicker there, never a native date input (U6 Q7)", () => {
+  const page = readSrc("apps/cafe/app/(dashboard)/reservations/page.tsx");
+  assert.match(page, /<ReservationsToolbar\b/, "landmark: the page renders the toolbar that holds the day box");
+  assert.ok(!/<DatePicker\b/.test(page), "the page renders no DatePicker (owner Q7: the day box)");
+  assert.ok(!page.includes("components/shared/DatePicker"), "nor imports it");
+  assert.ok(!/type="date"/.test(page), "no native type=\"date\" input on the page");
+  const box = readSrc("apps/cafe/components/reservations/ReservationsDayBox.tsx");
+  assert.match(box, /from "@\/components\/ui\/calendar";/, "the day box uses the kit Calendar");
+  assert.match(box, /from "@\/components\/ui\/popover";/, "in the kit Popover");
+  assert.match(
+    box,
+    /<Calendar\b[\s\S]*?mode="single"[\s\S]*?defaultMonth=\{chosen\}[\s\S]*?\/>/,
+    "one day at a time, opening on the chosen day's month",
+  );
+  assert.ok(!/type="date"/.test(box), "no native type=\"date\" input in the day box");
 });
 
 // Review findings (2026-09-29, arbitrated against react-day-picker 9.14.0's

@@ -40,6 +40,8 @@ interface TimePickerProps {
   "aria-label"?: string;
   /** The field failed validation: a red edge (the message is the form's own). */
   invalid?: boolean;
+  /** What the button shows instead of the clock icon and the time (a form's own chip, as DatePicker's). */
+  label?: React.ReactNode;
   className?: string;
 }
 
@@ -145,7 +147,7 @@ function Panel({ value, onChange, onDone }: PanelProps) {
 
 export const TimePicker = React.forwardRef<HTMLButtonElement, TimePickerProps>(
   function TimePicker(
-    { value, onChange, disabled, placeholder = "Pick a time", id, "aria-label": ariaLabel, invalid, className },
+    { value, onChange, disabled, placeholder = "Pick a time", id, "aria-label": ariaLabel, invalid, label: custom, className },
     ref,
   ) {
     const [open, setOpen] = React.useState(false);
@@ -168,8 +170,12 @@ export const TimePicker = React.forwardRef<HTMLButtonElement, TimePickerProps>(
               className,
             )}
           >
-            <ClockIcon className="mr-2 h-4 w-4 shrink-0" />
-            {label || placeholder}
+            {custom ?? (
+              <>
+                <ClockIcon className="mr-2 h-4 w-4 shrink-0" />
+                {label || placeholder}
+              </>
+            )}
           </button>
         </PopoverTrigger>
         <PopoverContent className={PANEL_FIT_CLASS} align="start" collisionPadding={POPOVER_EDGE_GAP_PX}>
