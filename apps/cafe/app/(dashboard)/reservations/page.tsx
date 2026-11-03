@@ -17,16 +17,15 @@ import {
   RES_SCROLLER_CLASS,
 } from "@/lib/reservations-layout";
 import { cancelledToast, statusToast } from "@/lib/reservations-toasts";
-import { emptyWords } from "@/lib/reservations-view";
+import { emptyWords, type ResAction } from "@/lib/reservations-view";
 import { formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
-import { ReservationFormSheet } from "@/components/reservations/ReservationFormSheet";
-import { ReservationRowCard } from "@/components/reservations/ReservationRowCard";
+import { ReservationFormSheet, type ReservationPrefill } from "@/components/reservations/ReservationFormSheet";
+import { ReservationsList } from "@/components/reservations/ReservationsList";
 import { ReservationsEmpty, ReservationsSkeleton } from "@/components/reservations/ReservationsStates";
-import { ReservationsTable } from "@/components/reservations/ReservationsTable";
 import { ReservationsToolbar } from "@/components/reservations/ReservationsToolbar";
 import type { Reservation } from "@/types";
 
@@ -44,20 +43,38 @@ export default function ReservationsPage() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Reservation | null>(null);
+  const [prefill, setPrefill] = useState<ReservationPrefill | null>(null);
   const [deleting, setDeleting] = useState<Reservation | null>(null);
   const [cancelling, setCancelling] = useState<Reservation | null>(null);
 
   const openAdd = () => {
     setEditing(null);
+    setPrefill(null);
     setFormOpen(true);
   };
   const openEdit = (r: Reservation) => {
     setEditing(r);
+    setPrefill(null);
+    setFormOpen(true);
+  };
+  // Book again (owner Q4): a NEW booking seeded with the guest's name, mobile and party.
+  const bookAgain = (r: Reservation) => {
+    setEditing(null);
+    setPrefill({ name: r.name, mobile: r.mobile, guests: r.guests });
     setFormOpen(true);
   };
 
   const setStatus = (r: Reservation, next: ReservationStatus) =>
     updateReservation.mutate({ id: r._id, data: { status: next }, toast: statusToast(next) });
+
+  // What a row raises (Task 2). Open order is a link the row draws itself (B17); the seat dialog and Assign come with Task 3.
+  const onRowAction = (r: Reservation, action: ResAction) => {
+    if (action === "seat") setStatus(r, "Seated");
+    else if (action === "complete") setStatus(r, "Completed");
+    else if (action === "restore") setStatus(r, "Booked");
+    else if (action === "cancel") setCancelling(r);
+    else if (action === "bookAgain") bookAgain(r);
+  };
 
   const confirmCancel = async () => {
     if (!cancelling) return;
@@ -129,32 +146,16 @@ export default function ReservationsPage() {
             ) : state.rows.length === 0 ? (
               <ReservationsEmpty {...emptyWords({ day: state.day, tab: state.tab, query: state.query, today: state.today })} onNew={openAdd} />
             ) : (
-              <>
-                <ReservationsTable
-                  list={rows}
-                  busy={busy}
-                  onSeat={(row) => setStatus(row, "Seated")}
-                  onComplete={(row) => setStatus(row, "Completed")}
-                  onCancel={setCancelling}
-                  onEdit={openEdit}
-                  onDelete={setDeleting}
-                />
-
-                <div className="space-y-2 lg:hidden">
-                  {rows.map((r) => (
-                    <ReservationRowCard
-                      key={r._id}
-                      reservation={r}
-                      busy={busy}
-                      onSeat={(row) => setStatus(row, "Seated")}
-                      onComplete={(row) => setStatus(row, "Completed")}
-                      onCancel={setCancelling}
-                      onEdit={openEdit}
-                      onDelete={setDeleting}
-                    />
-                  ))}
-                </div>
-              </>
+              <ReservationsList
+                rows={rows}
+                nowMs={state.nowMs}
+                today={state.today}
+                showDay={state.day === "all" || state.query.trim() !== ""}
+                selectedId={null}
+                busy={busy}
+                onOpen={openEdit}
+                onAction={onRowAction}
+              />
             )}
           </div>
         </div>
@@ -162,7 +163,7 @@ export default function ReservationsPage() {
         <div data-ui="reservations-detail-column" className={RES_DETAIL_COLUMN_CLASS} />
       </div>
 
-      <ReservationFormSheet open={formOpen} onOpenChange={setFormOpen} reservation={editing} />
+      <ReservationFormSheet open={formOpen} onOpenChange={setFormOpen} reservation={editing} prefill={prefill ?? undefined} />
 
       <ConfirmDialog
         open={!!cancelling}

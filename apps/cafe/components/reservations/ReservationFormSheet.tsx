@@ -55,16 +55,25 @@ const emptyValues: ReservationFormInput = {
   notes: "",
 };
 
+/** Book again (U6 Task 2): the guest's name, mobile and party seed a NEW booking. */
+export interface ReservationPrefill {
+  name: string;
+  mobile: string;
+  guests: number;
+}
+
 interface ReservationFormSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   reservation: Reservation | null; // null → create
+  prefill?: ReservationPrefill; // seeds a create only
 }
 
 export function ReservationFormSheet({
   open,
   onOpenChange,
   reservation,
+  prefill,
 }: ReservationFormSheetProps) {
   const createReservation = useCreateReservation();
   const updateReservation = useUpdateReservation();
@@ -111,9 +120,9 @@ export function ReservationFormSheet({
             tableNo: reservation.tableNo,
             notes: reservation.notes ?? "",
           }
-        : emptyValues,
+        : { ...emptyValues, ...prefill },
     );
-  }, [open, reservation, reset]);
+  }, [open, reservation, prefill, reset]);
 
   const onSubmit = async (values: ReservationFormInput) => {
     const payload = {

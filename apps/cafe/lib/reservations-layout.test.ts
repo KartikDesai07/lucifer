@@ -121,3 +121,97 @@ test("the toolbar: the status select is MenuSelect with aria 'Filter by status';
   assert.match(bar, /title="Search"/, "the phone toggle");
   assert.ok(!/<select\b/.test(bar), "never a native select (P20)");
 });
+
+// ── U6 Task 2 (2026-11-03): the list (values 8.2 - 8.4; design 6.3, B7, B10, B13, B15 - B17, B26) ─────────────────────────
+
+test("the table / card switch is the list column's own width (904px, B1) and the table grid is the HTML's cols2", () => {
+  hasAll(layout.RES_TABLE_WRAP_CLASS, ["hidden", "@[904px]/reslist:block"], "the table section shows from a 904px column");
+  hasAll(layout.RES_CARDS_WRAP_CLASS, ["@[904px]/reslist:hidden"], "the cards give way from a 904px column");
+  const grid = "grid-cols-[104px_minmax(200px,2fr)_60px_100px_120px_minmax(150px,auto)]";
+  hasAll(layout.RES_ROW_TABLE_CLASS, [grid, "grid", "gap-4", "px-4", "py-3", "items-center", "relative", "cursor-pointer"], "a table row (values 8.2)");
+  hasAll(layout.RES_TABLE_HEAD_CLASS, [grid, "sticky", "top-[-20px]", "z-[1]", "px-4", "py-2.5", "bg-surface-2", "text-[12.5px]", "font-medium", "text-muted-foreground", "border-b"], "the head (values 8.2, U5 M8)");
+  hasAll(layout.RES_ROW_TABLE_CLASS, ["pointer-fine:hover:bg-hover"], "the table row's hover only where a pointer hovers (R14)");
+  assert.ok(!tokens(layout.RES_ROW_CARD_CLASS).some((t) => t.includes("hover:")), "a card has no hover rule (values 8.3)");
+});
+
+test("the card row, its time column, middle and right column carry values 8.3", () => {
+  hasAll(layout.RES_ROW_CARD_CLASS, ["relative", "flex", "items-center", "gap-3", "px-3.5", "py-3", "cursor-pointer"], "the card row");
+  hasAll(layout.RES_CARD_TIME_CLASS, ["w-14", "flex-none"], "the time column is 56px");
+  hasAll(layout.RES_CARD_HM_CLASS, ["font-mono", "text-[15px]", "font-semibold"], "Geist Mono 15 / 600");
+  hasAll(layout.RES_CARD_AP_CLASS, ["text-[10.5px]", "font-semibold", "text-subtle-foreground"], "AM / PM 10.5 / 600");
+  hasAll(layout.RES_CARD_NAME_CLASS, ["text-[14.5px]", "font-semibold", "[overflow-wrap:anywhere]"], "name 14.5 / 600, wraps (Q5, B10)");
+  hasAll(layout.RES_CARD_SUB_CLASS, ["text-[12.5px]", "[overflow-wrap:anywhere]"], "sub 12.5, wraps (B10)");
+  hasAll(layout.RES_CARD_RIGHT_CLASS, ["flex", "flex-col", "items-end", "gap-1.5", "flex-none"], "the right column");
+  hasAll(layout.RES_TABLE_NAME_CLASS, ["text-[14px]", "font-semibold", "[overflow-wrap:anywhere]"], "table name 14 / 600, wraps (Q5)");
+  hasAll(layout.RES_TABLE_SUB_CLASS, ["truncate", "text-[12.5px]", "text-subtle-foreground"], "the table sub-line keeps one line with an ellipsis (B10)");
+});
+
+test("the stretched open button covers the row (B7); the actions sit above it", () => {
+  hasAll(layout.RES_OPEN_CLASS, ["after:absolute", "after:inset-0", "cursor-pointer", "text-left"], "the row's real button");
+  for (const [name, cls] of [["primary", layout.RES_PRIMARY_CLASS], ["icon", layout.RES_ICON_CLASS], ["assign", layout.RES_ASSIGN_CLASS]] as const) {
+    assert.ok(tokens(cls).includes("relative") && tokens(cls).includes("z-[1]"), `the ${name} button sits above the stretched layer`);
+  }
+});
+
+test("the primary: 32px, ink Seat, accent-tint Open order (bg-card on a selected row, B16), surface-3 Book again; hover opacity only on the table", () => {
+  hasAll(layout.RES_PRIMARY_CLASS, ["h-8", "px-3", "rounded-[8px]", "font-semibold", "whitespace-nowrap"], "the primary's box");
+  hasAll(layout.RES_PRIMARY_CARD_CLASS, ["text-[12.5px]"], "card text 12.5");
+  hasAll(layout.RES_PRIMARY_TABLE_CLASS, ["text-[13px]", "ml-1.5", "pointer-fine:hover:opacity-[.88]"], "table text 13, 6px from the icons, hover .88");
+  assert.ok(!tokens(layout.RES_PRIMARY_CARD_CLASS).some((t) => t.includes("hover:")), "no card hover");
+  hasAll(layout.primaryTone("seat", false), ["bg-ink", "text-on-ink"], "Seat is ink");
+  hasAll(layout.primaryTone("openOrder", false), ["bg-status-info-tint", "text-status-info-ink"], "Open order is the accent tint");
+  hasAll(layout.primaryTone("openOrder", true), ["bg-card", "text-status-info-ink"], "on a selected row Open order takes bg-card (B16)");
+  hasAll(layout.primaryTone("bookAgain", false), ["bg-surface-3", "text-foreground"], "Book again is surface-3");
+  hasAll(layout.RES_ROW_SELECTED_CLASS, ["bg-status-info-tint"], "the selected tint");
+});
+
+test("the icon buttons: 32px, hover surface-3 only on hover devices; Assign is the dashed 28px button", () => {
+  hasAll(layout.RES_ICON_CLASS, ["size-8", "rounded-[8px]", "pointer-fine:hover:bg-surface-3", "flex-none"], "the icon button");
+  hasAll(layout.RES_ASSIGN_CLASS, ["h-7", "px-[9px]", "border-dashed", "border-subtle-foreground", "rounded-[7px]", "text-[12.5px]", "font-semibold"], "Assign (values 8.2)");
+});
+
+test("the dimmed rows (Completed / Cancelled) use tokens, never opacity (B16)", () => {
+  hasAll(layout.RES_DIM_NAME_CLASS, ["text-muted-foreground"], "name --text-2");
+  hasAll(layout.RES_DIM_SUB_CLASS, ["text-subtle-foreground"], "sub --text-3");
+  for (const c of [layout.RES_DIM_NAME_CLASS, layout.RES_DIM_SUB_CLASS, layout.RES_ROW_CARD_CLASS, layout.RES_ROW_TABLE_CLASS]) {
+    assert.ok(!tokens(c).some((t) => /^opacity-/.test(t)), "no opacity on a dimmed row");
+  }
+});
+
+test("the pill's three sizes: 22 / 24 / 26px (values 8.3, 8.2, 10.3)", () => {
+  hasAll(layout.RES_PILL_SIZE_CLASS.card, ["h-[22px]", "gap-[5px]", "px-2", "text-[11.5px]"], "card");
+  hasAll(layout.RES_PILL_SIZE_CLASS.table, ["h-6", "gap-1.5", "px-[9px]", "text-[12px]"], "table");
+  hasAll(layout.RES_PILL_SIZE_CLASS.detail, ["h-[26px]", "gap-1.5", "px-2.5", "text-[12px]"], "detail");
+});
+
+test("the neutral pill (Completed / Cancelled) is the HTML's surface-3, not the kit's muted tint", () => {
+  hasAll(layout.RES_PILL_NEUTRAL_CLASS, ["bg-surface-3", "text-muted-foreground"], "values 8.4: rgb(233,233,236) on --text-2");
+  const pill = read("components/reservations/ReservationPill.tsx");
+  assert.match(pill, /RES_PILL_NEUTRAL_CLASS/, "the pill uses it for the neutral kind");
+});
+
+test("the rows never import the mutation hooks, never mutate, and use tokens only (P17)", () => {
+  for (const f of ["ReservationRowCard", "ReservationsTable", "ReservationsList", "ReservationPill", "ReservationRowParts"]) {
+    const s = read(`components/reservations/${f}.tsx`);
+    assert.ok(!/from\s*"@\/hooks\/use-(?:events|reservations|reservation-writes)"/.test(s), `${f}: no mutation hooks`);
+    assert.ok(!/\.mutate(?:Async)?\(/.test(s), `${f}: no mutation call`);
+    assert.ok(!/\b(?:text|bg|border)-(?:green|blue|red|gray|slate|zinc|amber)-\d/.test(s), `${f}: no raw palette classes`);
+    assert.ok(s.split("\n").length <= 300, `${f}: within 300 lines`);
+  }
+});
+
+test("Open order hands the table over on a plain click, then the warm /pos link; no write from this page (B17)", () => {
+  const s = read("components/reservations/ReservationRowParts.tsx");
+  assert.match(s, /offerPosTable\(tableNo, Date\.now\(\)\)/, "the hand-off");
+  assert.match(s, /e\.button !== 0 \|\| e\.metaKey \|\| e\.ctrlKey \|\| e\.shiftKey \|\| e\.altKey/, "plain primary click only (FloorTile's rule)");
+  assert.match(s, /href=\{FLOOR_POS_PATH\}/, "the /pos link");
+});
+
+test("the page passes the list its intents and keeps Cancel behind the confirm", () => {
+  const page = read(PAGE);
+  assert.match(page, /<ReservationsList\b/, "the list");
+  assert.match(page, /busy=\{busy\}/, "B13: the one busy flag");
+  assert.match(page, /selectedId=\{null\}/, "no selection until Task 3");
+  assert.match(page, /showDay=\{/, "showDay for All dates and a search");
+  assert.ok(page.split(/\r?\n/).length <= 300, "page.tsx stays within 300 lines (ruling U2)");
+});

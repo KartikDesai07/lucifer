@@ -212,6 +212,7 @@
     "lib/reservations-view.test.ts",
     "lib/reservations-toasts.test.ts",
     "lib/reservations-layout.test.ts",
+    "lib/reservations-list.test.ts",
     "lib/reservation-writes-paths.test.ts",
     "lib/orders-lanes.test.ts",
     "lib/orders-lanes-summary.test.ts",

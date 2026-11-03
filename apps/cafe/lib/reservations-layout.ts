@@ -123,3 +123,84 @@ export const RES_EMPTY_BUTTON_CLASS = `mt-2.5 h-[38px] cursor-pointer rounded-[9
  *  its left, a flex column that scrolls in parts. Below 1280px it is not drawn (the detail opens full screen from the
  *  bottom, Task 3). */
 export const RES_DETAIL_COLUMN_CLASS = "relative z-[1] hidden min-h-0 min-w-0 flex-col border-l border-border bg-card xl:flex";
+
+// ── The list (U6 Task 2; values 8.1 - 8.4, 16.2; design 6.3, B7, B10, B13, B16) ─────────────────────────────────────────
+
+/** The table form (values 8.2) shows from a 904px list column (B1), the cards below: both are rendered, the container
+ *  query (`reslist`, RES_LIST_COLUMN_CLASS) hides one. */
+export const RES_TABLE_WRAP_CLASS = "hidden @[904px]/reslist:block";
+export const RES_CARDS_WRAP_CLASS = "@[904px]/reslist:hidden";
+/** The HTML's cols2 (values 8.2): Time, Guest, Party, Table, Status, Actions; gap 16. */
+const RES_TABLE_GRID = "grid grid-cols-[104px_minmax(200px,2fr)_60px_100px_120px_minmax(150px,auto)] items-center gap-4 px-4";
+/** The head (values 8.2): 38px, --surface-2, 12.5px / 500 --text-2, a rule below. It sticks at the scroller's top edge (U5
+ *  M8: -20px = the scroller's top padding where the table shows, from 720px), not 20px lower as in the HTML. */
+export const RES_TABLE_HEAD_CLASS = `sticky top-[-20px] z-[1] ${RES_TABLE_GRID} border-b border-border bg-surface-2 py-2.5 text-[12.5px] font-medium text-muted-foreground`;
+/** The rule above every row but the first (values 8.2 / 8.3). */
+export const RES_ROW_RULE_CLASS = "border-t border-border-2";
+/** The selected row's tint (values 8.4, `--accent-t`). */
+export const RES_ROW_SELECTED_CLASS = "bg-status-info-tint";
+/** A table row (values 8.2): 12px 16px, centred; hover --hover (it replaces the selected tint; only where a pointer hovers,
+ *  R14). The row is not a target: its stretched open button is (B7). */
+export const RES_ROW_TABLE_CLASS = `relative cursor-pointer py-3 pointer-fine:hover:bg-hover ${RES_TABLE_GRID}`;
+/** A card row (values 8.3): 12px 14px, 12px apart, centred; no hover rule. */
+export const RES_ROW_CARD_CLASS = "relative flex cursor-pointer items-center gap-3 px-3.5 py-3";
+/** The row's real button (B7), stretched over the row by an ::after layer; the actions sit above it (z-[1]). */
+export const RES_OPEN_CLASS =
+  "block w-full min-w-0 cursor-pointer border-0 bg-transparent p-0 text-left outline-none after:absolute after:inset-0 focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring";
+
+/** Dimmed rows (Completed / Cancelled, B16): tokens per part, never opacity (the HTML's .72 fails 4.5:1). */
+export const RES_DIM_NAME_CLASS = "text-muted-foreground";
+export const RES_DIM_SUB_CLASS = "text-subtle-foreground";
+
+/** The card's time column (values 8.3): 56px, Geist Mono 15 / 600 over the AM / PM in 10.5 / 600 --text-3. */
+export const RES_CARD_TIME_CLASS = "w-14 flex-none";
+export const RES_CARD_HM_CLASS = "block font-mono text-[15px] font-semibold";
+export const RES_CARD_AP_CLASS = "block text-[10.5px] font-semibold text-subtle-foreground";
+/** The card's middle (values 8.3): the name 14.5 / 600 (it wraps, Q5 / B10), the sub 12.5 --text-2 (a long table name
+ *  wraps), the relative line 12. */
+export const RES_CARD_MIDDLE_CLASS = "min-w-0 flex-1";
+export const RES_CARD_NAME_CLASS = "text-[14.5px] font-semibold [overflow-wrap:anywhere]";
+export const RES_CARD_SUB_CLASS = "block text-[12.5px] text-muted-foreground [overflow-wrap:anywhere]";
+/** The card's right column (values 8.3): the pill over the primary, 6px apart, right aligned. */
+export const RES_CARD_RIGHT_CLASS = "flex flex-none flex-col items-end gap-1.5";
+/** The table's guest cell (values 8.2): the name 14 / 600 (wraps, Q5), the sub-line 12.5 --text-3 on one line with an
+ *  ellipsis (B10: the note is whole in the detail). */
+export const RES_TABLE_NAME_CLASS = "text-[14px] font-semibold [overflow-wrap:anywhere]";
+export const RES_TABLE_SUB_CLASS = "block truncate text-[12.5px] text-subtle-foreground";
+/** The relative line (values 19.2): 12px, the tone's ink, the weight the view model names. */
+export const RES_RELATIVE_CLASS = "block text-[12px] whitespace-nowrap";
+export const RES_RELATIVE_TONE_CLASS = {
+  bad: "text-status-bad-ink",
+  warn: "text-status-warn-ink",
+  accent: "text-status-info-ink",
+  muted: "text-subtle-foreground",
+  ok: "text-status-ok-ink",
+} as const;
+export const RES_RELATIVE_WEIGHT_CLASS = { 400: "font-normal", 500: "font-medium", 600: "font-semibold" } as const;
+
+/** The primary button (values 8.2 / 8.3): 32px, radius 8, 0 12px, 600, no wrap; 12.5px on a card, 13px in the table with
+ *  6px from the icons and hover opacity .88 (the card has no hover rule). Disabled while a status write runs (B13). */
+export const RES_PRIMARY_CLASS = `relative z-[1] inline-flex h-8 flex-none cursor-pointer items-center rounded-[8px] border-0 px-3 font-semibold whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-60 ${FLOOR_FOCUS_RING_CLASS}`;
+export const RES_PRIMARY_CARD_CLASS = "text-[12.5px]";
+export const RES_PRIMARY_TABLE_CLASS = "ml-1.5 text-[13px] pointer-fine:hover:opacity-[.88]";
+/** The primary's colours: ink Seat, accent-tint Open order (bg-card on a selected row, which is already that tint, B16),
+ *  surface-3 Book again. */
+export function primaryTone(action: "seat" | "openOrder" | "bookAgain", selected: boolean): string {
+  if (action === "seat") return "bg-ink text-on-ink";
+  if (action === "openOrder") return selected ? "bg-card text-status-info-ink" : "bg-status-info-tint text-status-info-ink";
+  return "bg-surface-3 text-foreground";
+}
+/** A row icon button (values 8.2): 32px, radius 8, hover --surface-3 where a pointer hovers. */
+export const RES_ICON_CLASS = `relative z-[1] flex size-8 flex-none cursor-pointer items-center justify-center rounded-[8px] border-0 bg-transparent p-0 pointer-fine:hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-60 ${FLOOR_FOCUS_RING_CLASS}`;
+export const RES_ICONS_CLASS = "flex items-center justify-end gap-0.5";
+/** "Assign" (values 8.2): a dashed 28px button, no hover rule. */
+export const RES_ASSIGN_CLASS = `relative z-[1] inline-flex h-7 cursor-pointer items-center rounded-[7px] border border-dashed border-subtle-foreground bg-transparent px-[9px] text-[12.5px] font-semibold whitespace-nowrap text-foreground ${FLOOR_FOCUS_RING_CLASS}`;
+/** The status pill (values 8.2 / 8.3 / 10.3): 24px in the table, 22px on a card, 26px in the detail; a 6px dot. */
+export const RES_PILL_SIZE_CLASS = {
+  card: "h-[22px] gap-[5px] px-2 text-[11.5px]",
+  table: "h-6 gap-1.5 px-[9px] text-[12px]",
+  detail: "h-[26px] gap-1.5 px-2.5 text-[12px]",
+} as const;
+/** Completed / Cancelled pills (values 8.4): the HTML's --surface-3 on --text-2 (measured rgb(233,233,236)), not the kit's
+ *  neutral tint (bg-muted, rgb(242,242,244)); the dot keeps the STATUS_CLASSES neutral (--text-3). */
+export const RES_PILL_NEUTRAL_CLASS = "bg-surface-3 text-muted-foreground";

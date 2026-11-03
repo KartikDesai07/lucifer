@@ -68,6 +68,9 @@ const KITCHEN_LINE = cmp("kitchen/KitchenLineCard.tsx");
 const KITCHEN_ORDER = cmp("kitchen/KitchenOrderCard.tsx");
 const RESERVATIONS_TABLE = cmp("reservations/ReservationsTable.tsx");
 const RESERVATION_CARD = cmp("reservations/ReservationRowCard.tsx");
+const RESERVATION_ROW_PARTS = cmp("reservations/ReservationRowParts.tsx");
+const RESERVATIONS_LIST = cmp("reservations/ReservationsList.tsx");
+const RESERVATION_PILL = cmp("reservations/ReservationPill.tsx");
 const EVENTS_TABLE = cmp("events/EventsTable.tsx");
 const EVENT_CARD = cmp("events/EventRowCard.tsx");
 const CUSTOMER_STATUS = cmp("customers/CustomerListStatus.tsx");
@@ -906,9 +909,10 @@ const switchMutations = (bp: Breakpoint, need: SwitchNeed): Mutation[] => {
 
 // U2 Task 4 (2026-10-23): OrderTable left this list on purpose (P15): the owner's HTML switches the Orders list by the
 // list's own width, not the window's (ORDER_LIST_CASE below).
+// U6 Task 2 (2026-11-03): the Reservations page and ReservationsTable left this list on purpose (P7, P8): the owner's HTML
+// switches the list by the list COLUMN's width (a 904px column, B1: `@[904px]/reslist:`), not the window's;
+// lib/reservations-layout.test.ts pins the switch and the grid.
 const SWITCH_SPECS: ReadonlyArray<readonly [string, Breakpoint, SwitchNeed]> = [
-  [RESERVATIONS_PAGE, "lg", { block: false, hidden: true }],
-  [RESERVATIONS_TABLE, "lg", { block: true, hidden: false }],
   [EVENTS_PAGE, "xl", { block: false, hidden: true }],
   [EVENTS_TABLE, "xl", { block: true, hidden: false }],
   [CUSTOMERS_PAGE, "lg", { block: true, hidden: true }],
@@ -1045,6 +1049,9 @@ const constMutations = (name: string, literal: string): Mutation[] => [
   inlineConst(name, literal),
 ];
 
+// U6 Task 2 (2026-11-03): ReservationsTable and ReservationRowCard left PANEL_FILES, ROW_ACTION_FILES and TABLE_CONTAIN_FILES on
+// purpose (P11 - P15): the list card is the HTML's surface, its icon buttons are the HTML's 32px ones (lib/reservations-layout.ts,
+// pinned in lib/reservations-layout.test.ts), no kit <Table> (no inline-size containment: the rows read the list column's @container).
 // U6 Task 1 (2026-11-03): the Reservations page left this list and PANEL_FILES on purpose (P9, P10; design 6): its controls
 // are the HTML's 38px day box, select and search (lib/reservations-layout.ts) and its list card the HTML's surface, not the
 // brand paper panel; lib/reservations-layout.test.ts pins them. The page stays in the copy-hygiene list.
@@ -1074,8 +1081,6 @@ const PANEL_FILES = [
   CUSTOMERS_PAGE,
   STAFF_PAGE,
   ORDER_REQUEST_CARD,
-  RESERVATIONS_TABLE,
-  RESERVATION_CARD,
   EVENTS_TABLE,
   EVENT_CARD,
   CUSTOMER_TABLE,
@@ -1084,10 +1089,8 @@ const PANEL_FILES = [
   STAFF_STATUS,
   STAFF_CARD,
 ];
-const TABLE_CONTAIN_FILES = [RESERVATIONS_TABLE, EVENTS_TABLE, CUSTOMER_TABLE, STAFF_PAGE];
+const TABLE_CONTAIN_FILES = [EVENTS_TABLE, CUSTOMER_TABLE, STAFF_PAGE];
 const ROW_ACTION_FILES = [
-  RESERVATIONS_TABLE,
-  RESERVATION_CARD,
   EVENTS_TABLE,
   EVENT_CARD,
   CUSTOMER_TABLE,
@@ -1178,9 +1181,12 @@ const pinReservationConfirm: Pin = (raw) => {
   );
   check(p, count(s, 'status: "Cancelled"') === 1, 'the Cancelled status write must appear exactly once (inside confirmCancel)');
   check(p, !/setStatus\([^)]*"Cancelled"/.test(s), "no row button may write Cancelled directly through setStatus");
-  check(p, count(s, "onCancel={setCancelling}") === 2, "the table AND the card must open the dialog (onCancel={setCancelling} x2)");
-  check(p, count(s, 'onSeat={(row) => setStatus(row, "Seated")}') === 2, "Seat stays a one-tap action on both table and cards");
-  check(p, count(s, 'onComplete={(row) => setStatus(row, "Completed")}') === 2, "Complete stays a one-tap action on both table and cards");
+  // U6 Task 2: the rows raise ONE intent (`onAction`, P16's needles moved): Cancel opens the dialog, Seat and Complete (and
+  // Restore) stay one tap.
+  check(p, count(s, "onAction={onRowAction}") === 1, "the list raises its intents through onRowAction (the table AND the cards)");
+  check(p, count(s, 'else if (action === "cancel") setCancelling(r);') === 1, "Cancel (table icon and nothing else) must open the dialog");
+  check(p, count(s, 'if (action === "seat") setStatus(r, "Seated");') === 1, "Seat stays a one-tap action");
+  check(p, count(s, 'else if (action === "complete") setStatus(r, "Completed");') === 1, "Complete stays a one-tap action");
   return p;
 };
 
@@ -1218,8 +1224,11 @@ const pinRowsDoNotMutate =
   };
 
 const ROW_INTENT_SPECS: ReadonlyArray<readonly [string, RegExp, string, string]> = [
-  [RESERVATIONS_TABLE, /\bonCancel\(r\)/, "use-reservations", "useUpdateReservation"],
-  [RESERVATION_CARD, /\bonCancel\(r\)/, "use-reservations", "useUpdateReservation"],
+  // U6 Task 2: the rows raise `onOpen(r)` and, through ReservationRowParts, `onAction(r, action)` (P17 kept: no hooks, no mutate).
+  [RESERVATIONS_TABLE, /\bonOpen\(r\)/, "use-reservations", "useUpdateReservation"],
+  [RESERVATION_CARD, /\bonOpen\(r\)/, "use-reservations", "useUpdateReservation"],
+  [RESERVATION_ROW_PARTS, /\bonAction\(r, action\)/, "use-reservations", "useUpdateReservation"],
+  [RESERVATIONS_LIST, /\bonAction=\{onAction\}/, "use-reservations", "useUpdateReservation"],
   [EVENTS_TABLE, /\bonCancel\(e\)/, "use-events", "useUpdateEvent"],
   [EVENT_CARD, /\bonCancel\(e\)/, "use-events", "useUpdateEvent"],
 ];
@@ -1229,11 +1238,11 @@ const CONFIRM_CASES: PinCase[] = [
     file: RESERVATIONS_PAGE,
     pin: pinReservationConfirm,
     mutations: [
-      repEvery("Cancel button calls the mutation directly", "onCancel={setCancelling}", 'onCancel={(row) => setStatus(row, "Cancelled")}'),
+      rep("Cancel calls the mutation directly", 'else if (action === "cancel") setCancelling(r);', 'else if (action === "cancel") setStatus(r, "Cancelled");'),
       rep("the dialog no longer confirms through confirmCancel", "onConfirm={confirmCancel}", "onConfirm={confirmDelete}"),
       rep("the confirm path writes a different status", 'data: { status: "Cancelled" }', 'data: { status: "Completed" }'),
-      repEvery("Seat suddenly asks first", 'onSeat={(row) => setStatus(row, "Seated")}', "onSeat={setCancelling}"),
-      repEvery("Complete suddenly asks first", 'onComplete={(row) => setStatus(row, "Completed")}', "onComplete={setCancelling}"),
+      rep("Seat suddenly asks first", 'if (action === "seat") setStatus(r, "Seated");', 'if (action === "seat") setCancelling(r);'),
+      rep("Complete suddenly asks first", 'else if (action === "complete") setStatus(r, "Completed");', 'else if (action === "complete") setCancelling(r);'),
     ],
   },
   {
@@ -1473,6 +1482,9 @@ const COPY_FILES = [
   KITCHEN_VIEW_LIB,
   RESERVATIONS_TABLE,
   RESERVATION_CARD,
+  RESERVATION_ROW_PARTS,
+  RESERVATIONS_LIST,
+  RESERVATION_PILL,
   EVENTS_TABLE,
   EVENT_CARD,
   CUSTOMER_STATUS,
