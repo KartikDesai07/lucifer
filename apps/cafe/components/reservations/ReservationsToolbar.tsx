@@ -39,11 +39,13 @@ export function ReservationsToolbar({ day, today, onDay, tab, onTab, counts, que
   const [searchOpen, setSearchOpen] = useState(false);
   // The clear ✕ unmounts itself once the search is empty, so it hands the focus back to the input (never body).
   const inputRef = useRef<HTMLInputElement>(null);
-  const typed = query.trim() !== "";
+  // The HTML's qD: the box shows from 720px, while the toggle is open, or while any query exists (a phone keeps filtering by it).
+  const filled = query !== "";
+  const boxShown = searchOpen || filled;
 
   const toggleSearch = () => {
-    if (searchOpen) onQuery("");
-    setSearchOpen((open) => !open);
+    if (boxShown) onQuery("");
+    setSearchOpen(!boxShown);
   };
 
   return (
@@ -62,13 +64,13 @@ export function ReservationsToolbar({ day, today, onDay, tab, onTab, counts, que
         data-ui="reservations-search-toggle"
         title="Search"
         aria-label="Search"
-        aria-expanded={searchOpen}
+        aria-expanded={boxShown}
         onClick={toggleSearch}
-        className={cn(RES_SEARCH_TOGGLE_CLASS, searchOpen || typed ? "border-foreground" : "border-border")}
+        className={cn(RES_SEARCH_TOGGLE_CLASS, boxShown ? "border-foreground" : "border-border")}
       >
         <MagnifierIcon size={16} strokeWidth={1.9} />
       </button>
-      <label data-ui="reservations-search" className={cn(RES_SEARCH_CLASS, !searchOpen && "max-tab:hidden")}>
+      <label data-ui="reservations-search" className={cn(RES_SEARCH_CLASS, !boxShown && "max-tab:hidden")}>
         <span className="flex flex-none text-subtle-foreground">
           <MagnifierIcon />
         </span>
@@ -82,7 +84,7 @@ export function ReservationsToolbar({ day, today, onDay, tab, onTab, counts, que
           autoComplete="off"
           className={RES_SEARCH_INPUT_CLASS}
         />
-        {typed && (
+        {filled && (
           <button
             type="button"
             data-ui="reservations-search-clear"

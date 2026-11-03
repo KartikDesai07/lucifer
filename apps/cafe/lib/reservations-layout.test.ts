@@ -315,3 +315,12 @@ test("the page: one status write instance, the choice settled in the hook, Seat 
   assert.match(seating, /setTarget\(null\);\s*\} catch/, "closes on success; stays open on a failure");
   assert.ok(!/useAreas|areaId/.test(seating + hook), "no areas");
 });
+
+test("review fix: the phone's search box shows while a query exists, and the clear x for any typed text (values 0.3 qD, 9.2)", () => {
+  const bar = read("components/reservations/ReservationsToolbar.tsx");
+  assert.match(bar, /const filled = query !== "";/, "a raw non-empty query counts, whitespace included");
+  assert.match(bar, /const boxShown = searchOpen \|\| filled;/, "the box is shown when the toggle is open or a query exists (qD = !ph || open || q)");
+  assert.match(bar, /!boxShown && "max-tab:hidden"/, "the box hides below 720 only when neither holds");
+  assert.match(bar, /\{filled && \(/, "the clear x is drawn for any non-empty text");
+  assert.match(bar, /if \(boxShown\) onQuery\(""\);/, "the toggle closes and clears a box a query keeps open");
+});
