@@ -279,9 +279,50 @@ const ORDERS_FRAME_CASE: PinCase = {
 // the Kitchen left MenuPageShell (P41 moved on purpose). The owner's HTML Kitchen screen fills the screen under the
 // shell's header like /pos, /orders and /tables (no paper frame, no 1440px cap): its own frame from lib/kitchen-layout.ts,
 // whose classes and markup lib/kitchen-layout.test.ts pins.
+// U6 Task 1 (2026-11-03; Reservations design 5, B2): Reservations left MenuPageShell (P1 moved on purpose), as Orders did.
+// The owner's HTML Reservations screen fills the screen under the shell's header (no paper frame, no 1440px cap): its own
+// frame from lib/reservations-layout.ts, whose classes lib/reservations-layout.test.ts pins. This pin keeps the frame in the
+// page and MenuPageShell out of it.
+const RESERVATIONS_FRAME_OPEN = '<div data-ui="reservations-page" className={RESERVATIONS_PAGE_CLASS}>';
+const RESERVATIONS_FRAME_RETURN_RE = /return \(\s*<div data-ui="reservations-page" className=\{RESERVATIONS_PAGE_CLASS\}>\s*<PageHeader(?![\w$])/;
+const RESERVATIONS_LAYOUT_IMPORT_RE = /import\s*\{[^}]*\bRESERVATIONS_PAGE_CLASS\b[^}]*\}\s*from\s*"@\/lib\/reservations-layout"/;
+const RESERVATIONS_FRAME_REGIONS = [
+  'data-ui="reservations-body" className={RES_BODY_CLASS}',
+  'data-ui="reservations-list" className={RES_LIST_COLUMN_CLASS}',
+  'data-ui="reservations-detail-column" className={RES_DETAIL_COLUMN_CLASS}',
+];
+
+const pinReservationsFrame: Pin = (raw) => {
+  const p: string[] = [];
+  const s = strip(raw);
+  check(p, !/\bMenuPageShell\b/.test(s), "Reservations must not use MenuPageShell (design 5: the HTML's screen fills the screen, no 1440px cap)");
+  check(p, RESERVATIONS_LAYOUT_IMPORT_RE.test(s), 'must import RESERVATIONS_PAGE_CLASS from "@/lib/reservations-layout"');
+  const body = bodyAfter(s, "export default function");
+  check(p, body !== null, "landmark: a default-exported page function must exist");
+  if (body === null) return p;
+  check(p, RESERVATIONS_FRAME_RETURN_RE.test(body), "the default export must return the frame (reservations-page, RESERVATIONS_PAGE_CLASS) with <PageHeader> as its first child");
+  for (const region of RESERVATIONS_FRAME_REGIONS) check(p, body.includes(region), `the frame must render ${region}`);
+  return p;
+};
+
+const RESERVATIONS_FRAME_CASE: PinCase = {
+  file: RESERVATIONS_PAGE,
+  pin: pinReservationsFrame,
+  mutations: [
+    rep("wrap the frame in MenuPageShell again", RESERVATIONS_FRAME_OPEN, `<MenuPageShell>${RESERVATIONS_FRAME_OPEN}`),
+    { name: "the MenuPageShell import comes back", apply: (src) => `${SHELL_IMPORT_LINE}
+${src}` },
+    rep("drop the page's frame class", "className={RESERVATIONS_PAGE_CLASS}", 'className="flex flex-col"'),
+    rep("a body row before the header (PageHeader no longer the frame's first child)", RESERVATIONS_FRAME_OPEN, `${RESERVATIONS_FRAME_OPEN}
+      <div />`),
+    rep("the body grid's class swapped for a literal", "className={RES_BODY_CLASS}", 'className="grid"'),
+    rep("drop the detail column slot's name", 'data-ui="reservations-detail-column" ', ""),
+    rep("the frame's classes imported from elsewhere", 'from "@/lib/reservations-layout"', 'from "@/lib/pos-layout"'),
+  ],
+};
+
 const SHELL_PAGES: ReadonlyArray<readonly [string, boolean]> = [
   [REQUESTS_PAGE, false],
-  [RESERVATIONS_PAGE, false],
   [CUSTOMERS_PAGE, false],
   [EVENTS_PAGE, false],
 ];
@@ -289,6 +330,7 @@ const SHELL_PAGES: ReadonlyArray<readonly [string, boolean]> = [
 const SHELL_CASES: PinCase[] = [
   ...SHELL_PAGES.map(([file, wide]): PinCase => ({ file, pin: pinPageShell(wide), mutations: shellMutations(wide) })),
   ORDERS_FRAME_CASE,
+  RESERVATIONS_FRAME_CASE,
   {
     file: STAFF_PAGE,
     pin: pinStaffShell,
@@ -433,6 +475,11 @@ const ORDERS_RETURN_OPEN: ReturnOpen = {
   re: /return \(\s*<div data-ui="orders-page" className=\{ORDERS_PAGE_CLASS\}>\s*<PageHeader/,
   head: '<div data-ui="orders-page" className={ORDERS_PAGE_CLASS}>',
 };
+/** U6 Task 1: the Reservations frame, the header first inside it (lib/reservations-layout.test.ts). */
+const RESERVATIONS_RETURN_OPEN: ReturnOpen = {
+  re: /return \(\s*<div data-ui="reservations-page" className=\{RESERVATIONS_PAGE_CLASS\}>\s*<PageHeader/,
+  head: '<div data-ui="reservations-page" className={RESERVATIONS_PAGE_CLASS}>',
+};
 /** U4 Task 1: the Kitchen's frame, the header first inside the board (lib/kitchen-layout.test.ts). U4 Task 2: the
  *  refresh strip is the page's first child, above the board (Kitchen design 6.2). */
 const KITCHEN_RETURN_OPEN: ReturnOpen = {
@@ -543,7 +590,7 @@ const ERROR_CASES: PinCase[] = [
       ...RETRY_MUTATIONS,
       rep("drop the `=== undefined` guard", "reservations.isError && reservations.data === undefined", "reservations.isError"),
       rep("rename `undefined` in the guard (substring trap)", "reservations.data === undefined ?", "reservations.data === undefinedX ?"),
-      earlyReturn("<ErrorState />"),
+      earlyReturn("<ErrorState />", RESERVATIONS_RETURN_OPEN),
     ],
   },
   {
@@ -667,7 +714,8 @@ const OFFLINE_CASES: PinCase[] = [
   // U2 Task 2 (owner Q2, Q3): the empty state reads the rows the chosen lane shows (`shown`, laneRows of the loaded
   // `list`), so a Paid / Due page with no row of its own is empty; same pin, the branch head moved with the code.
   offlineTernaryCase(ORDERS_PAGE, "orders", "shown.length === 0", "!orders.data"),
-  offlineTernaryCase(RESERVATIONS_PAGE, "reservations", "list.length === 0 && isFiltered", "reservations.data === undefined"),
+  // U6 Task 1 (design 6.5): the empty box is the HTML's, drawn when the shown rows are none (state.rows); same pin, the branch head moved with the code.
+  offlineTernaryCase(RESERVATIONS_PAGE, "reservations", "state.rows.length === 0", "reservations.data === undefined"),
   offlineTernaryCase(EVENTS_PAGE, "events", "list.length === 0 && status !== ALL", "events.data === undefined"),
   {
     file: REQUESTS_PAGE,
@@ -773,21 +821,6 @@ const FILTER_EMPTY_CASES: PinCase[] = [
       rep("the words never know about filters", "                          filtersOn,", "                          filtersOn: false,"),
       rep("the way back shows over a search's words", "filtersOn && !searching ?", "filtersOn ?"),
       repRe("the way back never shows", /emptyAction=\{\s*filtersOn && !searching \?/, "emptyAction={false ?"),
-    ],
-  },
-  {
-    file: RESERVATIONS_PAGE,
-    pin: pinFilterEmpty({
-      titles: ["No reservations match"],
-      label: "Clear filters",
-      handler: "onClick={clearFilters}",
-      branch: { cond: "list.length === 0 && isFiltered", before: 'title="No reservations"' },
-    }),
-    mutations: [
-      rep('rename "Clear filters"', "Clear filters", "Reset"),
-      rep("unwire the handler", "onClick={clearFilters}", "onClick={undefined}"),
-      rep("rename the title", 'title="No reservations match"', 'title="No matches"'),
-      rep("rename the branch condition (substring trap)", "list.length === 0 && isFiltered", "list.length === 0 && isFilteredX"),
     ],
   },
   {
@@ -1012,10 +1045,12 @@ const constMutations = (name: string, literal: string): Mutation[] => [
   inlineConst(name, literal),
 ];
 
+// U6 Task 1 (2026-11-03): the Reservations page left this list and PANEL_FILES on purpose (P9, P10; design 6): its controls
+// are the HTML's 38px day box, select and search (lib/reservations-layout.ts) and its list card the HTML's surface, not the
+// brand paper panel; lib/reservations-layout.test.ts pins them. The page stays in the copy-hygiene list.
 const CONTROL_FILES = [
   ORDERS_PAGE,
   REQUESTS_PAGE,
-  RESERVATIONS_PAGE,
   CUSTOMERS_PAGE,
   EVENTS_PAGE,
   STAFF_PAGE,
@@ -1035,7 +1070,6 @@ const CONTROL_FILES = [
 // ticket card (--surface, 1px --border or --bad when late, radius 12; values 4.1), not the brand paper panel;
 // lib/kitchen-view.test.ts pins its frame from lib/kitchen-layout.ts. It stays in the copy-hygiene list (P50).
 const PANEL_FILES = [
-  RESERVATIONS_PAGE,
   EVENTS_PAGE,
   CUSTOMERS_PAGE,
   STAFF_PAGE,
@@ -1471,7 +1505,7 @@ interface Group {
 const GROUPS: Group[] = [
   {
     title:
-      "PIN D1: every page renders inside MenuPageShell (Staff guard outside) and the shell takes `wide`; Orders fills the screen in its own frame (U2), the Kitchen in its own (U4, lib/kitchen-layout.test.ts)",
+      "PIN D1: every page renders inside MenuPageShell (Staff guard outside) and the shell takes `wide`; Orders fills the screen in its own frame (U2), Reservations too (U6, lib/reservations-layout.test.ts), the Kitchen in its own (U4, lib/kitchen-layout.test.ts)",
     cases: SHELL_CASES,
   },
   { title: "PIN D2: PageHeader carries the sidebar-group eyebrow and the sidebar-row title", cases: HEADER_CASES },

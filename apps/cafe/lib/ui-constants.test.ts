@@ -11,6 +11,7 @@ import {
   PAYMENT_KIND,
   PIN_KEY_CLASS,
   RESERVATION_KIND,
+  RESERVATION_PILL_KIND,
   STATUS_CLASSES,
   TABLE_KIND,
   avatarHueIndex,
@@ -67,6 +68,12 @@ test("payment, channel, table and reservation maps", () => {
     RESERVATION_KIND,
     { Booked: "info", Seated: "ok", Completed: "neutral", Cancelled: "bad" },
     "reservation kinds",
+  );
+  // U6 Task 1 (B15): the Reservations page's pills, with Late; the dashboard's map above is untouched.
+  assert.deepEqual(
+    RESERVATION_PILL_KIND,
+    { Booked: "reserved", Late: "warn", Seated: "ok", Completed: "neutral", Cancelled: "neutral" },
+    "reservation pill kinds",
   );
   // U0 match Task 10: the HTML's keyH (values 4.4): 62px on a phone, 60px from 720px; one class for both.
   assert.equal(PIN_KEY_CLASS, "h-[62px] tab:h-[60px]", "the sign-in pad's key height");

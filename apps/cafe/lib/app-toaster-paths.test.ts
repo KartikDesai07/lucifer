@@ -95,10 +95,12 @@ test("PIN: owner Q19 — on /pos the toast clears the order bar and the sheet's 
   assert.match(src, /import \{ isKitchenPath \} from "@\/lib\/kitchen-layout";/, "and through isKitchenPath");
   // U5 Task 1 (moved on purpose, Menu design 6.6): /products and /categories take the /tables set too.
   assert.match(src, /import \{ isMenuPagePath \} from "@\/lib\/menu-layout";/, "and the Menu routes through isMenuPagePath");
+  // U6 Task 1 (moved on purpose, Reservations design B8; P35): /reservations takes the inset set too.
+  assert.match(src, /import \{ isReservationsPath \} from "@\/lib\/reservations-layout";/, "and /reservations through isReservationsPath");
   assert.match(
     src,
-    /if \(isPosPath\(pathname\)\) return POS_TOASTER_PROPS;\s*return isFloorPath\(pathname\) \|\| isKitchenPath\(pathname\) \|\| isMenuPagePath\(pathname\) \? FLOOR_TOASTER_PROPS : STAFF_TOASTER_PROPS;/,
-    "the three-way choice: /pos, the inset set (/tables, /kitchen, the Menu), every other staff page",
+    /if \(isPosPath\(pathname\)\) return POS_TOASTER_PROPS;\s*return isFloorPath\(pathname\) \|\| isKitchenPath\(pathname\) \|\| isMenuPagePath\(pathname\) \|\| isReservationsPath\(pathname\)\s*\? FLOOR_TOASTER_PROPS\s*: STAFF_TOASTER_PROPS;/,
+    "the three-way choice: /pos, the inset set (/tables, /kitchen, the Menu, /reservations), every other staff page",
   );
   assert.equal(count(src, "<Toaster {...toasterPropsFor(pathname)} />"), 1, "one Toaster element for all three (a navigation only changes its offset, no remount)");
   assert.equal(count(src, "<Toaster"), 2, "landmark: that element and the diner menu's");
@@ -125,6 +127,8 @@ test("PIN: /tables and /kitchen get the staff toaster with each offset plus the 
   assert.equal(toasterPropsFor("/tables/"), FLOOR_TOASTER_PROPS, "/tables/: the Floor's set");
   assert.equal(toasterPropsFor("/kitchen"), FLOOR_TOASTER_PROPS, "/kitchen: the same inset set (Kitchen design 6.6)");
   assert.equal(toasterPropsFor("/kitchen/"), FLOOR_TOASTER_PROPS, "/kitchen/: the same inset set");
+  assert.equal(toasterPropsFor("/reservations"), FLOOR_TOASTER_PROPS, "/reservations: the same inset set (Reservations design B8)");
+  assert.equal(toasterPropsFor("/reservations/"), FLOOR_TOASTER_PROPS, "/reservations/: the same inset set");
   assert.equal(toasterPropsFor("/pos"), POS_TOASTER_PROPS, "/pos keeps its own set (owner Q19, P49, P56)");
   for (const p of ["/", "/orders", "/tables/setup", "/tables/qr", "/customers", "/requests", "/kitchenx", "/settings/kitchen-ticket", "/now-serving"]) {
     assert.equal(toasterPropsFor(p), STAFF_TOASTER_PROPS, `${p} keeps the staff set`);

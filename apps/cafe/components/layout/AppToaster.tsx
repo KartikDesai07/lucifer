@@ -8,6 +8,7 @@ import { isFloorPath } from "@/lib/floor-layout";
 import { isKitchenPath } from "@/lib/kitchen-layout";
 import { isMenuPagePath } from "@/lib/menu-layout";
 import { isPosPath } from "@/lib/pos-layout";
+import { isReservationsPath } from "@/lib/reservations-layout";
 
 // The one toaster, mounted by the root layout (U0 Task 4, ruling R8). The staff screens get the owner's HTML toast
 // (values 2.8; design 5.4); the diner menu (/m) keeps exactly its previous toast — the kit Toaster, whose look comes
@@ -75,7 +76,9 @@ export const FLOOR_TOASTER_PROPS: ComponentProps<typeof Toaster> = {
 /** A staff page's toaster props: /pos's, the inset set (the Floor and the Kitchen), or the staff set. */
 export function toasterPropsFor(pathname: string): ComponentProps<typeof Toaster> {
   if (isPosPath(pathname)) return POS_TOASTER_PROPS;
-  return isFloorPath(pathname) || isKitchenPath(pathname) || isMenuPagePath(pathname) ? FLOOR_TOASTER_PROPS : STAFF_TOASTER_PROPS;
+  return isFloorPath(pathname) || isKitchenPath(pathname) || isMenuPagePath(pathname) || isReservationsPath(pathname)
+    ? FLOOR_TOASTER_PROPS
+    : STAFF_TOASTER_PROPS;
 }
 
 export function AppToaster() {
