@@ -609,3 +609,141 @@ today's (the counting proxy and the S1 bytes).
   and round-label sentences), TEST-CHECKLIST "Phase 5 checks (offline KOTs)" (spec §9 item 6), `go-live-runbook.test.ts`
   pins for both (and the 20-second wording's new sentence).
 - **Task 25: Verification, the final fresh review of `96520d6..HEAD`, the Results;** then the owner's merge OK.
+
+---
+
+# Session 5A Results (2026-11-04)
+
+Run on `feat/printing-phase-5` from the plan commit 1608983 (main 96520d6 = origin/main, fetched at the start: not moved).
+Not pushed, not merged. Nothing a cafe sees changes: no page sends the field and no page module imports the new files.
+
+## Commits
+
+| Commit | Task |
+|---|---|
+| 1cf2564 | Task 1 the offline round field (shared) |
+| ea0f27a | Task 2 jobs from an offline round: printed, REPRINT, no token; live leg BH |
+| c139f95 | Task 3 the replay CAS, `offlineReplay`, `?stations=1`; live leg BI |
+| 09cf206 | Task 4 the offline state (+ [shared] `ApiError.enveloped`) |
+| abf1e46 | Task 5 the outbox |
+| 18e35c9 | Task 6 the offline KOT and its lines |
+| c753e7a | Task 7 the calm pulse's cadence (+ [shared] `POS_PULSE_CALM`) |
+| 406786c | the review's fix wave (I1, I2, m4) |
+| (this) | docs: these Results |
+
+Tasks 1–3 were built by the session itself; Tasks 4, 5, 7 (one implementer) and 6 (another) were written by implementers
+told the plan's task text and Global Constraints (no servers, no network, no git writes), then reviewed line by line and
+committed one per task; the changes made at that review are listed per task.
+
+## RED → GREEN per task
+
+| Task | RED (seen first) | GREEN |
+|---|---|---|
+| 1 | `offline-kot.test.ts`: module not found | 7 new shared tests (the two order-schema tests live here: `order.schema.test.ts` is already 374 lines) |
+| 2 | `print-offline-jobs.test.ts`: module not found, then the route pins; `print-lifecycle-offline.test.ts`: no export; the token test failed with `slip-numbers.ts` stashed | 13 cafe + 2 shared; BH 15/15 — and BH with every verdict forced to "new" failed 7 of its checks |
+| 3 | `print-offline-replay.test.ts`: no export (6 fail); `planOfflinePrinted`: no export | 6 cafe + 1 shared; BI 11/11 — and BI with the CAS returning 0 and a pass-through answer failed 6 |
+| 4 | module not found; `enveloped` undefined | 6 + 1 shared; at review, a reached write or pulse resets the whole state (test changed first: RED 1, then GREEN) |
+| 5 | module not found | 13; at review, `.bad-<ms>` (RED 1 → GREEN) and `offlineRoundsOf` counts rounds only (RED 1 → GREEN) |
+| 6 | modules not found | 14; at review, `offlineLineSlip` (RED 1 → GREEN) and a round keeps its tab's `createdAt` (RED 1 → GREEN) |
+| 7 | module not found | 9 |
+| fix wave | 3 RED (I1, I2, m4) | 3 GREEN |
+
+## Counts (before at 1608983 → after)
+
+| Suite | Before | After the 7 tasks (c753e7a) | After the fix wave |
+|---|---|---|---|
+| cafe `npm test` (chain) | 7413 / 7412 pass / 0 fail / 1 skip | 7474 / 7473 / 0 / 1 | 7477 / 7476 / 0 / 1 |
+| cafe typecheck | 0 | 0 | 0 |
+| lint (`npx eslint .`) | 0 errors, 2 warnings | 0 errors, the same 2 warnings | 0 errors, the same 2 warnings |
+| shared `npm test` | 1051 | 1062 | 1062 |
+| shared typecheck | 0 | 0 | 0 |
+| live legs (`verify:print:live`) | 473 / 0 (`pos_scratch_print_host_5a`) | 499 / 0 (`pos_scratch_print_host_5a2`) | 499 / 0 (`pos_scratch_print_host_5a3`) |
+
+Scope at c753e7a: `git diff 96520d6..HEAD --stat -- apps/mobile apps/desktop workers` empty; `packages/shared/src/print-budget*`
+empty; `apps/cafe/components` and `apps/cafe/lib/printer` empty (no slip file; the S1 43-file pin green); the grep for the new
+page modules under `apps/cafe/{app,components,hooks}` empty. Every new code file ≤ 300 lines (`print-order-jobs.ts` is at 300).
+
+## Differences from the plan, and why
+
+1. **`offlineAskOf` lives in `lib/print-offline-replay.ts`**, not `print-offline-jobs.ts`: job creation imports
+   `print-offline-jobs.ts`, and `offlineAskOf` needs `printIntentOf` from `print-order-jobs.ts`; one file each way avoids an
+   import cycle. `print-offline-replay.ts` also holds `offlineSlipsUnmade` (the 503) and `offlineReplayAnswer`.
+2. **The replay runs the CAS before `ensureOfflineRoundJobs`** (the plan said ensure, then CAS): the answer's jobs then say
+   each row's real state (with ensure first, a collided row reads "queued" and the CAS then moves it, so the answer would
+   name a printed job as queued), and a row moved to printed no longer holds its printer's line for the direct lease. Both
+   orders converge on the same rows.
+3. **`markOfflineRoundPrinted` throws a DB error** (the plan said "never throws"): the replay then answers 503 and the
+   device sends again. A swallowed error would let an untried queued job of a line printed offline print again,
+   unlabelled (S3).
+4. **Every 200 replay answer to a request with the field** goes through `offlineReplayAnswer`, the twins' late replays
+   too (the create route's `lateReplay`, the items route's new `lateRound`), so no answer from this server lacks the echo
+   (m4). The replay answer carries `printJobs` (a job made leased to the asking tab must be named, or it waits for its lease
+   to expire).
+5. **Coverage rules beyond the plan's list** (all pinned): simple mode's whole ticket (`"-"`) printed or maybe covers every
+   station line and every full copy; any line printed or maybe makes a server simple-mode ticket a REPRINT; a full copy
+   printed or maybe on another printer makes a server full copy a REPRINT (the review's I1). A full copy stays its own
+   paper after station lines (the plan's test). A setup switched during an outage never prints unlabelled twice.
+6. **`offlineLineSlip(line, ref, todayKey)`** (Task 6, new): each printers-mode line prints its own routed station slip
+   through `hostPrintSlipOf` (spec §5.4), with the banner and no number box; `offlineKotSlip` alone would print the
+   whole round on every station's printer. Simple mode's one line gives today's round KOT.
+7. **`offlineKotOrder` keeps the tab's `createdAt` for a round** (every KOT prints `order.createdAt` as its Time; an
+   online round's KOT prints the tab's open time). A new order is taken now.
+8. **`offlineRoundsOf` counts rounds only** (the create is round 1 of the order the next round is built on), so
+   `offlineRoundOf(base, offlineRoundsOf(record, local))` numbers the next round as the server will for a server tab and for
+   an order made offline alike.
+9. **`nextOfflineState`: any answer that reached us resets the whole state** (a pulse miss, then a write that reached
+   us, then a miss is not "two in a row").
+10. **`outboxBadKey` = `pos.offline-outbox.v1.bad-<ms>`** (the Global Constraints).
+11. **The lifecycle tests are in `print-lifecycle-offline.test.ts`** (`print-lifecycle.test.ts` is 407 lines).
+12. **Pins changed on purpose** (each with its reason in its commit): the opening slip draw call (order-availability-paths,
+    skip-kot-paths, write-route-paths), `createOrderPrintJobs`' catch / first slip / insert spread (print-order-jobs.test,
+    print-printer-jobs.test), the `kotPrintDevices` pins, the replay / late replay needles (order-availability-paths,
+    write-route-paths, reward-card-paths), the opening-slip sites (print-token-jobs: + `print-offline-replay.ts`), and the
+    create route's line cap (reward-points-paths: 627 → 635; the route grew 624 → 634 lines, the plan's "about ten").
+
+## The review (Claude Fable 5.1, read-only, no HTTP 429)
+
+Range 1608983..c753e7a, against this plan and the spec. Verdict **"With fixes"**: 0 Critical; online behaviour traced
+line by line and found unchanged without the field; S3/S4 guarded on every path traced; rulings 1–12 and 14 of the ledger
+agreed, ruling 13 "mildly disagree".
+
+| Finding | Ruling |
+|---|---|
+| I1 a full copy printed offline did not cover a server full copy on another printer (the pass printer moved) | **Fixed** test first (406786c): REPRINT; two full-copy printers by design stay new (the device names both) |
+| I2 an entry left "sending" by a page that died was never sent again | **Fixed**: `resumeSending(record)`; 5B's runner applies it when it takes the lock, before `nextSendable` |
+| m1 a "maybe" line's untried queued job on a replay prints unlabelled | **Not taken in 5A** — spec §5.9 moves only printed lines and a relabel needs a log event the lifecycle has not got; open for the orchestrator / owner (the case is spec §5.7's warned one: the OFFLINE copy is the labelled paper) |
+| m2 `takenAtKept: false` on a half-way send's replay is a misleading note | 5B: no taken-time note for an `uncertain` entry |
+| m3 `OFFLINE_LINES_MAX` 24 is below what the setup caps allow | Kept (the plan's constant; real cafes route ≤ 6 lines); 5B refuses an offline send whose plan has more lines, before any paper |
+| m4 `addEntry` kept a duplicate key | **Fixed**: `{ ok: false, reason: "duplicate" }` |
+| m5 `offlineAskOf` re-reads the headers | Stands (the plan's interface; pure header reads) |
+| m6 two spellings of "has the field" in the create route | Stands (equivalent by the 400; changing it re-touches three pinned call texts) |
+| m7 the plan is stale for 5B in places | The 5B amendments below and the 5B prompt |
+| m8 the route-level offline answers are pinned by source only | 5C Task 20 drives them over HTTP on fake printers |
+| Ruling 13: a round on an order made offline prints its own O-n in the Order row | **The owner's call** (it is the paper): the reviewer recommends the create's O-n (the banner keeps the round's own); one line and one assertion |
+
+Re-check of the fix wave (406786c) by the same reviewer: I1, I2 and m4 **ADDRESSED**, no new breakage, none of the
+rulings above unsafe; verdict **"Ready to merge: Yes"** for 5A's range, with two notes for 5B (both in the amendments
+below): `resumeSending` under the lock before `nextSendable`, and `addEntry`'s "duplicate" handled as "already kept".
+
+## 5B amendments (where 5A's interfaces moved; the 5B prompt carries them)
+
+- Task 11 prints each `here` line with `offlineLineSlip(line, ref, cafeDateString())` × `line.copies` (not
+  `offlineKotSlip`); an offline send whose plan has more than `OFFLINE_LINES_MAX` lines is refused before any paper; a
+  `takeOfflineRef` throw (past O-9999) must not crash the page; `addEntry`'s "duplicate" means "already kept" (no second
+  paper, no second toast), never a storage failure.
+- Task 13: under the lock, `resumeSending` first, then `nextSendable`; the replay answer carries `printJobs` (follow
+  them) and `offline: { ref, takenAtKept }` (strip it before any cache; no taken-time note for an `uncertain` entry); our
+  503 (`Saved; its slips are not made yet.`, or a replay that could not finish) is unreached: back off a pulse tick.
+- Task 10 / 14: `offlineRoundOf(base, offlineRoundsOf(record, local))` — for an order made offline, `base` is its create's
+  offline order (kotRounds 1); Open tabs shows a new offline order's total from its entry's `shownTotal` (its order object
+  carries placeholder money).
+- `nextOfflineState` ends offline on any reached answer (pulse, write or check).
+- The server: `offlineAskOf`, `offlineSlipsUnmade`, `offlineReplayAnswer`, `markOfflineRoundPrinted` (throws),
+  `ensureOfflineRoundJobs` in `lib/print-offline-replay.ts`; `offlineKeptAt`, `withOfflineEcho`, `offlineInsertOf`,
+  `offlineDetailOf`, `offlineTakenAtKept`, `offlineLineOfJobKey` beside the plan's names in `lib/print-offline-jobs.ts`.
+
+## Scratch databases
+
+Every live run of this session dropped its own database (the runner drops at its start and end): `pos_scratch_print_host_5a`,
+`_5a_t2`, `_5a_red`, `_5a_t3`, `_5a_t3b`, `_5a_red2`, `_5a_t3c`, `_5a2`, `_5a3`. None of them is left (checked). The design session's `pos_scratch_e2e_4g_p5m`
+is still there: its drop was refused by this PC's permission system again (the owner may drop it).
