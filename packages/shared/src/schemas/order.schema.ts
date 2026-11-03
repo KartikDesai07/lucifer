@@ -17,6 +17,7 @@ import { tableNoSchema } from "./table.schema";
 import { objectIdString } from "./object-id.schema";
 import { extraChargesSchema } from "./order-charge.schema";
 import { hasRepeatedModifier, REPEATED_MODIFIER_MESSAGE } from "../modifier-prices";
+import { offlineRoundSchema } from "../offline-kot";
 
 export const orderItemSchema = z.object({
   productId: objectIdString,
@@ -113,6 +114,9 @@ const orderObject = z.object({
   // undeclared key is silently stripped and the route's replay would be dead.
   // Optional: a keyless (older) client creates exactly as before.
   idemKey: idemKeySchema.optional(),
+  // Printing Phase 5 — a round taken offline (../offline-kot.ts). Declared, not tolerated: this object is NOT
+  // .strict(), so an undeclared field would be stripped and every line printed offline would print again.
+  offline: offlineRoundSchema.optional(),
 });
 
 // Due/Credit are unpaid-at-counter sales, so a customer must be attached for the
@@ -191,6 +195,8 @@ export const addItemsSchema = z
     extraCharges: extraChargesSchema.optional(),
     // F5 — see `idemKeySchema`; the round's own key (kotIdemKeys[round-1]).
     idemKey: idemKeySchema.optional(),
+    // Printing Phase 5 — a round taken offline (../offline-kot.ts).
+    offline: offlineRoundSchema.optional(),
   })
   .strict();
 
