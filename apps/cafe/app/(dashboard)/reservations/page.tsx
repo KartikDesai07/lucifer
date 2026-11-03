@@ -106,6 +106,7 @@ export default function ReservationsPage() {
     try {
       await deleteReservation.mutateAsync(deleting._id);
       setDeleting(null);
+      setFormOpen(false);
     } catch {
       // hook toasts on error
     }
@@ -215,7 +216,19 @@ export default function ReservationsPage() {
         onClose={seating.close}
       />
 
-      <ReservationFormSheet open={formOpen} onOpenChange={setFormOpen} reservation={editing} prefill={prefill ?? undefined} />
+      <ReservationFormSheet
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        reservation={editing}
+        prefill={prefill ?? undefined}
+        list={state.list}
+        tables={state.tables}
+        today={state.today}
+        nowMs={state.nowMs}
+        shownDay={state.shownDay}
+        onCreated={state.reveal}
+        onDelete={setDeleting}
+      />
 
       <ConfirmDialog
         open={!!cancelling}

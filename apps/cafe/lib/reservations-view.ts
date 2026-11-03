@@ -134,7 +134,7 @@ export function pillOf(r: Reservation, nowMs: number, today: string): ResPill {
 // ── Search, the list, the counts ────────────────────────────────────────────────────────────────────────────────────
 
 const compact = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-const digitsOf = (s: string): string => s.replace(/\D/g, "");
+export const digitsOf = (s: string): string => s.replace(/\D/g, "");
 const MIN_SEARCH_DIGITS = 3;
 
 /** values 9.3 / 19.1: the name or the table contains the query; the table also with "-" and spaces ignored ("T5" finds

@@ -69,9 +69,11 @@ const readSrc = (rel: string): string => stripComments(readFileSync(path.join(RE
 // U6 Task 1 (2026-11-03, owner Q7; P21 moved on purpose for the page, its ReservationFormSheet.tsx half stays): the
 // Reservations page left this list as Orders did — its day box is the kit Popover + Calendar with an All dates row
 // (components/reservations/ReservationsDayBox.tsx); the pin below keeps the meaning.
+// U6 Task 4 (2026-11-03): the form's "More" DatePicker moved with the look into ReservationDayTimeFields.tsx (the form's
+// file split, B25); the pin follows it with the same meaning (DatePicker, never a native type=date).
 const DATE_PICKER_CALL_SITES = [
   "apps/cafe/components/events/EventFormSheet.tsx",
-  "apps/cafe/components/reservations/ReservationFormSheet.tsx",
+  "apps/cafe/components/reservations/ReservationDayTimeFields.tsx",
   "apps/cafe/components/reports/EndOfDayButton.tsx",
 ];
 

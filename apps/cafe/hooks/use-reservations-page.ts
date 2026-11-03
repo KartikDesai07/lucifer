@@ -68,6 +68,17 @@ export function useReservationsPage() {
     [edited],
   );
 
+  // After a create (B20): that booking's day, the Upcoming tab, the search cleared: one edit for the chosen booking's key.
+  const reveal = useCallback(
+    (next: string) => {
+      setDayState(next === today ? null : next);
+      setTabState("upcoming");
+      setQueryState("");
+      edited();
+    },
+    [today, edited],
+  );
+
   const data = status.data;
   const list = data ?? NO_BOOKINGS;
   const shownDay: string | "all" = day === "all" ? "all" : resolveDay(day, today);
@@ -78,5 +89,5 @@ export function useReservationsPage() {
     [data, day, query, nowMs, today],
   );
 
-  return { list, tables: tables.data, status, day, setDay, tab, setTab, query, setQuery, rows, counts, header, nowMs, today, filterEdits };
+  return { list, tables: tables.data, status, day, shownDay, setDay, tab, setTab, query, setQuery, reveal, rows, counts, header, nowMs, today, filterEdits };
 }
