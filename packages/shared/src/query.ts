@@ -58,6 +58,7 @@ export const REFETCH_INTERVALS = {
   // beat as the floor, so every device converges on the true tab state.
   LIVE_LISTS: 30 * 1000,
   POS_PULSE: 20 * 1000, // CR2.3 staff-attention pulse (open requests + self-orders)
+  POS_PULSE_CALM: 60 * 1000, // Printing Phase 5 (spec 5.11): the calm pulse while nothing is going on
   KITCHEN: 10 * 1000, // P4-A kitchen board — fired-line poll
 } as const;
 
