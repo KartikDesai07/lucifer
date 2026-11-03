@@ -133,4 +133,56 @@
 
 ## Results
 
-(filled at the end: tasks, rulings, verification numbers, owner notes)
+**U6 done on `feat/ui-reservations`** (TURBO, one session 2026-11-02 23:45 → 2026-11-03). Docs 657735c (values +
+APPROVED design), 36fc091 (plan). Code: Task 1 fd47dba + fix 777f5be; Task 2 98f62d0 + fix bddee14; Task 3 4ab1527;
+Task 4 3a0c3f1 + fix d5e4fa4; final fix wave 412b9ff; verification fixes 597474b (V2-5 the Edit form's focus, V2-3 the select never clips) and
+654b6cf (U15 the cards wrapper keyed on the view for WebView 109's tree, V1-1 the dimmed chip's contrast); origin/main (the
+owner's priced add-ons) merged in at 21df25c. Ledger (rulings U1–U13, every
+minor): `.superpowers/sdd/2026-11-03-reservations-match-html/progress.md` (copied to
+`D:\kd\pos-dev-keep\ui-redesign\reviews\u6\`).
+
+- **The owner's decisions** (design §4, every one the recommended option): Q1 the HTML's table picker for Seat (+ "Seat
+  without a table", + Assign); Q2 half-hour chips + Other time; Q3 a conflict warning, Save never blocked; Q4 Book again,
+  Restore, Open order; Q5 names never cut; Q6 clearing a booking's table (the update schema accepts `tableNo: null`, the
+  item route `$unset`s it — the only packages/* + api change); Q7 "All dates" in the day box's calendar.
+- **Reviews:** one sonnet reviewer per task (all Spec ✅; one fix round each: T1 the phone search box with a query, T2
+  Ruling U5's one-icon Seated row, T4 the form's HTML-side compare + bestFits with no guest count); Claude Fable 5.1
+  whole-branch review on 3a0c3f1 "With fixes" 0 C / 1 I / 11 M (I1 the form chips' 90-min "Occupied now" rule; M1 a test
+  file over 300 lines) → one fix wave 412b9ff (I1, M1, M2, M4, M5, M6, M9, M11) → Fable scoped re-review "Ready to
+  merge: Yes".
+- **Verification:** V-1 desktop on the build of 412b9ff (:3140): 0 DEFECT, 0 request differences beyond Q1 / Q4 / Q6 —
+  suites, 8 live legs (menu 51, dashboard 171, print 473, slips 86, bootstrap 35, orders:idem 35, money 59, staff-pin 49,
+  0 FAIL), the paper (S1 16/16), every probe at five viewports (each row = an accepted row; U0 shell 0 differences), 72
+  side-by-side pairs (`D:\kd\pos-dev-keep\ui-redesign\match\reservations\final\shots\index.html`), a11y 0 in 28 / 30
+  states (V1-1 fixed, V1-2 pre-existing), fit + inset at 11 viewports, every write flow for real at 1280 + 390 (one write +
+  one list GET per press, print 0, bookings back to 30). V-2 emulator: WebView 109 checks 1–6 PASS, 154 first screens +
+  inset PASS; its V2-1 (109's tree drops cards on a view change), V2-3, V2-5 fixed (597474b, 654b6cf; V2-1 by the measured
+  variant B, ruling U15). Smoke S-D on 654b6cf PASS 5 / 5; smoke S-E on a fresh emulator, WebView 109, PASS 3 / 3
+  (every card in the tree in every state: All dates 17 / 17, a search and its clear 3 / 3; the select's label whole; Edit
+  focuses Mobile number). Suites on the merged head 21df25c: chain 7413 / 7412 pass / 0 fail / 1 skip, typecheck 0,
+  eslint 0 errors, shared 1051; `next build` rc 0 (BUILD_ID LonyktVErmUhiGX9uOzQ1, served on :3140).
+- **Requests:** idle /reservations 240 s BASE (main e44723b) = pulse 12 + /api/tables 8 + the shell's 6 one-time warm
+  GETs; NEW on 654b6cf = BASE exactly. The list is read once through today's unfiltered key; the filters send no GET (fewer than main);
+  every write body = main's except the owner's Q1 / Q4 / Q6 bodies.
+- **The paper:** unchanged (no print file in the diff; S1 16/16; print-budget green).
+
+**Owner notes (for later; nothing here blocks):**
+- Android Back with the detail or the form open leaves the page (app-wide, as U5's V2-2); WebView 109's bottom sheets
+  are faintly see-through (R41).
+- WebView 109's accessibility tree still drops a card ADDED later to the view already shown (3 of 4 in the replica study;
+  the same as before U6): a view change now remounts the cards (U15), and a new booking jumps to its own day (B20).
+- After the nested delete confirm's Cancel the focus lands on the page body (the form stays open); Radix Select hides the
+  sidebar with aria-hidden while it holds focusable controls (pre-existing, VB-1); the centred seat dialog ≥ 820 grows by
+  the bottom inset (~12 px).
+- Bookings and tables still never meet (inv §6.1): Seat writes only the booking; the Floor's Seat now writes only the
+  table and leaves its booking Booked; a booking does not hold its table; Open order on a Reserved table gets /pos's
+  "Free it on the Tables floor first" (B17).
+- Staff see every full mobile on /reservations (pre-existing; customers and order requests mask them).
+- New words not in the approved list: "No tables are set up yet." (the seat dialog with no tables; Fable M3).
+- LATER minors: the div-grid table has no table / row roles (M7); the seat dialog's skeleton stays if the tables query
+  never answers (M8); the clear ✕'s focus on a phone in one edge case (M10); a repo live leg for the Q6 clear-a-table
+  (U12: proven by the route test and V-1's real write); the Edit form's `tableNo: null` decided from the editing snapshot.
+- The HTML's slips not copied (design §10) and its never-rendered parts (values §5) are listed in the design.
+- This PC: the auto-mode classifier refused stopping the owner's preview servers (:3110 / :3130 still on U5's eb16e66)
+  and the leftover verifier runs; the build was served from `D:\kd\u6b` on :3140; the shared mongod stopped once in an
+  out-of-memory moment (the owner restarted it).
