@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 
+import { useReservationChoice } from "@/hooks/use-reservation-choice";
+import { useReservationSeating } from "@/hooks/use-reservation-seating";
 import { useReservationDelete, useReservationUpdate } from "@/hooks/use-reservation-writes";
 import { useReservationsPage } from "@/hooks/use-reservations-page";
 import type { ReservationStatus } from "@/lib/constants";
@@ -23,7 +25,10 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { ReservationDetail } from "@/components/reservations/ReservationDetail";
+import { ReservationDetailFrame } from "@/components/reservations/ReservationDetailFrame";
 import { ReservationFormSheet, type ReservationPrefill } from "@/components/reservations/ReservationFormSheet";
+import { ReservationSeatDialog } from "@/components/reservations/ReservationSeatDialog";
 import { ReservationsList } from "@/components/reservations/ReservationsList";
 import { ReservationsEmpty, ReservationsSkeleton } from "@/components/reservations/ReservationsStates";
 import { ReservationsToolbar } from "@/components/reservations/ReservationsToolbar";
@@ -67,9 +72,19 @@ export default function ReservationsPage() {
   const setStatus = (r: Reservation, next: ReservationStatus) =>
     updateReservation.mutate({ id: r._id, data: { status: next }, toast: statusToast(next) });
 
-  // What a row raises (Task 2). Open order is a link the row draws itself (B17); the seat dialog and Assign come with Task 3.
+  // The chosen booking (Task 3; hooks/use-reservation-choice.ts, B5) and the seat / assign dialog (hooks/use-reservation-seating.ts).
+  const choice = useReservationChoice({ list: state.list, rows: state.rows, answered: reservations.data !== undefined, filterEdits: state.filterEdits, query: state.query });
+  const seating = useReservationSeating(updateReservation);
+  // Assign (values 19.5): today's booking opens the dialog in assign mode; another day opens the form.
+  const assign = (r: Reservation) => (r.date === state.today ? seating.open(r, "assign") : openEdit(r));
+
+  // What a row or the detail raises. Open order is a link the surface draws itself (B17). Seat: a booking with a table is
+  // seated at once (today's body); without one the dialog picks (Q1).
   const onRowAction = (r: Reservation, action: ResAction) => {
-    if (action === "seat") setStatus(r, "Seated");
+    if (action === "seat") {
+      if (r.tableNo) setStatus(r, "Seated");
+      else seating.open(r, "seat");
+    } else if (action === "assign") assign(r);
     else if (action === "complete") setStatus(r, "Completed");
     else if (action === "restore") setStatus(r, "Booked");
     else if (action === "cancel") setCancelling(r);
@@ -151,17 +166,54 @@ export default function ReservationsPage() {
                 nowMs={state.nowMs}
                 today={state.today}
                 showDay={state.day === "all" || state.query.trim() !== ""}
-                selectedId={null}
+                selectedId={choice.selected?._id ?? null}
                 busy={busy}
-                onOpen={openEdit}
+                onOpen={(r) => choice.choose(r._id)}
                 onAction={onRowAction}
               />
             )}
           </div>
         </div>
-        {/* The detail (Task 3): this column from 1280px, below it full screen from the foot. */}
-        <div data-ui="reservations-detail-column" className={RES_DETAIL_COLUMN_CLASS} />
+        {/* The detail (design 7): this column from 1280px, below it full screen from the foot (its own portal). A press or
+            focus inside it keeps an auto-picked booking chosen. It follows the live booking by id. */}
+        <div data-ui="reservations-detail-column" className={RES_DETAIL_COLUMN_CLASS} onPointerDownCapture={choice.engage} onFocusCapture={choice.engage}>
+          <ReservationDetailFrame
+            open={choice.selected !== null}
+            waiting={reservations.data === undefined}
+            nestedOpen={seating.target !== null || cancelling !== null || formOpen}
+            onClose={() => choice.choose(null)}
+          >
+            {(sheet) =>
+              choice.selected && (
+                <ReservationDetail
+                  r={choice.selected}
+                  list={state.list}
+                  tables={state.tables}
+                  nowMs={state.nowMs}
+                  today={state.today}
+                  busy={busy}
+                  sheet={sheet}
+                  onClose={() => choice.choose(null)}
+                  onAction={onRowAction}
+                  onEdit={openEdit}
+                  onAssign={assign}
+                />
+              )
+            }
+          </ReservationDetailFrame>
+        </div>
       </div>
+
+      <ReservationSeatDialog
+        target={seating.target}
+        list={state.list}
+        tables={state.tables}
+        today={state.today}
+        busy={busy}
+        onPick={seating.pick}
+        onSeatWithoutTable={seating.seatWithoutTable}
+        onClose={seating.close}
+      />
 
       <ReservationFormSheet open={formOpen} onOpenChange={setFormOpen} reservation={editing} prefill={prefill ?? undefined} />
 

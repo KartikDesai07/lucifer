@@ -11,7 +11,10 @@
 // (lib/reservations-layout.test.ts) read the SAME constants the page renders. Later tasks append their sections.
 import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { FLOOR_FOCUS_RING_CLASS } from "@/lib/floor-tile-classes";
+import { ORDER_DETAIL_FOOT_CLASS } from "@/lib/orders-layout";
 import { POS_PAGE_CLASS } from "@/lib/pos-layout";
+import { SHEET_CLOSE_CLASS, SHEET_PANEL_BASE, SHEET_PANEL_CAP_CLASS, SHEET_SCRIM_BASE } from "@/lib/sheet-frame";
+import { cn } from "@/lib/utils";
 
 /** The Reservations page's route. */
 export const RESERVATIONS_PATH = "/reservations";
@@ -204,3 +207,83 @@ export const RES_PILL_SIZE_CLASS = {
 /** Completed / Cancelled pills (values 8.4): the HTML's --surface-3 on --text-2 (measured rgb(233,233,236)), not the kit's
  *  neutral tint (bg-muted, rgb(242,242,244)); the dot keeps the STATUS_CLASSES neutral (--text-3). */
 export const RES_PILL_NEUTRAL_CLASS = "bg-surface-3 text-muted-foreground";
+
+// ── The booking detail (U6 Task 3; values 10.2 - 10.4; design 7, B5, B6, B8, B19) ───────────────────────────────────────
+
+/** "No booking selected" (values 10.2): centred in the column, 6px apart, 13.5px --text-2; the title 600 --text. */
+export const RES_DETAIL_NONE_CLASS = "flex min-h-0 flex-1 flex-col items-center justify-center gap-1.5 p-6 text-center text-[13.5px] text-muted-foreground";
+export const RES_DETAIL_NONE_TITLE_CLASS = "font-semibold text-foreground";
+/** The head (values 10.3): 16px 18px 14px, a --border-2 rule below, its parts 12px apart; it never shrinks. */
+export const RES_DETAIL_HEAD_CLASS = "flex flex-none flex-col gap-3 border-b border-border-2 px-[18px] pt-4 pb-3.5";
+export const RES_DETAIL_NAME_ROW_CLASS = "flex items-start gap-2.5";
+/** The name 18 / 600 -.01em (it wraps, Q5 / B10) over the sub 13 --text-2, 2px apart. */
+export const RES_DETAIL_NAME_CLASS = "text-[18px] font-semibold tracking-[-0.01em] [overflow-wrap:anywhere]";
+export const RES_DETAIL_SUB_CLASS = "mt-0.5 text-[13px] text-muted-foreground [overflow-wrap:anywhere]";
+/** The ✕ (values 10.3, the sheet only, B6): 30px round on --surface-3, 11px --text-2. */
+export const RES_DETAIL_CLOSE_CLASS = `flex size-[30px] flex-none cursor-pointer items-center justify-center rounded-[50%] border-0 bg-surface-3 p-0 text-[11px] text-muted-foreground ${FLOOR_FOCUS_RING_CLASS}`;
+/** The time banner (values 10.3): 12px 14px, radius 12, --surface-2 on a --border-2 rule; the time Geist Mono 26 / 600 -.78px
+ *  (-.03em), the words 13 / 600 right aligned. */
+export const RES_BANNER_CLASS = "flex items-center gap-3 rounded-[12px] border border-border-2 bg-surface-2 px-3.5 py-3";
+export const RES_BANNER_TIME_CLASS = "flex-none font-mono text-[26px] font-semibold tracking-[-0.78px]";
+export const RES_BANNER_TEXT_CLASS = "min-w-0 flex-1 text-right text-[13px] font-semibold [overflow-wrap:anywhere]";
+/** "Booked for 7:00 PM", "Completed", "Cancelled" (values 10.3 bnFg): --text-2. */
+export const RES_BANNER_PLAIN_CLASS = "text-muted-foreground";
+/** The three steps (values 10.3, from 720px): Booked, Seated, Completed. */
+export const RES_STEPS_CLASS = "grid grid-cols-3 max-tab:hidden";
+export const RES_STEP_CLASS = "flex min-w-0 flex-col gap-1.5";
+export const RES_STEP_DOT_CLASS = "size-3 flex-none rounded-[50%]";
+export const RES_STEP_LINE_CLASS = "mx-[5px] h-0.5 flex-1";
+export const RES_STEP_LABEL_CLASS = "text-[11.5px] font-semibold";
+export const RES_STEP_TIME_CLASS = "-mt-1 text-[10.5px] text-subtle-foreground";
+/** The facts (values 10.3): rows of 9px 0 with a --border-2 rule, 13.5px; the key --text-2, the value 500 right aligned
+ *  (it wraps, B10). */
+export const RES_FACTS_CLASS = "flex flex-none flex-col";
+export const RES_FACT_ROW_CLASS = "flex justify-between gap-3.5 border-b border-border-2 py-[9px] text-[13.5px]";
+export const RES_FACT_KEY_CLASS = "flex-none text-muted-foreground";
+export const RES_FACT_VALUE_CLASS = "min-w-0 text-right font-medium [overflow-wrap:anywhere]";
+/** "+ Assign a table" (values 10.3, Q1): 38px, a dashed --text-3 rule, radius 9, 13 / 600; no hover rule. */
+export const RES_DETAIL_ASSIGN_CLASS = `flex h-[38px] flex-none cursor-pointer items-center justify-center rounded-[9px] border border-dashed border-subtle-foreground bg-transparent text-[13px] font-semibold text-foreground ${FLOOR_FOCUS_RING_CLASS}`;
+/** The note (values 10.3): 11px 13px, radius 10, the bill tint, 13.5 / 1.45. */
+export const RES_NOTE_CLASS = "flex-none rounded-[10px] bg-status-bill-tint px-[13px] py-[11px] text-[13.5px] leading-[1.45] text-foreground [overflow-wrap:anywhere]";
+/** The action grid (values 10.3): auto-fit columns of 64px up, a --border rule, radius 12, clipped; its buttons 60px, the
+ *  icon over the short label 5px apart, a --border rule between them, hover --hover (where a pointer hovers). */
+export const RES_GRID_CLASS = "grid flex-none grid-cols-[repeat(auto-fit,minmax(64px,1fr))] overflow-clip rounded-[12px] border border-border";
+export const RES_GRID_BUTTON_CLASS =
+  "flex h-[60px] cursor-pointer flex-col items-center justify-center gap-[5px] border-0 border-l border-border bg-transparent px-1 text-center text-[11.5px] font-semibold first:border-l-0 pointer-fine:hover:bg-hover disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary";
+/** The footer (values 10.3): U2's foot (12px 18px and the inset below, a --border rule, --surface) as the HTML's flex row, 8px apart:
+ *  Edit flex 1 and the primary flex 2, each with the UA's 1px 6px (the HTML's widths are 123.67 / 231.33 of 363: the padding is not part of the share). */
+export const RES_DETAIL_FOOT_CLASS = cn(ORDER_DETAIL_FOOT_CLASS, "flex");
+/** The footer's Edit (values 10.3): 46px, a --border rule, radius 10, 14 / 600, hover --hover. */
+export const RES_EDIT_CLASS = `h-[46px] min-w-0 flex-1 cursor-pointer rounded-[10px] border border-border bg-card px-1.5 py-px text-[14px] font-semibold text-foreground pointer-fine:hover:bg-hover ${FLOOR_FOCUS_RING_CLASS}`;
+/** The footer's primary (values 10.3): 46px on --accent, radius 10, 14.5 / 600 --on-accent, hover --accent-h; Seat is off
+ *  while a status write runs (B13). */
+export const RES_DETAIL_PRIMARY_CLASS = `flex h-[46px] min-w-0 flex-[2] cursor-pointer items-center justify-center rounded-[10px] border-0 bg-primary px-1.5 py-px text-[14.5px] font-semibold text-primary-foreground pointer-fine:hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60 ${FLOOR_FOCUS_RING_CLASS}`;
+
+// ── The seat / assign dialog (U6 Task 3; values 14; design 8.2, B18, B24, B27) ──────────────────────────────────────────
+
+/** z 47 (values 14): over the detail's sheet (15) and the form, under the confirm sheet (50) and the toasts. */
+export const RES_SEAT_SCRIM_CLASS = cn(SHEET_SCRIM_BASE, "z-[47]");
+/** The box (values 14): up to 560px on --surface, radius 14 (the shared frame: 14 14 0 0 on a phone), 1px --border, the
+ *  sheets' caps, clipped (`overflow-clip`, WebView 109), sheetIn .32s. */
+export const RES_SEAT_PANEL_CLASS = cn(SHEET_PANEL_BASE, SHEET_PANEL_CAP_CLASS, "max-w-[560px] overflow-clip border border-border motion-safe:animate-html-sheet-in-cs");
+export const RES_SEAT_HEAD_CLASS = "flex flex-none items-center gap-2.5 px-4 pt-4 pb-3";
+export const RES_SEAT_TITLE_CLASS = "text-[17px] font-semibold [overflow-wrap:anywhere]";
+export const RES_SEAT_SUB_CLASS = "mt-0.5 text-[13px] text-muted-foreground [overflow-wrap:anywhere]";
+/** The ✕ (values 14): the shared 32px round. */
+export const RES_SEAT_CLOSE_CLASS = cn(SHEET_CLOSE_CLASS, FLOOR_FOCUS_RING_CLASS);
+/** The body scrolls (values 14): 4px 16px and 18px + the inset below, its parts 14px apart. */
+export const RES_SEAT_BODY_CLASS = "flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto overflow-x-clip px-4 pt-1 pb-[calc(18px+env(safe-area-inset-bottom))]";
+/** One grid of tiles (values 14; no area heads, P22): `auto-fill` columns of 96px up, 6px apart. */
+export const RES_SEAT_GRID_CLASS = "grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-1.5";
+/** A tile (values 14): 56px (it grows for a long name, B10), radius 10, a 1px rule (the ok colour when it fits), 0 10px,
+ *  the label over the sub 2px apart; off at .45 (an Occupied table while seating); no hover rule. */
+export const RES_SEAT_TILE_CLASS = `flex min-h-14 cursor-pointer flex-col items-start justify-center gap-0.5 rounded-[10px] border bg-card px-2.5 py-1 text-left text-foreground disabled:cursor-not-allowed disabled:opacity-[.45] ${FLOOR_FOCUS_RING_CLASS}`;
+export const RES_SEAT_TILE_FITS_CLASS = "border-status-ok";
+export const RES_SEAT_TILE_PLAIN_CLASS = "border-border";
+export const RES_SEAT_TILE_LABEL_CLASS = "flex w-full items-center gap-1.5 text-[14px] font-semibold [overflow-wrap:anywhere]";
+/** The sub (values 14): 11.5px; it wraps (the HTML clips "Booked 9:45 PM" with an ellipsis: a slip, not copied). */
+export const RES_SEAT_TILE_SUB_CLASS = "block w-full text-[11.5px] [overflow-wrap:anywhere]";
+/** The sub's ink by the tile's tone (values 14): Occupied reads in warn, as the HTML's. */
+export const RES_SEAT_SUB_INK_CLASS = { ok: "text-status-ok-ink", warn: "text-status-warn-ink", info: "text-status-warn-ink", reserved: "text-status-reserved-ink" } as const;
+/** "Seat without a table" (B24, ours): 44px, centred, the link look (--text-2, underlined). */
+export const RES_SEAT_NOTABLE_CLASS = `h-11 flex-none cursor-pointer self-center rounded-[8px] border-0 bg-transparent px-3 text-[13.5px] font-semibold text-muted-foreground underline underline-offset-2 pointer-fine:hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 ${FLOOR_FOCUS_RING_CLASS}`;

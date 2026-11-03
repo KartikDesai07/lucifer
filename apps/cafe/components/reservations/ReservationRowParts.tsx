@@ -29,7 +29,7 @@ export type RowIntent = (r: Reservation, action: ResAction) => void;
 
 // A click hands the table to New Order only for a plain primary click (FloorTile's rule): a middle / modifier click opens
 // a plain /pos in a new tab, which must not carry the table.
-function offerOnPlainClick(e: MouseEvent<HTMLAnchorElement>, tableNo: string) {
+export function offerOnPlainClick(e: MouseEvent<HTMLAnchorElement>, tableNo: string) {
   if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   offerPosTable(tableNo, Date.now());
 }

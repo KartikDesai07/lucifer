@@ -13,7 +13,7 @@ export type ResTab = "upcoming" | "seated" | "done" | "cancelled" | "all";
 export type ResDayChoice = null | "all" | string;
 export type ResPill = "Booked" | "Late" | "Seated" | "Completed" | "Cancelled";
 export type ResTone = "bad" | "warn" | "accent" | "muted" | "ok";
-export type ResAction = "seat" | "openOrder" | "bookAgain" | "cancel" | "complete" | "restore";
+export type ResAction = "seat" | "openOrder" | "bookAgain" | "cancel" | "complete" | "restore" | "assign";
 
 const MINUTE_MS = 60_000;
 /** A Booked booking is Late once its time is more than this far behind (values 19.1: now > time + 15 min). */

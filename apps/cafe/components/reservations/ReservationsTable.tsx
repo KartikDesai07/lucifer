@@ -70,7 +70,7 @@ function TableRow({ r, first, nowMs, today, showDay, selected, busy, onOpen, onA
             {r.tableNo}
           </span>
         ) : (
-          canAssign && <RowAssign onPress={() => onOpen(r)} />
+          canAssign && <RowAssign onPress={() => onAction(r, "assign")} />
         )}
       </span>
       <span>

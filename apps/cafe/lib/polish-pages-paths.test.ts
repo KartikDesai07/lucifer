@@ -1183,9 +1183,11 @@ const pinReservationConfirm: Pin = (raw) => {
   check(p, !/setStatus\([^)]*"Cancelled"/.test(s), "no row button may write Cancelled directly through setStatus");
   // U6 Task 2: the rows raise ONE intent (`onAction`, P16's needles moved): Cancel opens the dialog, Seat and Complete (and
   // Restore) stay one tap.
-  check(p, count(s, "onAction={onRowAction}") === 1, "the list raises its intents through onRowAction (the table AND the cards)");
+  // U6 Task 3: the detail raises through the same handler, so onRowAction is wired twice (the list and the detail).
+  check(p, count(s, "onAction={onRowAction}") === 2, "the list and the detail raise their intents through onRowAction (the table AND the cards)");
   check(p, count(s, 'else if (action === "cancel") setCancelling(r);') === 1, "Cancel (table icon and nothing else) must open the dialog");
-  check(p, count(s, 'if (action === "seat") setStatus(r, "Seated");') === 1, "Seat stays a one-tap action");
+  // U6 Task 3 (Q1): Seat on a booking with a table is still one tap; without a table the seat dialog picks one.
+  check(p, count(s, 'if (r.tableNo) setStatus(r, "Seated");') === 1, "Seat with a table stays a one-tap action");
   check(p, count(s, 'else if (action === "complete") setStatus(r, "Completed");') === 1, "Complete stays a one-tap action");
   return p;
 };
@@ -1241,7 +1243,7 @@ const CONFIRM_CASES: PinCase[] = [
       rep("Cancel calls the mutation directly", 'else if (action === "cancel") setCancelling(r);', 'else if (action === "cancel") setStatus(r, "Cancelled");'),
       rep("the dialog no longer confirms through confirmCancel", "onConfirm={confirmCancel}", "onConfirm={confirmDelete}"),
       rep("the confirm path writes a different status", 'data: { status: "Cancelled" }', 'data: { status: "Completed" }'),
-      rep("Seat suddenly asks first", 'if (action === "seat") setStatus(r, "Seated");', 'if (action === "seat") setCancelling(r);'),
+      rep("Seat suddenly asks first", 'if (r.tableNo) setStatus(r, "Seated");', 'if (r.tableNo) setCancelling(r);'),
       rep("Complete suddenly asks first", 'else if (action === "complete") setStatus(r, "Completed");', 'else if (action === "complete") setCancelling(r);'),
     ],
   },
