@@ -8,7 +8,9 @@ import { createProductSchema, type CreateProductInput } from "@/schemas";
 import { isProductIconKey } from "@pos/shared/product-icons";
 import { useCreateProduct, useUpdateProduct } from "@/hooks/use-products";
 import { useStations } from "@/hooks/use-print-setup";
-import { priceForSave, valuesForValidation, type ProductFormValues } from "@/lib/product-form-values";
+import {
+  addOnsFormError, modifierPricesForCreate, modifierPricesForEdit, priceForSave, valuesForValidation, type ProductFormValues,
+} from "@/lib/product-form-values";
 import { MENU_SELECT_TRIGGER_CLASS } from "@/lib/menu-layout";
 import {
   MENU_EDITOR_CELL_RIGHT_CLASS,
@@ -88,8 +90,13 @@ export function ProductFormSheet({
     setValue,
     formState: { errors },
   } = useForm<ProductFormValues, unknown, CreateProductInput>({
-    // A base-price problem in Sizes mode (its box is not drawn) never blocks Save: lib/product-form-values.ts.
-    resolver: (values, context, options) => schemaResolver(valuesForValidation(values), context, options),
+    // A base-price problem in Sizes mode (its box is not drawn) never blocks Save: lib/product-form-values.ts. The
+    // server's add-on amount rule runs here too, so a refusal shows under Modifiers before any request.
+    resolver: async (values, context, options) => {
+      const result = await schemaResolver(valuesForValidation(values), context, options);
+      const message = addOnsFormError(values);
+      return message ? { values: {}, errors: { ...result.errors, modifierPrices: { type: "validate", message } } } : result;
+    },
     defaultValues: emptyValues,
   });
 
@@ -109,6 +116,7 @@ export function ProductFormSheet({
             image: product.image,
             modifiers: product.modifiers,
             modifiersPreselected: product.modifiersPreselected === true,
+            modifierPrices: product.modifierPrices,
             publicVisible: product.publicVisible,
             // A stored key that predates a catalogue change reads as "none" —
             // saving would otherwise resend an icon the enum now rejects (400).
@@ -122,6 +130,8 @@ export function ProductFormSheet({
   }, [open, product, reset]);
 
   const modifierCount = useWatch({ control, name: "modifiers" })?.length ?? 0;
+  const ticked = useWatch({ control, name: "modifiersPreselected" }) === true;
+  const modifierPrices = useWatch({ control, name: "modifierPrices" });
 
   const onSubmit = async (values: CreateProductInput) => {
     try {
@@ -144,6 +154,8 @@ export function ProductFormSheet({
             image: values.image,
             modifiers: values.modifiers,
             modifiersPreselected: modifiersPreselectedToSave(values),
+            // Amounts: the list, null (cleared; the PUT's sentinel) when it had some and has none, else no key.
+            modifierPrices: modifierPricesForEdit(values, product.modifierPrices),
             // Same null sentinel as variations above: the switch reads ON as
             // `undefined` (omit-empty), which JSON.stringify would drop — so an
             // item once saved OFF could never be shown again. null is the
@@ -164,6 +176,7 @@ export function ProductFormSheet({
           ...values,
           price: priceForSave({ hasVariations: values.variations !== undefined, price: values.price }, true),
           modifiersPreselected: modifiersPreselectedToSave(values),
+          modifierPrices: modifierPricesForCreate(values),
         });
       }
       onOpenChange(false);
@@ -239,8 +252,8 @@ export function ProductFormSheet({
         <ProductArtField control={control} />
       </EditorField>
 
-      <EditorField label="Modifiers" htmlFor="product-modifiers" error={errors.modifiers?.message as string}>
-        <Controller control={control} name="modifiers" render={({ field }) => <ModifierInput id="product-modifiers" value={field.value ?? []} onChange={field.onChange} />} />
+      <EditorField label="Modifiers" htmlFor="product-modifiers" error={(errors.modifiers?.message ?? errors.modifierPrices?.message) as string}>
+        <Controller control={control} name="modifiers" render={({ field }) => <ModifierInput id="product-modifiers" value={field.value ?? []} onChange={field.onChange} prices={modifierPrices} onPricesChange={(next) => setValue("modifierPrices", next, { shouldDirty: true })} ticked={ticked} />} />
       </EditorField>
       <Controller
         control={control}

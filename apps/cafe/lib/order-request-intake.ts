@@ -1,6 +1,6 @@
 import { sanitizePublicText } from "@pos/shared/public";
 import type { CreatePublicOrderRequestInput } from "@pos/shared/schemas/public-order.schema";
-import type { PricedLine } from "@/lib/public-pricing";
+import { copyModifierPrices, type PricedLine } from "@/lib/public-pricing";
 import type { ISettings } from "@/models/Settings";
 import { OrderRequest, type OrderRequestItemInput, type OrderRequestTargetKind } from "@/models/OrderRequest";
 import { Order } from "@/models/Order";
@@ -222,6 +222,8 @@ export function quoteRequestTotals(
     if (line.removedModifiers && line.removedModifiers.length > 0) {
       item.removedModifiers = line.removedModifiers;
     }
+    const modifierPrices = copyModifierPrices(line.modifierPrices);
+    if (modifierPrices) item.modifierPrices = modifierPrices;
     return item;
   });
 

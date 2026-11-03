@@ -439,7 +439,7 @@ test("PIN (S6): no route under app/api and no lib/order-request-accept*.ts calls
 
 test("PIN (skip-KOT): each order writer stamps through withKitchenFlags before its number draw, and the draw is gated on the stamp", () => {
   const create = read(ORDERS_ROUTE);
-  assert.ok(mustIndexOf(create, "const kot = await withKitchenFlags(rewardItems);", "create: the stamp") < mustIndexOf(create, "const unnumberedDoc = {", "create: the doc"), "create: the stamp precedes the doc built from rewardItems");
+  assert.ok(mustIndexOf(create, "const kot = await withKitchenFlags(stampModifierPrices(rewardItems, products));", "create: the stamp") < mustIndexOf(create, "const unnumberedDoc = {", "create: the doc"), "create: the stamp precedes the doc built from rewardItems");
   mustIndexOf(create, "rewardItems = kot.lines;", "create: the stamped lines are the ones stored");
   mustIndexOf(create, "allocateOpeningSlips(printCfg, { kitchen: kot.kitchen })", "create: the draw reads the stamp");
   const accept = read(ACCEPT_LIB);

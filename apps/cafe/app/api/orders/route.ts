@@ -12,6 +12,7 @@ import { runCreateFollowUps } from "@/lib/order-create-followups";
 import { settledValue } from "@/lib/settled";
 import { createReplayResponse, createReplayVerdict, findCreateReplay, isIdemKeyDuplicate } from "@/lib/order-idem";
 import { withKitchenFlags } from "@/lib/kitchen-lines-server";
+import { stampModifierPrices } from "@/lib/modifier-price-stamp";
 import { createOrderPrintJobs, openingSlipsOf, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
 import cache from "@/lib/cache";
 import { created, failure, validateBody, requireAuth, isDuplicateKeyError, serverError } from "@/lib/api-helpers";
@@ -83,7 +84,7 @@ export async function POST(req: Request) {
       // One indexed query, only when the payload could possibly be affected.
       productIds.length
         ? Product.find({ _id: { $in: productIds } })
-            .select("name variations modifiers modifiersPreselected price discount available isActive")
+            .select("name variations modifiers modifiersPreselected modifierPrices price discount available isActive")
             .lean()
         : Promise.resolve([]),
       // The table's configured extra charge, doubling as its existence check.
@@ -339,7 +340,8 @@ export async function POST(req: Request) {
 
     // Skip-KOT: stamp the opening lines the menu never sends to the kitchen BEFORE the number draw and
     // the doc below read them (fails open: an unreadable menu stamps nothing, prints as before).
-    const kot = await withKitchenFlags(rewardItems);
+    // Priced add-ons: the charged amounts ride on every new line (the reward dish carries no add-ons, so no stamp).
+    const kot = await withKitchenFlags(stampModifierPrices(rewardItems, products));
     rewardItems = kot.lines;
 
     // Pay Now's bill: the SAME condition under which this route makes the server's bill job

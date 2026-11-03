@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { effectiveUnitPrice } from "@pos/shared/public";
 import { holdUnsentWork } from "@/lib/page-refresh";
-import type { OrderItem, OrderItemInput, Product } from "@/types";
+import { withAddOns } from "@/lib/modifier-picker";
+import type { OrderItem, OrderItemInput, Product, ProductModifierPrice } from "@/types";
 
 export interface CartItem {
   lineId: string; // stable key: product + modifiers + instructions + variation (+ index for fired lines)
   productId: string;
   name: string;
-  price: number; // effective unit price after the product's % discount
+  price: number; // effective unit price after the product's % discount, plus the picked priced add-ons (D2)
   qty: number;
   // The variation this line is sold as (Small/Large…), snapshotted by name —
   // `price` above is already that variation's price. Absent for a product
@@ -20,6 +21,9 @@ export interface CartItem {
   // product whose defaults come pre-selected. Omit-empty, like every other
   // optional line field here.
   removedModifiers?: string[];
+  // The priced add-ons picked on this line — DISPLAY only (the cart shows "+ Cheese Burst ₹100"); the server prices the
+  // line itself and re-stamps its own snapshot. Omit-empty.
+  modifierPrices?: ProductModifierPrice[];
   instructions: string;
   kotRound: number; // 0 = new/unfired (editable); >=1 = already fired (locked)
   // CB-5B — this line was GIVEN as a loyalty reward: it keeps its REAL `price`
@@ -96,11 +100,11 @@ export function cartItemFromOrderItem(it: OrderItem, index: number): CartItem {
     modifiers: it.modifiers,
     instructions: it.instructions,
     kotRound: it.kotRound,
-    // Omit-empty, like every other optional line field here: an ordinary line
-    // must carry no extra key. Dropping it here was the whole bug — a reopened
-    // tab's reward line came back priced like a sold one.
+    // Omit-empty: an ordinary line carries no extra key. Dropping reward here once made a reopened tab's reward line
+    // come back priced like a sold one.
     ...(it.reward ? { reward: true as const } : {}),
     ...(it.removedModifiers && it.removedModifiers.length > 0 ? { removedModifiers: it.removedModifiers } : {}),
+    ...(it.modifierPrices && it.modifierPrices.length > 0 ? { modifierPrices: it.modifierPrices } : {}),
   };
 }
 
@@ -176,7 +180,7 @@ const NEVER_LOCKED = () => false;
 export function useCart(isLocked: () => boolean = NEVER_LOCKED): UseCart {
   const [cart, setCart] = useState<CartItem[]>([]);
 
-  // The top bar's Refresh asks first while lines not sent yet (unfired) would be lost (lib/page-refresh.ts).
+  // Refresh asks first while unsent lines would be lost (lib/page-refresh.ts).
   const [token] = useState(() => Symbol("cart"));
   useEffect(() => {
     holdUnsentWork(token, cart.some((line) => line.kotRound === 0) ? "changes" : null);
@@ -194,17 +198,15 @@ export function useCart(isLocked: () => boolean = NEVER_LOCKED): UseCart {
     const variation = opts.variation;
     const key = lineKey(product._id, modifiers, instructions, variation, removedModifiers);
 
-    // The chosen variation's OWN price bills the line once variations exist —
-    // the product's `price` is only the base/reference figure then. Fall back
-    // to the product's price when the name doesn't match anything on the
-    // product: ModifierModal can only ever offer a name the product actually
-    // has, so this only guards a future caller passing a stale/bad name.
+    // The chosen variation's OWN price bills the line (the product's `price` is only the base figure then; a name it
+    // doesn't have falls back to it). Picked add-ons ride on top, never discounted (D2): the server's rule, so no 409.
     const chosenVariation = variation
       ? product.variations?.find((v) => v.name === variation)
       : undefined;
     const price = chosenVariation
       ? effectivePrice({ price: chosenVariation.price, discount: product.discount })
       : effectivePrice(product);
+    const priced = withAddOns(price, product, modifiers);
 
     setCart((prev) => {
       // Only fold into an UNFIRED matching line — a fired line is locked, so a new
@@ -223,13 +225,14 @@ export function useCart(isLocked: () => boolean = NEVER_LOCKED): UseCart {
           lineId: key,
           productId: product._id,
           name: product.name,
-          price,
+          price: priced.price,
           qty: addQty,
           variation,
           modifiers,
           instructions,
           kotRound: 0,
           ...(removedModifiers && removedModifiers.length > 0 ? { removedModifiers } : {}),
+          ...(priced.modifierPrices ? { modifierPrices: priced.modifierPrices } : {}),
         },
       ];
     });

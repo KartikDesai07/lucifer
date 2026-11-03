@@ -26,6 +26,7 @@ import {
 import { printConfigOf } from "@/lib/print";
 import { nextPrintedNumber } from "@/lib/slip-numbers";
 import { withKitchenFlags } from "@/lib/kitchen-lines-server";
+import { stampModifierPrices } from "@/lib/modifier-price-stamp";
 import { voidGuardFilter } from "@/lib/order-void";
 import { addItemsSchema } from "@/schemas";
 import { checkItemVariations, checkItemRemovedModifiers } from "@/lib/variations";
@@ -96,7 +97,7 @@ export async function POST(req: Request, { params }: Params) {
       // One indexed query, only when the payload could possibly be affected.
       productIds.length
         ? Product.find({ _id: { $in: productIds } })
-            .select("name variations modifiers modifiersPreselected price discount available isActive")
+            .select("name variations modifiers modifiersPreselected modifierPrices price discount available isActive")
             .lean()
         : Promise.resolve([]),
       getSettings(),
@@ -154,7 +155,8 @@ export async function POST(req: Request, { params }: Params) {
     if (menuRefusal) return (key ? await roundReplayAfterMiss(id, key, parsed.data.items) : null) ?? failure(menuRefusal, MENU_REFUSAL_STATUS);
 
     const round = (old.kotRounds ?? 0) + 1;
-    const newItems = parsed.data.items.map((it) => ({ ...it, kotRound: round }));
+    // Priced add-ons: stamp what each new line's picks were charged (the reward dish is added later and carries none).
+    const newItems = stampModifierPrices(parsed.data.items, products).map((it) => ({ ...it, kotRound: round }));
     let fullItems = [...old.items, ...newItems];
 
     // Recompute from the tab's GST snapshot, not live settings. An updated

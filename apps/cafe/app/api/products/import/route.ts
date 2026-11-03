@@ -213,6 +213,11 @@ export async function POST(req: Request) {
                 modifiers: e.data.modifiers,
                 isActive: e.data.isActive,
               },
+              // Priced add-ons: the CSV carries names only, never amounts, and the $set above can drop an add-on
+              // from `modifiers`. An amount whose add-on just left is removed in the SAME write — atomic, no read-first
+              // race (a pipeline $set was rejected: its "$"-prefixed strings are field paths). Amounts of add-ons that
+              // stay are untouched; a no-op on an item with none.
+              $pull: { modifierPrices: { name: { $nin: e.data.modifiers } } },
             },
             upsert: true,
           },

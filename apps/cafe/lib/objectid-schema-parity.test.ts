@@ -124,8 +124,9 @@ test("PIN: createProductSchema.categoryId uses OBJECT_ID_HEX_PATTERN (via object
   assert.ok(importRowMatch, "importProductRowSchema must exist");
   assert.match(
     importRowMatch![1],
-    /\.omit\(\{ categoryId: true \}\)/,
-    "importProductRowSchema must .omit({ categoryId: true }) off createProductSchema",
+    // Priced add-ons (2026-11-03): the add-on amounts are omitted beside it — the CSV carries names only.
+    /\.omit\(\{ categoryId: true, modifierPrices: true \}\)/,
+    "importProductRowSchema must .omit({ categoryId: true, ... }) off createProductSchema",
   );
   assert.match(
     importRowMatch![1],

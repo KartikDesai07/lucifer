@@ -4,7 +4,8 @@ import {
   type PublicOrderRequestStatusData,
   type PublicStatusItem,
 } from "@pos/shared/public";
-import { orderItemModifierLines } from "@pos/shared/utils";
+import { billModifierLines } from "@pos/shared/modifier-prices";
+import type { ProductModifierPrice } from "@pos/shared/types";
 import type { CartLine } from "@/components/public/public-cart-store";
 import type { PublicBillLine, PublicBillTotal } from "@/components/public/PublicBillRows";
 
@@ -20,12 +21,16 @@ import type { PublicBillLine, PublicBillTotal } from "@/components/public/Public
 // into a single string since PublicBillLine has one sub slot, not three.
 function joinSub(
   variation: string | undefined,
-  line: { modifiers?: readonly string[]; removedModifiers?: readonly string[] },
+  line: {
+    modifiers?: readonly string[];
+    removedModifiers?: readonly string[];
+    modifierPrices?: readonly ProductModifierPrice[];
+  },
   instructions: string | undefined,
 ): string | undefined {
   const parts: string[] = [];
   if (variation) parts.push(variation);
-  parts.push(...orderItemModifierLines(line));
+  parts.push(...billModifierLines(line));
   if (instructions) parts.push(instructions);
   return parts.length > 0 ? parts.join(" · ") : undefined;
 }

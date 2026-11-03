@@ -215,3 +215,30 @@ test("toPublicTable: exact key set { tableNo } — a source carrying publicToken
   assert.deepEqual(Object.keys(table).sort(), ["tableNo"]);
   assert.deepEqual(table, { tableNo: "T-4" });
 });
+
+// ── Priced add-ons: the priced subset rides, never an orphan or a ticked item ──
+
+const ADDON_PRODUCT: PublicProductSource = {
+  ...BASE_PRODUCT,
+  modifiers: ["Cheese Burst", "Jalapeno"],
+  modifierPrices: [{ name: "Cheese Burst", price: 100 }],
+};
+
+test("toPublicMenuItem: a priced add-on emits modifierPrices as fresh {name, price} entries", () => {
+  const item = toPublicMenuItem(ADDON_PRODUCT, CATEGORY_NAME_OF);
+  assert.deepEqual(item.modifierPrices, [{ name: "Cheese Burst", price: 100 }]);
+  assert.notEqual(item.modifierPrices?.[0], ADDON_PRODUCT.modifierPrices?.[0], "never the stored object");
+  assert.deepEqual(item.modifiers, ["Cheese Burst", "Jalapeno"]);
+});
+
+test("toPublicMenuItem: no key on a ticked item, an item with no amounts, or an orphan-only amount", () => {
+  const ticked = toPublicMenuItem({ ...ADDON_PRODUCT, modifiersPreselected: true }, CATEGORY_NAME_OF);
+  assert.equal(ticked.modifiersPreselected, true, "positive landmark: the ticked flag still rides");
+  assert.equal("modifierPrices" in ticked, false);
+  const none = toPublicMenuItem({ ...ADDON_PRODUCT, modifierPrices: undefined }, CATEGORY_NAME_OF);
+  assert.deepEqual(none.modifiers, ["Cheese Burst", "Jalapeno"], "positive landmark");
+  assert.equal("modifierPrices" in none, false);
+  const orphan = toPublicMenuItem({ ...ADDON_PRODUCT, modifiers: ["Jalapeno"] }, CATEGORY_NAME_OF);
+  assert.deepEqual(orphan.modifiers, ["Jalapeno"], "positive landmark");
+  assert.equal("modifierPrices" in orphan, false);
+});

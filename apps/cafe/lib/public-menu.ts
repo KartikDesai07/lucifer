@@ -1,7 +1,9 @@
 import { type FilterQuery, type PipelineStage } from "mongoose";
 import type { IProduct } from "@/models/Product";
 import type { ProductVariation } from "@/types";
+import { lineModifierPrices } from "@pos/shared/modifier-prices";
 import { isProductIconKey } from "@pos/shared/product-icons";
+import type { ProductModifierPrice } from "@pos/shared/types";
 
 // Pure shaping + the query filter for the PUBLIC (unauthenticated) QR menu —
 // the read side of phase CR2.1. No `connectDB`, no HTTP, no cache — those stay
@@ -48,6 +50,9 @@ export interface PublicProductSource {
   // every modifier ticked, so PublicItemSheet can preselect them. Omit-empty,
   // only ever `true` (models/Product.ts's own discipline).
   modifiersPreselected?: boolean;
+  // Priced add-ons (owner, 2026-11-02). Read raw here; the DTO below emits only
+  // the live, priced subset via lineModifierPrices.
+  modifierPrices?: ProductModifierPrice[];
   // Item icon — a stored key may predate a catalogue change or be a stray
   // string; typed as unknown-ish `string` and validated with isProductIconKey
   // below before it is ever emitted (D6: the public DTO only emits a known key).
@@ -71,6 +76,9 @@ export interface PublicMenuItem {
   modifiers: string[];
   // Same field, same omit-empty rule as PublicProductSource above.
   modifiersPreselected?: boolean;
+  // The add-ons that carry an amount, so the diner's sheet can show "+Rs 100".
+  // Omit-empty: never on a ticked item (D3) and never an orphan amount.
+  modifierPrices?: ProductModifierPrice[];
   // Only ever a real catalogue key (D6) — an unknown/stale stored key is
   // treated exactly like no icon and never rides onto a diner's phone.
   icon?: string;
@@ -104,6 +112,12 @@ export function toPublicMenuItem(
   // product field itself follows).
   if (product.modifiersPreselected === true) {
     item.modifiersPreselected = true;
+  }
+  // Fresh {name, price} entries from the shared stamp rule (allow-list: never a
+  // spread of the stored list); empty -> no key.
+  const addOnPrices = lineModifierPrices(product, product.modifiers);
+  if (addOnPrices.length > 0) {
+    item.modifierPrices = addOnPrices.map(({ name, price }) => ({ name, price }));
   }
   // D6 — emit the icon ONLY when it is still a live catalogue key: a stored
   // key may predate a catalogue change, and this is the one place that must

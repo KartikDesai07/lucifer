@@ -1,7 +1,8 @@
 import type { CSSProperties, ReactNode } from "react";
 import Image from "next/image";
 
-import { orderItemLabel, orderItemModifierLines, discountLineLabel } from "@pos/shared/utils";
+import { orderItemLabel, discountLineLabel } from "@pos/shared/utils";
+import { billModifierLines } from "@pos/shared/modifier-prices";
 import { chargesFromOrder } from "@pos/shared/order-charges";
 import { halfGst } from "@/lib/gst-half";
 import { printFontStack, type PrintFontFace } from "@pos/shared/print-fonts";
@@ -95,7 +96,7 @@ export function ItemExtras({ item, className }: { item: OrderItem; className: st
   return (
     <>
       {item.reward && item.note && <div className={`${className} italic`}>{item.note}</div>}
-      {orderItemModifierLines(item).map((line) => (
+      {billModifierLines(item).map((line) => (
         <div key={line} className={className}>{line}</div>
       ))}
       {item.instructions && <div className={`${className} italic`}>{item.instructions}</div>}

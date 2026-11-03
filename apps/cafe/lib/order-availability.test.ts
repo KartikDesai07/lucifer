@@ -150,3 +150,80 @@ test("the refusal message = sentences + action; null when nothing is wrong", () 
   assert.equal(menuRefusalMessage(menuLineIssues(products, [line({ productId: "p1" })])), orderLinesRefusal(products, [line({ productId: "p1" })]));
   assert.equal(orderLinesRefusal([TEA], []), null);
 });
+
+// ── Priced add-ons (owner, 2026-11-02): the staff check judges the add-ons too ──
+
+const PIZZA: MenuProductSource = {
+  _id: "p3",
+  name: "Pizza",
+  price: 250,
+  discount: 20,
+  available: true,
+  isActive: true,
+  modifiers: ["Cheese Burst", "Jalapeno"],
+  modifierPrices: [{ name: "Cheese Burst", price: 100 }],
+};
+// 250 with 20% off = 200; the add-on is charged in full on top (D2).
+const PIZZA_WITH_BURST = 300;
+const pizza = (over: Partial<MenuCheckedLine> = {}): MenuCheckedLine => ({
+  productId: "p3",
+  name: "Pizza",
+  price: PIZZA_WITH_BURST,
+  modifiers: ["Cheese Burst"],
+  ...over,
+});
+
+test("a priced line passes at item price after discount + the add-on, discount on the item only", () => {
+  assert.deepEqual(menuLineIssues([PIZZA], [pizza()]), []);
+  assert.equal(orderLinesRefusal([PIZZA], [pizza()]), null);
+});
+
+test("the old base price is a 409 price issue carrying the new price", () => {
+  const issues = menuLineIssues([PIZZA], [pizza({ price: 200 })]);
+  assert.deepEqual(issues.map((i) => [i.reason, i.expectedPrice]), [["price", PIZZA_WITH_BURST]]);
+});
+
+test("a free add-on and a plain pick change nothing", () => {
+  assert.deepEqual(menuLineIssues([PIZZA], [pizza({ price: 200, modifiers: ["Jalapeno"] })]), []);
+  assert.deepEqual(menuLineIssues([PIZZA], [pizza({ price: 200, modifiers: [] })]), []);
+  assert.deepEqual(menuLineIssues([PIZZA], [pizza({ price: 200, modifiers: undefined })]), []);
+});
+
+test("an add-on that left the menu is reason option with the names, judged after gone and before out", () => {
+  const stale = { ...PIZZA, modifiers: ["Jalapeno"], modifierPrices: undefined };
+  const issues = menuLineIssues([stale], [pizza({ price: 200 })]);
+  assert.deepEqual(issues, [
+    { index: 0, reason: "option", label: "Pizza", missingModifiers: ["Cheese Burst"] },
+  ]);
+  // before "out": an unavailable item with a vanished add-on reads option; a gone item stays gone.
+  assert.equal(menuLineIssues([{ ...stale, available: false }], [pizza({ price: 200 })])[0]?.reason, "option");
+  assert.equal(menuLineIssues([{ ...stale, isActive: false }], [pizza({ price: 200 })])[0]?.reason, "gone");
+});
+
+test("option sentence: 'Add-on no longer on the menu: Cheese Burst (Pizza).' and the action says Update", () => {
+  const stale = { ...PIZZA, modifiers: ["Jalapeno"], modifierPrices: undefined };
+  const issues = menuLineIssues([stale], [pizza({ price: 200 })]);
+  assert.deepEqual(menuIssueSentences(issues), ["Add-on no longer on the menu: Cheese Burst (Pizza)."]);
+  assert.equal(menuIssueAction(issues), "Update them and try again.");
+  assert.equal(
+    orderLinesRefusal([stale], [pizza({ price: 200 })]),
+    "Add-on no longer on the menu: Cheese Burst (Pizza). Update them and try again.",
+  );
+  // sits after "No longer on the menu" in the fixed order
+  const both = menuLineIssues([stale], [pizza({ price: 200 }), line({ productId: "zz", name: "Scone" })]);
+  assert.deepEqual(menuIssueSentences(both), [
+    "No longer on the menu: Scone.",
+    "Add-on no longer on the menu: Cheese Burst (Pizza).",
+  ]);
+});
+
+test("an add-on named like an Object.prototype key is judged by array membership", () => {
+  const odd = { ...PIZZA, modifiers: ["Jalapeno"], modifierPrices: undefined };
+  const issues = menuLineIssues([odd], [pizza({ price: 200, modifiers: ["constructor"] })]);
+  assert.deepEqual(issues.map((i) => [i.reason, i.missingModifiers]), [["option", ["constructor"]]]);
+});
+
+test("a ticked item carries no amounts: add-ons add nothing", () => {
+  const ticked = { ...PIZZA, modifiersPreselected: true };
+  assert.deepEqual(menuLineIssues([ticked], [pizza({ price: 200, modifiers: [] })]), []);
+});

@@ -3,6 +3,7 @@
 // every function is a plain (prev, ...) => next computation the component
 // calls before any setState, never a flag mutated inside a setState updater.
 import { effectiveUnitPrice, PUBLIC_ORDER_MAX_ITEMS, PUBLIC_ORDER_MAX_QTY } from "@pos/shared/public";
+import { addOnTotal, lineModifierPrices } from "@pos/shared/modifier-prices";
 import type { PublicAddToCartOpts } from "@/components/public/PublicItemSheet";
 import type { PublicMenuProduct } from "@/components/public/PublicMenuItem";
 import type { CartLine } from "@/components/public/public-cart-store";
@@ -34,9 +35,30 @@ export function lineKey(
 }
 
 
-export function resolveUnitPrice(product: PublicMenuProduct, variation: string | undefined): number {
+// The diner's displayed unit price — the SAME rule as the server's
+// derivedLinePrice (lib/public-pricing.ts): the item's own discount applies to
+// the base/variation price only, then each picked add-on's amount is added in
+// full (priced add-ons). `modifiers` are the line's picked add-ons.
+export function resolveUnitPrice(
+  product: PublicMenuProduct,
+  variation: string | undefined,
+  modifiers: readonly string[],
+): number {
   const chosen = variation ? product.variations?.find((v) => v.name === variation) : undefined;
-  return effectiveUnitPrice(chosen ? chosen.price : product.price, product.discount);
+  return effectiveUnitPrice(chosen ? chosen.price : product.price, product.discount) + addOnTotal(product, modifiers);
+}
+
+// An add-on the item no longer offers is dropped, never re-sent: the server
+// would refuse it, or charge the line without it.
+function liveModifiers(product: PublicMenuProduct, modifiers: readonly string[]): string[] {
+  return modifiers.filter((m) => product.modifiers.includes(m));
+}
+
+// The cart line's display-only amount snapshot (what each priced add-on adds
+// per unit), omit-empty. Never sent: the submit builders copy field by field.
+function modifierPricesField(product: PublicMenuProduct, modifiers: readonly string[]) {
+  const stamp = lineModifierPrices(product, modifiers);
+  return stamp.length > 0 ? { modifierPrices: stamp } : {};
 }
 
 // CR2.2 fix round (setState closure flags) — the reconcile effect's own pure
@@ -63,9 +85,26 @@ export function reconcileCartWithMenu(
       changed = true;
       continue;
     }
-    const price = resolveUnitPrice(product, line.variation);
-    if (product.name !== line.name || price !== line.price) changed = true;
-    next.push({ ...line, name: product.name, price });
+    const modifiers = liveModifiers(product, line.modifiers);
+    const price = resolveUnitPrice(product, line.variation, modifiers);
+    const { modifierPrices: oldStamp, ...rest } = line;
+    const fresh = modifierPricesField(product, modifiers);
+    const stampMoved = JSON.stringify(oldStamp ?? []) !== JSON.stringify(fresh.modifierPrices ?? []);
+    const dropped = modifiers.length !== line.modifiers.length;
+    if (product.name !== line.name || price !== line.price || stampMoved || dropped) changed = true;
+    // A dropped add-on changes the line's identity: re-key it. Every line then
+    // folds into an identical one already placed, so one pick never shows twice
+    // — the twin may sit before a re-keyed line or after it (an unchanged line
+    // whose id a re-keyed one already took).
+    const lineId = dropped
+      ? lineKey(line.productId, line.variation, modifiers, line.instructions, line.removedModifiers)
+      : line.lineId;
+    const twin = next.findIndex((l) => l.lineId === lineId);
+    if (twin >= 0) {
+      next[twin] = { ...next[twin], qty: Math.min(PUBLIC_ORDER_MAX_QTY, next[twin].qty + line.qty) };
+      continue;
+    }
+    next.push({ ...rest, name: product.name, price, ...fresh, ...(dropped ? { lineId, modifiers } : {}) });
   }
   return { next, changed };
 }
@@ -78,8 +117,11 @@ export function computeAddLine(
   product: PublicMenuProduct,
   opts: PublicAddToCartOpts,
 ): { next: CartLine[]; capped: boolean } {
-  const key = lineKey(product.id, opts.variation, opts.modifiers, opts.instructions, opts.removedModifiers);
-  const unitPrice = resolveUnitPrice(product, opts.variation);
+  // A stale add-on (the item no longer offers it) is dropped before keying and
+  // pricing, so the line is never shown at a price the server will not charge.
+  const modifiers = liveModifiers(product, opts.modifiers);
+  const key = lineKey(product.id, opts.variation, modifiers, opts.instructions, opts.removedModifiers);
+  const unitPrice = resolveUnitPrice(product, opts.variation, modifiers);
   const idx = prev.findIndex((l) => l.lineId === key);
   if (idx >= 0) {
     const next = [...prev];
@@ -99,8 +141,9 @@ export function computeAddLine(
         price: unitPrice,
         qty: Math.min(PUBLIC_ORDER_MAX_QTY, opts.qty),
         variation: opts.variation,
-        modifiers: opts.modifiers,
+        modifiers,
         instructions: opts.instructions,
+        ...modifierPricesField(product, modifiers),
         ...(opts.removedModifiers && opts.removedModifiers.length > 0
           ? { removedModifiers: opts.removedModifiers }
           : {}),

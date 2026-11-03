@@ -1,4 +1,5 @@
-import { orderItemLabel, orderItemModifierLines } from "@pos/shared/utils";
+import { orderItemLabel } from "@pos/shared/utils";
+import { billModifierLines } from "@pos/shared/modifier-prices";
 import { inr } from "@/lib/utils";
 import { billLinesOf } from "@/lib/bill-lines"; // owner 2026-11-02: a repeated item is one bill line
 import type { OrderItem } from "@/types";
@@ -53,7 +54,7 @@ const themed = billThemedBlocks(MODERN_THEME);
 // The small line's tail: a reward's marker, the modifiers, the instructions.
 const extrasOf = (item: OrderItem): string[] => [
   ...(item.reward && item.note ? [item.note] : []),
-  ...orderItemModifierLines(item),
+  ...billModifierLines(item),
   ...(item.instructions ? [item.instructions] : []),
 ];
 

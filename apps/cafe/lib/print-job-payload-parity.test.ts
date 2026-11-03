@@ -117,9 +117,23 @@ function orderItemModifierLinesBody(): string {
 
 const modifierLinesKeys = harvest(orderItemModifierLinesBody(), /\bitem\.(\w+)/g);
 
+// `billModifierLines` (packages/shared/src/modifier-prices.ts, priced add-ons D1) is what every bill renderer calls
+// now: it reads `item.modifierPrices` (and `item.modifiers`) for the "+ Cheese Burst ₹100" line, so a host-printed bill
+// only shows the amount while the print snapshot carries it. Harvested from the body, like the helpers above.
+const SHARED_MODIFIER_PRICES_PATH = path.join("..", "..", "packages", "shared", "src", "modifier-prices.ts");
+function billModifierLinesBody(): string {
+  const src = stripComments(readFileSync(path.join(process.cwd(), SHARED_MODIFIER_PRICES_PATH), "utf8"));
+  const start = src.indexOf("export function billModifierLines(");
+  assert.ok(start >= 0, "billModifierLines function not found in packages/shared/src/modifier-prices.ts");
+  const nextExportIdx = src.indexOf("\nexport ", start + 1);
+  return nextExportIdx === -1 ? src.slice(start) : src.slice(start, nextExportIdx);
+}
+
+const billModifierLinesKeys = harvest(billModifierLinesBody(), /\bitem\.(\w+)/g);
+
 // Full harvested sets: renderer direct accessors UNION the helpers they call.
 const orderKeys = new Set<string>([...directOrderKeys, ...receiptGstKeys]);
-const itemKeys = new Set<string>([...directItemKeys, ...orderItemLabelKeys, ...modifierLinesKeys]);
+const itemKeys = new Set<string>([...directItemKeys, ...orderItemLabelKeys, ...modifierLinesKeys, ...billModifierLinesKeys]);
 
 const schemaOrderKeys = new Set<string>(Object.keys(printOrderSnapshotSchema.shape));
 const schemaItemKeys = new Set<string>(Object.keys(printOrderSnapshotItemSchema.shape));
@@ -177,11 +191,16 @@ test("PIN: harvested item-level accessor keys are a subset of printOrderSnapshot
   // renderers' own `item.modifiers` reads moved into orderItemModifierLines,
   // whose body is harvested above — the field is still read, one hop away —
   // and the union gained `removedModifiers`.
+  // Re-baselined UP 2026-11-02 (priced add-ons D1, MEASURED: union 11): billModifierLines reads
+  // `item.modifierPrices`, so the union gained it.
   assert.ok(
     directItemKeys.size >= 6,
     `expected >=6 direct item keys, got ${directItemKeys.size}`,
   );
-  assert.ok(itemKeys.size >= 10, `expected >=10 union item keys, got ${itemKeys.size}`);
+  assert.ok(itemKeys.size >= 11, `expected >=11 union item keys, got ${itemKeys.size}`);
+  assert.ok(billModifierLinesKeys.has("modifierPrices"), "landmark: billModifierLines reads modifierPrices off its item");
+  assert.ok(itemKeys.has("modifierPrices"), "modifierPrices must be a harvested item key — the bill's add-on amounts ride on it");
+  assert.ok(schemaItemKeys.has("modifierPrices"), "and the print snapshot item schema carries it");
   assert.ok(itemKeys.has("reward"), "reward must be a harvested item key — the whole free-dish feature rides on it");
   assert.ok(itemKeys.has("removedModifiers"), "removedModifiers must be a harvested item key — the NO lines ride on it");
 

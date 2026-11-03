@@ -153,8 +153,8 @@ test("PIN: POST /api/products wires createCollectionRoute's validate: hook to ch
   );
   assert.match(
     src,
-    /validate:\s*\(data\)\s*=>\s*checkCategoryExists\(data\.categoryId\)/,
-    "the route must wire validate: (data) => checkCategoryExists(data.categoryId)",
+    /validate:\s*async\s*\(data\)\s*=>\s*productAddOnsError\(data\)\s*\?\?\s*\(await checkCategoryExists\(data\.categoryId\)\)/,
+    "the route must wire validate: the add-on rule first, then checkCategoryExists(data.categoryId) (priced add-ons, 2026-11-02)",
   );
 });
 

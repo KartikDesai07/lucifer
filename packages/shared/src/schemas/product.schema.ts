@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { coerceProductRow, MAX_IMPORT_ROWS } from "../product-import";
 import {
+  MAX_MODIFIER_PRICES,
   MAX_VARIATIONS,
   VARIATION_NAME_MAX_LEN,
   VARIATION_NAME_MESSAGE,
@@ -45,6 +46,29 @@ const variationsArraySchema = z
     message: "Two variations have the same name",
   });
 
+// Priced add-ons (owner, 2026-11-02): one add-on's amount. Whole rupees, at
+// least 1 (decision D4: integer sums, so the cart, the server check and the bill
+// can never disagree by rounding). The name is NOT trimmed: it must equal one of
+// the item's `modifiers` byte for byte, which productAddOnsError
+// (@pos/shared/modifier-prices) judges on the resulting document, beside the
+// pair rules this plain field schema cannot see (no amounts on a ticked item,
+// one amount per add-on). Kept a plain object so `.partial()`/`.omit()` below
+// keep working — a cross-field refine on createProductSchema would break both.
+export const productModifierPriceSchema = z
+  .object({
+    name: z.string().min(1, "Name the add-on"),
+    price: z
+      .number()
+      .int("Whole rupees only")
+      .min(1, "At least 1")
+      .max(VARIATION_PRICE_MAX, `At most ${VARIATION_PRICE_MAX}`),
+  })
+  .strict();
+
+const modifierPricesArraySchema = z
+  .array(productModifierPriceSchema)
+  .max(MAX_MODIFIER_PRICES, `At most ${MAX_MODIFIER_PRICES} priced add-ons`);
+
 export const createProductSchema = z.object({
   name: z.string().trim().min(1, "Product name is required"),
   // A missing key AND a non-hex value both read as "Category is required" —
@@ -69,6 +93,10 @@ export const createProductSchema = z.object({
   // publicVisible precedent below: the CSV import has no column for it, so an
   // absent key must never switch it off. Absent means off.
   modifiersPreselected: z.boolean().optional(),
+  // Priced add-ons: optional with NO default (the publicVisible precedent) —
+  // absent means every add-on is free, and the CSV import (names only) never
+  // sends it (importProductRowSchema omits it below).
+  modifierPrices: modifierPricesArraySchema.optional(),
   isActive: z.boolean().default(true), // false = archived
   // Optional with NO default: absent means "shown on the public menu", so an
   // existing cafe publishes its whole menu without a migration and the CSV
@@ -114,6 +142,8 @@ export const updateProductSchema = createProductSchema.partial().extend({
   stationId: z.string().regex(OBJECT_ID_HEX_PATTERN, "Pick a station").nullable().optional(),
   // Same sentinel: `null` = "Same as its category" restores ABSENT.
   noKot: z.boolean().nullable().optional(),
+  // Same sentinel: `null` = "every add-on free again" restores ABSENT.
+  modifierPrices: modifierPricesArraySchema.nullable().optional(),
 });
 
 export type CreateProductInput = z.infer<typeof createProductSchema>;
@@ -128,7 +158,7 @@ export type UpdateProductInput = z.infer<typeof updateProductSchema>;
 export const importProductRowSchema = z.preprocess(
   (raw) => coerceProductRow((raw ?? {}) as Record<string, unknown>),
   createProductSchema
-    .omit({ categoryId: true })
+    .omit({ categoryId: true, modifierPrices: true })
     .extend({ category: z.string().trim().min(1, "Category is required") }),
 );
 

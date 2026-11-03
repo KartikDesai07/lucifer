@@ -4,7 +4,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-import { reconcileCartWithMenu } from "@/components/public/public-cart-math";
+import { reconcileCartWithMenu, resolveUnitPrice } from "@/components/public/public-cart-math";
+import { addOnTotal } from "@pos/shared/modifier-prices";
+import { effectiveUnitPrice } from "@pos/shared/public";
 import type { CartLine } from "@/components/public/public-cart-store";
 import type { PublicMenuProduct } from "@/components/public/PublicMenuItem";
 import {
@@ -432,4 +434,87 @@ test("PIN: PublicOrderStatus.tsx's countdown ticker STOPS on its own when the co
     /Date\.now\(\) >=|>=\s*deadline|cooldownUntil|stopTicker|setCooldownUntil\(0\)|clearInterval\(/.test(callback),
     `the ticker CALLBACK must itself notice the cooldown has lapsed and stop (or reset the state its effect keys on). A callback that only does setNowTick(Date.now()) free-runs forever once the deadline passes, re-rendering the whole status subtree every second. Callback was: ${callback}`,
   );
+});
+
+// ── Priced add-ons — the diner's cart shows the price the server will charge ──
+
+const PIZZA_ADD_ONS = { modifiers: ["Cheese Burst", "Jalapeno"], modifierPrices: [{ name: "Cheese Burst", price: 100 }] };
+
+test("resolveUnitPrice: base + add-on, variation + add-on, discount on the item only (250 at 10% + 100 = 325)", () => {
+  const plain = product({ price: 250, ...PIZZA_ADD_ONS });
+  assert.equal(resolveUnitPrice(plain, undefined, []), 250);
+  assert.equal(resolveUnitPrice(plain, undefined, ["Cheese Burst"]), 350);
+  assert.equal(resolveUnitPrice(plain, undefined, ["Jalapeno"]), 250, "an unpriced add-on is free");
+  const sized = product({ price: 250, variations: [{ name: "Large", price: 400 }], ...PIZZA_ADD_ONS });
+  assert.equal(resolveUnitPrice(sized, "Large", ["Cheese Burst"]), 500);
+  const discounted = product({ price: 250, discount: 10, ...PIZZA_ADD_ONS });
+  assert.equal(resolveUnitPrice(discounted, undefined, ["Cheese Burst"]), 325);
+  // The server's rule, by name: effectiveUnitPrice + addOnTotal.
+  assert.equal(
+    resolveUnitPrice(discounted, undefined, ["Cheese Burst"]),
+    effectiveUnitPrice(250, 10) + addOnTotal(discounted, ["Cheese Burst"]),
+  );
+});
+
+test("resolveUnitPrice: a ticked item adds 0, and an amount whose add-on left the item is ignored", () => {
+  const ticked = product({ price: 250, modifiersPreselected: true, ...PIZZA_ADD_ONS });
+  assert.equal(resolveUnitPrice(ticked, undefined, ["Cheese Burst"]), 250);
+  const orphan = product({ price: 250, modifiers: ["Jalapeno"], modifierPrices: [{ name: "Cheese Burst", price: 100 }] });
+  assert.equal(resolveUnitPrice(orphan, undefined, ["Cheese Burst"]), 250);
+});
+
+test("reconcileCartWithMenu: a re-priced add-on flows into the line price and its display stamp", () => {
+  const prev = [line({ price: 350, modifiers: ["Cheese Burst"], modifierPrices: [{ name: "Cheese Burst", price: 100 }] })];
+  const menu = [product({ price: 250, modifiers: ["Cheese Burst"], modifierPrices: [{ name: "Cheese Burst", price: 120 }] })];
+  const { next, changed } = reconcileCartWithMenu(prev, menu);
+  assert.equal(changed, true);
+  assert.equal(next[0].price, 370);
+  assert.deepEqual(next[0].modifierPrices, [{ name: "Cheese Burst", price: 120 }]);
+});
+
+test("reconcileCartWithMenu: a vanished add-on is dropped, the line re-priced without it and re-keyed", () => {
+  const prev = [line({ price: 350, modifiers: ["Cheese Burst"], modifierPrices: [{ name: "Cheese Burst", price: 100 }] })];
+  const menu = [product({ price: 250, modifiers: ["Jalapeno"] })];
+  const { next, changed } = reconcileCartWithMenu(prev, menu);
+  assert.equal(changed, true);
+  assert.deepEqual(next[0].modifiers, []);
+  assert.equal(next[0].price, 250);
+  assert.equal("modifierPrices" in next[0], false, "omit-empty: no stamp once nothing is priced");
+  assert.equal(next[0].lineId, "p1|||", "the line id follows the surviving picks");
+});
+
+test("reconcileCartWithMenu: an untouched priced line reports changed:false and keeps its stamp", () => {
+  const prev = [line({ price: 350, modifiers: ["Cheese Burst"], modifierPrices: [{ name: "Cheese Burst", price: 100 }] })];
+  const menu = [product({ price: 250, ...PIZZA_ADD_ONS })];
+  const { next, changed } = reconcileCartWithMenu(prev, menu);
+  assert.equal(changed, false);
+  assert.deepEqual(next, prev);
+});
+
+// Review finding (2026-11-03): a re-keyed line folds into its twin in EITHER order — the twin may come before it in
+// the cart (found among the lines already placed) or AFTER it (an unchanged line whose id the re-keyed one now holds).
+test("reconcileCartWithMenu: a line re-keyed by a vanished add-on merges with its plain twin wherever the twin sits", () => {
+  const priced = line({ lineId: "p1||Cheese Burst|", price: 350, qty: 1, modifiers: ["Cheese Burst"], modifierPrices: [{ name: "Cheese Burst", price: 100 }] });
+  const plain = line({ lineId: "p1|||", price: 250, qty: 3 });
+  const menu = [product({ price: 250, modifiers: ["Jalapeno"] })];
+  for (const prev of [[priced, plain], [plain, priced]]) {
+    const { next, changed } = reconcileCartWithMenu(prev, menu);
+    assert.equal(changed, true);
+    assert.equal(next.length, 1, "one pick shows once");
+    assert.equal(next[0].lineId, "p1|||");
+    assert.equal(next[0].qty, 4, "the quantities add up");
+    assert.equal(next[0].price, 250);
+  }
+});
+
+// Review finding (2026-11-03): the diner's item sheet quotes what the server will charge — the item price after its
+// discount plus every picked add-on in full, times the qty — and shows each amount in normal mode only.
+test("PIN: PublicItemSheet quotes (item price + picked add-ons) x qty and shows each amount in normal mode only", () => {
+  const src = readSrc("apps/cafe/components/public/PublicItemSheet.tsx");
+  assert.ok(src.includes("effectiveUnitPrice(chosenVariation.price, product.discount)"), "landmark: the item price is the discounted size price");
+  assert.ok(src.includes("const addOns = addOnTotal(product, selected);"), "the picked add-ons are summed by the shared rule");
+  assert.ok(src.includes("const unit = base === null ? null : base + addOns;"), "and added on top, never discounted");
+  assert.ok(src.includes("`Add ${qty} — ${inr(unit * qty)}`"), "the Add button quotes unit x qty");
+  assert.ok(src.includes("const extra = reverseMode"), "a ticked item's rows show no amount");
+  assert.ok(src.includes("+{inr(extra)}"), "a priced row shows +₹amount");
 });

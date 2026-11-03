@@ -24,6 +24,9 @@ export interface IOrderRequestItem {
   // through intake so accept can mint an Order line that keeps them. Omit-
   // empty (see the schema path below for why declared explicitly).
   removedModifiers?: string[];
+  // Server stamp of the priced add-ons this line was charged (omit-empty),
+  // so accept can drift-check the amounts and the bill prints them.
+  modifierPrices?: { name: string; price: number }[];
   instructions: string;
 }
 
@@ -118,6 +121,14 @@ export interface IOrderRequest extends Document {
   updatedAt: Date;
 }
 
+const modifierPriceSchema = new Schema(
+  {
+    name: { type: String, required: true },
+    price: { type: Number, required: true },
+  },
+  { _id: false },
+);
+
 const orderRequestItemSchema = new Schema<IOrderRequestItem>(
   {
     productId: { type: Schema.Types.ObjectId, required: true },
@@ -133,6 +144,9 @@ const orderRequestItemSchema = new Schema<IOrderRequestItem>(
     // codebase's strict:true has repeatedly dropped an interface-only field
     // silently (the reward note/rewardItem incidents).
     removedModifiers: { type: [String], default: undefined },
+    // Omit-empty too, and declared explicitly: an undeclared path is silently
+    // dropped by strict mode (the CB-5B note incident).
+    modifierPrices: { type: [modifierPriceSchema], default: undefined },
     instructions: { type: String, default: "" },
   },
   { _id: false }, // embedded — no _id needed

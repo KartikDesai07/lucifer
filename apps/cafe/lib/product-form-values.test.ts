@@ -10,7 +10,17 @@ import path from "node:path";
 
 import { createProductSchema } from "@pos/shared/schemas";
 import { stripComments } from "./source-pin-utils";
-import { addSizeRow, priceForSave, switchPriceMode, valuesForValidation } from "./product-form-values";
+import {
+  addOnsFormError,
+  addSizeRow,
+  modifierPricesForCreate,
+  modifierPricesForEdit,
+  modifierPricesForSave,
+  priceForSave,
+  setAddOnAmount,
+  switchPriceMode,
+  valuesForValidation,
+} from "./product-form-values";
 
 const CAFE_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const sheet = stripComments(readFileSync(path.join(CAFE_ROOT, "components/products/ProductFormSheet.tsx"), "utf8").replace(/\r\n/g, "\n"));
@@ -73,4 +83,61 @@ test("the save keeps its null sentinels and its create spread (menu P14, P51, P5
   assert.match(sheet, /noKot: values\.noKot \?\? null,/, "noKot: null");
   assert.match(sheet, /price: priceForSave\(\{ hasVariations: values\.variations !== undefined, price: values\.price \}, false\),/, "an edit sends priceForSave(..., false)");
   assert.match(sheet, /await createProduct\.mutateAsync\(\{\s*\.\.\.values,\s*price: priceForSave\(\{ hasVariations: values\.variations !== undefined, price: values\.price \}, true\),/, "a create spreads the values with priceForSave(..., true)");
+});
+
+// ── priced add-ons (owner 2026-11-02; D3 no amounts on a "comes ticked" item, D4 whole rupees) ───────────────────────
+
+const BURST = { name: "Cheese Burst", price: 100 };
+const PRICED = { modifiers: ["Cheese Burst", "Jalapeno"], modifierPrices: [BURST] };
+
+test("modifierPrices round trip: an item's amounts come in as the form's list and go out as the save's list", () => {
+  const form = { ...PRICED };
+  assert.deepEqual(modifierPricesForSave(form), [BURST]);
+  assert.deepEqual(modifierPricesForCreate(form), [BURST]);
+  assert.deepEqual(modifierPricesForEdit(form, [BURST]), [BURST]);
+  assert.deepEqual(modifierPricesForEdit(form, undefined), [BURST], "a first amount on an item that had none");
+});
+
+test("modifierPrices: a create with none sends no key; an edit sends null only when the item HAD amounts and now has none", () => {
+  assert.equal(modifierPricesForCreate({ modifiers: ["A"] }), undefined, "absent stays absent");
+  assert.equal(modifierPricesForCreate({ modifiers: ["A"], modifierPrices: [] }), undefined, "an emptied list is absent too");
+  assert.equal(modifierPricesForEdit({ modifiers: ["A"], modifierPrices: [] }, [BURST]), null, "cleared on edit: the PUT's null sentinel");
+  assert.equal(modifierPricesForEdit({ modifiers: ["A"] }, [BURST]), null);
+  assert.equal(modifierPricesForEdit({ modifiers: ["A"], modifierPrices: [] }, undefined), undefined, "none before, none now: no key");
+  assert.equal(modifierPricesForEdit({ modifiers: ["A"], modifierPrices: [] }, []), undefined);
+});
+
+test("modifierPrices: a removed or renamed add-on drops its amount; names go out exactly as in modifiers; one entry per name", () => {
+  assert.deepEqual(modifierPricesForSave({ modifiers: ["Jalapeno"], modifierPrices: [BURST] }), [], "Cheese Burst left the list");
+  assert.deepEqual(modifierPricesForSave({ modifiers: ["Cheese burst"], modifierPrices: [BURST] }), [], "a rename (even by case) is a different name");
+  assert.deepEqual(modifierPricesForSave({ modifiers: ["Cheese Burst"], modifierPrices: [BURST, { name: "Cheese Burst", price: 5 }] }), [BURST]);
+  assert.equal(modifierPricesForEdit({ modifiers: ["Jalapeno"], modifierPrices: [BURST] }, [BURST]), null, "removing the only priced add-on clears the stored amounts");
+});
+
+test("setAddOnAmount: whole rupees only - digits kept, an empty box means free, a re-type replaces", () => {
+  assert.deepEqual(setAddOnAmount([], "Cheese Burst", "100"), [BURST]);
+  assert.deepEqual(setAddOnAmount([BURST], "Cheese Burst", ""), [], "an emptied box clears the amount");
+  assert.deepEqual(setAddOnAmount([BURST], "Cheese Burst", "12.5"), [{ name: "Cheese Burst", price: 125 }], "the dot is never typed (D4)");
+  assert.deepEqual(setAddOnAmount([BURST], "Cheese Burst", "abc"), [], "no digits = empty = free");
+  assert.deepEqual(setAddOnAmount([BURST], "Jalapeno", "20"), [BURST, { name: "Jalapeno", price: 20 }], "another add-on's amount is untouched");
+  assert.deepEqual(setAddOnAmount([], "Cheese Burst", "99999999"), [{ name: "Cheese Burst", price: 999999 }], "capped at the digits the server's maximum has");
+});
+
+test("addOnsFormError: the server's own message, before the request (D3 ticked, D4 whole rupees 1..max, names in modifiers)", () => {
+  assert.equal(addOnsFormError(PRICED), null);
+  assert.equal(addOnsFormError({ modifiers: ["A"] }), null, "no amounts, nothing to judge");
+  assert.match(addOnsFormError({ ...PRICED, modifiersPreselected: true }) ?? "", /cannot be set while the item's add-ons come ticked/);
+  assert.match(addOnsFormError({ modifiers: ["Cheese Burst"], modifierPrices: [{ name: "Cheese Burst", price: 0 }] }) ?? "", /must be whole rupees, from 1 to 100000/);
+  assert.match(addOnsFormError({ modifiers: ["Cheese Burst"], modifierPrices: [{ name: "Cheese Burst", price: 12.5 }] }) ?? "", /whole rupees/);
+  // "comes ticked" counts only with an add-on: the save sends false then (modifiersPreselectedToSave), so no refusal.
+  assert.equal(addOnsFormError({ modifiers: [], modifiersPreselected: true, modifierPrices: [BURST] }), null, "orphan amount is dropped by the save, not an error");
+  assert.equal(addOnsFormError({ modifiers: ["Jalapeno"], modifierPrices: [BURST] }), null, "an amount whose add-on was removed is dropped by the save");
+});
+
+test("PIN: the sheet sends modifierPrices through the helpers (create: no key when none; edit: null sentinel) and judges the rule in its resolver", () => {
+  assert.ok(sheet.includes("modifierPrices: modifierPricesForCreate(values),"), "a create sends the list or no key");
+  assert.ok(sheet.includes("modifierPrices: modifierPricesForEdit(values, product.modifierPrices),"), "an edit sends the list, or null when cleared");
+  assert.ok(sheet.includes("addOnsFormError(values)"), "the form shows the server's refusal before any request");
+  assert.ok(sheet.includes("modifierPrices: product.modifierPrices,"), "the editor opens with the stored amounts");
+  assert.match(sheet, /<ModifierInput id="product-modifiers"[\s\S]*?prices=\{modifierPrices\}[\s\S]*?ticked=\{ticked\}/, "the input gets the amounts and the ticked switch");
 });

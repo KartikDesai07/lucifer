@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { orderItemLabel, orderItemModifierLines } from "@pos/shared/utils";
+import { billModifierLines } from "@pos/shared/modifier-prices";
+import { orderItemLabel } from "@pos/shared/utils";
 import { ORDER_REASON_MIN_LEN, ORDER_REASON_MAX_LEN } from "@/lib/constants";
 import { cn, inr } from "@/lib/utils";
 import { BRAND_CONTROL_CLASS, BRAND_PANEL_CLASS } from "@/components/brand/brand-classes";
@@ -160,7 +161,7 @@ export function OrderRequestCard({
               <span>
                 {item.qty} × {orderItemLabel(item)}
               </span>
-              {orderItemModifierLines(item).map((line) => (
+              {billModifierLines(item).map((line) => (
                 <div key={line} className="text-xs text-muted-foreground">
                   {line}
                 </div>

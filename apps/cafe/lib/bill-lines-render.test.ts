@@ -6,10 +6,11 @@ import { fileURLToPath } from "node:url";
 import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { OrderReceipt } from "@/components/pos/OrderReceipt";
-import { BillSlip } from "@/components/print/slip/SlipEngine";
+import { KOTReceipt } from "@/components/pos/KOTReceipt";
+import { BillSlip, KotSlip } from "@/components/print/slip/SlipEngine";
 import { loadSlipCode } from "@/components/print/slip/slip-code";
-import { defaultBillTemplate } from "@/lib/print-template-designs";
-import { BILL_DESIGNS } from "@pos/shared/print-template";
+import { defaultBillTemplate, defaultKotTemplate } from "@/lib/print-template-designs";
+import { BILL_DESIGNS, KOT_DESIGNS } from "@pos/shared/print-template";
 import { FIXED_NOW_MS, orderOf, settingsOf } from "./print-template-golden.fixtures";
 import { stripComments } from "./source-pin-utils";
 import { detailItemsHead } from "./order-detail-view";
@@ -70,4 +71,43 @@ test("Orders page detail lists the bill lines (grouped), and its item count stil
   assert.ok(src.includes("billLinesOf(order.items).map((item, i) => {"), "the detail rows come from billLinesOf");
   assert.ok(!src.includes("{order.items.map((item, i) => {"), "no raw per-round row list left in the items box");
   assert.equal(detailItemsHead(repeated), "3 items", "the head counts every qty of the stored lines (1 + 1 + 1)");
+});
+
+// Priced add-ons (owner D1, 2026-11-02): the BILL shows each priced add-on's per-unit amount under the line; the KOT
+// paper stays names only.
+const cheeseBurger: OrderItem = {
+  productId: "p-burger", name: "Veg Burger", price: 220, qty: 2, modifiers: ["Cheese Burst", "Jalapeno"],
+  modifierPrices: [{ name: "Cheese Burst", price: 100 }], instructions: "", kotRound: 1,
+};
+const priced = orderOf({ items: [cheeseBurger], gst: { rate: 5, mode: "exclusive" } });
+const ADD_ON_LINE = "+ Cheese Burst ₹100, Jalapeno";
+
+test("legacy bill: the priced add-on shows its amount under the line", () => {
+  const html = renderToStaticMarkup(createElement(OrderReceipt, { order: priced, settings }));
+  assert.ok(html.includes(ADD_ON_LINE), "the add-on line carries the per-unit amount (the line amount is already x qty)");
+});
+
+for (const design of BILL_DESIGNS) {
+  test(`${design} bill: the priced add-on shows its amount; an order without amounts prints the names alone`, () => {
+    const template = defaultBillTemplate(design, settings);
+    const html = renderToStaticMarkup(createElement(BillSlip, { order: priced, settings, template }));
+    assert.ok(html.includes("Veg Burger"), "landmark: the items block rendered");
+    assert.ok(html.includes(ADD_ON_LINE), `${design}: shows ${ADD_ON_LINE}`);
+    const plain = orderOf({ items: [{ ...cheeseBurger, modifierPrices: undefined }], gst: { rate: 5, mode: "exclusive" } });
+    const names = renderToStaticMarkup(createElement(BillSlip, { order: plain, settings, template }));
+    assert.ok(names.includes("+ Cheese Burst, Jalapeno") && !names.includes("₹100"), `${design}: no snapshot, no amount`);
+  });
+}
+
+test("KOT paper (legacy ticket and both KOT designs) stays names only on a priced line", () => {
+  const html = [
+    renderToStaticMarkup(createElement(KOTReceipt, { order: priced, settings })),
+    ...KOT_DESIGNS.map((design) =>
+      renderToStaticMarkup(createElement(KotSlip, { order: priced, settings, template: defaultKotTemplate(design, settings) })),
+    ),
+  ];
+  for (const [i, h] of html.entries()) {
+    assert.ok(h.includes("Cheese Burst"), `landmark: ticket ${i} prints the add-on name`);
+    assert.ok(!h.includes("₹100") && !/Cheese Burst\s*₹/.test(h), `ticket ${i}: no amount on the kitchen paper`);
+  }
 });

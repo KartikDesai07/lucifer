@@ -20,7 +20,7 @@ const ITEMS_ROUTE = "app/api/orders/[id]/items/route.ts";
 const PRODUCTS_ROUTE = "app/api/products/route.ts";
 const CRUD_ROUTE = "lib/crud-route.ts";
 const RULE_FILE = "lib/order-availability.ts";
-const NEW_SELECT = '.select("name variations modifiers modifiersPreselected price discount available isActive")';
+const NEW_SELECT = '.select("name variations modifiers modifiersPreselected modifierPrices price discount available isActive")';
 
 // Comment-stripped, CRLF-normalised (autocrlf can flip the checkout).
 const read = (rel: string) => stripComments(readFileSync(path.join(CAFE_ROOT, rel), "utf8")).replace(/\r\n/g, "\n");
@@ -149,7 +149,7 @@ test("PIN (both routes): one menu check, judging only the request's own new line
 test("PIN (both routes): the product read carries the fields the rule judges", () => {
   for (const rel of [ORDERS_ROUTE, ITEMS_ROUTE]) {
     const src = read(rel);
-    assert.equal(count(src, NEW_SELECT), 1, `${rel}: one product select, with price discount available isActive`);
+    assert.equal(count(src, NEW_SELECT), 1, `${rel}: one product select, with modifierPrices price discount available isActive`);
     assert.ok(src.includes("price discount available isActive"), `${rel}: landmark`);
     assert.equal(count(src, "Product.find("), 1, `${rel}: still one product read`);
   }

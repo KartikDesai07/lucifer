@@ -11,6 +11,7 @@ import {
 } from "@/lib/constants";
 import { ORDER_CHARGE_TYPES, type OrderCharge } from "@pos/shared/order-charges";
 import { isInvoiceFy, isInvoiceSerial } from "@pos/shared/invoice-number";
+import type { ProductModifierPrice } from "@/types";
 import { orderRewardPaths, type IOrderRewardFields } from "@/models/order-reward-paths";
 
 // Embedded subdocument — never saved independently (parent Order owns it).
@@ -34,6 +35,10 @@ export interface IOrderItem {
   // an undeclared path. Rendered only through orderItemModifierLines
   // (@pos/shared/utils).
   removedModifiers?: string[];
+  // Priced add-ons (owner, 2026-11-02): what this line's picked add-ons were CHARGED per
+  // unit, snapshotted by the server at write time (priced picks only, sorted by name) so a
+  // reprint years later prints what was charged. Omit-empty; never client-declared.
+  modifierPrices?: ProductModifierPrice[];
   instructions: string;
   kotRound: number; // KOT round this line was fired in (0 = not yet sent / legacy)
   // CB-5B — this line was GIVEN as a loyalty reward (a free dish claimed off the
@@ -233,6 +238,15 @@ const orderChargeSchema = new Schema<OrderCharge>(
   { _id: false },
 );
 
+// An add-on's charged amount on a line — embedded, so `_id:false`.
+const orderItemModifierPriceSchema = new Schema<ProductModifierPrice>(
+  {
+    name: { type: String, required: true },
+    price: { type: Number, required: true },
+  },
+  { _id: false },
+);
+
 const orderItemSchema = new Schema<IOrderItem>(
   {
     productId: { type: Schema.Types.ObjectId, required: true },
@@ -250,6 +264,8 @@ const orderItemSchema = new Schema<IOrderItem>(
     // feature. Declared explicitly — see the IOrderItem comment above for why
     // (this model's own note/rewardItem strict:true incidents).
     removedModifiers: { type: [String], default: undefined },
+    // Omit-empty like removedModifiers: only a line with a priced pick stores the key.
+    modifierPrices: { type: [orderItemModifierPriceSchema], default: undefined },
     instructions: { type: String, default: "" },
     kotRound: { type: Number, default: 0 },
     // No default: an ordinary sold line carries no key at all (the omit-empty

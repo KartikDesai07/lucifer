@@ -5,6 +5,7 @@ import { effectiveUnitPrice } from "@pos/shared/public";
 import {
   derivedLinePrice,
   priceRequestItems,
+  sameModifierPrices,
   UNKNOWN_ITEM_ERROR,
   SOLD_OUT_ERROR,
   UNKNOWN_MODIFIER_ERROR,
@@ -184,4 +185,75 @@ test("priceRequestItems: fails fast on the FIRST rejected item, never pricing th
     { productId: String(PLAIN_PRODUCT._id), modifiers: [], qty: 1 },
   ]);
   assert.deepEqual(result, { error: UNKNOWN_ITEM_ERROR });
+});
+
+// ── Priced add-ons: unit = effectiveUnitPrice(base, discount) + addOnTotal ──
+
+const ADDON_PIZZA: PricedProductSource = {
+  _id: "64f000000000000000000003",
+  name: "Pizza",
+  price: 250,
+  discount: 10,
+  available: true,
+  modifiers: ["Cheese Burst", "Jalapeno"],
+  modifierPrices: [{ name: "Cheese Burst", price: 100 }],
+  variations: [{ name: "Large", price: 300 }],
+};
+
+test("derivedLinePrice: an add-on is added AFTER the item's own discount (250 at 10% + 100 = 325)", () => {
+  assert.equal(derivedLinePrice(ADDON_PIZZA, undefined, ["Cheese Burst"]), 325);
+});
+
+test("derivedLinePrice: variation + add-on (300 at 10% = 270, + 100 = 370)", () => {
+  assert.equal(derivedLinePrice(ADDON_PIZZA, "Large", ["Cheese Burst"]), 370);
+});
+
+test("derivedLinePrice: a free add-on and no modifiers arg keep the old price", () => {
+  assert.equal(derivedLinePrice(ADDON_PIZZA, undefined, ["Jalapeno"]), 225);
+  assert.equal(derivedLinePrice(ADDON_PIZZA), 225);
+});
+
+test("derivedLinePrice: an item whose add-ons come ticked adds 0, and an orphan amount is ignored", () => {
+  assert.equal(
+    derivedLinePrice({ ...ADDON_PIZZA, modifiersPreselected: true }, undefined, ["Cheese Burst"]),
+    225,
+  );
+  const orphan = { ...ADDON_PIZZA, modifiers: ["Jalapeno"] };
+  assert.equal(derivedLinePrice(orphan, undefined, ["Cheese Burst"]), 225);
+});
+
+test("derivedLinePrice: an unknown variation stays null even with an add-on", () => {
+  assert.equal(derivedLinePrice(ADDON_PIZZA, "Medium", ["Cheese Burst"]), null);
+});
+
+test("priceRequestItems: a priced pick prices the line and carries the stamp", () => {
+  const out = priceRequestItems([ADDON_PIZZA], [
+    { productId: String(ADDON_PIZZA._id), variation: "Large", modifiers: ["Jalapeno", "Cheese Burst"], qty: 2 },
+  ]);
+  assert.ok("lines" in out);
+  assert.equal(out.lines[0].price, 370);
+  assert.deepEqual(out.lines[0].modifierPrices, [{ name: "Cheese Burst", price: 100 }]);
+});
+
+test("priceRequestItems: an unpriced line has no modifierPrices key; an unknown modifier is still refused", () => {
+  const free = priceRequestItems([ADDON_PIZZA], [
+    { productId: String(ADDON_PIZZA._id), variation: "Large", modifiers: ["Jalapeno"], qty: 1 },
+  ]);
+  assert.ok("lines" in free);
+  assert.equal("modifierPrices" in free.lines[0], false);
+  assert.equal(free.lines[0].price, 270);
+  const bad = priceRequestItems([ADDON_PIZZA], [
+    { productId: String(ADDON_PIZZA._id), variation: "Large", modifiers: ["Truffle"], qty: 1 },
+  ]);
+  assert.deepEqual(bad, { error: UNKNOWN_MODIFIER_ERROR("Pizza", "Truffle") });
+});
+
+test("sameModifierPrices: absent equals empty; a moved amount is NOT equal even with the same total", () => {
+  assert.equal(sameModifierPrices(undefined, []), true);
+  assert.equal(sameModifierPrices(undefined, undefined), true);
+  const a = [{ name: "A", price: 10 }, { name: "B", price: 20 }];
+  assert.equal(sameModifierPrices(a, [{ name: "A", price: 10 }, { name: "B", price: 20 }]), true);
+  assert.equal(sameModifierPrices(a, [{ name: "A", price: 20 }, { name: "B", price: 10 }]), false);
+  assert.equal(sameModifierPrices(a, [{ name: "A", price: 10 }]), false);
+  assert.equal(sameModifierPrices(a, undefined), false);
 });

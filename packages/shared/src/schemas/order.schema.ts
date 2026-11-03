@@ -16,6 +16,7 @@ import { orderRewardIntentShape, rewardAtSchema, rewardCardIdSchema, settleRewar
 import { tableNoSchema } from "./table.schema";
 import { objectIdString } from "./object-id.schema";
 import { extraChargesSchema } from "./order-charge.schema";
+import { hasRepeatedModifier, REPEATED_MODIFIER_MESSAGE } from "../modifier-prices";
 
 export const orderItemSchema = z.object({
   productId: objectIdString,
@@ -32,7 +33,8 @@ export const orderItemSchema = z.object({
     .max(VARIATION_NAME_MAX_LEN)
     .regex(VARIATION_NAME_PATTERN, VARIATION_NAME_MESSAGE)
     .optional(),
-  modifiers: z.array(z.string()).default([]),
+  // Each add-on once: a repeat would print "+ X, X" and could charge X twice.
+  modifiers: z.array(z.string()).refine((m) => !hasRepeatedModifier(m), REPEATED_MODIFIER_MESSAGE).default([]),
   // The modifiers the customer did NOT want, on an item whose modifiers come
   // ticked (Product.modifiersPreselected) — printed as "NO <modifier>" on the
   // KOT, the kitchen screen and the bill. Optional, omit-empty: an ordinary
@@ -49,6 +51,8 @@ export const orderItemSchema = z.object({
   // Same fence for skip-KOT: deliberately NO `noKot` key either. Only the server stamps it (from the
   // menu, at write time), so a client cannot hide a dish from the kitchen. And NO `kotRank` (KOT
   // kitchen order): Zod strips it, and the server's stamp overwrites a line's rank anyway.
+  // And NO `modifierPrices` (priced add-ons): the server stamps what each add-on was charged from
+  // the live product (lineModifierPrices); a client-declared amount would print on the bill.
 });
 
 // F5 — the send idempotency key: one RFC-4122 UUID the POS mints per Send to

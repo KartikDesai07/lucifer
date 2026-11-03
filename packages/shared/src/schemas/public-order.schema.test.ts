@@ -137,3 +137,11 @@ test("createPublicOrderRequestSchema accepts a well-formed parcel order", () => 
   const r = createPublicOrderRequestSchema.safeParse(validRequest());
   assert.equal(r.success, true);
 });
+
+// Priced add-ons: a diner can never declare what an add-on costs, and never pick one twice.
+test("publicOrderItemSchema rejects a client-sent modifierPrices and a repeated add-on", () => {
+  const priced = publicOrderItemSchema.safeParse({ ...validItem(), modifiers: ["Cheese Burst"], modifierPrices: [{ name: "Cheese Burst", price: 0 }] });
+  assert.equal(priced.success, false, "the strict item refuses the key outright");
+  assert.equal(publicOrderItemSchema.safeParse({ ...validItem(), modifiers: ["Cheese Burst", "Olives"] }).success, true, "landmark");
+  assert.equal(publicOrderItemSchema.safeParse({ ...validItem(), modifiers: ["Cheese Burst", "Cheese Burst"] }).success, false);
+});

@@ -82,13 +82,14 @@ test("PIN (E/F, U1 Task 8): the options modal's add-on rows are checkboxes (role
 
 // ── F — one formatter on every surface ───────────────────────────────────────
 
-const DISPLAY_SURFACES = [
-  "components/pos/KOTReceipt.tsx",
+// Priced add-ons (owner D1, 2026-11-02): a surface that SHOWS A PRICE prints its modifier lines through
+// billModifierLines (the same "NO ..." / "+ ..." lines, plus the amount after each priced add-on); the kitchen paper
+// stays names only on orderItemModifierLines.
+const PRICE_SURFACES = [
   "components/pos/OrderReceipt.tsx",
   // U1 Task 4 (values 5.4): the /pos cart line's one meta line is built in lib/pos-cart-view.ts (lineMeta), which
   // CartLine renders; the pin below keeps CartLine on it.
   "lib/pos-cart-view.ts",
-  "components/kitchen/KitchenLineCard.tsx",
   // U2 Task 6: the Orders detail's item lines moved with its body into OrderDetailBody.tsx; U2 Task 7: their one meta
   // line is built in lib/order-detail-view.ts (detailLineMeta), which OrderDetailBody renders (pin below).
   "lib/order-detail-view.ts",
@@ -96,20 +97,53 @@ const DISPLAY_SURFACES = [
   "components/public/PublicCartLine.tsx",
   "components/public/PublicStatusItemRow.tsx",
   "components/public/public-bill-rows.ts",
+  // The three bill designs' item rows (Classic, Modern, themed).
+  "components/print/slip/bill-classic-blocks.tsx",
+  "components/print/slip/bill-modern-blocks.tsx",
+  "components/print/slip/bill-themed-blocks.tsx",
+];
+const KITCHEN_SURFACES = [
+  "components/pos/KOTReceipt.tsx",
+  "components/kitchen/KitchenLineCard.tsx",
   // Review finding 2026-09-29: the void picker and the void trail too — two
   // pizzas that differ only by "NO Mushroom" must not look alike there.
   "components/pos/VoidItemDialog.tsx",
   "components/orders/OrderVoidTrail.tsx",
+  "components/print/slip/kot-classic-blocks.tsx",
+  "components/print/slip/kot-bold-blocks.tsx",
 ];
+const HAND_JOIN_RE = /\bmodifiers\s*\??\.\s*join\s*\(/;
 
-test("PIN (F): every line-display surface prints modifiers through orderItemModifierLines — none joins them by hand", () => {
-  for (const rel of DISPLAY_SURFACES) {
+test("PIN (F): every price-showing surface prints modifiers through billModifierLines (the NO lines survive, the add-on amount shows) — none joins them by hand", () => {
+  for (const rel of PRICE_SURFACES) {
     const src = stripComments(readSrc(rel));
+    assert.match(src, /import \{[^}]*\bbillModifierLines\b[^}]*\} from "@pos\/shared\/modifier-prices";/, `${rel}: imports the bill formatter`);
+    assert.match(src, /\bbillModifierLines\(/, `${rel}: calls it`);
+    // Also the optional-chain form (item.modifiers?.join) a regression would idiomatically use.
+    assert.ok(!HAND_JOIN_RE.test(src), `${rel}: a hand-written modifiers join is back — it would drop the NO lines`);
+  }
+});
+
+test("PIN (F): every kitchen surface keeps orderItemModifierLines (names only) and never reads an add-on amount", () => {
+  for (const rel of KITCHEN_SURFACES) {
+    const src = stripComments(readSrc(rel));
+    // Positive landmark first: the surface still prints its modifier lines through the shared formatter.
     assert.match(src, /import \{[^}]*\borderItemModifierLines\b[^}]*\} from "@pos\/shared\/utils";/, `${rel}: imports the shared formatter`);
     assert.match(src, /\borderItemModifierLines\(/, `${rel}: calls it`);
-    // Also the optional-chain form (item.modifiers?.join) a regression would idiomatically use.
-    assert.ok(!/\bmodifiers\s*\??\.\s*join\s*\(/.test(src), `${rel}: a hand-written modifiers join is back — it would drop the NO lines`);
+    assert.ok(!/\bbillModifierLines\b/.test(src), `${rel}: kitchen paper is names only — no bill formatter`);
+    assert.ok(!/\bmodifierPrices\b/.test(src), `${rel}: kitchen paper never reads the add-on amounts`);
+    assert.ok(!HAND_JOIN_RE.test(src), `${rel}: a hand-written modifiers join is back — it would drop the NO lines`);
   }
+});
+
+test("PIN (F): billModifierLines wraps orderItemModifierLines (the NO lines come from the one shared formatter)", () => {
+  const shared = stripComments(readFileSync(path.join(CAFE_ROOT, "..", "..", "packages", "shared", "src", "modifier-prices.ts"), "utf8"));
+  const start = shared.indexOf("export function billModifierLines(");
+  assert.ok(start >= 0, "landmark: billModifierLines exists");
+  const next = shared.indexOf("\nexport ", start + 1);
+  const body = next === -1 ? shared.slice(start) : shared.slice(start, next);
+  assert.match(body, /\borderItemModifierLines\(item\)/, "billModifierLines starts from orderItemModifierLines");
+  assert.match(shared, /import \{[^}]*\borderItemModifierLines\b[^}]*\} from "\.\/modifiers";/, "imported from the one modifiers module");
 });
 
 test("PIN (F): the Orders detail's line shows its removals through detailLineMeta (U2 Task 7: moved from OrderDetailBody.tsx, same meaning)", () => {
@@ -143,7 +177,7 @@ test("PIN (F): both void slips (host print job and local print) carry the remova
 test("PIN (F): both order write routes load the flag and refuse bad removals after the variation check, before anything is written", () => {
   for (const rel of ["app/api/orders/route.ts", "app/api/orders/[id]/items/route.ts"]) {
     const src = stripComments(readSrc(rel));
-    assert.match(src, /\.select\("name variations modifiers modifiersPreselected price discount available isActive"\)/, `${rel}: the product read carries the flag`);
+    assert.match(src, /\.select\("name variations modifiers modifiersPreselected modifierPrices price discount available isActive"\)/, `${rel}: the product read carries the flag and the add-on amounts`);
     const variations = src.indexOf("checkItemVariations(");
     const removals = src.indexOf("checkItemRemovedModifiers(");
     const refusal = src.indexOf("if (badRemovals) return failure(badRemovals, 400);");

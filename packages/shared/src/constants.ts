@@ -51,6 +51,10 @@ export const VARIATION_NAME_MESSAGE =
 // its own rather than borrowing the table-charge one.
 export const VARIATION_PRICE_MAX = 100000;
 
+// Priced add-ons (owner, 2026-11-02): how many of an item's add-ons may carry an amount. Each amount
+// is whole rupees, 1..VARIATION_PRICE_MAX (an add-on is priced like a size); the set rides every menu load.
+export const MAX_MODIFIER_PRICES = 50;
+
 // A per-table extra charge (cover / AC / rooftop / service …). Two fields, not
 // one: the AMOUNT is what lands on the bill, and the LABEL is what the customer
 // reads on the slip. The label is operator text with no product-supplied

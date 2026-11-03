@@ -16,6 +16,7 @@ import {
 } from "../public";
 import { LOYALTY_MILESTONE_AT_MIN, LOYALTY_MILESTONE_AT_MAX } from "../loyalty-rules";
 import { REWARD_CARD_ID_RE } from "../reward-levels";
+import { hasRepeatedModifier, REPEATED_MODIFIER_MESSAGE } from "../modifier-prices";
 
 // The shape of a public (diner-facing, unauthenticated) order request — phase
 // CR2. Pure and client-safe like public.ts: the diner's menu page bundles this
@@ -52,6 +53,8 @@ export const publicOrderItemSchema = z
     modifiers: z
       .array(z.string().trim().min(1).max(PUBLIC_ORDER_MODIFIER_MAX_LEN))
       .max(PUBLIC_ORDER_MAX_MODIFIERS)
+      // Each add-on once (priced add-ons): a repeat could charge it twice.
+      .refine((m) => !hasRepeatedModifier(m), REPEATED_MODIFIER_MESSAGE)
       .default([]),
     // The modifiers the diner unticked on an item whose modifiers come ticked
     // — printed "NO <modifier>". Omit-empty; the server checks each against

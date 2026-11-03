@@ -43,7 +43,9 @@ import type { Area, Category, Product, Settings, Staff, Table } from "@/types";
 // Staff page would show no PIN state and a device would never auto-lock from it - v15 blobs are discarded.
 // KOT kitchen order (2026-11-01): Category gained `kotOrder`. A v16 blob has none, so the Categories page would show the
 // Kitchen order as not set (and a drag would start from the menu order) after the owner saved one - v16 blobs are discarded.
-export const BOOTSTRAP_VERSION = 17;
+// Priced add-ons (2026-11-02): Product gained `modifierPrices` (a money field). A v17 blob has none, so a device holding one would
+// price a priced add-on at nothing in the POS cart (and the server would 409 it) until the next bootstrap - v17 blobs are discarded.
+export const BOOTSTRAP_VERSION = 18;
 
 // Device storage key (the browser's persistent per-origin store — survives a
 // reload, a closed tab and a restart of the app shell; cleared on logout and

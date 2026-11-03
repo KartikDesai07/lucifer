@@ -1,5 +1,5 @@
 import mongoose, { Schema, Types, type Document, type Model } from "mongoose";
-import type { ProductVariation } from "@/types";
+import type { ProductModifierPrice, ProductVariation } from "@/types";
 
 export interface IProduct extends Document {
   name: string;
@@ -25,6 +25,11 @@ export interface IProduct extends Document {
   // …"). No default, same reason as `publicVisible` below: the CSV import has
   // no column for it, so an absent key must never switch it off. Absent = off.
   modifiersPreselected?: boolean;
+  // Priced add-ons (owner, 2026-11-02): whole-rupee amounts for SOME of `modifiers`
+  // (an add-on named here costs this much more, after the item's own discount).
+  // ABSENT = every add-on free, never []: omit-empty, the `variations` precedent.
+  // The write rule is productAddOnsError (@pos/shared/modifier-prices).
+  modifierPrices?: ProductModifierPrice[];
   isActive: boolean; // false = archived (soft-deleted), hidden from the menu
   // Public QR menu (CR2) visibility — ABSENT means visible, same omit-empty
   // discipline as `variations` above. No default on the schema field below:
@@ -53,6 +58,15 @@ export interface IProduct extends Document {
 // One named size/portion and its own price — embedded, never saved
 // independently, so `_id:false` (mirrors orderItemSchema/orderVoidSchema below
 // in models/Order.ts).
+// An add-on's amount — same embedded `_id:false` shape as a size (name + price).
+const productModifierPriceSchema = new Schema<ProductModifierPrice>(
+  {
+    name: { type: String, required: true },
+    price: { type: Number, required: true },
+  },
+  { _id: false },
+);
+
 const productVariationSchema = new Schema<ProductVariation>(
   {
     name: { type: String, required: true, trim: true },
@@ -80,6 +94,8 @@ export const productSchema = new Schema<IProduct>(
     // default here would flip every pre-existing product's meaning the
     // moment it was next saved (same reasoning as `publicVisible` below).
     modifiersPreselected: { type: Boolean },
+    // No `default:` — omit-empty (see the IProduct comment above).
+    modifierPrices: { type: [productModifierPriceSchema], default: undefined },
     isActive: { type: Boolean, default: true },
     // No `default:` — see the IProduct comment above: absent means visible,
     // and a default here would flip every pre-CR2 product's meaning.

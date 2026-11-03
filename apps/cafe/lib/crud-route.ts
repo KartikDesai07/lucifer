@@ -170,13 +170,12 @@ interface ItemRouteConfig<TDoc, TUpdate extends ZodTypeAny> {
   entity: EntityLabels;
   guard?: Guard; // default "auth" — GET; also PUT/DELETE when writeGuard is absent
   softDelete?: boolean; // set isActive:false instead of removing the document
-  // Fields whose value may arrive as an explicit `null` meaning "clear this".
-  // A plain update object cannot express that: Mongoose only $sets the keys
-  // that are present, and a null left in place would STORE null rather than
-  // remove the field — breaking the omit-empty discipline these documents rely
-  // on. Naming a field here turns its null into a real $unset. An ABSENT key is
-  // untouched either way, which is what keeps a partial PUT partial.
+  // Fields whose value may arrive as an explicit `null` meaning "clear this": it
+  // becomes a real $unset (a plain update would STORE the null, breaking
+  // omit-empty). An ABSENT key is untouched, which keeps a partial PUT partial.
   nullClearsFields?: readonly string[];
+  // PUT only, after connectDB, before the write: a message = 400, nothing written.
+  validateUpdate?: (id: string, data: z.infer<TUpdate>) => Promise<string | null>;
   // R1. Applies to DELETE unconditionally (default "auth"). PUT follows the
   // staff-scoped discipline ONLY when staffUpdateFields is ALSO set (PUT
   // handler); otherwise PUT keeps runGuard(writeGuard ?? guard) — see there.
@@ -186,10 +185,9 @@ interface ItemRouteConfig<TDoc, TUpdate extends ZodTypeAny> {
   invalidateKeys?: readonly string[]; // R7: extra cache keys cleared with `cacheKey` after a write
 }
 
-// Turns a validated partial payload into an explicit update document, moving any
-// field listed in `nullClearsFields` that arrived as `null` into $unset so it goes
-// back to ABSENT. $set/$unset are spelled out rather than relying on the implicit
-// $set, because the two cannot be mixed with bare keys in one object.
+// Turns a validated partial payload into an explicit update document: any
+// `nullClearsFields` field that arrived as `null` moves into $unset (back to
+// ABSENT). $set/$unset are spelled out — they cannot mix with bare keys.
 export function buildUpdate<TDoc>(
   data: unknown,
   nullClearsFields: readonly string[] = [],
@@ -257,6 +255,8 @@ export function createItemRoute<TDoc, TUpdate extends ZodTypeAny>(
 
     try {
       await connectDB();
+      const invalid = await config.validateUpdate?.(id, parsed.data as z.infer<TUpdate>);
+      if (invalid) return failure(invalid, 400);
       const doc = await config.model
         .findByIdAndUpdate(id, buildUpdate(parsed.data, config.nullClearsFields), {
           new: true,

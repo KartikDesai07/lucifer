@@ -16,6 +16,8 @@ import {
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { effectivePrice, type CartItem, type UseCart } from "@/hooks/use-cart";
+import { withAddOns } from "./modifier-picker";
+import { derivedLinePrice } from "./public-pricing";
 import { stripComments } from "./source-pin-utils";
 import type { Product } from "@/types";
 
@@ -39,6 +41,8 @@ const LATTE = product({
   _id: "p2",
   name: "Latte",
   price: 100,
+  // The add-ons largeLatte below carries: a line's picked add-ons are judged against what the product still offers.
+  modifiers: ["oat milk", "extra shot"],
   variations: [
     { name: "Small", price: 120 },
     { name: "Large", price: 160 },
@@ -193,13 +197,14 @@ function fakeCart(initial: CartItem[]) {
         return;
       }
       const v = opts.variation ? p.variations?.find((x) => x.name === opts.variation) : undefined;
-      const price = v ? effectivePrice({ price: v.price, discount: p.discount }) : effectivePrice(p);
+      const priced = withAddOns(v ? effectivePrice({ price: v.price, discount: p.discount }) : effectivePrice(p), p, opts.modifiers ?? []);
       lines = [
         ...lines,
         {
-          lineId: key, productId: p._id, name: p.name, price, qty, variation: opts.variation,
+          lineId: key, productId: p._id, name: p.name, price: priced.price, qty, variation: opts.variation,
           modifiers: opts.modifiers ?? [], instructions: opts.instructions ?? "", kotRound: 0,
           ...(opts.removedModifiers?.length ? { removedModifiers: opts.removedModifiers } : {}),
+          ...(priced.modifierPrices ? { modifierPrices: priced.modifierPrices } : {}),
         },
       ];
     },
@@ -211,7 +216,7 @@ test("the fake cart's merge rule is the real one (use-cart.ts)", () => {
   const src = stripComments(readFileSync(fileURLToPath(new URL("../hooks/use-cart.ts", import.meta.url)), "utf8"));
   assert.ok(src.includes("ci.lineId === key && ci.kotRound === 0"), "addToCart merges by lineId === key, unsent only");
   assert.ok(src.includes("next[idx] = { ...next[idx], qty: next[idx].qty + addQty };"), "a merge keeps the old line's price");
-  assert.match(src, /lineId: key,\s*productId: product\._id,\s*name: product\.name,\s*price,\s*qty: addQty,/, "a new line is keyed by the key at the product's price");
+  assert.match(src, /lineId: key,\s*productId: product\._id,\s*name: product\.name,\s*price: priced\.price,\s*qty: addQty,/, "a new line is keyed by the key at the product's price plus its add-ons");
   // Removals-first (G2) relies on remove dropping exactly the ONE unsent line with that lineId.
   assert.ok(src.includes("prev.filter((ci) => !(ci.lineId === lineId && ci.kotRound === 0)),"), "removeFromCart drops only the unsent line with that lineId");
 });
@@ -255,4 +260,78 @@ test("the notice lists at most the shared names cap of changed rows, then says h
   assert.equal(shown.length, MENU_REFUSAL_NAMES_SHOWN);
   assert.equal(more, 2);
   assert.equal(changedRowsShown([]).more, 0);
+});
+
+// ── priced add-ons (owner 2026-11-02) ────────────────────────────────────────────────────────────────────────────────
+
+const PIZZA = product({
+  _id: "p3",
+  name: "Pizza",
+  price: 250,
+  discount: 10,
+  modifiers: ["Cheese Burst", "Jalapeno"],
+  modifierPrices: [{ name: "Cheese Burst", price: 100 }],
+});
+// 250 at 10% = 225, plus the add-on in full (D2) = 325.
+const burstLine = line({
+  lineId: "p3|Cheese Burst||", productId: "p3", name: "Pizza", price: 325,
+  modifiers: ["Cheese Burst"], modifierPrices: [{ name: "Cheese Burst", price: 100 }],
+});
+
+test("a priced line at the right price passes the notice; at the base price (add-on forgotten) it is a price change", () => {
+  assert.equal(derivedLinePrice({ ...PIZZA, available: true, discount: 10 }, undefined, ["Cheese Burst"]), 325, "landmark: the server's rule");
+  assert.equal(cartMenuIssues([burstLine], [PIZZA]), null);
+  const stale = { ...burstLine, price: 225 };
+  const notice = cartMenuIssues([stale], [PIZZA])!;
+  assert.equal(notice.changed[0].fromPrice, 225);
+  assert.equal(notice.changed[0].toPrice, 325);
+});
+
+test("a line whose add-on the menu has since removed is a change (the server's 'option' refusal), not silently fine", () => {
+  const gone = { ...PIZZA, modifiers: ["Jalapeno"], modifierPrices: undefined };
+  const notice = cartMenuIssues([burstLine], [gone])!;
+  assert.equal(notice.unavailable.length, 0);
+  assert.equal(notice.changed.length, 1);
+  assert.equal(notice.changed[0].toPrice, undefined, "no price verdict: the add-on is what changed");
+  assert.deepEqual(menuLineIssues([gone], [burstLine]).map((i) => i.reason), ["option"], "one verdict, the server's");
+});
+
+test("reAddOptsOf drops add-ons the live product no longer has, keeps the survivors (and everything else)", () => {
+  const two = { ...burstLine, modifiers: ["Cheese Burst", "Jalapeno"] };
+  assert.deepEqual(reAddOptsOf(two, { modifiers: ["Jalapeno"] }).modifiers, ["Jalapeno"]);
+  assert.deepEqual(reAddOptsOf(two, PIZZA).modifiers, ["Cheese Burst", "Jalapeno"]);
+  assert.deepEqual(reAddOptsOf(two, { modifiers: [] }).modifiers, []);
+  assert.deepEqual(reAddOptsOf(two).modifiers, ["Cheese Burst", "Jalapeno"], "no product given: every option kept");
+  assert.equal(reAddOptsOf({ ...two, qty: 4 }, PIZZA).qty, 4);
+});
+
+test("Update them: a vanished add-on is dropped and the re-added line is priced from the live product without it", () => {
+  const gone = { ...PIZZA, modifiers: ["Jalapeno"], modifierPrices: undefined };
+  const cart = fakeCart([{ ...burstLine, qty: 2 }]);
+  const notice = cartMenuIssues(cart.lines, [gone])!;
+  cartMenuActions(notice, cart.editor).onUpdateChanged();
+  assert.equal(cart.lines.length, 1);
+  const [re] = cart.lines;
+  assert.deepEqual(re.modifiers, [], "the removed Cheese Burst is not re-sent");
+  assert.equal(re.price, 225, "base after the item's own discount, no add-on");
+  assert.equal("modifierPrices" in re, false, "no stamp for an add-on that is gone");
+  assert.equal(re.qty, 2);
+  assert.equal(cartMenuIssues(cart.lines, [gone]), null, "and the re-added line passes the same check");
+});
+
+test("Update them on a re-priced add-on re-adds it at the new amount (stamp and price from the live product)", () => {
+  const dearer = { ...PIZZA, modifierPrices: [{ name: "Cheese Burst", price: 120 }] };
+  const cart = fakeCart([burstLine]);
+  const notice = cartMenuIssues(cart.lines, [dearer])!;
+  assert.equal(notice.changed[0].toPrice, 345);
+  cartMenuActions(notice, cart.editor).onUpdateChanged();
+  assert.equal(cart.lines[0].price, 345);
+  assert.deepEqual(cart.lines[0].modifierPrices, [{ name: "Cheese Burst", price: 120 }]);
+  assert.equal(cartMenuIssues(cart.lines, [dearer]), null);
+});
+
+test("PIN: onUpdateChanged hands the fresh product to reAddOptsOf (the drop needs it)", () => {
+  const src = stripComments(readFileSync(fileURLToPath(new URL("./cart-availability.ts", import.meta.url)), "utf8"));
+  assert.ok(src.includes("cart.addToCart(product, reAddOptsOf(line, product))"), "the re-add drops what the live product lacks");
+  assert.ok(src.includes("menuLineIssues(menu, unsent)"), "landmark: the notice runs the server's check on the lines, modifiers included");
 });

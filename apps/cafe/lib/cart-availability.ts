@@ -44,12 +44,17 @@ export interface CartMenuNotice {
   changed: CartChangedLine[];
 }
 
-/** The line's own options, exactly, for re-adding it from the fresh product. */
-export function reAddOptsOf(line: CartItem): AddOpts {
+/** The line's own options, exactly, for re-adding it from the fresh product — except the add-ons that product no longer has
+ *  (priced add-ons, 2026-11-02): they are dropped, so the re-added line is priced from the live product with only the
+ *  survivors. Re-sending a removed "Cheese Burst" would print it free, or 409 "Add-on no longer on the menu" forever.
+ *  Without `product` every option is kept. */
+export function reAddOptsOf(line: CartItem, product?: Pick<Product, "modifiers">): AddOpts {
+  // `.includes` on the array, never a keyed lookup (an add-on may be named "constructor").
+  const modifiers = product ? line.modifiers.filter((m) => product.modifiers.includes(m)) : line.modifiers;
   return {
     qty: line.qty,
     variation: line.variation,
-    modifiers: line.modifiers,
+    modifiers,
     removedModifiers: line.removedModifiers,
     instructions: line.instructions,
   };
@@ -144,7 +149,7 @@ export function cartMenuActions(notice: CartMenuNotice, cart: CartEditor) {
       // re-adding one before the other is removed would merge into it, then the
       // later removal would drop that quantity at the old price.
       for (const { lineId } of notice.changed) cart.removeFromCart(lineId);
-      for (const { line, product } of notice.changed) cart.addToCart(product, reAddOptsOf(line));
+      for (const { line, product } of notice.changed) cart.addToCart(product, reAddOptsOf(line, product));
     },
   };
 }
