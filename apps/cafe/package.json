@@ -614,7 +614,8 @@
     "lib/screen-lock.test.ts",
     "lib/screen-lock-paths.test.ts",
     "lib/print-offline-jobs.test.ts",
-    "lib/print-offline-replay.test.ts"
+    "lib/print-offline-replay.test.ts",
+    "lib/offline-state.test.ts"
   ],
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
