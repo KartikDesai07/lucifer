@@ -217,6 +217,7 @@
     "lib/reservation-form.test.ts",
     "lib/reservation-form-layout.test.ts",
     "lib/reservations-list.test.ts",
+    "lib/reservations-u15.test.ts",
     "lib/reservations-choice.test.ts",
     "lib/reservations-tables.test.ts",
     "lib/reservations-detail-view.test.ts",

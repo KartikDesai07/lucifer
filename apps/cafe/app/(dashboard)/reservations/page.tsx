@@ -168,6 +168,7 @@ export default function ReservationsPage() {
                 today={state.today}
                 showDay={state.day === "all" || state.query.trim() !== ""}
                 selectedId={choice.selected?._id ?? null}
+                viewKey={`${state.day ?? "today"}|${state.tab}|${state.query}`}
                 busy={busy}
                 onOpen={(r) => choice.choose(r._id)}
                 onAction={onRowAction}

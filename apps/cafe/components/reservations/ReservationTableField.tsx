@@ -79,10 +79,11 @@ export function ReservationTableField({ tables, values, onPick, list, editingId,
               data-ui="reservation-form-table-chip"
               aria-pressed={on}
               title={[t.tableNo, t.capacity > 0 ? `${t.capacity} seat${t.capacity === 1 ? "" : "s"}` : "", sub.includes("seat") ? "" : sub].filter(Boolean).join(" · ")}
-              className={cn(chip(on), dim && !on && "opacity-70")}
+              className={chip(on)}
               onClick={() => onPick(t.tableNo)}
             >
-              <span className={RES_FORM_TABLE_LABEL_CLASS}>
+              {/* A busy chip is dimmed with tokens on the label, not with opacity: opacity faded the Reserved words (the reserved ink) to 3.97:1 (V1-1). */}
+              <span className={cn(RES_FORM_TABLE_LABEL_CLASS, dim && !on && "text-muted-foreground")}>
                 <span aria-hidden="true" className={cn("size-1.5 flex-none rounded-[50%]", STATUS_CLASSES[dot].dot)} />
                 <span className="min-w-0">{t.tableNo}</span>
               </span>
