@@ -1,8 +1,8 @@
 // The reservation form's rules (U6 Task 4, 2026-11-03; values 13, 19.6; design 8.1, B20, owner Q2 / Q3 / Q6), pure and
 // client-safe: the time slots and their load, the opening values, the summary line, which tables the "best fits" show, the
 // table message, and the two request bodies. The form (components/reservations/ReservationFormSheet.tsx) draws them.
-import { HOLD_MINUTES, conflictFor } from "@/lib/reservations-tables";
-import { bookingAt, clockOf, digitsOf, pastVisits, shiftDay, shortDay } from "@/lib/reservations-view";
+import { HOLD_MINUTES, conflictFor, seatTile, type SeatTile } from "@/lib/reservations-tables";
+import { bookingAt, clockOf, pastVisits, phoneKey, shiftDay, shortDay } from "@/lib/reservations-view";
 import type { CreateReservationInput, Reservation, Table, UpdateReservationInput } from "@/types";
 
 /** What the form holds. `tableNo` undefined = Unassigned; `guests` is NaN while the count box is empty. */
@@ -76,9 +76,23 @@ export function summaryLine(v: FormValues): string {
   return `${day} · ${time} · ${guests} · ${v.tableNo || "no table"}`;
 }
 
-/** Today's booking whose time is under 90 minutes from now (or with no time yet: now) meets an Occupied table's state. */
-const nearNow = (v: FormValues, today: string, nowMs: number): boolean =>
-  v.date === today && (v.time === "" || Math.abs(bookingAt(v) - nowMs) < HOLD_MINUTES * MINUTE_MS);
+/** The form's "Occupied now" (values 13.6 / 19.6, design 8.1 item 6): the table is Occupied, the booking is today, a time is
+ *  set and it is under 90 minutes from now. (The seat dialog's own rule is any hour today: lib/reservations-tables.ts.) */
+export const occupiedNow = (t: Table, v: FormValues, today: string, nowMs: number): boolean =>
+  t.status === "Occupied" && v.date === today && v.time !== "" && Math.abs(bookingAt(v) - nowMs) < HOLD_MINUTES * MINUTE_MS;
+
+/** The guest count the fits and the hint use: an empty or zero box counts as one guest. */
+export const guestsForFits = (guests: number): number => (Number.isFinite(guests) && guests >= 1 ? guests : 1);
+
+/** A table chip's tile in the form (the HTML's rfVals): a conflicting booking first, then "Occupied now", then Reserved
+ *  (today, held on the Floor: B18), then the capacity words. */
+export function formChip(t: Table, v: FormValues, list: readonly Reservation[], editingId: string | null, today: string, nowMs: number): SeatTile {
+  const booking = { id: editingId ?? "", date: v.date, time: v.time, guests: guestsForFits(v.guests) };
+  const plain = seatTile({ ...t, status: "Available" }, booking, list, "assign", today);
+  if (plain.tone === "warn" && !plain.sub.startsWith("Seats")) return plain;
+  if (occupiedNow(t, v, today, nowMs)) return { sub: "Occupied now", tone: "info", off: false, fits: false };
+  return t.status === "Occupied" ? plain : seatTile(t, booking, list, "assign", today);
+}
 
 const byName = (a: Table, b: Table): number => a.tableNo.localeCompare(b.tableNo, undefined, { numeric: true });
 
@@ -93,13 +107,11 @@ export function bestFits(
   today: string,
   nowMs: number,
 ): Table[] {
-  const near = nearNow(v, today, nowMs);
   const free = tables.filter((t) => {
-    if (near && t.status === "Occupied") return false;
+    if (occupiedNow(t, v, today, nowMs)) return false;
     return !(v.time !== "" && conflictFor(list, editingId, t.tableNo, v.date, v.time));
   });
-  // An empty count (NaN) counts as one guest, as the seat tile does.
-  const party = Number.isFinite(v.guests) ? v.guests : 1;
+  const party = guestsForFits(v.guests);
   const known = free.filter((t) => t.capacity > 0 && t.capacity >= party).sort((a, b) => a.capacity - b.capacity || byName(a, b));
   const unknown = free.filter((t) => !(t.capacity > 0)).sort(byName);
   const ranked = [...known, ...unknown];
@@ -137,11 +149,11 @@ export function tableMessage(
   }
   const table = tables.find((t) => t.tableNo === no);
   if (!table) return null;
-  if (v.time !== "" && table.status === "Occupied" && nearNow(v, today, nowMs)) {
+  if (occupiedNow(table, v, today, nowMs)) {
     return { tone: "warn", text: `${no} is occupied right now. It may not be free by ${clockOf(v.time).full}.` };
   }
-  if (table.capacity > 0 && table.capacity < v.guests) {
-    return { tone: "warn", text: `${no} seats ${table.capacity}. For ${v.guests} guests you may need to join a table.` };
+  if (table.capacity > 0 && table.capacity < guestsForFits(v.guests)) {
+    return { tone: "warn", text: `${no} seats ${table.capacity}. For ${guestsForFits(v.guests)} guests you may need to join a table.` };
   }
   return null;
 }
@@ -162,18 +174,18 @@ export function editPayload(v: FormValues, original: Pick<Reservation, "tableNo"
 /** "Returning guest · 3 past visits": only at exactly ten digits, only when the number has Completed visits (we create no
  *  customer profile, so nothing is said of a new number). */
 export function returningGuestLine(list: readonly Reservation[], mobile: string, excludeId: string): string | null {
-  if (digitsOf(mobile).length !== MOBILE_DIGITS) return null;
+  if (phoneKey(mobile).length !== MOBILE_DIGITS) return null;
   const n = pastVisits(list, mobile, excludeId);
   return n > 0 ? `Returning guest · ${n} past visit${n === 1 ? "" : "s"}` : null;
 }
 
 /** The name of the most recently created earlier booking on these ten digits (fills an empty name), or null. */
 export function knownName(list: readonly Reservation[], mobile: string, excludeId: string): string | null {
-  const digits = digitsOf(mobile);
+  const digits = phoneKey(mobile);
   if (digits.length !== MOBILE_DIGITS) return null;
   let best: Reservation | null = null;
   for (const r of list) {
-    if (r._id === excludeId || digitsOf(r.mobile) !== digits) continue;
+    if (r._id === excludeId || phoneKey(r.mobile) !== digits) continue;
     if (best === null || r.createdAt > best.createdAt) best = r;
   }
   return best?.name ?? null;

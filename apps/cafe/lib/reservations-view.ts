@@ -135,6 +135,12 @@ export function pillOf(r: Reservation, nowMs: number, today: string): ResPill {
 
 const compact = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 export const digitsOf = (s: string): string => s.replace(/\D/g, "");
+/** The digits with a leading country code "91" dropped when there are more than ten (the HTML's normPh, values 13.4): the
+ *  match key for the name fill and the returning-guest line. The request body keeps the mobile as typed. */
+export const phoneKey = (s: string): string => {
+  const d = digitsOf(s);
+  return d.length > 10 && d.startsWith("91") ? d.slice(2) : d;
+};
 const MIN_SEARCH_DIGITS = 3;
 
 /** values 9.3 / 19.1: the name or the table contains the query; the table also with "-" and spaces ignored ("T5" finds
@@ -232,9 +238,9 @@ export function emptyWords(opts: { day: ResDayChoice; tab: ResTab; query: string
 
 /** The Completed bookings on the same mobile (digits only) other than this one: "{n} past visits". */
 export function pastVisits(list: readonly Reservation[], mobile: string, excludeId: string): number {
-  const digits = digitsOf(mobile);
+  const digits = phoneKey(mobile);
   if (digits === "") return 0;
-  return list.filter((r) => r.status === "Completed" && r._id !== excludeId && digitsOf(r.mobile) === digits).length;
+  return list.filter((r) => r.status === "Completed" && r._id !== excludeId && phoneKey(r.mobile) === digits).length;
 }
 
 // ── Actions per status (design 6.3 rows and cards, 7 the detail) ────────────────────────────────────────────────────

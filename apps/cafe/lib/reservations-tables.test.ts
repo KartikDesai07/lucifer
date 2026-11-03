@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { HOLD_MINUTES, conflictFor, seatTile } from "./reservations-tables";
+import { HOLD_MINUTES, conflictFor, liveSeatBooking, seatTile } from "./reservations-tables";
 import type { Reservation, Table } from "@/types";
 
 const TODAY = "2026-11-03";
@@ -71,4 +71,13 @@ test("seatTile: a conflicting booking reads 'Seated · {first}' / 'Booked {time}
   assert.equal(seatTile(table({ status: "Occupied" }), booking, [booked], "assign", TODAY).sub, "Occupied", "Occupied first");
   assert.equal(seatTile(table({ status: "Reserved" }), booking, [booked], "seat", TODAY).sub, "Reserved", "Reserved second");
   assert.equal(seatTile(table(), booking, [res({ _id: "me", time: "19:30" })], "seat", TODAY).sub, "4 seats", "the booking itself is not a conflict");
+});
+
+test("liveSeatBooking (review M9): the dialog's booking must still be in the list and Booked / Seated, else null (close, no write)", () => {
+  const list = [res({ _id: "a" }), res({ _id: "b", status: "Seated" }), res({ _id: "c", status: "Cancelled" }), res({ _id: "d", status: "Completed" })];
+  assert.equal(liveSeatBooking(list, "a")?._id, "a", "Booked: live");
+  assert.equal(liveSeatBooking(list, "b")?._id, "b", "Seated: live (assign)");
+  assert.equal(liveSeatBooking(list, "c"), null, "cancelled meanwhile");
+  assert.equal(liveSeatBooking(list, "d"), null, "completed meanwhile");
+  assert.equal(liveSeatBooking(list, "gone"), null, "deleted meanwhile");
 });

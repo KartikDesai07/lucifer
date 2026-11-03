@@ -6,12 +6,15 @@ import {
   DINNER_SLOTS,
   LUNCH_SLOTS,
   bestFits,
+  formChip,
+  occupiedNow,
   createPayload,
   dayChips,
   isSlotTime,
   moreLabel,
   editPayload,
   formDefaults,
+  guestsForFits,
   knownName,
   returningGuestLine,
   slotLoad,
@@ -97,11 +100,11 @@ test("bestFits: free, fitting, ranked by spare seats then name, first 7; the pic
   assert.ok(names(bestFits(tables, v, [conflict], "o", TODAY, NOW)).includes("T-1"), "...unless it is the booking being edited");
 });
 
-test("bestFits: an Occupied table is out today while the booking is under 90 minutes from now (or no time yet), in later", () => {
+test("bestFits: an Occupied table is out today while a set time is under 90 minutes from now, in later (and with no time)", () => {
   const tables = [table("T-1", 2, { status: "Occupied" }), table("T-2", 2)];
   const fits = (v: FormValues): string[] => names(bestFits(tables, v, [], null, TODAY, NOW));
   assert.deepEqual(fits(values({ time: "22:00" })), ["T-2"], "22:00 is 30 minutes from 21:30: occupied is out");
-  assert.deepEqual(fits(values({ time: "" })), ["T-2"], "no time yet: treated as now");
+  assert.deepEqual(fits(values({ time: "" })), ["T-1", "T-2"], "no time yet: not near (the HTML's list keeps occupied tables, values 13.6)");
   assert.deepEqual(fits(values({ time: "23:00" })), ["T-1", "T-2"], "23:00 is 90 minutes away: occupied comes back");
   assert.deepEqual(fits(values({ time: "22:00", date: "2026-11-04" })), ["T-1", "T-2"], "another day: the table's state is not today's");
 });
@@ -150,7 +153,9 @@ test("returningGuestLine: only at exactly 10 digits, only with past visits, plur
   assert.equal(returningGuestLine(list, "9867004512", "a"), "Returning guest · 2 past visits", "the booking being edited is excluded");
   assert.equal(returningGuestLine(list, "986700451", "x"), null, "9 digits: nothing");
   assert.equal(returningGuestLine(list, "9000000001", "x"), null, "a new number: nothing");
-  assert.equal(returningGuestLine(list, "+91 98670 04512", "x"), null, "12 digits: not a 10-digit number");
+  assert.equal(returningGuestLine(list, "+91 98670 04512", "x"), "Returning guest · 3 past visits", "M6: a pasted +91 number drops the 91 (the HTML's normPh)");
+  assert.equal(knownName(list, "+91 98670 04512", "x"), "Guest d", "M6: the name fills from the +91 form too");
+  assert.equal(returningGuestLine(list, "98670045123456", "x"), null, "a 14-digit number is still not a number");
   assert.equal(knownName(list, "9867004512", "x"), "Guest d", "the most recently created booking's name");
   assert.equal(knownName(list, "9000000001", "x"), null, "none for a new number");
   assert.equal(knownName(list, "986700451", "x"), null, "none under 10 digits");
@@ -172,4 +177,31 @@ test("bestFits (review logic-1): an empty / NaN guest count counts as 1, so tabl
   const tables = [table("T-1", 2), table("T-2", 4), table("T-3", 0)];
   const v = values({ time: "13:00", date: "2026-11-04", guests: Number.NaN });
   assert.deepEqual(names(bestFits(tables, v, [], null, TODAY, NOW)), ["T-1", "T-2", "T-3"], "NaN guests: every table that seats one, then the unknown one");
+});
+
+test("occupiedNow / formChip (review I1): the form's rule is today + a time + under 90 minutes, worded 'Occupied now'", () => {
+  const busy = table("T-1", 4, { status: "Occupied" });
+  const now = (v: FormValues) => occupiedNow(busy, v, TODAY, NOW);
+  assert.equal(now(values({ time: "22:00" })), true, "30 minutes from now");
+  assert.equal(now(values({ time: "23:00" })), false, "90 minutes away is not under 90");
+  assert.equal(now(values({ time: "14:00" })), false, "a lunch hour passed hours ago");
+  assert.equal(now(values({ time: "" })), false, "no time set: not near");
+  assert.equal(now(values({ time: "22:00", date: "2026-11-04" })), false, "another day");
+  assert.equal(occupiedNow(table("T-2", 4), values({ time: "22:00" }), TODAY, NOW), false, "a free table is never occupied now");
+  const chip = (t: Table, v: FormValues, list: Reservation[] = []) => formChip(t, v, list, null, TODAY, NOW);
+  assert.deepEqual([chip(busy, values({ time: "22:00" })).sub, chip(busy, values({ time: "22:00" })).tone], ["Occupied now", "info"], "the chip word and tone");
+  assert.equal(chip(busy, values({ time: "23:00" })).sub, "4 seats", "later tonight the Occupied table is a plain fit");
+  assert.equal(chip(busy, values({ time: "" })).sub, "4 seats", "no time: the capacity words");
+  assert.equal(chip(table("T-3", 2, { status: "Reserved" }), values({ time: "23:00" })).sub, "Reserved", "Reserved (today) after Occupied now (B18)");
+  assert.equal(chip(table("T-3", 2), values({ time: "23:00", guests: 4 })).sub, "Seats 2 only", "too small");
+  const seated = res({ _id: "o", name: "Neha Joshi", tableNo: "T-1", time: "21:30", status: "Seated" });
+  assert.equal(chip(busy, values({ time: "22:00" }), [seated]).sub, "Seated · Neha", "a conflict outranks Occupied now (the HTML's cf first)");
+});
+
+test("M4: an empty guest count floors at 1 for the table message too", () => {
+  const tables = [table("T-3", 4)];
+  assert.equal(tableMessage(tables, values({ tableNo: "T-3", guests: NaN }), [], null, TODAY, NOW), null, "NaN guests: no capacity message");
+  assert.equal(guestsForFits(NaN), 1, "NaN floors at 1");
+  assert.equal(guestsForFits(0), 1, "0 floors at 1");
+  assert.equal(guestsForFits(5), 5, "a real count stays");
 });

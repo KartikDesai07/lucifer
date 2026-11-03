@@ -67,3 +67,10 @@ export function seatTile(
   }
   return { sub: `Seats ${table.capacity} only`, tone: "warn", off: false, fits: false };
 }
+
+/** The live booking a seat / assign dialog is about: still in the list and still Booked or Seated (another device may have
+ *  cancelled, deleted or completed it meanwhile), else null: the dialog closes and sends no write (review M9). */
+export function liveSeatBooking(list: readonly Reservation[], id: string): Reservation | null {
+  const r = list.find((x) => x._id === id);
+  return r !== undefined && (r.status === "Booked" || r.status === "Seated") ? r : null;
+}

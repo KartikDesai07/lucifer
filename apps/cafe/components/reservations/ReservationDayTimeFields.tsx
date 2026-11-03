@@ -138,7 +138,7 @@ export function ReservationDayTimeFields({ date, time, onDate, onTime, list, edi
         <div className={RES_FORM_SLOTS_CLASS}>{DINNER_SLOTS.map(slot)}</div>
         <TimePicker
           id="res-time"
-          aria-label="Other time"
+          aria-label={otherPicked ? `Other time: ${clockOf(time).full}` : "Other time"}
           value={time}
           onChange={onTime}
           invalid={!!timeError}

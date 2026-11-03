@@ -43,8 +43,9 @@ export function settleResChoice(choice: ResChoice, key: string, xl: boolean | nu
   return held.auto && xl === false ? noResChoice(key) : held;
 }
 
-/** A press or focus inside the detail, or in a dialog it opened, makes an auto-picked booking the operator's. The same
- *  object when there is nothing to change. */
+/** A press or focus inside the detail column (its handlers sit on the column; the seat dialog is a sibling and does not
+ *  engage, the Seat press that opens it already did) makes an auto-picked booking the operator's. The same object when
+ *  there is nothing to change. */
 export function engageResChoice(choice: ResChoice): ResChoice {
   return choice.auto ? { ...choice, auto: false } : choice;
 }

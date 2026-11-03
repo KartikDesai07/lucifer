@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { MENU_EDITOR_LABEL_CLASS } from "@/lib/menu-editor-layout";
-import { bestFits, tableMessage, type FormValues } from "@/lib/reservation-form";
+import { bestFits, formChip, guestsForFits, tableMessage, type FormValues } from "@/lib/reservation-form";
 import {
   RES_FORM_GROUP_CLASS,
   RES_FORM_HEAD_CLASS,
@@ -19,7 +19,6 @@ import {
   RES_FORM_TABLE_SUB_CLASS,
 } from "@/lib/reservation-form-layout";
 import { RES_SEAT_SUB_INK_CLASS } from "@/lib/reservations-layout";
-import { seatTile } from "@/lib/reservations-tables";
 import { STATUS_CLASSES } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import type { Reservation, Table } from "@/types";
@@ -36,7 +35,7 @@ interface ReservationTableFieldProps {
 }
 
 /** The Table field (values 13.2 #4, 13.6; design 8.1, owner Q3 / Q6): "Unassigned · Choose at arrival", the best-fit chips (or all
- *  tables), the message under them. A chip's words and dot are the seat dialog's tile (lib/reservations-tables.ts seatTile). */
+ *  tables), the message under them. A chip's words and dot follow the form's rule (lib/reservation-form.ts formChip: "Occupied now" only within 90 minutes). */
 export function ReservationTableField({ tables, values, onPick, list, editingId, today, nowMs }: ReservationTableFieldProps) {
   const [all, setAll] = useState(false);
   const live = tables ?? [];
@@ -44,8 +43,8 @@ export function ReservationTableField({ tables, values, onPick, list, editingId,
   const stale = tables !== undefined && !!picked && !live.some((t) => t.tableNo === picked);
   const shown = all ? live : bestFits(live, values, list, editingId, today, nowMs);
   const message = tableMessage(live, values, list, editingId, today, nowMs);
-  const guests = Number.isFinite(values.guests) && values.guests >= 1 ? values.guests : null;
-  const hint = all ? "All tables" : guests === null ? "Best fits" : `Best fits for ${guests} guest${guests === 1 ? "" : "s"}`;
+  const guests = guestsForFits(values.guests);
+  const hint = all ? "All tables" : `Best fits for ${guests} guest${guests === 1 ? "" : "s"}`;
 
   const chip = (on: boolean) => cn(RES_FORM_TABLE_CLASS, on ? RES_FORM_ON_CLASS : RES_FORM_OFF_CLASS);
 
@@ -68,11 +67,10 @@ export function ReservationTableField({ tables, values, onPick, list, editingId,
         )}
         {shown.map((t) => {
           const on = t.tableNo === picked;
-          const tile = seatTile(t, { id: editingId ?? "", date: values.date, time: values.time, guests: Number.isFinite(values.guests) ? values.guests : 1 }, list, "assign", today);
+          const tile = formChip(t, values, list, editingId, today, nowMs);
           // A table that is busy (occupied, held, booked, seated) is dimmed; one that is only too small is not (values 13.6).
           const dim = tile.tone === "info" || tile.tone === "reserved" || (tile.tone === "warn" && !tile.sub.startsWith("Seats"));
           const dot = tile.tone === "warn" && dim ? "reserved" : tile.tone;
-          // The Occupied wording / rule is left as seatTile has it (a separate fix wave owns it).
           const sub = tile.sub;
           return (
             <button

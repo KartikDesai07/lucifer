@@ -74,7 +74,7 @@ export default function ReservationsPage() {
 
   // The chosen booking (Task 3; hooks/use-reservation-choice.ts, B5) and the seat / assign dialog (hooks/use-reservation-seating.ts).
   const choice = useReservationChoice({ list: state.list, rows: state.rows, answered: reservations.data !== undefined, filterEdits: state.filterEdits, query: state.query });
-  const seating = useReservationSeating(updateReservation);
+  const seating = useReservationSeating(updateReservation, state.list, reservations.data !== undefined);
   // Assign (values 19.5): today's booking opens the dialog in assign mode; another day opens the form.
   const assign = (r: Reservation) => (r.date === state.today ? seating.open(r, "assign") : openEdit(r));
 

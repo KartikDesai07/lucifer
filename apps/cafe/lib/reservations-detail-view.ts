@@ -32,9 +32,11 @@ export interface DetailStep {
   time: string;
 }
 
-/** "2 Nov" from an ISO instant, as the cafe's IST day. */
+/** "2 Nov" from an ISO instant, as the cafe's IST day; "" for a missing or malformed one (review M2). */
 export function madeOn(iso: string): string {
-  const day = shortDay(cafeDateString(new Date(iso)));
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const day = shortDay(cafeDateString(d));
   return day.slice(day.indexOf(", ") + 2);
 }
 

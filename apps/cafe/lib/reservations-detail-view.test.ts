@@ -65,3 +65,11 @@ test("historyFact: plurals right", () => {
   assert.equal(historyFact(1), "1 past visit", "one");
   assert.equal(historyFact(3), "3 past visits", "three");
 });
+
+test("madeOn / stepsOf (review M2): a missing or malformed createdAt gives no date and never throws", () => {
+  assert.equal(madeOn("not a date"), "", "malformed");
+  assert.equal(madeOn(""), "", "empty");
+  assert.equal(madeOn(undefined as unknown as string), "", "missing");
+  assert.equal(stepsOf(res({ createdAt: undefined as unknown as string }))[0]?.time, "", "stepsOf keeps rendering");
+  assert.equal(madeOn("2026-11-02T10:00:00.000Z"), "2 Nov", "a real one is unchanged");
+});
