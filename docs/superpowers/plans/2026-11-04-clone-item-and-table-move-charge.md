@@ -82,6 +82,9 @@ ONLY on the owner's OK (posdemo is in client use; never lucifer007; never touch 
 
 ## Results (2026-11-04, built)
 
+> **DONE & VERIFIED 2026-11-04** (s100): main c6cd849 + 1597b17; shared 1051/1051, cafe tsc 0 + lint 0 err + 7432/7432,
+> hub 288/288, live table-move 57/0, orders 153/0, menu-orders 9/9, priced-addons 10/10; NOT deployed (owner: commit only).
+
 - A (T1): `chargeOverrideAfterTabUpdate` (lib/pending-writes.ts) clears the cashier's table-charge change in
   `applyTabUpdate` when the server's tab is on another table (walk-in included), before and regardless of `keepMoney`;
   the same table keeps it. Server fence: `fenceTableChargeAmount` inside `settleCharges` (lib/settle-charges.ts) - a
