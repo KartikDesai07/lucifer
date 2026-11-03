@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { emptyOutbox, nextSendable, offlineRoundsOf, patchEntry, settleCreate } from "./offline-outbox";
+import { emptyOutbox, nextSendable, offlineRoundsOf, patchEntry, resumeSending, settleCreate } from "./offline-outbox";
 import type { OutboxEntry, OutboxRecord } from "./offline-outbox-schema";
 
 const entry = (key: string, extra: Partial<OutboxEntry> = {}): OutboxEntry => ({
@@ -57,4 +57,17 @@ test("offlineRoundsOf counts an order's offline rounds", () => {
   assert.equal(offlineRoundsOf(record, "M"), 0, "an order made offline with no round yet");
   assert.equal(offlineRoundsOf(recordOf(entry("t1", { kind: "round", local: "srv-9", orderId: "srv-9" })), "srv-9"), 1, "a round on a server tab");
   assert.equal(offlineRoundsOf(record, "none"), 0, "none for an unknown order");
+});
+
+test("a send cut by a reload is sent again", () => {
+  // Every send runs under the Web Lock, so an entry still "sending" when the lock is taken is a send whose page died
+  // before its answer (the 5A review's I2): it is waiting again, under its own key (a replay can never send it twice).
+  const record = recordOf(entry("c", { local: "L", state: "sending" }), entry("r", { kind: "round", local: "L" }), entry("x", { state: "needs-staff", message: "Out of stock" }));
+  assert.equal(nextSendable(record), null, "a stuck send holds its order's rounds back");
+  const resumed = resumeSending(record);
+  assert.deepEqual(resumed.entries.map((e) => e.state), ["waiting", "waiting", "needs-staff"], "only the sending entry moves; staff's entries stay");
+  assert.equal(nextSendable(resumed)?.key, "c", "the cut send goes first again");
+  assert.equal(record.entries[0].state, "sending", "the input record is not mutated");
+  const quiet = recordOf(entry("a"));
+  assert.equal(resumeSending(quiet), quiet, "nothing to resume: the same record");
 });

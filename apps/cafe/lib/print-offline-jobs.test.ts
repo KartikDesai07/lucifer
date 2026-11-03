@@ -59,6 +59,16 @@ test("a station covered by a printed full copy is a REPRINT", () => {
   assert.equal(offlineVerdictOf(line("p1", "s1"), later), "new", "a full copy that never printed covers nothing");
 });
 
+test("a full copy printed on another printer is a REPRINT (the pass printer moved during the outage)", () => {
+  // The device routes every line the server would, so a server full copy the field does not name means the setup
+  // changed: the full copy now goes to p1, and p2 already printed (or may have printed) the whole round (the 5A review's I1).
+  assert.equal(offlineVerdictOf(line("p1", "all"), askOf([{ printerId: "p2", part: "all", outcome: "printed" }])), "reprint", "printed on p2");
+  assert.equal(offlineVerdictOf(line("p1", "all"), askOf([{ printerId: "p2", part: "all", outcome: "maybe" }])), "reprint", "maybe on p2");
+  assert.equal(offlineVerdictOf(line("p1", "all"), askOf([{ printerId: "p2", part: "all", outcome: "later" }])), "new", "p2 never printed");
+  const byDesign = askOf([{ printerId: "p2", part: "all", outcome: "printed" }, { printerId: "p1", part: "all", outcome: "later" }]);
+  assert.equal(offlineVerdictOf(line("p1", "all"), byDesign), "new", "two full-copy printers by design: p1's own line is named later");
+});
+
 test("simple mode prints on the asking device only", () => {
   const printed = askOf([{ printerId: null, part: "-", outcome: "printed" }]);
   assert.equal(offlineVerdictOf(line(null, "-", "dev-a"), printed), "printed", "the asking device printed its own KOT");

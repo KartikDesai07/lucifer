@@ -21,8 +21,10 @@ const OBJECT_ID_RE = /^[0-9a-f]{24}$/;
 
 /** What a routed KOT line becomes (spec §5.9): printed when the device printed this very line; a REPRINT when paper
  *  may be out for it (this line "maybe", or its station covered by another line that printed or may have printed:
- *  the setup changed during the outage); else made as today. A full copy, and simple mode's whole ticket, cover every
- *  station, so a station line they printed is a REPRINT, and so is a whole ticket after any station line printed. */
+ *  the setup changed during the outage, since the device names every line the server would make); else made as
+ *  today. A full copy, and simple mode's whole ticket, cover every station: a station line they printed is a REPRINT,
+ *  a full copy is a REPRINT after another full copy or whole ticket printed (the pass printer moved: the 5A review's
+ *  I1), and a whole ticket is a REPRINT after any line printed. A full copy stays its own paper after station lines. */
 export function offlineVerdictOf(
   line: { printerId: string | null; part: string; targetDeviceId: string },
   ask: OfflineAsk | undefined,
@@ -39,7 +41,7 @@ export function offlineVerdictOf(
   const out = lines.filter((l) => l.outcome !== "later");
   const whole = line.part === DEVICE_PART || line.part === ALL_PART;
   if (whole && line.printerId === null) return out.length > 0 ? "reprint" : "new";
-  if (whole) return out.some((l) => l.part === DEVICE_PART) ? "reprint" : "new";
+  if (whole) return out.some((l) => l.part === DEVICE_PART || l.part === ALL_PART) ? "reprint" : "new";
   return out.some((l) => l.part === line.part || l.part === ALL_PART || l.part === DEVICE_PART) ? "reprint" : "new";
 }
 

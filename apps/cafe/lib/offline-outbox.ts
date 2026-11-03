@@ -43,7 +43,9 @@ export function takeOfflineRef(record: OutboxRecord): { record: OutboxRecord; re
   return { ref: offlineRefOf(record.next), record: { ...record, next: record.next + 1 } };
 }
 
-export function addEntry(record: OutboxRecord, entry: OutboxEntry): { ok: true; record: OutboxRecord } | { ok: false; reason: "full" } {
+/** "duplicate": this send is already kept (a second keep would print its KOT twice offline). */
+export function addEntry(record: OutboxRecord, entry: OutboxEntry): { ok: true; record: OutboxRecord } | { ok: false; reason: "full" | "duplicate" } {
+  if (record.entries.some((e) => e.key === entry.key)) return { ok: false, reason: "duplicate" };
   if (record.entries.length >= OUTBOX_MAX_ENTRIES) return { ok: false, reason: "full" };
   return { ok: true, record: { ...record, entries: [...record.entries, entry] } };
 }
@@ -61,6 +63,14 @@ export const removeEntry = (record: OutboxRecord, key: string): OutboxRecord => 
 /** The create was saved: its rounds can now be posted to the server's order. */
 export function settleCreate(record: OutboxRecord, local: string, orderId: string): OutboxRecord {
   return { ...record, entries: record.entries.map((e) => (e.local === local ? { ...e, orderId } : e)) };
+}
+
+/** Every send runs under the Web Lock, so an entry still "sending" when the lock is taken is one whose page died
+ *  before its answer: waiting again, sent again under its own key (a replay is never a second order or round). The
+ *  runner applies this when it takes the lock, before nextSendable. The same record when nothing was sending. */
+export function resumeSending(record: OutboxRecord): OutboxRecord {
+  if (!record.entries.some((e) => e.state === "sending")) return record;
+  return { ...record, entries: record.entries.map((e) => (e.state === "sending" ? { ...e, state: "waiting" } : e)) };
 }
 
 /** The oldest waiting entry the server can take now. Entries are kept oldest first. A round needs its order's id,

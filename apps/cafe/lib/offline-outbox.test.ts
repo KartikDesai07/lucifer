@@ -93,3 +93,13 @@ test("patch, remove and notes", () => {
   assert.equal(noted.notes.length, 1, "a note is added");
   assert.deepEqual(removeNote(noted, "a").notes, [], "the note is removed by its entry key");
 });
+
+test("an entry is never kept twice under one key", () => {
+  // A second keep of the same send would print its KOT twice offline (the 5A review's m4).
+  const one = addEntry(emptyOutbox(DAY), entry("k1"));
+  assert.ok(one.ok, "the first entry is kept");
+  if (!one.ok) return;
+  const twice = addEntry(one.record, entry("k1"));
+  assert.deepEqual(twice, { ok: false, reason: "duplicate" }, "the same key again is refused");
+  assert.ok(addEntry(one.record, entry("k2")).ok, "another key is kept");
+});
