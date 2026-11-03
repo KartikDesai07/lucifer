@@ -79,3 +79,28 @@ legs table-move (with the new cases), orders (order integrity), menu-orders, pri
 free RAM allows (check first). One read-only deep review (money: the two fences) -> fix -> owner OK -> demo deploy
 ONLY on the owner's OK (posdemo is in client use; never lucifer007; never touch the live DB or demo directly) -> commit
 + push main. No release note needed: an old POS tab is covered by the server fence.
+
+## Results (2026-11-04, built)
+
+- A (T1): `chargeOverrideAfterTabUpdate` (lib/pending-writes.ts) clears the cashier's table-charge change in
+  `applyTabUpdate` when the server's tab is on another table (walk-in included), before and regardless of `keepMoney`;
+  the same table keeps it. Server fence: `fenceTableChargeAmount` inside `settleCharges` (lib/settle-charges.ts) - a
+  sent `chargeAmount > 0` bills only while the TAB carries a saved table entry (the source the POS shows,
+  hooks/use-pos-charge.ts). The add-round route now builds its charges through `settleCharges` (its inline copy was
+  the same logic), so settle, the settle reward gate and add-round share one fenced builder. No DB read.
+- Review change (opus, read-only): the plan's fence read the table's LIVE setting (`resolveTableCharge`); the reviewer
+  showed a same-table regression (admin zeroes the table's charge mid-tab, the cashier lowers it to 30: the POS shows
+  30, the server billed 0, a partial settle 409s forever). Re-keyed to the tab's saved entry; live case (e) pins it.
+- B (C1): `copyFormValues` / `formValuesFromProduct` (lib/product-form-values.ts); a Copy button beside the pencil
+  (rows) and on the card (44 px, hidden in Select mode); the sheet opens in create mode with the fill.
+- Mutation pass (main thread, byte backup, alone): 11/11 killed (helper never/always clears, no normalization, fence
+  removed / never fires / fed a constant / hits the waiver, add-round drops the amount, client wiring removed / under
+  keepMoney / held = server table).
+- DEFERRED (pre-existing, not introduced here): a move made on ANOTHER device while this POS holds the tab open never
+  reaches `applyTabUpdate` before this POS's next round (add-round carries no echo), so a stale lowered amount can land
+  on a destination that HAS a charge (and a settle after a same-charge move, total unchanged, passes the
+  expectedTotal guard). Fix = send what it saw: an optional `expectedTableNo` on addItemsSchema + settleOrderSchema
+  (strict, @pos/shared) and drop `chargeAmount` when it differs. Not done now: rare, and a strict-schema field means a
+  rollback would 400 every round from tabs that loaded the new JS. Owner to decide.
+- Old POS tabs (not reloaded since the deploy) after a move to a no-charge table still hold the stale amount on screen
+  while the server bills none: reload the POS once after the deploy.
