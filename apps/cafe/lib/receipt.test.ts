@@ -271,9 +271,16 @@ test("PIN: the POS drops a charge waiver only when the request it just made coul
   // charge) never touches it at all. Pinned both ways.
   const apply = src.slice(src.indexOf("const applyTabUpdate"), src.indexOf("const sendToKitchen"));
   assert.match(apply, /resync\(order\.items, keepUnfired\)/, "landmark: the applyTabUpdate slice must be the real re-sync");
+  // T1 (owner 2026-11-04) re-pointed, never loosened: a MOVE re-prices the table charge, so the one clear left in
+  // applyTabUpdate is the pure helper (same table keeps the waiver; a void, a round and a refresh stay on it).
+  assert.equal(
+    apply.split("setChargeOverride(").length - 1,
+    1,
+    "applyTabUpdate clears the local waiver in exactly ONE place: a void or refresh cannot send one, so clearing it there throws away a waiver the operator promised — the guest is then billed a charge the operator waived.",
+  );
   assert.ok(
-    !apply.includes("setChargeOverride("),
-    "applyTabUpdate must never clear the local waiver: a void or move cannot send one, so clearing there throws away a waiver the operator promised — the guest is then billed a charge the operator waived.",
+    apply.includes("setChargeOverride((o) => chargeOverrideAfterTabUpdate(table, order.tableNo, o))"),
+    "that one clear is gated on the table having changed (lib/pending-writes.ts chargeOverrideAfterTabUpdate)",
   );
   // WIDENED (CB-5B S9), never loosened: the original needle pinned the literal
   // as a CLOSED four-key object — a `}` immediately after chargeOverride — so

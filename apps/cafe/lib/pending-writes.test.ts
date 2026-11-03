@@ -5,6 +5,7 @@ import { ApiError } from "@pos/shared/api-client";
 import * as mod from "./pending-writes";
 import {
   NOTICE_TITLES,
+  chargeOverrideAfterTabUpdate,
   SETTLE_BILL_SAVING,
   SETTLE_NOT_SETTLED,
   SETTLE_STILL_UNREACHABLE,
@@ -228,4 +229,27 @@ test("moneyEditedSince compares the operator's money state with the tab it was s
   assert.equal(moneyEditedSince({ ...seeded, extraCharges: [{ label: "Packing", amount: 25 }] }, tab), true, "an extra changed");
   const gstTab = order({ discount: 27, discountKind: "gst" } as Partial<Order>);
   assert.equal(moneyEditedSince({ discountRaw: 27, discountUnit: "GST", chargeOverride: undefined, extraCharges: [] }, gstTab), false, "the GST preset as seeded");
+});
+
+// T1 (owner 2026-11-04) - a move re-prices the table charge to the new table's own, so the cashier's earlier change dies.
+test("chargeOverrideAfterTabUpdate: the same table keeps the override (a number, and a 0 waiver)", () => {
+  assert.equal(chargeOverrideAfterTabUpdate("T1", "T1", 20), 20, "a lowered charge stays");
+  assert.equal(chargeOverrideAfterTabUpdate("T1", "T1", 0), 0, "a waiver stays");
+  assert.equal(chargeOverrideAfterTabUpdate(undefined, undefined, 0), 0, "walk-in to walk-in keeps");
+  assert.equal(chargeOverrideAfterTabUpdate(undefined, "", 15), 15, "undefined and '' are both walk-in");
+  assert.equal(chargeOverrideAfterTabUpdate("", undefined, 15), 15);
+});
+
+test("chargeOverrideAfterTabUpdate: a changed table clears it, to or from walk-in included", () => {
+  assert.equal(chargeOverrideAfterTabUpdate("T1", "T2", 20), undefined, "table to table");
+  assert.equal(chargeOverrideAfterTabUpdate("T1", "T2", 0), undefined, "a waiver does not ride a move either");
+  assert.equal(chargeOverrideAfterTabUpdate(undefined, "T2", 20), undefined, "walk-in to a table");
+  assert.equal(chargeOverrideAfterTabUpdate("T1", undefined, 20), undefined, "a table to walk-in");
+  assert.equal(chargeOverrideAfterTabUpdate("T1", "", 20), undefined, "'' is walk-in too");
+  assert.equal(chargeOverrideAfterTabUpdate("T1", null, 20), undefined, "null from the server is walk-in");
+});
+
+test("chargeOverrideAfterTabUpdate: an untouched override stays untouched", () => {
+  assert.equal(chargeOverrideAfterTabUpdate("T1", "T1", undefined), undefined);
+  assert.equal(chargeOverrideAfterTabUpdate("T1", "T2", undefined), undefined);
 });

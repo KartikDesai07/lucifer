@@ -270,3 +270,9 @@ export function moneyEditedSince(state: MoneyState, snapshot: Order): boolean {
   if (seeded.length !== state.extraCharges.length) return true;
   return seeded.some((c, i) => c.label !== state.extraCharges[i].label || c.amount !== state.extraCharges[i].amount);
 }
+
+/** A move re-prices the table charge to the new table's own (owner T1), so the cashier's change on the table this POS
+ *  held dies when the server's tab is on another one; the same table keeps it. undefined / null / "" = walk-in. */
+export function chargeOverrideAfterTabUpdate(heldTable: string | null | undefined, serverTable: string | null | undefined, override: number | undefined): number | undefined {
+  return (heldTable || "") === (serverTable || "") ? override : undefined;
+}

@@ -33,10 +33,7 @@ import { checkItemVariations, checkItemRemovedModifiers } from "@/lib/variations
 import { orderLinesRefusal, MENU_REFUSAL_STATUS } from "@/lib/order-availability";
 import {
   chargesFromOrder,
-  applyExtraCharges,
-  withTableCharge,
   splitChargeTotals,
-  DEFAULT_TABLE_CHARGE_LABEL,
 } from "@pos/shared/order-charges";
 import { chargeWriteFields } from "@/lib/order-charges-write";
 import {
@@ -52,6 +49,7 @@ import { shouldStoreDiscountKind } from "@pos/shared/reward-redemption";
 import { buildKotIdemKeys } from "@pos/shared/order-idem";
 import { idemGuardFilter, roundReplayResponse, roundReplayAfterMiss } from "@/lib/order-idem";
 import { settledValue } from "@/lib/settled";
+import { settleCharges } from "@/lib/settle-charges";
 import { buildKotPrintDevices, createOrderPrintJobs, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
 
 export const dynamic = "force-dynamic";
@@ -169,20 +167,10 @@ export async function POST(req: Request, { params }: Params) {
     const gstCfg = gstConfigFromOrder(old, gstConfigOf(settings));
     // CB-CHG — charges[] is the source of truth (plan §4), upgraded in place from the tab's legacy scalars.
     // The table lane is carried forward untouched unless the operator changed it (chargeAmount override,
-    // 0 = waive; omitted = unchanged). A round never RE-READS the table: the charge was snapshotted when the
+    // 0 = waive; omitted = unchanged; T1: a sent amount > 0 bills only while the tab carries a table entry,
+    // see lib/settle-charges.ts). A round never RE-READS the table: the charge was snapshotted when the
     // tab opened. Extras are their own list, replaced wholesale only when the body sends one.
-    const oldCharges = chargesFromOrder(old);
-    const oldTableCharge = oldCharges.find((c) => c.type === "table");
-    const tableChargeAmount = parsed.data.chargeAmount ?? oldTableCharge?.amount ?? 0;
-    const charges = applyExtraCharges(
-      withTableCharge(
-        oldCharges,
-        tableChargeAmount > 0
-          ? { label: oldTableCharge?.label ?? DEFAULT_TABLE_CHARGE_LABEL, amount: tableChargeAmount }
-          : null,
-      ),
-      parsed.data.extraCharges ?? oldCharges.filter((c) => c.type === "extra"),
-    );
+    const charges = settleCharges(chargesFromOrder(old), parsed.data.chargeAmount, parsed.data.extraCharges);
     // CB-CHG — computeOrderTotals takes the table portion and the extras
     // portion SEPARATELY (the table charge keeps its shipped TABLE_CHARGE_MAX
     // ceiling; extras ride on top uncapped — decision 8).

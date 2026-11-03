@@ -263,7 +263,7 @@ export default function PosPage() {
         // `kot:false` — the move's own slip IS the kitchen's paper; a round
         // ticket here would tell them to cook again. `keepUnfired:true` —
         // unsent cart lines are still owed and must survive the re-sync. No
-        // charge rides a move, so the operator's waiver is left alone.
+        // stale table charge survives a move (T1): applyTabUpdate clears a changed one.
         onMoved={(order) =>
           pos.applyTabUpdate(order, { kot: false, keepUnfired: true })
         }

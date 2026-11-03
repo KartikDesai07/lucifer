@@ -365,6 +365,7 @@
     "lib/settle-flow-paths.test.ts",
     "lib/pos-send.test.ts",
     "lib/pos-send-paths.test.ts",
+    "lib/table-move-charge-fence.test.ts",
     "lib/write-route-paths.test.ts",
     "lib/slip-numbers.test.ts",
     "lib/settle-followups.test.ts",
