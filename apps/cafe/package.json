@@ -617,7 +617,9 @@
     "lib/print-offline-replay.test.ts",
     "lib/offline-state.test.ts",
     "lib/offline-outbox.test.ts",
-    "lib/offline-outbox-order.test.ts"
+    "lib/offline-outbox-order.test.ts",
+    "lib/offline-kot-order.test.ts",
+    "lib/offline-lines.test.ts"
   ],
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
