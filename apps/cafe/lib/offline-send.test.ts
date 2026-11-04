@@ -190,7 +190,30 @@ test("fix wave I3: a here line that did not print is named to staff afterwards",
   const nameOf = (id: string | null) => (id === "p0" ? "Kitchen" : id === "p1" ? "Bar" : "Desserts");
   assert.equal(offlineMissedMessage("O-3", plan([true, true]), new Map([[0, "printed"], [1, "printed"]]), nameOf), null, "all printed: nothing more");
   assert.equal(offlineMissedMessage("O-3", plan([true, true]), new Map([[0, "printed"], [1, "no"]]), nameOf), "Offline: KOT O-3 did not print on Bar. It prints there when the internet is back.", "one");
-  assert.equal(offlineMissedMessage("O-3", plan([true, true, true]), new Map([[0, "maybe"], [1, "no"], [2, "printed"]]), nameOf), "Offline: KOT O-3 did not print on Kitchen and Bar. It prints there when the internet is back.", "two (maybe too: the server prints it as REPRINT)");
+  assert.equal(offlineMissedMessage("O-3", plan([true, true, true]), new Map([[0, "no"], [1, "no"], [2, "printed"]]), nameOf), "Offline: KOT O-3 did not print on Kitchen and Bar. It prints there when the internet is back.", "two");
+});
+
+// The owner's answer after 5C (2026-11-04), 5B's open point: a "maybe" line (the paper may be out: it may have printed)
+// is never said "did not print"; the server prints it there again, labelled REPRINT, when the internet is back.
+test("a line that may have printed is said so, with its REPRINT copy", async () => {
+  const { offlineMissedMessage } = await import("@/lib/offline-send");
+  const plan = (here: boolean[]): OfflineLinePlan[] => here.map((h, i) => ({ printerId: `p${i}`, part: "x", copies: 1, here: h, request: {} as never }));
+  const nameOf = (id: string | null) => (id === "p0" ? "Kitchen" : id === "p1" ? "Bar" : "Desserts");
+  assert.equal(
+    offlineMissedMessage("O-3", plan([true, true]), new Map([[0, "maybe"], [1, "printed"]]), nameOf),
+    "Offline: KOT O-3 may not have printed on Kitchen. It prints there, marked REPRINT, when the internet is back.",
+    "maybe only",
+  );
+  assert.equal(
+    offlineMissedMessage("O-3", plan([true, true, true]), new Map([[0, "maybe"], [1, "no"], [2, "printed"]]), nameOf),
+    "Offline: KOT O-3 did not print on Bar and may not have printed on Kitchen. They print there when the internet is back (the copy on Kitchen marked REPRINT).",
+    "both",
+  );
+  assert.equal(
+    offlineMissedMessage("O-3", plan([true, true, true]), new Map([[0, "maybe"], [1, "maybe"], [2, "no"]]), nameOf),
+    "Offline: KOT O-3 did not print on Desserts and may not have printed on Kitchen and Bar. They print there when the internet is back (the copies on Kitchen and Bar marked REPRINT).",
+    "two maybe",
+  );
 });
 
 test("fix wave m: Pay Now with nothing printing here keeps the sale's words; a gone order says so plainly", async () => {

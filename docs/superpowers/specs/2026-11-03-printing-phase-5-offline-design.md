@@ -66,6 +66,9 @@ page's memory, and even after the internet is back nothing happens until staff t
 | P5-8 | The design | **Approved** (Phase 5 and Phase 6). |
 | P5-9 | (the builder check) Which time an order or round taken offline keeps | **The taken time:** the time it was taken on the device, accepted only when it lies within the last 12 hours and not in the future (5 minutes of clock difference allowed); otherwise the server's time and a note. End of day, the cafe day, the bill and GST invoice dates and the Kitchen screen's age stay right. |
 | P5-10 | (the builder check) Two devices printing offline on one day can both print O-3 | **Keep O-3 per device:** offline KOTs usually come from one counter; the KOT's table, time and staff lines tell two O-3 apart. No new data. |
+| P5-11 | (2026-11-04, after the 5C review) A calm screen finds a real outage at its second missed pulse (up to about 3 min) | **Find it sooner** ("the server smooth and the process fast"): one missed pulse keeps the pulse at 20 s until one reaches the server (no request while the server answers); up to about 2½ min on a screen left alone. |
+| P5-12 | (2026-11-04) A send cut half-way that never landed, or a waiter phone's order, printed no OFFLINE paper but drew no token | **The standard rule:** the server draws no token only for an order whose KOT printed, or may have printed, offline (the customer holds O-n paper, P5-5); an order kept offline that printed nothing is saved with its token as an online order. |
+| P5-13 | (2026-11-04) The toast for a KOT line whose paper may be out said "did not print" | **Say it accurately:** "may not have printed on X. It prints there, marked REPRINT, when the internet is back." |
 
 ## 4. Current state (`main` 96520d6, read 2026-11-03; paths under `apps/cafe/` unless marked [shared] = `packages/shared/src/`)
 
@@ -313,7 +316,8 @@ OFFLINE." (S3).
     one direct lease (the review's I8);
   - the bill of a sale, as today.
 - **No token** for an order made offline: the create leaves the token out of its opening slips (`orders/route.ts:611`)
-  and draws no token number (`allocateOpeningSlips`, :495).
+  and draws no token number (`allocateOpeningSlips`, :495). (P5-12, after 5C: only when a line printed, or may have
+  printed, offline: `offlinePaperOut`; an order kept offline that printed nothing draws its token as usual.)
 - **A replay with the field** (the key already used; the first send landed but its answer was lost): each KOT job of
   that round that is still `queued` with no attempt, on a line the field names as printed, is moved to printed (one
   CAS per job on `{ status: "queued", attempts: 0, epoch }`, log `printed` "offline O-3"); a job printed, leased or
@@ -347,7 +351,8 @@ OFFLINE." (S3).
 
 - `POS_PULSE` stays 20 s; a new `POS_PULSE_CALM` is 60 s ([shared] `query.ts`).
 - `pulseIntervalMs(input)` (pure, `lib/pos-pulse-cadence.ts`) answers 20 s when any of: realtime is not proven
-  (`realtimeTrusted()`, `lib/live-poll.ts:136-138`); the device is offline; the outbox holds an entry; the last answer
+  (`realtimeTrusted()`, `lib/live-poll.ts:136-138`); the device is offline; a pulse got no answer and none has reached
+  the server since (P5-11, after 5C); the outbox holds an entry; the last answer
   shows a waiting slip (`printAttention`), a job for this device (`printJobsForMe`) or an open QR request
   (`openCount`); this device made a slip-making write (send, Pay Now, settle, void, move, reprint, a replay) in the last
   2 minutes. Otherwise 60 s.

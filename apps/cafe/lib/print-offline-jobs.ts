@@ -45,6 +45,14 @@ export function offlineVerdictOf(
   return out.some((l) => l.part === line.part || l.part === ALL_PART || l.part === DEVICE_PART) ? "reprint" : "new";
 }
 
+/** The owner's answer after 5C (2026-11-04), the final review's m4: the device printed, or may have printed, a line of this
+ *  round offline, so the customer holds OFFLINE · O-n paper and staff call it by O-n: the server draws no token for it.
+ *  A round kept offline that printed nothing (a send cut half-way that never landed, a waiter phone's order) is saved as
+ *  an online one, with its token. */
+export function offlinePaperOut(offline: OfflineRound | undefined): boolean {
+  return offline !== undefined && offline.lines.some((line) => line.outcome !== "later");
+}
+
 /** The taken time when it lies inside the window (12 h back, 5 min ahead) AND on the arrival's cafe day and every
  *  numbered series' slip day: every number is drawn when the request arrives, so a time from another day would
  *  carry that day's numbers (the planning review's C1; the re-check's N4). Else null: the server's time. */

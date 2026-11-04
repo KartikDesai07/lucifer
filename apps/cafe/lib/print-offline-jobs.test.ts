@@ -149,7 +149,8 @@ test("the routes pass the offline round to job creation and refuse it without a 
     assert.ok(text.includes("withOfflineEcho("), `${rel}: echoes the field`);
   }
   const create = src(CREATE);
-  assert.ok(create.includes("allocateOpeningSlips(printCfg, { kitchen: kot.kitchen }, undefined, { token: data.offline === undefined })"), "no token for an offline order");
+  // The owner's answer after 5C (2026-11-04): no token only for an order whose KOT paper printed (or may have) offline.
+  assert.ok(create.includes("allocateOpeningSlips(printCfg, { kitchen: kot.kitchen }, undefined, { token: !offlinePaperOut(data.offline) })"), "no token for an order whose paper printed offline");
   assert.ok(create.includes("...(intent && offline.ask === undefined ? { kotPrintDevices: [intent.deviceId] } : {})"), "an offline order is never repaired");
   assert.ok(create.includes("...(kept !== null ? { createdAt: new Date(kept) } : {})"), "the taken time is the order's createdAt");
   assert.ok(!create.includes("kotFiredAt"), "the create route writes no kotFiredAt");
@@ -168,4 +169,16 @@ test("an order taken offline draws no token number", async () => {
   const offline = await allocateOpeningSlips(cfg, { kitchen: true }, deps, { token: false });
   assert.equal("tokenNumber" in offline, false, "offline: no token (staff call it by O-n)");
   assert.deepEqual(drawn, ["kot"], "offline: only the KOT series is drawn");
+});
+
+// The owner's answer after 5C (2026-11-04), the final review's m4: an order kept offline that printed nothing (a send cut
+// half-way that never landed, a waiter phone's order) has no OFFLINE · O-n paper for the customer, so it is saved as an
+// online order would be: with its token. Only paper printed (or maybe printed) offline means staff call it by O-n.
+test("an order with paper printed offline draws no token; one that printed nothing offline draws it as usual", async () => {
+  const { offlinePaperOut } = await import("@/lib/print-offline-jobs");
+  const round = (outcomes: ("printed" | "maybe" | "later")[]) => ({ ref: "O-3", takenAt: 1, lines: outcomes.map((outcome, i) => ({ printerId: `p${i}`, part: "s", outcome })) });
+  assert.equal(offlinePaperOut(undefined), false, "an online order: the token as today");
+  assert.equal(offlinePaperOut(round(["later", "later"])), false, "nothing printed offline: the token as usual");
+  assert.equal(offlinePaperOut(round(["later", "printed"])), true, "a line printed offline: no token (O-n)");
+  assert.equal(offlinePaperOut(round(["maybe"])), true, "a line that may have printed: no token");
 });

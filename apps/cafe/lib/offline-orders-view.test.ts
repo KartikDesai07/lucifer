@@ -110,6 +110,15 @@ test("Discard and Send again never touch an entry that is being sent; the sheet 
   assert.equal(offlineDiscardRefusal(sending, "k9"), null, "another entry discards as before");
 });
 
+// The final review's m5: Fix and send goes online only, so offline it is not offered (a refusal is only ever answered
+// online; Send again and Discard stay).
+test("offline, a refused entry offers Send again and Discard, not Fix and send", () => {
+  const refused = record([entry({ state: "needs-staff", message: "No." })]);
+  assert.equal(offlineRowsOf(refused)[0].actions.fix, true, "online: Fix and send");
+  const offline = offlineRowsOf(refused, { offline: true })[0].actions;
+  assert.deepEqual([offline.fix, offline.again, offline.discard], [false, true, true], "offline: no Fix and send");
+});
+
 test("the chip counts every entry and note", () => {
   assert.equal(offlineCountOf(null), 0, "none");
   assert.equal(offlineCountOf(record([entry({})], [{ key: "k0", ref: "O-1", text: "x", at: 1 }])), 2, "one entry, one note");

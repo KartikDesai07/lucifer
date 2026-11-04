@@ -14,7 +14,7 @@ import { createReplayResponse, createReplayVerdict, findCreateReplay, isIdemKeyD
 import { withKitchenFlags } from "@/lib/kitchen-lines-server";
 import { stampModifierPrices } from "@/lib/modifier-price-stamp";
 import { createOrderPrintJobs, openingSlipsOf, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
-import { offlineKeptAt, offlineSaleTotalRefusal, withOfflineEcho } from "@/lib/print-offline-jobs";
+import { offlineKeptAt, offlinePaperOut, offlineSaleTotalRefusal, withOfflineEcho } from "@/lib/print-offline-jobs";
 import { offlineAskOf, offlineReplayAnswer, offlineSlipsUnmade } from "@/lib/print-offline-replay";
 import cache from "@/lib/cache";
 import { created, failure, validateBody, requireAuth, isDuplicateKeyError, serverError } from "@/lib/api-helpers";
@@ -500,7 +500,7 @@ export async function POST(req: Request) {
     // Now twin that loses on the send key can never leave a gap in the bills.
     let slips: Awaited<ReturnType<typeof allocateOpeningSlips>>;
     try {
-      slips = await allocateOpeningSlips(printCfg, { kitchen: kot.kitchen }, undefined, { token: data.offline === undefined });
+      slips = await allocateOpeningSlips(printCfg, { kitchen: kot.kitchen }, undefined, { token: !offlinePaperOut(data.offline) });
     } catch (slipError) {
       // No insert has run, so this is a DEFINITE no-order: both claims go back.
       await Promise.allSettled([unclaimFor(orderId), unfencePromoFor(orderId)]);

@@ -8,6 +8,7 @@
 import { useCallback, useMemo } from "react";
 import { toast } from "sonner";
 
+import { printersModeOn } from "@pos/shared/print-printers";
 import { usePrintHostRouting } from "@/components/layout/PosPulseProvider";
 import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
 import { useDesktopPrinters, usePoolView, usePrintersRead } from "@/hooks/use-agent-printers";
@@ -15,7 +16,7 @@ import { useCategories } from "@/hooks/use-categories";
 import { useProducts } from "@/hooks/use-products";
 import { offlineHereOf, offlineSlipFor } from "@/lib/offline-here";
 import { keepOfflineSend, printEntryHere, type OfflineKeepDeps } from "@/lib/offline-keep";
-import { offlineLineSlip, offlineRoutingOf } from "@/lib/offline-lines";
+import { offlineLineSlip, offlinePrintsHere, offlineRoutingOf } from "@/lib/offline-lines";
 import { offlineOutbox } from "@/lib/offline-outbox-store";
 import { offlineMenuOf, type OfflinePlanContext } from "@/lib/offline-send";
 import type { PosSendPorts, SendOfflineKept } from "@/lib/pos-send";
@@ -37,6 +38,24 @@ export interface OfflineSendPorts {
   park: NonNullable<PosSendPorts["parkHeld"]>;
 }
 
+/** Simple mode prints here only when this device prints its own slips: no print host in the last pulse (an unknown lane
+ *  counts as one when this device has seen a host), or this device is the host. */
+function simpleOfflineOf(isHostDevice: boolean, routing: Parameters<typeof shouldRoutePrint>[0]): OfflinePlanContext["simple"] {
+  return { printsOwnSlips: isHostDevice || !shouldRoutePrint(routing, readDevicePrefs().printHostSeen), canPrintNow: canPrintNow() };
+}
+
+/** The offline header's words (spec 5.10, the final review's m6): whether a send prints anything here now, by the send's
+ *  own rule. It reads no menu (no request of its own): the printers read is the one the header already holds. */
+export function useOfflinePrintsHere(): boolean {
+  const { deviceId, isHostDevice } = usePrintHostContext();
+  const routing = usePrintHostRouting();
+  const { printers } = usePrintersRead(deviceId !== "");
+  const desktop = useDesktopPrinters();
+  const pool = usePoolView();
+  const hereIds = offlineHereOf({ printers, deviceId, ready: readyPrinterIds(), desktop, pool }).hereIds;
+  return offlinePrintsHere({ printersMode: printersModeOn(printers), hereIds, simple: simpleOfflineOf(isHostDevice, routing) });
+}
+
 /** What this device can do offline, read at call time (a function: the menu and the printers change). */
 function useOfflineDevice(): () => { ctx: OfflinePlanContext; deps: OfflineKeepDeps } {
   const products = useProducts().data;
@@ -55,9 +74,7 @@ function useOfflineDevice(): () => { ctx: OfflinePlanContext; deps: OfflineKeepD
         menu: offlineMenuOf(productList, categoryList),
         routing: offlineRoutingOf({ printers, stations, products: productList, categories: categoryList }),
         hereIds: here.hereIds,
-        // Simple mode prints here only when this device prints its own slips: no print host in the last pulse (an
-        // unknown lane counts as one when this device has seen a host), or this device is the host.
-        simple: { printsOwnSlips: isHostDevice || !shouldRoutePrint(routing, readDevicePrefs().printHostSeen), canPrintNow: canPrintNow() },
+        simple: simpleOfflineOf(isHostDevice, routing),
       },
       deps: {
         update: offlineOutbox.update,

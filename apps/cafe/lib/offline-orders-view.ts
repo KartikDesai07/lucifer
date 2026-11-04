@@ -99,7 +99,8 @@ function discardWordsOf(entry: OutboxEntry): string {
   return entry.sale ? `${kept} ${OFFLINE_DISCARD_SALE}` : kept;
 }
 
-export function offlineRowsOf(record: OutboxRecord | null): OfflineRow[] {
+/** `offline`: this device is offline now: Fix and send (an online send) is not offered (the final review's m5). */
+export function offlineRowsOf(record: OutboxRecord | null, view: { offline?: boolean } = {}): OfflineRow[] {
   if (record === null) return [];
   return record.entries.map((entry) => {
     const lines = itemsOf(entry).reduce((sum, line) => sum + (typeof line.qty === "number" ? line.qty : 1), 0);
@@ -113,7 +114,7 @@ export function offlineRowsOf(record: OutboxRecord | null): OfflineRow[] {
       status: statusOf(entry),
       state: entry.state,
       actions: {
-        fix: refused,
+        fix: refused && view.offline !== true,
         again: refused,
         discard: entry.state !== "sending",
         printHere: entry.uncertain && entry.state !== "sending" && entry.lines.every((line) => line.outcome === "later"),

@@ -13,6 +13,8 @@ import { serverReach } from "@/lib/server-reach";
 export interface LocalCadence {
   trusted: boolean;
   offline: boolean;
+  /** Pulses in a row with no answer (lib/server-reach.ts): one is enough to check again in 20 s. */
+  pulseMisses: number;
   outboxEntries: number;
   lastOwnSlipAt: number | null;
 }
@@ -22,6 +24,7 @@ export function cadenceInputsOf(data: PosPulseData | undefined, local: LocalCade
   return {
     realtimeTrusted: local.trusted && data !== undefined,
     offline: local.offline,
+    pulseMissed: local.pulseMisses > 0,
     outboxEntries: local.outboxEntries,
     printAttention: data?.printAttention?.length ?? 0,
     printJobsForMe: data?.printJobsForMe?.count ?? 0,
@@ -61,6 +64,7 @@ export function currentPulseIntervalMs(data: PosPulseData | undefined, nowMs: nu
   const local: LocalCadence = {
     trusted: realtimeTrusted(nowMs),
     offline: serverReach.isOffline(),
+    pulseMisses: serverReach.getState().pulseMisses,
     outboxEntries: offlineOutbox.getSnapshot().record?.entries.length ?? 0,
     lastOwnSlipAt: ownSlips.lastAt(),
   };

@@ -74,7 +74,7 @@ export function OfflineOrdersSheet() {
     <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
       <DialogPrimitive.Trigger asChild>
         <button type="button" data-ui="offline-orders-chip" className={cn(CHIP_CLASS, HTML_PRESS_CLASS)} aria-label={`${TITLE}: ${count}`}>
-          {TITLE} · {count}
+          Offline<span className="hidden tab:inline"> orders</span> · {count}
         </button>
       </DialogPrimitive.Trigger>
       <DialogPrimitive.Portal>
@@ -99,7 +99,7 @@ function OfflineOrdersPanel({ onClose }: { onClose: () => void }) {
   const pathname = usePathname();
   const [asked, setAsked] = useState<Asked | null>(null);
 
-  const rows = offlineRowsOf(record);
+  const rows = offlineRowsOf(record, { offline });
   const notes = record?.notes ?? [];
   const banner = offlineBannerOf({ offline, offlineReplay: gate.offlineReplay, pulseKnown: gate.known, blocked, unreadable, entries: rows.length });
   const entryOf = (key: string) => record?.entries.find((entry) => entry.key === key);

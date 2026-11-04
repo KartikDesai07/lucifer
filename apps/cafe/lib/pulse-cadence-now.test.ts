@@ -11,7 +11,7 @@ import type { PosPulseData } from "@pos/shared/self-order-alert";
 import { cadenceInputsOf, createOwnSlips } from "@/lib/pulse-cadence-now";
 import { pulseIntervalMs } from "@/lib/pos-pulse-cadence";
 
-const QUIET = { trusted: true, offline: false, outboxEntries: 0, lastOwnSlipAt: null };
+const QUIET = { trusted: true, offline: false, pulseMisses: 0, outboxEntries: 0, lastOwnSlipAt: null };
 const data = (over: Partial<PosPulseData> = {}): PosPulseData => ({ openCount: 0, ...over }) as PosPulseData;
 
 test("quiet and realtime proven: calm 60 s; each lively condition: 20 s", () => {
@@ -21,6 +21,7 @@ test("quiet and realtime proven: calm 60 s; each lively condition: 20 s", () => 
   const lively = (inputs: ReturnType<typeof cadenceInputsOf>) => pulseIntervalMs(inputs) === REFETCH_INTERVALS.POS_PULSE;
   assert.ok(lively(cadenceInputsOf(data(), { ...QUIET, trusted: false }, now)), "realtime not proven");
   assert.ok(lively(cadenceInputsOf(data(), { ...QUIET, offline: true }, now)), "offline");
+  assert.ok(lively(cadenceInputsOf(data(), { ...QUIET, pulseMisses: 1 }, now)), "a pulse missed (the owner's answer after 5C)");
   assert.ok(lively(cadenceInputsOf(data(), { ...QUIET, outboxEntries: 1 }, now)), "an offline order waits");
   assert.ok(lively(cadenceInputsOf(data({ openCount: 1 }), QUIET, now)), "a QR request is open");
   assert.ok(lively(cadenceInputsOf(data({ printAttention: [{} as never] }), QUIET, now)), "a slip waits");
