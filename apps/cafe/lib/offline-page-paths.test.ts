@@ -116,6 +116,10 @@ test("Task 15: what waits offline is refused before any request; the reload, the
   assert.equal(count(src("apps/cafe/hooks/use-print-host.ts"), GUARD), 1, "every client-started slip: reprints, Print bill, End of day");
   assert.equal(count(src("apps/cafe/hooks/use-print-setup.ts"), GUARD), 5, "printer and station saves and deletes, a test print");
   assert.ok(src("apps/cafe/hooks/use-item-void.ts").includes("if (refused !== null) return void toast.error(refused.message);"), "a void's dialog stays open");
+  // The pre-deploy review: those guards read this page's outbox (a tab with a round kept here waits), by default.
+  const guard = src("apps/cafe/lib/offline-guard.ts");
+  assert.equal(count(guard, 'outbox: Pick<OutboxStore, "getSnapshot"> = offlineOutbox'), 2, "offlineRefusalOf and throwIfOffline default to the page's outbox");
+  assert.ok(guard.includes('import { offlineOutbox, type OutboxStore } from "@/lib/offline-outbox-store";'), "the page's one store");
   for (const file of ["apps/cafe/app/(dashboard)/error.tsx", "apps/cafe/app/global-error.tsx"]) {
     assert.ok(src(file).includes("return reloadWhenOnline(() => {"), `${file}: the automatic reload waits for the connection`);
   }

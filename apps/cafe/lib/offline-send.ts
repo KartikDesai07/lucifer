@@ -4,6 +4,7 @@
 // leaves a labelled REPRINT on the server, never an unlabelled second KOT (S3). lib/offline-keep.ts runs it.
 
 import { OFFLINE_LINES_MAX } from "@pos/shared/offline-kot";
+import { chargesFromOrder } from "@pos/shared/order-charges";
 import type { ProductKitchenFacts } from "@/lib/kitchen-lines";
 import { addEntry, offlineRoundsOf, takeOfflineRef } from "@/lib/offline-outbox";
 import type { OutboxEntry, OutboxRecord } from "@/lib/offline-outbox-schema";
@@ -55,7 +56,8 @@ export interface OfflineKeepRequest {
   sale: boolean;
   /** The tab this round adds to (a server tab, or an order made offline); null for a new order or sale. */
   base: Order | null;
-  /** The body exactly as the online send posts it (a key inside it is dropped: the entry's key goes with it). */
+  /** The body as the online send posts it (a key inside it is dropped: the entry's key goes with it; a round's unchanged
+   *  money is left out, changedMoneyOnly). */
   body: Record<string, unknown>;
   shownTotal: number;
   menu: OfflineMenu;
@@ -77,6 +79,29 @@ export type OfflineKeepPlan =
 
 const str = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 const NO_SIMPLE = { printsOwnSlips: false, canPrintNow: false };
+
+const extrasOf = (value: unknown): string =>
+  JSON.stringify(Array.isArray(value) ? value.map((c: { label?: unknown; amount?: unknown }) => [c.label, c.amount]) : []);
+
+/** A round kept here is sent later, maybe hours later, and the items route applies a sent discount or extras list over
+ *  whatever the tab holds by then (a change made on another device meanwhile, or here once back online). The body
+ *  carries what this device showed, so only what the cashier changed from the tab travels (the discount with its kind;
+ *  the complete extras set); an unchanged one is left out, and the route keeps the tab's own (absent = unchanged). A
+ *  preset's figure is the server's (lib/receipt.ts), re-derived on every round's bigger subtotal, so only the kind tells
+ *  a preset changed; a manual discount's number is the cashier's own. The table charge already travels only when
+ *  changed (`chargeAmount`, with its T1 echo). The pre-deploy review. */
+export function changedMoneyOnly(body: Record<string, unknown>, base: Order): Record<string, unknown> {
+  const { discount, discountKind, extraCharges, ...rest } = body;
+  const kind = discountKind === undefined ? (base.discountKind ?? null) : discountKind;
+  const kindChanged = (kind ?? null) !== (base.discountKind ?? null);
+  const discountChanged = kindChanged || (kind === null && discount !== undefined && discount !== (base.discount ?? 0));
+  const baseExtras = chargesFromOrder(base).filter((c) => c.type === "extra");
+  return {
+    ...rest,
+    ...(discountChanged ? { discount, discountKind } : {}),
+    ...(extraCharges !== undefined && extrasOf(extraCharges) !== extrasOf(baseExtras) ? { extraCharges } : {}),
+  };
+}
 
 /** The round's order (the server's own stamp, numbered as the server will) and its routed lines. `earlierRounds`: the
  *  rounds of this order waiting before it on this device; an order made offline counts from its create (round 1). */
@@ -114,8 +139,10 @@ export function planOfflineKeep(record: OutboxRecord, req: OfflineKeepRequest): 
   } catch {
     return { ok: false, reason: "number" };
   }
-  const { idemKey: _key, ...body } = req.body;
+  const { idemKey: _key, ...sent } = req.body;
   void _key;
+  // A held send keeps the body it was sent with: its replay is the check of that send.
+  const body = base !== null && req.uncertain !== true ? changedMoneyOnly(sent, base) : sent;
   const { plan: planned, tableNo } = offlineRoundPlan({ key: req.key, ref, at: req.at, base, body, earlierRounds: offlineRoundsOf(record, local) }, req.print ? req : { ...req, hereIds: [], simple: NO_SIMPLE });
   if (planned.length > OFFLINE_LINES_MAX) return { ok: false, reason: "too-many-lines" };
   const entry: OutboxEntry = {

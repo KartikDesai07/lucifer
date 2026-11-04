@@ -68,6 +68,8 @@ test("a send cut by a reload is sent again", () => {
   assert.deepEqual(resumed.entries.map((e) => e.state), ["waiting", "waiting", "needs-staff"], "only the sending entry moves; staff's entries stay");
   assert.equal(nextSendable(resumed)?.key, "c", "the cut send goes first again");
   assert.equal(record.entries[0].state, "sending", "the input record is not mutated");
+  // The pre-deploy review: its POST may have landed before the page died, so its Discard never says nothing is saved.
+  assert.deepEqual(resumed.entries.map((e) => e.uncertain), [true, false, false], "the cut send is uncertain; the others keep theirs");
   const quiet = recordOf(entry("a"));
   assert.equal(resumeSending(quiet), quiet, "nothing to resume: the same record");
 });

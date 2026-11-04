@@ -11,6 +11,8 @@ import { OUTBOX_KEY, emptyOutbox } from "@/lib/offline-outbox";
 import type { OutboxEntry } from "@/lib/offline-outbox-schema";
 import { createOutboxStore } from "@/lib/offline-outbox-store";
 import { REPLAY_NO_ECHO_MESSAGE, offlineReplayBody, replayReady, runOfflineReplay, type ReplayAnswer } from "@/lib/offline-replay";
+import { offlineRowsOf } from "@/lib/offline-orders-view";
+import { SEND_DISCARD_PAY } from "@/lib/pos-send";
 
 const DAY = "2026-11-04";
 const entry = (over: Partial<OutboxEntry>): OutboxEntry => ({
@@ -126,6 +128,34 @@ test("no answer stops the run: the entry waits again and nothing more is sent be
   assert.equal(sends, 1, "one try, then stop (never a tight loop)");
   assert.equal(result.stop, "miss", "a miss");
   assert.deepEqual(record().entries.map((e: OutboxEntry) => e.state), ["waiting", "waiting"], "both wait");
+});
+
+// The pre-deploy review (2026-11-05): a replay with no answer, a 5xx ("Saved; its slips are not made yet." is a landed
+// order) or a 200 without the echo may already be on the server, yet the entry waited as never sent, and its Discard
+// said "Nothing is saved for it." (a sale: "The money taken for it is not recorded."), so staff rang it again.
+test("a replay that may have landed leaves its entry uncertain, so Discard never says nothing is saved", async () => {
+  const run = async (failure: unknown, over: Partial<OutboxEntry> = {}) => {
+    const { store, record } = setup([entry({ key: "k1", local: "a", ...over })]);
+    await runOfflineReplay({
+      update: store.update,
+      printing: () => false,
+      send: async (e) => {
+        if (failure === "no-echo") return saved("srv", e, { offline: undefined });
+        throw failure;
+      },
+      follow: () => undefined,
+    });
+    return record().entries[0] as OutboxEntry;
+  };
+  const landed = await run(new ApiError("Saved; its slips are not made yet.", "http", 503, true), { sale: true });
+  assert.deepEqual([landed.state, landed.uncertain], ["waiting", true], "a 5xx: it waits, and it may be on the server");
+  const [row] = offlineRowsOf({ ...emptyOutbox(DAY), entries: [landed] });
+  assert.equal(row.discardWords, SEND_DISCARD_PAY, "a sale's Discard says it may already be saved");
+  assert.equal((await run(new TypeError("Failed to fetch"))).uncertain, true, "no answer at all");
+  assert.equal((await run("no-echo")).uncertain, true, "a 200 without the echo is a saved order");
+  assert.deepEqual([(await run(new ApiError("Sign in again", "http", 401, true))).uncertain], [false], "a 401 is checked before the replay: it proves nothing was written");
+  const refused = await run(new ApiError("Masala Chai is out of stock.", "http", 409, true));
+  assert.deepEqual([refused.state, refused.uncertain], ["needs-staff", false], "a refusal wrote nothing");
 });
 
 test("an answer without the offline echo stops the run (an older server dropped the field)", async () => {

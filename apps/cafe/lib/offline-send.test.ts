@@ -93,6 +93,41 @@ test("a round on a server tab: numbered after the tab's rounds and the ones stil
   assert.deepEqual([roundOf(first.plan), roundOf(second.plan)], [3, 4], "rounds 3 and 4 after the tab's 2");
 });
 
+// The pre-deploy review (2026-11-05): a round body always carries the tab's discount and its complete extras, and the
+// items route applies a sent value over what the tab holds. Kept for hours, the round put back what this device showed
+// when it was taken, over a change made since (on another device during the outage, or here once back online).
+test("a kept round carries only the money the cashier changed: the tab keeps its own discount and extras", () => {
+  const tab = {
+    _id: "srv-tab", orderId: "ORD-20261104-007", customerName: "Rahul", tableNo: "T-5", kotRounds: 1, items: [], createdAt: "2026-11-04T08:00:00.000Z",
+    discount: 40, discountKind: "gst", charges: [{ type: "table", label: "Table charge", amount: 30 }, { type: "extra", label: "Packing", amount: 20 }],
+  } as unknown as Order;
+  const roundBody = (over: Record<string, unknown> = {}) => ({
+    items: [item("p-tea", "Tea")], discount: 40, discountKind: "gst", expectedTableNo: "T-5", extraCharges: [{ label: "Packing", amount: 20 }], ...over,
+  });
+  const keep = (body: Record<string, unknown>, over: Partial<OfflineKeepRequest> = {}) => {
+    const planned = planOfflineKeep(emptyOutbox(DAY), request({ key: "k-r1", base: tab, body, ...over }));
+    assert.ok(planned.ok, "kept");
+    return planned.ok ? (planned.entry.body as Record<string, unknown>) : {};
+  };
+  const untouched = keep(roundBody());
+  assert.deepEqual(Object.keys(untouched).sort(), ["expectedTableNo", "items"], "unchanged: left out (absent = the tab's own on the items route)");
+  const discounted = keep(roundBody({ discount: 90, discountKind: null }));
+  assert.deepEqual([discounted.discount, discounted.discountKind, "extraCharges" in discounted], [90, null, false], "the preset swapped for a manual Rs 90: it travels with its kind");
+  assert.deepEqual(keep(roundBody({ discountKind: null })).discountKind, null, "a cleared preset travels");
+  assert.deepEqual(keep(roundBody({ extraCharges: [] })).extraCharges, [], "a removed extra travels (the whole new set)");
+  assert.deepEqual(keep(roundBody({ chargeAmount: 0 })).chargeAmount, 0, "a table charge waiver is the cashier's own change: kept");
+  assert.equal(keep(roundBody(), { print: false, uncertain: true }).discount, 40, "a held send is kept as it was sent: its replay is its check");
+  // A preset's figure is the server's (lib/receipt.ts): the POS re-derives it on the round's bigger subtotal, so the
+  // number always differs while nothing changed (the fix review's MED). Only the kind tells.
+  const gstRound = keep(roundBody({ discount: 55 }));
+  assert.deepEqual(["discount" in gstRound, "discountKind" in gstRound], [false, false], "the GST preset kept: left out (the server re-derives it)");
+  const manualTab = { ...tab, discountKind: undefined } as unknown as Order;
+  const manual = (body: Record<string, unknown>) => keep(body, { base: manualTab });
+  assert.equal("discount" in manual(roundBody({ discountKind: null })), false, "a manual discount unchanged: left out");
+  assert.deepEqual(manual(roundBody({ discount: 25, discountKind: null })).discount, 25, "a manual discount changed: travels");
+  assert.deepEqual(manual(roundBody({ discount: 55, discountKind: "gst" })).discountKind, "gst", "the GST preset applied here: travels");
+});
+
 test("a round on an order made offline waits for its create's server id; once the create is gone it is refused", () => {
   const created = planOfflineKeep(emptyOutbox(DAY), request());
   assert.ok(created.ok, "the create");

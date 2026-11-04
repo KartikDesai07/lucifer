@@ -66,11 +66,12 @@ export function settleCreate(record: OutboxRecord, local: string, orderId: strin
 }
 
 /** Every send runs under the Web Lock, so an entry still "sending" when the lock is taken is one whose page died
- *  before its answer: waiting again, sent again under its own key (a replay is never a second order or round). The
+ *  before its answer: waiting again, sent again under its own key (a replay is never a second order or round), and
+ *  uncertain, since its POST may have landed (its Discard never says nothing is saved: the pre-deploy review). The
  *  runner applies this when it takes the lock, before nextSendable. The same record when nothing was sending. */
 export function resumeSending(record: OutboxRecord): OutboxRecord {
   if (!record.entries.some((e) => e.state === "sending")) return record;
-  return { ...record, entries: record.entries.map((e) => (e.state === "sending" ? { ...e, state: "waiting" } : e)) };
+  return { ...record, entries: record.entries.map((e) => (e.state === "sending" ? { ...e, state: "waiting", uncertain: true } : e)) };
 }
 
 /** The oldest waiting entry the server can take now. Entries are kept oldest first. A round needs its order's id,

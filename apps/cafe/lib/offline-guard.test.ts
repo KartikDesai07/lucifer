@@ -8,7 +8,9 @@ import assert from "node:assert/strict";
 
 import { classifyFailure } from "@/lib/pending-writes";
 import { reachOf } from "@/lib/offline-state";
-import { OFFLINE_NEEDS_INTERNET, OFFLINE_ORDER_NOT_SENT, offlineRefusalOf, throwIfOffline } from "@/lib/offline-guard";
+import { OFFLINE_NEEDS_INTERNET, OFFLINE_ORDER_NOT_SENT, OFFLINE_ROUND_NOT_SENT, offlineRefusalOf, throwIfOffline } from "@/lib/offline-guard";
+import { emptyOutbox } from "@/lib/offline-outbox";
+import type { OutboxEntry } from "@/lib/offline-outbox-schema";
 import { reloadWhenOnline } from "@/lib/offline-reload";
 import { createServerReach } from "@/lib/server-reach";
 
@@ -30,6 +32,31 @@ test("an order made offline waits for its create, online too", () => {
   assert.equal(OFFLINE_ORDER_NOT_SENT, "This order is still waiting to be sent. Try again once it is sent.", "the words");
   assert.equal(offlineRefusalOf({ id: "srv-1" }, reach), null, "a server order goes");
   assert.equal(offlineRefusalOf("offline-k1", reach)?.message, OFFLINE_ORDER_NOT_SENT, "an id passed alone");
+});
+
+// The pre-deploy review (2026-11-05): a round kept offline on a server tab was not on that tab's screen, and online
+// nothing refused its settle, so the bill closed without the round and the round's replay was then refused (spec 5.5:
+// "A round on a tab the server already has works the same way. Settle, void, move and cancel wait").
+test("a tab with a round still kept on this device waits, online too: settle, void, move and cancel (spec 5.5)", () => {
+  const reach = createServerReach();
+  const kept = (over: Partial<OutboxEntry>): OutboxEntry => ({
+    key: "k-r1", ref: "O-1", at: 1, kind: "round", sale: false, uncertain: false, local: "srv-1", orderId: "srv-1", table: "T-3",
+    body: { items: [] }, shownTotal: 100, lines: [], state: "waiting", ...over,
+  });
+  const outboxOf = (entries: OutboxEntry[]) => ({ getSnapshot: () => ({ record: { ...emptyOutbox("2026-11-05"), entries }, unreadable: false }) });
+  const waiting = outboxOf([kept({})]);
+  const refusal = offlineRefusalOf({ id: "srv-1", data: {} }, reach, waiting);
+  assert.equal(refusal?.message, OFFLINE_ROUND_NOT_SENT, "a settle, a move or a cancel ({ id })");
+  assert.equal(OFFLINE_ROUND_NOT_SENT, "A round of this order is still waiting to be sent (Offline orders). Try again once it is sent.", "the words");
+  assert.equal(classifyFailure(refusal), "definite", "nothing was sent");
+  assert.equal(offlineRefusalOf("srv-1", reach, waiting)?.message, OFFLINE_ROUND_NOT_SENT, "a void (the id alone)");
+  assert.throws(() => throwIfOffline({ id: "srv-1" }, reach, waiting), (e: unknown) => (e as Error).message === OFFLINE_ROUND_NOT_SENT, "onMutate refuses before the request");
+  assert.equal(offlineRefusalOf({ id: "srv-2" }, reach, waiting), null, "another tab goes");
+  assert.equal(offlineRefusalOf({ id: "srv-1" }, reach, outboxOf([kept({ state: "needs-staff", message: "Masala Chai is out of stock." })]))?.message, OFFLINE_ROUND_NOT_SENT, "a refused round waits for staff first");
+  assert.equal(offlineRefusalOf({ id: "srv-9" }, reach, outboxOf([kept({ local: "offline-k1", orderId: "srv-9" })]))?.message, OFFLINE_ROUND_NOT_SENT, "an order made offline whose create was saved, while its rounds wait");
+  assert.equal(offlineRefusalOf({ id: "srv-1" }, reach, { getSnapshot: () => ({ record: null, unreadable: false }) }), null, "no record: nothing waits");
+  reach.report({ type: "browser", online: false });
+  assert.equal(offlineRefusalOf({ id: "srv-1" }, reach, waiting)?.message, OFFLINE_NEEDS_INTERNET, "offline: the offline words first");
 });
 
 test("the automatic reload waits for the connection; it runs at once when there is one", () => {
