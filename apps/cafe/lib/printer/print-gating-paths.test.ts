@@ -239,8 +239,10 @@ const CASES: PinCase[] = [
       check(p, s.includes('if (document.visibilityState === "visible") tell(true);'), "announces only while visible");
       check(p, s.includes('document.addEventListener("visibilitychange", announce);') && s.includes('document.removeEventListener("visibilitychange", announce);'), "re-announces on visibilitychange and unhooks it");
       // s63 W-Z: a wake right after a poll would only stack a second fetch -- refresh only when the pulse is older than one poll.
-      check(p, ordered(s, ['nativeOn("app.wake", () => {', "qc.getQueryState(POS_PULSE_KEYS.all)?.dataUpdatedAt ?? 0;", "if (Date.now() - updatedAt <= REFETCH_INTERVALS.POS_PULSE) return;", "void qc.invalidateQueries({ queryKey: POS_PULSE_KEYS.all });"]), "app.wake invalidates the pulse once, and only when it is older than one poll interval");
-      check(p, s.includes('import { REFETCH_INTERVALS } from "@/lib/query";'), "imports REFETCH_INTERVALS");
+      // Printing Phase 5 (spec 5.11, the review's I2; deliberate change): older than the pulse's interval NOW (20 s lively,
+      // 60 s calm), so an app device goes calm too.
+      check(p, ordered(s, ['nativeOn("app.wake", () => {', "const state = qc.getQueryState<PosPulseData>(POS_PULSE_KEYS.all);", "if (Date.now() - (state?.dataUpdatedAt ?? 0) <= currentPulseIntervalMs(state?.data)) return;", "void qc.invalidateQueries({ queryKey: POS_PULSE_KEYS.all });"]), "app.wake invalidates the pulse once, and only when it is older than one poll interval");
+      check(p, s.includes('import { currentPulseIntervalMs } from "@/lib/pulse-cadence-now";'), "imports the pulse's interval now");
       // Phase 3 Session 3D deliberately changed: the cleanup's own tell(false) (a second one tells a page that knows it prints nothing).
       check(p, ordered(s, ["const announce = (): void => {", "announce();", "return () => {", "offWake();\n      tell(false);"]), "cleanup unhooks then sends active:false");
       check(p, s.includes("if (!enabled || !hasBridge) return;") && s.includes("usePrintCapabilities().native"), "only while enabled with the app bridge present");
@@ -256,8 +258,8 @@ const CASES: PinCase[] = [
       { name: "no cleanup release", apply: sub("      tell(false);\n", "") },
       { name: "a poll sneaks in", apply: sub("announce();\n", "announce();\n    setInterval(announce, 5000);\n") },
       { name: "wake refetches another key", apply: sub("queryKey: POS_PULSE_KEYS.all", 'queryKey: ["x"]') },
-      { name: "wake always refetches (freshness guard removed)", apply: sub("      if (Date.now() - updatedAt <= REFETCH_INTERVALS.POS_PULSE) return;\n", "") },
-      { name: "freshness guard compares the wrong way", apply: sub("<= REFETCH_INTERVALS.POS_PULSE", ">= REFETCH_INTERVALS.POS_PULSE") },
+      { name: "wake always refetches (freshness guard removed)", apply: sub("      if (Date.now() - (state?.dataUpdatedAt ?? 0) <= currentPulseIntervalMs(state?.data)) return;\n", "") },
+      { name: "freshness guard compares the wrong way", apply: sub("<= currentPulseIntervalMs(state?.data)", ">= currentPulseIntervalMs(state?.data)") },
       { name: "errors surface", apply: sub(".catch(() => undefined)", "") },
       { name: "bridge gate removed", apply: sub("!enabled || !hasBridge", "!enabled") },
     ],

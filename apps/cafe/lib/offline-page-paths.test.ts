@@ -127,3 +127,13 @@ test("Task 15: what waits offline is refused before any request; the reload, the
   assert.ok(src("apps/cafe/hooks/use-print-host-bridge.ts").includes("const slipCodePending = useSlipCodePending();"), "the bridge loads it");
   assert.ok(src("apps/cafe/components/layout/PrintHostProvider.tsx").includes("const bridge = usePrintHostBridge({ surfacesMounted });"), "on every screen");
 });
+
+test("Task 16: the calm pulse wired: the interval re-read from the cadence; a local change re-renders; the app's wake follows it", () => {
+  const pulse = src(PULSE);
+  assert.ok(pulse.includes("refetchInterval: (q) => currentPulseIntervalMs(q.state.data),"), "pulseIntervalMs over the last answer and the page's inputs");
+  assert.ok(pulse.includes("useSyncExternalStore(subscribeCadence, cadenceVersionOf, () => 0);"), "an own slip, offline, the outbox or a realtime drop re-renders the provider");
+  assert.ok(pulse.includes("SLIP_MAKING_MUTATIONS.has(JSON.stringify(event.mutation.options.mutationKey ?? []))) markOwnSlip();"), "every slip-making write's success");
+  assert.ok(src("apps/cafe/hooks/use-native-host.ts").includes("if (Date.now() - (state?.dataUpdatedAt ?? 0) <= currentPulseIntervalMs(state?.data)) return;"), "the Android app.wake compares with the interval now (the review's I2)");
+  assert.ok(src("apps/cafe/lib/warm-routes.ts").includes("export const WARM_LINE_PROOF_MS = 2 * REFETCH_INTERVALS.POS_PULSE_CALM;"), "the warm line proof survives a calm minute");
+  assert.ok(src("apps/cafe/hooks/use-offline-replay.ts").includes("markOwnSlip();"), "a replay is a slip-making write");
+});

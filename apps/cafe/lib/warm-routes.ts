@@ -39,8 +39,9 @@ export const WARM_ROUTES_INTERVAL_MS = 45 * 1000;
 export const WARM_ROUTES_STAGGER_MS = 1500;
 
 /** How recent a query answer must be to count as a working line. Two pulse
- *  beats: on a healthy page the pulse alone keeps the line proven. */
-export const WARM_LINE_PROOF_MS = 2 * REFETCH_INTERVALS.POS_PULSE;
+ *  beats: on a healthy page the pulse alone keeps the line proven. Printing
+ *  Phase 5 (spec 5.11): two CALM beats, so a quiet minute still proves it. */
+export const WARM_LINE_PROOF_MS = 2 * REFETCH_INTERVALS.POS_PULSE_CALM;
 
 /** From here up, an HTTP status is the server or platform failing, not our
  *  own server answering about that one request. */

@@ -17,6 +17,7 @@ import { apiSend } from "@/lib/api-client";
 import { finishOfflineFix, fixCartItems, fixRequestBody, offlineFixes, offlineFixOf, type OfflineFix } from "@/lib/offline-fix";
 import { offlineOutbox } from "@/lib/offline-outbox-store";
 import type { ReplayAnswer } from "@/lib/offline-replay";
+import { markOwnSlip } from "@/lib/pulse-cadence-now";
 import { classifyFailure } from "@/lib/pending-writes";
 import { printAgentRequestOptions } from "@/lib/print-agent-calls";
 import type { SendJob } from "@/lib/pos-send";
@@ -44,6 +45,7 @@ export function fixedJob(job: SendJob, fix: OfflineFix, qc: QueryClient, disarm:
     },
     confirm: (order, key) => {
       disarm();
+      markOwnSlip(); // sent outside the order mutations: the pulse watches for its slip too
       void offlineOutbox.update((record) => finishOfflineFix(record, fix, order._id));
       for (const queryKey of [ORDER_KEYS.all, TABLE_KEYS.all, CUSTOMER_KEYS.all]) void qc.invalidateQueries({ queryKey });
       job.confirm(order, key);

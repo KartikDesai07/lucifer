@@ -73,6 +73,8 @@ test("lineProven: only an answer within WARM_LINE_PROOF_MS proves the line; none
   // The pulse answers every POS_PULSE on a healthy page, so it keeps the line
   // proven with room for one slow beat.
   assert.ok(WARM_LINE_PROOF_MS > REFETCH_INTERVALS.POS_PULSE);
+  // Printing Phase 5 (spec 5.11, deliberate change): two CALM beats, so a quiet minute still proves the line.
+  assert.equal(WARM_LINE_PROOF_MS, 2 * REFETCH_INTERVALS.POS_PULSE_CALM, "120 s");
 });
 
 test("staggerPlan offers each href once, in order, one gap apart; a full pass fits well inside one beat", () => {

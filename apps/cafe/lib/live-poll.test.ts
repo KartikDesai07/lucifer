@@ -87,7 +87,8 @@ test("PIN (D3, F6): every safety-net poll passes its interval through livePoll( 
 
 test("PIN (D3): the pulse is not a safety-net poll — use-pos-pulse.ts never goes through livePoll", () => {
   const pulse = src("hooks/use-pos-pulse.ts");
-  assert.match(pulse, /refetchInterval: REFETCH_INTERVALS\.POS_PULSE,/, "positive landmark: the pulse's own 20 s poll");
+  // Printing Phase 5 (spec 5.11, deliberate change): its own cadence (20 s lively / 60 s calm), never livePoll's 120 s.
+  assert.match(pulse, /refetchInterval: \(q\) => currentPulseIntervalMs\(q\.state\.data\),/, "positive landmark: the pulse's own poll");
   assert.ok(!pulse.includes("livePoll"), "the pulse feeds printing and alerts: 20 s always, background too");
 });
 

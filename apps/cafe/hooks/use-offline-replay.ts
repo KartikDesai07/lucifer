@@ -28,6 +28,7 @@ import { REPLAY_NO_ECHO_MESSAGE, offlineReplayBody, replayReady, replaySentMessa
 import { reachOf, type ServerReach } from "@/lib/offline-state";
 import { printAgentRequestOptions, printJobRefOf } from "@/lib/print-agent-calls";
 import { deliverLeasedJob, kickPrintAgent } from "@/lib/print-agent-seams";
+import { markOwnSlip } from "@/lib/pulse-cadence-now";
 import { reportWriteAnswer, serverReach } from "@/lib/server-reach";
 import type { Order } from "@/types";
 
@@ -129,6 +130,7 @@ export function useOfflineReplay(): void {
     void withReplayLock(async () => {
       const result = await runOfflineReplay({ update: offlineOutbox.update, printing: (key) => offlinePrinting.has(key), send, follow: followAnswer });
       if (result.sent > 0) {
+        markOwnSlip(); // spec 5.11: a replay is a slip-making write: the pulse stays lively 2 minutes
         toast.success(replaySentMessage(result.sent));
         for (const queryKey of [ORDER_KEYS.all, TABLE_KEYS.all, CUSTOMER_KEYS.all]) void qc.invalidateQueries({ queryKey });
       }
