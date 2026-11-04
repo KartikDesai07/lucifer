@@ -515,7 +515,7 @@ the offline KOT as they print any KOT today).
       offline orders, a waiting slip, a slip for that device, an open QR request, its own order or bill in the last two
       minutes, or the live connection not proven) and once a minute when the cafe is quiet. A slip that cannot print
       rings its alarm 20–40 seconds after it on the device that sent it, and up to about 80 seconds after it on the
-      others.
+      device that prints it (measured: 20 s and 37–43 s).
 - [ ] **If you roll the web back** to a release from before printing Phase 5: first make sure every device's Offline
       orders list is empty, then reload every POS screen. A device on the new page with an older server keeps its
       orders and says "Waiting: this POS's server must be updated before these orders can be sent."

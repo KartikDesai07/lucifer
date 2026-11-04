@@ -947,3 +947,225 @@ Every live run dropped its own database (the runner: `pos_scratch_print_host_5b0
 `pos_scratch_e2e_4g_5ba1`, `5bb1`, `5bpa`, `5bpb`, `5bo`, `5bo2` are LEFT: their drop was refused by this PC's permission
 system (as the design session's `pos_scratch_e2e_4g_p5m`); the owner may drop them. The build worktree `D:\kd\u5b` is
 removed (384 junctions deleted first; the real `node_modules` unchanged).
+
+---
+
+# Session 5C Results (2026-11-04)
+
+Run on `feat/printing-phase-5` from 528cd46 (5B's Results); `origin/main` still 3ec96f1 at the start (nothing to merge).
+Not pushed, not merged. Tools and logs (scratch, never in the repo): `D:\kd\pos-dev-keep\phase5\session-5c\` (r1–r5.log,
+s1.log, out5c-results\, emu\, win\, pulse-run.sh / pulse-5c.mjs).
+
+## Commits
+
+| Commit | Task |
+|---|---|
+| 5085d53 | Task 24 GO-LIVE "Existing cafes: the printing Phase 5 release", TEST-CHECKLIST "Phase 5 checks (offline KOTs)", the pins (`lib/go-live-runbook-phase5.test.ts`) |
+| 93c2383 | Task 20 fix: while the browser says offline, a late answer keeps the device offline |
+| cf113d4 | Task 20 fix: a refused replay reads the POS's lists again, so Fix and send opens a closed tab's round as a new order |
+| 84ec1e2 | the review's fix wave (I1 a Discard racing a send, I2 Fix and send over unsent lines, m3's doc part) |
+| (this) | docs: these Results |
+
+## RED → GREEN per task
+
+| Task | RED (seen first) | GREEN |
+|---|---|---|
+| 20 fix 1 (93c2383) | 6 failed (offline-state 5: the shape and the new rule; server-reach 1); a mutation dropping the flag from the store's change check failed 2 | the offline tests 65/0; cafe 7598/7597/0/1 |
+| 20 fix 2 (cf113d4) | 3 failed (the refusal count, the new rule test, the Task 13 pin) | 21/0; tsc 0; lint clean on the four files |
+| 24 (5085d53) | 6 of 6 failed (the heading, the Phase 5 checks, the calm sentence missing) | 6/6; with the old runbook pins 136/0 |
+| fix wave (84ec1e2) | 3 failed (the two new tests, the page pin), then 2 (the docs pins) | 23/0 and 113/0; tsc 0; the whole chain below |
+
+Tasks 21–23 changed no code (measurements). Two existing pins changed on purpose in 93c2383 (feedBrowserOnline's middle step,
+the automatic reload's test): each now brings the browser back before the answer that ends offline (the same intent).
+
+## Counts (before at 528cd46 → after)
+
+| Suite | Before (528cd46) | After (84ec1e2) |
+|---|---|---|
+| cafe `npm test` (chain) | 7590 / 7589 pass / 0 fail / 1 skip | 7601 / 7600 / 0 / 1 |
+| cafe typecheck | 0 | 0 |
+| lint (`npx eslint .`) | 0 errors, 2 warnings | 0 errors, the same 2 warnings |
+| shared `npm test` | 1062 | 1062 |
+| shared typecheck | 0 | 0 |
+| live legs (`verify:print:live`) | 499 / 0 (`pos_scratch_print_host_5c0`) | 499 / 0 (`_5cf`) |
+
+The 11 new cafe tests: 6 runbook pins (Task 24), 2 (93c2383), 1 (cf113d4), 2 (the fix wave). The fix wave touched no
+online print path (the S1 run on cf113d4 stands).
+
+Scope (`git diff 3ec96f1..HEAD`): no diff under `apps/desktop`, `workers`, `print-budget*`, the slip renderers
+(`KOTReceipt.tsx`, `OrderReceipt.tsx`, `components/print/slip/*`); `apps/mobile` only `TEST-CHECKLIST.md`; `lib/printer/*`
+only 5B's test pin; budgets held: `use-pos-tab.ts` 546, `pos/page.tsx` 299, `lib/pos-send.ts` 300, `PaymentModal.tsx` 297,
+`printer-dot.ts` 300; `usePosPulseContext` 8 readers; no new file over 300 lines.
+
+## Task 20: end to end on fake printers
+
+Headless Chrome as the POS app (a fake `window.PosNative`: bridge v2 with a printer pool, bridge v1 with one printer, or
+none = a waiter phone's browser), the 5C builds in a worktree `D:\kd\u5c` (cache-off edit uncommitted), port 3171, printers
+mode with Kitchen / Bar / Desserts on network printers 9101–9103 and a bill printer 9104, all written by the POS device;
+both outage variants: the browser offline (`setOffline`) and **the server process stopped** (the realistic one: the
+router's internet down, the browser still online; the page goes offline by its pulse, 23–34 s). Every run read the paper
+(slip pictures turned into PNGs: `OFFLINE · O-n` banners, the create's O-n in a later round's Order row per ruling 13 (b)),
+the toasts, the outbox, and after the replay the orders, KOT numbers and every job's log. Across all runs: **no duplicate
+order id, KOT number or KOT job key, no unlabelled second slip, the outbox empty at the end.**
+
+| Scenario | Result |
+|---|---|
+| New order + a second round on it (offline; stopped) | O-1 Kitchen +0.65 s, O-2 Bar; back: the outbox empty in 0.5 s (offline) / 16 s (stopped: the next 20 s pulse); one order, 2 rounds, its taken time kept; both jobs `printed (offline O-n)`; nothing printed after |
+| A round on a server tab (offline; stopped) | round 1 online as today; round 2 offline O-5 / O-6 on Bar; back: the round saved, its job `printed (offline O-n)`; no paper after |
+| Pay Now (offline; stopped) | the sheet's note "Offline: Cash, Online or Split only…"; the KOT O-7 / O-8 at once on Kitchen and Bar; back: the sale Completed, its KOT jobs printed (offline), the bill printed once 0.6–4.5 s after |
+| A half-way send, the server stopped just before the tap (± Print KOT here) | "Couldn't confirm" then parked within 2 s ("Saved on this device…"), no paper; back: printed once (normal). With Print KOT here: the confirm's words, the OFFLINE copy; back: the jobs `printed (offline O-10)`, no second paper |
+| **The lost answer** (Review Focus 1, `lost-proxy.mjs`: the server takes the send, its answer is lost and the internet goes) ± Print KOT here | the server has the order (one KOT number); the page parks it as uncertain, no paper; back: the replay is answered as a replay (no second order). With Print KOT here: the OFFLINE copy, and the replay's CAS made the server's untried queued jobs printed: no second slip |
+| A refused round (two server tabs settled elsewhere during the outage; offline; stopped) | both refused "Can only add items to an open tab" (needs staff); Send again refused again; Fix and send opens a new order on that table and sends it online, its job `printed (offline O-n)`: no second slip; Discard: "Its KOT is already in the kitchen. Nothing is saved for it." With the server stopped this found **fix 2** (before it, Fix and send reopened the closed tab: 409 again) |
+| A reload while cut, then the connection back (offline; stopped) | Chrome's own error page while cut; the page opened again with the connection and sent the kept order at once; printed (offline) |
+| A waiter phone with no printer (offline; stopped) | "Offline: order O-1 is kept on this device. It prints when the internet is back."; no paper; back: the jobs queued for the printing device, which printed each once (normal KOT) when it opened |
+| Two tabs of one device (offline; stopped) | sends at the same moment in both: distinct O-17 / O-18 under the lock, both kept; back: one tab replayed both (the Web Lock), two orders |
+| Bridge v1, simple mode (the POS app 1.x shape; fresh: offline and stopped; Pay Now) | each KOT on the device's own printer with the banner; back: the whole-ticket jobs `printed (offline O-n)`, the bill once |
+| The browser cut 30 ms after a tap (the answer lands after the browser's offline event) | found **fix 1**: before it the page stayed "online" for 150 s (no offline path); after it the header says Offline at once and stays so until a pulse reaches the server |
+| a11y (the local axe-core 4.12.1 run, WCAG 2.2 AA tags) | the pay sheet's offline note, Offline orders at 1280 px (the 420 px aside) and at 390 px (full screen from the bottom, 390×844): **0 violations** |
+
+**S1 again on 5C's head** (cf113d4, the 4B gate's tools, `s1.log`): the base build `D:\kd\u6b` (21df25c = main 96520d6
+before Phase 5) against `D:\kd\u5c`: **simple mode on bridge v1 9/9 and printers mode on bridge v2 9/9 slips byte for byte
+equal.**
+
+## Task 21: the emulator
+
+Pixel_7_API_33, the app as found = 1.0 (versionCode 1, installed 2026-10-17: bridge v1), WebView 154.0.8037.106, Play Store
+paused for the run; simple mode with the app's own network printer at 10.0.2.2:9100 (a fake printer), the 5C build on
+:3100 (`adb reverse`), build 93c2383 (cf113d4 changes only the list read after a refused replay, covered above).
+- **WebView 154:** the server stopped mid-shift → the header "Offline — KOTs print here" (amber dot) in ~50 s; two KOTs:
+  O-1 (T-1) on paper 0.8 s after the tap, O-2 (T-2), the toast "Offline: KOT O-2 printed here. It is sent when the internet
+  is back.", "Offline orders · 2"; the slip's banner `OFFLINE · O-1` read from the paper; the server back → the outbox empty
+  in 15 s, 2 orders (KOT 1, 2; their taken times), both jobs `printed (offline O-n)`, no slip after. **A reload while
+  offline** (the app closed and opened): "Could not open the POS … The app is trying again by itself."; the server back →
+  the page open 14 s later → O-3 sent within 2 s, saved, printed (offline).
+- **WebView 109** (the factory one): the same (T-4 / T-5 → KOT 4 / 5 printed (offline); the reload → O-3 on T-6 sent 3 s
+  after the page opened). The switch reset the WebView's storage, so its O-n started again at O-1 (as a new device would).
+- Put back as found: the test printer removed ("No printer set up"), WebView 154 reinstalled, Play Store enabled, the reverse
+  removed, `sync`, `emu kill`. The WebView switches cleared its cookies: the app stays at its sign-in page on
+  localhost:3100.
+
+## Task 22: the Windows app smoke
+
+The Windows app's built main process (`apps/desktop/out`, the 2.0.2 build) unpackaged with a scratch userData; a boot
+shim fakes only the OS printing endpoints (the printer list reports one thermal printer; `print()` saves the page as a PDF
+and records its text and fonts) — nothing was added to this PC's printers; "Through the Windows driver"; printers mode:
+Kitchen on that Windows printer (`printHtmlOn`), Bar on a network printer at 127.0.0.1:9102 (`printRaw`, real TCP to a fake
+printer). The server stopped → "Offline — KOTs print here"; one Send: the Windows printer at +0.73 s ("OFFLINE · O-1 /
+KITCHEN ORDER / … / Round total: ₹200", the default system font, nothing to load), the network printer at +1.42 s
+(43,530 B); back: both jobs `printed (offline O-1)`, no second slip. **With a KOT template on a downloaded slip font
+(POS Print Sans)**: the font fails to load while the server is down, the Windows printer prints at +3.06 s (the app's 3 s
+fonts rule) in the fallback sans-serif, legible and complete; the network printer at +3.77 s; the replay as above.
+
+## Task 23: the calm pulse measured
+
+A build of cf113d4 in a worktree `D:\kd\u5p` with the local stand-in for the realtime room's URL inlined
+(`D:\kd\pos-dev-keep\perf\fake-realtime.mjs`, 127.0.0.1:8787), behind the counting proxy (`p3a-proxy.mjs`, :3172 →
+:3173), printers mode, database `pos_scratch_e2e_4g_5cp2`. One headless Chrome with 8 devices (contexts): **app1 and app2
+= fake POS apps** (bridge v2, each the writer of two network printers on fake printers 9101–9104, `app.wake` every 15 s as
+the print service ticks: 231 ticks each, the hook registered on both), pos3 (/pos laptop), waiter (/pos at 390 px),
+kitchen (/kitchen), floor (/tables at 390 px), orders (/orders), dash (/). A 3-minute warm-up, then (`pulse-full.json`,
+`proxy-full.jsonl`; the proxy's pulse counts equal the pages' own, 240 and 178):
+
+| Window | Pulses per device per minute | Per device-hour | All `/api` requests, 8 devices |
+|---|---|---|---|
+| Quiet, 30 min | every device 1.00 (the two app devices too) | 60 | 19.8 / min |
+| Rush, 15 min (a Pay Now every 30 s, alternating app1 and pos3: 30 sales, 93 jobs, all printed, 0 failed) | app1 2.93, pos3 2.93 (their own sales: lively 2 min), the six others 1.00 (app2 prints Bar and Desserts: their jobs printed at the realtime nudge, so no pulse answer held one waiting) | 89 | 70.9 / min |
+
+**The alarm** (a stuck slip: the Desserts printer off for both apps, as paper out; pos3 sends a Cheesecake on a fresh
+table; three trials): on the device that asked for it (pos3, lively) **20.0, 20.0, 20.0 s**; on the device that prints it
+(app2, calm) **36.8, 42.5, 43.1 s** (spec: 20–40 s on the device that made it, ≤ 80 s on another: both held). By design
+the alarm rings only on those two devices (`printAlarmWanted`, `lib/print-waiting.ts`). Each slip printed once within about
+a second of the printer coming back.
+
+**The projection** (8 devices, 12 h a day, 30 days, at the measured rates): all hours calm 0.17 M; 80 % calm 0.19 M;
+**60 % calm 0.21 M**; 40 % calm 0.22 M; every hour a rush like this one 0.26 M pulse invocations a month, against today's
+0.52 M (20 s always) and the target ≤ 0.35 M: **about −0.31 M a month at 60 % calm** (the cafe's projection ≈ 1.23 M →
+≈ 0.92 M invocations). The rush here has two devices taking orders; each device that sends is lively for 2 minutes after
+its send (up to today's 3 a minute on it), so a rush with every device sending costs more, never more than today's 0.52 M.
+The first, short trial run found two harness faults (the fake app answered a print with the base64 length, and the printer
+was off on one app only, so the slip failed over to the other app), fixed before this run; neither was an app fault.
+
+## Task 24: the docs
+
+GO-LIVE gains "Existing cafes: the printing Phase 5 release" (spec §7: the web first, every screen reloaded, the demo
+cafe for some days with the Phase 5 checks, then the clients; the rules: no refresh during an outage, End of day only when
+every device's Offline orders list is empty, the rollback only after every list is empty; what staff see in the page's
+own words; the half-way send and Print KOT here; a refused order; what may differ after an outage; the calm check's
+numbers) and the §7 device step's sentence "That refresh slows to once a minute while the cafe is quiet and the live
+connection is proven (printing Phase 5)."; TEST-CHECKLIST gains "Phase 5 checks (offline KOTs)" (spec §9 item 6). Pinned
+in `lib/go-live-runbook-phase5.test.ts` against the code's own constants.
+
+## Differences from the plan, and why (the session's rulings)
+
+1. **The runbook pins live in a new file** (`lib/go-live-runbook-phase5.test.ts`), not `lib/go-live-runbook.test.ts`
+   (1706 lines, past the 300-line rule; 5A's precedent).
+2. **Task 20 added the lost answer** (`lost-proxy.mjs`): the plan's half-way send stops the server before the tap (the
+   server never has it); Review Focus 1 needs the server to have it, so a proxy forwards the send, drops its answer and goes
+   down.
+3. **Two fixes inside Task 20** (93c2383, cf113d4), each test first, found by the fake-printer runs (above).
+4. **The emulator ran on 93c2383's build**; cf113d4 changes only the list read after a refused replay (no refusal on the
+   emulator), checked on fake printers on its own build.
+5. **The Windows smoke fakes the OS printer list and `print()`** instead of adding a printer to this PC (that would change
+   the owner's PC); everything else is the app's own code. The network printer is on loopback without the test LAN setting
+   (with it, the app's status check reports every other host down).
+6. **The stuck slip of Task 23** is a printer that is off for every device (the paper out), so no device can take it
+   over; the alarm by design rings on the device that asked for the slip and the one that prints it (`printAlarmWanted`).
+7. **GO-LIVE's calm-check sentence corrected after Task 23** (in this Results commit, its pin first): "up to about 80
+   seconds after it on the others" → "… on the device that prints it (measured: 20 s and 37–43 s)" (the alarm never rings
+   on the other devices).
+
+## Open points for the owner's eye (none changes the paper)
+
+- **5B's three:** (a) a parked (uncertain) create listed in Open tabs as "Offline · O-n" while it may be on the server: judged
+  on the emulator and the lost-answer runs — keep as is (during an outage no device sees the server's copy; the Offline
+  orders row already says "May already be on the server: it is sent by itself to check"; the replay never makes a second
+  order); (b) "did not print on X" is also said for a "maybe" line (its server copy prints as REPRINT): a suggested wording
+  "may not have printed on X" — the owner's word; (c) the amber dot drawn by the warn class reads amber on WebView 154,
+  WebView 109 and desktop Chrome: stands.
+- **New (minor, not fixed):** the offline header's printsHere reads only the printers the device writes, so a device whose
+  POS app lists a connected network printer it does not write says "Offline — orders are kept on this device" while a send
+  prints there (spec 5.3 prints on it; the toast says "printed here"); at 390 px the phone header's open-tabs control reads
+  "2 ope" (cut) beside the "Offline orders · n" chip (WebView 154 and 109).
+- **Offline paper with a downloaded slip font** prints in the fallback font after 3 s on the Windows app (above), as spec §12
+  says.
+- Environment: the first `next build` attempt ran ~1 min without `NEXT_TELEMETRY_DISABLED` and was stopped before it
+  finished (every later build had it); the Android emulator's crash reporter is set to upload crash reports (only on a
+  crash; none happened; its usage analytics are opted out). Later emulator boots should pass `-no-metrics`.
+
+## The review (Claude Fable 5.1, read-only)
+
+Range 3ec96f1..cf113d4 (what a merge brings; the owner's own main commits out of scope), against the spec, this plan,
+the 5A/5B Results and 5C's ledger. It stopped once on an HTTP 429 (the 5-hour limit) right after loading its context and
+was resumed with SendMessage after the 17:10 reset (no model switch). Read in three passes (the server half and shared;
+the page half; the 5C commits and docs) and six test files run read-only (60/60). Verdict **"With fixes"**: online paper
+and behaviour traced unchanged at every touched server site (the S1 runs agree); S3 held on every path; the older-server
+risk closed twice; the two 5C fixes judged correct and minimal.
+
+| Finding | Ruling |
+|---|---|
+| I1 Discard could remove an entry the runner was sending (its button hides only at render time): the server saves the order while staff are told "Nothing is saved for it", so they ring it again | **Fixed** test first (84ec1e2): `offlineDiscardRefusal` read inside the outbox lock; `offlineDiscard` / `offlineSendAgain` leave a "sending" entry (or a create whose round is sending); the sheet says "This order is being sent now: it cannot be discarded." |
+| I2 Fix and send replaced the cart with no word (unsent lines lost; Resume asks first) | **Fixed**: refused with "The cart has items not sent yet. Send or clear them first, then Fix and send." (`hasUnsent` on the same line of `use-pos-tab.ts`, 546 held) |
+| m3 an idle calm screen notices a real outage at its second missed pulse, up to about three minutes; TEST-CHECKLIST said "about a minute" | Doc part re-graded **Important** (the demo-cafe check would fail as written) and **fixed**: TEST-CHECKLIST and GO-LIVE state the three minutes and that an order sent before the screen noticed is kept as a half-way send. The code option (a counted miss makes the pulse lively; one input, no new request) is **for the owner** (beyond spec 5.11's conditions) |
+| m4 a parked create that never landed replays with the field, so the server draws no token for it (a token cafe's customer has nothing to be called by) | **For the owner** (P5-5 decided "no token" for orders made offline; a held send is a grey case; the reviewer's option: omit the field for an uncertain entry whose lines are all "later") |
+| m5 Fix and send while offline ends in "Couldn't confirm" (no loss) | Deferred (suggestion: hide it while offline) |
+| m6 the offline header's "KOTs print here" reads only the writer list | Deferred (wording only; the toast is exact) |
+| m7 two tabs: `offlinePrinting` is per tab, so the other tab can replay a line still printing and the server labels it REPRINT | Deferred (needs the state to flip online inside a ~1 s print; the paper is labelled) |
+| m8 the 390 px header cut ("2 ope") beside the chip | Deferred (suggestion: "Offline · n" below 720 px) |
+
+Declined to judge by the reviewer (ruled "stands"): the measured pulse, alarm, emulator and Windows runs (5C measured
+them); suite counts; the realtime heartbeat and `retry: 1` (pre-existing); everything spec §8 / P5-2 leaves out; the 24-line
+cap (5A m3); a "maybe" line's untried job unlabelled (5A m1, the owner said no); rulings 11 and 13 (b) (the owner's);
+pre-existing files over 300 lines growing by guard lines (5B); two tabs without Web Locks (5B re-check); storage cleared
+by the user or the OS (device storage is the only store, spec 5.2); End of day seeing only this device's outbox (the
+runbook's rule).
+
+No re-review was dispatched (one fix wave, each fix verified by a test that failed first and the whole suite).
+
+## Scratch databases
+
+Every live run dropped its own database (the runner: `pos_scratch_print_host_5c0`, `_5cf`). This session's e2e databases
+are LEFT: `pos_scratch_e2e_4g_5ca`, `5cv`, `5ca1`, `5cb1`, `5cpa`, `5cpb`, `5cw`, `5cw2`–`5cw6`, `5cemu`, `5cp`, `5cp2`: the
+drop was refused by this PC's permission system (as 5B's and the design session's); the owner may run
+`node D:/kd/pos-dev-keep/phase5/session-5c/drop-5c-dbs.mjs` from `D:\kd\lucifer\apps\cafe` (it drops exactly that list and
+names what is left). The build worktrees `D:\kd\u5c` and `D:\kd\u5p` are removed (384 junctions each deleted first; the real
+`node_modules` unchanged, its bins intact); no process of this session is left running.

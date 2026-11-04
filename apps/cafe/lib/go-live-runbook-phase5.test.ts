@@ -97,14 +97,14 @@ test("PIN §1 (printing Phase 5): the step quotes the page's own words, from the
   for (const [what, words] of quoted) assert.ok(text.includes(norm(words)), `the step quotes ${what} verbatim: "${words}"`);
 });
 
-test("PIN §1 (printing Phase 5, spec §5.11): the calm check's numbers match the pulse's constants (20 s lively, a minute calm, the alarm 20–40 s on the sender and up to about 80 s elsewhere)", () => {
+test("PIN §1 (printing Phase 5, spec §5.11): the calm check's numbers match the pulse's constants (20 s lively, a minute calm, the alarm 20–40 s on the sender and up to about 80 s on the printing device)", () => {
   const text = step();
   const lively = REFETCH_INTERVALS.POS_PULSE / 1000;
   assert.equal(REFETCH_INTERVALS.POS_PULSE_CALM, 60 * 1000, "the calm pulse is still one minute");
   assert.ok(text.includes(`every ${lively} seconds while anything needs it`), "the step states the lively interval");
   assert.ok(text.includes("once a minute when the cafe is quiet"), "the step states the calm interval");
   assert.ok(text.includes(`${lively}–${2 * lively} seconds after it on the device that sent it`), "the alarm on the device that sent the slip");
-  assert.ok(text.includes(`up to about ${lively + REFETCH_INTERVALS.POS_PULSE_CALM / 1000} seconds after it on the others`), "the alarm on the other devices");
+  assert.ok(text.includes(`up to about ${lively + REFETCH_INTERVALS.POS_PULSE_CALM / 1000} seconds after it on the device that prints it`), "the alarm on the device that prints it (5C Task 23: the alarm rings only on the sender and the printing device)");
 });
 
 test("PIN §7 (printing Phase 5): the device step's 20-second fallback gains the calm sentence, after it", () => {
