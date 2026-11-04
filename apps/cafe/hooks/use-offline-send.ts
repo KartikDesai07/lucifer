@@ -27,6 +27,8 @@ import { serverReach } from "@/lib/server-reach";
 import { cafeDateString } from "@/lib/utils";
 import type { Order } from "@/types";
 
+export { useOfflineFix } from "@/hooks/use-offline-fix";
+
 /** A line's printer the device's last read does not name (an admin removed it meanwhile). */
 const ANOTHER_PRINTER = "Another printer";
 

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { usePathname } from "next/navigation";
 
 import { PrinterStatusButton } from "@/components/print/PrinterStatusButton";
+import { OfflineOrdersSheet } from "@/components/pos/OfflineOrdersSheet";
 import { BrandTile } from "@/components/layout/BrandTile";
 import { HeaderTitle } from "@/components/layout/HeaderTitle";
 import { RefreshButton } from "@/components/layout/RefreshButton";
@@ -86,6 +87,8 @@ export function Header() {
       {pos && <PosHeaderClock now={now} tone={printerTone} room={room} />}
       <RefreshButton />
       <TokenSheet />
+      {/* Printing Phase 5: "Offline orders · n" beside the printer button while any offline order or note remains. */}
+      <OfflineOrdersSheet />
       <PrinterStatusButton onToneChange={pos ? setPrinterTone : undefined} />
     </header>
   );

@@ -12,7 +12,7 @@ import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { REFETCH_INTERVALS } from "@pos/shared/query";
-import { usePosPulseContext } from "@/components/layout/PosPulseProvider";
+import type { PosPulseData } from "@pos/shared/self-order-alert";
 import { useOfflineOutbox } from "@/hooks/use-offline-outbox";
 import { CUSTOMER_KEYS } from "@/hooks/use-customers";
 import { ORDER_KEYS } from "@/hooks/use-orders";
@@ -41,9 +41,22 @@ const subscribeBlocked = (listener: () => void) => {
   return () => void blockedListeners.delete(listener);
 };
 
+const tellBlocked = () => {
+  for (const listener of [...blockedListeners]) listener();
+};
+
 /** The runner stopped for good on this page (Offline orders says why). */
 export function useReplayBlocked(): boolean {
   return useSyncExternalStore(subscribeBlocked, () => blocked, () => false);
+}
+
+// What the last pulse said about offline replays, for Offline orders' line (spec §6), published by the runner.
+type ReplayGate = { known: boolean; offlineReplay: boolean };
+const UNKNOWN_GATE: ReplayGate = { known: false, offlineReplay: false };
+let gate: ReplayGate = UNKNOWN_GATE;
+
+export function useReplayGate(): ReplayGate {
+  return useSyncExternalStore(subscribeBlocked, () => gate, () => UNKNOWN_GATE);
 }
 
 async function checkPulseReach(qc: QueryClient): Promise<ServerReach> {
@@ -75,7 +88,6 @@ async function withReplayLock(work: () => Promise<void>): Promise<void> {
 
 export function useOfflineReplay(): void {
   const qc = useQueryClient();
-  const { pulse } = usePosPulseContext();
   const { offline } = useServerReach();
   const { record } = useOfflineOutbox();
   // Every pulse answer is a tick, even one that changed nothing (a structurally equal answer keeps its object).
@@ -89,7 +101,15 @@ export function useOfflineReplay(): void {
   );
   const runningRef = useRef(false);
   const retryAfterRef = useRef(0);
+  // Read from the cache at each tick (no pulse context of its own: the pulse stays one poller with its eight readers).
+  const pulse = qc.getQueryData<PosPulseData>(POS_PULSE_KEYS.all);
   const offlineReplay = pulse?.offlineReplay === true;
+  useEffect(() => {
+    const known = pulse !== undefined;
+    if (gate.known === known && gate.offlineReplay === offlineReplay) return;
+    gate = { known, offlineReplay };
+    tellBlocked();
+  }, [pulse, offlineReplay]);
   const sendable = record !== null && nextSendable(record) !== null;
 
   useEffect(() => {
@@ -116,7 +136,7 @@ export function useOfflineReplay(): void {
       if (result.stop === "miss" || result.stop === "signed-out" || result.stop === "storage") retryAfterRef.current = Date.now() + REFETCH_INTERVALS.POS_PULSE;
       if (result.stop === "no-echo" && !blocked) {
         blocked = true;
-        for (const listener of [...blockedListeners]) listener();
+        tellBlocked();
         toast.error(REPLAY_NO_ECHO_MESSAGE);
       }
     }).finally(() => {

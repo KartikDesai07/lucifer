@@ -21,9 +21,11 @@ import { toast } from "sonner";
 
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
 import type { OfflineSendPorts } from "@/hooks/use-offline-send";
+import { fixedJob } from "@/hooks/use-offline-fix";
+import type { OfflineFix } from "@/lib/offline-fix";
 import { reachOf, type ServerReach } from "@/lib/offline-state";
 import { mintAttemptId } from "@/lib/pos-device-id";
-import { createPosSend, SEND_OFFLINE_NOT_KEPT, type UnmountedToast } from "@/lib/pos-send";
+import { createPosSend, SEND_OFFLINE_NOT_KEPT, type SendJob, type UnmountedToast } from "@/lib/pos-send";
 import { reportWriteAnswer, serverReach } from "@/lib/server-reach";
 
 const toastUnmounted = (t: UnmountedToast) => (t.tone === "success" ? toast.success(t.message) : toast.warning(t.message));
@@ -38,6 +40,8 @@ async function checkPulseReach(qc: QueryClient): Promise<ServerReach> {
 export function usePosSend(offline?: OfflineSendPorts) {
   const qc = useQueryClient();
   const offlineRef = useRef(offline);
+  // Printing Phase 5 (spec 5.8): Fix and send arms the next send (hooks/use-offline-fix.ts); a reset disarms it.
+  const fixRef = useRef<OfflineFix | null>(null);
   useEffect(() => {
     offlineRef.current = offline;
   }, [offline]);
@@ -60,9 +64,15 @@ export function usePosSend(offline?: OfflineSendPorts) {
     frozen: state.frozen,
     kitchenNotice: state.notice?.job === "kitchen" ? state.notice.notice : null,
     payNotice: state.notice?.job === "pay" ? state.notice.notice : null,
-    run: send.run,
+    run: (job: SendJob) => send.run(fixRef.current === null ? job : fixedJob(job, fixRef.current, qc, () => (fixRef.current = null))),
     isLocked: send.isLocked,
-    reset: send.reset,
+    reset: () => {
+      fixRef.current = null;
+      send.reset();
+    },
+    armFix: (fix: OfflineFix | null) => {
+      fixRef.current = fix;
+    },
     holds: send.holds,
   };
 }

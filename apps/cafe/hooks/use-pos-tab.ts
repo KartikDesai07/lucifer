@@ -18,7 +18,7 @@ import { useRewardSelection } from "@/hooks/use-customer-rewards";
 import { useSettleFlow } from "@/hooks/use-settle-flow";
 import { useSettlePoints } from "@/hooks/use-settle-points";
 import { usePosSend } from "@/hooks/use-pos-send";
-import { offlineDone, useOfflineSend } from "@/hooks/use-offline-send";
+import { offlineDone, useOfflineFix, useOfflineSend } from "@/hooks/use-offline-send";
 import { chargeOverrideAfterTabUpdate, moneyEditedSince } from "@/lib/pending-writes";
 import { kitchenSentMessage, kotRoundOfSend } from "@/lib/pos-send";
 import { holdUnsentWork } from "@/lib/page-refresh";
@@ -441,6 +441,7 @@ export function usePosTab(receiver: string) {
     setPendingResume(null);
   };
   const cancelResume = () => setPendingResume(null);
+  useOfflineFix({ armFix: send.armFix, resetOrder, enterResume, hydrate, setTable, setCustomer, setNotes, payNow }); // Phase 5: Fix and send
 
   // Every close of the payment popup: never in flight; an unconfirmed Pay Now
   // closes only through its confirmed Discard (R13, R-d); a finished notice ends the tab.

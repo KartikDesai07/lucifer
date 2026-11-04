@@ -79,7 +79,28 @@ test("Task 13: one replay runner per tab in the shell; one tab of the device sen
   assert.ok(hook.includes("await locks.request(REPLAY_LOCK, { ifAvailable: true }, async (lock) => {"), "one tab sends; a busy lock skips");
   assert.ok(hook.includes("printAgentRequestOptions(entry.sale)"), "the print headers of an online send (a sale: the bill header)");
   assert.ok(hook.includes("const offlineReplay = pulse?.offlineReplay === true;"), "only once the server says it takes offline replays");
+  assert.ok(hook.includes("const pulse = qc.getQueryData<PosPulseData>(POS_PULSE_KEYS.all);") && !hook.includes("usePosPulseContext("), "read from the cache at each tick: no new pulse reader");
   assert.ok(!hook.includes("/api/print-jobs") && !hook.includes("useEnqueuePrintJob"), "never a slip enqueued for an entry");
   assert.ok(!hook.includes("useQuery("), "no observer of its own: the pulse stays the one poller");
   assert.ok(hook.includes("retryAfterRef.current = Date.now() + REFETCH_INTERVALS.POS_PULSE;"), "a miss waits a pulse tick");
+});
+
+test("Task 14: the POS lists the orders made offline and their tables read taken; the header's chip opens Offline orders", () => {
+  const header = src("apps/cafe/components/pos/PosHeader.tsx");
+  assert.ok(header.includes("const tabs = useOfflineTabs(openTabs);"), "Open tabs");
+  const cart = src("apps/cafe/components/pos/CartHead.tsx");
+  assert.ok(cart.includes("tables={offlineTables}") && cart.includes("tabs={offlineTabs}"), "the table choice");
+  const row = src("apps/cafe/components/pos/OpenTabsButton.tsx");
+  assert.ok(row.includes("{offline ?? row.status}"), "the Offline · O-n chip where the status goes");
+  const shell = src("apps/cafe/components/layout/Header.tsx");
+  assert.ok(shell.indexOf("<OfflineOrdersSheet />") > 0 && shell.indexOf("<OfflineOrdersSheet />") < shell.indexOf("<PrinterStatusButton"), "beside the printer button");
+  const sheet = src("apps/cafe/components/pos/OfflineOrdersSheet.tsx");
+  assert.ok(sheet.includes("className={side ? PRINTER_PANEL_SIDE_CLASS : PRINTER_PANEL_SHEET_CLASS}"), "below 1280 px the panel is a full-screen sheet from the bottom");
+  assert.ok(!sheet.includes("<select"), "never a native select");
+  assert.ok((sheet.match(/className=\{PRINTER_ACTION_CLASS\}/g) ?? []).length >= 5, "44 px buttons");
+  assert.ok(sheet.includes("if (count === 0 && !unreadable) return null;"), "only while an order or a note remains");
+  const send = src("apps/cafe/hooks/use-pos-send.ts");
+  assert.ok(send.includes("reset: () => {\n      fixRef.current = null;\n      send.reset();"), "clearing the cart disarms Fix and send");
+  const fix = src("apps/cafe/hooks/use-offline-fix.ts");
+  assert.ok(fix.includes("fixRequestBody(facts.body, key, fix, facts.shownTotal)"), "a new key with the entry's offline lines");
 });
