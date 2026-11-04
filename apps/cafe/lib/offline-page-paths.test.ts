@@ -70,3 +70,16 @@ test("Task 12: a held send is parked once offline, uncertain and with no paper; 
   assert.ok(hook.includes("print: false, uncertain: true, ...ctx };"), "a parked send prints nothing by itself (S3)");
   assert.equal((hook.match(/printEntryHere\(/g) ?? []).length, 1, "Print KOT here has one caller: staff's button");
 });
+
+test("Task 13: one replay runner per tab in the shell; one tab of the device sends; it follows the answer, never enqueues", () => {
+  const layout = src("apps/cafe/app/(dashboard)/layout.tsx");
+  assert.equal((layout.match(/<OfflineReplayRunner \/>/g) ?? []).length, 1, "mounted once");
+  assert.ok(layout.indexOf("<OfflineReplayRunner />") > layout.indexOf("<PosPulseProvider>"), "inside the pulse provider");
+  const hook = src("apps/cafe/hooks/use-offline-replay.ts");
+  assert.ok(hook.includes("await locks.request(REPLAY_LOCK, { ifAvailable: true }, async (lock) => {"), "one tab sends; a busy lock skips");
+  assert.ok(hook.includes("printAgentRequestOptions(entry.sale)"), "the print headers of an online send (a sale: the bill header)");
+  assert.ok(hook.includes("const offlineReplay = pulse?.offlineReplay === true;"), "only once the server says it takes offline replays");
+  assert.ok(!hook.includes("/api/print-jobs") && !hook.includes("useEnqueuePrintJob"), "never a slip enqueued for an entry");
+  assert.ok(!hook.includes("useQuery("), "no observer of its own: the pulse stays the one poller");
+  assert.ok(hook.includes("retryAfterRef.current = Date.now() + REFETCH_INTERVALS.POS_PULSE;"), "a miss waits a pulse tick");
+});
