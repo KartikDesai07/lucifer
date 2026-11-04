@@ -500,7 +500,7 @@ the offline KOT as they print any KOT today).
       device cannot see them, and a day closed before they are sent misses them.
 - [ ] **A send the internet cut half-way** (the order was on its way when the internet went, or was sent before the
       screen had noticed the outage: the first order after the internet goes is often one; a screen left alone notices
-      within about three minutes) is kept and never printed by itself: "Saved on this device. It is sent by itself when the internet is back — it can never go
+      within about two and a half minutes) is kept and never printed by itself: "Saved on this device. It is sent by itself when the internet is back — it can never go
       through twice." If the kitchen needs it now: **Offline orders** → **Print KOT here**, which asks first: "If this
       order reached the server before the internet went, the kitchen may get it twice. This copy says OFFLINE."
 - [ ] **An order the server refuses after the outage** (its tab was closed on another device meanwhile, or an item
@@ -510,9 +510,10 @@ the offline KOT as they print any KOT today).
 - [ ] **What may differ after an outage** (tell the cafe admin): an order sent after the outage is saved for the
       person signed in then; a round added offline to a tab may be printed as Round n and saved as Round n + 1 when
       another device added one meanwhile; an order kept for more than 12 hours, or sent on another day, is saved at the
-      time it is sent, with a note.
+      time it is sent, with a note; an order whose KOT printed offline has no token (staff call it by its O-n); one kept
+      offline that printed nothing is saved with its token as usual.
 - [ ] **The calm check:** each POS screen checks the server every 20 seconds while anything needs it (an outage,
-      offline orders, a waiting slip, a slip for that device, an open QR request, its own order or bill in the last two
+      a missed check, offline orders, a waiting slip, a slip for that device, an open QR request, its own order or bill in the last two
       minutes, or the live connection not proven) and once a minute when the cafe is quiet. A slip that cannot print
       rings its alarm 20–40 seconds after it on the device that sent it, and up to about 80 seconds after it on the
       device that prints it (measured: 20 s and 37–43 s).

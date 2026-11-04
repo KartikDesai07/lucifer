@@ -159,12 +159,19 @@ export function offlineKeptMessage(input: { ref: string; sale: boolean; plan: re
   return `Offline: KOT ${ref} printed here.${later === "" ? " It is sent when the internet is back." : later}`;
 }
 
-/** The review's I3: after the paper, the here lines that did not print (nothing sent, or maybe), named; null when every
- *  one printed. Either way the server prints them when the internet is back (a maybe one labelled REPRINT). */
+/** The review's I3: after the paper, the here lines that did not print (nothing sent), and those that may have printed
+ *  (maybe: never said "did not print", the owner's answer after 5C), named; null when every one printed. Either way the
+ *  server prints them when the internet is back, a maybe one labelled REPRINT. */
 export function offlineMissedMessage(ref: string, plan: readonly OfflineLinePlan[], outcomes: ReadonlyMap<number, OfflineSlipOutcome>, nameOf: (printerId: string | null) => string): string | null {
-  const missed = [...new Set(plan.flatMap((line, index) => (line.here && outcomes.get(index) !== "printed" ? [nameOf(line.printerId)] : [])))];
-  if (missed.length === 0) return null;
-  return `Offline: KOT ${ref} did not print on ${namesOf(missed)}. It prints there when the internet is back.`;
+  const namesWhere = (test: (outcome: OfflineSlipOutcome | undefined) => boolean) =>
+    [...new Set(plan.flatMap((line, index) => (line.here && test(outcomes.get(index)) ? [nameOf(line.printerId)] : [])))];
+  const maybe = namesWhere((outcome) => outcome === "maybe");
+  const missed = namesWhere((outcome) => outcome !== "printed" && outcome !== "maybe").filter((name) => !maybe.includes(name));
+  if (maybe.length === 0 && missed.length === 0) return null;
+  if (maybe.length === 0) return `Offline: KOT ${ref} did not print on ${namesOf(missed)}. It prints there when the internet is back.`;
+  if (missed.length === 0) return `Offline: KOT ${ref} may not have printed on ${namesOf(maybe)}. It prints there, marked REPRINT, when the internet is back.`;
+  const copies = maybe.length === 1 ? "the copy" : "the copies";
+  return `Offline: KOT ${ref} did not print on ${namesOf(missed)} and may not have printed on ${namesOf(maybe)}. They print there when the internet is back (${copies} on ${namesOf(maybe)} marked REPRINT).`;
 }
 
 /** Prints each here line's copies one after another (spec 5.3: each copy a write). A first copy that sent nothing is

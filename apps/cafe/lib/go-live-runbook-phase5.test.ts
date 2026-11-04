@@ -70,6 +70,8 @@ test("PIN §1 (printing Phase 5, spec §7): the step states the outage rules: no
     "an order sent after the outage is saved for the person signed in then",
     "a round added offline to a tab may be printed as Round n and saved as Round n + 1 when another device added one meanwhile",
     "the first order after the internet goes is often one",
+    // The owner's answer after 5C (m4): no token only where the KOT printed offline.
+    "an order whose KOT printed offline has no token (staff call it by its O-n); one kept offline that printed nothing is saved with its token as usual",
   ]) {
     assert.ok(text.includes(phrase), `the Phase 5 release step says "${phrase}"`);
   }
@@ -103,6 +105,7 @@ test("PIN §1 (printing Phase 5, spec §5.11): the calm check's numbers match th
   assert.equal(REFETCH_INTERVALS.POS_PULSE_CALM, 60 * 1000, "the calm pulse is still one minute");
   assert.ok(text.includes(`every ${lively} seconds while anything needs it`), "the step states the lively interval");
   assert.ok(text.includes("once a minute when the cafe is quiet"), "the step states the calm interval");
+  assert.ok(text.includes("a missed check"), "a missed check keeps it at 20 s (the owner's answer after 5C)");
   assert.ok(text.includes(`${lively}–${2 * lively} seconds after it on the device that sent it`), "the alarm on the device that sent the slip");
   assert.ok(text.includes(`up to about ${lively + REFETCH_INTERVALS.POS_PULSE_CALM / 1000} seconds after it on the device that prints it`), "the alarm on the device that prints it (5C Task 23: the alarm rings only on the sender and the printing device)");
 });
@@ -125,8 +128,9 @@ test("PIN (printing Phase 5, spec §9 item 6): TEST-CHECKLIST's Phase 5 checks h
   for (const phrase of [
     "the demo cafe",
     "Unplug the router's internet mid-service",
-    // 5C review m3: an idle calm screen notices a real outage in up to about three minutes (two missed pulses).
-    "within about three minutes on a screen left alone",
+    // 5C review m3 + the owner's answer: an idle calm screen notices a real outage at its second missed pulse, the second
+    // coming 20 s after the first: up to about two and a half minutes.
+    "within about two and a half minutes on a screen left alone",
     "an order sent before its screen turned amber is kept as a half-way send and does not print by itself",
     "a new table, a round on a tab opened before the outage and a Pay Now",
     "on the counter and on a printing phone",

@@ -18,9 +18,8 @@ import {
 } from "@/components/print/printer-classes";
 import { useDotPrinters } from "@/hooks/use-agent-printers";
 import { useServerReach } from "@/hooks/use-server-reach";
+import { useOfflinePrintsHere } from "@/hooks/use-offline-send";
 import { offlineHeaderOf } from "@/lib/offline-guard";
-import { readyPrinterIds } from "@/lib/print-agent-seams";
-import { canPrintNow } from "@/lib/printer/print-lane";
 import { useDesktopPrinterChosen, useDeviceOnline, useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
 import { printerButtonName, printerDotOf, printerDotTone, type PrinterDotTone } from "@/lib/printer/printer-dot";
 import { printWaitingName } from "@/lib/print-waiting";
@@ -48,8 +47,10 @@ export function PrinterStatusButton({ onToneChange }: { onToneChange?: (tone: Pr
   // Session 1D: how many slips wait for people, cafe-wide (the panel inside lists them).
   const waiting = usePrintWaitingCount();
   const dot = printerDotOf({ remote, isHostDevice, lane, local: snapshot.status, printers: dotPrinters, deviceOffline: !online, desktopChosen });
-  // Printing Phase 5 (spec 5.10): offline, the button says what a send does here, in amber (the warn dot).
-  const offlineHeader = offlineHeaderOf({ offline: useServerReach().offline, printsHere: readyPrinterIds().length > 0 || (!dotPrinters.printersMode && canPrintNow()) });
+  // Printing Phase 5 (spec 5.10): offline, the button says what a send does here, in amber (the warn dot), by the send's
+  // own rule (the final review's m6: a network printer its app reaches counts too).
+  const offlinePrintsHereNow = useOfflinePrintsHere();
+  const offlineHeader = offlineHeaderOf({ offline: useServerReach().offline, printsHere: offlinePrintsHereNow });
   const name = offlineHeader !== null ? offlineHeader.name : printWaitingName(printerButtonName(dot), waiting);
   // A printer that is only being checked draws no dot (never red while it connects).
   const tone = offlineHeader !== null ? "red" : printerDotTone(dot);

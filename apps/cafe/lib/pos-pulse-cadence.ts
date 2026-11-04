@@ -10,6 +10,8 @@ export interface PulseCadenceInput {
   /** Realtime is proven to deliver, so the pulse is not the only way changes arrive. */
   realtimeTrusted: boolean;
   offline: boolean;
+  /** A pulse got no answer and none has reached the server since (the owner's answer after 5C: find an outage sooner). */
+  pulseMissed: boolean;
   outboxEntries: number;
   /** From the last pulse answer. */
   printAttention: number;
@@ -22,6 +24,13 @@ export interface PulseCadenceInput {
 export function pulseIntervalMs(input: PulseCadenceInput): number {
   const ownSlipRecent = input.lastOwnSlipAt !== null && input.nowMs - input.lastOwnSlipAt < PULSE_OWN_SLIP_WINDOW_MS;
   const lively =
-    !input.realtimeTrusted || input.offline || input.outboxEntries > 0 || input.printAttention > 0 || input.printJobsForMe > 0 || input.openRequests > 0 || ownSlipRecent;
+    !input.realtimeTrusted ||
+    input.offline ||
+    input.pulseMissed ||
+    input.outboxEntries > 0 ||
+    input.printAttention > 0 ||
+    input.printJobsForMe > 0 ||
+    input.openRequests > 0 ||
+    ownSlipRecent;
   return lively ? REFETCH_INTERVALS.POS_PULSE : REFETCH_INTERVALS.POS_PULSE_CALM;
 }

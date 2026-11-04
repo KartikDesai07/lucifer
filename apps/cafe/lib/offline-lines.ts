@@ -96,6 +96,13 @@ export function offlineHereIds(input: {
   return [...new Set([...input.ready, ...reached])];
 }
 
+/** The offline header's words (spec 5.10, the final review's m6): does a send print anything here now? The plan's own
+ *  rule (offlineKotPlan): printers mode, any printer it can print on now (offlineHereIds); simple mode, when this device
+ *  prints its own slips and its printer can print now. */
+export function offlinePrintsHere(input: { printersMode: boolean; hereIds: readonly string[]; simple: { printsOwnSlips: boolean; canPrintNow: boolean } }): boolean {
+  return input.printersMode ? input.hereIds.length > 0 : input.simple.printsOwnSlips && input.simple.canPrintNow;
+}
+
 /** The lines the outbox entry keeps, by plan index: a line printed here is printed, one whose paper may be out is
  *  maybe; another device's line, a write that sent nothing and a line not printed yet wait for the server (later). */
 export function offlineLinesOf(

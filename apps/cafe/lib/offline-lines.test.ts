@@ -135,6 +135,18 @@ test("here means the printers it writes and the network printers its app reaches
   assert.deepEqual(plan.map((l) => [l.printerId, l.here]), [[KITCHEN_P.id, true], [barLan.id, true]], "both lines print on this device");
 });
 
+// The final review's m6: the offline header said "orders are kept on this device" from the printers it writes alone,
+// while a send printed on a network printer its app reaches. The header now asks the send's own rule.
+test("the header's 'KOTs print here' follows the send's own rule", async () => {
+  const { offlinePrintsHere } = await import("@/lib/offline-lines");
+  const simple = (printsOwnSlips: boolean, canPrintNow: boolean) => ({ printsOwnSlips, canPrintNow });
+  assert.equal(offlinePrintsHere({ printersMode: true, hereIds: ["pr-bar-lan"], simple: simple(false, false) }), true, "printers mode: a network printer its app reaches, though it writes none");
+  assert.equal(offlinePrintsHere({ printersMode: true, hereIds: [], simple: simple(true, true) }), false, "printers mode: nothing here (a waiter phone)");
+  assert.equal(offlinePrintsHere({ printersMode: false, hereIds: [], simple: simple(true, true) }), true, "simple mode: it prints its own slips and can print");
+  assert.equal(offlinePrintsHere({ printersMode: false, hereIds: [], simple: simple(false, true) }), false, "simple mode with a print host elsewhere: kept");
+  assert.equal(offlinePrintsHere({ printersMode: false, hereIds: [], simple: simple(true, false) }), false, "simple mode, its printer off: kept");
+});
+
 test("the item stations are resolved as the server resolves them (product override, category station, the default)", () => {
   const routing = offlineRoutingOf({ printers: [KITCHEN_P], stations: STATIONS, products: PRODUCTS, categories: CATEGORIES, billPrinterId: BILL_P.id });
   assert.ok(routing !== null, "printers mode");

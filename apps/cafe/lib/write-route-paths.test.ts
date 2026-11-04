@@ -176,7 +176,7 @@ test("PIN (create): the KOT number is taken after every refusal and the fence, a
       ['if ("error" in pay) return failure(pay.error, 400);', "the payment 400"],
       ['"Select a customer — the unpaid remainder becomes their due"', "the carrier refusal"],
       ["if (!(await fencePromoFor(orderId))) {", "the promo fence"],
-      ["slips = await allocateOpeningSlips(printCfg, { kitchen: kot.kitchen }, undefined, { token: data.offline === undefined });", "the KOT number + token allocation"],
+      ["slips = await allocateOpeningSlips(printCfg, { kitchen: kot.kitchen }, undefined, { token: !offlinePaperOut(data.offline) });", "the KOT number + token allocation"],
       ["} catch (slipError) {", "the slip catch"],
       ["const doc = { ...unnumberedDoc, ...slips };", "the numbered doc"],
       ["Order.create({ ...doc, orderId });", "the insert"],
@@ -441,7 +441,7 @@ test("PIN (skip-KOT): each order writer stamps through withKitchenFlags before i
   const create = read(ORDERS_ROUTE);
   assert.ok(mustIndexOf(create, "const kot = await withKitchenFlags(stampModifierPrices(rewardItems, products));", "create: the stamp") < mustIndexOf(create, "const unnumberedDoc = {", "create: the doc"), "create: the stamp precedes the doc built from rewardItems");
   mustIndexOf(create, "rewardItems = kot.lines;", "create: the stamped lines are the ones stored");
-  mustIndexOf(create, "allocateOpeningSlips(printCfg, { kitchen: kot.kitchen }, undefined, { token: data.offline === undefined })", "create: the draw reads the stamp");
+  mustIndexOf(create, "allocateOpeningSlips(printCfg, { kitchen: kot.kitchen }, undefined, { token: !offlinePaperOut(data.offline) })", "create: the draw reads the stamp");
   const accept = read(ACCEPT_LIB);
   assert.ok(mustIndexOf(accept, "const kot = await withKitchenFlags(orderItems);", "accept: the stamp") < mustIndexOf(accept, "allocateOpeningSlips(printCfg, { kitchen: kot.kitchen })", "accept: the draw reads the stamp"));
   mustIndexOf(accept, "items: kot.lines.map((it) => ({ ...it, kotRound: 1 })),", "accept: the stamped lines are the ones stored");

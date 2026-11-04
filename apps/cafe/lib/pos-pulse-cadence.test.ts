@@ -7,7 +7,7 @@ import { REFETCH_INTERVALS } from "@pos/shared/query";
 import { PULSE_OWN_SLIP_WINDOW_MS, pulseIntervalMs } from "./pos-pulse-cadence";
 
 const NOW = 1_000_000_000;
-const quiet = { realtimeTrusted: true, offline: false, outboxEntries: 0, printAttention: 0, printJobsForMe: 0, openRequests: 0, lastOwnSlipAt: null, nowMs: NOW };
+const quiet = { realtimeTrusted: true, offline: false, pulseMissed: false, outboxEntries: 0, printAttention: 0, printJobsForMe: 0, openRequests: 0, lastOwnSlipAt: null, nowMs: NOW };
 
 test("the two intervals are 20 s and 60 s", () => {
   assert.equal(REFETCH_INTERVALS.POS_PULSE, 20_000, "lively");
@@ -26,6 +26,12 @@ test("realtime not proven is lively", () => {
 
 test("offline is lively", () => {
   assert.equal(pulseIntervalMs({ ...quiet, offline: true }), 20_000, "the first pulse that reaches the server ends offline");
+});
+
+// The owner's answer after 5C (2026-11-04, "the server smooth and the process fast"): a calm screen that missed one
+// pulse checks again in 20 s, so an outage is found at the second miss sooner (no request while the server answers).
+test("a pulse that got no answer is lively until one reaches the server", () => {
+  assert.equal(pulseIntervalMs({ ...quiet, pulseMissed: true }), 20_000, "one miss: the next check comes in 20 s");
 });
 
 test("an entry waits in the outbox is lively", () => {

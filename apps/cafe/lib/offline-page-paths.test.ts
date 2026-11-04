@@ -156,3 +156,16 @@ test("fix wave: the review's C1, I2, I3 and the sheet's mount, wired", () => {
   const parent = sheet.slice(sheet.indexOf("export function OfflineOrdersSheet()"), sheet.indexOf("function OfflineOrdersPanel("));
   assert.ok(parent.length > 0 && !parent.includes("useOfflinePrintHere(") && parent.includes("<OfflineOrdersPanel onClose={() => setOpen(false)} />"), "the list's hooks mount with the open panel only");
 });
+
+test("the owner's answers after 5C: the header asks the send's rule, Fix and send waits for the connection, the phone chip is short", () => {
+  const button = src("apps/cafe/components/print/PrinterStatusButton.tsx");
+  assert.ok(button.includes("printsHere: offlinePrintsHereNow })") && button.includes("const offlinePrintsHereNow = useOfflinePrintsHere();"), "m6: the header's words follow the send's own rule");
+  assert.ok(!button.includes("readyPrinterIds().length > 0"), "m6: no longer the written printers alone");
+  const hook = src("apps/cafe/hooks/use-offline-send.ts");
+  const at = hook.indexOf("export function useOfflinePrintsHere(): boolean {");
+  const body = hook.slice(at, hook.indexOf("\n}\n", at));
+  assert.ok(at >= 0 && body.includes("offlinePrintsHere(") && !body.includes("useProducts(") && !body.includes("useCategories("), "m6: the header's hook reads no menu (no request of its own)");
+  const sheet = src("apps/cafe/components/pos/OfflineOrdersSheet.tsx");
+  assert.ok(sheet.includes("const rows = offlineRowsOf(record, { offline });"), "m5: offline, no Fix and send");
+  assert.ok(sheet.includes('Offline<span className="hidden tab:inline"> orders</span> · {count}'), "m8: below 720 px the chip reads 'Offline · n' (its name stays 'Offline orders: n')");
+});

@@ -1169,3 +1169,47 @@ drop was refused by this PC's permission system (as 5B's and the design session'
 `node D:/kd/pos-dev-keep/phase5/session-5c/drop-5c-dbs.mjs` from `D:\kd\lucifer\apps\cafe` (it drops exactly that list and
 names what is left). The build worktrees `D:\kd\u5c` and `D:\kd\u5p` are removed (384 junctions each deleted first; the real
 `node_modules` unchanged, its bins intact); no process of this session is left running.
+
+---
+
+# Follow-ups after 5C (2026-11-04, the owner's answers)
+
+Phase 5 was merged into `main` as fffa248 (`--no-ff`, on the owner's conditional OK; every suite green on main) and
+pushed (3ec96f1..fffa248, the token store) on his word. His answers to the open points of the 5C Results were built on
+`feat/printing-phase-5-followups` (from main), test first, and recorded in the spec as P5-11..P5-13:
+
+| Point | The owner's answer | Built (fb450d6, faf3c5d) |
+|---|---|---|
+| m3: an idle calm screen finds a real outage at its second missed pulse, 60 s after the first | "the server smooth and the process fast" | **P5-11:** one missed pulse keeps the pulse at 20 s until one reaches the server (`pulseMissed` in `lib/pos-pulse-cadence.ts`, read from the offline state's `pulseMisses`); never more often than the pre-Phase-5 20 s; GO-LIVE and TEST-CHECKLIST: about two and a half minutes |
+| m4: a half-way send that never landed (or a waiter phone's order) drew no token | "the standard, proper decision" | **P5-12:** no token only when a line of the round printed, or may have printed, offline (`offlinePaperOut`); an order kept offline that printed nothing is saved with its token, as online; the replay still sends the field (its job refs let a lost answer's KOT print at once) |
+| "did not print on X" for a maybe line | "ok, everything accurate" | **P5-13:** "may not have printed on X. It prints there, marked REPRINT, when the internet is back." (and the mixed form) |
+| m5, m6, m8 | "manage everything properly" | Fix and send not offered offline; the header's "KOTs print here" follows the send's own rule (`offlinePrintsHere`, `useOfflinePrintsHere`: no menu read, no new request); below 720 px the chip reads "Offline · n" |
+| m7 (two tabs: a line still printing in one tab, replayed from the other, prints a labelled REPRINT) | — | Left: closing it needs a new outbox field, which an older page's strict schema would read as an unreadable record during a deploy; the paper is labelled |
+
+**Tests:** cafe 7601 → 7607 (7606 / 0 / 1 skip); tsc 0; lint 0 errors (the 2 old warnings); shared 1062. Pins changed on
+purpose: the create route's token argument in `order-availability-paths`, `skip-kot-paths`, `write-route-paths` (×2) and
+`print-offline-jobs` (their intent, the draws' order and gate, unchanged); `offline-send`'s two-name case now uses two "no"
+lines (the maybe shapes have their own test).
+
+**End to end** (a build of fb450d6, `D:\kd\u5f`, fake printers, tokens on, `r6.log`): a half-way send that never landed →
+saved with **token 1**, its token slip printed once; an order printed offline (O-2, O-3) → no token; a waiter phone's order →
+**token 2**, the printing device printed its KOT lines and token slip once each; a device that writes no printer but whose
+POS app lists the network printers → the header says "Offline — KOTs print here" (m6); a11y (axe) 0 violations; no
+duplicate order, KOT number or job key. **The 390 px header** (`probe390`): tokens off — online the open-tabs control is
+216 px, offline with the chip 115 px and its "1 open" pill whole (the 5C emulator's "2 ope" cut is gone); tokens on (the
+Tokens button too) — offline the control shrinks to 58 px and the pill is hidden while the chip shows (the control still
+opens Open tabs, which lists the offline orders).
+
+**P5-11 measured** (a build of fb450d6 with the realtime stand-in, `D:\kd\u5r`, `m3-5c.mjs`): one dashboard page left alone until its pulse was calm (60 s apart: measured gaps 60, 60 s), the server stopped at a random moment, three rounds: the page said Offline **73, 60 and 75 s** after the stop; each time the first failing pulse (+51, +38, +53 s) was followed by the next **20 s later**, not 60 (before P5-11 the second miss would have come about 60 s later: about 110 s). With the server stopped a pulse fails at once; with the cafe's internet down each failing tick waits for its 15 s timeout and one retry, hence "about two and a half minutes" in the docs.
+
+**The review** (Claude Fable 5.1, read-only, fb450d6): **"Ready to merge? Yes"**, 0 Critical, 0 Important; it traced every
+caller of the token rule (the send, the replay, Fix and send, Pay Now, simple mode, maybe lines) and the token job on both
+the first answer and a replay, and confirmed the pulse can never ask more often than the pre-Phase-5 POS. Minor 1 (two
+spec lines still said every order made offline has no token) fixed in faf3c5d; minor 2 (a printer named in both sets is
+said "may not have printed" only: the weaker claim is still true), minor 3 (`readDevicePrefs()` read at the header's
+render, as `readyPrinterIds()` / `canPrintNow()` already were) and minor 4 (the chip's visible text vs its name, already so
+before) stand.
+
+**Scratch databases** added and left (the drop is refused here): `pos_scratch_e2e_4g_5cf1`, `5cf2`, `5cp3`; the live run's
+`pos_scratch_print_host_5cu` was dropped by its runner. The build worktrees `D:\kd\u5f` and `D:\kd\u5r` are removed after
+the run.
