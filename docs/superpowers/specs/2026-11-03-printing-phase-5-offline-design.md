@@ -60,7 +60,7 @@ page's memory, and even after the internet is back nothing happens until staff t
 | P5-2 | What must keep working without the server | **KOTs now, the rest later:** Send to Kitchen prints the KOT at once on the printers this device can reach, marked OFFLINE; the round is kept on the device and sent by itself when the server is back. Pay Now: the KOT now; the sale is saved and its bill prints when back. Settle, void, move wait. (Not taken: an offline bill with no number; auto-send only; full offline billing.) |
 | P5-3 | What is missing in multiple-printer printing | **Parallel printing** (Phase 6 spec). Not asked: backup on paper out, a print method per Windows printer, faster failover. |
 | P5-4 | Which comes first | **Offline first** (Phase 5); parallel printing is Phase 6, its design approved in the same round. |
-| P5-5 | The offline paper | **OFFLINE + O-3:** today's KOT design with the white-on-black banner OFFLINE and, where the KOT number goes, this device's offline count `O-3`. The real numbers come when the server is back and are never printed again. An order made offline prints no token slip (staff call it by O-3). |
+| P5-5 | The offline paper | **OFFLINE + O-3:** today's KOT design with the white-on-black banner OFFLINE and, where the KOT number goes, this device's offline count `O-3`. The real numbers come when the server is back and are never printed again. An order made offline prints no token slip (staff call it by O-3); P5-12: only when its KOT printed, or may have printed, offline. |
 | P5-6 | The pulse | **Calm when quiet:** 20 s while anything waits, a QR request is open, this device made a slip in the last 2 minutes, the device is offline, or realtime is not proven; 60 s otherwise. |
 | P5-7 | Which devices print offline | **Devices that print:** web only, no app update. A device prints offline on its own printer and on the network printers its app already lists (every printing device's app since Phase 3) or the Windows app's network printers. A waiter phone with no printer keeps its rounds; they print when the server is back. Bluetooth/USB printers attached to another device print when back. (Not taken: a one-time network print in app 2.0.3; a Wi-Fi relay between apps, a later phase.) |
 | P5-8 | The design | **Approved** (Phase 5 and Phase 6). |
@@ -466,7 +466,7 @@ saved as Round n + 1 when another device added one meanwhile"), and TEST-CHECKLI
 3. A half-way send moves into the outbox once the device is offline, and frees the cart; its offline paper only on
    "Print KOT here" (§5.7).
 4. The replay waits for the server's `offlineReplay` flag (§5.8).
-5. An order made offline has no token number (§5.9).
+5. An order made offline has no token number (§5.9); P5-12 (after 5C): only when its KOT printed, or may have printed, offline.
 6. A round's total that differs at the replay is shown as a note; a sale's is refused and fixed by staff (§5.6, §5.8).
 7. Actions that need the server say so offline instead of failing; the idle lock waits; kept acks wait (§5.10).
 8. The outbox holds at most 300 rounds (§5.2).
