@@ -55,7 +55,10 @@ export function createAckFlusher(
 
   function retryLater(): void {
     // Offline: no 5 s timer (the review's I6); the first flush once online sends them (the agent flushes first).
-    if (deps.offline?.() === true) return;
+    if (deps.offline?.() === true) {
+      offlineSince ??= deps.now(); // an ack first kept after the page went offline: the outage is not counted either
+      return;
+    }
     if (hooks.stopped() || ackTimer !== null || deps.readPending().length === 0) return;
     ackTimer = deps.setTimer(() => {
       ackTimer = null;

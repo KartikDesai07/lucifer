@@ -95,3 +95,13 @@ test("online as today: a kept ack with no answer is sent again in 5 s", async ()
   assert.deepEqual(h.timers, [5_000], "the 5 s retry");
   fail = false;
 });
+
+test("fix wave m: an ack first kept after the page went offline does not count the outage either", async () => {
+  const h = harness();
+  h.setOffline(true);
+  h.flusher.retryLater(); // the agent keeps an ack, its flush fails, it asks for a retry: offline
+  h.setClock(1_000 + 2 * 60 * 60 * 1000);
+  h.setOffline(false);
+  await h.flusher.flush();
+  assert.deepEqual(h.sent, ["job1"], "sent: the outage was not counted");
+});

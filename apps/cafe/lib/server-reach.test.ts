@@ -89,3 +89,12 @@ test("reportWriteAnswer: an unanswered write is offline only once its one check 
   await reportWriteAnswer(new ApiError("x", "network", null), reach, async () => Promise.reject(new Error("boom")));
   assert.equal(reach.isOffline(), true, "a check that throws is a miss");
 });
+
+test("fix wave I1: a failed tick is a miss; the null error after a recovery is no miss", async () => {
+  const { pulseErrorReach } = await import("./server-reach");
+  const { ApiError } = await import("@pos/shared/api-client");
+  assert.equal(pulseErrorReach(0, new ApiError("x", "network", null)), null, "no failed tick yet");
+  assert.equal(pulseErrorReach(2, null), null, "the next answer cleared the error: nothing to report");
+  assert.equal(pulseErrorReach(1, new ApiError("x", "network", null)), "unreached", "a failed tick");
+  assert.equal(pulseErrorReach(1, new ApiError("no", "http", 401, true)), "reached", "our own 401 reached us");
+});

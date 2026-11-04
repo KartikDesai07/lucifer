@@ -44,6 +44,12 @@ export function feedBrowserOnline(
   return manager.subscribe((online) => store.report({ type: "browser", online }));
 }
 
+/** A pulse tick that failed (the review's I1): its reach; null when there is nothing to report (no failed tick yet, or
+ *  the next answer cleared the error — TanStack sets it back to null with the count unchanged). */
+export function pulseErrorReach(errorUpdateCount: number, error: unknown): ServerReach | null {
+  return errorUpdateCount > 0 && error !== null && error !== undefined ? reachOf(error) : null;
+}
+
 /** An order write's answer (the send path, spec 5.1): one that came back (`null`) or reached us ends offline; one with
  *  no answer is remembered and checked once at once (`check`: one pulse refetch, its retry included), and offline
  *  starts only when that check gets no answer either. A check that throws is a miss. */

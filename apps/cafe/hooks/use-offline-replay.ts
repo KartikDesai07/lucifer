@@ -21,10 +21,9 @@ import { useServerReach } from "@/hooks/use-server-reach";
 import { TABLE_KEYS } from "@/hooks/use-tables";
 import { apiSend } from "@/lib/api-client";
 import { offlinePrinting } from "@/lib/offline-keep";
-import { nextSendable } from "@/lib/offline-outbox";
 import type { OutboxEntry } from "@/lib/offline-outbox-schema";
 import { offlineOutbox } from "@/lib/offline-outbox-store";
-import { REPLAY_NO_ECHO_MESSAGE, offlineReplayBody, replayReady, replaySentMessage, runOfflineReplay, type ReplayAnswer } from "@/lib/offline-replay";
+import { REPLAY_NO_ECHO_MESSAGE, offlineReplayBody, replayReady, replaySendable, replaySentMessage, runOfflineReplay, type ReplayAnswer } from "@/lib/offline-replay";
 import { reachOf, type ServerReach } from "@/lib/offline-state";
 import { printAgentRequestOptions, printJobRefOf } from "@/lib/print-agent-calls";
 import { deliverLeasedJob, kickPrintAgent } from "@/lib/print-agent-seams";
@@ -111,7 +110,7 @@ export function useOfflineReplay(): void {
     gate = { known, offlineReplay };
     tellBlocked();
   }, [pulse, offlineReplay]);
-  const sendable = record !== null && nextSendable(record) !== null;
+  const sendable = replaySendable(record);
 
   useEffect(() => {
     if (runningRef.current || !replayReady({ offline, offlineReplay, sendable, nowMs: Date.now(), retryAfter: retryAfterRef.current, blocked })) return;

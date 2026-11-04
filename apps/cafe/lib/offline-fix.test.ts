@@ -59,3 +59,10 @@ test("a fix requested from Offline orders waits for the POS to take it, once", (
   assert.ok(told >= 2, "listeners told");
   off();
 });
+
+test("fix wave I2: Fix and send never replaces a send that is flying or held on the POS", async () => {
+  const { fixRefusalOf, OFFLINE_FIX_BUSY } = await import("@/lib/offline-fix");
+  assert.equal(fixRefusalOf(true), OFFLINE_FIX_BUSY, "refused while a send is in flight or held");
+  assert.equal(fixRefusalOf(false), null, "free: it opens");
+  assert.match(OFFLINE_FIX_BUSY, /Send again or Discard/, "says what to do first");
+});

@@ -56,11 +56,10 @@ test("End of day on a device that still holds offline orders says so (the review
 });
 
 test("the header while offline: amber, and what the device does with a send (spec 5.10)", async () => {
-  const { offlineHeaderOf, OFFLINE_HEADER_PRINTING, OFFLINE_HEADER_PRINTING_DETAIL, OFFLINE_HEADER_KEEPING } = await import("@/lib/offline-guard");
+  const { offlineHeaderOf, OFFLINE_HEADER_PRINTING, OFFLINE_HEADER_KEEPING } = await import("@/lib/offline-guard");
   assert.equal(offlineHeaderOf({ offline: false, printsHere: true }), null, "online: the printer button as today");
-  assert.deepEqual(offlineHeaderOf({ offline: true, printsHere: true }), { name: OFFLINE_HEADER_PRINTING, detail: OFFLINE_HEADER_PRINTING_DETAIL }, "a printing device");
-  assert.deepEqual(offlineHeaderOf({ offline: true, printsHere: false }), { name: OFFLINE_HEADER_KEEPING, detail: null }, "a waiter phone");
+  assert.deepEqual(offlineHeaderOf({ offline: true, printsHere: true }), { name: OFFLINE_HEADER_PRINTING }, "a printing device");
+  assert.deepEqual(offlineHeaderOf({ offline: true, printsHere: false }), { name: OFFLINE_HEADER_KEEPING }, "a waiter phone");
   assert.equal(OFFLINE_HEADER_PRINTING, "Offline — KOTs print here", "spec 5.10");
-  assert.equal(OFFLINE_HEADER_PRINTING_DETAIL, "This device is offline. KOTs print here and are sent when the internet is back.", "spec 5.10");
   assert.equal(OFFLINE_HEADER_KEEPING, "Offline — orders are kept on this device", "spec 5.10");
 });

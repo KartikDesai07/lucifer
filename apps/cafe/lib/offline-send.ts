@@ -15,8 +15,8 @@ import { printWriteOutcomeOf } from "@/lib/print-write-outcome";
 import type { Order } from "@/types";
 
 export const OFFLINE_FULL_MESSAGE = "Too many orders are waiting on this device. Connect to the internet to send them.";
-/** A round on an order made offline whose create has already been sent: that order lives on the server now. */
-export const OFFLINE_ORDER_SENT_MESSAGE = "This order was sent already. Open it again from Open tabs.";
+/** A round on an order made offline that is no longer in the outbox (sent, or discarded by staff). */
+export const OFFLINE_ORDER_SENT_MESSAGE = "This order is no longer on this device. Open it again from Open tabs.";
 
 export type OfflineSlipOutcome = "printed" | "maybe" | "no";
 
@@ -148,11 +148,23 @@ export function offlineKeptMessage(input: { ref: string; sale: boolean; plan: re
   const { ref, plan } = input;
   if (!input.print) return `Round ${ref} is kept on this device. It is sent with its order.`;
   if (plan.length === 0) return `Offline: order ${ref} is kept on this device. It is sent when the internet is back.`;
-  if (!plan.some((line) => line.here)) return `Offline: order ${ref} is kept on this device. It prints when the internet is back.`;
+  if (!plan.some((line) => line.here)) {
+    return input.sale
+      ? `Offline: order ${ref} is kept on this device. The sale is saved and its KOT and bill print when the internet is back.`
+      : `Offline: order ${ref} is kept on this device. It prints when the internet is back.`;
+  }
   const waiting = [...new Set(plan.filter((line) => !line.here).map((line) => input.nameOf(line.printerId)))];
   const later = waiting.length === 0 ? "" : ` ${namesOf(waiting)} ${waiting.length === 1 ? "prints" : "print"} when the internet is back.`;
   if (input.sale) return `Offline: KOT ${ref} printed. The sale is saved and its bill prints when the internet is back.${later}`;
   return `Offline: KOT ${ref} printed here.${later === "" ? " It is sent when the internet is back." : later}`;
+}
+
+/** The review's I3: after the paper, the here lines that did not print (nothing sent, or maybe), named; null when every
+ *  one printed. Either way the server prints them when the internet is back (a maybe one labelled REPRINT). */
+export function offlineMissedMessage(ref: string, plan: readonly OfflineLinePlan[], outcomes: ReadonlyMap<number, OfflineSlipOutcome>, nameOf: (printerId: string | null) => string): string | null {
+  const missed = [...new Set(plan.flatMap((line, index) => (line.here && outcomes.get(index) !== "printed" ? [nameOf(line.printerId)] : [])))];
+  if (missed.length === 0) return null;
+  return `Offline: KOT ${ref} did not print on ${namesOf(missed)}. It prints there when the internet is back.`;
 }
 
 /** Prints each here line's copies one after another (spec 5.3: each copy a write). A first copy that sent nothing is

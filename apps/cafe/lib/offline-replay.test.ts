@@ -167,3 +167,18 @@ test("replayReady: online, the server says it takes offline replays, something t
   assert.equal(replayReady({ ...base, retryAfter: 200 }), false, "a miss waits a pulse tick");
   assert.equal(replayReady({ ...base, blocked: true }), false, "a server that dropped the note");
 });
+
+test("fix wave C1: an entry a dead page left sending wakes the runner (it is resumed under the lock)", async () => {
+  const { replaySendable } = await import("@/lib/offline-replay");
+  const rec = (entries: OutboxEntry[]) => ({ ...emptyOutbox(DAY), entries });
+  assert.equal(replaySendable(rec([entry({ state: "sending" })])), true, "only a sending entry: the runner must start (resumeSending runs inside it)");
+  assert.equal(replaySendable(rec([])), false, "nothing");
+  assert.equal(replaySendable(rec([entry({ state: "needs-staff" })])), false, "staff first");
+  assert.equal(replaySendable(null), false, "no record yet");
+});
+
+test("fix wave m: a total difference is compared in paise (float residue is not a note)", async () => {
+  const { store, record } = setup([entry({ key: "k1", kind: "round", local: "t", orderId: "t", shownTotal: 100.1 + 1e-9 })]);
+  await runOfflineReplay({ update: store.update, printing: () => false, send: async (e) => saved("t", e, { total: 100.1 }), follow: () => undefined });
+  assert.deepEqual(record().notes, [], "no note");
+});

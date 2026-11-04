@@ -29,6 +29,12 @@ export function offlineReplayBody(entry: OutboxEntry): Record<string, unknown> {
   };
 }
 
+/** Something the runner can send now: an entry a dead page left "sending" counts (the runner resumes it under the
+ *  replay lock before it picks), so such an entry never strands the outbox (the review's C1). */
+export function replaySendable(record: OutboxRecord | null): boolean {
+  return record !== null && nextSendable(resumeSending(record)) !== null;
+}
+
 /** Spec 5.8: the runner sends only while online, once the last pulse says the server takes offline replays, with
  *  something to send, after a miss's pulse tick (never a tight loop), and never after an answer without the echo. */
 export function replayReady(input: { offline: boolean; offlineReplay: boolean; sendable: boolean; nowMs: number; retryAfter: number; blocked: boolean }): boolean {
@@ -49,7 +55,8 @@ export type ReplayStop = "done" | "miss" | "signed-out" | "no-echo" | "storage";
 
 function notesOf(entry: OutboxEntry, order: Order, takenAtKept: boolean): { key: string; text: string }[] {
   const notes: { key: string; text: string }[] = [];
-  if (order.total !== entry.shownTotal) notes.push({ key: entry.key, text: `${entry.ref} saved at ${inr(order.total)}; this device showed ${inr(entry.shownTotal)}` });
+  // In paise, as the sale's own guard compares (a float residue is not a difference).
+  if (Math.round(order.total * 100) !== Math.round(entry.shownTotal * 100)) notes.push({ key: entry.key, text: `${entry.ref} saved at ${inr(order.total)}; this device showed ${inr(entry.shownTotal)}` });
   // A held send's first try may have landed at its own time: no taken-time note for it (the 5A review's m2).
   if (!takenAtKept && !entry.uncertain) notes.push({ key: `${entry.key}.time`, text: `${entry.ref} was saved at the time it was sent, not the time it was taken.` });
   return notes;

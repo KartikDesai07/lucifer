@@ -3,8 +3,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api-client";
-import { reachOf } from "@/lib/offline-state";
-import { serverReach } from "@/lib/server-reach";
+import { pulseErrorReach, serverReach } from "@/lib/server-reach";
 import { cadenceVersionOf, currentPulseIntervalMs, markOwnSlip, subscribeCadence } from "@/lib/pulse-cadence-now";
 import { pulsePrintDeviceQuery } from "@/lib/print-agent";
 import { STALE_TIMES } from "@/lib/query";
@@ -61,7 +60,8 @@ export function usePosPulse() {
     if (dataUpdatedAt > 0) serverReach.report({ type: "pulse", reach: "reached" });
   }, [dataUpdatedAt]);
   useEffect(() => {
-    if (errorUpdateCount > 0) serverReach.report({ type: "pulse", reach: reachOf(error) });
+    const reach = pulseErrorReach(errorUpdateCount, error);
+    if (reach !== null) serverReach.report({ type: "pulse", reach });
   }, [errorUpdateCount, error]);
   return query;
 }

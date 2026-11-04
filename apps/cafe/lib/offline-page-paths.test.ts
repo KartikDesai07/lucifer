@@ -29,7 +29,8 @@ test("Task 10: the offline state is fed by the browser's own flag through TanSta
 test("Task 10: every pulse result feeds the offline state, once per tick (not per retry)", () => {
   const pulse = src(PULSE);
   assert.ok(pulse.includes('if (dataUpdatedAt > 0) serverReach.report({ type: "pulse", reach: "reached" });'), "an answer reached us");
-  assert.ok(pulse.includes('if (errorUpdateCount > 0) serverReach.report({ type: "pulse", reach: reachOf(error) });'), "a failed tick, by reachOf");
+  // The review's I1: the null error after a recovery is no miss (pulseErrorReach, runtime-tested in server-reach.test.ts).
+  assert.ok(pulse.includes("const reach = pulseErrorReach(errorUpdateCount, error);") && pulse.includes('if (reach !== null) serverReach.report({ type: "pulse", reach });'), "a failed tick, by reachOf");
 });
 
 test("Task 10: every read-modify-write of the outbox runs under its Web Lock; the hook re-reads another tab's write", () => {
@@ -136,4 +137,15 @@ test("Task 16: the calm pulse wired: the interval re-read from the cadence; a lo
   assert.ok(src("apps/cafe/hooks/use-native-host.ts").includes("if (Date.now() - (state?.dataUpdatedAt ?? 0) <= currentPulseIntervalMs(state?.data)) return;"), "the Android app.wake compares with the interval now (the review's I2)");
   assert.ok(src("apps/cafe/lib/warm-routes.ts").includes("export const WARM_LINE_PROOF_MS = 2 * REFETCH_INTERVALS.POS_PULSE_CALM;"), "the warm line proof survives a calm minute");
   assert.ok(src("apps/cafe/hooks/use-offline-replay.ts").includes("markOwnSlip();"), "a replay is a slip-making write");
+});
+
+test("fix wave: the review's C1, I2, I3 and the sheet's mount, wired", () => {
+  assert.ok(src("apps/cafe/hooks/use-offline-replay.ts").includes("const sendable = replaySendable(record);"), "C1: an entry a dead page left sending wakes the runner");
+  const fix = src("apps/cafe/hooks/use-offline-fix.ts");
+  assert.ok(fix.includes("const refused = fixRefusalOf(ports.isLocked());"), "I2: a send flying or held is never replaced by a fix");
+  assert.ok(src("apps/cafe/hooks/use-pos-tab.ts").includes("useOfflineFix({ armFix: send.armFix, isLocked: send.isLocked,"), "I2: the POS hands its lock");
+  assert.ok(src("apps/cafe/hooks/use-offline-send.ts").includes("void result.printed.then((missed) => missed !== null && toast.warning(missed));"), "I3: a here line that did not print is named");
+  const sheet = src("apps/cafe/components/pos/OfflineOrdersSheet.tsx");
+  const parent = sheet.slice(sheet.indexOf("export function OfflineOrdersSheet()"), sheet.indexOf("function OfflineOrdersPanel("));
+  assert.ok(parent.length > 0 && !parent.includes("useOfflinePrintHere(") && parent.includes("<OfflineOrdersPanel onClose={() => setOpen(false)} />"), "the list's hooks mount with the open panel only");
 });

@@ -159,3 +159,22 @@ test("Print KOT here is only for a half-way send", async () => {
   assert.equal((await printEntryHere("missing", here, deps)).printed, false, "an entry that is gone");
   assert.equal(slips.length, before, "nothing printed");
 });
+
+test("fix wave I3: when a here line sent nothing, the print step answers what to tell staff", async () => {
+  const { deps } = setup();
+  const result = await keepOfflineSend(request(), { ...deps, print: async () => "no" });
+  assert.equal(result.kept, true, "kept");
+  if (result.kept !== true) return;
+  assert.equal(await result.printed, "Offline: KOT O-1 did not print on Kitchen. It prints there when the internet is back.", "named");
+});
+
+test("fix wave m: Print KOT here of a round whose tab the POS no longer lists keeps the entry's table", async () => {
+  const { printEntryHere } = await import("@/lib/offline-keep");
+  const { deps, slips } = setup();
+  const base = { _id: "srv-tab", orderId: "ORD-9", customerName: "R", tableNo: "T-5", kotRounds: 1, items: [], createdAt: "2026-11-04T08:00:00.000Z" } as never;
+  await keepOfflineSend(request({ key: "k-r", base, body: { items: [item("p-tea", "Tea")] }, print: false, uncertain: true }), deps);
+  const here = { base: null, menu: request().menu, routing: request().routing, hereIds: ["pr-kitchen"], simple: request().simple };
+  const result = await printEntryHere("k-r", here, deps);
+  if (result.printed) await result.done;
+  assert.equal(slips[0]?.order.tableNo, "T-5", "its table on the paper");
+});

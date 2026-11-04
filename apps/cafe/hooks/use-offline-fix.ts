@@ -14,7 +14,7 @@ import { CUSTOMER_KEYS } from "@/hooks/use-customers";
 import { ORDER_KEYS } from "@/hooks/use-orders";
 import { TABLE_KEYS } from "@/hooks/use-tables";
 import { apiSend } from "@/lib/api-client";
-import { finishOfflineFix, fixCartItems, fixRequestBody, offlineFixes, offlineFixOf, type OfflineFix } from "@/lib/offline-fix";
+import { finishOfflineFix, fixCartItems, fixRefusalOf, fixRequestBody, offlineFixes, offlineFixOf, type OfflineFix } from "@/lib/offline-fix";
 import { offlineOutbox } from "@/lib/offline-outbox-store";
 import type { ReplayAnswer } from "@/lib/offline-replay";
 import { markOwnSlip } from "@/lib/pulse-cadence-now";
@@ -65,6 +65,8 @@ export function cachedTab(qc: QueryClient, orderId: string | null): Order | null
 
 interface OfflineFixPorts {
   armFix: (fix: OfflineFix | null) => void;
+  /** A send is in flight or held: the fix waits for staff to finish it (the review's I2). */
+  isLocked: () => boolean;
   resetOrder: () => void;
   enterResume: (order: Order) => void;
   hydrate: (items: CartItem[]) => void;
@@ -81,6 +83,8 @@ export function useOfflineFix(ports: OfflineFixPorts): void {
     if (pending === null) return;
     const entry = offlineFixes.take();
     if (entry === null) return;
+    const refused = fixRefusalOf(ports.isLocked());
+    if (refused !== null) return void toast.error(refused);
     const body = (entry.body ?? {}) as Record<string, unknown>;
     const base = entry.kind === "round" ? cachedTab(qc, entry.orderId) : null;
     const lines = fixCartItems(entry);

@@ -78,7 +78,10 @@ export function useOfflineSend(): OfflineSendPorts {
       // Only a send made while offline prints by itself (S3); a round on an order made offline sent online waits.
       const request = { key, at: Date.now(), sale: job.kind === "pay", base: facts.base, body: facts.body, shownTotal: facts.shownTotal, print: serverReach.isOffline(), ...ctx };
       const result = await keepOfflineSend(request, deps);
-      return result.kept ? { kept: true, message: result.message } : { kept: false, message: result.message };
+      if (!result.kept) return { kept: false, message: result.message };
+      // The paper prints behind the cart; a here line that did not print is named once it is known (the review's I3).
+      void result.printed.then((missed) => missed !== null && toast.warning(missed));
+      return { kept: true, message: result.message };
     },
     [device],
   );
@@ -102,8 +105,9 @@ export function useOfflinePrintHere(): (key: string, base: Order | null) => Prom
     async (key, base) => {
       const { ctx, deps } = device();
       const result = await printEntryHere(key, { ...ctx, base }, deps);
-      if (result.printed) toast.success(result.message);
-      else toast.error(OFFLINE_PRINT_HERE_REFUSED);
+      if (!result.printed) return void toast.error(OFFLINE_PRINT_HERE_REFUSED);
+      toast.success(result.message);
+      void result.done.then((missed) => missed !== null && toast.warning(missed));
     },
     [device],
   );

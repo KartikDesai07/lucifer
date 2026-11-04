@@ -8,6 +8,11 @@ import { removeEntry, settleCreate } from "@/lib/offline-outbox";
 import type { OutboxEntry, OutboxRecord } from "@/lib/offline-outbox-schema";
 import type { OrderItem } from "@/types";
 
+/** The review's I2: a send flying or held ("Couldn't confirm") on the POS is never replaced by a fix. */
+export const OFFLINE_FIX_BUSY = "A send is still open on this POS. Tap Send again or Discard first, then Fix and send.";
+
+export const fixRefusalOf = (sendLocked: boolean): string | null => (sendLocked ? OFFLINE_FIX_BUSY : null);
+
 export interface OfflineFix {
   key: string;
   ref: string;

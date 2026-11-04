@@ -42,11 +42,11 @@ export function offlineEodWarning(count: number): string {
 }
 
 export const OFFLINE_HEADER_PRINTING = "Offline — KOTs print here";
-export const OFFLINE_HEADER_PRINTING_DETAIL = "This device is offline. KOTs print here and are sent when the internet is back.";
 export const OFFLINE_HEADER_KEEPING = "Offline — orders are kept on this device";
 
-/** The header's printer button while offline (spec 5.10): amber, with what a send does here; null online. */
-export function offlineHeaderOf(input: { offline: boolean; printsHere: boolean }): { name: string; detail: string | null } | null {
+/** The header's printer button while offline (spec 5.10): the warn (amber) dot, with what a send does here; null online.
+ *  Spec 5.10's longer sentence is Offline orders' line (lib/offline-orders-view.ts OFFLINE_SHEET_OFFLINE). */
+export function offlineHeaderOf(input: { offline: boolean; printsHere: boolean }): { name: string } | null {
   if (!input.offline) return null;
-  return input.printsHere ? { name: OFFLINE_HEADER_PRINTING, detail: OFFLINE_HEADER_PRINTING_DETAIL } : { name: OFFLINE_HEADER_KEEPING, detail: null };
+  return { name: input.printsHere ? OFFLINE_HEADER_PRINTING : OFFLINE_HEADER_KEEPING };
 }

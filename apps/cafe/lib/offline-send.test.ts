@@ -130,7 +130,8 @@ test("the words (spec 5.5–5.6)", () => {
   assert.equal(offlineKeptMessage({ ref: "O-3", sale: false, plan: plan([true, false]), print: true, nameOf }), "Offline: KOT O-3 printed here. Bar prints when the internet is back.", "one line waits");
   assert.equal(offlineKeptMessage({ ref: "O-3", sale: false, plan: plan([false, false]), print: true, nameOf }), "Offline: order O-3 is kept on this device. It prints when the internet is back.", "a waiter phone");
   assert.equal(offlineKeptMessage({ ref: "O-4", sale: true, plan: plan([true]), print: true, nameOf }), "Offline: KOT O-4 printed. The sale is saved and its bill prints when the internet is back.", "Pay Now");
-  assert.equal(offlineKeptMessage({ ref: "O-4", sale: true, plan: plan([false]), print: true, nameOf }), "Offline: order O-4 is kept on this device. It prints when the internet is back.", "Pay Now with nothing here");
+  // The review's minor (fix wave): a sale keeps the sale's words even when nothing prints here.
+  assert.equal(offlineKeptMessage({ ref: "O-4", sale: true, plan: plan([false]), print: true, nameOf }), "Offline: order O-4 is kept on this device. The sale is saved and its KOT and bill print when the internet is back.", "Pay Now with nothing here");
   assert.equal(offlineKeptMessage({ ref: "O-5", sale: false, plan: [], print: true, nameOf }), "Offline: order O-5 is kept on this device. It is sent when the internet is back.", "no kitchen line at all");
 });
 
@@ -181,4 +182,20 @@ test("a half-way send kept once offline is uncertain, and nothing of it prints b
   assert.equal(planned.entry.uncertain, true, "uncertain: the replay is its check");
   assert.ok(planned.entry.lines.every((l) => l.outcome === "later"), "no line printed here");
   assert.ok(planned.plan.every((l) => !l.here), "the plan prints nothing");
+});
+
+test("fix wave I3: a here line that did not print is named to staff afterwards", async () => {
+  const { offlineMissedMessage } = await import("@/lib/offline-send");
+  const plan = (here: boolean[]): OfflineLinePlan[] => here.map((h, i) => ({ printerId: `p${i}`, part: "x", copies: 1, here: h, request: {} as never }));
+  const nameOf = (id: string | null) => (id === "p0" ? "Kitchen" : id === "p1" ? "Bar" : "Desserts");
+  assert.equal(offlineMissedMessage("O-3", plan([true, true]), new Map([[0, "printed"], [1, "printed"]]), nameOf), null, "all printed: nothing more");
+  assert.equal(offlineMissedMessage("O-3", plan([true, true]), new Map([[0, "printed"], [1, "no"]]), nameOf), "Offline: KOT O-3 did not print on Bar. It prints there when the internet is back.", "one");
+  assert.equal(offlineMissedMessage("O-3", plan([true, true, true]), new Map([[0, "maybe"], [1, "no"], [2, "printed"]]), nameOf), "Offline: KOT O-3 did not print on Kitchen and Bar. It prints there when the internet is back.", "two (maybe too: the server prints it as REPRINT)");
+});
+
+test("fix wave m: Pay Now with nothing printing here keeps the sale's words; a gone order says so plainly", async () => {
+  const { OFFLINE_ORDER_SENT_MESSAGE } = await import("@/lib/offline-send");
+  const plan: OfflineLinePlan[] = [{ printerId: "p", part: "x", copies: 1, here: false, request: {} as never }];
+  assert.equal(offlineKeptMessage({ ref: "O-4", sale: true, plan, print: true, nameOf: () => "Kitchen" }), "Offline: order O-4 is kept on this device. The sale is saved and its KOT and bill print when the internet is back.", "a waiter phone's Pay Now");
+  assert.equal(OFFLINE_ORDER_SENT_MESSAGE, "This order is no longer on this device. Open it again from Open tabs.", "sent or discarded");
 });
