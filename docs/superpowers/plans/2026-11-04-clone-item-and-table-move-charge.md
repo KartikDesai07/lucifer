@@ -137,3 +137,8 @@ ONLY on the owner's OK (posdemo is in client use; never lucifer007; never touch 
 - ROLLBACK HAZARD (told to the owner): both schemas are `.strict()`. After a Vercel rollback, every POS tab that loaded
   the new JS (and every Phase 5 offline round it kept) sends `expectedTableNo` to the old server and gets a 400 on every
   round and settle until that screen reloads. A forward deploy is safe. After any rollback, reload every POS screen.
+- PRE-DEPLOY CHECK (2026-11-05): the demo deploy of main carries a070087..26912d6 (U6, printing Phase 5 + follow-ups, T1,
+  C1, the echo). Three read-only reviews found 1 HIGH + 2 MED in Phase 5's offline path (a tab with a round still kept on
+  the device could be settled; a may-have-landed replay's Discard said nothing was saved; a kept round put back the
+  discount/extras it was taken with): fixed test first, chain re-measured green. Record: the printing Phase 5 plan,
+  "The pre-deploy check".

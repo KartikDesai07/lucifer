@@ -1213,3 +1213,34 @@ before) stand.
 **Scratch databases** added and left (the drop is refused here): `pos_scratch_e2e_4g_5cf1`, `5cf2`, `5cp3`; the live run's
 `pos_scratch_print_host_5cu` was dropped by its runner. The build worktrees `D:\kd\u5f` and `D:\kd\u5r` are removed after
 the run.
+
+---
+
+# The pre-deploy check (2026-11-05, before the demo deploy of main 26912d6)
+
+The demo ran a070087 (priced add-ons); a deploy of main brings 53 commits: U6 Reservations, this Phase 5 and its
+follow-ups, T1 + C1 and the T1 echo. The owner: "all cases, all logic, all conditions proper; no heavy server load; I will
+deploy". Three read-only reviews of a070087..26912d6 (the seam T1/echo x Phase 5 + C1; server load; Phase 5 writes), each
+finding checked against the code and this spec before any change. Built test first on main (each new test failed for the
+reported reason first):
+
+| Finding | Ruling |
+|---|---|
+| HIGH (found by two reviews apart): online, a server tab with a round still kept on this device could be settled, voided, moved or cancelled. Its screen lacked the round, so the bill closed without it and the replay was then refused (Fix and send opens it as a new order). Spec 5.5: "Settle, void, move and cancel wait" | **Fixed**: `offlineRefusalOf` / `throwIfOffline` (lib/offline-guard.ts) also refuse while any outbox entry carries the order's server id: "A round of this order is still waiting to be sent (Offline orders). Try again once it is sent." One guard for every caller (use-orders settle, move, cancel; use-item-void); Fix and send, Send again and Discard never go through it (no deadlock) |
+| MED: a replay with no answer, a 5xx (the slips' 503 is a saved order) or a 200 without the echo, and a send a dead page left "sending", went back to waiting as never sent, so Discard said "Nothing is saved for it." (a sale: "The money taken for it is not recorded."): staff could ring it again | **Fixed**: they wait as `uncertain` (runOfflineReplay; resumeSending in lib/offline-outbox.ts), so the row says "May already be on the server" and Discard says today's cautious words. No new outbox field (an older page's strict schema would read it as unreadable during a deploy). Accepted consequences: such an entry loses the informational taken-time note, and Print KOT here is offered for it with its "may get it twice" warning |
+| MED: a kept round's body carried the tab's discount, its kind and the complete extras as this device showed them when taken; the items route applies a sent value, so a replay hours later put them back over a change made since (another device during the outage, or here once back online) | **Fixed**: `changedMoneyOnly` (lib/offline-send.ts) keeps only what the cashier changed from the tab (absent = unchanged on the route). A preset's figure is server-derived (lib/receipt.ts), so a preset compares by kind only, a manual discount by its number; a held (uncertain) send keeps the body it was sent with. Also stops a round on an order made offline from wiping its create's GST kind and extras |
+| MED (load review): a replay that keeps getting a 5xx is retried every pulse tick (20-40 s) with no cap, and holds that device's later entries behind it | **For the owner** (follow-up): measured cost ~1.5 small POSTs a minute from one device, against 3 pulses a minute per screen; a transient Atlas/Vercel failure retrying until it recovers is the design (N2) |
+| LOW (load review): the outbox store publishes on every read, ~4-5 app-wide re-renders per page mount and ~3N+1 per replay of N (never per tick); notes and `bad-<ts>` records have no cap; the replay-path `PrintJob` lookup by `orderId` has no index (runs only on a replay of a landed send; queued jobs are few) | Left (follow-ups) |
+| Pre-existing, already for the owner: the QR accept add-round and the void route CAS lack `tableGuardFilter` (the T1 echo's deferred item); m7 (two tabs, a labelled REPRINT) | Unchanged |
+
+Load (the server-load review, from the code): no new DB read on the online order routes (pure checks and a `tableNo`
+term on CAS filters keyed by `_id`); the idle pulse on a quiet screen with realtime proven drops from 3 to 1 a minute;
+busy or without realtime it stays at 3; one replay runner per device (Web Lock), no duplicate timers.
+
+**Checks** (fixed tree, measured): shared tsc 0 + 1064/1064; cafe tsc 0, lint 0 errors (the 2 old warnings), 7620/7620
+(7617 + 3 new tests); hub tsc 0, lint 0, 288/288; live table-move 72/0, orders 153/0, print 499/0, orders idem 35/0,
+priced add-ons 10/10, menu-orders 9/9; no scratch database left. Mutation pass (main thread, byte backup, run alone):
+15/15 killed (the guard never / after the offline words / not forwarded / an empty default store; a miss never or always
+uncertain; no-echo and a resumed send not uncertain; never stripped; a held send stripped; a kind change ignored; a
+preset's number compared; a manual number ignored; extras never / always sent). Re-review of the fix (read-only): no new
+defects. The owner deploys (demo only), then reloads every POS screen.
