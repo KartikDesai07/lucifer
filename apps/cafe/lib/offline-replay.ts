@@ -62,7 +62,13 @@ function notesOf(entry: OutboxEntry, order: Order, takenAtKept: boolean): { key:
   return notes;
 }
 
-export async function runOfflineReplay(ports: ReplayPorts): Promise<{ sent: number; stop: ReplayStop }> {
+/** A run that sent or refused anything reads the POS's lists again: a refusal is proof the server's tabs differ from
+ *  this page's (a tab closed on another device meanwhile), so Fix and send then opens such a round as a new order. */
+export function replayRefreshesLists(result: { sent: number; refused: number }): boolean {
+  return result.sent > 0 || result.refused > 0;
+}
+
+export async function runOfflineReplay(ports: ReplayPorts): Promise<{ sent: number; refused: number; stop: ReplayStop }> {
   const now = ports.now ?? Date.now;
   // The replay lock is held: an entry still "sending" is one whose page died before its answer (5A's I2).
   await ports.update((record) => {
@@ -70,6 +76,7 @@ export async function runOfflineReplay(ports: ReplayPorts): Promise<{ sent: numb
     return resumed === record ? null : resumed;
   });
   let sent = 0;
+  let refused = 0;
   for (;;) {
     let picked: OutboxEntry | null = null;
     const taken = await ports.update((record) => {
@@ -79,24 +86,27 @@ export async function runOfflineReplay(ports: ReplayPorts): Promise<{ sent: numb
       return patchEntry(record, candidate.key, { state: "sending" });
     });
     const entry = picked as OutboxEntry | null;
-    if (entry === null) return { sent, stop: "done" };
-    if (taken !== "written") return { sent, stop: "storage" };
+    if (entry === null) return { sent, refused, stop: "done" };
+    if (taken !== "written") return { sent, refused, stop: "storage" };
     let answer: ReplayAnswer;
     try {
       answer = await ports.send(entry);
     } catch (error) {
       // Our own refusal (a closed tab, an item no longer sold, a changed total): staff decide; the rest go on. The
       // sign-in is checked before the replay, so a 401/403 proves nothing about the entry: it waits, like a miss.
-      const refused = reachOf(error) === "reached" && !signedOut(error) && classifyFailure(error) !== "uncertain";
+      const definite = reachOf(error) === "reached" && !signedOut(error) && classifyFailure(error) !== "uncertain";
       const message = error instanceof ApiError ? error.message : String(error);
-      await ports.update((record) => patchEntry(record, entry.key, refused ? { state: "needs-staff", message } : { state: "waiting" }));
-      if (refused) continue;
-      return { sent, stop: signedOut(error) ? "signed-out" : "miss" };
+      await ports.update((record) => patchEntry(record, entry.key, definite ? { state: "needs-staff", message } : { state: "waiting" }));
+      if (definite) {
+        refused += 1;
+        continue;
+      }
+      return { sent, refused, stop: signedOut(error) ? "signed-out" : "miss" };
     }
     const { offline: echo, ...order } = answer;
     if (echo === undefined) {
       await ports.update((record) => patchEntry(record, entry.key, { state: "waiting" }));
-      return { sent, stop: "no-echo" };
+      return { sent, refused, stop: "no-echo" };
     }
     await ports.update((record): OutboxRecord => {
       let next = removeEntry(record, entry.key);

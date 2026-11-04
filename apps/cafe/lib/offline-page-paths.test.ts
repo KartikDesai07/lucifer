@@ -84,6 +84,8 @@ test("Task 13: one replay runner per tab in the shell; one tab of the device sen
   assert.ok(!hook.includes("/api/print-jobs") && !hook.includes("useEnqueuePrintJob"), "never a slip enqueued for an entry");
   assert.ok(!hook.includes("useQuery("), "no observer of its own: the pulse stays the one poller");
   assert.ok(hook.includes("retryAfterRef.current = Date.now() + REFETCH_INTERVALS.POS_PULSE;"), "a miss waits a pulse tick");
+  // 5C Task 20: a refusal reads the lists again too (a tab closed meanwhile), so Fix and send opens a new order.
+  assert.ok(hook.includes("if (replayRefreshesLists(result)) for (const queryKey of [ORDER_KEYS.all, TABLE_KEYS.all, CUSTOMER_KEYS.all]) void qc.invalidateQueries({ queryKey });"), "the lists are read again after a send or a refusal");
 });
 
 test("Task 14: the POS lists the orders made offline and their tables read taken; the header's chip opens Offline orders", () => {

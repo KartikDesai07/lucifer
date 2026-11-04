@@ -23,7 +23,7 @@ import { apiSend } from "@/lib/api-client";
 import { offlinePrinting } from "@/lib/offline-keep";
 import type { OutboxEntry } from "@/lib/offline-outbox-schema";
 import { offlineOutbox } from "@/lib/offline-outbox-store";
-import { REPLAY_NO_ECHO_MESSAGE, offlineReplayBody, replayReady, replaySendable, replaySentMessage, runOfflineReplay, type ReplayAnswer } from "@/lib/offline-replay";
+import { REPLAY_NO_ECHO_MESSAGE, offlineReplayBody, replayReady, replayRefreshesLists, replaySendable, replaySentMessage, runOfflineReplay, type ReplayAnswer } from "@/lib/offline-replay";
 import { reachOf, type ServerReach } from "@/lib/offline-state";
 import { printAgentRequestOptions, printJobRefOf } from "@/lib/print-agent-calls";
 import { deliverLeasedJob, kickPrintAgent } from "@/lib/print-agent-seams";
@@ -131,8 +131,8 @@ export function useOfflineReplay(): void {
       if (result.sent > 0) {
         markOwnSlip(); // spec 5.11: a replay is a slip-making write: the pulse stays lively 2 minutes
         toast.success(replaySentMessage(result.sent));
-        for (const queryKey of [ORDER_KEYS.all, TABLE_KEYS.all, CUSTOMER_KEYS.all]) void qc.invalidateQueries({ queryKey });
       }
+      if (replayRefreshesLists(result)) for (const queryKey of [ORDER_KEYS.all, TABLE_KEYS.all, CUSTOMER_KEYS.all]) void qc.invalidateQueries({ queryKey });
       // A miss (or a sign-in to check) waits a pulse tick before anything more goes (never a tight loop).
       if (result.stop === "miss" || result.stop === "signed-out" || result.stop === "storage") retryAfterRef.current = Date.now() + REFETCH_INTERVALS.POS_PULSE;
       if (result.stop === "no-echo" && !blocked) {

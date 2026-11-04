@@ -86,8 +86,29 @@ test("a refused entry waits for staff with the server's words, and the others go
     follow: () => undefined,
   });
   assert.equal(result.sent, 1, "the other one went");
+  assert.equal(result.refused, 1, "the refusal is counted");
   const left = record().entries;
   assert.deepEqual([left.length, left[0].key, left[0].state, left[0].message], [1, "k1", "needs-staff", "Masala Chai is out of stock."], "waits with the server's words");
+});
+
+// Session 5C Task 20 (found on fake printers, the server stopped): a round refused because its tab was closed on another
+// device meanwhile left the POS's tab list as it was (nothing was sent, so nothing was read again), and Fix and send
+// opened it on that closed tab again. A refusal is proof the server's tabs differ from this page's: the lists are read.
+test("a run that sent or refused anything reads the lists again; one that did neither does not", async () => {
+  const { replayRefreshesLists } = await import("./offline-replay");
+  assert.equal(replayRefreshesLists({ sent: 0, refused: 1 }), true, "a refusal alone reads the lists again");
+  assert.equal(replayRefreshesLists({ sent: 2, refused: 0 }), true, "a sent entry reads them again (as before)");
+  assert.equal(replayRefreshesLists({ sent: 0, refused: 0 }), false, "a miss or an empty run reads nothing");
+  const { store } = setup([entry({ key: "k1", ref: "O-1", local: "a" })]);
+  const result = await runOfflineReplay({
+    update: store.update,
+    printing: () => false,
+    send: async () => {
+      throw new ApiError("Can only add items to an open tab", "http", 409, true);
+    },
+    follow: () => undefined,
+  });
+  assert.deepEqual([result.sent, result.refused, result.stop], [0, 1, "done"], "the only entry refused: the run is done with one refusal");
 });
 
 test("no answer stops the run: the entry waits again and nothing more is sent before the next tick", async () => {
