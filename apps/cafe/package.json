@@ -621,7 +621,10 @@
     "lib/offline-outbox-order.test.ts",
     "lib/offline-kot-order.test.ts",
     "lib/offline-lines.test.ts",
-    "lib/pos-pulse-cadence.test.ts"
+    "lib/pos-pulse-cadence.test.ts",
+    "lib/server-reach.test.ts",
+    "lib/offline-outbox-store.test.ts",
+    "lib/offline-page-paths.test.ts"
   ],
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
