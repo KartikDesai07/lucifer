@@ -20,8 +20,8 @@ export const MENU_LIST_BOX_CLASS = "flex-none overflow-clip rounded-[12px] borde
 /** The grid (values 5.1 `tcols`): check, item, [category], price, stock, QR, edit; gap 14. The Category track only from a
  *  738px list box (Q4: the HTML's own 708px of columns need it), and never while a category is picked. */
 export const MENU_ROW_GRID_CLASS =
-  "grid grid-cols-[18px_minmax(200px,2fr)_110px_72px_72px_32px] items-center gap-3.5 @[738px]/list:grid-cols-[18px_minmax(200px,2fr)_minmax(120px,1fr)_110px_72px_72px_32px]";
-export const MENU_ROW_GRID_NO_CATEGORY_CLASS = "grid grid-cols-[18px_minmax(200px,2fr)_110px_72px_72px_32px] items-center gap-3.5";
+  "grid grid-cols-[18px_minmax(200px,2fr)_110px_72px_72px_68px] items-center gap-3.5 @[738px]/list:grid-cols-[18px_minmax(200px,2fr)_minmax(120px,1fr)_110px_72px_72px_68px]";
+export const MENU_ROW_GRID_NO_CATEGORY_CLASS = "grid grid-cols-[18px_minmax(200px,2fr)_110px_72px_72px_68px] items-center gap-3.5";
 
 /** The head (values 5.1): sticky, --surface-2, padding 9px 14px, 12.5px 500 --text-2, 1px --border below. It sticks at the
  *  scroller's top edge (ruling M8: -20px = the scroller's top padding where the table shows, from 816px), not 20px lower as in
@@ -69,8 +69,12 @@ export const MENU_PRICE_STRUCK_CLASS = "block text-[12px] font-normal text-subtl
 /** Stock and QR (values 5.2): the switch centred in its 72px; staff read the QR words (ours, menu inv P106). */
 export const MENU_SWITCH_CELL_CLASS = "flex justify-center";
 export const MENU_QR_WORDS_CLASS = "text-[12.5px] text-muted-foreground";
-/** Edit (values 5.2): 32px, radius 8, --text-2, the pencil; --surface-3 on hover. */
+/** Edit (values 5.2): 32px, radius 8, --text-2, the pencil; --surface-3 on hover. The last track is 68px: the pencil and the
+ *  Copy button (owner C1, 2026-11-04), 32px each with 4px between. */
 export const MENU_EDIT_CLASS = `flex size-8 flex-none cursor-pointer items-center justify-center rounded-[8px] border-0 bg-transparent p-0 text-muted-foreground pointer-fine:hover:bg-surface-3 ${FLOOR_FOCUS_RING_CLASS} ${HTML_PRESS_CLASS}`;
+
+/** Copy on a card (owner C1): the Edit button's look at a 44px touch target. */
+export const MENU_CARD_COPY_CLASS = MENU_EDIT_CLASS.replace("size-8", "size-11");
 
 // ── The cards (values 6) ──────────────────────────────────────────────────────────────────────────────────────────────
 /** A card row: padding 12px 14px, 12px between its parts. */

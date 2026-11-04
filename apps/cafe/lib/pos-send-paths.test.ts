@@ -287,3 +287,17 @@ test("S12 (R-d): Discard confirms first, in plain English, through the shared Co
   assert.ok(copy.includes('"The order may already have reached the kitchen. Check Open tabs before sending it again."'));
   assert.ok(copy.includes('"The sale may already be saved. Check Orders before taking payment again."'));
 });
+
+// T1 (owner 2026-11-04) - a move (the POS's own, or one made on another device) re-prices the table charge, so
+// applyTabUpdate drops the cashier's override when the table changed - before and regardless of keepMoney.
+test("T1: applyTabUpdate clears chargeOverride through the pure helper, outside the keepMoney block", () => {
+  const pos = readSrc(POS_TAB);
+  const apply = between(pos, "const applyTabUpdate", "const sendToKitchen");
+  const call = apply.indexOf("chargeOverrideAfterTabUpdate(table, order.tableNo, ");
+  assert.ok(call !== -1, "the helper is called with the held table and order.tableNo");
+  const block = apply.indexOf("if (!keepMoney)");
+  assert.ok(block !== -1, "landmark: the keepMoney block is still there");
+  assert.ok(call < block, "the clear runs before, and so regardless of, keepMoney");
+  assert.match(apply, /setChargeOverride\(\(?\w+\)?\s*=>\s*chargeOverrideAfterTabUpdate\(table, order\.tableNo, \w+\)\);/, "a functional setter over the current override");
+  assert.match(pos, /import \{[^}]*\bchargeOverrideAfterTabUpdate\b[^}]*\} from "@\/lib\/pending-writes"/, "imported from lib/pending-writes");
+});

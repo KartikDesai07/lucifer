@@ -440,7 +440,7 @@ const PERCENT_20_REWARD: RedeemedReward = { at: 8, kind: "percent", value: 20, i
 
 test("CB-5B: a 'reward'-kind tab settled with a settle-time chargeAmount (which triggers recompute) still discounts the flat Rs 100 reward", () => {
   const result = resolveSettleMoney({
-    order: tab(500, { discountKind: "reward" }),
+    order: tab(500, { discountKind: "reward", chargeAmount: 50 }), // T1: a saved table entry, so the sent 20 adjusts it
     payment: "Cash",
     chargeAmount: 20, // triggers the recompute branch, independent of discount/discountKind
     reward: FLAT_100_REWARD,
@@ -455,7 +455,7 @@ test("CB-5B: a 'reward'-kind tab settled with a settle-time chargeAmount (which 
 
 test("CB-5B: a 'reward'-kind tab settled with reward: undefined (THE BUG shape) recomputes with discount 0 — negative control proving the assertion above is sensitive to reward being threaded through", () => {
   const result = resolveSettleMoney({
-    order: tab(500, { discountKind: "reward" }),
+    order: tab(500, { discountKind: "reward", chargeAmount: 50 }), // T1: a saved table entry, so the sent 20 adjusts it
     payment: "Cash",
     chargeAmount: 20,
     reward: undefined, // THE BUG: discountKind says "reward" but caller forgot to resolve it
@@ -615,7 +615,9 @@ test("G2 settleCharges: table lane from chargeAmount (else the stored table entr
   assert.deepEqual(lanes([PACKING_30], undefined, []), { table: 0, extra: 0 }, "an extra removed at settle is gone");
   assert.deepEqual(lanes([TABLE_40, PACKING_30], undefined, undefined), { table: 40, extra: 30 }, "nothing supplied: both stored lanes");
   assert.deepEqual(lanes([TABLE_40, PACKING_30], 0, undefined), { table: 0, extra: 30 });
-  assert.deepEqual(lanes([PACKING_30], 20, undefined), { table: 20, extra: 30 });
+  assert.deepEqual(lanes([TABLE_40, PACKING_30], 20, undefined), { table: 20, extra: 30 });
+  // T1 (owner 2026-11-04): a sent amount > 0 needs a saved table entry (a move to a no-charge table drops it).
+  assert.deepEqual(lanes([PACKING_30], 20, undefined), { table: 0, extra: 30 }, "no table entry: a stale amount bills nothing");
   assert.equal(settleCharges([TABLE_40], 25, undefined)[0]?.label, "AC", "an adjusted table charge keeps its label");
 });
 

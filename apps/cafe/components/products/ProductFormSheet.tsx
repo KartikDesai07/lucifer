@@ -5,11 +5,10 @@ import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { createProductSchema, type CreateProductInput } from "@/schemas";
-import { isProductIconKey } from "@pos/shared/product-icons";
 import { useCreateProduct, useUpdateProduct } from "@/hooks/use-products";
 import { useStations } from "@/hooks/use-print-setup";
 import {
-  addOnsFormError, modifierPricesForCreate, modifierPricesForEdit, priceForSave, valuesForValidation, type ProductFormValues,
+  addOnsFormError, formValuesFromProduct, modifierPricesForCreate, modifierPricesForEdit, priceForSave, valuesForValidation, type ProductFormValues,
 } from "@/lib/product-form-values";
 import { MENU_SELECT_TRIGGER_CLASS } from "@/lib/menu-layout";
 import {
@@ -38,6 +37,8 @@ interface ProductFormSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   product: Product | null; // null → create
+  /** Create mode only: the form opens filled with these (a copied item); nothing is created until Save. */
+  fill?: ProductFormValues | null;
   categories: Category[];
   /** Archive item (an active item being edited): the page opens today's confirm over the editor. */
   onArchive?: (product: Product) => void;
@@ -70,6 +71,7 @@ export function ProductFormSheet({
   open,
   onOpenChange,
   product,
+  fill,
   categories,
   onArchive,
   onRestore,
@@ -103,31 +105,8 @@ export function ProductFormSheet({
   // Sync the form to the selected item (or blank) each time the sheet opens.
   useEffect(() => {
     if (!open) return;
-    reset(
-      product
-        ? {
-            name: product.name,
-            categoryId: product.categoryId,
-            price: product.price,
-            variations: product.variations,
-            discount: product.discount,
-            // Legacy items (pre-`available`) read as available.
-            available: product.available !== false,
-            image: product.image,
-            modifiers: product.modifiers,
-            modifiersPreselected: product.modifiersPreselected === true,
-            modifierPrices: product.modifierPrices,
-            publicVisible: product.publicVisible,
-            // A stored key that predates a catalogue change reads as "none" —
-            // saving would otherwise resend an icon the enum now rejects (400).
-            icon: isProductIconKey(product.icon) ? product.icon : undefined,
-            // The saved id as it is: a station list still loading never clears it on save.
-            stationId: product.stationId,
-            noKot: product.noKot,
-          }
-        : emptyValues,
-    );
-  }, [open, product, reset]);
+    reset(product ? formValuesFromProduct(product) : (fill ?? emptyValues));
+  }, [open, product, fill, reset]);
 
   const modifierCount = useWatch({ control, name: "modifiers" })?.length ?? 0;
   const ticked = useWatch({ control, name: "modifiersPreselected" }) === true;
@@ -227,7 +206,7 @@ export function ProductFormSheet({
         />
       </EditorField>
 
-      <PriceModeField control={control} register={register} errors={errors} getValues={getValues} setValue={setValue} storedPrice={product?.price ?? 0} />
+      <PriceModeField control={control} register={register} errors={errors} getValues={getValues} setValue={setValue} storedPrice={product?.price ?? fill?.price ?? 0} />
 
       <EditorField label="Discount %" htmlFor="product-discount" error={errors.discount?.message}>
         <div className={MENU_EDITOR_PERCENT_BOX_CLASS}>

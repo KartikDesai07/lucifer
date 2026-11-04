@@ -9,15 +9,45 @@
 import type { z } from "zod";
 import { VARIATION_PRICE_MAX } from "@pos/shared/constants";
 import { productAddOnsError } from "@pos/shared/modifier-prices";
+import { isProductIconKey } from "@pos/shared/product-icons";
 
 import type { createProductSchema } from "@/schemas";
 import { MAX_VARIATIONS } from "@/lib/constants";
-import type { ProductModifierPrice, ProductVariation } from "@/types";
+import type { Product, ProductModifierPrice, ProductVariation } from "@/types";
 
 /** The form holds the schema's (looser) INPUT type, several fields carry zod defaults; submit receives the transformed output. */
 export type ProductFormValues = z.input<typeof createProductSchema>;
 
 export type PriceMode = "single" | "sizes";
+
+/** The editor's values for a stored item. The lists are fresh copies, so editing the form never touches the query cache. */
+export function formValuesFromProduct(product: Product): ProductFormValues {
+  return {
+    name: product.name,
+    categoryId: product.categoryId,
+    price: product.price,
+    variations: product.variations?.map((v) => ({ ...v })),
+    discount: product.discount,
+    // Legacy items (pre-`available`) read as available.
+    available: product.available !== false,
+    image: product.image,
+    modifiers: Array.from(product.modifiers ?? []),
+    modifiersPreselected: product.modifiersPreselected === true,
+    modifierPrices: product.modifierPrices?.map((p) => ({ ...p })),
+    publicVisible: product.publicVisible,
+    // A stored key that predates a catalogue change reads as "none": saving would resend an icon the enum now rejects (400).
+    icon: isProductIconKey(product.icon) ? product.icon : undefined,
+    // The saved id as it is: a station list still loading never clears it on save.
+    stationId: product.stationId,
+    noKot: product.noKot,
+  };
+}
+
+/** "Copy item": the same values under "<name> (copy)". Nothing server-side carries over (_id, timestamps, archived state);
+ *  nothing is created until the form is saved. */
+export function copyFormValues(product: Product): ProductFormValues {
+  return { ...formValuesFromProduct(product), name: `${product.name} (copy)` };
+}
 
 /** What the save sends as `price`. */
 export function priceForSave(values: { hasVariations: boolean; price: number }, isNew: boolean): number {

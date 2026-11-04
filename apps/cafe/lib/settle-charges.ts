@@ -18,7 +18,7 @@ export function settleCharges(
   extraCharges: readonly { label: string; amount: number }[] | undefined,
 ): OrderCharge[] {
   const tableEntry = baseCharges.find((c) => c.type === "table");
-  const tableChargeAmount = chargeAmount ?? tableEntry?.amount ?? 0;
+  const tableChargeAmount = fenceTableChargeAmount(chargeAmount, tableEntry?.amount ?? 0) ?? tableEntry?.amount ?? 0;
   return applyExtraCharges(
     withTableCharge(
       baseCharges,
@@ -28,4 +28,12 @@ export function settleCharges(
     ),
     extraCharges ?? baseCharges.filter((c) => c.type === "extra"),
   );
+}
+
+// T1 (owner 2026-11-04): a sent `chargeAmount > 0` adjusts the table charge only while the TAB carries a saved table entry
+// with an amount > 0 (the source the POS shows, hooks/use-pos-charge.ts; never the table's live setting). A move drops
+// that entry when the destination has no charge, so an old client's stale amount cannot re-create a "Table charge" line;
+// 0 (a waiver) and undefined (omitted) pass through untouched.
+export function fenceTableChargeAmount(chargeAmount: number | undefined, tabTableAmount: number): number | undefined {
+  return chargeAmount !== undefined && chargeAmount > 0 && tabTableAmount <= 0 ? 0 : chargeAmount;
 }

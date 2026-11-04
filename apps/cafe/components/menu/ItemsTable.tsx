@@ -1,5 +1,7 @@
 "use client";
 
+import { Copy } from "lucide-react";
+
 import { categoryNameOf } from "@/lib/category-map";
 import { cn } from "@/lib/utils";
 import { isHiddenFromQr } from "@/lib/menu-items";
@@ -49,6 +51,8 @@ interface ItemsTableProps {
   onToggleSelect: (id: string) => void;
   onToggleAll: () => void;
   onEdit: (product: Product) => void;
+  /** Opens the item form filled from this item (create mode). */
+  onCopy: (product: Product) => void;
   onToggleAvailable: (id: string, available: boolean) => void;
   onToggleQrVisible: (id: string, visible: boolean) => void;
   pendingAvailabilityId?: string;
@@ -71,6 +75,7 @@ export function ItemsTable({
   onToggleSelect,
   onToggleAll,
   onEdit,
+  onCopy,
   onToggleAvailable,
   onToggleQrVisible,
   pendingAvailabilityId,
@@ -161,11 +166,16 @@ export function ItemsTable({
                   <span className={MENU_QR_WORDS_CLASS}>{qrVisible ? "Shown" : "Hidden"}</span>
                 )}
               </div>
-              <div role="cell" className="flex justify-center">
+              <div role="cell" className="flex justify-center gap-1">
                 {isAdmin && (
-                  <button type="button" title="Edit item" aria-label={`Edit ${product.name}`} onClick={() => onEdit(product)} className={MENU_EDIT_CLASS}>
-                    <PencilIcon size={16} />
-                  </button>
+                  <>
+                    <button type="button" title="Edit item" aria-label={`Edit ${product.name}`} onClick={() => onEdit(product)} className={MENU_EDIT_CLASS}>
+                      <PencilIcon size={16} />
+                    </button>
+                    <button type="button" title="Copy item" aria-label={`Copy ${product.name}`} onClick={() => onCopy(product)} className={MENU_EDIT_CLASS}>
+                      <Copy size={16} strokeWidth={1.9} aria-hidden="true" />
+                    </button>
+                  </>
                 )}
               </div>
             </div>

@@ -55,6 +55,7 @@ interface ItemsListSectionProps {
   onToggleSelect: (id: string) => void;
   onToggleAll: () => void;
   onEdit: (product: Product) => void;
+  onCopy: (product: Product) => void;
   onToggleAvailable: (id: string, available: boolean) => void;
   onToggleQrVisible: (id: string, visible: boolean) => void;
   pendingAvailabilityId?: string;
@@ -85,6 +86,7 @@ export function ItemsListSection({
   onToggleSelect,
   onToggleAll,
   onEdit,
+  onCopy,
   onToggleAvailable,
   onToggleQrVisible,
   pendingAvailabilityId,
@@ -180,6 +182,7 @@ export function ItemsListSection({
             onToggleSelect={onToggleSelect}
             onToggleAll={onToggleAll}
             onEdit={onEdit}
+            onCopy={onCopy}
             onToggleAvailable={onToggleAvailable}
             onToggleQrVisible={onToggleQrVisible}
             pendingAvailabilityId={pendingAvailabilityId}
@@ -200,6 +203,7 @@ export function ItemsListSection({
             selected={selected}
             onToggleSelect={onToggleSelect}
             onEdit={onEdit}
+            onCopy={onCopy}
             onToggleAvailable={onToggleAvailable}
             pendingAvailabilityId={pendingAvailabilityId}
           />

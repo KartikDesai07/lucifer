@@ -18,7 +18,7 @@ import { useRewardSelection } from "@/hooks/use-customer-rewards";
 import { useSettleFlow } from "@/hooks/use-settle-flow";
 import { useSettlePoints } from "@/hooks/use-settle-points";
 import { usePosSend } from "@/hooks/use-pos-send";
-import { moneyEditedSince } from "@/lib/pending-writes";
+import { chargeOverrideAfterTabUpdate, moneyEditedSince } from "@/lib/pending-writes";
 import { kitchenSentMessage, kotRoundOfSend } from "@/lib/pos-send";
 import { holdUnsentWork } from "@/lib/page-refresh";
 import type { DiscountUnit } from "@/lib/pos-cart-props";
@@ -261,10 +261,10 @@ export function usePosTab(receiver: string) {
     setResumedOrder(order);
     // Follow the server's table onto the header — a move lands here too, and
     // without this the POS keeps showing the table the tab was opened at.
-    // The RAW setter, deliberately not `selectTable`: that one clears
-    // chargeOverride, which would silently re-bill a waiver the operator
-    // already promised (a move never touches money, so nothing here should
-    // touch the charge either).
+    // A move re-prices the table charge to the new table's own (T1), so the override
+    // clears when the table changed (any keepMoney); the same table (void, round,
+    // refresh) keeps it. The RAW setter: selectTable would clear it every time.
+    setChargeOverride((o) => chargeOverrideAfterTabUpdate(table, order.tableNo, o));
     setTable(order.tableNo);
     resync(order.items, keepUnfired);
     // A tab that gained a customer elsewhere: without it the Due/Credit picker
@@ -272,7 +272,7 @@ export function usePosTab(receiver: string) {
     if (order.customerId && customer?._id !== order.customerId) {
       setCustomer({ _id: order.customerId, name: order.customerName } as Customer);
     }
-    // Never drops the local waiver: a void/move carries no charge, and a send
+    // Keeps the local waiver on the same table (a void carries no charge), and a send
     // frees the whole cart (resetOrder) only once the server has stored it.
     if (!keepMoney) {
       // Mirror the server's (re-clamped) discount so the live cart footer total

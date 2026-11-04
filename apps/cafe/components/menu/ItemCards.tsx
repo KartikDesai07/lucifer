@@ -1,5 +1,7 @@
 "use client";
 
+import { Copy } from "lucide-react";
+
 import { categoryNameOf } from "@/lib/category-map";
 import { cn } from "@/lib/utils";
 import { menuItemBadges, menuPriceText } from "@/lib/menu-view";
@@ -9,6 +11,7 @@ import {
   MENU_CARD_BLOCK_CLASS,
   MENU_CARD_BUTTON_CLASS,
   MENU_CARD_CLASS,
+  MENU_CARD_COPY_CLASS,
   MENU_CARD_NAME_CLASS,
   MENU_CARD_PRICE_CLASS,
   MENU_CARD_STOCK_CLASS,
@@ -35,6 +38,8 @@ interface ItemCardsProps {
   selected: Set<string>;
   onToggleSelect: (id: string) => void;
   onEdit: (product: Product) => void;
+  /** Opens the item form filled from this item (create mode). */
+  onCopy: (product: Product) => void;
   onToggleAvailable: (id: string, available: boolean) => void;
   pendingAvailabilityId?: string;
 }
@@ -52,6 +57,7 @@ export function ItemCards({
   selected,
   onToggleSelect,
   onEdit,
+  onCopy,
   onToggleAvailable,
   pendingAvailabilityId,
 }: ItemCardsProps) {
@@ -110,6 +116,22 @@ export function ItemCards({
               </button>
             ) : (
               <div className={MENU_CARD_BLOCK_CLASS}>{text}</div>
+            )}
+            {isAdmin && !selectMode && (
+              // A sibling of the name button (never inside it); the stop keeps the card's tap-to-edit from also firing.
+              // Hidden in Select mode, where a tap selects (G4).
+              <button
+                type="button"
+                title="Copy item"
+                aria-label={`Copy ${product.name}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCopy(product);
+                }}
+                className={MENU_CARD_COPY_CLASS}
+              >
+                <Copy size={18} strokeWidth={1.9} aria-hidden="true" />
+              </button>
             )}
             {!archived && (
               <div className={MENU_CARD_STOCK_CLASS} onClick={(e) => e.stopPropagation()}>

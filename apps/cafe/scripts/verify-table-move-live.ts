@@ -45,6 +45,8 @@ import { connectDB } from "@/lib/db";
 import { Order, type IOrder } from "@/models/Order";
 import { Table } from "@/models/Table";
 import { FREE_TABLE_FILTER, freeTableFilter, resolveTableCharge } from "@/lib/table-admin";
+import { resolveSettleMoney } from "@/lib/order";
+import { settleCharges } from "@/lib/settle-charges";
 import { reorderOps } from "@/lib/table-order";
 import {
   claimTableFilter,
@@ -874,6 +876,99 @@ async function assignUnseatLegs(): Promise<void> {
   );
 }
 
+// ── T1 (owner 2026-11-04) — the table charge after a move. A move re-prices the tab to the DESTINATION's own
+// charge (the entry is dropped when it has none); a stale `chargeAmount` from an old POS tab must never re-create a
+// line the tab no longer carries. The fence is keyed to the TAB's saved table entry (what the POS shows), never the
+// table's live setting. Each moved case opens the tab at the SOURCE with the source's charge, MOVES it with the move
+// route's own re-price + write (real helpers, the same shape as moveLegs' doMove), reads it back from Mongo, then
+// bills it through the REAL resolveSettleMoney (settle) / settleCharges (add-round) with the RAW sent amount.
+const tableAmount = (charges: readonly OrderCharge[]): number => charges.find((c) => c.type === "table")?.amount ?? 0;
+
+async function moveTab(order: IOrder, to: string): Promise<IOrder> {
+  const dest = await resolveTableCharge(to);
+  if ("error" in dest) throw new Error(dest.error);
+  const charges = withTableCharge(
+    chargesFromOrder(order),
+    dest.charge.amount > 0 ? { label: dest.charge.label, amount: dest.charge.amount } : null,
+  );
+  const { table, extra } = splitChargeTotals(charges);
+  const totals = computeOrderTotals({
+    items: order.items,
+    discount: order.discount,
+    discountKind: order.discountKind,
+    charge: table,
+    extraCharge: extra,
+    cfg: gstConfigFromOrder(order, { gstEnabled: false, gstRate: 0, gstMode: "exclusive" }),
+    reward: rewardFromOrderSnapshot(order),
+  });
+  const fields = chargeWriteFields(charges);
+  const moved = await Order.findOneAndUpdate(
+    moveOrderFilter(String(order._id), order.tableNo!, order),
+    {
+      $set: { tableNo: to, subtotal: totals.subtotal, discount: totals.discount, gstAmount: totals.gstAmount, total: totals.total, ...(fields.set ?? {}) },
+      ...(fields.unset ? { $unset: fields.unset } : {}),
+    },
+    { new: true },
+  ).lean();
+  if (!moved) throw new Error("the T1 leg's move missed its CAS");
+  return (await Order.findById(order._id).lean()) as unknown as IOrder; // read back from Mongo, as the next request would
+}
+
+function settleBill(order: IOrder, sent: number | undefined): { table: number; total: number } {
+  const money = resolveSettleMoney({ order, payment: "Cash", chargeAmount: sent, liveGst: { gstEnabled: false, gstRate: 0, gstMode: "exclusive" } });
+  if ("error" in money) throw new Error("settle money refused in the T1 leg");
+  return { table: tableAmount(money.charges), total: money.total };
+}
+
+// The add-round route's table lane IS settleCharges (route pinned by lib/table-move-charge-fence.test.ts).
+const addRoundTable = (order: IOrder, sent: number | undefined): number => tableAmount(settleCharges(chargesFromOrder(order), sent, undefined));
+// Regression witness: the pre-fence lane (`sent ?? saved entry`), bypassing the fence.
+const unfencedTable = (order: IOrder, sent: number | undefined): number => {
+  const base = chargesFromOrder(order);
+  const amount = sent ?? base.find((c) => c.type === "table")?.amount ?? 0;
+  return tableAmount(withTableCharge(base, amount > 0 ? { label: "Table charge", amount } : null));
+};
+
+async function moveChargeFenceLegs(): Promise<void> {
+  console.log("\n── the table charge after a move (T1) ─────────────────────────");
+  const AC_50: OrderCharge[] = [{ type: "table", label: "AC", amount: 50 }];
+  await Table.create({ tableNo: "F-50", capacity: 4, chargeAmount: 50, chargeLabel: "AC" });
+  await Table.create({ tableNo: "F-80", capacity: 4, chargeAmount: 80, chargeLabel: "AC" });
+  await Table.create({ tableNo: "F-NC", capacity: 4 });
+  const openAt50 = async (orderId: string) => (await Order.create(buildOrder({ orderId, tableNo: "F-50", charges: AC_50 }))).toObject() as IOrder;
+
+  // (a) a 50 table (the cashier lowers it to 20), moved to a no-charge table: settle sends 20.
+  const toNc = await moveTab(await openAt50("ORD-F1"), "F-NC");
+  check("T1 setup: the move to a no-charge table dropped the saved table entry", tableAmount(chargesFromOrder(toNc)) === 0 && toNc.total === 100);
+  check("T1 regression witness: WITHOUT the fence the stale 20 re-creates a Table charge 20 on that tab", unfencedTable(toNc, 20) === 20);
+  const billA = settleBill(toNc, 20);
+  check("T1 (a): after a move to a no-charge table, settle sending chargeAmount 20 bills no table charge", billA.table === 0 && billA.total === 100);
+
+  // (b) moved to an 80 table: the move re-priced the tab to 80; settle without chargeAmount bills 80.
+  const to80 = await moveTab(await openAt50("ORD-F2"), "F-80");
+  const billB = settleBill(to80, undefined);
+  check("T1 (b): after a move to an 80 table, settle without chargeAmount bills 80", billB.table === 80 && billB.total === 180);
+
+  // (c) an unmoved 50 table: the cashier's change still works.
+  const on50 = await openAt50("ORD-F3");
+  const lowered = settleBill(on50, 20);
+  const waived = settleBill(on50, 0);
+  check("T1 (c): on an unmoved 50 table, chargeAmount 20 still bills 20", lowered.table === 20 && lowered.total === 120);
+  check("T1 (c): on an unmoved 50 table, chargeAmount 0 still waives", waived.table === 0 && waived.total === 100);
+
+  // (d) the add-round route's table lane, the same cases.
+  check("T1 (d): add-round after a move to a no-charge table, chargeAmount 20 bills no table charge", addRoundTable(toNc, 20) === 0);
+  check("T1 (d): add-round after a move to an 80 table, no chargeAmount keeps 80", addRoundTable(to80, undefined) === 80);
+  check("T1 (d): add-round on an unmoved 50 table, 20 lowers and 0 waives", addRoundTable(on50, 20) === 20 && addRoundTable(on50, 0) === 0);
+
+  // (e) the tab opened at 50, THEN an admin sets that table's charge to 0: the running bill keeps its saved entry,
+  // so the cashier's 30 (what the POS shows and sends) bills 30; the live setting never re-prices a running bill.
+  const adminEdited = await openAt50("ORD-F4");
+  await Table.updateOne({ tableNo: "F-50" }, { $set: { chargeAmount: 0 } });
+  const billE = settleBill((await Order.findById(adminEdited._id).lean()) as unknown as IOrder, 30);
+  check("T1 (e): the admin zeroing the table's charge after the tab opened does not stop settle billing the cashier's 30", billE.table === 30 && billE.total === 130);
+}
+
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
   const dbName = new URL(uri.replace("mongodb://", "http://")).pathname.slice(1);
@@ -893,6 +988,7 @@ async function main(): Promise<void> {
   await arrangementLegs();
   await moveLegs();
   await assignUnseatLegs();
+  await moveChargeFenceLegs();
 
   await mongoose.connection.dropDatabase();
   await mongoose.connection.close();

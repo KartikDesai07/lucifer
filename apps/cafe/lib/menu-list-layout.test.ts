@@ -51,6 +51,7 @@ function table(over: Partial<React.ComponentProps<typeof ItemsTable>> = {}, prod
       onToggleSelect: noop,
       onToggleAll: noop,
       onEdit: noop,
+      onCopy: noop,
       onToggleAvailable: noop,
       onToggleQrVisible: noop,
       sort: { key: "category", dir: "asc" },
@@ -60,10 +61,10 @@ function table(over: Partial<React.ComponentProps<typeof ItemsTable>> = {}, prod
   );
 }
 
-test("the grid (values 5.1, Q4): 18 | 2fr item | [1fr category] | 110 | 72 | 72 | 32, gap 14; the Category track only from a 738px list box", () => {
+test("the grid (values 5.1, Q4): 18 | 2fr item | [1fr category] | 110 | 72 | 72 | 68 (Edit + Copy, owner C1), gap 14; the Category track only from a 738px list box", () => {
   hasAll(
     L.MENU_ROW_GRID_CLASS,
-    ["grid", "grid-cols-[18px_minmax(200px,2fr)_110px_72px_72px_32px]", "gap-3.5", "items-center", "@[738px]/list:grid-cols-[18px_minmax(200px,2fr)_minmax(120px,1fr)_110px_72px_72px_32px]"],
+    ["grid", "grid-cols-[18px_minmax(200px,2fr)_110px_72px_72px_68px]", "gap-3.5", "items-center", "@[738px]/list:grid-cols-[18px_minmax(200px,2fr)_minmax(120px,1fr)_110px_72px_72px_68px]"],
     "the grid",
   );
   assert.ok(!tokens(L.MENU_ROW_GRID_NO_CATEGORY_CLASS).some((t) => t.startsWith("@[738px]")), "a picked category: no Category track at any width");
@@ -192,7 +193,7 @@ test("select-all (values 5.1): the head box is empty / dash / tick for none / so
 
 test("cards render: price, category, sizes, badges, the stock cell, a select box only in Select mode (menu P9)", () => {
   const p = product({ variations: [{ name: "Small", price: 249 }, { name: "Large", price: 449 }], available: false });
-  const base = { products: [p], archived: false, categoryMap, onToggleSelect: noop, onEdit: noop, onToggleAvailable: noop };
+  const base = { products: [p], archived: false, categoryMap, onToggleSelect: noop, onEdit: noop, onCopy: noop, onToggleAvailable: noop };
   const html = renderToStaticMarkup(createElement(ItemCards, { ...base, isAdmin: true, selectMode: false, selected: new Set<string>() }));
   assert.match(html, /₹249–449/, "the range");
   assert.match(html, /· Waffles · 2 sizes/, "category and sizes");
