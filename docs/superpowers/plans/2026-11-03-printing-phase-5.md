@@ -747,3 +747,203 @@ below): `resumeSending` under the lock before `nextSendable`, and `addEntry`'s "
 Every live run of this session dropped its own database (the runner drops at its start and end): `pos_scratch_print_host_5a`,
 `_5a_t2`, `_5a_red`, `_5a_t3`, `_5a_t3b`, `_5a_red2`, `_5a_t3c`, `_5a2`, `_5a3`. None of them is left (checked). The design session's `pos_scratch_e2e_4g_p5m`
 is still there: its drop was refused by this PC's permission system again (the owner may drop it).
+
+---
+
+# Session 5B Results (2026-11-04)
+
+Run on `feat/printing-phase-5` from 5ce04ee (5A's Results). `origin/main` had moved to 3ec96f1 (the owner's T1 table
+charge after a move + C1 copy an item, 5 commits); on the owner's OK at the start it was merged first (c41dc30, clean).
+Not pushed, not merged. The owner's answers at the start: ruling 13 = (b) (a later round on an order made offline prints
+its create's O-n in the Order row; the banner keeps the round's own O-n: built in Task 11); 5A review m1 = no (spec as
+written).
+
+## Commits
+
+| Commit | Task |
+|---|---|
+| c41dc30 | merge of origin/main 3ec96f1 (the owner's OK) |
+| 55d00bf | Task 10 the offline state and the outbox store on the page |
+| b828ec1 | Task 11 Send to Kitchen and Pay Now offline (+ ruling 13 (b), the printers read with `?stations=1`) |
+| 9ab5e2e | Task 12 the half-way send parked once offline, Print KOT here |
+| fb51993 | Task 13 the offline replay runner |
+| bbbc331 | Task 14 the POS shows offline orders, Offline orders, Fix and send |
+| 3bdc019 | Task 15 what waits offline, the reload and the idle lock, the kept acks |
+| 901bb2d | Task 16 the calm pulse wired |
+| 2b73005 | the review's fix wave (C1, I1, I2, I3 + minors) |
+| (this) | docs: these Results |
+
+Every task was built by the session itself (no implementer subagents: each task wires page code that needed the whole
+picture), test first; each commit body lists its RED, its GREEN and every pin changed on purpose with its reason.
+
+## RED → GREEN per task
+
+| Task | RED (seen first) | GREEN |
+|---|---|---|
+| 10 | both modules not found; the 3 wiring pins failed | 14 tests |
+| 11 | offline-send / offline-keep / offline-here not found; 5 controller tests and the ruling 13 assertion failed; the wiring pins failed | cafe 7538 (0 fail) |
+| 12 | 3 controller park tests, the uncertain plan test and both Print KOT here tests failed | 62 related tests |
+| 13 | tsc "Cannot find module '@/lib/offline-replay'"; mutation runs (no echo check, no resumeSending, a refusal that stops the run, a time note for a held order, a printing entry sent): each failed 1 | 8 runner tests + pins |
+| 14 | the view / fix modules written with their tests: mutation runs (the taken table, Print KOT here, the held-send discard words, a sale listed as a tab, Discard without its rounds): each failed 1; the full suite caught 2 inventory pins (fixed without touching them) | 17 + the full suite |
+| 15 | print-ack-offline 3 of 4 failed; guard rules by mutation (4 runs, each failed 1) | the full suite |
+| 16 | tsc "Cannot find module '@/lib/pulse-cadence-now'" | cafe 7580 (0 fail), live 499/0 |
+| fix wave | 9 new tests failed first (C1 2, I1 1, I2 1, I3 2, minors 3) | cafe 7590 (0 fail), live 499/0 |
+
+## Counts (before at c41dc30 → after)
+
+| Suite | Before (c41dc30) | After Task 16 (901bb2d) | After the fix wave |
+|---|---|---|---|
+| cafe `npm test` (chain) | 7496 / 7495 pass / 0 fail / 1 skip | 7580 / 7579 / 0 / 1 | 7590 / 7589 / 0 / 1 |
+| cafe typecheck | 0 | 0 | 0 |
+| lint (`npx eslint .`) | 0 errors, 2 warnings | 0 errors, the same 2 warnings | 0 errors, the same 2 warnings |
+| shared `npm test` | 1062 | 1062 | 1062 |
+| shared typecheck | 0 | 0 | 0 |
+| live legs (`verify:print:live`) | 499 / 0 (`pos_scratch_print_host_5b0`) | 499 / 0 (`_5b16`) | 499 / 0 (`_5bfw`) |
+
+Scope: no diff under `apps/mobile`, `apps/desktop`, `workers`, `packages/shared` (5B changed no shared file),
+`print-budget*`; no slip file (`components/pos/KOTReceipt.tsx`, `OrderReceipt.tsx`, `components/print/slip/*`,
+`lib/printer/*` except one test pin, `lib/printer/print-gating-paths.test.ts`); the S1 43-file pin green.
+`hooks/use-pos-tab.ts` stays 546 (its budget pin), `app/(dashboard)/pos/page.tsx` untouched (299).
+
+## Differences from the plan, and why (the session's rulings)
+
+1. **The offline state and the outbox are module-level stores** (`lib/server-reach.ts`, `lib/offline-outbox-store.ts`)
+   with thin hooks: one page per tab, every reader (the send, the pulse, the header, the runner, the sheet) shares one
+   state, and no provider has to sit above all of them.
+2. **Pulse misses are counted once per tick** (`errorUpdateCount` / `dataUpdatedAt`), not per retry attempt (spec 5.1's
+   "two pulses in a row"); the null error after a recovery is no miss (the review's I1).
+3. **An offline entry keeps its here lines as "maybe" until their paper is known**, then stores printed / maybe / later:
+   a page that dies mid-print leaves a labelled REPRINT, never an unlabelled second KOT; the replay waits for an entry whose
+   paper is still printing (`offlinePrinting`).
+4. **Without Web Locks** (an http page that is not a secure context, e.g. the emulator's 10.0.2.2) the outbox's
+   read-modify-writes run on an in-page queue (one tab), and the replay on the runner's own guard.
+5. **The printers read moved to `?stations=1` in Task 11** (the plan's Task 16 line; Task 11 needs the stations): the cache
+   entry is `{ printers, stations }`; an older server's array answer reads as no stations; the two direct cache readers use
+   `printersOfRead`.
+6. **`SendJob.offline` is one facts object** `{ body, shownTotal, base, done }` (the plan's `body`, `shownTotal`,
+   `offlineDone`). The controller also gets `onAnswer` (each online answer feeds the state; a miss is checked once by a
+   pulse refetch: `reportWriteAnswer`).
+7. **A round on an order made offline is kept even online**, with no paper ("Round O-n is kept on this device. It is sent
+   with its order."): it is never posted to an id the server does not know. One whose order is no longer in the outbox is
+   refused ("This order is no longer on this device. Open it again from Open tabs.").
+8. **New sentences beyond the spec's** (all plain, all pinned): a plan with no kitchen line ("Offline: order O-n is kept on
+   this device. It is sent when the internet is back."), Pay Now with nothing printing here ("… The sale is saved and its KOT
+   and bill print when the internet is back."), a here line that did not print ("Offline: KOT O-n did not print on Bar. It
+   prints there when the internet is back.", the review's I3), the parked send's notice is spec 5.7's, an order made offline
+   waiting ("This order is still waiting to be sent. Try again once it is sent."), Fix and send over an open send ("A send is
+   still open on this POS. Tap Send again or Discard first, then Fix and send.", the review's I2), the sheet's sub line and
+   row statuses, "Nothing to print here for this order.", End of day's singular form.
+9. **Pay Now offline**: Cash / Online / Split; the points row locked; no customer picker; a note; a mode chosen before the
+   outage blocks the confirm (no second `setMode`: the pin "reset only as it opens" kept). A promo, reward or card chosen
+   online rides the sale body and the server decides at the replay (a refusal → Fix and send): the cart's promo / reward /
+   card controls are unchanged in 5B (a narrowing of spec 5.6's "shown as Needs the internet"; the review agreed).
+10. **The replay holds a second Web Lock, "pos-offline-replay"** (taken only if free), across the send; the outbox lock is
+    taken per read-modify-write, so an offline keep never waits behind a replay request.
+11. **The runner follows the answer's refs** (`deliverLeasedJob` / `kickPrintAgent`) without the readback chip, and reads the
+    pulse from the query cache at each tick (no new `usePosPulseContext` reader: the inventory pin stays eight).
+12. **Server tabs with pending offline rounds are not overlaid in Open tabs** (their rounds show in Offline orders); an
+    order made offline is listed (its rounds' lines, the total it showed last) and its table reads taken. A parked (uncertain)
+    create is listed too (spec 5.7 warns; a "may be on the server" chip is left for 5C to judge).
+13. **Discard of an order made offline takes its rounds**; Fix and send opens the entry in the cart (a round on a tab the POS
+    still lists opens on that tab, otherwise as a new order with its table) and arms the next send in the send hook (online
+    only, a new key, the entry's offline lines and taken time; a reset disarms; never kept or parked while armed; refused
+    while a send is flying or held).
+14. **The guards are each write's `onMutate`** (settle, move, cancel, QR accept / reject, every client-started slip,
+    printer / station saves and deletes, a test print): TanStack never calls the mutationFn, each mutation's own error path
+    says spec 5.10's words; the refusal is an un-enveloped 400 (definite, never read as reached). The void refuses in its
+    confirm (its dialog stays open).
+15. **End of day is blocked, not only warned, while the outbox holds entries** (its figures would miss them; the review
+    agreed).
+16. **The offline header**: the button's name says "Offline — KOTs print here" / "Offline — orders are kept on this device"
+    with the warn dot (the tone value "red" draws the warn, amber, class: `PrinterDotTone` has no amber and
+    `lib/printer/*` is not edited); spec 5.10's longer sentence is the Offline orders line. The panel's status card is
+    unchanged.
+17. **The slip design code is already loaded at start on every device** (the one bridge in the shell starts its fetch on
+    mount): pinned, no code change.
+18. **Kept acks**: a 402 keeps an ack online too (the spec's rule); the outage is not counted from whichever comes first,
+    the first offline flush or the first offline retry (the review's minor).
+19. **Line budgets**: `use-pos-tab.ts` held at 546 (4 comment blocks rewrapped), `pos/page.tsx` untouched at 299,
+    `lib/pos-send.ts` at 300, `PaymentModal.tsx` 297. Pre-existing files already over 300 grew by their guard lines only:
+    `ScreenLock.tsx` 427 → 429, `hooks/use-orders.ts` 394 → 398, `hooks/use-print-agent.ts` 335 → 337 (and two test files).
+20. **No implementer subagents**: every task wires page code across the send, the bridge, the pulse and the shell; the
+    session built each itself, test first, and the review was the fresh eye.
+
+## The S1 byte comparison and the first headless offline run
+
+**S1, end to end** (the 4B gate's tools: fixed payloads posted as this device's own slips, printed by the page's agent
+on the fake printer 9100; `D:\kd\pos-dev-keep\phase5\session-5b\s1.sh`, `s1.log`): the base build `D:\kd\u6b`
+(21df25c = main 96520d6 before Phase 5) against a build of 901bb2d (a worktree `D:\kd\u5b`, its build-only cache-off
+edit uncommitted, removed junction-safe afterwards), fresh databases, port 3171. **Simple mode on bridge v1: 9/9 slips
+byte for byte equal; printers mode on bridge v2: 9/9 byte for byte equal** (KOT round 1 56,414 B, round 2 46,686 B, the
+whole tab 60,662 B, VOID 53,310 B, TABLE MOVED 34,150 B, the cancel notice 61,022 B, the bill 51,654 B, the token 31,414
+B, the Hindi KOT 56,414 B; the same hashes on both builds). The fix wave (2b73005) touched no online print path.
+
+**The first headless offline run** (the design harness, `pw-5b.mjs` = `pw-5m.mjs` + an `m3` step; `o1.sh`, `o2.sh`,
+`o1b.log`, `o2.log` in `D:\kd\pos-dev-keep\phase5\session-5b\`): headless Chrome as the POS app (bridge v2), printers
+mode with Kitchen / Bar / Desserts on network printers 9101–9103 and a bill printer 9104, all on this device, against the
+901bb2d build:
+- **m3 (the plan's acceptance)**: offline (`setOffline`), a new order on T-8: "Offline: KOT O-3 printed here. It is sent
+  when the internet is back.", the Kitchen slip at +667 ms, the cart cleared; Open tabs listed "Table T-8 … ₹200 · Offline ·
+  O-3"; a second round on it from Open tabs: "Offline: KOT O-4 printed here.", the Bar slip at +620 ms. Back online the
+  outbox emptied by itself in 1.0 s; the server holds ONE order on T-8 with 2 rounds (KOT numbers 3, 4; its createdAt the
+  tap's time); both KOT jobs were made printed ("printed (offline O-3)", "(offline O-4)"); **no paper after the
+  reconnect** (2 slips in all).
+- **m2 route (the server down mid-send: a half-way send)**: "Couldn't confirm" at once, parked within 2 s ("Saved on this
+  device. It is sent by itself when the internet is back — it can never go through twice."), the header "Offline — KOTs
+  print here", **no paper while down**; healed: "Offline orders sent: 1" at +3.1 s, the KOT printed once on Kitchen and
+  Bar (the first try had never reached the server), no duplicate KOT number.
+- **m2 pay (Pay Now offline)**: "Offline: KOT O-2 printed. The sale is saved and its bill prints when the internet is
+  back.", Kitchen +669 ms, Bar +1,231 ms; healed: "Offline orders sent: 1" at +1.0 s, the sale Completed (order number 1),
+  its two KOT jobs made printed (no second paper), the bill printed at +660 ms on the bill printer; no duplicate.
+- Not run in 5B (5C Task 20): the server-stopped variant, a waiter phone, a refused entry and Fix and send, a reload while
+  offline, bridge v1, and the a11y check of the sheet.
+
+## The review (Claude Fable 5.1, read-only)
+
+Range c41dc30..901bb2d, against the spec, this plan (5B + the 5A amendments) and the session's 15 rulings (all judged
+sound). Read in four passes; nothing run. Verdict **"With fixes"**: S3 held on every path traced; online behaviour traced
+unchanged at every touched site.
+
+| Finding | Ruling |
+|---|---|
+| C1 a lone entry a dead page left "sending" never woke the runner (the hook's gate saw waiting entries only), so no Discard, End of day blocked | **Fixed** test first (2b73005): `replaySendable` = `nextSendable(resumeSending(record))` |
+| I1 after a recovery the null error counted as a pulse miss (the next single miss went offline) | **Fixed**: `pulseErrorReach` (null for a cleared error) |
+| I2 Fix and send replaced a send flying or held on the POS without its confirm | **Fixed**: refused while `send.isLocked()`, with its words |
+| I3 "KOT O-n printed here" was said before the paper and a line that did not print was never named | **Fixed**: the missed lines named once the paper is done (keep and Print KOT here) |
+| m the "red" tone value for amber; the unused header detail | The detail dropped (the sentence is the Offline orders line); "red" draws the warn (amber) class: stands (no `lib/printer/*` edit) |
+| m pre-existing >300-line files grew | Stands: guard lines only (Differences item 19) |
+| m the sheet mounted the menu / printers observers on every page | **Fixed**: the list mounts with the open panel only |
+| m the total note compared floats | **Fixed**: in paise |
+| m an ack first kept offline counted the outage | **Fixed**: `retryLater`'s offline branch |
+| m a waiter phone's Pay Now words; "sent already" for a discarded order | **Fixed**: the sale's words; "no longer on this device" |
+| m a parked create listed while it may be on the server | For 5C (a chip variant to judge on the emulator) |
+| m Print KOT here of a round whose tab is not listed lost its table | **Fixed**: the entry's table |
+
+Declined to judge by the reviewer (ruled "stands"): the 5A server half (reviewed in 5A); WebView 109 / 154 and the
+Windows app (5C Tasks 21–22); the S1 and offline runs (done here, above); the measured pulse (5C Task 23); the sheet's
+visual values and the a11y run (5C Task 20); suite counts (run here); the slip day of the outbox's number reset (5A).
+
+**The re-check** (the same reviewer, of 2b73005): C1, I1, I2, I3 **ADDRESSED**, the minors taken all correct, the three
+not taken fine; no new Critical or Important; verdict **"Ready to merge: Yes"** for c41dc30..2b73005. Its three one-line
+minors: the panel fragment's indentation (cosmetic, lint clean: stands); "did not print on X" is also said for a "maybe"
+line, whose server copy is a REPRINT (wording: for 5C to judge with the owner's eye); without Web Locks a second tab could
+resume a lone "sending" entry while the first tab's request is on the wire (the same key: the server answers a replay,
+never a second order; stands).
+
+## For 5C
+
+- Task 20: start from `D:\kd\pos-dev-keep\phase5\session-5b\` (README.txt): the S1 run is done for v1/v2 on fixed
+  payloads (repeat it on 5C's head); the offline scenarios left: the server stopped (not `route`), a waiter phone with no
+  printer, a refused entry with Fix and send / Send again / Discard, Print KOT here after a half-way send, a reload while
+  offline then online, bridge v1, two tabs (Web Locks), the local `a11y-check.mjs` on the Offline orders sheet and the
+  payment sheet's offline note.
+- Judge on the emulator: the parked create listed in Open tabs while it may also be on the server (a "may be on the
+  server" chip?), and whether the amber dot reads right on the warn class.
+- The owner's pending words: none of 5B's new sentences changes the paper; they are listed in "Differences" item 8.
+
+## Scratch databases
+
+Every live run dropped its own database (the runner: `pos_scratch_print_host_5b0`, `_5b16`, `_5bfw`). The e2e databases
+`pos_scratch_e2e_4g_5ba1`, `5bb1`, `5bpa`, `5bpb`, `5bo`, `5bo2` are LEFT: their drop was refused by this PC's permission
+system (as the design session's `pos_scratch_e2e_4g_p5m`); the owner may drop them. The build worktree `D:\kd\u5b` is
+removed (384 junctions deleted first; the real `node_modules` unchanged).
