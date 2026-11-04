@@ -57,7 +57,8 @@ test("S1: the controller is pure — no React, no fetch, no timers — and reach
   const specifiers = [...raw.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]);
   assert.ok(specifiers.includes("@pos/shared/order-idem"), "landmark: the controller reuses the shared idempotency rules");
   // @/lib/kitchen-lines (skip-KOT) is pure and client-safe: no React, no DOM, no value import of its own.
-  const allowed = new Set(["@pos/shared/order-idem", "@/lib/pending-writes", "@/lib/kitchen-lines", "@/types"]);
+  // Printing Phase 5: @/lib/offline-kot-order (isOfflineOrderId) is pure too: no React, no IO.
+  const allowed = new Set(["@pos/shared/order-idem", "@/lib/pending-writes", "@/lib/kitchen-lines", "@/lib/offline-kot-order", "@/types"]);
   assert.deepEqual(specifiers.filter((s) => !allowed.has(s)), [], "no React, no toasts, no hooks, no api-client");
   const src = readSrc(CONTROLLER);
   assert.ok(src.includes("export function createPosSend(ports: PosSendPorts): PosSend {"), "landmark");
@@ -75,10 +76,13 @@ test("S1: the controller is pure — no React, no fetch, no timers — and reach
 test("S2: the hook is a thin shell — one controller per mount, the M1 key minter, useSyncExternalStore, one mount effect, no timers", () => {
   const src = readSrc(HOOK);
   assert.equal(count(src, "createPosSend("), 1, "one controller");
-  assert.ok(src.includes("const [send] = useState(() => createPosSend({ mintKey: mintAttemptId, toastUnmounted }));"), "created once, keyed by mintAttemptId");
-  // K2: the one effect marks the POS mounted, so an answer after it unmounts is toasted.
-  assert.equal(count(src, "useEffect("), 1, "exactly one effect");
-  assert.ok(src.includes("useEffect(() => send.mount(), [send]);"), "and it is the mount");
+  // Printing Phase 5 (deliberate change): the controller also gets the offline ports (the state, the keep, each answer).
+  assert.ok(src.includes("const [send] = useState(() =>\n    createPosSend({\n      mintKey: mintAttemptId,\n      toastUnmounted,"), "created once, keyed by mintAttemptId");
+  // K2: the mount effect marks the POS mounted, so an answer after it unmounts is toasted. Phase 5: the only other
+  // effect keeps the keep port's latest function (a ref, no timer).
+  assert.equal(count(src, "useEffect("), 2, "exactly two effects");
+  assert.ok(src.includes("useEffect(() => send.mount(), [send]);"), "one is the mount");
+  assert.ok(src.includes("useEffect(() => {\n    keepRef.current = keepOffline;\n  }, [keepOffline]);"), "the other keeps the keep port current");
   assert.ok(src.includes('const toastUnmounted = (t: UnmountedToast) => (t.tone === "success" ? toast.success(t.message) : toast.warning(t.message));'), "the toast port");
   assert.ok(src.includes('import { mintAttemptId } from "@/lib/pos-device-id";'));
   assert.ok(src.includes("useSyncExternalStore(send.subscribe, send.getState, send.getState)"));
@@ -90,7 +94,8 @@ test("S2: the hook is a thin shell — one controller per mount, the M1 key mint
 
 test("S3: the POS sends through the one controller, and its lock freezes the cart's edits", () => {
   const pos = readSrc(POS_TAB);
-  const send = pos.indexOf("const send = usePosSend();");
+  // Printing Phase 5 (deliberate change): the controller gets the offline keep port.
+  const send = pos.indexOf("const send = usePosSend(useOfflineSend());");
   const cart = pos.indexOf("} = useCart(send.isLocked);");
   assert.ok(send >= 0 && cart > send, "usePosSend is created before useCart, which takes its lock");
   assert.equal(count(pos, "usePosSend("), 1);
@@ -260,7 +265,9 @@ test("S11 (R-b): the Pay Now popup is frozen while its sale is unconfirmed — m
   assert.ok(src.includes('const frozen = notice?.action === "send-again";'), "frozen = an unconfirmed Pay Now");
   assert.ok(src.includes("const locked = isSubmitting || frozen;"));
   assert.equal(count(src, "disabled={isSubmitting}"), 1, "only Discard is gated on the flight alone — no input is");
-  assert.equal(count(src, "disabled={locked}"), 4, "the mode buttons, the amount, the split fields and the customer picker");
+  // Printing Phase 5 (deliberate change): the points row is locked offline too (spec 5.6), still with the popup.
+  assert.equal(count(src, "disabled={locked}"), 3, "the amount, the split fields and the customer picker");
+  assert.ok(src.includes("<PaymentPoints points={points} disabled={locked || offlineSale} />"), "the points row, locked with the popup");
   // U1 Task 10 (ruling P30): the picker also names the order for its sheet's sub line (context); the lock is unchanged.
   assert.ok(src.includes("<CustomerSearch value={customer} onChange={onSelectCustomer} disabled={locked} context={paymentPlace(tableNo, newSale)} />"), "the customer picker");
   const guard = between(src, "const openChange = (next: boolean) => {", "onOpenChange(next);");

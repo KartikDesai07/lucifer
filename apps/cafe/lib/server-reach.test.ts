@@ -61,3 +61,31 @@ test("feedBrowserOnline: a browser already offline is said at once, then every c
   stop();
   assert.equal(unsubscribed, true, "the feed stops with its cleanup");
 });
+
+test("reportWriteAnswer: an unanswered write is offline only once its one check fails too; an answered write resets", async () => {
+  const { reportWriteAnswer } = await import("./server-reach");
+  const { ApiError } = await import("@pos/shared/api-client");
+  const reach = createServerReach();
+  let checks = 0;
+  await reportWriteAnswer(new ApiError("x", "network", null), reach, async () => {
+    checks += 1;
+    return "unreached";
+  });
+  assert.equal(checks, 1, "one check, only after a failure");
+  assert.equal(reach.isOffline(), true, "the write and its check both missed");
+  await reportWriteAnswer(null, reach, async () => {
+    checks += 1;
+    return "reached";
+  });
+  assert.equal(reach.isOffline(), false, "an answered write ends it");
+  assert.equal(checks, 1, "no check after an answer");
+  await reportWriteAnswer(new ApiError("x", "timeout", null), reach, async () => "reached");
+  assert.equal(reach.isOffline(), false, "the check reached us: online");
+  await reportWriteAnswer(new ApiError("refused", "http", 409, true), reach, async () => {
+    checks += 1;
+    return "unreached";
+  });
+  assert.equal(checks, 1, "our own 409 reached us: no check");
+  await reportWriteAnswer(new ApiError("x", "network", null), reach, async () => Promise.reject(new Error("boom")));
+  assert.equal(reach.isOffline(), true, "a check that throws is a miss");
+});

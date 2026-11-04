@@ -11,6 +11,9 @@ import type { CreateOrderInput, Order, OrderItem } from "@/types";
 
 /** The local id of an order or round the server has not saved yet: `offline-<key>`. */
 const OFFLINE_ID_PREFIX = "offline-";
+
+/** An order made offline that the server has not saved yet (its id is the device's own). */
+export const isOfflineOrderId = (id: string): boolean => id.startsWith(OFFLINE_ID_PREFIX);
 const FIRST_ROUND = 1;
 
 /** A new order before the server prices it. The KOT prints none of these; the outbox entry keeps the total the device
@@ -64,13 +67,13 @@ export function offlineKotOrder(input: {
   // As the server stamps a send: only the new lines (app/api/orders/[id]/items/route.ts stamps the new slice), so the
   // tab's lines keep the stamps the server gave them.
   const { lines } = stampKitchenFlags(fired, input.products, input.skipCategoryIds, input.categoryRanks);
-  // A tab the server already has keeps its own number (the kitchen holds its first KOT under it, spec §5.4); a new
-  // order, or a round on an order made offline, reads this round's offline number.
-  const serverTab = base !== null && !base._id.startsWith(OFFLINE_ID_PREFIX);
+  // A round keeps its order's own number: a tab the server already has its server number (the kitchen holds its first
+  // KOT under it, spec §5.4), an order made offline its create's O-n (the owner's ruling 13 (b), 2026-11-04: the banner
+  // keeps the round's own O-n). A new order reads this round's offline number.
   return withoutServerNumbers({
     ...(base ?? UNPRICED_NEW_ORDER),
     _id: `${OFFLINE_ID_PREFIX}${input.key}`,
-    orderId: serverTab ? base.orderId : input.ref,
+    orderId: base !== null ? base.orderId : input.ref,
     customerName: body.customerName,
     ...(body.tableNo !== undefined ? { tableNo: body.tableNo } : {}),
     ...(body.receiver !== undefined ? { receiver: body.receiver } : {}),

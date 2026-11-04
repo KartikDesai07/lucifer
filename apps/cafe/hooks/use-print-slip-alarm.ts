@@ -4,9 +4,8 @@ import { useEffect } from "react";
 import { hashKey, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import type { PrinterConfig } from "@pos/shared/print-printers";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
-import { PRINTERS_KEYS } from "@/hooks/use-agent-printers";
+import { PRINTERS_KEYS, printersOfRead, type PrintersRead } from "@/hooks/use-agent-printers";
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
 import { isAlertSoundUnlocked, playAlertPing } from "@/lib/alert-sound";
 import { readDevicePrefs } from "@/lib/pos-device-prefs";
@@ -49,7 +48,7 @@ export function usePrintSlipAlarm(deviceId: string): void {
       if ((step.ring || step.summary > 0) && readDevicePrefs().alertSound && isAlertSoundUnlocked()) playAlertPing();
       for (const row of step.show) {
         // Session 3B: its printer's problem, named from the printers this device already read (no request).
-        const message = printAlarmMessage(row, printerNameOf(qc.getQueryData<PrinterConfig[]>(PRINTERS_KEYS.all) ?? [], row.printerId));
+        const message = printAlarmMessage(row, printerNameOf(printersOfRead(qc.getQueryData<PrintersRead>(PRINTERS_KEYS.all)), row.printerId));
         toast.warning(message, { id: `print-alarm-${row.id}`, duration: Number.POSITIVE_INFINITY, action: SHOW, actionButtonStyle: SHOW_STYLE });
       }
       if (step.summaryWaiting !== page.summary) {

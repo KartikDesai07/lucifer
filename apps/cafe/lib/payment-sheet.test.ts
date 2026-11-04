@@ -156,7 +156,8 @@ test("PaymentModal hands the picker only when it is offered and the tab's custom
   const src = readSrc(MODAL);
   assert.ok(
     src.includes(
-      "picker={onSelectCustomer && <CustomerSearch value={customer} onChange={onSelectCustomer} disabled={locked} context={paymentPlace(tableNo, newSale)} />}",
+      // Printing Phase 5 (spec 5.6, deliberate change): no picker on a sale taken offline (a customer needs the internet).
+      "picker={onSelectCustomer && !offlineSale && <CustomerSearch value={customer} onChange={onSelectCustomer} disabled={locked} context={paymentPlace(tableNo, newSale)} />}",
     ),
     "the picker exactly where today's showed (a new sale, or a tab with no customer); its sheet names the order (ruling P30)",
   );

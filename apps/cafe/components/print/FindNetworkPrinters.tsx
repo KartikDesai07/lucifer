@@ -7,10 +7,9 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Search } from "lucide-react";
 
-import type { PrinterConfig } from "@pos/shared/print-printers";
 import { PRINTER_BUTTON_CLASS, PRINTER_FOUND_ROW_CLASS, PRINTER_NOTE_CLASS } from "@/components/print/printer-classes";
 import { Button } from "@/components/ui/button";
-import { PRINTERS_KEYS } from "@/hooks/use-agent-printers";
+import { PRINTERS_KEYS, printersOfRead, type PrintersRead } from "@/hooks/use-agent-printers";
 import { useNativePool } from "@/hooks/use-device-printer";
 import {
   FIND_NETWORK_PRINTERS_LABEL,
@@ -31,8 +30,6 @@ interface FindNetworkPrintersProps {
   disabled?: boolean;
 }
 
-const NO_SETUP_PRINTERS: PrinterConfig[] = [];
-
 export function FindNetworkPrinters({ onPick, disabled = false }: FindNetworkPrintersProps) {
   const qc = useQueryClient();
   const pool = useNativePool();
@@ -51,7 +48,7 @@ export function FindNetworkPrinters({ onPick, disabled = false }: FindNetworkPri
 
   // The setup's printers as the page's cache already holds them (Session 4D's review, m-B): no query observer of its own,
   // so opening a form never refetches the printers list.
-  const setup = qc.getQueryData<PrinterConfig[]>(PRINTERS_KEYS.all) ?? NO_SETUP_PRINTERS;
+  const setup = printersOfRead(qc.getQueryData<PrintersRead>(PRINTERS_KEYS.all));
   const known = knownLanPrinters(setup, pool.printers.map((printer) => ({ id: printer.id, name: printer.printer.name })));
   const rows = outcome?.kind === "found" ? lanFoundRows(outcome.printers, known) : [];
   return (

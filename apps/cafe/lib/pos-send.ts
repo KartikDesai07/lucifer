@@ -21,6 +21,7 @@
 import { kotRoundOfIdemKey } from "@pos/shared/order-idem";
 import { classifyFailure, NOTICE_TITLES, signedOut, tabLabel, type WriteNotice, type WriteNoticeAction } from "@/lib/pending-writes";
 import { roundSkipsKitchen } from "@/lib/kitchen-lines";
+import { isOfflineOrderId } from "@/lib/offline-kot-order";
 import type { Order } from "@/types";
 
 /** Which surface a send belongs to: the cart (Send to Kitchen) or the payment popup (Pay Now). */
@@ -34,7 +35,23 @@ export interface SendJob {
   request: (idemKey: string | undefined) => Promise<Order>;
   /** The server answered with `order`: print, toast, free the cart. Runs once. */
   confirm: (order: Order, idemKey: string | undefined) => void;
+  /** Printing Phase 5 (spec 5.5–5.6): what keeping this send on the device needs. Without it the send is online only. */
+  offline?: SendOfflineFacts;
 }
+
+/** Printing Phase 5: a send kept on the device instead of sent (the outbox, spec 5.2). */
+export interface SendOfflineFacts {
+  /** The body exactly as the online send posts it, without its key. */
+  body: Record<string, unknown>;
+  /** The total the device showed (Pay Now: the total it took). */
+  shownTotal: number;
+  /** The tab this round adds to (a server tab, or an order made offline); null for a new order or sale. */
+  base: Order | null;
+  /** Kept (the cart is freed and `message`, when there is one, said) or not (the cart stays; `message` says why). */
+  done: (kept: SendOfflineKept) => void;
+}
+
+export type SendOfflineKept = { kept: true; message: string | null } | { kept: false; message: string };
 
 /** What an answer after unmount says: it went through, or it could not be confirmed. */
 export interface UnmountedToast {
@@ -47,6 +64,12 @@ export interface PosSendPorts {
   mintKey: () => string | undefined;
   /** The POS unmounted mid-flight (the operator left the page): say it once. */
   toastUnmounted: (toast: UnmountedToast) => void;
+  /** Printing Phase 5 (spec 5.1): the page's offline state now. */
+  offline?: () => boolean;
+  /** Printing Phase 5 (spec 5.5): keeps the send on the device under `key` (its KOT prints where it can). */
+  keepOffline?: (job: SendJob & { offline: SendOfflineFacts }, key: string) => Promise<SendOfflineKept>;
+  /** Printing Phase 5 (spec 5.1): every online answer, null when one came back, else its error. */
+  onAnswer?: (error: unknown) => void;
 }
 
 export interface SendNotice {
@@ -97,6 +120,8 @@ export const SEND_DONE_AWAY_PAY = "Sale saved, but the bill may not have printed
 /** R-d — what Discard asks before it drops an unconfirmed send. */
 export const SEND_DISCARD_KITCHEN = "The order may already have reached the kitchen. Check Open tabs before sending it again.";
 export const SEND_DISCARD_PAY = "The sale may already be saved. Check Orders before taking payment again.";
+/** Printing Phase 5 (spec 5.2, risks): nothing could be kept, so nothing printed and the cart stays. */
+export const SEND_OFFLINE_NOT_KEPT = "Could not keep this order on the device.";
 
 const FIRST_KOT_ROUND = 1;
 const IDLE: PosSendState = { sending: null, frozen: null, notice: null };
@@ -169,6 +194,19 @@ export function createPosSend(ports: PosSendPorts): PosSend {
     // One write at a time: nothing else goes out over an unconfirmed send.
     if (again && again.scope !== scope) return;
     const key = again ? again.key : ports.mintKey();
+    // Printing Phase 5 (spec 5.1, 5.5, S3): only a send never attempted is kept on the device: one made while the
+    // page is already offline, or a round on an order made offline (its create is not on the server yet). A held send
+    // may already be on the server, so it never is (Send again repeats it; Task 12 parks it once offline).
+    const offline = job.offline;
+    if (!again && key !== undefined && offline !== undefined && ports.keepOffline !== undefined && (ports.offline?.() === true || (offline.base !== null && isOfflineOrderId(offline.base._id)))) {
+      inFlight = true;
+      commit({ ...state, sending: job.kind });
+      const kept = await ports.keepOffline({ ...job, offline }, key).catch((): SendOfflineKept => ({ kept: false, message: SEND_OFFLINE_NOT_KEPT }));
+      inFlight = false;
+      commit({ ...state, sending: null });
+      if (!mounted && kept.message !== null) return ports.toastUnmounted({ tone: kept.kept ? "success" : "warning", message: kept.message });
+      return offline.done(kept);
+    }
     const request = again ? again.request : job.request;
     const started = generation;
     inFlight = true;
@@ -177,6 +215,7 @@ export function createPosSend(ports: PosSendPorts): PosSend {
     try {
       order = await request(key);
     } catch (e) {
+      ports.onAnswer?.(e);
       inFlight = false;
       // Discarded meanwhile: the cart this request belonged to is gone.
       if (started !== generation) return commit({ ...state, sending: null });
@@ -194,6 +233,7 @@ export function createPosSend(ports: PosSendPorts): PosSend {
       const notice = unconfirmed(job.kind, again !== null, key !== undefined, authFailed);
       return commit({ sending: null, frozen: held ? job.kind : null, notice: { job: job.kind, notice } });
     }
+    ports.onAnswer?.(null);
     inFlight = false;
     if (started === generation) held = null;
     commit(IDLE);

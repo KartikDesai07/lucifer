@@ -41,3 +41,23 @@ test("Task 10: every read-modify-write of the outbox runs under its Web Lock; th
   assert.ok(hook.includes("if (event.key === OUTBOX_KEY || event.key === null) void offlineOutbox.refresh();"), "only the outbox key (or a clear)");
   assert.ok(hook.includes("if (snapshot.unreadable && offlineOutbox.claimUnreadableReport()) toast.warning(OUTBOX_UNREADABLE_MESSAGE);"), "the unreadable record is said once");
 });
+
+test("Task 11: the POS sends carry their offline facts; the payment sheet is offline-aware for a new sale only", () => {
+  const tab = src("apps/cafe/hooks/use-pos-tab.ts");
+  assert.ok(tab.includes("const send = usePosSend(useOfflineSend());"), "the keep port");
+  assert.ok(tab.includes("offline: { body: round ? round.data : create, shownTotal: total, base: resumedOrder, done: offlineDone(() => tabIdRef.current === startedFor && resetOrder()) },"), "Send to Kitchen's facts");
+  assert.ok(tab.includes("offline: { body: sale, shownTotal: modalTotals.total, base: null, done: offlineDone(() => { setPaymentOpen(false); resetOrder(); }) },"), "Pay Now's facts: the total taken");
+  const modal = src("apps/cafe/components/pos/PaymentModal.tsx");
+  assert.ok(modal.includes("const offlineSale = useServerReach().offline && newSale;"), "only a new sale (a settle waits: Task 15)");
+  assert.ok(modal.includes("<PaymentModeGrid modes={shownModes} mode={mode} onSelect={setMode} locked={locked} />"), "the modes offline");
+  assert.ok(modal.includes("picker={onSelectCustomer && !offlineSale && <CustomerSearch"), "no customer picker offline");
+  assert.ok(modal.includes("splitMismatch || !shownModes.includes(mode)));"), "a mode chosen before the outage is not sent offline");
+  assert.ok(modal.includes("<PaymentPoints points={points} disabled={locked || offlineSale} />"), "points need the internet");
+  const provider = src("apps/cafe/components/layout/PrintHostProvider.tsx");
+  assert.ok(provider.includes("queueSlip(slip, (result) => {"), "the offline slip rides the one bridge");
+  assert.ok(provider.includes('const deadline = window.setTimeout(() => resolve("maybe"), PRINT_AGENT_SLIP_DEADLINE_MS);'), "bounded as the agent's wait: maybe");
+  const send = src("apps/cafe/hooks/use-pos-send.ts");
+  assert.ok(send.includes("onAnswer: (error) => void reportWriteAnswer(error, serverReach, () => checkPulseReach(qc)),"), "each answer feeds the state; a miss is checked once");
+  const reads = src("apps/cafe/hooks/use-agent-printers.ts");
+  assert.ok(reads.includes('apiGet<PrinterConfig[] | PrintersRead>("/api/printers?stations=1")'), "the stations ride the one printers read");
+});

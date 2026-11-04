@@ -3,7 +3,7 @@
 // feed it, the header and the replay runner read it. Module state is this tab's state (one page per tab), so no
 // provider has to sit above all of them.
 
-import { ONLINE_STATE, nextOfflineState, type OfflineEvent, type OfflineState } from "./offline-state";
+import { ONLINE_STATE, nextOfflineState, reachOf, type OfflineEvent, type OfflineState, type ServerReach } from "./offline-state";
 
 export interface ServerReachStore {
   getState(): OfflineState;
@@ -42,4 +42,15 @@ export function feedBrowserOnline(
 ): () => void {
   if (!manager.isOnline()) store.report({ type: "browser", online: false });
   return manager.subscribe((online) => store.report({ type: "browser", online }));
+}
+
+/** An order write's answer (the send path, spec 5.1): one that came back (`null`) or reached us ends offline; one with
+ *  no answer is remembered and checked once at once (`check`: one pulse refetch, its retry included), and offline
+ *  starts only when that check gets no answer either. A check that throws is a miss. */
+export async function reportWriteAnswer(error: unknown, store: ServerReachStore, check: () => Promise<ServerReach>): Promise<void> {
+  const reach = error === null ? "reached" : reachOf(error);
+  store.report({ type: "write", reach });
+  if (reach === "reached") return;
+  const checked = await check().catch((): ServerReach => "unreached");
+  store.report({ type: "check", reach: checked });
 }

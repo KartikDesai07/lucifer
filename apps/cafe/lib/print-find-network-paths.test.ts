@@ -50,5 +50,5 @@ test("PIN (spec §12): the scan costs no request: the app's own local scan and t
   // Session 4D's review (m-B): the setup's printers are read from the page's cache, with no query observer of its own, so
   // opening a form never refetches the printers list (a stale list would refetch on mount).
   assert.ok(!src(FIND).includes("usePrintersRead("), "no printers query observer of its own");
-  assert.ok(src(FIND).includes("qc.getQueryData<PrinterConfig[]>(PRINTERS_KEYS.all) ?? NO_SETUP_PRINTERS"), "the setup's printers from the page's cache");
+  assert.ok(src(FIND).includes("printersOfRead(qc.getQueryData<PrintersRead>(PRINTERS_KEYS.all))"), "the setup's printers from the page's cache");
 });

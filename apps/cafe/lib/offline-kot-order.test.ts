@@ -107,11 +107,13 @@ test("a round on a tab counts the tab's rounds and the earlier offline ones", ()
   assert.equal("kotNumbers" in order, false, "the tab's ticket numbers are dropped: this round has none");
   assert.equal("tokenNumber" in order, false, "no token on a round");
   assert.equal(order.createdAt, SERVER_TAB.createdAt, "the KOT's Time line reads the tab's open time, as an online round's KOT does");
-  // A round on an order made offline: that order has no server number yet, so the round reads its own offline number.
+  // A round on an order made offline (the owner's ruling 13 (b), 2026-11-04): the Order row reads the order's own
+  // number, its create's O-n, so the kitchen joins both slips; the banner keeps the round's own O-n.
   const local = stamp({});
   const chained = stamp({ ref: "O-4", round: offlineRoundOf(local, 0), base: local, body: { customerName: "Walk-in", items: [CAKE] } });
   assert.equal(chained.kotRounds, 2, "the local order's round 1, then this one");
-  assert.equal(chained.orderId, "O-4", "no server id on the base: the round's own offline number");
+  assert.equal(chained.orderId, "O-3", "the Order row reads the create's offline number");
+  assert.equal(offlineKotSlip(chained, 2, "O-4").banner, "OFFLINE · O-4", "the banner reads the round's own");
 });
 
 test("skip-KOT and the kitchen order are stamped as the server stamps them", () => {

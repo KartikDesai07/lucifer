@@ -335,7 +335,7 @@ test("PIN (3B): the panel and the alarm name the slip's printer for its problem;
   const card = src("apps/cafe/components/print/WaitingSlipsCard.tsx");
   assert.ok(card.includes("const groups = printWaitingGroups(rows ?? [], Date.now(), printers);"), "the panel's reasons name the printer");
   const alarm = src("apps/cafe/hooks/use-print-slip-alarm.ts");
-  assert.ok(alarm.includes("printAlarmMessage(row, printerNameOf(qc.getQueryData<PrinterConfig[]>(PRINTERS_KEYS.all) ?? [], row.printerId))"), "the notice names it from the printers already read");
+  assert.ok(alarm.includes("printAlarmMessage(row, printerNameOf(printersOfRead(qc.getQueryData<PrintersRead>(PRINTERS_KEYS.all)), row.printerId))"), "the notice names it from the printers already read");
 });
 
 test("2C: a waiting slip's printer by name; none for simple mode, a printer no longer listed, or no printer at all", () => {

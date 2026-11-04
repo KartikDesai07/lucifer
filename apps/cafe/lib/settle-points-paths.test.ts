@@ -56,7 +56,8 @@ test("PIN: the row is one shadcn switch in a >=44px row, disabled while the popu
 
 test("PIN: PaymentModal shows the row only when told to, locks it with the rest, and confirms the ticked points", () => {
   const s = code(MODAL);
-  assert.ok(s.includes("{points?.show && <PaymentPoints points={points} disabled={locked} />}"), "the row, locked with the popup");
+  // Printing Phase 5 (spec 5.6): also locked offline on a new sale (points need the server's checks).
+  assert.ok(s.includes("{points?.show && <PaymentPoints points={points} disabled={locked || offlineSale} />}"), "the row, locked with the popup");
   assert.ok(s.includes("...(pointsNow > 0 ? { rewardPoints: pointsNow } : {}),"), "confirm adds rewardPoints only when ticked");
   assert.ok(s.includes("const pointsNow = points?.on ? points.row.amount : 0;"), "the figure shown is the figure sent");
   assert.ok(lineCount(MODAL) <= 300, `PaymentModal.tsx stays within 300 lines, got ${lineCount(MODAL)}`);

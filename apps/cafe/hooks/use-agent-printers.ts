@@ -4,7 +4,7 @@ import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { PRINT_SETUP_STALE_MS } from "@pos/shared/print-budget";
-import type { PrinterConfig } from "@pos/shared/print-printers";
+import type { PrinterConfig, StationConfig } from "@pos/shared/print-printers";
 import { useDesktopLan, useDesktopPrinterSnapshot, useDevicePrinter, useNativePool, usePrintLane } from "@/hooks/use-device-printer";
 import { apiGet } from "@/lib/api-client";
 import { isDesktopShell } from "@/lib/desktop-shell";
@@ -25,21 +25,37 @@ import { subscribeRealtime } from "@/lib/realtime-client";
 export const PRINTERS_KEYS = { all: ["printers"] as const };
 const PRINTERS_STALE_MS = PRINT_SETUP_STALE_MS;
 const NO_PRINTERS: PrinterConfig[] = [];
+const NO_STATIONS: StationConfig[] = [];
 const NO_IDS: readonly string[] = [];
+
+/** Printing Phase 5 (spec 5.3): the printers read carries the stations in the same one request (`?stations=1`), so an
+ *  offline KOT is routed on the device as the server routes it. An older server answers the plain list: no stations. */
+export interface PrintersRead {
+  printers: PrinterConfig[];
+  stations: StationConfig[];
+}
+
+export async function readPrinters(): Promise<PrintersRead> {
+  const data = await apiGet<PrinterConfig[] | PrintersRead>("/api/printers?stations=1");
+  return Array.isArray(data) ? { printers: data, stations: NO_STATIONS } : data;
+}
+
+/** The printers in the cache entry (a screen that reads it without an observer of its own). */
+export const printersOfRead = (data: PrintersRead | undefined): PrinterConfig[] => data?.printers ?? NO_PRINTERS;
 
 /** Session 2D: the printers read for a screen that only shows them (the dot, the bill printer, the setup page): the
  *  same cache entry as the agent's, without a print-setup subscription of its own, so an admin save costs one read
  *  per device, never one per screen (the 2D gate's review, M-5). `loaded` is false until the first answer (and again
  *  while a refetch has failed); `answered`: some answer is in hand (a failed refetch keeps it; the final Phase 2 gate). */
-export function usePrintersRead(enabled: boolean): { printers: PrinterConfig[]; loaded: boolean; failed: boolean; answered: boolean } {
+export function usePrintersRead(enabled: boolean): { printers: PrinterConfig[]; stations: StationConfig[]; loaded: boolean; failed: boolean; answered: boolean } {
   const query = useQuery({
     queryKey: PRINTERS_KEYS.all,
-    queryFn: () => apiGet<PrinterConfig[]>("/api/printers"),
+    queryFn: readPrinters,
     enabled,
     staleTime: PRINTERS_STALE_MS,
     refetchOnWindowFocus: true,
   });
-  return { printers: query.data ?? NO_PRINTERS, loaded: query.isSuccess, failed: query.isError, answered: query.data !== undefined };
+  return { printers: printersOfRead(query.data), stations: query.data?.stations ?? NO_STATIONS, loaded: query.isSuccess, failed: query.isError, answered: query.data !== undefined };
 }
 
 /** The agent's read: the same query, plus the one print-setup subscription. Session 2E: the Windows app's own printer
