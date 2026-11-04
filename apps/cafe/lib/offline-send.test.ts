@@ -173,3 +173,12 @@ test("Pay Now offline offers Cash, Online and Split only (spec 5.6); online ever
   assert.deepEqual(offlineSaleModes([...all], false), [...all], "online: unchanged");
   assert.match(PAY_OFFLINE_NOTE, /need the internet/, "the rest are shown as needing the internet");
 });
+
+test("a half-way send kept once offline is uncertain, and nothing of it prints by itself (S3)", () => {
+  const planned = planOfflineKeep(emptyOutbox(DAY), request({ print: false, uncertain: true }));
+  assert.ok(planned.ok, "kept");
+  if (!planned.ok) return;
+  assert.equal(planned.entry.uncertain, true, "uncertain: the replay is its check");
+  assert.ok(planned.entry.lines.every((l) => l.outcome === "later"), "no line printed here");
+  assert.ok(planned.plan.every((l) => !l.here), "the plan prints nothing");
+});

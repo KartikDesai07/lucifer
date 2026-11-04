@@ -82,7 +82,7 @@ test("S2: the hook is a thin shell — one controller per mount, the M1 key mint
   // effect keeps the keep port's latest function (a ref, no timer).
   assert.equal(count(src, "useEffect("), 2, "exactly two effects");
   assert.ok(src.includes("useEffect(() => send.mount(), [send]);"), "one is the mount");
-  assert.ok(src.includes("useEffect(() => {\n    keepRef.current = keepOffline;\n  }, [keepOffline]);"), "the other keeps the keep port current");
+  assert.ok(src.includes("useEffect(() => {\n    offlineRef.current = offline;\n  }, [offline]);"), "the other keeps the offline ports current");
   assert.ok(src.includes('const toastUnmounted = (t: UnmountedToast) => (t.tone === "success" ? toast.success(t.message) : toast.warning(t.message));'), "the toast port");
   assert.ok(src.includes('import { mintAttemptId } from "@/lib/pos-device-id";'));
   assert.ok(src.includes("useSyncExternalStore(send.subscribe, send.getState, send.getState)"));

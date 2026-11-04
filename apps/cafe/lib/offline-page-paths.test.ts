@@ -61,3 +61,12 @@ test("Task 11: the POS sends carry their offline facts; the payment sheet is off
   const reads = src("apps/cafe/hooks/use-agent-printers.ts");
   assert.ok(reads.includes('apiGet<PrinterConfig[] | PrintersRead>("/api/printers?stations=1")'), "the stations ride the one printers read");
 });
+
+test("Task 12: a held send is parked once offline, uncertain and with no paper; Print KOT here is staff's tap only", () => {
+  const send = src("apps/cafe/hooks/use-pos-send.ts");
+  assert.ok(send.includes("onOfflineChange: serverReach.subscribe,"), "the controller hears the page go offline");
+  assert.ok(send.includes("parkHeld: (held) => offlineRef.current?.park(held) ?? Promise.resolve(false),"), "the park port");
+  const hook = src("apps/cafe/hooks/use-offline-send.ts");
+  assert.ok(hook.includes("print: false, uncertain: true, ...ctx };"), "a parked send prints nothing by itself (S3)");
+  assert.equal((hook.match(/printEntryHere\(/g) ?? []).length, 1, "Print KOT here has one caller: staff's button");
+});

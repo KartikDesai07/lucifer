@@ -11,18 +11,19 @@
 // timers — the controller is created once per mounted POS, and its one effect
 // marks it mounted, so an answer after the operator left is toasted (K2).
 //
-// Printing Phase 5 (spec 5.1, 5.5): the controller also reads the page's offline state, keeps a send on the device
-// through `keepOffline` (hooks/use-offline-send.ts, read at call time: it changes with the menu and the printers), and
-// reports each online answer (one with no answer is checked once by a pulse refetch).
+// Printing Phase 5 (spec 5.1, 5.5, 5.7): the controller also reads the page's offline state and its changes, keeps a
+// send on the device or parks a held one (hooks/use-offline-send.ts, read at call time: they change with the menu and
+// the printers), and reports each online answer (one with no answer is checked once by a pulse refetch).
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
+import type { OfflineSendPorts } from "@/hooks/use-offline-send";
 import { reachOf, type ServerReach } from "@/lib/offline-state";
 import { mintAttemptId } from "@/lib/pos-device-id";
-import { createPosSend, SEND_OFFLINE_NOT_KEPT, type PosSendPorts, type UnmountedToast } from "@/lib/pos-send";
+import { createPosSend, SEND_OFFLINE_NOT_KEPT, type UnmountedToast } from "@/lib/pos-send";
 import { reportWriteAnswer, serverReach } from "@/lib/server-reach";
 
 const toastUnmounted = (t: UnmountedToast) => (t.tone === "success" ? toast.success(t.message) : toast.warning(t.message));
@@ -34,18 +35,20 @@ async function checkPulseReach(qc: QueryClient): Promise<ServerReach> {
   return state !== undefined && state.errorUpdatedAt > state.dataUpdatedAt ? reachOf(state.error) : "reached";
 }
 
-export function usePosSend(keepOffline?: PosSendPorts["keepOffline"]) {
+export function usePosSend(offline?: OfflineSendPorts) {
   const qc = useQueryClient();
-  const keepRef = useRef(keepOffline);
+  const offlineRef = useRef(offline);
   useEffect(() => {
-    keepRef.current = keepOffline;
-  }, [keepOffline]);
+    offlineRef.current = offline;
+  }, [offline]);
   const [send] = useState(() =>
     createPosSend({
       mintKey: mintAttemptId,
       toastUnmounted,
       offline: serverReach.isOffline,
-      keepOffline: (job, key) => keepRef.current?.(job, key) ?? Promise.resolve({ kept: false, message: SEND_OFFLINE_NOT_KEPT }),
+      onOfflineChange: serverReach.subscribe,
+      keepOffline: (job, key) => offlineRef.current?.keep(job, key) ?? Promise.resolve({ kept: false, message: SEND_OFFLINE_NOT_KEPT }),
+      parkHeld: (held) => offlineRef.current?.park(held) ?? Promise.resolve(false),
       onAnswer: (error) => void reportWriteAnswer(error, serverReach, () => checkPulseReach(qc)),
     }),
   );

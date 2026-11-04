@@ -128,3 +128,34 @@ test("a slip that cannot be drawn is a line that did not print (later), never a 
   if (result.kept === true) await result.printed;
   assert.deepEqual(stored().entries[0].lines.map((l: { outcome: string }) => l.outcome), ["later", "later"], "nothing printed");
 });
+
+test("Print KOT here prints a half-way send's here lines with its banner and records them; never twice", async () => {
+  const { printEntryHere } = await import("@/lib/offline-keep");
+  const { deps, slips, stored } = setup();
+  const parked = await keepOfflineSend(request({ print: false, uncertain: true }), deps);
+  assert.equal(parked.kept, true, "parked");
+  assert.equal(slips.length, 0, "nothing printed when it was parked");
+  const here = { base: null, menu: request().menu, routing: request().routing, hereIds: ["pr-kitchen"], simple: request().simple };
+  const first = await printEntryHere("k-1", here, deps);
+  assert.equal(first.printed, true, "printed");
+  await first.done;
+  assert.equal(slips.length, 1, "the here line only");
+  assert.equal(slips[0].banner, "OFFLINE · O-1", "its own offline number");
+  assert.deepEqual(stored().entries[0].lines.map((l: { outcome: string }) => l.outcome), ["printed", "later"], "recorded: the server marks it printed");
+  assert.equal(stored().entries[0].uncertain, true, "still uncertain: the replay is still its check");
+  const again = await printEntryHere("k-1", here, deps);
+  assert.equal(again.printed, false, "a second Print KOT here is refused");
+  assert.equal(slips.length, 1, "no second paper");
+});
+
+test("Print KOT here is only for a half-way send", async () => {
+  const { printEntryHere } = await import("@/lib/offline-keep");
+  const { deps, slips } = setup();
+  const kept = await keepOfflineSend(request(), deps);
+  if (kept.kept === true) await kept.printed;
+  const before = slips.length;
+  const here = { base: null, menu: request().menu, routing: request().routing, hereIds: ["pr-kitchen"], simple: request().simple };
+  assert.equal((await printEntryHere("k-1", here, deps)).printed, false, "an entry printed when it was kept");
+  assert.equal((await printEntryHere("missing", here, deps)).printed, false, "an entry that is gone");
+  assert.equal(slips.length, before, "nothing printed");
+});

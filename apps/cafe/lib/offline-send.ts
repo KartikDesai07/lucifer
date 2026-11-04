@@ -64,13 +64,40 @@ export interface OfflineKeepRequest {
   simple: { printsOwnSlips: boolean; canPrintNow: boolean };
   /** False: kept with no paper (a round on an order made offline sent while online: the server prints it). */
   print: boolean;
+  /** A held send parked once offline (spec 5.7): it may already be on the server; the replay is its check. */
+  uncertain?: boolean;
 }
+
+/** What the device needs to turn a round into its order and lines (spec 5.3). */
+export type OfflinePlanContext = Pick<OfflineKeepRequest, "menu" | "routing" | "hereIds" | "simple">;
 
 export type OfflineKeepPlan =
   | { ok: true; record: OutboxRecord; entry: OutboxEntry; plan: OfflineLinePlan[] }
   | { ok: false; reason: "full" | "duplicate" | "too-many-lines" | "number" | "order-sent" };
 
 const str = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
+const NO_SIMPLE = { printsOwnSlips: false, canPrintNow: false };
+
+/** The round's order (the server's own stamp, numbered as the server will) and its routed lines. `earlierRounds`: the
+ *  rounds of this order waiting before it on this device; an order made offline counts from its create (round 1). */
+export function offlineRoundPlan(
+  input: { key: string; ref: string; at: number; base: Order | null; body: Record<string, unknown>; earlierRounds: number },
+  ctx: OfflinePlanContext,
+): { plan: OfflineLinePlan[]; tableNo: string | undefined } {
+  const { base, body } = input;
+  const roundBase = base !== null && isOfflineOrderId(base._id) ? { ...base, kotRounds: 1 } : base;
+  const round = offlineRoundOf(roundBase, input.earlierRounds);
+  const tableNo = str(body.tableNo) ?? base?.tableNo;
+  const kotBody: OfflineKotBody = {
+    customerName: str(body.customerName) ?? base?.customerName ?? "",
+    ...(tableNo !== undefined ? { tableNo } : {}),
+    ...(str(body.receiver) !== undefined ? { receiver: str(body.receiver) } : {}),
+    ...(str(body.notes) !== undefined ? { notes: str(body.notes) } : {}),
+    items: (Array.isArray(body.items) ? body.items : []) as OfflineKotBody["items"],
+  };
+  const order = offlineKotOrder({ key: input.key, ref: input.ref, round, nowIso: new Date(input.at).toISOString(), base, body: kotBody, ...ctx.menu });
+  return { plan: offlineKotPlan({ order, round, routing: ctx.routing, hereIds: ctx.hereIds, simple: ctx.simple }), tableNo };
+}
 
 export function planOfflineKeep(record: OutboxRecord, req: OfflineKeepRequest): OfflineKeepPlan {
   const { base } = req;
@@ -87,21 +114,9 @@ export function planOfflineKeep(record: OutboxRecord, req: OfflineKeepRequest): 
   } catch {
     return { ok: false, reason: "number" };
   }
-  // The round the server will number it: a new order is 1; an order made offline counts from its create (round 1).
-  const roundBase = madeOffline ? { ...base, kotRounds: 1 } : base;
-  const round = offlineRoundOf(roundBase, offlineRoundsOf(record, local));
   const { idemKey: _key, ...body } = req.body;
   void _key;
-  const tableNo = str(body.tableNo) ?? base?.tableNo;
-  const kotBody: OfflineKotBody = {
-    customerName: str(body.customerName) ?? base?.customerName ?? "",
-    ...(tableNo !== undefined ? { tableNo } : {}),
-    ...(str(body.receiver) !== undefined ? { receiver: str(body.receiver) } : {}),
-    ...(str(body.notes) !== undefined ? { notes: str(body.notes) } : {}),
-    items: (Array.isArray(body.items) ? body.items : []) as OfflineKotBody["items"],
-  };
-  const order = offlineKotOrder({ key: req.key, ref, round, nowIso: new Date(req.at).toISOString(), base, body: kotBody, ...req.menu });
-  const planned = offlineKotPlan({ order, round, routing: req.routing, hereIds: req.print ? req.hereIds : [], simple: req.print ? req.simple : { printsOwnSlips: false, canPrintNow: false } });
+  const { plan: planned, tableNo } = offlineRoundPlan({ key: req.key, ref, at: req.at, base, body, earlierRounds: offlineRoundsOf(record, local) }, req.print ? req : { ...req, hereIds: [], simple: NO_SIMPLE });
   if (planned.length > OFFLINE_LINES_MAX) return { ok: false, reason: "too-many-lines" };
   const entry: OutboxEntry = {
     key: req.key,
@@ -109,7 +124,7 @@ export function planOfflineKeep(record: OutboxRecord, req: OfflineKeepRequest): 
     at: req.at,
     kind: base === null ? "create" : "round",
     sale: req.sale,
-    uncertain: false,
+    uncertain: req.uncertain === true,
     local,
     orderId: base === null ? null : madeOffline ? (siblings.find((e) => e.orderId !== null)?.orderId ?? null) : base._id,
     table: tableNo ?? "",

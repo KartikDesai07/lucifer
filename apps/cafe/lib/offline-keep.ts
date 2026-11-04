@@ -8,14 +8,17 @@ import { offlineLinesOf, type OfflineLinePlan } from "@/lib/offline-lines";
 import { patchEntry } from "@/lib/offline-outbox";
 import { SEND_OFFLINE_NOT_KEPT } from "@/lib/pos-send";
 import type { HostPrintSlip } from "@/lib/print-host-slips";
+import type { Order } from "@/types";
 import {
   OFFLINE_FULL_MESSAGE,
   OFFLINE_ORDER_SENT_MESSAGE,
   offlineKeptMessage,
+  offlineRoundPlan,
   planOfflineKeep,
   printOfflineLines,
   type OfflineKeepPlan,
   type OfflineKeepRequest,
+  type OfflinePlanContext,
   type OfflineSlipOutcome,
 } from "@/lib/offline-send";
 
@@ -57,25 +60,51 @@ export async function keepOfflineSend(req: OfflineKeepRequest, deps: OfflineKeep
   const { entry, plan } = outcome;
   const message = offlineKeptMessage({ ref: entry.ref, sale: req.sale, plan, print: req.print, nameOf: deps.nameOf });
   if (!plan.some((line) => line.here)) return { kept: true, message, printed: Promise.resolve() };
-  offlinePrinting.add(entry.key);
-  const printed = (async () => {
+  return { kept: true, message, printed: printHereLines(entry.key, entry.ref, plan, deps) };
+}
+
+/** Prints the plan's here lines through the bridge, then stores their outcomes; the replay waits meanwhile. */
+function printHereLines(key: string, ref: string, plan: readonly OfflineLinePlan[], deps: OfflineKeepDeps): Promise<void> {
+  offlinePrinting.add(key);
+  return (async () => {
     try {
       const outcomes = await printOfflineLines(plan, async (index) => {
         let slip: HostPrintSlip;
         try {
-          slip = deps.slipOf(plan[index], entry.ref);
+          slip = deps.slipOf(plan[index], ref);
         } catch {
           return "no"; // a slip this page cannot draw sent nothing: the line waits for the server
         }
         return deps.print(slip, plan[index]);
       });
       const lines = offlineLinesOf(plan, outcomes);
-      await deps.update((record) => (record.entries.some((e) => e.key === entry.key) ? patchEntry(record, entry.key, { lines }) : null));
+      await deps.update((record) => (record.entries.some((e) => e.key === key) ? patchEntry(record, key, { lines }) : null));
     } catch {
       // The entry keeps its here lines as "maybe": the server prints them as REPRINT, never unlabelled.
     } finally {
-      offlinePrinting.delete(entry.key);
+      offlinePrinting.delete(key);
     }
   })();
-  return { kept: true, message, printed };
+}
+
+/** Spec 5.7's "Print KOT here" for a half-way send (staff were told it may print twice): its here lines print with its
+ *  own banner, kept as "maybe" first, then their outcomes, so the server marks them printed. Only for an uncertain
+ *  entry whose lines never printed here, and never while it is being sent. `base`: the tab a round was added to. */
+export async function printEntryHere(key: string, ctx: OfflinePlanContext & { base: Order | null }, deps: OfflineKeepDeps): Promise<{ printed: false } | { printed: true; message: string; done: Promise<void> }> {
+  let found: { ref: string; plan: OfflineLinePlan[] } | null = null;
+  const written = await deps.update((record) => {
+    const index = record.entries.findIndex((e) => e.key === key);
+    const entry = record.entries[index];
+    if (entry === undefined || !entry.uncertain || entry.state === "sending" || entry.lines.some((l) => l.outcome !== "later") || offlinePrinting.has(key)) return null;
+    const earlierRounds = record.entries.slice(0, index).filter((e) => e.local === entry.local && e.kind === "round").length;
+    const body = (entry.body ?? {}) as Record<string, unknown>;
+    const { plan } = offlineRoundPlan({ key, ref: entry.ref, at: entry.at, base: ctx.base, body, earlierRounds }, ctx);
+    if (!plan.some((line) => line.here)) return null;
+    found = { ref: entry.ref, plan };
+    return patchEntry(record, key, { lines: plan.map((line) => ({ printerId: line.printerId, part: line.part, outcome: line.here ? "maybe" : "later" })) });
+  });
+  const ready = found as { ref: string; plan: OfflineLinePlan[] } | null;
+  if (written !== "written" || ready === null) return { printed: false };
+  const message = offlineKeptMessage({ ref: ready.ref, sale: false, plan: ready.plan, print: true, nameOf: deps.nameOf });
+  return { printed: true, message, done: printHereLines(key, ready.ref, ready.plan, deps) };
 }

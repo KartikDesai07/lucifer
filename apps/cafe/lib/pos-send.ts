@@ -53,6 +53,9 @@ export interface SendOfflineFacts {
 
 export type SendOfflineKept = { kept: true; message: string | null } | { kept: false; message: string };
 
+/** Printing Phase 5 (spec 5.7): a held send moved into the outbox once the page is offline: its key, the tap's time. */
+export type SendParked = { kind: SendKind; key: string; at: number; offline: SendOfflineFacts };
+
 /** What an answer after unmount says: it went through, or it could not be confirmed. */
 export interface UnmountedToast {
   tone: "success" | "warning";
@@ -70,6 +73,12 @@ export interface PosSendPorts {
   keepOffline?: (job: SendJob & { offline: SendOfflineFacts }, key: string) => Promise<SendOfflineKept>;
   /** Printing Phase 5 (spec 5.1): every online answer, null when one came back, else its error. */
   onAnswer?: (error: unknown) => void;
+  /** Printing Phase 5 (spec 5.7): keeps a held send as an uncertain entry (no paper); false when nothing was kept. */
+  parkHeld?: (held: SendParked) => Promise<boolean>;
+  /** Printing Phase 5: the offline state's changes, listened to while the POS is mounted. */
+  onOfflineChange?: (listener: () => void) => () => void;
+  /** The tap's time (a held send's entry keeps it). */
+  now?: () => number;
 }
 
 export interface SendNotice {
@@ -122,6 +131,8 @@ export const SEND_DISCARD_KITCHEN = "The order may already have reached the kitc
 export const SEND_DISCARD_PAY = "The sale may already be saved. Check Orders before taking payment again.";
 /** Printing Phase 5 (spec 5.2, risks): nothing could be kept, so nothing printed and the cart stays. */
 export const SEND_OFFLINE_NOT_KEPT = "Could not keep this order on the device.";
+/** Printing Phase 5 (spec 5.7): a held send kept on the device once offline; the replay is its check. */
+export const SEND_PARKED = "Saved on this device. It is sent by itself when the internet is back — it can never go through twice.";
 
 const FIRST_KOT_ROUND = 1;
 const IDLE: PosSendState = { sending: null, frozen: null, notice: null };
@@ -170,6 +181,9 @@ interface Held {
   key: string;
   /** Send again repeats exactly this — never a request rebuilt from the screen. */
   request: SendJob["request"];
+  /** Printing Phase 5: the first try's tap time and offline facts (a park keeps them). */
+  at: number;
+  offline?: SendOfflineFacts;
 }
 
 export function createPosSend(ports: PosSendPorts): PosSend {
@@ -194,10 +208,9 @@ export function createPosSend(ports: PosSendPorts): PosSend {
     // One write at a time: nothing else goes out over an unconfirmed send.
     if (again && again.scope !== scope) return;
     const key = again ? again.key : ports.mintKey();
-    // Printing Phase 5 (spec 5.1, 5.5, S3): only a send never attempted is kept on the device: one made while the
-    // page is already offline, or a round on an order made offline (its create is not on the server yet). A held send
-    // may already be on the server, so it never is (Send again repeats it; Task 12 parks it once offline).
-    const offline = job.offline;
+    // Printing Phase 5 (spec 5.1, 5.5, S3): only a send never attempted is kept on the device (made while offline, or a
+    // round on an order made offline); a held one may already be on the server: Send again repeats it, or it is parked.
+    const offline = again ? again.offline : job.offline;
     if (!again && key !== undefined && offline !== undefined && ports.keepOffline !== undefined && (ports.offline?.() === true || (offline.base !== null && isOfflineOrderId(offline.base._id)))) {
       inFlight = true;
       commit({ ...state, sending: job.kind });
@@ -208,6 +221,7 @@ export function createPosSend(ports: PosSendPorts): PosSend {
       return offline.done(kept);
     }
     const request = again ? again.request : job.request;
+    const at = again ? again.at : (ports.now ?? Date.now)();
     const started = generation;
     inFlight = true;
     commit({ ...state, sending: job.kind });
@@ -228,10 +242,11 @@ export function createPosSend(ports: PosSendPorts): PosSend {
         held = null;
         return commit(IDLE);
       }
-      held = key === undefined ? null : { kind: job.kind, scope, key, request };
+      held = key === undefined ? null : { kind: job.kind, scope, key, request, at, ...(offline !== undefined ? { offline } : {}) };
       if (!mounted) ports.toastUnmounted({ tone: "warning", message: job.kind === "pay" ? SEND_LOST_PAY : SEND_LOST_KITCHEN });
       const notice = unconfirmed(job.kind, again !== null, key !== undefined, authFailed);
-      return commit({ sending: null, frozen: held ? job.kind : null, notice: { job: job.kind, notice } });
+      commit({ sending: null, frozen: held ? job.kind : null, notice: { job: job.kind, notice } });
+      return park();
     }
     ports.onAnswer?.(null);
     inFlight = false;
@@ -240,6 +255,21 @@ export function createPosSend(ports: PosSendPorts): PosSend {
     // The page's print surface and toasts are gone: say it here, once, instead.
     if (!mounted) return ports.toastUnmounted({ tone: "success", message: job.kind === "pay" ? SEND_DONE_AWAY_PAY : SEND_DONE_AWAY_KITCHEN });
     job.confirm(order, key);
+  };
+
+  // Printing Phase 5 (spec 5.7, S3): once offline, a held send becomes an uncertain entry (no paper; the replay under its
+  // key is its check) and the cart is freed; sending while it is written (Discard waits); not kept → still held.
+  const park = async (): Promise<void> => {
+    const h = held;
+    if (h === null || h.offline === undefined || inFlight || !mounted || ports.parkHeld === undefined || ports.offline?.() !== true) return;
+    inFlight = true;
+    commit({ ...state, sending: h.kind });
+    const parked = await ports.parkHeld({ kind: h.kind, key: h.key, at: h.at, offline: h.offline }).catch(() => false);
+    inFlight = false;
+    if (held !== h || !parked) return commit({ ...state, sending: null });
+    held = null;
+    commit(IDLE);
+    h.offline.done({ kept: true, message: SEND_PARKED });
   };
 
   return {
@@ -252,8 +282,10 @@ export function createPosSend(ports: PosSendPorts): PosSend {
     },
     mount: () => {
       mounted = true;
+      const stop = ports.onOfflineChange?.(() => void park());
       return () => {
         mounted = false;
+        stop?.();
       };
     },
     run,
