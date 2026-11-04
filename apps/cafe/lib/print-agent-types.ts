@@ -22,6 +22,8 @@ export interface PendingPrintAck {
   at: number;
   /** A failed ack that got no answer (M4); absent: a "printed" ack. */
   fail?: PrintAgentAckBody;
+  /** Printing Phase 5 (spec 5.10): when it was first kept, once time offline has moved `at` on (the 3 h cap). */
+  first?: number;
 }
 
 export interface PrintAgentDeps {
@@ -45,6 +47,8 @@ export interface PrintAgentDeps {
   networkPrinter?(job: LeasedPrintJob): boolean;
   readPending(): PendingPrintAck[];
   writePending(entries: PendingPrintAck[]): void;
+  /** Printing Phase 5 (spec 5.10): the page cannot reach the server: kept acks wait, with no 5 s timer. */
+  offline?(): boolean;
   now(): number;
   setTimer(fn: () => void, ms: number): unknown;
   clearTimer(handle: unknown): void;

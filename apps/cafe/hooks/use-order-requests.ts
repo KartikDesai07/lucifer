@@ -1,5 +1,6 @@
 "use client";
 
+import { throwIfOffline } from "@/lib/offline-guard";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -140,6 +141,7 @@ export function useAcceptOrderRequest(options?: UseAcceptOrderRequestOptions) {
       const result = await apiSend<AcceptResult & { printJobs?: unknown }>(`/api/order-requests/${id}/accept`, "POST", undefined, printAgentRequestOptions());
       return result.printJobs === undefined ? result : { ...result, order: { ...result.order, printJobs: result.printJobs } };
     },
+    onMutate: (variables) => throwIfOffline(variables),
     // FIX10 — a replayed accept did no new work server-side; say so instead
     // of promising a KOT that was already queued (and printed) the first time.
     onSuccess: (result) => {
@@ -168,6 +170,7 @@ export function useRejectOrderRequest() {
     mutationKey: ORDER_REQUEST_KEYS.mutation,
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       apiSend<TrayOrderRequest>(`/api/order-requests/${id}/reject`, "POST", { reason }),
+    onMutate: (variables) => throwIfOffline(variables),
     onSuccess: () => toast.success("Order request rejected"),
     onError: (err: Error) => {
       toast.error(err.message || "Could not reject the request. Check the connection, then try again.");

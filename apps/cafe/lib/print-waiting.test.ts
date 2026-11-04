@@ -242,7 +242,8 @@ test("PIN: the panel shows the waiting slips, the button shows their count, and 
   assert.ok(panel.indexOf("<WaitingSlipsCard pulse={pulse} />") < panel.indexOf("<PrinterStatusBanner"), "first: what needs a person, before the printer's status and setup");
   const button = src("apps/cafe/components/print/PrinterStatusButton.tsx");
   assert.match(button, /const waiting = usePrintWaitingCount\(\);/, "a narrow context, never the wide pulse");
-  assert.match(button, /const name = printWaitingName\(printerButtonName\(dot\), waiting\);/, "the count is part of the button's name");
+  // Printing Phase 5 (spec 5.10, deliberate change): offline the name says what a send does here instead.
+  assert.match(button, /const name = offlineHeader !== null \? offlineHeader\.name : printWaitingName\(printerButtonName\(dot\), waiting\);/, "the count is part of the button's name");
   assert.match(button, /\{waiting !== "" && \(/, "a count only when slips wait");
   const card = readFileSync(path.join(REPO_ROOT, "apps/cafe/components/print/WaitingSlipsCard.tsx"), "utf8");
   assert.ok(lines(card) <= 120, "WaitingSlipsCard stays <= 120 lines");

@@ -104,3 +104,26 @@ test("Task 14: the POS lists the orders made offline and their tables read taken
   const fix = src("apps/cafe/hooks/use-offline-fix.ts");
   assert.ok(fix.includes("fixRequestBody(facts.body, key, fix, facts.shownTotal)"), "a new key with the entry's offline lines");
 });
+
+test("Task 15: what waits offline is refused before any request; the reload, the idle lock and the kept acks wait", () => {
+  const count = (s: string, n: string) => s.split(n).length - 1;
+  const GUARD = "onMutate: (variables) => throwIfOffline(variables),";
+  assert.equal(count(src("apps/cafe/hooks/use-orders.ts"), GUARD), 3, "settle, move, cancel");
+  assert.equal(count(src("apps/cafe/hooks/use-order-requests.ts"), GUARD), 2, "QR accept and reject");
+  assert.equal(count(src("apps/cafe/hooks/use-print-host.ts"), GUARD), 1, "every client-started slip: reprints, Print bill, End of day");
+  assert.equal(count(src("apps/cafe/hooks/use-print-setup.ts"), GUARD), 5, "printer and station saves and deletes, a test print");
+  assert.ok(src("apps/cafe/hooks/use-item-void.ts").includes("if (refused !== null) return void toast.error(refused.message);"), "a void's dialog stays open");
+  for (const file of ["apps/cafe/app/(dashboard)/error.tsx", "apps/cafe/app/global-error.tsx"]) {
+    assert.ok(src(file).includes("return reloadWhenOnline(() => {"), `${file}: the automatic reload waits for the connection`);
+  }
+  assert.ok(src("apps/cafe/app/global-error.tsx").includes('import { reloadWhenOnline } from "@/lib/offline-reload";'), "the fallback imports only the small reload module");
+  assert.ok(src("apps/cafe/components/lock/ScreenLock.tsx").includes("if (openRef.current || serverReach.isOffline()) return;"), "the idle lock waits; a lock staff choose still works");
+  assert.ok(src("apps/cafe/hooks/use-print-agent.ts").includes("offline: () => serverReach.isOffline(),"), "kept acks wait offline, with no 5 s timer");
+  assert.ok(src("apps/cafe/components/reports/EndOfDayButton.tsx").includes("if (offlineWaiting > 0) return void toast.warning(offlineEodWarning(offlineWaiting));"), "End of day warns");
+  assert.ok(src("apps/cafe/components/print/PrinterStatusButton.tsx").includes('const tone = offlineHeader !== null ? "red" : printerDotTone(dot);'), "offline: the warn dot and its words");
+  // The slip design code is already loaded at start on every device: the one bridge (mounted in the shell's
+  // PrintHostProvider on every screen) starts its fetch on mount (useSlipCodePending), so an offline KOT draws in the
+  // cafe's design.
+  assert.ok(src("apps/cafe/hooks/use-print-host-bridge.ts").includes("const slipCodePending = useSlipCodePending();"), "the bridge loads it");
+  assert.ok(src("apps/cafe/components/layout/PrintHostProvider.tsx").includes("const bridge = usePrintHostBridge({ surfacesMounted });"), "on every screen");
+});

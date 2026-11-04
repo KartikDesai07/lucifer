@@ -632,7 +632,9 @@
     "lib/pos-send-park.test.ts",
     "lib/offline-replay.test.ts",
     "lib/offline-orders-view.test.ts",
-    "lib/offline-fix.test.ts"
+    "lib/offline-fix.test.ts",
+    "lib/offline-guard.test.ts",
+    "lib/print-ack-offline.test.ts"
   ],
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

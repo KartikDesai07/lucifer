@@ -1,6 +1,6 @@
-import { PRINT_ACK_PENDING_MAX_MS, PRINT_ACK_RETRY_MS } from "@pos/shared/print-lifecycle";
+import { PRINT_ACK_RETRY_MS } from "@pos/shared/print-lifecycle";
 import type { PrintAckData } from "@pos/shared/print-agent-wire";
-import { ackAnswered } from "@/lib/print-ack-store";
+import { ackAnswered, ackExpired, shiftPendingAcks } from "@/lib/print-ack-store";
 import type { PendingPrintAck, PrintAgentDeps } from "@/lib/print-agent-types";
 
 // Printing redesign, Phase 1 Session 1C (spec §7.9): the agent's acks. A "printed" ack is kept in localStorage BEFORE
@@ -28,7 +28,7 @@ export interface AckFlusher {
   stop(): void;
 }
 
-type AckDeps = Pick<PrintAgentDeps, "deviceId" | "ack" | "readPending" | "writePending" | "now" | "setTimer" | "clearTimer">;
+type AckDeps = Pick<PrintAgentDeps, "deviceId" | "ack" | "readPending" | "writePending" | "now" | "setTimer" | "clearTimer" | "offline">;
 
 export function createAckFlusher(
   deps: AckDeps,
@@ -42,6 +42,8 @@ export function createAckFlusher(
 ): AckFlusher {
   let ackTimer: unknown = null;
   let flushing: Promise<void> | null = null;
+  // Printing Phase 5 (spec 5.10): since when the page could not reach the server (null: online).
+  let offlineSince: number | null = null;
 
   function keep(entry: PendingPrintAck): void {
     deps.writePending([...deps.readPending().filter((e) => e.id !== entry.id), entry].slice(-PRINT_ACK_PENDING_LIMIT));
@@ -52,6 +54,8 @@ export function createAckFlusher(
   }
 
   function retryLater(): void {
+    // Offline: no 5 s timer (the review's I6); the first flush once online sends them (the agent flushes first).
+    if (deps.offline?.() === true) return;
     if (hooks.stopped() || ackTimer !== null || deps.readPending().length === 0) return;
     ackTimer = deps.setTimer(() => {
       ackTimer = null;
@@ -60,13 +64,21 @@ export function createAckFlusher(
   }
 
   async function sendPending(): Promise<void> {
+    if (deps.offline?.() === true) {
+      offlineSince ??= deps.now();
+      return;
+    }
+    if (offlineSince !== null) {
+      deps.writePending(shiftPendingAcks(deps.readPending(), deps.now() - offlineSince));
+      offlineSince = null;
+    }
     // Re-read after each send, so an ack kept while this flush was on the wire goes out with it too.
     const tried = new Set<string>();
     for (;;) {
       const entry = deps.readPending().find((e) => !tried.has(`${e.id}:${e.epoch}`));
       if (entry === undefined) return;
       tried.add(`${entry.id}:${entry.epoch}`);
-      if (deps.now() - entry.at > PRINT_ACK_PENDING_MAX_MS) {
+      if (ackExpired(entry, deps.now())) {
         forget(entry);
         continue;
       }

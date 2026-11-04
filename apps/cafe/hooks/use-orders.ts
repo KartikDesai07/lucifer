@@ -1,5 +1,6 @@
 "use client";
 
+import { throwIfOffline } from "@/lib/offline-guard";
 import { useEffect } from "react";
 
 import {
@@ -341,6 +342,7 @@ export function useSettleOrder(options: { printsBill?: boolean } = {}) {
     mutationKey: ORDER_KEYS.mutation,
     mutationFn: ({ id, data }: { id: string; data: SettleOrderInput }) =>
       apiSend<Order>(`/api/orders/${id}/settle`, "POST", data, options.printsBill === true ? printAgentRequestOptions(true) : {}),
+    onMutate: (variables) => throwIfOffline(variables),
     onSuccess: (order) => toast.success(settledMessage(order)),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ORDER_KEYS.all });
@@ -362,6 +364,7 @@ export function useMoveOrderTable() {
     mutationKey: ORDER_KEYS.mutation,
     mutationFn: ({ id, tableNo }: { id: string; tableNo: string | null }) =>
       apiSend<Order>(`/api/orders/${id}/table`, "POST", { tableNo }, printAgentRequestOptions()),
+    onMutate: (variables) => throwIfOffline(variables),
     onError: (err: Error) => toast.error(err.message || "Could not move the table"),
     // No success toast — the caller shows the outcome and prints a slip.
     onSettled: () => {
@@ -382,6 +385,7 @@ export function useCancelOrder() {
     mutationKey: ORDER_KEYS.mutation,
     mutationFn: ({ id, data }: { id: string; data: CancelOrderInput }) =>
       apiSend<Order>(`/api/orders/${id}/cancel`, "POST", data),
+    onMutate: (variables) => throwIfOffline(variables),
     onSuccess: (order) => toast.success(`Order ${order.orderId} cancelled`),
     onError: (err: Error) =>
       toast.error(err.message || "Could not cancel order"),
