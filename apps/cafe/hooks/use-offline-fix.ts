@@ -67,6 +67,8 @@ interface OfflineFixPorts {
   armFix: (fix: OfflineFix | null) => void;
   /** A send is in flight or held: the fix waits for staff to finish it (the review's I2). */
   isLocked: () => boolean;
+  /** The cart holds unsent lines: the fix waits for staff to send or clear them (the 5C review's I2). */
+  hasUnsent: () => boolean;
   resetOrder: () => void;
   enterResume: (order: Order) => void;
   hydrate: (items: CartItem[]) => void;
@@ -83,7 +85,7 @@ export function useOfflineFix(ports: OfflineFixPorts): void {
     if (pending === null) return;
     const entry = offlineFixes.take();
     if (entry === null) return;
-    const refused = fixRefusalOf(ports.isLocked());
+    const refused = fixRefusalOf(ports.isLocked(), ports.hasUnsent());
     if (refused !== null) return void toast.error(refused);
     const body = (entry.body ?? {}) as Record<string, unknown>;
     const base = entry.kind === "round" ? cachedTab(qc, entry.orderId) : null;

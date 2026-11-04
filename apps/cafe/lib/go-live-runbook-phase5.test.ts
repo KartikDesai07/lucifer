@@ -69,6 +69,7 @@ test("PIN §1 (printing Phase 5, spec §7): the step states the outage rules: no
     "first make sure every device's Offline orders list is empty",
     "an order sent after the outage is saved for the person signed in then",
     "a round added offline to a tab may be printed as Round n and saved as Round n + 1 when another device added one meanwhile",
+    "the first order after the internet goes is often one",
   ]) {
     assert.ok(text.includes(phrase), `the Phase 5 release step says "${phrase}"`);
   }
@@ -124,6 +125,9 @@ test("PIN (printing Phase 5, spec §9 item 6): TEST-CHECKLIST's Phase 5 checks h
   for (const phrase of [
     "the demo cafe",
     "Unplug the router's internet mid-service",
+    // 5C review m3: an idle calm screen notices a real outage in up to about three minutes (two missed pulses).
+    "within about three minutes on a screen left alone",
+    "an order sent before its screen turned amber is kept as a half-way send and does not print by itself",
     "a new table, a round on a tab opened before the outage and a Pay Now",
     "on the counter and on a printing phone",
     `**${OFFLINE_LABEL} · O-1**`,

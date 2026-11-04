@@ -66,3 +66,12 @@ test("fix wave I2: Fix and send never replaces a send that is flying or held on 
   assert.equal(fixRefusalOf(false), null, "free: it opens");
   assert.match(OFFLINE_FIX_BUSY, /Send again or Discard/, "says what to do first");
 });
+
+// Session 5C review I2: a fix replaces the cart; unsent lines in it would be lost with no word (Resume asks first).
+test("Fix and send never replaces a cart that holds unsent lines", async () => {
+  const { fixRefusalOf, OFFLINE_FIX_BUSY, OFFLINE_FIX_CART } = await import("@/lib/offline-fix");
+  assert.equal(fixRefusalOf(false, true), OFFLINE_FIX_CART, "refused over unsent lines");
+  assert.equal(OFFLINE_FIX_CART, "The cart has items not sent yet. Send or clear them first, then Fix and send.", "says what to do first");
+  assert.equal(fixRefusalOf(true, true), OFFLINE_FIX_BUSY, "an open send is said first");
+  assert.equal(fixRefusalOf(false, false), null, "an empty cart (or a resumed tab with nothing new): it opens");
+});

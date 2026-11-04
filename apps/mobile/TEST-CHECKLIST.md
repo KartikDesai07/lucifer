@@ -465,7 +465,9 @@ app or the Windows app that prints its printers), a printing phone (the POS app 
 as the Bar's) and, if the cafe has one, a waiter phone with no printer. Two tabs opened before the test (a table each).
 
 - [ ] Unplug the router's internet mid-service (its internet cable, or the mobile data that feeds it); the Wi-Fi stays
-      on. Within about a minute every POS screen's printer button turns amber: "Offline — KOTs print here"
+      on. Wait until every POS screen's printer button turns amber: within about three minutes on a screen left alone,
+      sooner on a screen where an order is sent (an order sent before its screen turned amber is kept as a half-way send
+      and does not print by itself: Offline orders → **Print KOT here** prints it). It reads "Offline — KOTs print here"
       on the counter and the printing phone, "Offline — orders are kept on this device" on the waiter phone.
 - [ ] Three orders, on the counter and on a printing phone, each: a new table, a round on a tab opened before the
       outage and a Pay Now (Cash). Each KOT prints at once on the printers that device prints, with **OFFLINE · O-1**,

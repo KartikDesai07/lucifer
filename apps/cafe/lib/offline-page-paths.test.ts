@@ -144,8 +144,13 @@ test("Task 16: the calm pulse wired: the interval re-read from the cadence; a lo
 test("fix wave: the review's C1, I2, I3 and the sheet's mount, wired", () => {
   assert.ok(src("apps/cafe/hooks/use-offline-replay.ts").includes("const sendable = replaySendable(record);"), "C1: an entry a dead page left sending wakes the runner");
   const fix = src("apps/cafe/hooks/use-offline-fix.ts");
-  assert.ok(fix.includes("const refused = fixRefusalOf(ports.isLocked());"), "I2: a send flying or held is never replaced by a fix");
+  // 5C review I2: and never a cart with unsent lines (the POS hands whether it holds any).
+  assert.ok(fix.includes("const refused = fixRefusalOf(ports.isLocked(), ports.hasUnsent());"), "I2: a send flying or held, or unsent lines, are never replaced by a fix");
   assert.ok(src("apps/cafe/hooks/use-pos-tab.ts").includes("useOfflineFix({ armFix: send.armFix, isLocked: send.isLocked,"), "I2: the POS hands its lock");
+  assert.ok(src("apps/cafe/hooks/use-pos-tab.ts").includes("hasUnsent: () => newCount > 0 });"), "5C review I2: the POS hands its unsent lines");
+  // 5C review I1: Discard of an entry on the wire is refused in the outbox lock, and staff are told.
+  const sheetSrc = src("apps/cafe/components/pos/OfflineOrdersSheet.tsx");
+  assert.ok(sheetSrc.includes("refused = offlineDiscardRefusal(r, row.key);") && sheetSrc.includes("if (refused !== null) toast.error(refused);"), "I1: a discard racing a send is refused and said");
   assert.ok(src("apps/cafe/hooks/use-offline-send.ts").includes("void result.printed.then((missed) => missed !== null && toast.warning(missed));"), "I3: a here line that did not print is named");
   const sheet = src("apps/cafe/components/pos/OfflineOrdersSheet.tsx");
   const parent = sheet.slice(sheet.indexOf("export function OfflineOrdersSheet()"), sheet.indexOf("function OfflineOrdersPanel("));

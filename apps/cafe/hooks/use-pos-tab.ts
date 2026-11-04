@@ -441,7 +441,7 @@ export function usePosTab(receiver: string) {
     setPendingResume(null);
   };
   const cancelResume = () => setPendingResume(null);
-  useOfflineFix({ armFix: send.armFix, isLocked: send.isLocked, resetOrder, enterResume, hydrate, setTable, setCustomer, setNotes, payNow }); // Phase 5: Fix and send
+  useOfflineFix({ armFix: send.armFix, isLocked: send.isLocked, resetOrder, enterResume, hydrate, setTable, setCustomer, setNotes, payNow, hasUnsent: () => newCount > 0 }); // Phase 5: Fix and send
 
   // Every close of the payment popup: never in flight; an unconfirmed Pay Now
   // closes only through its confirmed Discard (R13, R-d); a finished notice ends the tab.

@@ -11,7 +11,10 @@ import type { OrderItem } from "@/types";
 /** The review's I2: a send flying or held ("Couldn't confirm") on the POS is never replaced by a fix. */
 export const OFFLINE_FIX_BUSY = "A send is still open on this POS. Tap Send again or Discard first, then Fix and send.";
 
-export const fixRefusalOf = (sendLocked: boolean): string | null => (sendLocked ? OFFLINE_FIX_BUSY : null);
+/** The 5C review's I2: a fix replaces the cart, so unsent lines in it are never dropped with no word. */
+export const OFFLINE_FIX_CART = "The cart has items not sent yet. Send or clear them first, then Fix and send.";
+
+export const fixRefusalOf = (sendLocked: boolean, unsentLines = false): string | null => (sendLocked ? OFFLINE_FIX_BUSY : unsentLines ? OFFLINE_FIX_CART : null);
 
 export interface OfflineFix {
   key: string;

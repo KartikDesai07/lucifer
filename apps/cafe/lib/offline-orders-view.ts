@@ -123,16 +123,30 @@ export function offlineRowsOf(record: OutboxRecord | null): OfflineRow[] {
   });
 }
 
+/** The 5C review's I1: an entry the runner is sending (or an order made offline one of whose rounds it is sending) is
+ *  never discarded: the server may save it this moment, and staff told "Nothing is saved" would ring it again. */
+export const OFFLINE_DISCARD_SENDING = "This order is being sent now: it cannot be discarded.";
+
+const discardedBy = (entry: OutboxEntry, key: string) => (e: OutboxEntry) => e.key === key || (entry.kind === "create" && e.local === entry.local && e.kind === "round");
+
+/** Why Discard cannot take this entry now; null when it can. Read inside the outbox lock. */
+export function offlineDiscardRefusal(record: OutboxRecord, key: string): string | null {
+  const entry = record.entries.find((e) => e.key === key);
+  if (entry === undefined) return null;
+  return record.entries.some((e) => discardedBy(entry, key)(e) && e.state === "sending") ? OFFLINE_DISCARD_SENDING : null;
+}
+
 /** Discard (staff, on purpose: S2): the entry, and for an order made offline every round added to it. */
 export function offlineDiscard(record: OutboxRecord, key: string): OutboxRecord {
   const entry = record.entries.find((e) => e.key === key);
-  if (entry === undefined) return record;
-  const gone = (e: OutboxEntry) => e.key === key || (entry.kind === "create" && e.local === entry.local && e.kind === "round");
+  if (entry === undefined || offlineDiscardRefusal(record, key) !== null) return record;
+  const gone = discardedBy(entry, key);
   return { ...record, entries: record.entries.filter((e) => !gone(e)) };
 }
 
-/** Send again (the same key, for a refusal that may have cleared). */
+/** Send again (the same key, for a refusal that may have cleared); an entry being sent is left as it is. */
 export function offlineSendAgain(record: OutboxRecord, key: string): OutboxRecord {
+  if (record.entries.some((e) => e.key === key && e.state === "sending")) return record;
   const next = patchEntry(record, key, { state: "waiting" });
   return { ...next, entries: next.entries.map((e) => (e.key === key ? omitMessage(e) : e)) };
 }

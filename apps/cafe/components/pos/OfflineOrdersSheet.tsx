@@ -4,6 +4,7 @@ import { useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
@@ -38,6 +39,7 @@ import {
   offlineBannerOf,
   offlineCountOf,
   offlineDiscard,
+  offlineDiscardRefusal,
   offlineRowsOf,
   offlineSendAgain,
   type OfflineRow,
@@ -115,7 +117,14 @@ function OfflineOrdersPanel({ onClose }: { onClose: () => void }) {
     const { kind, row } = asked;
     setAsked(null);
     if (kind === "discard") {
-      void update((r) => offlineDiscard(r, row.key));
+      // The 5C review's I1: read inside the outbox lock: an entry the runner took meanwhile stays, and staff are told.
+      let refused: string | null = null;
+      void update((r) => {
+        refused = offlineDiscardRefusal(r, row.key);
+        return refused === null ? offlineDiscard(r, row.key) : null;
+      }).then(() => {
+        if (refused !== null) toast.error(refused);
+      });
       return;
     }
     const entry = entryOf(row.key);

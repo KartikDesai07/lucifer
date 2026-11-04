@@ -95,6 +95,21 @@ test("Discard takes the entry and, for an order made offline, the rounds added t
   assert.deepEqual([again.state, again.message], ["waiting", undefined], "waiting again, the words cleared");
 });
 
+// Session 5C review I1: the runner can take an entry ("sending") between the Discard tap and its confirm; a discard
+// then would tell staff "Nothing is saved for it" while the server saves it, and they would ring it again.
+test("Discard and Send again never touch an entry that is being sent; the sheet says so", async () => {
+  const { offlineDiscardRefusal, OFFLINE_DISCARD_SENDING } = await import("@/lib/offline-orders-view");
+  const sending = record([entry({ state: "sending" }), entry({ key: "k9", local: "other", ref: "O-9" })]);
+  assert.equal(offlineDiscard(sending, "k1"), sending, "the entry on the wire stays");
+  assert.equal(offlineSendAgain(sending, "k1"), sending, "Send again leaves it too");
+  assert.equal(offlineDiscardRefusal(sending, "k1"), OFFLINE_DISCARD_SENDING, "the words for staff");
+  assert.equal(OFFLINE_DISCARD_SENDING, "This order is being sent now: it cannot be discarded.", "plain words");
+  const roundSending = record([entry({}), entry({ key: "k2", kind: "round", ref: "O-4", state: "sending" })]);
+  assert.equal(offlineDiscard(roundSending, "k1"), roundSending, "an order made offline stays while one of its rounds is on the wire");
+  assert.equal(offlineDiscardRefusal(roundSending, "k1"), OFFLINE_DISCARD_SENDING, "said for its rounds too");
+  assert.equal(offlineDiscardRefusal(sending, "k9"), null, "another entry discards as before");
+});
+
 test("the chip counts every entry and note", () => {
   assert.equal(offlineCountOf(null), 0, "none");
   assert.equal(offlineCountOf(record([entry({})], [{ key: "k0", ref: "O-1", text: "x", at: 1 }])), 2, "one entry, one note");

@@ -498,8 +498,9 @@ the offline KOT as they print any KOT today).
 - [ ] **End of day only when every device's Offline orders list is empty.** A device that still holds offline orders
       blocks its own End of day ("1 offline order is still on this device: send it before End of day."), but another
       device cannot see them, and a day closed before they are sent misses them.
-- [ ] **A send the internet cut half-way** (the order was on its way when the internet went) is kept and never
-      printed by itself: "Saved on this device. It is sent by itself when the internet is back — it can never go
+- [ ] **A send the internet cut half-way** (the order was on its way when the internet went, or was sent before the
+      screen had noticed the outage: the first order after the internet goes is often one; a screen left alone notices
+      within about three minutes) is kept and never printed by itself: "Saved on this device. It is sent by itself when the internet is back — it can never go
       through twice." If the kitchen needs it now: **Offline orders** → **Print KOT here**, which asks first: "If this
       order reached the server before the internet went, the kitchen may get it twice. This copy says OFFLINE."
 - [ ] **An order the server refuses after the outage** (its tab was closed on another device meanwhile, or an item
