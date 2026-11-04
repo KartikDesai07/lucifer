@@ -46,7 +46,7 @@ function deferred() {
 }
 
 /** `numbered` = the cafe prints bill numbers (the billNumbered port). */
-function harness(posts: Reply[] = [], gets: Reply[] = [], numbered = false) {
+function harness(posts: Reply[] = [], gets: Reply[] = [], numbered = false, payload: SettleOrderInput = PAYLOAD) {
   const log = {
     posts: 0,
     gets: 0,
@@ -66,9 +66,9 @@ function harness(posts: Reply[] = [], gets: Reply[] = [], numbered = false) {
     return r instanceof Error ? Promise.reject(r) : Promise.resolve(r);
   };
   const flow: SettleFlow = createSettleFlow({
-    send: (id, payload) => {
+    send: (id, sent) => {
       assert.equal(id, TAB_ID);
-      assert.equal(payload, PAYLOAD);
+      assert.equal(sent, payload);
       log.posts += 1;
       return answer(posts);
     },
@@ -91,7 +91,7 @@ function harness(posts: Reply[] = [], gets: Reply[] = [], numbered = false) {
     now: () => clock.t,
   });
   const unmount = flow.mount();
-  const tap = () => flow.submit(PENDING, PAYLOAD);
+  const tap = () => flow.submit(PENDING, payload);
   return { flow, log, tap, unmount, posts, gets, clock };
 }
 
@@ -232,6 +232,15 @@ test("6b: the bill changed elsewhere — onChanged with the fresh tab, and the o
   assert.equal(h.log.posts, 2, "the next tap is a POST");
   assert.equal(h.log.settled.length, 0, "a forgotten intent can never adopt a Completed order");
   assert.equal(kindOf(h.flow), "elsewhere");
+});
+
+test("6c (T1 echo): moved to another table elsewhere at the SAME total is 'changed' too — the 409's read uses the table it saw", async () => {
+  const moved = order({ tableNo: "T-2" });
+  const h = harness([http(409, "Tab changed — reopen it and try again")], [moved], false, { ...PAYLOAD, expectedTableNo: "T-1" });
+  await h.tap();
+  assert.deepEqual(h.log.changed, [moved], "onChanged re-reads the moved tab into the POS (its override fence then clears the change)");
+  assert.equal(kindOf(h.flow), "changed");
+  assert.equal(h.log.posts, 1);
 });
 
 test("7: a 409 after an unanswered attempt whose read shows our settle adopts it — exactly one onSettled", async () => {

@@ -28,6 +28,7 @@ import { nextPrintedNumber } from "@/lib/slip-numbers";
 import { withKitchenFlags } from "@/lib/kitchen-lines-server";
 import { stampModifierPrices } from "@/lib/modifier-price-stamp";
 import { voidGuardFilter } from "@/lib/order-void";
+import { tableGuardFilter } from "@/lib/order-table-move";
 import { addItemsSchema } from "@/schemas";
 import { checkItemVariations, checkItemRemovedModifiers } from "@/lib/variations";
 import { orderLinesRefusal, MENU_REFUSAL_STATUS } from "@/lib/order-availability";
@@ -49,7 +50,7 @@ import { shouldStoreDiscountKind } from "@pos/shared/reward-redemption";
 import { buildKotIdemKeys } from "@pos/shared/order-idem";
 import { idemGuardFilter, roundReplayResponse, roundReplayAfterMiss } from "@/lib/order-idem";
 import { settledValue } from "@/lib/settled";
-import { settleCharges } from "@/lib/settle-charges";
+import { chargeAmountSeenAt, settleCharges } from "@/lib/settle-charges";
 import { buildKotPrintDevices, createOrderPrintJobs, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
 import { offlineKeptAt, withOfflineEcho } from "@/lib/print-offline-jobs";
 import { offlineAskOf, offlineReplayAnswer, offlineSlipsUnmade } from "@/lib/print-offline-replay";
@@ -176,8 +177,10 @@ export async function POST(req: Request, { params }: Params) {
     // The table lane is carried forward untouched unless the operator changed it (chargeAmount override,
     // 0 = waive; omitted = unchanged; T1: a sent amount > 0 bills only while the tab carries a table entry,
     // see lib/settle-charges.ts). A round never RE-READS the table: the charge was snapshotted when the
-    // tab opened. Extras are their own list, replaced wholesale only when the body sends one.
-    const charges = settleCharges(chargesFromOrder(old), parsed.data.chargeAmount, parsed.data.extraCharges);
+    // tab opened. Extras are their own list, replaced wholesale only when the body sends one. T1 echo: a change made
+    // at a table the tab has since left (moved on another device) is dropped, so the new table's own charge applies.
+    const chargeAmount = chargeAmountSeenAt(parsed.data.chargeAmount, parsed.data.expectedTableNo, old.tableNo);
+    const charges = settleCharges(chargesFromOrder(old), chargeAmount, parsed.data.extraCharges);
     // CB-CHG — computeOrderTotals takes the table portion and the extras
     // portion SEPARATELY (the table charge keeps its shipped TABLE_CHARGE_MAX
     // ceiling; extras ride on top uncapped — decision 8).
@@ -226,6 +229,8 @@ export async function POST(req: Request, { params }: Params) {
       payment: "Unpaid",
       kotRounds: old.kotRounds ?? 0,
       ...voidGuardFilter(old.voids?.length ?? 0),
+      // T1 — the table the charges were priced from: a move landing in this window misses us (the move's own term).
+      ...tableGuardFilter(old.tableNo),
       ...idemGuardFilter(key),
       // P2 — a claiming round also fences the bill's reward/promo state and customer (see order-reward-fence).
       ...(resolvedClaim || card ? rewardClaimOrderFence(old) : {}),

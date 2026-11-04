@@ -27,3 +27,20 @@ test("settleRefusal: an omitted echo is not checked (callers that do not hold th
   assert.equal(settleRefusal(open, {}), null);
   assert.equal(settleRefusal(open, { expectedVoids: 0 }), null);
 });
+
+test("settleRefusal: a tab moved to another table since the bill was priced is refused, even at the same total (T1 echo)", () => {
+  // Device B moved the tab from T-1 to T-2, both ₹50 tables: the total and the trail did not change.
+  const atT2 = { ...open, tableNo: "T-2" };
+  assert.equal(settleRefusal(atT2, { expectedTotal: 560, expectedVoids: 0 }), null, "regression witness: total + voids alone let it through");
+  assert.equal(settleRefusal(atT2, { expectedTotal: 560, expectedVoids: 0, expectedTableNo: "T-1" }), TAB_CHANGED);
+  assert.equal(settleRefusal(atT2, { expectedTotal: 560, expectedVoids: 0, expectedTableNo: "T-2" }), null, "the same table settles");
+});
+
+test("settleRefusal: a walk-in reads the same with no table, null or an empty name; seated or unseated elsewhere is a change", () => {
+  assert.equal(settleRefusal(open, { expectedTableNo: null }), null);
+  assert.equal(settleRefusal({ ...open, tableNo: null }, { expectedTableNo: null }), null);
+  assert.equal(settleRefusal({ ...open, tableNo: "" }, { expectedTableNo: null }), null);
+  assert.equal(settleRefusal(open, { expectedTableNo: "" }), null);
+  assert.equal(settleRefusal({ ...open, tableNo: "T-1" }, { expectedTableNo: null }), TAB_CHANGED, "seated elsewhere");
+  assert.equal(settleRefusal(open, { expectedTableNo: "T-1" }), TAB_CHANGED, "unseated elsewhere");
+});

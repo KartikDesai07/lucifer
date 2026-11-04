@@ -46,12 +46,14 @@ import { Order, type IOrder } from "@/models/Order";
 import { Table } from "@/models/Table";
 import { FREE_TABLE_FILTER, freeTableFilter, resolveTableCharge } from "@/lib/table-admin";
 import { resolveSettleMoney } from "@/lib/order";
-import { settleCharges } from "@/lib/settle-charges";
+import { chargeAmountSeenAt, settleCharges } from "@/lib/settle-charges";
+import { TAB_CHANGED, settleRefusal } from "@/lib/settle-guard";
 import { reorderOps } from "@/lib/table-order";
 import {
   claimTableFilter,
   moveOrderFilter,
   occupyUpdate,
+  tableGuardFilter,
   RELEASE_UPDATE,
   tableUnavailableReason,
   TABLE_TAKEN_ERROR,
@@ -68,6 +70,7 @@ import {
   type OrderCharge,
 } from "@pos/shared/order-charges";
 import { chargeWriteFields } from "@/lib/order-charges-write";
+import { voidGuardFilter } from "@/lib/order-void";
 
 const SCRATCH_PREFIX = "pos_scratch_";
 const DEFAULT_URI = `mongodb://127.0.0.1:27017/${SCRATCH_PREFIX}table_move`;
@@ -967,6 +970,44 @@ async function moveChargeFenceLegs(): Promise<void> {
   await Table.updateOne({ tableNo: "F-50" }, { $set: { chargeAmount: 0 } });
   const billE = settleBill((await Order.findById(adminEdited._id).lean()) as unknown as IOrder, 30);
   check("T1 (e): the admin zeroing the table's charge after the tab opened does not stop settle billing the cashier's 30", billE.table === 30 && billE.total === 130);
+
+  // (f) the echo (2026-11-05): this POS holds a tab at F-50 with the cashier's 20 still unsent; ANOTHER device moves
+  // it (this POS never hears). The round/settle carry the table this POS held, F-50 — through the REAL helpers the
+  // add-round route (chargeAmountSeenAt -> settleCharges, pinned) and the settle route (settleRefusal, pinned) run.
+  await Table.create({ tableNo: "F-50B", capacity: 4, chargeAmount: 50, chargeLabel: "AC" });
+  const f80 = await moveTab(await openAt50("ORD-F5"), "F-80");
+  check("T1 (f) regression witness: WITHOUT the echo a round's stale 20 lands on the 80 table", addRoundTable(f80, 20) === 20);
+  check("T1 (f): a round sending 20 seen at F-50 on a tab moved to F-80 bills the 80", addRoundTable(f80, chargeAmountSeenAt(20, "F-50", f80.tableNo)) === 80);
+  check("T1 (f): ...and a waiver made at F-50 does not carry to F-80 either", addRoundTable(f80, chargeAmountSeenAt(0, "F-50", f80.tableNo)) === 80);
+  const fSame = await moveTab(await openAt50("ORD-F6"), "F-50B");
+  const seenAt50 = { expectedTotal: 150, expectedVoids: 0 };
+  check("T1 (f) setup: a move between two 50 tables leaves the stored total as the POS saw it", fSame.total === 150 && tableAmount(chargesFromOrder(fSame)) === 50);
+  check("T1 (f) regression witness: WITHOUT the echo that settle passes the guard (and would bill the stale 20)", settleRefusal(fSame, seenAt50) === null && settleBill(fSame, 20).table === 20);
+  check("T1 (f): a settle priced at F-50 on a tab now at F-50B is refused (the POS re-reads the tab first)", settleRefusal(fSame, { ...seenAt50, expectedTableNo: "F-50" }) === TAB_CHANGED);
+  check("T1 (f): a settle priced at the tab's own table passes", settleRefusal(fSame, { ...seenAt50, expectedTableNo: "F-50B" }) === null);
+  const fStay = (await Order.findById((await openAt50("ORD-F7"))._id).lean()) as unknown as IOrder;
+  check("T1 (f): an unmoved tab keeps the cashier's change: a round's 20 seen at F-50 bills 20", addRoundTable(fStay, chargeAmountSeenAt(20, "F-50", fStay.tableNo)) === 20);
+  check("T1 (f): an unmoved tab's settle with the echo passes and bills the 20", settleRefusal(fStay, { ...seenAt50, expectedTableNo: "F-50" }) === null && settleBill(fStay, 20).table === 20);
+
+  // (g) the reciprocal CAS: the echo is checked on the route's READ, so a move landing between that read and the
+  // write must make the write miss. The settle's terms (status, total, kotRounds, voids) and the add-round's
+  // (status, payment, kotRounds, voids) plus the table term, matched against Mongo after a real move (findOne: no write).
+  const raced = await openAt50("ORD-F8"); // the route's read, at F-50
+  const settleTerms = (o: IOrder) => ({ _id: o._id, status: "Pending", total: o.total, kotRounds: o.kotRounds ?? 0, ...voidGuardFilter(o.voids?.length ?? 0) });
+  const roundTerms = (o: IOrder) => ({ _id: o._id, status: "Pending", payment: "Unpaid", kotRounds: o.kotRounds ?? 0, ...voidGuardFilter(o.voids?.length ?? 0) });
+  check("T1 (g) setup: the unmoved tab matches the settle's and the round's CAS with the table term",
+    !!(await Order.findOne({ ...settleTerms(raced), ...tableGuardFilter(raced.tableNo) }).lean()) &&
+      !!(await Order.findOne({ ...roundTerms(raced), ...tableGuardFilter(raced.tableNo) }).lean()));
+  await moveTab(raced, "F-50B"); // another device, inside the window: same total, same rounds, same voids
+  check("T1 (g) regression witness: WITHOUT the table term both CAS filters still match the moved tab (they would clobber it)",
+    !!(await Order.findOne(settleTerms(raced)).lean()) && !!(await Order.findOne(roundTerms(raced)).lean()));
+  check("T1 (g): with the table term the settle's CAS misses the moved tab (409, nothing written)", !(await Order.findOne({ ...settleTerms(raced), ...tableGuardFilter(raced.tableNo) }).lean()));
+  check("T1 (g): with the table term the round's CAS misses the moved tab (409, nothing written)", !(await Order.findOne({ ...roundTerms(raced), ...tableGuardFilter(raced.tableNo) }).lean()));
+  // A walk-in (no tableNo stored) matches the absent-field form, and misses once seated elsewhere.
+  const walkIn = (await Order.create(buildOrder({ orderId: "ORD-F9" }))).toObject() as IOrder;
+  check("T1 (g): a walk-in tab (no table stored) matches the round's CAS", !!(await Order.findOne({ ...roundTerms(walkIn), ...tableGuardFilter(walkIn.tableNo) }).lean()));
+  await Order.updateOne({ _id: walkIn._id }, { $set: { tableNo: "F-NC" } });
+  check("T1 (g): ...and misses it once another device seats it", !(await Order.findOne({ ...roundTerms(walkIn), ...tableGuardFilter(walkIn.tableNo) }).lean()));
 }
 
 async function main(): Promise<void> {

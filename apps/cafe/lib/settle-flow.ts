@@ -88,7 +88,7 @@ interface Attempt {
  *  adopted as stored (numbering failed for good: the paper then matches the record). */
 export const BILL_NUMBER_WAIT_MS = 30 * 1000;
 
-const seenOf = (p: SettleOrderInput): SettleSeen => ({ expectedTotal: p.expectedTotal, expectedVoids: p.expectedVoids });
+const seenOf = (p: SettleOrderInput): SettleSeen => ({ expectedTotal: p.expectedTotal, expectedVoids: p.expectedVoids, expectedTableNo: p.expectedTableNo });
 
 export function createSettleFlow(ports: SettleFlowPorts): SettleFlow {
   let state: SettleFlowState = { busy: false, notices: new Map() };
