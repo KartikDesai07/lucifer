@@ -52,3 +52,12 @@ export function openedTotalAfterToggle(opened: number, prevTotal: number, nextTo
 export function splitAfterBillChange(s: SplitAmounts, total: number): SplitAmounts {
   return { cash: Math.max(0, total - s.online), online: s.online };
 }
+
+/** Printing Phase 5 (spec 5.6): offline, a new sale takes Cash, Online or Split only; points, Due, Credit and choosing a
+ *  customer need the server's checks. */
+export const OFFLINE_SALE_MODES: readonly PaymentMode[] = ["Cash", "Online", "Split"];
+export const PAY_OFFLINE_NOTE = "Offline: Cash, Online or Split only. Points, Due, Credit and choosing a customer need the internet.";
+
+export function offlineSaleModes(modes: PaymentMode[], offlineSale: boolean): PaymentMode[] {
+  return offlineSale ? modes.filter((mode) => OFFLINE_SALE_MODES.includes(mode)) : modes;
+}

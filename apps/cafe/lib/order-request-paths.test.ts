@@ -969,10 +969,12 @@ test("PIN: CR2.3 §20 — use-pos-pulse.ts is the ONLY refetchInterval in the pu
     1,
     "use-pos-pulse.ts must declare exactly one refetchInterval — a second poller in this module would double the pulse's own request rate",
   );
+  // Printing Phase 5 (spec 5.11, deliberate change): the interval is pulseIntervalMs's (REFETCH_INTERVALS.POS_PULSE 20 s
+  // lively, POS_PULSE_CALM 60 s quiet; lib/pos-pulse-cadence.test.ts pins both), never a hand-rolled constant.
   assert.match(
     src,
-    /refetchInterval:\s*REFETCH_INTERVALS\.POS_PULSE/,
-    "usePosPulse must poll on REFETCH_INTERVALS.POS_PULSE (20s), not a hand-rolled constant",
+    /refetchInterval:\s*\(q\) => currentPulseIntervalMs\(q\.state\.data\)/,
+    "usePosPulse must poll on the cadence's interval, not a hand-rolled constant",
   );
   assert.match(
     src,

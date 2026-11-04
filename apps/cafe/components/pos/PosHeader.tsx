@@ -6,6 +6,7 @@ import type { ComponentProps } from "react";
 import { cn } from "@/lib/utils";
 import { STATUS_CLASSES } from "@/lib/ui";
 import { switchView, type SwitchDot, type SwitchView } from "@/lib/pos-open-orders";
+import { useOfflineTabs } from "@/hooks/use-offline-tabs";
 import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { OpenTabsButton } from "@/components/pos/OpenTabsButton";
@@ -116,14 +117,16 @@ export const PosHeader = memo(function PosHeader({
   newCount,
   total,
 }: PosHeaderProps) {
-  const view = switchView({ resumedOrder, customerName, count, newCount, total }, openTabs);
+  // Printing Phase 5 (spec 5.5): the orders made offline are open tabs too ("Offline · O-3").
+  const tabs = useOfflineTabs(openTabs);
+  const view = switchView({ resumedOrder, customerName, count, newCount, total }, tabs);
   return (
     <>
       <PageHeader
         title="POS Terminal"
         phoneActions={
           <OpenTabsButton
-            tabs={openTabs ?? NO_OPEN_TABS}
+            tabs={tabs ?? NO_OPEN_TABS}
             currentId={resumedOrder?._id}
             onResume={onResumeTab}
             lastOrder={lastOrder}

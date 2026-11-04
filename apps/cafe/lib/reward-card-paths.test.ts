@@ -265,7 +265,7 @@ test("PIN (F3): a reward-resolve refusal answers a landed same-key twin first â€
   at(create, guarded, "the guarded create refusal");
   assert.equal(count(create, "failure(rewardR.message"), count(create, guarded), "every create reward refusal is late-replay guarded");
   const items = read(ITEMS);
-  const guardedRound = "if (!roundReward.ok) return (key ? await roundReplayAfterMiss(id, key, parsed.data.items) : null) ?? failure(roundReward.message, roundReward.status);";
+  const guardedRound = "if (!roundReward.ok) return (await lateRound()) ?? failure(roundReward.message, roundReward.status);"; // Phase 5: lateRound = roundReplayAfterMiss + the offline replay answer
   at(items, guardedRound, "the guarded add-round refusal");
   assert.equal(count(items, "failure(roundReward.message"), count(items, guardedRound), "every add-round reward refusal is replay guarded");
 });

@@ -24,11 +24,14 @@ export type ApiErrorKind = "http" | "network" | "timeout";
 export class ApiError extends Error {
   readonly status: number | null;
   readonly kind: ApiErrorKind;
-  constructor(message: string, kind: ApiErrorKind, status: number | null) {
+  /** The error answer was this app's own JSON envelope (not a host's error page): proof the app's server was reached. */
+  readonly enveloped: boolean;
+  constructor(message: string, kind: ApiErrorKind, status: number | null, enveloped = false) {
     super(message);
     this.name = "ApiError";
     this.kind = kind;
     this.status = status;
+    this.enveloped = enveloped;
   }
 }
 
@@ -37,7 +40,8 @@ const REQUEST_FAILED_MESSAGE = "Request failed";
 async function unwrap<T>(res: Response): Promise<T> {
   const body = (await res.json().catch(() => null)) as ApiEnvelope<T> | null;
   if (!body || !body.success) {
-    throw new ApiError(body && "error" in body ? body.error : REQUEST_FAILED_MESSAGE, "http", res.status);
+    const enveloped = body !== null && typeof body === "object" && typeof body.success === "boolean";
+    throw new ApiError(body && "error" in body ? body.error : REQUEST_FAILED_MESSAGE, "http", res.status, enveloped);
   }
   return body.data;
 }

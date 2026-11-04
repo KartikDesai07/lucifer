@@ -112,7 +112,8 @@ const PINS: PinCase[] = [
     check: (src) => {
       assert.match(src, /\{tone !== "none" && \(\s*<span\s+aria-hidden="true"\s+className=\{cn\(PRINTER_DOT_CLASS,/);
       assert.match(src, /data-printer-dot=\{tone\}/);
-      assert.ok(src.includes("const tone = printerDotTone(dot);"), "the tone attribute is none / green / red, from the lib's printerDotTone(");
+      // Printing Phase 5 (spec 5.10, deliberate change): offline the dot is the warn one ("red" draws the warn class).
+      assert.ok(src.includes('const tone = offlineHeader !== null ? "red" : printerDotTone(dot);'), "the tone attribute is none / green / red, from the lib's printerDotTone(");
       assert.ok(src.includes('tone === "green" ? PRINTER_DOT_OK_CLASS : PRINTER_DOT_WARN_CLASS'), "green draws the ok class, anything else the warn one");
     },
     mutate: (src) => src.replace('aria-hidden="true"', ""),

@@ -1,5 +1,6 @@
 "use client";
 
+import { throwIfOffline } from "@/lib/offline-guard";
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -67,6 +68,7 @@ export function useSavePrinter() {
   return useMutation({
     mutationFn: ({ id, body }: { id?: string; body: PrinterBody }) =>
       id === undefined ? apiSend<PrinterConfig>("/api/printers", "POST", body) : apiSend<PrinterConfig>(`/api/printers/${encodeURIComponent(id)}`, "PUT", body),
+    onMutate: (variables) => throwIfOffline(variables),
     onSuccess: () => qc.invalidateQueries({ queryKey: PRINTERS_KEYS.all }),
     onError: (err: Error) => toast.error(errorText(err, SAVE_ERROR)),
   });
@@ -76,6 +78,7 @@ export function useDeletePrinter() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiSend<{ deleted: true }>(`/api/printers/${encodeURIComponent(id)}`, "DELETE"),
+    onMutate: (variables) => throwIfOffline(variables),
     onSuccess: () => qc.invalidateQueries({ queryKey: PRINTERS_KEYS.all }),
     onError: (err: Error) => toast.error(errorText(err, DELETE_ERROR)),
   });
@@ -86,6 +89,7 @@ export function useDeletePrinter() {
 export function useTestPrinter() {
   return useMutation({
     mutationFn: (id: string) => apiSend<PrintJobRef>(`/api/printers/${encodeURIComponent(id)}/test`, "POST", {}, { headers: printAgentHeaders(readDeviceId()) }),
+    onMutate: (variables) => throwIfOffline(variables),
     onSuccess: (ref: PrintJobRef) => {
       if (ref.leased !== undefined) deliverLeasedJob(ref.leased);
       else if (ref.targetDeviceId === readDeviceId()) kickPrintAgent();
@@ -99,6 +103,7 @@ export function useSaveStation() {
   return useMutation({
     mutationFn: ({ id, body }: { id?: string; body: { name?: string; isDefault?: true } }) =>
       id === undefined ? apiSend<StationConfig>("/api/stations", "POST", body) : apiSend<StationConfig>(`/api/stations/${encodeURIComponent(id)}`, "PUT", body),
+    onMutate: (variables) => throwIfOffline(variables),
     onSuccess: () => qc.invalidateQueries({ queryKey: STATIONS_KEYS.all }),
     onError: (err: Error) => toast.error(errorText(err, SAVE_ERROR)),
   });
@@ -109,6 +114,7 @@ export function useDeleteStation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiSend<{ deleted: true }>(`/api/stations/${encodeURIComponent(id)}`, "DELETE"),
+    onMutate: (variables) => throwIfOffline(variables),
     onSuccess: () =>
       Promise.all([STATIONS_KEYS.all, PRINTERS_KEYS.all, CATEGORY_KEYS.all, PRODUCT_KEYS.all].map((queryKey) => qc.invalidateQueries({ queryKey }))),
     onError: (err: Error) => toast.error(errorText(err, DELETE_ERROR)),

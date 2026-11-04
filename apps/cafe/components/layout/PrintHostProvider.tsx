@@ -14,6 +14,9 @@ import {
 
 import { PrintHostDrain } from "@/components/print/PrintHostDrain";
 import { usePrintHostBridge, type HostPrintCurrent } from "@/hooks/use-print-host-bridge";
+import { offlineSlipOutcomeOf, type OfflineSlipOutcome } from "@/lib/offline-send";
+import { PRINT_AGENT_SLIP_DEADLINE_MS } from "@/lib/print-agent-slip";
+import type { HostPrintSlip } from "@/lib/print-host-slips";
 import { mintTabId, readDeviceId } from "@/lib/pos-device-id";
 import { readDevicePrefs, writeDevicePrefs } from "@/lib/pos-device-prefs";
 import { devicePrinter } from "@/lib/printer/device-printer";
@@ -60,6 +63,9 @@ export interface PrintHostContextValue {
    *  behind MasterDataProvider's first-load placeholder burned its claim and
    *  wedged the bridge for the rest of the tab's life. */
   reportSurfacesMounted: (mounted: boolean) => void;
+  /** Printing Phase 5 (spec 5.4): an offline KOT's slip through this one bridge, behind any slip already printing; no
+   *  lease, no ack, no request. "maybe" also when the bridge has not settled it in its agent's bound. */
+  queueOfflineSlip: (slip: HostPrintSlip) => Promise<OfflineSlipOutcome>;
 }
 
 const PrintHostContext = createContext<PrintHostContextValue | null>(null);
@@ -116,9 +122,21 @@ export function PrintHostProvider({ children }: { children: ReactNode }) {
   const bridge = usePrintHostBridge({ surfacesMounted });
   const { current, busy, kotRef, receiptRef, eodRef, setEodReady, queueSlip, queueTestSlip } = bridge;
 
+  const queueOfflineSlip = useCallback(
+    (slip: HostPrintSlip) =>
+      new Promise<OfflineSlipOutcome>((resolve) => {
+        const deadline = window.setTimeout(() => resolve("maybe"), PRINT_AGENT_SLIP_DEADLINE_MS);
+        queueSlip(slip, (result) => {
+          window.clearTimeout(deadline);
+          resolve(offlineSlipOutcomeOf(result));
+        });
+      }),
+    [queueSlip],
+  );
+
   const value = useMemo<PrintHostContextValue>(
-    () => ({ isHostDevice, deviceId, tabId, current, kotRef, receiptRef, eodRef, setEodReady, queueTestSlip, syncHostPref, reportSurfacesMounted }),
-    [isHostDevice, deviceId, tabId, current, kotRef, receiptRef, eodRef, setEodReady, queueTestSlip, syncHostPref, reportSurfacesMounted],
+    () => ({ isHostDevice, deviceId, tabId, current, kotRef, receiptRef, eodRef, setEodReady, queueTestSlip, syncHostPref, reportSurfacesMounted, queueOfflineSlip }),
+    [isHostDevice, deviceId, tabId, current, kotRef, receiptRef, eodRef, setEodReady, queueTestSlip, syncHostPref, reportSurfacesMounted, queueOfflineSlip],
   );
 
   // The lanes arm only once the surfaces exist: a claim is a CAS that marks the

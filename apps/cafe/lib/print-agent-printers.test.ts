@@ -362,7 +362,9 @@ test("PIN (2C final review, I-2): the pulse and the wake kick the agent only on 
 
 test("PIN (2C): the page reads the printers on mount, on a print-setup frame and on focus at most every 30 min; every agent and the drain use it", () => {
   const hook = src("apps/cafe/hooks/use-agent-printers.ts");
-  assert.match(hook, /queryFn: \(\) => apiGet<PrinterConfig\[\]>\("\/api\/printers"\),/);
+  // Printing Phase 5 (spec 5.3, deliberate change): the same one read carries the stations (?stations=1).
+  assert.match(hook, /queryFn: readPrinters,/);
+  assert.match(hook, /apiGet<PrinterConfig\[\] \| PrintersRead>\("\/api\/printers\?stations=1"\)/);
   assert.match(hook, /staleTime: PRINTERS_STALE_MS,/);
   assert.match(hook, /refetchOnWindowFocus: true,/);
   assert.match(hook, /if \(kind === "print-setup"\) void qc\.invalidateQueries\(\{ queryKey: PRINTERS_KEYS\.all \}\);/);

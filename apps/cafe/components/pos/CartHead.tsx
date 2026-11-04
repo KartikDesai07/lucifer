@@ -2,6 +2,7 @@
 
 import { useAreas } from "@/hooks/use-areas";
 import { useNow } from "@/hooks/use-now";
+import { useOfflineTables, useOfflineTabs } from "@/hooks/use-offline-tabs";
 import { cartTitle, tabMeta, tableAreaName, tableCellValue } from "@/lib/pos-cart-view";
 import { cn } from "@/lib/utils";
 import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
@@ -88,6 +89,9 @@ export function CartHead({
 }) {
   // The areas list the table picker already reads (same query, 24h fresh): no request of its own.
   const areas = useAreas();
+  // Printing Phase 5 (spec 5.5): an order made offline is an open tab, and its table reads taken.
+  const offlineTabs = useOfflineTabs(cells.openTabs);
+  const offlineTables = useOfflineTables(cells.tables);
   const tableNo = resumedOrder ? resumedOrder.tableNo : cells.table;
   const tableValue = tableCellValue(tableNo, tableAreaName(tableNo, cells.tables, areas.data));
   const customer = cells.customer;
@@ -143,10 +147,10 @@ export function CartHead({
         ) : (
           // A new order: today's table picker (occupied tiles with an open tab jump straight to that bill, F2).
           <TableSelector
-            tables={cells.tables}
+            tables={offlineTables}
             value={cells.table}
             onChange={cells.onTableChange}
-            tabs={cells.openTabs}
+            tabs={offlineTabs}
             onResume={cells.onResumeTab}
             trigger={
               <button

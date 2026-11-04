@@ -51,6 +51,8 @@ import { idemGuardFilter, roundReplayResponse, roundReplayAfterMiss } from "@/li
 import { settledValue } from "@/lib/settled";
 import { settleCharges } from "@/lib/settle-charges";
 import { buildKotPrintDevices, createOrderPrintJobs, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
+import { offlineKeptAt, withOfflineEcho } from "@/lib/print-offline-jobs";
+import { offlineAskOf, offlineReplayAnswer, offlineSlipsUnmade } from "@/lib/print-offline-replay";
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +81,8 @@ export async function POST(req: Request, { params }: Params) {
   if ("error" in parsed) return parsed.error;
   // Printing Phase 1 (lib/print-order-jobs.ts): null for a tab that prints its own slips.
   const intent = printIntentOf(req);
+  const offline = offlineAskOf(req, parsed.data.offline); // Printing Phase 5: a round taken offline (400 without a device id)
+  if ("error" in offline) return offline.error;
 
   try {
     await connectDB();
@@ -104,7 +108,10 @@ export async function POST(req: Request, { params }: Params) {
     if (!old) return notFound("Order not found");
     const key = parsed.data.idemKey;
     const replay = key ? roundReplayResponse(old, key, parsed.data.items) : null;
-    if (replay) return replay;
+    if (replay) return offlineReplayAnswer(replay, offline.ask, intent, authed.session.user.name, key);
+    // A twin of this send that landed first (re-read after a refusal or a lost CAS); Phase 5: with its offline field.
+    const lateRound = async () =>
+      key ? offlineReplayAnswer(await roundReplayAfterMiss(id, key, parsed.data.items), offline.ask, intent, authed.session.user.name, key) : null;
 
     // A product sold by size must never reach the kitchen as a bare name, and a
     // variation the product does not have must never be printed as if it did —
@@ -150,7 +157,7 @@ export async function POST(req: Request, { params }: Params) {
     // does not close, the race: a first try still in flight can land after
     // this 409 (same class as the stamps 409 below).
     const menuRefusal = orderLinesRefusal(products, parsed.data.items);
-    if (menuRefusal) return (key ? await roundReplayAfterMiss(id, key, parsed.data.items) : null) ?? failure(menuRefusal, MENU_REFUSAL_STATUS);
+    if (menuRefusal) return (await lateRound()) ?? failure(menuRefusal, MENU_REFUSAL_STATUS);
 
     const round = (old.kotRounds ?? 0) + 1;
     // Priced add-ons: stamp what each new line's picks were charged (the reward dish is added later and carries none).
@@ -190,7 +197,7 @@ export async function POST(req: Request, { params }: Params) {
       cfg: gstCfg,
       round,
     });
-    if (!roundReward.ok) return (key ? await roundReplayAfterMiss(id, key, parsed.data.items) : null) ?? failure(roundReward.message, roundReward.status);
+    if (!roundReward.ok) return (await lateRound()) ?? failure(roundReward.message, roundReward.status);
     fullItems = roundReward.fullItems;
     discountKind = roundReward.discountKind;
     const { resolvedClaim, card, rewardAssignment, rewardForTotals } = roundReward;
@@ -242,7 +249,9 @@ export async function POST(req: Request, { params }: Params) {
       ? await nextPrintedNumber("kot", printCfg.kot)
       : undefined;
     // P4-A — this round's fire instant, stamped ONCE so every reader of "now" in this request agrees.
-    const firedAt = new Date();
+    const nowMs = Date.now();
+    const kept = offlineKeptAt(parsed.data.offline, printCfg, nowMs); // Phase 5: the taken time, the arrival's day only
+    const firedAt = new Date(kept ?? nowMs);
     // Built POSITIONALLY, not appended. The slip is read back by index (use-pos-print: kotNumbers[kotRounds - 1])
     // and a tab can carry a SHORT array (opened before numbering shipped, or rounds fired while it was off).
     // Appending would file this round's ticket under an earlier round's index. 0 is a safe "never numbered"
@@ -264,7 +273,7 @@ export async function POST(req: Request, { params }: Params) {
     const kotIdemKeys = buildKotIdemKeys(old.kotIdemKeys, round, key);
     // Printing Phase 1 — same positional idiom: this round is the server's to print (and to repair)
     // only when this call site opted in. Undefined (nothing written) otherwise.
-    const kotPrintDevices = buildKotPrintDevices(old.kotPrintDevices, round, intent?.deviceId);
+    const kotPrintDevices = buildKotPrintDevices(old.kotPrintDevices, round, offline.ask === undefined ? intent?.deviceId : undefined);
 
     // CB-CHG — the ONE helper every charge writer uses (plan §4), so this
     // route can never hand-write the mirror or pick the wrong $set/$unset arm.
@@ -306,12 +315,12 @@ export async function POST(req: Request, { params }: Params) {
       const claimed = await claimRewardStamps(String(old.customerId), old.orderId, resolvedClaim.cost, rewardAssignment);
       // A twin with the same key may have landed (and claimed) first.
       if (!claimed) {
-        return (key ? await roundReplayAfterMiss(id, key, parsed.data.items) : null) ?? failure("Not enough stamps for that reward", 409);
+        return (await lateRound()) ?? failure("Not enough stamps for that reward", 409);
       }
     }
     // The card is claimed the same way: before the CAS, released only on its definite miss below.
     if (card && !(await claimRewardCard(String(old.customerId), card.id, old.orderId, card.now))) {
-      return (key ? await roundReplayAfterMiss(id, key, parsed.data.items) : null) ?? failure(CARD_NOT_USABLE, 409);
+      return (await lateRound()) ?? failure(CARD_NOT_USABLE, 409);
     }
     const updated = await Order.findOneAndUpdate(filter, update, {
       new: true,
@@ -327,7 +336,7 @@ export async function POST(req: Request, { params }: Params) {
       if (card) await releaseRewardCard(String(old.customerId), card.id, old.orderId);
       // F5 — the overlap twin that won this CAS may be our own send: answer
       // with the round that landed instead of a 409 the cashier would re-ring.
-      const late = key ? await roundReplayAfterMiss(id, key, parsed.data.items) : null;
+      const late = await lateRound();
       if (late) return late;
       return failure("Tab changed or already settled — reopen it and try again", 409);
     }
@@ -348,11 +357,13 @@ export async function POST(req: Request, { params }: Params) {
           leaseTabId: intent.leaseTabId,
           readyPrinterIds: intent.readyPrinterIds,
           billPrinterId: intent.billPrinterId,
+          offline: offline.ask,
           queuedBy: authed.session.user.name ?? "",
           nowMs: Date.now(),
-        })
+        }).catch(offlineSlipsUnmade)
       : null;
-    return success(withPrintJobs(updated, printJobs));
+    if (printJobs instanceof Response) return printJobs;
+    return success(withOfflineEcho(withPrintJobs(updated, printJobs), parsed.data.offline, kept));
   } catch (error) {
     return serverError("Failed to add items", error);
   }

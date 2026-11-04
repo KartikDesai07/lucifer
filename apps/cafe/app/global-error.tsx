@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { reloadWhenOnline } from "@/lib/offline-reload";
 import { fontVariables } from "@/lib/fonts";
 import { armChunkReload, chunkReloadStore, isChunkLoadError } from "@/lib/chunk-reload";
 import "./globals.css";
@@ -20,7 +21,10 @@ export default function GlobalError({
   const staleBuild = isChunkLoadError(error);
   useEffect(() => {
     if (!staleBuild) return;
-    if (armChunkReload(chunkReloadStore(), Date.now())) window.location.reload();
+    // Printing Phase 5 (spec 5.10): a reload without the internet cannot open the page: it waits for the connection.
+    return reloadWhenOnline(() => {
+      if (armChunkReload(chunkReloadStore(), Date.now())) window.location.reload();
+    });
   }, [staleBuild]);
 
   // Don't surface raw internal error text to users in production.

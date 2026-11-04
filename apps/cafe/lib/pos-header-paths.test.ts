@@ -33,7 +33,9 @@ test("PIN: PosHeader names the page through the header slot and hands it the swi
   const phone = src.slice(src.indexOf("phoneActions={"));
   assert.match(phone, /^phoneActions=\{\s*<OpenTabsButton\b/, "the Open orders panel and its trigger are the header's phone actions");
   assert.ok(src.includes("trigger={<SwitchOrderButton view={view} />}"), "the switch-order button opens the panel");
-  assert.match(src, /const view = switchView\(\{ resumedOrder, customerName, count, newCount, total \}, openTabs\);/, "its words come from lib/pos-open-orders.ts");
+  // Printing Phase 5 (deliberate change): the open tabs with the orders made offline merged (still undefined while loading).
+  assert.match(src, /const tabs = useOfflineTabs\(openTabs\);/, "the orders made offline are open tabs too");
+  assert.match(src, /const view = switchView\(\{ resumedOrder, customerName, count, newCount, total \}, tabs\);/, "its words come from lib/pos-open-orders.ts");
   assert.match(src, /import \{[^}]*\bswitchView\b[^}]*\} from "@\/lib\/pos-open-orders";/, "the pure helper");
   assert.ok(src.includes("onSelect={onTableChange}"), "the Floor hand-off still selects a table");
   // The body row's controls are gone: no KOT button of its own (it is the panel's foot), no row classes.
@@ -72,8 +74,9 @@ test("PIN: the switch-order button is the HTML's (values 1.2): sizes, parts, dot
   assert.ok(src.includes('className="truncate text-[11.5px] leading-[1.3] text-muted-foreground"'), "the sub line");
   // U1 final fix wave (the final review's minor 4): the pill waits for the open tabs' first answer.
   assert.match(src, /\{view\.count !== null && \(\s*<span data-ui="pos-switch-count" className=\{COUNT_CLASS\}>/, "no pill until the open tabs are known");
-  assert.ok(src.includes("switchView({ resumedOrder, customerName, count, newCount, total }, openTabs)"), "the header hands switchView the query's own data");
-  assert.ok(src.includes("tabs={openTabs ?? NO_OPEN_TABS}"), "the panel lists a stable empty list meanwhile");
+  // Printing Phase 5 (deliberate change): the query's own data with the orders made offline merged (useOfflineTabs).
+  assert.ok(src.includes("switchView({ resumedOrder, customerName, count, newCount, total }, tabs)"), "the header hands switchView the query's own data");
+  assert.ok(src.includes("tabs={tabs ?? NO_OPEN_TABS}"), "the panel lists a stable empty list meanwhile");
   const pill = literal("COUNT_CLASS");
   for (const t of ["flex", "h-[22px]", "flex-none", "items-center", "whitespace-nowrap", "rounded-[999px]", "bg-surface-3", "px-2", "text-[11.5px]", "font-semibold", "text-muted-foreground"]) {
     assert.ok(pill.includes(t), `the count pill: "${t}"`);

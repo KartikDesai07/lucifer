@@ -18,6 +18,7 @@ import { useRewardSelection } from "@/hooks/use-customer-rewards";
 import { useSettleFlow } from "@/hooks/use-settle-flow";
 import { useSettlePoints } from "@/hooks/use-settle-points";
 import { usePosSend } from "@/hooks/use-pos-send";
+import { offlineDone, useOfflineFix, useOfflineSend } from "@/hooks/use-offline-send";
 import { chargeOverrideAfterTabUpdate, moneyEditedSince } from "@/lib/pending-writes";
 import { kitchenSentMessage, kotRoundOfSend } from "@/lib/pos-send";
 import { holdUnsentWork } from "@/lib/page-refresh";
@@ -35,9 +36,9 @@ export function usePosTab(receiver: string) {
   const settings = useSettings();
   const createOrder = useCreateOrder();
   const addItems = useAddOrderItems();
-  // The one foreground Send to Kitchen / Pay Now (hooks/use-pos-send.ts); its
-  // lock freezes the cart's edits in flight and while a send is unconfirmed.
-  const send = usePosSend();
+  // The one foreground Send to Kitchen / Pay Now (hooks/use-pos-send.ts); its lock freezes the cart's edits in flight
+  // and while a send is unconfirmed. Printing Phase 5: offline, a send is kept on the device (hooks/use-offline-send.ts).
+  const send = usePosSend(useOfflineSend());
   // The POS app's Refresh warns harder while a send is in flight or unconfirmed: a reload forgets its retry key
   // (lib/page-refresh.ts; the release review's I2).
   const [sendToken] = useState(() => Symbol("pos-send"));
@@ -180,9 +181,8 @@ export function usePosTab(receiver: string) {
   // The popup's spinner: in flight only, so its Send again is never a dead button (M3).
   const paymentBusy = settleFlow.busy || send.sending !== null;
 
-  // Work that a browser tab/window close would silently discard: a half-built
-  // round (unsent items) or a resumed open tab mid-edit. Drives useUnsavedGuard
-  // on the POS page (owner report 2026-09-06).
+  // Work that a browser tab/window close would silently discard: a half-built round (unsent items) or a resumed open
+  // tab mid-edit. Drives useUnsavedGuard on the POS page (owner report 2026-09-06).
   const dirty = newCount > 0 || resumedOrder !== null;
 
   const resetOrder = () => {
@@ -203,9 +203,8 @@ export function usePosTab(receiver: string) {
   // R-d — Discard an unconfirmed send (after its confirm): the whole order goes.
   const discard = () => { setPaymentOpen(false); resetOrder(); };
 
-  // Picking a different table means a different charge, so a waiver made
-  // against the previous one is dropped rather than silently carried across to
-  // a table the operator never waived anything for.
+  // Picking a different table means a different charge, so a waiver made against the previous one is dropped rather
+  // than silently carried across to a table the operator never waived anything for.
   const selectTable = (next: string | undefined) => {
     setTable(next);
     setChargeOverride(undefined);
@@ -248,10 +247,9 @@ export function usePosTab(receiver: string) {
     ...overrides,
   });
 
-  // `kot: false` skips the print signal (void ticket = void slip, not a remake
-  // order); `keepUnfired: true` re-syncs after a void without dropping unsent lines
-  // it never touched — the fire path must leave it false, see nextCartFromServerItems.
-  // `keepMoney: true` (an unasked-for refresh) leaves edited discount/extras alone.
+  // `kot: false` skips the print signal (void ticket = void slip, not a remake order); `keepUnfired: true` re-syncs
+  // after a void without dropping unsent lines it never touched — the fire path must leave it false, see
+  // nextCartFromServerItems. `keepMoney: true` (an unasked-for refresh) leaves edited discount/extras alone.
   const applyTabUpdate = (
     order: Order,
     opts: { kot?: boolean; keepUnfired?: boolean; keepMoney?: boolean } = {},
@@ -316,6 +314,7 @@ export function usePosTab(receiver: string) {
         toast.success(kitchenSentMessage(order, round ? printed : null));
         if (tabIdRef.current === startedFor) resetOrder();
       },
+      offline: { body: round ? round.data : create, shownTotal: total, base: resumedOrder, done: offlineDone(() => tabIdRef.current === startedFor && resetOrder()) },
     });
   };
 
@@ -391,6 +390,7 @@ export function usePosTab(receiver: string) {
           setPaymentOpen(false);
           resetOrder();
         },
+        offline: { body: sale, shownTotal: modalTotals.total, base: null, done: offlineDone(() => { setPaymentOpen(false); resetOrder(); }) },
       });
     }
   };
@@ -429,9 +429,8 @@ export function usePosTab(receiver: string) {
     hydrate(order.items.map((it, i) => cartItemFromOrderItem(it, i)));
   };
 
-  // Resuming replaces the cart wholesale. If a fresh (unsent) cart is in
-  // progress, confirm first so those local items aren't silently discarded
-  // (mirrors the close-tab guard).
+  // Resuming replaces the cart wholesale. If a fresh (unsent) cart is in progress, confirm first so those local items
+  // aren't silently discarded (mirrors the close-tab guard).
   const requestResume = (order: Order) => {
     if (send.isLocked()) return;
     if (newCount > 0) setPendingResume(order);
@@ -442,6 +441,7 @@ export function usePosTab(receiver: string) {
     setPendingResume(null);
   };
   const cancelResume = () => setPendingResume(null);
+  useOfflineFix({ armFix: send.armFix, isLocked: send.isLocked, resetOrder, enterResume, hydrate, setTable, setCustomer, setNotes, payNow, hasUnsent: () => newCount > 0 }); // Phase 5: Fix and send
 
   // Every close of the payment popup: never in flight; an unconfirmed Pay Now
   // closes only through its confirmed Discard (R13, R-d); a finished notice ends the tab.

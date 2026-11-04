@@ -14,6 +14,8 @@ import { createReplayResponse, createReplayVerdict, findCreateReplay, isIdemKeyD
 import { withKitchenFlags } from "@/lib/kitchen-lines-server";
 import { stampModifierPrices } from "@/lib/modifier-price-stamp";
 import { createOrderPrintJobs, openingSlipsOf, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
+import { offlineKeptAt, offlineSaleTotalRefusal, withOfflineEcho } from "@/lib/print-offline-jobs";
+import { offlineAskOf, offlineReplayAnswer, offlineSlipsUnmade } from "@/lib/print-offline-replay";
 import cache from "@/lib/cache";
 import { created, failure, validateBody, requireAuth, isDuplicateKeyError, serverError } from "@/lib/api-helpers";
 import { generateOrderId, dayRange, orderSummaryCacheKey } from "@/lib/utils";
@@ -67,6 +69,8 @@ export async function POST(req: Request) {
   const data = parsed.data;
   // Printing Phase 1 (lib/print-order-jobs.ts): null for a tab that prints its own slips.
   const intent = printIntentOf(req);
+  const offline = offlineAskOf(req, data.offline); // Printing Phase 5: a round taken offline (400 without a device id)
+  if ("error" in offline) return offline.error;
 
   try {
     await connectDB();
@@ -96,7 +100,7 @@ export async function POST(req: Request) {
     // numbered by the replay once past BILL_NUMBER_SETTLE_MS. Awaited, so a
     // throw inside it still lands in this route's catch.
     const replayed = settledValue(replayR);
-    if (replayed) return await createReplayVerdict(replayed, data.items, printConfigOf(settledValue(settingsR)).bill);
+    if (replayed) return offlineReplayAnswer(await createReplayVerdict(replayed, data.items, printConfigOf(settledValue(settingsR)).bill), offline.ask, intent, authed.session.user.name);
 
     // A product sold by size must never reach the kitchen as a bare name, and a
     // variation the product does not have must never be printed as if it did —
@@ -135,7 +139,7 @@ export async function POST(req: Request) {
     // F5 — an overlap twin with the same send key may have landed while this
     // request was between its read wave and here: before refusing (or after
     // losing the insert on the key), answer with the order the twin made.
-    const lateReplay = async () => (data.idemKey ? createReplayResponse(data.idemKey, data.items, printCfg.bill) : null);
+    const lateReplay = async () => (data.idemKey ? offlineReplayAnswer(await createReplayResponse(data.idemKey, data.items, printCfg.bill), offline.ask, intent, authed.session.user.name) : null);
     // B2 - menu re-check: refuse a line whose item is gone, out of stock,
     // re-priced or renamed since the cashier picked it, before any pricing,
     // number, claim or write. lateReplay runs first so a twin of this send
@@ -321,6 +325,8 @@ export async function POST(req: Request) {
       data.paidAmount,
     );
     if ("error" in pay) return failure(pay.error, 400);
+    const totalRefusal = offlineSaleTotalRefusal(totals.total, data.offline, data.status); // before any number
+    if (totalRefusal) return (await lateReplay()) ?? failure(totalRefusal, 409);
 
     // A held "Unpaid" open tab is unpaid by definition and must NEVER require a
     // customer — the exclusion below is essential, don't "simplify" it away.
@@ -347,6 +353,7 @@ export async function POST(req: Request) {
     // Pay Now's bill: the SAME condition under which this route makes the server's bill job
     // below, named once so the stamp and the job can never drift apart.
     const printsBillNow = intent?.bill === true && data.status === "Completed";
+    const kept = offlineKeptAt(data.offline, printCfg, Date.now()); // Phase 5: the taken time, the arrival's day only
     const unnumberedDoc = {
       customerName: data.customerName,
       customerId,
@@ -407,7 +414,8 @@ export async function POST(req: Request) {
       // counts null). A second insert with the same key is refused by the index.
       ...(data.idemKey ? { idemKey: data.idemKey } : {}),
       // Printing Phase 1 — round 1 is the server's to print, so the repair sweep may re-create it.
-      ...(intent ? { kotPrintDevices: [intent.deviceId] } : {}),
+      ...(intent && offline.ask === undefined ? { kotPrintDevices: [intent.deviceId] } : {}),
+      ...(kept !== null ? { createdAt: new Date(kept) } : {}),
       // The bill's first print is NOW (the server prints it below), so the pay QR's
       // "Valid till" anchor rides the insert itself — no extra write, and the
       // duplicate-key retry re-sends this same doc, stamp included. A bill this
@@ -492,7 +500,7 @@ export async function POST(req: Request) {
     // Now twin that loses on the send key can never leave a gap in the bills.
     let slips: Awaited<ReturnType<typeof allocateOpeningSlips>>;
     try {
-      slips = await allocateOpeningSlips(printCfg, { kitchen: kot.kitchen });
+      slips = await allocateOpeningSlips(printCfg, { kitchen: kot.kitchen }, undefined, { token: data.offline === undefined });
     } catch (slipError) {
       // No insert has run, so this is a DEFINITE no-order: both claims go back.
       await Promise.allSettled([unclaimFor(orderId), unfencePromoFor(orderId)]);
@@ -613,11 +621,13 @@ export async function POST(req: Request) {
           leaseTabId: intent.leaseTabId,
           readyPrinterIds: intent.readyPrinterIds,
           billPrinterId: intent.billPrinterId,
+          offline: offline.ask,
           queuedBy: authed.session.user.name ?? "",
           nowMs: Date.now(),
-        })
+        }).catch(offlineSlipsUnmade)
       : null;
-    return created(withPrintJobs(numbered.value ?? landed, printJobs));
+    if (printJobs instanceof Response) return printJobs;
+    return created(withOfflineEcho(withPrintJobs(numbered.value ?? landed, printJobs), data.offline, kept));
   } catch (error) {
     return serverError("Failed to create order", error);
   }

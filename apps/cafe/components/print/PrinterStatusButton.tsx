@@ -17,6 +17,10 @@ import {
   PRINTER_ICON_BUTTON_CLASS,
 } from "@/components/print/printer-classes";
 import { useDotPrinters } from "@/hooks/use-agent-printers";
+import { useServerReach } from "@/hooks/use-server-reach";
+import { offlineHeaderOf } from "@/lib/offline-guard";
+import { readyPrinterIds } from "@/lib/print-agent-seams";
+import { canPrintNow } from "@/lib/printer/print-lane";
 import { useDesktopPrinterChosen, useDeviceOnline, useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
 import { printerButtonName, printerDotOf, printerDotTone, type PrinterDotTone } from "@/lib/printer/printer-dot";
 import { printWaitingName } from "@/lib/print-waiting";
@@ -44,9 +48,11 @@ export function PrinterStatusButton({ onToneChange }: { onToneChange?: (tone: Pr
   // Session 1D: how many slips wait for people, cafe-wide (the panel inside lists them).
   const waiting = usePrintWaitingCount();
   const dot = printerDotOf({ remote, isHostDevice, lane, local: snapshot.status, printers: dotPrinters, deviceOffline: !online, desktopChosen });
-  const name = printWaitingName(printerButtonName(dot), waiting);
+  // Printing Phase 5 (spec 5.10): offline, the button says what a send does here, in amber (the warn dot).
+  const offlineHeader = offlineHeaderOf({ offline: useServerReach().offline, printsHere: readyPrinterIds().length > 0 || (!dotPrinters.printersMode && canPrintNow()) });
+  const name = offlineHeader !== null ? offlineHeader.name : printWaitingName(printerButtonName(dot), waiting);
   // A printer that is only being checked draws no dot (never red while it connects).
-  const tone = printerDotTone(dot);
+  const tone = offlineHeader !== null ? "red" : printerDotTone(dot);
   // U1 Task 1 (design 6.1): the /pos header's clock block shows this same dot; the header takes the tone from here,
   // before the first paint (U1 final fix wave), so the dot is never one frame stale entering /pos.
   useLayoutEffect(() => onToneChange?.(tone), [onToneChange, tone]);

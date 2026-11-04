@@ -393,6 +393,47 @@ export function printJobFailedAtCreation(input: {
   };
 }
 
+/** Printing Phase 5 (spec 2026-11-03 §5.9): a KOT line the device printed while it could not reach the server is
+ *  born printed when its round arrives, so it is never leased, never announced and never printed again. */
+export function printJobPrintedAtCreation(input: {
+  labels: readonly PrintJobLabel[];
+  deviceId: string;
+  detail: string;
+  originDeviceId?: string;
+  nowMs: number;
+}): ReturnType<typeof printJobLifecycleInit> & { status: "printed"; printedAt: Date; printedBy: string; log: PrintJobLogEntry[] } {
+  return {
+    ...printJobLifecycleInit(input.nowMs, input.labels),
+    status: "printed",
+    printedAt: new Date(input.nowMs),
+    printedBy: input.deviceId,
+    log: [printJobCreatedLog(input.nowMs, input.originDeviceId), logEntry(input.nowMs, "printed", input.deviceId, input.detail)],
+  };
+}
+
+/** Printing Phase 5: a KOT line whose offline write may have put paper out is born queued as its one retry: REPRINT,
+ *  and the offline write counted as an attempt that may have reached paper (a second maybe ends it in failed). */
+export function printJobReprintAtCreation(input: {
+  labels: readonly PrintJobLabel[];
+  originDeviceId?: string;
+  nowMs: number;
+}): ReturnType<typeof printJobLifecycleInit> & { status: "queued"; log: PrintJobLogEntry[] } {
+  return {
+    ...printJobLifecycleInit(input.nowMs, addPrintLabel(input.labels, "REPRINT")),
+    status: "queued",
+    uncertainAttempts: 1,
+    log: [printJobCreatedLog(input.nowMs, input.originDeviceId)],
+  };
+}
+
+/** Printing Phase 5: the replay of an offline round (its key was used, its answer lost) whose line printed on the
+ *  device: a queued job never tried moves to printed, so it never prints a second time. A job with an attempt, or in
+ *  any other state, may already be on paper or be printing: it stays. The caller fences on attempts 0 too. */
+export function planOfflinePrinted(job: PrintJobLifecycle, deviceId: string, detail: string, nowMs: number): PrintJobPlan {
+  if (job.status !== "queued" || job.attempts !== 0) return { ok: false, reason: "wrong-status" };
+  return planned(printedPatch(nowMs, deviceId, "printed", detail));
+}
+
 /** leased → (lease ran out) the same as a "maybe sent" failure (§7.2). */
 export function planExpiry(job: PrintJobLifecycle, nowMs: number): PrintJobPlan {
   if (job.status !== "leased" || job.lease === undefined) return { ok: false, reason: "wrong-status" };

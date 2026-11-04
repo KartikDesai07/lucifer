@@ -5,7 +5,8 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
 import { usePrintCapabilities } from "@/hooks/use-device-printer";
-import { REFETCH_INTERVALS } from "@/lib/query";
+import type { PosPulseData } from "@pos/shared/self-order-alert";
+import { currentPulseIntervalMs } from "@/lib/pulse-cadence-now";
 import { nativeOn, nativeRequest } from "@/lib/printer/native-bridge";
 
 // Bluetooth-print plan W4 — the POS app side of being the print host. While
@@ -41,8 +42,9 @@ export function useNativeHostBackground(enabled: boolean, decided: boolean): voi
     announce();
     document.addEventListener("visibilitychange", announce);
     const offWake = nativeOn("app.wake", () => {
-      const updatedAt = qc.getQueryState(POS_PULSE_KEYS.all)?.dataUpdatedAt ?? 0;
-      if (Date.now() - updatedAt <= REFETCH_INTERVALS.POS_PULSE) return;
+      const state = qc.getQueryState<PosPulseData>(POS_PULSE_KEYS.all);
+      // Printing Phase 5 (spec 5.11, the review's I2): against the pulse's interval now, so an app device goes calm too.
+      if (Date.now() - (state?.dataUpdatedAt ?? 0) <= currentPulseIntervalMs(state?.data)) return;
       void qc.invalidateQueries({ queryKey: POS_PULSE_KEYS.all });
     });
     return () => {

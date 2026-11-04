@@ -182,7 +182,9 @@ test("PIN: the print order snapshot carries no points field (the bill prints Rew
 
 test("PIN (line cap): settle / orders routes did not grow past their pre-session size; the new libs stay under 300", () => {
   assert.ok(lines(SETTLE) <= 330, `settle route ${lines(SETTLE)} lines (was 329 + the trailing newline)`);
-  assert.ok(lines(CREATE) <= 627, `orders route ${lines(CREATE)} lines (was 626 + the trailing newline)`);
+  // Printing Phase 5 deliberately grew it 624 -> 634 lines for the offline field (its plan: about ten lines, every rule
+  // in lib/print-offline-*.ts).
+  assert.ok(lines(CREATE) <= 635, `orders route ${lines(CREATE)} lines (634 + the trailing newline since Phase 5)`);
   for (const rel of ["lib/reward-points-spend.ts", "lib/reward-points-cas.ts", "lib/settle-reward.ts", "lib/order-create-reward.ts", "lib/reward-cards-read.ts"]) {
     assert.ok(lines(rel) <= 300, `${rel} is ${lines(rel)} lines`);
   }

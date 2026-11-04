@@ -464,6 +464,64 @@ The order matters: the web first, then the 2.0.2 upload, then the demo cafe, the
 - [ ] **Before telling a client its printers are on text:** that printer's own text test, and the cafe's real
       printers through "Phase 4 checks (text KOTs, Find network printers)".
 
+### Existing cafes: the printing Phase 5 release
+
+Printing Phase 5 keeps the POS taking orders while the cafe's internet, or its server, is down: **KOTs now, the rest
+later**. A POS screen that cannot reach the server says so on its printer button, in amber: "Offline — KOTs print
+here" on a device that prints its own printers, "Offline — orders are kept on this device" on one that does not.
+**Send to Kitchen** then prints the KOT at once on the printers that device prints, with **OFFLINE · O-1** on top
+instead of a KOT number (O-1, O-2 … count on each device from 1 every cafe day), keeps the order on the device and
+says "Offline: KOT O-1 printed here. It is sent when the internet is back."; a KOT for a printer that another device
+prints waits for the internet, and a waiter phone with no printer says "Offline: order O-1 is kept on this device. It
+prints when the internet is back.". **Pay Now** offline takes Cash, Online or Split only ("Offline: Cash, Online or
+Split only. Points, Due, Credit and choosing a customer need the internet.") and prints the KOT; its bill prints when
+the internet is back. A new order kept offline shows in Open tabs as "Offline · O-1", and every kept order is listed
+under **Offline orders** beside the printer button. When the server answers again, each device sends its kept orders
+by itself, oldest first ("Offline orders sent: 2"): the server saves every line printed offline as printed, so the
+kitchen gets no second KOT, and the order gets its KOT numbers then. Settle, void, move, cancel, QR orders, reprints,
+**Print bill** and **End of day** wait for the internet ("Offline: this needs the internet. Try again once it is
+back."). The same release makes the POS's check of the server calm when the cafe is quiet (below). The web only:
+**no Worker change**, no data migration, no new setting and no app release (every POS app and the Windows app print
+the offline KOT as they print any KOT today).
+
+- [ ] **The web first.** Re-run the go-live run for the cafe (not `npm run deploy` alone). `GET /api/health`
+      answers 200. On that day no paper changes online: the offline path is used only during an outage.
+- [ ] **Reload every POS screen** that was open before the deploy: Refresh in the POS app, reload each browser tab,
+      quit and reopen the Windows app. A page from before the deploy works as before, without the offline path.
+- [ ] **Then the demo cafe**, for some days, before any client (the release gate): run
+      `apps/mobile/TEST-CHECKLIST.md` → "Phase 5 checks (offline KOTs)" there.
+- [ ] **Then the clients**, after the demo cafe's days and the Phase 5 checks passed. Tell each cafe's staff the
+      points below.
+- [ ] **Do not refresh or close the POS app during an outage:** a page that reloads without the internet cannot open
+      until it is back (the POS app says "Could not open the POS"). The orders kept on the device are not lost: they
+      are sent once the page opens again with the internet.
+- [ ] **End of day only when every device's Offline orders list is empty.** A device that still holds offline orders
+      blocks its own End of day ("1 offline order is still on this device: send it before End of day."), but another
+      device cannot see them, and a day closed before they are sent misses them.
+- [ ] **A send the internet cut half-way** (the order was on its way when the internet went, or was sent before the
+      screen had noticed the outage: the first order after the internet goes is often one; a screen left alone notices
+      within about three minutes) is kept and never printed by itself: "Saved on this device. It is sent by itself when the internet is back — it can never go
+      through twice." If the kitchen needs it now: **Offline orders** → **Print KOT here**, which asks first: "If this
+      order reached the server before the internet went, the kitchen may get it twice. This copy says OFFLINE."
+- [ ] **An order the server refuses after the outage** (its tab was closed on another device meanwhile, or an item
+      is no longer sold) waits under **Offline orders** with the reason: **Fix and send** opens it in the cart to change
+      and send, **Send again** tries once more, **Discard** drops it (its KOT is already in the kitchen). An order whose
+      total changed on the server (a price or an offer) is saved at the server's total, with a note on the device.
+- [ ] **What may differ after an outage** (tell the cafe admin): an order sent after the outage is saved for the
+      person signed in then; a round added offline to a tab may be printed as Round n and saved as Round n + 1 when
+      another device added one meanwhile; an order kept for more than 12 hours, or sent on another day, is saved at the
+      time it is sent, with a note.
+- [ ] **The calm check:** each POS screen checks the server every 20 seconds while anything needs it (an outage,
+      offline orders, a waiting slip, a slip for that device, an open QR request, its own order or bill in the last two
+      minutes, or the live connection not proven) and once a minute when the cafe is quiet. A slip that cannot print
+      rings its alarm 20–40 seconds after it on the device that sent it, and up to about 80 seconds after it on the
+      device that prints it (measured: 20 s and 37–43 s).
+- [ ] **If you roll the web back** to a release from before printing Phase 5: first make sure every device's Offline
+      orders list is empty, then reload every POS screen. A device on the new page with an older server keeps its
+      orders and says "Waiting: this POS's server must be updated before these orders can be sent."
+- [ ] **Before telling a client its POS takes orders offline:** the demo cafe's days and "Phase 5 checks (offline
+      KOTs)".
+
 
 ### Existing cafes: the PIN sign-in and new-look release
 
@@ -1043,7 +1101,9 @@ tap. How it prints depends on whether a print host is set
       after the last print activity and every 15 seconds when idle (at most
       14,400 quick checks a day), so a bill sent from a phone prints within a
       few seconds while the counter is busy; if the counter is a browser tab
-      and that tab is hidden it falls back to the 20-second refresh. The
+      and that tab is hidden it falls back to the 20-second refresh. That
+      refresh slows to once a minute while the cafe is quiet and the live
+      connection is proven (printing Phase 5). The
       desktop app keeps the 3-second cadence in the tray. Once printers are
       set up (printing Phase 2), the devices that print the printers check
       instead, sharing 14,000 quick checks a day between them.

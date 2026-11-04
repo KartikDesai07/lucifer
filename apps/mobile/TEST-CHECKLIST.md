@@ -458,6 +458,34 @@ The Bluetooth time (on the owner's Bluetooth printer, at the demo cafe):
       their ratio (off ÷ on). The next session writes them into the plan's Results
       (`docs/superpowers/plans/2026-10-15-printing-phase-4.md`).
 
+## Phase 5 checks (offline KOTs) (added 2026-11-04)
+
+Needs the demo cafe on the printing Phase 5 web with every POS screen reloaded, its real printers, the counter (the POS
+app or the Windows app that prints its printers), a printing phone (the POS app that prints one of the printers, such
+as the Bar's) and, if the cafe has one, a waiter phone with no printer. Two tabs opened before the test (a table each).
+
+- [ ] Unplug the router's internet mid-service (its internet cable, or the mobile data that feeds it); the Wi-Fi stays
+      on. Wait until every POS screen's printer button turns amber: within about three minutes on a screen left alone,
+      sooner on a screen where an order is sent (an order sent before its screen turned amber is kept as a half-way send
+      and does not print by itself: Offline orders → **Print KOT here** prints it). It reads "Offline — KOTs print here"
+      on the counter and the printing phone, "Offline — orders are kept on this device" on the waiter phone.
+- [ ] Three orders, on the counter and on a printing phone, each: a new table, a round on a tab opened before the
+      outage and a Pay Now (Cash). Each KOT prints at once on the printers that device prints, with **OFFLINE · O-1**,
+      **OFFLINE · O-2**, **OFFLINE · O-3** on top (each device counts its own) and no KOT number; a KOT for a printer
+      that the other device prints does not print yet ("… prints when the internet is back").
+- [ ] On a waiter phone: a new table. Nothing prints: "Offline: order O-1 is kept on this device. It prints when the
+      internet is back."
+- [ ] Open tabs shows each new table with "Offline · O-n"; **Offline orders** beside the printer button lists every
+      kept order; **Settle** on a tab says "Offline: this needs the internet. Try again once it is back."; End of day
+      is blocked on a device with offline orders.
+- [ ] Plug the internet back. Within about a minute each device says "Offline orders sent: 3" (the waiter phone "…
+      sent: 1"), its Offline orders list empties and its printer button is back to normal.
+- [ ] Then check: no second KOT for anything printed offline; a KOT that waited (the other device's printer, the
+      waiter phone's order) prints once, as a normal KOT; each Pay Now's bill prints once. In **Orders**: the orders,
+      their KOT numbers, the bills and the totals, each order once, with its table and items, its total the one the
+      device showed, its KOT numbers with no repeat; the tab with the offline round shows that round.
+- [ ] End of day only after every device's Offline orders list is empty; its figures include the offline sales.
+
 ## Result
 
 Date: ________  Device and Android version: ________________________

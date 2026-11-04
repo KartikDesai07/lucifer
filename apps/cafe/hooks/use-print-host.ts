@@ -1,5 +1,6 @@
 "use client";
 
+import { throwIfOffline } from "@/lib/offline-guard";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiSend } from "@/lib/api-client";
@@ -62,6 +63,7 @@ export function useEnqueuePrintJob() {
   return useMutation({
     mutationKey: PRINT_JOB_KEYS.mutation,
     mutationFn: ({ headers, ...input }: EnqueuePrintJobInput) => apiSend<PrintJobEnqueueResult>("/api/print-jobs", "POST", input, { headers }),
+    onMutate: (variables) => throwIfOffline(variables),
     onError: (err: Error) => toast.error(err.message || ENQUEUE_ERROR),
   });
 }

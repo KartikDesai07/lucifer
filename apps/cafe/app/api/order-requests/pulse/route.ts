@@ -64,6 +64,9 @@ export async function GET(req: Request) {
     return noStore(
       success({
         ...data,
+        // Printing Phase 5 (spec 2026-11-03 §5.8): this server reads an order request's `offline` field, so a device
+        // may send its offline rounds (an older server would drop the field and print every line again).
+        offlineReplay: true,
         ...(printJobsForMe === null ? {} : { printJobsForMe }),
         ...(attention === null ? {} : { printAttention: attention.rows, printAttentionTruncated: attention.truncated }),
       }),

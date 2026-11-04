@@ -242,7 +242,8 @@ test("PIN: the panel shows the waiting slips, the button shows their count, and 
   assert.ok(panel.indexOf("<WaitingSlipsCard pulse={pulse} />") < panel.indexOf("<PrinterStatusBanner"), "first: what needs a person, before the printer's status and setup");
   const button = src("apps/cafe/components/print/PrinterStatusButton.tsx");
   assert.match(button, /const waiting = usePrintWaitingCount\(\);/, "a narrow context, never the wide pulse");
-  assert.match(button, /const name = printWaitingName\(printerButtonName\(dot\), waiting\);/, "the count is part of the button's name");
+  // Printing Phase 5 (spec 5.10, deliberate change): offline the name says what a send does here instead.
+  assert.match(button, /const name = offlineHeader !== null \? offlineHeader\.name : printWaitingName\(printerButtonName\(dot\), waiting\);/, "the count is part of the button's name");
   assert.match(button, /\{waiting !== "" && \(/, "a count only when slips wait");
   const card = readFileSync(path.join(REPO_ROOT, "apps/cafe/components/print/WaitingSlipsCard.tsx"), "utf8");
   assert.ok(lines(card) <= 120, "WaitingSlipsCard stays <= 120 lines");
@@ -335,7 +336,7 @@ test("PIN (3B): the panel and the alarm name the slip's printer for its problem;
   const card = src("apps/cafe/components/print/WaitingSlipsCard.tsx");
   assert.ok(card.includes("const groups = printWaitingGroups(rows ?? [], Date.now(), printers);"), "the panel's reasons name the printer");
   const alarm = src("apps/cafe/hooks/use-print-slip-alarm.ts");
-  assert.ok(alarm.includes("printAlarmMessage(row, printerNameOf(qc.getQueryData<PrinterConfig[]>(PRINTERS_KEYS.all) ?? [], row.printerId))"), "the notice names it from the printers already read");
+  assert.ok(alarm.includes("printAlarmMessage(row, printerNameOf(printersOfRead(qc.getQueryData<PrintersRead>(PRINTERS_KEYS.all)), row.printerId))"), "the notice names it from the printers already read");
 });
 
 test("2C: a waiting slip's printer by name; none for simple mode, a printer no longer listed, or no printer at all", () => {

@@ -16,6 +16,7 @@ import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Header } from "@/components/layout/Header";
 import { PageHeaderSlotProvider } from "@/components/layout/page-header-slot";
 import { MasterDataProvider } from "@/components/layout/MasterDataProvider";
+import { OfflineReplayRunner } from "@/components/layout/OfflineReplayRunner";
 import { PosPulseProvider } from "@/components/layout/PosPulseProvider";
 import { PrintHostProvider } from "@/components/layout/PrintHostProvider";
 import { SessionKeepalive } from "@/components/layout/SessionKeepalive";
@@ -109,6 +110,8 @@ export default function DashboardLayout({
               {/* CB-U1: the session keepalive rolls the 90-day cookie for a tab
                   that never navigates — staff screens only, never /login or /m. */}
               <SessionKeepalive />
+              {/* Printing Phase 5: offline orders are sent by themselves once the server answers (one tab per device). */}
+              <OfflineReplayRunner />
               {/* The screen lock: a cover over this running page (never a sign-out, so printing, the pulse, the alarm
                   and realtime go on under it). Inside the master-data provider, so it reads the seeded settings. */}
               <ScreenLock />

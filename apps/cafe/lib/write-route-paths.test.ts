@@ -131,7 +131,7 @@ test("PIN (create): one read wave with the replay lookup; the replay answers bef
     [
       ["const replayed = settledValue(replayR);", "the replay unwrap"],
       [
-        "if (replayed) return await createReplayVerdict(replayed, data.items, printConfigOf(settledValue(settingsR)).bill);",
+        "if (replayed) return offlineReplayAnswer(await createReplayVerdict(replayed, data.items, printConfigOf(settledValue(settingsR)).bill), offline.ask, intent, authed.session.user.name);",
         "the replay answer, AWAITED inside the try (a young unnumbered sale is a 503; an old one is numbered)",
       ],
       ["checkItemVariations(", "the variation check"],
@@ -156,7 +156,7 @@ test("PIN (create): every replay asks the insert winner's own numbering check, b
       ["const settings = settledValue(settingsR);", "the settings unwrap"],
       ["const printCfg = printConfigOf(settings);", "the print config"],
       [
-        "const lateReplay = async () => (data.idemKey ? createReplayResponse(data.idemKey, data.items, printCfg.bill) : null);",
+        "const lateReplay = async () => (data.idemKey ? offlineReplayAnswer(await createReplayResponse(data.idemKey, data.items, printCfg.bill), offline.ask, intent, authed.session.user.name) : null);",
         "the late replay, numbering-aware",
       ],
       ["await lateReplay()", "the first late replay call"],
@@ -176,7 +176,7 @@ test("PIN (create): the KOT number is taken after every refusal and the fence, a
       ['if ("error" in pay) return failure(pay.error, 400);', "the payment 400"],
       ['"Select a customer — the unpaid remainder becomes their due"', "the carrier refusal"],
       ["if (!(await fencePromoFor(orderId))) {", "the promo fence"],
-      ["slips = await allocateOpeningSlips(printCfg, { kitchen: kot.kitchen });", "the KOT number + token allocation"],
+      ["slips = await allocateOpeningSlips(printCfg, { kitchen: kot.kitchen }, undefined, { token: data.offline === undefined });", "the KOT number + token allocation"],
       ["} catch (slipError) {", "the slip catch"],
       ["const doc = { ...unnumberedDoc, ...slips };", "the numbered doc"],
       ["Order.create({ ...doc, orderId });", "the insert"],
@@ -223,7 +223,7 @@ test("PIN (create): the insert carries no bill number; only the winner numbers i
       ['publishCafeEvent("order-changed");', "the publish"],
       ["return serverError(BILL_NUMBER_UNCONFIRMED, numbered.reason);", "the numbering-failure answer"],
       // Printing Phase 1 (Session 1B): the answer carries printJobs when the request opted in.
-      ["return created(withPrintJobs(numbered.value ?? landed, printJobs));", "the created answer"],
+      ["return created(withOfflineEcho(withPrintJobs(numbered.value ?? landed, printJobs), data.offline, kept));", "the created answer"],
     ],
     "a Pay Now twin that lost the insert must never draw a bill number",
   );
@@ -286,7 +286,7 @@ test("PIN (items): read wave, then old → 404 → replay → variation 400 → 
       ["const old = settledValue(oldR);", "the tab unwrap"],
       ['if (!old) return notFound("Order not found");', "the 404"],
       ["const replay = key ? roundReplayResponse(old, key, parsed.data.items) : null;", "the replay check"],
-      ["if (replay) return replay;", "the replay answer"],
+      ["if (replay) return offlineReplayAnswer(replay, offline.ask, intent, authed.session.user.name, key);", "the replay answer"],
       ["checkItemVariations(", "the variation check"],
       ["if (bad) return failure(bad, 400);", "the variation 400"],
       ['"Can only add items to an open tab"', "the open-tab 409"],
@@ -309,7 +309,7 @@ test("PIN (items): the key is fenced in the CAS, stored positionally, and a CAS 
     [
       ["if (!updated) {", "the CAS-miss branch"],
       ["await returnRewardStamps(String(old.customerId), old.orderId, resolvedClaim.cost, rewardAssignment);", "the stamp return"],
-      ["const late = key ? await roundReplayAfterMiss(id, key, parsed.data.items) : null;", "the late replay"],
+      ["const late = await lateRound();", "the late replay (lateRound: roundReplayAfterMiss + the Phase 5 offline replay answer)"],
       ["if (late) return late;", "the late replay answer"],
       ['return failure("Tab changed or already settled — reopen it and try again", 409);', "the 409"],
     ],
@@ -441,7 +441,7 @@ test("PIN (skip-KOT): each order writer stamps through withKitchenFlags before i
   const create = read(ORDERS_ROUTE);
   assert.ok(mustIndexOf(create, "const kot = await withKitchenFlags(stampModifierPrices(rewardItems, products));", "create: the stamp") < mustIndexOf(create, "const unnumberedDoc = {", "create: the doc"), "create: the stamp precedes the doc built from rewardItems");
   mustIndexOf(create, "rewardItems = kot.lines;", "create: the stamped lines are the ones stored");
-  mustIndexOf(create, "allocateOpeningSlips(printCfg, { kitchen: kot.kitchen })", "create: the draw reads the stamp");
+  mustIndexOf(create, "allocateOpeningSlips(printCfg, { kitchen: kot.kitchen }, undefined, { token: data.offline === undefined })", "create: the draw reads the stamp");
   const accept = read(ACCEPT_LIB);
   assert.ok(mustIndexOf(accept, "const kot = await withKitchenFlags(orderItems);", "accept: the stamp") < mustIndexOf(accept, "allocateOpeningSlips(printCfg, { kitchen: kot.kitchen })", "accept: the draw reads the stamp"));
   mustIndexOf(accept, "items: kot.lines.map((it) => ({ ...it, kotRound: 1 })),", "accept: the stamped lines are the ones stored");

@@ -13,6 +13,8 @@ import { slipPrintOptions } from "@/lib/desktop-shell";
 import { RECEIPT_PAGE_STYLE } from "@/lib/print";
 import { eodPrintJob } from "@/lib/print-routing";
 import { useHostRouting } from "@/hooks/use-print-routing";
+import { useOfflineOutbox } from "@/hooks/use-offline-outbox";
+import { offlineEodWarning } from "@/lib/offline-guard";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/shared/DatePicker";
 import { EndOfDaySummary } from "@/components/reports/EndOfDaySummary";
@@ -81,6 +83,8 @@ export function EndOfDayButton({ children }: { children: (parts: EndOfDayParts) 
   // lane is silent on "queued", so an un-disabled button double-taps into two
   // closing slips at the counter.
   const { routePrint, enqueuePending } = useHostRouting();
+  // Printing Phase 5 (spec 5.10, the review's I10): offline orders still on this device would be missing from it.
+  const offlineWaiting = useOfflineOutbox().record?.entries.length ?? 0;
 
   const ref = useRef<HTMLDivElement>(null);
   const print = useReactToPrint(slipPrintOptions({
@@ -122,6 +126,7 @@ export function EndOfDayButton({ children }: { children: (parts: EndOfDayParts) 
   }, [effectiveDate, ready]);
 
   const printEod = () => {
+    if (offlineWaiting > 0) return void toast.warning(offlineEodWarning(offlineWaiting));
     // On the no-host lane routePrint calls this SYNCHRONOUSLY inside the click
     // tick, where the guard is trivially true — today's local path is unchanged
     // (§F). `ready` is re-asserted, not just trusted from the disabled button:

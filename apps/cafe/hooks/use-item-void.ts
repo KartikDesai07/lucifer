@@ -12,6 +12,7 @@ import { CUSTOMER_KEYS } from "@/hooks/use-customers";
 import type { VoidLine } from "@/lib/pos-cart-view";
 import type { VoidItemInput } from "@/types";
 import type { Order, OrderVoid } from "@/types";
+import { offlineRefusalOf } from "@/lib/offline-guard";
 
 // Dialog-open state + the item-void mutation for the POS terminal (CR1.3-B).
 // Mirrors useAddOrderItems' shape exactly (same mutationKey so live polls pause
@@ -61,6 +62,9 @@ export function useItemVoid(
 
   const confirm = (payload: VoidItemInput) => {
     if (!orderId) return; // dialog only opens for a resumed (server-backed) tab
+    // Printing Phase 5 (spec 5.10): offline (or an order made offline) the void waits, and its dialog stays open.
+    const refused = offlineRefusalOf(orderId);
+    if (refused !== null) return void toast.error(refused.message);
     mutation.mutate(payload);
   };
 

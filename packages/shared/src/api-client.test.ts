@@ -64,3 +64,27 @@ test("success still unwraps data", async () => {
     assert.deepEqual(await apiGet("/api/x"), { ok: 1 });
   });
 });
+
+test("an error answer says whether it was our envelope", async () => {
+  // The offline state (apps/cafe lib/offline-state.ts) counts an answer as reaching US only when it is our
+  // envelope; a host's error page (Vercel's 402, a gateway 502) is not.
+  await withFetch(async () => json(402, { success: false, error: "Paused" }), async () => {
+    const e = (await apiGet("/api/x").catch((err: unknown) => err)) as ApiError;
+    assert.equal(e.enveloped, true, "our JSON envelope is enveloped");
+  });
+  await withFetch(async () => new Response("<html>paused</html>", { status: 402 }), async () => {
+    const e = (await apiGet("/api/x").catch((err: unknown) => err)) as ApiError;
+    assert.equal(e.enveloped, false, "a host page is not enveloped");
+  });
+  await withFetch(async () => json(502, { message: "bad gateway" }), async () => {
+    const e = (await apiSend("/api/x", "POST").catch((err: unknown) => err)) as ApiError;
+    assert.equal(e.enveloped, false, "JSON that is not our envelope is not enveloped");
+  });
+  await withFetch(async () => {
+    throw new TypeError("Failed to fetch");
+  }, async () => {
+    const e = (await apiGet("/api/x").catch((err: unknown) => err)) as ApiError;
+    assert.equal(e.enveloped, false, "no answer is not enveloped");
+  });
+  assert.equal(new ApiError("x", "http", 400).enveloped, false, "the constructor default is false");
+});

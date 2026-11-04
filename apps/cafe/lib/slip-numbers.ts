@@ -107,16 +107,18 @@ export async function issueBillNumber(
  * `round.kitchen` is false when every line of the opening round skips the
  * kitchen (skip-KOT): no ticket is printed, so neither a KOT number NOR a
  * token is taken ({} and zero draws) — a drinks-only order has no token.
+ * `opts.token: false` (Printing Phase 5: an order taken offline, called by its O-n) draws no token at all.
  */
 export async function allocateOpeningSlips<T>(
   cfg: PrintConfig,
   round: { kitchen: boolean },
   deps: Pick<SlipNumberDeps<T>, "nextSequence"> = SLIP_NUMBER_DEPS,
+  opts: { token?: boolean } = {},
 ): Promise<{ kotNumbers?: number[]; tokenNumber?: number }> {
   if (!round.kitchen) return {};
   const [kotNumber, tokenNumber] = await Promise.all([
     cfg.kot.showNumber ? nextPrintedNumber("kot", cfg.kot, deps) : undefined,
-    cfg.token.enabled ? nextPrintedNumber("token", cfg.token, deps) : undefined,
+    cfg.token.enabled && opts.token !== false ? nextPrintedNumber("token", cfg.token, deps) : undefined,
   ]);
   return {
     ...(kotNumber !== undefined ? { kotNumbers: [kotNumber] } : {}),

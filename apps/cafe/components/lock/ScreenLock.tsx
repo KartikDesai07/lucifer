@@ -46,6 +46,7 @@ import { PinSignIn } from "@/components/auth/PinSignIn";
 import { BrandTile } from "@/components/layout/BrandTile";
 import { NavDeviceLine } from "@/components/layout/NavDeviceLine";
 import { LockPasswordForm } from "@/components/lock/LockPasswordForm";
+import { serverReach } from "@/lib/server-reach";
 
 // The screen lock (spec 2026-10-16 §5.6). A COVER over the running dashboard, never a sign-out: signing out would
 // unmount this layout and with it the print host, the pulse, the alarm and realtime, so the page keeps running under
@@ -167,7 +168,8 @@ export function ScreenLock() {
       if (!openRef.current) handleLockShortcut(e);
     };
     const check = () => {
-      if (openRef.current) return;
+      // Printing Phase 5 (spec 5.10): unlocking needs the server, so the idle lock waits while offline.
+      if (openRef.current || serverReach.isOffline()) return;
       const { minutes: idleMinutes, pathname: path } = latest.current;
       if (autoLockDue({ lastActivityAt: lastActivityAt.current, now: Date.now(), minutes: idleMinutes, pathname: path })) {
         lockNow("auto");

@@ -43,6 +43,7 @@ import { printerCannotPrintOf, printerStatusOf, printersState } from "@/lib/prin
 import { canPrintNow } from "@/lib/printer/print-lane";
 import { subscribeRealtime } from "@/lib/realtime-client";
 import { cafeDateString } from "@/lib/utils";
+import { serverReach } from "@/lib/server-reach";
 
 // Printing redesign, Phase 1 Session 1C (spec §9.1): the in-page print agent, wired to this page. The
 // rules live in lib/print-agent.ts (unit-tested); this hook only connects them to the host bridge, the
@@ -217,6 +218,7 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
       networkPrinter: (job) => job.printerId !== undefined && lanRef.current.includes(job.printerId),
       readPending: readPendingAcks,
       writePending: writePendingAcks,
+      offline: () => serverReach.isOffline(),
       ...timers(),
     });
     setAgent(created);

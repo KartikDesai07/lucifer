@@ -3,6 +3,7 @@
 import { useRef, useState, type ReactElement, type RefObject } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 
+import { offlineChipOf } from "@/lib/offline-orders-view";
 import { cn } from "@/lib/utils";
 import { STATUS_CLASSES } from "@/lib/ui";
 import { BREAKPOINT_DESK_PX } from "@/lib/pos-layout";
@@ -234,6 +235,8 @@ function OpenOrdersBody({ tabs, currentId, tab, onTab, inputRef, isBusy, resume 
 }
 
 function OpenOrderRowButton({ row, isBusy, resume }: { row: OpenOrderRow; isBusy: boolean; resume: (order: Order) => void }) {
+  // Printing Phase 5 (spec 5.5): an order made offline says so, in the warn tone, where the status goes.
+  const offline = offlineChipOf(row.tab);
   return (
     <button
       type="button"
@@ -249,7 +252,7 @@ function OpenOrderRowButton({ row, isBusy, resume }: { row: OpenOrderRow; isBusy
         className={cn(TILE_CLASS, row.current ? "bg-primary text-primary-foreground" : "bg-surface-3 text-foreground")}
       >
         {row.code}
-        <span className={cn("absolute -right-[3px] -top-[3px] size-2.5 rounded-[50%] [box-shadow:0_0_0_2px_var(--card)]", STATUS_CLASSES.ok.dot)} />
+        <span className={cn("absolute -right-[3px] -top-[3px] size-2.5 rounded-[50%] [box-shadow:0_0_0_2px_var(--card)]", offline ? STATUS_CLASSES.warn.dot : STATUS_CLASSES.ok.dot)} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[14px] font-semibold">{row.id}</span>
@@ -257,7 +260,7 @@ function OpenOrderRowButton({ row, isBusy, resume }: { row: OpenOrderRow; isBusy
       </span>
       <span className="flex flex-none flex-col items-end">
         <span className="text-[14px] font-semibold">{row.total}</span>
-        <span className={cn("text-[11.5px] font-medium", STATUS_CLASSES.ok.ink)}>{row.status}</span>
+        <span data-ui={offline ? "pos-open-order-offline" : undefined} className={cn("text-[11.5px] font-medium", offline ? STATUS_CLASSES.warn.ink : STATUS_CLASSES.ok.ink)}>{offline ?? row.status}</span>
       </span>
     </button>
   );

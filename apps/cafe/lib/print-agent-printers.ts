@@ -140,7 +140,7 @@ export function takeoverPrintersOf(printers: readonly PrinterConfig[], deviceId:
 
 /** Session 2E: a Windows printer this PC prints by name (only on an app that can), drawn for its own paper. Session
  *  2F1: one of the POS app's printers on bridge v2, by the app's id, drawn for its own paper. */
-function targetsOf(printers: readonly PrinterConfig[], desktop: DesktopPrinters | null, pool: NativePoolView | null): Record<string, SlipPrintTarget> {
+export function targetsOf(printers: readonly PrinterConfig[], desktop: DesktopPrinters | null, pool: NativePoolView | null): Record<string, SlipPrintTarget> {
   const targets: Record<string, SlipPrintTarget> = {};
   for (const printer of printers) {
     const nativeId = nativeIdOf(printer, pool);

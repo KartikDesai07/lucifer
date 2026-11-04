@@ -23,6 +23,7 @@ import {
 } from "@/lib/payment-sheet";
 import { BRAND_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { useOpenerFocus } from "@/hooks/use-opener-focus";
+import { useServerReach } from "@/hooks/use-server-reach";
 import { CustomerSearch } from "@/components/pos/CustomerSearch";
 import { PaymentAmount } from "@/components/pos/PaymentAmount";
 import { PaymentSummary } from "@/components/pos/PaymentSummary";
@@ -36,6 +37,8 @@ import type { OrderCharge } from "@pos/shared/order-charges";
 import type { SettlePointsView } from "@/hooks/use-settle-points";
 import type { Customer } from "@/types";
 import {
+  PAY_OFFLINE_NOTE,
+  offlineSaleModes,
   openedTotalAfterToggle,
   paymentPopupChange,
   splitAfterBillChange,
@@ -139,6 +142,9 @@ export function PaymentModal({
   // open:false first, so a popup that mounts already open still resets.
   const seenRef = useRef<PopupSnapshot>({ open: false, total });
   const openerFocus = useOpenerFocus();
+  // Printing Phase 5 (spec 5.6): offline, a new sale (Pay Now) takes Cash, Online or Split only; a settle waits.
+  const offlineSale = useServerReach().offline && newSale;
+  const shownModes = offlineSaleModes(modes, offlineSale);
 
   // The points the operator has ticked (0 = off): their own toggle moves the total, which is not "the bill changed".
   const pointsNow = points?.on ? points.row.amount : 0;
@@ -182,7 +188,7 @@ export function PaymentModal({
   // An unconfirmed sale is frozen: Send again replays it exactly, so nothing may change (R-b).
   const frozen = notice?.action === "send-again";
   const locked = isSubmitting || frozen;
-  const blocked = isSubmitting || (action === "confirm" && (itemCount === 0 || customerMissing || splitMismatch));
+  const blocked = isSubmitting || (action === "confirm" && (itemCount === 0 || customerMissing || splitMismatch || !shownModes.includes(mode)));
 
   const confirm = () => {
     onConfirm({
@@ -221,7 +227,7 @@ export function PaymentModal({
             <PaymentAmount
               total={total}
               customerName={customer?.name}
-              picker={onSelectCustomer && <CustomerSearch value={customer} onChange={onSelectCustomer} disabled={locked} context={paymentPlace(tableNo, newSale)} />}
+              picker={onSelectCustomer && !offlineSale && <CustomerSearch value={customer} onChange={onSelectCustomer} disabled={locked} context={paymentPlace(tableNo, newSale)} />}
             />
 
             <PaymentSummary
@@ -238,9 +244,10 @@ export function PaymentModal({
               billChangedFrom={notice == null && open && total !== openedTotal ? openedTotal : undefined}
             />
 
-            {points?.show && <PaymentPoints points={points} disabled={locked} />}
+            {points?.show && <PaymentPoints points={points} disabled={locked || offlineSale} />}
 
-            <PaymentModeGrid modes={modes} mode={mode} onSelect={setMode} locked={locked} />
+            <PaymentModeGrid modes={shownModes} mode={mode} onSelect={setMode} locked={locked} />
+            {offlineSale && <p data-ui="pay-offline-note" className={noticeBoxClass("neutral")}>{PAY_OFFLINE_NOTE}</p>}
 
             {/* Cash and Online both accept a partial collection here. */}
             {collectable && (
