@@ -24,12 +24,26 @@ test("reachOf: our 4xx is reached; a 5xx, a timeout, a network error and a host 
 });
 
 test("the browser going offline is offline at once", () => {
-  assert.deepEqual(run([{ type: "browser", online: false }]), { offline: true, pulseMisses: 0, writeMissed: false }, "offline at once");
+  assert.deepEqual(run([{ type: "browser", online: false }]), { offline: true, pulseMisses: 0, writeMissed: false, browserOffline: true }, "offline at once");
+});
+
+// Session 5C Task 20 (found on fake printers): the browser went offline while a send's answer was on its way; the answer
+// landed after the browser's offline event and ended offline, and with the browser offline TanStack pauses the pulse,
+// so nothing ended that wrong "online" until the browser came back (spec 5.1: offline ends at a pulse that reached us).
+test("while the browser says offline, an answer that reached us does not end offline", () => {
+  const dropped = run([{ type: "browser", online: false }]);
+  for (const type of ["pulse", "write", "check"] as const) {
+    const next = nextOfflineState(dropped, { type, reach: "reached" });
+    assert.equal(next.offline, true, `a late reached ${type} keeps the device offline while the browser says offline`);
+  }
+  const back = run([{ type: "browser", online: false }, { type: "write", reach: "reached" }, { type: "browser", online: true }]);
+  assert.deepEqual(back, { offline: true, pulseMisses: 0, writeMissed: false, browserOffline: false }, "the browser back alone still ends nothing");
+  assert.deepEqual(nextOfflineState(back, { type: "pulse", reach: "reached" }), ONLINE_STATE, "the first pulse that reaches us then ends offline");
 });
 
 test("two pulses with no answer are offline, one is not", () => {
   assert.equal(OFFLINE_PULSE_MISSES, 2, "two misses");
-  assert.deepEqual(run([missed]), { offline: false, pulseMisses: 1, writeMissed: false }, "one miss is counted, not offline");
+  assert.deepEqual(run([missed]), { offline: false, pulseMisses: 1, writeMissed: false, browserOffline: false }, "one miss is counted, not offline");
   assert.equal(run([missed, missed]).offline, true, "two in a row are offline");
   const reset = run([missed, { type: "pulse", reach: "reached" }, missed]);
   assert.deepEqual([reset.offline, reset.pulseMisses], [false, 1], "an answer in between resets the count");
@@ -37,7 +51,7 @@ test("two pulses with no answer are offline, one is not", () => {
 
 test("a write with no answer is not offline until the check fails too", () => {
   const afterWrite = run([{ type: "write", reach: "unreached" }]);
-  assert.deepEqual(afterWrite, { offline: false, pulseMisses: 0, writeMissed: true }, "the write miss is remembered");
+  assert.deepEqual(afterWrite, { offline: false, pulseMisses: 0, writeMissed: true, browserOffline: false }, "the write miss is remembered");
   assert.equal(nextOfflineState(afterWrite, { type: "check", reach: "unreached" }).offline, true, "the failed check makes it offline");
   const cleared = nextOfflineState(afterWrite, { type: "check", reach: "reached" });
   assert.deepEqual([cleared.offline, cleared.writeMissed], [false, false], "a reached check clears the miss");
@@ -45,12 +59,12 @@ test("a write with no answer is not offline until the check fails too", () => {
 });
 
 test("any answer that reached us is online again", () => {
-  const offline: OfflineState = { offline: true, pulseMisses: 2, writeMissed: true };
+  const offline: OfflineState = { offline: true, pulseMisses: 2, writeMissed: true, browserOffline: false };
   for (const type of ["pulse", "write", "check"] as const) {
     assert.deepEqual(nextOfflineState(offline, { type, reach: "reached" }), ONLINE_STATE, `a reached ${type} ends offline`);
   }
   // Online too, any reached answer is proof: a pulse miss, then a write that reached us, then a miss is not two in a row.
-  assert.deepEqual(run([missed, { type: "write", reach: "reached" }, missed]), { offline: false, pulseMisses: 1, writeMissed: false }, "a reached write resets the pulse misses");
+  assert.deepEqual(run([missed, { type: "write", reach: "reached" }, missed]), { offline: false, pulseMisses: 1, writeMissed: false, browserOffline: false }, "a reached write resets the pulse misses");
   assert.deepEqual(run([{ type: "write", reach: "unreached" }, { type: "pulse", reach: "reached" }, { type: "check", reach: "unreached" }]), ONLINE_STATE, "a pulse that reached us clears a write miss");
 });
 

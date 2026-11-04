@@ -41,6 +41,9 @@ test("the automatic reload waits for the connection; it runs at once when there 
   reach.report({ type: "browser", online: false });
   const stop = reloadWhenOnline(() => (reloads += 1), reach, win);
   assert.equal(reloads, 1, "offline: it waits");
+  // 5C Task 20: while the browser itself says offline no answer ends offline; it comes back first.
+  reach.report({ type: "browser", online: true });
+  assert.equal(reloads, 1, "the browser back alone: it still waits");
   reach.report({ type: "pulse", reach: "reached" });
   assert.equal(reloads, 2, "the first answer that reaches us runs it");
   reach.report({ type: "browser", online: false });

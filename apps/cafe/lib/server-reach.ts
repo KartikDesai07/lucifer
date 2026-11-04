@@ -20,7 +20,9 @@ export function createServerReach(): ServerReachStore {
     isOffline: () => state.offline,
     report(event) {
       const next = nextOfflineState(state, event);
-      if (next === state || (next.offline === state.offline && next.pulseMisses === state.pulseMisses && next.writeMissed === state.writeMissed)) return;
+      const same =
+        next.offline === state.offline && next.pulseMisses === state.pulseMisses && next.writeMissed === state.writeMissed && next.browserOffline === state.browserOffline;
+      if (next === state || same) return;
       state = next;
       for (const listener of [...listeners]) listener();
     },

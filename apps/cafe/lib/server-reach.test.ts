@@ -27,6 +27,20 @@ test("the store follows nextOfflineState and tells its listeners", () => {
   assert.equal(reach.isOffline(), true, "the browser going offline is offline");
 });
 
+// Session 5C Task 20: the browser's own flag is kept in the store, so its return is not lost and a late answer while
+// it says offline keeps the device offline; the first pulse that reaches us after the browser is back ends it.
+test("the store keeps the browser's flag: a late answer while it says offline keeps offline, a pulse after its return ends it", () => {
+  const reach = createServerReach();
+  reach.report({ type: "browser", online: false });
+  reach.report({ type: "write", reach: "reached" });
+  assert.equal(reach.isOffline(), true, "an answer that landed after the browser went offline keeps the device offline");
+  reach.report({ type: "browser", online: true });
+  assert.equal(reach.getState().browserOffline, false, "the browser's return is kept although offline did not change");
+  assert.equal(reach.isOffline(), true, "the browser back alone ends nothing");
+  reach.report({ type: "pulse", reach: "reached" });
+  assert.equal(reach.isOffline(), false, "the first pulse that reaches us ends offline");
+});
+
 test("a report that changes nothing tells nobody", () => {
   const reach = createServerReach();
   let told = 0;
@@ -54,8 +68,11 @@ test("feedBrowserOnline: a browser already offline is said at once, then every c
   const stop = feedBrowserOnline(manager, reach);
   assert.equal(reach.isOffline(), true, "the browser was offline when the page started");
   reach.report({ type: "pulse", reach: "reached" });
-  assert.equal(reach.isOffline(), false, "an answer ended it");
+  assert.equal(reach.isOffline(), true, "an answer while the browser still says offline ends nothing (5C Task 20)");
   assert.ok(listener !== null, "the manager is subscribed");
+  (listener as (online: boolean) => void)(true);
+  reach.report({ type: "pulse", reach: "reached" });
+  assert.equal(reach.isOffline(), false, "once the browser is back, an answer ends it");
   (listener as (online: boolean) => void)(false);
   assert.equal(reach.isOffline(), true, "the browser's offline event is forwarded");
   stop();

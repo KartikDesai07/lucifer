@@ -18,9 +18,12 @@ export interface OfflineState {
   pulseMisses: number;
   /** An order write got no answer and the immediate check has not come back yet. */
   writeMissed: boolean;
+  /** The browser's own flag says offline. While it does, no answer ends offline: an answer to a request sent before the
+   *  drop can land after it, and TanStack then pauses the pulse, so nothing would end that wrong "online" (5C Task 20). */
+  browserOffline: boolean;
 }
 
-export const ONLINE_STATE: OfflineState = { offline: false, pulseMisses: 0, writeMissed: false };
+export const ONLINE_STATE: OfflineState = { offline: false, pulseMisses: 0, writeMissed: false, browserOffline: false };
 
 /** One pulse miss can be a blip; two in a row are an outage. */
 export const OFFLINE_PULSE_MISSES = 2;
@@ -30,10 +33,12 @@ export type OfflineEvent = { type: "browser"; online: boolean } | { type: "pulse
 export function nextOfflineState(state: OfflineState, event: OfflineEvent): OfflineState {
   if (event.type === "browser") {
     // Coming back online ends nothing: only an answer from our server does.
-    return event.online ? state : { ...state, offline: true };
+    if (event.online) return state.browserOffline ? { ...state, browserOffline: false } : state;
+    return { ...state, offline: true, browserOffline: true };
   }
-  // Any answer that reached us is proof the server is there: it ends offline and clears every miss counted so far.
-  if (event.reach === "reached") return ONLINE_STATE;
+  // Any answer that reached us is proof the server is there: it ends offline and clears every miss counted so far,
+  // unless the browser says offline now (that answer left before the drop).
+  if (event.reach === "reached") return state.browserOffline ? { ...ONLINE_STATE, offline: true, browserOffline: true } : ONLINE_STATE;
   if (event.type === "pulse") {
     const pulseMisses = state.pulseMisses + 1;
     return { ...state, pulseMisses, offline: state.offline || pulseMisses >= OFFLINE_PULSE_MISSES };
