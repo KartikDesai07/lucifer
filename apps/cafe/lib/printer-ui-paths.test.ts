@@ -21,16 +21,16 @@ const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel),
 
 const PRINT = "apps/cafe/components/print/";
 const SETTINGS = "apps/cafe/app/(dashboard)/settings/";
+// PX-3 Task 10 (on purpose): Where slips print → PrintForOthersCard (its states' order: printForOthersViewOf, read by its pin), More options → MoreCard, the setup card's state and writes → the two hooks (as they were), PrinterRow → the On this device row's look (no icon); each pin reads the file that now holds its code.
 const F = {
   panel: `${PRINT}PrinterPanel.tsx`,
-  where: `${PRINT}PrintWhereSection.tsx`,
+  forOthers: `${PRINT}settings/PrintForOthersCard.tsx`,
   device: `${PRINT}DevicePrinterSection.tsx`,
   native: `${PRINT}NativePrinterPicker.tsx`,
   others: `${PRINT}OtherDevicePrinters.tsx`,
-  paper: `${PRINT}PaperSizeToggle.tsx`,
-  tips: `${PRINT}PrinterTestTips.tsx`,
-  advanced: `${PRINT}PrinterAdvanced.tsx`,
-  card: `${PRINT}PrinterSetupCard.tsx`,
+  paper: `${PRINT}PaperSizeToggle.tsx`, tips: `${PRINT}PrinterTestTips.tsx`,
+  more: `${PRINT}settings/MoreCard.tsx`, view: `${PRINT}settings/PrinterSettingsView.tsx`,
+  testPrint: "apps/cafe/hooks/use-test-print.ts", setupActions: "apps/cafe/hooks/use-printer-setup-actions.ts",
   parts: `${PRINT}PrintHostCardParts.tsx`,
   type: `${PRINT}printer-type.ts`,
   section: `${PRINT}PrinterSection.tsx`,
@@ -92,7 +92,7 @@ const panelPin: Pin = (raw) => {
   check(p, !/hostLabel:\s*"/.test(code), "the host label must never be a literal");
   check(p, code.includes("const noun = deviceNounOf(lane, inApp, shortSide);") && code.includes("const { isAdmin } = useAuth();"), "the device noun (R13) and the admin's link");
   const card = code.search(/<PrinterStatusCard\s/);
-  const setup = code.search(/<PrinterSetupCard\s*\/>/);
+  const setup = code.search(/<PrinterSettingsView\s/);
   check(p, card >= 0 && setup >= 0 && card < setup, `the status card (${card}) must come BEFORE the setup (${setup})`);
   // U5 Task 5 (printer P24, moved on purpose: same meaning): "a Done only in the sheet, none on /printers" now holds because the
   // Done is the FRAME's fixed foot (PrinterPanelFrame, pinned in printer-dot-ui-paths and printer-panel-layout); the panel has none.
@@ -100,17 +100,17 @@ const panelPin: Pin = (raw) => {
   return p;
 };
 
-const wherePin: Pin = (raw) => {
+const forOthersPin: Pin = (raw) => {
   const p: string[] = [];
   const code = stripComments(raw);
+  const view = stripComments(readSrc("apps/cafe/lib/printer/settings-view.ts"));
   check(p, code.includes('id="printer-where"'), 'section id="printer-where"');
   check(p, count(code, 'data-action="designate"') === 1 && /<Button\s+data-action="designate"/.test(code), "the designate button carries data-action once");
-  const own = code.indexOf("isHostDevice ? (");
-  const loading = code.indexOf("host === null ? (");
-  check(p, own >= 0 && loading > own, "this device is the printing device is decided BEFORE the unresolved-pulse line");
-  check(p, code.includes('role="status"') && code.includes("online ? CHECKING_MESSAGE : OFFLINE_MESSAGE"), "PR3: offline reads as a status line");
+  const own = view.indexOf("if (i.isHostDevice)");
+  check(p, code.includes("const view = printForOthersViewOf(actions);") && own >= 0 && view.indexOf("if (i.host === null)") > own, "this device is the printing device is decided BEFORE the unresolved-pulse line");
+  check(p, code.includes('role="status"') && code.includes("{view.text}") && view.includes("i.online ? CHECKING_MESSAGE : OFFLINE_MESSAGE"), "PR3: offline reads as a status line");
   check(p, !/still loading/i.test(raw), "never a 'still loading' line");
-  const needles = ["Where slips print", "This device prints all slips.", "All slips print at {hostLabel}.", "Each device prints its own slips.", "Name for this device", "Print all slips on this device", "Print on this device instead", "is printing now. Move printing to this device?", "<PanelSection", "Use one device for all printing", "Good for a Counter PC with the printer: orders from phones print there."];
+  const needles = ["Print for other devices", "Phones and tablets without a printer can send their slips here.", "This device prints slips for **all devices**.", "Slips print at **${view.host}**.", "Name for this device", "Print all slips on this device", "Print all slips here", "Print here instead", "is printing now. Move printing to this device?", "<PanelSection", "Stop printing here", "No printing device is set."];
   for (const n of needles) check(p, code.includes(n), `must contain ${n}`);
   return p;
 };
@@ -133,18 +133,18 @@ const devicePin: Pin = (raw) => {
   check(p, /else if \(firstList && outcome === "cancelled"\) \{\s*setNotSeen\(true\);/.test(code), "only a closed FIRST list raises the not-seen hint");
   check(p, count(code, "setNotSeen(false)") === 3, "the hint is also cleared by Change / Keep printer and by Remove");
   check(p, code.includes("paired={caps.serial}") && code.includes("nearby={caps.serial && caps.bluetooth}"), "the connect block hears what this browser can do: the paired list, and the nearby search only when BOTH exist");
-  check(p, code.includes('variant={connected ? "outline" : "default"}'), "Reconnect is the primary button only while not connected");
+  // PX-3 Task 10 (on purpose, X7; was "Reconnect primary only while not connected" + ".reconnect() straight from onClick"): none here.
+  check(p, !code.includes(".reconnect()") && !/>\s*Reconnect\s*</.test(code), "X7: no Reconnect on this device's printer card");
   check(p, !/Bluetooth LE/i.test(code), "no radio jargon (Bluetooth LE) in client copy");
-  check(p, /onClick=\{\(\) => void settle\(devicePrinter\(\)\.reconnect\(\)\)\}/.test(code) && count(code, ".reconnect()") === 1, ".reconnect() called straight from onClick, once");
   check(p, code.includes("const paperDefault = printConfigOf(settings.data).bill.paperWidth;"), "paperDefault comes from the print settings");
   check(p, code.includes("const locked = busy || elsewhere;"), "one busy state plus the other-tab state lock everything");
   const buttons = code.split("<Button").slice(1).map((chunk) => chunk.slice(0, chunk.indexOf("</Button>")));
-  // The connect buttons moved to BrowserPrinterConnect (connectPin); the saved printer's three stay here.
-  check(p, buttons.length >= 3 && buttons.every((b) => b.includes("disabled={locked}")), "every printer button is disabled while locked");
+  // The connect buttons moved to BrowserPrinterConnect (connectPin); Change, Remove, Connect a printer stay; the test has its own gate.
+  check(p, buttons.length >= 4 && buttons.every((b) => b.includes(b.includes("test.start()") ? "disabled={test.startDisabled}" : "disabled={locked}")), "every printer button is disabled while locked, the test by its own gate");
   check(p, count(code, "<BrowserPrinterConnect") === 1 && count(code, "<PanelSection") === 1, "one connect block, one section shell");
-  check(p, /lane === "desktop" \? \(\s*<DesktopPrinterPicker \/>/.test(code) && code.includes("caps.native") && code.includes("<NativePrinterPicker"), "desktop picker / app picker by capability");
+  check(p, /lane === "desktop" \? \(\s*<>\s*<DesktopPrinterPicker \/>/.test(code) && code.includes("caps.native") && code.includes("<NativePrinterPicker"), "desktop picker / app picker by capability");
   check(p, code.includes("devicePrinter().setPaper(paper)") && code.includes("<PaperSizeToggle") && code.includes("devicePrinter().forget()"), "paper toggle and remove are wired");
-  for (const n of ["Printer on this device", "Change printer", "Keep this printer","from this device?", "This browser or app cannot connect to a printer directly", "PRINTER_ELSEWHERE_STATUS_MESSAGE"]) {
+  for (const n of ["title={deviceCardTitleOf(lane)}", '"Keep this printer" : "Change"', "No printer on ${noun}.", "Connect a printer", "Test print", "<PrinterTestTips />", "Busy with another slip.", "from this device?", "This browser or app cannot connect to a printer directly", "PRINTER_ELSEWHERE_STATUS_MESSAGE"]) {
     check(p, code.includes(n), `must contain ${n}`);
   }
   check(p, !/print window/i.test(code), "W-M: never claim a print window opens where the browser cannot print directly");
@@ -184,7 +184,7 @@ const sectionPin: Pin = (raw) => {
 const partsPin: Pin = (raw) => {
   const p: string[] = [];
   const code = stripComments(raw);
-  for (const n of ['"Connected"', '"Connecting…"', '"Not connected"', "{printerTypeLabel(printer)} · ", "printerTypeIcon(printer)", "PRINTER_ROW_NAME_CLASS"]) check(p, code.includes(n), "must contain " + n);
+  for (const n of ['"Connected"', '"Connecting…"', '"Not connected"', "{printerSubOf(printer)}", "PRINTER_HERE_DOT_CLASS", "PRINTER_HERE_NAME_CLASS"]) check(p, code.includes(n), "must contain " + n);
   // Review 2026-10-02: every status has its own words; another tab holding the printer is never "Not connected".
   for (const n of ['elsewhere: "In another tab"', '"needs-tap": "Tap Reconnect"', "STATUS_LABEL[status]", "Record<PrinterStatus, string>"]) check(p, code.includes(n), "must contain " + n);
   return p;
@@ -206,13 +206,14 @@ const nativePin: Pin = (raw) => {
   return p;
 };
 
-const cardPin: Pin = (raw) => {
+// PX-3 Task 10 (on purpose): the card's pin, split with its code: the test print (here), the label (setupPin), the parts (devicePin,
+// forOthersPin); "clearControl is built once" is moreRowsOf's (no Remove on the printing device); "Print test slip" is "Test print".
+const testPrintPin: Pin = (raw) => {
   const p: string[] = [];
   const code = stripComments(raw);
-  const needles = ["<PrintWhereSection", "<DevicePrinterSection />", "<PrinterTestTips />", "stopControl={isHostDevice ? clearControl : null}", "<PrinterAdvanced clearControl={isHostDevice ? null : clearControl} />", "const testable = isHostDevice || lane === \"raster\";", "useState<string | null>(null)", "label ?? (lane === \"pending\" ? DEVICE_LABEL_PC : defaultDeviceLabel(lane))", "Did the test slip print?", "No — help me", "Did it print without a print window?", "Printing works on this device.", "Print test slip", "No printing device is set.", "Busy with another slip."];
+  const needles = ["const testable = isHostDevice || lane === \"raster\";", "Did the test slip print?", "No — help me", "Did it print without a print window?", "toast.success(worksWords ?? TEST_WORKS_MESSAGE);", "Printing works on this device."];
   for (const n of needles) check(p, code.includes(n), `must contain ${n}`);
-  check(p, count(code, "const clearControl =") === 1, "clearControl is built once");
-  const body = code.slice(code.indexOf("const handleAttest"), code.indexOf("const handleClear"));
+  const body = code.slice(code.indexOf("const handleAttest"), code.indexOf("  return {", code.indexOf("const handleAttest")));
   const guard = body.indexOf('if (!silentMode && lane === "raster")');
   const tips = body.indexOf("setShowTips(true)");
   const notHost = body.indexOf("if (!isHostDevice)");
@@ -221,6 +222,7 @@ const cardPin: Pin = (raw) => {
   check(p, guard >= 0 && tips > guard && notHost > tips && toast > notHost && beat > toast, `handleAttest order: raster-No tips (${tips}) < non-host toast (${toast}) < beat (${beat})`);
   return p;
 };
+const setupPin = pinNeedles(["useState<string | null>(null)", "label ?? (lane === \"pending\" ? DEVICE_LABEL_PC : defaultDeviceLabel(lane))", 'const HOST_LABEL_FALLBACK = "Another device";', "host.label ?? HOST_LABEL_FALLBACK", "label: shownLabel,"]);
 
 // 2026-10-02: Printer setup left Settings for /printers, so the page now guards
 // itself (AdminGuard outside, brand shell inside — the Staff page's idiom) and
@@ -275,9 +277,9 @@ function hygienePin(budget: number, usesAction: boolean): Pin {
 // F.native 280 (was 260): Phase 0 F0.4-F0.6 added the shared loader, the late-bridge subscription and
 // the separate Refresh flag; the pure rules live in lib/printer/native-picker-state.ts.
 const HYGIENE: [string, number, boolean][] = [
-  // F.native 290 (was 280): Session 2F1's add (a printer joins the POS app's printers on bridge v2). F.panel 220 (was 90): PX-2 Task 6, two views.
-  [F.panel, 220, false], [F.where, 150, true], [F.device, 220, true], [F.native, 290, true], [F.paper, 60, true],
-  [F.tips, 50, false], [F.advanced, 100, true], [F.card, 260, true], [F.parts, 100, true], [F.picker, 160, false],
+  // F.native 290 (was 280): Session 2F1's add. F.panel 220 (was 90): PX-2 Task 6. PX-3 Task 10: F.device 260 (was 220, it holds the test), the card's 260 → two hooks.
+  [F.panel, 220, false], [F.forOthers, 150, true], [F.device, 260, true], [F.native, 290, true], [F.paper, 60, true], [F.view, 60, false],
+  [F.tips, 50, false], [F.more, 100, true], [F.testPrint, 160, false], [F.setupActions, 160, false], [F.parts, 100, true], [F.picker, 160, false],
   [F.connect, 110, true], [F.section, 50, false], [F.type, 60, false],
   // Session 1D: the waiting slips follow the same rules (44px controls, no jargon); PX-2 Task 4: its container, its card.
   [F.waiting, 120, false], [F.notPrinted, 150, true], [F.statusCard, 120, true], [F.hereCard, 80, false], [F.settingsRow, 60, false],
@@ -326,7 +328,7 @@ const classesPin: Pin = (raw) => {
 
 const CASES: PinCase[] = [
   { file: F.panel, pin: panelPin, mutations: [
-    mut("the status card after the setup", "<PrinterStatusCard ", "<PrinterSetupCard /><PrinterStatusCard "),
+    mut("the status card after the setup", "<PrinterStatusCard ", '<PrinterSettingsView home="page" noun="this device" /><PrinterStatusCard '),
     mut("a literal host label", "host.configured ? host.label : null", 'host.configured ? "Counter PC" : null'),
     mut("the pulse read dropped", "usePosPulseContext()", "({ pulse: undefined })"),
     mut("the card renamed", "<PrinterStatusCard ", "<PrinterStatusCardX "),
@@ -337,14 +339,14 @@ const CASES: PinCase[] = [
     mut("the saved printer's status withheld", "    localStatus: snapshot.status,\n", ""),
     mut("the status read from the wrong place", "localStatus: snapshot.status", 'localStatus: "none"'),
   ] },
-  { file: F.where, pin: wherePin, mutations: [
+  { file: F.forOthers, pin: forOthersPin, mutations: [
     mut("data-action dropped", ' data-action="designate"', ""),
     mut("id renamed", 'id="printer-where"', 'id="where"'),
-    mut("offline line dropped", "online ? CHECKING_MESSAGE : OFFLINE_MESSAGE", "CHECKING_MESSAGE"),
-    mut("host check renamed", "isHostDevice ? (", "isHostDeviceX ? ("),
-    mut("a loading line", "Checking where slips print…", "Still loading"),
-    mut("the one-device help dropped", "Good for a Counter PC with the printer: orders from phones print there.", "Every slip prints here."),
-    mut("the shell dropped", "<PanelSection id", "<section id"),
+    mut("offline line dropped", '<p role="status" className="text-muted-foreground">{view.text}</p>', "<p>{CHECKING}</p>"),
+    mut("the state not the view model's", "const view = printForOthersViewOf(actions);", 'const view = { kind: "offer" as const };'),
+    append("a loading line", 'const LOADING = "Still loading";'),
+    mut("the offer's line dropped", "Phones and tablets without a printer can send their slips here.", "Every slip prints here."),
+    mut("the shell dropped", "<PanelSection id", "<section id"), mut("remove reason dropped", "No printing device is set.", "Nothing."),
   ] },
   { file: F.device, pin: devicePin, mutations: [
     // Re-anchored 2026-10-02 (one primary "Connect printer"): the old serial/ble click cases became these.
@@ -357,10 +359,10 @@ const CASES: PinCase[] = [
     mut("change printer keeps a stale hint", "setChanging((v) => !v);\n                      setNotSeen(false);", "setChanging((v) => !v);"),
     mut("nearby offered on a BLE-only browser", "nearby={caps.serial && caps.bluetooth}", "nearby={caps.bluetooth}"),
     mut("paired copy on a BLE-only browser", "paired={caps.serial}", "paired={true}"),
-    mut("reconnect always primary", 'variant={connected ? "outline" : "default"}', 'variant="default"'),
-    mut("a radio name back in the copy", 'title="Printer on this device"', 'title="Bluetooth LE printer on this device"'),
-    mut("reconnect awaited first", "onClick={() => void settle(devicePrinter().reconnect())}", "onClick={async () => { await settle(devicePrinter().reconnect()); }}"),
-    mut("a button left enabled", "settle(devicePrinter().reconnect())}\n                    disabled={locked}", "settle(devicePrinter().reconnect())}\n                    disabled={false}"),
+    mut("a Reconnect back on the card (X7)", '"Keep this printer" : "Change"}', '"Keep this printer" : "Change"}</Button><Button onClick={() => void settle(devicePrinter().reconnect())} disabled={locked}>Reconnect'),
+    mut("a radio name back in the copy", "title={deviceCardTitleOf(lane)}", 'title="Bluetooth LE printer on this device"'),
+    mut("the test left ungated", "disabled={test.startDisabled}", "disabled={false}"), mut("busy reason dropped", "Busy with another slip.", "Wait."),
+    mut("a button left enabled", "}}\n                    disabled={locked}", "}}\n                    disabled={false}"),
     mut("remove button left enabled", 'onClick={() => setConfirmRemove(true)} disabled={locked}', "onClick={() => setConfirmRemove(true)}"),
     mut("the target marker dropped", '      data-printer-target="device"\n', ""),
     mut("the page-wide id back", 'data-printer-target="device"', 'id="printer-device" data-printer-target="device"'),
@@ -407,26 +409,24 @@ const CASES: PinCase[] = [
   { file: F.parts, pin: partsPin, mutations: [
     mut("the status words dropped", /"Not connected"/g, '""'),
     mut("another tab reads not connected", 'elsewhere: "In another tab"', 'elsewhere: "Not connected"'),
-    mut("the sub-line dropped", "{printerTypeLabel(printer)} · ", ""),
+    mut("the sub-line dropped", "{printerSubOf(printer)}", ""),
   ] },
-  // Phase 3 Session 3D: the POS app's battery checklist, only on an app that says it has one.
-  { file: F.advanced, pin: pinNeedles(['nativeRequest("app.changeUrl")', "More options", "Change POS address", "<Collapsible", "usePrintCapabilities()", 'const battery = native && nativeHasFeature("battery");', 'nativeRequest("app.battery")', "Battery settings for printing"]), mutations: [
+  // Phase 3 Session 3D: the battery checklist only on an app that has one. PX-3 Task 10 (on purpose): More's rows replace More options.
+  { file: F.more, pin: pinNeedles(['nativeRequest("app.changeUrl")', "moreRowsOf({", "{MORE_ROW_WORDS[row]}", "usePrintCapabilities()", 'const battery = native && nativeHasFeature("battery");', 'nativeRequest("app.battery")', "question={stopQuestionOf(false)}", 'onClose?.();\n      router.push("/printers");']), mutations: [
     mut("change-address renamed", 'nativeRequest("app.changeUrl")', 'nativeRequest("app.changeAddress")'),
-    mut("label changed", "More options", "Advanced"),
+    mut("rows not from moreRowsOf", "moreRowsOf({", "allRowsOf({"),
     mut("battery shown on every app", 'native && nativeHasFeature("battery")', "native"),
     mut("battery asks nothing", 'nativeRequest("app.battery")', "Promise.resolve()"),
   ] },
   // U5 Task 5 (printer P34, grid-cols-2 moved on purpose): the HTML's 32px segmented control; the label is the HTML's "Paper width".
   { file: F.paper, pin: pinNeedles(["aria-pressed", "PRINTER_SEG_TRACK_CLASS", "PAPER_WIDTHS.map", 'PAPER_QUESTION = "Paper width"']), mutations: [mut("track dropped", /PRINTER_SEG_TRACK_CLASS/g, "PRINTER_TRACK"), mut("the old word back", 'PAPER_QUESTION = "Paper width"', 'PAPER_QUESTION = "Paper size"')] },
-  { file: F.card, pin: cardPin, mutations: [
+  { file: F.testPrint, pin: testPrintPin, mutations: [
     mut("raster No reports", 'if (!silentMode && lane === "raster")', 'if (silentMode && lane === "raster")'),
     mut("non-host guard dropped", "if (!isHostDevice)", "if (isHostDevice === undefined)"),
-    mut("clear control placed twice", "<PrinterAdvanced clearControl={isHostDevice ? null : clearControl} />", "<PrinterAdvanced clearControl={clearControl} />"),
     mut("raster question changed", "Did the test slip print?", "Did it print without a dialog?"),
-    mut("busy reason dropped", "Busy with another slip.", "Wait."),
-    mut("remove reason dropped", "No printing device is set.", "Nothing."),
-    mut("label no longer typed-first", "label ?? (lane", "(lane"),
+    mut("the guided connect's words ignored", "toast.success(worksWords ?? TEST_WORKS_MESSAGE);", "toast.success(TEST_WORKS_MESSAGE);"),
   ] },
+  { file: F.setupActions, pin: setupPin, mutations: [mut("label no longer typed-first", "label ?? (lane", "(lane"), mut("the fallback name changed", '"Another device"', '"Device"')] },
   { file: F.page, pin: pagePin, mutations: [
     mut("guard removed", "<AdminGuard>", "<div>"),
     mut("guard swapped for a local stand-in", 'import { AdminGuard } from "@/components/shared/AdminGuard";', "const AdminGuard = ({ children }: { children: ReactNode }) => children;"),
@@ -434,7 +434,7 @@ const CASES: PinCase[] = [
     mut("the settings header back", "<PageHeader", "<SettingsPageHeader"),
     mut("eyebrow changed", 'eyebrow="Admin"', 'eyebrow="Settings"'),
     mut("narrow column back", "max-w-3xl", "max-w-" + "2xl"),
-    mut("the card instead of the panel", '<PrinterPanel home="page" />', "<PrinterSetupCard />"),
+    mut("the card instead of the panel", '<PrinterPanel home="page" />', '<PrinterSettingsView home="page" noun="this device" />'),
     mut("stale description", PRINTING_DESCRIPTION, "Choose the PC that prints."),
   ] },
   { file: F.layout, pin: layoutPin, mutations: [mut("guard removed", "<AdminGuard>", "<div>")] },

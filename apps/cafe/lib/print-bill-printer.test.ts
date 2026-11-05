@@ -95,12 +95,15 @@ test("Phase 4 (spec §8): a KOT that routes nowhere has nothing left to print; a
   }
 });
 
-test("PIN (2D, spec §6.6): in printers mode Where slips print says each slip prints at its printer, and offers no printing device", () => {
-  const where = src("components/print/PrintWhereSection.tsx");
-  const branch = where.indexOf("printersMode === true ? (");
-  assert.ok(branch >= 0 && branch < where.indexOf("isHostDevice ? ("), "decided before the printing-device branches");
-  assert.ok(where.includes('"Printers are set up: each slip prints at its printer (Printer setup → Printers)."'));
-  assert.match(src("components/print/PrinterSetupCard.tsx"), /const printersMode = printersModeOn\(usePrintersRead\(deviceId !== ""\)\.printers\);[\s\S]*printersMode=\{printersMode\}/);
+// PX-3 Task 10 (on purpose, spec §6.6 item 3): "Where slips print" became "Print for other devices"; its state is
+// printForOthersViewOf's, its words the card's, and printers mode reaches it through use-printer-setup-actions.ts.
+test("PIN (2D, spec §6.6): in printers mode Print for other devices says each slip prints at its printer, and offers no printing device", () => {
+  const view = src("lib/printer/settings-view.ts");
+  const branch = view.indexOf("if (i.printersMode)");
+  assert.ok(branch >= 0 && branch < view.indexOf("if (i.isHostDevice)"), "decided before the printing-device branches");
+  assert.ok(src("components/print/settings/PrintForOthersCard.tsx").includes('"Printers are set up: each slip prints at its own printer."'), "a former printing device's words in printers mode (B10)");
+  assert.match(src("hooks/use-printer-setup-actions.ts"), /const printersMode = printersModeOn\(usePrintersRead\(deviceId !== ""\)\.printers\);[\s\S]*printersMode,/, "printers mode from the agent's one printers read, handed to the card");
+  assert.match(src("components/print/settings/PrintForOthersCard.tsx"), /const view = printForOthersViewOf\(actions\);/, "the card's state comes from the hook's facts");
 });
 
 test("PIN (2D, the 2D gate's review, M-5): only the agent's printers read subscribes to print-setup; a screen that shows printers reads the same entry", () => {

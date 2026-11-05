@@ -19,7 +19,7 @@ const PROVIDER = "components/layout/PosPulseProvider.tsx";
 const DOT_CONTEXT = "components/layout/print-host-dot-context.ts";
 const BUTTON = "components/print/PrinterStatusButton.tsx";
 const CARD = "components/print/PrinterStatusCard.tsx";
-const PANEL = "components/print/PrinterPanel.tsx";
+const PANEL = "components/print/PrinterPanel.tsx"; const FOCUS = "hooks/use-printer-panel-focus.ts";
 const CONNECT_OUTCOME = "components/print/connect-outcome.ts";
 const CLASSES = "components/print/printer-classes.ts";
 const FRAME = "components/print/PrinterPanelFrame.tsx";
@@ -233,7 +233,7 @@ const PINS: PinCase[] = [
     mutate: (src) => src.replace('checking ? PRINTER_TILE_NEUTRAL_CLASS : view.tone === "ok"', 'view.tone === "ok"'),
   },
   {
-    // PX-2 Task 6 (spec §6.5, §6.6): Reconnect = reconnectDown (its first call inside the click); setup fixes switch view, then focus.
+    // PX-2 Task 6 (spec §6.5, §6.6): Reconnect = reconnectDown (its first call inside the click); setup fixes switch view, then focus (PX-3 Task 10, a pure move: in the focus hook).
     name: "panel fixes: Reconnect runs straight from the click through reconnectDown; setup fixes focus targets INSIDE this panel",
     file: PANEL,
     check: (src) => {
@@ -241,8 +241,8 @@ const PINS: PinCase[] = [
       assert.ok(src.includes("const RECONNECT_DEPS = { device: () => devicePrinter().reconnect(), native: (id: string) => nativePool().reconnect(id) };"), "the device's own printer, or the app's printer by its id");
       assert.ok(!/await (devicePrinter|nativePool|reconnectDown)/.test(src) && !src.includes("setTimeout"), "no deferral between the click and the first reconnect");
       assert.ok(src.includes(`DEVICE_SECTION_SELECTOR = '[data-printer-target="device"]'`) && src.includes(`DESIGNATE_SELECTOR = '[data-action="designate"]'`) && !src.includes('"#printer-device"') && !src.includes("document.querySelector"), "the two targets; W-P: never a page-wide lookup");
-      assert.ok(/const target = root\?\.querySelector<HTMLElement>\(selector\) \?\? null;/.test(src) && /scrollIntoView\(/.test(src), "looked up inside the panel's root, then shown");
-      assert.match(src, /pendingTarget\.current = selector;\s*onView\?\.\("settings"\);/, "a setup fix switches to the settings view first");
+      assert.ok(/const target = root\?\.querySelector<HTMLElement>\(selector\) \?\? null;/.test(read(FOCUS)) && /scrollIntoView\(/.test(read(FOCUS)) && !read(FOCUS).includes("document.querySelector"), "looked up inside the panel's root, then shown");
+      assert.match(read(FOCUS), /pendingTarget\.current = selector;\s*onView\?\.\("settings"\);/, "a setup fix switches to the settings view first");
       assert.match(src, /if \(kind === "printer-setup"\) \{\s*onClose\?\.\(\);\s*router\.push\("\/printers"\);/, "an admin's link closes the sheet, then opens Printer setup (the review's Important 1)");
     },
     mutate: (src) => src.replace("toastConnectOutcome(devicePrinter().reconnect())", "Promise.resolve().then(() => toastConnectOutcome(devicePrinter().reconnect()))"),

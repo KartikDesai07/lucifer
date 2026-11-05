@@ -58,9 +58,10 @@ const BUTTON = `${PRINT}PrinterStatusButton.tsx`;
 const PANEL = `${PRINT}PrinterPanel.tsx`;
 const CARD = `${PRINT}PrinterStatusCard.tsx`;
 // The 15 files of the hygiene pin (printer-ui-paths.test.ts HYGIENE) minus the lib / type files, plus the sections the look added.
+// PX-3 Task 10 (on purpose): Where slips print, More options and the setup card became the settings view's cards.
 const PANEL_FILES = [
-  "PrinterPanel", "PrintWhereSection", "DevicePrinterSection", "NativePrinterPicker", "PaperSizeToggle", "PrinterTestTips", "PrinterAdvanced",
-  "PrinterSetupCard", "PrintHostCardParts", "DesktopPrinterPicker", "BrowserPrinterConnect", "NotPrintedCard", "NotPrintedSection", "OtherDevicePrinters",
+  "PrinterPanel", "settings/PrintForOthersCard", "DevicePrinterSection", "NativePrinterPicker", "PaperSizeToggle", "PrinterTestTips", "settings/MoreCard",
+  "settings/PrinterSettingsView", "PrintHostCardParts", "DesktopPrinterPicker", "BrowserPrinterConnect", "NotPrintedCard", "NotPrintedSection", "OtherDevicePrinters",
   "PrinterStatusCard", "PrinterHereCard", "PrinterSettingsRow", "FindNetworkPrinters", "DesktopPrintMethod", "TextKotSection", "BillPrinterSection", "PanelSection", "PrinterPanelFrame",
 ].map((name) => `${PRINT}${name}.tsx`);
 
@@ -136,9 +137,10 @@ test("the buttons: primary 40px radius 9 14px 600; secondary 36px radius 8 13.5p
   assert.ok(hasAll(PRINTER_BUTTON_CLASS, ["h-9", "rounded-[8px]", "text-[13.5px]", "font-medium"]), "Search nearby printers look: 36px / 8 / 13.5px 500");
   assert.ok(hasAll(PRINTER_BUTTON_SMALL_CLASS, ["h-8", "rounded-[8px]", "text-[12.5px]", "font-medium"]), "the small button: 32px / 12.5px (the app's printer list)");
   assert.ok(hasAll(PRINTER_BUTTON_REMOVE_CLASS, ["h-9", "text-status-bad-ink", "border-[rgba(218,30,40,.4)]", "hover:bg-[var(--status-bad-tint)]"]), "Remove: --bad-i text, rgba(218,30,40,.4) border, --bad-t hover");
-  const sizes = read(`${PRINT}PrinterSetupCard.tsx`) + read(`${PRINT}OtherDevicePrinters.tsx`) + read(`${PRINT}PrinterAdvanced.tsx`);
-  assert.ok(sizes.includes("PRINTER_BUTTON_REMOVE_CLASS"), "the Remove buttons wear the Remove look");
-  assert.ok(read(`${PRINT}PrintWhereSection.tsx`).includes("PRINTER_BUTTON_PRIMARY_CLASS") && read(`${PRINT}BrowserPrinterConnect.tsx`).includes("PRINTER_BUTTON_PRIMARY_CLASS") && read(`${PRINT}NativePrinterPicker.tsx`).includes("PRINTER_BUTTON_PRIMARY_CLASS"), "Connect printer, Print all slips here, Find printers and Use this network printer are the 40px primary");
+  // PX-3 Task 10 (on purpose): the setup card and More options went; the device card's and the app's Remove remain.
+  for (const file of ["DevicePrinterSection", "OtherDevicePrinters"]) assert.ok(read(`${PRINT}${file}.tsx`).includes("PRINTER_BUTTON_REMOVE_CLASS"), `${file}: the Remove buttons wear the Remove look`);
+  const primaries = ["settings/PrintForOthersCard", "DevicePrinterSection", "BrowserPrinterConnect", "NativePrinterPicker"];
+  assert.ok(primaries.every((file) => read(`${PRINT}${file}.tsx`).includes("PRINTER_BUTTON_PRIMARY_CLASS")), "Print all slips here, Connect a printer, Connect printer, Find printers and Use this network printer are the 40px primary");
 });
 
 test("the panel files hold no h-8 / h-9 / h-10 token, no size=sm, no print trigger and no dialog word (the sizes come from printer-classes.ts)", () => {
@@ -163,16 +165,17 @@ test("WebView 109: no light-dark(), no runtime color-mix(), no oklab, no mask-im
 });
 
 // PX-2 Task 6 (on purpose, spec §6.1 / §6.2): was Waiting < Banner < Setup < Bill in one column. The status view: the card, the
-// Not printed card, On this device, the Printer settings row; the settings view: today's setup, unchanged; /printers both.
-test("the views: status = card < Not printed < On this device < Printer settings; settings = setup < bill; /printers both, inline", () => {
+// Not printed card, On this device, the Printer settings row; the settings view (PX-3 Task 10, on purpose: was today's setup
+// < bill): PrinterSettingsView's cards, in §6.6's order (lib/printer/settings-view.test.ts pins it); /printers both.
+test("the views: status = card < Not printed < On this device < Printer settings; settings = the settings view's cards; /printers both, inline", () => {
   const panel = stripComments(read(PANEL));
   assert.equal(count(panel, "usePosPulseContext("), 1, "P118: the panel is one of the eight readers, once");
-  const at = ["<PrinterStatusCard", "<NotPrintedSection", "<PrinterHereCard", "<PrinterSettingsRow", "<PrinterSetupCard", "<BillPrinterSection"].map((tag) => panel.indexOf(tag));
-  assert.ok(at.every((i, n) => i >= 0 && (n === 0 || i > (at[n - 1] ?? 0))), `card < Not printed < here < settings row < setup < bill: ${at.join(", ")}`);
+  const at = ["<PrinterStatusCard", "<NotPrintedSection", "<PrinterHereCard", "<PrinterSettingsRow", "<PrinterSettingsView"].map((tag) => panel.indexOf(tag));
+  assert.ok(at.every((i, n) => i >= 0 && (n === 0 || i > (at[n - 1] ?? 0))), `card < Not printed < here < settings row < settings view: ${at.join(", ")}`);
   assert.ok(panel.includes('const status = home === "page" || view === "status";') && panel.includes('const settings = home === "page" || view === "settings";'), "/printers draws both views");
   assert.match(panel, /\{home === "sheet" && view === "status" && <PrinterSettingsRow /, "the settings row only in the sheet's status view");
   assert.ok(panel.includes("data-printer-panel"), "the focus targets' scope marker");
-  const where = read(`${PRINT}PrintWhereSection.tsx`);
+  const where = read(`${PRINT}settings/PrintForOthersCard.tsx`);
   assert.ok(where.includes('id="printer-where"') && count(where, 'data-action="designate"') === 1, "the focus targets stay");
   assert.ok(read(`${PRINT}DevicePrinterSection.tsx`).includes('data-printer-target="device"'), "the device section's target stays");
   const page = read("app/(dashboard)/printers/page.tsx");
@@ -208,10 +211,13 @@ test("the panel adds no recurring request", () => {
 
 // F-M6 (spec §6.1): a view switch moves the focus to the new view's title (focusable, tabIndex -1), or to the part an action
 // pointed at; when the Not printed card leaves (Clear all, the last Clear, its slips printing) holding the focus, the status
-// card's headline takes it. A server render cannot move focus: the wiring is pinned at its source.
+// card's headline takes it. A server render cannot move focus: the wiring is pinned at its source. PX-3 Task 10 (on purpose,
+// a pure move): the wiring lives in hooks/use-printer-panel-focus.ts, which the panel calls once and wires to its root.
 test("focus follows the view", () => {
   assert.match(read(FRAME), /<DialogPrimitive\.Title data-ui="printer-panel-title" tabIndex=\{-1\}/, "the title can take the focus");
-  const panel = stripComments(read(PANEL));
+  const wired = stripComments(read(PANEL));
+  assert.ok(count(wired, "usePrinterPanelFocus(") === 1 && wired.includes("const { rootRef, listRef, onFocus, openSetup } = usePrinterPanelFocus({ home, view, onView });") && wired.includes("onFocus={onFocus}") && wired.includes('<div ref={listRef} className="contents">'), "the panel wires the hook to its root and the Not printed card");
+  const panel = stripComments(read("hooks/use-printer-panel-focus.ts"));
   const switched = panel.slice(panel.indexOf("if (shownView.current === view) return;"), panel.indexOf("}, [view]);"));
   assert.ok(switched.length > 40 && switched.includes("body.scrollTop = 0;"), "a view switch scrolls back to the top");
   assert.ok(switched.includes("if (target !== null && focusAndShow(rootRef.current, target)) return;") && switched.includes("frame?.querySelector<HTMLElement>(TITLE_SELECTOR)?.focus({ preventScroll: true });"), "then the part an action pointed at, else the title");
@@ -222,12 +228,16 @@ test("focus follows the view", () => {
   assert.ok(read(CARD).includes('<p data-ui="printer-status-headline" tabIndex={-1}'), "the headline can take the focus");
 });
 
-test("the words: only design 7.7's changes (Paper width, the Remove note's dash, the sub's full stop)", () => {
+// PX-3 Task 10 (on purpose, spec §6.6): the Remove note went with its help line (X9: the confirm says what it does), and
+// "More options", "Where slips print" and "Print test slip" with their cards; the words that stay are re-pointed at the
+// files that now hold them, and the gone ones are pinned gone from every panel file.
+test("the words: only design 7.7's changes (Paper width, the sub's full stop), then PX-3's cards", () => {
   assert.ok(read(`${PRINT}PaperSizeToggle.tsx`).includes('PAPER_QUESTION = "Paper width"'), "Paper width");
-  assert.ok(read(`${PRINT}PrinterAdvanced.tsx`).includes("remove it from any device — even a phone. Waiting slips are cancelled"), "the Remove note: the HTML's dash");
   assert.ok(read(FRAME).includes('"Printing on this device"'), "the description, no full stop (PX-2 Task 6: the sub went, spec §6.1)");
-  const keep = read(`${PRINT}PrinterAdvanced.tsx`) + read(`${PRINT}PrinterSetupCard.tsx`) + read(`${PRINT}PrintWhereSection.tsx`);
-  for (const word of ["More options", "Change POS address", "Print test slip", "Remove the printing device", "Stop printing here", "Where slips print"]) assert.ok(keep.includes(word), `${word} stays`);
+  const keep = read("lib/printer/settings-view.ts") + read(`${PRINT}settings/PrintForOthersCard.tsx`) + read(`${PRINT}DevicePrinterSection.tsx`);
+  for (const word of ["Change POS address", "Remove the printing device", "Stop printing here", "Test print"]) assert.ok(keep.includes(word), `${word} stays`);
+  const words = PANEL_FILES.map((file) => stripComments(read(file))).join("\n");
+  for (const gone of ["More options", "Print test slip", "Use one device for all printing", "Each device prints its own slips.", "Choose which device prints your slips.", "Battery settings for printing", "even a phone"]) assert.ok(!words.includes(gone), `${gone} went (spec §6.6)`);
 });
 
 // The frame pin as a function, so a mutation of the real file can be shown to be noticed.

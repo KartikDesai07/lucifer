@@ -41,8 +41,8 @@ function Bang({ className }: { className?: string }) {
   );
 }
 
-// The view marks a bold word as **word**: drawn bold, never with its asterisks.
-function marked(text: string): ReactNode[] {
+// The view marks a bold word as **word**: drawn bold, never with its asterisks. Also the settings cards' (PX-3 Task 10).
+export function marked(text: string): ReactNode[] {
   return text.split(/\*\*(.+?)\*\*/).map((part, i) => (i % 2 === 1 ? <strong key={i}>{part}</strong> : part));
 }
 
