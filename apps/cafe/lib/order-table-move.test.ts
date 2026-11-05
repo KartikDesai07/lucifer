@@ -10,6 +10,7 @@ import {
   MOVABLE_ORDER_STATUS,
   tableUnavailableReason,
   moveOrderFilter,
+  tableGuardFilter,
   claimTableFilter,
   occupyUpdate,
   RELEASE_UPDATE,
@@ -66,6 +67,16 @@ test("moveOrderFilter: a real string fromTableNo still emits that EXACT string (
   const filter = moveOrderFilter("ORD-1", "T-3", { total: 100 });
   assert.equal(filter.tableNo, "T-3");
   assert.notDeepEqual(filter.tableNo, { $in: [null, ""] });
+});
+
+// T1 echo review (2026-11-05): the ONE table term every money writer that prices the table charge fences on — the
+// move's own CAS, and reciprocally the add-round's and the settle's, so a move landing inside a round or a settle
+// makes it miss instead of writing the old table's charge over the new one.
+test("tableGuardFilter: a name is that exact name; no table (undefined or null) is the explicit absent-field form", () => {
+  assert.deepEqual(tableGuardFilter("T-3"), { tableNo: "T-3" });
+  assert.deepEqual(tableGuardFilter(undefined), { tableNo: { $in: [null, ""] } });
+  assert.deepEqual(tableGuardFilter(null), { tableNo: { $in: [null, ""] } });
+  assert.deepEqual(tableGuardFilter(""), { tableNo: "" }, "a legacy empty name is matched as stored");
 });
 
 test("claimTableFilter: the destination's name plus the free-table filter", () => {

@@ -19,7 +19,7 @@
 import { ApiError } from "@pos/shared/api-client";
 import { chargesFromOrder } from "@pos/shared/order-charges";
 import { inr } from "@pos/shared/utils";
-import { settleRefusal, TAB_CHANGED, type SettleSeen } from "@/lib/settle-guard";
+import { sameTable, settleRefusal, TAB_CHANGED, type SettleSeen } from "@/lib/settle-guard";
 import type { Order, SettleOrderInput } from "@/types";
 
 /** What a failed request means:
@@ -272,7 +272,8 @@ export function moneyEditedSince(state: MoneyState, snapshot: Order): boolean {
 }
 
 /** A move re-prices the table charge to the new table's own (owner T1), so the cashier's change on the table this POS
- *  held dies when the server's tab is on another one; the same table keeps it. undefined / null / "" = walk-in. */
+ *  held dies when the server's tab is on another one; the same table keeps it. undefined / null / "" = walk-in (the
+ *  server's echo uses the same sameTable, lib/settle-charges.ts chargeAmountSeenAt). */
 export function chargeOverrideAfterTabUpdate(heldTable: string | null | undefined, serverTable: string | null | undefined, override: number | undefined): number | undefined {
-  return (heldTable || "") === (serverTable || "") ? override : undefined;
+  return sameTable(heldTable, serverTable) ? override : undefined;
 }

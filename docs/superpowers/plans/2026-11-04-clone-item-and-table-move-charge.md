@@ -107,3 +107,38 @@ ONLY on the owner's OK (posdemo is in client use; never lucifer007; never touch 
   rollback would 400 every round from tabs that loaded the new JS. Owner to decide.
 - Old POS tabs (not reloaded since the deploy) after a move to a no-charge table still hold the stale amount on screen
   while the server bills none: reload the POS once after the deploy.
+
+## Results - the deferred T1 echo (2026-11-05, built)
+
+> **DONE & VERIFIED 2026-11-05** (s101): shared tsc 0 + 1064/1064, cafe tsc 0 + lint 0 err + 7617/7617, hub tsc 0 +
+> lint 0 + 288/288, live table-move 72/0 (57 + (f) 9 + (g) 6), orders 153/0; mutation 16/16. NOT deployed: demo deploy
+> (T1 + C1 + the echo) only on the owner's OK.
+
+- The echo: an optional `expectedTableNo` on addItemsSchema + settleOrderSchema (`tableNoEchoSchema` =
+  `z.string().nullable().optional()`: null = walk-in, omitted = not checked; only compared, never stored, so no name
+  rules that could 400 a KOT round). The POS sends `table ?? null` on the round and on the settle (use-pos-tab.ts stays
+  at its 546-line budget).
+- Add-round: `chargeAmountSeenAt` (lib/settle-charges.ts) drops `chargeAmount` (lowered or waived) when the tab now sits
+  at another table, so the new table's own saved charge applies.
+- Settle REFUSES instead (TAB_CHANGED 409 via `settleRefusal`, lib/settle-guard.ts): dropping would bill an amount the
+  cashier never saw (T1: what the screen shows = what the bill charges). `seenOf` (lib/settle-flow.ts) carries the echo,
+  so the 409's re-read is "changed" -> onChanged -> applyTabUpdate clears the override -> the cashier re-settles on the
+  new charge. One `sameTable` rule (no table / null / "" = walk-in) for the client fence and the server echo.
+- Review (opus, read-only, 2 rounds). MED, confirmed from the code: the echo was checked on the route's READ, but neither
+  write's CAS guarded `tableNo` (a move changes neither kotRounds nor voids, nor the total between two same-charge
+  tables), so a move landing in flight was still overwritten with the old table's charge (pre-existing for rounds too).
+  Fixed: `tableGuardFilter` (lib/order-table-move.ts) - the move's own CAS term, now also in the add-round and settle
+  CAS (reciprocal). Re-review: no defects. Live case (g) proves the term against Mongo (witness: without it both
+  filters still match the moved tab).
+- DEFERRED (pre-existing, no `chargeAmount` involved; owner to decide): the void route's CAS
+  (app/api/orders/[id]/items/void/route.ts) and the QR accept add-round (lib/order-request-accept-addround.ts,
+  `buildAddRoundFilter`) have the same one-way gap: a move landing inside their window gets the old table's charge or
+  total written back. One line each (`...tableGuardFilter(old.tableNo)`); rare.
+- ROLLBACK HAZARD (told to the owner): both schemas are `.strict()`. After a Vercel rollback, every POS tab that loaded
+  the new JS (and every Phase 5 offline round it kept) sends `expectedTableNo` to the old server and gets a 400 on every
+  round and settle until that screen reloads. A forward deploy is safe. After any rollback, reload every POS screen.
+- PRE-DEPLOY CHECK (2026-11-05): the demo deploy of main carries a070087..26912d6 (U6, printing Phase 5 + follow-ups, T1,
+  C1, the echo). Three read-only reviews found 1 HIGH + 2 MED in Phase 5's offline path (a tab with a round still kept on
+  the device could be settled; a may-have-landed replay's Discard said nothing was saved; a kept round put back the
+  discount/extras it was taken with): fixed test first, chain re-measured green. Record: the printing Phase 5 plan,
+  "The pre-deploy check".

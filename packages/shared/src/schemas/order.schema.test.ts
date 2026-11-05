@@ -348,6 +348,25 @@ test("createOrderSchema: rewardPoints accepts a whole 1..MAX and rejects 0, a fr
   }
 });
 
+// T1 echo (2026-11-05): the table the POS held when it made its table-charge change. Only ever COMPARED with the
+// tab's stored table, never stored, so it takes whatever the tab could hold (a name, "" or null = walk-in): a strict
+// name rule here could 400 a KOT round over a legacy table name.
+test("addItemsSchema / settleOrderSchema: expectedTableNo takes a name, an empty name, null (walk-in) or nothing", () => {
+  for (const v of ["T-1", "", null, undefined]) {
+    const round = addItemsSchema.safeParse({ items: sampleItems, expectedTableNo: v });
+    assert.ok(round.success && round.data.expectedTableNo === v, `round ${String(v)}`);
+    const settle = settleOrderSchema.safeParse({ payment: "Cash", expectedTableNo: v });
+    assert.ok(settle.success && settle.data.expectedTableNo === v, `settle ${String(v)}`);
+  }
+});
+
+test("addItemsSchema / settleOrderSchema: expectedTableNo refuses a non-string, and .strict() still refuses a misspelt key", () => {
+  assert.equal(addItemsSchema.safeParse({ items: sampleItems, expectedTableNo: 5 }).success, false);
+  assert.equal(settleOrderSchema.safeParse({ payment: "Cash", expectedTableNo: 5 }).success, false);
+  assert.equal(addItemsSchema.safeParse({ items: sampleItems, expectedTableno: "T-1" }).success, false);
+  assert.equal(settleOrderSchema.safeParse({ payment: "Cash", expectedTableno: "T-1" }).success, false);
+});
+
 test("addItemsSchema: rewardPoints is refused (strict) — points never ride an add-round", () => {
   assert.equal(addItemsSchema.safeParse({ items: sampleItems, rewardPoints: 10 }).success, false);
   assert.equal(addItemsSchema.safeParse({ items: sampleItems }).success, true, "landmark: the round itself parses");

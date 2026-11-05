@@ -65,18 +65,22 @@ export function moveOrderFilter(
   return {
     _id: id,
     status: MOVABLE_ORDER_STATUS,
-    // A tab with NO table is a first-class state (a walk-in that is about to be
-    // seated), and `tableNo: undefined` would drop the term entirely — turning
-    // the CAS into "any table", so a racing seat/move would be silently
-    // clobbered. Match the ABSENT field explicitly instead. Mongoose stores
-    // nothing for an unset tableNo (omit-empty, models/Order.ts), but a doc
-    // written before that discipline can carry "", so both are the same state
-    // here (auto-memory: $unset, not null, to reopen an $exists CAS).
-    tableNo: fromTableNo ?? { $in: [null, ""] },
+    ...tableGuardFilter(fromTableNo),
     total: order.total,
     kotRounds: order.kotRounds ?? 0,
     ...voidGuardFilter(order.voids?.length ?? 0),
   };
+}
+
+// The tab's table as a CAS term — the move's own, and (T1 echo review, 2026-11-05) the add-round's and the settle's:
+// both price the table charge from the table they READ, and a move changes neither kotRounds nor voids (nor the total
+// between two same-charge tables), so without it a move landing inside their window is overwritten by the old table's
+// charge. A tab with NO table is a first-class state (a walk-in about to be seated), and `tableNo: undefined` would
+// drop the term entirely — turning the CAS into "any table". Match the ABSENT field explicitly instead. Mongoose stores
+// nothing for an unset tableNo (omit-empty, models/Order.ts), but a doc written before that discipline can carry "",
+// so both are the same state here (auto-memory: $unset, not null, to reopen an $exists CAS).
+export function tableGuardFilter(tableNo: string | null | undefined): Record<string, unknown> {
+  return { tableNo: tableNo ?? { $in: [null, ""] } };
 }
 
 // The destination's CAS: only claim a table that is genuinely free right now.

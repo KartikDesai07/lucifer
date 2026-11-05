@@ -19,6 +19,7 @@ interface SettleTarget {
   status: string;
   total: number;
   voids?: readonly unknown[] | null;
+  tableNo?: string | null;
 }
 
 export interface SettleSeen {
@@ -26,6 +27,14 @@ export interface SettleSeen {
   expectedTotal?: number;
   /** The tab's void-trail length at that moment. */
   expectedVoids?: number;
+  /** The table the tab sat at (null = a walk-in) — T1: a move re-prices the table charge. */
+  expectedTableNo?: string | null;
+}
+
+/** One rule for "the same table" on both sides (the POS's override fence, the server's echo): no table, null and ""
+ *  all read as a walk-in. */
+export function sameTable(a: string | null | undefined, b: string | null | undefined): boolean {
+  return (a || "") === (b || "");
 }
 
 /** The 409 message for a settle that must not be priced at all, or null. An
@@ -38,5 +47,7 @@ export function settleRefusal(old: SettleTarget, seen: SettleSeen): string | nul
   if (seen.expectedTotal !== undefined && seen.expectedTotal !== old.total) return TAB_CHANGED;
   // A void on a fully comped tab leaves the total at 0 — only the trail shows it.
   if (seen.expectedVoids !== undefined && seen.expectedVoids !== (old.voids?.length ?? 0)) return TAB_CHANGED;
+  // Moved on another device: even at the same total, the operator's charge change was made for the old table.
+  if (seen.expectedTableNo !== undefined && !sameTable(seen.expectedTableNo, old.tableNo)) return TAB_CHANGED;
   return null;
 }

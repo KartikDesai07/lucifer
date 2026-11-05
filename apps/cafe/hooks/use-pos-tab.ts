@@ -296,9 +296,9 @@ export function usePosTab(receiver: string) {
     const startedFor = resumedOrder?._id ?? null;
     // CB-5B S9 — the reward claim rides the add-round too (a rung's `at` or CB-7 S5's card id): INTENT ONLY, already
     // `undefined` (omitted over JSON) for a tab that carries a reward, so the route's 409 is a backstop. CB-CHG — the
-    // complete new extra set (replace, decision 6).
+    // complete new extra set (replace, decision 6). T1 echo: the table the charge change was made at (route drops it).
     const round = resumedOrder
-      ? { id: resumedOrder._id, data: { items: newItems, discount, discountKind: discountKind ?? null, chargeAmount: chargeOverride, extraCharges, rewardAt: reward.pendingRewardAt, rewardCardId: reward.pendingCardId } }
+      ? { id: resumedOrder._id, data: { items: newItems, discount, discountKind: discountKind ?? null, chargeAmount: chargeOverride, expectedTableNo: table ?? null, extraCharges, rewardAt: reward.pendingRewardAt, rewardCardId: reward.pendingCardId } }
       : null;
     const create = buildCreatePayload({});
     // One confirmed request: the cart is freed only on the server's answer, and
@@ -348,10 +348,10 @@ export function usePosTab(receiver: string) {
     // Only meaningful alongside a defined paidAmount above — lets the
     // route detect a stale modalTotals snapshot (CR1.2 regression).
     total: modalTotals.total,
-    // The tab this bill was priced from: the route refuses once it has moved
-    // (lib/settle-guard.ts), so a re-send can never close a bigger bill.
+    // The tab this bill was priced from (and its table, T1): the route refuses once it has moved (lib/settle-guard.ts).
     expectedTotal: tab.total,
     expectedVoids: tab.voids?.length ?? 0,
+    expectedTableNo: table ?? null,
   });
 
   const confirmPayment = async (result: PaymentResult) => {

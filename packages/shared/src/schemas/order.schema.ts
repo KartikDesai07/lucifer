@@ -171,6 +171,10 @@ export const updateOrderSchema = orderObject
   .partial()
   .strict();
 
+// T1 echo — the table the POS held (null = walk-in). Only COMPARED with the tab's stored table, never stored, so like
+// `lineKey` it takes whatever a tab could hold: tableNoSchema's rules could 400 a KOT round over a legacy name.
+const tableNoEchoSchema = z.string().nullable().optional();
+
 // POST /api/orders/[id]/items — fire another KOT round on an open tab. Only the
 // new round's items; kotRound is stamped server-side, never supplied by the
 // client. An optional discount updates the running tab's order-level discount
@@ -190,6 +194,9 @@ export const addItemsSchema = z
     // about it — carries the original charge forward and bills it at settle.
     // Same omit-means-unchanged rule as `discount` above.
     chargeAmount: z.number().min(0).optional(),
+    // T1 echo — the route drops `chargeAmount` once the tab sits at another
+    // table than this (moved on another device). Omit = not checked.
+    expectedTableNo: tableNoEchoSchema,
     // CB-CHG — see orderObject's `extraCharges` above; same present=replace/
     // absent=unchanged rule.
     extraCharges: extraChargesSchema.optional(),
@@ -241,6 +248,9 @@ export const settleOrderSchema = z
     // Omit = not checked.
     expectedTotal: z.number().min(0).optional(),
     expectedVoids: z.number().int().min(0).optional(),
+    // T1 echo — the route refuses once the tab sits at another table than
+    // this, even at the same total. Omit = not checked.
+    expectedTableNo: tableNoEchoSchema,
   })
   .strict();
 

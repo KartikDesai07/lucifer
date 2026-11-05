@@ -96,7 +96,10 @@ export async function runOfflineReplay(ports: ReplayPorts): Promise<{ sent: numb
       // sign-in is checked before the replay, so a 401/403 proves nothing about the entry: it waits, like a miss.
       const definite = reachOf(error) === "reached" && !signedOut(error) && classifyFailure(error) !== "uncertain";
       const message = error instanceof ApiError ? error.message : String(error);
-      await ports.update((record) => patchEntry(record, entry.key, definite ? { state: "needs-staff", message } : { state: "waiting" }));
+      // No answer or a 5xx (the slips' 503 is a saved order): it may be on the server now, so it waits as uncertain and
+      // its Discard never says nothing is saved (the pre-deploy review). A 401/403 and a refusal (definite) wrote nothing.
+      const mayHaveLanded = classifyFailure(error) === "uncertain";
+      await ports.update((record) => patchEntry(record, entry.key, definite ? { state: "needs-staff", message } : { state: "waiting", ...(mayHaveLanded ? { uncertain: true } : {}) }));
       if (definite) {
         refused += 1;
         continue;
@@ -105,7 +108,8 @@ export async function runOfflineReplay(ports: ReplayPorts): Promise<{ sent: numb
     }
     const { offline: echo, ...order } = answer;
     if (echo === undefined) {
-      await ports.update((record) => patchEntry(record, entry.key, { state: "waiting" }));
+      // A 200 without the echo is a saved order (a server that dropped the field): uncertain, as above.
+      await ports.update((record) => patchEntry(record, entry.key, { state: "waiting", uncertain: true }));
       return { sent, refused, stop: "no-echo" };
     }
     await ports.update((record): OutboxRecord => {

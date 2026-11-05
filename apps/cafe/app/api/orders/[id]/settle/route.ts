@@ -14,6 +14,7 @@ import {
   PROMO_BLOCKS_GST_DISCOUNT_MESSAGE,
 } from "@/lib/receipt";
 import { voidGuardFilter } from "@/lib/order-void";
+import { tableGuardFilter } from "@/lib/order-table-move";
 import { settleRefusal } from "@/lib/settle-guard";
 import { getSettings, gstConfigOf } from "@/lib/settings";
 import { printConfigOf } from "@/lib/print";
@@ -223,22 +224,21 @@ export async function POST(req: Request, { params }: Params) {
     const update: Record<string, unknown> = { $set: set };
     if (Object.keys(unset).length > 0) update.$unset = unset;
 
-    // Conditional on still-Pending AND the total we priced against being unchanged — the total we READ
-    // (old.total), not the one we WRITE (a settle-time discount can lower it). A double-settle applies the
-    // ledger delta once, and a new KOT round racing in (changed total) misses instead of underpaying.
-    // The void-trail term covers what the total term cannot see: on a fully comped tab a void leaves the
-    // total at 0, so a racing void would pass while `money` was priced from our stale items (arbiter
-    // live-probe, CR1.3 review).
+    // Conditional on still-Pending AND the total we priced against being unchanged — the total we READ (old.total),
+    // not the one we WRITE (a settle-time discount can lower it). A double-settle applies the ledger delta once, and a
+    // new KOT round racing in (changed total) misses instead of underpaying. The void-trail term covers what the total
+    // term cannot see: on a fully comped tab a void leaves the total at 0, so a racing void would pass while `money`
+    // was priced from our stale items (arbiter live-probe, CR1.3 review).
     const filter: FilterQuery<IOrder> = {
       _id: id,
       status: "Pending",
       total: old.total,
-      // P1 (s87) — the round we read, the SAME term the items and void routes
-      // fence on: an add-round that leaves the total unchanged (a ₹100 dish
-      // under a ₹100 reward) passes the total term, and this settle — priced
-      // from our stale items — would complete the bill with that round unbilled.
+      // P1 (s87) — the round we read, the SAME term the items and void routes fence on: an add-round that leaves the
+      // total unchanged (a ₹100 dish under a ₹100 reward) passes the total term, and this settle — priced from our
+      // stale items — would complete the bill with that round unbilled.
       kotRounds: old.kotRounds ?? 0,
       ...voidGuardFilter(old.voids?.length ?? 0),
+      ...tableGuardFilter(old.tableNo), // T1: a move landing in this window misses us, even at the same total.
       // P2 — a claiming settle also fences the bill's reward/promo state and customer (see order-reward-fence).
       ...(claim || card || points ? rewardClaimOrderFence(old) : {}),
     };
