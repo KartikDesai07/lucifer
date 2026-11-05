@@ -55,7 +55,7 @@ function queuedBody(row: PrintAttentionRow, nowMs: number, printers: Printers): 
     return { strong: null, reason: "Waiting over 30 min.", tone: null, actions: ["print-now", "clear"] };
   }
   const name = printerNameOf(printers, row.printerId);
-  // ง6.3: first match wins, in the table's order.
+  // ยง6.3: first match wins, in the table's order.
   const outcome = row.lastError ? printWriteOutcomeOf(new Error(row.lastError)) : null;
   if (outcome !== null && isSlipRefusal(outcome)) return only("Could not be prepared. Tries once more by itself.");
   if (row.problem !== undefined) return only(printerProblemText(name ?? "The printer", row.problem));

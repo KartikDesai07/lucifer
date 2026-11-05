@@ -27,7 +27,7 @@ export function heldPrinterStatusOf(memory: HeldStatusMemory, key: string, statu
 export const PAGE_HELD_STATUS: HeldStatusMemory = new Map();
 
 /** The memory key of this device's own printer: its identity, so connecting a DIFFERENT printer starts with an empty
- *  memory (its first connect is "Checking…", not the old one's red) while the same printer's retries stay held. */
+ *  memory (its first connect is "Checkingâ€¦", not the old one's red) while the same printer's retries stay held. */
 export function localHeldKeyOf(printer: DevicePrinter | null): string {
   if (printer === null) return "local:";
   const id = printer.kind === "native" ? printer.printerId : printer.kind === "ble" ? printer.deviceId : `${printer.usbVendorId ?? ""}:${printer.usbProductId ?? ""}:${printer.bluetoothServiceClassId ?? ""}`;
