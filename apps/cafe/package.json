@@ -265,6 +265,7 @@
     "lib/print-queue-fixes.test.ts",
     "lib/print-lease.test.ts",
     "lib/print-lifecycle-paths.test.ts",
+    "lib/print-dismiss-route.test.ts",
     "lib/print-order-jobs.test.ts",
     "lib/print-token-jobs.test.ts",
     "lib/print-repair.test.ts",

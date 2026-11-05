@@ -97,6 +97,8 @@ export interface PrintAttentionRow {
  *  M2): a slip staff tapped just before its 3 h is kept 15 min more by the prune, so it is shown until then. */
 export const PRINT_ATTENTION_LIMIT = 20;
 export const PRINT_ATTENTION_WINDOW_MS = PRINT_JOB_QUEUED_RETENTION_MS + PRINT_JOB_ACTED_GRACE_MS;
+/** Printer UX PX-2 (spec §6.9 B2, R15): one Clear all takes at most every row the feed shows, in one request. */
+export const PRINT_DISMISS_MANY_MAX = PRINT_ATTENTION_LIMIT;
 
 export const PRINT_DEVICE_SHELLS = ["android", "windows", "browser"] as const;
 export type PrintDeviceShell = (typeof PRINT_DEVICE_SHELLS)[number];

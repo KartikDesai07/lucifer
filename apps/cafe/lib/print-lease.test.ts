@@ -70,10 +70,15 @@ test("printJobsForMeFilter: tokens false leaves token jobs out (the lease's own 
   assert.deepEqual(Object.keys(printJobsForMeFilter("dev-a", T0, false)).sort(), ["$nor", "$or", "kind", "status", "targetDeviceId"], "one more term, nothing else");
 });
 
-test("printJobCasFilter: fences on the status and epoch the plan read; epoch 0 also matches a row with no epoch", () => {
+// Printer UX PX-2 (SR-10, F-I6a) deliberately added the clear request: a plan read before a staff Clear was written
+// (or after it was unset) misses its CAS, so the writer re-reads and re-plans with it.
+test("printJobCasFilter: fences on the status, epoch and clear request the plan read; epoch 0 also matches a row with no epoch", () => {
   const id = new mongoose.Types.ObjectId();
-  assert.deepEqual(printJobCasFilter(id, { status: "queued", epoch: 0 }), { _id: id, status: "queued", epoch: { $in: [0, null] } });
-  assert.deepEqual(printJobCasFilter(id, { status: "leased", epoch: 3 }), { _id: id, status: "leased", epoch: 3 });
+  const none = { dismissRequestedAt: { $exists: false } };
+  assert.deepEqual(printJobCasFilter(id, { status: "queued", epoch: 0 }), { _id: id, status: "queued", epoch: { $in: [0, null] }, ...none }, "epoch 0: a row from before Phase 1 too");
+  assert.deepEqual(printJobCasFilter(id, { status: "leased", epoch: 3 }), { _id: id, status: "leased", epoch: 3, ...none }, "no request read: none may be there");
+  const asked = { status: "leased" as const, epoch: 3, dismissRequest: { at: new Date(T0), by: "Asha" } };
+  assert.deepEqual(printJobCasFilter(id, asked), { _id: id, status: "leased", epoch: 3, dismissRequestedAt: { $exists: true } }, "the request read: it must still be there");
 });
 
 test("printJobUpdateOf: $set as planned, $unset only when asked, and the log capped at the newest entries", () => {

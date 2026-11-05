@@ -228,6 +228,7 @@ test("PIN: the exact set of apps/cafe production files that write PrintJob (.cre
   // that writes their printer now, or (status "queued" and no uncertain attempt only) to the backup printer. Neither
   // touches a leased job or claimedAt (printers-mode jobs are never claimed), so no writer loses a job mid-print.
   const EXPECTED_PRINT_JOB_WRITERS = [
+    "apps/cafe/lib/print-dismiss.ts", // PX-2 (§6.9 B1/B2): the staff Clear; each of its CASs keeps claimedAt: { $exists: false }
     "apps/cafe/lib/print-failover.ts",
     "apps/cafe/lib/print-job-insert.ts",
     "apps/cafe/lib/print-lease.ts",
@@ -235,7 +236,6 @@ test("PIN: the exact set of apps/cafe production files that write PrintJob (.cre
     "apps/cafe/lib/print-queue.ts",
     "apps/cafe/lib/print-sweep.ts",
   ].sort();
-
   const files: string[] = [];
   walk(path.join(REPO_ROOT, "apps/cafe"), files);
 

@@ -57,6 +57,7 @@ import { legBF } from "./print-host-live/skip-interplay";
 import { legBG } from "./print-host-live/invoice-jobs";
 import { legBH } from "./print-host-live/offline";
 import { legBI } from "./print-host-live/offline-replay";
+import { legCW1, legCW1b, legCW2, legCW3, legCW4, legCW5, legCW6, legCW7, legCW8, legCW9 } from "./print-host-live/clear-while-printing";
 
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
@@ -163,6 +164,17 @@ async function main(): Promise<void> {
     await legBH(Date.now());
     // Printing Phase 5 Session 5A leg (the replay of an offline round: the CAS, the missing jobs, the echo).
     await legBI(Date.now());
+    // Printer UX PX-2 Task 2 legs (a staff Clear while a slip prints, Clear all, a leftover request; Ruling E's cw1b).
+    await legCW1(Date.now());
+    await legCW1b(Date.now());
+    await legCW2(Date.now());
+    await legCW3(Date.now());
+    await legCW4(Date.now());
+    await legCW5(Date.now());
+    await legCW6(Date.now());
+    await legCW7(Date.now());
+    await legCW8(Date.now());
+    await legCW9(Date.now());
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
