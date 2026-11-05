@@ -1,12 +1,15 @@
 import type { PrintHostState } from "@pos/shared/print-job";
 import { printerTypeLabel } from "@/components/print/printer-type";
+import type { PrinterHere } from "@/lib/print-agent-here";
 import type { DevicePrinter } from "@/lib/printer/device-printer-store";
 // DotLane, not print-lane's PrintLane (the same five lanes): nothing in lib/printer imports print-lane (print-lane.test.ts).
 import type { DotLane } from "@/lib/printer/printer-dot";
+import type { PrinterStatus } from "@/lib/printer/web-printer-types";
 
 // Printer UX PX-3 Task 10 (spec §6.6; mockups t-settings / t-host): the words of the settings view's cards. Which state
 // "Print for other devices" is in, the stop question, More's rows, the device card's title and its printer's sub, the
-// Faster KOTs row. Pure and DOM-free: the cards hand in what they read and draw what comes back.
+// Faster KOTs row; Task 10b: printers mode's one card (its words, a printer's setup name, a block's tone). Pure and
+// DOM-free: the cards hand in what they read and draw what comes back.
 
 export type PrintForOthersView =
   | { kind: "hidden" }
@@ -72,6 +75,30 @@ export function deviceCardTitleOf(lane: DotLane): string {
 /** "Bluetooth · 80 mm paper": today's type word (printerTypeLabel), then the roll. */
 export function printerSubOf(printer: DevicePrinter): string {
   return `${printerTypeLabel(printer)} · ${printer.paper === "58mm" ? "58 mm" : "80 mm"} paper`;
+}
+
+/** Printers mode's one card (spec §6.6 item 2; mockup t-settings-pm). The sub is also simple mode's note under "Other
+ *  printers on this device": the manager decides in Printer setup which slips a printer of this device prints. */
+export const PRINTERS_CARD = { title: "Printers on this device", sub: "Which slips each one prints: set by your manager." } as const;
+
+/** A printer of this device in `here`: the entry with that app id, ignoring case (the app spells a MAC upper-case, the 2C
+ *  gate's F-2), or for null (this device's own one printer: a browser's, an app on bridge v1) the entry with no app id. */
+export function hereEntryOf(here: readonly PrinterHere[], nativeId: string | null): PrinterHere | undefined {
+  const wanted = nativeId === null ? null : nativeId.toLowerCase();
+  return here.find((printer) => (printer.nativeId === undefined ? null : printer.nativeId.toLowerCase()) === wanted);
+}
+
+/** The setup's name of a printer of this device ("Kitchen printer"); null when the setup does not name it, so the app's
+ *  own name shows. */
+export function settingsNameOf(here: readonly PrinterHere[], nativeId: string | null): string | null {
+  return hereEntryOf(here, nativeId)?.name ?? null;
+}
+
+/** A printer block's dot and word (mockup t-settings-pm): green connected; amber where a Reconnect is the fix; quiet while
+ *  it connects, or while another tab of this browser holds it (nothing to fix from here). */
+export function blockToneOf(status: PrinterStatus): "ok" | "bad" | "quiet" {
+  if (status === "connected") return "ok";
+  return status === "connecting" || status === "elsewhere" ? "quiet" : "bad";
 }
 
 const TEXT_KOT_LABEL = "Print KOTs as plain text";

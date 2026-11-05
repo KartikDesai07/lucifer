@@ -155,7 +155,8 @@ test("PIN (the 2D review gate, M-3): only the agent's printers read subscribes; 
 });
 
 // Phase 2 Session 2F1 (spec §9.2, §11): on the POS app with bridge v2 the form chooses one of the app's printers, and
-// the panel lists the app's other printers with Add another printer; an app on v1 says it prints one printer.
+// the panel lists the app's other printers with Connect another printer (Add another printer before PX-3 Task 10b); an app on
+// v1 says it prints one printer.
 test("PIN (2F1): the form chooses one of the POS app's printers; the panel lists the others and adds one; an app on v1 says it prints one", () => {
   const form = src(`${SETUP}PrinterFormDialog.tsx`);
   assert.match(form, /const appHere = pool\.active && draft\.kind === "device" && \(draft\.device === null \|\| draft\.device\.deviceId === deviceId\);/, "never over another device's printer");
@@ -163,7 +164,8 @@ test("PIN (2F1): the form chooses one of the POS app's printers; the panel lists
   assert.match(form, /\{caps\.native && !pool\.active && <p className="text-xs text-brand-muted">\{ONE_APP_PRINTER\}<\/p>\}/);
   assert.match(src(`${SETUP}NativePrinterSelect.tsx`), /<SelectTrigger aria-label="Printer on this device"/);
   const section = src("components/print/DevicePrinterSection.tsx");
-  assert.match(section, /\{caps\.native && <OtherDevicePrinters paper=\{paperDefault\} locked=\{locked\} \/>\}/);
+  // PX-3 Task 10b (on purpose, spec §6.6 item 2): with the setup's names, and in printers mode as blocks of the one card.
+  assert.match(section, /\{caps\.native && <OtherDevicePrinters paper=\{paperDefault\} locked=\{locked\} here=\{here\} card=\{printersCard\} \/>\}/, "the panel lists the app's other printers");
   const others = src("components/print/OtherDevicePrinters.tsx");
   assert.match(others, /if \(!pool\.active\) return null;/, "nothing on an app that speaks only v1");
   assert.match(others, /const others = pool\.printers\.filter\(\(entry\) => entry\.id !== pool\.defaultId\);/, "the app's own default is the device's printer above (M-6)");

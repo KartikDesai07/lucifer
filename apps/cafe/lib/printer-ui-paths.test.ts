@@ -29,7 +29,7 @@ const F = {
   native: `${PRINT}NativePrinterPicker.tsx`,
   others: `${PRINT}OtherDevicePrinters.tsx`,
   paper: `${PRINT}PaperSizeToggle.tsx`, tips: `${PRINT}PrinterTestTips.tsx`,
-  more: `${PRINT}settings/MoreCard.tsx`, view: `${PRINT}settings/PrinterSettingsView.tsx`,
+  more: `${PRINT}settings/MoreCard.tsx`, view: `${PRINT}settings/PrinterSettingsView.tsx`, block: `${PRINT}settings/PrinterBlock.tsx`,
   testPrint: "apps/cafe/hooks/use-test-print.ts", setupActions: "apps/cafe/hooks/use-printer-setup-actions.ts",
   parts: `${PRINT}PrintHostCardParts.tsx`,
   type: `${PRINT}printer-type.ts`,
@@ -133,8 +133,8 @@ const devicePin: Pin = (raw) => {
   check(p, /else if \(firstList && outcome === "cancelled"\) \{\s*setNotSeen\(true\);/.test(code), "only a closed FIRST list raises the not-seen hint");
   check(p, count(code, "setNotSeen(false)") === 3, "the hint is also cleared by Change / Keep printer and by Remove");
   check(p, code.includes("paired={caps.serial}") && code.includes("nearby={caps.serial && caps.bluetooth}"), "the connect block hears what this browser can do: the paired list, and the nearby search only when BOTH exist");
-  // PX-3 Task 10 (on purpose, X7; was "Reconnect primary only while not connected" + ".reconnect() straight from onClick"): none here.
-  check(p, !code.includes(".reconnect()") && !/>\s*Reconnect\s*</.test(code), "X7: no Reconnect on this device's printer card");
+  // PX-3 Task 10 (X7; was "Reconnect primary only while not connected"); Task 10b (on purpose, X7): only printers mode's card, only while down.
+  check(p, count(code, ".reconnect()") === 1 && code.includes('{printersCard && status !== "connected" && (') && code.includes("onClick={() => void settle(devicePrinter().reconnect())} disabled={locked}"), "X7: Reconnect only in printers mode on a printer that is down, called straight from the click");
   check(p, !/Bluetooth LE/i.test(code), "no radio jargon (Bluetooth LE) in client copy");
   check(p, code.includes("const paperDefault = printConfigOf(settings.data).bill.paperWidth;"), "paperDefault comes from the print settings");
   check(p, code.includes("const locked = busy || elsewhere;"), "one busy state plus the other-tab state lock everything");
@@ -144,7 +144,7 @@ const devicePin: Pin = (raw) => {
   check(p, count(code, "<BrowserPrinterConnect") === 1 && count(code, "<PanelSection") === 1, "one connect block, one section shell");
   check(p, /lane === "desktop" \? \(\s*<>\s*<DesktopPrinterPicker \/>/.test(code) && code.includes("caps.native") && code.includes("<NativePrinterPicker"), "desktop picker / app picker by capability");
   check(p, code.includes("devicePrinter().setPaper(paper)") && code.includes("<PaperSizeToggle") && code.includes("devicePrinter().forget()"), "paper toggle and remove are wired");
-  for (const n of ["title={deviceCardTitleOf(lane)}", '"Keep this printer" : "Change"', "No printer on ${noun}.", "Connect a printer", "Test print", "<PrinterTestTips />", "Busy with another slip.", "from this device?", "This browser or app cannot connect to a printer directly", "PRINTER_ELSEWHERE_STATUS_MESSAGE"]) {
+  for (const n of ["title={printersCard ? PRINTERS_CARD.title : deviceCardTitleOf(lane)}", '"Keep this printer" : "Change"', "No printer on ${noun}.", "Connect a printer", "Test print", "<PrinterTestTips />", "Busy with another slip.", "from this device?", "This browser or app cannot connect to a printer directly", "PRINTER_ELSEWHERE_STATUS_MESSAGE"]) {
     check(p, code.includes(n), `must contain ${n}`);
   }
   check(p, !/print window/i.test(code), "W-M: never claim a print window opens where the browser cannot print directly");
@@ -283,9 +283,9 @@ const HYGIENE: [string, number, boolean][] = [
   [F.connect, 110, true], [F.section, 50, false], [F.type, 60, false],
   // Session 1D: the waiting slips follow the same rules (44px controls, no jargon); PX-2 Task 4: its container, its card.
   [F.waiting, 120, false], [F.notPrinted, 150, true], [F.statusCard, 120, true], [F.hereCard, 80, false], [F.settingsRow, 60, false],
-  // Session 2F1 (the 2F1 review gate, M-6): the POS app's other printers on bridge v2. Session 3B: 130 (was 120), a
-  // network printer this device may take over says why it stays.
-  [F.others, 130, true],
+  // Session 2F1 (the 2F1 review gate, M-6): the POS app's other printers on bridge v2. Session 3B: 130 (was 120), a network printer
+  // this device may take over says why it stays. PX-3 Task 10b: 220 (the brief's budget: printers mode's blocks), their shared parts 80.
+  [F.others, 220, true], [F.block, 80, true],
 ];
 const hygieneMutations = [
   append("a console call", "// " + "console" + ".log(1)"),
@@ -356,13 +356,13 @@ const CASES: PinCase[] = [
     mut("the primary kind flipped", 'caps.serial ? "serial" : "ble"', 'caps.serial ? "ble" : "serial"'),
     mut("the hint raised by any cancel", 'else if (firstList && outcome === "cancelled")', 'else if (outcome === "cancelled")'),
     mut("a connect leaves the hint up", "setChanging(false);\n        setNotSeen(false);", "setChanging(false);"),
-    mut("change printer keeps a stale hint", "setChanging((v) => !v);\n                      setNotSeen(false);", "setChanging((v) => !v);"),
+    mut("change printer keeps a stale hint", /setChanging\(\(v\) => !v\);\s*setNotSeen\(false\);/, "setChanging((v) => !v);"),
     mut("nearby offered on a BLE-only browser", "nearby={caps.serial && caps.bluetooth}", "nearby={caps.bluetooth}"),
     mut("paired copy on a BLE-only browser", "paired={caps.serial}", "paired={true}"),
-    mut("a Reconnect back on the card (X7)", '"Keep this printer" : "Change"}', '"Keep this printer" : "Change"}</Button><Button onClick={() => void settle(devicePrinter().reconnect())} disabled={locked}>Reconnect'),
-    mut("a radio name back in the copy", "title={deviceCardTitleOf(lane)}", 'title="Bluetooth LE printer on this device"'),
+    mut("a Reconnect in simple mode too (X7)", '"Keep this printer" : "Change"}', '"Keep this printer" : "Change"}</Button><Button onClick={() => void settle(devicePrinter().reconnect())} disabled={locked}>Reconnect'),
+    mut("a radio name back in the copy", "title={printersCard ? PRINTERS_CARD.title : deviceCardTitleOf(lane)}", 'title="Bluetooth LE printer on this device"'),
     mut("the test left ungated", "disabled={test.startDisabled}", "disabled={false}"), mut("busy reason dropped", "Busy with another slip.", "Wait."),
-    mut("a button left enabled", "}}\n                    disabled={locked}", "}}\n                    disabled={false}"),
+    mut("a button left enabled", /\}\}\s*disabled=\{locked\}/, "}}\n disabled={false}"),
     mut("remove button left enabled", 'onClick={() => setConfirmRemove(true)} disabled={locked}', "onClick={() => setConfirmRemove(true)}"),
     mut("the target marker dropped", '      data-printer-target="device"\n', ""),
     mut("the page-wide id back", 'data-printer-target="device"', 'id="printer-device" data-printer-target="device"'),

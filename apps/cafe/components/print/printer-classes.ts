@@ -74,9 +74,9 @@ export const PRINTER_PANEL_COLUMN_CLASS = "mx-auto flex w-full flex-none flex-co
 // A section card (values 18): --surface, 1px --border, radius 12, clipped; the head row, then the body. PX-3 Task 10 (spec §6.6,
 // mockups t-settings; ruling T10-A): head 12 / 16, body 0 16 14 with its parts 10 apart (was 14 / 16 and 0 16 16, 12 apart),
 // and the tile and the words centred on each other, so a card with no sub (This device's printer, Faster KOTs) does not
-// hang its title off the tile's top.
+// hang its title off the tile's top. Task 10b: the tile 10px from the words (the mockup's .card .ch gap; was 12).
 export const PRINTER_SECTION_CARD_CLASS = "flex-none overflow-clip rounded-[12px] border border-border bg-card";
-export const PRINTER_SECTION_HEAD_CLASS = "flex items-center gap-3 px-4 py-3";
+export const PRINTER_SECTION_HEAD_CLASS = "flex items-center gap-2.5 px-4 py-3";
 export const PRINTER_SECTION_TILE_CLASS = "grid size-[34px] flex-none place-items-center rounded-[9px] bg-surface-3 text-muted-foreground [&_svg]:size-[17px]";
 export const PRINTER_SECTION_TITLE_CLASS = "text-[14px] font-semibold";
 export const PRINTER_SECTION_SUB_CLASS = "mt-0.5 text-[12.5px] text-subtle-foreground";
@@ -197,6 +197,12 @@ export const PRINTER_STEP_NUM_CLASS = `grid size-5 flex-none place-items-center 
 // 52px tall with the first row's 2px / 10px. The name class below stays for the app's printer lists.
 export const PRINTER_ROW_CLASS = "flex min-h-[52px] items-center gap-2.5 pt-0.5 pb-2.5";
 export const PRINTER_ROW_NAME_CLASS = "break-words text-[13.5px] font-semibold";
+// Printers on this device (PX-3 Task 10b, spec §6.6 item 2; mockup t-settings-pm .prow / .btn-row): one block per printer,
+// a --border-2 rule between blocks (none above the card's first); the row in the On this device look, 40px at least, then
+// its buttons 8px apart, indented 19px under the name (the 9px dot and its 10px gap).
+export const PRINTER_DEVICE_BLOCK_CLASS = "flex flex-col gap-2.5 border-t border-border-2 pt-2.5 first:border-t-0 first:pt-0";
+export const PRINTER_DEVICE_ROW_CLASS = "flex min-h-10 items-center gap-2.5";
+export const PRINTER_DEVICE_BUTTONS_CLASS = "flex flex-wrap gap-2 pl-[19px]";
 /** A found printer (values 19): 10px 12px, radius 10, a 1px --border rule. */
 export const PRINTER_LIST_ROW_CLASS = "flex items-center gap-2.5 rounded-[10px] border border-border px-3 py-2.5";
 // A segmented choice (values 20): a --surface-3 track radius 8, 2px padding, 32px; its buttons radius 6, 12.5px.

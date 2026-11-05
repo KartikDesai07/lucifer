@@ -45,8 +45,9 @@ export interface PrinterRowProps {
 }
 
 // Every status in words (the colour is never the only signal). "elsewhere": another tab of this
-// browser holds the printer — the section says so, and the chip must not contradict it.
-const STATUS_LABEL: Record<PrinterStatus, string> = {
+// browser holds the printer — the section says so, and the chip must not contradict it. Printers mode's block for this
+// device's printer says the same words (PX-3 Task 10b).
+export const STATUS_LABEL: Record<PrinterStatus, string> = {
   none: "Not connected",
   connecting: "Connecting…",
   connected: "Connected",

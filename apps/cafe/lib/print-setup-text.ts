@@ -136,8 +136,9 @@ export function printerFailoverLines(printer: PrinterConfig, printers: readonly 
   return lines;
 }
 
-/** The toast after a Test print: said plainly when its printing device is away (its slip waits for it). */
-export function testPrintSentText(printer: PrinterConfig, state: { tone: PrinterRowTone; text: string }): string {
+/** The toast after a Test print: said plainly when its printing device is away (its slip waits for it). By name only, so
+ *  the printer panel's admin Test print (PX-3 Task 10b) says it of a printer of this device too. */
+export function testPrintSentText(printer: Pick<PrinterConfig, "name">, state: { tone: PrinterRowTone; text: string }): string {
   const sent = `Test slip sent to ${printer.name}.`;
   return state.tone === "bad" ? `${sent} It prints when its printing device is back online.` : sent;
 }

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Printer, ReceiptText } from "lucide-react";
 import { toast } from "sonner";
 
-import { PRINTER_BUTTON_CLASS, PRINTER_BUTTON_PRIMARY_CLASS, PRINTER_BUTTON_REMOVE_CLASS, PRINTER_NOTE_CLASS } from "@/components/print/printer-classes";
+import { PRINTER_BUTTON_CLASS, PRINTER_BUTTON_PRIMARY_CLASS, PRINTER_BUTTON_REMOVE_CLASS, PRINTER_DEVICE_BUTTONS_CLASS, PRINTER_NOTE_CLASS } from "@/components/print/printer-classes";
 import { Button } from "@/components/ui/button";
 import { BrowserPrinterConnect } from "@/components/print/BrowserPrinterConnect";
 import { DesktopPrinterPicker } from "@/components/print/DesktopPrinterPicker";
@@ -12,11 +12,13 @@ import { NativePrinterPicker } from "@/components/print/NativePrinterPicker";
 import { OtherDevicePrinters } from "@/components/print/OtherDevicePrinters";
 import { toastConnectOutcome } from "@/components/print/connect-outcome";
 import { PaperSizeToggle } from "@/components/print/PaperSizeToggle";
-import { InlineConfirm, PrinterRow } from "@/components/print/PrintHostCardParts";
+import { InlineConfirm, PrinterRow, STATUS_LABEL } from "@/components/print/PrintHostCardParts";
 import { PanelSection } from "@/components/print/PanelSection";
 import { PrinterTestTips } from "@/components/print/PrinterTestTips";
+import { PrinterBlock, SetupTestPrint } from "@/components/print/settings/PrinterBlock";
 import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
-import { useOwnPrinterInSetup } from "@/hooks/use-agent-printers";
+import { useDotPrinters, useOwnPrinterInSetup } from "@/hooks/use-agent-printers";
+import { useAuth } from "@/hooks/use-auth";
 import { useDevicePrinter, useNativePool, usePrintCapabilities, usePrintLane } from "@/hooks/use-device-printer";
 import { useSettings } from "@/hooks/use-settings";
 import { TEST_QUESTIONS, useTestPrint } from "@/hooks/use-test-print";
@@ -25,7 +27,7 @@ import { PRINTER_IN_SETUP_MESSAGE } from "@/lib/print-agent-printers";
 import { PRINTER_ELSEWHERE_STATUS_MESSAGE, devicePrinter, type ConnectOutcome } from "@/lib/printer/device-printer";
 import { nativePool } from "@/lib/printer/native-pool";
 import type { DeviceNoun } from "@/lib/printer/printer-status-view";
-import { deviceCardTitleOf } from "@/lib/printer/settings-view";
+import { PRINTERS_CARD, blockToneOf, deviceCardTitleOf, hereEntryOf, printerSubOf, settingsNameOf } from "@/lib/printer/settings-view";
 import { nativeTargetId, type NativeSelectTarget } from "@/lib/printer/transport-native";
 
 const REMOVED_MESSAGE = "Printer removed from this device.";
@@ -41,6 +43,9 @@ const TEST_BUSY_REASON = "Busy with another slip. Try again in a moment.";
 // printers it can see; a browser connects Bluetooth or USB straight from a tap. The row, then Test print · Change · Remove,
 // then Paper width. No Reconnect (X7): the status card's Reconnect is the fix. Everything but the test (its own gate) is
 // disabled while one action runs, and while another tab of this browser owns the printer.
+// Task 10b (spec §6.6 item 2; mockup t-settings-pm): on a printers-mode writer it is "Printers on this device", one card for
+// every printer this device prints: its own printer first by the setup's name (Reconnect only while it is not connected,
+// no Change: the manager names its printers in Printer setup), then the app's other printers as blocks of the same card.
 export function DevicePrinterSection({ noun }: { noun: DeviceNoun }) {
   const lane = usePrintLane();
   const caps = usePrintCapabilities();
@@ -59,6 +64,16 @@ export function DevicePrinterSection({ noun }: { noun: DeviceNoun }) {
   const { deviceId } = usePrintHostContext();
   const { inSetup, known } = useOwnPrinterInSetup(deviceId);
   const pool = useNativePool();
+  // The printers read already cached (no request of its own). The Windows app keeps its picker in either mode (X2).
+  const dot = useDotPrinters(deviceId);
+  const { isAdmin } = useAuth();
+  const printersCard = lane !== "desktop" && dot.printersMode && dot.isWriter;
+  const here = dot.here ?? [];
+  // This device's own printer in `here`: on bridge v2 the app's default, else the one printer with no app id.
+  const ownId = pool.active ? (pool.defaultId ?? null) : null;
+  const ownHere = printersCard ? hereEntryOf(here, ownId) : undefined;
+  // X5: an admin tests a printer the setup names through the setup's own test; anyone else, today's device test.
+  const ownSetupTest = isAdmin && ownHere !== undefined ? <SetupTestPrint printer={ownHere} disabled={locked} /> : null;
   // The 2F2 review gate (M-4): Change printer of a printer the setup prints through this device keeps it in the POS app
   // (bridge v2): a new printer is added first (one the app lists already is only chosen: an add would restart its link),
   // then made this device's printer, and the old one stays among the app's other printers; also while the setup is not
@@ -127,10 +142,63 @@ export function DevicePrinterSection({ noun }: { noun: DeviceNoun }) {
     </>
   );
 
+  // This device's printer's lines and buttons: under its row in simple mode, inside its block in printers mode.
+  const ownLines = printer !== null && (
+    <>
+      {printer.kind !== "native" && <p className={PRINTER_NOTE_CLASS}>{KEEP_TAB_OPEN}</p>}
+      {snapshot.message !== null && !elsewhere && <p role="status" className="text-muted-foreground">{snapshot.message}</p>}
+      {confirmRemove ? (
+        <InlineConfirm
+          question={`Remove ${printer.name} from this device?`}
+          yes="Yes, remove"
+          no="No"
+          disabled={locked}
+          onYes={() => void remove()}
+          onNo={() => setConfirmRemove(false)}
+        />
+      ) : (
+        // Sized to their words, one row that wraps on a narrow phone.
+        <div className={printersCard ? PRINTER_DEVICE_BUTTONS_CLASS : "flex flex-wrap gap-2"}>
+          {/* X7: printers mode only (simple mode's fix is the status card's), and only on a printer that is down. */}
+          {printersCard && status !== "connected" && (
+            <Button className={PRINTER_BUTTON_CLASS} variant="outline" onClick={() => void settle(devicePrinter().reconnect())} disabled={locked}>
+              Reconnect
+            </Button>
+          )}
+          {ownSetupTest ?? testButton}
+          {!printersCard && (
+            <Button
+              className={PRINTER_BUTTON_CLASS}
+              variant="outline"
+              onClick={() => {
+                setChanging((v) => !v);
+                setNotSeen(false);
+              }}
+              disabled={locked}
+            >
+              {changing ? "Keep this printer" : "Change"}
+            </Button>
+          )}
+          {inSetup ? (
+            <p className={PRINTER_NOTE_CLASS}>{PRINTER_IN_SETUP_MESSAGE}</p>
+          ) : known ? (
+            <Button className={PRINTER_BUTTON_REMOVE_CLASS} variant="outline" onClick={() => setConfirmRemove(true)} disabled={locked}>
+              Remove
+            </Button>
+          ) : null}
+        </div>
+      )}
+      {testAnswer}
+      {/* Printers mode on bridge v2 prints each printer on the setup's paper; a browser's or bridge v1's one printer on its own. */}
+      {(!printersCard || !pool.active) && <PaperSizeToggle value={printer.paper} disabled={locked} onChange={(paper) => devicePrinter().setPaper(paper)} />}
+    </>
+  );
+
   return (
     <PanelSection
       icon={<Printer />}
-      title={deviceCardTitleOf(lane)}
+      title={printersCard ? PRINTERS_CARD.title : deviceCardTitleOf(lane)}
+      sub={printersCard ? PRINTERS_CARD.sub : undefined}
       data-printer-target="device"
       tabIndex={-1}
     >
@@ -143,48 +211,17 @@ export function DevicePrinterSection({ noun }: { noun: DeviceNoun }) {
       ) : lane === "pending" ? null : (
         <>
           {elsewhere && <p role="status" className="text-status-warn-ink">{PRINTER_ELSEWHERE_STATUS_MESSAGE}</p>}
-          {printer !== null && (
-            <>
-              <PrinterRow printer={printer} status={status} />
-              {printer.kind !== "native" && <p className={PRINTER_NOTE_CLASS}>{KEEP_TAB_OPEN}</p>}
-              {snapshot.message !== null && !elsewhere && <p role="status" className="text-muted-foreground">{snapshot.message}</p>}
-              {confirmRemove ? (
-                <InlineConfirm
-                  question={`Remove ${printer.name} from this device?`}
-                  yes="Yes, remove"
-                  no="No"
-                  disabled={locked}
-                  onYes={() => void remove()}
-                  onNo={() => setConfirmRemove(false)}
-                />
-              ) : (
-                // Sized to their words, one row that wraps on a narrow phone.
-                <div className="flex flex-wrap gap-2">
-                  {testButton}
-                  <Button
-                    className={PRINTER_BUTTON_CLASS}
-                    variant="outline"
-                    onClick={() => {
-                      setChanging((v) => !v);
-                      setNotSeen(false);
-                    }}
-                    disabled={locked}
-                  >
-                    {changing ? "Keep this printer" : "Change"}
-                  </Button>
-                  {inSetup ? (
-                    <p className={PRINTER_NOTE_CLASS}>{PRINTER_IN_SETUP_MESSAGE}</p>
-                  ) : known ? (
-                    <Button className={PRINTER_BUTTON_REMOVE_CLASS} variant="outline" onClick={() => setConfirmRemove(true)} disabled={locked}>
-                      Remove
-                    </Button>
-                  ) : null}
-                </div>
-              )}
-              {testAnswer}
-              <PaperSizeToggle value={printer.paper} disabled={locked} onChange={(paper) => devicePrinter().setPaper(paper)} />
-            </>
-          )}
+          {printer !== null &&
+            (printersCard ? (
+              <PrinterBlock name={settingsNameOf(here, ownId) ?? printer.name} sub={printerSubOf(printer)} tone={blockToneOf(status)} word={STATUS_LABEL[status]}>
+                {ownLines}
+              </PrinterBlock>
+            ) : (
+              <>
+                <PrinterRow printer={printer} status={status} />
+                {ownLines}
+              </>
+            ))}
           {/* The app with no printer: the line and one way in (Task 11 turns it into the guided connect). */}
           {printer === null && caps.native && (
             <>
@@ -211,8 +248,9 @@ export function DevicePrinterSection({ noun }: { noun: DeviceNoun }) {
           {/* The printing device with no printer of its own (a print window): its test stays reachable. */}
           {printer === null && testButton}
           {printer === null && testAnswer}
-          {/* Phase 2 Session 2F1 (spec §9.2): the POS app on bridge v2 drives more printers beside this device's own. */}
-          {caps.native && <OtherDevicePrinters paper={paperDefault} locked={locked} />}
+          {/* Phase 2 Session 2F1 (spec §9.2): the POS app on bridge v2 drives more printers beside this device's own;
+              printers mode: as blocks of this card (Task 10b). */}
+          {caps.native && <OtherDevicePrinters paper={paperDefault} locked={locked} here={here} card={printersCard} />}
         </>
       )}
     </PanelSection>
