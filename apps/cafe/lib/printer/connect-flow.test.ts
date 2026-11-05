@@ -138,10 +138,10 @@ test("the found rows: Bluetooth's paired and nearby, the first paired one primar
     { id: "t1", name: "Kitchen", transport: "tcp" },
   ];
   assert.deepEqual(connectRowsOf(printers, "bluetooth"), [
-    { id: "b1", name: "POS-58", sub: "Nearby", primary: false, transport: "ble" },
     { id: "c1", name: "RPP02N", sub: "Paired", primary: true, transport: "bt-classic" },
     { id: "c2", name: "MTP-II", sub: "Paired", primary: false, transport: "bt-classic" },
-  ], "both Bluetooth kinds, in the app's order; only the first paired row is the primary; each keeps its kind (T11-A)");
+    { id: "b1", name: "POS-58", sub: "Nearby", primary: false, transport: "ble" },
+  ], "both Bluetooth kinds, paired first (Task 13), each group in the app's order; only the first paired row is the primary; each keeps its kind (T11-A)");
   assert.deepEqual(connectRowsOf(printers, "usb"), [{ id: "u1", name: "USB-80", sub: "USB", primary: false, transport: "usb" }], "the USB entries");
   assert.deepEqual(connectRowsOf([{ id: "b1", name: "POS-58", transport: "ble" }], "bluetooth"), [{ id: "b1", name: "POS-58", sub: "Nearby", primary: false, transport: "ble" }], "none paired: no primary");
 });

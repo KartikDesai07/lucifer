@@ -69,6 +69,8 @@
   },
   "testChain": [
     "lib/deploy-scope-paths.test.ts",
+    "lib/printer/connect-rows.test.ts",
+    "lib/connect-location.test.ts",
     "lib/staff-pin-paths.test.ts",
     "lib/staff-pin-ui-paths.test.ts",
     "lib/pin-device.test.ts",

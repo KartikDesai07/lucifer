@@ -1,3 +1,4 @@
+import { nativeErrorCode } from "@/lib/printer/native-bridge";
 import type { NativeBluetoothState, NativePrinter } from "@/lib/printer/native-bridge-protocol";
 
 // The in-app printer picker's state rules, kept pure so they are unit-tested (the panel itself is
@@ -46,4 +47,14 @@ export function createStatusOrder(): { event(): void; start(): number; fresh(sta
       return startedAt === events;
     },
   };
+}
+
+export type ScanRefusal = "allow" | "settings-steps";
+
+/** A scan the app refused for a missing permission (on Android 7-11 Bluetooth scanning needs Location): the first time the
+ *  page offers Allow; once an Allow came back refused (`asked`), Android will not ask again, so the steps. Any other
+ *  error is not a refusal: its own sentence stays (a Location that is off says so). */
+export function scanRefusalOf(error: unknown, asked: boolean): ScanRefusal | null {
+  if (nativeErrorCode(error) !== "UNAUTHORIZED") return null;
+  return asked ? "settings-steps" : "allow";
 }

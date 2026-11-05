@@ -3,17 +3,19 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type ReactNode } from "react";
 import { RefreshCw } from "lucide-react";
 
+import { useBluetoothScan } from "@/components/print/connect/use-bluetooth-scan";
+import { ScanRefusalNotice } from "@/components/print/connect/ScanRefusalNotice";
 import { FindNetworkPrinters } from "@/components/print/FindNetworkPrinters";
 import { marked } from "@/components/print/PrinterStatusCard";
-import { PRINTER_BUTTON_CLASS, PRINTER_BUTTON_PRIMARY_CLASS, PRINTER_CONNECT_BUTTON_CLASS, PRINTER_CONNECT_CARD_BODY_CLASS, PRINTER_CONNECT_CARD_CLASS, PRINTER_CONNECT_ERROR_CLASS, PRINTER_CONNECT_ROW_CLASS, PRINTER_CONNECT_SEARCHING_CLASS, PRINTER_CONNECT_SPIN_CLASS, PRINTER_CONNECT_STEPS_CLASS, PRINTER_ERROR_CLASS, PRINTER_FIELD_TALL_CLASS, PRINTER_HERE_DOT_CLASS, PRINTER_HERE_NAME_CLASS, PRINTER_HERE_SUB_CLASS, PRINTER_HERE_TONE, PRINTER_LABEL_CLASS, PRINTER_NOTE_CLASS, PRINTER_NOTICE_CLASS, PRINTER_SECTION_TITLE_CLASS, PRINTER_STATUS_STEP_CLASS, PRINTER_STATUS_STEP_NUM_CLASS } from "@/components/print/printer-classes";
+import { PRINTER_BUTTON_CLASS, PRINTER_BUTTON_PRIMARY_CLASS, PRINTER_CONNECT_CARD_BODY_CLASS, PRINTER_CONNECT_BUTTON_CLASS, PRINTER_CONNECT_CARD_CLASS, PRINTER_CONNECT_ERROR_CLASS, PRINTER_CONNECT_ROW_CLASS, PRINTER_CONNECT_SEARCHING_CLASS, PRINTER_CONNECT_SPIN_CLASS, PRINTER_CONNECT_STEPS_CLASS, PRINTER_ERROR_CLASS, PRINTER_FIELD_TALL_CLASS, PRINTER_HERE_DOT_CLASS, PRINTER_HERE_NAME_CLASS, PRINTER_HERE_SUB_CLASS, PRINTER_HERE_TONE, PRINTER_LABEL_CLASS, PRINTER_NOTE_CLASS, PRINTER_NOTICE_CLASS, PRINTER_SECTION_TITLE_CLASS, PRINTER_STATUS_STEP_CLASS, PRINTER_STATUS_STEP_NUM_CLASS } from "@/components/print/printer-classes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { networkTargetOf, useNativePrinterList } from "@/hooks/use-native-printer-list";
 import { CONNECT_WORDS, connectRowsOf, type ConnectRow, type ConnectTransport } from "@/lib/printer/connect-flow";
 import { DEFAULT_TCP_PRINTER_PORT, type NativeBluetoothState } from "@/lib/printer/native-bridge-protocol";
-import { canScanBluetooth } from "@/lib/printer/native-picker-state";
+import { canScanBluetooth, type ScanRefusal } from "@/lib/printer/native-picker-state";
 import { splitHostPort } from "@/lib/printer/network-address";
-import { nativeErrorMessage, type NativeSelectTarget } from "@/lib/printer/transport-native";
+import { type NativeSelectTarget } from "@/lib/printer/transport-native";
 import { cn } from "@/lib/utils";
 
 // Step 2 of the guided connect (PX-3 Task 11, spec §6.7 item 2; mockup g2): the printers the POS app can see. Bluetooth:
@@ -39,6 +41,8 @@ export interface ConnectListViewProps {
   scanning: boolean;
   /** Why the last scan did not list (the app's own words), shown in the list, never a toast. */
   scanError: string | null;
+  /** A scan the app refused for Location (PX-3 Task 13): Allow, or the Settings steps once Allow was refused. */
+  scanRefusal?: ScanRefusal | null;
   refreshing: boolean;
   /** Turn on / Allow Bluetooth or a refresh is running: the rows wait. A scan holds only the BLE rows (Ruling T11-A: the
    *  app's Classic connect cancels discovery itself, its BLE connect does not stop the scan before it connects). */
@@ -48,6 +52,7 @@ export interface ConnectListViewProps {
   onRefresh(): void;
   onTurnOn(): void;
   onAllow(): void;
+  onAllowLocation?(): void;
 }
 
 function ErrorLine({ error }: { error: string | null }) {
@@ -74,7 +79,7 @@ function Rows({ rows, locked, scanning, onConnect }: { rows: ConnectRow[]; locke
   );
 }
 
-export function ConnectListView({ transport, error, rows, bluetooth, scanning, scanError, refreshing, locked, onConnect, onScan, onRefresh, onTurnOn, onAllow }: ConnectListViewProps) {
+export function ConnectListView({ transport, error, rows, bluetooth, scanning, scanError, scanRefusal = null, refreshing, locked, onConnect, onScan, onRefresh, onTurnOn, onAllow, onAllowLocation }: ConnectListViewProps) {
   const reading = <p role="status" className={LINE_CLASS}>{CONNECT_WORDS.reading}</p>;
   if (transport === "usb") {
     return (
@@ -117,6 +122,7 @@ export function ConnectListView({ transport, error, rows, bluetooth, scanning, s
         </div>
       )}
       {bluetooth === "unsupported" && <p role="status" className={PRINTER_NOTICE_CLASS}>{BLUETOOTH_UNSUPPORTED_MESSAGE}</p>}
+      {scanRefusal !== null && !scanning && <ScanRefusalNotice refusal={scanRefusal} locked={locked} onAllow={onAllowLocation ?? onAllow} />}
       {rows === null
         ? reading
         : (rows.length > 0 || scanning || scanError !== null) && (
@@ -208,12 +214,8 @@ type Pick = (target: NativeSelectTarget, name: string) => void;
 // today's 8 s Find printers), and not where Bluetooth is known to be unusable (its notice says why).
 function FoundList({ transport, error, onPick }: { transport: "bluetooth" | "usb"; error: string | null; onPick: Pick }) {
   const list = useNativePrinterList();
-  const [scanError, setScanError] = useState<string | null>(null);
+  const { scanError, scanRefusal, search, allowLocation } = useBluetoothScan(list.scan);
   const scanned = useRef(false);
-  const search = (): void => {
-    setScanError(null);
-    void list.scan().then((failed) => setScanError(failed === null ? null : nativeErrorMessage(failed)));
-  };
   useEffect(() => {
     if (transport !== "bluetooth" || scanned.current || list.printers === null) return;
     scanned.current = true;
@@ -227,13 +229,15 @@ function FoundList({ transport, error, onPick }: { transport: "bluetooth" | "usb
       bluetooth={list.bluetooth}
       scanning={list.scanning}
       scanError={scanError}
+      scanRefusal={scanRefusal}
       refreshing={list.refreshing}
       locked={list.working || list.refreshing}
       onConnect={(row) => onPick({ id: row.id }, row.name)}
-      onScan={search}
+      onScan={() => search()}
       onRefresh={() => void list.refresh()}
       onTurnOn={() => void list.turnOnBluetooth()}
       onAllow={() => void list.allowBluetooth()}
+      onAllowLocation={() => void allowLocation()}
     />
   );
 }

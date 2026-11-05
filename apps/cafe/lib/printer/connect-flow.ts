@@ -165,16 +165,28 @@ export interface ConnectRow {
   transport: NativeTransport;
 }
 
-/** The found list's rows, in the app's order: Bluetooth's paired and nearby printers (both kinds; Task 13 merges one
- *  printer's two entries), or the USB ones. */
+const bluetoothKeyOf = (printer: NativePrinter): string => (printer.address ?? printer.id.slice(printer.id.indexOf(":") + 1)).toUpperCase();
+const bluetoothRank = (printer: NativePrinter): number => (printer.paired === true ? 0 : 2) + (printer.transport === "bt-classic" ? 0 : 1);
+
+/** Bluetooth's rows, ONE per physical printer: a dual-mode printer is listed twice by the app (paired "bt-classic:MAC" and
+ *  nearby "ble:MAC"), and two rows for one printer read as two printers. Per MAC the paired entry wins, then the classic
+ *  one (it connects while the scan runs; a BLE row waits, T11-A); the row keeps the winner's id, name and kind. Paired
+ *  rows first, then nearby, each in the app's order; the first paired row is the primary. */
+export function bluetoothRowsOf(entries: readonly NativePrinter[]): ConnectRow[] {
+  const winners = new Map<string, NativePrinter>();
+  for (const entry of entries) {
+    if (entry.transport !== "bt-classic" && entry.transport !== "ble") continue;
+    const key = bluetoothKeyOf(entry);
+    const held = winners.get(key);
+    if (held === undefined || bluetoothRank(entry) < bluetoothRank(held)) winners.set(key, entry);
+  }
+  const all = [...winners.values()];
+  const shown = [...all.filter((printer) => printer.paired === true), ...all.filter((printer) => printer.paired !== true)];
+  return shown.map((printer, i) => ({ id: printer.id, name: printer.name, sub: printer.paired === true ? "Paired" : "Nearby", primary: i === 0 && printer.paired === true, transport: printer.transport }));
+}
+
+/** The found list's rows: Bluetooth's (one per printer, bluetoothRowsOf) or the USB ones, in the app's order. */
 export function connectRowsOf(printers: readonly NativePrinter[], transport: "bluetooth" | "usb"): ConnectRow[] {
-  const shown = printers.filter((printer) => (transport === "usb" ? printer.transport === "usb" : printer.transport === "bt-classic" || printer.transport === "ble"));
-  const first = transport === "bluetooth" ? shown.find((printer) => printer.paired === true) : undefined;
-  return shown.map((printer) => ({
-    id: printer.id,
-    name: printer.name,
-    sub: transport === "usb" ? "USB" : printer.paired === true ? "Paired" : "Nearby",
-    primary: printer === first,
-    transport: printer.transport,
-  }));
+  if (transport === "bluetooth") return bluetoothRowsOf(printers);
+  return printers.filter((printer) => printer.transport === "usb").map((printer) => ({ id: printer.id, name: printer.name, sub: "USB", primary: false, transport: printer.transport }));
 }
