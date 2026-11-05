@@ -20,7 +20,7 @@ import { useDotPrinters } from "@/hooks/use-agent-printers";
 import { useServerReach } from "@/hooks/use-server-reach";
 import { useOfflinePrintsHere } from "@/hooks/use-offline-send";
 import { offlineHeaderOf } from "@/lib/offline-guard";
-import { useDesktopPrinterChosen, useDeviceOnline, useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
+import { heldPrinterSnapshotOf, useDesktopPrinterChosen, useDeviceOnline, useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
 import { printerButtonName, printerDotOf, printerDotTone, type PrinterDotTone } from "@/lib/printer/printer-dot";
 import { printWaitingName } from "@/lib/print-waiting";
 import { onOpenPrinterPanel } from "@/lib/printer-panel-open";
@@ -38,7 +38,8 @@ export function PrinterStatusButton({ onToneChange }: { onToneChange?: (tone: Pr
   useEffect(() => onOpenPrinterPanel(() => setOpen(true)), []);
   const remote = usePrintHostDot();
   const { isHostDevice, deviceId } = usePrintHostContext();
-  const snapshot = useDevicePrinter();
+  // PX-2 (spec §6.9 B6): held through the app's own retries, as the panel reads it (no red ↔ checking flicker).
+  const snapshot = heldPrinterSnapshotOf(useDevicePrinter());
   const lane = usePrintLane();
   const online = useDeviceOnline();
   const desktopChosen = useDesktopPrinterChosen();

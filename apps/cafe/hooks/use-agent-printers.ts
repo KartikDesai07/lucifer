@@ -5,16 +5,22 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { PRINT_SETUP_STALE_MS } from "@pos/shared/print-budget";
 import type { PrinterConfig, StationConfig } from "@pos/shared/print-printers";
+import { usePrintWaitingPrinters } from "@/components/layout/print-waiting-context";
 import { useDesktopLan, useDesktopPrinterSnapshot, useDevicePrinter, useNativePool, usePrintLane } from "@/hooks/use-device-printer";
 import { apiGet } from "@/lib/api-client";
 import { isDesktopShell } from "@/lib/desktop-shell";
 import { desktopPrintsOnNamed } from "@/lib/desktop-shell-printer";
-import { agentPrintersOf, dotPrintersOf, lanPrintersToAdd, lanPrintersToRemove, ownPrinterInSetup, type AgentPrinters, type DesktopPrinters } from "@/lib/print-agent-printers";
+import { heldPoolOf, printersHereOf, printersNotHereOf } from "@/lib/print-agent-here";
+import { agentPrintersOf, dotPrintersOf, lanPrintersToAdd, lanPrintersToRemove, ownPrinterInSetup, type AgentPrinters, type DesktopPrinters, type NativePoolView } from "@/lib/print-agent-printers";
 import { onPrintersWritingChange, onTakenOverChange, printersBeingWritten, takenOverPrinterIds } from "@/lib/print-agent-seams";
-import { DESKTOP_LAN_CHECK_MS, desktopLan, desktopLanApi, type DesktopLanTarget } from "@/lib/printer/desktop-lan";
+import { waitingPrintersOf } from "@/lib/print-waiting";
+import { DESKTOP_LAN_CHECK_MS, desktopLan, desktopLanApi, type DesktopLanPrinter, type DesktopLanTarget } from "@/lib/printer/desktop-lan";
 import { refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+import { PAGE_HELD_STATUS, heldPrinterStatusOf } from "@/lib/printer/held-status";
 import { nativePool, type NativePoolSnapshot } from "@/lib/printer/native-pool";
 import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
+import type { PrinterStatus } from "@/lib/printer/web-printer-types";
 import { subscribeRealtime } from "@/lib/realtime-client";
 
 // Printing redesign, Phase 2 Session 2C (spec §9.1, §9.3): this device's view of the outlet's printers. Read on
@@ -102,17 +108,47 @@ export function useOwnPrinterInSetup(deviceId: string): { inSetup: boolean; know
   return useMemo(() => ({ inSetup: ownPrinterInSetup(printers, deviceId, local, pool, pool?.defaultId ?? null), known: deviceId === "" || answered }), [printers, answered, deviceId, local, pool]);
 }
 
+// PX-2 (spec §6.9 B6): the page's one held-status memory, so the button and the panel read the same value.
+const HELD = (key: string, status: PrinterStatus): PrinterStatus => heldPrinterStatusOf(PAGE_HELD_STATUS, key, status);
+
 /** Session 2D (spec §10): the top-bar dot's view of printers mode. The same printers read as the agent's (one cache
- *  entry): no request of its own. Session 3B: with the network printers the wake says this device took over. */
+ *  entry): no request of its own. Session 3B: with the network printers the wake says this device took over. PX-2 (spec
+ *  §6.5, §6.9 B6): the app's printers held through its own retries before the dot reads them; `here` (every printer it
+ *  prints now, held) and `notHere` for the status card; `waiting`, the printer with the most fresh slips waiting that it
+ *  does not print (R1: a writer whose own printer has more slips still sees another one stuck), named from this read and
+ *  the narrow string the pulse provider derives: no request, no poll, no timer (SR-2). */
 export function useDotPrinters(deviceId: string): PrinterDotPrinters {
   const { printers } = usePrintersRead(deviceId !== "");
-  const local = useDevicePrinter().printer;
+  const device = useDevicePrinter();
+  const local = device.printer;
   const desktop = useDesktopPrinters();
-  const pool = usePoolView();
+  const appPool = usePoolView();
+  const pool = useMemo(() => heldPoolOf(appPool, HELD), [appPool]);
   const takenOver = useSyncExternalStore(onTakenOverChange, takenOverPrinterIds, () => NO_IDS);
   // Session 3E: the Windows app's network printers (1.12.0).
   const lanSnapshot = useDesktopLan();
   const lan = lanSnapshot.active ? lanSnapshot.printers : null;
+  const dot = useDotPrintersOf(printers, deviceId, local, desktop, pool, takenOver, lan);
+  const waitingKey = usePrintWaitingPrinters();
+  const localStatus = device.status;
+  return useMemo(() => {
+    const agent = agentPrintersOf(printers, deviceId, local, desktop, appPool);
+    const here = printersHereOf(printers, agent, appPool, lan, local, localStatus, HELD, takenOver);
+    const waiting = waitingPrintersOf(waitingKey, printers).find((entry) => !here.some((mine) => mine.id === entry.printerId));
+    return { ...dot, here, notHere: printersNotHereOf(printers, deviceId, agent), ...(waiting !== undefined ? { waiting } : {}) };
+  }, [dot, printers, deviceId, local, desktop, appPool, lan, localStatus, takenOver, waitingKey]);
+}
+
+// Sessions 2D–3E's dot (dotPrintersOf: writer, all local, the worst held state, a problem), memoized on its own inputs.
+function useDotPrintersOf(
+  printers: PrinterConfig[],
+  deviceId: string,
+  local: DevicePrinter | null,
+  desktop: DesktopPrinters | null,
+  pool: NativePoolView | null,
+  takenOver: readonly string[],
+  lan: readonly DesktopLanPrinter[] | null,
+): PrinterDotPrinters {
   return useMemo(() => dotPrintersOf(printers, deviceId, local, desktop, pool, takenOver, lan), [printers, deviceId, local, desktop, pool, takenOver, lan]);
 }
 

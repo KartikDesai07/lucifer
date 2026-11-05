@@ -1,6 +1,7 @@
 import { PRINT_JOBS_FOR_ME_LIMIT, type LeasedPrintJob, type PrintJobsForMe } from "@pos/shared/print-agent-wire";
-import { PRINTER_PROBLEMS, printerHealthProblem, type PrinterCoverState, type PrinterPaperState, type PrinterProblem } from "@pos/shared/print-failover";
+import { PRINTER_PROBLEMS, printerHealthProblem, type PrinterCoverState, type PrinterPaperState } from "@pos/shared/print-failover";
 import { printerWriterDeviceId, printersModeOn, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
+import { DOT_PROBLEMS } from "@/lib/print-agent-here";
 import type { PrintAgentResult } from "@/lib/print-agent-types";
 import type { SlipPrintTarget } from "@/lib/print-host-slips";
 import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
@@ -197,8 +198,6 @@ export function readyPrinterIdsOf(
 }
 
 const STATUS_WORSE: readonly PrinterStatus[] = ["connected", "connecting", "needs-tap", "elsewhere", "disconnected", "none"];
-/** Session 3B (spec §10): what turns the dot red although every printer answers. Low paper still prints. */
-const DOT_PROBLEMS: readonly PrinterProblem[] = ["paper-out", "cover-open", "error"];
 
 /** Session 2D (spec §10): what the top-bar dot needs: printers mode, whether this device writes a printer, and
  *  whether it prints every printer it writes (a printer it writes that is not its own never prints here). Session

@@ -1,5 +1,6 @@
-import { printerProblemText, type PrinterProblem } from "@pos/shared/print-failover";
+import { printerProblemText } from "@pos/shared/print-failover";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
+import type { PrinterDotPrinters } from "@/lib/print-agent-here";
 import type { DesktopChosen } from "@/lib/printer/desktop-printer-state";
 import type { PrinterStatus } from "@/lib/printer/web-printer-types";
 
@@ -49,7 +50,9 @@ export type PrinterDotReason =
   | "printer-not-here"
   | "printers-elsewhere"
   // Phase 3 Session 3B (spec §10): a printer of this device out of paper, with its cover open or in error.
-  | "printer-problem";
+  | "printer-problem"
+  // PX-2 (spec §6.5, PX-D6): printers mode, a printer this device does not print has fresh slips waiting (the warn dot).
+  | "printer-waiting";
 
 /** Session 3B: `problem`, a printer-problem dot's words (printerProblemText). */
 export type PrinterDot = { show: false } | { show: true; ok: boolean; reason: PrinterDotReason; problem?: string };
@@ -69,17 +72,8 @@ export interface PrinterDotInput {
   printers?: PrinterDotPrinters;
 }
 
-/** Session 2D (spec §10): an enabled printer takes a slip (no host plays a part), whether this device writes a
- *  printer, and whether every printer it writes is its own printer. */
-export interface PrinterDotPrinters {
-  printersMode: boolean;
-  isWriter: boolean;
-  allLocal: boolean;
-  /** Session 2F1 (spec §9.2): on the POS app with bridge v2, the worst state among its printers this device prints. */
-  worst?: PrinterStatus;
-  /** Session 3B (spec §10): the worst problem the app says of one of them (out of paper, cover open, an error), by name. */
-  problem?: { name: string; problem: PrinterProblem };
-}
+/** Session 2D (spec §10): printers mode as this device sees it (lib/print-agent-here.ts, with PX-2's here / notHere / waiting). */
+export type { PrinterDotPrinters };
 
 const NO_DOT: PrinterDot = { show: false };
 
@@ -129,12 +123,15 @@ function withProblem(row: PrinterDot, printers?: PrinterDotPrinters): PrinterDot
 }
 
 // Session 2D (spec §10): the worst state among the printers this device writes (Session 3E: on the Windows app too); with
-// none, its slips print at the cafe's printers (the waiting count and the alarm speak for those). A former host plays no part.
+// none, its slips print at the cafe's printers. A former host plays no part. PX-2 (spec §6.5, R1): amber while a printer it
+// does not print has fresh slips waiting, also on a writer whose own printers are fine (its own row first otherwise).
 function printersRow(printers: PrinterDotPrinters, lane: DotLane, local: PrinterStatus, desktopChosen: DesktopChosen): PrinterDot {
-  if (!printers.isWriter) return dot("printers-elsewhere");
+  const { waiting, here = [] } = printers;
+  if (!printers.isWriter) return dot(waiting !== undefined ? "printer-waiting" : "printers-elsewhere");
   if (!printers.allLocal) return dot("printer-not-here");
   const row = lane === "desktop" && printers.worst !== undefined ? (localRaster(printers.worst) ?? dot("ok")) : noHostRow(lane, printers.worst ?? local, desktopChosen);
-  return withProblem(row, printers);
+  const own = withProblem(row, printers);
+  return own.show && own.ok && waiting !== undefined && !here.some((entry) => entry.id === waiting.printerId) ? dot("printer-waiting") : own;
 }
 
 export function printerDotOf(input: PrinterDotInput): PrinterDot {
@@ -155,6 +152,7 @@ export const PRINTER_BUTTON_NAME_BAD = "Printer not connected — open printer s
 export const PRINTER_BUTTON_NAME_NONE = "Open printer setup";
 export const PRINTER_BUTTON_NAME_CHECKING = "Checking the printer — open printer setup";
 export const PRINTER_BUTTON_NAME_PROBLEM = "Printer needs attention — open printer setup";
+export const PRINTER_BUTTON_NAME_WAITING = "Printer not printing — open printer setup";
 const PROBLEM_HEADLINE = "Printer needs attention";
 
 // "Checking" is neither good nor bad yet (a printer that is only connecting): the
@@ -163,6 +161,7 @@ export function printerButtonName(dotState: PrinterDot): string {
   if (!dotState.show) return PRINTER_BUTTON_NAME_NONE;
   if (dotState.reason === "checking") return PRINTER_BUTTON_NAME_CHECKING;
   if (dotState.reason === "printer-problem") return PRINTER_BUTTON_NAME_PROBLEM;
+  if (dotState.reason === "printer-waiting") return PRINTER_BUTTON_NAME_WAITING;
   return dotState.ok ? PRINTER_BUTTON_NAME_OK : PRINTER_BUTTON_NAME_BAD;
 }
 
@@ -287,6 +286,7 @@ function copyFor(reason: PrinterDotReason, i: PrinterHeadlineInput, label: strin
       };
     case "printers-elsewhere":
       return { headline: "Printing is on", detail: "Each slip prints at its printer (Printer setup).", fix: null };
+    case "printer-waiting":
     case "printer-problem":
       return { headline: PROBLEM_HEADLINE, detail: "", fix: null };
   }

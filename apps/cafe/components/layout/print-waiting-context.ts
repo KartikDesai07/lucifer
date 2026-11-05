@@ -15,3 +15,16 @@ export function usePrintWaitingCount(): string {
   }
   return count;
 }
+
+// PX-2 (spec §6.5): the printers fresh slips wait for ("id:count:problem:stuck|…", "" when none), derived once beside
+// the count (printWaitingPrintersOf, components/layout/PrintWaitingProviders.tsx), as its own narrow string: the dot
+// turns amber on a phone that prints nothing while the kitchen printer is down, still without reading the wide pulse.
+export const PrintWaitingPrintersContext = createContext<string | null>(null);
+
+export function usePrintWaitingPrinters(): string {
+  const printers = useContext(PrintWaitingPrintersContext);
+  if (printers === null) {
+    throw new Error("usePrintWaitingPrinters must be used inside <PosPulseProvider>");
+  }
+  return printers;
+}

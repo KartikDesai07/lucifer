@@ -8,7 +8,7 @@ import { NotPrintedSection } from "@/components/print/NotPrintedSection";
 import { PrinterSetupCard } from "@/components/print/PrinterSetupCard";
 import { PrinterStatusBanner } from "@/components/print/PrinterStatusBanner";
 import { useDotPrinters } from "@/hooks/use-agent-printers";
-import { useCanPrintNow, useDesktopPrinterChosen, useDeviceOnline, useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
+import { heldPrinterSnapshotOf, useCanPrintNow, useDesktopPrinterChosen, useDeviceOnline, useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
 import { printerDotOf, printerHeadlineOf, type PrinterDot } from "@/lib/printer/printer-dot";
 
 // Shown while the dot is still unknown (no dot yet): the banner is always on.
@@ -24,7 +24,8 @@ export function PrinterPanel() {
   const { pulse } = usePosPulseContext();
   const remote = usePrintHostDot();
   const { isHostDevice, deviceId } = usePrintHostContext();
-  const snapshot = useDevicePrinter();
+  // PX-2 (spec §6.9 B6): held through the app's own retries, as the header button reads it.
+  const snapshot = heldPrinterSnapshotOf(useDevicePrinter());
   const lane = usePrintLane();
   const online = useDeviceOnline();
   const desktopChosen = useDesktopPrinterChosen();

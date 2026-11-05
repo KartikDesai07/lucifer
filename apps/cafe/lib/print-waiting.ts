@@ -1,7 +1,9 @@
 import type { PrintActionData, PrintAttentionRow } from "@pos/shared/print-agent-wire";
-import { printerProblemText, type PrinterProblem } from "@pos/shared/print-failover";
+import { PRINTER_PROBLEMS, printerProblemText, type PrinterProblem } from "@pos/shared/print-failover";
 import { PRINT_HOST_MAX_AGE_MS } from "@pos/shared/print-job";
+import { PRINT_JOB_NO_PRINTER } from "@pos/shared/print-printers";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
+import type { WaitingPrinter } from "@/lib/print-agent-here";
 import { isDesktopShellRefusal, isSlipRefusal, printWriteOutcomeOf } from "@/lib/print-write-outcome";
 
 // Printing redesign, Phase 1 Session 1D (spec §10; the owner's decision after Session 1B): the one
@@ -55,6 +57,53 @@ export function printWaitingBadgeOf(pulse: Pick<PosPulseData, "printAttention" |
   const count = pulse?.printAttention?.length ?? 0;
   if (count === 0) return "";
   return pulse?.printAttentionTruncated ? `${count}+` : String(count);
+}
+
+/** PX-2 (spec §6.5, F-I2): a printer whose oldest fresh slip waited longer than this, with no problem said, is stuck
+ *  ("is not printing"), not merely busy in a rush. */
+export const PRINTER_WAITING_STUCK_MS = 60_000;
+
+// R1: a slip that waits for its printer now. An untapped stale slip stays in the feed for hours while its printer prints
+// new ones, and a slip refused for itself is not the printer's fault: neither turns a device amber.
+function freshOnPrinter(row: PrintAttentionRow, nowMs: number): row is PrintAttentionRow & { printerId: string } {
+  if (row.status !== "queued" || row.printerId === undefined || row.printerId === PRINT_JOB_NO_PRINTER) return false;
+  if (row.approved !== true && !(nowMs - Date.parse(row.createdAt) <= PRINT_HOST_MAX_AGE_MS)) return false;
+  return !(row.lastError && isSlipRefusal(printWriteOutcomeOf(new Error(row.lastError))));
+}
+
+/** PX-2 (spec §6.5, PX-D6): the printers fresh slips wait for, derived ONCE beside the count (PrintWaitingProviders) as
+ *  a stable string the header button can read without the wide pulse: "id:count:problem:stuck" joined by "|"
+ *  ("p1:3:paper-out:1|p2:1::0"), the most first, then by id; "" when none. Stuck (F-I2): a row carries its printer's
+ *  problem, or its oldest fresh row waited over PRINTER_WAITING_STUCK_MS. */
+export function printWaitingPrintersOf(pulse: Pick<PosPulseData, "printAttention"> | undefined, nowMs: number): string {
+  const byPrinter = new Map<string, { count: number; problem?: PrinterProblem; oldest: number }>();
+  for (const row of pulse?.printAttention ?? []) {
+    if (!freshOnPrinter(row, nowMs)) continue;
+    const at = Date.parse(row.createdAt);
+    const was = byPrinter.get(row.printerId) ?? { count: 0, oldest: at };
+    byPrinter.set(row.printerId, { count: was.count + 1, problem: was.problem ?? row.problem, oldest: Math.min(was.oldest, at) });
+  }
+  return [...byPrinter]
+    .sort(([a, x], [b, y]) => y.count - x.count || (a < b ? -1 : a > b ? 1 : 0))
+    .map(([id, w]) => `${id}:${w.count}:${w.problem ?? ""}:${w.problem !== undefined || nowMs - w.oldest > PRINTER_WAITING_STUCK_MS ? 1 : 0}`)
+    .join("|");
+}
+
+/** The waiting printers of that string, named from the printers already read ("A printer" when one is not listed): the
+ *  most slips first, a tie in the setup's order (the read lists printers in display order). */
+export function waitingPrintersOf(key: string, printers: ReadonlyArray<{ id: string; name: string }>): WaitingPrinter[] {
+  if (key === "") return [];
+  const rank = (id: string): number => {
+    const at = printers.findIndex((printer) => printer.id === id);
+    return at === -1 ? printers.length : at;
+  };
+  const waiting = key.split("|").flatMap((part): WaitingPrinter[] => {
+    const [printerId = "", count = "", problem = "", stuck = ""] = part.split(":");
+    const known = PRINTER_PROBLEMS.find((word) => word === problem);
+    if (printerId === "" || !(Number(count) > 0)) return [];
+    return [{ printerId, name: printerNameOf(printers, printerId) ?? "A printer", count: Number(count), ...(known !== undefined ? { problem: known } : {}), stuck: stuck === "1" }];
+  });
+  return waiting.sort((a, b) => b.count - a.count || rank(a.printerId) - rank(b.printerId));
 }
 
 /** The button's accessible name: the count comes first while slips wait, then the printer's own state
