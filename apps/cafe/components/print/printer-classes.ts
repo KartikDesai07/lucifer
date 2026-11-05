@@ -71,15 +71,16 @@ export const PRINTER_PANEL_VIEW_TITLE_CLASS = `${PRINTER_PANEL_TITLE_CLASS} min-
 export const PRINTER_PANEL_BACK_CLASS = `${PRINTER_PANEL_CLOSE_CLASS} -ml-2`;
 export const PRINTER_PANEL_COLUMN_CLASS = "mx-auto flex w-full flex-none flex-col gap-3 tab:max-w-[640px]";
 
-// A section card (values 18): --surface, 1px --border, radius 12, clipped; the head row, then the body. PX-3 Task 10 (mockups
-// t-settings): the tile and the words are centred on each other, so a card with no sub (This device's printer, Faster KOTs)
-// does not hang its title off the tile's top.
+// A section card (values 18): --surface, 1px --border, radius 12, clipped; the head row, then the body. PX-3 Task 10 (spec §6.6,
+// mockups t-settings; ruling T10-A): head 12 / 16, body 0 16 14 with its parts 10 apart (was 14 / 16 and 0 16 16, 12 apart),
+// and the tile and the words centred on each other, so a card with no sub (This device's printer, Faster KOTs) does not
+// hang its title off the tile's top.
 export const PRINTER_SECTION_CARD_CLASS = "flex-none overflow-clip rounded-[12px] border border-border bg-card";
-export const PRINTER_SECTION_HEAD_CLASS = "flex items-center gap-3 px-4 py-3.5";
+export const PRINTER_SECTION_HEAD_CLASS = "flex items-center gap-3 px-4 py-3";
 export const PRINTER_SECTION_TILE_CLASS = "grid size-[34px] flex-none place-items-center rounded-[9px] bg-surface-3 text-muted-foreground [&_svg]:size-[17px]";
 export const PRINTER_SECTION_TITLE_CLASS = "text-[14px] font-semibold";
 export const PRINTER_SECTION_SUB_CLASS = "mt-0.5 text-[12.5px] text-subtle-foreground";
-export const PRINTER_SECTION_BODY_CLASS = "flex flex-col gap-3 px-4 pb-4 text-[13.5px]";
+export const PRINTER_SECTION_BODY_CLASS = "flex flex-col gap-2.5 px-4 pb-3.5 text-[13.5px]";
 
 // The status card (PX-2 Task 6; spec §6.2; mockups s-off / s-ready / s-paper): radius 14, a 1px border, padding 16, gap 12;
 // a 40px circle; the headline 17px / 600 (focusable for F-M6), the detail 13.5px; up to three steps on 22px numbered circles,

@@ -49,6 +49,7 @@ test("print for others: each state's view", () => {
   assert.deepEqual(printForOthersViewOf({ ...simple, printersMode: true }), { kind: "hidden" }, "printers mode on a device that is not the printing device: the card is not drawn");
   assert.deepEqual(printForOthersViewOf({ ...simple, printersMode: true, isHostDevice: true }), { kind: "host", printersMode: true }, "printers mode on a former printing device: it can still stop");
   assert.deepEqual(printForOthersViewOf({ ...simple, isHostDevice: true, host: host(), hostLabel: "Counter PC" }), { kind: "host", printersMode: false }, "this device prints for all devices");
+  assert.deepEqual(printForOthersViewOf({ ...simple, isHostDevice: true, host: null, hostLabel: null }), { kind: "host", printersMode: false }, "this device is decided before an unresolved pulse: it can stop before the pulse answers");
   assert.deepEqual(printForOthersViewOf({ ...simple, host: null }), { kind: "checking", text: "Checking where slips print…" }, "the pulse has not answered yet");
   assert.deepEqual(
     printForOthersViewOf({ ...simple, host: null, online: false }),
@@ -126,7 +127,17 @@ const designatePin: Pin = (code) => {
     const slice = code.slice(starts[n], n + 1 < STATES.length ? starts[n + 1] : undefined);
     const designates = kind === "offer" || kind === "elsewhere";
     need(p, slice.includes("designateButton(") === designates, `${kind}: ${designates ? "draws" : "never draws"} the designate button`);
+    // Stop is the printing device's own: another device's slips are moved, never cleared, from here.
+    need(p, slice.includes("stopControl(") === (kind === "host"), `${kind}: ${kind === "host" ? "draws" : "never draws"} Stop printing here`);
   });
+  return p;
+};
+// B10 (spec §6.9): the stop asks the question of its mode and answers in its words: printers mode cancels nothing.
+const b10Pin: Pin = (code) => {
+  const p: string[] = [];
+  need(p, code.includes("question={stopQuestionOf(printersMode)}"), "the stop question follows the mode");
+  need(p, code.includes('yes={printersMode ? "Yes, stop" : "Yes, remove"}'), 'printers mode answers "Yes, stop", simple mode "Yes, remove"');
+  need(p, code.includes("{stopControl(view.printersMode)}"), "the host state hands its mode to the stop");
   return p;
 };
 const devicePin: Pin = (code) => {
@@ -161,6 +172,12 @@ const CASES: { name: string; file: string; pin: Pin; mutations: [string, string,
   { name: "the focus targets moved with their controls (PrintForOthersCard)", file: FOR_OTHERS, pin: designatePin, mutations: [
     ["a second designate target", "data-action=\"designate\"", "data-action=\"designate\" data-x data-action=\"designate\""],
     ["the elsewhere state lost its control", 'designateButton(PRINT_HERE_INSTEAD', "noButton(PRINT_HERE_INSTEAD"],
+    ["Stop offered while another device prints", "<p>{marked(`Slips print at", "{stopControl(false)}<p>{marked(`Slips print at"],
+  ] },
+  { name: "B10: the stop's question and answer follow the mode (PrintForOthersCard)", file: FOR_OTHERS, pin: b10Pin, mutations: [
+    ["the simple question in printers mode", "question={stopQuestionOf(printersMode)}", "question={stopQuestionOf(false)}"],
+    ["one answer for both modes", 'yes={printersMode ? "Yes, stop" : "Yes, remove"}', 'yes="Yes, remove"'],
+    ["the mode not handed down", "{stopControl(view.printersMode)}", "{stopControl(false)}"],
   ] },
   { name: "the focus targets moved with their controls (DevicePrinterSection)", file: DEVICE, pin: devicePin, mutations: [["the target dropped", 'data-printer-target="device"', 'data-x="device"']] },
   { name: "the hooks keep today's handlers (use-test-print)", file: TEST_PRINT, pin: testPrintPin, mutations: [

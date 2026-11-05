@@ -101,10 +101,12 @@ test("the frame's head, body and foot: one 62px line with the view's title, the 
   assert.ok(frame.indexOf("printer-panel-head") < frame.indexOf("printer-panel-body") && frame.indexOf("printer-panel-body") < frame.indexOf("printer-panel-foot"), "head, then the body, then the foot");
 });
 
-test("the section card: radius 12, --surface, clipped; a 34px radius-9 tile; title 14px 600; sub 12.5px --text-3; body 0 16px 16px, 12px apart", () => {
+// PX-3 Task 10 (on purpose, ruling T10-A: spec §6.6 / mockup t-settings's .card .ch / .cb): was head 14px 16px, body 0 16px
+// 16px 12px apart, the tile at the head's top.
+test("the section card: radius 12, --surface, clipped; head 12px 16px, centred; a 34px radius-9 tile; title 14px 600; sub 12.5px --text-3; body 0 16px 14px, 10px apart", () => {
   assert.ok(hasAll(PRINTER_SECTION_CARD_CLASS, ["rounded-[12px]", "border", "bg-card", "overflow-clip"]), "overflow: clip, never hidden (WebView 109 rule for pure clipping)");
-  assert.ok(hasAll(PRINTER_SECTION_HEAD_CLASS, ["px-4", "py-3.5", "gap-3"]), "head padding 14px 16px, 12px apart");
-  assert.ok(hasAll(PRINTER_SECTION_BODY_CLASS, ["px-4", "pb-4", "gap-3"]), "body padding 0 16px 16px, 12px apart");
+  assert.ok(hasAll(PRINTER_SECTION_HEAD_CLASS, ["px-4", "py-3", "gap-3", "items-center"]) && !has(PRINTER_SECTION_HEAD_CLASS, "py-3.5"), "head padding 12px 16px, the tile and the words centred on each other");
+  assert.ok(hasAll(PRINTER_SECTION_BODY_CLASS, ["px-4", "pb-3.5", "gap-2.5"]) && !has(PRINTER_SECTION_BODY_CLASS, "pb-4") && !has(PRINTER_SECTION_BODY_CLASS, "gap-3"), "body padding 0 16px 14px, 10px apart");
   const classes = read(`${PRINT}printer-classes.ts`);
   assert.match(classes, /PRINTER_SECTION_TILE_CLASS = "grid size-\[34px\] flex-none place-items-center rounded-\[9px\] bg-surface-3 text-muted-foreground/, "the 34px tile, radius 9, --surface-3 / --text-2");
   assert.match(classes, /PRINTER_SECTION_TITLE_CLASS = "text-\[14px\] font-semibold"/, "title 14px 600");

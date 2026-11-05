@@ -44,6 +44,13 @@ export function PrintForOthersCard() {
   const [naming, setNaming] = useState(false);
   const [confirmMove, setConfirmMove] = useState(false);
   const [confirmStop, setConfirmStop] = useState(false);
+  // The name form belongs to the offer: once the state leaves it (a designate that worked, a stop from any device), the
+  // form closes, so a later offer never comes back with it already open (React's "adjust state when a prop changes").
+  const [shownKind, setShownKind] = useState(view.kind);
+  if (shownKind !== view.kind) {
+    setShownKind(view.kind);
+    if (view.kind !== "offer") setNaming(false);
+  }
   if (view.kind === "hidden") return null;
 
   // The status card's "print here" fixes focus this (data-action): one per state that designates.
@@ -84,7 +91,8 @@ export function PrintForOthersCard() {
           <>
             <label className="flex flex-col gap-1.5">
               <span className={PRINTER_LABEL_CLASS}>Name for this device</span>
-              <Input value={label} maxLength={LABEL_MAX_CHARS} onChange={(e) => setLabel(e.target.value)} className={PRINTER_FIELD_TALL_CLASS} />
+              {/* The opener that was tapped is gone: the focus goes to the name, the next thing to do. */}
+              <Input autoFocus value={label} maxLength={LABEL_MAX_CHARS} onChange={(e) => setLabel(e.target.value)} className={PRINTER_FIELD_TALL_CLASS} />
             </label>
             <div className="flex flex-wrap gap-2">
               {designateButton(PRINT_ALL_HERE, () => void designate(), true)}
