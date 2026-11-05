@@ -10,7 +10,6 @@ import { PRINTER_NOT_CONNECTED_MESSAGE } from "@/lib/printer/web-printer-types";
 import { RASTER_FAILED_MESSAGE } from "@/lib/printer/raster";
 import {
   PRINT_ALARM_FORGET_MS,
-  PRINT_WAITING_TITLES,
   printAlarmMessage,
   printAlarmStep,
   printAlarmSummary,
@@ -19,7 +18,6 @@ import {
   printerNameOf,
   printWaitingAge,
   printWaitingBadgeOf,
-  printWaitingGroups,
   printWaitingName,
   printWaitingReason,
 } from "@/lib/print-waiting";
@@ -37,16 +35,8 @@ function row(over: Partial<PrintAttentionRow> = {}): PrintAttentionRow {
   return { id: "j1", kind: "kot", label: "KOT round 1 · T-4", status: "queued", labels: [], createdAt: ago(30_000), ...over };
 }
 
-test("three groups in plain words, in this order, empty groups left out", () => {
-  assert.deepEqual(PRINT_WAITING_TITLES, { printer: "Waiting for the printer", bill: "Check the bill", failed: "Couldn't print" });
-  const groups = printWaitingGroups([row({ id: "f", status: "failed" }), row({ id: "q" }), row({ id: "b", kind: "bill", label: "Bill · ORD-1", status: "needs-confirm" })], T0);
-  assert.deepEqual(groups.map((g) => [g.group, g.title, g.rows.map((r) => r.row.id)]), [
-    ["printer", "Waiting for the printer", ["q"]],
-    ["bill", "Check the bill", ["b"]],
-    ["failed", "Couldn't print", ["f"]],
-  ]);
-  assert.deepEqual(printWaitingGroups([], T0), [], "nothing waiting: no panel section");
-});
+// PX-2 Task 4 (on purpose): the panel's three groups and their titles left with the old card; the Not printed card's
+// order and words are pinned in lib/print-waiting-view.test.ts and lib/not-printed-card.test.ts.
 
 test("each row says how long it has waited and why, without jargon", () => {
   assert.equal(printWaitingAge(ago(30_000), T0), "just now");
@@ -71,10 +61,10 @@ test("the printer button's count: how many slips wait, '20+' when the feed was c
   assert.equal(printWaitingBadgeOf({ printAttention: [] }), "");
   assert.equal(printWaitingBadgeOf({ printAttention: [row(), row({ id: "j2" })] }), "2");
   assert.equal(printWaitingBadgeOf({ printAttention: Array.from({ length: 20 }, (_, i) => row({ id: `j${i}` })), printAttentionTruncated: true }), "20+");
-  assert.equal(printWaitingName("Printer connected — open printer setup", ""), "Printer connected — open printer setup", "unchanged with nothing waiting");
+  assert.equal(printWaitingName("Printer connected — open printer", ""), "Printer connected — open printer", "unchanged with nothing waiting");
   // The 1D gate (M-5) changed this deliberately: the printer's own state stays in the name.
-  assert.equal(printWaitingName("Printer connected — open printer setup", "1"), "1 slip waiting · Printer connected — open printer setup");
-  assert.equal(printWaitingName("Printer not connected — open printer setup", "20+"), "20+ slips waiting · Printer not connected — open printer setup");
+  assert.equal(printWaitingName("Printer connected — open printer", "1"), "1 slip waiting · Printer connected — open printer", "one slip: the count, then the printer's state");
+  assert.equal(printWaitingName("Printer not connected — open printer", "20+"), "20+ slips waiting · Printer not connected — open printer", "20+: the count, then the printer's state");
 });
 
 test("the 1D gate (M-6): a slip refused once for itself is not blamed on the printer; a slip staff already tapped is not stale", () => {
@@ -236,18 +226,20 @@ test("a tap's answer in plain words: done, already handled, or it prints by itse
   assert.equal(printRetryNotice({ applied: false, status: "failed", reason: "printer-gone" }), "No printer takes this slip now (removed, switched off, or none set up). Print it again from its order.");
 });
 
+// PX-2 Task 4 (on purpose): WaitingSlipsCard became the Not printed card (props only) and its container
+// NotPrintedSection, which keeps the old card's pins: its place, its size, its four actions and the per-tap release.
 test("PIN: the panel shows the waiting slips, the button shows their count, and both stay within their budgets", () => {
   const panel = src("apps/cafe/components/print/PrinterPanel.tsx");
-  assert.ok(panel.includes("<WaitingSlipsCard pulse={pulse} />"), "the panel lists them");
-  assert.ok(panel.indexOf("<WaitingSlipsCard pulse={pulse} />") < panel.indexOf("<PrinterStatusBanner"), "first: what needs a person, before the printer's status and setup");
+  assert.ok(panel.includes("<NotPrintedSection pulse={pulse} />"), "the panel lists them");
+  assert.ok(panel.indexOf("<PrinterStatusCard") >= 0 && panel.indexOf("<PrinterStatusCard") < panel.indexOf("<NotPrintedSection pulse={pulse} />"), "PX-2 Task 6 (on purpose, spec §6.2): the printer's status first, then the slips");
   const button = src("apps/cafe/components/print/PrinterStatusButton.tsx");
   assert.match(button, /const waiting = usePrintWaitingCount\(\);/, "a narrow context, never the wide pulse");
   // Printing Phase 5 (spec 5.10, deliberate change): offline the name says what a send does here instead.
   assert.match(button, /const name = offlineHeader !== null \? offlineHeader\.name : printWaitingName\(printerButtonName\(dot\), waiting\);/, "the count is part of the button's name");
   assert.match(button, /\{waiting !== "" && \(/, "a count only when slips wait");
-  const card = readFileSync(path.join(REPO_ROOT, "apps/cafe/components/print/WaitingSlipsCard.tsx"), "utf8");
-  assert.ok(lines(card) <= 120, "WaitingSlipsCard stays <= 120 lines");
-  for (const action of ["retry(id)", 'confirm(id, "reprint")', 'confirm(id, "printed")', "dismiss(id)"]) assert.ok(card.includes(action), `the card offers ${action}`);
+  const card = readFileSync(path.join(REPO_ROOT, "apps/cafe/components/print/NotPrintedSection.tsx"), "utf8");
+  assert.ok(lines(card) <= 120, "NotPrintedSection stays <= 120 lines");
+  for (const action of ["retry(id)", 'confirm(id, "reprint")', 'confirm(id, "printed")', "dismiss(id)", "dismissAll(asking)"]) assert.ok(card.includes(action), `the card offers ${action}`);
   const actions = src("apps/cafe/hooks/use-print-job-actions.ts");
   assert.match(actions, /kickPrintAgent\(\);/, "a tap wakes this device's agent at once (it may be the one that prints)");
   assert.match(actions, /qc\.invalidateQueries\(\{ queryKey: POS_PULSE_KEYS\.all \}\)/, "the panel refreshes after a tap (one request per tap, never a poll)");
@@ -261,7 +253,7 @@ test("PIN: the panel shows the waiting slips, the button shows their count, and 
 // the latest call of one useMutation, so a second row tapped before the first answered left the first one
 // disabled. Each tap now gets its own promise.
 test("PIN: a tapped row is enabled again once ITS action answers, whatever the answer, even when another row was tapped meanwhile", () => {
-  const card = src("apps/cafe/components/print/WaitingSlipsCard.tsx");
+  const card = src("apps/cafe/components/print/NotPrintedSection.tsx");
   assert.match(card, /void run\(\)\.finally\(\(\) => release\(id\)\);/, "every tap releases its own row when its own request settles");
   assert.ok(!/\.mutate\(/.test(card), "no per-call mutate() callbacks (only the latest call's would fire)");
   const actions = src("apps/cafe/hooks/use-print-job-actions.ts");
@@ -269,8 +261,8 @@ test("PIN: a tapped row is enabled again once ITS action answers, whatever the a
   assert.match(actions, /confirm: \(id: string, decision: PrintJobDecision\): Promise<void> => confirm\.mutateAsync\(\{ id, decision \}\)\.then\(done, done\),/);
   assert.match(actions, /dismiss: \(id: string\): Promise<void> => dismissJob\.mutateAsync\(id\)\.then\(done, done\)\.finally\(settled\),/, "Clear refreshes the panel and wakes the agent when it answers");
   assert.match(actions, /toast\.info\(notice, \{ duration: NOTICE_MS \}\)/, "a tap's answer stays long enough to read (the 1D E2E)");
-  for (const verb of ["Clear", "Print again", "It printed"]) assert.ok(card.includes(`aria-label={\`${verb} \${label}\`}`), `${verb} names its slip (M-5)`);
-  assert.ok(card.includes("aria-label={`${verb} ${label}`}"), "Print now / Retry name their slip (M-5)");
+  const drawn = src("apps/cafe/components/print/NotPrintedCard.tsx");
+  assert.ok(drawn.includes("aria-label={`${NOT_PRINTED_ACTION_WORDS[action]} ${row.label}`}"), "every button names its slip (M-5)");
 });
 
 test("PIN (the Phase 1 final gate, the alert sound): the page tries the sound once on mount, then on the first touch", () => {
@@ -301,7 +293,7 @@ test("PIN: the alarm rides the pulse already polled (no request), and only the p
   assert.match(alarm, /if \(step\.summaryWaiting !== page\.summary\) \{/, "the summary follows the count it stands for");
   assert.ok(!alarm.includes("if (step.wanted === 0) toast.dismiss(SUMMARY_ID);"), "not every waiting slip: a new one has its own notice");
   assert.match(alarm, /return \(\) => \{\s*unsubscribe\(\);\s*toast\.dismiss\(SUMMARY_ID\);/, "an unmount takes its notices down (M-1)");
-  assert.match(src("apps/cafe/components/print/PrinterStatusButton.tsx"), /useEffect\(\(\) => onOpenPrinterPanel\(\(\) => setOpen\(true\)\), \[\]\);/, "the printer button opens its sheet when asked");
+  assert.match(src("apps/cafe/components/print/PrinterStatusButton.tsx"), /useEffect\(\s*\(\) =>\s*onOpenPrinterPanel\(\(\) => \{\s*show\("status"\);\s*setOpen\(true\);\s*\}\),\s*\[show\],?\s*\);/, "the printer button opens its sheet when asked, on the status view (PX-2 Ruling Q; PX-3 Task 11: the views' stable show)");
   assert.match(src("apps/cafe/components/print/PrintHostDrain.tsx"), /usePrintSlipAlarm\(deviceId\);/, "every device with an identity");
 });
 
@@ -310,10 +302,8 @@ test("PIN: the alarm rides the pulse already polled (no request), and only the p
 // in the printer's own words (printerProblemText), in the panel and on the alarm's notice; the notice is re-worded
 // quietly when the problem changes.
 test("3B: a waiting slip says its printer's problem in the printer's words; a stale slip still asks for a tap first", () => {
-  const printers = [{ id: "p-bar", name: "Bar printer" }];
   const out = row({ printerId: "p-bar", problem: "paper-out" });
-  const [section] = printWaitingGroups([out], T0, printers);
-  assert.equal(section?.rows[0]?.reason, "Bar printer is out of paper.");
+  assert.equal(printWaitingReason(out, T0, "Bar printer"), "Bar printer is out of paper.", "the printer's own words");
   assert.equal(printWaitingReason(row({ printerId: "p-gone", problem: "device-offline" }), T0), "Not printed yet.", "a printer this device does not know by name: the words as before");
   assert.equal(printWaitingReason(row({ printerId: "p-bar", problem: "paper-out", createdAt: ago(31 * 60_000) }), T0, "Bar printer"), "Waiting over 30 minutes: print it now, or clear it.", "a stale slip needs a tap whatever its printer does");
   assert.equal(printWaitingReason(row({ printerId: "p-bar", problem: "offline", lastError: PRINTER_NOT_CONNECTED_MESSAGE }), T0, "Bar printer"), "Bar printer is not connected.", "the printer's words before the last refusal's");
@@ -333,8 +323,8 @@ test("3B: a shown notice is re-worded, with no second ring, when its printer's p
 });
 
 test("PIN (3B): the panel and the alarm name the slip's printer for its problem; no request of their own", () => {
-  const card = src("apps/cafe/components/print/WaitingSlipsCard.tsx");
-  assert.ok(card.includes("const groups = printWaitingGroups(rows ?? [], Date.now(), printers);"), "the panel's reasons name the printer");
+  const card = src("apps/cafe/components/print/NotPrintedSection.tsx");
+  assert.ok(card.includes("notPrintedViewOf(rows ?? [], pulse?.printAttentionTruncated === true, Date.now(), printers)"), "the panel's reasons name the printer");
   const alarm = src("apps/cafe/hooks/use-print-slip-alarm.ts");
   assert.ok(alarm.includes("printAlarmMessage(row, printerNameOf(printersOfRead(qc.getQueryData<PrintersRead>(PRINTERS_KEYS.all)), row.printerId))"), "the notice names it from the printers already read");
 });

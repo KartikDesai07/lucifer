@@ -14,6 +14,7 @@ import { apiSend } from "@/lib/api-client";
 import { isDesktopShell } from "@/lib/desktop-shell";
 import { printerHealthClock } from "@/lib/print-agent-health";
 import { olderAckBody, printAgentSkew } from "@/lib/print-agent-skew";
+import { dropPrintedFromPulse } from "@/lib/print-pulse-edit";
 import {
   PRINT_AGENT_SLIP_DEADLINE_MS,
   createPrintAgent,
@@ -199,8 +200,9 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
       lease: (printerIds) => apiSend<PrintLeaseData>(LEASE_URL, "POST", { deviceId, tabId, tokenSlips: true, ...printerIdsBody(printerIds) }),
       // Session 3B (the token fix's M-2): every ack says this page prints token slips, so its `more` counts them.
       // Session 3C (the 3B review gate's I-1): a server from before Phase 3 (a rollback) refuses tokenSlips and reason: the
-      // ack goes once more without them (lib/print-agent-skew.ts), never read as answered and lost.
-      ack: (id, body) => printAgentSkew.send({ ...body, tokenSlips: true }, olderAckBody, (sent) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", sent)),
+      // ack goes once more without them (lib/print-agent-skew.ts), never read as answered and lost. PX-2 (spec §6.9 B4): an
+      // applied printed answer takes its slip off this device's cached Not printed list at once (no request).
+      ack: (id, body) => printAgentSkew.send({ ...body, tokenSlips: true }, olderAckBody, (sent) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", sent)).then((answer) => dropPrintedFromPulse(qc, id, body, answer)),
       print,
       // Session 3C (the gate's review, m-2): a device that prints printers is ready only by their own states (its app's
       // default printer out of paper must not let a kick lease an empty line).
@@ -227,7 +229,7 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
       created.stop();
       setAgent(null);
     };
-  }, [deviceId, tabId]);
+  }, [deviceId, tabId, qc]);
 
   useEffect(() => {
     agent?.setGate({ enabled, busy });
@@ -318,6 +320,7 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
     const pulseHash = hashKey(POS_PULSE_KEYS.all);
     const off = qc.getQueryCache().subscribe((event) => {
       if (event.type !== "updated" || event.action.type !== "success" || event.query.queryHash !== pulseHash) return;
+      if (event.action.manual === true) return; // a cache edit (a printed slip, a Clear) is no pulse: no trailing lease (F-I1)
       const data = event.query.state.data as PosPulseData | undefined;
       if ((data?.printJobsForMe?.count ?? 0) > 0) {
         noteJobsForMe(data?.printJobsForMe);

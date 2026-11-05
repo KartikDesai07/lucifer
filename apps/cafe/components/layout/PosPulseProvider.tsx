@@ -23,8 +23,7 @@ import { pulseArrival, ALERT_REPEAT_MS, type PosPulseData } from "@pos/shared/se
 import type { PrintJobFeedRow } from "@pos/shared/print-job";
 import { hostRoutingOf, type PrintHostRouting } from "@/lib/print-routing";
 import { PrintHostDotContext } from "@/components/layout/print-host-dot-context";
-import { PrintWaitingContext } from "@/components/layout/print-waiting-context";
-import { printWaitingBadgeOf } from "@/lib/print-waiting";
+import { PrintWaitingProviders } from "@/components/layout/PrintWaitingProviders";
 import { printHostDotOf } from "@/lib/printer/printer-dot";
 import {
   prunePrintReadback,
@@ -275,8 +274,8 @@ export function PosPulseProvider({ children }: { children: ReactNode }) {
   // value moves (components/layout/print-host-dot-context.ts).
   const dot = printHostDotOf(data);
   const printJobs = data?.printJobs ?? EMPTY_PRINT_JOBS;
-  // Session 1D: the waiting-slips count for the printer button, a plain string like the dot.
-  const waiting = printWaitingBadgeOf(data);
+  // Session 1D: the waiting-slips count for the printer button, a plain string like the dot; PX-2 (spec §6.5): with the
+  // printers those slips wait for, each derived once in PrintWaitingProviders (its own file: this one stays <= 300).
 
   return (
     <PrintHostDotContext.Provider value={dot}>
@@ -287,7 +286,7 @@ export function PosPulseProvider({ children }: { children: ReactNode }) {
               <PosPulseContext.Provider
                 value={{ pulse: data, soundUnlocked, unlock, printHandler, registerKotPrintHandler }}
               >
-                <PrintWaitingContext.Provider value={waiting}>{children}</PrintWaitingContext.Provider>
+                <PrintWaitingProviders data={data}>{children}</PrintWaitingProviders>
               </PosPulseContext.Provider>
             </PrintReadbackContext.Provider>
           </PrintReadbackRecordContext.Provider>

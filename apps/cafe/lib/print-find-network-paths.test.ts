@@ -33,9 +33,12 @@ test("PIN: the button and its list show only where the app can scan, and a tap o
 });
 
 test("PIN: beside the network printer address, in the POS app's panel and the setup form", () => {
-  const picker = src("components/print/NativePrinterPicker.tsx");
-  assert.ok(picker.includes("<FindNetworkPrinters disabled={locked} onPick={(host, picked) => { setAddress(host); setPort(String(picked)); setFormError(null); }} />"), "the panel's network form: the address and port filled");
-  assert.ok(picker.indexOf("<FindNetworkPrinters") > picker.indexOf("{NETWORK_TITLE}") && picker.indexOf("<FindNetworkPrinters") < picker.indexOf("Use this network printer"), "inside the network form, before Use");
+  // PX-3 Task 11 (on purpose): the app's network form moved, as it was, into the guided connect's list step: its props-only
+  // view draws the find slot inside the form before Connect, its container fills the slot (the address and port filled).
+  const picker = src("components/print/connect/ConnectList.tsx");
+  assert.ok(picker.includes("find={<FindNetworkPrinters onPick={(host, picked) => { setAddress(host); setPort(String(picked)); setFormError(null); }} />}"), "the panel's network form: the address and port filled");
+  const networkForm = picker.slice(picker.indexOf("export function NetworkFormView("), picker.indexOf("type Pick ="));
+  assert.ok(networkForm.indexOf("{find}") > networkForm.indexOf("{NETWORK_TITLE}") && networkForm.indexOf("{find}") < networkForm.indexOf('<Button type="submit"') && networkForm.indexOf("{NETWORK_TITLE}") > 0, "inside the network form, before Connect");
   const form = src("components/print/setup/PrinterFormDialog.tsx");
   assert.ok(form.includes("<FindNetworkPrinters onPick={(host, picked) => set({ host, port: String(picked) })} />"), "the setup form's network address: filled");
   const lanBranch = form.slice(form.indexOf('draft.kind === "lan" ? ('), form.indexOf(") : windowsHere ? ("));

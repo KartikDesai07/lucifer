@@ -319,12 +319,12 @@ test("PIN (the 2F2 review gate, M-4, m-3): a setup printer never leaves the app 
   assert.ok(hook.indexOf("added.push(`tcp:${key}`)") > 0 && hook.indexOf("added.push(`tcp:${key}`)") < hook.indexOf("void nativePool().add({ tcp: lan })"), "recorded before it is asked for");
   const section = src("apps/cafe/components/print/DevicePrinterSection.tsx");
   assert.match(section, /\{inSetup \? \(\s*<p className=\{PRINTER_NOTE_CLASS\}>\{PRINTER_IN_SETUP_MESSAGE\}<\/p>\s*\) : known \? \(\s*<Button className=\{PRINTER_BUTTON_REMOVE_CLASS\} variant="outline" onClick=\{\(\) => setConfirmRemove\(true\)\} disabled=\{locked\}>/, "no Remove on a setup printer (the 2E gate's I-3 sentence), and none before the setup is known");
-  assert.ok(section.includes("if (!listed(target)) await nativePool().add(target);\n    return devicePrinter().selectNative(target, paperDefault);"), "Change printer keeps a setup printer in the app; a listed printer is only chosen");
-  assert.ok(section.includes("const keepInApp = pool.active && (inSetup || !known) ?"), "kept also while the setup is not known yet");
+  const attempt = src("apps/cafe/hooks/use-connect-attempt.ts"); // PX-3 Task 11 (on purpose): Change's connect moved, as it was, into the guided connect's hook.
+  assert.ok(attempt.includes("if (!listed(target)) await nativePool().add(target);\n    return devicePrinter().selectNative(target, paperDefault);"), "Change printer keeps a setup printer in the app; a listed printer is only chosen");
+  assert.ok(attempt.includes("const keepInApp = pool.active && (inSetup || !known) ?"), "kept also while the setup is not known yet");
   // The final Phase 2 gate (m-2, deliberate change): a failed read with nothing read is no longer "known".
-  assert.ok(src("apps/cafe/hooks/use-agent-printers.ts").includes("known: deviceId === \"\" || answered"), "known once the printers read has answered");
-  assert.ok(src("apps/cafe/hooks/use-agent-printers.ts").includes('if (!enabled || pool === null || deviceId === "") return;'), "no add or removal without a device id");
-  assert.ok(section.includes("<NativePrinterPicker paper={paperDefault} busy={locked} onAttempt={settle} add={keepInApp} />"), "the picker applies it");
+  assert.ok(src("apps/cafe/hooks/use-agent-printers.ts").includes("known: deviceId === \"\" || answered") && src("apps/cafe/hooks/use-agent-printers.ts").includes('if (!enabled || pool === null || deviceId === "") return;'), "known once the printers read has answered; no add or removal without a device id");
+  assert.ok(attempt.includes("replace: (target) => (keepInApp !== undefined ? keepInApp(target) : devicePrinter().selectNative(target, paperDefault)),") && !section.includes("selectNative("), "the guided connect's replace applies it (the device card calls no connect of its own)");
   assert.ok(src("apps/cafe/components/print/OtherDevicePrinters.tsx").includes("const IN_SETUP = PRINTER_IN_SETUP_MESSAGE;"), "one sentence for both sections");
 });
 

@@ -388,10 +388,10 @@ test("PIN (2B): an ack that takes a job off the line answers `more` from one rea
     ack,
     [
       "if (await applyPrintJobPlan(row._id, job, plan.patch)) {",
-      'if (plan.patch.status === "queued") {',
-      "if (input.reason === PRINT_ACK_UNREACHABLE && input.sent === \"no\" && row.printerId !== undefined) {",
+      // PX-2 (Ruling E), on purpose: the skip runs before the queued return, so a slip a staff Clear ended skips too.
+      "if (row.printerId !== undefined && ackSkipsUnreachableWriter(input, job, plan.patch.status)) {",
       "await recordPrinterUnreachable({ printerId: row.printerId, deviceId: input.deviceId, nowMs: input.nowMs }).catch(() => null);",
-      "return { applied: true, status: plan.patch.status, nextAttemptAt };",
+      'if (plan.patch.status === "queued") return { applied: true, status: plan.patch.status, nextAttemptAt };',
       "const tokens = input.tokenSlips === true || (await printDeviceDrawsTokens(input.deviceId).catch(() => true));",
       "const more = await (row.printerId !== undefined ? printerLineHasMore(row.printerId, input.nowMs, tokens) : printLineHasMore(input.deviceId, input.nowMs, tokens)).catch(",
       "() => undefined,",

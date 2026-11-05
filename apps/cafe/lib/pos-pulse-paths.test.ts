@@ -149,7 +149,9 @@ test("INVENTORY: usePosPulseContext( call sites are exactly the eight deliberate
     "components/orders/RequestCountBadge.tsx",
     // PH-7 (2026-09-06), re-pointed PH-10b, re-pointed again 2026-09-19 (the
     // kiosk-wizard cleanup folded PrintHostCard.tsx into PrinterSetupCard.tsx,
-    // the whole /printers page now): still never under the POS
+    // the whole /printers page now), and again in PX-3 Task 10 (on purpose: the
+    // card's reads and writes moved, as they were, into the settings view's
+    // hook use-printer-setup-actions.ts): still never under the POS
     // screen, still needs the host's label/offline/silentMode, which live
     // only on pulse.printHost (the derived lane string cannot carry them). A
     // deliberate sixth consumer (D7).
@@ -159,7 +161,7 @@ test("INVENTORY: usePosPulseContext( call sites are exactly the eight deliberate
     // or on /printers, never in the POS render path; the header button
     // itself reads the narrow dot context and never this one.
     "components/print/PrinterPanel.tsx",
-    "components/print/PrinterSetupCard.tsx",
+    "hooks/use-printer-setup-actions.ts",
     "hooks/use-self-order-auto-print.ts",
   ].sort();
 

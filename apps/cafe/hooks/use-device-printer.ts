@@ -15,6 +15,7 @@ import {
 } from "@/lib/printer/desktop-printer-state";
 import { EMPTY_DESKTOP_LAN, desktopLan, type DesktopLanSnapshot } from "@/lib/printer/desktop-lan";
 import { NONE_SNAPSHOT, devicePrinter, type PrinterSnapshot } from "@/lib/printer/device-printer";
+import { PAGE_HELD_STATUS, heldDeviceSnapshotOf } from "@/lib/printer/held-status";
 import { NATIVE_READY_EVENT } from "@/lib/printer/native-bridge";
 import { EMPTY_POOL, nativePool, type NativePoolSnapshot } from "@/lib/printer/native-pool";
 import { canPrintNow, canPrintOnAny, currentLane, printCapabilities, type PrintCapabilities, type PrintLane } from "@/lib/printer/print-lane";
@@ -53,6 +54,14 @@ function subscribeOnline(onChange: () => void): () => void {
 
 export function useDevicePrinter(): PrinterSnapshot {
   return useSyncExternalStore(subscribePrinter, () => devicePrinter().getSnapshot(), () => NONE_SNAPSHOT);
+}
+
+/** PX-2 (spec §6.9 B6): this device's printer as the dot reads it, its status held through the app's own retries (a
+ *  "connecting" right after a settled "disconnected" / "needs-tap" stays that until it connects) under the printer's identity in the
+ *  page's one memory, so the header button and the panel read the same value. The same snapshot while nothing is held;
+ *  printing itself reads the real one (useDevicePrinter). */
+export function heldPrinterSnapshotOf(snapshot: PrinterSnapshot): PrinterSnapshot {
+  return heldDeviceSnapshotOf(PAGE_HELD_STATUS, snapshot);
 }
 
 export function usePrintLane(): PrintLane {

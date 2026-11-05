@@ -19,7 +19,10 @@
 // the invariant was a split BETWEEN the two files, collapsed to reflect that
 // there is no longer a split). Pins whose guarded thing no longer exists at
 // all (the wizard's own steps/kiosk .bat/mobile-UA swap) are deleted below,
-// each with a one-line reason.
+// each with a one-line reason. PX-3 Task 10 (on purpose): the card's state and
+// writes moved, as they were, into hooks/use-printer-setup-actions.ts (designate,
+// clear) and hooks/use-test-print.ts (the test and its attestation), drawn by
+// the settings view's cards: each pin reads the file that now holds its code.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -41,7 +44,8 @@ function countOccurrences(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1;
 }
 
-const CARD_TSX = "apps/cafe/components/print/PrinterSetupCard.tsx";
+const SETUP_TS = "apps/cafe/hooks/use-printer-setup-actions.ts";
+const TEST_TS = "apps/cafe/hooks/use-test-print.ts";
 const PARTS_TSX = "apps/cafe/components/print/PrintHostCardParts.tsx";
 const DEVICE_ALERT_SETTINGS = "apps/cafe/components/orders/DeviceAlertSettings.tsx";
 const DEVICE_ALERT_SETTINGS_DIALOG = "apps/cafe/components/orders/DeviceAlertSettingsDialog.tsx";
@@ -51,25 +55,25 @@ const PRINTING_PAGE = "apps/cafe/app/(dashboard)/printers/page.tsx";
 const REQUESTS_PAGE = "apps/cafe/app/(dashboard)/requests/page.tsx";
 
 // 2026-10-02 (printer panel, W5b): the card is now one piece of a panel, so the
-// hygiene pins below (b, e, g) cover every file of it, not just the two that
-// used to be the whole card. The panel files carry no print trigger of their own
-// either; PIN (b) MERGED-13 and the console/cafe-name scans stay as strict.
+// hygiene pins below (b, e, g) cover every file of it (PX-3 Task 10: Where slips print → PrintForOthersCard, More options →
+// MoreCard, and the settings view that draws them). PIN (b) MERGED-13 and the console/cafe-name scans stay as strict.
 const PANEL_FILES = [
   "apps/cafe/components/print/PrinterPanel.tsx",
-  "apps/cafe/components/print/PrintWhereSection.tsx",
+  "apps/cafe/components/print/settings/PrintForOthersCard.tsx",
   "apps/cafe/components/print/DevicePrinterSection.tsx",
-  "apps/cafe/components/print/NativePrinterPicker.tsx",
+  ...["ConnectFlow", "ConnectType", "ConnectList", "ConnectProgress", "ConnectTest"].map((n) => `apps/cafe/components/print/connect/${n}.tsx`), "apps/cafe/hooks/use-connect-attempt.ts", "apps/cafe/hooks/use-native-printer-list.ts", // PX-3 Task 11: the picker's logic and its guided connect
   "apps/cafe/components/print/PaperSizeToggle.tsx",
   "apps/cafe/components/print/PrinterTestTips.tsx",
-  "apps/cafe/components/print/PrinterAdvanced.tsx",
+  "apps/cafe/components/print/settings/MoreCard.tsx", "apps/cafe/components/print/settings/PrinterSettingsView.tsx",
 ];
 const PRINTER_PANEL_TSX = PANEL_FILES[0];
-const PRINT_WHERE_TSX = PANEL_FILES[1];
-const CARD_FILES = [CARD_TSX, PARTS_TSX, ...PANEL_FILES];
+const FOR_OTHERS_TSX = PANEL_FILES[1];
+const DEVICE_TSX = PANEL_FILES[2];
+const CARD_FILES = [SETUP_TS, TEST_TS, PARTS_TSX, ...PANEL_FILES];
 
 // ── (a) Reachability ─────────────────────────────────────────────────────
 
-test("PIN (a): requests/page.tsx imports { DeviceAlertSettingsDialog } from @/components/orders/DeviceAlertSettingsDialog and renders <DeviceAlertSettingsDialog />; that dialog imports { DeviceAlertSettings } and renders <DeviceAlertSettings /> and imports Dialog/DialogContent from @/components/ui/dialog (2-hop reachability); requests/page.tsx contains NO PrinterSetupCard (that card lives on /printers)", () => {
+test("PIN (a): requests/page.tsx imports { DeviceAlertSettingsDialog } from @/components/orders/DeviceAlertSettingsDialog and renders <DeviceAlertSettingsDialog />; that dialog imports { DeviceAlertSettings } and renders <DeviceAlertSettings /> and imports Dialog/DialogContent from @/components/ui/dialog (2-hop reachability); requests/page.tsx contains NO PrinterSettingsView (the printer setup lives on /printers)", () => {
   const src = readSrc(REQUESTS_PAGE);
 
   assert.match(
@@ -92,19 +96,16 @@ test("PIN (a): requests/page.tsx imports { DeviceAlertSettingsDialog } from @/co
     "DeviceAlertSettingsDialog.tsx must import Dialog and DialogContent from @/components/ui/dialog",
   );
 
-  // Negative pin: requests/page.tsx must NOT reference PrinterSetupCard
+  // Negative pin: requests/page.tsx must NOT reference the printer setup
   // (needle built by concatenation so this file never carries the literal it
   // bans). Positive landmark for this pin's own vision: printers/
-  // page.tsx really does import+render PrinterSetupCard — so an accidentally-
+  // page.tsx really does reach it — so an accidentally-
   // blinded readSrc couldn't vacuously pass the negative half.
   // RE-POINTED 2026-10-02 (printer panel, W5b): the page now renders
-  // <PrinterPanel /> (the same panel the top-bar printer button opens) instead
-  // of the card directly; the card is reached in a second hop, asserted below.
-  const printerSetupCardNeedle = "PrinterSetup" + "Card";
-  assert.ok(
-    !src.includes(printerSetupCardNeedle),
-    `requests/page.tsx must NOT reference ${printerSetupCardNeedle} — that card lives on /printers`,
-  );
+  // <PrinterPanel home="page" /> (PX-2 Task 6: both views of the top-bar sheet's panel); PX-3 Task 10: the setup is
+  // the settings view (PrinterSettingsView, which replaced PrinterSetupCard), reached in a second hop, asserted below.
+  const printerSetupNeedle = "PrinterSettings" + "View";
+  assert.ok(!src.includes(printerSetupNeedle), `requests/page.tsx must NOT reference ${printerSetupNeedle} — the printer setup lives on /printers`);
 
   const printingSrc = readSrc(PRINTING_PAGE);
   assert.match(
@@ -112,19 +113,19 @@ test("PIN (a): requests/page.tsx imports { DeviceAlertSettingsDialog } from @/co
     /import\s*\{\s*PrinterPanel\s*\}\s*from\s*"@\/components\/print\/PrinterPanel"/,
     "positive landmark: printers/page.tsx must import { PrinterPanel } from @/components/print/PrinterPanel",
   );
-  assert.match(printingSrc, /<PrinterPanel\s*\/>/, "positive landmark: printers/page.tsx must render <PrinterPanel />");
+  assert.match(printingSrc, /<PrinterPanel\s+home="page"\s*\/>/, 'positive landmark: printers/page.tsx must render <PrinterPanel home="page" />');
   const panelSrc = readSrc(PRINTER_PANEL_TSX);
   assert.match(
     panelSrc,
-    /import\s*\{\s*PrinterSetupCard\s*\}\s*from\s*"@\/components\/print\/PrinterSetupCard"/,
-    "2nd hop: PrinterPanel.tsx must import { PrinterSetupCard } from @/components/print/PrinterSetupCard",
+    /import\s*\{\s*PrinterSettingsView\s*\}\s*from\s*"@\/components\/print\/settings\/PrinterSettingsView"/,
+    "2nd hop: PrinterPanel.tsx must import { PrinterSettingsView } from @/components/print/settings/PrinterSettingsView",
   );
-  assert.match(panelSrc, /<PrinterSetupCard\s*\/>/, "2nd hop: PrinterPanel.tsx must render <PrinterSetupCard />");
+  assert.match(panelSrc, /<PrinterSettingsView\s+home=\{home\}\s+noun=\{noun\}\s+onClose=\{onClose\}\s+onConnect=\{startConnect\}\s*\/>/, "2nd hop: PrinterPanel.tsx must render <PrinterSettingsView home={home} noun={noun} onClose={onClose} onConnect={startConnect} /> (PX-3 Task 11: and the guided connect)");
 });
 
 // ── (b) MERGED-13: no component-owned print trigger ──────────────────────
 
-test("PIN (b) MERGED-13: PrinterSetupCard.tsx and PrintHostCardParts.tsx raw source contain NO useReactToPrint and NO pageStyle (needles built by concatenation); positive landmarks: the card awaits queueTestSlip() and destructures queueTestSlip from usePrintHostContext()", () => {
+test("PIN (b) MERGED-13: the setup's hooks, PrintHostCardParts.tsx and the panel's files contain NO useReactToPrint and NO pageStyle (needles built by concatenation); positive landmarks: use-test-print.ts awaits queueTestSlip() and destructures queueTestSlip from usePrintHostContext()", () => {
   const useReactToPrintNeedle = "useReact" + "ToPrint";
   const pageStyleNeedle = "page" + "Style";
 
@@ -134,19 +135,19 @@ test("PIN (b) MERGED-13: PrinterSetupCard.tsx and PrintHostCardParts.tsx raw sou
     assert.ok(!raw.includes(pageStyleNeedle), `${rel} must never reference ${pageStyleNeedle}`);
   }
 
-  const cardSrc = stripComments(readSrc(CARD_TSX));
-  assert.match(cardSrc, /await queueTestSlip\(\)/, "positive landmark: PrinterSetupCard.tsx must await queueTestSlip()");
+  const cardSrc = stripComments(readSrc(TEST_TS));
+  assert.match(cardSrc, /await queueTestSlip\(\)/, "positive landmark: use-test-print.ts must await queueTestSlip()");
   assert.match(
     cardSrc,
     /const \{[^}]*\bqueueTestSlip\b[^}]*\} = usePrintHostContext\(\);/,
-    "positive landmark: PrinterSetupCard.tsx must destructure queueTestSlip from usePrintHostContext()",
+    "positive landmark: use-test-print.ts must destructure queueTestSlip from usePrintHostContext()",
   );
 });
 
 // ── (c) Attestation contract (A-16/§B7) ───────────────────────────────────
 
-test("PIN (c) A-16/§B7: the card imports useBeatPrintHost from @/hooks/use-print-host-beat; beat.mutateAsync({ deviceId, silentMode, silentProbeMs: Math.round(dt) }) appears exactly once; both onYes/onNo branches wired exactly once; readDeviceId() (from @/lib/pos-device-id) is called inside handleAttest, never printHost.deviceId/pulse.printHost.deviceId; no KIOSK_SILENT_MAX_MS threshold and no numeric dt/silentProbeMs comparison", () => {
-  const src = readSrc(CARD_TSX);
+test("PIN (c) A-16/§B7: use-test-print.ts imports useBeatPrintHost from @/hooks/use-print-host-beat; beat.mutateAsync({ deviceId, silentMode, silentProbeMs: Math.round(dt) }) appears exactly once; both answers wired exactly once (the device card); readDeviceId() (from @/lib/pos-device-id) is called inside handleAttest, never printHost.deviceId/pulse.printHost.deviceId; no KIOSK_SILENT_MAX_MS threshold and no numeric dt/silentProbeMs comparison", () => {
+  const src = readSrc(TEST_TS);
 
   assert.match(
     src,
@@ -158,17 +159,19 @@ test("PIN (c) A-16/§B7: the card imports useBeatPrintHost from @/hooks/use-prin
   const mutateAsyncCount = countOccurrences(src, mutateAsyncLiteral);
   assert.equal(mutateAsyncCount, 1, `expected ${mutateAsyncLiteral} exactly once, found ${mutateAsyncCount}`);
 
-  const onYesCount = countOccurrences(src, "onYes={() => void handleAttest(true)}");
-  const onNoCount = countOccurrences(src, "onNo={() => void handleAttest(false)}");
-  assert.equal(onYesCount, 1, `expected onYes={() => void handleAttest(true)} exactly once, found ${onYesCount}`);
-  assert.equal(onNoCount, 1, `expected onNo={() => void handleAttest(false)} exactly once, found ${onNoCount}`);
+  const deviceSrc = readSrc(DEVICE_TSX);
+  const onYesCount = countOccurrences(deviceSrc, "onYes={() => void test.answer(true)}");
+  const onNoCount = countOccurrences(deviceSrc, "onNo={() => void test.answer(false)}");
+  assert.equal(onYesCount, 1, `expected onYes={() => void test.answer(true)} exactly once, found ${onYesCount}`);
+  assert.equal(onNoCount, 1, `expected onNo={() => void test.answer(false)} exactly once, found ${onNoCount}`);
+  assert.ok(src.includes("answer: handleAttest,"), "the hook's answer is handleAttest");
 
   assert.match(
     src,
     /import\s*\{\s*readDeviceId\s*\}\s*from\s*"@\/lib\/pos-device-id"/,
     "must import { readDeviceId } from @/lib/pos-device-id",
   );
-  const handleAttestBody = src.slice(src.indexOf("const handleAttest"), src.indexOf("const handleClear"));
+  const handleAttestBody = src.slice(src.indexOf("const handleAttest"), src.indexOf("  return {", src.indexOf("const handleAttest")));
   assert.ok(handleAttestBody.includes("readDeviceId()"), "positive landmark: handleAttest must call readDeviceId()");
 
   assert.ok(!src.includes("printHost.deviceId"), "must NOT contain printHost.deviceId — deviceId comes from readDeviceId(), never the pulse");
@@ -185,14 +188,10 @@ test("PIN (c) A-16/§B7: the card imports useBeatPrintHost from @/hooks/use-prin
 
 // ── (d) Busy gate + never-queue ───────────────────────────────────────────
 
-test('PIN (d): the test-print button\'s disabled expression is exactly current !== null || phase !== "idle" || beat.isPending (inline — PrinterSetupCard.tsx merged the wizard\'s designate step and the old card\'s test-print step into one component, so there is no longer a separate testDisabled const to name); the catch compares err.message === PRINT_HOST_BUSY_MESSAGE (imported from @/lib/print-host-slips); no pendingRef and no .push( — a test slip is refused, never queued', () => {
-  const src = readSrc(CARD_TSX);
-
-  assert.match(
-    src,
-    /disabled=\{current !== null \|\| phase !== "idle" \|\| beat\.isPending\}/,
-    'must wire disabled={current !== null || phase !== "idle" || beat.isPending}',
-  );
+test('PIN (d): the test-print button\'s disabled expression is exactly current !== null || phase !== "idle" || beat.isPending (PX-3 Task 10: use-test-print.ts\'s startDisabled, which the device card\'s Test print wears); the catch compares err.message === PRINT_HOST_BUSY_MESSAGE (imported from @/lib/print-host-slips); no pendingRef and no .push( — a test slip is refused, never queued', () => {
+  const src = readSrc(TEST_TS);
+  assert.match(src, /startDisabled: current !== null \|\| phase !== "idle" \|\| beat\.isPending,/, 'must wire startDisabled: current !== null || phase !== "idle" || beat.isPending');
+  assert.ok(readSrc(DEVICE_TSX).includes("disabled={test.startDisabled}"), "the device card's Test print wears it");
 
   assert.match(
     src,
@@ -205,14 +204,14 @@ test('PIN (d): the test-print button\'s disabled expression is exactly current !
     "positive landmark: the catch must compare err.message === PRINT_HOST_BUSY_MESSAGE",
   );
 
-  assert.ok(!src.includes("pendingRef"), "PrinterSetupCard.tsx must NOT contain pendingRef — the bridge owns the FIFO, the card never queues");
-  assert.ok(!src.includes(".push("), "PrinterSetupCard.tsx must NOT contain .push( — a test slip is refused (busy), never queued");
+  assert.ok(!src.includes("pendingRef"), "use-test-print.ts must NOT contain pendingRef — the bridge owns the FIFO, the card never queues");
+  assert.ok(!src.includes(".push("), "use-test-print.ts must NOT contain .push( — a test slip is refused (busy), never queued");
 });
 
 // ── (e) Clear host (MERGED-17) ────────────────────────────────────────────
 
-test("PIN (e) MERGED-17: the card imports useClearPrintHost from @/hooks/use-print-host and calls clear.mutateAsync(); dropHostPref's three read-modify-write lines appear in order; dropHostPref() runs inside handleClear AFTER await clear.mutateAsync(); the clear button's disabled expression is exactly disabled={clear.isPending || host?.configured === false}; card+parts contain NO isMobileUserAgent (clear-host is not, and has never been, UA-gated)", () => {
-  const src = readSrc(CARD_TSX);
+test("PIN (e) MERGED-17: use-printer-setup-actions.ts imports useClearPrintHost from @/hooks/use-print-host and calls clear.mutateAsync(); dropHostPref's three read-modify-write lines appear in order; dropHostPref() runs inside handleClear AFTER await clear.mutateAsync(); the Stop button's disabled expression is exactly disabled={clearing || host?.configured === false}; card+parts contain NO isMobileUserAgent (clear-host is not, and has never been, UA-gated)", () => {
+  const src = readSrc(SETUP_TS);
 
   assert.match(
     src,
@@ -239,10 +238,11 @@ test("PIN (e) MERGED-17: the card imports useClearPrintHost from @/hooks/use-pri
     `expected await clear.mutateAsync();(${awaitClearAt}) BEFORE dropHostPref();(${dropHostPrefCallAt}) inside handleClear`,
   );
 
+  assert.ok(src.includes("clearing: clear.isPending,"), "the hook's clearing is the clear mutation's pending state");
   assert.match(
-    src,
-    /disabled=\{clear\.isPending \|\| host\?\.configured === false\}/,
-    "the clear button's disabled expression must be exactly disabled={clear.isPending || host?.configured === false}",
+    readSrc(FOR_OTHERS_TSX),
+    /disabled=\{clearing \|\| host\?\.configured === false\}/,
+    "the Stop button's disabled expression must be exactly disabled={clearing || host?.configured === false}",
   );
 
   // REMOVED (2026-09-19): the old "no useDesignatePrintHost in the card"
@@ -306,9 +306,9 @@ test("PIN (f) A-13: DeviceAlertSettings.tsx imports usePrintHostContext from @/c
 
 // ── (g) Budgets + hygiene ──────────────────────────────────────────────────
 
-test("PIN (g): line budgets — PrinterSetupCard.tsx <= 260, PrintHostCardParts.tsx <= 100, DeviceAlertSettings.tsx <= 100, DeviceAlertSettingsDialog.tsx <= 60; none of CARD_FILES contain console. or Lucifer (case-insensitive); the card contains no useEffect( — all device/prefs reads are in handlers (F8)", () => {
+test("PIN (g): line budgets — use-printer-setup-actions.ts and use-test-print.ts <= 160 each (PrinterSetupCard.tsx's 260, split), PrintHostCardParts.tsx <= 100, DeviceAlertSettings.tsx <= 100, DeviceAlertSettingsDialog.tsx <= 60; none of CARD_FILES contain console. or Lucifer (case-insensitive); the hooks contain no useEffect( — all device/prefs reads are in handlers (F8)", () => {
   const budgets: [string, number][] = [
-    [CARD_TSX, 260],
+    [SETUP_TS, 160], [TEST_TS, 160],
     [PARTS_TSX, 100],
     [DEVICE_ALERT_SETTINGS, 100],
     [DEVICE_ALERT_SETTINGS_DIALOG, 60],
@@ -328,17 +328,18 @@ test("PIN (g): line budgets — PrinterSetupCard.tsx <= 260, PrintHostCardParts.
   }
 
   // PH-10b (D4/D5) still holds post-cleanup: neither surviving file self-links
-  // via next/link (needle by concatenation); landmark: Parts still imports Badge.
+  // via next/link (needle by concatenation); landmark: Parts still imports the row's sub (PX-3 Task 10: the Badge went).
   const nextLinkNeedle = 'from "next/' + 'link"';
   const partsRaw = readSrc(PARTS_TSX);
   assert.ok(!partsRaw.includes(nextLinkNeedle), "PrintHostCardParts.tsx must not import next/link — the self-link is gone (D5)");
-  assert.match(partsRaw, /import \{ Badge \} from "@\/components\/ui\/badge";/, "positive landmark: PrintHostCardParts.tsx still imports Badge");
+  assert.match(partsRaw, /import \{ printerSubOf \} from "@\/lib\/printer\/settings-view";/, "positive landmark: PrintHostCardParts.tsx still imports printerSubOf");
 
-  const cardSrc = readSrc(CARD_TSX);
-  assert.ok(!cardSrc.includes("useEffect("), "PrinterSetupCard.tsx must NOT contain useEffect( — device/prefs reads happen in handlers only (F8)");
-  // positive landmark: the card still uses other hooks (useState), so an
-  // empty/stubbed file could not vacuously pass the useEffect( absence.
-  assert.match(cardSrc, /useState<TestPhase>\("idle"\)/, "positive landmark: PrinterSetupCard.tsx must still call useState<TestPhase>(\"idle\")");
+  const cardSrc = readSrc(SETUP_TS);
+  const testSrc = readSrc(TEST_TS);
+  for (const [rel, text] of [[SETUP_TS, cardSrc], [TEST_TS, testSrc]]) assert.ok(!text.includes("useEffect("), `${rel} must NOT contain useEffect( — device/prefs reads happen in handlers only (F8)`);
+  // positive landmark: the hooks still use other hooks (useState), so an empty/stubbed file could not vacuously pass.
+  assert.match(testSrc, /useState<TestPhase>\("idle"\)/, "positive landmark: use-test-print.ts must still call useState<TestPhase>(\"idle\")");
+  assert.match(cardSrc, /useState<string \| null>\(null\)/, "positive landmark: use-printer-setup-actions.ts must still hold the typed label");
 
   // Prefer positive pins over a Hinglish-word grep-gate (testing.md/PH-10b
   // hygiene note) — assert the copy table's own mandated English strings ARE
@@ -348,18 +349,14 @@ test("PIN (g): line budgets — PrinterSetupCard.tsx <= 260, PrintHostCardParts.
   //   "Print host removed — "  -> "Printing device removed — "
   //   "Remove print host"      -> "Remove the printing device"
   //   the Parts no-host line   -> the Parts InlineConfirm export; the line
-  //     itself ("Each device prints its own slips.") now lives in
-  //     PrintWhereSection.tsx, since PrintHostStatus left the Parts file.
-  assert.match(cardSrc, /Printing device removed — /, "positive landmark: PrinterSetupCard.tsx must carry the English clearedMessage template");
-  assert.match(cardSrc, /Remove the printing device/, "positive landmark: PrinterSetupCard.tsx must carry the English button label");
+  //     itself lived in PrintWhereSection.tsx; PX-3 Task 10 (on purpose, spec §6.6 item 3): "Each device prints its own
+  //     slips." went with it; PrintForOthersCard's offer says what printing for others is. The button label is More's row.
+  assert.match(cardSrc, /Printing device removed — /, "positive landmark: use-printer-setup-actions.ts must carry the English clearedMessage template");
+  assert.match(readSrc("apps/cafe/lib/printer/settings-view.ts"), /"remove-host": "Remove the printing device"/, "positive landmark: More's row carries the English label");
 
   const partsSrc = readSrc(PARTS_TSX);
   assert.match(partsSrc, /export function InlineConfirm\(/, "positive landmark: PrintHostCardParts.tsx must still export InlineConfirm");
-  assert.match(
-    readSrc(PRINT_WHERE_TSX),
-    /Each device prints its own slips\./,
-    "positive landmark: PrintWhereSection.tsx must carry the English no-host line",
-  );
+  assert.match(readSrc(FOR_OTHERS_TSX), /Phones and tablets without a printer can send their slips here\./, "positive landmark: PrintForOthersCard.tsx must carry the English offer line");
 });
 
 // ── (h) Fence untouched (dark rollout) ─────────────────────────────────────

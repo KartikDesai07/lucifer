@@ -12,7 +12,9 @@ import {
   PRINT_AGENT_REFUSED_RECHECK_MS,
   PRINT_AGENT_TIMER_MAX_MS,
   PRINT_AGENT_TIMER_MIN_MS,
+  PRINT_ATTENTION_LIMIT,
   PRINT_ATTENTION_WINDOW_MS,
+  PRINT_DISMISS_MANY_MAX,
   printAgentMayLease,
   printAgentPollsWake,
   printAgentTimerDelayMs,
@@ -489,4 +491,12 @@ test("the owner's token ruling: a token cafe's ceilings sit just above the accep
   assert.ok(PRINT_BUDGET_TOKEN_NORMAL_MAX_PER_DAY - 6_642 < 100 && PRINT_BUDGET_TOKEN_WORST_MAX_PER_DAY - 18_480 < 100, "the token ceilings leave under 100 a day of room: any growth needs a new ruling");
   assert.equal(PRINT_BUDGET_NORMAL_MAX_PER_DAY, 6_000, "never loosened for a cafe without tokens");
   assert.equal(PRINT_BUDGET_WORST_MAX_PER_DAY, 18_000, "never loosened for a cafe without tokens");
+});
+
+// Printer UX PX-2 (spec §7, SR-2, R15): Clear all is ONE staff request for the whole waiting list (the feed's own
+// page), where clearing row by row cost a POST and a refetch per slip. The "no recurring request" file scan is a cafe
+// pin (PX-2 Task 6, F-I4).
+test("PX: Clear all is one request for up to 20 slips", () => {
+  assert.equal(PRINT_ATTENTION_LIMIT, 20, "the waiting-slips feed shows at most 20 rows");
+  assert.equal(PRINT_DISMISS_MANY_MAX, PRINT_ATTENTION_LIMIT, "one Clear all takes every row the feed shows: 1 request, not 20 x 2");
 });

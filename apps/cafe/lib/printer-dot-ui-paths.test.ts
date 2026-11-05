@@ -1,6 +1,6 @@
 // Source pins for the top-bar printer dot (Bluetooth-print plan, W5a): the
 // header button, its narrow inputs, the pulse provider's dot context and the
-// status banner. Raw bytes (comments included) for every absence check, each
+// status card (PX-2 Task 6: the banner went). Raw bytes (comments included) for every absence check, each
 // pin paired with a positive landmark, and every pin proven to BITE by running
 // it against an in-memory mutation of the real file (no file is ever written).
 import { test } from "node:test";
@@ -18,19 +18,21 @@ const HEADER = "components/layout/Header.tsx";
 const PROVIDER = "components/layout/PosPulseProvider.tsx";
 const DOT_CONTEXT = "components/layout/print-host-dot-context.ts";
 const BUTTON = "components/print/PrinterStatusButton.tsx";
-const BANNER = "components/print/PrinterStatusBanner.tsx";
+const CARD = "components/print/PrinterStatusCard.tsx";
+const PANEL = "components/print/PrinterPanel.tsx"; const FOCUS = "hooks/use-printer-panel-focus.ts";
 const CONNECT_OUTCOME = "components/print/connect-outcome.ts";
 const CLASSES = "components/print/printer-classes.ts";
 const FRAME = "components/print/PrinterPanelFrame.tsx";
 const DOT_LIB = "lib/printer/printer-dot.ts";
-const ALL_FILES = [HEADER, PROVIDER, DOT_CONTEXT, BUTTON, BANNER, CONNECT_OUTCOME, CLASSES, DOT_LIB];
+const VIEW_LIB = "lib/printer/printer-status-view.ts";
+const ALL_FILES = [HEADER, PROVIDER, DOT_CONTEXT, BUTTON, CARD, PANEL, CONNECT_OUTCOME, CLASSES, DOT_LIB];
 
 const POS_PULSE_CTX = "usePosPulse" + "Context";
 const CONSOLE_CALL = /\bconsole\s*\./;
 const CAFE_NAME = "luci" + "fer";
 const PROVIDER_MAX_LINES = 300;
 const BUTTON_MAX_LINES = 120;
-const BANNER_MAX_LINES = 120;
+const CARD_MAX_LINES = 120;
 const LIB_MAX_LINES = 300;
 
 interface PinCase {
@@ -148,23 +150,22 @@ const PINS: PinCase[] = [
     mutate: (src) => src.replace("usePrintHostDot()", "usePrintHostDots()"),
   },
   {
-    // U5 Task 5 (printer P8, moved on purpose: the sheet became the HTML's frame): the button hands its open state and itself
-    // (the dialog's trigger: aria-expanded, focus back on close) to the frame, whose children are the panel; the words moved
-    // into the frame (the HTML's sub has no full stop, design 7.1) and its Done foot closes it.
-    name: "the button opens PrinterPanelFrame (its trigger) around PrinterPanel; the frame holds the title, the sub and a Done that closes",
+    // U5 Task 5 (printer P8): the button hands its open state and itself (the trigger) to the frame. PX-2 Task 6 (on purpose,
+    // spec §6.1): it keeps the sheet's view (status on every open, reset on close) and hands the frame the title and the back (PX-3 Task 11: from use-printer-views).
+    name: "the button opens PrinterPanelFrame (its trigger) around PrinterPanel with its view; the frame holds the title, the back and a Done that closes",
     file: BUTTON,
     check: (src) => {
-      assert.match(src, /<PrinterPanelFrame\s+open=\{open\}\s+onOpenChange=\{setOpen\}\s+trigger=\{[\s\S]*\}\s*>\s*<PrinterPanel \/>\s*<\/PrinterPanelFrame>/);
-      assert.match(src, /import \{ PrinterPanel \} from "@\/components\/print\/PrinterPanel";/);
-      assert.match(src, /import \{ PrinterPanelFrame \} from "@\/components\/print\/PrinterPanelFrame";/);
+      assert.match(src, /<PrinterPanelFrame\s+open=\{open\}\s+onOpenChange=\{openChange\}\s+\{\.\.\.printerFrameOf\(view, connect, show\)\}\s+trigger=\{[\s\S]*\}\s*>\s*<PrinterPanel view=\{view\} onView=\{show\} connect=\{connect\} onConnect=\{startConnect\} onConnectEvent=\{send\} onClose=\{\(\) => setOpen\(false\)\} \/>\s*<\/PrinterPanelFrame>/, "the frame (its trigger, each view's head and foot from printerFrameOf) around the panel with the button's views and close");
+      assert.match(src, /const openChange = \(next: boolean\): void => \{\s*if \(next\) show\("status"\);\s*setOpen\(next\);\s*\};/, "status on every open, never on close (Ruling Q)");
+      assert.ok(['export const STATUS_TITLE = "Printer";', 'export const SETTINGS_TITLE = "Printer settings";', 'if (view === "settings") return { title: SETTINGS_TITLE, onBack: () => show("status") };'].every((n) => read("hooks/use-printer-views.ts").includes(n)), "the titles, the settings view's back (PX-3 Task 11, on purpose: the views' hook holds each view's head)");
+      assert.ok(/import \{ PrinterPanel \} from "@\/components\/print\/PrinterPanel";/.test(src) && /import \{ PrinterPanelFrame \} from "@\/components\/print\/PrinterPanelFrame";/.test(src), "the panel and its frame");
       const frame = read(FRAME);
-      assert.ok(frame.includes('TITLE = "Printer"') && frame.includes('SUB = "Printer status and setup for this device"'), "the frame's words");
-      assert.match(frame, /<DialogPrimitive\.Trigger asChild>\{trigger\}<\/DialogPrimitive\.Trigger>/);
-      assert.match(frame, /<DialogPrimitive\.Title [^>]*>\{TITLE\}<\/DialogPrimitive\.Title>/);
-      assert.match(frame, /<DialogPrimitive\.Description [^>]*>\{SUB\}<\/DialogPrimitive\.Description>/);
+      assert.ok(frame.includes('DESCRIPTION = "Printing on this device"') && frame.includes('BACK_LABEL = "Back to printer status"'), "the frame's words");
+      assert.ok(/<DialogPrimitive\.Trigger asChild>\{trigger\}<\/DialogPrimitive\.Trigger>/.test(frame) && /<DialogPrimitive\.Title [^>]*>\{title\}<\/DialogPrimitive\.Title>/.test(frame), "the trigger, the view's title");
+      assert.match(frame, /<DialogPrimitive\.Description className="sr-only">\{DESCRIPTION\}<\/DialogPrimitive\.Description>/, "the description for screen readers only");
       assert.match(frame, /<DialogPrimitive\.Close data-ui="printer-panel-done"[^>]*>\s*Done\s*<\/DialogPrimitive\.Close>/, "Done closes the frame");
     },
-    mutate: (src) => src.replace("<PrinterPanel />", ""),
+    mutate: (src) => src.replace("<PrinterPanel view={view} onView={show} connect={connect} onConnect={startConnect} onConnectEvent={send} onClose={() => setOpen(false)} />", "<PrinterPanel />"),
   },
   {
     name: "PosPulseProvider derives printHostDotOf( exactly once",
@@ -206,57 +207,57 @@ const PINS: PinCase[] = [
     mutate: (src) => src.replace("<PrintHostDot | null>(null)", "<PrintHostDot>(\"ok\")"),
   },
   {
-    name: "banner: role=status aria-live=polite, exact props, aria-hidden dot, one fix Button",
-    file: BANNER,
+    // PX-2 Task 6 (on purpose): the banner became the status card (spec §6.2), prop-driven: the words, busy, two callbacks.
+    name: "status card: role=status aria-live=polite, exact props, aria-hidden circle, at most one fixing Button",
+    file: CARD,
     check: (src) => {
       assert.match(src, /role="status" aria-live="polite"/);
-      assert.ok(src.includes("{ dot: PrinterDot & { show: true }; copy: PrinterHeadline }"));
-      assert.match(src, /<span\s+aria-hidden="true"/);
-      assert.match(src, /<span aria-hidden="true" className=\{cn\(PRINTER_STATUS_CIRCLE_CLASS, tone\)\}>/, "the status circle is decoration (aria-hidden) (U5 Task 5: the HTML's 34px circle, printer P13 moved on purpose)");
-      assert.equal(count(src, "<Button"), 1, "at most ONE fix button");
-      assert.ok(src.includes("PRINTER_BUTTON_SMALL_CLASS"), "the fix button is the HTML's 32px (shared class, U5 Task 5)");
-      assert.ok(!src.includes(POS_PULSE_CTX), "the banner takes its copy as props");
+      assert.ok(src.includes("{ view: PrinterStatusView; busy: boolean; onAction: (kind: StatusActionKind) => void; onLink: (kind: StatusLinkKind) => void }"));
+      assert.match(src, /<span aria-hidden="true" className=\{cn\(PRINTER_STATUS_CIRCLE_CLASS, /, "the 40px circle is decoration (aria-hidden)");
+      assert.equal(src.split("<Button").length - 1, 1, "at most ONE fixing button");
+      assert.ok(src.includes("PRINTER_BUTTON_FIX_CLASS"), "the fix button is the 44px full-width one (shared class)");
+      assert.ok(!src.includes(POS_PULSE_CTX), "the card takes its words as props");
     },
     mutate: (src) => src.replace('role="status" aria-live="polite"', ""),
   },
   {
-    // Re-anchored 2026-10-02 (W-U): the small dot became a 36px icon tile; "checking" is a spinner on a
-    // neutral tile (still no good/bad colour), ok/bad are the green/red tints with a distinct icon.
-    name: "banner tile: checking is a neutral spinner (no status colour); ok and bad carry different icons and tints",
-    file: BANNER,
+    // Re-anchored 2026-10-02 (W-U), moved to the card in PX-2 Task 6: "checking" claims no colour; ok and bad differ in glyph.
+    name: "status card circle: checking is a neutral spinner (no status colour); ok and bad carry different glyphs and tones",
+    file: CARD,
     check: (src) => {
-      assert.ok(src.includes('const checking = dot.reason === "checking";'), "landmark: the checking branch");
-      assert.ok(src.includes("checking ? PRINTER_TILE_NEUTRAL_CLASS : dot.ok ? PRINTER_TILE_OK_CLASS : PRINTER_TILE_BAD_CLASS"), "checking draws the neutral tone, never ok/bad");
-      assert.ok(src.includes("checking ? Loader2 : dot.ok ? Check : Bang"), "glyphs: spinner / the HTML's check / the HTML's exclamation (U5 Task 5, printer P14 moved on purpose)");
+      assert.ok(src.includes('const checking = view.tone === "checking";'), "landmark: the checking branch");
+      assert.ok(src.includes('checking ? PRINTER_TILE_NEUTRAL_CLASS : view.tone === "ok" ? PRINTER_TILE_OK_CLASS : PRINTER_TILE_BAD_CLASS'), "checking draws the neutral tone, never ok/bad");
+      assert.ok(src.includes('checking ? Loader2 : view.tone === "ok" ? Check : Bang'), "glyphs: spinner / check / the hand-drawn exclamation");
       assert.ok(src.includes('checking && "motion-safe:animate-spin"'), "the spinner respects reduced motion");
     },
-    mutate: (src) => src.replace("checking ? PRINTER_TILE_NEUTRAL_CLASS : dot.ok", "dot.ok"),
+    mutate: (src) => src.replace('checking ? PRINTER_TILE_NEUTRAL_CLASS : view.tone === "ok"', 'view.tone === "ok"'),
   },
   {
-    name: "banner fixes: reconnect runs straight from the click; setup and print-here focus targets INSIDE this panel",
-    file: BANNER,
+    // PX-2 Task 6 (spec §6.5, §6.6): Reconnect = reconnectDown (its first call inside the click); setup fixes switch view, then focus (PX-3 Task 10, a pure move: in the focus hook).
+    name: "panel fixes: Reconnect runs straight from the click through reconnectDown; setup fixes focus targets INSIDE this panel",
+    file: PANEL,
     check: (src) => {
-      assert.match(src, /if \(kind === "reconnect"\) \{\s*setReconnecting\(true\);\s*void toastConnectOutcome\(devicePrinter\(\)\.reconnect\(\)\)/);
-      assert.ok(!/await devicePrinter\(\)/.test(src) && !src.includes("setTimeout"), "no deferral between the click and reconnect()");
-      assert.ok(src.includes(`'[data-printer-target="device"]'`) && src.includes(`'[data-action="designate"]'`));
-      assert.ok(!src.includes('"#printer-device"') && !src.includes("document.querySelector"), "W-P: never a page-wide lookup");
-      assert.match(src, /closest\(PANEL_SELECTOR\)/);
-      assert.ok(src.includes('PANEL_SELECTOR = "[data-printer-panel]"'));
-      assert.match(src, /scrollIntoView\(/);
-      assert.match(src, /onClick=\{\(\) => runFix\(fix\)\}/);
+      assert.match(src, /if \(statusView\.action\?\.kind !== "reconnect"\) return;[\s\S]{0,600}const run = statusView\.subject\.length === 0 \? toastConnectOutcome\(devicePrinter\(\)\.reconnect\(\)\) : reconnectDown\(statusView\.subject, RECONNECT_DEPS\)\.then\(sayReconnected\);\s*setBusy\(true\);/, "only on a Reconnect row; an empty subject keeps today's toastConnectOutcome (Ruling P), printers mode reconnectDown; the first call is made before anything is awaited");
+      assert.ok(src.includes("const RECONNECT_DEPS = { device: () => devicePrinter().reconnect(), native: (id: string) => nativePool().reconnect(id) };"), "the device's own printer, or the app's printer by its id");
+      assert.ok(!/await (devicePrinter|nativePool|reconnectDown)/.test(src) && !src.includes("setTimeout"), "no deferral between the click and the first reconnect");
+      assert.ok(src.includes(`DEVICE_SECTION_SELECTOR = '[data-printer-target="device"]'`) && src.includes(`DESIGNATE_SELECTOR = '[data-action="designate"]'`) && !src.includes('"#printer-device"') && !src.includes("document.querySelector"), "the two targets; W-P: never a page-wide lookup");
+      assert.ok(/const target = root\?\.querySelector<HTMLElement>\(selector\) \?\? null;/.test(read(FOCUS)) && /scrollIntoView\(/.test(read(FOCUS)) && !read(FOCUS).includes("document.querySelector"), "looked up inside the panel's root, then shown");
+      assert.match(read(FOCUS), /pendingTarget\.current = selector;\s*onView\?\.\("settings"\);/, "a setup fix switches to the settings view first");
+      assert.match(src, /if \(kind === "printer-setup"\) \{\s*onClose\?\.\(\);\s*router\.push\("\/printers"\);/, "an admin's link closes the sheet, then opens Printer setup (the review's Important 1)");
     },
-    mutate: (src) => src.replace("void toastConnectOutcome(devicePrinter().reconnect())", "setTimeout(() => void toastConnectOutcome(devicePrinter().reconnect()), 0)"),
+    mutate: (src) => src.replace("toastConnectOutcome(devicePrinter().reconnect())", "Promise.resolve().then(() => toastConnectOutcome(devicePrinter().reconnect()))"),
   },
   {
-    name: "banner Reconnect (W-Q): disabled while running, the outcome is toasted by the shared helper, and it cannot reject",
-    file: BANNER,
+    // W-Q, moved to the card and the panel in PX-2 Task 6 (F-M5): one toast at the end, none when every chooser was closed.
+    name: "Reconnect (W-Q): disabled while running with Reconnecting…, one toast at the end, a closed chooser says nothing",
+    file: PANEL,
     check: (src) => {
-      assert.ok(src.includes("disabled={blocked || reconnecting}"));
-      assert.ok(src.includes("RECONNECTING_LABEL"));
-      assert.match(src, /\.finally\(\(\) => setReconnecting\(false\)\)/);
-      assert.match(src, /import \{ toastConnectOutcome \} from "@\/components\/print\/connect-outcome";/);
+      assert.ok(/void run\.finally\(\(\) => setBusy\(false\)\);/.test(src) && src.includes('import { toastConnectOutcome } from "@/components/print/connect-outcome";'), "both ways end the busy state (neither rejects): never stuck");
+      assert.match(src, /if \(result\.connected\.length === 0 && result\.failed\.length === 0\) return;\s*const \{ tone, text \} = reconnectToastOf\(result\);/, "F-M5");
+      const card = read(CARD);
+      assert.ok(card.includes("disabled={busy}") && card.includes("RECONNECTING_LABEL") && card.includes('const reconnecting = busy && action?.kind === "reconnect";'), "the card's button waits and says so");
     },
-    mutate: (src) => src.replace("disabled={blocked || reconnecting}", "disabled={blocked}"),
+    mutate: (src) => src.replace("if (result.connected.length === 0 && result.failed.length === 0) return;", ""),
   },
   {
     name: "connect-outcome helper: toasts success / failure, swallows a rejection, cancelled stays silent",
@@ -270,15 +271,14 @@ const PINS: PinCase[] = [
     mutate: (src) => src.replace("catch (error)", "catch (_error)"),
   },
   {
-    name: "banner disables a fix with a visible reason when another tab owns the printer",
-    file: BANNER,
+    // PX-2 Task 6 (on purpose): was "the banner disables a fix with a visible reason"; the words now offer none (spec §6.4).
+    name: "another tab owns the printer: the status words offer no fix that acts on it",
+    file: VIEW_LIB,
     check: (src) => {
-      assert.ok(src.includes('snapshot.status === "elsewhere"'));
-      // The expression gained "|| reconnecting" (W-Q): the button is also pending while a reconnect runs.
-      assert.ok(src.includes("disabled={blocked || reconnecting}"));
-      assert.ok(src.includes("PRINTER_ELSEWHERE_MESSAGE"));
+      assert.ok(src.includes('if (i.localStatus === "elsewhere") return null;'), "a printing device offline: no Reconnect of a printer in another tab");
+      assert.match(src, /case "printer-elsewhere":\s*return bad\("Printer in another tab", "Print from that tab, or close it\."\);/, "no button");
     },
-    mutate: (src) => src.replace("disabled={blocked || reconnecting}", ""),
+    mutate: (src) => src.replace('if (i.localStatus === "elsewhere") return null;', ""),
   },
   {
     // U0 Task 3: the HTML's 36px outline printer button with a 17px icon, the same size on touch (ruling R1: the shell
@@ -331,10 +331,10 @@ test("every pin bites: its check rejects an in-memory mutation of the real file"
   }
 });
 
-test("budgets: provider <= 300, button and banner small, dot lib <= 300", () => {
+test("budgets: provider <= 300, button and status card small, dot lib <= 300", () => {
   assert.ok(lines(read(PROVIDER)) <= PROVIDER_MAX_LINES, `provider is ${lines(read(PROVIDER))} lines`);
   assert.ok(lines(read(BUTTON)) <= BUTTON_MAX_LINES, `button is ${lines(read(BUTTON))} lines`);
-  assert.ok(lines(read(BANNER)) <= BANNER_MAX_LINES, `banner is ${lines(read(BANNER))} lines`);
+  assert.ok(lines(read(CARD)) <= CARD_MAX_LINES, `the status card is ${lines(read(CARD))} lines`);
   assert.ok(lines(read(DOT_LIB)) <= LIB_MAX_LINES, `dot lib is ${lines(read(DOT_LIB))} lines`);
 });
 

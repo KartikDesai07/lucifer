@@ -1,6 +1,7 @@
 import { PRINT_JOBS_FOR_ME_LIMIT, type LeasedPrintJob, type PrintJobsForMe } from "@pos/shared/print-agent-wire";
-import { PRINTER_PROBLEMS, printerHealthProblem, type PrinterCoverState, type PrinterPaperState, type PrinterProblem } from "@pos/shared/print-failover";
+import { PRINTER_PROBLEMS, printerHealthProblem, type PrinterCoverState, type PrinterPaperState } from "@pos/shared/print-failover";
 import { printerWriterDeviceId, printersModeOn, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
+import { DOT_PROBLEMS } from "@/lib/print-agent-here";
 import type { PrintAgentResult } from "@/lib/print-agent-types";
 import type { SlipPrintTarget } from "@/lib/print-host-slips";
 import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
@@ -19,9 +20,9 @@ import type { PrinterStatus } from "@/lib/printer/web-printer-types";
 export const PRINTER_NOT_LOCAL_MESSAGE = "This printer is not connected to this device.";
 /** The 2E gate's review (I-3), and the 2F2 review gate (M-4) for this device's own printer: what the printer panel
  *  shows instead of Remove for a printer the setup prints through this device. */
-export const PRINTER_IN_SETUP_MESSAGE = "Printer setup prints slips here: to remove it, change or delete that printer in Printer setup first.";
+export const PRINTER_IN_SETUP_MESSAGE = "Set by your manager in Printer setup.";
 /** Session 3B (spec §9.3): what Other printers shows instead of Remove for a network printer this device may take over. */
-export const PRINTER_TAKEOVER_MESSAGE = "This device prints it while the device that prints it is offline or cannot reach it. To remove it, change or delete that printer in Printer setup.";
+export const PRINTER_TAKEOVER_MESSAGE = "This device prints it while the device that prints it is offline or cannot reach it. Set by your manager in Printer setup.";
 
 /** Session 2E (spec §9.2): the Windows app's printers. `named`: the app prints a slip on a printer the page names
  *  (desktopPrintsOnNamed); `names`: every printer Windows reports on this PC (null until read); `selected`: the one
@@ -197,8 +198,6 @@ export function readyPrinterIdsOf(
 }
 
 const STATUS_WORSE: readonly PrinterStatus[] = ["connected", "connecting", "needs-tap", "elsewhere", "disconnected", "none"];
-/** Session 3B (spec §10): what turns the dot red although every printer answers. Low paper still prints. */
-const DOT_PROBLEMS: readonly PrinterProblem[] = ["paper-out", "cover-open", "error"];
 
 /** Session 2D (spec §10): what the top-bar dot needs: printers mode, whether this device writes a printer, and
  *  whether it prints every printer it writes (a printer it writes that is not its own never prints here). Session

@@ -1,7 +1,9 @@
 "use client";
 
-// Printing Phase 4 (spec 2026-10-15 §5.1, S2): "Fast text KOTs (English only)" in the printer panel of the device that
-// prints. One row per printer this device prints kitchen slips on (hooks/use-text-kot-printers.ts), each with its switch.
+// Printing Phase 4 (spec 2026-10-15 §5.1, S2): the text KOT switch in the printer panel of the device that prints; "Faster
+// KOTs" since PX-3 Task 10 (spec §6.6 item 4; mockup t-settings: the title alone, each row "Print KOTs as plain text" over
+// its one line, the printer named once there are two). One row per printer this device prints kitchen slips on
+// (hooks/use-text-kot-printers.ts), each with its switch.
 // Turning it on prints the text test slip on that very printer, through the bridge's busy window (never between two
 // slips), then asks staff; only "Yes" turns it on, kept in this device's storage. Turning it off is immediate. The 80 mm
 // "Characters per line" choice is made while the switch is off, so the printer proves the width it will print at.
@@ -12,9 +14,10 @@ import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
 import { InlineConfirm } from "@/components/print/PrintHostCardParts";
 import { PanelSection } from "@/components/print/PanelSection";
 import {
-  PRINTER_BLOCK_CLASS,
   PRINTER_ERROR_CLASS,
   PRINTER_NOTE_CLASS,
+  PRINTER_RULE_BLOCK_CLASS,
+  PRINTER_SECTION_SUB_CLASS,
   PRINTER_SEG_BUTTON_CLASS,
   PRINTER_SEG_OFF_CLASS,
   PRINTER_SEG_ON_CLASS,
@@ -24,17 +27,16 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { useSettings } from "@/hooks/use-settings";
 import { useTextKot, useTextKotPrinters } from "@/hooks/use-text-kot-printers";
+import { desktopRefusalWordsOf } from "@/lib/desktop-shell-messages";
 import { PRINT_HOST_BUSY_MESSAGE, PRINT_HOST_PRINT_FAILED_MESSAGE } from "@/lib/print-host-slips";
 import { textColumnsOf } from "@/lib/printer/kot-text/text-layout";
 import type { TextKotPrinter } from "@/lib/printer/kot-text/text-kot-printers";
 import { writeTextKot } from "@/lib/printer/kot-text/text-kot-store";
 import { textTestJob } from "@/lib/printer/kot-text/text-test-slip";
+import { textKotRowWordsOf } from "@/lib/printer/settings-view";
 import { cn } from "@/lib/utils";
 
-const TITLE = "Fast text KOTs (English only)";
-const DESCRIPTION =
-  "Prints English-only kitchen tickets as text in the printer's own font: much faster on Bluetooth. Tickets with Hindi, Gujarati or any other script, a logo or a QR code still print as now.";
-const SWITCH_LABEL = "Fast text KOTs";
+const TITLE = "Faster KOTs";
 const COLUMNS_LABEL = "Characters per line";
 const QUESTION = "Did it print clearly, with the ruler on one line?";
 const KEPT_OFF = "Kept off: kitchen tickets print as now.";
@@ -50,15 +52,15 @@ export function TextKotSection() {
   const printers = useTextKotPrinters();
   if (printers.length === 0) return null;
   return (
-    <PanelSection icon={<Zap />} title={TITLE} sub={DESCRIPTION}>
+    <PanelSection icon={<Zap />} title={TITLE}>
       {printers.map((printer) => (
-        <TextKotRow key={printer.key} printer={printer} />
+        <TextKotRow key={printer.key} printer={printer} rows={printers.length} />
       ))}
     </PanelSection>
   );
 }
 
-function TextKotRow({ printer }: { printer: TextKotPrinter }) {
+function TextKotRow({ printer, rows }: { printer: TextKotPrinter; rows: number }) {
   const { queueTestSlip, current } = usePrintHostContext();
   const settings = useSettings();
   const choice = useTextKot(printer.key);
@@ -68,6 +70,7 @@ function TextKotRow({ printer }: { printer: TextKotPrinter }) {
   const [error, setError] = useState<string | null>(null);
   const on = choice !== null;
   const wide = printer.paper === "80mm";
+  const words = textKotRowWordsOf(printer.name, rows);
 
   const turnOn = async () => {
     setError(null);
@@ -87,7 +90,7 @@ function TextKotRow({ printer }: { printer: TextKotPrinter }) {
       // The printer's own sentence (the bridge also shows it); a busy device is a refusal, never a queue; a test the
       // bridge gave up on (its watchdog) is this section's own sentence, never "reprint it from Orders" (the review's m-4).
       const message = err instanceof Error ? err.message : TEST_FAILED_MESSAGE;
-      setError(message === PRINT_HOST_BUSY_MESSAGE ? BUSY_MESSAGE : message === PRINT_HOST_PRINT_FAILED_MESSAGE ? TEST_FAILED_MESSAGE : message);
+      setError(message === PRINT_HOST_BUSY_MESSAGE ? BUSY_MESSAGE : message === PRINT_HOST_PRINT_FAILED_MESSAGE ? TEST_FAILED_MESSAGE : desktopRefusalWordsOf(message));
       setPhase("idle");
     }
   };
@@ -109,17 +112,17 @@ function TextKotRow({ printer }: { printer: TextKotPrinter }) {
 
   const busy = phase === "printing" || phase === "confirm";
   return (
-    <div className={PRINTER_BLOCK_CLASS}>
+    <div className={PRINTER_RULE_BLOCK_CLASS}>
       <div className="flex items-center gap-3">
         <label htmlFor={switchId} className="min-w-0 flex-1 cursor-pointer">
-          <span className="block break-words text-[13.5px]">{printer.name}</span>
-          <span className={`block ${PRINTER_NOTE_CLASS}`}>{printer.paper === "80mm" ? "80 mm" : "58 mm"}</span>
+          <span className="block break-words text-[13.5px] font-medium">{words.label}</span>
+          <span className={`block break-words ${PRINTER_SECTION_SUB_CLASS}`}>{words.sub}</span>
         </label>
         <Switch
           id={switchId}
           className={PRINTER_SWITCH_CLASS}
           checked={on}
-          aria-label={`${SWITCH_LABEL}: ${printer.name}`}
+          aria-label={`${words.label}: ${printer.name}`}
           disabled={!on && (busy || current !== null)}
           onCheckedChange={(next) => (next ? void turnOn() : turnOff())}
         />

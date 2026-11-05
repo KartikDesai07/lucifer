@@ -41,7 +41,8 @@ type ReplayRow = PrintJobLifecycleDoc & { _id: Types.ObjectId; jobKey?: string; 
  *  left queued would print the line a second time, unlabelled. */
 export async function markOfflineRoundPrinted(input: { orderObjectId: string; round: number; ask: OfflineAsk; nowMs: number }): Promise<number> {
   const rows = await PrintJob.find({ orderId: input.orderObjectId, kind: "kot", status: "queued", attempts: 0 })
-    .select("kind status createdAt epoch attempts uncertainAttempts nextAttemptAt labels jobKey targetDeviceId")
+    // PX-2 (R7): the clear request too, or a slip carrying a leftover one could never pass the CAS (printJobCasFilter).
+    .select("kind status createdAt epoch attempts uncertainAttempts nextAttemptAt labels jobKey targetDeviceId dismissRequestedAt dismissRequestedBy")
     .lean<ReplayRow[]>();
   let moved = 0;
   for (const row of rows) {

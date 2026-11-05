@@ -10,7 +10,7 @@ import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
 import { isAlertSoundUnlocked, playAlertPing } from "@/lib/alert-sound";
 import { readDevicePrefs } from "@/lib/pos-device-prefs";
 import { printAlarmMessage, printAlarmStep, printAlarmSummary, printerNameOf, type PrintAlarmMemory } from "@/lib/print-waiting";
-import { openPrinterPanel } from "@/lib/printer-panel-open";
+import { onPrinterPanelOpenChange, openPrinterPanel, printerPanelIsOpen } from "@/lib/printer-panel-open";
 
 // Session 1D (spec §10): the 20 s alarm. A KOT still not printed 20 s after it was made (it is in the
 // waiting-slips feed from then on) sounds once and shows a lasting notice on the device that asked for
@@ -41,7 +41,7 @@ export function usePrintSlipAlarm(deviceId: string): void {
     const check = (data: PosPulseData | undefined): void => {
       const rows = data?.printAttention;
       if (rows === undefined) return; // a failed read says nothing either way
-      const step = printAlarmStep(page.memory, { rows, truncated: data?.printAttentionTruncated === true }, deviceId, Date.now(), !page.seeded);
+      const step = printAlarmStep(page.memory, { rows, truncated: data?.printAttentionTruncated === true }, deviceId, Date.now(), !page.seeded, printerPanelIsOpen());
       page.memory = step.memory;
       page.seeded = true;
       for (const id of step.dismiss) toast.dismiss(`print-alarm-${id}`);
@@ -63,9 +63,22 @@ export function usePrintSlipAlarm(deviceId: string): void {
       if (event.type !== "updated" || event.action.type !== "success" || event.query.queryHash !== pulseHash) return;
       check(event.query.state.data as PosPulseData | undefined);
     });
+    // PX-2 (spec §6.9 B5): no toast ever covers the open printer panel. While it is open check is quiet (the ping still
+    // plays for a slip that newly waits); its open takes down every notice that is up, each remembered shown: false, and
+    // takes the slips out from under the summary: staff see them all there, so nothing pops after the close (F-M8).
+    const offOpen = onPrinterPanelOpenChange((open) => {
+      if (!open) return;
+      toast.dismiss(SUMMARY_ID);
+      page.summary = 0;
+      for (const [id, { summary: _listed, ...slip }] of page.memory) {
+        if (slip.shown) toast.dismiss(`print-alarm-${id}`);
+        page.memory.set(id, { ...slip, shown: false });
+      }
+    });
     return () => {
       unsubscribe();
       toast.dismiss(SUMMARY_ID);
+      offOpen();
       page.summary = 0;
       for (const [id, slip] of page.memory) {
         if (!slip.shown) continue;

@@ -16,6 +16,7 @@ import { isDesktopShell } from "@/lib/desktop-shell";
 import { deliverLeasedJob, kickPrintAgent } from "@/lib/print-agent";
 import { printAgentHeaders } from "@/lib/print-agent-calls";
 import type { PrinterBody } from "@/lib/print-printer-schemas";
+import { testPrintSentText, type PrinterRowTone } from "@/lib/print-setup-text";
 import { readDeviceId } from "@/lib/pos-device-id";
 import { refreshDesktopPrinterChosen, type DesktopPrinterSnapshot } from "@/lib/printer/desktop-printer-state";
 
@@ -96,6 +97,22 @@ export function useTestPrinter() {
     },
     onError: (err: Error) => toast.error(errorText(err, TEST_ERROR)),
   });
+}
+
+/** A Test print tap as the Printer setup page makes it: one request per tap, then the toast that says where its slip goes
+ *  (`state`: the setup's words for that printer); an error is the hook's own toast. The setup page and the printer panel's
+ *  Printers on this device (PX-3 Task 10b) both tap through this, so neither copies it. */
+export function useTestPrinterTap(): { run: (printer: Pick<PrinterConfig, "id" | "name">, state: { tone: PrinterRowTone; text: string }) => Promise<void>; pending: boolean } {
+  const testPrint = useTestPrinter();
+  const run = async (printer: Pick<PrinterConfig, "id" | "name">, state: { tone: PrinterRowTone; text: string }): Promise<void> => {
+    try {
+      await testPrint.mutateAsync(printer.id);
+      toast.success(testPrintSentText(printer, state));
+    } catch {
+      // The hook toasted it.
+    }
+  };
+  return { run, pending: testPrint.isPending };
 }
 
 export function useSaveStation() {

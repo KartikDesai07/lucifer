@@ -24,6 +24,7 @@ import { printJobPayloadSchema, type PrintJobPayload } from "@pos/shared/schemas
 import { Order } from "@/models/Order";
 import { PrintJob, type IPrintJob } from "@/models/PrintJob";
 import { printDeviceDrawsTokens } from "./print-device";
+import { ackSkipsUnreachableWriter } from "./print-dismiss";
 import { endPrinterSkipOf, readPrinterFailover, recordPrinterUnreachable } from "./print-failover";
 import { listPrinters } from "./print-printers";
 import { dismissPrintJob, drainAgeCutoff } from "./print-queue";
@@ -35,8 +36,8 @@ import { printJobEligibility, printJobNeedsOrderRead } from "./print-queue-claim
 // re-plans, never transitions twice. Never calls connectDB() (the route does that first). No
 // console.*, strict TS, no `any`.
 
-/** The fields every lifecycle read selects; lifecycleOf reads exactly these. */
-export const PRINT_LIFECYCLE_SELECT = "kind status createdAt epoch attempts uncertainAttempts nextAttemptAt labels approvedAt lease";
+/** The fields every lifecycle read selects; lifecycleOf reads exactly these (PX-2: and a staff Clear's request). */
+export const PRINT_LIFECYCLE_SELECT = "kind status createdAt epoch attempts uncertainAttempts nextAttemptAt labels approvedAt lease dismissRequestedAt dismissRequestedBy";
 const LEASE_SELECT = `${PRINT_LIFECYCLE_SELECT} label orderId payload copyIndex printerId copies`;
 /** Bounds one lease call: each step expires, fails or dismisses one bad head, or loses one race. */
 const LEASE_MAX_STEPS = 4;
@@ -67,14 +68,16 @@ export function printerLineFilter(printerId: string, nowMs: number): FilterQuery
 }
 
 /** The CAS fence: the status and epoch the plan was computed from. A row from before Phase 1 has no
- *  epoch field at all, and lifecycleOf reads that as 0. */
-export function printJobCasFilter(id: unknown, job: Pick<PrintJobLifecycle, "status" | "epoch">): FilterQuery<IPrintJob> {
-  return { _id: id, status: job.status, epoch: job.epoch === 0 ? { $in: [0, null] } : job.epoch } as FilterQuery<IPrintJob>;
+ *  epoch field at all, and lifecycleOf reads that as 0. PX-2 (SR-10): and whether it read a staff Clear's request, so
+ *  an ack or an expiry planned before the request was written re-reads it, and the request is never lost. */
+export function printJobCasFilter(id: unknown, job: Pick<PrintJobLifecycle, "status" | "epoch" | "dismissRequest">): FilterQuery<IPrintJob> {
+  const epoch = job.epoch === 0 ? { $in: [0, null] } : job.epoch;
+  return { _id: id, status: job.status, epoch, dismissRequestedAt: { $exists: job.dismissRequest !== undefined } } as FilterQuery<IPrintJob>;
 }
 
 export interface PrintJobUpdate {
   $set: PrintJobSet;
-  $unset?: Partial<Record<"lease" | "lastError", 1>>;
+  $unset?: Partial<Record<PrintJobPatch["unset"][number], 1>>;
   $push: { log: { $each: PrintJobLogEntry[]; $slice: number } };
 }
 
@@ -283,19 +286,17 @@ export async function ackPrintJob(
     }
     if (await applyPrintJobPlan(row._id, job, plan.patch)) {
       const nextAttemptAt = plan.patch.set.nextAttemptAt?.toISOString() ?? null;
+      // Phase 3 (§9.3): its writer could not reach this network printer: skipped for it (at least 5 minutes, then until
+      // its lease names the printer again), and the slip moves to the device that takes the printer over. PX-2 (Ruling
+      // E): also when that refusal ended a slip a staff Clear waited on. Best-effort: the refusal itself has landed.
+      if (row.printerId !== undefined && ackSkipsUnreachableWriter(input, job, plan.patch.status)) {
+        await recordPrinterUnreachable({ printerId: row.printerId, deviceId: input.deviceId, nowMs: input.nowMs }).catch(() => null);
+      }
       // Session 2B (decision 9): a job that left the line says whether the acking device's line holds more. A
       // job back in the queue is that line's head, and its nextAttemptAt says when. A failed read only drops
       // the hint (the agent then leases, as in Phase 1): the ack itself has landed. Session 2C: a printer job
       // asks its own printer's line (the 2B gate's ruling R3).
-      if (plan.patch.status === "queued") {
-        // Phase 3 (§9.3): its writer could not reach this network printer: skipped for it (at least 5 minutes, then until
-        // its lease names the printer again), and the slip moves to the device that takes the printer over.
-        // Best-effort: the refusal itself has landed.
-        if (input.reason === PRINT_ACK_UNREACHABLE && input.sent === "no" && row.printerId !== undefined) {
-          await recordPrinterUnreachable({ printerId: row.printerId, deviceId: input.deviceId, nowMs: input.nowMs }).catch(() => null);
-        }
-        return { applied: true, status: plan.patch.status, nextAttemptAt };
-      }
+      if (plan.patch.status === "queued") return { applied: true, status: plan.patch.status, nextAttemptAt };
       // Phase 3 (the token fix's M-2): a page that cannot print a token job is never told `more` for one.
       const tokens = input.tokenSlips === true || (await printDeviceDrawsTokens(input.deviceId).catch(() => true));
       const more = await (row.printerId !== undefined ? printerLineHasMore(row.printerId, input.nowMs, tokens) : printLineHasMore(input.deviceId, input.nowMs, tokens)).catch(

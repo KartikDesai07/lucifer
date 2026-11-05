@@ -1,7 +1,9 @@
 import type { PrintActionData, PrintAttentionRow } from "@pos/shared/print-agent-wire";
-import { printerProblemText, type PrinterProblem } from "@pos/shared/print-failover";
+import { PRINTER_PROBLEMS, printerProblemText, type PrinterProblem } from "@pos/shared/print-failover";
 import { PRINT_HOST_MAX_AGE_MS } from "@pos/shared/print-job";
+import { PRINT_JOB_NO_PRINTER } from "@pos/shared/print-printers";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
+import type { WaitingPrinter } from "@/lib/print-agent-here";
 import { isDesktopShellRefusal, isSlipRefusal, printWriteOutcomeOf } from "@/lib/print-write-outcome";
 
 // Printing redesign, Phase 1 Session 1D (spec §10; the owner's decision after Session 1B): the one
@@ -9,15 +11,10 @@ import { isDesktopShellRefusal, isSlipRefusal, printWriteOutcomeOf } from "@/lib
 // is not printed and needs a person shows in one of three groups, in plain words, with how long it has
 // waited and why. No React, no fetch; the server's words (lease, epoch, attempts) never reach the screen.
 
+// PX-2 Task 4: the panel's groups and their titles went with the old card; the Not printed card's rows are
+// lib/print-waiting-view.ts. The groups stay for the alarm (a slip that gets worse rings again).
 export type PrintWaitingGroup = "printer" | "bill" | "failed";
 
-export const PRINT_WAITING_TITLES: Record<PrintWaitingGroup, string> = {
-  printer: "Waiting for the printer",
-  bill: "Check the bill",
-  failed: "Couldn't print",
-};
-
-const GROUP_ORDER: readonly PrintWaitingGroup[] = ["printer", "bill", "failed"];
 const SERVER_WORDS = /lease|epoch|attempt|limits/i;
 
 function groupOf(row: PrintAttentionRow): PrintWaitingGroup {
@@ -55,27 +52,73 @@ export function printWaitingReason(row: PrintAttentionRow, nowMs: number, printe
   return row.approved ? "Waiting for the printer." : "Not printed yet.";
 }
 
-export interface PrintWaitingSection {
-  group: PrintWaitingGroup;
-  title: string;
-  rows: Array<{ row: PrintAttentionRow; reason: string; age: string }>;
-}
-
-export function printWaitingGroups(rows: readonly PrintAttentionRow[], nowMs: number, printers: ReadonlyArray<{ id: string; name: string }> = []): PrintWaitingSection[] {
-  return GROUP_ORDER.map((group) => ({
-    group,
-    title: PRINT_WAITING_TITLES[group],
-    rows: rows
-      .filter((row) => groupOf(row) === group)
-      .map((row) => ({ row, reason: printWaitingReason(row, nowMs, printerNameOf(printers, row.printerId)), age: printWaitingAge(row.createdAt, nowMs) })),
-  })).filter((section) => section.rows.length > 0);
-}
-
 /** The printer button's count: "" when nothing waits, "20+" when the feed was cut at its limit. */
 export function printWaitingBadgeOf(pulse: Pick<PosPulseData, "printAttention" | "printAttentionTruncated"> | undefined): string {
   const count = pulse?.printAttention?.length ?? 0;
   if (count === 0) return "";
   return pulse?.printAttentionTruncated ? `${count}+` : String(count);
+}
+
+/** PX-2 (spec §6.5, F-I2): a printer whose oldest fresh slip waited longer than this, with no problem said, is stuck
+ *  ("is not printing"), not merely busy in a rush. */
+export const PRINTER_WAITING_STUCK_MS = 60_000;
+
+// R1: a slip that waits for its printer now. An untapped stale slip stays in the feed for hours while its printer prints
+// new ones, and a slip refused for itself is not the printer's fault: neither turns a device amber.
+function freshOnPrinter(row: PrintAttentionRow, nowMs: number): row is PrintAttentionRow & { printerId: string } {
+  if (row.status !== "queued" || row.printerId === undefined || row.printerId === PRINT_JOB_NO_PRINTER) return false;
+  if (row.approved !== true && !(nowMs - Date.parse(row.createdAt) <= PRINT_HOST_MAX_AGE_MS)) return false;
+  return !(row.lastError && isSlipRefusal(printWriteOutcomeOf(new Error(row.lastError))));
+}
+
+// Ruling O (the Task 5 review, I-1): low paper is a warning only (the printer still prints, as the dot's DOT_PROBLEMS
+// says): it never makes a printer stuck nor reads as stopped, on every phone in every rush while the roll is low. It is
+// left out of the key, so a WaitingPrinter's `problem` is always one that stops the printer.
+function stopping(problem: PrinterProblem | undefined): PrinterProblem | undefined {
+  return problem === "paper-low" ? undefined : problem;
+}
+
+/** PX-2 (spec §6.5, PX-D6): the printers fresh slips wait for, derived ONCE beside the count (PrintWaitingProviders) as
+ *  a stable string the header button can read without the wide pulse: "id:count:problem:stuck" joined by "|"
+ *  ("p1:3:paper-out:1|p2:1::0"), the most first, then by id; "" when none. Stuck (F-I2): a row carries a problem that
+ *  stops its printer, or its oldest fresh row waited over PRINTER_WAITING_STUCK_MS. */
+export function printWaitingPrintersOf(pulse: Pick<PosPulseData, "printAttention"> | undefined, nowMs: number): string {
+  const byPrinter = new Map<string, { count: number; problem?: PrinterProblem; oldest: number }>();
+  for (const row of pulse?.printAttention ?? []) {
+    if (!freshOnPrinter(row, nowMs)) continue;
+    const at = Date.parse(row.createdAt);
+    const was = byPrinter.get(row.printerId) ?? { count: 0, oldest: at };
+    byPrinter.set(row.printerId, { count: was.count + 1, problem: was.problem ?? stopping(row.problem), oldest: Math.min(was.oldest, at) });
+  }
+  return [...byPrinter]
+    .sort(([a, x], [b, y]) => y.count - x.count || (a < b ? -1 : a > b ? 1 : 0))
+    .map(([id, w]) => `${id}:${w.count}:${w.problem ?? ""}:${w.problem !== undefined || nowMs - w.oldest > PRINTER_WAITING_STUCK_MS ? 1 : 0}`)
+    .join("|");
+}
+
+/** The waiting printers of that string, named from the printers already read ("A printer" when one is not listed): a
+ *  stuck one first (PX-3 Q2: it needs a person), then the most slips, a tie in the setup's order (the read lists printers
+ *  in display order). The key itself keeps its order: a stable string. */
+export function waitingPrintersOf(key: string, printers: ReadonlyArray<{ id: string; name: string }>): WaitingPrinter[] {
+  if (key === "") return [];
+  const rank = (id: string): number => {
+    const at = printers.findIndex((printer) => printer.id === id);
+    return at === -1 ? printers.length : at;
+  };
+  const waiting = key.split("|").flatMap((part): WaitingPrinter[] => {
+    const [printerId = "", count = "", problem = "", stuck = ""] = part.split(":");
+    const known = stopping(PRINTER_PROBLEMS.find((word) => word === problem));
+    if (printerId === "" || !(Number(count) > 0)) return [];
+    return [{ printerId, name: printerNameOf(printers, printerId) ?? "A printer", count: Number(count), ...(known !== undefined ? { problem: known } : {}), stuck: stuck === "1" }];
+  });
+  return waiting.sort((a, b) => Number(b.stuck) - Number(a.stuck) || b.count - a.count || rank(a.printerId) - rank(b.printerId));
+}
+
+/** R1 (spec §6.5): the waiting printer the dot and the card speak of, the first that this device does not print (`here`)
+ *  in waitingPrintersOf's order (stuck first, then the most slips, then the setup's order): a writer whose own busy printer
+ *  has the most slips still sees another device's one stuck (its own printers are its own row's). Prints nothing: the first. */
+export function waitingElsewhereOf(waiting: readonly WaitingPrinter[], here: ReadonlyArray<{ id: string }>): WaitingPrinter | undefined {
+  return waiting.find((entry) => !here.some((mine) => mine.id === entry.printerId));
 }
 
 /** The button's accessible name: the count comes first while slips wait, then the printer's own state
@@ -148,13 +191,17 @@ export interface PrintAlarmStep {
  *  (waiting → check the bill → could not print; the 1D gate N-4); a slip staff acted on loses its notice
  *  quietly: its group went down (Retry, Print again), or Print now on a stale slip (the Phase 1 final gate,
  *  M6). With the newest 20 rows read (owner, I-1 option A), a slip older than the page's oldest row
- *  may still wait beyond the cut: while the feed says it was cut, it is kept, notice and all (N-2). */
+ *  may still wait beyond the cut: while the feed says it was cut, it is kept, notice and all (N-2).
+ *  PX-2 (spec §6.9 B5, F-M8): `quiet` while the printer panel is open, which lists every slip: nothing goes into `show`
+ *  (a slip that would have is remembered `shown: false`, so nothing pops after the close for a slip staff saw there) and
+ *  no slip stays under the summary (`summaryWaiting` 0, then and after the close); the ring is unchanged. */
 export function printAlarmStep(
   memory: ReadonlyMap<string, PrintAlarmMemory>,
   feed: { rows: readonly PrintAttentionRow[]; truncated: boolean },
   deviceId: string,
   nowMs: number,
   first: boolean,
+  quiet = false,
 ): PrintAlarmStep {
   const next = new Map(memory);
   const step: PrintAlarmStep = { memory: next, ring: false, show: [], dismiss: [], summary: 0, summaryWaiting: 0, wanted: 0 };
@@ -172,8 +219,8 @@ export function printAlarmStep(
     } else if (was === undefined || GROUP_RANK[group] > GROUP_RANK[was.group]) {
       // A notice of its own: the summary no longer stands for it.
       step.ring = true;
-      step.show.push(row);
-      next.set(row.id, { group, createdAt: row.createdAt, seenAt: nowMs, shown: true, ...approved, problem: row.problem });
+      if (!quiet) step.show.push(row);
+      next.set(row.id, { group, createdAt: row.createdAt, seenAt: nowMs, shown: !quiet, ...approved, problem: row.problem });
     } else if (group !== was.group || (row.approved === true && was.approved !== true)) {
       // Staff acted on it: quietly.
       if (was.shown) step.dismiss.push(row.id);
@@ -181,11 +228,12 @@ export function printAlarmStep(
     } else if (was.left === true) {
       // Back from a moment's lease (a refused attempt) and still waiting: its notice comes back, without a
       // second ring. A gap must never read as "printed".
-      step.show.push(row);
-      next.set(row.id, { group, createdAt: was.createdAt, seenAt: nowMs, shown: true, ...approved, problem: row.problem });
+      if (!quiet) step.show.push(row);
+      next.set(row.id, { group, createdAt: was.createdAt, seenAt: nowMs, shown: !quiet, ...approved, problem: row.problem });
     } else {
-      // Session 3B: its printer's problem changed: the notice is re-worded (same id), with no second ring.
-      if (was.shown && was.problem !== row.problem) step.show.push(row);
+      // Session 3B: its printer's problem changed: the notice is re-worded (same id), with no second ring. A notice up
+      // while the panel is open does not happen: the hook takes them all down at the open.
+      if (was.shown && was.problem !== row.problem && !quiet) step.show.push(row);
       next.set(row.id, { ...was, seenAt: nowMs, problem: row.problem });
     }
   }
@@ -202,6 +250,8 @@ export function printAlarmStep(
     }
     if (nowMs - was.seenAt > PRINT_ALARM_FORGET_MS) next.delete(id);
   }
+  // The open panel lists them: none stays under the summary, so it never comes back after the close (B5).
+  if (quiet) for (const [id, { summary: _listed, ...slip }] of next) next.set(id, slip);
   // Seen (or kept beyond a cut) on this pulse, and still under the summary.
   for (const slip of next.values()) if (slip.summary === true && slip.seenAt === nowMs) step.summaryWaiting += 1;
   return step;

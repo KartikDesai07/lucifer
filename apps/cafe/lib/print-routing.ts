@@ -28,7 +28,7 @@ export const PRINT_JOB_TOO_LARGE_MESSAGE =
 /** Phase 2 Session 2D (the 2C review gate's M-5): printers mode answered that no printer takes this slip (a
  *  notice where Notices are off everywhere). Nothing will print, and staff must hear why. */
 export const PRINT_JOB_NOT_ROUTED_MESSAGE =
-  "No printer takes this slip. To print notices, switch Notices on for a printer in Printer setup.";
+  "No printer takes this slip. Ask your manager to switch Notices on for a printer in Printer setup.";
 
 /** Printing Phase 4 (spec §8, P4-9): a KOT that routes nowhere has nothing left to print: the server routes a round's
  *  kitchen lines, and a round whose every line was cancelled has none. */

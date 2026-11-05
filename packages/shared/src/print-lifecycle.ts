@@ -15,6 +15,7 @@ import {
   type PrintJobStatus,
 } from "./print-job";
 import type { PrintJobPayload } from "./schemas/print-job.schema";
+import { clearRequestedOutcome, dismissRequestOf, lateAckAfterClear, withoutClearRequest } from "./print-lifecycle-clear";
 
 /** A lease covers rendering (the 12 s raster deadline) plus the device write deadline (70 s). */
 export const PRINT_LEASE_MS = 90_000;
@@ -101,6 +102,8 @@ export interface PrintJobLifecycle {
   createdAt: Date;
   approvedAt?: Date;
   lease?: PrintJobLease;
+  /** PX-2: a staff Clear asked while the slip was printing; that try's end decides (print-lifecycle-clear.ts). */
+  dismissRequest?: { at: Date; by: string };
 }
 
 /** What a lean PrintJob read returns. A row written before Phase 1 has no counters at all. */
@@ -115,6 +118,8 @@ export interface PrintJobLifecycleDoc {
   labels?: string[];
   approvedAt?: Date;
   lease?: PrintJobLease;
+  dismissRequestedAt?: Date;
+  dismissRequestedBy?: string;
 }
 
 /** The fields a transition may $set. */
@@ -136,7 +141,7 @@ export interface PrintJobSet {
   dismissReason?: PrintJobDismissReason;
   dismissedBy?: string;
 }
-export type PrintJobUnsetPath = "lease" | "lastError";
+export type PrintJobUnsetPath = "lease" | "lastError" | "dismissRequestedAt" | "dismissRequestedBy";
 
 /** One transition: what it writes, its one log entry, and the status it ends in. */
 export interface PrintJobPatch {
@@ -206,6 +211,7 @@ export function lifecycleOf(doc: PrintJobLifecycleDoc): PrintJobLifecycle {
     createdAt: doc.createdAt,
     ...(doc.approvedAt !== undefined ? { approvedAt: doc.approvedAt } : {}),
     ...(doc.lease !== undefined ? { lease: doc.lease } : {}),
+    ...(doc.dismissRequestedAt instanceof Date ? { dismissRequest: dismissRequestOf(doc) } : {}),
   };
 }
 
@@ -438,7 +444,7 @@ export function planOfflinePrinted(job: PrintJobLifecycle, deviceId: string, det
 export function planExpiry(job: PrintJobLifecycle, nowMs: number): PrintJobPlan {
   if (job.status !== "leased" || job.lease === undefined) return { ok: false, reason: "wrong-status" };
   if (job.lease.expiresAt.getTime() >= nowMs) return { ok: false, reason: "lease-held" };
-  return planned(afterUncertain(job, nowMs, "expired", job.lease.deviceId, "lease expired: may have printed"));
+  return clearRequestedOutcome(job, planned(afterUncertain(job, nowMs, "expired", job.lease.deviceId, "lease expired: may have printed")), nowMs, job.lease.deviceId);
 }
 
 /** The writer's report (§7.2 ack rows, §7.9 late acks). Idempotent per (job, epoch). */
@@ -448,21 +454,21 @@ export function planAck(job: PrintJobLifecycle, ack: PrintJobAck, nowMs: number)
     const error = (ack.error ?? "").trim().slice(0, PRINT_ACK_ERROR_MAX_CHARS) || (ack.sent === "no" ? "nothing was sent" : "may have printed");
     if (ack.permanent === true) {
       const uncertainAttempts = job.uncertainAttempts + (ack.sent === "maybe" ? 1 : 0);
-      return planned(failed(nowMs, { uncertainAttempts, lastError: error }, ack.deviceId, `permanent: ${error}`));
+      return clearRequestedOutcome(job, planned(failed(nowMs, { uncertainAttempts, lastError: error }, ack.deviceId, `permanent: ${error}`)), nowMs, ack.deviceId);
     }
     if (ack.sent === "no") {
       // Nothing reached the printer, so this never counts toward the limit (owner, after Session 1B):
       // the job waits in line, and the agent stops leasing until its printer is back.
-      return planned({
+      return clearRequestedOutcome(job, planned({
         status: "queued",
         set: { status: "queued", nextAttemptAt: new Date(nowMs + printBackoffMs(job.attempts)), lastError: error },
         unset: ["lease"],
         log: logEntry(nowMs, "failed", ack.deviceId, `not sent: ${error}`),
-      });
+      }), nowMs, ack.deviceId);
     }
-    return planned(afterUncertain(job, nowMs, "failed", ack.deviceId, error));
+    return clearRequestedOutcome(job, planned(afterUncertain(job, nowMs, "failed", ack.deviceId, error)), nowMs, ack.deviceId);
   }
-  if (job.status === "printed" || job.status === "dismissed") return { ok: false, reason: "resolved" };
+  if (job.status === "printed" || job.status === "dismissed") return lateAckAfterClear(job, ack, nowMs) ?? { ok: false, reason: "resolved" };
   if (ack.outcome === "printed") {
     // The write succeeded after the lease ran out, and nobody leased the job since (§7.9).
     if (job.epoch === ack.epoch) return planned(printedPatch(nowMs, ack.deviceId, "late-ack"));
@@ -482,7 +488,7 @@ export function planConfirm(job: PrintJobLifecycle, decision: PrintJobDecision, 
     case "reprint":
       // The cashier's tap is the bill's ONE labelled retry (the owner's two-attempt rule): one more
       // attempt, approved now so it is never parked as stale, and a second "maybe" fails it.
-      return planned({
+      return withoutClearRequest(job, planned({
         status: "queued",
         set: {
           status: "queued",
@@ -494,7 +500,7 @@ export function planConfirm(job: PrintJobLifecycle, decision: PrintJobDecision, 
         },
         unset: ["lastError"],
         log: logEntry(nowMs, "confirmed", undefined, `print again: ${staff}`),
-      });
+      }));
     case "printed":
       return planned(printedPatch(nowMs, staff, "confirmed", `it printed: ${staff}`));
     case "dismiss":
@@ -512,7 +518,7 @@ export function planConfirm(job: PrintJobLifecycle, decision: PrintJobDecision, 
 export function planRetry(job: PrintJobLifecycle, nowMs: number): PrintJobPlan {
   if (job.status === "failed") {
     const labels = job.uncertainAttempts > 0 ? addPrintLabel(job.labels, printRepeatLabel(job.kind)) : job.labels;
-    return planned({
+    return withoutClearRequest(job, planned({
       status: "queued",
       set: {
         status: "queued",
@@ -524,15 +530,15 @@ export function planRetry(job: PrintJobLifecycle, nowMs: number): PrintJobPlan {
       },
       unset: ["lastError"],
       log: logEntry(nowMs, "retried", undefined, "print again"),
-    });
+    }));
   }
   if (printJobStale(job, nowMs)) {
-    return planned({
+    return withoutClearRequest(job, planned({
       status: "queued",
       set: { approvedAt: new Date(nowMs), nextAttemptAt: new Date(nowMs) },
       unset: [],
       log: logEntry(nowMs, "retried", undefined, "print now"),
-    });
+    }));
   }
   return { ok: false, reason: "wrong-status" };
 }

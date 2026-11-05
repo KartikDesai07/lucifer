@@ -19,7 +19,7 @@ const FILES = ["PrintSetupSections.tsx", "PrintersSetupSection.tsx", "PrinterFor
 test("PIN (2D): the admin Printer setup page shows the outlet's sections after this device's panel", () => {
   const page = src("app/(dashboard)/printers/page.tsx");
   assert.match(page, /import \{ PrintSetupSections \} from "@\/components\/print\/setup\/PrintSetupSections";/);
-  const panel = page.indexOf("<PrinterPanel />");
+  const panel = page.indexOf('<PrinterPanel home="page" />');
   const sections = page.indexOf("<PrintSetupSections />");
   assert.ok(panel >= 0 && sections > panel, `the panel (${panel}) then the sections (${sections})`);
   const container = src(`${SETUP}PrintSetupSections.tsx`);
@@ -62,13 +62,14 @@ test("PIN (2D): each printer row: its state in words, on/off, Test print only wh
   // The 2D review gate (M-4): a printer its writer's lease would never take, or one this device writes but cannot print
   // right now, is not tested (the slip would only wait).
   assert.match(section, /const blocked = testPrintBlock\(printer, printers, \{ deviceId, localIds, canPrint, ownState \}\);/, "Test print only when its slip can print");
-  assert.match(section, /disabled=\{blocked !== null \|\| testPrint\.isPending\}/);
-  assert.match(section, /await testPrint\.mutateAsync\(printer\.id\);\s*toast\.success\(testPrintSentText\(printer, state\)\);/);
+  // PX-3 Task 10b (on purpose, the review's I2): the tap is the hook's one handler, shared with the printer panel's card.
+  assert.match(section, /const testPrint = useTestPrinterTap\(\);[\s\S]*disabled=\{blocked !== null \|\| testPrint\.pending\} onClick=\{\(\) => void testPrint\.run\(printer, state\)\}/, "one request per tap, none while one runs");
+  assert.match(src("hooks/use-print-setup.ts"), /await testPrint\.mutateAsync\(printer\.id\);\s*toast\.success\(testPrintSentText\(printer, state\)\);/, "the setup's toast");
   assert.match(section, /printerBodyOf\(\{ \.\.\.printerDraftOf\(printer, stations\), enabled: !printer\.enabled \}, printers, printer\.id\)/, "on/off saves the printer whole, through the same rules as the form");
   // The 2D review gate (M-5): switching a printer off fails its waiting slips (the sweep), so it asks first, as Delete does.
-  assert.match(section, /question=\{`Switch \$\{printer\.name\} off\? Slips still waiting for it will show under Couldn't print\.`\}/, "switching off asks first");
+  assert.match(section, /question=\{`Switch \$\{printer\.name\} off\? Slips still waiting for it will show under Not printed\.`\}/, "switching off asks first");
   assert.match(section, /onCheckedChange=\{\(\) => \(printer\.enabled \? setSwitchingOff\(printer\.id\) : void toggle\(printer\)\)\}/, "switching on needs no question");
-  assert.match(section, /question=\{`Delete \$\{printer\.name\}\? Slips still waiting for it will show under Couldn't print\.`\}/);
+  assert.match(section, /question=\{`Delete \$\{printer\.name\}\? Slips still waiting for it will show under Not printed\.`\}/, "deleting asks first");
   assert.match(section, /\{gaps\.map\(\(gap\) => \(/, "what the setup leaves without a printer is said above the list");
 });
 
@@ -145,8 +146,9 @@ test("PIN (2D): the Devices section lists each device, online or when last seen,
 
 // The 2D review gate (M-3): the waiting-slips panel only shows printer names; it reads the agent's entry, so an admin
 // save costs this device one printers read, never two (the agent's subscription is the only one).
+// PX-2 Task 4 (on purpose, F-I6b): the waiting slips' container is NotPrintedSection now; the read is the same.
 test("PIN (the 2D review gate, M-3): only the agent's printers read subscribes; the waiting-slips panel reads the same entry", () => {
-  const card = src("components/print/WaitingSlipsCard.tsx");
+  const card = src("components/print/NotPrintedSection.tsx");
   assert.match(card, /const \{ printers \} = usePrintersRead\(true\);/);
   assert.ok(!/usePrinters\(/.test(card), "no subscription of its own");
   const hook = src("hooks/use-print-setup.ts");
@@ -154,7 +156,8 @@ test("PIN (the 2D review gate, M-3): only the agent's printers read subscribes; 
 });
 
 // Phase 2 Session 2F1 (spec §9.2, §11): on the POS app with bridge v2 the form chooses one of the app's printers, and
-// the panel lists the app's other printers with Add another printer; an app on v1 says it prints one printer.
+// the panel lists the app's other printers with Connect another printer (Add another printer before PX-3 Task 10b); an app on
+// v1 says it prints one printer.
 test("PIN (2F1): the form chooses one of the POS app's printers; the panel lists the others and adds one; an app on v1 says it prints one", () => {
   const form = src(`${SETUP}PrinterFormDialog.tsx`);
   assert.match(form, /const appHere = pool\.active && draft\.kind === "device" && \(draft\.device === null \|\| draft\.device\.deviceId === deviceId\);/, "never over another device's printer");
@@ -162,14 +165,17 @@ test("PIN (2F1): the form chooses one of the POS app's printers; the panel lists
   assert.match(form, /\{caps\.native && !pool\.active && <p className="text-xs text-brand-muted">\{ONE_APP_PRINTER\}<\/p>\}/);
   assert.match(src(`${SETUP}NativePrinterSelect.tsx`), /<SelectTrigger aria-label="Printer on this device"/);
   const section = src("components/print/DevicePrinterSection.tsx");
-  assert.match(section, /\{caps\.native && <OtherDevicePrinters paper=\{paperDefault\} locked=\{locked\} \/>\}/);
+  // PX-3 Task 10b (on purpose, spec §6.6 item 2): with the setup's names, and in printers mode as blocks of the one card.
+  // Task 11 (on purpose, spec §6.7): its Connect another printer is the guided connect's add (the paper went with the picker).
+  assert.match(section, /\{caps\.native && <OtherDevicePrinters locked=\{locked\} here=\{here\} card=\{printersCard\} canAdd=\{printer !== null\} onConnect=\{onConnect\} \/>\}/, "the panel lists the app's other printers");
   const others = src("components/print/OtherDevicePrinters.tsx");
   assert.match(others, /if \(!pool\.active\) return null;/, "nothing on an app that speaks only v1");
   assert.match(others, /const others = pool\.printers\.filter\(\(entry\) => entry\.id !== pool\.defaultId\);/, "the app's own default is the device's printer above (M-6)");
   assert.match(others, /\{inSetup\.has\(entry\.id\) \? \(\s*<p className=\{PRINTER_NOTE_CLASS\}>\{IN_SETUP\}<\/p>/, "a printer the setup names this device for is not removed here (I-3)");
-  assert.match(others, /add=\{\(target\) => nativePool\(\)\.add\(target\)\}/, "a printer chosen there joins the app's printers");
-  const picker = src("components/print/NativePrinterPicker.tsx");
-  assert.ok(picker.includes("add !== undefined ? add({ id: printer.id }) : devicePrinter().selectNative({ id: printer.id }, paper)"), "else it replaces this device's own, as before");
+  // Task 11 (on purpose): the add and the replace moved, as they were, into the guided connect's hook and its tap.
+  assert.ok(others.includes("onClick={() => onConnect(CONNECT_ADD)}") && src("hooks/use-connect-attempt.ts").includes("add: (target) => nativePool().add(target),"), "a printer chosen there joins the app's printers");
+  const flow = src("components/print/connect/ConnectFlow.tsx");
+  assert.ok(flow.includes('const run = state.mode === "add" ? attempt.add(target) : attempt.replace(target);'), "else it replaces this device's own, as before");
   assert.match(src("lib/print-device.ts"), /\.\.\.\(row\.nativeProtocol !== undefined \? \{ nativeProtocol: row\.nativeProtocol \} : \{\}\),/, "the devices read says which app prints several printers");
 });
 

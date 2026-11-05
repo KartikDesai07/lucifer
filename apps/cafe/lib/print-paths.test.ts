@@ -64,8 +64,8 @@ const END_OF_DAY_SUMMARY = "apps/cafe/components/reports/EndOfDaySummary.tsx";
 // MoveTableDialog.tsx 1 (:107), OrderDetailSheet.tsx 2, EndOfDayButton.tsx 1
 // (RECEIPT_PAGE_STYLE), use-kot-print-bridge.ts 2, use-print-host-bridge.ts 3
 // (two receiptPageStyle( + one RECEIPT_PAGE_STYLE at :117), PrintHostProvider
-// 0, PrinterSetupCard 0 (2026-09-19: renamed from PrintHostCard when the
-// kiosk wizard was removed) — total 9. No grand-total assert below: each file
+// 0, use-test-print.ts 0 (2026-09-19: PrintHostCard renamed PrinterSetupCard; PX-3 Task 10:
+// its test print moved, as it was, into that hook) — total 9. No grand-total assert below: each file
 // is read and counted separately, so a shifted total can't hide behind a sum.
 //
 // CB-D1 (desktop-shell.test.ts / desktop-shell-paths.test.ts own the new
@@ -77,7 +77,7 @@ const END_OF_DAY_SUMMARY = "apps/cafe/components/reports/EndOfDaySummary.tsx";
 // wrapped and keeps the plain browser dialog.
 const MOVE_TABLE_DIALOG = "apps/cafe/components/orders/MoveTableDialog.tsx";
 const PRINT_HOST_PROVIDER = "apps/cafe/components/layout/PrintHostProvider.tsx";
-const PRINTER_SETUP_CARD = "apps/cafe/components/print/PrinterSetupCard.tsx";
+const PRINTER_SETUP_CARD = "apps/cafe/hooks/use-test-print.ts";
 
 // ── 1. Pay Now must fire the kitchen ticket too (CR1.2(a)) ──────────────────
 
@@ -337,19 +337,19 @@ test("PIN: RECEIPT_PAGE_STYLE carries the 80mm/4mm page setup, and every print t
     "PrintHostProvider.tsx must build zero page styles of its own — it only wires usePrintHostBridge's already-built print jobs into context",
   );
 
-  // PH-10 A4 — the test-print trigger (PrintHostCard.tsx, renamed
-  // PrinterSetupCard.tsx in the 2026-09-19 kiosk-wizard cleanup) fires a
+  // PH-10 A4 — the test-print trigger (PrintHostCard.tsx, renamed PrinterSetupCard.tsx in
+  // the kiosk-wizard cleanup, moved into hooks/use-test-print.ts in PX-3 Task 10) fires a
   // manual test print via the bridge's own queueTestSlip() (positive
   // landmark), so it too must never build a page style locally.
   const cardSrc = readSrc(PRINTER_SETUP_CARD);
   assert.match(
     cardSrc,
     /queueTestSlip\(\)/,
-    "PrinterSetupCard.tsx must call the bridge's queueTestSlip() (positive landmark for the pageStyle-absence pin below)",
+    "use-test-print.ts must call the bridge's queueTestSlip() (positive landmark for the pageStyle-absence pin below)",
   );
   assert.ok(
     !/pageStyle:\s*receiptPageStyle\(/.test(cardSrc) && !/pageStyle:\s*RECEIPT_PAGE_STYLE/.test(cardSrc),
-    "PrinterSetupCard.tsx must build zero page styles of its own — the test slip's page setup is the bridge hook's job",
+    "use-test-print.ts must build zero page styles of its own — the test slip's page setup is the bridge hook's job",
   );
 });
 

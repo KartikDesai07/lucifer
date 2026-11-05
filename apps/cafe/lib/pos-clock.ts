@@ -17,9 +17,9 @@ export function posClockLabel(now: Date): string {
 
 /** The clock block's printer state in words, for screen readers only (U1 final fix wave: its dot never carries the
  *  state by colour alone): after the visible "Printer", the printer button's own words ("Printer connected — …",
- *  "Printer not connected — …"); nothing while the button draws no dot (checking, or nothing set up). */
+ *  "Printer needs attention — …", X13); nothing while the button draws no dot (checking, or nothing set up). */
 export function clockPrinterWords(tone: PrinterDotTone): string | null {
   if (tone === "green") return "connected";
-  if (tone === "red") return "not connected";
+  if (tone === "red") return "needs attention";
   return null;
 }

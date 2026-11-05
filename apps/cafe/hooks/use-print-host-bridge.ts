@@ -30,6 +30,7 @@ import {
 import { createWindowLateCompletionGuard } from "@/lib/print-host-late-completion";
 import { hostPrintFailureMessage } from "@/lib/print-write-outcome";
 import { createHostSlipOutcomes, type HostPrintDone } from "@/lib/print-host-outcomes";
+import { slipToastOf } from "@/lib/print-job-toast";
 import { textKotEnv, textKotWriteFor } from "@/lib/printer/kot-text/text-kot-print";
 import type { Order } from "@/types";
 
@@ -83,6 +84,11 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
   // until it reports or the grace passes (one shared onAfterPrint would settle the NEXT job).
   const [lateGuard] = useState(createWindowLateCompletionGuard);
   const outcomesRef = useRef(createHostSlipOutcomes());
+  // PX-2 (spec §6.9 B7): the job of the slip on the paper now, for its toast; set before the dispatch effect runs.
+  const jobIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    jobIdRef.current = current?.kind === "slip" ? current.slip.jobId : undefined;
+  }, [current]);
 
   const settle = useCallback((requested: string | null) => {
     const failure = lateGuard.take() ? null : requested; // already announced at the watchdog
@@ -97,7 +103,7 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
     const waiter = testRef.current;
     testRef.current = null;
     if (failure !== null) {
-      toast.error(failure);
+      toast.error(slipToastOf(failure, jobIdRef.current));
       waiter?.reject(new Error(failure));
     } else if (waiter) {
       waiter.resolve(performance.now() - waiter.startedAt);
@@ -115,7 +121,7 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
   const finish = useCallback(() => settle(null), [settle]);
   // The watchdog: announce now, reject a waiting test slip now, hold the slot.
   const abandon = useCallback(() => {
-    toast.error(PRINT_HOST_PRINT_FAILED_MESSAGE);
+    toast.error(slipToastOf(PRINT_HOST_PRINT_FAILED_MESSAGE, jobIdRef.current));
     testRef.current?.reject(new Error(PRINT_HOST_PRINT_FAILED_MESSAGE));
     testRef.current = null;
     lateGuard.abandon(() => settle(null));

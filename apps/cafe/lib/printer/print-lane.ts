@@ -29,7 +29,7 @@ export interface PrintCapabilities {
 export type BeatPrinterReport = "connected" | "disconnected" | "unknown";
 
 // The shell refuses every job while no printer is chosen on this PC.
-export const DESKTOP_NO_PRINTER_MESSAGE = "No printer is chosen on this PC. Choose one in printer setup, then print again.";
+export const DESKTOP_NO_PRINTER_MESSAGE = "No printer is chosen on this PC. Open the printer icon, then Printer settings, and choose the printer.";
 export const DEVICE_LABEL_TABLET = "Counter tablet";
 export const DEVICE_LABEL_PC = "Counter PC";
 const COARSE_POINTER_QUERY = "(pointer: coarse)";

@@ -155,7 +155,7 @@ export function PrinterFormDialog({ printer, printers, stations, devices, device
                 }}
               />
             ) : (
-              <p className="text-brand-muted">{shownDevice ?? "Connect a printer on this device (Printer on this device, above), then tap Use this device's printer."}</p>
+              <p className="text-brand-muted">{shownDevice ?? "Connect a printer on this device (This device's printer, above), then tap Use this device's printer."}</p>
             )}
             {desktop !== null && !named && <p className="text-xs text-brand-muted">{ONE_WINDOWS_PRINTER}</p>}
             {caps.native && !pool.active && <p className="text-xs text-brand-muted">{ONE_APP_PRINTER}</p>}

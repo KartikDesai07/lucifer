@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import { z } from "zod";
 import { connectDB } from "@/lib/db";
-import { dismissPrintJob } from "@/lib/print-queue";
+import { dismissPrintJobByStaff } from "@/lib/print-dismiss";
 import { success, failure, requireAuth, serverError, validateBody } from "@/lib/api-helpers";
 import { noStore } from "@/lib/order-request-tray";
 
@@ -25,7 +25,9 @@ const dismissBodySchema = z.object({ reason: z.literal("staff") }).strict();
 const UNNAMED_STAFF = "Staff";
 
 // POST /api/print-jobs/[id]/dismiss (print-host plan §B2/§B7) — a staff
-// "Dismiss" tap from the alert band on a still-queued job.
+// "Dismiss" tap from the alert band on a still-queued job. Printer UX PX-2
+// (§6.9 B1): on a slip being printed it keeps the Clear as a request, and that
+// try's end decides (lib/print-dismiss.ts); the answer is still {dismissed:true}.
 export async function POST(req: Request, { params }: Params) {
   const authed = await requireAuth();
   if ("error" in authed) return authed.error;
@@ -40,7 +42,8 @@ export async function POST(req: Request, { params }: Params) {
 
   try {
     await connectDB();
-    const result = await dismissPrintJob({ id, reason: parsed.data.reason, dismissedBy });
+    // The body's reason is always "staff" (the schema above): the staff Clear stamps it itself.
+    const result = await dismissPrintJobByStaff({ id, dismissedBy, nowMs: Date.now() });
     if (!result.dismissed && result.reason === "not-found") {
       return noStore(failure("Print job not found", 404));
     }

@@ -280,7 +280,7 @@ no slip until then.
 - [ ] **A cafe with printers set up** (§7 "Stations and printers"): the token
       slip prints at the bill printer, so a printer must take bills: tick
       **Bill** on one in **Admin → Printer setup**. With none, the Tokens page
-      warns, and every token (and bill) shows under **Couldn't print**: "No
+      warns, and every token (and bill) shows under **Not printed**: "No
       printer is set up for bills."
 - [ ] **The daily restart time** (same page): change it outside service hours.
       A change during service can repeat or skip tonight's token, kitchen
@@ -347,8 +347,8 @@ and the app opened once there, then the Windows app.
       background, and that page asks the server every 15 seconds.
 - [ ] **Allow notifications** when the app asks (Android 13 and later), so "POS printing is off. Tap to start." can
       show after a restart or a reboot.
-- [ ] **Battery settings** on a Xiaomi, OPPO, vivo or Samsung printing device: the printer panel → **More
-      options** → **Battery settings for printing**; do each step it lists once.
+- [ ] **Battery settings** on a Xiaomi, OPPO, vivo or Samsung printing device: the printer panel → **Printer
+      settings** → **Battery settings**; do each step it lists once.
 - [ ] **Windows counter PC:** `POS-Software-Setup-1.12.0.exe`, installed over the old one; check its SHA-256
       against `SHA256SUMS.txt`. Needed for a network printer printed by the PC (the PC writes it itself) and for a
       PC that takes a network printer over; the Windows app 1.11.0 keeps printing its Windows printers as before.
@@ -410,15 +410,15 @@ every later version arrives by itself. **No web change and no Worker change.**
 
 ### Existing cafes: the printing Phase 4 release
 
-Printing Phase 4 adds **Fast text KOTs (English only)**: a switch per printer, off by default, in the printer panel of
-the device that prints that printer. With it on, a kitchen ticket whose every printed character is plain English
-prints as text in the printer's own font (about 1 KB instead of a 44 KB picture: much faster on Bluetooth). A ticket
-with Hindi, Gujarati or any other script, a logo or a QR code still prints as a picture, and so do bills, token slips
-and End of day. It also adds **Find network printers** beside a network printer's address on the POS app and the
-Windows app 2.0.2, gives two network printers on one address their own names in the POS app 2.0.2 ("Network printer
-192.168.1.50" and "Network printer 192.168.1.50:9101"), and a KOT round with nothing left to print says "Nothing to
-print: every item in this round was cancelled." No data migration, no new request to the cafe's server. **No Worker
-change.**
+Printing Phase 4 adds **Faster KOTs** (English only): a switch per printer, **Print KOTs as plain text**, off by
+default, in the printer panel of the device that prints that printer. With it on, a kitchen ticket whose every printed
+character is plain English prints as text in the printer's own font (about 1 KB instead of a 44 KB picture: much
+faster on Bluetooth). A ticket with Hindi, Gujarati or any other script, a logo or a QR code still prints as a picture,
+and so do bills, token slips and End of day. It also adds **Find network printers** beside a network printer's
+address on the POS app and the Windows app 2.0.2, gives two network printers on one address their own names in the POS
+app 2.0.2 ("Network printer 192.168.1.50" and "Network printer 192.168.1.50:9101"), and a KOT round with nothing left
+to print says "Nothing to print: every item in this round was cancelled." No data migration, no new request to the
+cafe's server. **No Worker change.**
 
 The order matters: the web first, then the 2.0.2 upload, then the demo cafe, then the clients printer by printer.
 
@@ -432,19 +432,19 @@ The order matters: the web first, then the 2.0.2 upload, then the demo cafe, the
       blockmap first, `latest.json` and `latest.yml` last); the apps then update themselves ("the native apps 2.0
       release" above says what staff see). Text KOTs on an Android printer need no app update (every POS app prints
       the text bytes as it prints a picture's); 2.0.2 brings Find network printers on both apps, the network printer
-      names on Android, and Fast text KOTs for a Windows printer (one the PC prints through Windows, such as its USB
+      names on Android, and Faster KOTs for a Windows printer (one the PC prints through Windows, such as its USB
       printer) on the Windows app, with **Direct to printer** chosen. A network printer that the Windows app 1.12.0 or
       later prints takes text without 2.0.2.
 - [ ] **Then the demo cafe**, before any client (the release gate): on the device that prints the owner's Bluetooth
-      printer, open the printer panel → **Fast text KOTs (English only)** → that printer's switch. The text test
-      prints (the cafe's name, TEXT TEST, a sample ticket and a ruler), and the panel asks "Did it print clearly, with
-      the ruler on one line?": **Yes** only if it did. Then run the measurement and the real-printer checks in
-      `apps/mobile/TEST-CHECKLIST.md` → "Phase 4 checks (text KOTs, Find network printers)", and leave the switch on
-      for some days of the demo cafe's use.
+      printer, open the printer panel → **Printer settings** → **Faster KOTs** → that printer's **Print KOTs as plain
+      text** switch. The text test prints (the cafe's name, TEXT TEST, a sample ticket and a ruler), and the panel asks
+      "Did it print clearly, with the ruler on one line?": **Yes** only if it did. Then run the measurement and the
+      real-printer checks in `apps/mobile/TEST-CHECKLIST.md` → "Phase 4 checks (text KOTs, Find network printers)",
+      and leave the switch on for some days of the demo cafe's use.
 - [ ] **Then the clients, printer by printer**, only after the demo cafe's days and the Phase 4 checks passed: on
-      each printing device whose printer is Bluetooth (where it gains most), turn **Fast text KOTs** on for that
-      printer, each one only after its own text test printed clearly. On an 80 mm printer whose ruler did not fit on
-      one line, answer **No**, choose **Characters per line: 42** and test again. A printer whose test prints badly
+      each printing device whose printer is Bluetooth (where it gains most), turn **Print KOTs as plain text** on for
+      that printer, each one only after its own text test printed clearly. On an 80 mm printer whose ruler did not fit
+      on one line, answer **No**, choose **Characters per line: 42** and test again. A printer whose test prints badly
       stays off: it keeps printing pictures, as today. One tap turns a switch off again.
 - [ ] **The switch lives on each printing device**, not on the server: a new device, the app installed again, its
       data cleared, or a device that takes a printer over for another one prints pictures; each starts off until its
@@ -1195,10 +1195,10 @@ and printers checks" on the real printers afterwards.
       this device** in its printer panel, if its bills belong at another
       printer than the default.
 - [ ] Tell the admin: a printer switched off (or deleted) in Printer setup
-      moves its waiting slips to **Couldn't print** within a minute; once it is
+      moves its waiting slips to **Not printed** within a minute; once it is
       on again, **Retry** prints them there (they are never moved to another
       printer). Deleting every printer goes back to simple mode; a printer's
-      slips still waiting then also move to **Couldn't print**, to be printed
+      slips still waiting then also move to **Not printed**, to be printed
       again from their order.
 
 ### Hazards to check for, and what to tell the client

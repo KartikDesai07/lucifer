@@ -1648,14 +1648,14 @@ test("PIN §1 (printing Phase 4): the release step keeps its order (the web with
 
 test("PIN §1 (printing Phase 4): the step quotes the page's own words: the switch's section, its question and the 42 choice, Find network printers and its lines, and the not-routed words", () => {
   const step = norm(sectionSlice(PHASE4_STEP));
-  const section = readFileSync(path.join(REPO_ROOT, "apps/cafe/components/print/TextKotSection.tsx"), "utf8");
-  for (const words of ["Fast text KOTs (English only)", "Did it print clearly, with the ruler on one line?", "Characters per line"]) {
-    assert.ok(section.includes(`"${words}"`), `TextKotSection.tsx says "${words}"`);
+  const section = ["components/print/TextKotSection.tsx", "lib/printer/settings-view.ts"].map((rel) => readFileSync(path.join(REPO_ROOT, "apps/cafe", rel), "utf8")).join("\n");
+  for (const words of ["Faster KOTs", "Print KOTs as plain text", "Did it print clearly, with the ruler on one line?", "Characters per line"]) {
+    assert.ok(section.includes(`"${words}"`), `the Faster KOTs card (TextKotSection.tsx, its row words in settings-view.ts) says "${words}"`);
     assert.ok(step.includes(words), `the step quotes "${words}"`);
   }
   assert.ok(section.includes('{narrow ? "42" : "Automatic"}') && step.includes("**Characters per line: 42**"), "the 80 mm choice, as the section offers it");
-  const picker = readFileSync(path.join(REPO_ROOT, "apps/cafe/components/print/NativePrinterPicker.tsx"), "utf8");
-  assert.ok(picker.includes('const NETWORK_TITLE = "Network printer (Wi-Fi or Ethernet)";') && step.includes("**Network printer (Wi-Fi or Ethernet)**"), "the POS app panel's network form, by its title");
+  const picker = readFileSync(path.join(REPO_ROOT, "apps/cafe/components/print/connect/ConnectList.tsx"), "utf8");
+  assert.ok(picker.includes('const NETWORK_TITLE = "Network printer (Wi-Fi or Ethernet)";') && step.includes("**Network printer (Wi-Fi or Ethernet)**"), "the POS app panel's network form (PX-3 Task 11, on purpose: moved into the guided connect's list step), by its title");
   for (const words of [FIND_NETWORK_PRINTERS_LABEL, LAN_SCANNING_MESSAGE, LAN_NONE_FOUND_MESSAGE, LAN_NO_NETWORK_MESSAGE, alreadyAddedText("Kitchen"), PRINT_JOB_NOT_ROUTED_KOT_MESSAGE]) {
     assert.ok(step.includes(words), `the step quotes "${words}"`);
   }

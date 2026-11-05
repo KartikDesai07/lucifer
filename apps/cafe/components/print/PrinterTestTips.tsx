@@ -6,7 +6,7 @@ const TIPS_TITLE = "If the slip did not print";
 const TIPS: readonly string[] = [
   "Check the printer is on and has paper.",
   "Keep the printer close to this device.",
-  "Tap Reconnect, or Change printer to choose it again.",
+  "Go back and tap Reconnect, or tap Change to choose it again.",
   "Check the paper size above matches the roll in the printer.",
 ];
 

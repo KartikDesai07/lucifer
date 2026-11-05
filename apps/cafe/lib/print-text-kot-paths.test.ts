@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { stripComments } from "@/lib/source-pin-utils";
 
-// Printing Phase 4 (spec 2026-10-15 §5.1, S2, §12): "Fast text KOTs (English only)" in the printer panel. Its words, its
+// Printing Phase 4 (spec 2026-10-15 §5.1, S2, §12): the text KOT switch ("Faster KOTs" since PX-3) in the printer panel. Its words, its
 // confirm states, the rule that only "Yes" after a printed text test turns a printer on, and that it reads nothing new
 // from the server.
 
@@ -13,11 +13,16 @@ const CAFE = process.cwd();
 const src = (rel: string): string => stripComments(readFileSync(path.join(CAFE, rel), "utf8"));
 const SECTION = "components/print/TextKotSection.tsx";
 
+// PX-3 Task 10 (on purpose, spec §6.6 item 4): the card is "Faster KOTs" with no sub (the long description went); each row
+// says "Print KOTs as plain text" over its one line (textKotRowWordsOf, lib/printer/settings-view.test.ts has the words), and
+// its switch is named by them and the printer.
 test("PIN: the section's words, as the spec says them", () => {
   const section = src(SECTION);
   for (const words of [
-    'const TITLE = "Fast text KOTs (English only)";',
-    "\"Prints English-only kitchen tickets as text in the printer's own font: much faster on Bluetooth. Tickets with Hindi, Gujarati or any other script, a logo or a QR code still print as now.\";",
+    'const TITLE = "Faster KOTs";',
+    "<PanelSection icon={<Zap />} title={TITLE}>",
+    "const words = textKotRowWordsOf(printer.name, rows);",
+    "aria-label={`${words.label}: ${printer.name}`}",
     'const QUESTION = "Did it print clearly, with the ruler on one line?";',
     'const TRY_42 = "Keep it off, or try Characters per line: 42";',
     'const COLUMNS_LABEL = "Characters per line";',
@@ -41,16 +46,18 @@ test("PIN (S2): turning a printer on prints its text test first; only Yes keeps 
   assert.equal((section.match(/writeTextKot\(/g) ?? []).length, 2, "the switch is written in two places only: Yes, and Off");
   assert.ok(section.includes("writeTextKot(printer.key, null);"), "turning it off is immediate");
   assert.ok(section.includes("if (choice !== null) setNarrow80(choice.narrow80);"), "off keeps the 42 choice it was proven at for its next test");
-  assert.ok(section.includes("message === PRINT_HOST_PRINT_FAILED_MESSAGE ? TEST_FAILED_MESSAGE : message"), "a test the watchdog gave up on says the section's own words");
+  assert.ok(section.includes("message === PRINT_HOST_PRINT_FAILED_MESSAGE ? TEST_FAILED_MESSAGE : desktopRefusalWordsOf(message)"), "a test the watchdog gave up on says the section's own words");
   assert.ok(section.includes("disabled={on || busy}"), "the characters per line are chosen while the switch is off, before its test");
   assert.ok(section.includes("disabled={!on && (busy || current !== null)}"), "turning on waits for a free bridge; turning off never waits");
   assert.ok(section.includes("if (printers.length === 0) return null;"), "hidden on a device with no printer it can write text to");
   assert.ok(section.includes("<label htmlFor={switchId}") && section.includes("id={switchId}"), "the printer's whole row is the switch's label: a 44 px tap target on a phone");
 });
 
-test("PIN: the section sits right after this device's printer, in every printer panel", () => {
-  const card = src("components/print/PrinterSetupCard.tsx");
-  assert.ok(card.includes("      <DevicePrinterSection />\n      <TextKotSection />\n"), "after DevicePrinterSection");
+// PX-3 Task 10 (on purpose, spec §6.6): the settings view draws it after this device's printer and Print for other devices.
+test("PIN: the section sits after this device's printer, in every printer panel", () => {
+  const view = src("components/print/settings/PrinterSettingsView.tsx");
+  const device = view.indexOf("<DevicePrinterSection noun={noun} onConnect={onConnect} />"); // PX-3 Task 11: and the guided connect
+  assert.ok(device >= 0 && view.indexOf("<TextKotSection />") > view.indexOf("<PrintForOthersCard />") && view.indexOf("<PrintForOthersCard />") > device, "after DevicePrinterSection and PrintForOthersCard");
   const provider = src("components/layout/PrintHostProvider.tsx");
   assert.ok(provider.includes("queueTestSlip: (write?: () => Promise<void>) => Promise<number>;"), "the provider hands the section the bridge's test window");
 });

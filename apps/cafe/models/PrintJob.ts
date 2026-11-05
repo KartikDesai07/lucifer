@@ -48,6 +48,10 @@ export interface IPrintJob extends Document {
   dismissedAt?: Date;
   dismissReason?: PrintJobDismissReason;
   dismissedBy?: string; // staff name from session, mirrors queuedBy
+  // Printer UX PX-2 (spec §6.9 B1): a staff Clear asked while the slip was being printed (only a leased job gets
+  // one). Omit-empty: lifecycleOf reads it, and that try's end decides (paper wins; anything else ends it dismissed).
+  dismissRequestedAt?: Date;
+  dismissRequestedBy?: string; // staff name from session, like dismissedBy
   // Phase 1 lifecycle (spec §6.5). All omit-empty: a row written before Phase 1 carries none of
   // them, and lifecycleOf (@pos/shared/print-lifecycle) reads a missing counter as 0.
   targetDeviceId?: string; // simple mode (§6.6): the one device that may lease it
@@ -112,6 +116,9 @@ export const printJobSchema = new Schema<IPrintJob>(
     dismissedAt: { type: Date },
     dismissReason: { type: String, enum: [...PRINT_JOB_DISMISS_REASONS] },
     dismissedBy: { type: String },
+    // PX-2 (§6.9 B1): the clear request. No default, like the dismiss fields: a row without one stays as it was.
+    dismissRequestedAt: { type: Date },
+    dismissRequestedBy: { type: String },
     // Phase 1 lifecycle (spec §6.5). Omit-empty with NO defaults, for the same reason as above: a row
     // from before Phase 1 must stay exactly as it was. The arrays say `default: undefined` because
     // Mongoose would otherwise write [] onto every row.
