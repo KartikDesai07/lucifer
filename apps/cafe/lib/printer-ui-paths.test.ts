@@ -137,7 +137,7 @@ const devicePin: Pin = (raw) => {
   check(p, count(code, ".reconnect()") === 1 && /\{printersCard && \(\s*<Button className=\{PRINTER_BUTTON_CLASS\} variant=\{status === "connected" \? "outline" : "default"\} onClick=\{\(\) => void settle\(devicePrinter\(\)\.reconnect\(\)\)\} disabled=\{locked\}>/.test(code), "T10b-B: printers mode only, primary while not connected, called straight from the click; X7: none in simple mode");
   check(p, !/Bluetooth LE/i.test(code), "no radio jargon (Bluetooth LE) in client copy");
   check(p, code.includes("const paperDefault = printConfigOf(settings.data).bill.paperWidth;"), "paperDefault comes from the print settings");
-  check(p, code.includes('const locked = busy || elsewhere || status === "connecting";'), "one busy state, the other-tab state and a connect still running (PX-3 Task 11 review: a guided connect left mid-way) lock everything");
+  check(p, code.includes("const locked = busy || elsewhere;") && !/locked = [^;]*"connecting"/.test(code), "one busy state plus the other-tab state lock everything; never the app's own retries (Ruling T11-C: connecting flickers with them)");
   const buttons = code.split("<Button").slice(1).map((chunk) => chunk.slice(0, chunk.indexOf("</Button>")));
   // The connect buttons moved to BrowserPrinterConnect (connectPin); Change, Remove, Connect a printer stay; the test has its own gate.
   check(p, buttons.length >= 4 && buttons.every((b) => b.includes(b.includes("test.start()") ? "disabled={test.startDisabled}" : "disabled={locked}")), "every printer button is disabled while locked, the test by its own gate");
@@ -371,7 +371,7 @@ const CASES: PinCase[] = [
     mut("the page-wide id back", 'data-printer-target="device"', 'id="printer-device" data-printer-target="device"'),
     mut("a print window claimed", "This browser or app cannot connect to a printer directly.", "This browser cannot connect to a printer directly, so slips open the print window."),
     mut("tabIndex dropped", "      tabIndex={-1}\n", ""),
-    mut("paper default hard-coded", "printConfigOf(settings.data).bill.paperWidth", '"80mm"'), mut("a running connect left unlocked", ' || status === "connecting";', ";"),
+    mut("paper default hard-coded", "printConfigOf(settings.data).bill.paperWidth", '"80mm"'), mut("locked by the app's own retries", "const locked = busy || elsewhere;", 'const locked = busy || elsewhere || status === "connecting";'),
   ] },
   { file: F.native, pin: nativePin, mutations: [
     mut("find does not scan", "listNative(true)", "listNative(false)"), mut("bluetooth enable renamed", 'nativeRequest("bluetooth.enable")', 'nativeRequest("bluetooth.on")'),
