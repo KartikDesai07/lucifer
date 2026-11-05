@@ -30,7 +30,7 @@ one commit per task, a fresh review at its end, then the orchestrator's check be
 | Session | Delivers | Before the next |
 |---|---|---|
 | PX-2 | **Exact below (Tasks 0–8).** The client's pain: the clear request (server + lifecycle), Clear all, the Not printed card, the status card and its words, printers mode (the right printer, the amber phone), the two views (settings = today's setup, moved), the alarm, the printed-ack removal, the job toast words, no flicker. | the orchestrator's check; PX-3 made exact if needed |
-| PX-3 | Spec with fixed interfaces (Tasks 10–14): the settings cards, the guided connect, the words everywhere, one row per printer, the Location Allow, responsive polish. | the owner's merge OK |
+| PX-3 | **Exact below (Tasks 10, 10b, 11–14).** The settings cards, the guided connect, the words everywhere, one row per printer, the Location Allow, responsive polish. | the owner's merge OK |
 
 Each session ends with every suite green, a fresh Claude Fable 5.1 review of its range (read-only; on an HTTP 429 wait
 for the reset and say so; never switch models silently; resume a cut reviewer with SendMessage), one fix wave, and its
@@ -651,68 +651,449 @@ src/<name>.test.ts` from `packages/shared`.
 
 ---
 
-# Session PX-3 (spec, fixed interfaces): the settings view, the guided connect, the words
+# Session PX-3 (exact): the settings view as cards, the guided connect, the words
 
 Acceptance: §6.6–§6.9 (B9–B11) as drawn in the mockups `t-settings-*`, `t-host-*`, `g1`–`g6`; every setup action of today
-still reachable and working (connect, change, remove, paper width, test print + attestation, one device for all, stop,
-move, fast text KOTs, bill printer, change POS address, battery settings, remove the printing device); the extra scroll of
-the settings view at 390 ≤ 64 px. PX-2's Task 0 / Task 8 shape (baseline, verification, review, Results).
+still reachable and working in every lane (connect, change, remove, paper width, test print + attestation, one device for
+all, stop, move, fast text KOTs, bill printer, change POS address, battery settings, remove the printing device, add
+another printer on bridge v2 — the path into printers mode); the extra scroll of the settings view at 390 ≤ 64 px. Work on
+`feat/printer-ux` (origin/main a831fd3 merged in as b570c73 first, no file overlap). Live legs on a fresh
+`pos_scratch_print_host_px3`. PX-3 changes no server file, no lifecycle, no slip, no native file.
 
-### Task 10: The settings view as cards
+**Baseline (b570c73, the Results' "before"):** cafe `npm test` 7760 / 7759 pass / 0 fail / 1 skip; shared 1076 / 0 fail;
+cafe typecheck 0; live legs 524 passed, 0 failed (`pos_scratch_print_host_px3`); lint at Task 14 (PX-2: 0 errors, the 2
+old warnings). The builder check is skipped (fast path, the owner's word): the per-task reviewer reads the spec and code.
 
-- Create `apps/cafe/components/print/settings/` `PrinterSettingsView.tsx` (`({ home }: { home: "sheet" | "page" })`),
-  `ThisDevicePrinterCard.tsx`, `PrintersHereSettingsCard.tsx`, `PrintForOthersCard.tsx`, `FasterKotsCard.tsx`,
-  `MoreCard.tsx`. They reuse, never fork, today's logic: `DevicePrinterSection`'s state, `NativePrinterPicker`,
-  `BrowserPrinterConnect`, `DesktopPrinterPicker` + `DesktopPrintMethod`, `PaperSizeToggle`, `OtherDevicePrinters`' pool
-  calls, `PrintWhereSection`'s designate / move / stop and `PrinterSetupCard`'s handlers (move them into a hook
-  `hooks/use-printer-setup-actions.ts` exposing `{ designate(label), clear(), testPrint(), attest(yes) }` with today's
-  toasts), `TextKotSection`'s rows, `BillPrinterSection`, `PrinterAdvanced`'s items.
-- `PrinterSetupCard.tsx`, `PrintWhereSection.tsx`, `PrinterAdvanced.tsx` are deleted once every reader moved (or kept
-  only where `/printers` still needs them; nothing unused stays). The focus targets `data-printer-target="device"` and
-  `data-action="designate"` move with their controls (the status card's links use them).
-- Tests: `renderToStaticMarkup` per card (each state of §6.6 with its exact words); the pins of PX-2 Task 6 updated for
-  the settings view's new children.
+**The owner's answers (2026-11-05, start of PX-3, both recommended):** Q1 — a printers-mode Not printed row that sent
+nothing names its printer: "Kitchen printer is off or not connected." (simple mode / an unknown printer: today's "The
+printer is off or not connected."). Q2 — on a device that prints nothing, a STUCK printer is named before a merely busy
+one with more slips (then the most slips, then the setup's order). Both in Task 12.
 
-### Task 11: The guided connect
+**PX-3 rulings (decided here; none changes what the owner approved):**
+- **X1 Wire sentences never change.** `DESKTOP_SHELL_REFUSALS` (lib/desktop-shell-messages.ts) is the list that makes a
+  Windows app refusal "nothing sent" (`NOTHING_SENT`, lib/print-write-outcome.ts:54-65) and the shell still sends those
+  exact sentences: changing one would turn a refusal into "may have printed" (a REPRINT, a bill to check, a counted
+  try). It stays byte-identical (a new pin); B10's words are a display map at the places the web shows a refusal. Same
+  for the lane constants (PX-2's rule).
+- **X2 The guided connect is the Android app's flow** (`caps.native`; the client's lane; mockups `g1`–`g6` are Android).
+  Chrome keeps today's `BrowserPrinterConnect` inside the card (its chooser IS the list) and the Windows app keeps
+  `DesktopPrinterPicker` + `DesktopPrintMethod` inside the card (§6.6 item 1). The status card's "Connect a printer" /
+  "Still not working? Connect it again" open the guided connect in the app, and go to the card (PX-2's `SETUP_TARGETS`)
+  elsewhere.
+- **X3 Back and Cancel return to settings** (§6.7); a connect in flight is not aborted (the bridge has none): it finishes
+  as today's would. From "connected" on, the foot says **Done** (mockup g4; it closes the sheet, the frame's Done).
+- **X4 Add mode ends at "connected"** with "Your manager chooses which slips it prints, in Printer setup." — no test
+  slip: a printer the setup does not name yet prints nothing, and a new kind of test slip would be new paper (SR-1). A
+  failed add says today's words ("The printer is added, but not connected yet. Check it is on, then tap Reconnect.").
+- **X5 Test print per printer (printers mode):** admins get the setup's own test (`useTestPrinter`, hooks/use-print-setup.ts:89,
+  `POST /api/printers/:id/test`, admin-only on the server: the whole path, one request per tap) on every printer of the
+  card; staff get today's device test (`queueTestSlip`, `isHostDevice || lane === "raster"`) on this device's own printer
+  only. No route or auth changes.
+- **X6 Reuse by keeping files** where the job stays: `DevicePrinterSection.tsx` becomes the "This device's printer" card
+  (and, in printers mode, the "Printers on this device" card with `OtherDevicePrinters.tsx` inside it); `TextKotSection.tsx`
+  becomes "Faster KOTs"; `BillPrinterSection.tsx` is already a card (unchanged). New files only for new jobs. On bridge v2
+  in simple mode the card keeps "Other printers on this device" and "Connect another printer" (the path into printers mode).
+- **X7** Simple mode's card has no Reconnect (§6.6 item 1: the status card's Reconnect is the fix); printers mode shows
+  Reconnect only on a printer that is not connected. **X8** "Printer setup ›" once, in More, admins only, never on
+  /printers (mockups). **X9** More's "Remove the printing device" loses its help line (its confirm says what it does);
+  "Battery settings" keeps today's condition (an app with the `battery` feature). **X10** The USB choice says "Plugged
+  into {noun}". **X11** A scan refused for permission is read from the scan's `UNAUTHORIZED` answer (the page has no SDK
+  number): the first → **Allow**; after an Allow that was refused → the 3 steps. **X12** `PRINT_JOB_NOT_ROUTED_MESSAGE`
+  is a toast only (hooks/use-host-routing.ts:247,287): reworded. **X13** The /pos clock's red word (Ruling M) →
+  "needs attention" (true for every red reason).
 
-- Create `apps/cafe/lib/printer/connect-flow.ts` (pure):
-  `type ConnectStep = "type" | "list" | "connecting" | "connected" | "question" | "tips"`;
-  `interface ConnectState { step: ConnectStep; mode: "replace" | "add"; transport: TransportWord | null; target: { id: string; name: string } | null; error: string | null }`;
-  `connectFlowReducer(state: ConnectState, event: ConnectEvent): ConnectState` with events `choose(transport)`,
-  `pick(target)`, `connected()`, `failed(message)`, `test()`, `answer(yes: boolean)`, `again()`, `back()`; and
-  `connectStepsOf(lane): ConnectStep[]` (the Windows app starts at `list`).
-- Create `apps/cafe/components/print/connect/` `ConnectFlow.tsx` (the third view; head "Connect a printer" + "Step n of
-  3 · {type}"; foot Cancel), `ConnectType.tsx`, `ConnectList.tsx` (paired at once, the 8 s scan started on mount, "Search
-  again", the not-in-list steps; USB list + Refresh; network address + FindNetworkPrinters), `ConnectProgress.tsx`,
-  `ConnectTest.tsx` (paper width, test slip, yes / no, tips; the host's attestation exactly as today's Test print).
-- Entry points: the status card's "Connect a printer" / "Still not working? Connect it again" (Bluetooth list, replace),
-  settings' "Change" (replace) and "Connect another printer" (add, printers mode).
-- Tests: the reducer (every step and back), `renderToStaticMarkup` of each step's words (§6.7 exact).
+## Review Focus (PX-3)
 
-### Task 12: The words everywhere (B10, the button names, Faster KOTs)
+1. **Each lane keeps every action:** the app simple / printers mode, Chrome, the Windows app, a host and a non-host:
+   Remove of a pool printer the setup does not name, Add another printer in simple mode, Stop / Move / Remove the
+   printing device, the host's attestation. Pinned in Task 10 / 10b (`settings-view.test.ts`, the source pins).
+2. **Change on a printer the setup prints through this device keeps it in the app** (today's `keepInApp`, the 2F2 M-4
+   rule) when it is done through the guided connect. Pinned in Task 11 (`use-connect-attempt` source pin + the moved pin).
+3. **A connect that fails, or Back / Cancel mid-way:** the old printer stays as today's failed select leaves it; the list
+   says why inline; nothing toasts twice. Pinned in Task 11 (`connect-flow.test.ts`).
+4. **Words that are also wire sentences** (X1) stay byte-identical; the display map changes only what staff read.
+   Pinned in Task 12.
+5. **No new recurring request:** the settings cards and the guided connect read only what is cached; the scan is the
+   bridge's 8 s list (no server); the admin Test print is one POST per tap. Pinned in Task 11 (the F-I4 pin extended).
 
-- `printerButtonName`'s five names: "— open printer setup" → "— open printer" (pins in `lib/printer/printer-dot.test.ts`,
-  `lib/printer-dot-ui-paths.test.ts` changed on purpose).
-- "Printer setup" pointers in staff text (spec §5's list): a staff reader gets "Ask your manager to change it in
-  Printer setup."; an admin gets a link to `/printers`; the printers-mode "cancels every waiting slip" confirm only in
-  simple mode; `lib/desktop-shell-messages.ts`'s "Open Settings, then Printing" web copies → "Open the printer icon,
-  then Printer settings, and choose the printer." (the Windows app's own words are native, later).
+### Task 10: The settings view as cards (simple mode, the frame of the view)
+
+**Files:**
+- Create: `apps/cafe/hooks/use-printer-panel-focus.ts`, `apps/cafe/hooks/use-printer-setup-actions.ts`,
+  `apps/cafe/hooks/use-test-print.ts`, `apps/cafe/lib/printer/settings-view.ts`, `apps/cafe/lib/printer/settings-view.test.ts`,
+  `apps/cafe/components/print/settings/PrinterSettingsView.tsx`, `apps/cafe/components/print/settings/PrintForOthersCard.tsx`,
+  `apps/cafe/components/print/settings/MoreCard.tsx`
+- Modify: `components/print/PrinterPanel.tsx` (the focus wiring → the hook; the settings view → `<PrinterSettingsView
+  home={home} noun={noun} />`), `components/print/DevicePrinterSection.tsx` (the card), `components/print/PrintHostCardParts.tsx`
+  (`PrinterRow`'s look), `components/print/TextKotSection.tsx` (Faster KOTs), `components/print/printer-classes.ts`,
+  `docs/GO-LIVE-CHECKLIST.md` (the quoted words), `apps/cafe/package.json` (`testChain`)
+- Delete: `components/print/PrinterSetupCard.tsx`, `components/print/PrintWhereSection.tsx`, `components/print/PrinterAdvanced.tsx`
+- Budgets: PrinterPanel ≤ 220 (pin unchanged), DevicePrinterSection ≤ 260, every new file ≤ 300.
+
+**Interfaces:**
+- `usePrinterPanelFocus(input: { home: "sheet" | "page"; view: PrinterPanelView; onView?: (next: "status" | "settings") => void }):
+  { rootRef: RefObject<HTMLDivElement | null>; listRef: RefObject<HTMLDivElement | null>; onFocus(event: FocusEvent): void;
+  openSetup(selector: string): void }` — PrinterPanel.tsx:56-74, 102-107, 130-165 moved as they are (the view effect,
+  the list-left effect, `focusAndShow`, `pendingTarget`, the selectors). No behaviour change.
+- `usePrinterSetupActions(): { host: PrintHostState | null; hostLabel: string | null; isHostDevice: boolean; online: boolean;
+  printersMode: boolean; label: string; setLabel(next: string): void; designate(): Promise<void>; designating: boolean;
+  clear(): Promise<void>; clearing: boolean }` — PrinterSetupCard.tsx:36-56, 60-118, 164-174 as they are (dropHostPref,
+  handleDesignate, handleClear, every message and toast, `HOST_LABEL_FALLBACK`, the label default).
+- `useTestPrint(): { testable: boolean; raster: boolean; phase: "idle" | "printing" | "confirm"; tips: boolean;
+  startDisabled: boolean; deviceBusy: boolean; attesting: boolean; start(): Promise<void>; answer(printed: boolean,
+  worksWords?: string): Promise<void> }` — PrinterSetupCard.tsx:39-48, 72-78, 88-95, 120-162 as they are; `startDisabled`
+  = today's `current !== null || phase !== "idle" || beat.isPending`; `worksWords` (the guided connect's "Printing works on
+  {noun}.") replaces `TEST_WORKS_MESSAGE` and, on the host, `ATTEST_SILENT_MESSAGE` for that one answer.
+- `lib/printer/settings-view.ts` (pure):
+  ```ts
+  export type PrintForOthersView = { kind: "hidden" } | { kind: "checking"; text: string } | { kind: "offer" }
+    | { kind: "host"; printersMode: boolean } | { kind: "elsewhere"; host: string; online: boolean };
+  export function printForOthersViewOf(i: { printersMode: boolean; isHostDevice: boolean; host: PrintHostState | null;
+    hostLabel: string | null; online: boolean }): PrintForOthersView; // printers mode and not the host → hidden
+  export function stopQuestionOf(printersMode: boolean): string;
+  export type MoreRow = "change-address" | "battery" | "remove-host" | "printer-setup";
+  export const MORE_ROW_WORDS: Record<MoreRow, string>;
+  export function moreRowsOf(i: { native: boolean; battery: boolean; printersMode: boolean; isHostDevice: boolean;
+    hostSet: boolean; isAdmin: boolean; home: "sheet" | "page" }): MoreRow[];
+  export function deviceCardTitleOf(lane: PrintLane): string;      // "desktop" → "This PC's printer"; else "This device's printer"
+  export function printerSubOf(printer: DevicePrinter): string;     // "Bluetooth · 80 mm paper" (printerTypeLabel · paper)
+  export function textKotRowWordsOf(name: string, rows: number): { label: string; sub: string };
+  ```
+- `PrinterSettingsView({ home, noun }: { home: "sheet" | "page"; noun: DeviceNoun })` draws, in order (§6.6 numbering):
+  `<DevicePrinterSection noun={noun} />`, `<PrintForOthersCard />`, `<TextKotSection />`, `<BillPrinterSection />`,
+  `<MoreCard home={home} />`. Task 11 adds `onConnect`.
+
+**The words (exact; §6.6, mockups `t-settings`, `t-host`):**
+- Card 1 (DevicePrinterSection): title `deviceCardTitleOf(lane)`, no sub (today's "The printer this device prints on."
+  goes); the row: 9 px dot (ok green when connected, else `--subtle`), the name (14 px / 500), `printerSubOf` (12.5 px),
+  today's state word (`STATUS_LABEL`: "Connected" / "Not connected" / "Connecting…" / "Tap Reconnect" / "In another tab").
+  Buttons (36 px, one wrapping row): **Test print** (with the receipt icon; only when `testable`; "Printing…" while it
+  prints; disabled by `startDisabled`) · **Change** ("Keep this printer" while the chooser is open; Task 11: the guided
+  connect in the app) · **Remove** (`PRINTER_BUTTON_REMOVE_CLASS`; today's rule: `inSetup` → the note
+  `PRINTER_IN_SETUP_MESSAGE`, `known` → the button; today's confirm "Remove {name} from this device?" "Yes, remove" / "No").
+  The test's answer: today's `InlineConfirm` ("Did the test slip print?" "Yes" / "No — help me"; "Did it print without a
+  print window?" "Yes" / "No") and `PrinterTestTips`; "Busy with another slip. Try again in a moment." when `deviceBusy`.
+  Then **Paper width** (today's toggle). Kept as today: the elsewhere line, "Keep this tab open, or use the POS app: …"
+  for a non-app printer, the snapshot's message line. No printer: the app → "No printer on {noun}." (13.5 px) +
+  **Connect a printer** (`PRINTER_BUTTON_PRIMARY_CLASS`; Task 10: opens today's `NativePrinterPicker` inline; Task 11: the
+  guided connect); Chrome → today's `BrowserPrinterConnect`; neither → today's `NO_CAPABILITY_MESSAGE`. The Windows app →
+  the title "This PC's printer", today's `DesktopPrinterPicker` inside, Test print under it when `testable` (the host's
+  attestation). Kept: `data-printer-target="device"` and `tabIndex={-1}` on the section; `<OtherDevicePrinters>` inside on
+  the app (Task 10b restyles it). No Reconnect (X7).
+- Card 3 (PrintForOthersCard, `data-action="designate"` on the one designate control of each state): title "Print for
+  other devices"; sub "Phones and tablets without a printer can send their slips here." in the `offer` and `checking`
+  states only. `checking`: today's "Checking where slips print…" / "This device is offline. Where slips print will show here
+  when it is back online." `offer`: **Print all slips on this device** (36 px outline) → the label "Name for this device",
+  the field (44 px, 16 px text below 720 px, `maxLength` 60, today's default name), **Print all slips here** (40 px
+  primary; "Saving…" while it saves) and **Cancel** (40 px outline, closes the form). `host` (simple): "This device prints
+  slips for **all devices**." + **Stop printing here** → confirm `stopQuestionOf(false)` = today's "Removing the printing
+  device cancels every waiting slip. Continue?" ("Yes, remove" / "No"). `host` (printers mode, a former host): "Printers
+  are set up: each slip prints at its own printer." + **Stop printing here** → confirm `stopQuestionOf(true)` = "Stop
+  printing here? Each printer keeps printing its own slips." ("Yes, stop" / "No") (B10: the untrue sentence only in simple
+  mode). `elsewhere`: "Slips print at **{host}**." + **Print here instead** → online: today's "{host} is printing now.
+  Move printing to this device?" ("Yes, move" / "No"); offline: designates at once (today). Bold marks `**…**` drawn as
+  `<strong>` (as the status card does). Toasts: the hook's (today's).
+- Card 4 (TextKotSection): title "Faster KOTs", no sub (today's long description goes); each row: label "Print KOTs as
+  plain text" (13.5 px / 500) over "English only. Prints in about 1 second." (12.5 px); with two or more rows the sub is
+  "{printer name} · English only. Prints in about 1 second." (`textKotRowWordsOf`); the switch's `aria-label`
+  "Print KOTs as plain text: {printer name}". Unchanged: "Characters per line" with "Automatic" / "42", the question "Did it
+  print clearly, with the ruler on one line?", every other line, the switch's logic. No row for a printer that cannot
+  (today's `textKotPrintersOf`).
+- Card 6 (MoreCard): one list card, 52 px rows (padding 12 / 16, 14 px / 500, a --border-2 rule between rows, a
+  chevron on the navigating rows), rows = `moreRowsOf`: "Change POS address" (`native`; `nativeRequest("app.changeUrl")`,
+  today's failure toast), "Battery settings" (`native && battery`; `app.battery`, today's toast), "Remove the printing
+  device" (`!printersMode && !isHostDevice && hostSet`; --status-bad-ink; tap → today's `InlineConfirm` with
+  `stopQuestionOf(false)` "Yes, remove" / "No" in the row's place; `clear()`), "Printer setup" (`isAdmin && home ===
+  "sheet"`; closes the sheet, then `/printers`, as the status card's link does). No row → no card.
+- Removed words (on purpose): "Where slips print", "Choose which device prints your slips.", "Each device prints its own
+  slips.", "Use one device for all printing", "Good for a Counter PC with the printer: …", "Printers are set up: each slip
+  prints at its printer (Printer setup → Printers).", "More options", "Battery settings for printing" + its help,
+  `CLEAR_HELP`, "Test print" card's sub and notes, "Fast text KOTs (English only)" + its description.
+
+- [ ] **Step 1: Write the failing tests** in `lib/printer/settings-view.test.ts` (every assertion with a message):
+  `print for others: each state's view` (printers mode + not host → hidden; printers mode + host → `{ kind: "host",
+  printersMode: true }`; host → `{ kind: "host", printersMode: false }`; `host === null` online → checking "Checking where
+  slips print…", offline → the offline line; another host → `{ kind: "elsewhere", host: "Counter PC", online: true }`;
+  none → offer); `the stop question says the cancel only in simple mode` (exact strings above); `More draws only the rows
+  that apply` (the app + battery + a host set + admin + sheet → all four in order; on /printers no "printer-setup"; the
+  host → no "remove-host"; printers mode → no "remove-host"; Chrome staff with no host → `[]`); `the words of More's rows`;
+  `the device card's title and sub` (desktop → "This PC's printer"; a Bluetooth 80 mm printer → "Bluetooth · 80 mm
+  paper"; 58 mm → "… · 58 mm paper"); `Faster KOTs rows name the printer only when there are two` (1 row → sub "English
+  only. Prints in about 1 second."; 2 → "Kitchen printer · English only. Prints in about 1 second.").
+  Source pins (in the same file, comments stripped): `the settings view draws its cards in §6.6's order` (PrinterSettingsView:
+  `<DevicePrinterSection` < `<PrintForOthersCard` < `<TextKotSection` < `<BillPrinterSection` < `<MoreCard`); `the focus
+  targets moved with their controls` (`data-printer-target="device"` in DevicePrinterSection, one `data-action="designate"`
+  per state in PrintForOthersCard); `the hooks keep today's handlers` (use-test-print.ts: `await queueTestSlip()`,
+  `useBeatPrintHost(`, the startDisabled expression; use-printer-setup-actions.ts: "Printing device removed — ",
+  `syncHostPref()` after both writes); `no card reads the pulse twice` (`usePosPulseContext(` once in
+  use-printer-setup-actions.ts, nowhere else under components/print/settings/).
+- [ ] **Step 2: Run** `node --import tsx --test lib/printer/settings-view.test.ts` from `apps/cafe` → FAIL (module not found).
+- [ ] **Step 3: Implement** the hooks (moved code first, then the cards), `settings-view.ts`, the three components, the card
+  restyles; delete the three files; re-point every pin below (same meaning, new path; none deleted to pass; each listed in
+  the Results); update `docs/GO-LIVE-CHECKLIST.md`'s quotes of the Faster KOTs words (`go-live-runbook.test.ts` PIN §1
+  follows).
+- [ ] **Step 4: Run** the new file + every pin file below + `lib/css-compat.test.ts` → PASS; `npm run typecheck` → 0; the
+  cafe chain → 0 fail.
+- [ ] **Step 5: Commit** `feat(print): the printer settings as cards (PX-3 Task 10)`.
+
+Pins changed on purpose (re-point each needle at the file that now holds its code, keep its meaning):
+`lib/printer-panel-layout.test.ts` (PANEL_FILES; the buttons test's file reads; the views test: `<PrinterSetupCard` →
+`<PrinterSettingsView`; the words test's keep-list re-pointed, "More options" / "Where slips print" / "Print test slip"
+out on purpose, the Remove note's dash out (X9); the focus test → `hooks/use-printer-panel-focus.ts`),
+`lib/printer-ui-paths.test.ts` (the where / card / advanced / device / tips / paper entries and their mutations),
+`lib/print-host-card-paths.test.ts` (CARD_TSX → the two hooks; CARD_FILES; PIN b, d, f, g re-pointed; the 2nd hop →
+`<PrinterSettingsView`), `lib/print-paths.test.ts` (PRINTER_SETUP_CARD → `hooks/use-test-print.ts`),
+`lib/print-text-kot-paths.test.ts` (the order needle → PrinterSettingsView), `lib/print-bill-printer.test.ts:99-103`
+(printers mode reaches PrintForOthersCard through the hook), `lib/print-setup-fields.test.ts:46-47` (the panel order →
+PrinterSettingsView), `lib/pos-pulse-paths.test.ts:151-162` (the pulse reader `PrinterSetupCard.tsx` →
+`hooks/use-printer-setup-actions.ts`), `lib/printer-status-card.test.ts:167` (the order needles), `lib/go-live-runbook.test.ts`
+PIN §1 (TextKotSection's quoted words).
+
+### Task 10b: Printers on this device (printers mode)
+
+**Files:**
+- Modify: `components/print/DevicePrinterSection.tsx`, `components/print/OtherDevicePrinters.tsx`, `lib/printer/settings-view.ts`
+  (+ test), `components/print/printer-classes.ts`
+- Budgets: DevicePrinterSection ≤ 260, OtherDevicePrinters ≤ 220.
+
+**Interfaces:**
+- `settingsNameOf(here: readonly PrinterHere[], nativeId: string | null): string | null` (settings-view.ts) — the setup's
+  name of a printer of this device: the `here` entry whose `nativeId` matches (case-insensitive), or for `null` (this
+  device's own printer) the entry with no `nativeId`; `null` when the setup does not name it (the app's own name shows).
+- The card in printers mode (`dotPrinters.printersMode && dotPrinters.isWriter`, from `useDotPrinters(deviceId)`):
+  title "Printers on this device", sub "Which slips each one prints: set by your manager."; first this device's own
+  printer as a block (its setup name, else the app's; sub "{type} · {paper} paper"; the state word; **Reconnect** only
+  when not `connected` — today's `settle(devicePrinter().reconnect())`; **Test print** (X5); **Remove** / the note by
+  today's rule; no Change), then `<OtherDevicePrinters>`'s blocks in the same card (no title of their own): the setup
+  name else the app's, sub "{app name} · {transport label}" (+ the tcp address as today), the state word ("Connected" /
+  "Connecting…" / "Not connected", today's `STATUS_WORDS`), **Reconnect** only when not connected (today's call and
+  toasts), **Test print** (X5: admins, only for a printer of `here`), **Remove** / the in-setup / takeover notes by today's
+  rule; then **Connect another printer** (today's add; Task 11: the guided connect in add mode). Simple mode keeps
+  "Other printers on this device" as a 13 px label with the same blocks (Reconnect stays there: no status-card Reconnect
+  covers them) and "Connect another printer".
+- Words: `OtherDevicePrinters`'s `NOTE` → "Which slips each one prints: set by your manager."; "Add another printer" →
+  "Connect another printer"; "Close the printer list" stays for the open chooser.
+
+- [ ] **Step 1: Write the failing tests** (settings-view.test.ts): `the setup names a printer of this device`
+  (`settingsNameOf` with Kitchen (no nativeId) and Bill (`bt-classic:BB`): `null` → "Kitchen printer", `"BT-CLASSIC:bb"`
+  → "Bill printer", an unknown id → `null`); source pins: `printers mode is one card` (DevicePrinterSection renders the
+  title "Printers on this device" and `<OtherDevicePrinters` inside the same `<PanelSection>`); `Reconnect only on a
+  printer that is down` (both files gate it on the status); `the setup's test is the admin's` (`useTestPrinter` only under
+  `isAdmin`); `staff keep the device test on this device's printer` (`useTestPrint` in DevicePrinterSection).
+- [ ] **Step 2: Run** → FAIL. **Step 3: Implement.** **Step 4: Run** the file + the pins below → PASS; typecheck 0.
+- [ ] **Step 5: Commit** `feat(print): printers mode: one card for the printers on this device (PX-3 Task 10b)`.
+
+Pins changed on purpose: `lib/print-agent-printers.test.ts:306-328, 591` (the moved words; the rules unchanged),
+`lib/print-setup-ui-paths.test.ts:165-172`, `lib/printer-ui-paths.test.ts` (others).
+
+### Task 11: The guided connect (the Android app)
+
+**Files:**
+- Create: `apps/cafe/lib/printer/connect-flow.ts` + `connect-flow.test.ts`, `apps/cafe/hooks/use-printer-views.ts`,
+  `apps/cafe/hooks/use-connect-attempt.ts`, `apps/cafe/hooks/use-native-printer-list.ts`,
+  `apps/cafe/components/print/connect/` `ConnectFlow.tsx`, `ConnectType.tsx`, `ConnectList.tsx`, `ConnectProgress.tsx`,
+  `ConnectTest.tsx`, `apps/cafe/lib/connect-steps.test.ts` (`renderToStaticMarkup` of the props-only steps)
+- Modify: `PrinterPanel.tsx`, `PrinterStatusButton.tsx` (≤ 120, pin unchanged), `PrinterPanelFrame.tsx`,
+  `settings/PrinterSettingsView.tsx`, `DevicePrinterSection.tsx`, `OtherDevicePrinters.tsx`, `printer-classes.ts`, `package.json`
+- Delete: `components/print/NativePrinterPicker.tsx` (its last readers move to the guided connect; its logic moves to
+  `use-native-printer-list.ts`, never forked)
+
+**Interfaces:**
+```ts
+// lib/printer/connect-flow.ts (pure)
+export type ConnectTransport = "bluetooth" | "usb" | "network";
+export type ConnectStep = "type" | "list" | "connecting" | "connected" | "question" | "tips";
+export interface ConnectEntry { mode: "replace" | "add"; transport: ConnectTransport | null }
+export interface ConnectTarget { id: string; name: string }
+export interface ConnectState { step: ConnectStep; mode: "replace" | "add"; transport: ConnectTransport | null;
+  target: ConnectTarget | null; error: string | null }
+export type ConnectEvent = { type: "choose"; transport: ConnectTransport } | { type: "pick"; target: ConnectTarget }
+  | { type: "connected" } | { type: "failed" } | { type: "tested" } | { type: "not-printed" } | { type: "other" };
+export const CONNECT_TRANSPORT_WORDS: Record<ConnectTransport, string>; // "Bluetooth", "USB", "Wi-Fi or network"
+export function connectStartOf(entry: ConnectEntry): ConnectState;        // a transport → "list", else "type"
+export function connectFlowReducer(state: ConnectState, event: ConnectEvent): ConnectState;
+export function connectHeadOf(state: ConnectState): { sub: string; foot: "cancel" | "done" };
+export function connectTransportOf(word: TransportWord | null): ConnectTransport | null; // bluetooth / usb / network, else null
+// hooks/use-printer-views.ts — the sheet's views, owned by the button (the panel's own on /printers)
+export type PrinterPanelView = "status" | "settings" | "connect";          // moved here from PrinterPanel.tsx (re-exported there)
+export interface PrinterViews { view: PrinterPanelView; connect: ConnectState | null; show(next: "status" | "settings"): void;
+  startConnect(entry: ConnectEntry): void; send(event: ConnectEvent): void }
+export function usePrinterViews(): PrinterViews;
+// hooks/use-connect-attempt.ts — today's connect calls, moved from DevicePrinterSection.tsx:56-66 / OtherDevicePrinters.tsx:121
+export function useConnectAttempt(): { replace(target: NativeSelectTarget): Promise<ConnectOutcome>;
+  add(target: NativeSelectTarget): Promise<ConnectOutcome> }; // replace = keepInApp ?? devicePrinter().selectNative(target, paperDefault)
+// hooks/use-native-printer-list.ts — NativePrinterPicker.tsx:47-166 as they are (load on mount + NATIVE_READY_EVENT, the
+// pushed status order, scan, refresh, Turn on Bluetooth, Allow Bluetooth, the network form's checks)
+export function useNativePrinterList(): { printers: NativePrinter[] | null; bluetooth: NativeBluetoothState | null;
+  scanning: boolean; refreshing: boolean; working: boolean; scan(): Promise<unknown>; refresh(): Promise<void>;
+  turnOnBluetooth(): Promise<void>; allowBluetooth(): Promise<void> };
+// scan() resolves to the scan's error (null when it listed) and does not toast: the list says it inline (Task 13 reads a
+// refusal from it). A list load's failure keeps today's toast.
+```
+- Reducer: type + choose → list (transport, error null); list + pick → connecting (target); connecting + connected →
+  connected; connecting + failed → list with `error` = replace: "Could not connect to {name}. Check it is on, then try
+  again." / add: "The printer is added, but not connected yet. Check it is on, then tap Reconnect." (X4); connected +
+  tested → question (replace only); tips + tested → question; question + not-printed → tips; tips + other → type (target
+  and error cleared); every other pair → the same state (`===`). Back / Cancel / Done are not events: they leave the view.
+- Head: title "Connect a printer"; sub "Step 1 of 3" (type), "Step 2 of 3 · {CONNECT_TRANSPORT_WORDS[t]}" (list), "Step 3
+  of 3" (connecting … tips); foot "cancel" for type / list / connecting, "done" after (X3).
+- The frame: `PrinterPanelFrame` + `sub?: string` (under the title, `PRINTER_PANEL_SUB_CLASS`), `backLabel?: string`
+  ("Back to printer status" settings; "Back to printer settings" connect), `onCancel?: () => void` (the foot shows
+  **Cancel**, 44 px outline, `PRINTER_PANEL_CANCEL_CLASS`, instead of Done). The button: `usePrinterViews()` replaces its
+  `useState<PrinterPanelView>`; Ruling Q holds (every open → `show("status")`, nothing on close); titles "Printer" /
+  "Printer settings" / "Connect a printer".
+- PrinterPanel: `PrinterPanel({ home, view, onView, connect, onConnect, onConnectEvent, onClose })` — `onView(next:
+  "status" | "settings")`, `connect: ConnectState | null`, `onConnect(entry: ConnectEntry)`, `onConnectEvent(event)`; on
+  `home="page"` it uses its own `usePrinterViews()` and draws the connect view inline in place of both views (a head row
+  with the frame's classes: back, "Connect a printer", the sub; then the flow; then the foot's button). Entry points: the
+  status card's `connect` (app) → `onConnect({ mode: "replace", transport: null })`; `connect-again` (app) →
+  `{ mode: "replace", transport: connectTransportOf(deviceTransportOf(saved)) }`; elsewhere → today's `openSetup` (X2).
+  Settings: Change / Connect a printer (app) → replace, null; Connect another printer → `{ mode: "add", transport: null }`.
+- ConnectFlow `({ state, send, noun, onLeave }: { …; onLeave(to: "status" | "settings"): void })` draws the step:
+  **type** (ConnectType, props only): "What kind of printer?" (16 px / 600), three 72 px rows with a 44 px tile
+  (--status-info-tint, --primary icon 22 px), 15 px / 600 title over 13 px sub, a chevron: "Bluetooth" / "Most receipt
+  printers", "USB cable" / "Plugged into {noun}" (X10), "Wi-Fi or network" / "On the cafe's network".
+  **list** (ConnectList, the container over `useNativePrinterList`): Bluetooth — rows of the bt-classic / ble entries
+  (Task 13 merges them), each: a 9 px quiet dot, name (14 px / 500) over "Paired" / "Nearby" (12.5 px), **Connect** (36 px;
+  the first paired row's primary); on mount the scan runs once by itself ("Looking for more printers…" with a spinner,
+  --border-2 rule above it, 13.5 px); today's Bluetooth notices ("Bluetooth is off on this device." + "Turn on Bluetooth";
+  "The POS app needs permission to use Bluetooth." + "Allow Bluetooth"; the unsupported line); then the card "Not in the
+  list?" with 1 "Turn the printer on." 2 "Pair it in Android's Bluetooth settings (PIN is often 0000 or 1234)." 3 "Then
+  tap **Search again**." + **Search again** (36 px, a refresh icon). USB — the usb entries (sub "USB") + **Refresh**; none:
+  "No USB printer found. Connect a powered printer with a USB OTG adapter, then tap Refresh." + today's OTG note. Wi-Fi or
+  network — today's form: the label "Network printer (Wi-Fi or Ethernet)", "Printer address" (44 px, 16 px text below 720
+  px) + "Port", today's checks and errors, `FindNetworkPrinters`, **Connect** (40 px primary). The row's / form's tap →
+  `send(pick)`, then `replace(target)` or `add(target)` → `send(connected | failed)`; the inline `error` (13 px,
+  --status-bad-ink, `role="alert"`) above the rows. **connecting** (ConnectProgress): a 48 px spinner, "Connecting to
+  {name}…" (18 px / 600), "This can take up to 30 seconds. If Android asks to pair, tap **Pair**." (14 px). **connected /
+  question / tips** (ConnectTest, over `useTestPrint`): a 64 px green check, "{name} is connected"; replace: **Paper
+  width** (today's toggle, `devicePrinter().setPaper`), **Print a test slip** (44 px primary, only when `testable`; `start()`
+  → `send(tested)`), a "Skip" link → `onLeave("status")`; add: "Your manager chooses which slips it prints, in Printer
+  setup." **question**: a 64 px neutral circle (receipt icon), "Did the test slip come out?", **Yes** (48 px primary) →
+  `answer(true, "Printing works on {noun}.")` then `onLeave("status")`; **No** (48 px outline) → `answer(false)` then
+  `send(not-printed)`. **tips**: "Let's fix it" (16 px / 600), 1 "Paper roll: the shiny side faces the print head." 2
+  "Switch the printer off and on." 3 "Try the other paper width." with the toggle, **Print the test slip again** (44 px
+  primary) and "Choose another printer ›" (`send(other)`).
+
+- [ ] **Step 1: Write the failing tests:** `connect-flow.test.ts`: `a known transport starts at the list`, `each step and
+  its next` (the reducer table above, every pair), `a failed connect returns to the list with its words` (replace / add
+  exact strings), `add mode has no test step` (connected + tested → unchanged), `anything else changes nothing` (`===`),
+  `the head says the step and the foot` (every step), `the saved printer's transport` (`connectTransportOf`).
+  `connect-steps.test.ts` (`renderToStaticMarkup`, a global React as lib/floor-dialogs.test.ts): every step's words above,
+  exactly; the first paired row's Connect is the primary; the Wi-Fi field is 16 px below 720 px. Source pins (in
+  connect-steps.test.ts): `replace keeps a setup printer in the app` (use-connect-attempt.ts holds today's `keepInApp`
+  expression; DevicePrinterSection no longer calls `selectNative`), `the list's logic is today's` (use-native-printer-list.ts:
+  `loadPicker(`, `createStatusOrder()`, `NATIVE_READY_EVENT`, `listNative(true)`), `the sheet's views` (the button calls
+  `usePrinterViews()`; its two opens call `show("status")`; nothing on close), and the F-I4 pin extended to the new
+  components and hooks (no `refetchInterval`, `setInterval`, `router.refresh`, `useQuery(`).
+- [ ] **Step 2: Run** both files → FAIL (modules not found).
+- [ ] **Step 3: Implement**; delete NativePrinterPicker.tsx; re-point the pins below.
+- [ ] **Step 4: Run** the two files + the pins + `lib/css-compat.test.ts` → PASS; typecheck 0; the cafe chain → 0 fail.
+- [ ] **Step 5: Commit** `feat(print): connect a printer, step by step (PX-3 Task 11)`.
+
+Pins changed on purpose: `lib/printer-panel-layout.test.ts` (the frame's head test: the sub and Cancel; the views test:
+the connect view and the button's mount line; Ruling Q → `usePrinterViews`), `lib/printer-dot-ui-paths.test.ts` (the
+frame's call shape), `lib/go-live-runbook.test.ts` (NETWORK_TITLE → ConnectList), `lib/print-find-network-paths.test.ts`,
+`lib/print-agent-printers.test.ts:320-328` (keepInApp → use-connect-attempt.ts), `lib/print-setup-ui-paths.test.ts:172`,
+`lib/print-host-card-paths.test.ts` (CARD_FILES), `lib/printer-ui-paths.test.ts` (native), `lib/printer-panel-layout.test.ts`
+(PANEL_FILES + the primary-class pin).
+
+### Task 12: The words everywhere (B10, the button names, the owner's two answers)
+
+**Files:** `lib/printer/printer-dot.ts`, `lib/desktop-shell-messages.ts`, `lib/print-job-toast.ts`,
+`hooks/use-print-host-bridge.ts` (net 0 lines), `lib/print-waiting-view.ts`, `lib/print-waiting.ts`, `lib/printer/print-lane.ts`,
+`lib/print-routing.ts`, `lib/print-agent-printers.ts`, `components/print/TextKotSection.tsx`,
+`components/print/setup/PrintersSetupSection.tsx`, `lib/pos-clock.ts`, and their tests.
+
+- **Button names** (`printerButtonName`): "Printer connected — open printer", "Printer not connected — open printer",
+  "Open printer", "Checking the printer — open printer", "Printer needs attention — open printer", "Printer not printing —
+  open printer".
+- **The Windows app's refusals, shown** (X1): `DESKTOP_SHELL_REFUSAL_WORDS: Readonly<Record<string, string>>` and
+  `desktopRefusalWordsOf(message: string): string` in lib/desktop-shell-messages.ts (pure; any other message unchanged):
+  "No printer is chosen for this PC. Open the printer icon, then Printer settings, and choose the printer." · "The chosen
+  printer saves files instead of printing. Open the printer icon, then Printer settings, and choose the printer." ·
+  "Direct printing is not available on this PC. Open the printer icon, then Printer settings, and choose the Windows
+  driver method." · "The chosen printer was not found on this PC. Open the printer icon, then Printer settings, and choose
+  the printer." · "That printer is not on this PC. Ask your manager to change it in Printer setup." ("No server address is
+  set." unchanged). Read at: the Not printed row's refusal and a failed row's own words (lib/print-waiting-view.ts), the
+  print bridge's toast (`slipToastOf(failure: string, jobId: string | undefined): string` in lib/print-job-toast.ts =
+  `desktopRefusalWordsOf(jobId === undefined ? failure : jobPrintToastOf(failure))`, one call per toast line in
+  use-print-host-bridge.ts: net 0 lines), and TextKotSection's error line. The dashboard band keeps its words (§10).
+- **Staff pointers** (B10): `DESKTOP_NO_PRINTER_MESSAGE` → "No printer is chosen on this PC. Open the printer icon, then
+  Printer settings, and choose the printer."; `PRINT_JOB_NOT_ROUTED_MESSAGE` → "No printer takes this slip. Ask your
+  manager to switch Notices on for a printer in Printer setup." (X12); `PRINTER_IN_SETUP_MESSAGE` → "Set by your manager
+  in Printer setup." (§6.6 item 2); `PRINTER_TAKEOVER_MESSAGE` → "This device prints it while the device that prints it is
+  offline or cannot reach it. Set by your manager in Printer setup."; PrintersSetupSection.tsx:138,147 "… will show under
+  Couldn't print." → "… will show under Not printed."; admin-only texts stay (token-settings-notes.ts:14,
+  print-design-labels.ts:194 — the Settings and design-editor pages, admins only; the status card's `printer-not-here` row
+  already splits staff / admin).
+- **Q1:** lib/print-waiting-view.ts's "sent nothing" row → `name === null ? "The printer is off or not connected." :
+  "{name} is off or not connected."` (the Windows refusal branch first, as today).
+- **Q2:** `waitingPrintersOf`'s order → stuck first, then the most slips, then the setup's order (lib/print-waiting.ts:113);
+  `printWaitingPrintersOf`'s key keeps its order (a stable string).
+- **X13:** `clockPrinterWords("red")` → "needs attention".
+
+- [ ] **Step 1: Write the failing tests** (exact strings; each in the test file that already holds its neighbours, or a
+  new `lib/print-words-px3.test.ts` where a file is at 300): the six button names; `the refusal list is the Windows app's,
+  byte for byte` (`DESKTOP_SHELL_REFUSALS` deep-equals today's six sentences; `printWriteOutcomeOf` of each → `sent: "no"`);
+  `desktopRefusalWordsOf` maps the five and leaves any other sentence; `slipToastOf` (a job's not-connected → the B7 words;
+  a desktop refusal, job or not → the new words; anything else unchanged); the row words (a refusal row shows the new
+  words; Q1 named / unnamed); `a stuck printer is named first` (Kitchen 4 slips busy + Bill 1 slip stuck → Bill; two
+  stuck → the most slips; a tie → the setup's order); the staff pointers; the clock word.
+- [ ] **Step 2: Run** → FAIL. **Step 3: Implement.** **Step 4: Run** the files + the pins below → PASS; typecheck 0.
+- [ ] **Step 5: Commit** `feat(print): the words point staff where they can go (PX-3 Task 12)`.
+
+Pins changed on purpose: `lib/printer/printer-dot.test.ts:192-202,322`, `lib/printer/printer-dot-waiting.test.ts:30`,
+`lib/print-waiting.test.ts:64-67`, `lib/print-setup-ui-paths.test.ts:69,71`, `lib/print-bill-printer.test.ts:87`,
+`lib/print-waiting-view.test.ts` (the R5 row), `lib/print-waiting-printers.test.ts` (the order), `lib/print-job-toast.test.ts`
+(the bridge's toast needle → `slipToastOf`), the pos-clock test, any test quoting the old pointer words (grep).
+`lib/print-write-outcome.test.ts` unchanged.
 
 ### Task 13: One row per printer, the Location Allow
 
-- `apps/cafe/lib/printer/native-picker-state.ts`: `mergeBluetoothRows(entries: readonly NativePrinterEntry[]):
-  NativePrinterEntry[]` — one row per MAC (the `bt-classic` / paired entry wins; its sub "Paired", a BLE-only one
-  "Nearby").
-- `scanRefusalOf(error: unknown, sdk: number | null): "allow" | "settings-steps" | null` → the list shows "Android needs
-  Location to find Bluetooth printers." + **Allow** (the bridge's `permissions.request`), then the 3 settings steps of §6.9
-  B11 when still refused.
+**Files:** `lib/printer/native-picker-state.ts` (+ `native-picker-state.test.ts`), `components/print/connect/ConnectList.tsx`,
+`lib/connect-steps.test.ts`.
 
-### Task 14: Responsive polish, verification, the Results
+**Interfaces:**
+```ts
+export interface ConnectRow { id: string; name: string; sub: "Paired" | "Nearby" }
+export function bluetoothRowsOf(entries: readonly NativePrinter[]): ConnectRow[];
+export type ScanRefusal = "allow" | "settings-steps";
+export function scanRefusalOf(error: unknown, asked: boolean): ScanRefusal | null;
+```
+- `bluetoothRowsOf`: only `bt-classic` / `ble` entries; one row per MAC (`address`, else the id after its first ":",
+  upper-cased); the paired entry wins, then `bt-classic` over `ble`; the row keeps the winner's `id` and `name`; sub
+  "Paired" when the winner is paired, else "Nearby"; paired rows first, then nearby, each in the list's order.
+- `scanRefusalOf`: `nativeErrorCode(error) === "UNAUTHORIZED"` → `asked ? "settings-steps" : "allow"`; anything else → null.
+- ConnectList: a scan refused → the notice "Android needs Location to find Bluetooth printers." + **Allow** (40 px primary;
+  `nativeRequest("permissions.request", { kind: "bluetooth" })`: granted → scan again; refused → the steps); the steps: 1
+  "Open Android Settings → Apps → Sandbee POS → Permissions." 2 "Allow Location (or Nearby devices)." 3 "Come back and tap
+  **Search again**."; any other scan error → today's `nativeErrorMessage` as the inline line (a Location that is off keeps
+  its own sentence).
 
-- The three sizes against the mockups (`out\*-390/820/1280.png`), WebView 109 + 154 on the emulator (the guided
-  connect included, the Android pairing pop-up seen on the emulator's Bluetooth stub only as far as it goes), the Windows
-  app smoke, a11y 0, the harness flows of PX-2 again, the review, the fix wave, the Results, the owner's real-printer
-  check list (spec §11) handed over.
+- [ ] **Step 1: Write the failing tests:** `one row for a printer seen twice` (`bt-classic:AA:BB` paired + `ble:aa:bb` → one
+  row, the classic id, "Paired"); `a BLE-only printer is nearby`; `paired first, in the list's order`; `USB and network
+  entries are not Bluetooth rows`; `a scan refused asks to Allow, then shows the steps`; `other errors are not a refusal`;
+  render: the notice and Allow, then the three steps.
+- [ ] **Step 2: Run** → FAIL. **Step 3: Implement.** **Step 4: Run** → PASS; typecheck 0.
+- [ ] **Step 5: Commit** `feat(print): one row per printer, and Allow for Android's Location ask (PX-3 Task 13)`.
+
+### Task 14: Verification, the review, the Results
+
+- [ ] Suites: cafe chain, typecheck, lint (`NODE_OPTIONS=--max-old-space-size=6144`), shared, the live legs (drop and
+  re-make `pos_scratch_print_host_px3`), `PIN (S1)`; `git diff --stat b570c73..HEAD` over the SR-1 paper paths, SR-11's
+  offline paths, the lane constants, `lib/print-queue.ts`, `lib/print-lease.ts`, the shared lifecycle, `apps/mobile`,
+  `apps/desktop`, `app/api` → empty; `print-budget.test.ts` unchanged.
+- [ ] Build `D:\kd\pxr` at the head; serve on :3175. Harness (`D:\kd\pos-dev-keep\printer-ux\tools`, PX2-RUNBOOK.md): PX-2's
+  blocks A and B again; then the settings cards (simple, printers mode, host, More) and the guided connect: the fake
+  app's `bt-classic` + `ble` entries of one MAC → one row (B9); a scan refused → "Allow", refused again → the steps (B11);
+  Connect → connecting → connected → test slip (the fake printer's count +1) → Yes (toast, status) / No (tips, again);
+  add mode ends at connected; the extra scroll of the settings view at 390 ≤ 64 px; a11y-check.mjs 0 violations on
+  status, settings and connect at 390 and 1280. Shots beside the mockups in `D:\kd\pos-dev-keep\printer-ux\px3\`.
+- [ ] Emulator Pixel_7_API_33 (WebView 109 + 154, the local harness only): settings, the guided connect, the 154 inset;
+  put it back as found. The Windows app smoke: the settings view's "This PC's printer" card with DesktopPrinterPicker.
+- [ ] A fresh Claude Fable 5.1 review of 7518e05..HEAD (read-only); one fix wave; the Results below; the owner's
+  real-printer check list (spec §11) handed over; drop this session's scratch databases.
 
 ---
 
