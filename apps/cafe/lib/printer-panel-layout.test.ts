@@ -30,6 +30,7 @@ import {
   PRINTER_SECTION_BODY_CLASS,
   PRINTER_SECTION_CARD_CLASS,
   PRINTER_SECTION_HEAD_CLASS,
+  PRINTER_STATUS_ACT_CLASS,
   PRINTER_STATUS_CARD_CLASS,
   PRINTER_STATUS_CIRCLE_CLASS,
   PRINTER_STATUS_DETAIL_CLASS,
@@ -124,6 +125,7 @@ test("the status card: radius 14, padding 16, 12 apart; a 40px circle; 17px / 13
   assert.ok(hasAll(PRINTER_STATUS_STEP_NUM_CLASS, ["size-[22px]", "bg-card", "border", "border-status-info-border", "text-status-info-ink", "text-[12px]", "font-bold"]), "22px circles: --card, 1px #a6c8ff, --status-info-ink 12px bold");
   assert.ok(hasAll(PRINTER_BUTTON_FIX_CLASS, ["h-11", "w-full", "rounded-[10px]", "text-[15px]", "font-semibold"]), "the fix: 44px, the card's width, radius 10, 15px / 600");
   assert.ok(hasAll(PRINTER_STATUS_LINK_CLASS, ["text-[13px]", "font-medium", "text-link"]) && hasAll(PRINTER_STATUS_NOTE_CLASS, ["text-[13px]", "pl-[52px]"]), "the 13px link and the 13px note");
+  assert.ok(has(PRINTER_STATUS_ACT_CLASS, "gap-1.5") && has(PRINTER_STATUS_LINK_CLASS, "before:-inset-y-1.5"), "the link's 44px tap area (6px above) never reaches the fix button 6px above it (the review's Minor 1)");
   const card = read(CARD);
   assert.equal(count(card, "<Button"), 1, "one fixing button");
   assert.ok(card.includes('role="status" aria-live="polite"'), "the card keeps role=status aria-live=polite");
@@ -176,8 +178,20 @@ test("the views: status = card < Not printed < On this device < Printer settings
   const page = read("app/(dashboard)/printers/page.tsx");
   assert.ok(page.includes('<PrinterPanel home="page" />') && !page.includes("PrinterPanelFrame") && !/>\s*Done\s*</.test(page), "/printers: the panel inline, no frame, no Done");
   const button = read(BUTTON);
-  assert.equal(count(button, "<PrinterPanel view={view} onView={setView} />"), 1, "the button mounts the panel once (inside its frame), with its view");
+  assert.equal(count(button, "<PrinterPanel view={view} onView={setView} onClose={() => setOpen(false)} />"), 1, "the button mounts the panel once (inside its frame), with its view and its close");
   assert.ok(!button.includes("usePosPulseContext"), "the button never reads the wide pulse");
+});
+
+// Ruling Q (the Task 6 review): the view is set to status where the sheet OPENS (the trigger, the alarm's Show), never where it
+// closes: a sheet sliding down from the settings view keeps showing them, and the panel's view effect (scroll to the top,
+// focus the title) never runs inside a closing sheet.
+test("the sheet opens on the status view and never resets while it closes", () => {
+  const button = stripComments(read(BUTTON));
+  assert.match(button, /const openChange = \(next: boolean\): void => \{\s*if \(next\) setView\("status"\);\s*setOpen\(next\);\s*\};/, "the trigger's open path");
+  assert.match(button, /onOpenPrinterPanel\(\(\) => \{\s*setView\("status"\);\s*setOpen\(true\);\s*\}\)/, "the alarm's Show opens on status too");
+  assert.equal(count(button, 'setView("status")'), 3, "the two opens and the settings view's back, nowhere else");
+  assert.ok(!/if \(!next\)/.test(button) && !/setOpen\(false\);\s*setView/.test(button), "nothing resets the view on close");
+  assert.match(button, /onClose=\{\(\) => setOpen\(false\)\}/, "the panel can close the sheet (Printer setup, the review's Important 1)");
 });
 
 // F-I4 (moved here from Task 2's budget test): the sheet's parts read what is already cached; nothing in them asks again.

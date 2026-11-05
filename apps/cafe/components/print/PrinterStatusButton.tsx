@@ -31,7 +31,8 @@ import { cn } from "@/lib/utils";
 // network — never the wide pulse, so a quiet pulse tick re-renders nothing
 // here. The frame's panel (mounted only while open) is the one that reads the
 // pulse for the labels. PX-2 (spec §6.1): the sheet's two views (status first, settings one tap away) are this button's
-// state, so each open starts on the status view.
+// state. Ruling Q: every OPEN starts on the status view; a close never resets it, so a sheet sliding down from the settings
+// view keeps showing them (and the panel's view switch never runs inside a closing sheet).
 
 const STATUS_TITLE = "Printer";
 const SETTINGS_TITLE = "Printer settings";
@@ -39,8 +40,15 @@ const SETTINGS_TITLE = "Printer settings";
 export function PrinterStatusButton({ onToneChange }: { onToneChange?: (tone: PrinterDotTone) => void } = {}) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<PrinterPanelView>("status");
-  // Session 1D: the 20 s alarm's Show button opens this sheet.
-  useEffect(() => onOpenPrinterPanel(() => setOpen(true)), []);
+  // Session 1D: the 20 s alarm's Show button opens this sheet, on the status view (Ruling Q).
+  useEffect(
+    () =>
+      onOpenPrinterPanel(() => {
+        setView("status");
+        setOpen(true);
+      }),
+    [],
+  );
   const remote = usePrintHostDot();
   const { isHostDevice, deviceId } = usePrintHostContext();
   // PX-2 (spec §6.9 B6): held through the app's own retries, as the panel reads it (no red ↔ checking flicker).
@@ -63,10 +71,10 @@ export function PrinterStatusButton({ onToneChange }: { onToneChange?: (tone: Pr
   // U1 Task 1 (design 6.1): the /pos header's clock block shows this same dot; the header takes the tone from here,
   // before the first paint (U1 final fix wave), so the dot is never one frame stale entering /pos.
   useLayoutEffect(() => onToneChange?.(tone), [onToneChange, tone]);
-  // Status on every open, and back to it on close (the alarm's Show opens a closed sheet, so it starts there too).
+  // The trigger's open path: the status view (Ruling Q); a close leaves the view as it is.
   const openChange = (next: boolean): void => {
+    if (next) setView("status");
     setOpen(next);
-    setView("status");
   };
 
   return (
@@ -106,7 +114,7 @@ export function PrinterStatusButton({ onToneChange }: { onToneChange?: (tone: Pr
         </Button>
       }
     >
-      <PrinterPanel view={view} onView={setView} />
+      <PrinterPanel view={view} onView={setView} onClose={() => setOpen(false)} />
     </PrinterPanelFrame>
   );
 }

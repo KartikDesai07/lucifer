@@ -8,6 +8,7 @@ import { usePosPulseContext } from "@/components/layout/PosPulseProvider";
 import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
 import { usePrintHostDot } from "@/components/layout/print-host-dot-context";
 import { BillPrinterSection } from "@/components/print/BillPrinterSection";
+import { toastConnectOutcome } from "@/components/print/connect-outcome";
 import { NotPrintedSection } from "@/components/print/NotPrintedSection";
 import { PrinterHereCard } from "@/components/print/PrinterHereCard";
 import { PrinterSettingsRow, settingsRowSubOf } from "@/components/print/PrinterSettingsRow";
@@ -72,7 +73,7 @@ function focusAndShow(root: HTMLElement | null, selector: string): boolean {
   return true;
 }
 
-// One toast for the whole Reconnect (spec §6.5); a chooser closed on every printer says nothing (F-M5).
+// Printers mode: one toast for the whole Reconnect (spec §6.5); a chooser closed on every printer says nothing (F-M5).
 function sayReconnected(result: ReconnectResult): void {
   if (result.connected.length === 0 && result.failed.length === 0) return;
   const { tone, text } = reconnectToastOf(result);
@@ -80,7 +81,8 @@ function sayReconnected(result: ReconnectResult): void {
   else toast.error(text);
 }
 
-export function PrinterPanel({ home = "sheet", view = "status", onView }: { home?: "sheet" | "page"; view?: PrinterPanelView; onView?: (next: PrinterPanelView) => void }) {
+// onClose: the sheet's own close (the header button's); none on /printers.
+export function PrinterPanel({ home = "sheet", view = "status", onView, onClose }: { home?: "sheet" | "page"; view?: PrinterPanelView; onView?: (next: PrinterPanelView) => void; onClose?: () => void }) {
   const { pulse } = usePosPulseContext();
   const remote = usePrintHostDot();
   const { isHostDevice, deviceId } = usePrintHostContext();
@@ -164,14 +166,21 @@ export function PrinterPanel({ home = "sheet", view = "status", onView }: { home
   const onAction = (kind: StatusActionKind): void => {
     if (kind !== "reconnect") return openSetup(SETUP_TARGETS[kind]);
     if (statusView.action?.kind !== "reconnect") return;
-    // reconnectDown makes its first call before anything is awaited: the tap's user activation reaches the reconnect.
-    const run = reconnectDown(statusView.subject, RECONNECT_DEPS);
+    // Ruling P: an empty subject is this device's own printer (simple mode): today's call and today's toast ("Printer
+    // connected." or the device's own reason). Printers mode reconnects every printer that is down (spec §6.5). Either way
+    // the first call is made here, before anything is awaited (the tap's user activation), and neither promise rejects, so
+    // the button always comes back.
+    const run = statusView.subject.length === 0 ? toastConnectOutcome(devicePrinter().reconnect()) : reconnectDown(statusView.subject, RECONNECT_DEPS).then(sayReconnected);
     setBusy(true);
-    void run.then(sayReconnected).finally(() => setBusy(false));
+    void run.finally(() => setBusy(false));
   };
   const onLink = (kind: StatusLinkKind): void => {
-    if (kind === "printer-setup") router.push("/printers");
-    else openSetup(SETUP_TARGETS[kind]);
+    // The review's Important 1: below 1280px the full-screen sheet would stay over Printer setup; close it first (as the
+    // offline orders sheet's Fix and send does).
+    if (kind === "printer-setup") {
+      onClose?.();
+      router.push("/printers");
+    } else openSetup(SETUP_TARGETS[kind]);
   };
   const status = home === "page" || view === "status";
   const settings = home === "page" || view === "settings";

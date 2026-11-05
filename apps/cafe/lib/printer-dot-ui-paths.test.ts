@@ -155,8 +155,8 @@ const PINS: PinCase[] = [
     name: "the button opens PrinterPanelFrame (its trigger) around PrinterPanel with its view; the frame holds the title, the back and a Done that closes",
     file: BUTTON,
     check: (src) => {
-      assert.match(src, /<PrinterPanelFrame\s+open=\{open\}\s+onOpenChange=\{openChange\}\s+title=\{view === "settings" \? SETTINGS_TITLE : STATUS_TITLE\}\s+onBack=\{view === "settings" \? \(\) => setView\("status"\) : undefined\}\s+trigger=\{[\s\S]*\}\s*>\s*<PrinterPanel view=\{view\} onView=\{setView\} \/>\s*<\/PrinterPanelFrame>/);
-      assert.match(src, /const openChange = \(next: boolean\): void => \{\s*setOpen\(next\);\s*setView\("status"\);\s*\};/, "status on every open, and back to it on close");
+      assert.match(src, /<PrinterPanelFrame\s+open=\{open\}\s+onOpenChange=\{openChange\}\s+title=\{view === "settings" \? SETTINGS_TITLE : STATUS_TITLE\}\s+onBack=\{view === "settings" \? \(\) => setView\("status"\) : undefined\}\s+trigger=\{[\s\S]*\}\s*>\s*<PrinterPanel view=\{view\} onView=\{setView\} onClose=\{\(\) => setOpen\(false\)\} \/>\s*<\/PrinterPanelFrame>/);
+      assert.match(src, /const openChange = \(next: boolean\): void => \{\s*if \(next\) setView\("status"\);\s*setOpen\(next\);\s*\};/, "status on every open, never on close (Ruling Q)");
       assert.ok(src.includes('const STATUS_TITLE = "Printer";') && src.includes('const SETTINGS_TITLE = "Printer settings";'), "the two titles");
       assert.ok(/import \{ PrinterPanel, type PrinterPanelView \} from "@\/components\/print\/PrinterPanel";/.test(src) && /import \{ PrinterPanelFrame \} from "@\/components\/print\/PrinterPanelFrame";/.test(src), "the panel and its frame");
       const frame = read(FRAME);
@@ -165,7 +165,7 @@ const PINS: PinCase[] = [
       assert.match(frame, /<DialogPrimitive\.Description className="sr-only">\{DESCRIPTION\}<\/DialogPrimitive\.Description>/, "the description for screen readers only");
       assert.match(frame, /<DialogPrimitive\.Close data-ui="printer-panel-done"[^>]*>\s*Done\s*<\/DialogPrimitive\.Close>/, "Done closes the frame");
     },
-    mutate: (src) => src.replace("<PrinterPanel view={view} onView={setView} />", "<PrinterPanel />"),
+    mutate: (src) => src.replace("<PrinterPanel view={view} onView={setView} onClose={() => setOpen(false)} />", "<PrinterPanel />"),
   },
   {
     name: "PosPulseProvider derives printHostDotOf( exactly once",
@@ -237,22 +237,22 @@ const PINS: PinCase[] = [
     name: "panel fixes: Reconnect runs straight from the click through reconnectDown; setup fixes focus targets INSIDE this panel",
     file: PANEL,
     check: (src) => {
-      assert.match(src, /if \(statusView\.action\?\.kind !== "reconnect"\) return;[\s\S]{0,200}const run = reconnectDown\(statusView\.subject, RECONNECT_DEPS\);\s*setBusy\(true\);/, "only on a Reconnect row; the first call is made before anything is awaited");
+      assert.match(src, /if \(statusView\.action\?\.kind !== "reconnect"\) return;[\s\S]{0,600}const run = statusView\.subject\.length === 0 \? toastConnectOutcome\(devicePrinter\(\)\.reconnect\(\)\) : reconnectDown\(statusView\.subject, RECONNECT_DEPS\)\.then\(sayReconnected\);\s*setBusy\(true\);/, "only on a Reconnect row; an empty subject keeps today's toastConnectOutcome (Ruling P), printers mode reconnectDown; the first call is made before anything is awaited");
       assert.ok(src.includes("const RECONNECT_DEPS = { device: () => devicePrinter().reconnect(), native: (id: string) => nativePool().reconnect(id) };"), "the device's own printer, or the app's printer by its id");
       assert.ok(!/await (devicePrinter|nativePool|reconnectDown)/.test(src) && !src.includes("setTimeout"), "no deferral between the click and the first reconnect");
       assert.ok(src.includes(`DEVICE_SECTION_SELECTOR = '[data-printer-target="device"]'`) && src.includes(`DESIGNATE_SELECTOR = '[data-action="designate"]'`) && !src.includes('"#printer-device"') && !src.includes("document.querySelector"), "the two targets; W-P: never a page-wide lookup");
       assert.ok(/const target = root\?\.querySelector<HTMLElement>\(selector\) \?\? null;/.test(src) && /scrollIntoView\(/.test(src), "looked up inside the panel's root, then shown");
       assert.match(src, /pendingTarget\.current = selector;\s*onView\?\.\("settings"\);/, "a setup fix switches to the settings view first");
-      assert.ok(src.includes('if (kind === "printer-setup") router.push("/printers");'), "an admin's link opens Printer setup");
+      assert.match(src, /if \(kind === "printer-setup"\) \{\s*onClose\?\.\(\);\s*router\.push\("\/printers"\);/, "an admin's link closes the sheet, then opens Printer setup (the review's Important 1)");
     },
-    mutate: (src) => src.replace("const run = reconnectDown(statusView.subject, RECONNECT_DEPS);", "const run = Promise.resolve().then(() => reconnectDown(statusView.subject, RECONNECT_DEPS));"),
+    mutate: (src) => src.replace("toastConnectOutcome(devicePrinter().reconnect())", "Promise.resolve().then(() => toastConnectOutcome(devicePrinter().reconnect()))"),
   },
   {
     // W-Q, moved to the card and the panel in PX-2 Task 6 (F-M5): one toast at the end, none when every chooser was closed.
     name: "Reconnect (W-Q): disabled while running with Reconnecting…, one toast at the end, a closed chooser says nothing",
     file: PANEL,
     check: (src) => {
-      assert.match(src, /void run\.then\(sayReconnected\)\.finally\(\(\) => setBusy\(false\)\);/);
+      assert.ok(/void run\.finally\(\(\) => setBusy\(false\)\);/.test(src) && src.includes('import { toastConnectOutcome } from "@/components/print/connect-outcome";'), "both ways end the busy state (neither rejects): never stuck");
       assert.match(src, /if \(result\.connected\.length === 0 && result\.failed\.length === 0\) return;\s*const \{ tone, text \} = reconnectToastOf\(result\);/, "F-M5");
       const card = read(CARD);
       assert.ok(card.includes("disabled={busy}") && card.includes("RECONNECTING_LABEL") && card.includes('const reconnecting = busy && action?.kind === "reconnect";'), "the card's button waits and says so");

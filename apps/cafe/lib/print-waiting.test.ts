@@ -293,7 +293,7 @@ test("PIN: the alarm rides the pulse already polled (no request), and only the p
   assert.match(alarm, /if \(step\.summaryWaiting !== page\.summary\) \{/, "the summary follows the count it stands for");
   assert.ok(!alarm.includes("if (step.wanted === 0) toast.dismiss(SUMMARY_ID);"), "not every waiting slip: a new one has its own notice");
   assert.match(alarm, /return \(\) => \{\s*unsubscribe\(\);\s*toast\.dismiss\(SUMMARY_ID\);/, "an unmount takes its notices down (M-1)");
-  assert.match(src("apps/cafe/components/print/PrinterStatusButton.tsx"), /useEffect\(\(\) => onOpenPrinterPanel\(\(\) => setOpen\(true\)\), \[\]\);/, "the printer button opens its sheet when asked");
+  assert.match(src("apps/cafe/components/print/PrinterStatusButton.tsx"), /useEffect\(\s*\(\) =>\s*onOpenPrinterPanel\(\(\) => \{\s*setView\("status"\);\s*setOpen\(true\);\s*\}\),\s*\[\],?\s*\);/, "the printer button opens its sheet when asked, on the status view (PX-2 Ruling Q)");
   assert.match(src("apps/cafe/components/print/PrintHostDrain.tsx"), /usePrintSlipAlarm\(deviceId\);/, "every device with an identity");
 });
 

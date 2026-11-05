@@ -97,7 +97,8 @@ export const PRINTER_STATUS_STEPS_CLASS = "flex flex-col gap-1.5 pl-[52px]";
 export const PRINTER_STATUS_STEP_CLASS = "flex gap-2.5 text-[14px] leading-[1.45]";
 export const PRINTER_STATUS_STEP_NUM_CLASS = `grid size-[22px] flex-none place-items-center rounded-[50%] border ${STATUS_CLASSES.info.border} bg-card text-[12px] font-bold leading-none ${STATUS_CLASSES.info.ink}`;
 export const PRINTER_STATUS_NOTE_CLASS = "pl-[52px] text-[13px] leading-[1.4] text-muted-foreground";
-export const PRINTER_STATUS_ACT_CLASS = "flex flex-col items-center gap-1";
+/** 6px apart: the link's 44px tap area reaches 6px above it, so it never overlaps the fix button (the review's Minor 1). */
+export const PRINTER_STATUS_ACT_CLASS = "flex flex-col items-center gap-1.5";
 export const PRINTER_BUTTON_FIX_CLASS = "h-11 w-full rounded-[10px] border-0 px-4 py-0 text-[15px] font-semibold hover:bg-primary-hover";
 export const PRINTER_STATUS_LINK_CLASS = `relative inline-flex min-h-8 cursor-pointer items-center gap-0.5 rounded-[6px] border-0 bg-transparent px-1 text-[13px] font-medium text-link before:absolute before:inset-x-0 before:-inset-y-1.5 pointer-coarse:before:content-[''] [&_svg]:size-[15px] ${FLOOR_FOCUS_RING_CLASS}`;
 // On this device (spec §6.2; mockup s-pm-tablet): the printers this device prints, each a 9px dot, the setup's name (14px /
