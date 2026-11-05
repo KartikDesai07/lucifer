@@ -20,6 +20,6 @@ export function posClockLabel(now: Date): string {
  *  "Printer not connected — …"); nothing while the button draws no dot (checking, or nothing set up). */
 export function clockPrinterWords(tone: PrinterDotTone): string | null {
   if (tone === "green") return "connected";
-  if (tone === "red") return "not connected";
+  if (tone === "red") return "needs attention";
   return null;
 }

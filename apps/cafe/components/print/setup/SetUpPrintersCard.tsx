@@ -14,8 +14,8 @@ import { localPrinterConnectionOf, printerPaperOf, setUpPrintersBody } from "@/l
 
 const EXPLAIN =
   "Slips print as set above. To send each kitchen station's KOTs to its own printer, set up printers: this device's printer becomes Printer 1 and takes every slip, so its paper does not change (other devices' slips print there too). Then add stations and printers.";
-const NO_PRINTER_HERE = "Connect this device's printer first (Printer on this device, above).";
-const ON_THE_HOST = "Do this on the device that prints all slips today (Where slips print, above).";
+const NO_PRINTER_HERE = "Connect this device's printer first (This device's printer, above).";
+const ON_THE_HOST = "Do this on the device that prints all slips today (Print for other devices, above).";
 const CHECKING = "Checking which device prints today…";
 // With no print host, other devices' slips move here (as EXPLAIN says): the toast never says nothing changes.
 const DONE_MESSAGE = "Printer 1 is set up. This device's paper does not change, and other devices' slips print here too.";

@@ -3,6 +3,7 @@ import { printerProblemText } from "@pos/shared/print-failover";
 import { PRINT_HOST_MAX_AGE_MS } from "@pos/shared/print-job";
 import { PRINTER_GONE_MESSAGE, PRINT_JOB_NO_PRINTER } from "@pos/shared/print-printers";
 import { printerNameOf, printWaitingAge, printWaitingBadgeOf, printWaitingReason } from "@/lib/print-waiting";
+import { desktopRefusalWordsOf } from "@/lib/desktop-shell-messages";
 import { isDesktopShellRefusal, isSlipRefusal, printWriteOutcomeOf } from "@/lib/print-write-outcome";
 
 // Printer UX, PX-2 Task 3 (spec §6.3): the "Not printed" card's rows, words, buttons and order, as pure
@@ -61,7 +62,7 @@ function queuedBody(row: PrintAttentionRow, nowMs: number, printers: Printers): 
   if (row.problem !== undefined) return only(printerProblemText(name ?? "The printer", row.problem));
   const repeat = row.labels.find((label) => label === "REPRINT" || label === "DUPLICATE");
   if (repeat) return only(`Prints again, marked ${repeat}.`);
-  if (row.lastError && outcome !== null && outcome.sent === "no") return only(isDesktopShellRefusal(row.lastError) ? row.lastError : "The printer is off or not connected.");
+  if (row.lastError && outcome !== null && outcome.sent === "no") return only(isDesktopShellRefusal(row.lastError) ? desktopRefusalWordsOf(row.lastError) : name === null ? "The printer is off or not connected." : `${name} is off or not connected.`);
   return only(name === null ? "Waits for the printer." : `Waits for ${name}.`);
 }
 
@@ -76,7 +77,7 @@ function bodyOf(row: PrintAttentionRow, nowMs: number, printers: Printers): Body
     // printWaitingReason's failed branch is the row's own safe words, or its generic retry line when it has none.
     const own = printWaitingReason(row, nowMs);
     const generic = printWaitingReason({ ...row, lastError: undefined }, nowMs);
-    return { strong: "Could not print.", reason: own === generic ? "" : own, tone: "bad", actions: ["try-again", "clear"] };
+    return { strong: "Could not print.", reason: own === generic ? "" : desktopRefusalWordsOf(own), tone: "bad", actions: ["try-again", "clear"] };
   }
   return queuedBody(row, nowMs, printers);
 }

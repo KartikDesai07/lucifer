@@ -61,10 +61,10 @@ test("the printer button's count: how many slips wait, '20+' when the feed was c
   assert.equal(printWaitingBadgeOf({ printAttention: [] }), "");
   assert.equal(printWaitingBadgeOf({ printAttention: [row(), row({ id: "j2" })] }), "2");
   assert.equal(printWaitingBadgeOf({ printAttention: Array.from({ length: 20 }, (_, i) => row({ id: `j${i}` })), printAttentionTruncated: true }), "20+");
-  assert.equal(printWaitingName("Printer connected — open printer setup", ""), "Printer connected — open printer setup", "unchanged with nothing waiting");
+  assert.equal(printWaitingName("Printer connected — open printer", ""), "Printer connected — open printer", "unchanged with nothing waiting");
   // The 1D gate (M-5) changed this deliberately: the printer's own state stays in the name.
-  assert.equal(printWaitingName("Printer connected — open printer setup", "1"), "1 slip waiting · Printer connected — open printer setup");
-  assert.equal(printWaitingName("Printer not connected — open printer setup", "20+"), "20+ slips waiting · Printer not connected — open printer setup");
+  assert.equal(printWaitingName("Printer connected — open printer", "1"), "1 slip waiting · Printer connected — open printer");
+  assert.equal(printWaitingName("Printer not connected — open printer", "20+"), "20+ slips waiting · Printer not connected — open printer");
 });
 
 test("the 1D gate (M-6): a slip refused once for itself is not blamed on the printer; a slip staff already tapped is not stale", () => {

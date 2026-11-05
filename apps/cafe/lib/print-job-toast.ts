@@ -1,3 +1,4 @@
+import { desktopRefusalWordsOf } from "@/lib/desktop-shell-messages";
 import { PRINT_HOST_PRINT_FAILED_MESSAGE } from "@/lib/print-host-slips";
 import { printWriteOutcomeOf } from "@/lib/print-write-outcome";
 import { PRINTER_NOT_CONNECTED_MESSAGE } from "@/lib/printer/web-printer-types";
@@ -18,4 +19,10 @@ export function jobPrintToastOf(message: string): string {
   if (message === PRINTER_NOT_CONNECTED_MESSAGE) return JOB_NOT_CONNECTED_TOAST;
   if (message === PRINT_HOST_PRINT_FAILED_MESSAGE || printWriteOutcomeOf(new Error(message)).sent === "maybe") return JOB_MAYBE_TOAST;
   return message;
+}
+
+/** The toast a failed slip raises (PX-3 X1): a job's words for a job's slip, then the Windows refusal's pointer to where
+ *  staff can fix it. One call per toast line, so the bridge (at its line pin) holds no logic. */
+export function slipToastOf(failure: string, jobId: string | undefined): string {
+  return desktopRefusalWordsOf(jobId === undefined ? failure : jobPrintToastOf(failure));
 }

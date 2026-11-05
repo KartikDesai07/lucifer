@@ -41,8 +41,8 @@ interface PinCase {
 
 const SETTLE = "const failure = lateGuard.take() ? null : requested;";
 // PX-2 Task 7 (spec §6.9 B7, on purpose): settle and the watchdog say a job's slip's failure in the job's words.
-const SETTLE_TOAST = "toast.error(jobIdRef.current === undefined ? failure : jobPrintToastOf(failure));";
-const ABANDON_TOAST = "toast.error(jobIdRef.current === undefined ? PRINT_HOST_PRINT_FAILED_MESSAGE : jobPrintToastOf(PRINT_HOST_PRINT_FAILED_MESSAGE));";
+const SETTLE_TOAST = "toast.error(slipToastOf(failure, jobIdRef.current));";
+const ABANDON_TOAST = "toast.error(slipToastOf(PRINT_HOST_PRINT_FAILED_MESSAGE, jobIdRef.current));";
 
 const CASES: PinCase[] = [
   {

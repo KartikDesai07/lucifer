@@ -20,9 +20,9 @@ import type { PrinterStatus } from "@/lib/printer/web-printer-types";
 export const PRINTER_NOT_LOCAL_MESSAGE = "This printer is not connected to this device.";
 /** The 2E gate's review (I-3), and the 2F2 review gate (M-4) for this device's own printer: what the printer panel
  *  shows instead of Remove for a printer the setup prints through this device. */
-export const PRINTER_IN_SETUP_MESSAGE = "Printer setup prints slips here: to remove it, change or delete that printer in Printer setup first.";
+export const PRINTER_IN_SETUP_MESSAGE = "Set by your manager in Printer setup.";
 /** Session 3B (spec §9.3): what Other printers shows instead of Remove for a network printer this device may take over. */
-export const PRINTER_TAKEOVER_MESSAGE = "This device prints it while the device that prints it is offline or cannot reach it. To remove it, change or delete that printer in Printer setup.";
+export const PRINTER_TAKEOVER_MESSAGE = "This device prints it while the device that prints it is offline or cannot reach it. Set by your manager in Printer setup.";
 
 /** Session 2E (spec §9.2): the Windows app's printers. `named`: the app prints a slip on a printer the page names
  *  (desktopPrintsOnNamed); `names`: every printer Windows reports on this PC (null until read); `selected`: the one

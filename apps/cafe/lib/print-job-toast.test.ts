@@ -141,9 +141,9 @@ test("PIN: printAgentSlipOf sets jobId", () => {
 test("PIN: the bridge maps a job slip's toast", () => {
   const bridge = src("apps/cafe/hooks/use-print-host-bridge.ts");
   const settle = bridge.slice(bridge.indexOf("const settle = useCallback("), bridge.indexOf("const finish = useCallback("));
-  assert.ok(settle.includes("toast.error(jobIdRef.current === undefined ? failure : jobPrintToastOf(failure));"), "settle: the job's words for a job's slip, today's for any other");
+  assert.ok(settle.includes("toast.error(slipToastOf(failure, jobIdRef.current));"), "settle: slipToastOf = the job's words for a job's slip (jobPrintToastOf), today's for any other, then the Windows refusal's pointer (PX-3 X1)");
   const abandon = bridge.slice(bridge.indexOf("const abandon = useCallback("), bridge.indexOf("[lateGuard, settle]"));
-  assert.ok(abandon.includes("toast.error(jobIdRef.current === undefined ? PRINT_HOST_PRINT_FAILED_MESSAGE : jobPrintToastOf(PRINT_HOST_PRINT_FAILED_MESSAGE));"), "the watchdog likewise");
+  assert.ok(abandon.includes("toast.error(slipToastOf(PRINT_HOST_PRINT_FAILED_MESSAGE, jobIdRef.current));"), "the watchdog likewise");
   assert.ok(bridge.includes('jobIdRef.current = current?.kind === "slip" ? current.slip.jobId : undefined;'), "the job of the slip on the paper now (a test slip has none)");
   assert.ok(bridge.indexOf("jobIdRef.current = current") < bridge.indexOf("if (!current || dispatchedRef.current || !surfacesMounted) return;"), "kept before the dispatch effect runs, so it is never a slip behind");
   assert.ok(bridge.includes("waiter?.reject(new Error(failure));"), "a test slip's own words are untouched");

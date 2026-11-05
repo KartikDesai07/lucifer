@@ -202,7 +202,7 @@ npm run test:app        # Jest smoke test of the app shell
 - **Back** goes back in the POS; at the first page it sends the app to the
   background (it never closes, because closing would stop printing).
 - To use a different address, open the printer panel in the POS and choose
-  **Change POS address** (under More options).
+  **Change POS address** (under Printer settings, More).
 - When you turn on "Print all slips on this device", or Printer setup names this
   device for a printer, the app shows a **Printing is on** notification and
   keeps running with the screen off. While it is in front its screen stays on

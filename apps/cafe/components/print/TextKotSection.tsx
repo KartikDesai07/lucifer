@@ -27,6 +27,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { useSettings } from "@/hooks/use-settings";
 import { useTextKot, useTextKotPrinters } from "@/hooks/use-text-kot-printers";
+import { desktopRefusalWordsOf } from "@/lib/desktop-shell-messages";
 import { PRINT_HOST_BUSY_MESSAGE, PRINT_HOST_PRINT_FAILED_MESSAGE } from "@/lib/print-host-slips";
 import { textColumnsOf } from "@/lib/printer/kot-text/text-layout";
 import type { TextKotPrinter } from "@/lib/printer/kot-text/text-kot-printers";
@@ -89,7 +90,7 @@ function TextKotRow({ printer, rows }: { printer: TextKotPrinter; rows: number }
       // The printer's own sentence (the bridge also shows it); a busy device is a refusal, never a queue; a test the
       // bridge gave up on (its watchdog) is this section's own sentence, never "reprint it from Orders" (the review's m-4).
       const message = err instanceof Error ? err.message : TEST_FAILED_MESSAGE;
-      setError(message === PRINT_HOST_BUSY_MESSAGE ? BUSY_MESSAGE : message === PRINT_HOST_PRINT_FAILED_MESSAGE ? TEST_FAILED_MESSAGE : message);
+      setError(message === PRINT_HOST_BUSY_MESSAGE ? BUSY_MESSAGE : message === PRINT_HOST_PRINT_FAILED_MESSAGE ? TEST_FAILED_MESSAGE : desktopRefusalWordsOf(message));
       setPhase("idle");
     }
   };

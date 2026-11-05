@@ -148,12 +148,12 @@ export function printerDotOf(input: PrinterDotInput): PrinterDot {
 // Plain English for the person at the counter: no jargon, never the colour
 // alone. The button's name reads from here; the panel's words are
 // printerStatusViewOf's (lib/printer/printer-status-view.ts; PX-2, R11).
-export const PRINTER_BUTTON_NAME_OK = "Printer connected — open printer setup";
-export const PRINTER_BUTTON_NAME_BAD = "Printer not connected — open printer setup";
-export const PRINTER_BUTTON_NAME_NONE = "Open printer setup";
-export const PRINTER_BUTTON_NAME_CHECKING = "Checking the printer — open printer setup";
-export const PRINTER_BUTTON_NAME_PROBLEM = "Printer needs attention — open printer setup";
-export const PRINTER_BUTTON_NAME_WAITING = "Printer not printing — open printer setup";
+export const PRINTER_BUTTON_NAME_OK = "Printer connected — open printer";
+export const PRINTER_BUTTON_NAME_BAD = "Printer not connected — open printer";
+export const PRINTER_BUTTON_NAME_NONE = "Open printer";
+export const PRINTER_BUTTON_NAME_CHECKING = "Checking the printer — open printer";
+export const PRINTER_BUTTON_NAME_PROBLEM = "Printer needs attention — open printer";
+export const PRINTER_BUTTON_NAME_WAITING = "Printer not printing — open printer";
 
 // "Checking" is neither good nor bad yet (a printer that is only connecting): the
 // header button gets its own name and no dot, so it never reads red or "not connected".

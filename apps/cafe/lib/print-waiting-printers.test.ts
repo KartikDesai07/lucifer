@@ -72,10 +72,10 @@ test("waitingPrintersOf names them from the printers already read; an unknown id
     waitingPrintersOf("p1:3:paper-out:1|p2:1::0|gone:1::1", printers),
     [
       { printerId: "p1", name: "Kitchen printer", count: 3, problem: "paper-out", stuck: true },
-      { printerId: "p2", name: "Bill printer", count: 1, stuck: false },
       { printerId: "gone", name: "A printer", count: 1, stuck: true },
+      { printerId: "p2", name: "Bill printer", count: 1, stuck: false },
     ],
-    "the most first; ties in the setup's order, an unknown printer last",
+    "stuck first (PX-3 Q2), then the most; ties in the setup's order, an unknown printer last of its group",
   );
   assert.deepEqual(waitingPrintersOf("", printers), [], "nothing waits");
   assert.deepEqual(waitingPrintersOf("p2:2::0|p1:2::0", printers).map((w) => w.printerId), ["p1", "p2"], "a tie: the setup's order");
@@ -110,7 +110,7 @@ test("low paper is a warning only (Ruling O): never stuck, never in the key; out
 test("waitingElsewhereOf (R1): a writer whose own busy printer has the most slips gets another device's waiting one", () => {
   const waiting = waitingPrintersOf("p2:5::0|p1:2::1", PRINTERS);
   assert.equal(waitingElsewhereOf(waiting, [{ id: "p2" }])?.printerId, "p1", "the Bill printer is its own (busy, its own row speaks): the kitchen's one waits");
-  assert.equal(waitingElsewhereOf(waiting, [])?.printerId, "p2", "a device that prints nothing: the most slips");
+  assert.equal(waitingElsewhereOf(waiting, [])?.printerId, "p1", "a device that prints nothing: the stuck one first (PX-3 Q2), not the busy one");
   assert.equal(waitingElsewhereOf(waiting, [{ id: "p1" }, { id: "p2" }]), undefined, "every waiting printer is its own: none");
   assert.equal(waitingElsewhereOf([], []), undefined, "nothing waits");
 });

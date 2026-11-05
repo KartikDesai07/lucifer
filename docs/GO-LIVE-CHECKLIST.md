@@ -280,7 +280,7 @@ no slip until then.
 - [ ] **A cafe with printers set up** (§7 "Stations and printers"): the token
       slip prints at the bill printer, so a printer must take bills: tick
       **Bill** on one in **Admin → Printer setup**. With none, the Tokens page
-      warns, and every token (and bill) shows under **Couldn't print**: "No
+      warns, and every token (and bill) shows under **Not printed**: "No
       printer is set up for bills."
 - [ ] **The daily restart time** (same page): change it outside service hours.
       A change during service can repeat or skip tonight's token, kitchen
@@ -1195,10 +1195,10 @@ and printers checks" on the real printers afterwards.
       this device** in its printer panel, if its bills belong at another
       printer than the default.
 - [ ] Tell the admin: a printer switched off (or deleted) in Printer setup
-      moves its waiting slips to **Couldn't print** within a minute; once it is
+      moves its waiting slips to **Not printed** within a minute; once it is
       on again, **Retry** prints them there (they are never moved to another
       printer). Deleting every printer goes back to simple mode; a printer's
-      slips still waiting then also move to **Couldn't print**, to be printed
+      slips still waiting then also move to **Not printed**, to be printed
       again from their order.
 
 ### Hazards to check for, and what to tell the client

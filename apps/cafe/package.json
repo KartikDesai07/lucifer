@@ -281,6 +281,7 @@
     "lib/print-waiting-printers.test.ts",
     "lib/print-alarm-quiet.test.ts",
     "lib/print-job-toast.test.ts",
+    "lib/print-words-px3.test.ts",
     "lib/print-agent-here.test.ts",
     "lib/print-job-notices.test.ts",
     "lib/not-printed-card.test.ts",

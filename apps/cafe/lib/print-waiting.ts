@@ -96,8 +96,9 @@ export function printWaitingPrintersOf(pulse: Pick<PosPulseData, "printAttention
     .join("|");
 }
 
-/** The waiting printers of that string, named from the printers already read ("A printer" when one is not listed): the
- *  most slips first, a tie in the setup's order (the read lists printers in display order). */
+/** The waiting printers of that string, named from the printers already read ("A printer" when one is not listed): a
+ *  stuck one first (PX-3 Q2: it needs a person), then the most slips, a tie in the setup's order (the read lists printers
+ *  in display order). The key itself keeps its order: a stable string. */
 export function waitingPrintersOf(key: string, printers: ReadonlyArray<{ id: string; name: string }>): WaitingPrinter[] {
   if (key === "") return [];
   const rank = (id: string): number => {
@@ -110,7 +111,7 @@ export function waitingPrintersOf(key: string, printers: ReadonlyArray<{ id: str
     if (printerId === "" || !(Number(count) > 0)) return [];
     return [{ printerId, name: printerNameOf(printers, printerId) ?? "A printer", count: Number(count), ...(known !== undefined ? { problem: known } : {}), stuck: stuck === "1" }];
   });
-  return waiting.sort((a, b) => b.count - a.count || rank(a.printerId) - rank(b.printerId));
+  return waiting.sort((a, b) => Number(b.stuck) - Number(a.stuck) || b.count - a.count || rank(a.printerId) - rank(b.printerId));
 }
 
 /** R1 (spec §6.5): the waiting printer the dot and the card speak of, the one with the most fresh slips that this device

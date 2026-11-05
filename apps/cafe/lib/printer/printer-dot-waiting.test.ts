@@ -27,7 +27,7 @@ test("a device that writes nothing turns amber when a printer's slips wait", () 
   assert.deepEqual(dot, { show: true, ok: false, reason: "printer-waiting" }, "the phone says a printer is not printing");
   assert.equal(printerDotTone(dot), "red", "the warn dot (the button draws 'red' in the warn colour)");
   assert.equal(printerButtonName(dot), PRINTER_BUTTON_NAME_WAITING, "its own accessible name");
-  assert.equal(PRINTER_BUTTON_NAME_WAITING, "Printer not printing — open printer setup", "the spec's words (§6.4)");
+  assert.equal(PRINTER_BUTTON_NAME_WAITING, "Printer not printing — open printer", "the spec's words (§6.4)");
 });
 
 test("stays green with nothing waiting", () => {

@@ -126,7 +126,7 @@ export function PrintersSetupSection({ printers, stations, devices, devicesFaile
                 ))}
                 {switchingOff === printer.id ? (
                   <InlineConfirm
-                    question={`Switch ${printer.name} off? Slips still waiting for it will show under Couldn't print.`}
+                    question={`Switch ${printer.name} off? Slips still waiting for it will show under Not printed.`}
                     yes="Yes, switch off"
                     no="No"
                     disabled={busy}
@@ -135,7 +135,7 @@ export function PrintersSetupSection({ printers, stations, devices, devicesFaile
                   />
                 ) : deleting === printer.id ? (
                   <InlineConfirm
-                    question={`Delete ${printer.name}? Slips still waiting for it will show under Couldn't print.`}
+                    question={`Delete ${printer.name}? Slips still waiting for it will show under Not printed.`}
                     yes="Yes, delete"
                     no="No"
                     disabled={busy}

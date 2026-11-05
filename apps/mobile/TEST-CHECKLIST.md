@@ -81,7 +81,7 @@ device as **Print all slips on this device** and a second device (phone or PC) t
       slip prints). Open the app again after 2 minutes: the KOT prints once more with
       **REPRINT** (a bill asks the cashier instead). Nothing prints a third time.
 - [ ] **Couldn't print.** A KOT whose two tries may both have printed (cut it twice) shows
-      under **Couldn't print** with a reason: "Tried twice. Check the printer, then retry.",
+      under **Not printed** with a reason: "Tried twice. Check the printer, then retry.",
       or the printer's own sentence (on USB, Bluetooth and the Windows app it may say what
       failed). **Retry** prints exactly one **REPRINT** copy.
 - [ ] **An old slip from the dashboard.** With a KOT waiting over 30 minutes, tap **Print**
@@ -177,8 +177,8 @@ exactly what — it points at a shrinker rule, not at the printer.
 ### Printer setup (use the printer icon in the POS)
 
 - [ ] The printer panel shows the paired Bluetooth printers. Pick one: the dot
-      turns green and **Print test slip** prints and cuts.
-- [ ] **Find printers** takes about 8 seconds and shows an unpaired printer.
+      turns green and **Test print** prints and cuts.
+- [ ] The guided connect searches by itself (**Search again** repeats it): it takes about 8 seconds and shows an unpaired printer.
       Selecting it asks for the pairing PIN (usually `0000` or `1234`); after that it connects.
 - [ ] Network printer: enter the printer's IP address and port `9100`; it
       connects and prints a test slip.
@@ -199,7 +199,7 @@ exactly what — it points at a shrinker rule, not at the printer.
 - [ ] Network printer: switch the printer off **while** a slip is printing, then
       on again. Note whether that slip came out, came out twice, or was lost.
 - [ ] Android 11 or older tablet only: switch **Location** off in Android, then tap
-      **Find printers**: the POS says to turn on Location. Switch it on: the scan works.
+      **Search again**: the POS says to turn on Location. Switch it on: the scan works.
 
 ### Printing in the background
 
@@ -234,7 +234,7 @@ exactly what — it points at a shrinker rule, not at the printer.
 - [ ] Start the app with Wi-Fi off: the error screen shows and says it is trying
       again. Switch Wi-Fi on: the POS opens by itself within about 15 seconds.
 - [ ] Turn Wi-Fi off and on during use: the POS recovers without reinstalling.
-- [ ] **Change POS address** (printer panel, More options) returns to the address screen.
+- [ ] **Change POS address** (printer panel, Printer settings, More) returns to the address screen.
 
 ## Part C. The POS in a browser (no app needed)
 
@@ -242,7 +242,7 @@ Chrome or Edge on a PC, or Chrome on an Android phone (Android Chrome 138 or new
 Pair the Bluetooth printer in the device's own Bluetooth settings first.
 
 - [ ] Printer icon (top right) → **Connect printer** → the browser's list shows the
-      paired printer → pick it → **Print test slip** prints and cuts; the dot is green.
+      paired printer → pick it → **Test print** prints and cuts; the dot is green.
 - [ ] **Connect printer**, then close the list without picking: the card says
       "Did not see your printer?…" and what to do next.
 - [ ] Reload the page: the dot turns green again by itself, or after one
@@ -286,7 +286,7 @@ above first. The Windows counter PC has its own section below.
       default station, and the next dessert round prints as a kitchen item.
 - [ ] **A printer switched off in the setup.** Switch the bar printer off in Printer setup: the next drinks round
       prints only in the full copy. Switch it on again: BAR slips print again. A BAR slip that was still waiting when
-      the printer was switched off moves to **Couldn't print** ("This printer was removed or switched off.") within a
+      the printer was switched off moves to **Not printed** ("This printer was removed or switched off.") within a
       minute; once the printer is on again, its **Retry** prints it there (it is never moved to another printer).
 - [ ] **A printer powered off.** Power the second Bluetooth printer off and send a round with drinks: the full copy
       prints at once; the BAR slip waits in the printer panel under **Waiting for the printer**, naming the bar
@@ -298,8 +298,8 @@ above first. The Windows counter PC has its own section below.
       Wi-Fi off just as you tap **Send to Kitchen**, then on again: the POS sends it again by itself (or offers Send
       again); the KOT prints **once, without a banner**, never twice. (A device killed mid-print gives one
       **REPRINT** copy, as in Phase 1.)
-- [ ] **A printer Printer setup prints through this device.** In the printer panel it shows "Printer setup prints
-      slips here: to remove it, change or delete that printer in Printer setup first." instead of **Remove** (as this
+- [ ] **A printer Printer setup prints through this device.** In the printer panel it shows "Set by your manager in
+      Printer setup." instead of **Remove** (as this
       device's printer and under Other printers). **Change printer** on it adds the new printer and keeps the old one
       under Other printers, and the old one's slips still print.
 - [ ] **A network printer moved to a new address.** Change the LAN printer's address in Printer setup: the tablet
@@ -400,7 +400,7 @@ The POS app's service (each printing phone or tablet):
       it prints.
 - [ ] Change the font size (or the language) in Android's settings while the POS is open: no "POS printing is off"
       notice; the next slip prints.
-- [ ] Xiaomi, OPPO, vivo or Samsung: the printer panel → **More options** → **Battery settings for printing**; do each
+- [ ] Xiaomi, OPPO, vivo or Samsung: the printer panel → **Printer settings** → **Battery settings**; do each
       step once; then the 30-minute screen-off check again.
 
 The Windows app 1.12.0 (with "Network printers on the Windows app (Phase 3)" above):
@@ -412,7 +412,7 @@ The Windows app 1.12.0 (with "Network printers on the Windows app (Phase 3)" abo
 
 Needs the POS with printing Phase 4, the POS app 2.0.2 on a printing phone or tablet, the Windows app 2.0.2 on the
 counter PC, and a Bluetooth, a USB and a network (LAN) printer, a 58 mm and an 80 mm one among them. "The switch"
-below is **Fast text KOTs (English only)** in the printer panel of the device that prints that printer. Run the
+below is **Faster KOTs** (Print KOTs as plain text) in the printer panel of the device that prints that printer. Run the
 text checks on each of the three printers.
 
 Text KOTs:
@@ -442,7 +442,7 @@ Text KOTs:
 - [ ] On a phone (the POS app 2.0.2) on the cafe's Wi-Fi: the printer panel → **Network printer (Wi-Fi or
       Ethernet)** → **Find network printers**: "Looking for printers on this Wi-Fi…", then within about 10 seconds
       the network printer's address with `· port 9100`. No printer prints anything or changes. A tap fills the address
-      and the port; **Use this network printer**, then Test print.
+      and the port; **Connect**, then Test print.
 - [ ] On the counter PC (the Windows app 2.0.2): **Admin → Printer setup** → **Add printer** → **Network (LAN)** →
       **Find network printers**: the same list; a printer the setup already has says "Already added: ‹its name›".
 - [ ] The phone on mobile data only (Wi-Fi off): "This device is not on a Wi-Fi or wired network."

@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { PoolPrinter } from "@/lib/printer/native-pool";
 
 const PLACEHOLDER = "Choose the printer on this device";
-const NONE = "This device has no printer yet. Connect one under Printer on this device, then open this form again.";
+const NONE = "This device has no printer yet. Connect one under This device's printer, then open this form again.";
 
 // Printing redesign, Phase 2 Session 2F1 (spec §9.2, §11): on the POS app with bridge v2 a printer of this device is
 // one of the app's printers, chosen from its list (never typed), so one phone or tablet prints several printers. A

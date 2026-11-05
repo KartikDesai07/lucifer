@@ -46,7 +46,7 @@ test("PIN (S2): turning a printer on prints its text test first; only Yes keeps 
   assert.equal((section.match(/writeTextKot\(/g) ?? []).length, 2, "the switch is written in two places only: Yes, and Off");
   assert.ok(section.includes("writeTextKot(printer.key, null);"), "turning it off is immediate");
   assert.ok(section.includes("if (choice !== null) setNarrow80(choice.narrow80);"), "off keeps the 42 choice it was proven at for its next test");
-  assert.ok(section.includes("message === PRINT_HOST_PRINT_FAILED_MESSAGE ? TEST_FAILED_MESSAGE : message"), "a test the watchdog gave up on says the section's own words");
+  assert.ok(section.includes("message === PRINT_HOST_PRINT_FAILED_MESSAGE ? TEST_FAILED_MESSAGE : desktopRefusalWordsOf(message)"), "a test the watchdog gave up on says the section's own words");
   assert.ok(section.includes("disabled={on || busy}"), "the characters per line are chosen while the switch is off, before its test");
   assert.ok(section.includes("disabled={!on && (busy || current !== null)}"), "turning on waits for a free bridge; turning off never waits");
   assert.ok(section.includes("if (printers.length === 0) return null;"), "hidden on a device with no printer it can write text to");

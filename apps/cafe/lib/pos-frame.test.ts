@@ -10,7 +10,7 @@ import path from "node:path";
 
 import { stripComments } from "./source-pin-utils";
 import { clockPrinterWords, posClockLabel } from "./pos-clock";
-import { PRINTER_BUTTON_NAME_BAD, PRINTER_BUTTON_NAME_OK } from "./printer/printer-dot";
+import { PRINTER_BUTTON_NAME_OK, PRINTER_BUTTON_NAME_PROBLEM } from "./printer/printer-dot";
 import { MAIN_PADDING_BLEED_CLASS } from "./shell-layout";
 import * as layout from "./pos-layout";
 import {
@@ -343,8 +343,8 @@ test("posSwitchMinPx / posHeaderRoom: the switch button's measured minimum (coun
 // state is said too (screen readers only), in the printer button's own words ("Printer connected — …").
 test("clockPrinterWords: the printer button's words for the dot's tone; none while it draws no dot", () => {
   assert.equal(clockPrinterWords("green"), "connected", "green: connected");
-  assert.equal(clockPrinterWords("red"), "not connected", "red: not connected");
+  assert.equal(clockPrinterWords("red"), "needs attention", "red: needs attention (X13: also a printer that is connected but stopped)");
   assert.equal(clockPrinterWords("none"), null, "no dot (checking, or nothing set up): nothing said");
   assert.ok(PRINTER_BUTTON_NAME_OK.startsWith(`Printer ${clockPrinterWords("green")} —`), "the button's title says the same for green");
-  assert.ok(PRINTER_BUTTON_NAME_BAD.startsWith(`Printer ${clockPrinterWords("red")} —`), "the button's title says the same for red");
+  assert.ok(PRINTER_BUTTON_NAME_PROBLEM.startsWith(`Printer ${clockPrinterWords("red")} —`), "the button's title says the same for red (the problem name; the not-connected one says more)");
 });

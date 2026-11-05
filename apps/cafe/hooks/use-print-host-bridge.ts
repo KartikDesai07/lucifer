@@ -30,7 +30,7 @@ import {
 import { createWindowLateCompletionGuard } from "@/lib/print-host-late-completion";
 import { hostPrintFailureMessage } from "@/lib/print-write-outcome";
 import { createHostSlipOutcomes, type HostPrintDone } from "@/lib/print-host-outcomes";
-import { jobPrintToastOf } from "@/lib/print-job-toast";
+import { slipToastOf } from "@/lib/print-job-toast";
 import { textKotEnv, textKotWriteFor } from "@/lib/printer/kot-text/text-kot-print";
 import type { Order } from "@/types";
 
@@ -103,7 +103,7 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
     const waiter = testRef.current;
     testRef.current = null;
     if (failure !== null) {
-      toast.error(jobIdRef.current === undefined ? failure : jobPrintToastOf(failure));
+      toast.error(slipToastOf(failure, jobIdRef.current));
       waiter?.reject(new Error(failure));
     } else if (waiter) {
       waiter.resolve(performance.now() - waiter.startedAt);
@@ -121,7 +121,7 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
   const finish = useCallback(() => settle(null), [settle]);
   // The watchdog: announce now, reject a waiting test slip now, hold the slot.
   const abandon = useCallback(() => {
-    toast.error(jobIdRef.current === undefined ? PRINT_HOST_PRINT_FAILED_MESSAGE : jobPrintToastOf(PRINT_HOST_PRINT_FAILED_MESSAGE));
+    toast.error(slipToastOf(PRINT_HOST_PRINT_FAILED_MESSAGE, jobIdRef.current));
     testRef.current?.reject(new Error(PRINT_HOST_PRINT_FAILED_MESSAGE));
     testRef.current = null;
     lateGuard.abandon(() => settle(null));

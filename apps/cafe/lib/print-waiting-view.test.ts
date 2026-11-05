@@ -13,6 +13,7 @@ const T0 = Date.parse("2026-11-05T12:00:00.000Z");
 const min = (n: number): string => new Date(T0 - n * 60_000).toISOString();
 const PRINTERS = [{ id: "p1", name: "Kitchen printer" }];
 const DESKTOP = "No printer is chosen for this PC. Open Settings, then Printing, and pick the printer.";
+const DESKTOP_SHOWN = "No printer is chosen for this PC. Open the printer icon, then Printer settings, and choose the printer.";
 
 function row(over: Partial<PrintAttentionRow> = {}): PrintAttentionRow {
   return { id: "j1", kind: "kot", label: "KOT round 1 · T-4", status: "queued", labels: [], createdAt: min(1), ...over };
@@ -33,7 +34,7 @@ test("the words of each kind of slip", () => {
   const failed = one({ status: "failed" });
   assert.deepEqual([failed.strong, failed.reason, failed.tone, failed.actions], ["Could not print.", "", "bad", ["try-again", "clear"]], "failed with no safe words");
   const desk = one({ status: "failed", lastError: DESKTOP });
-  assert.equal(desk.reason, DESKTOP, "a failed row's own safe words");
+  assert.equal(desk.reason, DESKTOP_SHOWN, "a failed row's own safe words, shown as the new pointer");
   const old = one({ createdAt: min(31) });
   assert.deepEqual([old.strong, old.reason, old.tone, old.actions], [null, "Waiting over 30 min.", null, ["print-now", "clear"]], "stale");
   const tapped = one({ createdAt: min(31), approved: true });
@@ -43,7 +44,7 @@ test("the words of each kind of slip", () => {
   assert.equal(one({ labels: ["REPRINT"] }).reason, "Prints again, marked REPRINT.", "reprint");
   assert.equal(one({ labels: ["DUPLICATE"] }).reason, "Prints again, marked DUPLICATE.", "duplicate");
   assert.equal(one({ lastError: PRINTER_NOT_CONNECTED_MESSAGE }).reason, "The printer is off or not connected.", "sent nothing");
-  assert.equal(one({ lastError: DESKTOP }).reason, DESKTOP, "windows refusal");
+  assert.equal(one({ lastError: DESKTOP }).reason, DESKTOP_SHOWN, "windows refusal, shown as the new pointer");
   assert.equal(one({}).reason, "Waits for the printer.", "plain");
   assert.equal(one({ printerId: "p1" }).reason, "Waits for Kitchen printer.", "plain, named");
   assert.equal(one({ printerId: "zz" }).reason, "Waits for the printer.", "unknown name");
