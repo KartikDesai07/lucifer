@@ -277,6 +277,7 @@
     "lib/print-agent-health.test.ts",
     "lib/print-agent-skew.test.ts",
     "lib/print-waiting.test.ts",
+    "lib/print-waiting-view.test.ts",
     "lib/print-routing.test.ts",
     "lib/pos-install.test.ts",
     "lib/pos-install-paths.test.ts",
