@@ -44,7 +44,7 @@ const BANNER = `${PRINT}PrinterStatusBanner.tsx`;
 // The 15 files of the hygiene pin (printer-ui-paths.test.ts HYGIENE) minus the lib / type files, plus the sections the look added.
 const PANEL_FILES = [
   "PrinterPanel", "PrintWhereSection", "DevicePrinterSection", "NativePrinterPicker", "PaperSizeToggle", "PrinterTestTips", "PrinterAdvanced",
-  "PrinterSetupCard", "PrintHostCardParts", "DesktopPrinterPicker", "BrowserPrinterConnect", "WaitingSlipsCard", "OtherDevicePrinters",
+  "PrinterSetupCard", "PrintHostCardParts", "DesktopPrinterPicker", "BrowserPrinterConnect", "NotPrintedCard", "NotPrintedSection", "OtherDevicePrinters",
   "PrinterStatusBanner", "FindNetworkPrinters", "DesktopPrintMethod", "TextKotSection", "BillPrinterSection", "PanelSection", "PrinterPanelFrame",
 ].map((name) => `${PRINT}${name}.tsx`);
 
@@ -134,7 +134,8 @@ test("WebView 109: no light-dark(), no runtime color-mix(), no oklab, no mask-im
 test("the panel keeps its order, one pulse reader and its focus targets; /printers draws it inline with no frame and no Done", () => {
   const panel = stripComments(read(`${PRINT}PrinterPanel.tsx`));
   assert.equal(count(panel, "usePosPulseContext("), 1, "P118: the panel is one of the eight readers, once");
-  const waiting = panel.indexOf("<WaitingSlipsCard"), banner = panel.indexOf("<PrinterStatusBanner"), setup = panel.indexOf("<PrinterSetupCard"), bill = panel.indexOf("<BillPrinterSection");
+  // PX-2 Task 4 (on purpose): the waiting slips are the Not printed card's container now.
+  const waiting = panel.indexOf("<NotPrintedSection"), banner = panel.indexOf("<PrinterStatusBanner"), setup = panel.indexOf("<PrinterSetupCard"), bill = panel.indexOf("<BillPrinterSection");
   assert.ok(waiting >= 0 && waiting < banner && banner < setup && setup < bill, "Waiting < Banner < Setup < Bill");
   assert.ok(panel.includes("data-printer-panel"), "the banner's scope marker");
   const where = read(`${PRINT}PrintWhereSection.tsx`);

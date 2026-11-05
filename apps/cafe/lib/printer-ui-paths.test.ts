@@ -37,7 +37,7 @@ const F = {
   connect: `${PRINT}BrowserPrinterConnect.tsx`,
   picker: `${PRINT}DesktopPrinterPicker.tsx`,
   slip: `${PRINT}PrintHostTestSlip.tsx`,
-  waiting: `${PRINT}WaitingSlipsCard.tsx`,
+  waiting: `${PRINT}NotPrintedSection.tsx`, notPrinted: `${PRINT}NotPrintedCard.tsx`,
   classes: `${PRINT}printer-classes.ts`,
   page: "apps/cafe/app/(dashboard)/printers/page.tsx",
   hub: `${SETTINGS}page.tsx`,
@@ -279,8 +279,8 @@ const HYGIENE: [string, number, boolean][] = [
   [F.panel, 90, false], [F.where, 150, true], [F.device, 220, true], [F.native, 290, true], [F.paper, 60, true],
   [F.tips, 50, false], [F.advanced, 100, true], [F.card, 260, true], [F.parts, 100, true], [F.picker, 160, false],
   [F.connect, 110, true], [F.section, 50, false], [F.type, 60, false],
-  // Session 1D: the waiting-slips panel follows the same rules (44px controls, no jargon).
-  [F.waiting, 120, true],
+  // Session 1D: the waiting slips follow the same rules (44px controls, no jargon); PX-2 Task 4: its container, its card.
+  [F.waiting, 120, false], [F.notPrinted, 150, true],
   // Session 2F1 (the 2F1 review gate, M-6): the POS app's other printers on bridge v2. Session 3B: 130 (was 120), a
   // network printer this device may take over says why it stays.
   [F.others, 130, true],

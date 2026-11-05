@@ -9,15 +9,10 @@ import { isDesktopShellRefusal, isSlipRefusal, printWriteOutcomeOf } from "@/lib
 // is not printed and needs a person shows in one of three groups, in plain words, with how long it has
 // waited and why. No React, no fetch; the server's words (lease, epoch, attempts) never reach the screen.
 
+// PX-2 Task 4: the panel's groups and their titles went with the old card; the Not printed card's rows are
+// lib/print-waiting-view.ts. The groups stay for the alarm (a slip that gets worse rings again).
 export type PrintWaitingGroup = "printer" | "bill" | "failed";
 
-export const PRINT_WAITING_TITLES: Record<PrintWaitingGroup, string> = {
-  printer: "Waiting for the printer",
-  bill: "Check the bill",
-  failed: "Couldn't print",
-};
-
-const GROUP_ORDER: readonly PrintWaitingGroup[] = ["printer", "bill", "failed"];
 const SERVER_WORDS = /lease|epoch|attempt|limits/i;
 
 function groupOf(row: PrintAttentionRow): PrintWaitingGroup {
@@ -53,22 +48,6 @@ export function printWaitingReason(row: PrintAttentionRow, nowMs: number, printe
   const repeat = row.labels.find((label) => label === "REPRINT" || label === "DUPLICATE");
   if (repeat) return `Waiting to print again, marked ${repeat}.`;
   return row.approved ? "Waiting for the printer." : "Not printed yet.";
-}
-
-export interface PrintWaitingSection {
-  group: PrintWaitingGroup;
-  title: string;
-  rows: Array<{ row: PrintAttentionRow; reason: string; age: string }>;
-}
-
-export function printWaitingGroups(rows: readonly PrintAttentionRow[], nowMs: number, printers: ReadonlyArray<{ id: string; name: string }> = []): PrintWaitingSection[] {
-  return GROUP_ORDER.map((group) => ({
-    group,
-    title: PRINT_WAITING_TITLES[group],
-    rows: rows
-      .filter((row) => groupOf(row) === group)
-      .map((row) => ({ row, reason: printWaitingReason(row, nowMs, printerNameOf(printers, row.printerId)), age: printWaitingAge(row.createdAt, nowMs) })),
-  })).filter((section) => section.rows.length > 0);
 }
 
 /** The printer button's count: "" when nothing waits, "20+" when the feed was cut at its limit. */

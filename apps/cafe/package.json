@@ -278,6 +278,8 @@
     "lib/print-agent-skew.test.ts",
     "lib/print-waiting.test.ts",
     "lib/print-waiting-view.test.ts",
+    "lib/print-job-notices.test.ts",
+    "lib/not-printed-card.test.ts",
     "lib/print-routing.test.ts",
     "lib/pos-install.test.ts",
     "lib/pos-install-paths.test.ts",

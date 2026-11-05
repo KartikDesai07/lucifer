@@ -85,6 +85,38 @@ export const PRINTER_STATUS_DETAIL_CLASS = "mt-0.5 text-[12.5px] text-muted-fore
 export const PRINTER_WAITING_CARD_CLASS = `flex flex-none flex-col gap-3 rounded-[12px] border border-[rgba(255,131,43,.35)] ${STATUS_CLASSES.warn.tint} px-4 py-3.5`;
 export const PRINTER_WAITING_ROW_CLASS = "rounded-[10px] border border-border bg-card px-3 py-2.5";
 
+// The Not printed card (PX-2 Task 4; spec §6.3; mockups s-wait5 / s-wait20 / s-clearall): --card on the warn rule at .45,
+// radius 12; a 15px / 600 head with the 22px count bubble and a 13px summary; rows of at least 56px split by a --border-2
+// rule; 36px buttons that take 44px under a finger; one centered 44px Show all; the inline Clear all confirm.
+export const PRINTER_NOT_PRINTED_CARD_CLASS = "flex-none rounded-[12px] border border-[rgba(255,131,43,.45)] bg-card";
+export const PRINTER_NOT_PRINTED_HEAD_CLASS = "flex items-start gap-2.5 pt-3 pr-3.5 pb-2.5 pl-4";
+export const PRINTER_NOT_PRINTED_TITLE_CLASS = "text-[15px] font-semibold";
+/** The spec's #da1e28 in both themes: white 12px / 700 on it reads 5:1 (the dark token's #fa4d56 would not). */
+export const PRINTER_NOT_PRINTED_BUBBLE_CLASS =
+  "ml-1.5 inline-grid h-[22px] min-w-[22px] place-items-center rounded-[11px] bg-[#da1e28] px-1.5 align-[1px] text-[12px] font-bold leading-none text-white";
+export const PRINTER_NOT_PRINTED_SUMMARY_CLASS = "mt-[3px] text-[13px] leading-[1.4] text-muted-foreground";
+export const PRINTER_NOT_PRINTED_LIST_CLASS = "border-t border-border-2";
+export const PRINTER_NOT_PRINTED_ROW_CLASS = "flex min-h-14 flex-wrap items-center gap-2.5 border-b border-border-2 py-[9px] pr-3.5 pl-4 last:border-b-0";
+/** A row with three buttons (the bill to check): its buttons, the row's last child, take a line of their own. */
+export const PRINTER_NOT_PRINTED_ROW_WRAP_CLASS = "[&>*:last-child]:w-full";
+export const PRINTER_NOT_PRINTED_TEXT_CLASS = "min-w-[150px] flex-1";
+export const PRINTER_NOT_PRINTED_LABEL_CLASS = "text-[14px] font-medium";
+export const PRINTER_NOT_PRINTED_META_CLASS = "mt-px text-[12.5px] text-subtle-foreground";
+/** A bill to check reads --status-warn-ink, a slip that could not print --status-bad-ink; the bold lead is 600. */
+export const PRINTER_NOT_PRINTED_TONE = { warn: STATUS_CLASSES.warn.ink, bad: STATUS_CLASSES.bad.ink } as const;
+export const PRINTER_NOT_PRINTED_STRONG_CLASS = "font-semibold";
+export const PRINTER_NOT_PRINTED_BUTTONS_CLASS = "flex flex-none gap-1.5";
+/** A slip's button and the head's Clear all: 36px, radius 8, 13px / 500; a transparent 4px inset makes it 44px to a finger. */
+export const PRINTER_BUTTON_SLIP_CLASS =
+  "relative h-9 flex-none rounded-[8px] px-3 py-0 text-[13px] font-medium before:absolute before:-inset-1 pointer-coarse:before:content-['']";
+export const PRINTER_NOT_PRINTED_MORE_CLASS = "flex justify-center border-t border-border-2";
+export const PRINTER_NOT_PRINTED_SHOW_CLASS = `flex min-h-11 cursor-pointer items-center gap-0.5 rounded-[6px] border-0 bg-transparent px-2 py-1.5 text-[13px] font-medium text-link [&_svg]:size-[15px] ${FLOOR_FOCUS_RING_CLASS}`;
+/** The confirm (values: s-clearall): --status-bad-tint on a .25 bad rule, radius 10, 14px / 500; two 40px buttons side by side. */
+export const PRINTER_NOT_PRINTED_CONFIRM_CLASS = `mr-3.5 mb-3 ml-4 flex flex-col gap-2.5 rounded-[10px] border border-[rgba(218,30,40,.25)] ${STATUS_CLASSES.bad.tint} p-3 text-[14px] font-medium`;
+export const PRINTER_NOT_PRINTED_CONFIRM_ROW_CLASS = "flex gap-2";
+export const PRINTER_BUTTON_CONFIRM_CLASS = "h-10 min-w-0 flex-1 rounded-[8px] px-3.5 py-0 text-[13.5px] font-medium";
+export const PRINTER_BUTTON_DANGER_CLASS = `${PRINTER_BUTTON_CONFIRM_CLASS} border-0 bg-status-bad text-white hover:bg-status-bad`;
+
 // Buttons (design 7.4): primary 40px / radius 9 / 14px 600; secondary 36px / radius 8 / 13.5px 500 (on the kit's outline
 // variant); the status card's fix button 32px / 12.5px; Remove in --bad-i with the bad rgba border. Each only sizes, so the
 // kit variant keeps the colours (a Reconnect that is not connected stays primary). self-start: in the panel's column a

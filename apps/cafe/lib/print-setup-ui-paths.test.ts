@@ -145,8 +145,9 @@ test("PIN (2D): the Devices section lists each device, online or when last seen,
 
 // The 2D review gate (M-3): the waiting-slips panel only shows printer names; it reads the agent's entry, so an admin
 // save costs this device one printers read, never two (the agent's subscription is the only one).
+// PX-2 Task 4 (on purpose, F-I6b): the waiting slips' container is NotPrintedSection now; the read is the same.
 test("PIN (the 2D review gate, M-3): only the agent's printers read subscribes; the waiting-slips panel reads the same entry", () => {
-  const card = src("components/print/WaitingSlipsCard.tsx");
+  const card = src("components/print/NotPrintedSection.tsx");
   assert.match(card, /const \{ printers \} = usePrintersRead\(true\);/);
   assert.ok(!/usePrinters\(/.test(card), "no subscription of its own");
   const hook = src("hooks/use-print-setup.ts");
