@@ -3,11 +3,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { nativeError } from "@/lib/printer/native-bridge";
 import type { NativePrinter } from "@/lib/printer/native-bridge-protocol";
 import {
   CONNECT_ADD,
   CONNECT_REPLACE,
   CONNECT_TRANSPORT_WORDS,
+  attemptErrorWordsOf,
   connectChoicesOf,
   connectFlowReducer,
   connectHeadOf,
@@ -136,10 +138,24 @@ test("the found rows: Bluetooth's paired and nearby, the first paired one primar
     { id: "t1", name: "Kitchen", transport: "tcp" },
   ];
   assert.deepEqual(connectRowsOf(printers, "bluetooth"), [
-    { id: "b1", name: "POS-58", sub: "Nearby", primary: false },
-    { id: "c1", name: "RPP02N", sub: "Paired", primary: true },
-    { id: "c2", name: "MTP-II", sub: "Paired", primary: false },
-  ], "both Bluetooth kinds, in the app's order; only the first paired row is the primary");
-  assert.deepEqual(connectRowsOf(printers, "usb"), [{ id: "u1", name: "USB-80", sub: "USB", primary: false }], "the USB entries");
-  assert.deepEqual(connectRowsOf([{ id: "b1", name: "POS-58", transport: "ble" }], "bluetooth"), [{ id: "b1", name: "POS-58", sub: "Nearby", primary: false }], "none paired: no primary");
+    { id: "b1", name: "POS-58", sub: "Nearby", primary: false, transport: "ble" },
+    { id: "c1", name: "RPP02N", sub: "Paired", primary: true, transport: "bt-classic" },
+    { id: "c2", name: "MTP-II", sub: "Paired", primary: false, transport: "bt-classic" },
+  ], "both Bluetooth kinds, in the app's order; only the first paired row is the primary; each keeps its kind (T11-A)");
+  assert.deepEqual(connectRowsOf(printers, "usb"), [{ id: "u1", name: "USB-80", sub: "USB", primary: false, transport: "usb" }], "the USB entries");
+  assert.deepEqual(connectRowsOf([{ id: "b1", name: "POS-58", transport: "ble" }], "bluetooth"), [{ id: "b1", name: "POS-58", sub: "Nearby", primary: false, transport: "ble" }], "none paired: no primary");
+});
+
+// The review's Ruling T11-B: a connect the app refused (a thrown attempt) says why in its own words, in both modes; one
+// that ran and did not connect keeps the step's words. An error the pool already worded keeps them (never "write failed").
+test("a thrown attempt says its own words, in both modes", () => {
+  const off = "Bluetooth is off on this device. Turn it on, then reconnect the printer.";
+  for (const mode of ["replace", "add"] as const) {
+    assert.equal(connectFlowReducer(at("connecting", { mode, target: RPP }), { type: "failed", message: off }).error, off, `${mode}: the app's refusal, not the step's words`);
+  }
+  assert.equal(attemptErrorWordsOf(nativeError("BLUETOOTH_OFF", "raw")), off, "a coded refusal, in the app's words");
+  const worded = "Allow Bluetooth for the POS app, then reconnect the printer.";
+  assert.equal(attemptErrorWordsOf(new Error(worded)), worded, "an error already worded (the pool's add throws one) keeps its words");
+  assert.equal(attemptErrorWordsOf("boom"), undefined, "nothing to say: the step's words");
+  assert.equal(attemptErrorWordsOf(new Error("")), undefined, "an empty message: the step's words");
 });

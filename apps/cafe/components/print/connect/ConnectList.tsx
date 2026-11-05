@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 
 // Step 2 of the guided connect (PX-3 Task 11, spec §6.7 item 2; mockup g2): the printers the POS app can see. Bluetooth:
 // the paired ones at once, then the app's scan starts by itself ("Looking for more printers…"), each row a Connect (the
-// first paired one primary), and "Not in the list?". USB: its printers and Refresh. Wi-Fi or network: today's form. A
+// first paired one primary; a BLE one waits for the scan), and "Not in the list?". USB: its printers and Refresh. Wi-Fi or network: today's form. A
 // failed connect says why above the rows. ConnectListView and NetworkFormView are props only; ConnectList wires the app's
 // list (hooks/use-native-printer-list.ts, the old picker's logic) and the form's fields.
 
@@ -40,7 +40,8 @@ export interface ConnectListViewProps {
   /** Why the last scan did not list (the app's own words), shown in the list, never a toast. */
   scanError: string | null;
   refreshing: boolean;
-  /** Turn on / Allow Bluetooth or a refresh is running: the rows wait. A scan does not hold them (the app stops it to connect). */
+  /** Turn on / Allow Bluetooth or a refresh is running: the rows wait. A scan holds only the BLE rows (Ruling T11-A: the
+   *  app's Classic connect cancels discovery itself, its BLE connect does not stop the scan before it connects). */
   locked: boolean;
   onConnect(row: ConnectRow): void;
   onScan(): void;
@@ -53,7 +54,7 @@ function ErrorLine({ error }: { error: string | null }) {
   return error === null ? null : <p role="alert" className={PRINTER_CONNECT_ERROR_CLASS}>{error}</p>;
 }
 
-function Rows({ rows, locked, onConnect }: { rows: ConnectRow[]; locked: boolean; onConnect(row: ConnectRow): void }) {
+function Rows({ rows, locked, scanning, onConnect }: { rows: ConnectRow[]; locked: boolean; scanning: boolean; onConnect(row: ConnectRow): void }) {
   return (
     <ul>
       {rows.map((row) => (
@@ -64,7 +65,7 @@ function Rows({ rows, locked, onConnect }: { rows: ConnectRow[]; locked: boolean
             <span className={PRINTER_HERE_SUB_CLASS}>{row.sub}</span>
           </p>
           {/* The visible word first, then the printer (WCAG 2.5.3 label-in-name). */}
-          <Button className={PRINTER_CONNECT_BUTTON_CLASS} variant={row.primary ? "default" : "outline"} aria-label={`${CONNECT_WORDS.connect} ${row.name}`} disabled={locked} onClick={() => onConnect(row)}>
+          <Button className={PRINTER_CONNECT_BUTTON_CLASS} variant={row.primary ? "default" : "outline"} aria-label={`${CONNECT_WORDS.connect} ${row.name}`} disabled={locked || (scanning && row.transport === "ble")} onClick={() => onConnect(row)}>
             {CONNECT_WORDS.connect}
           </Button>
         </li>
@@ -86,7 +87,7 @@ export function ConnectListView({ transport, error, rows, bluetooth, scanning, s
           </>
         ) : (
           <div className={PRINTER_CONNECT_CARD_CLASS}>
-            <Rows rows={rows} locked={locked} onConnect={onConnect} />
+            <Rows rows={rows} locked={locked} scanning={scanning} onConnect={onConnect} />
           </div>
         )}
         <Button className={PRINTER_BUTTON_CLASS} variant="outline" onClick={onRefresh} disabled={scanning || locked}>
@@ -120,7 +121,7 @@ export function ConnectListView({ transport, error, rows, bluetooth, scanning, s
         ? reading
         : (rows.length > 0 || scanning || scanError !== null) && (
             <div className={PRINTER_CONNECT_CARD_CLASS}>
-              {rows.length > 0 && <Rows rows={rows} locked={locked} onConnect={onConnect} />}
+              {rows.length > 0 && <Rows rows={rows} locked={locked} scanning={scanning} onConnect={onConnect} />}
               {scanning ? (
                 <p role="status" className={PRINTER_CONNECT_SEARCHING_CLASS}>
                   <span aria-hidden="true" className={PRINTER_CONNECT_SPIN_CLASS} />

@@ -1,6 +1,8 @@
 import type { TransportWord } from "@/lib/print-agent-here";
-import type { NativePrinter } from "@/lib/printer/native-bridge-protocol";
+import { nativeErrorCode } from "@/lib/printer/native-bridge";
+import type { NativePrinter, NativeTransport } from "@/lib/printer/native-bridge-protocol";
 import type { DeviceNoun } from "@/lib/printer/printer-status-view";
+import { nativeErrorMessage } from "@/lib/printer/transport-native";
 
 // Printer UX PX-3 Task 11 (spec §6.7; mockups g1–g6): the guided connect of the Android app, as a pure reducer. Steps: what
 // kind of printer → the found list → connecting → connected → the test slip's question → the tips. Modes: replace (Connect a
@@ -31,7 +33,8 @@ export type ConnectEvent =
   | { type: "choose"; transport: ConnectTransport }
   | { type: "pick"; target: ConnectTarget }
   | { type: "connected" }
-  | { type: "failed" }
+  /** message: why the app refused (a thrown attempt, Ruling T11-B); none: it ran and did not connect (the step's words). */
+  | { type: "failed"; message?: string }
   | { type: "tested" }
   | { type: "not-printed" }
   | { type: "other" };
@@ -84,6 +87,14 @@ function failedWordsOf(state: ConnectState): string {
   return `Could not connect to ${state.target?.name ?? "the printer"}. Check it is on, then try again.`;
 }
 
+/** The review's Ruling T11-B: a thrown attempt's own words. A refusal with the app's code reads as the app's sentence
+ *  (nativeErrorMessage); an Error already worded keeps its words (nativePool().add throws its refusal worded, with no code,
+ *  and nativeErrorMessage would turn it into the write-failed sentence); nothing to say: undefined, the step's words. */
+export function attemptErrorWordsOf(error: unknown): string | undefined {
+  if (nativeErrorCode(error) !== null) return nativeErrorMessage(error);
+  return error instanceof Error && error.message !== "" ? error.message : undefined;
+}
+
 /** Each step and its next; every other pair returns the same state (===), so a late or doubled event changes nothing. */
 export function connectFlowReducer(state: ConnectState, event: ConnectEvent): ConnectState {
   switch (`${state.step}+${event.type}`) {
@@ -95,7 +106,7 @@ export function connectFlowReducer(state: ConnectState, event: ConnectEvent): Co
     case "connecting+connected":
       return { ...state, step: "connected" };
     case "connecting+failed":
-      return { ...state, step: "list", error: failedWordsOf(state) };
+      return { ...state, step: "list", error: (event.type === "failed" ? event.message : undefined) ?? failedWordsOf(state) };
     case "connected+tested":
       // X4: a printer the setup does not name yet prints nothing, so add mode ends at connected.
       return state.mode === "replace" ? { ...state, step: "question" } : state;
@@ -150,6 +161,8 @@ export interface ConnectRow {
   sub: string;
   /** The first paired Bluetooth printer: its Connect is the primary. */
   primary: boolean;
+  /** How the app reaches it: a BLE row waits while the app scans (Ruling T11-A). */
+  transport: NativeTransport;
 }
 
 /** The found list's rows, in the app's order: Bluetooth's paired and nearby printers (both kinds; Task 13 merges one
@@ -162,5 +175,6 @@ export function connectRowsOf(printers: readonly NativePrinter[], transport: "bl
     name: printer.name,
     sub: transport === "usb" ? "USB" : printer.paired === true ? "Paired" : "Nearby",
     primary: printer === first,
+    transport: printer.transport,
   }));
 }

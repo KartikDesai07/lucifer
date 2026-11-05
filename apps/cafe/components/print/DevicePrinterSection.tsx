@@ -61,7 +61,8 @@ export function DevicePrinterSection({ noun, onConnect }: { noun: DeviceNoun; on
   const [notSeen, setNotSeen] = useState(false);
   const { printer, status } = snapshot;
   const elsewhere = status === "elsewhere";
-  const locked = busy || elsewhere;
+  // The Task 11 review: a guided connect left mid-way still runs (X3: never aborted); nothing here starts another meanwhile.
+  const locked = busy || elsewhere || status === "connecting";
   const { deviceId } = usePrintHostContext();
   const { inSetup, known } = useOwnPrinterInSetup(deviceId);
   const pool = useNativePool();

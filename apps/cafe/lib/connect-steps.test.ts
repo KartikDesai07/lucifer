@@ -73,6 +73,19 @@ test("step 2, Bluetooth: the rows, the first paired Connect is the primary, the 
   assert.ok(list({ rows: null }).includes("Reading the printer list…"), "while the list is read");
 });
 
+// The review's Ruling T11-A: the app's BLE connect (BleTransport.open) does not stop the scan before connectGatt; its
+// Classic connect cancels discovery itself. So only a nearby BLE printer waits for the scan; Classic, USB and network rows
+// stay live, as mockup g2 shows.
+test("step 2: a BLE row's Connect waits for the scan; a Classic one does not", () => {
+  const scanning = list({ scanning: true });
+  assert.ok(buttonOf(scanning, 'aria-label="Connect POS-58"').includes(DISABLED), "the BLE row waits while the app scans");
+  assert.ok(!buttonOf(scanning, 'aria-label="Connect RPP02N"').includes(DISABLED), "the Classic row stays live");
+  assert.ok(!buttonOf(list(), 'aria-label="Connect POS-58"').includes(DISABLED), "the scan over: the BLE row is live");
+  const usb = list({ transport: "usb", scanning: true, rows: connectRowsOf([{ id: "u1", name: "USB-80", transport: "usb" }], "usb") });
+  assert.ok(!buttonOf(usb, 'aria-label="Connect USB-80"').includes(DISABLED), "a USB row stays live");
+  assert.ok(buttonOf(list({ locked: true }), 'aria-label="Connect RPP02N"').includes(DISABLED), "every row waits for Turn on / Allow Bluetooth and Refresh");
+});
+
 test("step 2: a failed connect says it above the rows", () => {
   const words = "Could not connect to RPP02N. Check it is on, then try again.";
   const html = list({ error: words });
@@ -175,7 +188,28 @@ function attemptProblems(code: string): string[] {
   return p;
 }
 function listProblems(code: string): string[] {
-  return ["loadPicker(", "createStatusOrder()", "window.addEventListener(NATIVE_READY_EVENT, onReady)", "listNative(true)", "listNative(false)", "statusOrder.fresh(startedAt)"].filter((n) => !code.includes(n)).map((n) => `today's ${n}`);
+  return ["loadPicker(", "createStatusOrder()", "window.addEventListener(NATIVE_READY_EVENT, onReady)", "listNative(true)", "listNative(false)", "statusOrder.fresh(startedAt)", "target: { tcp: { host, port: portNumber } }"].filter((n) => !code.includes(n)).map((n) => `today's ${n}`);
+}
+// The review's minor 4: one connect at a time, its outcome heard only by a flow still on screen (X3: never aborted), a
+// thrown attempt in its own words (T11-B); each tap connects the printer it names (a row by the app's id, the form's address).
+const FLOW = "components/print/connect/ConnectFlow.tsx";
+const STEP = "components/print/connect/ConnectList.tsx";
+function flowProblems(code: string): string[] {
+  const p: string[] = [];
+  const pick = code.slice(code.indexOf("const pick = "), code.indexOf("const { step, transport } = state;"));
+  const [guard, set, picked] = ["if (inFlight.current) return;", "inFlight.current = true;", 'send({ type: "pick"'].map((n) => pick.indexOf(n));
+  if (!(guard >= 0 && set > guard && picked > set)) p.push("one connect at a time: the guard, the flag, then the pick");
+  if (!/inFlight\.current = false;\s*if \(live\.current\) send\(event\);/.test(pick)) p.push("the flag clears as it settles; only a flow on screen hears it");
+  if (!/return \(\) => \{\s*live\.current = false;\s*\};/.test(code)) p.push("leaving the view silences a late outcome");
+  if (!pick.includes('(error: unknown): ConnectEvent => ({ type: "failed", message: attemptErrorWordsOf(error) })')) p.push("a thrown attempt says its own words");
+  return p;
+}
+function targetProblems(code: string): string[] {
+  const p: string[] = [];
+  if (!code.includes("onConnect={(row) => onPick({ id: row.id }, row.name)}")) p.push("a row connects the printer the app listed, by its id");
+  if (!code.includes("if (checked.target !== null) onPick(checked.target, `${checked.target.tcp.host}:${checked.target.tcp.port}`);")) p.push("the form connects only the address it checked");
+  if (!code.includes('disabled={locked || (scanning && row.transport === "ble")}')) p.push("T11-A: a BLE row waits for the scan");
+  return p;
 }
 function viewsProblems(code: string): string[] {
   const p: string[] = [];
@@ -202,6 +236,11 @@ test("the list's logic is today's", () => {
   assert.ok(count(stripComments(read(LIST)), "toast.error(nativeErrorMessage(error))") === 3, "a list load, Turn on and Allow toast as today; the scan says it inline");
 });
 
+test("one connect at a time, heard only while on screen; each tap connects the printer it names", () => {
+  assert.deepEqual(flowProblems(stripComments(read(FLOW))), [], "ConnectFlow's guards");
+  assert.deepEqual(targetProblems(stripComments(read(STEP))), [], "the rows' and the form's targets");
+});
+
 test("the sheet's views", () => {
   assert.deepEqual(viewsProblems(stripComments(read(BUTTON))), [], "the button");
   assert.ok(stripComments(read("hooks/use-printer-views.ts")).includes('export type PrinterPanelView = "status" | "settings" | "connect";'), "three views");
@@ -215,6 +254,20 @@ test("every source pin bites: a mutation of the real file is noticed", () => {
   }
   const listed = stripComments(read(LIST));
   assert.ok(listProblems(listed.replace("statusOrder.fresh(startedAt)", "true")).length > 0, "the list pin noticed a stale reply winning");
+  assert.ok(listProblems(listed.replace("target: { tcp: { host, port: portNumber } }", "target: { tcp: { host, port: 9100 } }")).length > 0, "the list pin noticed a port the form did not check");
+  const flow = stripComments(read(FLOW));
+  const step = stripComments(read(STEP));
+  const cases: [string, string, string, (code: string) => string[]][] = [
+    [flow, "if (inFlight.current) return;", "", flowProblems], [flow, "if (live.current) send(event);", "send(event);", flowProblems],
+    [flow, "live.current = false;\n    };", "};", flowProblems], [flow, "message: attemptErrorWordsOf(error)", "message: undefined", flowProblems],
+    [step, "onPick({ id: row.id }, row.name)", "onPick({ id: row.name }, row.name)", targetProblems], [step, "if (checked.target !== null) onPick(", "if (true) onPick(", targetProblems],
+    [step, '(scanning && row.transport === "ble")', "scanning", targetProblems],
+  ];
+  for (const [code, from, to, problems] of cases) {
+    const mutated = code.replace(from, to);
+    assert.notEqual(mutated, code, `${from}: the mutation changed the source`);
+    assert.ok(problems(mutated).length > 0, `${from}: the pin noticed`);
+  }
   const button = stripComments(read(BUTTON));
   for (const mutated of [button.replace("if (next) show(\"status\");", "if (next) setOpen(true);"), button.replace("setOpen(next);\n  };", "setOpen(next);\n    if (!next) show(\"status\");\n  };")]) {
     assert.notEqual(mutated, button, "the mutation changed the source");

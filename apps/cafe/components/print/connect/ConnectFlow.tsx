@@ -17,7 +17,7 @@ import {
   PRINTER_PANEL_VIEW_TITLE_CLASS,
 } from "@/components/print/printer-classes";
 import { useConnectAttempt } from "@/hooks/use-connect-attempt";
-import { CONNECT_BACK_LABEL, CONNECT_TITLE, connectHeadOf, type ConnectEvent, type ConnectState } from "@/lib/printer/connect-flow";
+import { CONNECT_BACK_LABEL, CONNECT_TITLE, attemptErrorWordsOf, connectHeadOf, type ConnectEvent, type ConnectState } from "@/lib/printer/connect-flow";
 import type { DeviceNoun } from "@/lib/printer/printer-status-view";
 import { nativeTargetId, type NativeSelectTarget } from "@/lib/printer/transport-native";
 
@@ -49,11 +49,17 @@ export function ConnectFlow({ state, send, noun, onLeave }: ConnectFlowProps) {
     inFlight.current = true;
     send({ type: "pick", target: { id: nativeTargetId(target), name } });
     const run = state.mode === "add" ? attempt.add(target) : attempt.replace(target);
-    // No toast of its own: the step says it (a thrown attempt reads as a failed one, as toastConnectOutcome reads it).
-    void run.then((outcome) => outcome === "connected", () => false).then((connected) => {
-      inFlight.current = false;
-      if (live.current) send({ type: connected ? "connected" : "failed" });
-    });
+    // No toast of its own: the step says it. Ruling T11-B: an attempt the app refused (thrown) in its own words; one that
+    // ran and did not connect, in the step's.
+    void run
+      .then(
+        (outcome): ConnectEvent => (outcome === "connected" ? { type: "connected" } : { type: "failed" }),
+        (error: unknown): ConnectEvent => ({ type: "failed", message: attemptErrorWordsOf(error) }),
+      )
+      .then((event) => {
+        inFlight.current = false;
+        if (live.current) send(event);
+      });
   };
   const { step, transport } = state;
   // Each step keeps its slot, so the list stays mounted while it connects and the test's state lives through its steps.
