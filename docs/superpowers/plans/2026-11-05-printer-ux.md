@@ -1203,4 +1203,108 @@ name a STUCK printer before a merely busy one with more slips (spec §6.5 says "
 
 # Session PX-3 Results
 
-(Filled by Session PX-3.)
+Done 2026-11-05/06 on `feat/printer-ux`. origin/main had moved to a831fd3 (T1 echo, offline-round fixes, the pre-deploy
+check): merged INTO the branch first (`b570c73`, --no-ff, no file overlap). Not pushed, not merged, not deployed.
+Subagent-driven: one implementer + one reviewer per task, fix rounds where a review asked, a fresh Claude Fable 5.1
+whole-session review, one fix wave, then the harness / device checks and one harness-found fix.
+
+**The owner's answers (start of PX-3):** Q1 yes (a printers-mode row that sent nothing names its printer); Q2 yes (a stuck
+printer is named before a busy one with more slips).
+
+**Commits (13 after the merge):** `646342e` plan (PX-3 exact) · `c6a8e68` Task 10 + `780bbcc` its review fix · `b3e761e`
+Task 10b + `10e6f1e` its review fix · `f3f9f65` Task 11 · `11942bd` Task 12 · `51808b7` + `61a0f83` Task 11's review fix
+(after Task 12 in history) · `fb61a0f` Task 13 · `2009a14` the final review's fix wave · `ff67d76` the harness's F2 fix.
+
+**Counts, before (b570c73) → after (ff67d76):** cafe `npm test` 7760 / 7759 pass / 0 fail / 1 skip → 7851 / 7850 / 0 / 1;
+shared 1076 → 1076 (no shared change); live legs 524 → 524 passed, 0 failed (fresh `pos_scratch_print_host_px3`, at
+fb61a0f: no server file changed after); typecheck 0 → 0; lint 0 errors (the 2 old warnings) → the same; `PIN (S1)` 16/16.
+`git diff --stat b570c73..HEAD` over the SR-1 paper paths, SR-11's offline paths, the lane constants, print-queue /
+print-lease / print-dismiss, the shared lifecycle, `app/api`, `apps/desktop` and `print-budget.test.ts`: empty;
+`apps/mobile`: README.md + TEST-CHECKLIST.md only (docs). `DESKTOP_SHELL_REFUSALS` unchanged (pinned byte for byte).
+
+**RED → GREEN per task:** Task 10 settings-view module not found → 13/13 (fix round: 6 items, 34/34); Task 10b 10 RED →
+23/23 (fix round: covering 186/186, pins moved to `printers-card-paths.test.ts`); Task 11 connect-flow + connect-steps
+modules not found → 25/25 (fix round: 7 RED → 99/99; the T11-C revert); Task 12 print-words-px3 1/9 → 9/9; Task 13 0/7 →
+40/40; final fix wave RED seen for I1, I2, m1, m3 → green (chain 7850); F2 fix RED → green (chain 7851).
+
+**What changed for staff:** "Printer settings ›" opens cards instead of today's long setup: "This device's printer" (Test
+print · Change · Remove, Paper width), "Print for other devices" (one device prints for all, Stop, Print here instead),
+"Faster KOTs" (Print KOTs as plain text), "Bill printer for this device", More (Change POS address, Battery settings,
+Remove the printing device, Printer setup for admins); in printers mode one "Printers on this device" card with each
+printer, its state and Reconnect, Test print (admins: the setup's own test; staff: this device's printer), and Connect
+another printer. In the Android app "Connect a printer" is now step by step: kind of printer → the printers it found (the
+search starts by itself; a dual-mode printer is one row) → connecting → connected → a test slip → "Did the test slip come
+out?" Yes / No → three tips; a scan Android refused for Location shows Allow, then the three settings steps. The words
+send staff where they can go: the header button "— open printer", "Ask your manager…" / "Set by your manager in Printer
+setup." instead of pointers to an admin page, the Windows app's refusals shown as "Open the printer icon, then Printer
+settings, …", a printers-mode row names its printer, a phone names the stuck printer first. Chrome and the Windows app keep
+their own pickers inside the card (X2).
+
+**Pins changed on purpose (none deleted; every test file is A or M in the diff):** Task 10 — printer-panel-layout
+(PANEL_FILES, buttons, views, words, focus → the hook, the section card's values: Ruling T10-A), printer-ui-paths (where /
+card / advanced / device / tips / paper; partsPin), print-host-card-paths (CARD_TSX → the two hooks; PIN b, d, f, g; the
+2nd hop), print-paths (→ use-test-print.ts), print-text-kot-paths (order), print-bill-printer:99-103, print-setup-fields:46-47,
+pos-pulse-paths:151-162 (the pulse reader → use-printer-setup-actions.ts), printer-status-card:167, go-live-runbook PIN §1
+(the Faster KOTs words; docs/GO-LIVE-CHECKLIST.md follows), printer-dot-ui-paths (focus); Task 10b — printer-panel-layout
+(head gap 10), printers-card-paths (new), print-setup-ui-paths (the shared setup test tap), PrinterBlock hygiene budget 80 →
+100; Task 11 — printer-panel-layout (frame head sub / Cancel, views, Ruling Q → usePrinterViews), printer-dot-ui-paths
+(frame call shape), go-live-runbook (NETWORK_TITLE → ConnectList), print-find-network-paths, print-agent-printers:320-328
+(keepInApp → use-connect-attempt.ts), print-setup-ui-paths:172, print-host-card-paths (CARD_FILES), printer-ui-paths
+(native; the device lock pin inverted by T11-C), printers-card-paths, print-waiting:296, print-setup-fields:47,
+print-text-kot-paths:59, printer-status-card:167; Task 12 — printer-dot:192-202,322, printer-dot-waiting:30,
+print-waiting:64-67, print-setup-ui-paths (Not printed), print-bill-printer:87, print-waiting-view (R5 row),
+print-waiting-printers (the order), print-job-toast + print-gating-fx-paths (the bridge's toast → slipToastOf),
+print-text-kot-paths:49, pos-frame (the clock word); Task 13 — connect-flow (paired rows first); the final wave — the
+Task 12 pins' messages and `\.` escapes restored, the X1 guard widened (print-words-px3); F2 — printers-card-paths
+(showNames). New pin / test files: settings-view, printers-card-paths, connect-flow, connect-steps, connect-rows,
+connect-location, bluetooth-scan, connect-settle-paths, print-words-px3.
+
+**Differences from the plan (each a ruling, why; the SDD ledger holds them all):** S1 PrinterSettingsView takes `onClose`
+(More's Printer setup closes the sheet first); S3 each connect step is a props-only view + a container; T10-A the cards take
+§6.6's values (head 12/16 gap 10, body 0 16 14 gap 10); T10-B `deviceCardTitleOf(DotLane)`; T10-C/T12-A stale words in the
+setup page and `apps/mobile/TEST-CHECKLIST.md` (a doc) follow the UI; T10-D More's "Remove the printing device" simple mode
+only (spec §6.6 item 6); T10b-A the Windows app keeps its picker card in printers mode; **T10b-B every app printer keeps
+Reconnect (primary when down, outline when connected), overriding X7 for app printers: a stale "Connected" link must stay
+reconnectable where the phone's stuck step sends staff**; T10b-C Chrome / bridge v1 printers mode keeps Change; bridge v2
+with no own printer shows one connect button; T11-A only BLE rows wait while the app scans (the app's BLE connect does not
+stop the scan; Classic does); T11-B / I1 a failed connect says the app's own reason (thrown or not), else the step's words;
+T11-C the device card is not locked by "connecting" (the app's own retries would flicker Change / Remove); T13-A one
+`ConnectRow` type; T14-A the final review covered b570c73..fb61a0f; **T14-B the settings view's extra scroll at 390 over 64 px
+is accepted (as PX-2's V)**: every excess is spec content or a kept action the mockups leave out; **T14-C** printers mode's own
+block shows this device's paper (pre-existing; only the device test uses it) — told to the owner.
+
+**Reviews:** per task — Task 10 Approved + a fix round (T10-A + 5 minors); Task 10b Needs fixes (Paper width hidden while the
+device test still reads it; the admin's test skipped the setup's rule) → fix round, re-review clean; Task 11 Needs fixes
+(a BLE connect during the scan) → fix round + the T11-C revert, re-review clean; Task 12 Approved; Task 13 Approved. Final:
+Claude Fable 5.1, b570c73..fb61a0f, **Ready to merge: With fixes**, 0 Critical / 3 Important (a failed replace lost the
+printer's reason; Allow had no double-tap guard; edited pins without messages) / 9 Minor; no ruling wrong. One fix wave
+(`2009a14`: I1–I3 + minors 1, 3, 8, 9), scoped re-review: all addressed, no new breakage. Deferred, can wait: the "Tap
+Reconnect" state word on simple mode's card, prefilling the Wi-Fi form on "Connect it again", settings-view.ts importing a
+component file, MoreCard / useDotPrinters instance cost, /printers focus after the inline connect, a thrown plain Error's
+raw words, the within-group order of merged rows, simple mode's "set by your manager" sub when another app printer exists.
+
+**Verification (Task 14):** the harness (`D:\kd\pos-dev-keep\printer-ux\tools`, `PX3-RUNBOOK.md`; build of fb61a0f, then of
+ff67d76; shots `D:\kd\pos-dev-keep\printer-ux\px3\`): PX-2's blocks A and B again — every behaviour check PASS (Print now
+absent on fresh rows, Clear queued / leased never back, Clear all one POST, the alarm quiet, Reconnect once each, printers
+mode only Kitchen, the phone amber "Printer not printing — open printer"); the guided connect — B9 one row per MAC
+("Paired"), a BLE row held while scanning, connect → connected → test slip (:9111 +1) → Yes (toast "Printing works on this
+tablet.", back to status) / No (tips, again +1), add mode ends at connected, Back / Cancel / Skip / Done; B11 — Allow →
+one `permissions.request` → the three steps, or a new scan when granted; the fix wave — the app's reason inline ("Bluetooth
+is off on this device. Turn it on, then reconnect the printer."), one toast for a connect finishing after the view was left,
+one automatic scan after Turn on Bluetooth; a11y (local axe) 0 violations on every view at 390 and 1280. Run 1 (fb61a0f):
+296 PASS / 16 FAIL = 7 of PX-2's accepted measures (V), 1 harness race (fixed), F1 ×6, F4 ×2 (fixed in 2009a14); re-run
+(ff67d76): 245 PASS / 4 FAIL, all four the 64 px settings budget (T14-B). The settings view's extra scroll at 390 / 820 /
+1280 after F2: simple 7 / 0 / –, simple + Battery 59, host 15, host + Battery 67, printers mode 132 (184 with Battery);
+820 is 0 everywhere. The Windows app (its built main process unpackaged with scratch user data and a faked printer list, build of ff67d76): 25 PASS / 0 FAIL — "No printer chosen on this PC" → "Choose a printer" → the "This PC's printer" card with today's picker → "Printer ready" with the printer's name; the header name ends "— open printer"; Done closes; 0 console errors. The emulator (Pixel_7_API_33, local harness only, build of ff67d76) on WebView 109 and 154: 13 / 0 each — the status view, the settings cards to the bottom, the connect view (head "Connect a printer" + "Step 1 of 3", the three kinds, the Bluetooth step, the Wi-Fi form: the address field 44 px with 16 px text and no zoom), Cancel back to settings, Back to status; on 154 the foot sits 24.0 CSS px higher (its bottom inset). Not seen on a device: the Bluetooth rows and the scan (the emulator app has no Bluetooth permission: it shows that notice, "Not in the list?" and Search again greyed). Put back: WebView 154, adb reverse removed, the app stopped, the emulator synced and shut down; the Play Store was found disabled (another run) and left enabled. Shots `px3win-*.png`, `px3emu-109-*.png`, `px3emu-154-*.png`; scratch databases dropped; `D:kdpxr` unlinked (384 junctions) and removed.
+
+**Left for the owner:** the merge OK (then the push with the token store, and the deploy per GO-LIVE, demo cafe first); the
+real-printer checks below; T14-C (which paper a printers-mode tablet's own printer shows); native 2.0.3 items stay later
+(PX-D7).
+
+**The owner's real-printer checks (spec §11, after the deploy, demo cafe first):** Android tablet + two Bluetooth printers
+in printers mode: switch the Kitchen printer off → its name on the card, 3 steps, Reconnect brings it back and the slips
+print by themselves (once each); Clear while the app retries → the row never returns; Clear all; a waiter phone shows
+amber with the printer's name ("Kitchen printer is not printing" once stuck); paper out → "out of paper" + the note;
+Printer settings → "Printers on this device" (both printers, Reconnect, Test print as admin); simple mode: one printer off
+/ on; **Connect a printer** step by step on a real Bluetooth printer (one row for it, Android's pair pop-up, the test slip,
+Yes); on an Android 7–11 tablet with Location not allowed: Allow → the permission pop-up → the list fills.
