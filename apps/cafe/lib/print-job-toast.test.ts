@@ -7,6 +7,7 @@ import { QueryClient, hashKey } from "@tanstack/query-core";
 
 import type { PrintAckData, PrintAttentionRow } from "@pos/shared/print-agent-wire";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
+import { REFETCH_INTERVALS } from "@pos/shared/query";
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
 import { stripComments } from "@/lib/source-pin-utils";
 import type { PrintAgentAckBody } from "@/lib/print-agent-types";
@@ -62,10 +63,11 @@ const PRINTED = { deviceId: "dev-a", epoch: 1, outcome: "printed" as const };
 const answerOf = (over: Partial<PrintAckData> = {}): PrintAckData => ({ applied: true, status: "printed", nextAttemptAt: null, ...over });
 
 const PULSE_AT = 1_762_000_000_000;
+const NOW = PULSE_AT + 5_000; // a fresh answer, 5 s old
 
-function fakeClient(data: Partial<PosPulseData>) {
+function fakeClient(data: Partial<PosPulseData>, state: { fetchStatus?: string; dataUpdatedAt?: number } = {}) {
   const writes: { key: unknown; data: unknown; options: unknown }[] = [];
-  const getQueryState = () => ({ data, dataUpdatedAt: PULSE_AT });
+  const getQueryState = () => ({ data, dataUpdatedAt: PULSE_AT, fetchStatus: "idle", ...state });
   const setQueryData = (key: unknown, update: unknown, options: unknown): undefined => {
     writes.push({ key, data: typeof update === "function" ? (update as (old: unknown) => unknown)(data) : update, options });
     return undefined;
@@ -76,7 +78,7 @@ function fakeClient(data: Partial<PosPulseData>) {
 test("dropPrintedFromPulse: a printed applied answer removes the row; a failed or not-applied one leaves the cache untouched", () => {
   const printed = fakeClient({ printAttention: ROWS });
   const answer = answerOf();
-  assert.equal(dropPrintedFromPulse(printed.qc, "j1", PRINTED, answer), answer, "the answer goes on to the agent unchanged");
+  assert.equal(dropPrintedFromPulse(printed.qc, "j1", PRINTED, answer, NOW), answer, "the answer goes on to the agent unchanged");
   assert.equal(printed.writes.length, 1, "one cache write, no request");
   assert.deepEqual(printed.writes[0]?.key, POS_PULSE_KEYS.all, "the pulse the provider already polls");
   assert.deepEqual((printed.writes[0]?.data as PosPulseData).printAttention?.map((r) => r.id), ["j2"], "the printed slip leaves the list at once");
@@ -89,9 +91,29 @@ test("dropPrintedFromPulse: a printed applied answer removes the row; a failed o
   ];
   for (const [name, body, other, id] of cases) {
     const untouched = fakeClient({ printAttention: ROWS });
-    assert.equal(dropPrintedFromPulse(untouched.qc, id, body, other), other, `${name}: the answer goes on`);
+    assert.equal(dropPrintedFromPulse(untouched.qc, id, body, other, NOW), other, `${name}: the answer goes on`);
     assert.deepEqual(untouched.writes, [], `${name}: the cache is untouched`);
   }
+});
+
+// Fix round 1 (I-1, Ruling S; m-1): every cache write restarts the pulse's interval timer, and the host beat rides each
+// real pulse answer. So the edit lands only on a fresh answer (under one lively interval old) with no pulse in flight:
+// a long drain can never hold the host's pulse (and beat) off past PRINT_HOST_OFFLINE_MS, and an answer read before
+// the ack can never write the printed slip back over the edit.
+test("dropPrintedFromPulse: an answer 20 s or older, or a pulse in flight, leaves the cache untouched; fresh and idle drops the row", () => {
+  const old = fakeClient({ printAttention: ROWS });
+  dropPrintedFromPulse(old.qc, "j1", PRINTED, answerOf(), PULSE_AT + REFETCH_INTERVALS.POS_PULSE);
+  assert.deepEqual(old.writes, [], "an answer 20 s old: the row leaves at the next answer (no timer restart)");
+  const stale = fakeClient({ printAttention: ROWS });
+  dropPrintedFromPulse(stale.qc, "j1", PRINTED, answerOf(), PULSE_AT + 10 * 60_000);
+  assert.deepEqual(stale.writes, [], "far older: untouched too");
+  const inFlight = fakeClient({ printAttention: ROWS }, { fetchStatus: "fetching" });
+  dropPrintedFromPulse(inFlight.qc, "j1", PRINTED, answerOf(), NOW);
+  assert.deepEqual(inFlight.writes, [], "a pulse in flight: its answer, read before the ack, would write the slip back");
+  const fresh = fakeClient({ printAttention: ROWS });
+  dropPrintedFromPulse(fresh.qc, "j1", PRINTED, answerOf(), PULSE_AT + REFETCH_INTERVALS.POS_PULSE - 1);
+  assert.deepEqual(fresh.writes.map((w) => (w.data as PosPulseData).printAttention?.map((r) => r.id)), [["j2"]], "fresh, idle and listed: the row leaves at once");
+  assert.deepEqual(fresh.writes[0]?.options, { updatedAt: PULSE_AT }, "anchored to the last real answer");
 });
 
 test("dropPrintedFromPulse writes the cache manually: a listener can tell it from a pulse answer (F-I1)", () => {
@@ -103,8 +125,8 @@ test("dropPrintedFromPulse writes the cache manually: a listener can tell it fro
     if (event.type !== "updated" || event.action.type !== "success" || event.query.queryHash !== pulseHash) return;
     heard.push({ manual: event.action.manual === true, ids: ((event.query.state.data as PosPulseData).printAttention ?? []).map((r) => r.id) });
   });
-  dropPrintedFromPulse(qc, "j2", PRINTED, answerOf());
-  dropPrintedFromPulse(qc, "j9", PRINTED, answerOf());
+  dropPrintedFromPulse(qc, "j2", PRINTED, answerOf(), NOW);
+  dropPrintedFromPulse(qc, "j9", PRINTED, answerOf(), NOW);
   off();
   assert.deepEqual(heard, [{ manual: true, ids: ["j1"] }], "one success event the alarm hears (its notice goes) and the agent's listener skips");
   assert.equal(qc.getQueryState(POS_PULSE_KEYS.all)?.dataUpdatedAt, PULSE_AT, "the pulse's own time is kept (the POS app's hidden tick reads it)");
