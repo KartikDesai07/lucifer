@@ -114,9 +114,9 @@ const HELD = (key: string, status: PrinterStatus): PrinterStatus => heldPrinterS
 /** Session 2D (spec §10): the top-bar dot's view of printers mode. The same printers read as the agent's (one cache
  *  entry): no request of its own. Session 3B: with the network printers the wake says this device took over. PX-2 (spec
  *  §6.5, §6.9 B6): the app's printers held through its own retries before the dot reads them; `here` (every printer it
- *  prints now, held) and `notHere` for the status card; `waiting`, the printer with the most fresh slips waiting that it
- *  does not print (waitingElsewhereOf, R1), named from this read and the narrow string the pulse provider derives: no
- *  request, no poll, no timer (SR-2). */
+ *  prints now, held) and `notHere` for the status card; `waiting`, the first waiting printer it does not print (stuck
+ *  first, then the most slips, then the setup's order: waitingElsewhereOf, R1), named from this read and the narrow
+ *  string the pulse provider derives: no request, no poll, no timer (SR-2). */
 export function useDotPrinters(deviceId: string): PrinterDotPrinters {
   const { printers } = usePrintersRead(deviceId !== "");
   const device = useDevicePrinter();

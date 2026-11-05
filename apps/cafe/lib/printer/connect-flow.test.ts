@@ -11,6 +11,7 @@ import {
   CONNECT_TRANSPORT_WORDS,
   attemptErrorWordsOf,
   connectChoicesOf,
+  connectEndOf,
   connectFlowReducer,
   connectHeadOf,
   connectRowsOf,
@@ -158,4 +159,18 @@ test("a thrown attempt says its own words, in both modes", () => {
   assert.equal(attemptErrorWordsOf(new Error(worded)), worded, "an error already worded (the pool's add throws one) keeps its words");
   assert.equal(attemptErrorWordsOf("boom"), undefined, "nothing to say: the step's words");
   assert.equal(attemptErrorWordsOf(new Error("")), undefined, "an empty message: the step's words");
+});
+
+// The final review's I1: the app's link never throws a connect; it publishes why one did not connect in the snapshot's
+// message (Bluetooth off, Location off, busy, the app's own status sentence) and answers "failed". Today's toast read it there.
+test("a replace that ran and did not connect says the printer's own reason; add keeps its words", () => {
+  const off = "Bluetooth is off on this device. Turn it on, then reconnect the printer.";
+  assert.deepEqual(connectEndOf("replace", "connected", off), { type: "connected" }, "connected: no words");
+  assert.deepEqual(connectEndOf("add", "connected", null), { type: "connected" }, "an add that connected");
+  assert.deepEqual(connectEndOf("replace", "failed", off), { type: "failed", message: off }, "replace: the reason the link published");
+  assert.deepEqual(connectEndOf("replace", "failed", null), { type: "failed" }, "no reason published: the step's words");
+  assert.deepEqual(connectEndOf("replace", "failed", ""), { type: "failed" }, "an empty reason: the step's words");
+  assert.deepEqual(connectEndOf("add", "failed", off), { type: "failed" }, "add: today's added-but-not-connected words (the pool publishes none here)");
+  assert.equal(connectFlowReducer(at("connecting", { target: RPP }), connectEndOf("replace", "failed", off)).error, off, "the list's line is the printer's reason");
+  assert.equal(connectFlowReducer(at("connecting", { target: RPP }), connectEndOf("replace", "failed", null)).error, "Could not connect to RPP02N. Check it is on, then try again.", "else the step's words");
 });

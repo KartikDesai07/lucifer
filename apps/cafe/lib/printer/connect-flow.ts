@@ -3,6 +3,7 @@ import { nativeErrorCode } from "@/lib/printer/native-bridge";
 import type { NativePrinter, NativeTransport } from "@/lib/printer/native-bridge-protocol";
 import type { DeviceNoun } from "@/lib/printer/printer-status-view";
 import { nativeErrorMessage } from "@/lib/printer/transport-native";
+import type { ConnectOutcome } from "@/lib/printer/web-printer-types";
 
 // Printer UX PX-3 Task 11 (spec §6.7; mockups g1–g6): the guided connect of the Android app, as a pure reducer. Steps: what
 // kind of printer → the found list → connecting → connected → the test slip's question → the tips. Modes: replace (Connect a
@@ -47,6 +48,9 @@ export const CONNECT_ADD: ConnectEntry = { mode: "add", transport: null };
 export const CONNECT_TRANSPORT_WORDS: Record<ConnectTransport, string> = { bluetooth: "Bluetooth", usb: "USB", network: "Wi-Fi or network" };
 /** A printer added that did not connect: today's words (OtherDevicePrinters' add, X4). */
 export const CONNECT_ADD_FAILED = "The printer is added, but not connected yet. Check it is on, then tap Reconnect.";
+/** A printer added that connected: today's words (OtherDevicePrinters' add before PX-3), for an add that ends after staff
+ *  left the guided connect (the final review's m1: today's flow toasted it). */
+export const CONNECT_ADDED = "Printer added to this device.";
 
 export const CONNECT_WORDS = {
   question: "What kind of printer?",
@@ -93,6 +97,15 @@ function failedWordsOf(state: ConnectState): string {
 export function attemptErrorWordsOf(error: unknown): string | undefined {
   if (nativeErrorCode(error) !== null) return nativeErrorMessage(error);
   return error instanceof Error && error.message !== "" ? error.message : undefined;
+}
+
+/** How a connect that ran ends, as the flow's event (the final review's I1). The app's link never throws a connect: it
+ *  publishes why one did not connect in the snapshot's message (Bluetooth off, Location off, busy, the app's own status
+ *  sentence) and answers "failed", so a replace says that reason (today's toast read it there); none, the step's words.
+ *  An add keeps the step's words (the pool's add publishes nothing there). */
+export function connectEndOf(mode: ConnectState["mode"], outcome: ConnectOutcome, reason: string | null): ConnectEvent {
+  if (outcome === "connected") return { type: "connected" };
+  return mode === "replace" && reason !== null && reason !== "" ? { type: "failed", message: reason } : { type: "failed" };
 }
 
 /** Each step and its next; every other pair returns the same state (===), so a late or doubled event changes nothing. */

@@ -114,9 +114,9 @@ export function waitingPrintersOf(key: string, printers: ReadonlyArray<{ id: str
   return waiting.sort((a, b) => Number(b.stuck) - Number(a.stuck) || b.count - a.count || rank(a.printerId) - rank(b.printerId));
 }
 
-/** R1 (spec §6.5): the waiting printer the dot and the card speak of, the one with the most fresh slips that this device
- *  does not print (`here`): a writer whose own busy printer has the most slips still sees another device's one stuck
- *  (its own printers are its own row's). A device that prints nothing gets the first. */
+/** R1 (spec §6.5): the waiting printer the dot and the card speak of, the first that this device does not print (`here`)
+ *  in waitingPrintersOf's order (stuck first, then the most slips, then the setup's order): a writer whose own busy printer
+ *  has the most slips still sees another device's one stuck (its own printers are its own row's). Prints nothing: the first. */
 export function waitingElsewhereOf(waiting: readonly WaitingPrinter[], here: ReadonlyArray<{ id: string }>): WaitingPrinter | undefined {
   return waiting.find((entry) => !here.some((mine) => mine.id === entry.printerId));
 }

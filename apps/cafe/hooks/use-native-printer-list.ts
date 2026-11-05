@@ -26,7 +26,9 @@ export interface NativePrinterList {
   refreshing: boolean;
   /** Turn on Bluetooth or Allow Bluetooth is running. */
   working: boolean;
-  /** The app's Bluetooth scan (about 8 s). Resolves to its error (null when it listed); never toasts: the list says it. */
+  /** The app's Bluetooth scan (about 8 s). Resolves to its error, null when it listed, or undefined when it did nothing (a
+   *  scan, Refresh, Turn on or Allow Bluetooth holds the list), so a tap then never clears that job's outcome (the final
+   *  review's I2). Never toasts: the list says it. */
   scan(): Promise<unknown>;
   refresh(): Promise<void>;
   turnOnBluetooth(): Promise<void>;
@@ -87,7 +89,7 @@ export function useNativePrinterList(): NativePrinterList {
   }, [load, statusOrder]);
 
   const scan = async (): Promise<unknown> => {
-    if (locked) return null;
+    if (locked) return undefined;
     setScanning(true);
     try {
       setPrinters(await devicePrinter().listNative(true));

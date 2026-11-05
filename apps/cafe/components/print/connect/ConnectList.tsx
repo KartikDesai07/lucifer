@@ -11,6 +11,7 @@ import { PRINTER_BUTTON_CLASS, PRINTER_BUTTON_PRIMARY_CLASS, PRINTER_CONNECT_CAR
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { networkTargetOf, useNativePrinterList } from "@/hooks/use-native-printer-list";
+import { autoScanOf } from "@/lib/printer/bluetooth-scan";
 import { CONNECT_WORDS, connectRowsOf, type ConnectRow, type ConnectTransport } from "@/lib/printer/connect-flow";
 import { DEFAULT_TCP_PRINTER_PORT, type NativeBluetoothState } from "@/lib/printer/native-bridge-protocol";
 import { canScanBluetooth, type ScanRefusal } from "@/lib/printer/native-picker-state";
@@ -52,7 +53,8 @@ export interface ConnectListViewProps {
   onRefresh(): void;
   onTurnOn(): void;
   onAllow(): void;
-  onAllowLocation?(): void;
+  /** Allow on the Location notice: Android's Location ask, then a scan (never Allow Bluetooth). */
+  onAllowLocation(): void;
 }
 
 function ErrorLine({ error }: { error: string | null }) {
@@ -122,7 +124,7 @@ export function ConnectListView({ transport, error, rows, bluetooth, scanning, s
         </div>
       )}
       {bluetooth === "unsupported" && <p role="status" className={PRINTER_NOTICE_CLASS}>{BLUETOOTH_UNSUPPORTED_MESSAGE}</p>}
-      {scanRefusal !== null && !scanning && <ScanRefusalNotice refusal={scanRefusal} locked={locked} onAllow={onAllowLocation ?? onAllow} />}
+      {scanRefusal !== null && !scanning && <ScanRefusalNotice refusal={scanRefusal} locked={locked} onAllow={onAllowLocation} />}
       {rows === null
         ? reading
         : (rows.length > 0 || scanning || scanError !== null) && (
@@ -210,16 +212,20 @@ export function NetworkFormView({ error, address, port, formError, onAddress, on
 
 type Pick = (target: NativeSelectTarget, name: string) => void;
 
-// Bluetooth and USB: the app's list. The scan starts by itself once, when the first list has answered (spec §6.7 item 2:
-// today's 8 s Find printers), and not where Bluetooth is known to be unusable (its notice says why).
+// Bluetooth and USB: the app's list. The scan starts by itself (spec §6.7 item 2: today's 8 s Find printers) when the first
+// list has answered, and once more when Bluetooth turns usable (the final review's m3: Turn on or Allow Bluetooth); never
+// where Bluetooth is known to be unusable (its notice says why). autoScanOf decides, once nothing holds the list (Turn on
+// Bluetooth turns it on while it still holds it, and a scan then would do nothing).
 function FoundList({ transport, error, onPick }: { transport: "bluetooth" | "usb"; error: string | null; onPick: Pick }) {
   const list = useNativePrinterList();
   const { scanError, scanRefusal, search, allowLocation } = useBluetoothScan(list.scan);
-  const scanned = useRef(false);
+  // The Bluetooth state the automatic scan last decided for (undefined: not yet).
+  const seen = useRef<NativeBluetoothState | null | undefined>(undefined);
   useEffect(() => {
-    if (transport !== "bluetooth" || scanned.current || list.printers === null) return;
-    scanned.current = true;
-    if (canScanBluetooth(list.bluetooth)) search();
+    if (transport !== "bluetooth" || list.printers === null || list.working || list.refreshing || list.scanning || seen.current === list.bluetooth) return;
+    const auto = autoScanOf(seen.current, list.bluetooth);
+    seen.current = list.bluetooth;
+    if (auto) search();
   });
   return (
     <ConnectListView

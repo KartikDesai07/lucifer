@@ -80,7 +80,7 @@ device as **Print all slips on this device** and a second device (phone or PC) t
 - [ ] **The printing device is killed mid-slip** (Settings → Apps → Force stop while a
       slip prints). Open the app again after 2 minutes: the KOT prints once more with
       **REPRINT** (a bill asks the cashier instead). Nothing prints a third time.
-- [ ] **Couldn't print.** A KOT whose two tries may both have printed (cut it twice) shows
+- [ ] **Not printed.** A KOT whose two tries may both have printed (cut it twice) shows
       under **Not printed** with a reason: "Tried twice. Check the printer, then retry.",
       or the printer's own sentence (on USB, Bluetooth and the Windows app it may say what
       failed). **Retry** prints exactly one **REPRINT** copy.

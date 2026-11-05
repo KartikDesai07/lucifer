@@ -67,9 +67,9 @@ test("PIN (2D): each printer row: its state in words, on/off, Test print only wh
   assert.match(src("hooks/use-print-setup.ts"), /await testPrint\.mutateAsync\(printer\.id\);\s*toast\.success\(testPrintSentText\(printer, state\)\);/, "the setup's toast");
   assert.match(section, /printerBodyOf\(\{ \.\.\.printerDraftOf\(printer, stations\), enabled: !printer\.enabled \}, printers, printer\.id\)/, "on/off saves the printer whole, through the same rules as the form");
   // The 2D review gate (M-5): switching a printer off fails its waiting slips (the sweep), so it asks first, as Delete does.
-  assert.match(section, /question=\{`Switch \$\{printer\.name\} off\? Slips still waiting for it will show under Not printed.`\}/, "switching off asks first");
+  assert.match(section, /question=\{`Switch \$\{printer\.name\} off\? Slips still waiting for it will show under Not printed\.`\}/, "switching off asks first");
   assert.match(section, /onCheckedChange=\{\(\) => \(printer\.enabled \? setSwitchingOff\(printer\.id\) : void toggle\(printer\)\)\}/, "switching on needs no question");
-  assert.match(section, /question=\{`Delete \$\{printer\.name\}\? Slips still waiting for it will show under Not printed.`\}/);
+  assert.match(section, /question=\{`Delete \$\{printer\.name\}\? Slips still waiting for it will show under Not printed\.`\}/, "deleting asks first");
   assert.match(section, /\{gaps\.map\(\(gap\) => \(/, "what the setup leaves without a printer is said above the list");
 });
 

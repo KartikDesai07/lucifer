@@ -189,17 +189,17 @@ test("W-N: a printer that is still connecting reads checking, never printer-off"
 
 // ── Copy: names, headlines, details ──────────────────────────────────────────
 test("printerButtonName: exact strings, one per state", () => {
-  assert.equal(PRINTER_BUTTON_NAME_OK, "Printer connected — open printer");
-  assert.equal(PRINTER_BUTTON_NAME_BAD, "Printer not connected — open printer");
-  assert.equal(PRINTER_BUTTON_NAME_NONE, "Open printer");
-  assert.equal(printerButtonName({ show: false }), "Open printer");
-  assert.equal(printerButtonName({ show: true, ok: true, reason: "ok" }), "Printer connected — open printer");
-  assert.equal(printerButtonName({ show: true, ok: false, reason: "no-printer" }), "Printer not connected — open printer");
+  assert.equal(PRINTER_BUTTON_NAME_OK, "Printer connected — open printer", "connected");
+  assert.equal(PRINTER_BUTTON_NAME_BAD, "Printer not connected — open printer", "not connected");
+  assert.equal(PRINTER_BUTTON_NAME_NONE, "Open printer", "nothing set up");
+  assert.equal(printerButtonName({ show: false }), "Open printer", "no dot: the plain name");
+  assert.equal(printerButtonName({ show: true, ok: true, reason: "ok" }), "Printer connected — open printer", "ok: the connected name");
+  assert.equal(printerButtonName({ show: true, ok: false, reason: "no-printer" }), "Printer not connected — open printer", "no printer: the not-connected name");
 });
 
 // ── R2-W7: a printer that is only being checked is neither connected nor not connected ───────────────
 test("R2-W7: reason checking has its own button name and NO dot; every other state keeps its name and colour", () => {
-  assert.equal(PRINTER_BUTTON_NAME_CHECKING, "Checking the printer — open printer");
+  assert.equal(PRINTER_BUTTON_NAME_CHECKING, "Checking the printer — open printer", "checking");
   assert.equal(printerButtonName({ show: true, ok: false, reason: "checking" }), PRINTER_BUTTON_NAME_CHECKING);
   assert.notEqual(PRINTER_BUTTON_NAME_CHECKING, PRINTER_BUTTON_NAME_BAD, "the header must not say not connected for a printer that is only connecting");
   assert.equal(printerDotTone({ show: true, ok: false, reason: "checking" }), "none");
@@ -319,7 +319,7 @@ test("3B: a printer of this device out of paper, its cover open or in error is r
   const printers = { printersMode: true, isWriter: true, allLocal: true, worst: "connected" as const };
   const out = printerDotOf({ ...base, printers: { ...printers, problem: { name: "Kitchen", problem: "paper-out" } } });
   assert.deepEqual(out, { show: true, ok: false, reason: "printer-problem", problem: "Kitchen is out of paper." });
-  assert.equal(printerButtonName(out), "Printer needs attention — open printer");
+  assert.equal(printerButtonName(out), "Printer needs attention — open printer", "a printer problem: needs attention");
   assert.equal(printerDotTone(out), "red");
   const down = printerDotOf({ ...base, printers: { ...printers, worst: "disconnected", problem: { name: "Kitchen", problem: "cover-open" } } });
   assert.equal(down.show && down.reason, "printer-off", "a printer that does not answer: reconnect it first");

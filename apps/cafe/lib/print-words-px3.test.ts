@@ -77,7 +77,15 @@ test("the bridge and the text KOT line read refusals through the display map", (
   assert.ok(bridge.includes("toast.error(slipToastOf(PRINT_HOST_PRINT_FAILED_MESSAGE, jobIdRef.current));"), "the watchdog's toast");
   assert.ok(src("components/print/TextKotSection.tsx").includes("desktopRefusalWordsOf"), "the error line");
   assert.ok(src("lib/print-waiting-view.ts").includes("desktopRefusalWordsOf"), "the panel rows");
-  assert.ok(!src("lib/desktop-shell.ts").includes("desktopRefusalWordsOf"), "never where a failure is recorded");
+  // The final review's m9: where a failure is recorded keeps the wire sentence (it decides "nothing sent", it is a job's
+  // lastError): none of these files imports or calls the display map.
+  const mapped = (code: string): boolean => /\b(desktopRefusalWordsOf|slipToastOf)\b/.test(code);
+  for (const file of ["lib/desktop-shell.ts", "lib/print-write-outcome.ts", "hooks/use-print-agent.ts"]) {
+    const code = src(file);
+    assert.ok(code.length > 100, `${file} was read`);
+    assert.ok(!mapped(code), `${file}: never where a failure is recorded`);
+  }
+  assert.ok(mapped(`${src("lib/print-write-outcome.ts")}\nconst shown = slipToastOf(message, undefined);`) && mapped('import { desktopRefusalWordsOf } from "x";'), "the guard bites on a call and an import");
 });
 
 function rowOf(over: Partial<PrintAttentionRow>): PrintAttentionRow {

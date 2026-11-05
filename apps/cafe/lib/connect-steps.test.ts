@@ -35,7 +35,7 @@ const PRINTERS = connectRowsOf([
 ], "bluetooth");
 const listProps = (over: Partial<ConnectListViewProps> = {}): ConnectListViewProps => ({
   transport: "bluetooth", error: null, rows: PRINTERS, bluetooth: "on", scanning: false, scanError: null, refreshing: false, locked: false,
-  onConnect: noop, onScan: noop, onRefresh: noop, onTurnOn: noop, onAllow: noop, ...over,
+  onConnect: noop, onScan: noop, onRefresh: noop, onTurnOn: noop, onAllow: noop, onAllowLocation: noop, ...over,
 });
 const list = (over: Partial<ConnectListViewProps> = {}): string => renderToStaticMarkup(createElement(ConnectListView, listProps(over)));
 const testProps = (over: Partial<ConnectTestViewProps> = {}): ConnectTestViewProps => ({

@@ -84,7 +84,7 @@ test("PIN (2D, the 2C review gate's M-5): a slip no printer takes says so instea
   const hook = src("hooks/use-host-routing.ts");
   assert.equal((hook.match(/if \(result\.outcome === "not-routed"\) toast\(notRoutedMessageOf\(job\.payload\.kind\)\);/g) ?? []).length, 2, "the routed print and the moved slip both say it, by the slip's kind");
   assert.ok(!hook.includes("toast(PRINT_JOB_NOT_ROUTED_MESSAGE)"), "no call site says the notice words whatever the slip");
-  assert.match(src("lib/print-routing.ts"), /export const PRINT_JOB_NOT_ROUTED_MESSAGE =\s*"No printer takes this slip\. Ask your manager to switch Notices on for a printer in Printer setup.";/);
+  assert.match(src("lib/print-routing.ts"), /export const PRINT_JOB_NOT_ROUTED_MESSAGE =\s*"No printer takes this slip\. Ask your manager to switch Notices on for a printer in Printer setup\.";/, "the notice words point at the manager (PX-3 Task 12)");
   assert.match(src("lib/print-routing.ts"), /export const PRINT_JOB_NOT_ROUTED_KOT_MESSAGE =\s*"Nothing to print: every item in this round was cancelled\.";/);
 });
 

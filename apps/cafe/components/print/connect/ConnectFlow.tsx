@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
+import { toastAddOutcome, toastConnectOutcome } from "@/components/print/connect-outcome";
 import { ConnectList } from "@/components/print/connect/ConnectList";
 import { ConnectProgress } from "@/components/print/connect/ConnectProgress";
 import { ConnectTest } from "@/components/print/connect/ConnectTest";
@@ -17,7 +18,8 @@ import {
   PRINTER_PANEL_VIEW_TITLE_CLASS,
 } from "@/components/print/printer-classes";
 import { useConnectAttempt } from "@/hooks/use-connect-attempt";
-import { CONNECT_BACK_LABEL, CONNECT_TITLE, attemptErrorWordsOf, connectHeadOf, type ConnectEvent, type ConnectState } from "@/lib/printer/connect-flow";
+import { CONNECT_BACK_LABEL, CONNECT_TITLE, attemptErrorWordsOf, connectEndOf, connectHeadOf, type ConnectEvent, type ConnectState } from "@/lib/printer/connect-flow";
+import { devicePrinter } from "@/lib/printer/device-printer";
 import type { DeviceNoun } from "@/lib/printer/printer-status-view";
 import { nativeTargetId, type NativeSelectTarget } from "@/lib/printer/transport-native";
 
@@ -34,8 +36,9 @@ export interface ConnectFlowProps {
 
 export function ConnectFlow({ state, send, noun, onLeave }: ConnectFlowProps) {
   const attempt = useConnectAttempt();
-  // A connect is never aborted (X3: the bridge has none): one that ends after Back or Cancel finishes as today's would, and
-  // only the flow still on screen hears how it ended. One at a time: a second tap before the list hides starts nothing.
+  // A connect is never aborted (X3: the bridge has none): one that ends after Back or Cancel finishes as today's would. The
+  // flow still on screen says how it ended; once staff left, today's toast does. One at a time: a second tap before the
+  // list hides starts nothing.
   const live = useRef(true);
   const inFlight = useRef(false);
   useEffect(() => {
@@ -49,16 +52,18 @@ export function ConnectFlow({ state, send, noun, onLeave }: ConnectFlowProps) {
     inFlight.current = true;
     send({ type: "pick", target: { id: nativeTargetId(target), name } });
     const run = state.mode === "add" ? attempt.add(target) : attempt.replace(target);
-    // No toast of its own: the step says it. Ruling T11-B: an attempt the app refused (thrown) in its own words; one that
-    // ran and did not connect, in the step's.
+    // On screen the step says it, no toast. Ruling T11-B: an attempt the app refused (thrown) in its own words; the final
+    // review's I1: a replace that ran and did not connect in the reason the app's link published (connectEndOf).
     void run
       .then(
-        (outcome): ConnectEvent => (outcome === "connected" ? { type: "connected" } : { type: "failed" }),
+        (outcome): ConnectEvent => connectEndOf(state.mode, outcome, devicePrinter().getSnapshot().message),
         (error: unknown): ConnectEvent => ({ type: "failed", message: attemptErrorWordsOf(error) }),
       )
       .then((event) => {
         inFlight.current = false;
         if (live.current) send(event);
+        // The final review's m1: staff left (Back, Cancel, the sheet closed) before it ended: today's toast, by the mode.
+        else void (state.mode === "add" ? toastAddOutcome(run) : toastConnectOutcome(run));
       });
   };
   const { step, transport } = state;

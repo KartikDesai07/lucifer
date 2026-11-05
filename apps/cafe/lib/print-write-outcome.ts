@@ -78,7 +78,7 @@ const NEVER_PRINTS: ReadonlySet<string> = new Set([
  *  its figures never loaded. The second one for a job while the printer is ready fails that job. */
 const SLIP_REFUSALS: ReadonlySet<string> = new Set([RASTER_FAILED_MESSAGE, PRINT_HOST_EOD_TIMEOUT_MESSAGE, DESKTOP_SHELL_NOT_READY_MESSAGE]);
 
-/** A Windows app refusal: its own sentence tells staff what to fix on the PC (the panel shows it as is). */
+/** A Windows app refusal: its own sentence tells staff what to fix on the PC (the panel shows desktopRefusalWordsOf's words). */
 export function isDesktopShellRefusal(message: string): boolean {
   return DESKTOP_SHELL_REFUSALS.includes(message);
 }
