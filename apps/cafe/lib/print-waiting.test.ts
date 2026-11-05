@@ -239,7 +239,7 @@ test("PIN: the panel shows the waiting slips, the button shows their count, and 
   assert.match(button, /\{waiting !== "" && \(/, "a count only when slips wait");
   const card = readFileSync(path.join(REPO_ROOT, "apps/cafe/components/print/NotPrintedSection.tsx"), "utf8");
   assert.ok(lines(card) <= 120, "NotPrintedSection stays <= 120 lines");
-  for (const action of ["retry(id)", 'confirm(id, "reprint")', 'confirm(id, "printed")', "dismiss(id)", "dismissAll(view.ids)"]) assert.ok(card.includes(action), `the card offers ${action}`);
+  for (const action of ["retry(id)", 'confirm(id, "reprint")', 'confirm(id, "printed")', "dismiss(id)", "dismissAll(asking)"]) assert.ok(card.includes(action), `the card offers ${action}`);
   const actions = src("apps/cafe/hooks/use-print-job-actions.ts");
   assert.match(actions, /kickPrintAgent\(\);/, "a tap wakes this device's agent at once (it may be the one that prints)");
   assert.match(actions, /qc\.invalidateQueries\(\{ queryKey: POS_PULSE_KEYS\.all \}\)/, "the panel refreshes after a tap (one request per tap, never a poll)");

@@ -79,7 +79,11 @@ test("PIN: the panel's own hook: one request per tap, then the agent's kick and 
   assert.ok(!/useMutation|usePrintJobActions|useDismissPrintJob|refetchInterval|setInterval|router\.refresh/.test(hook), "apiSend itself: no hook-level toast, no poll");
   assert.ok(hook.includes("qc.setQueryData<PosPulseData>(POS_PULSE_KEYS.all, (data) => withoutAttentionRows(data, gone));"), "the row leaves the cache at once");
   assert.ok(hook.includes('apiSend<{ dismissed: number }>("/api/print-jobs/dismiss", "POST", { ids: [...ids], reason: STAFF })'), "Clear all is ONE request");
-  assert.match(hook, /\.then\(\s*\(\) => drop\(ids\),[\s\S]*?\.finally\(settled\)/, "Clear all: the cache first, then the one read");
+  assert.match(hook, /\.then\(\(\) => drop\(ids\)\)\s*\.catch\([\s\S]*?\.finally\(settled\)/, "Clear all: the cache first, then the one read");
+  // Review Minor 2: a throw in a success handler lands in the error words; the kick and the read run once, last.
+  assert.match(hook, /\.catch\(\(error: unknown\) => answered\(id, rowErrorNoticeOf\(error\)\)\)\s*\.finally\(settled\);/, "every tap ends in one settled()");
+  assert.ok(hook.includes('answer !== null && typeof answer === "object" && "dismissed" in answer'), "an odd answer body is guarded");
+  assert.equal((hook.match(/settled\(\)|\.finally\(settled\)/g) ?? []).length, 2, "settled runs from the two chain ends only");
   const section = stripComments(readFileSync(path.join(CAFE, "components/print/NotPrintedSection.tsx"), "utf8"));
   assert.ok(section.includes("useNotPrintedActions()") && !section.includes("usePrintJobActions"), "the panel uses its own hook; the band keeps its");
 });

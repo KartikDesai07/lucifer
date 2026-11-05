@@ -1,12 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import type { PrintAttentionRow } from "@pos/shared/print-agent-wire";
 import { NotPrintedCard, type NotPrintedCardProps } from "@/components/print/NotPrintedCard";
 import { PRINTER_NOT_PRINTED_ROW_WRAP_CLASS } from "@/components/print/printer-classes";
-import { notPrintedViewOf, type NotPrintedView } from "@/lib/print-waiting-view";
+import { stripComments } from "@/lib/source-pin-utils";
+import { clearAllAskedOf, notPrintedViewOf, type NotPrintedView } from "@/lib/print-waiting-view";
 
 // PX-2 Task 4 (spec §6.3; mockups s-wait5 / s-wait20 / s-clearall): the Not printed card draws what the pure view says,
 // props only. Rendered on the server: what a person sees and what a screen reader hears.
@@ -43,12 +47,13 @@ function render(over: Partial<NotPrintedCardProps> = {}): string {
     view: viewOf(SEVEN),
     expanded: false,
     onExpanded: () => undefined,
-    confirming: false,
+    confirming: null,
     onClearAll: () => undefined,
     onConfirm: () => undefined,
     busy: false,
     tapped: new Set<string>(),
     onAction: () => undefined,
+    questionId: "np-ask",
     ...over,
   };
   return renderToStaticMarkup(createElement(NotPrintedCard, props));
@@ -63,6 +68,7 @@ function itemOf(html: string, label: string): string {
 const buttons = (html: string): string[] => html.match(/<button[^>]*>[\s\S]*?<\/button>/g) ?? [];
 // The kit's classes carry "disabled:" variants: only the attribute says a button is off.
 const off = (button: string): boolean => / disabled=""/.test(button);
+const ALL = viewOf(SEVEN).ids;
 const liClass = (item: string): string => (/^ class="([^"]*)"/.exec(item)?.[1] ?? "").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 
 test("the head says Not printed with the count and Clear all", () => {
@@ -74,6 +80,12 @@ test("the head says Not printed with the count and Clear all", () => {
   assert.ok(html.indexOf(">Clear all</button>") < html.indexOf("<ul"), "the head's button comes before the list");
   const three = render({ view: viewOf(SEVEN.slice(0, 3)) });
   assert.ok(!three.includes("Show all"), "5 rows or fewer: no Show all");
+});
+
+test("one slip: no Clear all, its own Clear does it (ruling I)", () => {
+  const one = render({ view: viewOf(SEVEN.slice(0, 1)) });
+  assert.ok(!buttons(one).some((b) => />Clear all<\/button>$/.test(b)), "no head Clear all for one slip");
+  assert.ok(one.includes(`aria-label="Clear ${SEVEN[0]?.label}"`), "the row's own Clear stays");
 });
 
 test("5 rows and Show all 7 when folded", () => {
@@ -119,11 +131,25 @@ test("a failed slip with no words of its own ends at its bold part: no dangling 
   assert.match(failed, /14 min · <b[^>]*>Could not print\.<\/b><\/p>/, "{age} · Could not print.");
   const bill = itemOf(render(), "Bill · T-5");
   assert.match(bill, /2 min · <b[^>]*>May have printed\.<\/b> Check the printer\.<\/p>/, "the bold part, then the reason");
+  const view = viewOf(SEVEN.slice(0, 2));
+  const bare = { id: "x", label: "KOT · X", age: "3 min", strong: null, reason: "", tone: null, actions: ["clear" as const] };
+  assert.match(itemOf(render({ view: { ...view, rows: [bare] } }), "KOT · X"), /<p[^>]*>3 min<\/p>/, "no words at all: the age alone, no \" · \"");
+});
+
+test("a bill to check reads warn, a slip that could not print reads bad, a waiting slip neither", () => {
+  const html = render();
+  const meta = (label: string): string => /<p class="([^"]*)">\d+ min/.exec(itemOf(html, label))?.[1] ?? "";
+  assert.ok(meta("Bill · T-5").split(" ").includes("text-status-warn-ink"), "the bill's meta in --status-warn-ink");
+  assert.ok(meta("Bill · T-3").split(" ").includes("text-status-bad-ink"), "the failed slip's meta in --status-bad-ink");
+  const fresh = meta("KOT round 2 · T-4");
+  assert.ok(fresh.includes("text-subtle-foreground") && !/status-(warn|bad)-ink/.test(fresh), "a waiting slip in --text-3");
 });
 
 test("the confirm replaces Clear all", () => {
-  const html = render({ confirming: true });
+  const html = render({ confirming: ALL });
   assert.ok(html.includes(">Clear all 7 slips? They will not print.<"), "the question");
+  assert.match(html, /<div role="group" aria-labelledby="np-ask"[^>]*><p id="np-ask">Clear all 7 slips\?/, "the group is named by its question");
+  assert.ok(!html.includes('aria-label="Clear all 7'), "not a second copy of the visible words");
   const all = buttons(html);
   assert.equal(all.filter((b) => />Clear all<\/button>$/.test(b)).length, 1, "one Clear all: the confirm's");
   assert.ok(html.indexOf("Clear all 7 slips?") < html.indexOf(">Clear all</button>"), "no head Clear all before the question");
@@ -131,7 +157,7 @@ test("the confirm replaces Clear all", () => {
   assert.ok(cancel !== undefined, "a Cancel");
   assert.match(cancel, /autofocus/i, "focus moves to Cancel when the confirm opens");
   assert.ok(html.indexOf("Clear all 7 slips?") < html.indexOf("<ul"), "under the head, above the rows");
-  const busy = buttons(render({ confirming: true, busy: true })).filter((b) => />(Clear all|Cancel)<\/button>$/.test(b));
+  const busy = buttons(render({ confirming: ALL, busy: true })).filter((b) => />(Clear all|Cancel)<\/button>$/.test(b));
   assert.ok(busy.length === 2 && busy.every(off), "while the clear runs its buttons wait");
 });
 
@@ -140,4 +166,27 @@ test("a tapped row's buttons are disabled", () => {
   const bill = buttons(itemOf(html, "Bill · T-5"));
   assert.ok(bill.length === 3 && bill.every(off), "every button of the tapped row");
   assert.ok(buttons(itemOf(html, "Bill · T-3")).every((b) => !off(b)), "another row stays live");
+});
+
+// Review Minor 1: the confirm asks about the slips listed when it opened; a KOT that arrives meanwhile is never cleared
+// unasked. The container keeps that snapshot (string[] | null) and sends it; the question counts it.
+test("Clear all asks about the slips listed when it opened, not the live list", () => {
+  assert.ok(render({ confirming: ["k1", "k2", "k4"] }).includes(">Clear all 3 slips? They will not print.<"), "the snapshot's count, though 7 are listed");
+  const asked = ["k1", "k2"];
+  assert.equal(clearAllAskedOf(asked, ["k2", "k9"]), asked, "one of them still listed: the same snapshot (a new KOT k9 is not added)");
+  assert.equal(clearAllAskedOf(asked, ["k9"]), null, "none of them listed any more: the confirm closes");
+  assert.equal(clearAllAskedOf(null, ALL), null, "closed stays closed");
+});
+
+// Ruling J: Cancel gives the focus back to the head's Clear all. A server render cannot move focus, so the wiring is
+// pinned at its source: the container's ref on the card's button, focused after the confirm closes.
+test("PIN: Cancel returns the focus to Clear all; the confirm sends its snapshot", () => {
+  const read = (rel: string): string => stripComments(readFileSync(path.join(fileURLToPath(new URL("../", import.meta.url)), rel), "utf8"));
+  const card = read("components/print/NotPrintedCard.tsx");
+  assert.match(card, /<Button ref=\{clearAllRef\}[^>]*onClick=\{onClearAll\}>/, "the head's Clear all takes the container's ref");
+  const section = read("components/print/NotPrintedSection.tsx");
+  assert.match(section, /useEffect\(\(\) => \{\s*if \(refocus > 0\) clearAllRef\.current\?\.focus\(\);\s*\}, \[refocus\]\);/, "focused after the close renders");
+  assert.match(section, /const close = \(\) => \{\s*setAsked\(null\);\s*setRefocus\(\(n\) => n \+ 1\);\s*\};/, "every close asks for it");
+  assert.ok(section.includes("onClearAll={() => setAsked([...view.ids])}"), "the snapshot is taken when the confirm opens");
+  assert.ok(section.includes("void dismissAll(asking).finally("), "the confirm sends the snapshot");
 });

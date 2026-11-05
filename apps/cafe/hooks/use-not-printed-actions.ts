@@ -43,29 +43,28 @@ export function useNotPrintedActions() {
     if (notice?.drop === true) drop([id]);
     if (notice?.tone === "info") toast.info(notice.text, { duration: NOTICE_MS });
     if (notice?.tone === "error") toast.error(notice.text);
-    settled();
   };
-  const tap = <T extends PrintActionData | DismissAnswer>(id: string, action: NotPrintedAction, send: Promise<T>): Promise<void> =>
-    send.then(
-      (answer) => {
-        if ("dismissed" in answer && answer.dismissed) drop([id]);
+  // Any throw, the request's or the success handler's own (an odd body), lands in the error words, so the tap's promise
+  // settles quietly (the card's `void run()` never leaks a rejection) and the kick and the one read run once, last.
+  const tap = (id: string, action: NotPrintedAction, send: Promise<PrintActionData | DismissAnswer>): Promise<void> =>
+    send
+      .then((answer) => {
+        if (answer !== null && typeof answer === "object" && "dismissed" in answer && answer.dismissed === true) drop([id]);
         answered(id, rowAnswerNoticeOf(action, answer));
-      },
-      (error: unknown) => answered(id, rowErrorNoticeOf(error)),
-    );
+      })
+      .catch((error: unknown) => answered(id, rowErrorNoticeOf(error)))
+      .finally(settled);
   return {
     // Try again and Print now are one route and say the same when applied.
     retry: (id: string): Promise<void> => tap(id, "try-again", apiSend<PrintActionData>(jobUrl(id, "retry"), "POST", {})),
     confirm: (id: string, decision: PrintJobDecision): Promise<void> =>
       tap(id, decision === "reprint" ? "print-again" : "it-printed", apiSend<PrintActionData>(jobUrl(id, "confirm"), "POST", { decision })),
     dismiss: (id: string): Promise<void> => tap(id, "clear", apiSend<DismissAnswer>(jobUrl(id, "dismiss"), "POST", { reason: STAFF })),
-    // ONE request for every id the list holds (shown or folded; at most the feed's 20), not a POST per slip.
+    // ONE request for the ids the confirm asked about (shown or folded; at most the feed's 20), not a POST per slip.
     dismissAll: (ids: readonly string[]): Promise<void> =>
       apiSend<{ dismissed: number }>("/api/print-jobs/dismiss", "POST", { ids: [...ids], reason: STAFF })
-        .then(
-          () => drop(ids),
-          (error: unknown) => void toast.error(clearAllErrorOf(error)),
-        )
+        .then(() => drop(ids))
+        .catch((error: unknown) => void toast.error(clearAllErrorOf(error)))
         .finally(settled),
   };
 }

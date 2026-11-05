@@ -97,6 +97,13 @@ export function notPrintedViewOf(rows: readonly PrintAttentionRow[], truncated: 
   };
 }
 
+/** Clear all asks about the slips listed when its confirm opened (PX-2 Task 4 review): a KOT that arrives meanwhile is
+ *  never cleared unasked. The snapshot itself (the same array) while any of its slips is still listed; null once none
+ *  is (cleared elsewhere, or printed): the confirm closes. */
+export function clearAllAskedOf(asked: readonly string[] | null, listed: readonly string[]): readonly string[] | null {
+  return asked !== null && asked.some((id) => listed.includes(id)) ? asked : null;
+}
+
 /** The pulse cache without these rows (a cleared slip leaves at once); the same object when none is in it. */
 export function withoutAttentionRows<T extends { printAttention?: PrintAttentionRow[] }>(data: T | undefined, ids: ReadonlySet<string>): T | undefined {
   if (data?.printAttention === undefined || !data.printAttention.some((row) => ids.has(row.id))) return data;

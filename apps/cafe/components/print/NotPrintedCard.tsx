@@ -1,5 +1,6 @@
 "use client";
 
+import type { Ref } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -32,37 +33,45 @@ import { cn } from "@/lib/utils";
 // Printer UX, PX-2 Task 4 (spec §6.3): the "Not printed" card. Props only: it draws what notPrintedViewOf says (the
 // rows, their words and the only buttons that work for each), so a Print button on a slip that prints by itself cannot
 // come back through markup. Five rows, then "Show all": the sheet is the one scroller, never a list inside it.
-// NotPrintedSection holds every state (the tapped rows, expanded, the confirm, the Clear all in flight).
+// NotPrintedSection holds every state (the tapped rows, expanded, the confirm's ids, the Clear all in flight, the focus).
 
 export interface NotPrintedCardProps {
   view: NotPrintedView;
   expanded: boolean;
   onExpanded(next: boolean): void;
-  confirming: boolean;
+  /** The ids the confirm asks about, taken when it opened (the review's Minor 1); null while it is closed. */
+  confirming: readonly string[] | null;
   onClearAll(): void;
   onConfirm(yes: boolean): void;
   busy: boolean;
   tapped: ReadonlySet<string>;
   onAction(id: string, action: NotPrintedAction): void;
+  /** The head's Clear all: Cancel gives it the focus back (ruling J). */
+  clearAllRef?: Ref<HTMLButtonElement>;
+  /** Names the confirm by its question; page-unique (the sheet and /printers may both be mounted). */
+  questionId: string;
 }
 
 const TITLE = "Not printed";
 
-/** "{age} · {strong} {reason}": a failed slip with no safe words of its own ends at its bold part, never at " · ". */
+/** "{age} · {strong} {reason}": a failed slip with no safe words of its own ends at its bold part, and a row with no
+ *  words at all at its age, never at " · ". */
 function Meta({ row }: { row: NotPrintedRow }) {
+  const words = row.strong !== null || row.reason !== "";
   return (
     <p className={cn(PRINTER_NOT_PRINTED_META_CLASS, row.tone !== null && PRINTER_NOT_PRINTED_TONE[row.tone])}>
-      {`${row.age} · `}
+      {words ? `${row.age} · ` : row.age}
       {row.strong !== null && <b className={PRINTER_NOT_PRINTED_STRONG_CLASS}>{row.strong}</b>}
       {row.strong !== null && row.reason !== "" ? ` ${row.reason}` : row.reason}
     </p>
   );
 }
 
-export function NotPrintedCard({ view, expanded, onExpanded, confirming, onClearAll, onConfirm, busy, tapped, onAction }: NotPrintedCardProps) {
+export function NotPrintedCard(props: NotPrintedCardProps) {
+  const { view, expanded, onExpanded, confirming, onClearAll, onConfirm, busy, tapped, onAction, clearAllRef, questionId } = props;
   const folds = view.rows.length > NOT_PRINTED_SHOWN;
   const shown = folds && !expanded ? view.rows.slice(0, NOT_PRINTED_SHOWN) : view.rows;
-  const question = `Clear all ${view.ids.length} slips? They will not print.`;
+  const question = confirming === null ? null : `Clear all ${confirming.length} slips? They will not print.`;
   return (
     <section aria-label={TITLE} className={PRINTER_NOT_PRINTED_CARD_CLASS}>
       <div className={PRINTER_NOT_PRINTED_HEAD_CLASS}>
@@ -73,16 +82,17 @@ export function NotPrintedCard({ view, expanded, onExpanded, confirming, onClear
           </h3>
           <p className={PRINTER_NOT_PRINTED_SUMMARY_CLASS}>{view.summary}</p>
         </div>
-        {!confirming && (
-          <Button variant="outline" className={PRINTER_BUTTON_SLIP_CLASS} onClick={onClearAll}>
+        {/* Ruling I: one slip has its own Clear; "Clear all" is for two or more. */}
+        {confirming === null && view.ids.length > 1 && (
+          <Button ref={clearAllRef} variant="outline" className={PRINTER_BUTTON_SLIP_CLASS} onClick={onClearAll}>
             Clear all
           </Button>
         )}
       </div>
-      {confirming && (
+      {question !== null && (
         // Inline, not a layer over the sheet (PX-D4); Cancel takes the focus when it opens, so a slip is never cleared by a stray Enter.
-        <div role="group" aria-label={question} className={PRINTER_NOT_PRINTED_CONFIRM_CLASS}>
-          <p>{question}</p>
+        <div role="group" aria-labelledby={questionId} className={PRINTER_NOT_PRINTED_CONFIRM_CLASS}>
+          <p id={questionId}>{question}</p>
           <div className={PRINTER_NOT_PRINTED_CONFIRM_ROW_CLASS}>
             <Button className={PRINTER_BUTTON_DANGER_CLASS} disabled={busy} onClick={() => onConfirm(true)}>
               Clear all

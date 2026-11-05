@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { NotPrintedCard } from "@/components/print/NotPrintedCard";
 import { usePrintersRead } from "@/hooks/use-agent-printers";
 import { useNotPrintedActions } from "@/hooks/use-not-printed-actions";
-import { notPrintedViewOf, type NotPrintedAction } from "@/lib/print-waiting-view";
+import { clearAllAskedOf, notPrintedViewOf, type NotPrintedAction } from "@/lib/print-waiting-view";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
 
 // Printer UX, PX-2 Task 4 (spec §6.3): the Not printed card's container, in the printer sheet and on /printers. It holds
@@ -22,17 +22,25 @@ export function NotPrintedSection({ pulse }: { pulse: PosPulseData | undefined }
   const { retry, confirm, dismiss, dismissAll } = useNotPrintedActions();
   const [tapped, setTapped] = useState<ReadonlySet<string>>(new Set());
   const [expanded, setExpanded] = useState(false);
-  const [confirming, setConfirming] = useState(false);
+  // The ids the confirm asks about, taken when it opens: a KOT that arrives meanwhile is never cleared unasked.
+  const [asked, setAsked] = useState<readonly string[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const [refocus, setRefocus] = useState(0);
+  const clearAllRef = useRef<HTMLButtonElement>(null);
+  const questionId = useId();
   useEffect(() => {
+    const listed = (rows ?? []).map((row) => row.id);
     setTapped((prev) => {
-      const live = new Set((rows ?? []).map((row) => row.id));
-      const next = new Set([...prev].filter((id) => live.has(id)));
+      const next = new Set([...prev].filter((id) => listed.includes(id)));
       return next.size === prev.size ? prev : next;
     });
-    // An emptied list closes its confirm: slips that come later were never asked about.
-    if ((rows ?? []).length === 0) setConfirming(false);
+    // The confirm closes once none of the slips it asked about is listed (cleared elsewhere, printed).
+    setAsked((prev) => clearAllAskedOf(prev, listed));
   }, [rows]);
+  // Ruling J: a closed confirm gives the focus back to the head's Clear all (after the render that brings it back).
+  useEffect(() => {
+    if (refocus > 0) clearAllRef.current?.focus();
+  }, [refocus]);
 
   const view = notPrintedViewOf(rows ?? [], pulse?.printAttentionTruncated === true, Date.now(), printers);
   if (view === null) return null;
@@ -53,16 +61,18 @@ export function NotPrintedSection({ pulse }: { pulse: PosPulseData | undefined }
     else if (action === "it-printed") tap(id, () => confirm(id, "printed"));
     else tap(id, () => retry(id));
   };
+  const asking = clearAllAskedOf(asked, view.ids);
+  const close = () => {
+    setAsked(null);
+    setRefocus((n) => n + 1);
+  };
   const onConfirm = (yes: boolean) => {
-    if (!yes) {
-      setConfirming(false);
-      return;
-    }
+    if (!yes || asking === null) return close();
     setBusy(true);
-    // Every id the list holds, shown or folded; the confirm closes once the answer is in.
-    void dismissAll(view.ids).finally(() => {
+    // The slips it asked about, shown or folded (none that came later); it closes once the answer is in.
+    void dismissAll(asking).finally(() => {
       setBusy(false);
-      setConfirming(false);
+      close();
     });
   };
 
@@ -71,12 +81,14 @@ export function NotPrintedSection({ pulse }: { pulse: PosPulseData | undefined }
       view={view}
       expanded={expanded}
       onExpanded={setExpanded}
-      confirming={confirming}
-      onClearAll={() => setConfirming(true)}
+      confirming={asking}
+      onClearAll={() => setAsked([...view.ids])}
       onConfirm={onConfirm}
       busy={busy}
       tapped={tapped}
       onAction={onAction}
+      clearAllRef={clearAllRef}
+      questionId={questionId}
     />
   );
 }
