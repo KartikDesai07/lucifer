@@ -71,17 +71,24 @@ function freshOnPrinter(row: PrintAttentionRow, nowMs: number): row is PrintAtte
   return !(row.lastError && isSlipRefusal(printWriteOutcomeOf(new Error(row.lastError))));
 }
 
+// Ruling O (the Task 5 review, I-1): low paper is a warning only (the printer still prints, as the dot's DOT_PROBLEMS
+// says): it never makes a printer stuck nor reads as stopped, on every phone in every rush while the roll is low. It is
+// left out of the key, so a WaitingPrinter's `problem` is always one that stops the printer.
+function stopping(problem: PrinterProblem | undefined): PrinterProblem | undefined {
+  return problem === "paper-low" ? undefined : problem;
+}
+
 /** PX-2 (spec §6.5, PX-D6): the printers fresh slips wait for, derived ONCE beside the count (PrintWaitingProviders) as
  *  a stable string the header button can read without the wide pulse: "id:count:problem:stuck" joined by "|"
- *  ("p1:3:paper-out:1|p2:1::0"), the most first, then by id; "" when none. Stuck (F-I2): a row carries its printer's
- *  problem, or its oldest fresh row waited over PRINTER_WAITING_STUCK_MS. */
+ *  ("p1:3:paper-out:1|p2:1::0"), the most first, then by id; "" when none. Stuck (F-I2): a row carries a problem that
+ *  stops its printer, or its oldest fresh row waited over PRINTER_WAITING_STUCK_MS. */
 export function printWaitingPrintersOf(pulse: Pick<PosPulseData, "printAttention"> | undefined, nowMs: number): string {
   const byPrinter = new Map<string, { count: number; problem?: PrinterProblem; oldest: number }>();
   for (const row of pulse?.printAttention ?? []) {
     if (!freshOnPrinter(row, nowMs)) continue;
     const at = Date.parse(row.createdAt);
     const was = byPrinter.get(row.printerId) ?? { count: 0, oldest: at };
-    byPrinter.set(row.printerId, { count: was.count + 1, problem: was.problem ?? row.problem, oldest: Math.min(was.oldest, at) });
+    byPrinter.set(row.printerId, { count: was.count + 1, problem: was.problem ?? stopping(row.problem), oldest: Math.min(was.oldest, at) });
   }
   return [...byPrinter]
     .sort(([a, x], [b, y]) => y.count - x.count || (a < b ? -1 : a > b ? 1 : 0))
@@ -99,11 +106,18 @@ export function waitingPrintersOf(key: string, printers: ReadonlyArray<{ id: str
   };
   const waiting = key.split("|").flatMap((part): WaitingPrinter[] => {
     const [printerId = "", count = "", problem = "", stuck = ""] = part.split(":");
-    const known = PRINTER_PROBLEMS.find((word) => word === problem);
+    const known = stopping(PRINTER_PROBLEMS.find((word) => word === problem));
     if (printerId === "" || !(Number(count) > 0)) return [];
     return [{ printerId, name: printerNameOf(printers, printerId) ?? "A printer", count: Number(count), ...(known !== undefined ? { problem: known } : {}), stuck: stuck === "1" }];
   });
   return waiting.sort((a, b) => b.count - a.count || rank(a.printerId) - rank(b.printerId));
+}
+
+/** R1 (spec §6.5): the waiting printer the dot and the card speak of, the one with the most fresh slips that this device
+ *  does not print (`here`): a writer whose own busy printer has the most slips still sees another device's one stuck
+ *  (its own printers are its own row's). A device that prints nothing gets the first. */
+export function waitingElsewhereOf(waiting: readonly WaitingPrinter[], here: ReadonlyArray<{ id: string }>): WaitingPrinter | undefined {
+  return waiting.find((entry) => !here.some((mine) => mine.id === entry.printerId));
 }
 
 /** The button's accessible name: the count comes first while slips wait, then the printer's own state

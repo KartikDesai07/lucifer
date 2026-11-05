@@ -533,6 +533,7 @@
     "lib/printer/held-status.test.ts",
     "lib/printer/printer-status-view.test.ts",
     "lib/printer-dot-ui-paths.test.ts",
+    "lib/printer-status-wiring-paths.test.ts",
     "lib/page-refresh.test.ts",
     "lib/printer-ui-paths.test.ts",
     "lib/printer-panel-layout.test.ts",

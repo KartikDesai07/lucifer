@@ -60,7 +60,7 @@ test("printer-waiting (F-I2): stuck with a problem, stuck by age, merely busy", 
 });
 
 test("device-offline", () => {
-  assert.deepEqual(view({ dot: bad("device-offline") }), want({ tone: "bad", headline: "This device is offline", detail: "Printer status updates when the internet is back." }));
+  assert.deepEqual(view({ dot: bad("device-offline") }), want({ tone: "bad", headline: "This device is offline", detail: "Printer status updates when the internet is back." }), "no network on this device: nothing to tap");
 });
 
 test("no-printer: the app or a browser, and the Windows app", () => {
@@ -114,21 +114,23 @@ test("printer-off on the Windows app (F-I3): its network printer gets no Reconne
 });
 
 test("printer-needs-tap and printer-elsewhere", () => {
-  assert.deepEqual(view({ dot: bad("printer-needs-tap"), printer: { name: "MTP-II", transport: "bluetooth" } }), want({ tone: "bad", headline: "Printer needs a tap", detail: "MTP-II · Bluetooth", action: RECONNECT }));
-  assert.deepEqual(view({ dot: bad("printer-elsewhere") }), want({ tone: "bad", headline: "Printer in another tab", detail: "Print from that tab, or close it." }));
+  assert.deepEqual(view({ dot: bad("printer-needs-tap"), printer: { name: "MTP-II", transport: "bluetooth" } }), want({ tone: "bad", headline: "Printer needs a tap", detail: "MTP-II · Bluetooth", action: RECONNECT }), "a browser's printer: Reconnect, this device's own");
+  const tap = here("web", "Kitchen printer", { appName: "MTP-II", nativeId: undefined, status: "needs-tap" });
+  assert.deepEqual(view({ dot: bad("printer-needs-tap"), printer: null, here: [tap] }), want({ tone: "bad", headline: "Printer needs a tap", detail: "MTP-II · Bluetooth", action: RECONNECT }), "printers mode: the same, with an empty subject (M-3)");
+  assert.deepEqual(view({ dot: bad("printer-elsewhere") }), want({ tone: "bad", headline: "Printer in another tab", detail: "Print from that tab, or close it." }), "another tab owns it: nothing to tap");
 });
 
 test("printer-problem: out of paper, cover open, an error; nothing to tap, a note", () => {
   const out = here("kitchen", "Kitchen printer", { problem: "paper-out" });
   assert.deepEqual(
     view({ dot: bad("printer-problem", "Kitchen printer is out of paper."), here: [BILL_UP, out] }),
-    want({ tone: "bad", headline: "Kitchen printer is out of paper", detail: "RPP02N · Bluetooth", steps: ["Put in a new paper roll.", "Close the cover."], note: NOTE_PRINTS_AFTER, subject: [out] }),
-    "printers mode: the printer with the problem",
+    want({ tone: "bad", headline: "Kitchen printer is out of paper", detail: "RPP02N · Bluetooth", steps: ["Put in a new paper roll.", "Close the cover."], note: NOTE_PRINTS_AFTER }),
+    "printers mode: the printer with the problem, named; no subject (nothing to reconnect, M-3)",
   );
   const cover = here("kitchen", "Kitchen printer", { problem: "cover-open" });
-  assert.deepEqual(view({ dot: bad("printer-problem", "x"), here: [cover] }), want({ tone: "bad", headline: "Kitchen printer has its cover open", detail: "RPP02N · Bluetooth", steps: ["Close the printer's cover."], note: NOTE_PRINTS_AFTER, subject: [cover] }));
+  assert.deepEqual(view({ dot: bad("printer-problem", "x"), here: [cover] }), want({ tone: "bad", headline: "Kitchen printer has its cover open", detail: "RPP02N · Bluetooth", steps: ["Close the printer's cover."], note: NOTE_PRINTS_AFTER }), "cover open: one step, the note");
   const error = here("kitchen", "Kitchen printer", { problem: "error" });
-  assert.deepEqual(view({ dot: bad("printer-problem", "x"), here: [error] }), want({ tone: "bad", headline: "Kitchen printer reports an error", detail: "RPP02N · Bluetooth", steps: ["Switch the printer off and on.", "Check the paper is not stuck."], note: NOTE_PRINTS_AFTER, subject: [error] }));
+  assert.deepEqual(view({ dot: bad("printer-problem", "x"), here: [error] }), want({ tone: "bad", headline: "Kitchen printer reports an error", detail: "RPP02N · Bluetooth", steps: ["Switch the printer off and on.", "Check the paper is not stuck."], note: NOTE_PRINTS_AFTER }), "an error: two steps, the note");
   assert.deepEqual(
     view({ dot: bad("printer-problem", "RPP02N has its cover open.") }),
     want({ tone: "bad", headline: "RPP02N has its cover open", detail: "RPP02N · Bluetooth", steps: ["Close the printer's cover."], note: NOTE_PRINTS_AFTER }),
@@ -145,7 +147,7 @@ test("the printing device's rows: offline (each case), its printer off, a print 
   assert.deepEqual(view({ ...host, dot: bad("host-offline"), printer: null, localStatus: "none" }).action, { kind: "connect", label: "Connect a printer" }, "no printer: Connect a printer");
   assert.equal(view({ ...host, dot: bad("host-offline"), localStatus: "elsewhere" }).action, null, "another tab has it: nothing to tap");
   assert.equal(view({ dot: bad("host-offline"), isHostDevice: true }).headline, "The printing device is offline", "no name: the fallback");
-  assert.deepEqual(view({ ...host, dot: bad("host-printer-off") }), want({ tone: "bad", headline: "Counter tablet's printer is not connected", detail: back, steps: ["On Counter tablet, open Printer and tap **Reconnect**."] }));
+  assert.deepEqual(view({ ...host, dot: bad("host-printer-off") }), want({ tone: "bad", headline: "Counter tablet's printer is not connected", detail: back, steps: ["On Counter tablet, open Printer and tap **Reconnect**."] }), "the fix is on the printing device");
   const window = want({ tone: "bad", headline: "Slips need a tap to print", detail: "Counter tablet opens a print window for every slip." });
   assert.deepEqual(view({ ...host, dot: bad("host-print-window") }), window, "elsewhere: nothing to tap");
   assert.deepEqual(view({ ...host, dot: bad("host-print-window"), isHostDevice: true }), { ...window, action: { kind: "set-up-host", label: "Set up the printer" } }, "on the printing device itself");
@@ -166,6 +168,33 @@ test("deviceNounOf (R13): the Windows app is this PC; inside the Android app by 
   assert.equal(deviceNounOf("raster", true, null), "this device", "before mount");
   assert.equal(deviceNounOf("raster", false, 390), "this device", "a browser on a phone");
   assert.equal(deviceNounOf("system", false, null), "this device", "a browser");
+});
+
+test("subject is exactly what Reconnect reconnects (M-3): only on a Reconnect row, empty on every other", () => {
+  const paperOut = here("kitchen", "Kitchen printer", { problem: "paper-out" });
+  const winDown = here("kitchen", "Kitchen printer", { appName: "192.168.1.60", transport: "network", nativeId: undefined, status: "disconnected" });
+  const reasons: PrinterDotReason[] = ["ok", "device-offline", "no-printer", "printer-off", "printer-needs-tap", "printer-elsewhere", "host-offline", "host-printer-off", "host-print-window", "printer-not-here", "printers-elsewhere", "printer-problem", "printer-waiting"];
+  const inputs: Partial<PrinterStatusViewInput>[] = [{}, { here: [KITCHEN_DOWN, BILL_UP] }, { here: [paperOut], waiting: kitchenWaits() }, { noun: "this PC", here: [winDown] }, { hostLabel: "Counter tablet" }];
+  let reconnectRows = 0;
+  for (const reason of reasons) {
+    for (const over of inputs) {
+      const v = view({ ...over, dot: { show: true, ok: reason === "ok" || reason === "printers-elsewhere", reason } });
+      if (v.subject.length > 0) reconnectRows += 1;
+      assert.ok(v.subject.length === 0 || v.action?.kind === "reconnect", `${reason} ${JSON.stringify(over)}: a subject only where Reconnect is the button`);
+    }
+  }
+  assert.ok(reconnectRows > 0, "the sweep reached a Reconnect row with a subject");
+  assert.deepEqual(view({ dot: bad("printer-problem", "x"), here: [paperOut] }).subject, [], "out of paper: nothing to reconnect");
+  assert.deepEqual(view({ dot: bad("printer-off"), noun: "this PC", here: [winDown] }).subject, [], "the Windows app: never reconnected (F-I3)");
+  assert.deepEqual(view({ dot: bad("printer-off"), here: [KITCHEN_DOWN, BILL_UP] }).subject, [KITCHEN_DOWN], "printers mode: the printer that is down, and only it");
+});
+
+test("a low-paper printer in a rush is only waiting; out of paper is stuck (Ruling O)", () => {
+  const busy = view({ dot: bad("printer-waiting"), waiting: { printerId: "kitchen", name: "Kitchen printer", count: 2, stuck: false } });
+  assert.deepEqual(busy, want({ tone: "bad", headline: "Slips are waiting for Kitchen printer", detail: "2 slips waiting.", note: "If they do not print soon, check it is on and has paper." }), "low paper never reads as stopped");
+  const out = view({ dot: bad("printer-waiting"), waiting: kitchenWaits({ count: 1, problem: "paper-out" }) });
+  assert.equal(out.headline, "Kitchen printer is not printing", "out of paper stops it");
+  assert.equal(out.detail, "Kitchen printer is out of paper.", "in the printer's own words");
 });
 
 test("no jargon and no colour words in any string the card shows", () => {

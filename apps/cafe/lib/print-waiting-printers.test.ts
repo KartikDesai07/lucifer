@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 
 import type { PrintAttentionRow } from "@pos/shared/print-agent-wire";
 import { PRINT_JOB_NO_PRINTER } from "@pos/shared/print-printers";
-import { PRINTER_WAITING_STUCK_MS, printWaitingPrintersOf, waitingPrintersOf } from "@/lib/print-waiting";
+import { PRINTER_WAITING_STUCK_MS, printWaitingPrintersOf, waitingElsewhereOf, waitingPrintersOf } from "@/lib/print-waiting";
+import { printerStatusViewOf } from "@/lib/printer/printer-status-view";
 import { RASTER_FAILED_MESSAGE } from "@/lib/printer/raster";
 import { PRINTER_NOT_CONNECTED_MESSAGE } from "@/lib/printer/web-printer-types";
 
@@ -79,6 +80,39 @@ test("waitingPrintersOf names them from the printers already read; an unknown id
   assert.deepEqual(waitingPrintersOf("", printers), [], "nothing waits");
   assert.deepEqual(waitingPrintersOf("p2:2::0|p1:2::0", printers).map((w) => w.printerId), ["p1", "p2"], "a tie: the setup's order");
   assert.deepEqual(waitingPrintersOf("p1:2:bogus:0", printers)[0], { printerId: "p1", name: "Kitchen printer", count: 2, stuck: false }, "an unknown problem word is dropped");
+});
+
+const PRINTERS = [{ id: "p1", name: "Kitchen printer" }, { id: "p2", name: "Bill printer" }];
+
+test("low paper is a warning only (Ruling O): never stuck, never in the key; out of paper is stuck as today", () => {
+  assert.equal(printWaitingPrintersOf(feed([row({ createdAt: ago(3_000), problem: "paper-low" })]), T0), "p1:1::0", "a 3 s slip on a low roll in a rush: only waiting");
+  assert.equal(printWaitingPrintersOf(feed([row({ createdAt: ago(61_000), problem: "paper-low" })]), T0), "p1:1::1", "it still gets stuck by age, like any printer");
+  assert.equal(printWaitingPrintersOf(feed([row({ createdAt: ago(3_000), problem: "paper-out" })]), T0), "p1:1:paper-out:1", "out of paper stops it at once");
+  assert.deepEqual(waitingPrintersOf("p1:2:paper-low:0", PRINTERS)[0], { printerId: "p1", name: "Kitchen printer", count: 2, stuck: false }, "a key that says low paper anyway: dropped");
+  const [rush] = waitingPrintersOf(printWaitingPrintersOf(feed([row({ id: "a", problem: "paper-low" }), row({ id: "b", problem: "paper-low" })]), T0), PRINTERS);
+  const card = printerStatusViewOf({
+    dot: { show: true, ok: false, reason: "printer-waiting" },
+    hostLabel: null,
+    printer: null,
+    noun: "this phone",
+    isHostDevice: false,
+    canPrintHere: false,
+    desktopNoPrinter: false,
+    localStatus: "none",
+    here: [],
+    waiting: rush ?? null,
+    notHere: [],
+    isAdmin: false,
+  });
+  assert.deepEqual([card.headline, card.detail, card.steps, card.note], ["Slips are waiting for Kitchen printer", "2 slips waiting.", [], "If they do not print soon, check it is on and has paper."], "the phone's card: waiting, not stopped");
+});
+
+test("waitingElsewhereOf (R1): a writer whose own busy printer has the most slips gets another device's waiting one", () => {
+  const waiting = waitingPrintersOf("p2:5::0|p1:2::1", PRINTERS);
+  assert.equal(waitingElsewhereOf(waiting, [{ id: "p2" }])?.printerId, "p1", "the Bill printer is its own (busy, its own row speaks): the kitchen's one waits");
+  assert.equal(waitingElsewhereOf(waiting, [])?.printerId, "p2", "a device that prints nothing: the most slips");
+  assert.equal(waitingElsewhereOf(waiting, [{ id: "p1" }, { id: "p2" }]), undefined, "every waiting printer is its own: none");
+  assert.equal(waitingElsewhereOf([], []), undefined, "nothing waits");
 });
 
 test("the key round-trips: what the provider derives is what the dot reads", () => {

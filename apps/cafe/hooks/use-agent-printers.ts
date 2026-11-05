@@ -13,7 +13,7 @@ import { desktopPrintsOnNamed } from "@/lib/desktop-shell-printer";
 import { heldPoolOf, printersHereOf, printersNotHereOf } from "@/lib/print-agent-here";
 import { agentPrintersOf, dotPrintersOf, lanPrintersToAdd, lanPrintersToRemove, ownPrinterInSetup, type AgentPrinters, type DesktopPrinters, type NativePoolView } from "@/lib/print-agent-printers";
 import { onPrintersWritingChange, onTakenOverChange, printersBeingWritten, takenOverPrinterIds } from "@/lib/print-agent-seams";
-import { waitingPrintersOf } from "@/lib/print-waiting";
+import { waitingElsewhereOf, waitingPrintersOf } from "@/lib/print-waiting";
 import { DESKTOP_LAN_CHECK_MS, desktopLan, desktopLanApi, type DesktopLanPrinter, type DesktopLanTarget } from "@/lib/printer/desktop-lan";
 import { refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
 import type { DevicePrinter } from "@/lib/printer/device-printer-store";
@@ -115,8 +115,8 @@ const HELD = (key: string, status: PrinterStatus): PrinterStatus => heldPrinterS
  *  entry): no request of its own. Session 3B: with the network printers the wake says this device took over. PX-2 (spec
  *  §6.5, §6.9 B6): the app's printers held through its own retries before the dot reads them; `here` (every printer it
  *  prints now, held) and `notHere` for the status card; `waiting`, the printer with the most fresh slips waiting that it
- *  does not print (R1: a writer whose own printer has more slips still sees another one stuck), named from this read and
- *  the narrow string the pulse provider derives: no request, no poll, no timer (SR-2). */
+ *  does not print (waitingElsewhereOf, R1), named from this read and the narrow string the pulse provider derives: no
+ *  request, no poll, no timer (SR-2). */
 export function useDotPrinters(deviceId: string): PrinterDotPrinters {
   const { printers } = usePrintersRead(deviceId !== "");
   const device = useDevicePrinter();
@@ -134,7 +134,7 @@ export function useDotPrinters(deviceId: string): PrinterDotPrinters {
   return useMemo(() => {
     const agent = agentPrintersOf(printers, deviceId, local, desktop, appPool);
     const here = printersHereOf(printers, agent, appPool, lan, local, localStatus, HELD, takenOver);
-    const waiting = waitingPrintersOf(waitingKey, printers).find((entry) => !here.some((mine) => mine.id === entry.printerId));
+    const waiting = waitingElsewhereOf(waitingPrintersOf(waitingKey, printers), here);
     return { ...dot, here, notHere: printersNotHereOf(printers, deviceId, agent), ...(waiting !== undefined ? { waiting } : {}) };
   }, [dot, printers, deviceId, local, desktop, appPool, lan, localStatus, takenOver, waitingKey]);
 }

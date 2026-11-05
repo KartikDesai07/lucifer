@@ -21,8 +21,11 @@ export interface PrinterStatusView {
   action: { kind: StatusActionKind; label: string } | null;
   link: { kind: StatusLinkKind; label: string } | null;
   note: string | null;
-  /** The printers of `here` the card speaks of: Reconnect's list in printers mode (every one that is down, in display
-   *  order). Empty in simple mode (Reconnect = this device's own printer) and on the Windows app (never reconnected, F-I3). */
+  /** Exactly what Reconnect reconnects (the Task 5 review, M-3): every printer of `here` that is down, in display order,
+   *  on printers mode's "not connected" rows (an entry with a native id through the app, one without it is this device's
+   *  own printer). Empty on every other row, so nothing is ever reconnected from it alone; a Reconnect with an empty
+   *  subject is this device's own printer (simple mode, a browser's printer that needs a tap, a host that is offline).
+   *  The Windows app's printers are never in it (F-I3). */
   subject: PrinterHere[];
 }
 
@@ -136,7 +139,7 @@ function problemView(i: PrinterStatusViewInput, windowsApp: boolean): PrinterSta
   const named = said.endsWith(ending) ? said.slice(0, said.length - ending.length) : "";
   const name = entry?.name ?? i.printer?.name ?? (named !== "" ? named : PRINTER_FALLBACK);
   const detail = entry !== undefined ? connOf(entry.appName, entry.transport, windowsApp) : i.printer === null ? "" : connOf(i.printer.name, i.printer.transport, windowsApp);
-  return bad(STOP_HEADLINES[kind]?.(name) ?? `${name} reports an error`, detail, { steps: STOP_STEPS[kind] ?? [], note: PRINTS_AFTER, subject: entry !== undefined ? [entry] : [] });
+  return bad(STOP_HEADLINES[kind]?.(name) ?? `${name} reports an error`, detail, { steps: STOP_STEPS[kind] ?? [], note: PRINTS_AFTER });
 }
 
 // Today's three fixes for a device that cannot print while the printing device is offline.
@@ -152,6 +155,7 @@ export function printerStatusViewOf(i: PrinterStatusViewInput): PrinterStatusVie
   const trimmed = i.hostLabel?.trim() ?? "";
   const label = trimmed !== "" ? trimmed : null;
   const host = label ?? HOST_FALLBACK;
+  // The Windows app is inferred from the noun: the caller must build `noun` with deviceNounOf (desktop lane → "this PC").
   const windowsApp = i.noun === "this PC";
   switch (dot.reason) {
     case "ok":
@@ -168,10 +172,10 @@ export function printerStatusViewOf(i: PrinterStatusViewInput): PrinterStatusVie
     case "printer-off":
       return offView(i, windowsApp);
     case "printer-needs-tap": {
-      // A browser tab's printer (printers mode: this device's own one in `here`).
+      // Only a browser's own printer needs a tap (the app's printers never do): Reconnect is this device's own printer.
       const tap = i.here.find((p) => p.status === "needs-tap");
       const detail = tap !== undefined ? connOf(tap.appName, tap.transport, false) : i.printer === null ? "" : connOf(i.printer.name, i.printer.transport, false);
-      return bad("Printer needs a tap", detail, { action: RECONNECT, subject: tap !== undefined ? [tap] : [] });
+      return bad("Printer needs a tap", detail, { action: RECONNECT });
     }
     case "printer-elsewhere":
       return bad("Printer in another tab", "Print from that tab, or close it.");
