@@ -16,11 +16,11 @@ import { Switch } from "@/components/ui/switch";
 import { useDesktopPrinters } from "@/hooks/use-agent-printers";
 import { useCanPrintNow, useDevicePrinter } from "@/hooks/use-device-printer";
 import { usePoolView } from "@/hooks/use-agent-printers";
-import { useDeletePrinter, useSavePrinter, useTestPrinter } from "@/hooks/use-print-setup";
+import { useDeletePrinter, useSavePrinter, useTestPrinterTap } from "@/hooks/use-print-setup";
 import { agentPrintersOf, readyPrinterIdsOf } from "@/lib/print-agent-printers";
 import { printerStatusOf } from "@/lib/printer/printer-registry";
 import { printerBodyOf, printerDraftOf } from "@/lib/print-setup-form";
-import { connectionText, printerFailoverLines, printerRowState, setupGaps, slipsText, testPrintBlock, testPrintSentText } from "@/lib/print-setup-text";
+import { connectionText, printerFailoverLines, printerRowState, setupGaps, slipsText, testPrintBlock } from "@/lib/print-setup-text";
 import { cn } from "@/lib/utils";
 
 interface PrintersSetupSectionProps {
@@ -45,7 +45,7 @@ export function PrintersSetupSection({ printers, stations, devices, devicesFaile
   const [switchingOff, setSwitchingOff] = useState<string | null>(null);
   const save = useSavePrinter();
   const remove = useDeletePrinter();
-  const testPrint = useTestPrinter();
+  const testPrint = useTestPrinterTap();
   // The printers this device prints here, from the list this page already holds (no second read, no subscription).
   const local = useDevicePrinter().printer;
   const desktop = useDesktopPrinters();
@@ -66,15 +66,6 @@ export function PrintersSetupSection({ printers, stations, devices, devicesFaile
     }
     try {
       await save.mutateAsync({ id: printer.id, body: result.body });
-    } catch {
-      // The hook toasted it.
-    }
-  };
-
-  const test = async (printer: PrinterConfig, state: ReturnType<typeof printerRowState>) => {
-    try {
-      await testPrint.mutateAsync(printer.id);
-      toast.success(testPrintSentText(printer, state));
     } catch {
       // The hook toasted it.
     }
@@ -153,7 +144,7 @@ export function PrintersSetupSection({ printers, stations, devices, devicesFaile
                   />
                 ) : (
                   <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" className={PRINTER_ACTION_CLASS} disabled={blocked !== null || testPrint.isPending} onClick={() => void test(printer, state)}>
+                    <Button variant="outline" className={PRINTER_ACTION_CLASS} disabled={blocked !== null || testPrint.pending} onClick={() => void testPrint.run(printer, state)}>
                       Test print
                     </Button>
                     <Button variant="outline" className={PRINTER_ACTION_CLASS} onClick={() => setForm({ key: printer.id, printer })}>

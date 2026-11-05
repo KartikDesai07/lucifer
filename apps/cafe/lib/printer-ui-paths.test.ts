@@ -133,8 +133,8 @@ const devicePin: Pin = (raw) => {
   check(p, /else if \(firstList && outcome === "cancelled"\) \{\s*setNotSeen\(true\);/.test(code), "only a closed FIRST list raises the not-seen hint");
   check(p, count(code, "setNotSeen(false)") === 3, "the hint is also cleared by Change / Keep printer and by Remove");
   check(p, code.includes("paired={caps.serial}") && code.includes("nearby={caps.serial && caps.bluetooth}"), "the connect block hears what this browser can do: the paired list, and the nearby search only when BOTH exist");
-  // PX-3 Task 10 (X7; was "Reconnect primary only while not connected"); Task 10b (on purpose, X7): only printers mode's card, only while down.
-  check(p, count(code, ".reconnect()") === 1 && code.includes('{printersCard && status !== "connected" && (') && code.includes("onClick={() => void settle(devicePrinter().reconnect())} disabled={locked}"), "X7: Reconnect only in printers mode on a printer that is down, called straight from the click");
+  // PX-3 Task 10 (X7: none, was "Reconnect primary only while not connected"); Task 10b (on purpose, Ruling T10b-B): printers mode's card keeps today's.
+  check(p, count(code, ".reconnect()") === 1 && /\{printersCard && \(\s*<Button className=\{PRINTER_BUTTON_CLASS\} variant=\{status === "connected" \? "outline" : "default"\} onClick=\{\(\) => void settle\(devicePrinter\(\)\.reconnect\(\)\)\} disabled=\{locked\}>/.test(code), "T10b-B: printers mode only, primary while not connected, called straight from the click; X7: none in simple mode");
   check(p, !/Bluetooth LE/i.test(code), "no radio jargon (Bluetooth LE) in client copy");
   check(p, code.includes("const paperDefault = printConfigOf(settings.data).bill.paperWidth;"), "paperDefault comes from the print settings");
   check(p, code.includes("const locked = busy || elsewhere;"), "one busy state plus the other-tab state lock everything");
@@ -284,8 +284,8 @@ const HYGIENE: [string, number, boolean][] = [
   // Session 1D: the waiting slips follow the same rules (44px controls, no jargon); PX-2 Task 4: its container, its card.
   [F.waiting, 120, false], [F.notPrinted, 150, true], [F.statusCard, 120, true], [F.hereCard, 80, false], [F.settingsRow, 60, false],
   // Session 2F1 (the 2F1 review gate, M-6): the POS app's other printers on bridge v2. Session 3B: 130 (was 120), a network printer
-  // this device may take over says why it stays. PX-3 Task 10b: 220 (the brief's budget: printers mode's blocks), their shared parts 80.
-  [F.others, 220, true], [F.block, 80, true],
+  // this device may take over says why it stays. PX-3 Task 10b: 220 (the brief's budget: printers mode's blocks), their shared parts 100.
+  [F.others, 220, true], [F.block, 100, true],
 ];
 const hygieneMutations = [
   append("a console call", "// " + "console" + ".log(1)"),

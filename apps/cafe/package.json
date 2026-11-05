@@ -542,6 +542,7 @@
     "lib/printer-panel-layout.test.ts",
     "lib/printer-status-card.test.ts",
     "lib/printer/settings-view.test.ts",
+    "lib/printer/printers-card-paths.test.ts",
     "lib/print-host-bridge-late.test.ts",
     "lib/print-host-bridge-job-toast.test.ts",
     "lib/print-host-text-kot.test.ts",

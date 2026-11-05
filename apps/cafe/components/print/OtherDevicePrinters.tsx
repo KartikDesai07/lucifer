@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import { InlineConfirm } from "@/components/print/PrintHostCardParts";
 import { NativePrinterPicker } from "@/components/print/NativePrinterPicker";
-import { PRINTER_BUTTON_CLASS, PRINTER_BUTTON_REMOVE_CLASS, PRINTER_DEVICE_BUTTONS_CLASS, PRINTER_LABEL_CLASS, PRINTER_NOTE_CLASS } from "@/components/print/printer-classes";
+import { PRINTER_BUTTON_CLASS, PRINTER_BUTTON_REMOVE_CLASS, PRINTER_LABEL_CLASS, PRINTER_NOTE_CLASS } from "@/components/print/printer-classes";
 import { NATIVE_TYPE_LABELS } from "@/components/print/printer-type";
 import { PrinterBlock, SetupTestPrint } from "@/components/print/settings/PrinterBlock";
 import { Button } from "@/components/ui/button";
@@ -32,11 +32,12 @@ const STATUS_WORDS: Record<PoolPrinter["status"], string> = { connected: "Connec
 
 // Printing redesign, Phase 2 Session 2F1 (spec §9.2, §11): on the POS app with bridge v2 one phone or tablet drives
 // several printers. This device's own printer stays above (it prints every slip in simple mode); here are the app's
-// other printers, each with its state, Reconnect while it is not connected, and Remove, and Connect another printer (the
-// same list the app shows for the first one; a printer chosen here joins the app's printers instead of replacing this
-// device's own). PX-3 Task 10b (spec §6.6 item 2): in printers mode (`card`) they are blocks of "Printers on this device",
-// named by the setup, with no title or note of their own (the card's sub says it), and an admin's Test print (X5).
-export function OtherDevicePrinters({ paper, locked, here, card }: { paper: PaperWidth; locked: boolean; here: readonly PrinterHere[]; card: boolean }) {
+// other printers, each with its state, Reconnect and Remove, and Connect another printer (the same list the app shows for
+// the first one; a printer chosen here joins the app's printers instead of replacing this device's own; Ruling T10b-C: only
+// once this device has its own, `canAdd`). PX-3 Task 10b (spec §6.6 item 2): in printers mode (`card`) they are blocks of
+// "Printers on this device", named by the setup, with no title or note of their own (the card's sub says it), and an
+// admin's Test print (X5).
+export function OtherDevicePrinters({ paper, locked, here, card, canAdd }: { paper: PaperWidth; locked: boolean; here: readonly PrinterHere[]; card: boolean; canAdd: boolean }) {
   const pool = useNativePool();
   const { deviceId } = usePrintHostContext();
   const { printers, answered } = usePrintersRead(deviceId !== "");
@@ -97,13 +98,12 @@ export function OtherDevicePrinters({ paper, locked, here, card }: { paper: Pape
             {removing === entry.id ? (
               <InlineConfirm question={`Remove ${entry.printer.name} from this device?`} yes="Yes, remove" no="No" disabled={disabled} onYes={() => void remove(entry.id)} onNo={() => setRemoving(null)} />
             ) : (
-              <div className={PRINTER_DEVICE_BUTTONS_CLASS}>
-                {entry.status !== "connected" && (
-                  <Button className={PRINTER_BUTTON_CLASS} variant="outline" disabled={disabled} onClick={() => void settle(nativePool().reconnect(entry.id), RECONNECTED, entry.message ?? PRINTER_CONNECT_FAILED_MESSAGE)}>
-                    Reconnect
-                  </Button>
-                )}
-                {isAdmin && named !== undefined && <SetupTestPrint printer={named} disabled={disabled} />}
+              <div className="flex flex-wrap gap-2">
+                {/* Ruling T10b-B: always (a stale "Connected" link is reconnected here), primary while not connected. */}
+                <Button className={PRINTER_BUTTON_CLASS} variant={entry.status === "connected" ? "outline" : "default"} disabled={disabled} onClick={() => void settle(nativePool().reconnect(entry.id), RECONNECTED, entry.message ?? PRINTER_CONNECT_FAILED_MESSAGE)}>
+                  Reconnect
+                </Button>
+                {isAdmin && named !== undefined && <SetupTestPrint printer={named} localIds={agent.localIds} disabled={disabled} />}
                 {inSetup.has(entry.id) ? (
                   <p className={PRINTER_NOTE_CLASS}>{IN_SETUP}</p>
                 ) : takeover.has(entry.id) ? (
@@ -119,10 +119,12 @@ export function OtherDevicePrinters({ paper, locked, here, card }: { paper: Pape
         );
       })}
       {!card && <p className={PRINTER_NOTE_CLASS}>{NOTE}</p>}
-      <Button className={PRINTER_BUTTON_CLASS} variant="outline" disabled={disabled} onClick={() => setAdding((open) => !open)}>
-        {adding ? "Close the printer list" : "Connect another printer"}
-      </Button>
-      {adding && <NativePrinterPicker paper={paper} busy={disabled} onAttempt={(attempt) => settle(attempt, ADDED, NOT_YET)} add={(target) => nativePool().add(target)} />}
+      {canAdd && (
+        <Button className={PRINTER_BUTTON_CLASS} variant="outline" disabled={disabled} onClick={() => setAdding((open) => !open)}>
+          {adding ? "Close the printer list" : "Connect another printer"}
+        </Button>
+      )}
+      {canAdd && adding && <NativePrinterPicker paper={paper} busy={disabled} onAttempt={(attempt) => settle(attempt, ADDED, NOT_YET)} add={(target) => nativePool().add(target)} />}
     </>
   );
   // In the card its blocks sit beside this device's own printer (one rule between each); in simple mode, a group of its own.

@@ -62,8 +62,9 @@ test("PIN (2D): each printer row: its state in words, on/off, Test print only wh
   // The 2D review gate (M-4): a printer its writer's lease would never take, or one this device writes but cannot print
   // right now, is not tested (the slip would only wait).
   assert.match(section, /const blocked = testPrintBlock\(printer, printers, \{ deviceId, localIds, canPrint, ownState \}\);/, "Test print only when its slip can print");
-  assert.match(section, /disabled=\{blocked !== null \|\| testPrint\.isPending\}/);
-  assert.match(section, /await testPrint\.mutateAsync\(printer\.id\);\s*toast\.success\(testPrintSentText\(printer, state\)\);/);
+  // PX-3 Task 10b (on purpose, the review's I2): the tap is the hook's one handler, shared with the printer panel's card.
+  assert.match(section, /const testPrint = useTestPrinterTap\(\);[\s\S]*disabled=\{blocked !== null \|\| testPrint\.pending\} onClick=\{\(\) => void testPrint\.run\(printer, state\)\}/, "one request per tap, none while one runs");
+  assert.match(src("hooks/use-print-setup.ts"), /await testPrint\.mutateAsync\(printer\.id\);\s*toast\.success\(testPrintSentText\(printer, state\)\);/, "the setup's toast");
   assert.match(section, /printerBodyOf\(\{ \.\.\.printerDraftOf\(printer, stations\), enabled: !printer\.enabled \}, printers, printer\.id\)/, "on/off saves the printer whole, through the same rules as the form");
   // The 2D review gate (M-5): switching a printer off fails its waiting slips (the sweep), so it asks first, as Delete does.
   assert.match(section, /question=\{`Switch \$\{printer\.name\} off\? Slips still waiting for it will show under Couldn't print\.`\}/, "switching off asks first");
@@ -165,7 +166,7 @@ test("PIN (2F1): the form chooses one of the POS app's printers; the panel lists
   assert.match(src(`${SETUP}NativePrinterSelect.tsx`), /<SelectTrigger aria-label="Printer on this device"/);
   const section = src("components/print/DevicePrinterSection.tsx");
   // PX-3 Task 10b (on purpose, spec §6.6 item 2): with the setup's names, and in printers mode as blocks of the one card.
-  assert.match(section, /\{caps\.native && <OtherDevicePrinters paper=\{paperDefault\} locked=\{locked\} here=\{here\} card=\{printersCard\} \/>\}/, "the panel lists the app's other printers");
+  assert.match(section, /\{caps\.native && <OtherDevicePrinters paper=\{paperDefault\} locked=\{locked\} here=\{here\} card=\{printersCard\} canAdd=\{printer !== null\} \/>\}/, "the panel lists the app's other printers");
   const others = src("components/print/OtherDevicePrinters.tsx");
   assert.match(others, /if \(!pool\.active\) return null;/, "nothing on an app that speaks only v1");
   assert.match(others, /const others = pool\.printers\.filter\(\(entry\) => entry\.id !== pool\.defaultId\);/, "the app's own default is the device's printer above (M-6)");

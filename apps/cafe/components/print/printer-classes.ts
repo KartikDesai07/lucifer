@@ -199,10 +199,11 @@ export const PRINTER_ROW_CLASS = "flex min-h-[52px] items-center gap-2.5 pt-0.5 
 export const PRINTER_ROW_NAME_CLASS = "break-words text-[13.5px] font-semibold";
 // Printers on this device (PX-3 Task 10b, spec §6.6 item 2; mockup t-settings-pm .prow / .btn-row): one block per printer,
 // a --border-2 rule between blocks (none above the card's first); the row in the On this device look, 40px at least, then
-// its buttons 8px apart, indented 19px under the name (the 9px dot and its 10px gap).
+// everything under it (its notes, buttons, the test's answer, Paper width) indented 19px under the name (the 9px dot and
+// its 10px gap), 10px apart.
 export const PRINTER_DEVICE_BLOCK_CLASS = "flex flex-col gap-2.5 border-t border-border-2 pt-2.5 first:border-t-0 first:pt-0";
 export const PRINTER_DEVICE_ROW_CLASS = "flex min-h-10 items-center gap-2.5";
-export const PRINTER_DEVICE_BUTTONS_CLASS = "flex flex-wrap gap-2 pl-[19px]";
+export const PRINTER_DEVICE_INDENT_CLASS = "flex flex-col gap-2.5 pl-[19px]";
 /** A found printer (values 19): 10px 12px, radius 10, a 1px --border rule. */
 export const PRINTER_LIST_ROW_CLASS = "flex items-center gap-2.5 rounded-[10px] border border-border px-3 py-2.5";
 // A segmented choice (values 20): a --surface-3 track radius 8, 2px padding, 32px; its buttons radius 6, 12.5px.

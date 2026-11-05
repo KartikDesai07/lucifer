@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Printer, ReceiptText } from "lucide-react";
 import { toast } from "sonner";
 
-import { PRINTER_BUTTON_CLASS, PRINTER_BUTTON_PRIMARY_CLASS, PRINTER_BUTTON_REMOVE_CLASS, PRINTER_DEVICE_BUTTONS_CLASS, PRINTER_NOTE_CLASS } from "@/components/print/printer-classes";
+import { PRINTER_BUTTON_CLASS, PRINTER_BUTTON_PRIMARY_CLASS, PRINTER_BUTTON_REMOVE_CLASS, PRINTER_NOTE_CLASS } from "@/components/print/printer-classes";
 import { Button } from "@/components/ui/button";
 import { BrowserPrinterConnect } from "@/components/print/BrowserPrinterConnect";
 import { DesktopPrinterPicker } from "@/components/print/DesktopPrinterPicker";
@@ -44,8 +44,8 @@ const TEST_BUSY_REASON = "Busy with another slip. Try again in a moment.";
 // then Paper width. No Reconnect (X7): the status card's Reconnect is the fix. Everything but the test (its own gate) is
 // disabled while one action runs, and while another tab of this browser owns the printer.
 // Task 10b (spec §6.6 item 2; mockup t-settings-pm): on a printers-mode writer it is "Printers on this device", one card for
-// every printer this device prints: its own printer first by the setup's name (Reconnect only while it is not connected,
-// no Change: the manager names its printers in Printer setup), then the app's other printers as blocks of the same card.
+// every printer this device prints: its own printer first by the setup's name (today's Reconnect; on the app's pool no
+// Change: the manager names its printers in Printer setup), then the app's other printers as blocks of the same card.
 export function DevicePrinterSection({ noun }: { noun: DeviceNoun }) {
   const lane = usePrintLane();
   const caps = usePrintCapabilities();
@@ -72,8 +72,9 @@ export function DevicePrinterSection({ noun }: { noun: DeviceNoun }) {
   // This device's own printer in `here`: on bridge v2 the app's default, else the one printer with no app id.
   const ownId = pool.active ? (pool.defaultId ?? null) : null;
   const ownHere = printersCard ? hereEntryOf(here, ownId) : undefined;
-  // X5: an admin tests a printer the setup names through the setup's own test; anyone else, today's device test.
-  const ownSetupTest = isAdmin && ownHere !== undefined ? <SetupTestPrint printer={ownHere} disabled={locked} /> : null;
+  // X5: an admin tests a printer the setup names through the setup's own test; anyone else, today's device test. `here`
+  // is every printer this device prints now (the agent's local printers, as the dot counts them).
+  const ownSetupTest = isAdmin && ownHere !== undefined ? <SetupTestPrint printer={ownHere} localIds={here.map((entry) => entry.id)} disabled={locked} /> : null;
   // The 2F2 review gate (M-4): Change printer of a printer the setup prints through this device keeps it in the POS app
   // (bridge v2): a new printer is added first (one the app lists already is only chosen: an add would restart its link),
   // then made this device's printer, and the old one stays among the app's other printers; also while the setup is not
@@ -158,15 +159,16 @@ export function DevicePrinterSection({ noun }: { noun: DeviceNoun }) {
         />
       ) : (
         // Sized to their words, one row that wraps on a narrow phone.
-        <div className={printersCard ? PRINTER_DEVICE_BUTTONS_CLASS : "flex flex-wrap gap-2"}>
-          {/* X7: printers mode only (simple mode's fix is the status card's), and only on a printer that is down. */}
-          {printersCard && status !== "connected" && (
-            <Button className={PRINTER_BUTTON_CLASS} variant="outline" onClick={() => void settle(devicePrinter().reconnect())} disabled={locked}>
+        <div className="flex flex-wrap gap-2">
+          {/* T10b-B: today's Reconnect in printers mode (PX-2's stuck step sends staff here); simple mode's is the status card's. */}
+          {printersCard && (
+            <Button className={PRINTER_BUTTON_CLASS} variant={status === "connected" ? "outline" : "default"} onClick={() => void settle(devicePrinter().reconnect())} disabled={locked}>
               Reconnect
             </Button>
           )}
           {ownSetupTest ?? testButton}
-          {!printersCard && (
+          {/* T10b-C: no Change on the app's pool (the manager names those); a browser's or bridge v1's printer keeps it. */}
+          {(!printersCard || !pool.active) && (
             <Button
               className={PRINTER_BUTTON_CLASS}
               variant="outline"
@@ -189,8 +191,8 @@ export function DevicePrinterSection({ noun }: { noun: DeviceNoun }) {
         </div>
       )}
       {testAnswer}
-      {/* Printers mode on bridge v2 prints each printer on the setup's paper; a browser's or bridge v1's one printer on its own. */}
-      {(!printersCard || !pool.active) && <PaperSizeToggle value={printer.paper} disabled={locked} onChange={(paper) => devicePrinter().setPaper(paper)} />}
+      {/* Every mode: the device test draws at this paper, and the row's sub says it. */}
+      <PaperSizeToggle value={printer.paper} disabled={locked} onChange={(paper) => devicePrinter().setPaper(paper)} />
     </>
   );
 
@@ -250,7 +252,7 @@ export function DevicePrinterSection({ noun }: { noun: DeviceNoun }) {
           {printer === null && testAnswer}
           {/* Phase 2 Session 2F1 (spec §9.2): the POS app on bridge v2 drives more printers beside this device's own;
               printers mode: as blocks of this card (Task 10b). */}
-          {caps.native && <OtherDevicePrinters paper={paperDefault} locked={locked} here={here} card={printersCard} />}
+          {caps.native && <OtherDevicePrinters paper={paperDefault} locked={locked} here={here} card={printersCard} canAdd={printer !== null} />}
         </>
       )}
     </PanelSection>
