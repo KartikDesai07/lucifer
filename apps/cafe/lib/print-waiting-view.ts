@@ -55,14 +55,13 @@ function queuedBody(row: PrintAttentionRow, nowMs: number, printers: Printers): 
     return { strong: null, reason: "Waiting over 30 min.", tone: null, actions: ["print-now", "clear"] };
   }
   const name = printerNameOf(printers, row.printerId);
+  // §6.3: first match wins, in the table's order.
+  const outcome = row.lastError ? printWriteOutcomeOf(new Error(row.lastError)) : null;
+  if (outcome !== null && isSlipRefusal(outcome)) return only("Could not be prepared. Tries once more by itself.");
   if (row.problem !== undefined) return only(printerProblemText(name ?? "The printer", row.problem));
-  if (row.lastError) {
-    const outcome = printWriteOutcomeOf(new Error(row.lastError));
-    if (isSlipRefusal(outcome)) return only("Could not be prepared. Tries once more by itself.");
-    if (outcome.sent === "no") return only(isDesktopShellRefusal(row.lastError) ? row.lastError : "The printer is off or not connected.");
-  }
   const repeat = row.labels.find((label) => label === "REPRINT" || label === "DUPLICATE");
   if (repeat) return only(`Prints again, marked ${repeat}.`);
+  if (row.lastError && outcome !== null && outcome.sent === "no") return only(isDesktopShellRefusal(row.lastError) ? row.lastError : "The printer is off or not connected.");
   return only(name === null ? "Waits for the printer." : `Waits for ${name}.`);
 }
 
@@ -88,11 +87,13 @@ export function notPrintedViewOf(rows: readonly PrintAttentionRow[], truncated: 
   if (rows.length === 0) return null;
   // The feed is oldest first: reversing before the stable sort makes each group newest first.
   const ordered = [...rows].reverse().sort((a, b) => RANK[a.status] - RANK[b.status]);
-  const needsYou = rows.some((row) => row.status !== "queued");
+  const bodies = new Map(ordered.map((row) => [row.id, bodyOf(row, nowMs, printers)] as const));
+  // A stale untapped slip is never leased by itself: its row asks for a tap (Ruling T).
+  const needsYou = rows.some((row) => row.status !== "queued") || [...bodies.values()].some((body) => body.actions.includes("print-now"));
   return {
     badge: printWaitingBadgeOf({ printAttention: [...rows], printAttentionTruncated: truncated }),
     summary: `${truncated ? "The newest 20. " : ""}${needsYou ? NEEDS_YOU : WAIT_BY_ITSELF}`,
-    rows: ordered.map((row) => ({ id: row.id, label: row.label, age: printWaitingAge(row.createdAt, nowMs), ...bodyOf(row, nowMs, printers) })),
+    rows: ordered.map((row) => ({ id: row.id, label: row.label, age: printWaitingAge(row.createdAt, nowMs), ...bodies.get(row.id)! })),
     ids: ordered.map((row) => row.id),
   };
 }

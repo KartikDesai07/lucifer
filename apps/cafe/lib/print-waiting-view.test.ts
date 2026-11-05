@@ -99,3 +99,16 @@ test("withoutAttentionRows", () => {
   assert.equal(withoutAttentionRows(data, new Set(["zz"])), data, "same object when nothing is removed");
   assert.equal(withoutAttentionRows(undefined, new Set(["a"])), undefined, "undefined stays");
 });
+
+test("first match wins, in the spec's order (final review)", () => {
+  assert.equal(one({ labels: ["REPRINT"], lastError: PRINTER_NOT_CONNECTED_MESSAGE }).reason, "Prints again, marked REPRINT.", "marked beats sent nothing");
+  assert.equal(one({ lastError: RASTER_FAILED_MESSAGE, printerId: "p1", problem: "paper-out" }).reason, "Could not be prepared. Tries once more by itself.", "slip refusal beats a printer problem");
+  assert.equal(one({ printerId: "p1", problem: "paper-out", labels: ["DUPLICATE"] }).reason, "Kitchen printer is out of paper.", "problem beats marked");
+});
+
+test("the summary asks for a tap when a slip needs one (Ruling T)", () => {
+  const stale = [row({ id: "a", createdAt: min(40) }), row({ id: "b", createdAt: min(50) })];
+  assert.equal(notPrintedViewOf(stale, false, T0, [])!.summary, "Tap a button on the ones that need you.", "only stale untapped slips");
+  const fresh = [row({ id: "a" }), row({ id: "b", createdAt: min(50), approved: true })];
+  assert.equal(notPrintedViewOf(fresh, false, T0, [])!.summary, "They print by themselves when the printer is ready.", "fresh or approved");
+});
