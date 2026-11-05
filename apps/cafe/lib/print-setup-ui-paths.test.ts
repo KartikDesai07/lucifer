@@ -19,7 +19,7 @@ const FILES = ["PrintSetupSections.tsx", "PrintersSetupSection.tsx", "PrinterFor
 test("PIN (2D): the admin Printer setup page shows the outlet's sections after this device's panel", () => {
   const page = src("app/(dashboard)/printers/page.tsx");
   assert.match(page, /import \{ PrintSetupSections \} from "@\/components\/print\/setup\/PrintSetupSections";/);
-  const panel = page.indexOf("<PrinterPanel />");
+  const panel = page.indexOf('<PrinterPanel home="page" />');
   const sections = page.indexOf("<PrintSetupSections />");
   assert.ok(panel >= 0 && sections > panel, `the panel (${panel}) then the sections (${sections})`);
   const container = src(`${SETUP}PrintSetupSections.tsx`);

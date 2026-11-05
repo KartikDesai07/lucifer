@@ -1,6 +1,6 @@
 // Printer panel (04-web-plan.md slice W5b) — RAW source pins over the panel, its
-// setup sections and the /printers page: the panel reads the pulse and
-// shows the banner BEFORE the card, the ids/data-action the banner focuses, the
+// setup sections and the /printers page: the panel reads the pulse and shows
+// the status card BEFORE the setup, the ids/data-action its fixes focus, the
 // click-handler call sites of connectNew/reconnect (the chooser must be the
 // first await, so the call is made by the click itself), the page has no own
 // guard or narrow column, every control is 44px (PR1/PR2), and no jargon (PR6).
@@ -37,7 +37,7 @@ const F = {
   connect: `${PRINT}BrowserPrinterConnect.tsx`,
   picker: `${PRINT}DesktopPrinterPicker.tsx`,
   slip: `${PRINT}PrintHostTestSlip.tsx`,
-  waiting: `${PRINT}NotPrintedSection.tsx`, notPrinted: `${PRINT}NotPrintedCard.tsx`,
+  waiting: `${PRINT}NotPrintedSection.tsx`, notPrinted: `${PRINT}NotPrintedCard.tsx`, statusCard: `${PRINT}PrinterStatusCard.tsx`, hereCard: `${PRINT}PrinterHereCard.tsx`, settingsRow: `${PRINT}PrinterSettingsRow.tsx`,
   classes: `${PRINT}printer-classes.ts`,
   page: "apps/cafe/app/(dashboard)/printers/page.tsx",
   hub: `${SETTINGS}page.tsx`,
@@ -82,18 +82,18 @@ const panelPin: Pin = (raw) => {
   const readers = ["usePosPulseContext()", "usePrintHostDot()", "usePrintHostContext()", "useDevicePrinter()", "usePrintLane()", "useDeviceOnline()"];
   for (const n of readers) check(p, count(code, n) === 1, `must call ${n} exactly once`);
   check(p, count(code, "printerDotOf({") === 1 && code.includes("local: snapshot.status"), "printerDotOf gets the snapshot STATUS as local");
-  check(p, code.includes("printerHeadlineOf(dot, {"), "the copy comes from printerHeadlineOf");
-  // U5 Task 5 (printer P24, the root's class moved on purpose: the HTML body's 12px column).
-  check(p, /<div data-printer-panel className="flex flex-col gap-3">/.test(code), "W-P: the root carries data-printer-panel (the banner looks inside it)");
+  // PX-2 Task 6 (on purpose, R11): the copy comes from printerStatusViewOf (printerHeadlineOf and the banner went).
+  check(p, count(code, "printerStatusViewOf({") === 1 && /printerStatusViewOf\(\{\s*dot,/.test(code), "the words come from printerStatusViewOf, given the dot as it is (no dot yet reads as checking there)");
+  check(p, /<div\s+ref=\{rootRef\}\s+data-printer-panel\s+className="flex flex-col gap-3"/.test(code), "W-P: the root carries data-printer-panel (the fixes look inside it)");
   check(p, count(code, "useDesktopPrinterChosen()") === 1 && code.includes("desktopChosen }") && code.includes('desktopNoPrinter: lane === "desktop" && desktopChosen === "none"'), "W-L: the dot and the copy get the desktop shell's printer choice");
   check(p, count(code, "useCanPrintNow()") === 1 && code.includes("canPrintHere,"), "W-T: the copy knows whether this device can print");
-  check(p, /printerName: snapshot\.printer\?\.name \?\? null,\s*localStatus: snapshot\.status,/.test(code), "R2-W8: the copy knows the saved printer's status on this device");
+  check(p, /printer: printerOf\(lane, snapshot\.printer, desktop\.selected\),[\s\S]*localStatus: snapshot\.status,/.test(code), "R2-W8: the copy knows the saved printer and its status on this device");
   check(p, code.includes("hostLabel: host !== null && host.configured ? host.label : null"), "the host label comes from the pulse");
   check(p, !/hostLabel:\s*"/.test(code), "the host label must never be a literal");
-  check(p, code.includes("dot.show ? dot : CHECKING_DOT") && /reason: "checking"/.test(code), "no dot yet -> the checking banner");
-  const banner = code.search(/<PrinterStatusBanner\s/);
-  const card = code.search(/<PrinterSetupCard\s*\/>/);
-  check(p, banner >= 0 && card >= 0 && banner < card, `the banner (${banner}) must come BEFORE the card (${card})`);
+  check(p, code.includes("const noun = deviceNounOf(lane, inApp, shortSide);") && code.includes("const { isAdmin } = useAuth();"), "the device noun (R13) and the admin's link");
+  const card = code.search(/<PrinterStatusCard\s/);
+  const setup = code.search(/<PrinterSetupCard\s*\/>/);
+  check(p, card >= 0 && setup >= 0 && card < setup, `the status card (${card}) must come BEFORE the setup (${setup})`);
   // U5 Task 5 (printer P24, moved on purpose: same meaning): "a Done only in the sheet, none on /printers" now holds because the
   // Done is the FRAME's fixed foot (PrinterPanelFrame, pinned in printer-dot-ui-paths and printer-panel-layout); the panel has none.
   check(p, !/onDone|>\s*Done\s*</.test(code), "the panel has no Done of its own: the frame's foot closes the sheet, /printers draws none");
@@ -118,7 +118,7 @@ const wherePin: Pin = (raw) => {
 const devicePin: Pin = (raw) => {
   const p: string[] = [];
   const code = stripComments(raw);
-  check(p, code.includes('data-printer-target="device"') && code.includes("tabIndex={-1}"), 'root data-printer-target="device" with tabIndex={-1} (the banner focuses it)');
+  check(p, code.includes('data-printer-target="device"') && code.includes("tabIndex={-1}"), 'root data-printer-target="device" with tabIndex={-1} (the status card\'s fixes focus it)');
   check(p, !code.includes('id="printer-device"'), "W-P: no page-wide id (the sheet and the settings page can both be open)");
   check(p, code.includes("toastConnectOutcome(attempt)"), "the connect outcome is toasted by the shared helper");
   // The chooser must be the first await: the CLICK makes the call, nothing awaits before it.
@@ -235,7 +235,7 @@ const pagePin: Pin = (raw) => {
   check(p, code.includes('from "@/components/shared/AdminGuard"'), "the guard is the shared AdminGuard, not a local stand-in");
   check(p, !raw.includes("max-w-" + "2xl"), "the page is not the narrow column");
   check(p, !code.includes("SettingsPageHeader"), "no settings header (its back link points at Settings)");
-  check(p, code.includes("max-w-3xl") && code.includes("<PrinterPanel />") && code.includes("<PageHeader") && code.includes('eyebrow="Admin"'), "positive landmarks: section-page width, the panel, the shared header under the Admin eyebrow");
+  check(p, code.includes("max-w-3xl") && code.includes('<PrinterPanel home="page" />') && code.includes("<PageHeader") && code.includes('eyebrow="Admin"'), "positive landmarks: section-page width, the panel (both views, PX-2 Task 6), the shared header under the Admin eyebrow");
   check(p, code.includes(`description="${PRINTING_DESCRIPTION}"`) && code.includes('title="Printer setup"'), "title and description");
   return p;
 };
@@ -275,12 +275,12 @@ function hygienePin(budget: number, usesAction: boolean): Pin {
 // F.native 280 (was 260): Phase 0 F0.4-F0.6 added the shared loader, the late-bridge subscription and
 // the separate Refresh flag; the pure rules live in lib/printer/native-picker-state.ts.
 const HYGIENE: [string, number, boolean][] = [
-  // F.native 290 (was 280): Session 2F1's add (a printer joins the POS app's printers on bridge v2).
-  [F.panel, 90, false], [F.where, 150, true], [F.device, 220, true], [F.native, 290, true], [F.paper, 60, true],
+  // F.native 290 (was 280): Session 2F1's add (a printer joins the POS app's printers on bridge v2). F.panel 220 (was 90): PX-2 Task 6, two views.
+  [F.panel, 220, false], [F.where, 150, true], [F.device, 220, true], [F.native, 290, true], [F.paper, 60, true],
   [F.tips, 50, false], [F.advanced, 100, true], [F.card, 260, true], [F.parts, 100, true], [F.picker, 160, false],
   [F.connect, 110, true], [F.section, 50, false], [F.type, 60, false],
   // Session 1D: the waiting slips follow the same rules (44px controls, no jargon); PX-2 Task 4: its container, its card.
-  [F.waiting, 120, false], [F.notPrinted, 150, true],
+  [F.waiting, 120, false], [F.notPrinted, 150, true], [F.statusCard, 120, true], [F.hereCard, 80, false], [F.settingsRow, 60, false],
   // Session 2F1 (the 2F1 review gate, M-6): the POS app's other printers on bridge v2. Session 3B: 130 (was 120), a
   // network printer this device may take over says why it stays.
   [F.others, 130, true],
@@ -326,12 +326,12 @@ const classesPin: Pin = (raw) => {
 
 const CASES: PinCase[] = [
   { file: F.panel, pin: panelPin, mutations: [
-    mut("banner and card swapped", /(\s*<PrinterStatusBanner[^\n]*\n)(\s*<PrinterSetupCard \/>\n)/, "\n$2$1"),
+    mut("the status card after the setup", "<PrinterStatusCard ", "<PrinterSetupCard /><PrinterStatusCard "),
     mut("a literal host label", "host.configured ? host.label : null", 'host.configured ? "Counter PC" : null'),
     mut("the pulse read dropped", "usePosPulseContext()", "({ pulse: undefined })"),
-    mut("the banner renamed", "<PrinterStatusBanner", "<PrinterStatusBannerX"),
+    mut("the card renamed", "<PrinterStatusCard ", "<PrinterStatusCardX "),
     mut("local gets the whole snapshot", "local: snapshot.status", "local: snapshot"),
-    mut("the panel marker dropped", "<div data-printer-panel ", "<div "),
+    mut("the panel marker dropped", "      data-printer-panel\n", ""),
     mut("no desktop choice for the dot", "deviceOffline: !online, desktopChosen }", "deviceOffline: !online }"),
     mut("print-here offered blindly", "    canPrintHere,\n", "    canPrintHere: true,\n"),
     mut("the saved printer's status withheld", "    localStatus: snapshot.status,\n", ""),
@@ -434,7 +434,7 @@ const CASES: PinCase[] = [
     mut("the settings header back", "<PageHeader", "<SettingsPageHeader"),
     mut("eyebrow changed", 'eyebrow="Admin"', 'eyebrow="Settings"'),
     mut("narrow column back", "max-w-3xl", "max-w-" + "2xl"),
-    mut("the card instead of the panel", "<PrinterPanel />", "<PrinterSetupCard />"),
+    mut("the card instead of the panel", '<PrinterPanel home="page" />', "<PrinterSetupCard />"),
     mut("stale description", PRINTING_DESCRIPTION, "Choose the PC that prints."),
   ] },
   { file: F.layout, pin: layoutPin, mutations: [mut("guard removed", "<AdminGuard>", "<div>")] },

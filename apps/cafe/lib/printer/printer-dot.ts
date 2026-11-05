@@ -146,14 +146,14 @@ export function printerDotOf(input: PrinterDotInput): PrinterDot {
 
 // ── Copy ─────────────────────────────────────────────────────────────────────
 // Plain English for the person at the counter: no jargon, never the colour
-// alone. The banner and the button name read from here only.
+// alone. The button's name reads from here; the panel's words are
+// printerStatusViewOf's (lib/printer/printer-status-view.ts; PX-2, R11).
 export const PRINTER_BUTTON_NAME_OK = "Printer connected — open printer setup";
 export const PRINTER_BUTTON_NAME_BAD = "Printer not connected — open printer setup";
 export const PRINTER_BUTTON_NAME_NONE = "Open printer setup";
 export const PRINTER_BUTTON_NAME_CHECKING = "Checking the printer — open printer setup";
 export const PRINTER_BUTTON_NAME_PROBLEM = "Printer needs attention — open printer setup";
 export const PRINTER_BUTTON_NAME_WAITING = "Printer not printing — open printer setup";
-const PROBLEM_HEADLINE = "Printer needs attention";
 
 // "Checking" is neither good nor bad yet (a printer that is only connecting): the
 // header button gets its own name and no dot, so it never reads red or "not connected".
@@ -171,130 +171,4 @@ export type PrinterDotTone = "none" | "green" | "red";
 export function printerDotTone(dotState: PrinterDot): PrinterDotTone {
   if (!dotState.show || dotState.reason === "checking") return "none";
   return dotState.ok ? "green" : "red";
-}
-
-export type PrinterFix = "reconnect" | "setup" | "print-here";
-
-export interface PrinterHeadline {
-  headline: string;
-  /** May be empty (the "checking" line has no second sentence). */
-  detail: string;
-  fix: PrinterFix | null;
-}
-
-export interface PrinterHeadlineInput {
-  /** The printing device's name from the pulse; null when none is set. */
-  hostLabel: string | null;
-  /** The saved printer's name on THIS device; null when none. */
-  printerName: string | null;
-  /** The device printer's own status in THIS tab (tells a saved-but-off printer from another tab's). */
-  localStatus: PrinterStatus;
-  isHostDevice: boolean;
-  /** This device can print a slip right now (offers "Print on this device" only then). */
-  canPrintHere: boolean;
-  /** The desktop shell has no printer chosen (the no-printer line says so). */
-  desktopNoPrinter: boolean;
-}
-
-export const HOST_LABEL_FALLBACK = "The printing device";
-const THIS_PC_PRINTER_DETAIL = "Slips print on this PC's printer.";
-const PRINTER_FALLBACK_NAME = "The printer";
-
-const CHECKING_COPY: PrinterHeadline = { headline: "Checking the printer…", detail: "", fix: null };
-
-function okDetail(i: PrinterHeadlineInput, label: string | null): string {
-  if (!i.isHostDevice && label !== null) return `All slips print at ${label}.`;
-  if (i.printerName !== null) return `${i.printerName} is connected.`;
-  return THIS_PC_PRINTER_DETAIL;
-}
-
-const HOST_OFFLINE_WAIT = "Slips wait and print when it is back.";
-
-// A host that is offline, seen from a device that cannot print right now: how to print here instead.
-function hostOfflineElsewhere(i: PrinterHeadlineInput, host: string): PrinterHeadline {
-  const headline = `${host} is offline`;
-  if (i.localStatus === "elsewhere") {
-    const detail = `${HOST_OFFLINE_WAIT} To print here instead, use the printer from another tab of this browser.`;
-    return { headline, detail, fix: null };
-  }
-  if (i.printerName !== null) {
-    return { headline, detail: `${HOST_OFFLINE_WAIT} To print here instead, reconnect ${i.printerName}.`, fix: "reconnect" };
-  }
-  return { headline, detail: `${HOST_OFFLINE_WAIT} To print here instead, set up a printer on this device.`, fix: "setup" };
-}
-
-function copyFor(reason: PrinterDotReason, i: PrinterHeadlineInput, label: string | null): PrinterHeadline {
-  const host = label ?? HOST_LABEL_FALLBACK;
-  const printer = i.printerName ?? PRINTER_FALLBACK_NAME;
-  switch (reason) {
-    case "ok":
-      return { headline: "Printing is on", detail: okDetail(i, label), fix: null };
-    case "device-offline":
-      return {
-        headline: "This device is offline",
-        detail: "Check the internet connection. Printer status will update when it is back.",
-        fix: null,
-      };
-    case "checking":
-      return CHECKING_COPY;
-    case "no-printer":
-      if (i.desktopNoPrinter) {
-        return { headline: "No printer chosen", detail: "Choose this PC's printer below so slips can print.", fix: "setup" };
-      }
-      return {
-        headline: "No printer set up",
-        detail: "Connect a printer to this device, or choose one device that prints all slips.",
-        fix: "setup",
-      };
-    case "printer-off":
-      return {
-        headline: "Printer not connected",
-        detail: `${printer} is not answering. Check it is on and nearby, then reconnect.`,
-        fix: "reconnect",
-      };
-    case "printer-needs-tap":
-      return { headline: "Printer needs a tap", detail: `Tap Reconnect to connect ${printer} again.`, fix: "reconnect" };
-    case "printer-elsewhere":
-      return {
-        headline: "Printer in another tab",
-        detail: "This printer is connected in another tab of this browser. Print from that tab, or close it.",
-        fix: null,
-      };
-    case "host-offline":
-      if (i.isHostDevice) {
-        return { headline: `${host} is offline`, detail: "Slips wait and print when this device is back online.", fix: null };
-      }
-      if (!i.canPrintHere) return hostOfflineElsewhere(i, host);
-      return {
-        headline: `${host} is offline`,
-        detail: `${HOST_OFFLINE_WAIT} You can print on this device instead.`,
-        fix: "print-here",
-      };
-    case "host-printer-off":
-      return { headline: "Printer not connected", detail: `${host} is on, but its printer is not connected.`, fix: null };
-    case "host-print-window":
-      return {
-        headline: "Slips need a tap to print",
-        detail: `${host} opens a print window for every slip. Set up a printer there so slips print by themselves.`,
-        fix: i.isHostDevice ? "setup" : null,
-      };
-    case "printer-not-here":
-      return {
-        headline: "A printer is not on this device",
-        detail: "This device is set to print a printer that is not its own printer. Check it in Printer setup.",
-        fix: "setup",
-      };
-    case "printers-elsewhere":
-      return { headline: "Printing is on", detail: "Each slip prints at its printer (Printer setup).", fix: null };
-    case "printer-waiting":
-    case "printer-problem":
-      return { headline: PROBLEM_HEADLINE, detail: "", fix: null };
-  }
-}
-
-export function printerHeadlineOf(dotState: PrinterDot, input: PrinterHeadlineInput): PrinterHeadline {
-  if (!dotState.show) return CHECKING_COPY;
-  if (dotState.reason === "printer-problem") return { headline: PROBLEM_HEADLINE, detail: dotState.problem ?? "", fix: null };
-  const label = input.hostLabel !== null && input.hostLabel.trim() !== "" ? input.hostLabel.trim() : null;
-  return copyFor(dotState.reason, input, label);
 }

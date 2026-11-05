@@ -231,7 +231,7 @@ test("a tap's answer in plain words: done, already handled, or it prints by itse
 test("PIN: the panel shows the waiting slips, the button shows their count, and both stay within their budgets", () => {
   const panel = src("apps/cafe/components/print/PrinterPanel.tsx");
   assert.ok(panel.includes("<NotPrintedSection pulse={pulse} />"), "the panel lists them");
-  assert.ok(panel.indexOf("<NotPrintedSection pulse={pulse} />") < panel.indexOf("<PrinterStatusBanner"), "first: what needs a person, before the printer's status and setup");
+  assert.ok(panel.indexOf("<PrinterStatusCard") >= 0 && panel.indexOf("<PrinterStatusCard") < panel.indexOf("<NotPrintedSection pulse={pulse} />"), "PX-2 Task 6 (on purpose, spec §6.2): the printer's status first, then the slips");
   const button = src("apps/cafe/components/print/PrinterStatusButton.tsx");
   assert.match(button, /const waiting = usePrintWaitingCount\(\);/, "a narrow context, never the wide pulse");
   // Printing Phase 5 (spec 5.10, deliberate change): offline the name says what a send does here instead.

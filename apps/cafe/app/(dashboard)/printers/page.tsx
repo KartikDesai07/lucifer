@@ -1,5 +1,6 @@
 // The Printer setup page (sidebar: Admin, above Settings): the same printer
-// panel as the top-bar printer button, inline. Server component with no hooks
+// panel as the top-bar printer button, inline, with both its views (PX-2: the
+// status, then the settings; no row between them). Server component with no hooks
 // of its own. Admin-only like Staff and Settings: the guard wraps the brand
 // shell (middleware's ADMIN_ROUTES is the first fence, this the second), and
 // the column width matches the settings section pages. Phase 2 Session 2D
@@ -26,7 +27,7 @@ export default function PrinterSetupPage() {
             title="Printer setup"
             description="Choose where slips print and connect the printer on this device."
           />
-          <PrinterPanel />
+          <PrinterPanel home="page" />
           <PrintSetupSections />
           <Suspense fallback={<p role="status" className="text-brand-muted">{APPS_LOADING}</p>}>
             <NativeAppsSection />

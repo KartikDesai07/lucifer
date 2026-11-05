@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
 import type { PrintHostState } from "@pos/shared/print-job";
 import {
-  HOST_LABEL_FALLBACK,
   PRINTER_BUTTON_NAME_BAD,
   PRINTER_BUTTON_NAME_CHECKING,
   PRINTER_BUTTON_NAME_NONE,
@@ -13,15 +12,14 @@ import {
   printerButtonName,
   printerDotOf,
   printerDotTone,
-  printerHeadlineOf,
   type DotLane,
   type PrintHostDot,
   type PrinterDot,
   type PrinterDotInput,
   type PrinterDotReason,
   type PrinterDotTone,
-  type PrinterHeadlineInput,
 } from "@/lib/printer/printer-dot";
+import { printerStatusViewOf, type PrinterStatusViewInput } from "@/lib/printer/printer-status-view";
 import type { DesktopChosen } from "@/lib/printer/desktop-printer-state";
 import type { PrinterStatus } from "@/lib/printer/web-printer-types";
 
@@ -244,131 +242,33 @@ function dotFor(reason: PrinterDotReason): PrinterDot {
 const BANNED = [["print", " host"].join(""), ["dia", "log"].join(""), ["sil", "ent"].join("")];
 const CAFE_NAME = ["luci", "fer"].join("");
 
+// PX-2 Task 6 (R11, on purpose): printerHeadlineOf and its copy went (the panel was its only reader). Its exact-copy cases
+// are printer-status-view.test.ts's, in the new words; the two sweeps below read printerStatusViewOf instead.
+const viewInput = (dot: PrinterDot, over: Partial<PrinterStatusViewInput> = {}): PrinterStatusViewInput => ({
+  dot, hostLabel: null, printer: null, noun: "this device", isHostDevice: false, canPrintHere: true, desktopNoPrinter: false, localStatus: "none", here: [], waiting: null, notHere: [], isAdmin: false, ...over,
+});
+
 test("colour is never the only signal: every dot has a button name and a headline", () => {
   for (const input of allInputs()) {
     const dot = printerDotOf(input);
     assert.notEqual(printerButtonName(dot).trim(), "", `button name for ${JSON.stringify(input)}`);
-    assert.notEqual(printerHeadlineOf(dot, { hostLabel: null, printerName: null, isHostDevice: input.isHostDevice, canPrintHere: true, localStatus: "none", desktopNoPrinter: false }).headline.trim(), "");
+    assert.notEqual(printerStatusViewOf(viewInput(dot, { isHostDevice: input.isHostDevice })).headline.trim(), "", `headline for ${JSON.stringify(input)}`);
   }
-  assert.notEqual(printerHeadlineOf({ show: false }, { hostLabel: null, printerName: null, isHostDevice: false, canPrintHere: true, localStatus: "none", desktopNoPrinter: false }).headline, "");
-});
-
-test("headlines: exact copy for every reason", () => {
-  const input = (isHostDevice: boolean, canPrintHere = true): PrinterHeadlineInput => ({ hostLabel: "Counter PC", printerName: "Kitchen printer", isHostDevice, canPrintHere, localStatus: "connected", desktopNoPrinter: false });
-  const copy = (reason: PrinterDotReason, isHostDevice = false, canPrintHere = true) => printerHeadlineOf(dotFor(reason), input(isHostDevice, canPrintHere));
-
-  assert.deepEqual(copy("ok"), { headline: "Printing is on", detail: "All slips print at Counter PC.", fix: null });
-  assert.deepEqual(copy("ok", true), { headline: "Printing is on", detail: "Kitchen printer is connected.", fix: null });
-  assert.deepEqual(printerHeadlineOf(dotFor("ok"), { hostLabel: null, printerName: "Kitchen printer", isHostDevice: false, canPrintHere: true, localStatus: "none", desktopNoPrinter: false }), {
-    headline: "Printing is on", detail: "Kitchen printer is connected.", fix: null,
-  });
-  assert.deepEqual(printerHeadlineOf(dotFor("ok"), { hostLabel: null, printerName: null, isHostDevice: true, canPrintHere: true, localStatus: "none", desktopNoPrinter: false }), {
-    headline: "Printing is on", detail: "Slips print on this PC's printer.", fix: null,
-  });
-  assert.deepEqual(copy("no-printer"), {
-    headline: "No printer set up",
-    detail: "Connect a printer to this device, or choose one device that prints all slips.",
-    fix: "setup",
-  });
-  assert.deepEqual(copy("printer-off"), {
-    headline: "Printer not connected",
-    detail: "Kitchen printer is not answering. Check it is on and nearby, then reconnect.",
-    fix: "reconnect",
-  });
-  // W-V: a printer that only needs a tap is not "not answering".
-  assert.deepEqual(copy("printer-needs-tap"), {
-    headline: "Printer needs a tap",
-    detail: "Tap Reconnect to connect Kitchen printer again.",
-    fix: "reconnect",
-  });
-  // W-T: print-here only on a device that can print; otherwise set this one up first.
-  const noSaved = (canPrintHere: boolean) => printerHeadlineOf(dotFor("host-offline"), { ...input(false, canPrintHere), printerName: null, localStatus: "none" });
-  assert.equal(noSaved(false).fix, "setup");
-  assert.equal(copy("host-offline", false, true).fix, "print-here");
-  // W-L: the desktop shell with no printer chosen has its own words.
-  assert.deepEqual(printerHeadlineOf(dotFor("no-printer"), { ...input(true), desktopNoPrinter: true }), {
-    headline: "No printer chosen",
-    detail: "Choose this PC's printer below so slips can print.",
-    fix: "setup",
-  });
-  assert.deepEqual(copy("host-offline"), {
-    headline: "Counter PC is offline",
-    detail: "Slips wait and print when it is back. You can print on this device instead.",
-    fix: "print-here",
-  });
-  assert.equal(copy("host-offline", true).fix, null, "this device cannot move printing to itself");
-  // s63 INT: a device that cannot print must not be told it "can print on this device instead"
-  assert.deepEqual(noSaved(false), {
-    headline: "Counter PC is offline",
-    detail: "Slips wait and print when it is back. To print here instead, set up a printer on this device.",
-    fix: "setup",
-  });
-  // R2-W8: a device WITH a saved printer that is not connected is told to reconnect it, not to set one up.
-  const saved = (localStatus: PrinterStatus) => printerHeadlineOf(dotFor("host-offline"), { ...input(false, false), localStatus });
-  for (const status of ["disconnected", "needs-tap", "connecting"] as const) {
-    assert.deepEqual(saved(status), {
-      headline: "Counter PC is offline",
-      detail: "Slips wait and print when it is back. To print here instead, reconnect Kitchen printer.",
-      fix: "reconnect",
-    }, status);
-  }
-  // Another tab holds the printer: no fix can work from here (the banner would only be disabled).
-  const elsewhere = saved("elsewhere");
-  assert.equal(elsewhere.fix, null);
-  assert.equal(elsewhere.headline, "Counter PC is offline");
-  assert.match(elsewhere.detail, /^Slips wait and print when it is back\. /);
-  assert.ok(/another tab/i.test(elsewhere.detail) && !/set up a printer|reconnect/i.test(elsewhere.detail), elsewhere.detail);
-  assert.equal(printerHeadlineOf(dotFor("host-offline"), { ...input(false, false), printerName: null, localStatus: "elsewhere" }).fix, null, "elsewhere with no name of its own still has no fix");
-  // A device that CAN print keeps its own button; a device that prints for everyone has no fix.
-  assert.equal(printerHeadlineOf(dotFor("host-offline"), { ...input(false, true), localStatus: "connected" }).fix, "print-here");
-  assert.equal(printerHeadlineOf(dotFor("host-offline"), { ...input(true, false), localStatus: "disconnected" }).fix, null);
-  assert.deepEqual(copy("host-printer-off"), {
-    headline: "Printer not connected",
-    detail: "Counter PC is on, but its printer is not connected.",
-    fix: null,
-  });
-  assert.deepEqual(copy("device-offline"), {
-    headline: "This device is offline",
-    detail: "Check the internet connection. Printer status will update when it is back.",
-    fix: null,
-  });
-  assert.equal(copy("checking").headline, "Checking the printer…");
-  assert.deepEqual(copy("host-print-window"), {
-    headline: "Slips need a tap to print",
-    detail: "Counter PC opens a print window for every slip. Set up a printer there so slips print by themselves.",
-    fix: null,
-  });
-  assert.equal(copy("host-print-window", true).fix, "setup");
-  assert.deepEqual(copy("printer-elsewhere"), {
-    headline: "Printer in another tab",
-    detail: "This printer is connected in another tab of this browser. Print from that tab, or close it.",
-    fix: null,
-  });
-  assert.deepEqual(printerHeadlineOf({ show: false }, input(false)), { headline: "Checking the printer…", detail: "", fix: null });
-});
-
-test("headlines: a missing or blank host name falls back to a plain phrase, never 'null'", () => {
-  for (const hostLabel of [null, "", "   "]) {
-    const c = printerHeadlineOf(dotFor("host-offline"), { hostLabel, printerName: null, isHostDevice: false, canPrintHere: true, localStatus: "none", desktopNoPrinter: false });
-    assert.equal(c.headline, `${HOST_LABEL_FALLBACK} is offline`);
-    assert.ok(!/null|undefined/.test(c.detail));
-  }
-  const c = printerHeadlineOf(dotFor("printer-off"), { hostLabel: null, printerName: null, isHostDevice: false, canPrintHere: true, localStatus: "none", desktopNoPrinter: false });
-  assert.equal(c.detail, "The printer is not answering. Check it is on and nearby, then reconnect.");
+  assert.notEqual(printerStatusViewOf(viewInput({ show: false })).headline, "", "no dot yet: a headline too");
 });
 
 test("copy is plain English: no banned words and no cafe name in any headline, detail or button name", () => {
-  const inputs: PrinterHeadlineInput[] = [
-    { hostLabel: "Counter PC", printerName: "Kitchen printer", isHostDevice: false, canPrintHere: true, localStatus: "none", desktopNoPrinter: false },
-    { hostLabel: null, printerName: null, isHostDevice: true, canPrintHere: false, localStatus: "none", desktopNoPrinter: true },
-    { hostLabel: "Counter PC", printerName: "Kitchen printer", isHostDevice: false, canPrintHere: false, localStatus: "disconnected", desktopNoPrinter: false },
-    { hostLabel: "Counter PC", printerName: "Kitchen printer", isHostDevice: false, canPrintHere: false, localStatus: "elsewhere", desktopNoPrinter: false },
+  const inputs: Partial<PrinterStatusViewInput>[] = [
+    { hostLabel: "Counter PC", printer: { name: "Kitchen printer", transport: "bluetooth" } },
+    { isHostDevice: true, canPrintHere: false, desktopNoPrinter: true, noun: "this PC" },
+    { hostLabel: "Counter PC", printer: { name: "Kitchen printer", transport: "usb" }, canPrintHere: false, localStatus: "disconnected" },
+    { hostLabel: "Counter PC", printer: { name: "Kitchen printer", transport: "network" }, canPrintHere: false, localStatus: "elsewhere" },
   ];
-  const texts: string[] = [PRINTER_BUTTON_NAME_OK, PRINTER_BUTTON_NAME_BAD, PRINTER_BUTTON_NAME_NONE, PRINTER_BUTTON_NAME_CHECKING, HOST_LABEL_FALLBACK];
+  const texts: string[] = [PRINTER_BUTTON_NAME_OK, PRINTER_BUTTON_NAME_BAD, PRINTER_BUTTON_NAME_NONE, PRINTER_BUTTON_NAME_CHECKING];
   for (const reason of REASONS) {
     for (const i of inputs) {
-      const c = printerHeadlineOf(dotFor(reason), i);
-      texts.push(c.headline, c.detail);
+      const v = printerStatusViewOf(viewInput(dotFor(reason), i));
+      texts.push(v.headline, v.detail, ...v.steps, v.action?.label ?? "", v.link?.label ?? "", v.note ?? "");
     }
   }
   assert.ok(texts.length > 30, "the sweep read real strings");
@@ -406,16 +306,9 @@ test("2F1: printers mode on bridge v2 — the dot is the worst state among the a
   assert.deepEqual(printerDotOf({ ...PRINTERS_BASE, printers: { ...mode, worst: "connecting" } }), { show: true, ok: false, reason: "checking" }, "one still connecting: checking");
 });
 
-test("2D: printers mode copy — plain words for the two new states", () => {
-  const input: PrinterHeadlineInput = { hostLabel: null, printerName: "Kitchen printer", isHostDevice: false, canPrintHere: true, localStatus: "connected", desktopNoPrinter: false };
-  assert.deepEqual(printerHeadlineOf({ show: true, ok: true, reason: "printers-elsewhere" }, input), { headline: "Printing is on", detail: "Each slip prints at its printer (Printer setup).", fix: null });
-  assert.deepEqual(printerHeadlineOf({ show: true, ok: false, reason: "printer-not-here" }, input), {
-    headline: "A printer is not on this device",
-    detail: "This device is set to print a printer that is not its own printer. Check it in Printer setup.",
-    fix: "setup",
-  });
-  assert.equal(printerButtonName({ show: true, ok: true, reason: "printers-elsewhere" }), PRINTER_BUTTON_NAME_OK);
-  assert.equal(printerDotTone({ show: true, ok: false, reason: "printer-not-here" }), "red");
+test("2D: printers mode — the button's name and tone for the two new states (their words: printer-status-view.test.ts)", () => {
+  assert.equal(printerButtonName({ show: true, ok: true, reason: "printers-elsewhere" }), PRINTER_BUTTON_NAME_OK, "the cafe's printers print: ok");
+  assert.equal(printerDotTone({ show: true, ok: false, reason: "printer-not-here" }), "red", "a printer it writes is not its own");
 });
 
 // Phase 3 Session 3B (spec §10): a printer this device prints (writes by the setup, or took over) that its POS app says is
@@ -426,8 +319,6 @@ test("3B: a printer of this device out of paper, its cover open or in error is r
   const printers = { printersMode: true, isWriter: true, allLocal: true, worst: "connected" as const };
   const out = printerDotOf({ ...base, printers: { ...printers, problem: { name: "Kitchen", problem: "paper-out" } } });
   assert.deepEqual(out, { show: true, ok: false, reason: "printer-problem", problem: "Kitchen is out of paper." });
-  const hi = { hostLabel: null, printerName: null, isHostDevice: false, canPrintHere: true, localStatus: "connected" as const, desktopNoPrinter: false };
-  assert.deepEqual(printerHeadlineOf(out, hi), { headline: "Printer needs attention", detail: "Kitchen is out of paper.", fix: null });
   assert.equal(printerButtonName(out), "Printer needs attention — open printer setup");
   assert.equal(printerDotTone(out), "red");
   const down = printerDotOf({ ...base, printers: { ...printers, worst: "disconnected", problem: { name: "Kitchen", problem: "cover-open" } } });

@@ -197,6 +197,20 @@ test("a low-paper printer in a rush is only waiting; out of paper is stuck (Ruli
   assert.equal(out.detail, "Kitchen printer is out of paper.", "in the printer's own words");
 });
 
+// PX-2 Task 6 (R11): moved from printer-dot.test.ts's printerHeadlineOf cases, in the new words.
+test("a missing or blank name falls back to a plain phrase, never 'null'", () => {
+  for (const hostLabel of [null, "", "   "]) {
+    const offline = view({ dot: bad("host-offline"), hostLabel, canPrintHere: true });
+    assert.equal(offline.headline, "The printing device is offline", `${JSON.stringify(hostLabel)}: the host's fallback`);
+    assert.equal(view({ dot: bad("host-printer-off"), hostLabel }).headline, "The printing device's printer is not connected", `${JSON.stringify(hostLabel)}: in the possessive too`);
+    assert.equal(view({ dot: bad("host-print-window"), hostLabel }).detail, "The printing device opens a print window for every slip.", `${JSON.stringify(hostLabel)}: in the detail`);
+    assert.ok(!/null|undefined/.test(offline.detail), "no 'null' in the detail");
+  }
+  const noName = view({ dot: bad("printer-off"), printer: null });
+  assert.deepEqual([noName.headline, noName.detail], ["Printer not connected", ""], "no saved printer: no name, no 'The printer · '");
+  assert.equal(view({ dot: bad("printer-problem"), printer: null }).headline, "The printer reports an error", "a problem with no name says The printer");
+});
+
 test("no jargon and no colour words in any string the card shows", () => {
   const reasons: PrinterDotReason[] = ["ok", "device-offline", "checking", "no-printer", "printer-off", "printer-needs-tap", "printer-elsewhere", "host-offline", "host-printer-off", "host-print-window", "printer-not-here", "printers-elsewhere", "printer-problem", "printer-waiting"];
   const texts: string[] = [];

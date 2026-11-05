@@ -25,13 +25,12 @@ export const PRINTER_DOT_WARN_CLASS = STATUS_CLASSES.warn.dot;
 /** The Printer setup page's own dots: green connected, red a problem. */
 export const PRINTER_DOT_BAD_CLASS = STATUS_CLASSES.bad.dot;
 
-/** The 36px icon tile at the start of a panel header, a printer row and the status
- *  banner (the Settings hub's idiom). The colour comes from one of the tones below. */
+/** The 36px icon tile at the start of a panel header and a printer row (the Settings hub's idiom). The colour comes from
+ *  one of the tones below. */
 export const PRINTER_TILE_CLASS = "grid h-9 w-9 shrink-0 place-items-center rounded-md";
 export const PRINTER_TILE_BRAND_CLASS = "bg-brand-primary-soft text-brand-primary";
-/** The status card's 34px circle (U5 Task 5, values 17): neutral = no good/bad claim (the "checking" card); ok = the
- *  HTML's --ok with its white check; bad = --warn with its "!" in --text (the HTML's white "!" is 2.46:1). The words
- *  beside it carry the meaning. */
+/** The status card's circle's tones: neutral = no good/bad claim (the "checking" card); ok = --status-ok with its white
+ *  check; bad = --status-warn with its "!" in --foreground (a white "!" is 2.46:1). The words beside it carry the meaning. */
 export const PRINTER_TILE_NEUTRAL_CLASS = "bg-surface-3 text-muted-foreground";
 export const PRINTER_TILE_OK_CLASS = `${STATUS_CLASSES.ok.dot} text-white`;
 export const PRINTER_TILE_BAD_CLASS = `${STATUS_CLASSES.warn.dot} text-foreground`;
@@ -62,6 +61,15 @@ export const PRINTER_PANEL_BODY_CLASS = "flex min-h-0 flex-1 flex-col gap-3 over
 export const PRINTER_PANEL_FOOT_CLASS = "flex-none border-t border-border bg-card px-5 pt-3.5 pb-[calc(14px+env(safe-area-inset-bottom))]";
 /** Done: 44px, --accent, radius 10, 14.5px 600, hover --accent-h. */
 export const PRINTER_PANEL_DONE_CLASS = `h-11 w-full cursor-pointer rounded-[10px] border-0 bg-primary px-1.5 py-px text-[14.5px] font-semibold text-primary-foreground pointer-fine:hover:bg-primary-hover ${FLOOR_FOCUS_RING_CLASS}`;
+// The printer sheet's views (PX-2 Task 6; spec §6.1): its head is one 62px line (14 + 34 + 14): the back (settings view),
+// the view's title (focusable for F-M6, no ring: it is not a control), the close; from 720px the head's, body's and foot's
+// contents are a centered 640px column, so a tablet never stretches a card. The head and sub above stay for the offline
+// orders sheet, which shares the frame's look.
+export const PRINTER_PANEL_VIEW_HEAD_CLASS = "flex flex-none border-b border-border bg-card px-5 py-3.5";
+export const PRINTER_PANEL_HEAD_ROW_CLASS = "mx-auto flex min-h-[34px] w-full items-center gap-2.5 tab:max-w-[640px]";
+export const PRINTER_PANEL_VIEW_TITLE_CLASS = `${PRINTER_PANEL_TITLE_CLASS} min-w-0 flex-1 outline-none`;
+export const PRINTER_PANEL_BACK_CLASS = `${PRINTER_PANEL_CLOSE_CLASS} -ml-2`;
+export const PRINTER_PANEL_COLUMN_CLASS = "mx-auto flex w-full flex-none flex-col gap-3 tab:max-w-[640px]";
 
 // A section card (values 18): --surface, 1px --border, radius 12, clipped; the head row, then the body.
 export const PRINTER_SECTION_CARD_CLASS = "flex-none overflow-clip rounded-[12px] border border-border bg-card";
@@ -71,16 +79,49 @@ export const PRINTER_SECTION_TITLE_CLASS = "text-[14px] font-semibold";
 export const PRINTER_SECTION_SUB_CLASS = "mt-0.5 text-[12.5px] text-subtle-foreground";
 export const PRINTER_SECTION_BODY_CLASS = "flex flex-col gap-3 px-4 pb-4 text-[13.5px]";
 
-// The status card (values 17; design 7.3): ok green, bad orange (its "!" in --text: the HTML's white is 2.46:1), checking neutral.
-export const PRINTER_STATUS_CARD_CLASS = "flex flex-none items-start gap-3 rounded-[12px] border px-4 py-3.5";
-export const PRINTER_STATUS_CIRCLE_CLASS = "grid size-[34px] flex-none place-items-center rounded-[50%]";
+// The status card (PX-2 Task 6; spec §6.2; mockups s-off / s-ready / s-paper): radius 14, a 1px border, padding 16, gap 12;
+// a 40px circle; the headline 17px / 600 (focusable for F-M6), the detail 13.5px; up to three steps on 22px numbered circles,
+// 14px / 1.45, indented 52px under the headline; one 44px full-width fix; a quiet 13px link (44px to a finger through a
+// transparent inset); a 13px note where nothing can be tapped. ok green, bad amber (its "!" in --foreground), checking neutral.
+export const PRINTER_STATUS_CARD_CLASS = "flex flex-none flex-col gap-3 rounded-[14px] border p-4";
+export const PRINTER_STATUS_TOP_CLASS = "flex items-start gap-3";
+export const PRINTER_STATUS_CIRCLE_CLASS = "grid size-10 flex-none place-items-center rounded-[50%] [&_svg]:size-5";
 export const PRINTER_STATUS_LOOK = {
   ok: { card: `border-[rgba(36,161,72,.3)] ${STATUS_CLASSES.ok.tint}`, head: STATUS_CLASSES.ok.ink },
-  bad: { card: `border-[rgba(255,131,43,.35)] ${STATUS_CLASSES.warn.tint}`, head: STATUS_CLASSES.warn.ink },
+  bad: { card: `border-[rgba(255,131,43,.45)] ${STATUS_CLASSES.warn.tint}`, head: STATUS_CLASSES.warn.ink },
   checking: { card: "border-border bg-card", head: "text-foreground" },
 } as const;
-export const PRINTER_STATUS_HEAD_CLASS = "text-[14.5px] font-semibold";
-export const PRINTER_STATUS_DETAIL_CLASS = "mt-0.5 text-[12.5px] text-muted-foreground";
+export const PRINTER_STATUS_HEAD_CLASS = "text-[17px] font-semibold leading-[1.3] outline-none";
+export const PRINTER_STATUS_DETAIL_CLASS = "mt-0.5 text-[13.5px] leading-[1.4] text-muted-foreground";
+export const PRINTER_STATUS_STEPS_CLASS = "flex flex-col gap-1.5 pl-[52px]";
+export const PRINTER_STATUS_STEP_CLASS = "flex gap-2.5 text-[14px] leading-[1.45]";
+export const PRINTER_STATUS_STEP_NUM_CLASS = `grid size-[22px] flex-none place-items-center rounded-[50%] border ${STATUS_CLASSES.info.border} bg-card text-[12px] font-bold leading-none ${STATUS_CLASSES.info.ink}`;
+export const PRINTER_STATUS_NOTE_CLASS = "pl-[52px] text-[13px] leading-[1.4] text-muted-foreground";
+export const PRINTER_STATUS_ACT_CLASS = "flex flex-col items-center gap-1";
+export const PRINTER_BUTTON_FIX_CLASS = "h-11 w-full rounded-[10px] border-0 px-4 py-0 text-[15px] font-semibold hover:bg-primary-hover";
+export const PRINTER_STATUS_LINK_CLASS = `relative inline-flex min-h-8 cursor-pointer items-center gap-0.5 rounded-[6px] border-0 bg-transparent px-1 text-[13px] font-medium text-link before:absolute before:inset-x-0 before:-inset-y-1.5 pointer-coarse:before:content-[''] [&_svg]:size-[15px] ${FLOOR_FOCUS_RING_CLASS}`;
+// On this device (spec §6.2; mockup s-pm-tablet): the printers this device prints, each a 9px dot, the setup's name (14px /
+// 500) over "RPP02N · Bluetooth" (12.5px) and its state word on the right; no buttons (the card's one Reconnect does it).
+export const PRINTER_HERE_CARD_CLASS = "flex-none rounded-[12px] border border-border bg-card";
+export const PRINTER_HERE_TITLE_CLASS = "px-4 py-3 text-[14px] font-semibold";
+export const PRINTER_HERE_LIST_CLASS = "flex flex-col px-4 pb-3.5";
+export const PRINTER_HERE_ROW_CLASS = "flex min-h-[52px] items-center gap-2.5 border-t border-border-2 py-2.5 first:border-t-0 first:pt-0.5";
+export const PRINTER_HERE_DOT_CLASS = "size-[9px] flex-none rounded-[50%]";
+export const PRINTER_HERE_NAME_CLASS = "min-w-0 flex-1 break-words text-[14px] font-medium";
+export const PRINTER_HERE_SUB_CLASS = "mt-px block text-[12.5px] font-normal text-subtle-foreground";
+export const PRINTER_HERE_WORD_CLASS = "flex-none text-[12.5px] font-semibold";
+export const PRINTER_HERE_TONE = {
+  ok: { dot: STATUS_CLASSES.ok.dot, word: STATUS_CLASSES.ok.ink },
+  bad: { dot: STATUS_CLASSES.warn.dot, word: STATUS_CLASSES.warn.ink },
+  quiet: { dot: "bg-subtle-foreground", word: "text-muted-foreground" },
+} as const;
+// Printer settings › (spec §6.2): a 60px card row, the 34px tile, 14.5px / 600 over a 12.5px sub, a chevron. The whole row is
+// the button, so its parts are spans (a button holds phrasing content only).
+export const PRINTER_SETTINGS_ROW_CLASS = `flex min-h-[60px] w-full flex-none cursor-pointer items-center gap-3 rounded-[12px] border border-border bg-card py-3 pr-3.5 pl-4 text-left text-foreground pointer-fine:hover:bg-hover ${FLOOR_FOCUS_RING_CLASS}`;
+export const PRINTER_SETTINGS_ROW_TEXT_CLASS = "min-w-0 flex-1";
+export const PRINTER_SETTINGS_ROW_TITLE_CLASS = "block text-[14.5px] font-semibold";
+export const PRINTER_SETTINGS_ROW_SUB_CLASS = "mt-0.5 block text-[12.5px] text-subtle-foreground";
+export const PRINTER_SETTINGS_ROW_CHEVRON_CLASS = "size-[18px] flex-none text-subtle-foreground";
 // Waiting slips (design 7.5): the HTML's warn card; each slip a --surface row.
 export const PRINTER_WAITING_CARD_CLASS = `flex flex-none flex-col gap-3 rounded-[12px] border border-[rgba(255,131,43,.35)] ${STATUS_CLASSES.warn.tint} px-4 py-3.5`;
 export const PRINTER_WAITING_ROW_CLASS = "rounded-[10px] border border-border bg-card px-3 py-2.5";
@@ -118,7 +159,7 @@ export const PRINTER_BUTTON_CONFIRM_CLASS = "h-10 min-w-0 flex-1 rounded-[8px] p
 export const PRINTER_BUTTON_DANGER_CLASS = `${PRINTER_BUTTON_CONFIRM_CLASS} border-0 bg-status-bad text-white hover:bg-status-bad`;
 
 // Buttons (design 7.4): primary 40px / radius 9 / 14px 600; secondary 36px / radius 8 / 13.5px 500 (on the kit's outline
-// variant); the status card's fix button 32px / 12.5px; Remove in --bad-i with the bad rgba border. Each only sizes, so the
+// variant); the small one 32px / 12.5px (the app's printer list); Remove in --bad-i with the bad rgba border. Each only sizes, so the
 // kit variant keeps the colours (a Reconnect that is not connected stays primary). self-start: in the panel's column a
 // button keeps the width of its words (the HTML's Connect printer is align-self: flex-start).
 export const PRINTER_BUTTON_PRIMARY_CLASS = "h-10 self-start py-0 rounded-[9px] border-0 px-4 text-[14px] font-semibold hover:bg-primary-hover";

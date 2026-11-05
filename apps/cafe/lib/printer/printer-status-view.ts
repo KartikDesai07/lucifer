@@ -79,8 +79,9 @@ export function deviceNounOf(lane: DotLane, inApp: boolean, shortSidePx: number 
 
 const slips = (n: number): string => `${n} slip${n === 1 ? "" : "s"}`;
 
-// "RPP02N · Bluetooth"; the Windows app's network printer is "{name} · network"; without a name, the word alone.
-function connOf(name: string, transport: TransportWord, windowsApp: boolean): string {
+// "RPP02N · Bluetooth"; the Windows app's network printer is "{name} · network"; without a name, the word alone. The panel's
+// On this device card words each printer the same way (PX-2 Task 6).
+export function connOf(name: string, transport: TransportWord, windowsApp: boolean): string {
   const word = windowsApp && transport === "network" ? "network" : TRANSPORT_WORDS[transport];
   return [name, word].filter((part) => part !== "").join(" · ");
 }

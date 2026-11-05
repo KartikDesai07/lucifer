@@ -8,7 +8,7 @@ import { GlyphPrinter } from "@/components/layout/nav-icons";
 import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
 import { usePrintHostDot } from "@/components/layout/print-host-dot-context";
 import { usePrintWaitingCount } from "@/components/layout/print-waiting-context";
-import { PrinterPanel } from "@/components/print/PrinterPanel";
+import { PrinterPanel, type PrinterPanelView } from "@/components/print/PrinterPanel";
 import { PrinterPanelFrame } from "@/components/print/PrinterPanelFrame";
 import {
   PRINTER_DOT_CLASS,
@@ -30,10 +30,15 @@ import { cn } from "@/lib/utils";
 // context, this device's host flag, the device printer, the lane and the
 // network — never the wide pulse, so a quiet pulse tick re-renders nothing
 // here. The frame's panel (mounted only while open) is the one that reads the
-// pulse for the labels.
+// pulse for the labels. PX-2 (spec §6.1): the sheet's two views (status first, settings one tap away) are this button's
+// state, so each open starts on the status view.
+
+const STATUS_TITLE = "Printer";
+const SETTINGS_TITLE = "Printer settings";
 
 export function PrinterStatusButton({ onToneChange }: { onToneChange?: (tone: PrinterDotTone) => void } = {}) {
   const [open, setOpen] = useState(false);
+  const [view, setView] = useState<PrinterPanelView>("status");
   // Session 1D: the 20 s alarm's Show button opens this sheet.
   useEffect(() => onOpenPrinterPanel(() => setOpen(true)), []);
   const remote = usePrintHostDot();
@@ -58,11 +63,18 @@ export function PrinterStatusButton({ onToneChange }: { onToneChange?: (tone: Pr
   // U1 Task 1 (design 6.1): the /pos header's clock block shows this same dot; the header takes the tone from here,
   // before the first paint (U1 final fix wave), so the dot is never one frame stale entering /pos.
   useLayoutEffect(() => onToneChange?.(tone), [onToneChange, tone]);
+  // Status on every open, and back to it on close (the alarm's Show opens a closed sheet, so it starts there too).
+  const openChange = (next: boolean): void => {
+    setOpen(next);
+    setView("status");
+  };
 
   return (
     <PrinterPanelFrame
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={openChange}
+      title={view === "settings" ? SETTINGS_TITLE : STATUS_TITLE}
+      onBack={view === "settings" ? () => setView("status") : undefined}
       trigger={
         <Button
           type="button"
@@ -94,7 +106,7 @@ export function PrinterStatusButton({ onToneChange }: { onToneChange?: (tone: Pr
         </Button>
       }
     >
-      <PrinterPanel />
+      <PrinterPanel view={view} onView={setView} />
     </PrinterPanelFrame>
   );
 }

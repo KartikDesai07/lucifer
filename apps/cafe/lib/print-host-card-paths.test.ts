@@ -98,7 +98,7 @@ test("PIN (a): requests/page.tsx imports { DeviceAlertSettingsDialog } from @/co
   // page.tsx really does import+render PrinterSetupCard — so an accidentally-
   // blinded readSrc couldn't vacuously pass the negative half.
   // RE-POINTED 2026-10-02 (printer panel, W5b): the page now renders
-  // <PrinterPanel /> (the same panel the top-bar printer button opens) instead
+  // <PrinterPanel home="page" /> (PX-2 Task 6: both views of the top-bar sheet's panel) instead
   // of the card directly; the card is reached in a second hop, asserted below.
   const printerSetupCardNeedle = "PrinterSetup" + "Card";
   assert.ok(
@@ -112,7 +112,7 @@ test("PIN (a): requests/page.tsx imports { DeviceAlertSettingsDialog } from @/co
     /import\s*\{\s*PrinterPanel\s*\}\s*from\s*"@\/components\/print\/PrinterPanel"/,
     "positive landmark: printers/page.tsx must import { PrinterPanel } from @/components/print/PrinterPanel",
   );
-  assert.match(printingSrc, /<PrinterPanel\s*\/>/, "positive landmark: printers/page.tsx must render <PrinterPanel />");
+  assert.match(printingSrc, /<PrinterPanel\s+home="page"\s*\/>/, 'positive landmark: printers/page.tsx must render <PrinterPanel home="page" />');
   const panelSrc = readSrc(PRINTER_PANEL_TSX);
   assert.match(
     panelSrc,
