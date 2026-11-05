@@ -61,7 +61,7 @@ const PANEL_FILES = [
   "apps/cafe/components/print/PrinterPanel.tsx",
   "apps/cafe/components/print/settings/PrintForOthersCard.tsx",
   "apps/cafe/components/print/DevicePrinterSection.tsx",
-  "apps/cafe/components/print/NativePrinterPicker.tsx",
+  ...["ConnectFlow", "ConnectType", "ConnectList", "ConnectProgress", "ConnectTest"].map((n) => `apps/cafe/components/print/connect/${n}.tsx`), "apps/cafe/hooks/use-connect-attempt.ts", "apps/cafe/hooks/use-native-printer-list.ts", // PX-3 Task 11: the picker's logic and its guided connect
   "apps/cafe/components/print/PaperSizeToggle.tsx",
   "apps/cafe/components/print/PrinterTestTips.tsx",
   "apps/cafe/components/print/settings/MoreCard.tsx", "apps/cafe/components/print/settings/PrinterSettingsView.tsx",
@@ -120,7 +120,7 @@ test("PIN (a): requests/page.tsx imports { DeviceAlertSettingsDialog } from @/co
     /import\s*\{\s*PrinterSettingsView\s*\}\s*from\s*"@\/components\/print\/settings\/PrinterSettingsView"/,
     "2nd hop: PrinterPanel.tsx must import { PrinterSettingsView } from @/components/print/settings/PrinterSettingsView",
   );
-  assert.match(panelSrc, /<PrinterSettingsView\s+home=\{home\}\s+noun=\{noun\}\s+onClose=\{onClose\}\s*\/>/, "2nd hop: PrinterPanel.tsx must render <PrinterSettingsView home={home} noun={noun} onClose={onClose} />");
+  assert.match(panelSrc, /<PrinterSettingsView\s+home=\{home\}\s+noun=\{noun\}\s+onClose=\{onClose\}\s+onConnect=\{startConnect\}\s*\/>/, "2nd hop: PrinterPanel.tsx must render <PrinterSettingsView home={home} noun={noun} onClose={onClose} onConnect={startConnect} /> (PX-3 Task 11: and the guided connect)");
 });
 
 // ── (b) MERGED-13: no component-owned print trigger ──────────────────────

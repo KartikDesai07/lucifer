@@ -8,7 +8,6 @@ import { PRINTER_BUTTON_CLASS, PRINTER_BUTTON_PRIMARY_CLASS, PRINTER_BUTTON_REMO
 import { Button } from "@/components/ui/button";
 import { BrowserPrinterConnect } from "@/components/print/BrowserPrinterConnect";
 import { DesktopPrinterPicker } from "@/components/print/DesktopPrinterPicker";
-import { NativePrinterPicker } from "@/components/print/NativePrinterPicker";
 import { OtherDevicePrinters } from "@/components/print/OtherDevicePrinters";
 import { toastConnectOutcome } from "@/components/print/connect-outcome";
 import { PaperSizeToggle } from "@/components/print/PaperSizeToggle";
@@ -24,11 +23,10 @@ import { useSettings } from "@/hooks/use-settings";
 import { TEST_QUESTIONS, useTestPrint } from "@/hooks/use-test-print";
 import { printConfigOf } from "@/lib/print";
 import { PRINTER_IN_SETUP_MESSAGE } from "@/lib/print-agent-printers";
+import { CONNECT_REPLACE, type ConnectEntry } from "@/lib/printer/connect-flow";
 import { PRINTER_ELSEWHERE_STATUS_MESSAGE, devicePrinter, type ConnectOutcome } from "@/lib/printer/device-printer";
-import { nativePool } from "@/lib/printer/native-pool";
 import type { DeviceNoun } from "@/lib/printer/printer-status-view";
 import { PRINTERS_CARD, blockToneOf, deviceCardTitleOf, hereEntryOf, printerSubOf, settingsNameOf } from "@/lib/printer/settings-view";
-import { nativeTargetId, type NativeSelectTarget } from "@/lib/printer/transport-native";
 
 const REMOVED_MESSAGE = "Printer removed from this device.";
 const REMOVE_FAILED_MESSAGE = "Could not remove the printer. Try again.";
@@ -39,14 +37,17 @@ const KEEP_TAB_OPEN = "Keep this tab open, or use the POS app: a hidden or close
 const TEST_BUSY_REASON = "Busy with another slip. Try again in a moment.";
 
 // "This device's printer" (PX-3 Task 10, spec §6.6 item 1; mockup t-settings; was "Printer on this device" and the Test print
-// card): which way slips leave THIS device, by what it can do. The desktop app has its own picker; the POS app lists
-// printers it can see; a browser connects Bluetooth or USB straight from a tap. The row, then Test print · Change · Remove,
+// card): which way slips leave THIS device, by what it can do. The desktop app has its own picker; the POS app connects
+// through the guided connect; a browser connects Bluetooth or USB straight from a tap. The row, then Test print · Change · Remove,
 // then Paper width. No Reconnect (X7): the status card's Reconnect is the fix. Everything but the test (its own gate) is
 // disabled while one action runs, and while another tab of this browser owns the printer.
 // Task 10b (spec §6.6 item 2; mockup t-settings-pm): on a printers-mode writer it is "Printers on this device", one card for
 // every printer this device prints: its own printer first by the setup's name (today's Reconnect; on the app's pool no
 // Change: the manager names its printers in Printer setup), then the app's other printers as blocks of the same card.
-export function DevicePrinterSection({ noun }: { noun: DeviceNoun }) {
+// Task 11 (X2, spec §6.7): in the Android app Connect a printer and Change open the guided connect (onConnect: the
+// panel's connect view; hooks/use-connect-attempt.ts keeps a printer the setup prints here in the app); a browser keeps
+// its chooser here.
+export function DevicePrinterSection({ noun, onConnect }: { noun: DeviceNoun; onConnect: (entry: ConnectEntry) => void }) {
   const lane = usePrintLane();
   const caps = usePrintCapabilities();
   const snapshot = useDevicePrinter();
@@ -75,16 +76,6 @@ export function DevicePrinterSection({ noun }: { noun: DeviceNoun }) {
   // X5: an admin tests a printer the setup names through the setup's own test; anyone else, today's device test. `here`
   // is every printer this device prints now (the agent's local printers, as the dot counts them).
   const ownSetupTest = isAdmin && ownHere !== undefined ? <SetupTestPrint printer={ownHere} localIds={here.map((entry) => entry.id)} disabled={locked} /> : null;
-  // The 2F2 review gate (M-4): Change printer of a printer the setup prints through this device keeps it in the POS app
-  // (bridge v2): a new printer is added first (one the app lists already is only chosen: an add would restart its link),
-  // then made this device's printer, and the old one stays among the app's other printers; also while the setup is not
-  // known yet (its review, m-F: a setup printer dropped there would wait; one kept costs a Remove). Anywhere else it is
-  // replaced, as before.
-  const listed = (target: NativeSelectTarget) => pool.printers.some((entry) => entry.id.toLowerCase() === nativeTargetId(target).toLowerCase());
-  const keepInApp = pool.active && (inSetup || !known) ? async (target: NativeSelectTarget) => {
-    if (!listed(target)) await nativePool().add(target);
-    return devicePrinter().selectNative(target, paperDefault);
-  } : undefined;
 
   // The attempt is STARTED by the click handler (its chooser is the first
   // await, which needs the tap's user activation); this only waits for it.
@@ -173,6 +164,7 @@ export function DevicePrinterSection({ noun }: { noun: DeviceNoun }) {
               className={PRINTER_BUTTON_CLASS}
               variant="outline"
               onClick={() => {
+                if (caps.native) return onConnect(CONNECT_REPLACE);
                 setChanging((v) => !v);
                 setNotSeen(false);
               }}
@@ -224,18 +216,15 @@ export function DevicePrinterSection({ noun }: { noun: DeviceNoun }) {
                 {ownLines}
               </>
             ))}
-          {/* The app with no printer: the line and one way in (Task 11 turns it into the guided connect). */}
+          {/* The app with no printer: the line and one way in, the guided connect. */}
           {printer === null && caps.native && (
             <>
               <p>{`No printer on ${noun}.`}</p>
-              {!changing && (
-                <Button className={PRINTER_BUTTON_PRIMARY_CLASS} onClick={() => setChanging(true)} disabled={locked}>
-                  Connect a printer
-                </Button>
-              )}
+              <Button className={PRINTER_BUTTON_PRIMARY_CLASS} onClick={() => onConnect(CONNECT_REPLACE)} disabled={locked}>
+                Connect a printer
+              </Button>
             </>
           )}
-          {caps.native && changing && <NativePrinterPicker paper={paperDefault} busy={locked} onAttempt={settle} add={keepInApp} />}
           {choosing && !caps.native && (caps.serial || caps.bluetooth) && (
             <BrowserPrinterConnect
               paired={caps.serial}
@@ -251,8 +240,8 @@ export function DevicePrinterSection({ noun }: { noun: DeviceNoun }) {
           {printer === null && testButton}
           {printer === null && testAnswer}
           {/* Phase 2 Session 2F1 (spec §9.2): the POS app on bridge v2 drives more printers beside this device's own;
-              printers mode: as blocks of this card (Task 10b). */}
-          {caps.native && <OtherDevicePrinters paper={paperDefault} locked={locked} here={here} card={printersCard} canAdd={printer !== null} />}
+              printers mode: as blocks of this card (Task 10b); Connect another printer: the guided connect's add (Task 11). */}
+          {caps.native && <OtherDevicePrinters locked={locked} here={here} card={printersCard} canAdd={printer !== null} onConnect={onConnect} />}
         </>
       )}
     </PanelSection>

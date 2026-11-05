@@ -8,7 +8,7 @@ import { GlyphPrinter } from "@/components/layout/nav-icons";
 import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
 import { usePrintHostDot } from "@/components/layout/print-host-dot-context";
 import { usePrintWaitingCount } from "@/components/layout/print-waiting-context";
-import { PrinterPanel, type PrinterPanelView } from "@/components/print/PrinterPanel";
+import { PrinterPanel } from "@/components/print/PrinterPanel";
 import { PrinterPanelFrame } from "@/components/print/PrinterPanelFrame";
 import {
   PRINTER_DOT_CLASS,
@@ -21,6 +21,7 @@ import { useServerReach } from "@/hooks/use-server-reach";
 import { useOfflinePrintsHere } from "@/hooks/use-offline-send";
 import { offlineHeaderOf } from "@/lib/offline-guard";
 import { heldPrinterSnapshotOf, useDesktopPrinterChosen, useDeviceOnline, useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
+import { printerFrameOf, usePrinterViews } from "@/hooks/use-printer-views";
 import { printerButtonName, printerDotOf, printerDotTone, type PrinterDotTone } from "@/lib/printer/printer-dot";
 import { printWaitingName } from "@/lib/print-waiting";
 import { onOpenPrinterPanel, reportPrinterPanelOpen } from "@/lib/printer-panel-open";
@@ -30,21 +31,18 @@ import { cn } from "@/lib/utils";
 // context, this device's host flag, the device printer, the lane and the
 // network — never the wide pulse, so a quiet pulse tick re-renders nothing
 // here. The frame's panel (mounted only while open) is the one that reads the
-// pulse for the labels. PX-2 (spec §6.1): the sheet's two views (status first, settings one tap away) are this button's
-// state. Ruling Q: every OPEN starts on the status view; a close never resets it, so a sheet sliding down from the settings
-// view keeps showing them (and the panel's view switch never runs inside a closing sheet).
-
-const STATUS_TITLE = "Printer";
-const SETTINGS_TITLE = "Printer settings";
-
+// pulse for the labels. PX-2 (spec §6.1): the sheet's views (status first, settings one tap away; PX-3 Task 11: the guided
+// connect) are this button's state (hooks/use-printer-views.ts, with each view's head and foot). Ruling Q: every OPEN starts
+// on the status view; a close never resets it, so a sheet sliding down keeps showing its view (and the panel's view switch
+// never runs inside a closing sheet).
 export function PrinterStatusButton({ onToneChange }: { onToneChange?: (tone: PrinterDotTone) => void } = {}) {
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<PrinterPanelView>("status");
+  const { view, connect, show, startConnect, send } = usePrinterViews();
   // Session 1D: the 20 s alarm's Show button opens this sheet, on the status view (Ruling Q).
   useEffect(() => onOpenPrinterPanel(() => {
-    setView("status");
+    show("status");
     setOpen(true);
-  }), []);
+  }), [show]);
   // PX-2 (spec §6.9 B5): the sheet's state, whichever path opened or closed it, so the alarm keeps its toasts off it.
   useLayoutEffect(() => reportPrinterPanelOpen(open), [open]);
   const remote = usePrintHostDot();
@@ -71,7 +69,7 @@ export function PrinterStatusButton({ onToneChange }: { onToneChange?: (tone: Pr
   useLayoutEffect(() => onToneChange?.(tone), [onToneChange, tone]);
   // The trigger's open path: the status view (Ruling Q); a close leaves the view as it is.
   const openChange = (next: boolean): void => {
-    if (next) setView("status");
+    if (next) show("status");
     setOpen(next);
   };
 
@@ -79,8 +77,7 @@ export function PrinterStatusButton({ onToneChange }: { onToneChange?: (tone: Pr
     <PrinterPanelFrame
       open={open}
       onOpenChange={openChange}
-      title={view === "settings" ? SETTINGS_TITLE : STATUS_TITLE}
-      onBack={view === "settings" ? () => setView("status") : undefined}
+      {...printerFrameOf(view, connect, show)}
       trigger={
         <Button
           type="button"
@@ -112,7 +109,7 @@ export function PrinterStatusButton({ onToneChange }: { onToneChange?: (tone: Pr
         </Button>
       }
     >
-      <PrinterPanel view={view} onView={setView} onClose={() => setOpen(false)} />
+      <PrinterPanel view={view} onView={show} connect={connect} onConnect={startConnect} onConnectEvent={send} onClose={() => setOpen(false)} />
     </PrinterPanelFrame>
   );
 }

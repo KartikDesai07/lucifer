@@ -56,7 +56,7 @@ test("PIN (S2): turning a printer on prints its text test first; only Yes keeps 
 // PX-3 Task 10 (on purpose, spec §6.6): the settings view draws it after this device's printer and Print for other devices.
 test("PIN: the section sits after this device's printer, in every printer panel", () => {
   const view = src("components/print/settings/PrinterSettingsView.tsx");
-  const device = view.indexOf("<DevicePrinterSection noun={noun} />");
+  const device = view.indexOf("<DevicePrinterSection noun={noun} onConnect={onConnect} />"); // PX-3 Task 11: and the guided connect
   assert.ok(device >= 0 && view.indexOf("<TextKotSection />") > view.indexOf("<PrintForOthersCard />") && view.indexOf("<PrintForOthersCard />") > device, "after DevicePrinterSection and PrintForOthersCard");
   const provider = src("components/layout/PrintHostProvider.tsx");
   assert.ok(provider.includes("queueTestSlip: (write?: () => Promise<void>) => Promise<number>;"), "the provider hands the section the bridge's test window");

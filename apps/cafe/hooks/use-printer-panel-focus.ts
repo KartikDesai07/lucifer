@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, type FocusEvent, type RefObject } from "react";
 
-import type { PrinterPanelView } from "@/components/print/PrinterPanel";
+import type { PrinterPanelView } from "@/hooks/use-printer-views";
 
 // The printer panel's focus (PX-2 Task 6, F-M6; moved out of PrinterPanel.tsx as it was in PX-3 Task 10, so the panel keeps
 // room for its views): a view switch keeps the sheet, scrolls back to the top and focuses the part a fix pointed at, else the

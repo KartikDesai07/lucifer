@@ -26,7 +26,7 @@ const F = {
   panel: `${PRINT}PrinterPanel.tsx`,
   forOthers: `${PRINT}settings/PrintForOthersCard.tsx`,
   device: `${PRINT}DevicePrinterSection.tsx`,
-  native: `${PRINT}NativePrinterPicker.tsx`,
+  native: "apps/cafe/hooks/use-native-printer-list.ts", connectList: `${PRINT}connect/ConnectList.tsx`, connectFlow: `${PRINT}connect/ConnectFlow.tsx`, connectTest: `${PRINT}connect/ConnectTest.tsx`, connectType: `${PRINT}connect/ConnectType.tsx`, connectProgress: `${PRINT}connect/ConnectProgress.tsx`,
   others: `${PRINT}OtherDevicePrinters.tsx`,
   paper: `${PRINT}PaperSizeToggle.tsx`, tips: `${PRINT}PrinterTestTips.tsx`,
   more: `${PRINT}settings/MoreCard.tsx`, view: `${PRINT}settings/PrinterSettingsView.tsx`, block: `${PRINT}settings/PrinterBlock.tsx`,
@@ -142,7 +142,7 @@ const devicePin: Pin = (raw) => {
   // The connect buttons moved to BrowserPrinterConnect (connectPin); Change, Remove, Connect a printer stay; the test has its own gate.
   check(p, buttons.length >= 4 && buttons.every((b) => b.includes(b.includes("test.start()") ? "disabled={test.startDisabled}" : "disabled={locked}")), "every printer button is disabled while locked, the test by its own gate");
   check(p, count(code, "<BrowserPrinterConnect") === 1 && count(code, "<PanelSection") === 1, "one connect block, one section shell");
-  check(p, /lane === "desktop" \? \(\s*<>\s*<DesktopPrinterPicker \/>/.test(code) && code.includes("caps.native") && code.includes("<NativePrinterPicker"), "desktop picker / app picker by capability");
+  check(p, /lane === "desktop" \? \(\s*<>\s*<DesktopPrinterPicker \/>/.test(code) && code.includes("if (caps.native) return onConnect(CONNECT_REPLACE);") && code.includes("onClick={() => onConnect(CONNECT_REPLACE)}"), "desktop picker / the app's guided connect (PX-3 Task 11) by capability");
   check(p, code.includes("devicePrinter().setPaper(paper)") && code.includes("<PaperSizeToggle") && code.includes("devicePrinter().forget()"), "paper toggle and remove are wired");
   for (const n of ["title={printersCard ? PRINTERS_CARD.title : deviceCardTitleOf(lane)}", '"Keep this printer" : "Change"', "No printer on ${noun}.", "Connect a printer", "Test print", "<PrinterTestTips />", "Busy with another slip.", "from this device?", "This browser or app cannot connect to a printer directly", "PRINTER_ELSEWHERE_STATUS_MESSAGE"]) {
     check(p, code.includes(n), `must contain ${n}`);
@@ -190,19 +190,24 @@ const partsPin: Pin = (raw) => {
   return p;
 };
 
+// PX-3 Task 11 (on purpose): the inline picker went; its logic moved, as it was, into hooks/use-native-printer-list.ts (here),
+// its look into the guided connect's list (Connect, Search again, Refresh; the scan's failure said there: 3 toasts, was 4).
 const nativePin: Pin = (raw) => {
   const p: string[] = [];
   const code = stripComments(raw);
-  const needles = ["listNative(false)", "listNative(true)", "selectNative({ id: printer.id }, paper)", "selectNative({ tcp: { host, port: portNumber } }, paper)", 'nativeRequest("bluetooth.enable")', 'nativeRequest("permissions.request", { kind: "bluetooth" })', "nativeErrorMessage(", "PRINTER_SCAN_MS", "String(DEFAULT_TCP_PRINTER_PORT)", 'inputMode="numeric"', 'bluetooth === "unsupported"', "Use this printer", "Find printers", "Network printer (Wi-Fi or Ethernet)", "NATIVE_TYPE_ICONS", "canScanBluetooth(bluetooth)", "loadPicker(", "statusOrder.fresh(startedAt)", "window.addEventListener(NATIVE_READY_EVENT, onReady)", '{refreshing ? "Refreshing printers…" : "Refresh USB / paired printers"}'];
+  const needles = ["listNative(false)", "listNative(true)", "target: { tcp: { host, port: portNumber } }", 'nativeRequest("bluetooth.enable")', 'nativeRequest("permissions.request", { kind: "bluetooth" })', "nativeErrorMessage(", "loadPicker(", "statusOrder.fresh(startedAt)", "window.addEventListener(NATIVE_READY_EVENT, onReady)"];
   for (const n of needles) check(p, code.includes(n), `must contain ${n}`);
-  check(p, count(code, "toast.error(nativeErrorMessage(error))") >= 4, "every app request failure is worded by nativeErrorMessage");
+  check(p, count(code, "toast.error(nativeErrorMessage(error))") >= 3, "every app request failure is worded by nativeErrorMessage");
+  check(p, code.includes("isValidPrinterHost(host)") && code.includes("splitHostPort(") && code.includes("ADDRESS_MESSAGE") && !code.includes("const ADDRESS_MAX_CHARS") && !/\\s\/\.test\(host\)/.test(code), "W-AA: the address is checked like the app checks it, host:port is split, no second weaker check");
+  return p;
+};
+const connectListPin: Pin = (raw) => {
+  const p: string[] = [];
+  const code = stripComments(raw);
+  // W-AA (a pasted host:port fills both fields); s63 INT: the name keeps the visible label first (WCAG 2.5.3), then the printer.
+  for (const n of ["String(DEFAULT_TCP_PRINTER_PORT)", 'inputMode="numeric"', 'bluetooth === "unsupported"', "Network printer (Wi-Fi or Ethernet)", "canScanBluetooth(bluetooth)", "networkTargetOf(address, port)", "onPaste={onPaste}", 'splitHostPort(e.clipboardData.getData("text"))', "{refreshing ? CONNECT_WORDS.refreshing : CONNECT_WORDS.refresh}", "aria-label={`${CONNECT_WORDS.connect} ${row.name}`}"]) check(p, code.includes(n), `must contain ${n}`);
   // A quoted or assigned 9100 is a literal default; the hint sentence "use 9100." is copy, not code.
-  check(p, !/["'`=:(,]\s*9100\b/.test(code), "the default port is the shared constant, never a literal");
-  check(p, code.includes("isValidPrinterHost(host)") && code.includes("splitHostPort(") && code.includes("ADDRESS_MESSAGE"), "W-AA: the address is checked like the app checks it, and host:port is split");
-  check(p, !code.includes("const ADDRESS_MAX_CHARS") && !/\\s\/\.test\(host\)/.test(code), "W-AA: no second, weaker host check of its own");
-  check(p, code.includes("onPaste={"), "W-AA: a pasted host:port fills both fields");
-  // s63 INT: the name keeps the visible label first (WCAG 2.5.3 label-in-name), then names the printer.
-  check(p, code.includes("aria-label={`Use this printer: ${printer.name}`}"), "W-W: each printer button names its printer");
+  for (const file of [code, stripComments(readSrc(F.native))]) check(p, !/["'`=:(,]\s*9100\b/.test(file), "the default port is the shared constant, never a literal");
   return p;
 };
 
@@ -274,13 +279,11 @@ function hygienePin(budget: number, usesAction: boolean): Pin {
     return p;
   };
 }
-// F.native 280 (was 260): Phase 0 F0.4-F0.6 added the shared loader, the late-bridge subscription and
-// the separate Refresh flag; the pure rules live in lib/printer/native-picker-state.ts.
 const HYGIENE: [string, number, boolean][] = [
-  // F.native 290 (was 280): Session 2F1's add. F.panel 220 (was 90): PX-2 Task 6. PX-3 Task 10: F.device 260 (was 220, it holds the test), the card's 260 → two hooks.
-  [F.panel, 220, false], [F.forOthers, 150, true], [F.device, 260, true], [F.native, 290, true], [F.paper, 60, true], [F.view, 60, false],
+  // F.panel 220 (was 90): PX-2 Task 6. PX-3 Task 10: F.device 260 (was 220, it holds the test), the card's 260 → two hooks. Task 11: F.native the picker's logic as a hook (170; the picker was 290), the guided connect's steps.
+  [F.panel, 220, false], [F.forOthers, 150, true], [F.device, 260, true], [F.native, 170, false], [F.paper, 60, true], [F.view, 60, false],
   [F.tips, 50, false], [F.more, 100, true], [F.testPrint, 160, false], [F.setupActions, 160, false], [F.parts, 100, true], [F.picker, 160, false],
-  [F.connect, 110, true], [F.section, 50, false], [F.type, 60, false],
+  [F.connect, 110, true], [F.section, 50, false], [F.type, 60, false], [F.connectList, 300, true], [F.connectTest, 200, true], [F.connectFlow, 120, false], [F.connectType, 60, false], [F.connectProgress, 40, false],
   // Session 1D: the waiting slips follow the same rules (44px controls, no jargon); PX-2 Task 4: its container, its card.
   [F.waiting, 120, false], [F.notPrinted, 150, true], [F.statusCard, 120, true], [F.hereCard, 80, false], [F.settingsRow, 60, false],
   // Session 2F1 (the 2F1 review gate, M-6): the POS app's other printers on bridge v2. Session 3B: 130 (was 120), a network printer
@@ -371,21 +374,16 @@ const CASES: PinCase[] = [
     mut("paper default hard-coded", "printConfigOf(settings.data).bill.paperWidth", '"80mm"'),
   ] },
   { file: F.native, pin: nativePin, mutations: [
-    mut("a literal port", "String(DEFAULT_TCP_PRINTER_PORT)", '"9100"'),
-    mut("find does not scan", "listNative(true)", "listNative(false)"),
-    mut("numeric keyboard dropped", 'inputMode="numeric"', 'inputMode="text"'),
-    mut("bluetooth enable renamed", 'nativeRequest("bluetooth.enable")', 'nativeRequest("bluetooth.on")'),
-    mut("raw error text", "nativeErrorMessage(error)", "String(error)"),
-    mut("host check dropped", "!isValidPrinterHost(host)", "host === \"\""),
-    mut("paste split dropped", "onPaste={", "onPasteX={"),
-    mut("printer button unnamed", "aria-label={`Use this printer: ${printer.name}`}", ""),
-    mut("the network block loses its title", "Network printer (Wi-Fi or Ethernet)", "Network printer"),
-    mut("printer button drops its visible label", "aria-label={`Use this printer: ${printer.name}`}", "aria-label={`Use ${printer.name}`}"),
-    mut("find disabled on an unknown Bluetooth state", "!canScanBluetooth(bluetooth)", 'bluetooth !== "on"'),
-    mut("status and list coupled again", "loadPicker(", "loadPickerAll("),
-    mut("a stale status reply wins", "statusOrder.fresh(startedAt)", "true"),
-    mut("a late bridge is ignored", "window.addEventListener(NATIVE_READY_EVENT, onReady)", ""),
-    mut("refresh label follows the shared busy flag", '{refreshing ? "Refreshing printers…"', '{working ? "Refreshing printers…"'),
+    mut("find does not scan", "listNative(true)", "listNative(false)"), mut("bluetooth enable renamed", 'nativeRequest("bluetooth.enable")', 'nativeRequest("bluetooth.on")'),
+    mut("raw error text", "nativeErrorMessage(error)", "String(error)"), mut("host check dropped", "!isValidPrinterHost(host)", "host === \"\""),
+    mut("status and list coupled again", "loadPicker(", "loadPickerAll("), mut("a stale status reply wins", "statusOrder.fresh(startedAt)", "true"),
+    mut("a late bridge is ignored", "window.addEventListener(NATIVE_READY_EVENT, onReady)", ""), mut("the network target lost", "target: { tcp: { host, port: portNumber } }", "target: null"),
+  ] },
+  { file: F.connectList, pin: connectListPin, mutations: [
+    mut("a literal port", "String(DEFAULT_TCP_PRINTER_PORT)", '"9100"'), mut("numeric keyboard dropped", 'inputMode="numeric"', 'inputMode="text"'), mut("paste split dropped", "onPaste={", "onPasteX={"),
+    mut("printer button unnamed", "aria-label={`${CONNECT_WORDS.connect} ${row.name}`}", ""), mut("printer button drops its visible label", "aria-label={`${CONNECT_WORDS.connect} ${row.name}`}", "aria-label={row.name}"),
+    mut("the network block loses its title", "Network printer (Wi-Fi or Ethernet)", "Network printer"), mut("search disabled on an unknown Bluetooth state", "!canScanBluetooth(bluetooth)", 'bluetooth !== "on"'),
+    mut("refresh label follows the shared busy flag", "{refreshing ? CONNECT_WORDS.refreshing", "{locked ? CONNECT_WORDS.refreshing"), mut("the form's own checks bypassed", "networkTargetOf(address, port)", "({ address, port, target: null, error: null })"),
   ] },
   { file: F.connect, pin: connectPin, mutations: [
     mut("the nearby button left enabled", "onClick={onSearchNearby} disabled={locked}", "onClick={onSearchNearby}"),

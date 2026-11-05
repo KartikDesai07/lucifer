@@ -36,8 +36,9 @@ const oneCardPin: Pin = (code) => {
 const othersCardPin: Pin = (code) => {
   const p: string[] = [];
   need(p, code.includes("const NOTE = PRINTERS_CARD.sub;") && code.includes("{!card && <p className={PRINTER_LABEL_CLASS}>{TITLE}</p>}") && code.includes("{!card && <p className={PRINTER_NOTE_CLASS}>{NOTE}</p>}"), "simple mode's note is the card's sub; in the card no title or note of their own");
-  need(p, code.includes('{adding ? "Close the printer list" : "Connect another printer"}') && code.includes("name={named?.name ?? entry.printer.name}"), "Connect another printer (Close the printer list while open); the setup's name, else the app's");
-  need(p, count(code, "{canAdd && ") === 2, "T10b-C: Connect another printer and its list only once this device has its own printer");
+  // PX-3 Task 11 (on purpose, spec §6.7): Connect another printer opens the guided connect in add mode (was its inline list).
+  need(p, /onClick=\{\(\) => onConnect\(CONNECT_ADD\)\}>\s*Connect another printer\s*<\/Button>/.test(code) && code.includes("name={named?.name ?? entry.printer.name}"), "Connect another printer: the guided connect's add; the setup's name, else the app's");
+  need(p, count(code, "{canAdd && ") === 1 && !code.includes("NativePrinterPicker"), "T10b-C: Connect another printer only once this device has its own printer; no inline list");
   return p;
 };
 // Ruling T10b-B (over X7 for the app's printers): every printer of the card keeps today's Reconnect, whatever its state
@@ -90,7 +91,7 @@ const CASES: { name: string; file: string; pin: Pin; mutations: [string, string,
   ] },
   { name: "printers mode is one card (OtherDevicePrinters)", file: OTHERS, pin: othersCardPin, mutations: [
     ["a title of their own in the card", "{!card && <p className={PRINTER_LABEL_CLASS}>{TITLE}</p>}", "<p className={PRINTER_LABEL_CLASS}>{TITLE}</p>"],
-    ["the old words", '"Connect another printer"', '"Add another printer"'],
+    ["the old words", "Connect another printer", "Add another printer"], ["the add opens a replace", "onConnect(CONNECT_ADD)", "onConnect(CONNECT_REPLACE)"],
     ["the app's name over the setup's", "name={named?.name ?? entry.printer.name}", "name={entry.printer.name}"], ["a second printer before the first", "{canAdd && (", "{("],
   ] },
   { name: "T10b-B: today's Reconnect in printers mode (DevicePrinterSection)", file: DEVICE, pin: reconnectPin("{printersCard && (", 'variant={status === "connected" ? "outline" : "default"}'), mutations: [["a Reconnect in simple mode", "{printersCard && (", "{true && ("], ["hidden while connected", "{printersCard && (", '{printersCard && status !== "connected" && ('], ["outline while down", 'variant={status === "connected" ? "outline" : "default"}', 'variant="outline"']] },

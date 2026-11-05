@@ -151,21 +151,21 @@ const PINS: PinCase[] = [
   },
   {
     // U5 Task 5 (printer P8): the button hands its open state and itself (the trigger) to the frame. PX-2 Task 6 (on purpose,
-    // spec §6.1): it keeps the sheet's view (status on every open, reset on close) and hands the frame the title and the back.
+    // spec §6.1): it keeps the sheet's view (status on every open, reset on close) and hands the frame the title and the back (PX-3 Task 11: from use-printer-views).
     name: "the button opens PrinterPanelFrame (its trigger) around PrinterPanel with its view; the frame holds the title, the back and a Done that closes",
     file: BUTTON,
     check: (src) => {
-      assert.match(src, /<PrinterPanelFrame\s+open=\{open\}\s+onOpenChange=\{openChange\}\s+title=\{view === "settings" \? SETTINGS_TITLE : STATUS_TITLE\}\s+onBack=\{view === "settings" \? \(\) => setView\("status"\) : undefined\}\s+trigger=\{[\s\S]*\}\s*>\s*<PrinterPanel view=\{view\} onView=\{setView\} onClose=\{\(\) => setOpen\(false\)\} \/>\s*<\/PrinterPanelFrame>/);
-      assert.match(src, /const openChange = \(next: boolean\): void => \{\s*if \(next\) setView\("status"\);\s*setOpen\(next\);\s*\};/, "status on every open, never on close (Ruling Q)");
-      assert.ok(src.includes('const STATUS_TITLE = "Printer";') && src.includes('const SETTINGS_TITLE = "Printer settings";'), "the two titles");
-      assert.ok(/import \{ PrinterPanel, type PrinterPanelView \} from "@\/components\/print\/PrinterPanel";/.test(src) && /import \{ PrinterPanelFrame \} from "@\/components\/print\/PrinterPanelFrame";/.test(src), "the panel and its frame");
+      assert.match(src, /<PrinterPanelFrame\s+open=\{open\}\s+onOpenChange=\{openChange\}\s+\{\.\.\.printerFrameOf\(view, connect, show\)\}\s+trigger=\{[\s\S]*\}\s*>\s*<PrinterPanel view=\{view\} onView=\{show\} connect=\{connect\} onConnect=\{startConnect\} onConnectEvent=\{send\} onClose=\{\(\) => setOpen\(false\)\} \/>\s*<\/PrinterPanelFrame>/);
+      assert.match(src, /const openChange = \(next: boolean\): void => \{\s*if \(next\) show\("status"\);\s*setOpen\(next\);\s*\};/, "status on every open, never on close (Ruling Q)");
+      assert.ok(['export const STATUS_TITLE = "Printer";', 'export const SETTINGS_TITLE = "Printer settings";', 'if (view === "settings") return { title: SETTINGS_TITLE, onBack: () => show("status") };'].every((n) => read("hooks/use-printer-views.ts").includes(n)), "the titles, the settings view's back (PX-3 Task 11, on purpose: the views' hook holds each view's head)");
+      assert.ok(/import \{ PrinterPanel \} from "@\/components\/print\/PrinterPanel";/.test(src) && /import \{ PrinterPanelFrame \} from "@\/components\/print\/PrinterPanelFrame";/.test(src), "the panel and its frame");
       const frame = read(FRAME);
       assert.ok(frame.includes('DESCRIPTION = "Printing on this device"') && frame.includes('BACK_LABEL = "Back to printer status"'), "the frame's words");
       assert.ok(/<DialogPrimitive\.Trigger asChild>\{trigger\}<\/DialogPrimitive\.Trigger>/.test(frame) && /<DialogPrimitive\.Title [^>]*>\{title\}<\/DialogPrimitive\.Title>/.test(frame), "the trigger, the view's title");
       assert.match(frame, /<DialogPrimitive\.Description className="sr-only">\{DESCRIPTION\}<\/DialogPrimitive\.Description>/, "the description for screen readers only");
       assert.match(frame, /<DialogPrimitive\.Close data-ui="printer-panel-done"[^>]*>\s*Done\s*<\/DialogPrimitive\.Close>/, "Done closes the frame");
     },
-    mutate: (src) => src.replace("<PrinterPanel view={view} onView={setView} onClose={() => setOpen(false)} />", "<PrinterPanel />"),
+    mutate: (src) => src.replace("<PrinterPanel view={view} onView={show} connect={connect} onConnect={startConnect} onConnectEvent={send} onClose={() => setOpen(false)} />", "<PrinterPanel />"),
   },
   {
     name: "PosPulseProvider derives printHostDotOf( exactly once",

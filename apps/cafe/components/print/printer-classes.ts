@@ -70,6 +70,10 @@ export const PRINTER_PANEL_HEAD_ROW_CLASS = "mx-auto flex min-h-[34px] w-full it
 export const PRINTER_PANEL_VIEW_TITLE_CLASS = `${PRINTER_PANEL_TITLE_CLASS} min-w-0 flex-1 outline-none`;
 export const PRINTER_PANEL_BACK_CLASS = `${PRINTER_PANEL_CLOSE_CLASS} -ml-2`;
 export const PRINTER_PANEL_COLUMN_CLASS = "mx-auto flex w-full flex-none flex-col gap-3 tab:max-w-[640px]";
+/** PX-3 Task 11 (spec §6.1): the title and, on the connect view, its 12.5px sub (PRINTER_PANEL_SUB_CLASS) under it. */
+export const PRINTER_PANEL_HEAD_TEXT_CLASS = "min-w-0 flex-1";
+/** The connect view's foot (spec §6.1, mockups g1–g3): Done's 44px in the outline look (--card, a --border rule). */
+export const PRINTER_PANEL_CANCEL_CLASS = `h-11 w-full cursor-pointer rounded-[10px] border border-border bg-card px-1.5 py-px text-[14.5px] font-semibold text-foreground pointer-fine:hover:bg-hover ${FLOOR_FOCUS_RING_CLASS}`;
 
 // A section card (values 18): --surface, 1px --border, radius 12, clipped; the head row, then the body. PX-3 Task 10 (spec §6.6,
 // mockups t-settings; ruling T10-A): head 12 / 16, body 0 16 14 with its parts 10 apart (was 14 / 16 and 0 16 16, 12 apart),
@@ -231,3 +235,35 @@ export const PRINTER_MORE_CONFIRM_CLASS = "border-t border-border-2 px-4 py-3 fi
 /** A found network printer as a row button (values 19): 10px 12px, radius 10; its words stack, left-aligned (WebView 109:
  *  the children stretch by items-stretch, not by the UA's button rule). */
 export const PRINTER_FOUND_ROW_CLASS = "h-auto border border-border min-h-10 w-full flex-col items-stretch justify-center gap-0.5 rounded-[10px] px-3 py-2.5 text-left text-[13.5px] font-medium";
+
+// The guided connect (PX-3 Task 11, spec §6.7; mockups g1–g6, panel.css .choice / .found .prow / .searching / .big / .circle /
+// .q / .qbtns / .steps). A step's heading 16px / 600; a kind of printer is a 72px card row (the whole row is the button, its
+// parts spans) with a 44px --status-info-tint tile; the cards on --card, radius 12; a found printer 52px with a 36px Connect
+// that takes 44px under a finger; the scan's line 13.5px under a --border-2 rule; a step's centre with the 48px spinner or
+// the 64px circle, 18px / 600 over 14px; Yes / No 48px side by side; the inline line 13px --status-bad-ink.
+export const PRINTER_CONNECT_HEADING_CLASS = "text-[16px] font-semibold";
+export const PRINTER_CONNECT_CHOICE_CLASS = `flex min-h-[72px] w-full flex-none cursor-pointer items-center gap-3.5 rounded-[12px] border border-border bg-card px-4 py-3.5 text-left text-foreground pointer-fine:hover:bg-hover ${FLOOR_FOCUS_RING_CLASS}`;
+export const PRINTER_CONNECT_CHOICE_TILE_CLASS = `grid size-11 flex-none place-items-center rounded-[11px] ${STATUS_CLASSES.info.tint} text-primary [&_svg]:size-[22px]`;
+export const PRINTER_CONNECT_CHOICE_TITLE_CLASS = "block text-[15px] font-semibold";
+export const PRINTER_CONNECT_CHOICE_SUB_CLASS = "mt-0.5 block text-[13px] text-subtle-foreground";
+export const PRINTER_CONNECT_CHEVRON_CLASS = "ml-auto size-[18px] flex-none text-subtle-foreground";
+export const PRINTER_CONNECT_CARD_CLASS = "flex flex-none flex-col overflow-clip rounded-[12px] border border-border bg-card";
+export const PRINTER_CONNECT_CARD_BODY_CLASS = "flex flex-col gap-2.5 p-4";
+export const PRINTER_CONNECT_ROW_CLASS = "flex min-h-[52px] items-center gap-2.5 border-t border-border-2 px-4 py-2.5 first:border-t-0";
+export const PRINTER_CONNECT_BUTTON_CLASS =
+  "relative h-9 flex-none rounded-[8px] px-3.5 py-0 text-[13.5px] font-medium before:absolute before:-inset-1 pointer-coarse:before:content-['']";
+export const PRINTER_CONNECT_SEARCHING_CLASS = "flex items-center gap-2.5 border-t border-border-2 px-4 py-3 text-[13.5px] text-muted-foreground first:border-t-0";
+export const PRINTER_CONNECT_SPIN_CLASS = "size-[18px] flex-none rounded-[50%] border-[2.5px] border-surface-3 border-t-primary motion-safe:animate-spin";
+export const PRINTER_CONNECT_STEPS_CLASS = "flex flex-col gap-1.5";
+export const PRINTER_CONNECT_TIPS_CLASS = "flex flex-col gap-2.5";
+export const PRINTER_CONNECT_BIG_CLASS = "flex flex-col items-center gap-2.5 px-4 py-7 text-center";
+export const PRINTER_CONNECT_BIG_SPIN_CLASS = "size-12 flex-none rounded-[50%] border-4 border-surface-3 border-t-primary motion-safe:animate-spin";
+export const PRINTER_CONNECT_CIRCLE_CLASS = "grid size-16 flex-none place-items-center rounded-[50%] [&_svg]:size-[30px]";
+export const PRINTER_CONNECT_BIG_HEAD_CLASS = "text-[18px] font-semibold";
+export const PRINTER_CONNECT_BIG_DETAIL_CLASS = "max-w-[320px] text-[14px] leading-[1.45] text-muted-foreground";
+export const PRINTER_CONNECT_NOTE_CLASS = "text-center text-[14px] leading-[1.45] text-muted-foreground";
+export const PRINTER_CONNECT_ERROR_CLASS = `text-[13px] ${STATUS_CLASSES.bad.ink}`;
+export const PRINTER_CONNECT_ANSWERS_CLASS = "flex gap-2.5";
+export const PRINTER_CONNECT_ANSWER_CLASS = "h-12 min-w-0 flex-1 rounded-[10px] px-4 py-0 text-[15px] font-semibold";
+/** Skip / Choose another printer ›: the status card's quiet link, centred. */
+export const PRINTER_CONNECT_LINK_ROW_CLASS = "flex justify-center";

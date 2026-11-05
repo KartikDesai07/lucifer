@@ -44,7 +44,7 @@ test("PIN (the 2D review gate): the bill printer section says End of day follows
 test("PIN (2D, decision 7): this device's bill printer: printers mode only, routable bill printers only, kept on the device", () => {
   // PX-3 Task 10 (on purpose): the settings view's cards are PrinterSettingsView's (spec §6.6 item 5).
   const panel = src("components/print/settings/PrinterSettingsView.tsx");
-  const card = panel.indexOf("<DevicePrinterSection noun={noun} />");
+  const card = panel.indexOf("<DevicePrinterSection noun={noun} onConnect={onConnect} />"); // PX-3 Task 11: and the guided connect
   const bill = panel.indexOf("<BillPrinterSection />");
   assert.ok(card >= 0 && bill > card, "under this device's printer setup");
   const section = src("components/print/BillPrinterSection.tsx");

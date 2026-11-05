@@ -164,7 +164,7 @@ test("Printer settings ›: one row that opens the settings, its sub by the devi
 
 test("the panel's status view draws card, list, here, settings row in that order", () => {
   const panel = stripComments(readFileSync(path.join(fileURLToPath(new URL("../", import.meta.url)), "components/print/PrinterPanel.tsx"), "utf8"));
-  const at = ["<PrinterStatusCard", "<NotPrintedSection pulse={pulse} />", "<PrinterHereCard", "<PrinterSettingsRow", "<PrinterSettingsView home={home} noun={noun} onClose={onClose} />"].map((tag) => panel.indexOf(tag));
+  const at = ["<PrinterStatusCard", "<NotPrintedSection pulse={pulse} />", "<PrinterHereCard", "<PrinterSettingsRow", "<PrinterSettingsView home={home} noun={noun} onClose={onClose} onConnect={startConnect} />"].map((tag) => panel.indexOf(tag));
   assert.ok(at.every((i) => i >= 0), `every part is drawn: ${at.join(", ")}`);
   assert.ok(at.every((i, n) => n === 0 || i > (at[n - 1] ?? 0)), "status card < Not printed < On this device < Printer settings ›, then the settings view's parts");
 });

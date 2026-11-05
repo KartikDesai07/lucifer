@@ -19,12 +19,14 @@ import {
   PRINTER_BUTTON_SMALL_CLASS,
   PRINTER_BUTTON_FIX_CLASS,
   PRINTER_PANEL_BODY_CLASS,
+  PRINTER_PANEL_CANCEL_CLASS,
   PRINTER_PANEL_COLUMN_CLASS,
   PRINTER_PANEL_DONE_CLASS,
   PRINTER_PANEL_FOOT_CLASS,
   PRINTER_PANEL_HEAD_ROW_CLASS,
   PRINTER_PANEL_SHEET_CLASS,
   PRINTER_PANEL_SIDE_CLASS,
+  PRINTER_PANEL_SUB_CLASS,
   PRINTER_PANEL_VIEW_HEAD_CLASS,
   PRINTER_PANEL_XL_QUERY,
   PRINTER_SECTION_BODY_CLASS,
@@ -59,9 +61,10 @@ const PANEL = `${PRINT}PrinterPanel.tsx`;
 const CARD = `${PRINT}PrinterStatusCard.tsx`;
 // The 15 files of the hygiene pin (printer-ui-paths.test.ts HYGIENE) minus the lib / type files, plus the sections the look added.
 // PX-3 Task 10 (on purpose): Where slips print, More options and the setup card became the settings view's cards; Task 10b: the
-// printer blocks' shared parts.
+// printer blocks' shared parts; Task 11: the inline picker went, the guided connect's steps came.
+const CONNECT_STEPS = ["connect/ConnectFlow", "connect/ConnectType", "connect/ConnectList", "connect/ConnectProgress", "connect/ConnectTest"];
 const PANEL_FILES = [
-  "PrinterPanel", "settings/PrintForOthersCard", "DevicePrinterSection", "NativePrinterPicker", "PaperSizeToggle", "PrinterTestTips", "settings/MoreCard", "settings/PrinterBlock",
+  "PrinterPanel", "settings/PrintForOthersCard", "DevicePrinterSection", ...CONNECT_STEPS, "PaperSizeToggle", "PrinterTestTips", "settings/MoreCard", "settings/PrinterBlock",
   "settings/PrinterSettingsView", "PrintHostCardParts", "DesktopPrinterPicker", "BrowserPrinterConnect", "NotPrintedCard", "NotPrintedSection", "OtherDevicePrinters",
   "PrinterStatusCard", "PrinterHereCard", "PrinterSettingsRow", "FindNetworkPrinters", "DesktopPrintMethod", "TextKotSection", "BillPrinterSection", "PanelSection", "PrinterPanelFrame",
 ].map((name) => `${PRINT}${name}.tsx`);
@@ -93,7 +96,12 @@ test("the frame's head, body and foot: one 62px line with the view's title, the 
   assert.ok(!frame.includes("Printer status and setup"), "the old sub is gone");
   assert.match(classes, /PRINTER_PANEL_CLOSE_CLASS = `flex size-\[34px\][^`]*rounded-\[8px\][^`]*pointer-fine:hover:bg-hover/, "the close: 34px, radius 8, --hover under a pointer only");
   assert.ok(classes.includes("PRINTER_PANEL_BACK_CLASS = `${PRINTER_PANEL_CLOSE_CLASS} -ml-2`") && frame.includes('const BACK_LABEL = "Back to printer status";'), "the back: the close's 34px look");
-  assert.match(frame, /\{onBack !== undefined && \(\s*<button type="button" data-ui="printer-panel-back" aria-label=\{BACK_LABEL\}/, "a back only where the view has one");
+  // PX-3 Task 11 (on purpose, spec §6.1): the back names where it goes (the connect view's "Back to printer settings"), the
+  // connect view's 12.5px sub sits under the title, and until a printer is connected its foot says Cancel (44px, outline).
+  assert.match(frame, /\{onBack !== undefined && \(\s*<button type="button" data-ui="printer-panel-back" aria-label=\{backLabel\}/, "a back only where the view has one");
+  assert.ok(frame.includes("backLabel = BACK_LABEL,") && /\{sub !== undefined && <p data-ui="printer-panel-sub" className=\{PRINTER_PANEL_SUB_CLASS\}>\{sub\}<\/p>\}/.test(frame) && has(PRINTER_PANEL_SUB_CLASS, "text-[12.5px]"), "the back's name by default; the sub, 12.5px, only where the view has one");
+  assert.match(frame, /\{onCancel !== undefined \? \(\s*<button type="button" data-ui="printer-panel-cancel" className=\{PRINTER_PANEL_CANCEL_CLASS\} onClick=\{onCancel\}>\s*Cancel\s*<\/button>\s*\) : \(\s*<DialogPrimitive\.Close data-ui="printer-panel-done"/, "Cancel in Done's place, else Done");
+  assert.ok(hasAll(PRINTER_PANEL_CANCEL_CLASS, ["h-11", "w-full", "rounded-[10px]", "border", "border-border", "bg-card", "text-foreground", "text-[14.5px]", "font-semibold"]), "Cancel: Done's 44px in the outline look");
   assert.ok(hasAll(PRINTER_PANEL_BODY_CLASS, ["px-5", "py-4", "gap-3", "bg-background", "overflow-y-auto", "flex-1", "min-h-0"]), "body: the one scroller, padding 16px 20px, 12px apart, --bg");
   assert.ok(hasAll(PRINTER_PANEL_COLUMN_CLASS, ["mx-auto", "w-full", "tab:max-w-[640px]", "flex-col", "gap-3"]), "from 720px a centered 640px column");
   assert.ok(count(frame, "{PRINTER_PANEL_COLUMN_CLASS}") === 2 && frame.includes("{PRINTER_PANEL_HEAD_ROW_CLASS}"), "the column in the head, the body and the foot");
@@ -143,8 +151,9 @@ test("the buttons: primary 40px radius 9 14px 600; secondary 36px radius 8 13.5p
   assert.ok(hasAll(PRINTER_BUTTON_REMOVE_CLASS, ["h-9", "text-status-bad-ink", "border-[rgba(218,30,40,.4)]", "hover:bg-[var(--status-bad-tint)]"]), "Remove: --bad-i text, rgba(218,30,40,.4) border, --bad-t hover");
   // PX-3 Task 10 (on purpose): the setup card and More options went; the device card's and the app's Remove remain.
   for (const file of ["DevicePrinterSection", "OtherDevicePrinters"]) assert.ok(read(`${PRINT}${file}.tsx`).includes("PRINTER_BUTTON_REMOVE_CLASS"), `${file}: the Remove buttons wear the Remove look`);
-  const primaries = ["settings/PrintForOthersCard", "DevicePrinterSection", "BrowserPrinterConnect", "NativePrinterPicker"];
-  assert.ok(primaries.every((file) => read(`${PRINT}${file}.tsx`).includes("PRINTER_BUTTON_PRIMARY_CLASS")), "Print all slips here, Connect a printer, Connect printer, Find printers and Use this network printer are the 40px primary");
+  // PX-3 Task 11 (on purpose): the inline picker went; the guided connect's network form keeps its 40px primary Connect.
+  const primaries = ["settings/PrintForOthersCard", "DevicePrinterSection", "BrowserPrinterConnect", "connect/ConnectList"];
+  assert.ok(primaries.every((file) => read(`${PRINT}${file}.tsx`).includes("PRINTER_BUTTON_PRIMARY_CLASS")), "Print all slips here, Connect a printer, Connect printer and the network form's Connect are the 40px primary");
 });
 
 test("the panel files hold no h-8 / h-9 / h-10 token, no size=sm, no print trigger and no dialog word (the sizes come from printer-classes.ts)", () => {
@@ -185,19 +194,24 @@ test("the views: status = card < Not printed < On this device < Printer settings
   const page = read("app/(dashboard)/printers/page.tsx");
   assert.ok(page.includes('<PrinterPanel home="page" />') && !page.includes("PrinterPanelFrame") && !/>\s*Done\s*</.test(page), "/printers: the panel inline, no frame, no Done");
   const button = read(BUTTON);
-  assert.equal(count(button, "<PrinterPanel view={view} onView={setView} onClose={() => setOpen(false)} />"), 1, "the button mounts the panel once (inside its frame), with its view and its close");
+  // PX-3 Task 11 (on purpose, spec §6.7): the connect view in place of the others (on /printers, of both, its own views).
+  assert.equal(count(button, "<PrinterPanel view={view} onView={show} connect={connect} onConnect={startConnect} onConnectEvent={send} onClose={() => setOpen(false)} />"), 1, "the button mounts the panel once (inside its frame), with its views and its close");
+  assert.ok(panel.includes('const { view, connect, show: onView, startConnect, send } = home === "page" ? own : sheetViewsOf(props);') && panel.includes('const flow = view === "connect" ? connect : null;'), "the sheet's views are the button's, /printers' its own");
+  assert.ok(panel.includes('{flow !== null && (home === "page" ? <ConnectPageView state={flow} send={send} noun={noun} onLeave={onView} /> : <ConnectFlow state={flow} send={send} noun={noun} onLeave={onView} />)}') && panel.includes("{flow === null && status && (") && panel.includes("{flow === null && settings && <PrinterSettingsView"), "the connect view in place of the others");
   assert.ok(!button.includes("usePosPulseContext"), "the button never reads the wide pulse");
 });
 
 // Ruling Q (the Task 6 review): the view is set to status where the sheet OPENS (the trigger, the alarm's Show), never where it
 // closes: a sheet sliding down from the settings view keeps showing them, and the panel's view effect (scroll to the top,
-// focus the title) never runs inside a closing sheet.
+// focus the title) never runs inside a closing sheet. PX-3 Task 11 (on purpose): the views are usePrinterViews()'s (its stable
+// show); the settings view's back moved with each view's head into printerFrameOf (pinned in printer-dot-ui-paths.test.ts).
 test("the sheet opens on the status view and never resets while it closes", () => {
   const button = stripComments(read(BUTTON));
-  assert.match(button, /const openChange = \(next: boolean\): void => \{\s*if \(next\) setView\("status"\);\s*setOpen\(next\);\s*\};/, "the trigger's open path");
-  assert.match(button, /onOpenPrinterPanel\(\(\) => \{\s*setView\("status"\);\s*setOpen\(true\);\s*\}\)/, "the alarm's Show opens on status too");
-  assert.equal(count(button, 'setView("status")'), 3, "the two opens and the settings view's back, nowhere else");
-  assert.ok(!/if \(!next\)/.test(button) && !/setOpen\(false\);\s*setView/.test(button), "nothing resets the view on close");
+  assert.ok(button.includes("const { view, connect, show, startConnect, send } = usePrinterViews();") && !button.includes("useState<PrinterPanelView>"), "the views are the hook's");
+  assert.match(button, /const openChange = \(next: boolean\): void => \{\s*if \(next\) show\("status"\);\s*setOpen\(next\);\s*\};/, "the trigger's open path");
+  assert.match(button, /onOpenPrinterPanel\(\(\) => \{\s*show\("status"\);\s*setOpen\(true\);\s*\}\)/, "the alarm's Show opens on status too");
+  assert.equal(count(button, 'show("status")'), 2, "the two opens, nowhere else");
+  assert.ok(!/if \(!next\)/.test(button) && !/setOpen\(false\);\s*show/.test(button), "nothing resets the view on close");
   assert.match(button, /onClose=\{\(\) => setOpen\(false\)\}/, "the panel can close the sheet (Printer setup, the review's Important 1)");
 });
 

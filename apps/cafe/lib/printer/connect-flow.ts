@@ -1,0 +1,166 @@
+import type { TransportWord } from "@/lib/print-agent-here";
+import type { NativePrinter } from "@/lib/printer/native-bridge-protocol";
+import type { DeviceNoun } from "@/lib/printer/printer-status-view";
+
+// Printer UX PX-3 Task 11 (spec §6.7; mockups g1–g6): the guided connect of the Android app, as a pure reducer. Steps: what
+// kind of printer → the found list → connecting → connected → the test slip's question → the tips. Modes: replace (Connect a
+// printer / Change: this device's own printer) and add (Connect another printer: joins the app's printers, X4: no test slip).
+// Back, Cancel and Done are not events: they leave the view (X3). Every word of the steps lives here; the steps draw them.
+
+export type ConnectTransport = "bluetooth" | "usb" | "network";
+export type ConnectStep = "type" | "list" | "connecting" | "connected" | "question" | "tips";
+export interface ConnectEntry {
+  mode: "replace" | "add";
+  /** null: ask what kind of printer first; a transport: straight to its list ("Connect it again"). */
+  transport: ConnectTransport | null;
+}
+export interface ConnectTarget {
+  id: string;
+  name: string;
+}
+export interface ConnectState {
+  step: ConnectStep;
+  mode: "replace" | "add";
+  transport: ConnectTransport | null;
+  /** The printer being connected (or connected), for its name. */
+  target: ConnectTarget | null;
+  /** The list's inline line after a failed connect. */
+  error: string | null;
+}
+export type ConnectEvent =
+  | { type: "choose"; transport: ConnectTransport }
+  | { type: "pick"; target: ConnectTarget }
+  | { type: "connected" }
+  | { type: "failed" }
+  | { type: "tested" }
+  | { type: "not-printed" }
+  | { type: "other" };
+
+export const CONNECT_TITLE = "Connect a printer";
+export const CONNECT_BACK_LABEL = "Back to printer settings";
+/** Settings' Connect a printer / Change and the status card's Connect a printer; Connect another printer. */
+export const CONNECT_REPLACE: ConnectEntry = { mode: "replace", transport: null };
+export const CONNECT_ADD: ConnectEntry = { mode: "add", transport: null };
+export const CONNECT_TRANSPORT_WORDS: Record<ConnectTransport, string> = { bluetooth: "Bluetooth", usb: "USB", network: "Wi-Fi or network" };
+/** A printer added that did not connect: today's words (OtherDevicePrinters' add, X4). */
+export const CONNECT_ADD_FAILED = "The printer is added, but not connected yet. Check it is on, then tap Reconnect.";
+
+export const CONNECT_WORDS = {
+  question: "What kind of printer?",
+  reading: "Reading the printer list…",
+  searching: "Looking for more printers…",
+  notListed: "Not in the list?",
+  notListedSteps: ["Turn the printer on.", "Pair it in Android's Bluetooth settings (PIN is often 0000 or 1234).", "Then tap **Search again**."],
+  searchAgain: "Search again",
+  usbNone: "No USB printer found. Connect a powered printer with a USB OTG adapter, then tap Refresh.",
+  refresh: "Refresh",
+  refreshing: "Refreshing printers…",
+  connect: "Connect",
+  wait: "This can take up to 30 seconds. If Android asks to pair, tap **Pair**.",
+  printTest: "Print a test slip",
+  printing: "Printing…",
+  skip: "Skip",
+  addedNote: "Your manager chooses which slips it prints, in Printer setup.",
+  came: "Did the test slip come out?",
+  yes: "Yes",
+  no: "No",
+  fix: "Let's fix it",
+  tips: ["Paper roll: the shiny side faces the print head.", "Switch the printer off and on.", "Try the other paper width."],
+  again: "Print the test slip again",
+  other: "Choose another printer",
+} as const;
+
+export const connectingWordsOf = (name: string): string => `Connecting to ${name}…`;
+export const connectedWordsOf = (name: string): string => `${name} is connected`;
+/** The question's Yes: the guided connect's words for the test's success toast. */
+export const printingWorksWordsOf = (noun: DeviceNoun): string => `Printing works on ${noun}.`;
+
+export function connectStartOf(entry: ConnectEntry): ConnectState {
+  return { step: entry.transport === null ? "type" : "list", mode: entry.mode, transport: entry.transport, target: null, error: null };
+}
+
+function failedWordsOf(state: ConnectState): string {
+  if (state.mode === "add") return CONNECT_ADD_FAILED;
+  return `Could not connect to ${state.target?.name ?? "the printer"}. Check it is on, then try again.`;
+}
+
+/** Each step and its next; every other pair returns the same state (===), so a late or doubled event changes nothing. */
+export function connectFlowReducer(state: ConnectState, event: ConnectEvent): ConnectState {
+  switch (`${state.step}+${event.type}`) {
+    case "type+choose":
+      return event.type === "choose" ? { ...state, step: "list", transport: event.transport, error: null } : state;
+    case "list+pick":
+      // A fresh try: the last failure's line goes with it.
+      return event.type === "pick" ? { ...state, step: "connecting", target: event.target, error: null } : state;
+    case "connecting+connected":
+      return { ...state, step: "connected" };
+    case "connecting+failed":
+      return { ...state, step: "list", error: failedWordsOf(state) };
+    case "connected+tested":
+      // X4: a printer the setup does not name yet prints nothing, so add mode ends at connected.
+      return state.mode === "replace" ? { ...state, step: "question" } : state;
+    case "tips+tested":
+      return { ...state, step: "question" };
+    case "question+not-printed":
+      return { ...state, step: "tips" };
+    case "tips+other":
+      return { ...state, step: "type", target: null, error: null };
+    default:
+      return state;
+  }
+}
+
+/** The head's sub ("Step n of 3", the list's transport) and the foot: Cancel until a printer is connected, Done after (X3). */
+export function connectHeadOf(state: ConnectState): { sub: string; foot: "cancel" | "done" } {
+  switch (state.step) {
+    case "type":
+      return { sub: "Step 1 of 3", foot: "cancel" };
+    case "list":
+      return { sub: state.transport === null ? "Step 2 of 3" : `Step 2 of 3 · ${CONNECT_TRANSPORT_WORDS[state.transport]}`, foot: "cancel" };
+    case "connecting":
+      return { sub: "Step 3 of 3", foot: "cancel" };
+    default:
+      return { sub: "Step 3 of 3", foot: "done" };
+  }
+}
+
+/** "Connect it again": the saved printer's way in, when the guided connect has a list for it. */
+export function connectTransportOf(word: TransportWord | null): ConnectTransport | null {
+  return word === "bluetooth" || word === "usb" || word === "network" ? word : null;
+}
+
+export interface ConnectChoice {
+  transport: ConnectTransport;
+  title: string;
+  sub: string;
+}
+
+/** Step 1's three rows; USB says where it plugs in (X10). */
+export function connectChoicesOf(noun: DeviceNoun): ConnectChoice[] {
+  return [
+    { transport: "bluetooth", title: "Bluetooth", sub: "Most receipt printers" },
+    { transport: "usb", title: "USB cable", sub: `Plugged into ${noun}` },
+    { transport: "network", title: "Wi-Fi or network", sub: "On the cafe's network" },
+  ];
+}
+
+export interface ConnectRow {
+  id: string;
+  name: string;
+  sub: string;
+  /** The first paired Bluetooth printer: its Connect is the primary. */
+  primary: boolean;
+}
+
+/** The found list's rows, in the app's order: Bluetooth's paired and nearby printers (both kinds; Task 13 merges one
+ *  printer's two entries), or the USB ones. */
+export function connectRowsOf(printers: readonly NativePrinter[], transport: "bluetooth" | "usb"): ConnectRow[] {
+  const shown = printers.filter((printer) => (transport === "usb" ? printer.transport === "usb" : printer.transport === "bt-classic" || printer.transport === "ble"));
+  const first = transport === "bluetooth" ? shown.find((printer) => printer.paired === true) : undefined;
+  return shown.map((printer) => ({
+    id: printer.id,
+    name: printer.name,
+    sub: transport === "usb" ? "USB" : printer.paired === true ? "Paired" : "Nearby",
+    primary: printer === first,
+  }));
+}
