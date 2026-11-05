@@ -718,7 +718,107 @@ the settings view at 390 ≤ 64 px. PX-2's Task 0 / Task 8 shape (baseline, veri
 
 # Session PX-2 Results
 
-(Filled by Session PX-2.)
+Done 2026-11-05 on `feat/printer-ux` (from 46dcb61; origin/main = main = 82e3321, fetched first, no move). Not pushed,
+not merged. Subagent-driven: one implementer + one reviewer per task, fix rounds where a review asked, then a fresh
+Claude Fable 5.1 whole-branch review and one fix wave.
+
+**Commits (13):** `b82c8f4` Task 1 · `99fd756` Task 2 · `ffffb47` Task 3 · `d40b278` Task 4 + `b381571` its review fix ·
+`164d3c9` Task 5 + `9aa34b3` its review fix · `b9dcb73` Task 6 + `2594a7a` its review fix · `58ca3a0` Task 7 + `ee22303`
+its review fix · `b929db8` the final review's fix wave + `4da1d43` (two comments back to UTF-8).
+
+**Counts, before (46dcb61) → after (4da1d43):** cafe `npm test` 7607 / 7606 pass / 0 fail / 1 skip → 7747 / 7746 / 0 / 1;
+shared 1062 → 1074 (0 fail); live legs on a fresh `pos_scratch_print_host_px2` 499 → 524 passed, 0 failed (CW1–CW9 +
+CW1b; run at ee22303: no server file changed after it); typecheck 0 → 0; lint 0 errors (the 2 old warnings,
+masters-blob.test.ts:331) → the same; `PIN (S1)` 16/16 green. `git diff --stat 82e3321..HEAD` over the SR-1 paper paths,
+the SR-11 offline paths, the lane constants (web-printer-types.ts, lane-print.ts), `lib/print-queue.ts` and the dashboard
+band hooks: empty. `print-budget.test.ts`: +1 test only.
+
+**RED → GREEN per task (each task's report holds the outputs):** Task 1 module not found → 11/11 (shared 1073);
+Task 2 module / route not found + the budget test + the CAS deep-equal → 9/9, shared 1074, live 524/0; Task 3 module
+not found → 8/8; Task 4 both files module not found → 9/9 + 9/9 (fix round: 5 of 13 card tests RED → 13/13);
+Task 5 five files module not found → 40/40 (fix round: 2 + 3 RED → green); Task 6 both files + the new pins RED → 6/6,
+9/9, pins green, chain 7717/0; Task 7 three files RED → green, chain 7742/0 (fix round: 1 RED → 11/11); final fix wave:
+3 items RED → green.
+
+**What changed for staff:** the panel opens on one status card (what is wrong, ≤ 3 steps, one button); in printers mode
+it names the printer that is down and Reconnect reconnects only that one; a phone that prints nothing turns amber and
+names the stuck printer; the "Not printed" card shows a button only where it works, Clear always removes the slip for
+good (also while it is printing), Clear all clears only the slips it asked about, in one request; the alarm toast stays
+off the open panel; a printed slip leaves the list at once (from a fresh pulse answer); the job toasts no longer say
+"print the slip again" for a slip that prints by itself; today's setup is one tap away under "Printer settings ›".
+
+**Pins changed on purpose (none deleted):** `lib/print-lease.test.ts:73-76` (the CAS filter carries the request, F-I6a);
+`lib/print-lifecycle-paths.test.ts` PIN (2B) (ack order, Ruling E) and `lib/self-order-alert-paths.test.ts` writer
+allow-list (+ `lib/print-dismiss.ts`), Task 2; `lib/print-waiting.test.ts` (348 → 338: the panel / per-tap / 3B pins →
+NotPrintedSection, the groups test removed with `printWaitingGroups`), `lib/printer-ui-paths.test.ts`,
+`lib/printer-panel-layout.test.ts`, `lib/print-setup-ui-paths.test.ts:148-151`, Task 4; `lib/printer-panel-layout.test.ts`
+(the view order, F-I4 no recurring request, F-M6 focus, open-only reset), `lib/printer-ui-paths.test.ts` (panel budget
+90 → 220), `lib/printer-dot-ui-paths.test.ts` (frame call shape, simple-mode toast, close before push),
+`lib/printer/printer-dot.test.ts` (the `printerHeadlineOf` cases moved to `printer-status-view.test.ts`),
+`lib/print-host-card-paths.test.ts`, `lib/print-setup-ui-paths.test.ts`, `lib/print-waiting.test.ts` (one line each),
+Task 6; `lib/print-agent-paths.test.ts` PIN (3B) (the ack needle), `lib/print-host-paths.test.ts` PIN (P) and
+`lib/print-gating-fx-paths.test.ts` (bridge budget 265 → 270), Task 7. New pin files: `lib/print-dismiss-route.test.ts`,
+`lib/printer-status-wiring-paths.test.ts`.
+
+**Differences from this plan (each a ruling, why):**
+- `PrintJobLifecycle.dismissRequest?: { at, by }` as the plan's interface (spec prose said `dismissRequested?: true`; A).
+- Test files already over 300 lines never grew: Task 5's cases went to new `lib/print-waiting-printers.test.ts` and
+  `lib/printer/printer-dot-waiting.test.ts` (B).
+- The failover record stays for a slip cleared while printing (`ackPrintJob` records an unreachable network printer on a
+  request-dismissed slip as on a queued one; E; print-lease.ts 343 → 344).
+- Clear all shows from 2 slips (I); Cancel returns focus to Clear all (J); the confirm sends the ids snapshotted when it
+  opened (the Task 4 review: a KOT arriving meanwhile is never cleared unasked).
+- Panel taps no longer open the pulse's 2-minute lively window (K: lively anyway while rows wait; fewer reads).
+- `waiting` = the first waiting printer this device does not print (N, R1); low paper never makes a printer "stuck" (O:
+  it is "a warning only" everywhere else); `subject` = exactly what Reconnect reconnects; `dotPrintersOf` stays as it
+  was (its output is pinned) and `useDotPrinters` adds `here` / `notHere`; `printer-dot.ts` 300 → 174 (the transient
+  over 300 was not needed: `PrinterDotPrinters` moved to `print-agent-here.ts`).
+- Simple-mode Reconnect keeps today's toast (`toastConnectOutcome`: "Printer connected." / the device's own failure
+  words); "{names} connected." is printers mode only (P). The view resets on open, not on close (Q; spec §6.1's "resets
+  when the sheet closes", same effect, no flash while the sheet slides down). "Open Printer setup" closes the sheet first.
+- B4 edits the cached pulse only from a fresh (< 20 s), idle answer (S): every cache write restarts TanStack's interval
+  timer, and a drain of listed slips would otherwise starve the host's pulse and beat (other devices would read the host
+  offline after 180 s).
+- The final review's fix wave: §6.3's first-match order for queued rows (refusal before problem, REPRINT / DUPLICATE
+  before "sent nothing"); the summary asks for a tap when a row offers Print now (T); the held status is keyed per printer,
+  so a new printer is checked fresh.
+- Spec §6.10's 820 px cell: 3-button rows wrap (the mockup `s-wait5-820` and the brief), not one line.
+
+**Reviews:** per task — Task 1 Approved; Task 2 Approved; Task 3 Approved; Task 4 Approved + fix round (5 addressed);
+Task 5 Needs fixes (paper-low read as stuck; 6 assertions without a message) → fix round (6 addressed); Task 6 Needs
+fixes ("Open Printer setup" under an open sheet) → fix round (4 addressed); Task 7 Needs fixes (B4 could starve the host
+beat) → fix round (2 addressed). Final: Claude Fable 5.1, 82e3321..ee22303, **Ready to merge: Yes**, 0 Critical / 0
+Important / 6 Minor, Review Focus 1–5 all hold, no deferred minor must be fixed before merge; minors 1, 2, 4 fixed in the
+fix wave (scoped re-review: all addressed, no new breakage); minors 3 and 5 change spec words / rules → the owner (below);
+minor 6 a note.
+
+**Verification (Task 8):** the harness (`D:\kd\pos-dev-keep\printer-ux\tools`, runbook `PX2-RUNBOOK.md`, build of ee22303,
+shots `D:\kd\pos-dev-keep\printer-ux\px2\`): Print now absent on fresh rows; Clear on a queued slip gone in 0.5 s and
+never back in 90 s; Clear on a leased slip (FLIP, a 25 s failing write) gone in 0.5 s, never back, the job ended
+"dismissed: cleared while printing"; Clear all 18 → 0 rows with exactly one POST; the alarm absent while the panel is
+open and not popping after the close; Reconnect (simple) printed each waiting slip once (+5/5), toast "Printer
+connected.", rows gone on the printed acks; printers mode Kitchen off → "Kitchen printer is not connected", Reconnect sent
+only to the Kitchen printer (:9111 +3, :9112 +0); the waiter phone amber, "Slips are waiting for Kitchen printer" then
+"Kitchen printer is not printing"; a11y (local axe) on the status and settings views at 390 and 1280: 0 violations.
+Extra scroll vs the mockups + 24 px: every single state 0 / 0 / 0; s-wait5 56 / 0 / 100 (≤); s-wait20 and s-wait20-open
++38 px over the budget = the spec's "Still not working? Connect it again" link (§6.4) that those mockups leave out;
+s-clearall 144 / 0 / 188 vs the mockup's 58 / 0 / 102 (the link + the mockup's own number is inconsistent: below its
+s-wait5); accepted (V). The Windows app (its built main process unpackaged with scratch user data and a faked printer list,
+`tools\smoke-px2.mjs`, build of 4da1d43): "No printer chosen on this PC" + "Choose a printer" → the settings view with
+today's picker → "Printer ready" with the chosen printer's name; back and Done; 0 console errors (19/19 checks). The
+emulator (Pixel_7_API_33, local harness, build of 4da1d43) on WebView 109 and 154: the status view, the Not printed list
+folded (5 + "Show all 6") and expanded, the Clear all confirm, the settings view to its bottom, and Done above the
+bottom inset (space below Done 13.3 CSS px on 109, 38.1 on 154 = its 24.8 px inset): all PASS; shots
+`D:\kd\pos-dev-keep\printer-ux\px2\emu-*.png`, `win-*.png`. Noted, unconfirmed: on 109 the first tap on the header
+button right after signing in only focused it (the second opened the sheet); 154 opened on the first tap.
+
+**Left for PX-3 / the owner:** PX-3 Tasks 10–14 as planned (their interfaces did not move: the status view's settings
+links focus `[data-printer-target="device"]` / `[data-action="designate"]`; `PrinterPanel` is 217 / 220 lines — move its
+focus / fix wiring into a hook before the connect view); "…will show under Couldn't print." in
+`components/print/setup/PrintersSetupSection.tsx:138,147` (Task 12); the /pos clock's screen-reader word "not connected"
+on an amber phone (M, Task 12); the inline /printers page is not quieted by B5; owner questions: (1) the printer's name
+in a printers-mode row ("Kitchen printer is off or not connected." instead of today's sentence, R5); (2) on a phone,
+name a STUCK printer before a merely busy one with more slips (spec §6.5 says "the most slips").
 
 # Session PX-3 Results
 
