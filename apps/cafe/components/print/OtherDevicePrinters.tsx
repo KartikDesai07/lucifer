@@ -80,9 +80,12 @@ export function OtherDevicePrinters({ locked, here, card, canAdd, onConnect }: {
     }
   };
 
+  // Simple mode names the app's other printers only when there are some: with none, the sub ("set by your manager") is wrong
+  // (no manager chooses slips per printer yet) and the two lines cost phone scroll.
+  const showNames = !card && others.length > 0;
   const body = (
     <>
-      {!card && <p className={PRINTER_LABEL_CLASS}>{TITLE}</p>}
+      {showNames && <p className={PRINTER_LABEL_CLASS}>{TITLE}</p>}
       {others.map((entry) => {
         // The setup's printer this app printer is (printers mode): its name, and the admin's test of it.
         const named = hereEntryOf(here, entry.id);
@@ -113,7 +116,7 @@ export function OtherDevicePrinters({ locked, here, card, canAdd, onConnect }: {
           </PrinterBlock>
         );
       })}
-      {!card && <p className={PRINTER_NOTE_CLASS}>{NOTE}</p>}
+      {showNames && <p className={PRINTER_NOTE_CLASS}>{NOTE}</p>}
       {canAdd && (
         <Button className={PRINTER_BUTTON_CLASS} variant="outline" disabled={disabled} onClick={() => onConnect(CONNECT_ADD)}>
           Connect another printer

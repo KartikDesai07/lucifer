@@ -35,7 +35,7 @@ const oneCardPin: Pin = (code) => {
 };
 const othersCardPin: Pin = (code) => {
   const p: string[] = [];
-  need(p, code.includes("const NOTE = PRINTERS_CARD.sub;") && code.includes("{!card && <p className={PRINTER_LABEL_CLASS}>{TITLE}</p>}") && code.includes("{!card && <p className={PRINTER_NOTE_CLASS}>{NOTE}</p>}"), "simple mode's note is the card's sub; in the card no title or note of their own");
+  need(p, code.includes("const NOTE = PRINTERS_CARD.sub;") && code.includes("{showNames && <p className={PRINTER_LABEL_CLASS}>{TITLE}</p>}") && code.includes("{showNames && <p className={PRINTER_NOTE_CLASS}>{NOTE}</p>}"), "simple mode's note is the card's sub; in the card no title or note of their own");
   // PX-3 Task 11 (on purpose, spec §6.7): Connect another printer opens the guided connect in add mode (was its inline list).
   need(p, /onClick=\{\(\) => onConnect\(CONNECT_ADD\)\}>\s*Connect another printer\s*<\/Button>/.test(code) && code.includes("name={named?.name ?? entry.printer.name}"), "Connect another printer: the guided connect's add; the setup's name, else the app's");
   need(p, count(code, "{canAdd && ") === 1 && !code.includes("NativePrinterPicker"), "T10b-C: Connect another printer only once this device has its own printer; no inline list");
@@ -81,6 +81,15 @@ const tapPin: Pin = (code) => {
   return p;
 };
 
+// PX-3 harness F2: in simple mode the "Other printers on this device" label and its sub are drawn only when the app holds
+// another printer (with none, the sub is wrong: no manager chooses slips per printer yet; two lines of phone scroll).
+const othersNamedPin: Pin = (code) => {
+  const p: string[] = [];
+  need(p, code.includes("const showNames = !card && others.length > 0;"), "the label and sub are for simple mode with other printers only");
+  need(p, code.includes("{showNames && <p className={PRINTER_LABEL_CLASS}>{TITLE}</p>}") && code.includes("{showNames && <p className={PRINTER_NOTE_CLASS}>{NOTE}</p>}"), "both lines wear that one gate");
+  need(p, count(code, "{TITLE}") === 1 && count(code, "{NOTE}") === 1 && code.includes("{canAdd && (") && count(code, "{canAdd && ") === 1, "one label, one sub; Connect another printer keeps its own gate");
+  return p;
+};
 const CASES: { name: string; file: string; pin: Pin; mutations: [string, string, string][] }[] = [
   { name: "printers mode is one card (DevicePrinterSection)", file: DEVICE, pin: oneCardPin, mutations: [
     ["the card on a device that prints nothing", "dot.printersMode && dot.isWriter;", "dot.printersMode;"],
@@ -90,9 +99,15 @@ const CASES: { name: string; file: string; pin: Pin; mutations: [string, string,
     ["no Change on Chrome in printers mode", "{(!printersCard || !pool.active) && (", "{!printersCard && ("],
   ] },
   { name: "printers mode is one card (OtherDevicePrinters)", file: OTHERS, pin: othersCardPin, mutations: [
-    ["a title of their own in the card", "{!card && <p className={PRINTER_LABEL_CLASS}>{TITLE}</p>}", "<p className={PRINTER_LABEL_CLASS}>{TITLE}</p>"],
+    ["a title of their own in the card", "{showNames && <p className={PRINTER_LABEL_CLASS}>{TITLE}</p>}", "<p className={PRINTER_LABEL_CLASS}>{TITLE}</p>"],
     ["the old words", "Connect another printer", "Add another printer"], ["the add opens a replace", "onConnect(CONNECT_ADD)", "onConnect(CONNECT_REPLACE)"],
     ["the app's name over the setup's", "name={named?.name ?? entry.printer.name}", "name={entry.printer.name}"], ["a second printer before the first", "{canAdd && (", "{("],
+  ] },
+  { name: "simple mode names the other printers only when there are some (OtherDevicePrinters)", file: OTHERS, pin: othersNamedPin, mutations: [
+    ["the label with no printers", "const showNames = !card && others.length > 0;", "const showNames = !card;"],
+    ["the label in printers mode", "const showNames = !card && others.length > 0;", "const showNames = others.length > 0;"],
+    ["the sub always", "{showNames && <p className={PRINTER_NOTE_CLASS}>{NOTE}</p>}", "{!card && <p className={PRINTER_NOTE_CLASS}>{NOTE}</p>}"],
+    ["Connect another printer hidden with none", "{canAdd && (", "{canAdd && others.length > 0 && ("],
   ] },
   { name: "T10b-B: today's Reconnect in printers mode (DevicePrinterSection)", file: DEVICE, pin: reconnectPin("{printersCard && (", 'variant={status === "connected" ? "outline" : "default"}'), mutations: [["a Reconnect in simple mode", "{printersCard && (", "{true && ("], ["hidden while connected", "{printersCard && (", '{printersCard && status !== "connected" && ('], ["outline while down", 'variant={status === "connected" ? "outline" : "default"}', 'variant="outline"']] },
   { name: "T10b-B: today's Reconnect on every app printer (OtherDevicePrinters)", file: OTHERS, pin: reconnectPin('<div className="flex flex-wrap gap-2">', 'variant={entry.status === "connected" ? "outline" : "default"}'), mutations: [["hidden while connected", "<Button className={PRINTER_BUTTON_CLASS} variant={entry.status", '{entry.status !== "connected" && <Button className={PRINTER_BUTTON_CLASS} variant={entry.status'], ["outline while down", 'variant={entry.status === "connected" ? "outline" : "default"}', 'variant="outline"']] },
