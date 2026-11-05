@@ -23,7 +23,7 @@ import { offlineHeaderOf } from "@/lib/offline-guard";
 import { heldPrinterSnapshotOf, useDesktopPrinterChosen, useDeviceOnline, useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
 import { printerButtonName, printerDotOf, printerDotTone, type PrinterDotTone } from "@/lib/printer/printer-dot";
 import { printWaitingName } from "@/lib/print-waiting";
-import { onOpenPrinterPanel } from "@/lib/printer-panel-open";
+import { onOpenPrinterPanel, reportPrinterPanelOpen } from "@/lib/printer-panel-open";
 import { cn } from "@/lib/utils";
 
 // The top-bar printer button (all staff). Reads NARROW inputs only — the dot
@@ -41,14 +41,12 @@ export function PrinterStatusButton({ onToneChange }: { onToneChange?: (tone: Pr
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<PrinterPanelView>("status");
   // Session 1D: the 20 s alarm's Show button opens this sheet, on the status view (Ruling Q).
-  useEffect(
-    () =>
-      onOpenPrinterPanel(() => {
-        setView("status");
-        setOpen(true);
-      }),
-    [],
-  );
+  useEffect(() => onOpenPrinterPanel(() => {
+    setView("status");
+    setOpen(true);
+  }), []);
+  // PX-2 (spec §6.9 B5): the sheet's state, whichever path opened or closed it, so the alarm keeps its toasts off it.
+  useLayoutEffect(() => reportPrinterPanelOpen(open), [open]);
   const remote = usePrintHostDot();
   const { isHostDevice, deviceId } = usePrintHostContext();
   // PX-2 (spec §6.9 B6): held through the app's own retries, as the panel reads it (no red ↔ checking flicker).

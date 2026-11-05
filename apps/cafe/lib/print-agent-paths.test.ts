@@ -177,7 +177,8 @@ test("PIN (3B): the wake says lanFailover on bridge v2, tokenSlips and the print
   assert.ok(wake.includes("setTakenOverPrinters(data.takenOver ?? []);"), "the printers it took over, kept for its dot");
   const agent = src("apps/cafe/hooks/use-print-agent.ts");
   // Session 3C (the 3B review gate's I-1) deliberately changed: through the older-server fallback (pinned below).
-  assert.ok(agent.includes('printAgentSkew.send({ ...body, tokenSlips: true }, olderAckBody, (sent) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", sent)),'), "every ack says tokens");
+  // PX-2 Task 7 (spec §6.9 B4) deliberately changed: the answer then goes through dropPrintedFromPulse (no trailing ",").
+  assert.ok(agent.includes('printAgentSkew.send({ ...body, tokenSlips: true }, olderAckBody, (sent) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", sent))'), "every ack says tokens");
   assert.ok(agent.includes("networkPrinter: (job) => job.printerId !== undefined && lanRef.current.includes(job.printerId),"), "a network printer it prints here");
   // Session 3C's review (I-1) deliberately changed: through the health clock (pinned below), from the agent's own lists.
   assert.ok(agent.includes("setPrinterHealthSource(clock.reports)") && agent.includes("localIds: readyRef.current,"), "the beat reads its printers' health from the agent's own lists");

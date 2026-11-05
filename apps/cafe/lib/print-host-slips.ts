@@ -127,11 +127,14 @@ export interface SlipPrintTarget {
 
 /** Printing Phase 4 (spec §5.2): a printer job's slip also names its printer (`printerId`), whose text switch the bridge's
  *  text step reads (lib/printer/kot-text/text-kot-print.ts); absent in simple mode and on every other slip. `takeover`:
- *  this device prints that printer only for another device (Phase 3's failover), so it prints pictures (spec §5.3). */
+ *  this device prints that printer only for another device (Phase 3's failover), so it prints pictures (spec §5.3).
+ *  PX-2 (spec §6.9 B7): `jobId`, a slip printed for a print job (the agent's path): a failed write's toast follows the
+ *  job (it waits, or check the paper); absent on every other slip (a test slip, End of day, a direct reprint). */
 export type HostPrintSlip = (HostKotSlip | HostReceiptSlip | HostTokenSlip | HostEodSlip | HostTestSlip) & {
   target?: SlipPrintTarget;
   printerId?: string;
   takeover?: true;
+  jobId?: string;
 };
 
 export const ROUND_LABEL_PREFIX = "Round ";

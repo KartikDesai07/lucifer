@@ -190,13 +190,17 @@ export interface PrintAlarmStep {
  *  (waiting → check the bill → could not print; the 1D gate N-4); a slip staff acted on loses its notice
  *  quietly: its group went down (Retry, Print again), or Print now on a stale slip (the Phase 1 final gate,
  *  M6). With the newest 20 rows read (owner, I-1 option A), a slip older than the page's oldest row
- *  may still wait beyond the cut: while the feed says it was cut, it is kept, notice and all (N-2). */
+ *  may still wait beyond the cut: while the feed says it was cut, it is kept, notice and all (N-2).
+ *  PX-2 (spec §6.9 B5, F-M8): `quiet` while the printer panel is open, which lists every slip: nothing goes into `show`
+ *  (a slip that would have is remembered `shown: false`, so nothing pops after the close for a slip staff saw there) and
+ *  no slip stays under the summary (`summaryWaiting` 0, then and after the close); the ring is unchanged. */
 export function printAlarmStep(
   memory: ReadonlyMap<string, PrintAlarmMemory>,
   feed: { rows: readonly PrintAttentionRow[]; truncated: boolean },
   deviceId: string,
   nowMs: number,
   first: boolean,
+  quiet = false,
 ): PrintAlarmStep {
   const next = new Map(memory);
   const step: PrintAlarmStep = { memory: next, ring: false, show: [], dismiss: [], summary: 0, summaryWaiting: 0, wanted: 0 };
@@ -214,8 +218,8 @@ export function printAlarmStep(
     } else if (was === undefined || GROUP_RANK[group] > GROUP_RANK[was.group]) {
       // A notice of its own: the summary no longer stands for it.
       step.ring = true;
-      step.show.push(row);
-      next.set(row.id, { group, createdAt: row.createdAt, seenAt: nowMs, shown: true, ...approved, problem: row.problem });
+      if (!quiet) step.show.push(row);
+      next.set(row.id, { group, createdAt: row.createdAt, seenAt: nowMs, shown: !quiet, ...approved, problem: row.problem });
     } else if (group !== was.group || (row.approved === true && was.approved !== true)) {
       // Staff acted on it: quietly.
       if (was.shown) step.dismiss.push(row.id);
@@ -223,11 +227,12 @@ export function printAlarmStep(
     } else if (was.left === true) {
       // Back from a moment's lease (a refused attempt) and still waiting: its notice comes back, without a
       // second ring. A gap must never read as "printed".
-      step.show.push(row);
-      next.set(row.id, { group, createdAt: was.createdAt, seenAt: nowMs, shown: true, ...approved, problem: row.problem });
+      if (!quiet) step.show.push(row);
+      next.set(row.id, { group, createdAt: was.createdAt, seenAt: nowMs, shown: !quiet, ...approved, problem: row.problem });
     } else {
-      // Session 3B: its printer's problem changed: the notice is re-worded (same id), with no second ring.
-      if (was.shown && was.problem !== row.problem) step.show.push(row);
+      // Session 3B: its printer's problem changed: the notice is re-worded (same id), with no second ring. A notice up
+      // while the panel is open does not happen: the hook takes them all down at the open.
+      if (was.shown && was.problem !== row.problem && !quiet) step.show.push(row);
       next.set(row.id, { ...was, seenAt: nowMs, problem: row.problem });
     }
   }
@@ -244,6 +249,8 @@ export function printAlarmStep(
     }
     if (nowMs - was.seenAt > PRINT_ALARM_FORGET_MS) next.delete(id);
   }
+  // The open panel lists them: none stays under the summary, so it never comes back after the close (B5).
+  if (quiet) for (const [id, { summary: _listed, ...slip }] of next) next.set(id, slip);
   // Seen (or kept beyond a cut) on this pulse, and still under the summary.
   for (const slip of next.values()) if (slip.summary === true && slip.seenAt === nowMs) step.summaryWaiting += 1;
   return step;

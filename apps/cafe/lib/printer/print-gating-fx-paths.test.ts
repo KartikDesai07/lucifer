@@ -40,6 +40,9 @@ interface PinCase {
 }
 
 const SETTLE = "const failure = lateGuard.take() ? null : requested;";
+// PX-2 Task 7 (spec §6.9 B7, on purpose): settle and the watchdog say a job's slip's failure in the job's words.
+const SETTLE_TOAST = "toast.error(jobIdRef.current === undefined ? failure : jobPrintToastOf(failure));";
+const ABANDON_TOAST = "toast.error(jobIdRef.current === undefined ? PRINT_HOST_PRINT_FAILED_MESSAGE : jobPrintToastOf(PRINT_HOST_PRINT_FAILED_MESSAGE));";
 
 const CASES: PinCase[] = [
   {
@@ -67,20 +70,20 @@ const CASES: PinCase[] = [
       check(p, s.includes('import { createWindowLateCompletionGuard } from "@/lib/print-host-late-completion";'), "imports the guard factory");
       check(p, s.includes("const [lateGuard] = useState(createWindowLateCompletionGuard);"), "one guard per bridge");
       const settle = between(s, "const settle = useCallback(", "setCurrent(null);");
-      check(p, ordered(settle, [SETTLE, "window.clearTimeout(watchdogRef.current);", "dispatchedRef.current = false;", "toast.error(failure);"]), "settle: a late completion drops the failure BEFORE anything is announced");
+      check(p, ordered(settle, [SETTLE, "window.clearTimeout(watchdogRef.current);", "dispatchedRef.current = false;", SETTLE_TOAST]), "settle: a late completion drops the failure BEFORE anything is announced");
       check(p, settle.includes("if (failure !== null) {"), "settle announces the (possibly dropped) failure, not the raw request");
       const abandon = between(s, "const abandon = useCallback(", "[lateGuard, settle]");
-      check(p, ordered(abandon, ["toast.error(PRINT_HOST_PRINT_FAILED_MESSAGE);", "testRef.current?.reject(", "testRef.current = null;", "lateGuard.abandon(() => settle(null));"]), "abandon: announce, reject a waiting test slip, then hold the slot");
+      check(p, ordered(abandon, [ABANDON_TOAST, "testRef.current?.reject(", "testRef.current = null;", "lateGuard.abandon(() => settle(null));"]), "abandon: announce, reject a waiting test slip, then hold the slot");
       check(p, s.includes("window.setTimeout(abandon, PRINT_HOST_DISPATCH_TIMEOUT_MS)"), "the watchdog abandons (it no longer settles)");
       check(p, !abandon.includes("occupiedRef") && !abandon.includes("setCurrent"), "abandon must NOT free the slot itself");
-      check(p, lines(r) <= 265, "stays <= 265 lines (Phase 2 Session 2E: a slip's own Windows printer and paper; printing Phase 4 Session 4B: the text step)");
+      check(p, lines(r) <= 270, "stays <= 270 lines (Phase 2 Session 2E: a slip's own Windows printer and paper; printing Phase 4 Session 4B: the text step; PX-2 Task 7: a job's slip's toast)");
       return p;
     },
     mutations: [
       { name: "late completion toasts again", apply: sub(SETTLE, "const failure = requested;") },
       { name: "watchdog settles again", apply: sub("window.setTimeout(abandon, ", "window.setTimeout(() => settle(PRINT_HOST_PRINT_FAILED_MESSAGE), ") },
       { name: "no grace timer (the slot would never free)", apply: sub("    lateGuard.abandon(() => settle(null));\n", "") },
-      { name: "failure never announced", apply: sub("    toast.error(PRINT_HOST_PRINT_FAILED_MESSAGE);\n    testRef", "    testRef") },
+      { name: "failure never announced", apply: sub(`    ${ABANDON_TOAST}\n    testRef`, "    testRef") },
       { name: "abandon frees the slot itself", apply: sub("    lateGuard.abandon(() => settle(null));", "    occupiedRef.current = false;\n    lateGuard.abandon(() => settle(null));") },
       { name: "the late-completion verdict is computed but not used", apply: sub("    if (failure !== null) {", "    if (requested !== null) {") },
     ],
