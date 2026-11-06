@@ -14,7 +14,10 @@ const FORM = "components/staff/StaffFormSheet.tsx";
 const CARD = "components/staff/StaffRowCard.tsx";
 const PAGE = "app/(dashboard)/staff/page.tsx";
 const HOOK = "hooks/use-staff.ts";
+// Moved on purpose (plan 2026-11-06, D2): the Screen lock block now lives in the Screens card, built on SettingsSelect.
 const BUSINESS = "components/settings/BusinessDetailsFields.tsx";
+const SCREENS = "components/settings/ScreensSettingsCard.tsx";
+const SETTINGS_CARD = "components/settings/SettingsCard.tsx";
 
 test("PIN UI: the form has a 4-digit numeric PIN field, required on create through staffPinProblem", () => {
   const s = src(FORM);
@@ -52,7 +55,7 @@ test("PIN UI: the card and the table show PIN blocked, Unblock PIN and No PIN", 
 });
 
 test("PIN UI: the Screen lock group sits in Business details through the kit Select and is stored as a number", () => {
-  const s = src(BUSINESS);
+  const s = src(SCREENS);
   assert.match(s, /title="Screen lock"/, "group title");
   assert.match(s, /Lock the screen after no activity for/, "field label");
   for (const label of ["Off", "30 minutes", "1 hour", "2 hours"]) {
@@ -60,9 +63,11 @@ test("PIN UI: the Screen lock group sits in Business details through the kit Sel
   }
   assert.match(s, /name="screenLockMinutes"/, "registered as screenLockMinutes");
   assert.match(s, /Number\(/, "string option values convert to numbers");
-  assert.match(s, /SelectTrigger/, "kit Select");
+  assert.match(s, /<SettingsSelect/, "the settings Select");
+  assert.match(src(SETTINGS_CARD), /SelectTrigger/, "built on the kit Select");
   assert.ok(s.indexOf('title="Tables screen"') < s.indexOf('title="Screen lock"'), "after Tables screen");
-  assert.ok(s.indexOf('title="Screen lock"') < s.indexOf('title="App branding"'), "before App branding");
+  const b = src(BUSINESS);
+  assert.ok(b.indexOf("<ScreensSettingsCard") < b.indexOf('title="App branding"'), "the Screens card sits before App branding");
 });
 
 test("PIN UI: the Settings model, type and form defaults carry screenLockMinutes", () => {

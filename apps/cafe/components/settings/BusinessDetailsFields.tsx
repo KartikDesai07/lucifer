@@ -5,37 +5,21 @@ import { Controller } from "react-hook-form";
 import type { Control, FieldErrors, UseFormRegister } from "react-hook-form";
 
 import type { SettingsInput } from "@/schemas";
-import {
-  TABLE_LONG_STAY_MAX_MINUTES,
-  TABLE_LONG_STAY_MIN_MINUTES,
-} from "@/lib/constants";
-import { cn } from "@/lib/utils";
 import { settingsSectionPath } from "@/lib/settings-sections";
-import type { Settings } from "@/types";
-import { SCREEN_LOCK_DEFAULT_MINUTES, SCREEN_LOCK_MINUTES } from "@pos/shared/staff-pin";
-import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  BUSINESS_GRID_CLASS,
+  BUSINESS_MAIN_CARD_CLASS,
+  BUSINESS_PREVIEW_CLASS,
+  SETTINGS_INPUT_CLASS,
+  SETTINGS_LINK_CLASS,
+} from "@/lib/settings-card-layout";
+import type { Settings } from "@/types";
+import { Input } from "@/components/ui/input";
 import { ImageUpload } from "@/components/shared/ImageUpload";
-import { Field, SettingsGroup } from "@/components/settings/SettingsFields";
+import { CardField, SettingsCard } from "@/components/settings/SettingsCard";
 import { BillHeaderPreview } from "@/components/settings/BillHeaderPreview";
-import { PosLayoutPicker } from "@/components/settings/PosLayoutPicker";
-import { PayQrFields } from "@/components/settings/PayQrFields";
-import { UpiRulesFields } from "@/components/settings/UpiRulesFields";
-import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
-
-const SCREEN_LOCK_LABELS: Record<(typeof SCREEN_LOCK_MINUTES)[number], string> = {
-  0: "Off",
-  30: "30 minutes",
-  60: "1 hour",
-  120: "2 hours",
-};
-const SCREEN_LOCK_OPTIONS = SCREEN_LOCK_MINUTES.map((minutes) => ({ minutes, label: SCREEN_LOCK_LABELS[minutes] }));
+import { ScreensSettingsCard } from "@/components/settings/ScreensSettingsCard";
+import { UpiPaymentsCard } from "@/components/settings/UpiPaymentsCard";
 
 interface BusinessDetailsFieldsProps {
   control: Control<SettingsInput>;
@@ -45,14 +29,15 @@ interface BusinessDetailsFieldsProps {
 }
 
 // Business details — restaurant identity (incl. the FSSAI licence number,
-// folded in from the old GST card) and the product's own branding, split out
-// of the retired GeneralSettingsFields.tsx (CB-UI1 S3).
+// folded in from the old GST card), the UPI payments, the screen options and
+// the product's own branding, split out of the retired GeneralSettingsFields.tsx
+// (CB-UI1 S3).
 //
-// Settings pass (2026-10-01): 40px fields, white panels, every label tied to
-// its input, and no autofocus (on a phone it opened the keyboard over the
-// logo as soon as the page loaded).
-// Settings pass slice 2 (2026-10-02): two-column groups, a live bill-header
-// preview, and picture tiles for the New order screen layout.
+// Settings pass (2026-10-01): every label tied to its input, and no autofocus
+// (on a phone it opened the keyboard over the logo as soon as the page loaded).
+// New UI (2026-11-06, docs/superpowers/plans/2026-11-06-settings-business-ui.md):
+// five cards and a Bill preview. One column in DOM order; from 1280px the
+// preview is a sticky column beside the cards (lib/settings-card-layout.ts).
 export function BusinessDetailsFields({
   control,
   register,
@@ -60,13 +45,14 @@ export function BusinessDetailsFields({
   settings,
 }: BusinessDetailsFieldsProps) {
   return (
-    <div className="space-y-6">
-      <SettingsGroup
+    <div className={BUSINESS_GRID_CLASS}>
+      <SettingsCard
         title="Restaurant"
-        description="Your name, logo and tagline. They print at the top of every bill."
+        sub="Your name, logo and tagline. They print at the top of every bill."
+        className={BUSINESS_MAIN_CARD_CLASS}
       >
-        <div className="grid gap-4 sm:grid-cols-[9rem_minmax(0,1fr)]">
-          <Field label="Restaurant logo" hint="On bills, kitchen tickets and the sidebar.">
+        <div className="grid gap-4 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-start">
+          <CardField label="Restaurant logo" hint="On bills, kitchen tickets and the sidebar.">
             <Controller
               control={control}
               name="logo"
@@ -79,157 +65,70 @@ export function BusinessDetailsFields({
                 />
               )}
             />
-          </Field>
-          <div className="space-y-4">
-            <Field label="Restaurant name" htmlFor="settings-restaurant-name" error={errors.restaurantName?.message}>
-              <Input id="settings-restaurant-name" className={BRAND_CONTROL_CLASS} {...register("restaurantName")} />
-            </Field>
-            <Field label="Tagline" htmlFor="settings-tagline" error={errors.tagline?.message}>
-              <Input id="settings-tagline" className={BRAND_CONTROL_CLASS} {...register("tagline")} />
-            </Field>
+          </CardField>
+          <div className="grid content-start gap-4">
+            <CardField label="Restaurant name" htmlFor="settings-restaurant-name" error={errors.restaurantName?.message}>
+              <Input id="settings-restaurant-name" className={SETTINGS_INPUT_CLASS} {...register("restaurantName")} />
+            </CardField>
+            <CardField label="Tagline" htmlFor="settings-tagline" error={errors.tagline?.message}>
+              <Input id="settings-tagline" className={SETTINGS_INPUT_CLASS} {...register("tagline")} />
+            </CardField>
           </div>
         </div>
-      </SettingsGroup>
+      </SettingsCard>
 
-      <SettingsGroup title="Contact & licence" description="Printed under your name on bills.">
-        <Field label="Address" htmlFor="settings-address" error={errors.address?.message}>
-          <Input id="settings-address" className={BRAND_CONTROL_CLASS} {...register("address")} />
-        </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Contact mobile" htmlFor="settings-mobile" error={errors.mobile?.message}>
-            <Input id="settings-mobile" type="tel" inputMode="tel" className={BRAND_CONTROL_CLASS} {...register("mobile")} />
-          </Field>
-          <Field
+      <SettingsCard
+        title="Contact & licence"
+        sub="Printed under your name on bills."
+        className={BUSINESS_MAIN_CARD_CLASS}
+      >
+        <CardField label="Address" htmlFor="settings-address" error={errors.address?.message}>
+          <Input id="settings-address" className={SETTINGS_INPUT_CLASS} {...register("address")} />
+        </CardField>
+        <div className="grid gap-4 sm:grid-cols-2 sm:items-start">
+          <CardField label="Contact mobile" htmlFor="settings-mobile" error={errors.mobile?.message}>
+            <Input id="settings-mobile" type="tel" inputMode="tel" className={SETTINGS_INPUT_CLASS} {...register("mobile")} />
+          </CardField>
+          <CardField
             label="FSSAI licence number"
             htmlFor="settings-fssai"
             error={errors.fssai?.message}
             hint="Printed on the bill when set."
           >
-            <Input id="settings-fssai" className={BRAND_CONTROL_CLASS} {...register("fssai")} />
-          </Field>
+            <Input id="settings-fssai" className={SETTINGS_INPUT_CLASS} {...register("fssai")} />
+          </CardField>
         </div>
-        <Field
-          label="UPI ID"
-          htmlFor="settings-upiId"
-          error={errors.upiId?.message}
-          hint="For the Scan to pay QR on bills. Example: yourshop@okaxis"
-        >
-          <Input
-            id="settings-upiId"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            className={BRAND_CONTROL_CLASS}
-            {...register("upiId")}
-          />
-        </Field>
-        <UpiRulesFields control={control} register={register} errors={errors} />
-        <PayQrFields control={control} errors={errors} />
-      </SettingsGroup>
+      </SettingsCard>
 
-      <SettingsGroup
+      <SettingsCard
         title="Bill preview"
-        description={
+        sub={
           <>
-            How the top of a bill looks with these details. Choose which lines print in{" "}
-            <Link
-              href={settingsSectionPath("bill-print")}
-              className="font-medium text-brand-primary underline-offset-2 hover:underline"
-            >
+            How the top of a bill looks. Choose which lines print in{" "}
+            <Link href={settingsSectionPath("bill-print")} className={SETTINGS_LINK_CLASS}>
               Bill print
             </Link>
             .
           </>
         }
-        panelClassName="bg-brand-wash p-3 sm:p-5"
+        className={BUSINESS_PREVIEW_CLASS}
+        bodyClassName="rounded-b-[12px] bg-surface-2 p-3"
       >
         <BillHeaderPreview control={control} settings={settings} />
-      </SettingsGroup>
+      </SettingsCard>
 
-      {/* New Order screen layout — owner decision 2026-09-29 (UI batch 1 §H). */}
-      <SettingsGroup
-        title="New order screen"
-        description="How items are laid out when staff start a new order."
-      >
-        <Controller
-          control={control}
-          name="posLayout"
-          render={({ field }) => (
-            <PosLayoutPicker value={field.value ?? "normal"} onChange={field.onChange} />
-          )}
-        />
-      </SettingsGroup>
+      <UpiPaymentsCard control={control} register={register} errors={errors} className={BUSINESS_MAIN_CARD_CLASS} />
 
-      {/* Tables screen — long-stay threshold; the id is the Setup page's "Change" link target. */}
-      <SettingsGroup
-        id="tables-screen"
-        title="Tables screen"
-        description="How the live floor flags tables."
-      >
-        <Field
-          label="Long stay alert"
-          htmlFor="settings-long-stay"
-          error={errors.tableLongStayMinutes?.message}
-          hint={`An occupied table's time turns red, with a Long stay clock, once its bill has been open this long. ${TABLE_LONG_STAY_MIN_MINUTES} to ${TABLE_LONG_STAY_MAX_MINUTES} minutes.`}
-        >
-          <div className="flex items-center gap-2">
-            <Input
-              id="settings-long-stay"
-              className={cn(BRAND_CONTROL_CLASS, "w-28")}
-              type="number"
-              inputMode="numeric"
-              min={TABLE_LONG_STAY_MIN_MINUTES}
-              max={TABLE_LONG_STAY_MAX_MINUTES}
-              step={1}
-              {...register("tableLongStayMinutes", { valueAsNumber: true })}
-            />
-            <span className="text-sm text-brand-muted">minutes</span>
-          </div>
-        </Field>
-      </SettingsGroup>
-
-      {/* Screen lock - idle time before the screen asks for a PIN again. */}
-      <SettingsGroup
-        id="screen-lock"
-        title="Screen lock"
-        description="The screen locks when nobody has touched it for a while. Staff unlock with their PIN."
-      >
-        <Field
-          label="Lock the screen after no activity for"
-          htmlFor="settings-screen-lock"
-          error={errors.screenLockMinutes?.message}
-        >
-          <Controller
-            control={control}
-            name="screenLockMinutes"
-            render={({ field }) => (
-              <Select
-                value={String(field.value ?? SCREEN_LOCK_DEFAULT_MINUTES)}
-                onValueChange={(v) => field.onChange(Number(v))}
-              >
-                <SelectTrigger id="settings-screen-lock" className={cn(BRAND_CONTROL_CLASS, "w-48")}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SCREEN_LOCK_OPTIONS.map((o) => (
-                    <SelectItem key={o.minutes} value={String(o.minutes)}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          />
-        </Field>
-      </SettingsGroup>
+      <ScreensSettingsCard control={control} register={register} errors={errors} className={BUSINESS_MAIN_CARD_CLASS} />
 
       {/* App branding — the PRODUCT's mark (tab icon, login screen), distinct
           from the restaurant's own logo above. Never printed on a bill. */}
-      <SettingsGroup
+      <SettingsCard
         title="App branding"
-        description="How this POS identifies itself. Never printed on bills."
+        sub="How this POS identifies itself. Never printed on bills."
+        className={BUSINESS_MAIN_CARD_CLASS}
       >
-        <Field
+        <CardField
           label="Product logo"
           hint="Shown in the browser tab and on the login screen. A square image works best."
         >
@@ -245,8 +144,8 @@ export function BusinessDetailsFields({
               />
             )}
           />
-        </Field>
-      </SettingsGroup>
+        </CardField>
+      </SettingsCard>
     </div>
   );
 }

@@ -6,9 +6,9 @@ import { BusinessDetailsFields } from "@/components/settings/BusinessDetailsFiel
 
 export default function BusinessSettingsPage() {
   return (
-    <SettingsSectionPage slug="business">
+    <SettingsSectionPage slug="business" wide>
       {(settings, section) => (
-        <SettingsSectionForm settings={settings} section={section}>
+        <SettingsSectionForm settings={settings} section={section} saveBarLook="card">
           {({ control, register, errors }) => (
             <BusinessDetailsFields control={control} register={register} errors={errors} settings={settings} />
           )}

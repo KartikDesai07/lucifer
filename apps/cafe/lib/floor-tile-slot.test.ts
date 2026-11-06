@@ -263,7 +263,7 @@ test("the rise token and the Long stay words kept true in Settings and the runbo
   const token = `--animate-html-rise-floor: brand-rise ${FLOOR_TILE_RISE_SECONDS}s cubic-bezier(0.2, 0.8, 0.2, 1) both;`;
   assert.ok(read("app/globals.css").includes(token), "values 7: rise .5s, the length the tile's clock counts with");
   const hint = "An occupied table's time turns red, with a Long stay clock, once its bill has been open this long. ${TABLE_LONG_STAY_MIN_MINUTES} to ${TABLE_LONG_STAY_MAX_MINUTES} minutes.";
-  assert.ok(read("components/settings/BusinessDetailsFields.tsx").includes(hint), "the Settings hint");
+  assert.ok(read("components/settings/ScreensSettingsCard.tsx").includes(hint), "the Settings hint");
   const runbook = read("../../docs/GO-LIVE-CHECKLIST.md").replace(/\s+/g, " ");
   assert.ok(runbook.includes("A running table's time turns red, with a **Long stay** clock, once its bill has been open for the minutes set in"), "the runbook's live floor line");
   assert.ok(!runbook.includes("shows **Long stay** once"), "the old words are gone");

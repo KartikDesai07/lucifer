@@ -33,7 +33,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   {
     slug: "business",
     title: "Business details",
-    description: "Name, logo, contact details and licence number shown on bills.",
+    description: "Name, logo, contact, UPI payments and screen options.",
     // posLayout (UI batch 1 §H) rendered here in BusinessDetailsFields — the
     // New Order screen's own arrangement is a business-identity choice, not a
     // print or QR-ordering one. tableLongStayMinutes (Tables redesign) is the
