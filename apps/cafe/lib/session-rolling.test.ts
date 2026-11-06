@@ -221,3 +221,40 @@ test('PIN (installed-dist, @auth/core 0.41.2): the JWT branch of node_modules/@a
   const restOfFile = src.slice(dbMarkerAt);
   assert.match(restOfFile, /updateAge/, "positive landmark: updateAge must appear somewhere AFTER the database marker (the database branch actually consults it) — otherwise this file may have been blinded");
 });
+
+// ── 6. Installed-dist pin: a signed-out answer clears the cookie ──────────
+//
+// The session gate (components/layout/DeviceSessionGate.tsx) sends a real
+// "signed out" (a 200 whose body is null) to /login as a full page load. That
+// can only loop /login ↔ / if the cookie survived: the edge middleware decodes
+// the JWT without the database, so a cookie the Node session refused (an
+// inactive account: lib/auth.ts's jwt callback returns null) would still read as
+// signed in at /login and bounce back to /. @auth/core clears it in both
+// signed-out branches of the JWT path; this pins that vendor fact.
+const CLEAN_PUSH = String.raw`response\.cookies\?\.push\(\.\.\.sessionStore\.clean\(\)\);`;
+const ELSE_CLEANS = new RegExp(String.raw`\}\s*else\s*\{\s*` + CLEAN_PUSH + String.raw`\s*\}`);
+const CATCH_CLEANS = new RegExp(String.raw`catch \(e\) \{[^}]*` + CLEAN_PUSH + String.raw`\s*\}`);
+
+function assertSignedOutClearsCookie(sessionJs: string): void {
+  assert.match(sessionJs, /const response = \{\s*body: null,/, "the answer starts as a 200 with a null body (set only for a session)");
+  const at = sessionJs.indexOf("if (token !== null)");
+  assert.ok(at >= 0, "landmark: the jwt callback's null check");
+  const end = sessionJs.indexOf("// Retrieve session from database", at);
+  assert.ok(end > at, "landmark: the database branch follows");
+  const rest = sessionJs.slice(at, end);
+  assert.match(rest, ELSE_CLEANS, "a jwt callback that returns null (inactive account) clears the session cookie");
+  assert.match(rest, CATCH_CLEANS, "a JWT that cannot be verified clears the session cookie");
+}
+
+test("PIN (installed-dist, @auth/core 0.41.x): a signed-out answer (200 null) clears the session cookie in both JWT branches, so the gate's /login can never bounce back to / — and the check bites on in-memory copies with either clean() removed", () => {
+  const src = readSrc(AUTH_CORE_SESSION_JS);
+  assertSignedOutClearsCookie(src);
+
+  const withoutElse = src.replace(ELSE_CLEANS, "} else {\n}");
+  assert.notEqual(withoutElse, src, "landmark: the copy really lost the else's clean()");
+  assert.throws(() => assertSignedOutClearsCookie(withoutElse), "bites: the else without clean() fails");
+  const catchAt = src.indexOf("catch (e) {", src.indexOf("if (token !== null)"));
+  const withoutCatch = src.slice(0, catchAt) + src.slice(catchAt).replace(/response\.cookies\?\.push\(\.\.\.sessionStore\.clean\(\)\);/, "");
+  assert.notEqual(withoutCatch, src, "landmark: the copy really lost the catch's clean()");
+  assert.throws(() => assertSignedOutClearsCookie(withoutCatch), "bites: the catch without clean() fails");
+});
