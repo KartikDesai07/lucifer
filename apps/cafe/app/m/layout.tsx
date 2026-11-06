@@ -20,10 +20,9 @@ export const dynamic = "force-dynamic";
 // No `export const revalidate` here (A3 — ISR was the original plan, dropped
 // because /m renders per request). The root layout is static now (P2 N2), so
 // the `dynamic` export above is what keeps /m dynamic, and the build's route
-// list is where it shows. The freshness bound
-// this layout relies on is lib/settings.ts's TTL.SETTINGS cache (~45s) that
-// readPublicAppearance reads through — same class of bound the public menu
-// route already accepts.
+// list is where it shows. The freshness bound this layout relies on is
+// lib/settings.ts's TTL.SETTINGS cache (~45s) that readPublicAppearance reads
+// through — same class of bound the public menu route already accepts.
 export default async function PublicMenuLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {

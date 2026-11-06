@@ -52,7 +52,7 @@ const FIXTURE_FAMILIES = { body: "Inter, sans-serif", display: "Playfair Display
 
 // ── P1 (A1/A3) — layout.tsx's data source, and no dead ISR config ──────────
 
-test('PIN (A3): app/m/layout.tsx reads the theme via readPublicAppearance, never getSettings, exports NO `revalidate` (ISR premise is FALSE — the root layout\'s await auth() makes every /m render dynamic; the real freshness bound is readSettings\' TTL.SETTINGS cache), and stays a server component', () => {
+test('PIN (A3): app/m/layout.tsx reads the theme via readPublicAppearance, never getSettings, exports NO `revalidate` (ISR premise is FALSE — /m\'s own `dynamic = "force-dynamic"` export makes every /m render per request; the real freshness bound is readSettings\' TTL.SETTINGS cache), and stays a server component', () => {
   const src = stripComments(readSrc(M_LAYOUT));
   assert.match(
     src,
