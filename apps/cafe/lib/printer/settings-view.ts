@@ -1,5 +1,5 @@
 import type { PrintHostState } from "@pos/shared/print-job";
-import { printerTypeLabel } from "@/components/print/printer-type";
+import { printerTypeLabel } from "@/lib/printer/printer-type-label";
 import type { PrinterHere } from "@/lib/print-agent-here";
 import type { DevicePrinter } from "@/lib/printer/device-printer-store";
 // DotLane, not print-lane's PrintLane (the same five lanes): nothing in lib/printer imports print-lane (print-lane.test.ts).
@@ -77,9 +77,19 @@ export function printerSubOf(printer: DevicePrinter): string {
   return `${printerTypeLabel(printer)} · ${printer.paper === "58mm" ? "58 mm" : "80 mm"} paper`;
 }
 
-/** Printers mode's one card (spec §6.6 item 2; mockup t-settings-pm). The sub is also simple mode's note under "Other
- *  printers on this device": the manager decides in Printer setup which slips a printer of this device prints. */
+/** Printers mode's one card (spec §6.6 item 2; mockup t-settings-pm): the manager decides in Printer setup which slips a
+ *  printer of this device prints. */
 export const PRINTERS_CARD = { title: "Printers on this device", sub: "Which slips each one prints: set by your manager." } as const;
+
+/** Simple mode's note under "Other printers on this device" (the PX-3 harness F2's residual): no manager chooses slips per
+ *  printer there, every slip prints on this device's own printer (print-agent-printers' simple mode). */
+export const SIMPLE_OTHERS_NOTE = "Every slip prints on the printer above. Your manager can give these printers their own slips in Printer setup.";
+
+/** The note under the app's other printers outside the card: simple mode's own, or (a printers-mode device the setup names
+ *  no printer for) the card's sub. */
+export function otherPrintersNoteOf(printersMode: boolean): string {
+  return printersMode ? PRINTERS_CARD.sub : SIMPLE_OTHERS_NOTE;
+}
 
 /** A printer of this device in `here`: the entry with that app id, ignoring case (the app spells a MAC upper-case, the 2C
  *  gate's F-2), or for null (this device's own one printer: a browser's, an app on bridge v1) the entry with no app id. */

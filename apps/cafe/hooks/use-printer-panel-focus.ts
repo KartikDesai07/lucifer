@@ -6,12 +6,16 @@ import type { PrinterPanelView } from "@/hooks/use-printer-views";
 
 // The printer panel's focus (PX-2 Task 6, F-M6; moved out of PrinterPanel.tsx as it was in PX-3 Task 10, so the panel keeps
 // room for its views): a view switch keeps the sheet, scrolls back to the top and focuses the part a fix pointed at, else the
-// new view's title; the Not printed card leaving while it held the focus hands it to the status card's headline.
+// new view's title (on /printers, which has no title of its own, leaving the connect view focuses this device's printer
+// card: it shows how the connect ended); the Not printed card leaving while it held the focus hands it to the status card's
+// headline.
 
 const FRAME_SELECTOR = '[data-ui="printer-panel"]';
 const BODY_SELECTOR = '[data-ui="printer-panel-body"]';
 const TITLE_SELECTOR = '[data-ui="printer-panel-title"]';
 const HEADLINE_SELECTOR = '[data-ui="printer-status-headline"]';
+/** This device's printer card (its section is focusable, tabIndex -1): the panel's setup fixes point at it too. */
+export const DEVICE_SECTION_SELECTOR = '[data-printer-target="device"]';
 
 // Targets are looked up inside THIS panel, never the whole page (the sheet and /printers can both be mounted).
 function focusAndShow(root: HTMLElement | null, selector: string): boolean {
@@ -41,6 +45,7 @@ export function usePrinterPanelFocus({ home, view, onView }: { home: "sheet" | "
   // (today's focusAndShow), else to the new view's title.
   useEffect(() => {
     if (shownView.current === view) return;
+    const from = shownView.current;
     shownView.current = view;
     const frame = rootRef.current?.closest<HTMLElement>(FRAME_SELECTOR) ?? null;
     const body = frame?.querySelector<HTMLElement>(BODY_SELECTOR) ?? null;
@@ -48,6 +53,7 @@ export function usePrinterPanelFocus({ home, view, onView }: { home: "sheet" | "
     const target = pendingTarget.current;
     pendingTarget.current = null;
     if (target !== null && focusAndShow(rootRef.current, target)) return;
+    if (frame === null && from === "connect" && focusAndShow(rootRef.current, DEVICE_SECTION_SELECTOR)) return;
     frame?.querySelector<HTMLElement>(TITLE_SELECTOR)?.focus({ preventScroll: true });
   }, [view]);
 

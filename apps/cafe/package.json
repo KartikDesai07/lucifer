@@ -551,6 +551,7 @@
     "lib/printer/settings-view.test.ts",
     "lib/printer/printers-card-paths.test.ts",
     "lib/printer/connect-flow.test.ts",
+    "lib/printer/printer-ux-polish.test.ts",
     "lib/connect-steps.test.ts",
     "lib/print-host-bridge-late.test.ts",
     "lib/print-host-bridge-job-toast.test.ts",

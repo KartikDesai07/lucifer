@@ -16,7 +16,7 @@ import { ConnectFlow, ConnectPageView } from "@/components/print/connect/Connect
 import { PrinterSettingsView } from "@/components/print/settings/PrinterSettingsView";
 import { useDotPrinters } from "@/hooks/use-agent-printers";
 import { useAuth } from "@/hooks/use-auth";
-import { usePrinterPanelFocus } from "@/hooks/use-printer-panel-focus";
+import { DEVICE_SECTION_SELECTOR, usePrinterPanelFocus } from "@/hooks/use-printer-panel-focus";
 import { sheetViewsOf, usePrinterViews, type PrinterPanelView } from "@/hooks/use-printer-views";
 import { heldPrinterSnapshotOf, useCanPrintNow, useDesktopPrinterChosen, useDesktopPrinterSnapshot, useDeviceOnline, useDevicePrinter, usePrintCapabilities, usePrintLane } from "@/hooks/use-device-printer";
 import { deviceTransportOf, type TransportWord } from "@/lib/print-agent-here";
@@ -42,7 +42,6 @@ import { reconnectDown, reconnectToastOf, type ReconnectResult } from "@/lib/pri
 
 export type { PrinterPanelView };
 
-const DEVICE_SECTION_SELECTOR = '[data-printer-target="device"]';
 const DESIGNATE_SELECTOR = '[data-action="designate"]';
 // Each fix that points at the setup, and the part of the settings view it opens on (today's banner targets).
 const SETUP_TARGETS: Record<Exclude<StatusActionKind | StatusLinkKind, "reconnect" | "printer-setup">, string> = {

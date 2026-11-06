@@ -1308,3 +1308,38 @@ amber with the printer's name ("Kitchen printer is not printing" once stuck); pa
 Printer settings → "Printers on this device" (both printers, Reconnect, Test print as admin); simple mode: one printer off
 / on; **Connect a printer** step by step on a real Bluetooth printer (one row for it, Android's pair pop-up, the test slip,
 Yes); on an Android 7–11 tablet with Location not allowed: Allow → the permission pop-up → the list fills.
+
+## Polish after PX-3 (2026-11-06)
+
+**The owner's ask:** after the deploy (fff1e22) and his real-printer checks ("All Done"): "First chhoti clean up karte
+hai". Branch `feat/printer-ux-polish` from main f2b30c3. The minors the PX-3 final review left for later, each test-first
+(`apps/cafe/lib/printer/printer-ux-polish.test.ts`: pure rules, and source pins each proven to bite by a mutation):
+
+- **"Tap Reconnect" on simple mode's card:** a browser's saved printer that needs a tap (Chrome; the app never reaches
+  `needs-tap`) said "Tap Reconnect" in its row and its line on a card with no Reconnect. That card now shows today's
+  Reconnect in that state (`DevicePrinterSection.tsx`: `printersCard || status === "needs-tap"`); otherwise simple mode's
+  Reconnect stays the status card's (T10b-B).
+- **The Wi-Fi form on "Connect it again" (and Change):** a replace starts the form at this device's saved network
+  printer's address and port (`networkPrefillOf`: the app id `tcp:<host>:<port>`); an add (Connect another printer)
+  starts empty, as before.
+- **A thrown plain Error's raw words:** a thrown connect shows inline only a sentence written for staff (this device's,
+  the pool's, each of the app's refusals: `ATTEMPT_WORDS`, lane-print's rule); a code error's text falls back to the step's
+  own words.
+- **The order of merged Bluetooth rows:** a printer the app lists twice sits where the entry it is shown as sits (the app's
+  order), not where its first entry was; paired first, then nearby, as before.
+- **Simple mode's note under "Other printers on this device":** it said the printers-mode sentence ("Which slips each one
+  prints: set by your manager."); simple mode now says "Every slip prints on the printer above. Your manager can give these
+  printers their own slips in Printer setup." (`otherPrintersNoteOf`; a printers-mode device the setup names no printer for
+  keeps the card's sub).
+- **/printers' focus after the connect view:** leaving it (Back, Cancel, Done) focused nothing (the page body); the focus
+  now goes to this device's printer card, which shows how it ended. The card's selector lives once, in the focus hook.
+- **settings-view.ts imported a component file:** `components/print/printer-type.ts` was pure words plus icons nothing
+  used; it moved to `lib/printer/printer-type-label.ts` without the icons. The print-paths test's `PRINTER_SETUP_CARD`
+  constant (a hook's path) is now `TEST_PRINT_HOOK`.
+- **Not changed (ruled):** MoreCard / useDotPrinters mounted twice: cached reads and memo work only, no request; changing
+  the hooks costs more risk than it saves. T14-C (which paper a printers-mode tablet's own printer shows) stays the
+  owner's.
+
+Pins moved on purpose (comments in place): `printer-ui-paths.test.ts` and `printers-card-paths.test.ts` (the device
+card's Reconnect gate, the note), `printer-dot-ui-paths.test.ts` (the selector's one copy), `print-paths.test.ts` (the
+constant's name). No server, model, request, paper or native change.

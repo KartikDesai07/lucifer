@@ -151,8 +151,9 @@ export function DevicePrinterSection({ noun, onConnect }: { noun: DeviceNoun; on
       ) : (
         // Sized to their words, one row that wraps on a narrow phone.
         <div className="flex flex-wrap gap-2">
-          {/* T10b-B: today's Reconnect in printers mode (PX-2's stuck step sends staff here); simple mode's is the status card's. */}
-          {printersCard && (
+          {/* T10b-B: today's Reconnect in printers mode (PX-2's stuck step sends staff here); simple mode's is the status card's,
+              except for a browser's printer that needs a tap: its row word and its line say "Tap Reconnect" here. */}
+          {(printersCard || status === "needs-tap") && (
             <Button className={PRINTER_BUTTON_CLASS} variant={status === "connected" ? "outline" : "default"} onClick={() => void settle(devicePrinter().reconnect())} disabled={locked}>
               Reconnect
             </Button>
