@@ -8,9 +8,9 @@ import {
   askSession,
   classifySessionAnswer,
   retryDelay,
-  startSessionReader,
   type SessionAnswer,
 } from "@/lib/device-session";
+import { flush, harness } from "@/lib/device-session.fixtures";
 
 // P2 N2: the staff frame is static, so the session is read on the device. next-auth's own client fetch turns a failed
 // request into "signed out" (SessionKeepalive.tsx), which would bounce an admin off /settings or flash the staff rows;
@@ -112,59 +112,7 @@ test("askSession: never rejects; a failure of any kind is no answer, a 200 null 
   assert.deepEqual(await askSession(out.fetch, new AbortController().signal), { kind: "signed-out" }, "a 200 null");
 });
 
-// ── startSessionReader (fake clock, scripted answers) ────────────────────────
-
-function fakeClock() {
-  let nextId = 1;
-  const timers = new Map<number, { run: () => void; ms: number }>();
-  return {
-    setTimer: (run: () => void, ms: number): number => {
-      const id = nextId++;
-      timers.set(id, { run, ms });
-      return id;
-    },
-    clearTimer: (id: number): void => {
-      timers.delete(id);
-    },
-    pending: (): number[] => [...timers.values()].map((t) => t.ms).sort((a, b) => a - b),
-    fire(ms: number): void {
-      for (const [id, t] of timers) {
-        if (t.ms !== ms) continue;
-        timers.delete(id);
-        t.run();
-        return;
-      }
-      throw new Error(`no pending ${ms} ms timer (pending: ${[...timers.values()].map((t) => t.ms).join(", ")})`);
-    },
-  };
-}
-
-function scriptedAsk() {
-  const calls: { signal: AbortSignal; answer: (a: SessionAnswer) => void }[] = [];
-  const ask = (signal: AbortSignal) =>
-    new Promise<SessionAnswer>((resolve) => {
-      calls.push({ signal, answer: resolve });
-    });
-  return { ask, calls };
-}
-
-const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
-
-function harness() {
-  const clock = fakeClock();
-  const asked = scriptedAsk();
-  const seen = { sessions: [] as unknown[], signedOut: 0 };
-  const reader = startSessionReader({
-    ask: asked.ask,
-    onSession: (s) => seen.sessions.push(s),
-    onSignedOut: () => {
-      seen.signedOut += 1;
-    },
-    setTimer: clock.setTimer,
-    clearTimer: clock.clearTimer,
-  });
-  return { clock, asked, seen, reader };
-}
+// ── startSessionReader (fake clock, scripted answers, fake page: lib/device-session.fixtures.ts) ──────────────
 
 test("reader: asks once at start; a session settles it with no retry left behind", async () => {
   const { clock, asked, seen } = harness();
@@ -274,4 +222,59 @@ test("reader: stop() during the backoff wait clears it", async () => {
   assert.deepEqual(clock.pending(), [1000], "waiting");
   reader.stop();
   assert.deepEqual(clock.pending(), [], "the wait is cleared");
+});
+
+// ── the page hidden: no new attempt while nobody can see it ─────────────────
+
+test("reader: a hidden page still makes the page load's one first attempt, and its answer counts", async () => {
+  const { asked, seen } = harness({ hidden: true });
+  assert.equal(asked.calls.length, 1, "the first attempt runs even hidden (a hidden print-host tab must still come up)");
+  asked.calls[0]?.answer({ kind: "session", session: SESSION_BODY as never });
+  await flush();
+  assert.deepEqual(seen.sessions, [SESSION_BODY], "an attempt in flight finishes while hidden");
+});
+
+test("reader: a retry that comes due while hidden is held; showing the page asks at once", async () => {
+  const { clock, asked, page } = harness();
+  asked.calls[0]?.answer(NO_ANSWER);
+  await flush();
+  page.hide();
+  clock.fire(1000);
+  assert.equal(asked.calls.length, 1, "no attempt while hidden");
+  assert.deepEqual(clock.pending(), [], "and nothing scheduled: the page's return resumes it");
+  page.show();
+  assert.equal(asked.calls.length, 2, "an attempt at once when the page shows");
+  assert.deepEqual(clock.pending(), [SESSION_ATTEMPT_TIMEOUT_MS], "with its own timeout");
+  asked.calls[1]?.answer(NO_ANSWER);
+  await flush();
+  assert.deepEqual(clock.pending(), [2000], "the backoff goes on where it was (nothing reset)");
+});
+
+test("reader: showing the page during a backoff wait asks at once; during an attempt in flight it starts nothing", async () => {
+  const { clock, asked, page } = harness();
+  page.hide();
+  page.show();
+  assert.equal(asked.calls.length, 1, "an attempt in flight is left to finish");
+  asked.calls[0]?.answer(NO_ANSWER);
+  await flush();
+  assert.deepEqual(clock.pending(), [1000], "waiting");
+  page.hide();
+  page.show();
+  assert.equal(asked.calls.length, 2, "the person is looking: ask now");
+  assert.deepEqual(clock.pending(), [SESSION_ATTEMPT_TIMEOUT_MS], "the backoff wait is gone");
+});
+
+test("reader: the visibility listener is removed once settled and on stop()", async () => {
+  const settled = harness();
+  assert.equal(settled.page.listeners(), 1, "landmark: listening while there is no answer");
+  settled.asked.calls[0]?.answer({ kind: "session", session: SESSION_BODY as never });
+  await flush();
+  assert.equal(settled.page.listeners(), 0, "gone after a session");
+  settled.page.show();
+  assert.equal(settled.asked.calls.length, 1, "and showing the page asks nothing more");
+  const stopped = harness();
+  stopped.reader.stop();
+  assert.equal(stopped.page.listeners(), 0, "gone after stop()");
+  stopped.page.show();
+  assert.equal(stopped.asked.calls.length, 1, "nothing after stop()");
 });

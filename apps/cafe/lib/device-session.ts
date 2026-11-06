@@ -81,12 +81,17 @@ export interface SessionReaderDeps {
   onSignedOut(): void;
   setTimer(run: () => void, ms: number): number;
   clearTimer(id: number): void;
+  /** Whether the page is hidden now (document.visibilityState === "hidden"). */
+  isHidden(): boolean;
+  /** Calls `run` each time the page becomes visible; returns what removes the listener. */
+  onVisible(run: () => void): () => void;
 }
 
 export interface SessionReader {
   /** Abort the attempt in flight (or skip the backoff wait) and ask at once. Nothing once settled or stopped. */
   retryNow(): void;
-  /** Abort the attempt in flight and clear every timer; later answers are ignored (the gate's unmount). */
+  /** Abort the attempt in flight, clear every timer and the visibility listener; later answers are ignored (the
+   *  gate's unmount). */
   stop(): void;
 }
 
@@ -94,6 +99,12 @@ export interface SessionReader {
  * Asks at once and keeps asking until a session or a sign-out: each attempt is aborted after
  * SESSION_ATTEMPT_TIMEOUT_MS, and no answer waits retryDelay(n) before the next. Exactly one of onSession /
  * onSignedOut is called, at most once. An attempt that was superseded (Retry, a timeout) or stopped never counts.
+ *
+ * A hidden page starts no new attempt: during a server outage a tab nobody looks at would otherwise call the session
+ * function every 8 s for hours (a free-tier cost). A retry that comes due while hidden is held, an attempt in flight
+ * may finish, and the moment the page shows with no attempt in flight it asks at once (the backoff step carries on).
+ * The page load's first attempt runs even hidden: one request, as before, so a tab opened in the background (a
+ * browser print host) still comes up by itself on a healthy server.
  */
 export function startSessionReader(deps: SessionReaderDeps): SessionReader {
   let done = false;
@@ -101,6 +112,13 @@ export function startSessionReader(deps: SessionReaderDeps): SessionReader {
   let current: AbortController | null = null;
   let attemptTimer: number | null = null;
   let retryTimer: number | null = null;
+  let stopListening: (() => void) | null = null;
+
+  const finish = () => {
+    done = true;
+    stopListening?.();
+    stopListening = null;
+  };
 
   const clearTimers = () => {
     if (attemptTimer !== null) deps.clearTimer(attemptTimer);
@@ -114,16 +132,22 @@ export function startSessionReader(deps: SessionReaderDeps): SessionReader {
     current = null;
     clearTimers();
     if (answer.kind === "session") {
-      done = true;
+      finish();
       deps.onSession(answer.session);
     } else if (answer.kind === "signed-out") {
-      done = true;
+      finish();
       deps.onSignedOut();
     } else {
-      retryTimer = deps.setTimer(attempt, retryDelay(failures));
+      retryTimer = deps.setTimer(retryUnlessHidden, retryDelay(failures));
       failures += 1;
     }
   };
+
+  // Hidden: nothing is scheduled and nothing is in flight, so the visibility listener below is what resumes.
+  function retryUnlessHidden() {
+    retryTimer = null;
+    if (!deps.isHidden()) attempt();
+  }
 
   function attempt() {
     current?.abort();
@@ -140,13 +164,16 @@ export function startSessionReader(deps: SessionReaderDeps): SessionReader {
       .then((answer) => settle(mine, answer));
   }
 
+  stopListening = deps.onVisible(() => {
+    if (!done && current === null) attempt();
+  });
   attempt();
   return {
     retryNow() {
       if (!done) attempt();
     },
     stop() {
-      done = true;
+      finish();
       current?.abort();
       current = null;
       clearTimers();

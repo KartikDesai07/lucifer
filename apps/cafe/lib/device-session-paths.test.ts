@@ -71,6 +71,15 @@ test("PIN: the gate renders the plain placeholder, then after MASTERS_HOLD_MAX_M
   assert.match(gate, /return \(\) => \{[\s\S]*\.stop\(\)[\s\S]*window\.clearTimeout\(/, "unmount stops the reader and the timer");
 });
 
+test("PIN: the gate tells the reader when the page is hidden and when it shows, and removes that listener", () => {
+  const gate = code(GATE);
+  assert.match(gate, /isHidden: \(\) => document\.visibilityState === "hidden"/, "the hidden read");
+  assert.match(gate, /document\.addEventListener\("visibilitychange", (\w+)\)/, "listens for the page showing");
+  const added = /document\.addEventListener\("visibilitychange", (\w+)\)/.exec(gate)?.[1];
+  assert.ok(gate.includes(`document.removeEventListener("visibilitychange", ${added})`), "and removes the same listener");
+  assert.match(gate, /if \(document\.visibilityState === "visible"\) run\(\);/, "only a page that shows resumes it");
+});
+
 test("PIN: MasterDataProvider exports ShellPlaceholder and uses it for its own placeholder; Retry is a 44px button", () => {
   const src = code(PROVIDER);
   assert.match(src, /export function ShellPlaceholder\(/, "ShellPlaceholder is exported");
