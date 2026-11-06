@@ -1351,3 +1351,12 @@ PRINTERS_CARD message) and minor 5: a thrown connect's toast (Reconnect, a conne
 now follows the same rule as the inline line (`thrownWordsOf` = `attemptErrorWordsOf` ?? the connect-failed sentence;
 the browser's connects never throw, so today nothing changes). Ruled: minor 4 (`home === "page"` instead of
 `frame === null` in the focus effect) stays as is: the rest of that effect reads the frame too, and only the sheet has one.
+
+**Harness (the PX-3 local harness on a production build of c1d5f40, `D:\kd\pxr`, since removed; report in the SDD
+workspace `polish-harness-report.md`; shots `D:\kd\pos-dev-keep\printer-ux\pxp\`):** 108 PASS / 2 FAIL, both the accepted
+T14-B scroll budget (simple mode with a second app printer at 390: 189 px, was 173: the new note wraps to two lines;
+printers mode 132, unchanged). Simple mode shows the new note and never "Which slips each one prints"; printers mode keeps
+it as the card's sub; the guided connect, the inline Bluetooth-off reason, Connect it again and the one toast after
+leaving mid-connect pass as at ff67d76; a11y 0 violations (14 + 8 views); /printers Back and Cancel out of the connect view
+leave the focus on `section[data-printer-target="device"]` (6 / 0). Not driven there: the Wi-Fi form's prefill (no harness
+step seeds a saved network printer; its unit test covers it). Scratch DBs px3a / px3b dropped; ports free.
