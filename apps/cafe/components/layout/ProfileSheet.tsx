@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import Link from "next/link";
+import { IntentLink } from "@/components/layout/IntentLink";
 import { usePathname } from "next/navigation";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ChevronLeft, KeyRound, LogOut } from "lucide-react";
@@ -188,9 +188,8 @@ export function ProfileSheetBody({
                   const active = isActivePath(pathname, page.href);
                   return (
                     <li key={page.href}>
-                      <Link
+                      <IntentLink
                         href={page.href}
-                        prefetch={false}
                         data-ui="more-sub-row"
                         data-active={active}
                         aria-current={active ? "page" : undefined}
@@ -198,7 +197,7 @@ export function ProfileSheetBody({
                         className={BRAND_NAV_FLYOUT_ITEM_CLASS}
                       >
                         {page.title}
-                      </Link>
+                      </IntentLink>
                     </li>
                   );
                 })}
@@ -231,10 +230,9 @@ export function ProfileSheetBody({
                     {inside}
                   </button>
                 ) : (
-                  <Link
+                  <IntentLink
                     key={item.url}
                     href={item.url}
-                    prefetch={false}
                     data-ui="more-tile"
                     data-active={active}
                     aria-current={active ? "page" : undefined}
@@ -242,7 +240,7 @@ export function ProfileSheetBody({
                     className={TILE_CLASS}
                   >
                     {inside}
-                  </Link>
+                  </IntentLink>
                 );
               })}
             </div>

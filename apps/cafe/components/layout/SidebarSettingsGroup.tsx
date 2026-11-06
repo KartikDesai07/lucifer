@@ -3,7 +3,7 @@
 // The Settings row of the nav, extracted to keep AppSidebar.tsx small. Settings expands in place: in the wide form
 // its visible sections (VISIBLE_SETTINGS_SECTIONS) open as sub-rows under the row, and in the 76px rail they open in
 // a flyout to its right (design 5.2; the row, the sub-rows and the flyout are components/layout/nav-parts.tsx).
-import Link from "next/link";
+import { IntentLink } from "@/components/layout/IntentLink";
 
 import { VISIBLE_SETTINGS_SECTIONS, settingsSectionPath } from "@/lib/settings-sections";
 import type { NavIcon } from "@/components/layout/nav-icons";
@@ -53,9 +53,9 @@ export function SidebarSettingsGroup({
           const active = pathname === href;
           return (
             <NavSubItem key={section.slug} place={place} isActive={active}>
-              <Link href={href} prefetch={false} aria-current={active ? "page" : undefined}>
+              <IntentLink href={href} aria-current={active ? "page" : undefined}>
                 {section.title}
-              </Link>
+              </IntentLink>
             </NavSubItem>
           );
         })}

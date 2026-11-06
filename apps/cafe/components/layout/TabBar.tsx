@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import { IntentLink } from "@/components/layout/IntentLink";
 import { usePathname } from "next/navigation";
 import type { StaffRole } from "@pos/shared/constants";
 
@@ -76,10 +76,9 @@ export function TabBarNav({ pathname, moreActive, moreOpen, onMore }: TabBarNavP
         const active = isTabActive(tab, pathname);
         const Icon = tab.icon;
         return (
-          <Link
+          <IntentLink
             key={tab.url}
             href={tab.url}
-            prefetch={false}
             data-ui="tab"
             data-active={active}
             aria-current={active ? "page" : undefined}
@@ -87,7 +86,7 @@ export function TabBarNav({ pathname, moreActive, moreOpen, onMore }: TabBarNavP
           >
             <Icon aria-hidden="true" strokeWidth={1.7} className="size-[22px] flex-none" />
             <span>{tab.title}</span>
-          </Link>
+          </IntentLink>
         );
       })}
       <button

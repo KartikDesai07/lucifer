@@ -93,6 +93,18 @@ export function lineProven(answeredAt: number | null, now: number): boolean {
   return answeredAt !== null && now - answeredAt <= WARM_LINE_PROOF_MS;
 }
 
+/** The time of the pulse's last SUCCESSFUL answer when it is recent enough to
+ *  prove the line, else null. A failed refetch leaves status "error" even with
+ *  old data, so only a success counts. Lets a component that mounts after the
+ *  first answer start from the proof instead of waiting for the next beat. */
+export function answeredAtFromCache(
+  state: { dataUpdatedAt: number; status: string } | undefined,
+  now: number,
+): number | null {
+  if (!state || state.status !== "success") return null;
+  return lineProven(state.dataUpdatedAt, now) ? state.dataUpdatedAt : null;
+}
+
 /** Each href once, in order, `gapMs` apart (the first at once). */
 export function staggerPlan(hrefs: readonly string[], gapMs: number): StaggeredOffer[] {
   return [...new Set(hrefs)].map((href, i) => ({ href, delayMs: i * gapMs }));

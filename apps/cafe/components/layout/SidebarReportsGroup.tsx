@@ -4,7 +4,7 @@
 // stays small). Reports has no hub page of its own (unlike Settings): every slug routes straight to its report, so in
 // the wide form, with the list open, the lit sub-row says where you are; in the 76px rail the reports open in a
 // flyout to the row's right (design 5.2; components/layout/nav-parts.tsx).
-import Link from "next/link";
+import { IntentLink } from "@/components/layout/IntentLink";
 
 import { REPORT_SECTIONS, reportSectionPath } from "@/lib/report-sections";
 import type { NavIcon } from "@/components/layout/nav-icons";
@@ -44,9 +44,9 @@ export function SidebarReportsGroup({
           const active = pathname === href;
           return (
             <NavSubItem key={section.slug} place={place} isActive={active}>
-              <Link href={href} prefetch={false} aria-current={active ? "page" : undefined}>
+              <IntentLink href={href} aria-current={active ? "page" : undefined}>
                 {section.title}
-              </Link>
+              </IntentLink>
             </NavSubItem>
           );
         })}

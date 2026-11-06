@@ -13,6 +13,7 @@ import {
   WARM_LINE_PROOF_MS,
   WARM_ROUTES_INTERVAL_MS,
   WARM_ROUTES_STAGGER_MS,
+  answeredAtFromCache,
   isLineFailure,
   lineProven,
   staggerPlan,
@@ -178,4 +179,30 @@ test("PIN: the hook warms only after a real answer, staggers the offers, drops t
   assert.ok(!src.includes("router.refresh"), "router.refresh must never be used here");
   assert.ok(src.includes('addEventListener("offline", lineDown)'), "landmark: the offline listener");
   assert.doesNotMatch(src, /addEventListener\(\s*["']online["']/);
+});
+
+test("answeredAtFromCache: a fresh success gives its time; a stale one, an error or no state gives null", () => {
+  const now = 10_000_000;
+  const fresh = now - WARM_LINE_PROOF_MS + 1;
+  assert.equal(answeredAtFromCache({ dataUpdatedAt: fresh, status: "success" }, now), fresh, "a fresh success is the proof");
+  assert.equal(answeredAtFromCache({ dataUpdatedAt: now - WARM_LINE_PROOF_MS, status: "success" }, now), now - WARM_LINE_PROOF_MS, "at the proof limit it still counts (lineProven is <=)");
+  assert.equal(answeredAtFromCache({ dataUpdatedAt: now - WARM_LINE_PROOF_MS - 1, status: "success" }, now), null, "a stale success proves nothing");
+  assert.equal(answeredAtFromCache({ dataUpdatedAt: fresh, status: "error" }, now), null, "a failed refetch (old data kept) is not a proof");
+  assert.equal(answeredAtFromCache({ dataUpdatedAt: fresh, status: "pending" }, now), null, "a pending query is not a proof");
+  assert.equal(answeredAtFromCache({ dataUpdatedAt: 0, status: "pending" }, now), null, "never answered");
+  assert.equal(answeredAtFromCache(undefined, now), null, "no query state");
+});
+
+test("PIN: useWarmRoutes seeds from the pulse's cached answer at mount and passes at once; every offer is marked held", () => {
+  const src = stripComments(readCafe("hooks/use-warm-routes.ts"));
+  assert.match(
+    src,
+    /const cached = answeredAtFromCache\(qc\.getQueryState\(POS_PULSE_KEYS\.all\), Date\.now\(\)\);\s*if \(cached !== null\) \{\s*answeredAt = cached;\s*pass\(\);\s*\}/,
+    "mount reads the pulse state and starts a pass when it is a recent success",
+  );
+  assert.ok(
+    src.indexOf("const cached =") < src.indexOf("qc.getQueryCache().subscribe("),
+    "the seed is read before the subscription (an answer in between is still seen)",
+  );
+  assert.match(src, /router\.prefetch\(href\);\s*heldRoutes\.mark\(href, Date\.now\(\)\);/, "an offered route is marked in heldRoutes");
 });

@@ -382,6 +382,8 @@
     "lib/tab-bar-paths.test.ts",
     "lib/app-toaster-paths.test.ts",
     "lib/warm-routes.test.ts",
+    "lib/held-routes.test.ts",
+    "lib/intent-prefetch.test.ts",
     "lib/pending-writes.test.ts",
     "lib/settle-flow.test.ts",
     "lib/settle-flow-paths.test.ts",

@@ -20,9 +20,7 @@ const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel),
 
 const APP_SIDEBAR = "apps/cafe/components/layout/AppSidebar.tsx";
 const SETTINGS_GROUP = "apps/cafe/components/layout/SidebarSettingsGroup.tsx";
-const REPORTS_GROUP = "apps/cafe/components/layout/SidebarReportsGroup.tsx";
 const MENU_GROUP = "apps/cafe/components/layout/SidebarMenuGroup.tsx";
-const TABLES_GROUP = "apps/cafe/components/layout/SidebarTablesGroup.tsx";
 const SIDEBAR_BRAND = "apps/cafe/components/layout/SidebarBrand.tsx";
 // 2026-10-11: the top bar's New Order + Tables tabs — the same two warm routes, so the same no-prefetch rule.
 const HEADER_QUICK_TABS = "apps/cafe/components/layout/HeaderQuickTabs.tsx";
@@ -241,13 +239,13 @@ function linkTags(src: string): string[] {
   return tags;
 }
 
-test("PIN: no sidebar Link prefetches on its own — every one says prefetch={false}; the warm rows' only warmer is useWarmRoutes", () => {
+test("PIN: no plain sidebar Link prefetches on its own — the brand and the quick tabs say prefetch={false}; the nav rows are IntentLinks (pinned in lib/intent-prefetch.test.ts), which force it", () => {
   // 2026-09-29: a Link's default (or true) prefetch fires on sight and on
   // hover; on a line still waking up it can fail, and a failed prefetch turns
   // the next click into a full page load (vendor facts: lib/warm-routes.test.ts).
   // U0 Task 2: Settings, Reports and Tables lost their rail-only Link (the rail opens a flyout of the same sub-page
   // Links); Menu keeps its staff single-section Link.
-  for (const [file, expected] of [[APP_SIDEBAR, 1], [SETTINGS_GROUP, 1], [REPORTS_GROUP, 1], [MENU_GROUP, 2], [TABLES_GROUP, 1], [SIDEBAR_BRAND, 1], [HEADER_QUICK_TABS, 1]] as const) {
+  for (const [file, expected] of [[SIDEBAR_BRAND, 1], [HEADER_QUICK_TABS, 1]] as const) {
     const src = stripComments(readSrc(file));
     // Vision guards: Link is next/link under that one name, and the scan finds
     // every tag the file renders (an extractor that finds none proves nothing).

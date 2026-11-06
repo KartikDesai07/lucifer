@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
+import { heldRoutes } from "@/lib/held-routes";
 import {
   WARM_ROUTES_INTERVAL_MS,
   WARM_ROUTES_STAGGER_MS,
+  answeredAtFromCache,
   isLineFailure,
   lineProven,
   staggerPlan,
@@ -39,7 +41,11 @@ export function useWarmRoutes(hrefs: readonly string[]): void {
     if (list.length === 0) return;
     let answeredAt: number | null = null;
     let offers: number[] = [];
-    const prefetch = (href: string) => router.prefetch(href);
+    const prefetch = (href: string) => {
+      router.prefetch(href);
+      // Offered = held for the router-cache window (lib/held-routes.ts).
+      heldRoutes.mark(href, Date.now());
+    };
     const env = () => ({
       visible: document.visibilityState === "visible",
       online: navigator.onLine !== false,
@@ -59,6 +65,16 @@ export function useWarmRoutes(hrefs: readonly string[]): void {
       answeredAt = null;
       cancelPass();
     };
+
+    // This hook mounts after the pulse's first answer (behind the master-data
+    // hold and the session gate), so waiting for a pulse SUCCESS event would
+    // leave the first pass to the second pulse. A recent success already in
+    // the cache is the same proof: start from it and offer at once.
+    const cached = answeredAtFromCache(qc.getQueryState(POS_PULSE_KEYS.all), Date.now());
+    if (cached !== null) {
+      answeredAt = cached;
+      pass();
+    }
 
     const unsubscribe = qc.getQueryCache().subscribe((event) => {
       if (event.type !== "updated") return;
