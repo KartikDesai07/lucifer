@@ -11,7 +11,7 @@ import { ShellPlaceholder } from "@/components/layout/MasterDataProvider";
 // static, so no server session comes with it. Until the first answer the shell, the nav and every guard stay behind
 // the same placeholder MasterDataProvider shows, so a staff member never sees an admin row and AdminGuard never runs
 // on a session that is merely late. After MASTERS_HOLD_MAX_MS without an answer the placeholder says so and offers
-// Retry, and keeps trying by itself while the page is visible.
+// Retry, and keeps trying by itself (at most once a minute while the page is hidden).
 //
 // SessionProvider is mounted ONCE with the first session and never re-keyed: it reads its `session` prop only at
 // mount, and a PIN switch or a password sign-in on the lock screen updates it through next-auth's own signIn. Its
@@ -38,7 +38,8 @@ export function DeviceSessionGate({ children }: { children: React.ReactNode }) {
       },
       setTimer: (run, ms) => window.setTimeout(run, ms),
       clearTimer: (id) => window.clearTimeout(id),
-      // No retries while nobody can see the page (a free-tier cost during an outage); it asks again on showing.
+      // While nobody can see the page the retries slow to once a minute (a free-tier cost during an outage), never
+      // stop (a hidden print-host tab must come up by itself); the page showing asks at once.
       isHidden: () => document.visibilityState === "hidden",
       onVisible: (run) => {
         const onChange = () => {

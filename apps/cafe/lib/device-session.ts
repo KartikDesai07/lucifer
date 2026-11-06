@@ -14,6 +14,7 @@
 //
 // Everything with a side effect (fetch, timers) is passed in, so the whole read is testable without a browser.
 import type { Session } from "next-auth";
+import { REFETCH_INTERVALS } from "@/lib/query";
 
 export const SESSION_ENDPOINT = "/api/auth/session";
 
@@ -22,6 +23,9 @@ export const SESSION_RETRY_MS = [1000, 2000, 4000, 8000] as const;
 
 /** One attempt is abandoned (aborted, counted as no answer) after the backoff's ceiling, not the browser's minutes. */
 export const SESSION_ATTEMPT_TIMEOUT_MS = Math.max(...SESSION_RETRY_MS);
+
+/** While the page is hidden the retries slow to the calm pulse's cadence (60 s): never stop, never every 8 s. */
+export const SESSION_HIDDEN_RETRY_MS = REFETCH_INTERVALS.POS_PULSE_CALM;
 
 const HTTP_OK = 200;
 
@@ -100,11 +104,11 @@ export interface SessionReader {
  * SESSION_ATTEMPT_TIMEOUT_MS, and no answer waits retryDelay(n) before the next. Exactly one of onSession /
  * onSignedOut is called, at most once. An attempt that was superseded (Retry, a timeout) or stopped never counts.
  *
- * A hidden page starts no new attempt: during a server outage a tab nobody looks at would otherwise call the session
- * function every 8 s for hours (a free-tier cost). A retry that comes due while hidden is held, an attempt in flight
- * may finish, and the moment the page shows with no attempt in flight it asks at once (the backoff step carries on).
- * The page load's first attempt runs even hidden: one request, as before, so a tab opened in the background (a
- * browser print host) still comes up by itself on a healthy server.
+ * A hidden page retries at the calm cadence: during a server outage a tab nobody looks at would otherwise call the
+ * session function every 8 s for hours (a free-tier cost), but it must never stop, because a browser print-host tab
+ * loaded hidden has to come up by itself once the server is back (its print sources mount inside the gate). So a
+ * retry scheduled while hidden waits max(backoff, SESSION_HIDDEN_RETRY_MS); the moment the page shows with no attempt
+ * in flight it asks at once (the backoff step carries on). The page load's first attempt runs even hidden.
  */
 export function startSessionReader(deps: SessionReaderDeps): SessionReader {
   let done = false;
@@ -138,16 +142,11 @@ export function startSessionReader(deps: SessionReaderDeps): SessionReader {
       finish();
       deps.onSignedOut();
     } else {
-      retryTimer = deps.setTimer(retryUnlessHidden, retryDelay(failures));
+      const backoff = retryDelay(failures);
+      retryTimer = deps.setTimer(attempt, deps.isHidden() ? Math.max(backoff, SESSION_HIDDEN_RETRY_MS) : backoff);
       failures += 1;
     }
   };
-
-  // Hidden: nothing is scheduled and nothing is in flight, so the visibility listener below is what resumes.
-  function retryUnlessHidden() {
-    retryTimer = null;
-    if (!deps.isHidden()) attempt();
-  }
 
   function attempt() {
     current?.abort();

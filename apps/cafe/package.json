@@ -87,6 +87,7 @@
     "lib/document-branding.test.ts",
     "lib/static-frames-paths.test.ts",
     "lib/device-session.test.ts",
+    "lib/device-session-hidden.test.ts",
     "lib/device-session-paths.test.ts",
     "lib/tenant.test.ts",
     "models/order.ledger.test.ts",

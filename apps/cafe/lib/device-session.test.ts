@@ -15,7 +15,8 @@ import { flush, harness } from "@/lib/device-session.fixtures";
 // P2 N2: the staff frame is static, so the session is read on the device. next-auth's own client fetch turns a failed
 // request into "signed out" (SessionKeepalive.tsx), which would bounce an admin off /settings or flash the staff rows;
 // so the gate asks /api/auth/session itself and tells three answers apart: a session, a real sign-out, no answer.
-// The gate's wiring (where SessionProvider lives, what it renders) is pinned in lib/device-session-paths.test.ts.
+// The gate's wiring (where SessionProvider lives, what it renders) is pinned in lib/device-session-paths.test.ts; the
+// reader while the page is hidden is tested in lib/device-session-hidden.test.ts.
 const SESSION_BODY = { user: { id: "a", role: "admin" }, expires: "x" };
 const NO_ANSWER: SessionAnswer = { kind: "no-answer" };
 
@@ -222,59 +223,4 @@ test("reader: stop() during the backoff wait clears it", async () => {
   assert.deepEqual(clock.pending(), [1000], "waiting");
   reader.stop();
   assert.deepEqual(clock.pending(), [], "the wait is cleared");
-});
-
-// ── the page hidden: no new attempt while nobody can see it ─────────────────
-
-test("reader: a hidden page still makes the page load's one first attempt, and its answer counts", async () => {
-  const { asked, seen } = harness({ hidden: true });
-  assert.equal(asked.calls.length, 1, "the first attempt runs even hidden (a hidden print-host tab must still come up)");
-  asked.calls[0]?.answer({ kind: "session", session: SESSION_BODY as never });
-  await flush();
-  assert.deepEqual(seen.sessions, [SESSION_BODY], "an attempt in flight finishes while hidden");
-});
-
-test("reader: a retry that comes due while hidden is held; showing the page asks at once", async () => {
-  const { clock, asked, page } = harness();
-  asked.calls[0]?.answer(NO_ANSWER);
-  await flush();
-  page.hide();
-  clock.fire(1000);
-  assert.equal(asked.calls.length, 1, "no attempt while hidden");
-  assert.deepEqual(clock.pending(), [], "and nothing scheduled: the page's return resumes it");
-  page.show();
-  assert.equal(asked.calls.length, 2, "an attempt at once when the page shows");
-  assert.deepEqual(clock.pending(), [SESSION_ATTEMPT_TIMEOUT_MS], "with its own timeout");
-  asked.calls[1]?.answer(NO_ANSWER);
-  await flush();
-  assert.deepEqual(clock.pending(), [2000], "the backoff goes on where it was (nothing reset)");
-});
-
-test("reader: showing the page during a backoff wait asks at once; during an attempt in flight it starts nothing", async () => {
-  const { clock, asked, page } = harness();
-  page.hide();
-  page.show();
-  assert.equal(asked.calls.length, 1, "an attempt in flight is left to finish");
-  asked.calls[0]?.answer(NO_ANSWER);
-  await flush();
-  assert.deepEqual(clock.pending(), [1000], "waiting");
-  page.hide();
-  page.show();
-  assert.equal(asked.calls.length, 2, "the person is looking: ask now");
-  assert.deepEqual(clock.pending(), [SESSION_ATTEMPT_TIMEOUT_MS], "the backoff wait is gone");
-});
-
-test("reader: the visibility listener is removed once settled and on stop()", async () => {
-  const settled = harness();
-  assert.equal(settled.page.listeners(), 1, "landmark: listening while there is no answer");
-  settled.asked.calls[0]?.answer({ kind: "session", session: SESSION_BODY as never });
-  await flush();
-  assert.equal(settled.page.listeners(), 0, "gone after a session");
-  settled.page.show();
-  assert.equal(settled.asked.calls.length, 1, "and showing the page asks nothing more");
-  const stopped = harness();
-  stopped.reader.stop();
-  assert.equal(stopped.page.listeners(), 0, "gone after stop()");
-  stopped.page.show();
-  assert.equal(stopped.asked.calls.length, 1, "nothing after stop()");
 });
