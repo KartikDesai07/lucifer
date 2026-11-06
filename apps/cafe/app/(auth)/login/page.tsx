@@ -10,8 +10,10 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 // Staff sign-in. The header names the cafe, as the owner's HTML lock/login header does (ruling R39, design 5.6): read
-// here on the server with readSettings(), the same cached, read-only look-up the root layout already makes on /login
-// for the tab title (lib/login-brand.ts), so it costs no request and no write. Everything else is the client screen.
+// here on the server with readSettings() (lib/login-brand.ts), the same cached, read-only look-up this page's
+// generateMetadata makes for the tab title (lib/public-metadata.ts), so it costs no request and no write. Everything
+// else is the client screen, which needs no SessionProvider: signIn works without one, and the dashboard reads the
+// new session itself once it opens.
 export default async function LoginPage() {
   return (
     <>

@@ -85,6 +85,8 @@
     "lib/login-brand.test.ts",
     "lib/document-branding.test.ts",
     "lib/static-frames-paths.test.ts",
+    "lib/device-session.test.ts",
+    "lib/device-session-paths.test.ts",
     "lib/tenant.test.ts",
     "models/order.ledger.test.ts",
     "models/daily-rollup.ledger.test.ts",

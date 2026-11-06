@@ -8,8 +8,8 @@ import { stripComments } from "@/lib/source-pin-utils";
 import { SESSION_MAX_AGE_SECONDS, SESSION_KEEPALIVE_SECONDS } from "@pos/shared/constants";
 
 // CB-U1 (.claude/plan/v2/cb-u1-wake-and-session-plan.md, Slice B) — the
-// 90-day rolling login: constant values, apps/cafe/app/layout.tsx's
-// SessionProvider wiring, the apps/hub parity pin (hub deliberately NOT
+// 90-day rolling login: constant values, the SessionProvider wiring (now in
+// the dashboard's session gate), the apps/hub parity pin (hub deliberately NOT
 // rolled), and an installed-dist pin over @auth/core's session.js proving
 // the JWT branch actually re-signs the cookie's expiry on every session
 // action while `updateAge` is a dead knob there. Same readSrc + REPO_ROOT +
@@ -21,6 +21,7 @@ const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel),
 
 const CAFE_LAYOUT = "apps/cafe/app/layout.tsx";
 const CAFE_DASHBOARD_LAYOUT = "apps/cafe/app/(dashboard)/layout.tsx";
+const CAFE_SESSION_GATE = "apps/cafe/components/layout/DeviceSessionGate.tsx";
 const SESSION_KEEPALIVE = "apps/cafe/components/layout/SessionKeepalive.tsx";
 const CAFE_AUTH_CONFIG = "apps/cafe/auth.config.ts";
 const HUB_CONSTANTS = "apps/hub/lib/constants.ts";
@@ -60,33 +61,40 @@ test("SESSION_KEEPALIVE_SECONDS is at most one hour (60 * 60 seconds) — a keep
   );
 });
 
-// ── 2. apps/cafe/app/layout.tsx wiring ──────────────────────────────────────
+// ── 2. The session gate's SessionProvider wiring ────────────────────────────
 //
 // F1 fix (review round 1): SessionProvider's own refetchInterval was REJECTED
 // as the keepalive — next-auth's fetchData() returns null on ANY transient
 // error and _getSession then nulls the client session (status
 // "unauthenticated", interval stops), live-probed on the installed dist. The
-// root layout is back to a bare <SessionProvider session={session}> and the
 // keepalive moved to components/layout/SessionKeepalive.tsx, mounted in the
-// DASHBOARD layout only (see the pins below).
+// DASHBOARD layout only (see the pins below). P2 N2 moved SessionProvider
+// itself out of the root layout into the dashboard's session gate
+// (components/layout/DeviceSessionGate.tsx), which hands it the session it
+// read on the device and nothing else.
 
-test("PIN (F1 regression guard): apps/cafe/app/layout.tsx's SessionProvider element is EXACTLY a bare <SessionProvider> (no session prop, no refetchInterval, no refetchWhenOffline prop) — landmark: <SessionProvider IS present", () => {
-  const src = stripComments(readSrc(CAFE_LAYOUT));
+test("PIN (F1 regression guard): DeviceSessionGate's SessionProvider element is EXACTLY <SessionProvider session={session}> (no refetchInterval, no refetchWhenOffline, no key), the gate never names refetchInterval, and app/layout.tsx has no SessionProvider — landmark: <SessionProvider IS present in the gate", () => {
+  const src = stripComments(readSrc(CAFE_SESSION_GATE));
 
   const tagStart = src.indexOf("<SessionProvider");
-  assert.ok(tagStart >= 0, "positive landmark: <SessionProvider must be present");
+  assert.ok(tagStart >= 0, "positive landmark: <SessionProvider must be present in the gate");
   const tagEnd = src.indexOf(">", tagStart);
   assert.ok(tagEnd > tagStart, "expected to find the SessionProvider opening tag's closing >");
   const tagSlice = src.slice(tagStart, tagEnd + 1);
 
   assert.equal(
     tagSlice.replace(/\s+/g, " "),
-    "<SessionProvider>",
-    "app/layout.tsx's <SessionProvider> element must be exactly a bare <SessionProvider> (the interim state before the session gate moves it: no session prop, the root reads no session) — the F1 fix reverted it to bare, moving the keepalive out to SessionKeepalive.tsx",
+    "<SessionProvider session={session}>",
+    "the gate's <SessionProvider> must be exactly <SessionProvider session={session}>: the session read on the device and nothing else (no refetchInterval: F1; no key: a re-keyed provider would drop a PIN switch's update)",
   );
+  assert.equal(src.split("<SessionProvider").length - 1, 1, "the gate renders exactly one SessionProvider");
   assert.ok(
     !src.includes("refetchInterval"),
-    "app/layout.tsx must NOT contain refetchInterval anywhere — SessionProvider's own refetchInterval was rejected as the keepalive (F1): a transient fetchData() failure nulls the client session and stops the interval",
+    "the gate must NOT contain refetchInterval anywhere — SessionProvider's own refetchInterval was rejected as the keepalive (F1): a transient fetchData() failure nulls the client session and stops the interval",
+  );
+  assert.ok(
+    !stripComments(readSrc(CAFE_LAYOUT)).includes("SessionProvider"),
+    "app/layout.tsx must not hold a SessionProvider any more: /login and /m never fetch a session, the staff session is the gate's",
   );
 });
 

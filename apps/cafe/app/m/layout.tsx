@@ -13,12 +13,14 @@ export async function generateMetadata(): Promise<Metadata> {
 // CR2.4 S3 — server-renders the diner theme for every /m route, killing the
 // flash-of-default-theme a client-only theme switch would show on every scan.
 //
-// No `export const revalidate` here (A3 — ISR was the original plan, but the
-// ROOT layout does `await auth()`, a Dynamic API with no PPR, which makes
-// EVERY /m render dynamic regardless of what this layout exports; a
-// revalidate export here would be dead config). The actual freshness bound is
-// lib/settings.ts's TTL.SETTINGS cache (~45s) that readPublicAppearance reads
-// through — same class of bound the public menu route already accepts.
+// No `export const revalidate` here (A3 — ISR was the original plan, dropped
+// while the ROOT layout awaited auth(), a Dynamic API that made every /m
+// render dynamic). The root layout is static now (P2 N2) and no longer
+// decides that: whether /m renders per request rests on the /m segment
+// itself, and the build's route list is where it shows. The freshness bound
+// this layout relies on is lib/settings.ts's TTL.SETTINGS cache (~45s) that
+// readPublicAppearance reads through — same class of bound the public menu
+// route already accepts.
 export default async function PublicMenuLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {

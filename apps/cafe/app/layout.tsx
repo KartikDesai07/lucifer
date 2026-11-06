@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { SessionProvider } from "next-auth/react";
 import { fontVariables } from "@/lib/fonts";
 import { AppToaster } from "@/components/layout/AppToaster";
 import { Providers } from "@/components/providers";
@@ -11,7 +10,8 @@ import "./globals.css";
 // Static: the root layout reads no Settings and no session, so the staff frames can be served from the CDN. The
 // cafe's own name and logo reach the tab on the device (DocumentBranding, staff screens) or from the public pages'
 // own generateMetadata (/login, /m). The tab icon is declared here and never as app/favicon.ico: file-based
-// metadata OVERRIDES the metadata object (Next.js docs), and that file is deleted.
+// metadata OVERRIDES the metadata object (Next.js docs), and that file is deleted. No SessionProvider here either: the
+// staff session is read on the device by the dashboard's DeviceSessionGate, and /login and /m never fetch one.
 export const metadata: Metadata = {
   title: APP_NAME,
   description: METADATA_DESCRIPTION,
@@ -33,10 +33,8 @@ export default function RootLayout({
           desktop dvh === vh so nothing changes. /login, /m, print and
           global-error carry their own min-height and are unaffected. */}
       <body className="font-sans antialiased min-h-screen supports-[height:1dvh]:min-h-dvh bg-background text-foreground">
-        <SessionProvider>
-          <Providers>{children}</Providers>
-          <AppToaster />
-        </SessionProvider>
+        <Providers>{children}</Providers>
+        <AppToaster />
       </body>
     </html>
   );

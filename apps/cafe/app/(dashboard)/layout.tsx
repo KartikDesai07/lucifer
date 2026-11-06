@@ -13,6 +13,7 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Header } from "@/components/layout/Header";
 import { PageHeaderSlotProvider } from "@/components/layout/page-header-slot";
+import { DeviceSessionGate } from "@/components/layout/DeviceSessionGate";
 import { DocumentBranding } from "@/components/layout/DocumentBranding";
 import { MasterDataProvider } from "@/components/layout/MasterDataProvider";
 import { OfflineReplayRunner } from "@/components/layout/OfflineReplayRunner";
@@ -91,36 +92,40 @@ export default function DashboardLayout({
                 waits behind a placeholder so the mounted screens cannot each fire
                 their own master fetch first. */}
             <MasterDataProvider>
-              {/* The tab title and icon, from the settings this provider seeds (the frame itself is static). */}
-              <DocumentBranding />
-              {/* CB-U1: the session keepalive rolls the 90-day cookie for a tab
-                  that never navigates — staff screens only, never /login or /m. */}
-              <SessionKeepalive />
-              {/* Printing Phase 5: offline orders are sent by themselves once the server answers (one tab per device). */}
-              <OfflineReplayRunner />
-              {/* The screen lock: a cover over this running page (never a sign-out, so printing, the pulse, the alarm
-                  and realtime go on under it). Inside the master-data provider, so it reads the seeded settings. */}
-              <ScreenLock />
-              <AppSidebar />
-              <SidebarInset>
-                {/* U0 Task 3: the page header's slot. Every page's PageHeader fills the one header (its title,
-                    subtitle and, from 720px, its actions), so the provider wraps the header and the page. */}
-                <PageHeaderSlotProvider>
-                  <Header />
-                  <RequestAlertBar />
-                  <TouchFeel />
-                  {/* The HTML's global rules (values 1.4, ruling R24) for every staff page, its lock and its dialogs. */}
-                  <HtmlRulesScope />
-                  {/* Below 720px the page's foot keeps 92px clear (values 2.1 screenPadB): the 59px tab bar plus air.
-                      No page fade on a screen change (owner D1, 2026-11-02). */}
-                  <main className="flex-1 p-4 pb-[92px] tab:pb-4 md:p-6">
-                    {children}
-                  </main>
-                  <PrintHostPrintSources />
-                </PageHeaderSlotProvider>
-              </SidebarInset>
-              {/* The phone's nav (values 2.6, U0 Task 4): the tab bar and its More sheet, fixed, below 720px only. */}
-              <TabBar />
+              {/* P2 N2: the session is read on the device (the frame is static). Everything below waits for it behind
+                  the same placeholder, so no shell, nav, guard or settings-reading part runs on a late session. */}
+              <DeviceSessionGate>
+                {/* The tab title and icon, from the settings this provider seeds (the frame itself is static). */}
+                <DocumentBranding />
+                {/* CB-U1: the session keepalive rolls the 90-day cookie for a tab
+                    that never navigates — staff screens only, never /login or /m. */}
+                <SessionKeepalive />
+                {/* Printing Phase 5: offline orders are sent by themselves once the server answers (one tab per device). */}
+                <OfflineReplayRunner />
+                {/* The screen lock: a cover over this running page (never a sign-out, so printing, the pulse, the alarm
+                    and realtime go on under it). Inside the master-data provider, so it reads the seeded settings. */}
+                <ScreenLock />
+                <AppSidebar />
+                <SidebarInset>
+                  {/* U0 Task 3: the page header's slot. Every page's PageHeader fills the one header (its title,
+                      subtitle and, from 720px, its actions), so the provider wraps the header and the page. */}
+                  <PageHeaderSlotProvider>
+                    <Header />
+                    <RequestAlertBar />
+                    <TouchFeel />
+                    {/* The HTML's global rules (values 1.4, ruling R24) for every staff page, its lock and its dialogs. */}
+                    <HtmlRulesScope />
+                    {/* Below 720px the page's foot keeps 92px clear (values 2.1 screenPadB): the 59px tab bar plus air.
+                        No page fade on a screen change (owner D1, 2026-11-02). */}
+                    <main className="flex-1 p-4 pb-[92px] tab:pb-4 md:p-6">
+                      {children}
+                    </main>
+                    <PrintHostPrintSources />
+                  </PageHeaderSlotProvider>
+                </SidebarInset>
+                {/* The phone's nav (values 2.6, U0 Task 4): the tab bar and its More sheet, fixed, below 720px only. */}
+                <TabBar />
+              </DeviceSessionGate>
             </MasterDataProvider>
           </PrintHostProvider>
         </PosPulseProvider>

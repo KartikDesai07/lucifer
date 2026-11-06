@@ -6,9 +6,10 @@ import { resolveAppearance, type ResolvedAppearance } from "@pos/shared/appearan
 // pinned by lib/appearance-paths.test.ts (S6) so this file can never grow a
 // second reach into Settings/DB internals.
 //
-// A DB hiccup must never 500 the diner page: mirrors app/layout.tsx's own
-// generateMetadata try/catch idiom (readSettings() failing there falls back to
-// static metadata; here it falls back to resolveAppearance(undefined), i.e.
+// A DB hiccup must never 500 the diner page: mirrors the public pages'
+// generateMetadata try/catch idiom (lib/public-metadata.ts: readSettings()
+// failing there falls back to static metadata; here it falls back to
+// resolveAppearance(undefined), i.e.
 // DEFAULT_APPEARANCE's values). Both branches return resolveAppearance(...) —
 // a FRESH ResolvedAppearance built key-by-key (A19), never the module-level
 // DEFAULT_APPEARANCE object itself, so a future caller that normalizes a field
