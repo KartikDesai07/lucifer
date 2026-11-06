@@ -39,7 +39,8 @@ const TEST_BUSY_REASON = "Busy with another slip. Try again in a moment.";
 // "This device's printer" (PX-3 Task 10, spec §6.6 item 1; mockup t-settings; was "Printer on this device" and the Test print
 // card): which way slips leave THIS device, by what it can do. The desktop app has its own picker; the POS app connects
 // through the guided connect; a browser connects Bluetooth or USB straight from a tap. The row, then Test print · Change · Remove,
-// then Paper width. No Reconnect (X7): the status card's Reconnect is the fix. Everything but the test (its own gate) is
+// then Paper width. No Reconnect (X7): the status card's Reconnect is the fix, except for a browser's printer that needs a
+// tap (its row says "Tap Reconnect": the PX-3 polish). Everything but the test (its own gate) is
 // disabled while one action runs, and while another tab of this browser owns the printer.
 // Task 10b (spec §6.6 item 2; mockup t-settings-pm): on a printers-mode writer it is "Printers on this device", one card for
 // every printer this device prints: its own printer first by the setup's name (today's Reconnect; on the app's pool no
@@ -151,8 +152,9 @@ export function DevicePrinterSection({ noun, onConnect }: { noun: DeviceNoun; on
       ) : (
         // Sized to their words, one row that wraps on a narrow phone.
         <div className="flex flex-wrap gap-2">
-          {/* T10b-B: today's Reconnect in printers mode (PX-2's stuck step sends staff here); simple mode's is the status card's. */}
-          {printersCard && (
+          {/* T10b-B: today's Reconnect in printers mode (PX-2's stuck step sends staff here); simple mode's is the status card's,
+              except for a browser's printer that needs a tap: its row word and its line say "Tap Reconnect" here. */}
+          {(printersCard || status === "needs-tap") && (
             <Button className={PRINTER_BUTTON_CLASS} variant={status === "connected" ? "outline" : "default"} onClick={() => void settle(devicePrinter().reconnect())} disabled={locked}>
               Reconnect
             </Button>

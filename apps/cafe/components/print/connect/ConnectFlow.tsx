@@ -18,7 +18,8 @@ import {
   PRINTER_PANEL_VIEW_TITLE_CLASS,
 } from "@/components/print/printer-classes";
 import { useConnectAttempt } from "@/hooks/use-connect-attempt";
-import { CONNECT_BACK_LABEL, CONNECT_TITLE, attemptErrorWordsOf, connectEndOf, connectHeadOf, type ConnectEvent, type ConnectState } from "@/lib/printer/connect-flow";
+import { useDevicePrinter } from "@/hooks/use-device-printer";
+import { CONNECT_BACK_LABEL, CONNECT_TITLE, attemptErrorWordsOf, connectEndOf, connectHeadOf, networkPrefillOf, type ConnectEvent, type ConnectState } from "@/lib/printer/connect-flow";
 import { devicePrinter } from "@/lib/printer/device-printer";
 import type { DeviceNoun } from "@/lib/printer/printer-status-view";
 import { nativeTargetId, type NativeSelectTarget } from "@/lib/printer/transport-native";
@@ -67,11 +68,14 @@ export function ConnectFlow({ state, send, noun, onLeave }: ConnectFlowProps) {
       });
   };
   const { step, transport } = state;
+  // A replace (Connect it again, Change) starts the Wi-Fi form at this device's saved network printer; an add starts empty.
+  const saved = useDevicePrinter();
+  const prefill = state.mode === "replace" ? networkPrefillOf(saved.printer) : null;
   // Each step keeps its slot, so the list stays mounted while it connects and the test's state lives through its steps.
   return (
     <>
       {step === "type" && <ConnectType noun={noun} onChoose={(chosen) => send({ type: "choose", transport: chosen })} />}
-      {transport !== null && (step === "list" || step === "connecting") && <ConnectList transport={transport} error={state.error} hidden={step === "connecting"} onPick={pick} />}
+      {transport !== null && (step === "list" || step === "connecting") && <ConnectList transport={transport} error={state.error} hidden={step === "connecting"} prefill={prefill} onPick={pick} />}
       {step === "connecting" && <ConnectProgress name={state.target?.name ?? ""} />}
       {(step === "connected" || step === "question" || step === "tips") && <ConnectTest state={state} send={send} noun={noun} onLeave={onLeave} />}
     </>

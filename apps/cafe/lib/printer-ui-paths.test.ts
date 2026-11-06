@@ -32,7 +32,7 @@ const F = {
   more: `${PRINT}settings/MoreCard.tsx`, view: `${PRINT}settings/PrinterSettingsView.tsx`, block: `${PRINT}settings/PrinterBlock.tsx`,
   testPrint: "apps/cafe/hooks/use-test-print.ts", setupActions: "apps/cafe/hooks/use-printer-setup-actions.ts",
   parts: `${PRINT}PrintHostCardParts.tsx`,
-  type: `${PRINT}printer-type.ts`,
+  type: "apps/cafe/lib/printer/printer-type-label.ts",
   section: `${PRINT}PrinterSection.tsx`,
   connect: `${PRINT}BrowserPrinterConnect.tsx`,
   picker: `${PRINT}DesktopPrinterPicker.tsx`,
@@ -134,7 +134,8 @@ const devicePin: Pin = (raw) => {
   check(p, count(code, "setNotSeen(false)") === 3, "the hint is also cleared by Change / Keep printer and by Remove");
   check(p, code.includes("paired={caps.serial}") && code.includes("nearby={caps.serial && caps.bluetooth}"), "the connect block hears what this browser can do: the paired list, and the nearby search only when BOTH exist");
   // PX-3 Task 10 (X7: none, was "Reconnect primary only while not connected"); Task 10b (on purpose, Ruling T10b-B): printers mode's card keeps today's.
-  check(p, count(code, ".reconnect()") === 1 && /\{printersCard && \(\s*<Button className=\{PRINTER_BUTTON_CLASS\} variant=\{status === "connected" \? "outline" : "default"\} onClick=\{\(\) => void settle\(devicePrinter\(\)\.reconnect\(\)\)\} disabled=\{locked\}>/.test(code), "T10b-B: printers mode only, primary while not connected, called straight from the click; X7: none in simple mode");
+  // The PX-3 polish (on purpose): simple mode's card too while a browser's printer needs a tap (its row says "Tap Reconnect").
+  check(p, count(code, ".reconnect()") === 1 && /\{\(printersCard \|\| status === "needs-tap"\) && \(\s*<Button className=\{PRINTER_BUTTON_CLASS\} variant=\{status === "connected" \? "outline" : "default"\} onClick=\{\(\) => void settle\(devicePrinter\(\)\.reconnect\(\)\)\} disabled=\{locked\}>/.test(code), "T10b-B: printers mode, or a printer that needs a tap; primary while not connected, called straight from the click; X7: none otherwise in simple mode");
   check(p, !/Bluetooth LE/i.test(code), "no radio jargon (Bluetooth LE) in client copy");
   check(p, code.includes("const paperDefault = printConfigOf(settings.data).bill.paperWidth;"), "paperDefault comes from the print settings");
   check(p, code.includes("const locked = busy || elsewhere;") && !/locked = [^;]*"connecting"/.test(code), "one busy state plus the other-tab state lock everything; never the app's own retries (Ruling T11-C: connecting flickers with them)");

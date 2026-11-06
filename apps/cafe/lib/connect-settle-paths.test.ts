@@ -32,7 +32,8 @@ function settleProblems(code: string): string[] {
 }
 function outcomeProblems(code: string): string[] {
   const p: string[] = [];
-  if (!code.includes('import { CONNECT_ADDED, CONNECT_ADD_FAILED } from "@/lib/printer/connect-flow";')) p.push("the add's words are today's constants");
+  // The PX-3 polish (on purpose): the same import also brings the thrown-words rule (attemptErrorWordsOf).
+  if (!code.includes('import { CONNECT_ADDED, CONNECT_ADD_FAILED, attemptErrorWordsOf } from "@/lib/printer/connect-flow";')) p.push("the add's words are today's constants");
   if (!/if \(outcome === "connected"\) toast\.success\(CONNECT_ADDED\);\s*else toast\.error\(CONNECT_ADD_FAILED\);/.test(code)) p.push("connected: added; anything else: added but not connected");
   if (/"(Printer added|The printer is added)/.test(code)) p.push("no copied sentence");
   return p;

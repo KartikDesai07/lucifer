@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import { InlineConfirm } from "@/components/print/PrintHostCardParts";
 import { PRINTER_BUTTON_CLASS, PRINTER_BUTTON_REMOVE_CLASS, PRINTER_LABEL_CLASS, PRINTER_NOTE_CLASS } from "@/components/print/printer-classes";
-import { NATIVE_TYPE_LABELS } from "@/components/print/printer-type";
+import { NATIVE_TYPE_LABELS } from "@/lib/printer/printer-type-label";
 import { PrinterBlock, SetupTestPrint } from "@/components/print/settings/PrinterBlock";
 import { Button } from "@/components/ui/button";
 import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
@@ -17,10 +17,9 @@ import { PRINTER_IN_SETUP_MESSAGE, PRINTER_TAKEOVER_MESSAGE, agentPrintersOf } f
 import { CONNECT_ADD, type ConnectEntry } from "@/lib/printer/connect-flow";
 import { PRINTER_CONNECT_FAILED_MESSAGE, type ConnectOutcome } from "@/lib/printer/device-printer";
 import { nativePool, type PoolPrinter } from "@/lib/printer/native-pool";
-import { PRINTERS_CARD, blockToneOf, hereEntryOf } from "@/lib/printer/settings-view";
+import { blockToneOf, hereEntryOf, otherPrintersNoteOf } from "@/lib/printer/settings-view";
 
 const TITLE = "Other printers on this device";
-const NOTE = PRINTERS_CARD.sub;
 const RECONNECTED = "Printer connected.";
 const REMOVE_FAILED = "Could not remove the printer. Try again.";
 const IN_SETUP = PRINTER_IN_SETUP_MESSAGE;
@@ -51,6 +50,8 @@ export function OtherDevicePrinters({ locked, here, card, canAdd, onConnect }: {
   const appIds = (ids: readonly string[]) => new Set(ids.flatMap((id) => agent.targets[id]?.nativeId ?? []));
   const inSetup = appIds(agent.localIds.filter((id) => !agent.takeoverIds.includes(id)));
   const takeover = appIds(agent.takeoverIds);
+  // Simple mode says every slip prints on this device's printer; a printers-mode device that prints nothing, who decides.
+  const note = otherPrintersNoteOf(agent.printersMode);
   // Remove only once the setup is known, as the device section (the final Phase 2 gate, m-1: before, every printer looks unnamed).
   const known = deviceId === "" || answered;
   const disabled = locked || busy;
@@ -80,8 +81,8 @@ export function OtherDevicePrinters({ locked, here, card, canAdd, onConnect }: {
     }
   };
 
-  // Simple mode names the app's other printers only when there are some: with none, the sub ("set by your manager") is wrong
-  // (no manager chooses slips per printer yet) and the two lines cost phone scroll.
+  // Simple mode names the app's other printers only when there are some: with none, the two lines say nothing and cost
+  // phone scroll.
   const showNames = !card && others.length > 0;
   const body = (
     <>
@@ -116,7 +117,7 @@ export function OtherDevicePrinters({ locked, here, card, canAdd, onConnect }: {
           </PrinterBlock>
         );
       })}
-      {showNames && <p className={PRINTER_NOTE_CLASS}>{NOTE}</p>}
+      {showNames && <p className={PRINTER_NOTE_CLASS}>{note}</p>}
       {canAdd && (
         <Button className={PRINTER_BUTTON_CLASS} variant="outline" disabled={disabled} onClick={() => onConnect(CONNECT_ADD)}>
           Connect another printer

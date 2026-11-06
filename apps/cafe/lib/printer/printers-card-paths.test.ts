@@ -35,14 +35,16 @@ const oneCardPin: Pin = (code) => {
 };
 const othersCardPin: Pin = (code) => {
   const p: string[] = [];
-  need(p, code.includes("const NOTE = PRINTERS_CARD.sub;") && code.includes("{showNames && <p className={PRINTER_LABEL_CLASS}>{TITLE}</p>}") && code.includes("{showNames && <p className={PRINTER_NOTE_CLASS}>{NOTE}</p>}"), "simple mode's note is the card's sub; in the card no title or note of their own");
+  // The PX-3 polish (on purpose): the note follows the mode (otherPrintersNoteOf; simple mode's own words: printer-ux-polish.test.ts).
+  need(p, code.includes("const note = otherPrintersNoteOf(agent.printersMode);") && code.includes("{showNames && <p className={PRINTER_LABEL_CLASS}>{TITLE}</p>}") && code.includes("{showNames && <p className={PRINTER_NOTE_CLASS}>{note}</p>}"), "outside the card a note for the mode; in the card no title or note of their own");
   // PX-3 Task 11 (on purpose, spec §6.7): Connect another printer opens the guided connect in add mode (was its inline list).
   need(p, /onClick=\{\(\) => onConnect\(CONNECT_ADD\)\}>\s*Connect another printer\s*<\/Button>/.test(code) && code.includes("name={named?.name ?? entry.printer.name}"), "Connect another printer: the guided connect's add; the setup's name, else the app's");
   need(p, count(code, "{canAdd && ") === 1 && !code.includes("NativePrinterPicker"), "T10b-C: Connect another printer only once this device has its own printer; no inline list");
   return p;
 };
 // Ruling T10b-B (over X7 for the app's printers): every printer of the card keeps today's Reconnect, whatever its state
-// (a stale "Connected" link), primary while not connected; this device's own one only in printers mode.
+// (a stale "Connected" link), primary while not connected; this device's own one in printers mode (and, the PX-3 polish,
+// while a browser's printer needs a tap).
 const reconnectPin = (gate: string, variant: string): Pin => (code) => {
   const p: string[] = [];
   const at = code.indexOf(".reconnect(");
@@ -86,8 +88,8 @@ const tapPin: Pin = (code) => {
 const othersNamedPin: Pin = (code) => {
   const p: string[] = [];
   need(p, code.includes("const showNames = !card && others.length > 0;"), "the label and sub are for simple mode with other printers only");
-  need(p, code.includes("{showNames && <p className={PRINTER_LABEL_CLASS}>{TITLE}</p>}") && code.includes("{showNames && <p className={PRINTER_NOTE_CLASS}>{NOTE}</p>}"), "both lines wear that one gate");
-  need(p, count(code, "{TITLE}") === 1 && count(code, "{NOTE}") === 1 && code.includes("{canAdd && (") && count(code, "{canAdd && ") === 1, "one label, one sub; Connect another printer keeps its own gate");
+  need(p, code.includes("{showNames && <p className={PRINTER_LABEL_CLASS}>{TITLE}</p>}") && code.includes("{showNames && <p className={PRINTER_NOTE_CLASS}>{note}</p>}"), "both lines wear that one gate");
+  need(p, count(code, "{TITLE}") === 1 && count(code, "{note}") === 1 && code.includes("{canAdd && (") && count(code, "{canAdd && ") === 1, "one label, one sub; Connect another printer keeps its own gate");
   return p;
 };
 const CASES: { name: string; file: string; pin: Pin; mutations: [string, string, string][] }[] = [
@@ -106,10 +108,10 @@ const CASES: { name: string; file: string; pin: Pin; mutations: [string, string,
   { name: "simple mode names the other printers only when there are some (OtherDevicePrinters)", file: OTHERS, pin: othersNamedPin, mutations: [
     ["the label with no printers", "const showNames = !card && others.length > 0;", "const showNames = !card;"],
     ["the label in printers mode", "const showNames = !card && others.length > 0;", "const showNames = others.length > 0;"],
-    ["the sub always", "{showNames && <p className={PRINTER_NOTE_CLASS}>{NOTE}</p>}", "{!card && <p className={PRINTER_NOTE_CLASS}>{NOTE}</p>}"],
+    ["the sub always", "{showNames && <p className={PRINTER_NOTE_CLASS}>{note}</p>}", "{!card && <p className={PRINTER_NOTE_CLASS}>{note}</p>}"],
     ["Connect another printer hidden with none", "{canAdd && (", "{canAdd && others.length > 0 && ("],
   ] },
-  { name: "T10b-B: today's Reconnect in printers mode (DevicePrinterSection)", file: DEVICE, pin: reconnectPin("{printersCard && (", 'variant={status === "connected" ? "outline" : "default"}'), mutations: [["a Reconnect in simple mode", "{printersCard && (", "{true && ("], ["hidden while connected", "{printersCard && (", '{printersCard && status !== "connected" && ('], ["outline while down", 'variant={status === "connected" ? "outline" : "default"}', 'variant="outline"']] },
+  { name: "T10b-B: today's Reconnect in printers mode (DevicePrinterSection)", file: DEVICE, pin: reconnectPin('{(printersCard || status === "needs-tap") && (', 'variant={status === "connected" ? "outline" : "default"}'), mutations: [["a Reconnect in simple mode", '{(printersCard || status === "needs-tap") && (', "{true && ("], ["hidden while connected", '{(printersCard || status === "needs-tap") && (', '{(printersCard || status === "needs-tap") && status !== "connected" && ('], ["outline while down", 'variant={status === "connected" ? "outline" : "default"}', 'variant="outline"']] },
   { name: "T10b-B: today's Reconnect on every app printer (OtherDevicePrinters)", file: OTHERS, pin: reconnectPin('<div className="flex flex-wrap gap-2">', 'variant={entry.status === "connected" ? "outline" : "default"}'), mutations: [["hidden while connected", "<Button className={PRINTER_BUTTON_CLASS} variant={entry.status", '{entry.status !== "connected" && <Button className={PRINTER_BUTTON_CLASS} variant={entry.status'], ["outline while down", 'variant={entry.status === "connected" ? "outline" : "default"}', 'variant="outline"']] },
   { name: "the setup's test is the admin's (DevicePrinterSection)", file: DEVICE, pin: adminTestPin, mutations: [["staff get it", "isAdmin && ownHere !== undefined ?", "ownHere !== undefined ?"]] },
   { name: "the setup's test is the admin's (OtherDevicePrinters)", file: OTHERS, pin: adminTestPin, mutations: [["on a printer the setup does not name", "isAdmin && named !== undefined && <SetupTestPrint printer={named}", "isAdmin && <SetupTestPrint printer={named!}"]] },

@@ -114,7 +114,7 @@ test("the setup names a printer of this device", () => {
   assert.equal(settingsNameOf(HERE, "BT-CLASSIC:bb"), "Bill printer", "an app printer by its id, ignoring case (the app spells a MAC upper-case)");
   assert.equal(settingsNameOf(HERE, "bt-classic:CC"), null, "a printer the setup does not name: the app's own name shows");
   assert.equal(settingsNameOf([HERE[1]!], null), null, "no own printer in the setup: null");
-  assert.deepEqual(PRINTERS_CARD, { title: "Printers on this device", sub: "Which slips each one prints: set by your manager." }, "the card's words (also simple mode's note)");
+  assert.deepEqual(PRINTERS_CARD, { title: "Printers on this device", sub: "Which slips each one prints: set by your manager." }, "the card's words (also the note on a printers-mode device that prints nothing: otherPrintersNoteOf(true))");
   for (const status of ["none", "disconnected", "needs-tap"] as const) assert.equal(blockToneOf(status), "bad", `${status}: it needs a Reconnect`);
   for (const status of ["connecting", "elsewhere"] as const) assert.equal(blockToneOf(status), "quiet", `${status}: nothing to fix from here`);
   assert.equal(blockToneOf("connected"), "ok", "connected: green");

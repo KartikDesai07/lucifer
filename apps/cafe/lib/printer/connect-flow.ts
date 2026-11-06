@@ -1,9 +1,12 @@
 import type { TransportWord } from "@/lib/print-agent-here";
-import { nativeErrorCode } from "@/lib/printer/native-bridge";
-import type { NativePrinter, NativeTransport } from "@/lib/printer/native-bridge-protocol";
+import { PRINTER_CONNECT_FAILED_MESSAGE } from "@/lib/printer/device-printer-link";
+import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+import { nativeError, nativeErrorCode } from "@/lib/printer/native-bridge";
+import { NATIVE_ERROR_CODES, type NativePrinter, type NativeTransport } from "@/lib/printer/native-bridge-protocol";
+import { splitHostPort } from "@/lib/printer/network-address";
 import type { DeviceNoun } from "@/lib/printer/printer-status-view";
 import { nativeErrorMessage } from "@/lib/printer/transport-native";
-import type { ConnectOutcome } from "@/lib/printer/web-printer-types";
+import { PRINTER_ELSEWHERE_MESSAGE, PRINTER_NOT_CONNECTED_MESSAGE, type ConnectOutcome } from "@/lib/printer/web-printer-types";
 
 // Printer UX PX-3 Task 11 (spec §6.7; mockups g1–g6): the guided connect of the Android app, as a pure reducer. Steps: what
 // kind of printer → the found list → connecting → connected → the test slip's question → the tips. Modes: replace (Connect a
@@ -91,12 +94,34 @@ function failedWordsOf(state: ConnectState): string {
   return `Could not connect to ${state.target?.name ?? "the printer"}. Check it is on, then try again.`;
 }
 
+// Every sentence a connect attempt throws for staff to read: the device printer's own (not this tab's, not connected), the
+// pool's (it could not connect) and each of the app's refusals as nativeErrorMessage words them (lane-print's rule).
+const ATTEMPT_WORDS: ReadonlySet<string> = new Set([
+  PRINTER_NOT_CONNECTED_MESSAGE,
+  PRINTER_ELSEWHERE_MESSAGE,
+  PRINTER_CONNECT_FAILED_MESSAGE,
+  ...NATIVE_ERROR_CODES.map((code) => nativeErrorMessage(nativeError(code, code))),
+]);
+
 /** The review's Ruling T11-B: a thrown attempt's own words. A refusal with the app's code reads as the app's sentence
  *  (nativeErrorMessage); an Error already worded keeps its words (nativePool().add throws its refusal worded, with no code,
- *  and nativeErrorMessage would turn it into the write-failed sentence); nothing to say: undefined, the step's words. */
+ *  and nativeErrorMessage would turn it into the write-failed sentence), but only a sentence written for staff
+ *  (ATTEMPT_WORDS: a code error's own text is never shown); nothing to say: undefined, the step's words. */
 export function attemptErrorWordsOf(error: unknown): string | undefined {
   if (nativeErrorCode(error) !== null) return nativeErrorMessage(error);
-  return error instanceof Error && error.message !== "" ? error.message : undefined;
+  return error instanceof Error && ATTEMPT_WORDS.has(error.message) ? error.message : undefined;
+}
+
+export interface NetworkPrefill {
+  host: string;
+  port: string;
+}
+
+/** The Wi-Fi form's start when a replace opens it (Connect it again, Change): this device's saved network printer, read
+ *  from its app id ("tcp:<host>:<port>"); any other printer, or an id the form cannot read, an empty form. */
+export function networkPrefillOf(printer: DevicePrinter | null): NetworkPrefill | null {
+  if (printer?.kind !== "native" || printer.transport !== "tcp" || !printer.printerId.startsWith("tcp:")) return null;
+  return splitHostPort(printer.printerId.slice("tcp:".length));
 }
 
 /** How a connect that ran ends, as the flow's event (the final review's I1). The app's link never throws a connect: it
@@ -193,7 +218,8 @@ export function bluetoothRowsOf(entries: readonly NativePrinter[]): ConnectRow[]
     const held = winners.get(key);
     if (held === undefined || bluetoothRank(entry) < bluetoothRank(held)) winners.set(key, entry);
   }
-  const all = [...winners.values()];
+  // In the app's order of the entries shown: a printer listed twice sits where its winning entry is, not its first one.
+  const all = entries.filter((entry) => (entry.transport === "bt-classic" || entry.transport === "ble") && winners.get(bluetoothKeyOf(entry)) === entry);
   const shown = [...all.filter((printer) => printer.paired === true), ...all.filter((printer) => printer.paired !== true)];
   return shown.map((printer, i) => ({ id: printer.id, name: printer.name, sub: printer.paired === true ? "Paired" : "Nearby", primary: i === 0 && printer.paired === true, transport: printer.transport }));
 }

@@ -77,7 +77,7 @@ const END_OF_DAY_SUMMARY = "apps/cafe/components/reports/EndOfDaySummary.tsx";
 // wrapped and keeps the plain browser dialog.
 const MOVE_TABLE_DIALOG = "apps/cafe/components/orders/MoveTableDialog.tsx";
 const PRINT_HOST_PROVIDER = "apps/cafe/components/layout/PrintHostProvider.tsx";
-const PRINTER_SETUP_CARD = "apps/cafe/hooks/use-test-print.ts";
+const TEST_PRINT_HOOK = "apps/cafe/hooks/use-test-print.ts";
 
 // ── 1. Pay Now must fire the kitchen ticket too (CR1.2(a)) ──────────────────
 
@@ -341,7 +341,7 @@ test("PIN: RECEIPT_PAGE_STYLE carries the 80mm/4mm page setup, and every print t
   // the kiosk-wizard cleanup, moved into hooks/use-test-print.ts in PX-3 Task 10) fires a
   // manual test print via the bridge's own queueTestSlip() (positive
   // landmark), so it too must never build a page style locally.
-  const cardSrc = readSrc(PRINTER_SETUP_CARD);
+  const cardSrc = readSrc(TEST_PRINT_HOOK);
   assert.match(
     cardSrc,
     /queueTestSlip\(\)/,

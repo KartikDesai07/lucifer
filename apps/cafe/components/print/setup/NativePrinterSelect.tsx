@@ -1,6 +1,6 @@
 "use client";
 
-import { NATIVE_TYPE_LABELS } from "@/components/print/printer-type";
+import { NATIVE_TYPE_LABELS } from "@/lib/printer/printer-type-label";
 import { PRINTER_INPUT_CLASS } from "@/components/print/printer-classes";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { PoolPrinter } from "@/lib/printer/native-pool";

@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { networkTargetOf, useNativePrinterList } from "@/hooks/use-native-printer-list";
 import { autoScanOf } from "@/lib/printer/bluetooth-scan";
-import { CONNECT_WORDS, connectRowsOf, type ConnectRow, type ConnectTransport } from "@/lib/printer/connect-flow";
+import { CONNECT_WORDS, connectRowsOf, type ConnectRow, type ConnectTransport, type NetworkPrefill } from "@/lib/printer/connect-flow";
 import { DEFAULT_TCP_PRINTER_PORT, type NativeBluetoothState } from "@/lib/printer/native-bridge-protocol";
 import { canScanBluetooth, type ScanRefusal } from "@/lib/printer/native-picker-state";
 import { splitHostPort } from "@/lib/printer/network-address";
@@ -248,10 +248,10 @@ function FoundList({ transport, error, onPick }: { transport: "bluetooth" | "usb
   );
 }
 
-// Wi-Fi or network: today's form, its checks (networkTargetOf) and Find network printers.
-function NetworkForm({ error, onPick }: { error: string | null; onPick: Pick }) {
-  const [address, setAddress] = useState("");
-  const [port, setPort] = useState(String(DEFAULT_TCP_PRINTER_PORT));
+// Wi-Fi or network: today's form, its checks (networkTargetOf) and Find network printers; a replace starts at the saved one.
+function NetworkForm({ error, prefill, onPick }: { error: string | null; prefill: NetworkPrefill | null; onPick: Pick }) {
+  const [address, setAddress] = useState(prefill?.host ?? "");
+  const [port, setPort] = useState(prefill?.port ?? String(DEFAULT_TCP_PRINTER_PORT));
   const [formError, setFormError] = useState<string | null>(null);
   const submit = (): void => {
     const checked = networkTargetOf(address, port);
@@ -283,10 +283,10 @@ function NetworkForm({ error, onPick }: { error: string | null; onPick: Pick }) 
 
 /** The list step's container. `hidden` while the app connects: the list stays mounted (its scan, the typed address), so a
  *  failed connect comes back to it as it was, with its line. */
-export function ConnectList({ transport, error, hidden, onPick }: { transport: ConnectTransport; error: string | null; hidden: boolean; onPick: Pick }) {
+export function ConnectList({ transport, error, hidden, prefill, onPick }: { transport: ConnectTransport; error: string | null; hidden: boolean; prefill: NetworkPrefill | null; onPick: Pick }) {
   return (
     <div className={cn("flex flex-col gap-3", hidden && "hidden")}>
-      {transport === "network" ? <NetworkForm error={error} onPick={onPick} /> : <FoundList transport={transport} error={error} onPick={onPick} />}
+      {transport === "network" ? <NetworkForm error={error} prefill={prefill} onPick={onPick} /> : <FoundList transport={transport} error={error} onPick={onPick} />}
     </div>
   );
 }
