@@ -55,6 +55,7 @@ another person; a deploy that silently lands in Virginia again; anything WebView
 | D5 | Deploy updates | **A quiet reload**: the pulse answer carries the server's build; on a new build the app reloads itself at a quiet moment with a 2 s "Updated" note; before that, a tap on a screen it does not hold is a clean full page load of that screen; never during a sale or a payment |
 | D6 | Prefetch after D4 | **Operate rows + on touch**: the Operate rows warm from the first seconds (the R1b fix); any nav row starts loading when a finger touches it or a mouse rests on it; nothing else |
 | D7 | A service worker / offline app shell | **Not now**; measure after this work and decide again |
+| D9 | Where the region is managed (owner, 2026-11-06: "I deploy from our admin panel, the Mumbai region is managed there") | **The owner console manages it**: every console deploy already runs `scripts/deploy.mjs` (`ui-jobs.mjs`, `run.mjs`), so `--regions bom1` and the check apply to it; in addition the console sets the Vercel project's Function Region to `bom1` through the Vercel API when it creates a project and on "Update on Vercel", and shows the region the check read after each deploy |
 | D8 | Ship N0 apart? | **N0 first, on its own** (its own small session and merge, on the owner's OK); the owner may set Function Region = Mumbai in the dashboard and redeploy right away, before any code; N1–N4 follow in their own sessions |
 
 ## 5. The design
@@ -72,8 +73,12 @@ another person; a deploy that silently lands in Virginia again; anything WebView
   only when the owner deploys.)
 - `docs/GO-LIVE-CHECKLIST.md` and `apps/cafe/DEPLOY.md`: the check, the dashboard steps, and how to read
   `X-Vercel-Id` (`bom1::bom1` good, `bom1::iad1` wrong).
-- The owner, once per project: Settings → Functions → Function Region → Mumbai (bom1), then redeploy; and tells me
-  which clients were in Virginia (D2).
+- The owner console (D9): its Vercel API client sets the project's Function Region to `bom1` at project creation and on
+  "Update on Vercel" (the project setting, so a redeploy started from Vercel's own dashboard stays in Mumbai too); the
+  console's deploy job shows the region the post-deploy check read. The exact API field is confirmed from Vercel's
+  public REST docs when it is built (read-only), and tested against the client's existing fake `fetch`.
+- The owner, until Part A ships: Settings → Functions → Function Region → Mumbai (bom1), then redeploy from the
+  console; and tells me which clients were in Virginia (D2).
 
 ### N1 — The tap answers in the same frame (D3; R1, R5)
 - One client store of the **navigation in progress** (`{ href, label, startedAt }`, one at a time), set by every staff
