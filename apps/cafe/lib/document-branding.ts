@@ -10,6 +10,17 @@ export const METADATA_DESCRIPTION =
 
 type BrandingSource = { restaurantName?: string | null; productLogo?: string | null } | null | undefined;
 
+/** The "(3) " that PosPulseProvider stamps ahead of the tab title while diners' requests are open. It strips this
+ *  before re-deriving the base title each time, so the stamp is idempotent and survives Next resetting the title. */
+export const TITLE_PREFIX_RE = /^\(\d+\)\s/;
+
+/** The cafe's title for the tab, keeping the open-request prefix the current title carries: the device's branding
+ *  must never wipe the count the pulse put there. Equal to `current` when it is already branded. */
+export function brandedTitle(current: string, title: string): string {
+  const prefix = TITLE_PREFIX_RE.exec(current)?.[0] ?? "";
+  return `${prefix}${title}`;
+}
+
 /** The cafe's name (trimmed; the product's name when it has none) and its tab icon (the uploaded logo's versioned
  *  URL; the built-in mark when none). `?.` on purpose: the document may predate a field. */
 export function brandingOf(settings: BrandingSource): { title: string; iconHref: string } {

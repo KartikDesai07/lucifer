@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { brandingOf } from "@/lib/document-branding";
+import { TITLE_PREFIX_RE, brandedTitle, brandingOf } from "@/lib/document-branding";
 import { APP_NAME, BRANDING_VERSION_LEN } from "@/lib/constants";
 import { DEFAULT_PRODUCT_LOGO_URL } from "@/lib/branding-default-logo";
 import { productImageUrl } from "@/lib/images";
@@ -27,4 +27,26 @@ test("brandingOf: an uploaded logo gives its versioned URL", () => {
   assert.ok(expected, "landmark: the ref parses to a URL");
   assert.equal(brandingOf({ productLogo: ref }).iconHref, expected, "versioned logo URL");
   assert.notEqual(expected, DEFAULT_PRODUCT_LOGO_URL, "not the default");
+});
+
+test("brandedTitle: no open-request prefix gives the cafe's title as it is", () => {
+  assert.equal(brandedTitle("Sandbee POS", "Baseline Cafe"), "Baseline Cafe", "no prefix");
+  assert.equal(brandedTitle("", "Baseline Cafe"), "Baseline Cafe", "an empty title");
+});
+
+test("brandedTitle: the pulse's (N) prefix on the current title is kept ahead of the cafe's title", () => {
+  assert.equal(brandedTitle("(2) Sandbee POS", "Baseline Cafe"), "(2) Baseline Cafe", "the open-request count stays");
+  assert.equal(brandedTitle("(12) Sandbee POS", "Baseline Cafe"), "(12) Baseline Cafe", "a two-digit count");
+});
+
+test("brandedTitle: an already branded title is unchanged (so a quiet screen writes nothing)", () => {
+  assert.equal(brandedTitle("(2) Baseline Cafe", "Baseline Cafe"), "(2) Baseline Cafe", "with the prefix");
+  assert.equal(brandedTitle("Baseline Cafe", "Baseline Cafe"), "Baseline Cafe", "without");
+});
+
+test("TITLE_PREFIX_RE: only a leading (digits) and a space is the pulse's prefix", () => {
+  assert.ok(TITLE_PREFIX_RE.test("(3) Cafe"), "the pulse's prefix");
+  assert.ok(!TITLE_PREFIX_RE.test("Cafe (3) "), "not in the middle");
+  assert.ok(!TITLE_PREFIX_RE.test("(3)Cafe"), "not without the space");
+  assert.equal(brandedTitle("(Beta) Old", "Cafe"), "Cafe", "a cafe name in brackets is not a count");
 });

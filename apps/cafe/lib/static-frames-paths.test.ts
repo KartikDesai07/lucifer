@@ -55,6 +55,16 @@ test("PIN: DocumentBranding re-applies on a path change, writes only a differing
   assert.match(src, /return null/, "renders nothing");
 });
 
+test("PIN: the tab title keeps the pulse's open-request prefix: one rule and one regex, in lib/document-branding.ts", () => {
+  const branding = code("components/layout/DocumentBranding.tsx");
+  assert.match(branding, /brandedTitle\(document\.title, title\)/, "DocumentBranding puts the cafe's title after the current (N) prefix");
+  assert.ok(!/document\.title = title\b/.test(branding), "never the bare title over the pulse's count");
+  const pulse = code("components/layout/PosPulseProvider.tsx");
+  assert.match(pulse, /import \{[^}]*\bTITLE_PREFIX_RE\b[^}]*\} from "@\/lib\/document-branding";/, "the pulse imports the shared prefix regex");
+  assert.ok(!/const TITLE_PREFIX_RE\b/.test(pulse), "the pulse keeps no copy of its own");
+  assert.match(code("lib/document-branding.ts"), /export const TITLE_PREFIX_RE = \/\^\\\(\\d\+\\\)\\s\//, "the one regex");
+});
+
 test("PIN: /login and /m export generateMetadata from the shared public helper (readSettings, never getSettings)", () => {
   for (const rel of ["app/(auth)/login/page.tsx", "app/m/layout.tsx"]) {
     const src = code(rel);
