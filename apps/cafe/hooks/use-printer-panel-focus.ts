@@ -42,7 +42,8 @@ export function usePrinterPanelFocus({ home, view, onView }: { home: "sheet" | "
   const pendingTarget = useRef<string | null>(null);
 
   // F-M6: a view switch keeps the sheet; it scrolls back to the top, and the focus goes to the part an action pointed at
-  // (today's focusAndShow), else to the new view's title.
+  // (today's focusAndShow), else to the new view's title; on /printers (no frame, no title) leaving the connect view focuses
+  // this device's printer card.
   useEffect(() => {
     if (shownView.current === view) return;
     const from = shownView.current;

@@ -1343,3 +1343,11 @@ hai". Branch `feat/printer-ux-polish` from main f2b30c3. The minors the PX-3 fin
 Pins moved on purpose (comments in place): `printer-ui-paths.test.ts` and `printers-card-paths.test.ts` (the device
 card's Reconnect gate, the note), `printer-dot-ui-paths.test.ts` (the selector's one copy), `print-paths.test.ts` (the
 constant's name). No server, model, request, paper or native change.
+
+**Review:** Claude Fable 5.1 on f2b30c3..89dfbae (brief and report in the SDD workspace, `polish-review-*`): **Ready to
+merge: Yes**, 0 Critical / 0 Important / 5 Minor, every throw on the connect paths traced. Fixed in the follow-up commit:
+three stale comments / one assertion message (DevicePrinterSection's header, the focus effect's comment, settings-view's
+PRINTERS_CARD message) and minor 5: a thrown connect's toast (Reconnect, a connect that ends after staff left the view)
+now follows the same rule as the inline line (`thrownWordsOf` = `attemptErrorWordsOf` ?? the connect-failed sentence;
+the browser's connects never throw, so today nothing changes). Ruled: minor 4 (`home === "page"` instead of
+`frame === null` in the focus effect) stays as is: the rest of that effect reads the frame too, and only the sheet has one.

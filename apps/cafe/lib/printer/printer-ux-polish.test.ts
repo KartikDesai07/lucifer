@@ -122,6 +122,14 @@ const panelPin: Pin = (code) => {
   need(p, !code.includes("const DEVICE_SECTION_SELECTOR =") && /import \{ DEVICE_SECTION_SELECTOR, usePrinterPanelFocus \} from "@\/hooks\/use-printer-panel-focus";/.test(code), "the panel's targets use the hook's one selector");
   return p;
 };
+// The review's minor 5: a toast for a thrown connect (Reconnect, a connect that ends after staff left the view) follows the
+// same rule as the guided connect's inline line, never a code error's text.
+const toastPin: Pin = (code) => {
+  const p: string[] = [];
+  need(p, code.includes("const thrownWordsOf = (error: unknown): string => attemptErrorWordsOf(error) ?? PRINTER_CONNECT_FAILED_MESSAGE;"), "a thrown attempt's toast: staff words, else the connect-failed sentence");
+  need(p, count(code, "toast.error(thrownWordsOf(error));") === 2 && !code.includes("error.message"), "both toasts use it; no raw message");
+  return p;
+};
 const libPin: Pin = (code) => {
   const p: string[] = [];
   need(p, !code.includes('from "@/components/') && code.includes('import { printerTypeLabel } from "@/lib/printer/printer-type-label";'), "settings-view.ts is a pure lib file: no component import");
@@ -151,6 +159,9 @@ const CASES: { name: string; file: string; pin: Pin; mutations: [string, string,
   ] },
   { name: "one device-card selector (PrinterPanel)", file: PANEL, pin: panelPin, mutations: [
     ["a second copy", 'import { DEVICE_SECTION_SELECTOR, usePrinterPanelFocus } from "@/hooks/use-printer-panel-focus";', `import { usePrinterPanelFocus } from "@/hooks/use-printer-panel-focus";\nconst DEVICE_SECTION_SELECTOR = '[data-printer-target="device"]';`],
+  ] },
+  { name: "a thrown connect's toast keeps only staff words (connect-outcome)", file: "components/print/connect-outcome.ts", pin: toastPin, mutations: [
+    ["the raw message back", "attemptErrorWordsOf(error) ?? PRINTER_CONNECT_FAILED_MESSAGE;", "(error instanceof Error ? error.message : PRINTER_CONNECT_FAILED_MESSAGE);"],
   ] },
   { name: "settings-view.ts imports no component file", file: VIEW, pin: libPin, mutations: [
     ["the component again", 'import { printerTypeLabel } from "@/lib/printer/printer-type-label";', 'import { printerTypeLabel } from "@/components/print/printer-type";'],

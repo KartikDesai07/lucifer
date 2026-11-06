@@ -1,12 +1,13 @@
 import { toast } from "sonner";
 
-import { CONNECT_ADDED, CONNECT_ADD_FAILED } from "@/lib/printer/connect-flow";
+import { CONNECT_ADDED, CONNECT_ADD_FAILED, attemptErrorWordsOf } from "@/lib/printer/connect-flow";
 import { PRINTER_CONNECT_FAILED_MESSAGE, devicePrinter, type ConnectOutcome } from "@/lib/printer/device-printer";
 
 export const PRINTER_CONNECTED_MESSAGE = "Printer connected.";
 
-// A thrown attempt in its own words, else the connect-failed sentence (both toasts below).
-const thrownWordsOf = (error: unknown): string => (error instanceof Error ? error.message : PRINTER_CONNECT_FAILED_MESSAGE);
+// A thrown attempt in its own words when they are written for staff (the guided connect's inline rule, attemptErrorWordsOf:
+// the PX-3 polish), else the connect-failed sentence (both toasts below).
+const thrownWordsOf = (error: unknown): string => attemptErrorWordsOf(error) ?? PRINTER_CONNECT_FAILED_MESSAGE;
 
 // Waits for a connect attempt the CLICK already started (a chooser or a
 // reconnect needs the tap's user activation, so the caller makes the call) and
