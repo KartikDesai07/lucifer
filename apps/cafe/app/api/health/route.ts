@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getConnection } from "@/lib/db";
 import { buildHeartbeat, statsTokenMatches } from "@/lib/heartbeat";
+import { functionRegion } from "@/lib/health-region";
 
 // Never statically cache — reflects live DB connectivity. This is the failover
 // contract the Cloudflare Worker polls (PLATFORM.md §4 / F1.5): HTTP 200
@@ -36,7 +37,9 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const base = { ok: true, db: "up", tenant, ts };
+  // `region` says where this function runs (null off Vercel): one GET proves the region. The Worker reads only
+  // ok / db, and the 503 answer above stays exactly as it was.
+  const base = { ok: true, db: "up", tenant, ts, region: functionRegion(process.env) };
   if (req.nextUrl.searchParams.get("stats") !== "1") {
     return NextResponse.json(base, { status: 200 });
   }

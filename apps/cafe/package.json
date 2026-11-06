@@ -68,6 +68,7 @@
     "verify:staff-pin:live": "node --import tsx scripts/verify-staff-pin-live.ts"
   },
   "testChain": [
+    "lib/health-region.test.ts",
     "lib/deploy-scope-paths.test.ts",
     "lib/printer/connect-rows.test.ts",
     "lib/connect-location.test.ts",
