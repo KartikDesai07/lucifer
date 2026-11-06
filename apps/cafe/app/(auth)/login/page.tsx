@@ -4,6 +4,10 @@ import { LoginScreen } from "@/components/auth/LoginScreen";
 import { HTML_RULES_SCRIPT } from "@/lib/html-rules-scope";
 import { readLoginBrandName } from "@/lib/login-brand";
 
+// Per request, never prerendered: this page names the cafe (Settings) and nothing else makes it dynamic now that the
+// root layout is static, so without this the build would freeze the cafe's name here and read the database at build time.
+export const dynamic = "force-dynamic";
+
 // The tab title and icon: the cafe's own, read here (the root layout is static and carries only the generic ones).
 export async function generateMetadata(): Promise<Metadata> {
   return readPublicMetadata();

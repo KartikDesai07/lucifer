@@ -2,7 +2,7 @@
 // (lib/public-metadata.ts, /login and /m) and the device (components/layout/DocumentBranding.tsx, every staff
 // screen, whose frame is static and so cannot read Settings on the server).
 import { APP_NAME } from "@/lib/constants";
-import { DEFAULT_PRODUCT_LOGO_URL } from "@/lib/branding-default-logo";
+import { DEFAULT_PRODUCT_LOGO_URL } from "@/lib/branding-default-logo-url";
 import { productImageUrl } from "@/lib/images";
 
 export const METADATA_DESCRIPTION =

@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 
 import { BRANDING_VERSION_LEN } from "@/lib/constants";
 import type { StoredBranding } from "@/lib/branding";
-import { brandingUrl } from "@/lib/images";
 
 // Extracted from lib/branding.ts (post-review file-size split, keeping that
 // file under the repo's ~300-line cap) — the product's own built-in mark,
@@ -43,6 +42,6 @@ export const DEFAULT_PRODUCT_LOGO: StoredBranding = {
   version: DEFAULT_PRODUCT_LOGO_VERSION,
 };
 
-// The tab icon for a cafe with no logo saved (F5): the version names exactly the built-in bytes, so the route may
-// answer it `immutable` without reading the store, and a browser fetches it once instead of on each screen change.
-export const DEFAULT_PRODUCT_LOGO_URL = `${brandingUrl("productLogo")}?v=${DEFAULT_PRODUCT_LOGO.version}`;
+// The tab icon URL for a cafe with no logo saved lives in lib/branding-default-logo-url.ts (no node:crypto, so the
+// device can bundle it); the F5 pin keeps its version equal to DEFAULT_PRODUCT_LOGO.version above.
+export { DEFAULT_PRODUCT_LOGO_URL } from "@/lib/branding-default-logo-url";

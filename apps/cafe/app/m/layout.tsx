@@ -10,14 +10,17 @@ export async function generateMetadata(): Promise<Metadata> {
   return readPublicMetadata();
 }
 
+// Per request, never prerendered: the diner theme comes from Settings and nothing else makes /m dynamic now that the
+// root layout is static, so without this the build would freeze the theme and read the database at build time.
+export const dynamic = "force-dynamic";
+
 // CR2.4 S3 — server-renders the diner theme for every /m route, killing the
 // flash-of-default-theme a client-only theme switch would show on every scan.
 //
 // No `export const revalidate` here (A3 — ISR was the original plan, dropped
-// while the ROOT layout awaited auth(), a Dynamic API that made every /m
-// render dynamic). The root layout is static now (P2 N2) and no longer
-// decides that: whether /m renders per request rests on the /m segment
-// itself, and the build's route list is where it shows. The freshness bound
+// because /m renders per request). The root layout is static now (P2 N2), so
+// the `dynamic` export above is what keeps /m dynamic, and the build's route
+// list is where it shows. The freshness bound
 // this layout relies on is lib/settings.ts's TTL.SETTINGS cache (~45s) that
 // readPublicAppearance reads through — same class of bound the public menu
 // route already accepts.
