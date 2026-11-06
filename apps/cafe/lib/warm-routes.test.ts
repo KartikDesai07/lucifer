@@ -191,6 +191,9 @@ test("answeredAtFromCache: a fresh success gives its time; a stale one, an error
   assert.equal(answeredAtFromCache({ dataUpdatedAt: fresh, status: "pending" }, now), null, "a pending query is not a proof");
   assert.equal(answeredAtFromCache({ dataUpdatedAt: 0, status: "pending" }, now), null, "never answered");
   assert.equal(answeredAtFromCache(undefined, now), null, "no query state");
+  assert.equal(answeredAtFromCache({ dataUpdatedAt: fresh, status: "success", fetchFailureCount: 0, fetchStatus: "idle" }, now), fresh, "a plain fresh success is still its time");
+  assert.equal(answeredAtFromCache({ dataUpdatedAt: fresh, status: "success", fetchFailureCount: 1, fetchStatus: "fetching" }, now), null, "a success whose retry is running (a failed attempt) is not a proof");
+  assert.equal(answeredAtFromCache({ dataUpdatedAt: fresh, status: "success", fetchStatus: "paused" }, now), null, "a paused fetch is not a proof");
 });
 
 test("PIN: useWarmRoutes seeds from the pulse's cached answer at mount and passes at once; every offer is marked held", () => {

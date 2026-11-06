@@ -23,7 +23,7 @@ test("marking again restarts the window", () => {
   held.mark("/pos", 0);
   held.mark("/pos", 900);
   assert.equal(held.holds("/pos", 1500), true, "the later mark counts");
-  assert.equal(held.offeredAt("/pos"), 900);
+  assert.equal(held.offeredAt("/pos"), 900, "the offer time is the later mark");
 });
 
 test("the page's record uses the router-cache window: HELD_ROUTES_WINDOW_MS equals next.config.ts PREFETCH_REUSE_SECONDS * 1000", () => {

@@ -95,13 +95,18 @@ export function lineProven(answeredAt: number | null, now: number): boolean {
 
 /** The time of the pulse's last SUCCESSFUL answer when it is recent enough to
  *  prove the line, else null. A failed refetch leaves status "error" even with
- *  old data, so only a success counts. Lets a component that mounts after the
+ *  old data, so only a success counts, and not one whose retry is running. Lets a component that mounts after the
  *  first answer start from the proof instead of waiting for the next beat. */
 export function answeredAtFromCache(
-  state: { dataUpdatedAt: number; status: string } | undefined,
+  state:
+    | { dataUpdatedAt: number; status: string; fetchFailureCount?: number; fetchStatus?: string }
+    | undefined,
   now: number,
 ): number | null {
   if (!state || state.status !== "success") return null;
+  // A failed attempt with a retry left keeps status "success" (old data) but
+  // counts a failure; a paused fetch has no line at all. Neither is a proof.
+  if ((state.fetchFailureCount ?? 0) > 0 || state.fetchStatus === "paused") return null;
   return lineProven(state.dataUpdatedAt, now) ? state.dataUpdatedAt : null;
 }
 
