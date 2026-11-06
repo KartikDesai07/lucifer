@@ -205,7 +205,7 @@ test('PIN: SettingsSaveBar.tsx early-returns on !isDirty, both its buttons carry
 
   assert.match(
     src,
-    /<Button\s+type="submit"\s+disabled=\{isSaving\}(?:\s+className=\{[A-Z_]+\})?\s*>/,
+    /<Button\s+type="submit"\s+disabled=\{isSaving\}(?:\s+className=\{[^}]+\})?\s*>/,
     'the Save button must be type="submit" (so the form\'s own onSubmit/handleSubmit fires) with disabled={isSaving}',
   );
 });

@@ -8,10 +8,17 @@ import { Plus, Trash2 } from "lucide-react";
 import type { SettingsInput } from "@/schemas";
 import { UPI_RULES_MAX, UPI_RULE_UPTO_MAX, isValidUpiId } from "@pos/shared/print-qr";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { BRAND_CONTROL_CLASS, BRAND_FIELD_ERROR_CLASS, BRAND_LABEL_CLASS } from "@/components/brand/brand-classes";
-import { HINT_CLASS } from "@/components/settings/SettingsFields";
+import {
+  SETTINGS_ADD_BUTTON_CLASS,
+  SETTINGS_ERROR_CLASS,
+  SETTINGS_HINT_CLASS,
+  SETTINGS_INPUT_CLASS,
+  SETTINGS_NUMBER_CLASS,
+  SETTINGS_REMOVE_BUTTON_CLASS,
+  SETTINGS_UNIT_BOX_CLASS,
+} from "@/lib/settings-card-layout";
+import { CardField, SettingsBlock } from "@/components/settings/SettingsCard";
 import { arrayLevelMessage } from "@/components/settings/PromoCodeRow";
 
 interface UpiRulesFieldsProps {
@@ -22,8 +29,12 @@ interface UpiRulesFieldsProps {
 
 // A fresh slab has no amount yet: NaN is the schema's own "Enter the amount as a whole number", shown as a blank box.
 const BLANK_AMOUNT = Number.NaN;
-// 44 px on a phone, 40 px from md up (the Promo codes row idiom).
-const TOUCH_CLASS = "h-11 md:h-10";
+const SLAB_ROW_CLASS = "grid gap-3 rounded-[10px] border border-border-2 bg-surface-2 p-3";
+// Stacked on a phone; from sm one line: the amount box, the UPI ID, Remove.
+const SLAB_FIELDS_CLASS = "grid gap-3 sm:grid-cols-[10rem_minmax(0,1fr)_auto] sm:items-end";
+const RULES_SUB =
+  "For example, bills up to ₹500 pay to one ID and bills up to ₹2000 to another. Bills above your highest " +
+  "amount use the main UPI ID.";
 
 // A blank box is not a number the owner meant; anything typed goes to the schema, which wants whole rupees.
 function amountFromInput(raw: string): number {
@@ -50,60 +61,55 @@ function SlabRow({ control, register, errors, index, onRemove }: SlabRowProps) {
   const upiIdError = messageOf(rowErrors?.upiId);
 
   return (
-    <div className="space-y-1.5 rounded-md border border-brand-rule bg-brand-paper p-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <div className="space-y-1.5">
-          <label htmlFor={amountId} className={BRAND_LABEL_CLASS}>
-            Bills up to ₹
-          </label>
+    <div className={SLAB_ROW_CLASS}>
+      <div className={SLAB_FIELDS_CLASS}>
+        <CardField label="Bills up to ₹" htmlFor={amountId}>
           <Controller
             control={control}
             name={`upiRules.${index}.upTo`}
             render={({ field }) => (
-              <Input
-                id={amountId}
-                className={cn(BRAND_CONTROL_CLASS, TOUCH_CLASS, "w-full sm:w-32")}
-                type="number"
-                inputMode="numeric"
-                min={1}
-                max={UPI_RULE_UPTO_MAX}
-                step={1}
-                value={typeof field.value === "number" && !Number.isNaN(field.value) ? field.value : ""}
-                onChange={(e) => field.onChange(amountFromInput(e.target.value))}
-                onBlur={field.onBlur}
-                aria-invalid={amountError !== undefined}
-              />
+              <div className={SETTINGS_UNIT_BOX_CLASS}>
+                <input
+                  id={amountId}
+                  className={SETTINGS_NUMBER_CLASS}
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={UPI_RULE_UPTO_MAX}
+                  step={1}
+                  value={typeof field.value === "number" && !Number.isNaN(field.value) ? field.value : ""}
+                  onChange={(e) => field.onChange(amountFromInput(e.target.value))}
+                  onBlur={field.onBlur}
+                  aria-invalid={amountError !== undefined}
+                />
+              </div>
             )}
           />
-        </div>
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <label htmlFor={upiIdId} className={BRAND_LABEL_CLASS}>
-            UPI ID
-          </label>
+        </CardField>
+        <CardField label="UPI ID" htmlFor={upiIdId}>
           <Input
             id={upiIdId}
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
             placeholder="slab@okaxis"
-            className={cn(BRAND_CONTROL_CLASS, TOUCH_CLASS)}
+            className={SETTINGS_INPUT_CLASS}
             aria-invalid={upiIdError !== undefined}
             {...register(`upiRules.${index}.upiId`)}
           />
-        </div>
-        <Button
+        </CardField>
+        <button
           type="button"
-          variant="ghost"
-          className="h-11 shrink-0 px-3 text-brand-danger md:h-10"
+          className={cn(SETTINGS_REMOVE_BUTTON_CLASS, "justify-self-start")}
           onClick={onRemove}
           aria-label={`Remove amount slab ${index + 1}`}
         >
-          <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
+          <Trash2 className="size-4" aria-hidden="true" />
           Remove
-        </Button>
+        </button>
       </div>
       {(amountError ?? upiIdError) && (
-        <p className={BRAND_FIELD_ERROR_CLASS} role="alert">
+        <p className={SETTINGS_ERROR_CLASS} role="alert">
           {amountError ?? upiIdError}
         </p>
       )}
@@ -121,16 +127,9 @@ export function UpiRulesFields({ control, register, errors }: UpiRulesFieldsProp
   const arrayError = arrayLevelMessage(errors.upiRules);
 
   return (
-    <div className="space-y-3">
-      <div className="space-y-1">
-        <h4 className="text-[13px] font-medium text-brand-ink">Different UPI ID by bill amount (optional)</h4>
-        <p className={HINT_CLASS}>
-          For example, bills up to ₹500 pay to one ID and bills up to ₹2000 to another. Bills above your highest
-          amount use the main UPI ID.
-        </p>
-      </div>
+    <SettingsBlock title="Different UPI ID by bill amount (optional)" sub={RULES_SUB}>
       {arrayError && (
-        <p className={BRAND_FIELD_ERROR_CLASS} role="alert">
+        <p className={SETTINGS_ERROR_CLASS} role="alert">
           {arrayError}
         </p>
       )}
@@ -144,20 +143,19 @@ export function UpiRulesFields({ control, register, errors }: UpiRulesFieldsProp
           onRemove={() => remove(index)}
         />
       ))}
-      <div className="space-y-1.5">
-        <Button
+      <div className="grid gap-1.5">
+        <button
           type="button"
-          variant="outline"
-          className="h-11 md:h-10"
+          className={SETTINGS_ADD_BUTTON_CLASS}
           onClick={() => append({ upTo: BLANK_AMOUNT, upiId: "" })}
           disabled={atMax || !hasMain}
         >
-          <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+          <Plus className="size-4" aria-hidden="true" />
           Add an amount slab
-        </Button>
-        {atMax && <p className={HINT_CLASS}>You can have up to {UPI_RULES_MAX} slabs.</p>}
-        {!atMax && !hasMain && <p className={HINT_CLASS}>Add the main UPI ID above first.</p>}
+        </button>
+        {atMax && <p className={SETTINGS_HINT_CLASS}>You can have up to {UPI_RULES_MAX} slabs.</p>}
+        {!atMax && !hasMain && <p className={SETTINGS_HINT_CLASS}>Add the main UPI ID above first.</p>}
       </div>
-    </div>
+    </SettingsBlock>
   );
 }

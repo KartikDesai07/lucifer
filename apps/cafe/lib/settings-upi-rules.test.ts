@@ -53,8 +53,9 @@ test("BOOTSTRAP_VERSION is at least 13 (Settings gained upiRules) and the contra
 });
 
 test("the slab editor is wired: Business details renders UpiRulesFields, and the print side reads the slab ID", () => {
-  const business = readFileSync(path.join(here, "../components/settings/BusinessDetailsFields.tsx"), "utf8");
-  assert.ok(business.includes("<UpiRulesFields"), "BusinessDetailsFields renders the slab editor");
+  // Moved on purpose (plan 2026-11-06, D2): the slab editor renders in the UPI payments card, under the UPI ID.
+  const business = readFileSync(path.join(here, "../components/settings/UpiPaymentsCard.tsx"), "utf8");
+  assert.ok(business.includes("<UpiRulesFields"), "UpiPaymentsCard renders the slab editor");
   assert.ok(business.indexOf("<UpiRulesFields") > business.indexOf('register("upiId")'), "it sits under the UPI ID field");
   const blocks = readFileSync(path.join(here, "../components/print/slip/generic-blocks.tsx"), "utf8");
   assert.ok(blocks.includes("upiRules: ctx.upiRules") && blocks.includes("upiId: plan.upiId"), "the bill QR passes the slabs and encodes plan.upiId");

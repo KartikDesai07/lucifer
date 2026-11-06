@@ -18,9 +18,9 @@ const POS_LAYOUT_COPY: Record<PosLayout, { label: string; description: string }>
 };
 
 const SKETCH_CLASS =
-  "h-[4.5rem] overflow-hidden rounded-md border border-brand-rule bg-brand-paper p-2";
-const CELL_CLASS = "h-2.5 rounded-[2px] bg-brand-rule";
-const HEADING_BAR_CLASS = "h-1.5 w-8 rounded-sm bg-brand-muted/40";
+  "h-[4.5rem] overflow-clip rounded-[8px] border border-border-2 bg-surface-2 p-2";
+const CELL_CLASS = "h-2.5 rounded-[2px] bg-border";
+const HEADING_BAR_CLASS = "h-1.5 w-8 rounded-sm bg-subtle-foreground";
 
 // Normal: one grid of twelve cells.
 const NORMAL_CELLS = Array.from({ length: 12 }, (_, i) => i);
@@ -82,10 +82,10 @@ export function PosLayoutPicker({
             <label
               key={option}
               className={cn(
-                "flex cursor-pointer flex-col gap-2 rounded-lg border p-3 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-accent",
+                "flex cursor-pointer flex-col gap-2 rounded-[12px] border p-3 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary has-[:focus-visible]:ring-offset-1",
                 selected
-                  ? "border-brand-primary bg-brand-primary-soft"
-                  : "border-brand-rule bg-brand-slip hover:bg-brand-wash",
+                  ? "border-primary bg-status-info-tint"
+                  : "border-border bg-card pointer-fine:hover:bg-hover",
               )}
             >
               <input
@@ -102,14 +102,14 @@ export function PosLayoutPicker({
                   aria-hidden="true"
                   className={cn(
                     "grid h-4 w-4 shrink-0 place-items-center rounded-full border",
-                    selected ? "border-brand-primary" : "border-brand-field",
+                    selected ? "border-primary" : "border-subtle-foreground",
                   )}
                 >
-                  {selected && <span className="h-2 w-2 rounded-full bg-brand-primary" />}
+                  {selected && <span className="h-2 w-2 rounded-full bg-primary" />}
                 </span>
-                <span className="text-[13px] font-medium text-brand-ink">{copy.label}</span>
+                <span className="text-[13px] font-medium text-foreground">{copy.label}</span>
               </span>
-              <span className="text-xs text-brand-muted">{copy.description}</span>
+              <span className="text-xs text-muted-foreground">{copy.description}</span>
             </label>
           );
         })}

@@ -14,6 +14,7 @@ export function MenuSwitch({
   disabled,
   id,
   "aria-label": ariaLabel,
+  "aria-describedby": ariaDescribedBy,
 }: {
   checked: boolean;
   onCheckedChange: (v: boolean) => void;
@@ -22,6 +23,8 @@ export function MenuSwitch({
   /** For a <label htmlFor> that wraps the row (the category editor's KOT card). */
   id?: string;
   "aria-label": string;
+  /** The id of the row's line under the label (the settings No limit row). */
+  "aria-describedby"?: string;
 }) {
   return (
     <SwitchPrimitives.Root
@@ -30,6 +33,7 @@ export function MenuSwitch({
       disabled={disabled}
       id={id}
       aria-label={ariaLabel}
+      aria-describedby={ariaDescribedBy}
       className={cn(MENU_SWITCH_CLASS, MENU_SWITCH_ON_CLASS[tone])}
     >
       <SwitchPrimitives.Thumb className={MENU_SWITCH_KNOB_CLASS} />

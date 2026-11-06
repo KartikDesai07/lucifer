@@ -12,7 +12,7 @@ import type { ReactNode } from "react";
 
 import { useSettingsSectionForm, type SectionFormExtra } from "@/hooks/use-settings-section-form";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
-import { SettingsSaveBar } from "@/components/settings/SettingsSaveBar";
+import { SettingsSaveBar, type SettingsSaveBarLook } from "@/components/settings/SettingsSaveBar";
 import type { SettingsSection } from "@/lib/settings-sections";
 import type { SettingsInput } from "@/schemas";
 import type { Settings } from "@/types";
@@ -32,6 +32,8 @@ interface SettingsSectionFormProps {
   section: SettingsSection;
   // A non-form part of the page that shares this form's Save bar and PUT (the Bill design draft).
   extra?: SectionFormExtra;
+  // Opt-in Save bar look; omitted = every page's classic bar.
+  saveBarLook?: SettingsSaveBarLook;
   children: (handles: SettingsSectionFormHandles) => ReactNode;
 }
 
@@ -39,7 +41,7 @@ interface SettingsSectionFormProps {
 // react-hook-form instance (via useSettingsSectionForm) and hands the exact
 // prop set the existing field components already take, so none of their
 // signatures change.
-export function SettingsSectionForm({ settings, section, extra, children }: SettingsSectionFormProps) {
+export function SettingsSectionForm({ settings, section, extra, saveBarLook, children }: SettingsSectionFormProps) {
   const { form, isDirty, isSaving, submit, discard, leaveGuard } = useSettingsSectionForm(settings, section, extra);
   const { control, register, setValue, watch, getValues, formState } = form;
 
@@ -47,7 +49,7 @@ export function SettingsSectionForm({ settings, section, extra, children }: Sett
     <>
       <form onSubmit={submit} noValidate className="space-y-6 pb-24">
         {children({ control, register, setValue, watch, getValues, errors: formState.errors })}
-        <SettingsSaveBar isDirty={isDirty} isSaving={isSaving} onDiscard={discard} />
+        <SettingsSaveBar isDirty={isDirty} isSaving={isSaving} onDiscard={discard} look={saveBarLook} />
       </form>
       <ConfirmDialog
         open={leaveGuard.prompting}
