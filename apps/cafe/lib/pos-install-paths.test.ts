@@ -106,22 +106,21 @@ test("PIN: app/(dashboard)/layout.tsx imports pos-install and declares manifest/
   assert.match(src, /from\s+"@\/lib\/pos-install"/, 'must import from "@/lib/pos-install"');
   assert.match(src, /themeColor:\s*MANIFEST_THEME_COLOR/, "viewport must set themeColor from the shared constant");
 
-  // generateMetadata has TWO return statements (the try branch and the DB-down
-  // catch branch) and BOTH must declare the link and both icon entries — a
-  // single match anywhere in the file would let the fallback branch silently
-  // drop the tab icon on every dashboard route (review RC3, 2026-09-04).
-  // Next replaces metadata.icons wholesale per segment (not a deep merge), so
-  // the dashboard must re-declare its own tab icon entry, not rely on root's.
-  const RETURN_BRANCHES = 2;
+  // P2 N2: the metadata is ONE static object now (no generateMetadata, no DB-down branch), and it must still declare
+  // the link and both icon entries — a title-only object would drop the install link or the tab icon on every
+  // dashboard route. Next replaces metadata.icons wholesale per segment (not a deep merge), so the dashboard must
+  // re-declare its own tab icon entry, not rely on root's.
+  const SINGLE = 1;
   const count = (re: RegExp): number => (src.match(re) ?? []).length;
-  assert.equal(count(/return\s*\{/g), RETURN_BRANCHES, "landmark: generateMetadata must have exactly two object-returning branches (try + catch)");
-  assert.equal(count(/manifest:\s*MANIFEST_PATH/g), RETURN_BRANCHES, "manifest: MANIFEST_PATH must appear once per return branch");
+  assert.equal(count(/export const metadata:\s*Metadata\s*=/g), SINGLE, "landmark: exactly one static metadata object");
+  assert.ok(!src.includes("generateMetadata"), "the dashboard frame must stay static: no generateMetadata");
+  assert.equal(count(/manifest:\s*MANIFEST_PATH/g), SINGLE, "manifest: MANIFEST_PATH must be declared");
   assert.equal(
     count(/apple:\s*\[\s*\{\s*url:\s*APPLE_TOUCH_ICON_PATH\s*\}\s*\]/g),
-    RETURN_BRANCHES,
-    "apple: [{ url: APPLE_TOUCH_ICON_PATH }] must appear once per return branch",
+    SINGLE,
+    "apple: [{ url: APPLE_TOUCH_ICON_PATH }] must be declared",
   );
-  assert.equal(count(/icon:\s*\[/g), RETURN_BRANCHES, "icon: [ must be re-declared once per return branch — Next replaces metadata.icons per segment, not merges it");
+  assert.equal(count(/icon:\s*\[/g), SINGLE, "icon: [ must be re-declared — Next replaces metadata.icons per segment, not merges it");
 
   // Landmark (already pinned elsewhere; kept here only as a stable anchor
   // that this is still the same layout file the other pins target).
@@ -133,8 +132,8 @@ test("PIN: app/(dashboard)/layout.tsx imports pos-install and declares manifest/
 test("PIN: app/layout.tsx never advertises the install manifest or the wake lock — diners/public routes must not see an install prompt", () => {
   const src = stripComments(readSrc(ROOT_LAYOUT));
 
-  // Positive landmark first (root layout still owns generateMetadata).
-  assert.match(src, /export async function generateMetadata\(/, "landmark: root layout still exports generateMetadata");
+  // Positive landmark first (P2 N2: the root layout owns a static metadata object; no generateMetadata).
+  assert.match(src, /export const metadata:\s*Metadata\s*=/, "landmark: root layout exports its static metadata object");
 
   assert.ok(!src.includes("manifest:"), "root layout must never declare a manifest: metadata field");
   assert.ok(!src.includes("pos-install"), "root layout must never import from pos-install");

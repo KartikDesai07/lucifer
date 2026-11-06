@@ -49,6 +49,10 @@ function matchingBraceEnd(src: string, openIdx: number): number {
 
 const BRANDING_ROUTE = "apps/cafe/app/api/branding/[slot]/route.ts";
 const ROOT_LAYOUT = "apps/cafe/app/layout.tsx";
+// P2 N2: the root layout is static now; the Settings-derived tab title/icon live in the pure rule (document-branding)
+// and the public pages' server helper (public-metadata, /login and /m) — the pins below follow them there.
+const PUBLIC_METADATA = "apps/cafe/lib/public-metadata.ts";
+const DOCUMENT_BRANDING = "apps/cafe/lib/document-branding.ts";
 const FAVICON_FILE = "apps/cafe/app/favicon.ico";
 const NEXT_CONFIG = "apps/cafe/next.config.ts";
 const SETTINGS_FORM_DEFAULTS = "apps/cafe/lib/settings-form-defaults.ts";
@@ -237,16 +241,17 @@ test('PIN: the branding route reads its byte cap from BRANDING_SLOT_MAX_BYTES[sl
 
 // ── 4. generateMetadata never 500s the login page; title falls back to APP_NAME ──
 
-test("PIN: app/layout.tsx's generateMetadata reads Settings inside a try whose catch still returns metadata (never throws), the title falls back to APP_NAME, and the tab icon is version-stamped from Settings with a brandingUrl fallback", () => {
-  const src = stripComments(readSrc(ROOT_LAYOUT));
+test("PIN: lib/public-metadata.ts's readPublicMetadata (the /login and /m generateMetadata) reads Settings inside a try whose catch still returns metadata (never throws), the title falls back to APP_NAME, and the tab icon is version-stamped from Settings with a brandingUrl fallback", () => {
+  const src = stripComments(readSrc(PUBLIC_METADATA));
+  const rule = stripComments(readSrc(DOCUMENT_BRANDING));
 
   assert.match(
     src,
-    /export async function generateMetadata\(\): Promise<Metadata>/,
-    "layout.tsx must export generateMetadata",
+    /export async function readPublicMetadata\(\): Promise<Metadata>/,
+    "public-metadata.ts must export readPublicMetadata",
   );
 
-  const fnStart = src.indexOf("export async function generateMetadata");
+  const fnStart = src.indexOf("export async function readPublicMetadata");
   const braceOpenIdx = src.indexOf("{", fnStart);
   const braceCloseIdx = matchingBraceEnd(src, braceOpenIdx);
   const fnBody = src.slice(braceOpenIdx + 1, braceCloseIdx);
@@ -278,10 +283,11 @@ test("PIN: app/layout.tsx's generateMetadata reads Settings inside a try whose c
   // a cafe that never set a restaurantName would then get an empty tab title
   // instead of the generic product name, or the whole function would throw.
   assert.match(
-    tryBody,
-    /const title = settings\?\.restaurantName\?\.trim\(\) \|\| APP_NAME;/,
-    "the try branch's title must read settings?.restaurantName defensively and fall back to APP_NAME when unset",
+    rule,
+    /title: settings\?\.restaurantName\?\.trim\(\) \|\| APP_NAME,/,
+    "brandingOf's title must read settings?.restaurantName defensively and fall back to APP_NAME when unset",
   );
+  assert.match(tryBody, /brandingOf\(await readSettings\(\)\)/, "the try branch must take title and icon from brandingOf over readSettings()");
   assert.match(
     catchBody,
     /title: APP_NAME,/,
@@ -296,13 +302,13 @@ test("PIN: app/layout.tsx's generateMetadata reads Settings inside a try whose c
   // swapping in the raw ref/settings field instead of going through
   // productImageUrl, which is what turns the ref into a real, versioned URL.
   assert.match(
-    tryBody,
-    /const iconHref =\s*productImageUrl\(settings\?\.productLogo\) \?\? DEFAULT_PRODUCT_LOGO_URL;/,
-    "the try branch's iconHref must derive from productImageUrl(settings?.productLogo), falling back to DEFAULT_PRODUCT_LOGO_URL (F5) when unset",
+    rule,
+    /iconHref: productImageUrl\(settings\?\.productLogo \?\? undefined\) \?\? DEFAULT_PRODUCT_LOGO_URL,/,
+    "brandingOf's iconHref must derive from productImageUrl(settings?.productLogo), falling back to DEFAULT_PRODUCT_LOGO_URL (F5) when unset",
   );
   assert.match(
     tryBody,
-    /icons: \{ icon: \[\{ url: iconHref \}\] \},/,
+    /icons: \{ icon: \[\{ url: iconHref \}\] \}/,
     "the try branch's returned Metadata must set icons.icon from iconHref — a title-only return would leave the tab icon dead code",
   );
   assert.match(
@@ -314,13 +320,13 @@ test("PIN: app/layout.tsx's generateMetadata reads Settings inside a try whose c
 
 // ── 4b. layout.tsx never calls the upserting getSettings on the public /login path ──
 
-test('PIN: app/layout.tsx never calls getSettings — only its read-only twin readSettings', () => {
-  const src = stripComments(readSrc(ROOT_LAYOUT));
+test('PIN: the public metadata helper (/login, /m) never calls getSettings — only its read-only twin readSettings', () => {
+  const src = stripComments(readSrc(PUBLIC_METADATA));
 
   assert.match(
     src,
     /\breadSettings\b/,
-    "layout.tsx must read Settings via readSettings",
+    "public-metadata.ts must read Settings via readSettings",
   );
   // Mutation this catches: swapping readSettings for getSettings — getSettings()
   // upserts, and its `timestamps: true` bumps updatedAt on EVERY call (verified
@@ -328,7 +334,7 @@ test('PIN: app/layout.tsx never calls getSettings — only its read-only twin re
   // M0 with no backups on every uncached render.
   assert.ok(
     !/\bgetSettings\b/.test(src),
-    "layout.tsx must never call getSettings — it is a public render path, and getSettings() upserts on every call",
+    "public-metadata.ts must never call getSettings — it is a public render path, and getSettings() upserts on every call",
   );
 });
 
@@ -827,9 +833,12 @@ test("PIN (F5): the built-in logo's version-stamped URL is served immutable befo
   assert.ok(branch < get.indexOf("getBrandingMeta("), "F5: answered before the first getBrandingMeta");
   assert.ok(branch < get.indexOf("resolveActiveVersion("), "F5: answered before resolveActiveVersion");
 
-  for (const rel of [ROOT_LAYOUT, "apps/cafe/app/(dashboard)/layout.tsx"]) {
+  for (const rel of [DOCUMENT_BRANDING, ROOT_LAYOUT, "apps/cafe/app/(dashboard)/layout.tsx"]) {
     const layout = stripComments(readSrc(rel));
-    assert.match(layout, /productImageUrl\([^)]*\) \?\? DEFAULT_PRODUCT_LOGO_URL/, `${rel}: F5 icon fallback`);
     assert.ok(!layout.includes('brandingUrl("productLogo")'), `${rel}: no unversioned icon URL`);
+  }
+  assert.match(stripComments(readSrc(DOCUMENT_BRANDING)), /productImageUrl\([^)]*\) \?\? DEFAULT_PRODUCT_LOGO_URL/, "F5 icon fallback in the one rule both the device and the public pages use");
+  for (const rel of [ROOT_LAYOUT, "apps/cafe/app/(dashboard)/layout.tsx"]) {
+    assert.match(stripComments(readSrc(rel)), /icon: \[\{ url: DEFAULT_PRODUCT_LOGO_URL \}\]/, `${rel}: the static tab icon is the built-in mark`);
   }
 });

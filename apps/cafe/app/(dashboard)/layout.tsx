@@ -1,13 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import { APP_NAME } from "@pos/shared/constants";
-import { getSettings } from "@/lib/settings";
 import {
   MANIFEST_PATH,
   APPLE_TOUCH_ICON_PATH,
   MANIFEST_THEME_COLOR,
 } from "@/lib/pos-install";
 import { DEFAULT_PRODUCT_LOGO_URL } from "@/lib/branding-default-logo";
-import { productImageUrl } from "@/lib/images";
 import { SCREEN_LOCK_SCRIPT } from "@/lib/screen-lock-script";
 import { NAV_STATE_SCRIPT } from "@/lib/nav-state-script";
 import { HTML_RULES_SCRIPT } from "@/lib/html-rules-scope";
@@ -15,6 +13,7 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Header } from "@/components/layout/Header";
 import { PageHeaderSlotProvider } from "@/components/layout/page-header-slot";
+import { DocumentBranding } from "@/components/layout/DocumentBranding";
 import { MasterDataProvider } from "@/components/layout/MasterDataProvider";
 import { OfflineReplayRunner } from "@/components/layout/OfflineReplayRunner";
 import { PosPulseProvider } from "@/components/layout/PosPulseProvider";
@@ -28,9 +27,8 @@ import { TouchFeel } from "@/components/shared/TouchFeel";
 import { HtmlRulesScope } from "@/components/layout/HtmlRulesScope";
 import "../print-fonts.css";
 
-// Tab title mirrors the cafe's own branding once Settings is configured,
-// falling back to the generic product name (never a hardcoded cafe name).
-// Rides getSettings' own cache — no extra DB round trip on top of the page's.
+// Static: no Settings read here, so every staff frame is served from the CDN. The cafe's own name and logo reach
+// the tab on the device (DocumentBranding, below), over this generic title and icon.
 //
 // The manifest link (CB-1d.2) is advertised from the DASHBOARD ONLY — never
 // the root layout or /m — so diners on the public QR flow never see an
@@ -42,28 +40,14 @@ import "../print-fonts.css";
 // `icons`. So the tab icon the root layout declares must be RE-DECLARED
 // here alongside the apple icon, or every dashboard route would silently
 // lose its tab icon.
-export async function generateMetadata(): Promise<Metadata> {
-  try {
-    const settings = await getSettings();
-    return {
-      title: settings.restaurantName?.trim() || APP_NAME,
-      manifest: MANIFEST_PATH,
-      icons: {
-        icon: [{ url: productImageUrl(settings.productLogo) ?? DEFAULT_PRODUCT_LOGO_URL }],
-        apple: [{ url: APPLE_TOUCH_ICON_PATH }],
-      },
-    };
-  } catch {
-    return {
-      title: APP_NAME,
-      manifest: MANIFEST_PATH,
-      icons: {
-        icon: [{ url: DEFAULT_PRODUCT_LOGO_URL }],
-        apple: [{ url: APPLE_TOUCH_ICON_PATH }],
-      },
-    };
-  }
-}
+export const metadata: Metadata = {
+  title: APP_NAME,
+  manifest: MANIFEST_PATH,
+  icons: {
+    icon: [{ url: DEFAULT_PRODUCT_LOGO_URL }],
+    apple: [{ url: APPLE_TOUCH_ICON_PATH }],
+  },
+};
 
 // Android Chrome (>=108) defaults to resizes-visual, which leaves the POS's
 // fixed bottom bar and the cart sheet's discount/notes inputs UNDER the
@@ -107,6 +91,8 @@ export default function DashboardLayout({
                 waits behind a placeholder so the mounted screens cannot each fire
                 their own master fetch first. */}
             <MasterDataProvider>
+              {/* The tab title and icon, from the settings this provider seeds (the frame itself is static). */}
+              <DocumentBranding />
               {/* CB-U1: the session keepalive rolls the 90-day cookie for a tab
                   that never navigates — staff screens only, never /login or /m. */}
               <SessionKeepalive />

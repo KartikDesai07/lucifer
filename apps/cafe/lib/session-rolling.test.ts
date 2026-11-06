@@ -70,7 +70,7 @@ test("SESSION_KEEPALIVE_SECONDS is at most one hour (60 * 60 seconds) — a keep
 // keepalive moved to components/layout/SessionKeepalive.tsx, mounted in the
 // DASHBOARD layout only (see the pins below).
 
-test("PIN (F1 regression guard): apps/cafe/app/layout.tsx's SessionProvider element is EXACTLY <SessionProvider session={session}> (no refetchInterval, no refetchWhenOffline prop) — landmark: <SessionProvider IS present", () => {
+test("PIN (F1 regression guard): apps/cafe/app/layout.tsx's SessionProvider element is EXACTLY a bare <SessionProvider> (no session prop, no refetchInterval, no refetchWhenOffline prop) — landmark: <SessionProvider IS present", () => {
   const src = stripComments(readSrc(CAFE_LAYOUT));
 
   const tagStart = src.indexOf("<SessionProvider");
@@ -81,8 +81,8 @@ test("PIN (F1 regression guard): apps/cafe/app/layout.tsx's SessionProvider elem
 
   assert.equal(
     tagSlice.replace(/\s+/g, " "),
-    "<SessionProvider session={session}>",
-    "app/layout.tsx's <SessionProvider> element must be exactly <SessionProvider session={session}> — the F1 fix reverted it to bare, moving the keepalive out to SessionKeepalive.tsx",
+    "<SessionProvider>",
+    "app/layout.tsx's <SessionProvider> element must be exactly a bare <SessionProvider> (the interim state before the session gate moves it: no session prop, the root reads no session) — the F1 fix reverted it to bare, moving the keepalive out to SessionKeepalive.tsx",
   );
   assert.ok(
     !src.includes("refetchInterval"),

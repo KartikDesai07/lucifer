@@ -1,7 +1,14 @@
+import type { Metadata } from "next";
+import { readPublicMetadata } from "@/lib/public-metadata";
 import { readPublicAppearance } from "@/lib/public-appearance";
 import { FONT_PAIR_CLASSNAMES, FONT_PAIR_FAMILIES } from "@/lib/public-fonts";
 import { appearanceScopedCss } from "@pos/shared/appearance";
 import { appearanceOverrideCss, DINER_THEME_SCRIPT } from "@pos/shared/appearance-theme-override";
+
+// The tab title and icon for the diner pages (the root layout is static now and carries only the generic ones).
+export async function generateMetadata(): Promise<Metadata> {
+  return readPublicMetadata();
+}
 
 // CR2.4 S3 — server-renders the diner theme for every /m route, killing the
 // flash-of-default-theme a client-only theme switch would show on every scan.
