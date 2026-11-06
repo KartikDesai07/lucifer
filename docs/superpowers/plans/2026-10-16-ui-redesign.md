@@ -299,3 +299,13 @@ hour. `docs/GO-LIVE-CHECKLIST.md` says what an existing cafe should do.
 
 **The owner's OK:** asked 2026-10-17 (the local preview at http://localhost:3110 on the demo database); the merge and the
 push each wait for the owner's word.
+
+### `/settings/business` (2026-11-06)
+
+Business details is now six cards: Restaurant, Contact & licence, Bill preview, UPI payments, Screens and App
+branding. From 1280 px the Bill preview is a 340 px sticky column. The settings card pieces live in
+`lib/settings-card-layout.ts` and `components/settings/SettingsCard.tsx`, ready for the other 8 settings pages (one per
+session). The Save bar's card look is opt-in, so the other pages are unchanged.
+
+**The owner's OK:** given for the merge and push on 2026-11-06 (main b822a07); the owner deploys posdemo. Plan, checks
+and review: `docs/superpowers/plans/2026-11-06-settings-business-ui.md` Results.
