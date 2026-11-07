@@ -60,7 +60,8 @@ test("a tap on the page already showing cancels an opening in progress, then nav
   assert.equal(p.get(), null, "Next discards the pending /orders navigation, so the progress ends");
 });
 
-// navigateTo with a fake router and a stubbed window.location (node has no window); restored after each test.
+// navigateTo with a fake router and a stubbed window.location (node has no window); restored after each test. Each
+// test hands navigateTo its own store (review m-h), so a test failing half-way never leaks a progress into the next.
 type Calls = string[];
 function withWindow<T>(location: { pathname: string; search?: string; assign?: (h: string) => void }, fn: () => T): T {
   const g = globalThis as { window?: unknown };
@@ -84,29 +85,38 @@ function fakeRouter(calls: Calls) {
 }
 
 test("navigateTo: push by default, replace when asked, with the progress started for a new page", () => {
-  navProgress.cancel();
+  const p = createNavProgress();
   const calls: Calls = [];
-  withWindowPath("/pos", () => navigateTo(fakeRouter(calls), "/orders"));
+  withWindowPath("/pos", () => navigateTo(fakeRouter(calls), "/orders", { progress: p }));
   assert.deepEqual(calls, ["push /orders"], "router.push by default");
-  assert.equal(navProgress.get()?.href, "/orders", "it consulted beginNavigation: the progress started");
-  navProgress.cancel();
-  withWindowPath("/pos", () => navigateTo(fakeRouter(calls), "/", { replace: true, label: "Home" }));
+  assert.equal(p.get()?.href, "/orders", "it consulted beginNavigation: the progress started");
+  const q = createNavProgress();
+  withWindowPath("/pos", () => navigateTo(fakeRouter(calls), "/", { replace: true, label: "Home", progress: q }));
   assert.equal(calls[1], "replace /", "router.replace with { replace: true }");
-  assert.equal(navProgress.get()?.label, "Home", "its label is passed on");
+  assert.equal(q.get()?.label, "Home", "its label is passed on");
+});
+
+test("navigateTo: with no store given it drives the page-wide navProgress", () => {
   navProgress.cancel();
+  try {
+    withWindowPath("/pos", () => navigateTo(fakeRouter([]), "/orders"));
+    assert.equal(navProgress.get()?.href, "/orders", "the default store is the one the view reads");
+  } finally {
+    navProgress.cancel();
+  }
 });
 
 test("navigateTo: the href already opening is not navigated again; the current page just navigates", () => {
-  navProgress.cancel();
+  const p = createNavProgress();
   const calls: Calls = [];
   withWindowPath("/pos", () => {
-    navigateTo(fakeRouter(calls), "/orders");
-    navigateTo(fakeRouter(calls), "/orders");
+    navigateTo(fakeRouter(calls), "/orders", { progress: p });
+    navigateTo(fakeRouter(calls), "/orders", { progress: p });
   });
   assert.deepEqual(calls, ["push /orders"], "the second call stops on go:false");
-  withWindowPath("/pos", () => navigateTo(fakeRouter(calls), "/pos?x=1"));
+  withWindowPath("/pos", () => navigateTo(fakeRouter(calls), "/pos?x=1", { progress: p }));
   assert.equal(calls[1], "push /pos?x=1", "same path: pushes");
-  assert.equal(navProgress.get(), null, "and the opening /orders was cancelled (R30)");
+  assert.equal(p.get(), null, "and the opening /orders was cancelled (R30)");
 });
 
 // --- "Back" and "Try again" under "Still opening…" (final review I1 / m-a) ---
@@ -190,11 +200,26 @@ test("the href already opening stays even when a full load is pending", () => {
   assert.equal(again.action, "stay", "no second full load");
 });
 
-test("the held check asks about the target path, not the href with its query", () => {
+// Moved on purpose (final review m-d, ruling R36): the router cache keeps a screen per URL, so a query href is asked
+// about whole; a plain href still by its path (R23).
+test("the held check asks about the path, or the path + query when the href has one", () => {
   const asked: string[] = [];
+  const ask = { ...facts({ offline: true }), holds: (key: string, now: number) => (asked.push(`${key}@${now}`), true) };
+  beginNavigation("/orders?a=1#top", undefined, "/pos", 7, createNavProgress(), ask);
+  beginNavigation("/orders/", undefined, "/pos", 8, createNavProgress(), ask);
+  assert.deepEqual(asked, ["/orders?a=1@7", "/orders@8"], "path + query (no hash) and now; a plain href by its path");
+});
+
+test("offline + a query href: the path held is not enough, the exact href must be held (R36)", () => {
+  const holdsOnly = (...keys: string[]) => ({ ...facts({ offline: true }), holds: (key: string) => keys.includes(key) });
   const p = createNavProgress();
-  beginNavigation("/orders?a=1", undefined, "/pos", 7, p, { ...facts({ offline: true }), holds: (path, now) => (asked.push(`${path}@${now}`), true) });
-  assert.deepEqual(asked, ["/orders@7"], "path and now are passed (R23)");
+  const r = beginNavigation("/orders?date=2026-11-07", undefined, "/pos", 1, p, holdsOnly("/orders"));
+  assert.equal(r.action, "refuse", "/orders held says nothing about /orders?date=…: refused with the toast, never the network");
+  assert.equal(p.get(), null, "and no skeleton");
+  const exact = beginNavigation("/orders?date=2026-11-07", undefined, "/pos", 1, createNavProgress(), holdsOnly("/orders?date=2026-11-07"));
+  assert.equal(exact.action, "navigate", "the exact href held (visited or offered) opens from memory");
+  const plain = beginNavigation("/orders", undefined, "/pos", 1, createNavProgress(), holdsOnly("/orders"));
+  assert.equal(plain.action, "navigate", "no query: the path held is enough (unchanged)");
 });
 
 function fxDeps(log: string[], o: Parameters<typeof facts>[0]): Partial<NavDeps> {
@@ -202,34 +227,26 @@ function fxDeps(log: string[], o: Parameters<typeof facts>[0]): Partial<NavDeps>
 }
 
 test("navigateTo: refuse = toast, no push, no progress", () => {
-  navProgress.cancel();
+  const p = createNavProgress();
   const calls: Calls = [];
-  withWindowPath("/pos", () => navigateTo(fakeRouter(calls), "/orders", { deps: fxDeps(calls, { offline: true }) }));
+  withWindowPath("/pos", () => navigateTo(fakeRouter(calls), "/orders", { deps: fxDeps(calls, { offline: true }), progress: p }));
   assert.deepEqual(calls, ["toast Offline: Orders opens once the internet is back"], "toast only, router untouched");
-  assert.equal(navProgress.get(), null, "no progress");
+  assert.equal(p.get(), null, "no progress");
 });
 
 test("navigateTo: full-load = assign, no push, progress started", () => {
-  navProgress.cancel();
+  const p = createNavProgress();
   const calls: Calls = [];
-  withWindowPath("/pos", () => navigateTo(fakeRouter(calls), "/orders", { replace: true, deps: fxDeps(calls, { updatePending: true }) }));
+  withWindowPath("/pos", () => navigateTo(fakeRouter(calls), "/orders", { replace: true, deps: fxDeps(calls, { updatePending: true }), progress: p }));
   assert.deepEqual(calls, ["assign /orders"], "document load, router untouched");
-  assert.equal(navProgress.get()?.href, "/orders", "skeleton while loading");
-  navProgress.cancel();
+  assert.equal(p.get()?.href, "/orders", "skeleton while loading");
 });
 
 test("navigateTo: the default full load calls window.location.assign", () => {
-  navProgress.cancel();
   const calls: Calls = [];
-  const g = globalThis as { window?: unknown };
-  g.window = { location: { pathname: "/pos", assign: (h: string) => calls.push(`assign ${h}`) } };
-  try {
-    navigateTo(fakeRouter(calls), "/kitchen", { deps: facts({ updatePending: true }) });
-  } finally {
-    delete g.window;
-  }
+  const assign = (h: string) => void calls.push(`assign ${h}`);
+  withWindow({ pathname: "/pos", assign }, () => navigateTo(fakeRouter(calls), "/kitchen", { deps: facts({ updatePending: true }), progress: createNavProgress() }));
   assert.deepEqual(calls, ["assign /kitchen"], "the real default hands the href to the browser");
-  navProgress.cancel();
 });
 
 test("AppLink prevents the default for every action but navigate", async () => {

@@ -3,9 +3,9 @@
 // When a newer build of the app is waiting, a screen not held is loaded as a whole document so the tab
 // picks up the new build instead of mixing old and new code.
 
-export type NavAction = "navigate" | "full-load" | "refuse";
+export type NavDecision = "navigate" | "full-load" | "refuse";
 
-export function navDecision(input: { href: string; offline: boolean; held: boolean; updatePending: boolean }): NavAction {
+export function navDecision(input: { href: string; offline: boolean; held: boolean; updatePending: boolean }): NavDecision {
   if (input.held) return "navigate";
   if (input.offline) return "refuse";
   if (input.updatePending) return "full-load";

@@ -9,7 +9,7 @@ import { BrandTile } from "@/components/layout/BrandTile";
 import { HeaderTitle } from "@/components/layout/HeaderTitle";
 import { RefreshButton } from "@/components/layout/RefreshButton";
 import { HeaderQuickTabs } from "@/components/layout/HeaderQuickTabs";
-import { NavProgressLine } from "@/components/layout/NavProgressView";
+import { NavCoverInert, NavProgressLine } from "@/components/layout/NavProgressView";
 import { PosHeaderBrand, PosHeaderClock, usePosHeaderRoom } from "@/components/layout/PosHeaderBrand";
 import { usePageHeader } from "@/components/layout/page-header-slot";
 import { TokenSheet } from "@/components/pos/TokenSheet";
@@ -84,6 +84,8 @@ export function Header() {
           box: flex:1, right-aligned, 6px apart, scrolling sideways; it stays in the row while empty; no header-button
           look (it holds the HTML's own switch-order button). */}
       <div ref={actionsRef} data-ui="header-actions" data-header-actions={pos ? undefined : ""} data-pos={pos ? "" : undefined} className="flex min-w-0 items-center gap-2.5 empty:hidden data-pos:flex-1 data-pos:justify-end data-pos:gap-1.5 data-pos:overflow-x-auto data-pos:empty:flex" />
+      {/* P2 N1: while a tap's screen opens, the hidden page's actions (portaled into the box above) go inert. */}
+      <NavCoverInert box={actionsBox} />
       <HeaderQuickTabs />
       {pos && <PosHeaderClock now={now} tone={printerTone} room={room} />}
       <RefreshButton />

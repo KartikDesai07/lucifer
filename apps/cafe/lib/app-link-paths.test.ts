@@ -44,13 +44,47 @@ test("PIN: only AppLink (and the public menu) imports next/link", () => {
   assert.match(code(APP_LINK), /from\s+["']next\/link["']/, "landmark: AppLink itself wraps next/link");
 });
 
-test("PIN: only navigateTo (and the public menu) calls router.push / router.replace", () => {
-  const offenders = sourceFiles().filter(
-    (f) => f !== NAVIGATE && !isPublic(f) && /\brouter\.(push|replace)\(/.test(code(f)),
-  );
-  assert.deepEqual(offenders, [], `staff code must call navigateTo, not router.push/replace: ${offenders.join(", ")}`);
+// The router's push / replace calls in a source, whatever the router is called (final review m-c: the old pin matched
+// only the name `router`, so `const nav = useRouter(); nav.push(…)` slipped through). A name counts as the router when
+// it is bound from useRouter() or useContext(AppRouterContext), or typed AppRouterInstance; destructuring push / replace
+// out of the router, and useRouter().push(…) itself, count too. A name copied to another name is not followed.
+const ROUTER_SOURCE = String.raw`(?:useRouter\(\s*\)|useContext\(\s*AppRouterContext\s*\))`;
+function routerNavCalls(src: string): string[] {
+  const found: string[] = [];
+  const names = new Set<string>(["router"]);
+  for (const m of src.matchAll(new RegExp(String.raw`\b(?:const|let|var)\s+(\w+)\s*(?::[^=]+)?=\s*${ROUTER_SOURCE}`, "g"))) names.add(m[1]);
+  for (const m of src.matchAll(/\b(\w+)\s*\??\s*:\s*(?:AppRouterInstance|ReturnType<typeof useRouter>)/g)) names.add(m[1]);
+  for (const m of src.matchAll(new RegExp(String.raw`\{([^{}]*)\}\s*=\s*${ROUTER_SOURCE}`, "g"))) {
+    if (/\b(push|replace)\b/.test(m[1])) found.push(`{${m[1].trim()}} = router`);
+  }
+  for (const m of src.matchAll(new RegExp(String.raw`${ROUTER_SOURCE}\s*\??\.\s*(push|replace)\s*\(`, "g"))) found.push(`router().${m[1]}(`);
+  for (const name of names) {
+    for (const m of src.matchAll(new RegExp(String.raw`\b${name}\s*\??\.\s*(push|replace)\s*\(`, "g"))) found.push(`${name}.${m[1]}(`);
+  }
+  return found;
+}
+
+test("the router-call detector sees push / replace under any name, and never an array push or a string replace", () => {
+  const caught = (src: string) => routerNavCalls(src).length > 0;
+  assert.ok(caught(`const nav = useRouter(); nav.push("/x");`), "a router named nav");
+  assert.ok(caught(`const r = useRouter();\n r?.replace("/x")`), "optional call on another name");
+  assert.ok(caught(`const ctx = useContext(AppRouterContext); ctx.push("/x")`), "the context read directly");
+  assert.ok(caught(`function go(to: AppRouterInstance) { to.replace("/x"); }`), "a parameter typed AppRouterInstance");
+  assert.ok(caught(`const { push } = useRouter(); push("/x");`), "push destructured out of the router");
+  assert.ok(caught(`useRouter().push("/x")`), "a call on useRouter() itself");
+  assert.ok(caught(`router.push("/x")`), "the old pin's case, any origin");
+  assert.ok(!caught(`const nav = useRouter(); navigateTo(nav, "/x"); rows.push(1); s.replace("a", "b");`), "an array push and a string replace are not the router");
+  assert.ok(!caught(`const { prefetch } = useRouter(); prefetch("/x");`), "only push / replace are navigations");
+});
+
+test("PIN: only navigateTo (and the public menu) calls the router's push / replace, under any name", () => {
+  const files = sourceFiles().filter((f) => f !== NAVIGATE && !isPublic(f));
+  const offenders = files.flatMap((f) => routerNavCalls(code(f)).map((call) => `${f}: ${call}`));
+  assert.deepEqual(offenders, [], `staff code must call navigateTo, not the router's push/replace: ${offenders.join(", ")}`);
+  assert.ok(files.filter((f) => /\buseRouter\(/.test(code(f))).length >= 5, "landmark: the scan saw the staff files that hold a router");
   assert.match(code(NAVIGATE), /router\.push\(/, "landmark: navigateTo pushes");
   assert.match(code(NAVIGATE), /router\.replace\(/, "landmark: navigateTo replaces");
+  assert.ok(routerNavCalls(code(NAVIGATE)).length >= 3, "landmark: the detector sees lib/navigate.ts's own calls (push, replace, the abandon replace)");
 });
 
 test("PIN: AppLink never prefetches on sight and starts the progress through the shared decision", () => {

@@ -2,7 +2,7 @@ import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.
 
 import { toast } from "sonner";
 
-import { heldRoutes } from "@/lib/held-routes";
+import { heldKeyOf, heldRoutes } from "@/lib/held-routes";
 import { navDecision, offlineNavMessage } from "@/lib/nav-decision";
 import { navProgress, navTargetPath, type createNavProgress } from "@/lib/nav-progress";
 import { pageTitleFor } from "@/lib/page-titles";
@@ -19,7 +19,8 @@ type ProgressStore = Pick<ReturnType<typeof createNavProgress>, "start" | "cance
 /** The facts a decision reads, and the two side effects; every one has a real default so callers pass nothing. */
 export interface NavDeps {
   isOffline: () => boolean;
-  holds: (path: string, now: number) => boolean;
+  /** `key` is heldKeyOf(href): the path, or the path + query for a query link (ruling R36). */
+  holds: (key: string, now: number) => boolean;
   /** Part D's build stamp feeds this (a newer build is waiting); until then no update is ever pending. */
   updatePending: () => boolean;
   toastOffline: (message: string) => void;
@@ -28,7 +29,7 @@ export interface NavDeps {
 
 const realDeps: NavDeps = {
   isOffline: () => serverReach.isOffline() || (typeof navigator !== "undefined" && navigator.onLine === false),
-  holds: (path, now) => heldRoutes.holds(path, now),
+  holds: (key, now) => heldRoutes.holds(key, now),
   updatePending: () => false,
   toastOffline: (message) => void toast.error(message),
   assign: (href) => window.location.assign(href),
@@ -54,7 +55,7 @@ export function beginNavigation(
     progress.cancel();
     return { action: "navigate", label: words };
   }
-  const action = navDecision({ href, offline: d.isOffline(), held: d.holds(path, now), updatePending: d.updatePending() });
+  const action = navDecision({ href, offline: d.isOffline(), held: d.holds(heldKeyOf(href), now), updatePending: d.updatePending() });
   // A refused tap opens nothing, so no skeleton starts.
   if (action === "refuse") return { action, label: words };
   if (!progress.start(href, words, now, fromPath)) return { action: "stay", label: words };
@@ -74,9 +75,9 @@ export function applyNavAction(result: NavStart, href: string, deps: Partial<Nav
 export function navigateTo(
   router: AppRouterInstance,
   href: string,
-  opts?: { replace?: boolean; label?: string; deps?: Partial<NavDeps> },
+  opts?: { replace?: boolean; label?: string; deps?: Partial<NavDeps>; progress?: ProgressStore },
 ): void {
-  const result = beginNavigation(href, opts?.label, window.location.pathname, Date.now(), undefined, opts?.deps);
+  const result = beginNavigation(href, opts?.label, window.location.pathname, Date.now(), opts?.progress, opts?.deps);
   if (!applyNavAction(result, href, opts?.deps)) return;
   if (opts?.replace) router.replace(href);
   else router.push(href);

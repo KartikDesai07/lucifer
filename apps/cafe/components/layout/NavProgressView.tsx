@@ -5,8 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { NavSkeleton } from "@/components/layout/NavSkeleton";
-import { useNavProgress } from "@/hooks/use-nav-progress";
-import { heldRoutes } from "@/lib/held-routes";
+import { useNavCovered, useNavProgress } from "@/hooks/use-nav-progress";
+import { heldRoutes, markVisit } from "@/lib/held-routes";
 import { abandonNavigation, retryNavigation } from "@/lib/navigate";
 import { navProgress, type NavProgress } from "@/lib/nav-progress";
 import { coverOf, skeletonKindOf, stillOpeningIn } from "@/lib/nav-skeleton";
@@ -26,11 +26,13 @@ export function NavProgressView({ children }: { children: ReactNode }) {
   const cover = coverOf(useNavProgress(), pathname);
 
   // Before paint, on mount and on every new pathname: the screen that just drew ends the wait (so no frame shows the
-  // skeleton over it), and the visit counts as held for an offline tap later (lib/navigate.ts).
+  // skeleton over it), and the visit counts as held for an offline tap later (lib/navigate.ts), by its path and, when
+  // it shows a query, by its whole URL. The query is read here from the address bar: these pages are static, so
+  // useSearchParams is not an option.
   useLayoutEffect(() => {
     if (!pathname) return;
     navProgress.settle(pathname);
-    heldRoutes.mark(pathname, Date.now());
+    markVisit(heldRoutes, pathname, window.location.search, Date.now());
   }, [pathname]);
 
   // A page restored from the back-forward cache (Back after a full load) comes back with the store as it was at the
@@ -143,4 +145,18 @@ export function NavProgressLine({ pos }: { pos: boolean }) {
   const cover = coverOf(useNavProgress(), pathname);
   if (!cover) return null;
   return <div data-ui="nav-line" data-pos={pos ? "" : undefined} role="progressbar" aria-label={`Opening ${cover.label}`} />;
+}
+
+/** While a tap's screen opens, the hidden page's own header actions (portaled into the header's actions box, `box`)
+ *  must take no click or key: the box goes inert, and nothing else in the header does (the quick links, Refresh, the
+ *  printer button stay live). Set on the element from this empty component, before paint, so a tap re-renders it and
+ *  not the whole header. */
+export function NavCoverInert({ box }: { box: HTMLElement | null }) {
+  const covered = useNavCovered(usePathname() ?? "");
+  useLayoutEffect(() => {
+    if (!box || !covered) return;
+    box.setAttribute("inert", "");
+    return () => box.removeAttribute("inert");
+  }, [box, covered]);
+  return null;
 }

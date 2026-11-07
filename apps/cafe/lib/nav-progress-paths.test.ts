@@ -134,9 +134,10 @@ test("PIN: a layout effect on the pathname settles the store and marks the visit
   const view = code(VIEW);
   assert.match(
     view,
-    /useLayoutEffect\(\(\) => \{[^}]*?navProgress\.settle\(pathname\);\s*heldRoutes\.mark\(pathname, Date\.now\(\)\);\s*\}, \[pathname\]\);/,
-    "before paint, on mount and on every pathname: settle, then mark the visit",
+    /useLayoutEffect\(\(\) => \{[^}]*?navProgress\.settle\(pathname\);\s*markVisit\(heldRoutes, pathname, window\.location\.search, Date\.now\(\)\);\s*\}, \[pathname\]\);/,
+    "before paint, on mount and on every pathname: settle, then mark the visit by its path and its query (moved on purpose, R36)",
   );
+  assert.ok(!/useSearchParams/.test(view), "the query is read from window.location inside the effect, never useSearchParams (static pages)");
   assert.match(
     view,
     /if \(event\.persisted\) navProgress\.cancel\(\);[\s\S]*?window\.addEventListener\("pageshow", onShow\)/,
@@ -257,6 +258,25 @@ test("PIN (R8): the files over the cap do not grow; the new files stay under it"
   for (const rel of [VIEW, SKELETON, CSS, "lib/nav-skeleton.ts", HEADER, "components/layout/TabBar.tsx"]) {
     assert.ok(lines(rel) <= 300, `${rel} is at most 300 lines`);
   }
+});
+
+// ── The covered page's header actions (final review m-b) ─────────────────────
+
+test("PIN: while covered, the page's own actions in the header are inert; nothing else in the header is", () => {
+  const header = code(HEADER);
+  assert.match(header, /<NavCoverInert box=\{actionsBox\} \/>/, "the header hands its actions box to the inert switch");
+  assert.ok(!/\binert\b/.test(header), "the header itself sets no inert: the quick links, Refresh, the printer button and the line stay live");
+  assert.match(code("components/layout/page-header-slot.tsx"), /actionsRef: setTarget, titleRef: setTitleEl, actionsBox: target/, "that box is the slot's portal target (the page's actions)");
+  assert.match(
+    code(VIEW),
+    /export function NavCoverInert\(\{ box \}: \{ box: HTMLElement \| null \}\) \{\s*const covered = useNavCovered\(usePathname\(\) \?\? ""\);\s*useLayoutEffect\(\(\) => \{\s*if \(!box \|\| !covered\) return;\s*box\.setAttribute\("inert", ""\);\s*return \(\) => box\.removeAttribute\("inert"\);\s*\}, \[box, covered\]\);\s*return null;/,
+    "inert from before paint while covered, removed when the cover ends; an empty component, so a tap never re-renders the header",
+  );
+  assert.match(
+    code(HOOK),
+    /export function useNavCovered\(pathname: string\): boolean \{\s*return useSyncExternalStore\(navProgress\.subscribe, \(\) => coverOf\(navProgress\.get\(\), pathname\) !== null, \(\) => false\);/,
+    "the same coverOf as the view and the line, as a boolean (it re-renders only when it flips)",
+  );
 });
 
 // ── A hidden page is not measured ────────────────────────────────────────────
