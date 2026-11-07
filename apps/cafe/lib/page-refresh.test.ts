@@ -118,7 +118,14 @@ test("PIN: Refresh shows only inside the POS app, asks first, then reloads quiet
   assert.ok(!button.includes("location.reload"), "the button reloads only through the rule");
   assert.match(button, /aria-label="Refresh"/, "named for a screen reader");
   const hook = src("apps/cafe/hooks/use-ask-first-reload.ts");
-  assert.match(hook, /const step = reloadStep\(navigator\.onLine !== false, unsentWork\(\)\);/, "the decision is lib/page-refresh.ts's");
+  // P2 N4 (deliberate move, R59): offline is the page's own offline state or the browser's flag, the reading a tap uses
+  // (lib/navigate.ts) — the internet down behind a working Wi-Fi is offline too, so the chip / Refresh never reload into
+  // the browser's error page.
+  assert.match(
+    hook,
+    /const offline = serverReach\.isOffline\(\) \|\| navigator\.onLine === false;\s*const step = reloadStep\(!offline, unsentWork\(\)\);/,
+    "the decision is lib/page-refresh.ts's, offline read from serverReach and navigator.onLine",
+  );
   assert.match(hook, /if \(step\.kind === "offline"\) \{\s*toast\.error\(REFRESH_OFFLINE_MESSAGE\);\s*return;\s*\}/, "offline: says so, no reload");
   assert.match(hook, /if \(step\.kind === "ask"\) \{\s*setAsking\(step\.work\);\s*return;\s*\}\s*reload\(\);/, "unsent work: ask first; nothing to lose: reload");
   const reload = hook.slice(hook.indexOf("const reload = "), hook.indexOf("const press = "));

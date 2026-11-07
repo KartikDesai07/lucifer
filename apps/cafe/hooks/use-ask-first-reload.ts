@@ -15,10 +15,12 @@ import {
   unsentWork,
   type UnsentWork,
 } from "@/lib/page-refresh";
+import { serverReach } from "@/lib/server-reach";
 
 // The one ask-first rule for a reload staff ask for: the POS app's Refresh button (the owner, 2026-10-03) and the
-// header's "Update ready · Reload" chip (P2 N4, the review's R54), so the two can never drift apart. Offline it says
-// so instead of reloading into an error screen; with work a reload would lose (lib/page-refresh.ts) it asks first;
+// header's "Update ready · Reload" chip (P2 N4, the review's R54), so the two can never drift apart. Offline (the
+// page's own offline state or the browser's flag, the reading a tap uses: R59) it says so instead of reloading into an
+// error screen; with work a reload would lose (lib/page-refresh.ts) it asks first;
 // confirmed, or with nothing to lose, it tells the page's own leave warning the reload is deliberate (no second,
 // native question), runs `beforeReload` (the chip keeps the build it goes to) and reloads. A reload that has not torn
 // the page down after REFRESH_SETTLE_MS did not happen: the caller's button lets go.
@@ -48,7 +50,8 @@ export function useAskFirstReload(beforeReload?: () => void): AskFirstReload {
     window.location.reload();
   };
   const press = () => {
-    const step = reloadStep(navigator.onLine !== false, unsentWork());
+    const offline = serverReach.isOffline() || navigator.onLine === false;
+    const step = reloadStep(!offline, unsentWork());
     if (step.kind === "offline") {
       toast.error(REFRESH_OFFLINE_MESSAGE);
       return;

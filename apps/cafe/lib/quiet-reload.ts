@@ -56,8 +56,8 @@ export function quietVerdict(s: QuietFacts): QuietVerdict {
   if (s.soundNeedsGesture) return "chip";
   if (s.autoReloadSpent) return "chip";
   // Offline, a reload swaps the POS for the browser's "no internet" page (or the app's error screen), and that device
-  // takes no offline KOT until someone taps Retry. The chip above still shows: a tap on it is staff's own choice, under
-  // Refresh's offline rule (hooks/use-ask-first-reload.ts).
+  // takes no offline KOT until someone taps Retry. The chip above still shows: a tap on it is staff's own choice, and
+  // Refresh's rule refuses it offline with the same reading (hooks/use-ask-first-reload.ts, R59).
   if (s.offline) return "wait";
   const quiet = s.locked || s.msSinceInput >= QUIET_IDLE_MS;
   const nothingToLose =
