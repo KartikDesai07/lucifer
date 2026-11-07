@@ -63,7 +63,7 @@ test("PIN: AppLink never prefetches on sight and starts the progress through the
   assert.match(code(NAVIGATE), /progress[^=]*= navProgress/, "the progress it starts is the page-wide navProgress by default");
   assert.match(link, /e\.preventDefault\(\)/, "a tap on the href already opening is cancelled");
   assert.match(link, /beginNavigation\(href, label, /, "AppLink passes its label prop through to the decision");
-  assert.match(link, /if \(prevented\) return;\s*if \(!beginNavigation\(/, "a caller's own preventDefault in onNavigate stops AppLink before it starts a progress");
+  assert.match(link, /if \(prevented\) return;\s*const result = beginNavigation\(/, "a caller's own preventDefault in onNavigate stops AppLink before it starts a progress");
 });
 
 test("PIN: IntentLink is gone (AppLink absorbed it)", () => {

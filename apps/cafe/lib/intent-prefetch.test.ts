@@ -52,7 +52,7 @@ test("PIN: AppLink forces prefetch={false} after the caller's props and chains t
   for (const [mine, theirs] of [["onPointerDown", "onPointerDown"], ["onMouseEnter", "onMouseEnter"], ["onMouseLeave", "onMouseLeave"]]) {
     assert.match(src, new RegExp(String.raw`intent\.${mine}\(\);\s*${theirs}\?\.\(e\);`), `${mine}: ours, then the caller's`);
   }
-  assert.match(src, /onNavigate\?\.\(\{[\s\S]*?\}\);\s*if \(prevented\) return;\s*if \(!beginNavigation\(/, "onNavigate: the caller's first (its preventDefault is recorded and stops the progress), then the shared navigation decision");
+  assert.match(src, /onNavigate\?\.\(\{[\s\S]*?\}\);\s*if \(prevented\) return;\s*const result = beginNavigation\(/, "onNavigate: the caller's first (its preventDefault is recorded and stops the progress), then the shared navigation decision");
 });
 
 /** Every `<AppLink …>` opening tag, brace-aware (a `>` inside `{…}` does not end it). */

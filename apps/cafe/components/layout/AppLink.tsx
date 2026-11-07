@@ -4,7 +4,7 @@ import type { ComponentProps, MouseEvent, PointerEvent } from "react";
 import Link from "next/link";
 
 import { useIntentPrefetch } from "@/hooks/use-intent-prefetch";
-import { beginNavigation } from "@/lib/navigate";
+import { applyNavAction, beginNavigation } from "@/lib/navigate";
 
 // The one link every staff screen uses (nothing else may import next/link: lib/app-link-paths.test.ts).
 // It never prefetches on sight (a Link prefetch fired into a line still waking up poisons the router cache — see
@@ -36,7 +36,10 @@ export function AppLink({
           },
         });
         if (prevented) return;
-        if (!beginNavigation(href, label, window.location.pathname, Date.now()).go) e.preventDefault();
+        const result = beginNavigation(href, label, window.location.pathname, Date.now());
+        applyNavAction(result, href);
+        // Refuse, full load and stay all end here: Next must not navigate on its own.
+        if (result.action !== "navigate") e.preventDefault();
       }}
       onPointerDown={(e: PointerEvent<HTMLAnchorElement>) => {
         intent.onPointerDown();

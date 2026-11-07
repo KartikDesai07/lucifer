@@ -70,6 +70,7 @@
   "testChain": [
     "lib/health-region.test.ts",
     "lib/navigate.test.ts",
+    "lib/nav-decision.test.ts",
     "lib/app-link-paths.test.ts",
     "lib/static-routes-check.test.ts",
     "lib/deploy-scope-paths.test.ts",
