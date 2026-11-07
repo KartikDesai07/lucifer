@@ -1,8 +1,8 @@
 // P2 N4: when may an open page load a newer build by itself? Only at a quiet moment, when nobody can lose anything:
 // the screen lock is on, or a minute passed with no pointer or key input, AND no dialog or sheet is open, no text
 // field has focus, the POS cart is empty, nothing unsent is held (lib/page-refresh.ts), no order waits in the offline
-// outbox, no write is in flight and this device holds no print job (lib/print-host-busy.ts). The lock is a quiet
-// moment, but it never overrides any of the others: a payment left open under it still waits.
+// outbox, no write is in flight, this device holds no print job (lib/print-host-busy.ts) and the device is online.
+// The lock is a quiet moment, but it never overrides any of the others: a payment left open under it still waits.
 // A plain browser with alerts on never reloads by itself: after a reload its alarm sound and the Now Serving voice
 // stay locked until someone taps (lib/alert-sound.ts), so it shows the header's chip and staff reload with a tap.
 // The chip also stands in once this page already reloaded toward this build and still runs the old one (a CDN or a
@@ -43,6 +43,8 @@ export interface QuietFacts {
   printBusy: boolean;
   /** A reload would lock this device's alert sound until a tap. */
   soundNeedsGesture: boolean;
+  /** This page has no reach to the server (lib/server-reach.ts) or the browser says it is offline. */
+  offline: boolean;
   /** This page already reloaded toward the server's build and still runs the old one. */
   autoReloadSpent: boolean;
 }
@@ -53,6 +55,10 @@ export function quietVerdict(s: QuietFacts): QuietVerdict {
   if (!s.pending) return "wait";
   if (s.soundNeedsGesture) return "chip";
   if (s.autoReloadSpent) return "chip";
+  // Offline, a reload swaps the POS for the browser's "no internet" page (or the app's error screen), and that device
+  // takes no offline KOT until someone taps Retry. The chip above still shows: a tap on it is staff's own choice, under
+  // Refresh's offline rule (hooks/use-ask-first-reload.ts).
+  if (s.offline) return "wait";
   const quiet = s.locked || s.msSinceInput >= QUIET_IDLE_MS;
   const nothingToLose =
     !s.dialogOpen &&

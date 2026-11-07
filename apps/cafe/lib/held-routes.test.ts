@@ -45,7 +45,7 @@ test("the page's record uses the router-cache window: HELD_ROUTES_WINDOW_MS equa
 });
 
 // Final review m-d (ruling R36): Next's router cache keeps a screen per URL, so a link with a query string counts as held
-// only by that exact URL, and a visit marks both forms.
+// only by that exact URL, and only once it was offered: a visit with a query marks nothing (rulings R40, R41).
 test("heldKeyOf: the path alone, or the path + query when the href has one", () => {
   assert.equal(heldKeyOf("/orders"), "/orders", "a plain href is its path");
   assert.equal(heldKeyOf("/orders/"), "/orders", "a trailing slash names the same page");

@@ -46,7 +46,8 @@ export const heldRoutes = createHeldRoutes(HELD_ROUTES_WINDOW_MS);
 
 /** The key a tap's held check asks about: the path alone, or the path + query when the href has one (the hash never
  *  counts). Next's router cache keeps a screen per URL, so /orders held says nothing about /orders?date=…: offline, a
- *  query link opens only when that exact URL was visited or offered (ruling R36), else the toast, never the network. */
+ *  query link opens only when that exact URL was offered (ruling R36; a query visit is never held, rulings R40, R41),
+ *  else the toast, never the network. */
 export function heldKeyOf(href: string): string {
   const beforeHash = href.split("#")[0];
   const at = beforeHash.indexOf("?");

@@ -3,7 +3,8 @@
 // is the only other reload; both remember the build they go to first (the loop guard, and the 2 s "Updated" note
 // after). The check is a local 5 s timer armed only while an update waits, and it makes no request. The facts it
 // reads come from their one sources: the cart and unsent work (lib/page-refresh.ts), the outbox, the query client's
-// writes, the lock, and this device's print holds (lib/print-host-busy.ts), wired into printing with no new line.
+// writes, the lock, the page's offline state (lib/server-reach.ts) and this device's print holds
+// (lib/print-host-busy.ts), wired into printing with no new line.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -117,14 +118,22 @@ test("PIN: the check reads each fact from its one source", () => {
     [/mutating: queryClient\.isMutating\(\),/, "writes in flight"],
     [/printBusy: printHostBusy\(\),/, "this device's print holds"],
     [/soundNeedsGesture: soundNeedsGesture\(\),/, "the sound rule"],
+    // The final review's C1: the page's offline state or the browser's flag, the same reading as a tap (lib/navigate.ts).
+    [/offline: serverReach\.isOffline\(\) \|\| navigator\.onLine === false,/, "offline from serverReach and navigator.onLine"],
   ];
   for (const [pattern, why] of facts) assert.match(src, pattern, why);
+  assert.match(src, /import \{ serverReach \} from "@\/lib\/server-reach";/, "the page's one offline state");
   assert.match(
     src,
     /return nativeBridge\(\) === null && desktopShell\(\) === null && \(readDevicePrefs\(\)\.alertSound \|\| isDisplayPath\(window\.location\.pathname\)\);/,
     "a plain browser with alerts on, or a display page's voice, needs a tap for sound",
   );
-  assert.match(src, /const INPUT_EVENTS = \["pointerdown", "keydown", "wheel", "touchstart"\] as const;/, "the inputs that count");
+  // The final review's m2: a moving mouse is someone at the screen, not an idle one.
+  assert.match(
+    src,
+    /const INPUT_EVENTS = \["pointerdown", "pointermove", "keydown", "wheel", "touchstart"\] as const;/,
+    "the inputs that count, a moving pointer included",
+  );
   assert.match(src, /const INPUT_OPTIONS: AddEventListenerOptions = \{ capture: true, passive: true \};/, "seen first, never blocking");
   assert.match(src, /lastInputAt\.current = Date\.now\(\);\s*try \{/, "a freshly loaded page waits the full quiet time");
   assert.match(src, /window\.addEventListener\(type, onInput, INPUT_OPTIONS\)/, "listened on the window");

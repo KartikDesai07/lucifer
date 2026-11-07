@@ -1,8 +1,9 @@
 // P2 N4: the quiet moment. A page that runs an older build than the server's loads the new one by itself only when
 // nobody can lose anything: the screen lock is on, or a minute passed with no input, AND nothing is open, focused,
-// in the cart, unsent, waiting in the outbox, in flight or printing. A plain browser with alerts on never reloads by
-// itself (its sound would stay locked until a tap): it gets the "Update ready · Reload" chip instead, and so does a
-// page whose one self-reload toward this build already happened. Every condition is a row of this table.
+// in the cart, unsent, waiting in the outbox, in flight or printing, and the device is online. A plain browser with
+// alerts on never reloads by itself (its sound would stay locked until a tap): it gets the "Update ready · Reload"
+// chip instead, and so does a page whose one self-reload toward this build already happened. Every condition is a row
+// of this table.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -36,6 +37,7 @@ const QUIET: QuietFacts = {
   printBusy: false,
   soundNeedsGesture: false,
   autoReloadSpent: false,
+  offline: false,
 };
 
 // Review Focus 3: each of these alone must keep the page as it is.
@@ -47,6 +49,7 @@ const BLOCKERS: ReadonlyArray<readonly [string, Partial<QuietFacts>]> = [
   ["an order waits in the offline outbox", { outbox: 1 }],
   ["a write is in flight", { mutating: 1 }],
   ["a print job is leased or printing", { printBusy: true }],
+  ["the device is offline (a reload would swap the POS for an error page)", { offline: true }],
 ];
 
 test("the constants are the spec's, exactly", () => {
@@ -95,6 +98,17 @@ test("the self-reload toward this build already happened (the loop guard): the c
   assert.equal(quietVerdict({ ...QUIET, autoReloadSpent: true }), "chip", "all quiet: the chip");
   assert.equal(quietVerdict({ ...QUIET, autoReloadSpent: true, locked: true, msSinceInput: 0 }), "chip", "locked: the chip");
   assert.equal(quietVerdict({ ...QUIET, autoReloadSpent: true, cartItems: 2 }), "chip", "with a cart: the chip");
+});
+
+// The final review's C1: offline, a reload shows the browser's "no internet" page (or the app's error screen) instead of
+// the POS, and no offline KOT can be taken until someone taps Retry. The chip still shows: a tap on it is staff's own
+// choice, under Refresh's offline rule.
+test("offline: never a self-reload, but the chip still shows where it would", () => {
+  assert.equal(quietVerdict({ ...QUIET, offline: true }), "wait", "all quiet but offline: wait");
+  assert.equal(quietVerdict({ ...QUIET, offline: true, locked: true, msSinceInput: 0 }), "wait", "locked but offline: wait");
+  assert.equal(quietVerdict({ ...QUIET, offline: true, soundNeedsGesture: true }), "chip", "a plain browser with alerts on: the chip (staff choose)");
+  assert.equal(quietVerdict({ ...QUIET, offline: true, autoReloadSpent: true }), "chip", "the loop guard: the chip (staff choose)");
+  assert.equal(quietVerdict({ ...QUIET, offline: true, pending: false }), "wait", "nothing to load: wait");
 });
 
 // The review's minor (fix round 1): a key left by a reload that landed on the old build is forgotten once the server

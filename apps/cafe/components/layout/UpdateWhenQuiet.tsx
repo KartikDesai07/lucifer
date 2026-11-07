@@ -26,20 +26,22 @@ import {
   textFieldFocused,
 } from "@/lib/quiet-reload";
 import { LOCK_ATTR, isDisplayPath } from "@/lib/screen-lock";
+import { serverReach } from "@/lib/server-reach";
 import { STATUS_CLASSES } from "@/lib/ui";
 import { updatePending } from "@/lib/update-pending";
 import { cn } from "@/lib/utils";
 
 // P2 N4: a newer build loads at a quiet moment, never mid-sale. While the pulse says a newer build waits
 // (lib/update-pending.ts), a local 5 s check gathers the facts and acts on lib/quiet-reload.ts's verdict: "reload"
-// reloads the page (nobody can lose anything), "chip" shows the header's "Update ready · Reload" (a plain browser
-// with alerts on, whose sound a reload would lock until a tap), "wait" does nothing. No timer runs while nothing
-// waits, and the check makes no request. Before any reload it starts, it writes the build it goes to into
+// reloads the page (nobody can lose anything, and it is online), "chip" shows the header's "Update ready · Reload"
+// (a plain browser with alerts on, whose sound a reload would lock until a tap), "wait" does nothing. No timer runs
+// while nothing waits, and the check makes no request. Before any reload it starts, it writes the build it goes to into
 // sessionStorage: the new page says "Updated" for 2 s; a page that reloaded and still runs the old build never
 // reloads itself toward that build again (a loop on every pulse), it shows the chip instead, until the server moves
 // on to another build. The chip's tap follows Refresh's ask-first rule (hooks/use-ask-first-reload.ts).
 
-const INPUT_EVENTS = ["pointerdown", "keydown", "wheel", "touchstart"] as const;
+// A moving mouse is someone at the screen too (a hover on a desk till); the handler only stores a time.
+const INPUT_EVENTS = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"] as const;
 const INPUT_OPTIONS: AddEventListenerOptions = { capture: true, passive: true };
 
 // The chip's one flag: the check sets it, the header's chip reads it (no context, so the header renders it anywhere).
@@ -135,6 +137,7 @@ export function UpdateWhenQuiet(): null {
         mutating: queryClient.isMutating(),
         printBusy: printHostBusy(),
         soundNeedsGesture: soundNeedsGesture(),
+        offline: serverReach.isOffline() || navigator.onLine === false,
         autoReloadSpent: broken || (stored !== null && stored === updatePending.serverBuild()),
       });
       showChip(verdict === "chip");
