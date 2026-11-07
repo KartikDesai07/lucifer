@@ -379,6 +379,7 @@
     "lib/sidebar-order-paths.test.ts",
     "lib/nav-device-name.test.ts",
     "lib/nav-shell.test.ts",
+    "lib/nav-progress.test.ts",
     "lib/page-header-slot.test.ts",
     "lib/tab-bar-paths.test.ts",
     "lib/app-toaster-paths.test.ts",
