@@ -52,11 +52,11 @@ test("PIN: AppLink forces prefetch={false} after the caller's props and chains t
   for (const [mine, theirs] of [["onPointerDown", "onPointerDown"], ["onMouseEnter", "onMouseEnter"], ["onMouseLeave", "onMouseLeave"]]) {
     assert.match(src, new RegExp(String.raw`intent\.${mine}\(\);\s*${theirs}\?\.\(e\);`), `${mine}: ours, then the caller's`);
   }
-  assert.match(src, /onNavigate\?\.\(e\);\s*if \(!beginNavigation\(/, "onNavigate: the caller's, then the shared navigation decision");
+  assert.match(src, /onNavigate\?\.\(\{[\s\S]*?\}\);\s*if \(prevented\) return;\s*if \(!beginNavigation\(/, "onNavigate: the caller's first (its preventDefault is recorded and stops the progress), then the shared navigation decision");
 });
 
-/** Every `<IntentLink …>` opening tag, brace-aware (a `>` inside `{…}` does not end it). */
-function intentTags(src: string): string[] {
+/** Every `<AppLink …>` opening tag, brace-aware (a `>` inside `{…}` does not end it). */
+function appLinkTags(src: string): string[] {
   const tags: string[] = [];
   for (const m of src.matchAll(/<AppLink\b/g)) {
     let depth = 0;
@@ -80,7 +80,7 @@ test("PIN: every nav row site is an AppLink (sidebar, group sub-rows, tab bar, M
     const src = read(`components/layout/${file}.tsx`);
     assert.ok(!src.includes("next/link") && !/<Link\b/.test(src), `${file}: no plain Link among the nav rows`);
     assert.match(src, /import \{ AppLink \} from "@\/components\/layout\/AppLink";/, `${file}: imports AppLink`);
-    const tags = intentTags(src);
+    const tags = appLinkTags(src);
     assert.equal(tags.length, expected, `${file}: expected ${expected} <AppLink> tags, found ${tags.length}`);
     for (const tag of tags) {
       assert.ok(tag.includes("href="), `landmark: a whole AppLink tag was read: ${tag}`);

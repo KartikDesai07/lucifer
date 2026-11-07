@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { beginNavigation } from "@/lib/navigate";
-import { createNavProgress } from "@/lib/nav-progress";
+import { beginNavigation, navigateTo } from "@/lib/navigate";
+import { createNavProgress, navProgress } from "@/lib/nav-progress";
 
 test("a tap on another page starts the progress with that page's title and fromPath, and navigates", () => {
   const p = createNavProgress();
@@ -42,4 +42,60 @@ test("an absolute same-origin URL is read by its path", () => {
   assert.equal(p.get(), null, "an absolute URL of the current page starts nothing");
   beginNavigation("https://pos.example.com/kitchen", undefined, "/orders", 2, p);
   assert.equal(p.get()?.label, "Kitchen", "its path gives the title");
+});
+
+test("a tap on the page already showing cancels an opening in progress, then navigates (R30)", () => {
+  const p = createNavProgress();
+  beginNavigation("/orders", undefined, "/pos", 1, p);
+  assert.notEqual(p.get(), null, "landmark: /orders is opening from /pos");
+  const r = beginNavigation("/pos", undefined, "/pos", 2, p);
+  assert.equal(r.go, true, "the tap navigates as today");
+  assert.equal(p.get(), null, "Next discards the pending /orders navigation, so the progress ends");
+});
+
+// navigateTo with a fake router and a stubbed window.location (node has no window); restored after each test.
+type Calls = string[];
+function withWindowPath<T>(pathname: string, fn: () => T): T {
+  const g = globalThis as { window?: unknown };
+  const had = Object.prototype.hasOwnProperty.call(g, "window");
+  const before = g.window;
+  g.window = { location: { pathname } };
+  try {
+    return fn();
+  } finally {
+    if (had) g.window = before;
+    else delete g.window;
+  }
+}
+function fakeRouter(calls: Calls) {
+  return {
+    push: (h: string) => calls.push(`push ${h}`),
+    replace: (h: string) => calls.push(`replace ${h}`),
+  } as unknown as Parameters<typeof navigateTo>[0];
+}
+
+test("navigateTo: push by default, replace when asked, with the progress started for a new page", () => {
+  navProgress.cancel();
+  const calls: Calls = [];
+  withWindowPath("/pos", () => navigateTo(fakeRouter(calls), "/orders"));
+  assert.deepEqual(calls, ["push /orders"], "router.push by default");
+  assert.equal(navProgress.get()?.href, "/orders", "it consulted beginNavigation: the progress started");
+  navProgress.cancel();
+  withWindowPath("/pos", () => navigateTo(fakeRouter(calls), "/", { replace: true, label: "Home" }));
+  assert.equal(calls[1], "replace /", "router.replace with { replace: true }");
+  assert.equal(navProgress.get()?.label, "Home", "its label is passed on");
+  navProgress.cancel();
+});
+
+test("navigateTo: the href already opening is not navigated again; the current page just navigates", () => {
+  navProgress.cancel();
+  const calls: Calls = [];
+  withWindowPath("/pos", () => {
+    navigateTo(fakeRouter(calls), "/orders");
+    navigateTo(fakeRouter(calls), "/orders");
+  });
+  assert.deepEqual(calls, ["push /orders"], "the second call stops on go:false");
+  withWindowPath("/pos", () => navigateTo(fakeRouter(calls), "/pos?x=1"));
+  assert.equal(calls[1], "push /pos?x=1", "same path: pushes");
+  assert.equal(navProgress.get(), null, "and the opening /orders was cancelled (R30)");
 });

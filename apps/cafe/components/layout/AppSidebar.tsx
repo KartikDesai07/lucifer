@@ -208,7 +208,7 @@ export function AppSidebar() {
     .flatMap((section) => section.items.map((item) => item.url));
   useWarmRoutes(warmHrefs);
 
-  // No nav row prefetches on sight (AppLink forces): a warm
+  // No nav row prefetches on sight (AppLink forces prefetch={false}): a warm
   // row's warmers are the hook above and a touch (use-intent-prefetch), both of
   // which wait for a working line — a prefetch that fails on a line still waking
   // up turns the next click on that row into a full page load.

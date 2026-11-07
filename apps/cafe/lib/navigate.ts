@@ -10,16 +10,21 @@ import { pageTitleFor } from "@/lib/page-titles";
 export type NavStart = { go: boolean };
 
 /** Decide a navigation to `href` made from `fromPath`. `go: false` = do not navigate (that exact href is already
- *  opening). A same-path tap starts no progress (nothing to wait for; a query change renders in place). */
+ *  opening). A same-path tap cancels any opening and starts none (nothing to wait for; a query change renders in place). */
 export function beginNavigation(
   href: string,
   label: string | undefined,
   fromPath: string,
   now: number,
-  progress: Pick<ReturnType<typeof createNavProgress>, "start"> = navProgress,
+  progress: Pick<ReturnType<typeof createNavProgress>, "start" | "cancel"> = navProgress,
 ): NavStart {
   const path = navTargetPath(href);
-  if (path === fromPath) return { go: true };
+  // Next throws away a pending navigation when a new one is dispatched, so the old target never lands and nothing
+  // would settle it: a tap on the page already showing ends the wait, then navigates as today (R30).
+  if (path === fromPath) {
+    progress.cancel();
+    return { go: true };
+  }
   const words = label ?? (pageTitleFor(path) || path);
   return { go: progress.start(href, words, now, fromPath) };
 }

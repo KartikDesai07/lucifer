@@ -27,7 +27,15 @@ export function AppLink({
       href={href}
       prefetch={false}
       onNavigate={(e) => {
-        onNavigate?.(e);
+        // Next's event has no defaultPrevented, so record whether the caller cancelled: then nothing opens.
+        let prevented = false;
+        onNavigate?.({
+          preventDefault: () => {
+            prevented = true;
+            e.preventDefault();
+          },
+        });
+        if (prevented) return;
         if (!beginNavigation(href, label, window.location.pathname, Date.now()).go) e.preventDefault();
       }}
       onPointerDown={(e: PointerEvent<HTMLAnchorElement>) => {

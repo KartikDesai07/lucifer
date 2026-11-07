@@ -68,7 +68,6 @@ export function HeaderQuickTabs() {
           <AppLink
             key={tab.url}
             href={tab.url}
-            // Never on its own: /pos and /tables are warmed by useWarmRoutes only once the line answers (lib/warm-routes.ts).
             data-active={active}
             aria-current={active ? "page" : undefined}
             aria-label={tab.title}
