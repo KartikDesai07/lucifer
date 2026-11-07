@@ -65,6 +65,13 @@ export function quietVerdict(s: QuietFacts): QuietVerdict {
   return quiet && nothingToLose ? "reload" : "wait";
 }
 
+/** An earlier reload of this tab went to `stored` and still landed on the old build (so it keeps the chip), and the
+ *  server now reports another valid build: the server moved on, so the key is forgotten and a later report of that
+ *  build earns one quiet reload again. */
+export function staleReloadTarget(stored: string | null, serverBuild: string | null): boolean {
+  return stored !== null && serverBuild !== null && serverBuild !== "" && serverBuild !== stored;
+}
+
 /** The parts of the document the two DOM facts read. */
 export interface QuietDocument {
   querySelectorAll(selector: string): ArrayLike<QuietDialog>;

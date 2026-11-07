@@ -2,21 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
-import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/header-classes";
-import {
-  REFRESH_CONFIRM_TITLE,
-  REFRESH_OFFLINE_MESSAGE,
-  REFRESH_SETTLE_MS,
-  clearDeliberateReload,
-  markDeliberateReload,
-  refreshQuestion,
-  unsentWork,
-  type UnsentWork,
-} from "@/lib/page-refresh";
+import { useAskFirstReload } from "@/hooks/use-ask-first-reload";
 import { inAppWebView } from "@/lib/printer/capabilities";
 import { cn } from "@/lib/utils";
 
@@ -24,39 +14,16 @@ import { cn } from "@/lib/utils";
 // (U0 Task 3: the HTML's 36px outline square, before Tokens and the printer). A full reload, as a browser's
 // refresh (sent orders live on the server; the print agent's pending acks survive it). It asks first when the page holds work a reload would lose (lib/page-refresh.ts), then
 // tells the page's own leave warning the reload is deliberate, so no second, native question follows.
-// Offline it says so instead of reloading into an error screen. Shown only inside the POS app: read after
-// mount, so the server's HTML and the first paint agree.
+// Offline it says so instead of reloading into an error screen. That rule is hooks/use-ask-first-reload.ts, shared
+// with the header's update chip (P2 N4). Shown only inside the POS app: read after mount, so the server's HTML and
+// the first paint agree.
 export function RefreshButton() {
   const [shown, setShown] = useState(false);
-  const [asking, setAsking] = useState<UnsentWork | null>(null);
-  const [reloading, setReloading] = useState(false);
+  const { reloading, press, dialog } = useAskFirstReload();
   useEffect(() => {
     setShown(inAppWebView());
   }, []);
   if (!shown) return null;
-
-  const reload = () => {
-    setAsking(null);
-    setReloading(true);
-    markDeliberateReload();
-    window.setTimeout(() => {
-      clearDeliberateReload();
-      setReloading(false);
-    }, REFRESH_SETTLE_MS);
-    window.location.reload();
-  };
-  const onPress = () => {
-    if (navigator.onLine === false) {
-      toast.error(REFRESH_OFFLINE_MESSAGE);
-      return;
-    }
-    const work = unsentWork();
-    if (work !== null) {
-      setAsking(work);
-      return;
-    }
-    reload();
-  };
 
   return (
     <>
@@ -69,21 +36,11 @@ export function RefreshButton() {
         title="Refresh"
         data-ui="header-refresh"
         disabled={reloading}
-        onClick={onPress}
+        onClick={press}
       >
         <RefreshCw className={cn(reloading && "animate-spin")} strokeWidth={1.8} aria-hidden="true" />
       </Button>
-      <ConfirmDialog
-        open={asking !== null}
-        onOpenChange={(open) => {
-          if (!open) setAsking(null);
-        }}
-        title={REFRESH_CONFIRM_TITLE}
-        description={asking === null ? undefined : refreshQuestion(asking)}
-        confirmLabel="Refresh"
-        cancelLabel="Stay"
-        onConfirm={reload}
-      />
+      <ConfirmDialog {...dialog} />
     </>
   );
 }

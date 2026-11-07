@@ -14,6 +14,7 @@ import {
   isDeliberateReload,
   markDeliberateReload,
   refreshQuestion,
+  reloadStep,
   unsentWork,
 } from "@/lib/page-refresh";
 
@@ -97,19 +98,39 @@ test("PIN: the header shows Refresh among its global buttons, before the printer
   assert.ok(header.indexOf("<HeaderQuickTabs />") < refreshAt, "after Tables and New order");
 });
 
+// P2 N4 (the review's R54): Refresh and the header's "Update ready · Reload" chip share one ask-first rule.
+test("reloadStep: offline says so (even with work), work a reload loses asks first, nothing to lose reloads", () => {
+  assert.deepEqual(reloadStep(false, null), { kind: "offline" }, "offline: no reload into an error screen");
+  assert.deepEqual(reloadStep(false, "changes"), { kind: "offline" }, "offline wins over unsent work");
+  assert.deepEqual(reloadStep(true, "changes"), { kind: "ask", work: "changes" }, "unsent lines or a dirty form: ask first");
+  assert.deepEqual(reloadStep(true, "unconfirmed"), { kind: "ask", work: "unconfirmed" }, "an order being sent: ask first, with its own words");
+  assert.deepEqual(reloadStep(true, null), { kind: "reload" }, "nothing to lose: reload");
+});
+
 test("PIN: Refresh shows only inside the POS app, asks first, then reloads quietly; a refresh that did not happen lets go", () => {
   const button = src("apps/cafe/components/layout/RefreshButton.tsx");
   assert.match(button, /setShown\(inAppWebView\(\)\)/, "inside the POS app only (a browser has its own refresh)");
   assert.match(button, /if \(!shown\) return null;/, "nothing elsewhere");
-  assert.match(button, /if \(navigator\.onLine === false\) \{\s*toast\.error\(REFRESH_OFFLINE_MESSAGE\);\s*return;\s*\}/, "offline: says so, no reload");
-  assert.match(button, /const work = unsentWork\(\);\s*if \(work !== null\) \{\s*setAsking\(work\);\s*return;\s*\}/, "unsent work: ask first");
-  const reload = button.slice(button.indexOf("const reload = "), button.indexOf("const onPress = "));
+  // P2 N4 (deliberate move, R54): the ask-first rule moved into hooks/use-ask-first-reload.ts, shared with the chip.
+  assert.match(button, /const \{ reloading, press, dialog \} = useAskFirstReload\(\);/, "Refresh uses the shared rule, with nothing extra before its reload");
+  assert.match(button, /disabled=\{reloading\}\s*onClick=\{press\}/, "the tap runs the rule; the button rests while reloading");
+  assert.match(button, /<ConfirmDialog \{\.\.\.dialog\} \/>/, "the rule's own question");
+  assert.ok(!button.includes("location.reload"), "the button reloads only through the rule");
+  assert.match(button, /aria-label="Refresh"/, "named for a screen reader");
+  const hook = src("apps/cafe/hooks/use-ask-first-reload.ts");
+  assert.match(hook, /const step = reloadStep\(navigator\.onLine !== false, unsentWork\(\)\);/, "the decision is lib/page-refresh.ts's");
+  assert.match(hook, /if \(step\.kind === "offline"\) \{\s*toast\.error\(REFRESH_OFFLINE_MESSAGE\);\s*return;\s*\}/, "offline: says so, no reload");
+  assert.match(hook, /if \(step\.kind === "ask"\) \{\s*setAsking\(step\.work\);\s*return;\s*\}\s*reload\(\);/, "unsent work: ask first; nothing to lose: reload");
+  const reload = hook.slice(hook.indexOf("const reload = "), hook.indexOf("const press = "));
   assert.ok(
     reload.indexOf("markDeliberateReload();") >= 0 && reload.indexOf("markDeliberateReload();") < reload.indexOf("window.location.reload();"),
     "the page's own leave warning is told before the reload (no second, native question)",
   );
   assert.match(reload, /window\.setTimeout\(\(\) => \{\s*clearDeliberateReload\(\);\s*setReloading\(false\);\s*\}, REFRESH_SETTLE_MS\)/, "a reload that never happened lets the button go");
-  assert.match(button, /aria-label="Refresh"/, "named for a screen reader");
+  assert.match(hook, /onOpenChange: \(open: boolean\) => \{\s*if \(!open\) setAsking\(null\);\s*\},/, "Stay (or Escape) closes the question");
+  assert.match(hook, /title: REFRESH_CONFIRM_TITLE,/, "the question's title");
+  assert.match(hook, /description: asking === null \? undefined : refreshQuestion\(asking\),/, "what a refresh would lose");
+  assert.match(hook, /confirmLabel: "Refresh",\s*cancelLabel: "Stay",\s*onConfirm: reload,/, "Refresh / Stay; confirming reloads");
 });
 
 test("PIN: one source of truth: the leave warning holds its work for Refresh and stays quiet on a deliberate refresh; the cart and the send hold theirs", () => {

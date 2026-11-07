@@ -16,6 +16,7 @@ import {
   UPDATE_RELOAD_KEY,
   dialogOpenIn,
   quietVerdict,
+  staleReloadTarget,
   textFieldFocused,
   type QuietDocument,
   type QuietFacts,
@@ -94,6 +95,17 @@ test("the self-reload toward this build already happened (the loop guard): the c
   assert.equal(quietVerdict({ ...QUIET, autoReloadSpent: true }), "chip", "all quiet: the chip");
   assert.equal(quietVerdict({ ...QUIET, autoReloadSpent: true, locked: true, msSinceInput: 0 }), "chip", "locked: the chip");
   assert.equal(quietVerdict({ ...QUIET, autoReloadSpent: true, cartItems: 2 }), "chip", "with a cart: the chip");
+});
+
+// The review's minor (fix round 1): a key left by a reload that landed on the old build is forgotten once the server
+// reports another valid build, so a later report of that build earns one quiet reload again.
+test("staleReloadTarget: the server moved on from the build an earlier reload missed", () => {
+  assert.equal(staleReloadTarget(null, "b"), false, "no key: nothing to forget");
+  assert.equal(staleReloadTarget("b", null), false, "no report yet (a fresh load): keep the key");
+  assert.equal(staleReloadTarget("b", "b"), false, "the server still reports that build: keep it (the chip, never a second self-reload)");
+  assert.equal(staleReloadTarget("b", "c"), true, "a newer build: forget it");
+  assert.equal(staleReloadTarget("b", "a"), true, "back to another build (a rollback): forget it");
+  assert.equal(staleReloadTarget("b", ""), false, "an empty report is not a build");
 });
 
 // ── The DOM facts, over minimal fakes ────────────────────────────────────────

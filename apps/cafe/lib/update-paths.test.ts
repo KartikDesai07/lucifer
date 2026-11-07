@@ -30,7 +30,9 @@ const HOST = "components/layout/PrintHostProvider.tsx";
 
 test("PIN: the page reloads only after a \"reload\" verdict and on the chip's tap, each after writing the build it goes to", () => {
   const src = code(COMPONENT);
-  assert.equal(count(src, "location.reload"), 2, "two reloads in the file: the quiet one and the chip's");
+  // R54 (deliberate move): the chip's tap goes through Refresh's ask-first rule (hooks/use-ask-first-reload.ts), so the
+  // component's own reload is the quiet one alone.
+  assert.equal(count(src, "location.reload"), 1, "one reload in the file: the quiet one");
   assert.match(
     src,
     /if \(verdict === "reload"\) \{\s*if \(rememberReloadTarget\(\)\) \{\s*window\.location\.reload\(\);/,
@@ -38,10 +40,23 @@ test("PIN: the page reloads only after a \"reload\" verdict and on the chip's ta
   );
   assert.match(
     src,
-    /function reloadNow\(\): void \{\s*rememberReloadTarget\(\);\s*window\.location\.reload\(\);\s*\}/,
-    "the chip's tap writes the guard, then reloads",
+    /const \{ reloading, press, dialog \} = useAskFirstReload\(rememberReloadTarget\);/,
+    "the chip's tap: Refresh's rule, the guard written right before its reload",
   );
-  assert.match(src, /<button\s+type="button"[^>]*onClick=\{reloadNow\}/, "the chip's handler is that tap");
+  assert.match(src, /<button\s+type="button"[^>]*disabled=\{reloading\}\s*onClick=\{press\}/, "the chip's handler is that rule");
+  assert.match(src, /<ConfirmDialog \{\.\.\.dialog\} \/>/, "the same question as Refresh (title, words, Refresh / Stay)");
+  assert.equal(count(src, "rememberReloadTarget("), 2, "the guard is written only by the quiet reload (and defined once)");
+  const hook = code("hooks/use-ask-first-reload.ts");
+  assert.equal(count(hook, "location.reload"), 1, "the rule reloads in one place");
+  assert.match(
+    hook,
+    /const reload = \(\) => \{\s*setAsking\(null\);\s*setReloading\(true\);\s*markDeliberateReload\(\);\s*window\.setTimeout\(\(\) => \{\s*clearDeliberateReload\(\);\s*setReloading\(false\);\s*\}, REFRESH_SETTLE_MS\);\s*beforeReload\?\.\(\);\s*window\.location\.reload\(\);\s*\};/,
+    "the guard (beforeReload) is written only right before the reload itself",
+  );
+  assert.equal(count(hook, "beforeReload"), 2, "beforeReload: the parameter, and that one call");
+  assert.equal((hook.match(/(?<![.\w])reload\(\);/g) ?? []).length, 1, "reload() runs on nothing to lose");
+  assert.equal((hook.match(/\breload\b(?!\s*=)(?!\(\))/g) ?? []).length, 1, "and is otherwise named only as the question's onConfirm");
+  assert.match(hook, /onConfirm: reload,/, "a confirmed question reloads");
   assert.match(
     src,
     /const target = updatePending\.serverBuild\(\);\s*if \(target === null\) return false;\s*window\.sessionStorage\.setItem\(UPDATE_RELOAD_KEY, target\);/,
@@ -62,6 +77,14 @@ test("PIN: on mount the guard is read: the reloaded build says \"Updated\" for 2
     /autoReloadSpent: broken \|\| \(stored !== null && stored === updatePending\.serverBuild\(\)\),/,
     "the reload toward this very build already happened: the chip, never a second self-reload",
   );
+  // The review's minor (fix round 1): the key is forgotten once the server moved on, on every report change and at mount.
+  assert.match(
+    src,
+    /const forgetMissed = \(\) => \{\s*if \(!staleReloadTarget\(guard\.current\.stored, updatePending\.serverBuild\(\)\)\) return;\s*try \{\s*window\.sessionStorage\.removeItem\(UPDATE_RELOAD_KEY\);\s*guard\.current\.stored = null;\s*\} catch \{\s*guard\.current\.broken = true;\s*\}\s*\};/,
+    "a stale key is removed (storage in try/catch; a failure means no self-reload)",
+  );
+  assert.match(src, /const offUpdate = updatePending\.subscribe\(forgetMissed\);\s*forgetMissed\(\);/, "on every change of the report, and once at mount");
+  assert.match(src, /return \(\) => \{\s*offUpdate\(\);/, "let go on unmount");
 });
 
 test("PIN: the check is a 5 s local timer armed only while an update waits, cleared when it stops waiting", () => {
@@ -130,7 +153,12 @@ test("PIN: the chip is a real button, named by its exact words, from the header 
     "a button whose accessible name is the chip's words",
   );
   assert.match(src, /<span className="hidden desk:inline">\{UPDATE_READY_LABEL\}<\/span>/, "the words from 1100 px, the icon alone below");
-  assert.match(src, /const shown = useSyncExternalStore\(subscribeChip, chipSnapshot, noChip\);\s*if \(!shown\) return null;/, "shown only while the check says chip");
+  // R54 (deliberate move): the ask-first hook runs between the flag and the early return (every render, rules of hooks).
+  assert.match(
+    src,
+    /const shown = useSyncExternalStore\(subscribeChip, chipSnapshot, noChip\);\s*const \{ reloading, press, dialog \} = useAskFirstReload\(rememberReloadTarget\);\s*if \(!shown\) return null;/,
+    "shown only while the check says chip",
+  );
   assert.match(src, /showChip\(verdict === "chip"\);/, "the check sets it from the verdict");
   assert.match(src, /\bh-9\b/, "36 px like the header's buttons");
   assert.match(src, /before:absolute before:-inset-1 before:content-\[''\]/, "a 44 px touch area");
@@ -166,6 +194,13 @@ test("PIN: the print agent's lease and print are tracked in place; print-agent.t
     "the lease, tracked while in flight",
   );
   assert.match(agent, /print: \(job\) => trackPrintBusy\(print\(job\)\),/, "the print, tracked until it settles");
+  // R53 (the review's fix round 1): the ack too, so a job held for this tab stays counted through an ack round trip;
+  // the ack itself (its body, its skew retry, the cache edit) is exactly as before, only wrapped.
+  assert.match(
+    agent,
+    /ack: \(id, body\) => trackPrintBusy\(printAgentSkew\.send\(\{ \.\.\.body, tokenSlips: true \}, olderAckBody, \(sent\) => apiSend<PrintAckData>\(`\/api\/print-jobs\/\$\{encodeURIComponent\(id\)\}\/ack`, "POST", sent\)\)\.then\(\(answer\) => dropPrintedFromPulse\(qc, id, body, answer\)\)\),/,
+    "the ack, tracked until it settles, unchanged inside",
+  );
   assert.match(agent, /markPrinterWriting, trackPrintBusy,\s*setPrinterHealthSource,[\s\S]*?\} from "@\/lib\/print-agent";/, "the name on an existing import line");
   assert.ok(lines(AGENT) <= 340, `use-print-agent.ts must not grow past 340 lines, got ${lines(AGENT)}`);
   assert.ok(lines("lib/print-agent.ts") <= 301, `lib/print-agent.ts must not grow past 301 lines, got ${lines("lib/print-agent.ts")}`);

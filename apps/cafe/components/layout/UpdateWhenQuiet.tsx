@@ -6,6 +6,8 @@ import { CircleArrowUp } from "lucide-react";
 import { toast } from "sonner";
 
 import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { useAskFirstReload } from "@/hooks/use-ask-first-reload";
 import { POS_BUILD } from "@/lib/build-stamp";
 import { desktopShell } from "@/lib/desktop-shell";
 import { offlineOutbox } from "@/lib/offline-outbox-store";
@@ -20,6 +22,7 @@ import {
   UPDATED_NOTE_MS,
   dialogOpenIn,
   quietVerdict,
+  staleReloadTarget,
   textFieldFocused,
 } from "@/lib/quiet-reload";
 import { LOCK_ATTR, isDisplayPath } from "@/lib/screen-lock";
@@ -33,7 +36,8 @@ import { cn } from "@/lib/utils";
 // with alerts on, whose sound a reload would lock until a tap), "wait" does nothing. No timer runs while nothing
 // waits, and the check makes no request. Before any reload it starts, it writes the build it goes to into
 // sessionStorage: the new page says "Updated" for 2 s; a page that reloaded and still runs the old build never
-// reloads itself toward that build again (a loop on every pulse), it shows the chip instead.
+// reloads itself toward that build again (a loop on every pulse), it shows the chip instead, until the server moves
+// on to another build. The chip's tap follows Refresh's ask-first rule (hooks/use-ask-first-reload.ts).
 
 const INPUT_EVENTS = ["pointerdown", "keydown", "wheel", "touchstart"] as const;
 const INPUT_OPTIONS: AddEventListenerOptions = { capture: true, passive: true };
@@ -71,12 +75,6 @@ function rememberReloadTarget(): boolean {
   }
 }
 
-/** The chip's tap: staff chose to reload now. In a browser the page's own leave warning still guards unsent work. */
-function reloadNow(): void {
-  rememberReloadTarget();
-  window.location.reload();
-}
-
 export function UpdateWhenQuiet(): null {
   const queryClient = useQueryClient();
   const pending = useSyncExternalStore(updatePending.subscribe, updatePending.isPending, () => false);
@@ -95,11 +93,25 @@ export function UpdateWhenQuiet(): null {
     } catch {
       guard.current.broken = true;
     }
+    // The server moved on from the build an earlier reload missed: forget it, so a later report of that build earns
+    // one quiet reload again. On every change of the report, and once now (the pulse may have answered before mount).
+    const forgetMissed = () => {
+      if (!staleReloadTarget(guard.current.stored, updatePending.serverBuild())) return;
+      try {
+        window.sessionStorage.removeItem(UPDATE_RELOAD_KEY);
+        guard.current.stored = null;
+      } catch {
+        guard.current.broken = true;
+      }
+    };
+    const offUpdate = updatePending.subscribe(forgetMissed);
+    forgetMissed();
     const onInput = () => {
       lastInputAt.current = Date.now();
     };
     for (const type of INPUT_EVENTS) window.addEventListener(type, onInput, INPUT_OPTIONS);
     return () => {
+      offUpdate();
       for (const type of INPUT_EVENTS) window.removeEventListener(type, onInput, INPUT_OPTIONS);
     };
   }, []);
@@ -157,21 +169,28 @@ const CHIP_CLASS = cn(
   HTML_PRESS_CLASS,
 );
 
-/** "Update ready · Reload", beside Refresh, while the check says the page should not reload by itself. */
+/** "Update ready · Reload", beside Refresh, while the check says the page should not reload by itself. Its tap is
+ *  Refresh's (the chip shows even mid-sale): offline it says so, with work a reload loses it asks first, and the build
+ *  it goes to is kept only right before it really reloads. */
 export function UpdateReadyChip() {
   const shown = useSyncExternalStore(subscribeChip, chipSnapshot, noChip);
+  const { reloading, press, dialog } = useAskFirstReload(rememberReloadTarget);
   if (!shown) return null;
   return (
-    <button
-      type="button"
-      data-ui="update-ready-chip"
-      aria-label={UPDATE_READY_LABEL}
-      title={UPDATE_READY_LABEL}
-      className={CHIP_CLASS}
-      onClick={reloadNow}
-    >
-      <CircleArrowUp strokeWidth={1.8} aria-hidden="true" />
-      <span className="hidden desk:inline">{UPDATE_READY_LABEL}</span>
-    </button>
+    <>
+      <button
+        type="button"
+        data-ui="update-ready-chip"
+        aria-label={UPDATE_READY_LABEL}
+        title={UPDATE_READY_LABEL}
+        className={CHIP_CLASS}
+        disabled={reloading}
+        onClick={press}
+      >
+        <CircleArrowUp strokeWidth={1.8} aria-hidden="true" />
+        <span className="hidden desk:inline">{UPDATE_READY_LABEL}</span>
+      </button>
+      <ConfirmDialog {...dialog} />
+    </>
   );
 }

@@ -59,6 +59,16 @@ export function isDeliberateReload(): boolean {
   return deliberate;
 }
 
+export type ReloadStep = { kind: "offline" } | { kind: "ask"; work: UnsentWork } | { kind: "reload" };
+
+/** What a tap on Refresh (or the header's "Update ready · Reload" chip, P2 N4) does: offline it says so instead of
+ *  reloading into an error screen; with work a reload would lose it asks first; with nothing to lose it reloads. */
+export function reloadStep(online: boolean, work: UnsentWork | null): ReloadStep {
+  if (!online) return { kind: "offline" };
+  if (work !== null) return { kind: "ask", work };
+  return { kind: "reload" };
+}
+
 /** A reload that has not torn the page down by now did not happen: the button lets go. */
 export const REFRESH_SETTLE_MS = 8_000;
 
