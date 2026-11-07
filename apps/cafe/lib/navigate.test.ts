@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { abandonNavigation, beginNavigation, navigateTo, retryNavigation, type NavDeps } from "@/lib/navigate";
 import { createNavProgress, navProgress } from "@/lib/nav-progress";
+import { updatePending } from "@/lib/update-pending";
 
 // Facts a node test sets by hand (no window, no network): online and nothing held unless a test says so.
 const facts = (o: { offline?: boolean; held?: boolean; updatePending?: boolean } = {}): Partial<NavDeps> => ({
@@ -274,4 +275,15 @@ test("AppLink prevents the default for every action but navigate", async () => {
   const src = stripComments(readFileSync("components/layout/AppLink.tsx", "utf8"));
   assert.match(src, /action\s*!==\s*"navigate"\)\s*e\.preventDefault\(\)/, "any non-navigate action stops Next's own navigation");
   assert.match(src, /applyNavAction\(/, "the side effects come from the shared function");
+});
+
+test("the real default reads the update store: pending full-loads, cleared navigates", () => {
+  const online = { isOffline: () => false, holds: () => false };
+  updatePending.observe("some-newer-build", "this-page-build");
+  try {
+    assert.equal(beginNavigation("/orders", undefined, "/pos", 1, createNavProgress(), online).action, "full-load", "a pending update turns a tap into a full load");
+  } finally {
+    updatePending.observe("this-page-build", "this-page-build");
+  }
+  assert.equal(beginNavigation("/orders", undefined, "/pos", 1, createNavProgress(), online).action, "navigate", "with the store cleared a tap navigates");
 });

@@ -7,6 +7,8 @@ import { pulseErrorReach, serverReach } from "@/lib/server-reach";
 import { cadenceVersionOf, currentPulseIntervalMs, markOwnSlip, subscribeCadence } from "@/lib/pulse-cadence-now";
 import { pulsePrintDeviceQuery } from "@/lib/print-agent";
 import { STALE_TIMES } from "@/lib/query";
+import { POS_BUILD } from "@/lib/build-stamp";
+import { updatePending } from "@/lib/update-pending";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
 
 // CR2.3 §20 — the ONE 20s staff-attention poll per tab, replacing the old
@@ -63,5 +65,9 @@ export function usePosPulse() {
     const reach = pulseErrorReach(errorUpdateCount, error);
     if (reach !== null) serverReach.report({ type: "pulse", reach });
   }, [errorUpdateCount, error]);
+  // A newer build waiting is read from the same answer: no extra request.
+  useEffect(() => {
+    updatePending.observe(query.data?.build, POS_BUILD);
+  }, [query.data?.build]);
   return query;
 }

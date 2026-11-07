@@ -107,6 +107,8 @@ export interface PosPulseData {
   // Printing Phase 5 (spec 2026-11-03 §5.8): the server reads an order request's `offline` field. Absent from an
   // older server, whose create would drop the field: a device sends no offline round until it sees this.
   offlineReplay?: true;
+  /** The build the server runs (optional: an older server omits it; the client ignores a missing value). */
+  build?: string;
 }
 
 /** What changed between two consecutive polls, for the provider to act on. */

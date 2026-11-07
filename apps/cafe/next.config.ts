@@ -82,7 +82,17 @@ const publicSurfaceHeaders = [{ key: "Content-Security-Policy", value: publicSur
 // (fetch-server-response.js, getAppBuildId() !== response.b).
 const PREFETCH_REUSE_SECONDS = 30 * 60;
 
+// One id per build, the same in the server and the client bundle. next.config.ts is evaluated more than once per
+// `next build` (the main process and the workers it spawns each load it), so a bare Date.now() could bake two
+// different ids and the page would see a "new build" for ever. The first evaluation stores the id in the process
+// environment, which the workers inherit. Vercel's ids and commit SHAs are URL-safe, as a build id must be.
+const POS_BUILD = (process.env.POS_BUILD_STAMP ||=
+  process.env.VERCEL_DEPLOYMENT_ID || process.env.VERCEL_GIT_COMMIT_SHA || `local-${Date.now().toString(36)}`);
+
 const nextConfig: NextConfig = {
+  // The page reads its own id (lib/build-stamp.ts); the pulse reports the server's, so an open app learns a deploy.
+  env: { NEXT_PUBLIC_POS_BUILD: POS_BUILD },
+  generateBuildId: async () => POS_BUILD,
   // D4 (F8): the deploy build type-checks tsconfig.build.json (no tests, no scripts);
   // `npm run typecheck` still checks the full tsconfig.json.
   typescript: { tsconfigPath: "tsconfig.build.json" },

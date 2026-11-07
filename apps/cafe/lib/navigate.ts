@@ -7,6 +7,7 @@ import { navDecision, offlineNavMessage } from "@/lib/nav-decision";
 import { navProgress, navTargetPath, type createNavProgress } from "@/lib/nav-progress";
 import { pageTitleFor } from "@/lib/page-titles";
 import { serverReach } from "@/lib/server-reach";
+import { updatePending } from "@/lib/update-pending";
 
 // The one place a staff navigation is decided, so a tap on a link (AppLink) and a navigation from code
 // (navigateTo) behave the same: the "page is opening" progress starts, and a tap on the page that is
@@ -21,7 +22,7 @@ export interface NavDeps {
   isOffline: () => boolean;
   /** `key` is heldKeyOf(href): the path, or the path + query for a query link (ruling R36). */
   holds: (key: string, now: number) => boolean;
-  /** Part D's build stamp feeds this (a newer build is waiting); until then no update is ever pending. */
+  /** A newer build is waiting for this page (the pulse reported it, lib/update-pending.ts). */
   updatePending: () => boolean;
   toastOffline: (message: string) => void;
   assign: (href: string) => void;
@@ -32,7 +33,7 @@ export interface NavDeps {
 const realDeps: NavDeps = {
   isOffline: () => serverReach.isOffline() || (typeof navigator !== "undefined" && navigator.onLine === false),
   holds: (key, now) => heldRoutes.holds(key, now),
-  updatePending: () => false,
+  updatePending: () => updatePending.isPending(),
   toastOffline: (message) => void toast.error(message),
   assign: (href) => window.location.assign(href),
   replace: (href) => window.location.replace(href),
