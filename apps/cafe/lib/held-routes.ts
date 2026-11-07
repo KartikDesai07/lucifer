@@ -1,10 +1,14 @@
-// A page-wide record of which routes this page has offered to the router for
-// prefetch (the warm pass, or a touch on a nav row). Next's router cache keeps
-// a prefetched screen for next.config.ts PREFETCH_REUSE_SECONDS, so "offered
-// within that window" is the page's best knowledge that a tap on the route
-// renders from memory. Pure and tiny: the same record answers "did we already
-// offer this row?" (lib/intent-prefetch.ts) and, later, "may an offline tap on
-// this row still open?".
+// A page-wide record of which routes the router cache probably holds: the page's
+// best knowledge of Next's router cache, never more generous than it. A screen
+// offered for prefetch (the warm pass, or a touch on a nav row) or visited is kept
+// by Next for next.config.ts PREFETCH_REUSE_SECONDS from its first use, and that
+// window is not extended by later use, so an entry's window here starts at its
+// first mark and a later mark inside it changes nothing. A visit with a query is
+// never held (Next stores no entry for it). Wrongly saying "not held" only shows
+// the offline toast; wrongly saying "held" would send an offline tap to the
+// network and swap the POS for the browser's error page. Pure and tiny: the same
+// record answers "did we already offer this row?" (lib/intent-prefetch.ts) and
+// "may an offline tap on this row still open?" (lib/navigate.ts).
 
 import { navTargetPath } from "@/lib/nav-progress";
 
@@ -17,7 +21,7 @@ export interface HeldRoutes {
   mark(href: string, now: number): void;
   /** Marked and still inside the window (at the boundary: no longer held). */
   holds(href: string, now: number): boolean;
-  /** When the route was last marked, if ever. */
+  /** When the route's current window started (its first mark since it last expired), if ever. */
   offeredAt(href: string): number | undefined;
 }
 
@@ -25,7 +29,9 @@ export function createHeldRoutes(windowMs: number): HeldRoutes {
   const marked = new Map<string, number>();
   return {
     mark: (href, now) => {
-      marked.set(href, now);
+      // A live entry keeps its first time: Next does not extend an entry on reuse, so a restart here would claim more than it holds.
+      const at = marked.get(href);
+      if (at === undefined || now - at >= windowMs) marked.set(href, now);
     },
     holds: (href, now) => {
       const at = marked.get(href);
@@ -48,9 +54,10 @@ export function heldKeyOf(href: string): string {
   return query.length > 1 ? navTargetPath(href) + query : navTargetPath(href);
 }
 
-/** A screen now showing counts as held by its path and, when it shows a query (`search` is window.location.search),
- *  by its whole URL too: the two keys heldKeyOf gives a tap. */
+/** A screen now showing counts as held by its path, unless it shows a query (`search` is window.location.search): Next
+ *  stores no entry for a query visit and serves it from a bare-path entry as a copy, so neither the query URL nor the
+ *  path is reusable because of it (rulings R40, R41). */
 export function markVisit(held: Pick<HeldRoutes, "mark">, pathname: string, search: string, now: number): void {
+  if (search.length > 1) return;
   held.mark(pathname, now);
-  if (search.length > 1) held.mark(pathname + search, now);
 }

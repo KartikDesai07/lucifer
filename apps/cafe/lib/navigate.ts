@@ -25,6 +25,8 @@ export interface NavDeps {
   updatePending: () => boolean;
   toastOffline: (message: string) => void;
   assign: (href: string) => void;
+  /** A full load that takes the current history entry's place (the screen it replaces must not come back on Back). */
+  replace: (href: string) => void;
 }
 
 const realDeps: NavDeps = {
@@ -33,6 +35,7 @@ const realDeps: NavDeps = {
   updatePending: () => false,
   toastOffline: (message) => void toast.error(message),
   assign: (href) => window.location.assign(href),
+  replace: (href) => window.location.replace(href),
 };
 
 /** Decide a navigation to `href` made from `fromPath`. `stay` = do nothing (that exact href is already opening).
@@ -63,10 +66,10 @@ export function beginNavigation(
 }
 
 /** Do what a decision says besides navigating. Returns true when the caller should go on and navigate. */
-export function applyNavAction(result: NavStart, href: string, deps: Partial<NavDeps> = {}): boolean {
+export function applyNavAction(result: NavStart, href: string, deps: Partial<NavDeps> = {}, opts?: { replace?: boolean }): boolean {
   const d = { ...realDeps, ...deps };
   if (result.action === "refuse") d.toastOffline(offlineNavMessage(result.label));
-  else if (result.action === "full-load") d.assign(href);
+  else if (result.action === "full-load") (opts?.replace ? d.replace : d.assign)(href);
   return result.action === "navigate";
 }
 
@@ -78,7 +81,7 @@ export function navigateTo(
   opts?: { replace?: boolean; label?: string; deps?: Partial<NavDeps>; progress?: ProgressStore },
 ): void {
   const result = beginNavigation(href, opts?.label, window.location.pathname, Date.now(), opts?.progress, opts?.deps);
-  if (!applyNavAction(result, href, opts?.deps)) return;
+  if (!applyNavAction(result, href, opts?.deps, { replace: opts?.replace })) return;
   if (opts?.replace) router.replace(href);
   else router.push(href);
 }

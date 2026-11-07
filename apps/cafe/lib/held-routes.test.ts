@@ -18,12 +18,20 @@ test("holds is true only for a marked route, strictly inside the window", () => 
   assert.equal(held.holds("/orders", 100), false, "another route is unaffected");
 });
 
-test("marking again restarts the window", () => {
+test("marking again inside the window keeps the first time; after it, a new window starts", () => {
   const held = createHeldRoutes(1000);
   held.mark("/pos", 0);
   held.mark("/pos", 900);
-  assert.equal(held.holds("/pos", 1500), true, "the later mark counts");
-  assert.equal(held.offeredAt("/pos"), 900, "the offer time is the later mark");
+  assert.equal(held.offeredAt("/pos"), 0, "a mark inside the window keeps the first time (Next never extends an entry)");
+  assert.equal(held.holds("/pos", 999), true, "held until first + window");
+  assert.equal(held.holds("/pos", 1000), false, "gone at first + window, whatever the later mark said");
+  held.mark("/pos", 1500);
+  assert.equal(held.offeredAt("/pos"), 1500, "a mark after the window ended starts a new window");
+  assert.equal(held.holds("/pos", 2499), true, "held until new + window");
+  assert.equal(held.holds("/pos", 2500), false, "and ends there");
+  held.mark("/kitchen", 0);
+  held.mark("/kitchen", 1000);
+  assert.equal(held.offeredAt("/kitchen"), 1000, "a mark exactly at first + window starts a new window");
 });
 
 test("the page's record uses the router-cache window: HELD_ROUTES_WINDOW_MS equals next.config.ts PREFETCH_REUSE_SECONDS * 1000", () => {
@@ -47,13 +55,17 @@ test("heldKeyOf: the path alone, or the path + query when the href has one", () 
   assert.equal(heldKeyOf("https://pos.example.com/kitchen?x=1"), "/kitchen?x=1", "an absolute URL by its path + query");
 });
 
-test("markVisit: the path always, and the path + query when the page shows one", () => {
+test("markVisit: a plain visit holds the path; a visit with a query marks nothing (R40, R41)", () => {
   const held = createHeldRoutes(1000);
   markVisit(held, "/orders", "", 5);
   assert.equal(held.holds("/orders", 5), true, "a plain visit holds the path");
   assert.equal(held.offeredAt("/orders?"), undefined, "and marks nothing else");
-  markVisit(held, "/orders", "?date=X", 6);
-  assert.equal(held.offeredAt("/orders"), 6, "a visit with a query marks the path too");
-  assert.equal(held.holds(heldKeyOf("/orders?date=X"), 6), true, "the visit's key is the one a tap on that href asks about");
-  assert.equal(held.holds("/orders?date=Y", 6), false, "another query is not held");
+  markVisit(held, "/orders", "", 500);
+  assert.equal(held.offeredAt("/orders"), 5, "a plain visit inside a live window keeps the first time");
+  markVisit(held, "/orders", "?date=X", 600);
+  assert.equal(held.offeredAt("/orders"), 5, "a query visit leaves a held bare path's time alone");
+  assert.equal(held.offeredAt("/orders?date=X"), undefined, "the query URL is stored nowhere by Next, so never held");
+  markVisit(held, "/kitchen", "?x=1", 7);
+  assert.equal(held.offeredAt("/kitchen"), undefined, "a query visit does not mark the bare path either");
+  assert.equal(held.holds("/orders?date=Y", 600), false, "another query is not held");
 });

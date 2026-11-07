@@ -63,7 +63,7 @@ test("a tap on the page already showing cancels an opening in progress, then nav
 // navigateTo with a fake router and a stubbed window.location (node has no window); restored after each test. Each
 // test hands navigateTo its own store (review m-h), so a test failing half-way never leaks a progress into the next.
 type Calls = string[];
-function withWindow<T>(location: { pathname: string; search?: string; assign?: (h: string) => void }, fn: () => T): T {
+function withWindow<T>(location: { pathname: string; search?: string; assign?: (h: string) => void; replace?: (h: string) => void }, fn: () => T): T {
   const g = globalThis as { window?: unknown };
   const had = Object.prototype.hasOwnProperty.call(g, "window");
   const before = g.window;
@@ -223,7 +223,7 @@ test("offline + a query href: the path held is not enough, the exact href must b
 });
 
 function fxDeps(log: string[], o: Parameters<typeof facts>[0]): Partial<NavDeps> {
-  return { ...facts(o), toastOffline: (m) => log.push(`toast ${m}`), assign: (h) => log.push(`assign ${h}`) };
+  return { ...facts(o), toastOffline: (m) => log.push(`toast ${m}`), assign: (h) => log.push(`assign ${h}`), replace: (h) => log.push(`replace ${h}`) };
 }
 
 test("navigateTo: refuse = toast, no push, no progress", () => {
@@ -234,12 +234,18 @@ test("navigateTo: refuse = toast, no push, no progress", () => {
   assert.equal(p.get(), null, "no progress");
 });
 
-test("navigateTo: full-load = assign, no push, progress started", () => {
+test("navigateTo: full-load with replace = location.replace, no push, progress started", () => {
   const p = createNavProgress();
   const calls: Calls = [];
   withWindowPath("/pos", () => navigateTo(fakeRouter(calls), "/orders", { replace: true, deps: fxDeps(calls, { updatePending: true }), progress: p }));
-  assert.deepEqual(calls, ["assign /orders"], "document load, router untouched");
+  assert.deepEqual(calls, ["replace /orders"], "document load that replaces the entry, router untouched");
   assert.equal(p.get()?.href, "/orders", "skeleton while loading");
+});
+
+test("navigateTo: a push full-load still assigns", () => {
+  const calls: Calls = [];
+  withWindowPath("/pos", () => navigateTo(fakeRouter(calls), "/orders", { deps: fxDeps(calls, { updatePending: true }), progress: createNavProgress() }));
+  assert.deepEqual(calls, ["assign /orders"], "no replace asked: a new history entry, as before");
 });
 
 test("navigateTo: the default full load calls window.location.assign", () => {
@@ -247,6 +253,19 @@ test("navigateTo: the default full load calls window.location.assign", () => {
   const assign = (h: string) => void calls.push(`assign ${h}`);
   withWindow({ pathname: "/pos", assign }, () => navigateTo(fakeRouter(calls), "/kitchen", { deps: facts({ updatePending: true }), progress: createNavProgress() }));
   assert.deepEqual(calls, ["assign /kitchen"], "the real default hands the href to the browser");
+});
+
+test("navigateTo: the default replace full load calls window.location.replace", () => {
+  const calls: Calls = [];
+  const replace = (h: string) => void calls.push(`replace ${h}`);
+  withWindow({ pathname: "/pos", replace }, () => navigateTo(fakeRouter(calls), "/kitchen", { replace: true, deps: facts({ updatePending: true }), progress: createNavProgress() }));
+  assert.deepEqual(calls, ["replace /kitchen"], "the real default replaces the entry in the browser");
+});
+
+test("retryNavigation never replaces", () => {
+  const log: string[] = [];
+  retryNavigation("/orders", "Orders", fxDeps(log, {}));
+  assert.deepEqual(log, ["assign /orders"], "Try again is an assign, never a replace");
 });
 
 test("AppLink prevents the default for every action but navigate", async () => {
