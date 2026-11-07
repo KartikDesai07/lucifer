@@ -140,6 +140,42 @@ test("PIN: a layout effect on the pathname settles the store and marks the visit
   assert.match(view, /window\.removeEventListener\("pageshow", onShow\)/, "the listener is removed with the view");
 });
 
+test("PIN (C4 m1): Back / Forward ends the wait (Next drops the pending navigation; a same-path entry changes no pathname)", () => {
+  const view = code(VIEW);
+  assert.match(view, /const onPop = \(\) => navProgress\.cancel\(\);/, "a popstate cancels the navigation in progress");
+  assert.match(view, /window\.addEventListener\("popstate", onPop\);/, "listened beside pageshow");
+  assert.match(view, /window\.removeEventListener\("popstate", onPop\);/, "and removed with the view");
+});
+
+test("PIN (C4 m2): the window scroll kept at the tap comes back when the same page shows again, never on a landing", () => {
+  const view = code(VIEW);
+  assert.match(
+    view,
+    /navProgress\.subscribe\(\(\) => \{\s*const next = navProgress\.get\(\);\s*if \(next !== null && kept\.current === null\) kept\.current = \{ path: next\.fromPath, y: window\.scrollY \};/,
+    "kept from the store's own tap notice, before the skeleton hides the page (display: none clamps the scroll)",
+  );
+  assert.match(
+    view,
+    /useLayoutEffect\(\(\) => \{\s*if \(cover !== null\) return;\s*const was = kept\.current;\s*kept\.current = null;\s*if \(was !== null && was\.path === pathname\) window\.scrollTo\(0, was\.y\);\s*\}, \[cover, pathname\]\);/,
+    "restored before paint only when the page that was covered shows again (Back, a dropped navigation, bfcache)",
+  );
+});
+
+test("PIN (C4 m4): the spinner's wide rule and the `wide` variant name the same width and the same collapse flag", async () => {
+  const { NAV_WIDE_MIN_PX } = await import("@/lib/pos-layout");
+  const ours = /@media \(min-width: (\d+)px\) \{\s*html:not\(\[data-nav-collapsed\]\) \[data-ui="nav"\]/.exec(code(CSS));
+  const variant = /@custom-variant wide \{\s*@media \(width >= ([\d.]+)rem\) \{\s*&:where\(html:not\(\[data-nav-collapsed\]\) \*\)/.exec(code("app/globals.css"));
+  assert.ok(ours && variant, "landmark: both rules were read");
+  assert.equal(Number(ours![1]), Number(variant![1]) * 16, "app/nav-progress.css's wide width equals app/globals.css's `wide` (rem × 16)");
+  assert.equal(Number(ours![1]), NAV_WIDE_MIN_PX, "and the nav's own wide width (lib/pos-layout.ts)");
+});
+
+test("PIN (C4 m7): the skeleton kind is read from the href once (skeletonKindOf normalises it)", () => {
+  const view = code(VIEW);
+  assert.match(view, /<NavSkeleton kind=\{skeletonKindOf\(cover\.href\)\} \/>/, "one call");
+  assert.ok(!/navTargetPath/.test(view), "no second normalisation in the view");
+});
+
 // ── The line under the header ────────────────────────────────────────────────
 
 test("PIN: the 2px line is a named progressbar, drawn by the header on every staff page, /pos included", () => {

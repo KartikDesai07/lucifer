@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import dynamic from "next/dynamic";
-import { AppLink } from "@/components/layout/AppLink";
+import { AppLink, closeOnPlainClick } from "@/components/layout/AppLink";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useReactToPrint } from "react-to-print";
 import { Ticket } from "lucide-react";
@@ -395,10 +395,10 @@ export function OrderDetailSheet({
           <div data-ui="order-detail-foot" className={detailFootClass(editTable !== null)}>
             {editTable !== null && (
               <AppLink
-                href="/pos"
-                data-ui="order-detail-edit"
+                href="/pos" data-ui="order-detail-edit"
                 onClick={(e) => {
                   if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) offerPosTable(editTable, Date.now());
+                  closeOnPlainClick(e, frame === "column" ? undefined : () => onOpenChange(false)); // R34: the sheet never covers the skeleton
                 }}
                 className={cn(ORDER_EDIT_ITEMS_CLASS, BRAND_PRESS_CLASS)}
               >

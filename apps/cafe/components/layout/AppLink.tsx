@@ -14,6 +14,16 @@ import { applyNavAction, beginNavigation } from "@/lib/navigate";
 // opening; a tap on the page already opening is cancelled. Handlers the caller passes still run first.
 // While its own page is opening the link carries data-opening="true": the nav rows' classes light it in their active
 // colour and app/nav-progress.css adds the small spinner (nav rows only; an in-page link just carries the marker).
+
+/** For a link inside a sheet or dialog (ruling R34): call from its onClick, after its own click work, so the sheet
+ *  closes when the page opens in this tab (the main button, no modifier key, not cancelled). Left open, its scrim
+ *  would cover the next screen's skeleton, the line and the "Still opening…" escape. A modifier click opens a new
+ *  tab and leaves the sheet as it is; `close` undefined (a column, not a sheet) does nothing. */
+export function closeOnPlainClick(e: MouseEvent<HTMLAnchorElement>, close: (() => void) | undefined): void {
+  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  close?.();
+}
+
 export function AppLink({
   onPointerDown,
   onMouseEnter,

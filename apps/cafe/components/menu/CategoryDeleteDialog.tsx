@@ -1,6 +1,6 @@
 "use client";
 
-import { AppLink } from "@/components/layout/AppLink";
+import { AppLink, closeOnPlainClick } from "@/components/layout/AppLink";
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
@@ -102,7 +102,7 @@ export function CategoryDeleteDialog({ category: deleting, onClose, activeProduc
               ) : deleting && deletingItemCount > 0 ? (
                 <p className={LINE_CLASS}>
                   This category still has {deletingItemCount} item{deletingItemCount === 1 ? "" : "s"}.{" "}
-                  <AppLink href={deletingItemsHref} className="underline">
+                  <AppLink href={deletingItemsHref} onClick={(e) => closeOnPlainClick(e, onClose)} className="underline">
                     View {deletingItemCount === 1 ? "it" : "them"}
                   </AppLink>
                   .

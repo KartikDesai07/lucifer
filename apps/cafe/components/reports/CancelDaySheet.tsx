@@ -1,6 +1,6 @@
 "use client";
 
-import { AppLink } from "@/components/layout/AppLink";
+import { AppLink, closeOnPlainClick } from "@/components/layout/AppLink";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { inr, cn } from "@/lib/utils";
 import { weekdayDayLabel } from "@/lib/dashboard/range";
@@ -77,6 +77,7 @@ export function CancelDaySheet({ day, report, onOpenChange }: CancelDaySheetProp
 
             <AppLink
               href={`/orders?date=${day}`}
+              onClick={(e) => closeOnPlainClick(e, () => onOpenChange(false))}
               className="mt-2 inline-flex h-11 items-center justify-center rounded-md bg-brand-primary px-4 text-[14px] font-semibold text-brand-slip hover:bg-brand-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent"
             >
               See all orders of this day

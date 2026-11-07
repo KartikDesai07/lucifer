@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useState, type PropsWithChildren, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type PropsWithChildren, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { NavSkeleton } from "@/components/layout/NavSkeleton";
 import { useNavProgress } from "@/hooks/use-nav-progress";
 import { heldRoutes } from "@/lib/held-routes";
-import { navProgress, navTargetPath, type NavProgress } from "@/lib/nav-progress";
+import { navProgress, type NavProgress } from "@/lib/nav-progress";
 import { coverOf, skeletonKindOf, stillOpeningIn } from "@/lib/nav-skeleton";
 
 // What the staff see while a screen opens (P2 N1). A tap starts the navigation store (lib/navigate.ts); in that same
@@ -32,14 +32,39 @@ export function NavProgressView({ children }: { children: ReactNode }) {
   }, [pathname]);
 
   // A page restored from the back-forward cache (Back after a full load) comes back with the store as it was at the
-  // tap: it must never return under a skeleton.
+  // tap: it must never return under a skeleton. Back / Forward while a screen opens: Next drops the pending navigation,
+  // and a step to an entry on the same path changes no pathname, so nothing else would end the wait.
   useEffect(() => {
     const onShow = (event: PageTransitionEvent) => {
       if (event.persisted) navProgress.cancel();
     };
+    const onPop = () => navProgress.cancel();
     window.addEventListener("pageshow", onShow);
-    return () => window.removeEventListener("pageshow", onShow);
+    window.addEventListener("popstate", onPop);
+    return () => {
+      window.removeEventListener("pageshow", onShow);
+      window.removeEventListener("popstate", onPop);
+    };
   }, []);
+
+  // Hiding the page (display: none) clamps the window's scroll to the skeleton's height. So the offset is kept at the
+  // tap, from the store's own notice (it runs inside the tap, before React draws the skeleton), and put back before
+  // paint if the same page shows again (Back, a dropped navigation, a bfcache restore). A landed screen keeps Next's.
+  const kept = useRef<{ path: string; y: number } | null>(null);
+  useEffect(
+    () =>
+      navProgress.subscribe(() => {
+        const next = navProgress.get();
+        if (next !== null && kept.current === null) kept.current = { path: next.fromPath, y: window.scrollY };
+      }),
+    [],
+  );
+  useLayoutEffect(() => {
+    if (cover !== null) return;
+    const was = kept.current;
+    kept.current = null;
+    if (was !== null && was.path === pathname) window.scrollTo(0, was.y);
+  }, [cover, pathname]);
 
   return <NavProgressFrame cover={cover}>{children}</NavProgressFrame>;
 }
@@ -54,7 +79,7 @@ export function NavProgressFrame({ cover, children }: PropsWithChildren<{ cover:
       {cover && (
         <>
           <StillOpening cover={cover} />
-          <NavSkeleton kind={skeletonKindOf(navTargetPath(cover.href))} />
+          <NavSkeleton kind={skeletonKindOf(cover.href)} />
         </>
       )}
     </>
