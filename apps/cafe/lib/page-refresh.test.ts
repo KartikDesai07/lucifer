@@ -7,6 +7,7 @@ import path from "node:path";
 import { stripComments } from "@/lib/source-pin-utils";
 import {
   REFRESH_OFFLINE_MESSAGE,
+  REFRESH_PRINTING_MESSAGE,
   cartLines,
   clearDeliberateReload,
   holdCart,
@@ -76,6 +77,7 @@ test("the question says what a refresh would lose, in plain words", () => {
   assert.match(refreshQuestion("unconfirmed"), /could not be confirmed/, "an order not confirmed yet");
   assert.match(refreshQuestion("unconfirmed"), /Open tabs before sending it again/, "how not to send it twice");
   assert.match(REFRESH_OFFLINE_MESSAGE, /offline/i, "offline: no reload into an error screen");
+  assert.equal(REFRESH_PRINTING_MESSAGE, "A slip is printing. Refresh once it is done.", "printing: no reload under a slip on its way to paper");
 });
 
 test("a deliberate refresh is marked, so the page's own leave warning stays quiet; it can be cleared", () => {
@@ -105,6 +107,11 @@ test("reloadStep: offline says so (even with work), work a reload loses asks fir
   assert.deepEqual(reloadStep(true, "changes"), { kind: "ask", work: "changes" }, "unsent lines or a dirty form: ask first");
   assert.deepEqual(reloadStep(true, "unconfirmed"), { kind: "ask", work: "unconfirmed" }, "an order being sent: ask first, with its own words");
   assert.deepEqual(reloadStep(true, null), { kind: "reload" }, "nothing to lose: reload");
+  // The verifiers' M4: a reload under a slip on its way to paper loses it (the job comes back as a REPRINT).
+  assert.deepEqual(reloadStep(true, null, true), { kind: "printing" }, "a slip printing here: says so, no reload");
+  assert.deepEqual(reloadStep(true, "changes", true), { kind: "printing" }, "printing before the question: any reload now loses the slip");
+  assert.deepEqual(reloadStep(false, null, true), { kind: "offline" }, "offline still first");
+  assert.deepEqual(reloadStep(true, null, false), { kind: "reload" }, "not printing: as before");
 });
 
 test("PIN: Refresh shows only inside the POS app, asks first, then reloads quietly; a refresh that did not happen lets go", () => {
@@ -123,9 +130,11 @@ test("PIN: Refresh shows only inside the POS app, asks first, then reloads quiet
   // the browser's error page.
   assert.match(
     hook,
-    /const offline = serverReach\.isOffline\(\) \|\| navigator\.onLine === false;\s*const step = reloadStep\(!offline, unsentWork\(\)\);/,
-    "the decision is lib/page-refresh.ts's, offline read from serverReach and navigator.onLine",
+    /const offline = serverReach\.isOffline\(\) \|\| navigator\.onLine === false;\s*const step = reloadStep\(!offline, unsentWork\(\), printHostBusy\(\)\);/,
+    "the decision is lib/page-refresh.ts's, offline read from serverReach and navigator.onLine, printing from this device's print holds",
   );
+  assert.match(hook, /import \{ closePrintHost, printHostBusy \} from "@\/lib\/print-host-busy";/, "the print holds and the closing gate");
+  assert.match(hook, /if \(step\.kind === "printing"\) \{\s*toast\(REFRESH_PRINTING_MESSAGE\);\s*return;\s*\}/, "printing: says so, no reload (the verifiers' M4)");
   assert.match(hook, /if \(step\.kind === "offline"\) \{\s*toast\.error\(REFRESH_OFFLINE_MESSAGE\);\s*return;\s*\}/, "offline: says so, no reload");
   assert.match(hook, /if \(step\.kind === "ask"\) \{\s*setAsking\(step\.work\);\s*return;\s*\}\s*reload\(\);/, "unsent work: ask first; nothing to lose: reload");
   const reload = hook.slice(hook.indexOf("const reload = "), hook.indexOf("const press = "));

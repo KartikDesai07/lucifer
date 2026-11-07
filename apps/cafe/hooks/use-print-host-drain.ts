@@ -5,6 +5,7 @@ import { useEffect, useRef, type MutableRefObject } from "react";
 import { PRINT_HOST_MAX_AGE_MS, printJobDrainCandidate, type PrintJobFeedRow } from "@pos/shared/print-job";
 import type { PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 import { useClaimPrintJob } from "@/hooks/use-print-host";
+import { printHostClosing } from "@/lib/print-host-busy";
 
 // Print-host plan §B5 (PH-5) — the print-job drain, a copy of
 // use-self-order-auto-print's proven shape: a `claimingRef` re-entry guard, an
@@ -61,7 +62,8 @@ export function usePrintHostDrain({
 
   useEffect(() => {
     if (!enabled || busy || deviceId === "") return;
-    if (claimingRef.current || claimLockRef.current) return;
+    // P2 N4 (the verifiers' I1): a won claim marks its row printed, so a page that began its reload claims none.
+    if (claimingRef.current || claimLockRef.current || printHostClosing()) return;
 
     const liveIds = new Set(feed.map((row) => row.id));
     for (const id of attemptedRef.current) {

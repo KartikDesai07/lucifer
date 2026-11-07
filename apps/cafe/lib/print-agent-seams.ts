@@ -157,4 +157,4 @@ export function onLeasedJob(listener: (job: LeasedPrintJob) => void): () => void
 
 // P2 N4: the agent's lease and print are counted while in flight, so a newer build never reloads the page under a
 // leased job; hooks/use-print-agent.ts reaches it through print-agent.ts, which re-exports every name here.
-export { trackPrintBusy } from "@/lib/print-host-busy";
+export { leaseUnlessClosing, trackPrintBusy } from "@/lib/print-host-busy";

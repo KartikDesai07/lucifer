@@ -59,12 +59,14 @@ export function isDeliberateReload(): boolean {
   return deliberate;
 }
 
-export type ReloadStep = { kind: "offline" } | { kind: "ask"; work: UnsentWork } | { kind: "reload" };
+export type ReloadStep = { kind: "offline" } | { kind: "printing" } | { kind: "ask"; work: UnsentWork } | { kind: "reload" };
 
 /** What a tap on Refresh (or the header's "Update ready · Reload" chip, P2 N4) does: offline it says so instead of
- *  reloading into an error screen; with work a reload would lose it asks first; with nothing to lose it reloads. */
-export function reloadStep(online: boolean, work: UnsentWork | null): ReloadStep {
+ *  reloading into an error screen; while a slip prints here it says so too (a reload would lose it: a REPRINT, the
+ *  verifiers' M4); with work a reload would lose it asks first; with nothing to lose it reloads. */
+export function reloadStep(online: boolean, work: UnsentWork | null, printing = false): ReloadStep {
   if (!online) return { kind: "offline" };
+  if (printing) return { kind: "printing" };
   if (work !== null) return { kind: "ask", work };
   return { kind: "reload" };
 }
@@ -81,3 +83,5 @@ export function refreshQuestion(work: UnsentWork): string {
 }
 
 export const REFRESH_OFFLINE_MESSAGE = "You are offline. Refresh once the connection is back.";
+
+export const REFRESH_PRINTING_MESSAGE = "A slip is printing. Refresh once it is done.";

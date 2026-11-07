@@ -36,9 +36,10 @@ test("PIN: the page reloads only after a \"reload\" verdict and on the chip's ta
   assert.equal(count(src, "location.reload"), 1, "one reload in the file: the quiet one");
   assert.match(
     src,
-    /if \(verdict === "reload"\) \{\s*if \(rememberReloadTarget\(\)\) \{\s*window\.location\.reload\(\);/,
-    "the quiet reload runs only on a \"reload\" verdict, and only once the guard was written",
+    /if \(verdict === "reload"\) \{\s*if \(rememberReloadTarget\(\)\) \{\s*window\.clearInterval\(timer\);\s*closePrintHost\(\);\s*window\.location\.reload\(\);/,
+    "the quiet reload runs only on a \"reload\" verdict, once the guard was written; first the check stops (no reload again every 5 s while the old page waits for the new one) and no new print lease starts (the verifiers' M2, I1)",
   );
+  assert.match(src, /import \{ closePrintHost, printHostBusy \} from "@\/lib\/print-host-busy";/, "the closing gate beside the print holds");
   assert.match(
     src,
     /const \{ reloading, press, dialog \} = useAskFirstReload\(rememberReloadTarget\);/,
@@ -51,8 +52,8 @@ test("PIN: the page reloads only after a \"reload\" verdict and on the chip's ta
   assert.equal(count(hook, "location.reload"), 1, "the rule reloads in one place");
   assert.match(
     hook,
-    /const reload = \(\) => \{\s*setAsking\(null\);\s*setReloading\(true\);\s*markDeliberateReload\(\);\s*window\.setTimeout\(\(\) => \{\s*clearDeliberateReload\(\);\s*setReloading\(false\);\s*\}, REFRESH_SETTLE_MS\);\s*beforeReload\?\.\(\);\s*window\.location\.reload\(\);\s*\};/,
-    "the guard (beforeReload) is written only right before the reload itself",
+    /const reload = \(\) => \{\s*setAsking\(null\);\s*setReloading\(true\);\s*markDeliberateReload\(\);\s*window\.setTimeout\(\(\) => \{\s*clearDeliberateReload\(\);\s*setReloading\(false\);\s*\}, REFRESH_SETTLE_MS\);\s*beforeReload\?\.\(\);\s*closePrintHost\(\);\s*window\.location\.reload\(\);\s*\};/,
+    "the guard (beforeReload) is written only right before the reload itself, and no new print lease starts from it (the verifiers' I1)",
   );
   assert.equal(count(hook, "beforeReload"), 2, "beforeReload: the parameter, and that one call");
   assert.equal((hook.match(/(?<![.\w])reload\(\);/g) ?? []).length, 1, "reload() runs on nothing to lose");
@@ -120,9 +121,19 @@ test("PIN: the check reads each fact from its one source", () => {
     [/soundNeedsGesture: soundNeedsGesture\(\),/, "the sound rule"],
     // The final review's C1: the page's offline state or the browser's flag, the same reading as a tap (lib/navigate.ts).
     [/offline: serverReach\.isOffline\(\) \|\| navigator\.onLine === false,/, "offline from serverReach and navigator.onLine"],
+    // The verifiers' I2: the pulse's last answer as Part B proves the line (lib/warm-routes.ts answeredAtFromCache: a
+    // success, no failed retry running, not paused); none such: never fresh.
+    [/msSincePulse: answeredAt === null \? Number\.POSITIVE_INFINITY : now - answeredAt,/, "the age of the pulse's last proven answer"],
   ];
   for (const [pattern, why] of facts) assert.match(src, pattern, why);
   assert.match(src, /import \{ serverReach \} from "@\/lib\/server-reach";/, "the page's one offline state");
+  assert.match(src, /import \{ POS_PULSE_KEYS \} from "@\/hooks\/use-pos-pulse";/, "the pulse's own query key");
+  assert.match(
+    src,
+    /const now = Date\.now\(\);\s*const answeredAt = answeredAtFromCache\(queryClient\.getQueryState\(POS_PULSE_KEYS\.all\), now\);/,
+    "read from the query client's cached pulse, no request",
+  );
+  assert.match(src, /import \{ answeredAtFromCache \} from "@\/lib\/warm-routes";/, "Part B's one proof rule");
   assert.match(
     src,
     /return nativeBridge\(\) === null && desktopShell\(\) === null && \(readDevicePrefs\(\)\.alertSound \|\| isDisplayPath\(window\.location\.pathname\)\);/,
@@ -199,8 +210,8 @@ test("PIN: the print agent's lease and print are tracked in place; print-agent.t
   const agent = code(AGENT);
   assert.match(
     agent,
-    /lease: \(printerIds\) => trackPrintBusy\(apiSend<PrintLeaseData>\(LEASE_URL, "POST", \{ deviceId, tabId, tokenSlips: true, \.\.\.printerIdsBody\(printerIds\) \}\)\),/,
-    "the lease, tracked while in flight",
+    /lease: \(printerIds\) => leaseUnlessClosing\(\(\) => apiSend<PrintLeaseData>\(LEASE_URL, "POST", \{ deviceId, tabId, tokenSlips: true, \.\.\.printerIdsBody\(printerIds\) \}\)\),/,
+    "the lease, tracked while in flight, and none started once the page began its reload (the verifiers' I1)",
   );
   assert.match(agent, /print: \(job\) => trackPrintBusy\(print\(job\)\),/, "the print, tracked until it settles");
   // R53 (the review's fix round 1): the ack too, so a job held for this tab stays counted through an ack round trip;
@@ -210,10 +221,14 @@ test("PIN: the print agent's lease and print are tracked in place; print-agent.t
     /ack: \(id, body\) => trackPrintBusy\(printAgentSkew\.send\(\{ \.\.\.body, tokenSlips: true \}, olderAckBody, \(sent\) => apiSend<PrintAckData>\(`\/api\/print-jobs\/\$\{encodeURIComponent\(id\)\}\/ack`, "POST", sent\)\)\.then\(\(answer\) => dropPrintedFromPulse\(qc, id, body, answer\)\)\),/,
     "the ack, tracked until it settles, unchanged inside",
   );
-  assert.match(agent, /markPrinterWriting, trackPrintBusy,\s*setPrinterHealthSource,[\s\S]*?\} from "@\/lib\/print-agent";/, "the name on an existing import line");
+  assert.match(agent, /markPrinterWriting, leaseUnlessClosing, trackPrintBusy,\s*setPrinterHealthSource,[\s\S]*?\} from "@\/lib\/print-agent";/, "the name on an existing import line");
   assert.ok(lines(AGENT) <= 340, `use-print-agent.ts must not grow past 340 lines, got ${lines(AGENT)}`);
   assert.ok(lines("lib/print-agent.ts") <= 301, `lib/print-agent.ts must not grow past 301 lines, got ${lines("lib/print-agent.ts")}`);
-  assert.match(code(SEAMS), /export \{ trackPrintBusy \} from "@\/lib\/print-host-busy";/, "re-exported through the agent's seams");
+  assert.match(code(SEAMS), /export \{ leaseUnlessClosing, trackPrintBusy \} from "@\/lib\/print-host-busy";/, "re-exported through the agent's seams");
+  // The verifiers' I1: the host drain's claim marks its row printed when won, so a page that began its reload claims none.
+  const drain = code("hooks/use-print-host-drain.ts");
+  assert.match(drain, /import \{ printHostClosing \} from "@\/lib\/print-host-busy";/, "the drain reads the closing gate");
+  assert.match(drain, /if \(claimingRef\.current \|\| claimLockRef\.current \|\| printHostClosing\(\)\) return;/, "no claim once the page began its reload");
   const host = code(HOST);
   assert.match(host, /import \{ holdPrintBusy \} from "@\/lib\/print-host-busy";/, "the provider imports the holder");
   assert.match(host, /const \{ current, busy, kotRef, receiptRef, eodRef, setEodReady, queueSlip, queueTestSlip \} = bridge;/, "busy is the bridge's own");

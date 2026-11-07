@@ -1,7 +1,8 @@
 // P2 N4: when may an open page load a newer build by itself? Only at a quiet moment, when nobody can lose anything:
 // the screen lock is on, or a minute passed with no pointer or key input, AND no dialog or sheet is open, no text
 // field has focus, the POS cart is empty, nothing unsent is held (lib/page-refresh.ts), no order waits in the offline
-// outbox, no write is in flight, this device holds no print job (lib/print-host-busy.ts) and the device is online.
+// outbox, no write is in flight, this device holds no print job (lib/print-host-busy.ts), the device is online and the
+// server answered the pulse a moment ago.
 // The lock is a quiet moment, but it never overrides any of the others: a payment left open under it still waits.
 // A plain browser with alerts on never reloads by itself: after a reload its alarm sound and the Now Serving voice
 // stay locked until someone taps (lib/alert-sound.ts), so it shows the header's chip and staff reload with a tap.
@@ -17,6 +18,8 @@ export const QUIET_IDLE_MS = 60_000;
 export const UPDATED_NOTE_MS = 2000;
 /** How often the page looks for its quiet moment, only while a newer build waits (a local timer, no request). */
 export const UPDATE_CHECK_MS = 5000;
+/** A reload goes only this soon after the pulse's last answer: two checks, so one always lands inside it. */
+export const PULSE_FRESH_MS = 2 * UPDATE_CHECK_MS;
 /** The header chip's words (and its accessible name). */
 export const UPDATE_READY_LABEL = "Update ready · Reload";
 /** sessionStorage: the server build a reload goes to (the loop guard and the "Updated" note). */
@@ -45,6 +48,8 @@ export interface QuietFacts {
   soundNeedsGesture: boolean;
   /** This page has no reach to the server (lib/server-reach.ts) or the browser says it is offline. */
   offline: boolean;
+  /** Since the pulse's last answer (the server reached right then). */
+  msSincePulse: number;
   /** This page already reloaded toward the server's build and still runs the old one. */
   autoReloadSpent: boolean;
 }
@@ -59,6 +64,9 @@ export function quietVerdict(s: QuietFacts): QuietVerdict {
   // takes no offline KOT until someone taps Retry. The chip above still shows: a tap on it is staff's own choice, and
   // Refresh's rule refuses it offline with the same reading (hooks/use-ask-first-reload.ts, R59).
   if (s.offline) return "wait";
+  // The page's offline state needs two missed pulses (up to ~2 min with the internet gone behind a working Wi-Fi, the
+  // verifiers' I2): the reload goes only right after the server answered, with no request of its own.
+  if (s.msSincePulse > PULSE_FRESH_MS) return "wait";
   const quiet = s.locked || s.msSinceInput >= QUIET_IDLE_MS;
   const nothingToLose =
     !s.dialogOpen &&

@@ -1,6 +1,7 @@
 // P2 N4: the quiet moment. A page that runs an older build than the server's loads the new one by itself only when
 // nobody can lose anything: the screen lock is on, or a minute passed with no input, AND nothing is open, focused,
-// in the cart, unsent, waiting in the outbox, in flight or printing, and the device is online. A plain browser with
+// in the cart, unsent, waiting in the outbox, in flight or printing, the device is online and the server answered
+// the pulse a moment ago. A plain browser with
 // alerts on never reloads by itself (its sound would stay locked until a tap): it gets the "Update ready · Reload"
 // chip instead, and so does a page whose one self-reload toward this build already happened. Every condition is a row
 // of this table.
@@ -10,6 +11,7 @@ import assert from "node:assert/strict";
 
 import { DIALOG_ROLE_SELECTOR } from "@/lib/nested-dialog";
 import {
+  PULSE_FRESH_MS,
   QUIET_IDLE_MS,
   UPDATED_NOTE_MS,
   UPDATE_CHECK_MS,
@@ -23,7 +25,7 @@ import {
   type QuietFacts,
 } from "@/lib/quiet-reload";
 
-/** Pending, unlocked, idle exactly the quiet time, nothing open / held / unsent / in flight / printing. */
+/** Pending, unlocked, idle exactly the quiet time, nothing open / held / unsent / in flight / printing, the pulse just answered. */
 const QUIET: QuietFacts = {
   pending: true,
   locked: false,
@@ -38,6 +40,7 @@ const QUIET: QuietFacts = {
   soundNeedsGesture: false,
   autoReloadSpent: false,
   offline: false,
+  msSincePulse: 0,
 };
 
 // Review Focus 3: each of these alone must keep the page as it is.
@@ -50,12 +53,17 @@ const BLOCKERS: ReadonlyArray<readonly [string, Partial<QuietFacts>]> = [
   ["a write is in flight", { mutating: 1 }],
   ["a print job is leased or printing", { printBusy: true }],
   ["the device is offline (a reload would swap the POS for an error page)", { offline: true }],
+  // The verifiers' I2: the page's offline state needs two missed pulses (up to ~2 min with the internet gone behind a
+  // working Wi-Fi); a reload goes only right after the server answered.
+  ["the pulse's last answer is older than PULSE_FRESH_MS (the reach may be gone)", { msSincePulse: PULSE_FRESH_MS + 1 }],
 ];
 
 test("the constants are the spec's, exactly", () => {
   assert.equal(QUIET_IDLE_MS, 60_000, "a minute with no input");
   assert.equal(UPDATED_NOTE_MS, 2000, "the \"Updated\" note shows for 2 s");
   assert.equal(UPDATE_CHECK_MS, 5000, "the local check runs every 5 s while an update waits");
+  assert.equal(PULSE_FRESH_MS, 10_000, "a reload only within 10 s of the pulse's last answer");
+  assert.equal(PULSE_FRESH_MS, 2 * UPDATE_CHECK_MS, "two checks: one always lands inside it after an answer");
   assert.equal(UPDATE_READY_LABEL, "Update ready · Reload", "the chip's words, exactly");
   assert.equal(UPDATE_RELOAD_KEY, "pos.update.reload", "the loop guard's sessionStorage key");
 });
@@ -66,6 +74,11 @@ test("all quiet, idle exactly the quiet time: reload", () => {
 
 test("one millisecond short of the quiet time: wait", () => {
   assert.equal(quietVerdict({ ...QUIET, msSinceInput: QUIET_IDLE_MS - 1 }), "wait", "someone touched it under a minute ago");
+});
+
+test("the pulse answered exactly PULSE_FRESH_MS ago: reload; a millisecond later: wait", () => {
+  assert.equal(quietVerdict({ ...QUIET, msSincePulse: PULSE_FRESH_MS }), "reload", "the server answered within the window");
+  assert.equal(quietVerdict({ ...QUIET, msSincePulse: PULSE_FRESH_MS + 1 }), "wait", "no answer that recent: wait for the next one");
 });
 
 test("the screen lock counts as quiet whatever the last input: reload", () => {

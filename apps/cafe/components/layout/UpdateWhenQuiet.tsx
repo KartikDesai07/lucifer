@@ -8,12 +8,13 @@ import { toast } from "sonner";
 import { HTML_PRESS_CLASS } from "@/components/brand/brand-classes";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { useAskFirstReload } from "@/hooks/use-ask-first-reload";
+import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
 import { POS_BUILD } from "@/lib/build-stamp";
 import { desktopShell } from "@/lib/desktop-shell";
 import { offlineOutbox } from "@/lib/offline-outbox-store";
 import { cartLines, unsentWork } from "@/lib/page-refresh";
 import { readDevicePrefs } from "@/lib/pos-device-prefs";
-import { printHostBusy } from "@/lib/print-host-busy";
+import { closePrintHost, printHostBusy } from "@/lib/print-host-busy";
 import { nativeBridge } from "@/lib/printer/native-bridge";
 import {
   UPDATE_CHECK_MS,
@@ -30,6 +31,7 @@ import { serverReach } from "@/lib/server-reach";
 import { STATUS_CLASSES } from "@/lib/ui";
 import { updatePending } from "@/lib/update-pending";
 import { cn } from "@/lib/utils";
+import { answeredAtFromCache } from "@/lib/warm-routes";
 
 // P2 N4: a newer build loads at a quiet moment, never mid-sale. While the pulse says a newer build waits
 // (lib/update-pending.ts), a local 5 s check gathers the facts and acts on lib/quiet-reload.ts's verdict: "reload"
@@ -125,6 +127,9 @@ export function UpdateWhenQuiet(): null {
     }
     const check = () => {
       const { stored, broken } = guard.current;
+      // The pulse's last answer as proof of reach (Part B's rule: a success, no failed retry running, not paused).
+      const now = Date.now();
+      const answeredAt = answeredAtFromCache(queryClient.getQueryState(POS_PULSE_KEYS.all), now);
       const verdict = quietVerdict({
         pending: updatePending.isPending(),
         locked: document.documentElement.hasAttribute(LOCK_ATTR),
@@ -138,11 +143,15 @@ export function UpdateWhenQuiet(): null {
         printBusy: printHostBusy(),
         soundNeedsGesture: soundNeedsGesture(),
         offline: serverReach.isOffline() || navigator.onLine === false,
+        msSincePulse: answeredAt === null ? Number.POSITIVE_INFINITY : now - answeredAt,
         autoReloadSpent: broken || (stored !== null && stored === updatePending.serverBuild()),
       });
       showChip(verdict === "chip");
       if (verdict === "reload") {
         if (rememberReloadTarget()) {
+          // The old page lives on until the new one answers: no second reload every 5 s meanwhile, no new print lease.
+          window.clearInterval(timer);
+          closePrintHost();
           window.location.reload();
           return;
         }
