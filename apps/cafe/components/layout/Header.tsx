@@ -9,6 +9,7 @@ import { BrandTile } from "@/components/layout/BrandTile";
 import { HeaderTitle } from "@/components/layout/HeaderTitle";
 import { RefreshButton } from "@/components/layout/RefreshButton";
 import { HeaderQuickTabs } from "@/components/layout/HeaderQuickTabs";
+import { NavProgressLine } from "@/components/layout/NavProgressView";
 import { PosHeaderBrand, PosHeaderClock, usePosHeaderRoom } from "@/components/layout/PosHeaderBrand";
 import { usePageHeader } from "@/components/layout/page-header-slot";
 import { TokenSheet } from "@/components/pos/TokenSheet";
@@ -90,6 +91,9 @@ export function Header() {
       {/* Printing Phase 5: "Offline orders · n" beside the printer button while any offline order or note remains. */}
       <OfflineOrdersSheet />
       <PrinterStatusButton onToneChange={pos ? setPrinterTone : undefined} />
+      {/* P2 N1: the 2px line while a tapped screen opens. Absolute (app/nav-progress.css), so it takes no part in this
+          row's layout or gaps, and the header's height and its /pos static rule stay as they are. */}
+      <NavProgressLine pos={pos} />
     </header>
   );
 }

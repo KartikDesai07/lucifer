@@ -50,10 +50,10 @@ export function isMoreActive(pathname: string, more: readonly MoreItem[]): boole
   return !TAB_BAR_ITEMS.some((tab) => isTabActive(tab, pathname)) && more.some((item) => isMoreItemActive(item, pathname));
 }
 
-// A tab: 56px, the 22px glyph 3px over an 11px/500 label; --text-2, the accent on the current page. The HTML's tab
-// is a button with the browser's own 1px 6px padding (it sets none), kept here.
+// A tab: 56px, the 22px glyph 3px over an 11px/500 label; --text-2, the accent on the current page (and on a page
+// opening, P2 N1). The HTML's tab is a button with the browser's own 1px 6px padding (it sets none), kept here.
 const TAB_CLASS = cn(
-  "flex h-14 min-w-0 flex-col items-center justify-center gap-[3px] px-1.5 py-px text-[11px] font-medium text-muted-foreground data-[active=true]:text-primary",
+  "flex h-14 min-w-0 flex-col items-center justify-center gap-[3px] px-1.5 py-px text-[11px] font-medium text-muted-foreground data-[active=true]:text-primary data-[opening=true]:text-primary",
   BRAND_PRESS_CLASS,
 );
 

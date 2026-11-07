@@ -131,6 +131,9 @@ export function PageHeaderSlotProvider({ children }: { children: ReactNode }) {
   // actions on the page there is nothing to place (no body row, a free title block), so nothing changes.
   const measure = useCallback(() => {
     if ((!wide && phoneFloor === undefined) || !titleEl || (!actionsInHeader && !bodyRow)) return;
+    // A page hidden under a tap's opening skeleton (NavProgressView) has no boxes: its row would measure 0 wide and
+    // pull the actions into the visible header (then back, and again). It keeps its last placement until shown.
+    if (bodyRow && bodyRow.getClientRects().length === 0) return;
     const titleWidth = titleEl.getBoundingClientRect().width;
     const actionsWidth = actionsInHeader || !bodyRow ? 0 : childrenWidth(bodyRow);
     setRoom(actionsFitBesideTitle({ actionsInHeader, titleWidth, actionsWidth, minTitle: wide ? undefined : phoneFloor }));

@@ -59,10 +59,10 @@ const PANEL_CLASS = cn(
 const AVATAR_44_CLASS =
   "[&>span:first-child]:size-11 [&>span:first-child]:rounded-[50%] [&>span:first-child]:text-[15px]";
 
-// A More tile: 72px, 1px border, radius 12, 12px/600, the 22px glyph 6px above the label; the current page on the
-// accent tint (--accent-t / --accent-i).
+// A More tile: 72px, 1px border, radius 12, 12px/600, the 22px glyph 6px above the label; the current page (and a
+// page opening) on the accent tint (--accent-t / --accent-i).
 const TILE_CLASS = cn(
-  "flex h-[72px] min-w-0 flex-col items-center justify-center gap-1.5 rounded-[12px] border border-border bg-transparent px-0.5 text-center text-[12px] font-semibold text-foreground data-[active=true]:bg-accent data-[active=true]:text-accent-foreground",
+  "flex h-[72px] min-w-0 flex-col items-center justify-center gap-1.5 rounded-[12px] border border-border bg-transparent px-0.5 text-center text-[12px] font-semibold text-foreground data-[active=true]:bg-accent data-[active=true]:text-accent-foreground data-[opening=true]:bg-accent data-[opening=true]:text-accent-foreground",
   BRAND_PRESS_CLASS,
 );
 

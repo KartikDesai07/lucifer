@@ -1,0 +1,94 @@
+/*
+ * What a tap shows while a screen opens (P2 N1): the 2px line under the header and the small spinner on the tapped
+ * nav row. components/layout/NavProgressView.tsx draws the line (data-ui="nav-line"); AppLink marks the tapped row
+ * (data-opening="true"). A file of its own, loaded by the dashboard layout like print-fonts.css, so app/globals.css
+ * does not grow. Plain CSS for WebView 109: attribute selectors and :is() only (never :has()), the motion is
+ * transform / opacity only, and reduced motion stops it.
+ */
+
+/* The line: 2px over the header's foot (its 1px rule and the pixel above it), across the whole column.
+   On every page but /pos the header is sticky, so it is the line's positioned box and the line rides with it.
+   The /pos header is static (the page under it never scrolls): the line's box is then the shell's column
+   (SidebarInset: position relative, no padding), at whose top the 56px header (3.5rem, DASHBOARD_HEADER_REM in
+   lib/pos-layout.ts) starts, so 3.5rem - 2px is the same foot; while a /pos header part is out (data-room-out) the
+   header itself is relative and 3.5rem - 2px is still its foot. Absolute either way: the line takes no part in the
+   header's flex row, its gaps or its height. */
+[data-ui="nav-line"] {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  overflow: hidden;
+  pointer-events: none;
+}
+[data-ui="nav-line"][data-pos] {
+  top: calc(3.5rem - 2px);
+  bottom: auto;
+}
+/* An indeterminate run: a 40% bar crossing the line, moved by transform only. */
+[data-ui="nav-line"]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 40%;
+  background-color: var(--brand-accent);
+  animation: nav-line-run 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes nav-line-run {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+/* The spinner: 12px on the tapped nav row while its page opens, in the row's own colour (its active one by then).
+   Only in the nav containers (the sidebar and its rail, the phone's tab bar, the More sheet), so an in-page link,
+   which carries the same marker, never spins. The rail's rows, the tabs and the More tiles stack the icon over the
+   label: the spinner sits in the row's top-right corner. */
+:is([data-ui="nav"], [data-ui="tab-bar"], [data-ui="more-grid"]) [data-opening="true"] {
+  position: relative;
+}
+:is([data-ui="nav"], [data-ui="tab-bar"], [data-ui="more-grid"]) [data-opening="true"]::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: nav-row-spin 0.8s linear infinite;
+}
+/* The wide nav (1280px up while not collapsed: the `wide` variant in app/globals.css) lays a row out as a line (the
+   icon, the label, a count): there the spinner joins the line at its end instead of covering the count. */
+@media (min-width: 1280px) {
+  html:not([data-nav-collapsed]) [data-ui="nav"] [data-opening="true"]::after {
+    position: static;
+    flex: none;
+    margin-left: auto;
+  }
+}
+@keyframes nav-row-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Reduced motion: no motion. The line stays as a still full-width bar, the spinner as a still ring. */
+@media (prefers-reduced-motion: reduce) {
+  [data-ui="nav-line"]::before {
+    animation: none;
+    width: 100%;
+  }
+  :is([data-ui="nav"], [data-ui="tab-bar"], [data-ui="more-grid"]) [data-opening="true"]::after {
+    animation: none;
+  }
+}

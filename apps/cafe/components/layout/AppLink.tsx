@@ -4,6 +4,7 @@ import type { ComponentProps, MouseEvent, PointerEvent } from "react";
 import Link from "next/link";
 
 import { useIntentPrefetch } from "@/hooks/use-intent-prefetch";
+import { useNavOpening } from "@/hooks/use-nav-progress";
 import { applyNavAction, beginNavigation } from "@/lib/navigate";
 
 // The one link every staff screen uses (nothing else may import next/link: lib/app-link-paths.test.ts).
@@ -11,6 +12,8 @@ import { applyNavAction, beginNavigation } from "@/lib/navigate";
 // lib/warm-routes.ts), so `prefetch={false}` is forced here and cannot be overridden; instead a press or a resting
 // mouse asks useIntentPrefetch, which prefetches only on a proven line. A tap tells lib/navigate.ts a page is
 // opening; a tap on the page already opening is cancelled. Handlers the caller passes still run first.
+// While its own page is opening the link carries data-opening="true": the nav rows' classes light it in their active
+// colour and app/nav-progress.css adds the small spinner (nav rows only; an in-page link just carries the marker).
 export function AppLink({
   onPointerDown,
   onMouseEnter,
@@ -21,11 +24,13 @@ export function AppLink({
   ...rest
 }: Omit<ComponentProps<typeof Link>, "prefetch" | "href"> & { href: string; label?: string }) {
   const intent = useIntentPrefetch(href);
+  const opening = useNavOpening(href);
   return (
     <Link
       {...rest}
       href={href}
       prefetch={false}
+      data-opening={opening ? "true" : undefined}
       onNavigate={(e) => {
         // Next's event has no defaultPrevented, so record whether the caller cancelled: then nothing opens.
         let prevented = false;

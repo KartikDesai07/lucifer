@@ -64,7 +64,9 @@ export const BRAND_NAV_PRESS_CLASS =
 /** The same on the light surfaces (the tab bar, the profile and More sheets): the app's focus ring instead. */
 export const BRAND_PRESS_CLASS = "outline-none focus-visible:ring-2 focus-visible:ring-ring " + HTML_PRESS_CLASS;
 
-const NAV_ACTIVE = "data-[active=true]:bg-nav-on data-[active=true]:text-white";
+// A row whose page is opening (AppLink's data-opening, P2 N1) takes the active colour at once, before the page lands.
+const NAV_ACTIVE =
+  "data-[active=true]:bg-nav-on data-[active=true]:text-white data-[opening=true]:bg-nav-on data-[opening=true]:text-white";
 
 /** The nav column: 12px 8px padding in the rail, 12px 10px wide, a 2px gap between its rows. */
 export const BRAND_NAV_CLASS =
@@ -126,9 +128,10 @@ export const BRAND_NAV_COLLAPSE_CLASS =
 export const BRAND_NAV_FLYOUT_CLASS =
   "w-60 rounded-[14px] border border-border bg-card p-1.5 font-sans leading-[normal] text-foreground shadow-pop";
 
-/** A flyout row: the profile sheet's row (9px 10px, 14px 500, hover --hover); the current page on the accent tint. */
+/** A flyout row: the profile sheet's row (9px 10px, 14px 500, hover --hover); the current page, and a page opening,
+ *  on the accent tint. */
 export const BRAND_NAV_FLYOUT_ITEM_CLASS =
-  "flex w-full items-center rounded-[8px] px-2.5 py-[9px] text-[14px] font-medium text-foreground outline-none hover:bg-hover focus-visible:ring-2 focus-visible:ring-ring data-[active=true]:bg-accent data-[active=true]:text-accent-foreground";
+  "flex w-full items-center rounded-[8px] px-2.5 py-[9px] text-[14px] font-medium text-foreground outline-none hover:bg-hover focus-visible:ring-2 focus-visible:ring-ring data-[active=true]:bg-accent data-[active=true]:text-accent-foreground data-[opening=true]:bg-accent data-[opening=true]:text-accent-foreground";
 
 // ── List screens (Orders, Order Requests, Kitchen, Reservations, Customers,
 // Events, Staff — the polish pass of 2026-10-01) ────────────────────────────

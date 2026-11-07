@@ -12,6 +12,7 @@ import { HTML_RULES_SCRIPT } from "@/lib/html-rules-scope";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Header } from "@/components/layout/Header";
+import { NavProgressView } from "@/components/layout/NavProgressView";
 import { PageHeaderSlotProvider } from "@/components/layout/page-header-slot";
 import { DeviceSessionGate } from "@/components/layout/DeviceSessionGate";
 import { DocumentBranding } from "@/components/layout/DocumentBranding";
@@ -27,6 +28,7 @@ import { PrintHostPrintSources } from "@/components/print/PrintHostPrintSources"
 import { TouchFeel } from "@/components/shared/TouchFeel";
 import { HtmlRulesScope } from "@/components/layout/HtmlRulesScope";
 import "../print-fonts.css";
+import "../nav-progress.css";
 
 // Static: no Settings read here, so every staff frame is served from the CDN. The cafe's own name and logo reach
 // the tab on the device (DocumentBranding, below), over this generic title and icon.
@@ -116,9 +118,11 @@ export default function DashboardLayout({
                     {/* The HTML's global rules (values 1.4, ruling R24) for every staff page, its lock and its dialogs. */}
                     <HtmlRulesScope />
                     {/* Below 720px the page's foot keeps 92px clear (values 2.1 screenPadB): the 59px tab bar plus air.
-                        No page fade on a screen change (owner D1, 2026-11-02). */}
+                        No page fade on a screen change (owner D1, 2026-11-02). P2 N1: a tap shows the target screen's
+                        skeleton here in the same frame, over the page (hidden, still mounted); this replaced the old
+                        route-level loading.tsx, which held a finished screen behind React's reveal throttle. */}
                     <main className="flex-1 p-4 pb-[92px] tab:pb-4 md:p-6">
-                      {children}
+                      <NavProgressView>{children}</NavProgressView>
                     </main>
                     <PrintHostPrintSources />
                   </PageHeaderSlotProvider>

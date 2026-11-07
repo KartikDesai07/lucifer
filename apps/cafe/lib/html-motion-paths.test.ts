@@ -74,9 +74,15 @@ test("the rebuilt controls carry the press: tab bar and More, the sheets' rows a
   assert.ok(read("components/dashboard/RangeBar.tsx").includes('button: "whitespace-nowrap rounded-[7px] px-3 text-[13px] " + HTML_PRESS_CLASS,'), "the period buttons");
 });
 
-test("owner D1 (2026-11-02): no page fade on a screen change — <main> holds only the page", () => {
+test("owner D1 (2026-11-02): no page fade on a screen change — <main> holds only the page (in the tap's view, P2 N1)", () => {
   const layout = read("app/(dashboard)/layout.tsx");
-  assert.match(layout, /<main className="flex-1 p-4 pb-\[92px\] tab:pb-4 md:p-6">\s*\{children\}\s*<\/main>/, "nothing but the page inside <main>");
+  assert.match(
+    layout,
+    /<main className="flex-1 p-4 pb-\[92px\] tab:pb-4 md:p-6">\s*<NavProgressView>\s*\{children\}\s*<\/NavProgressView>\s*<\/main>/,
+    "nothing but the page inside <main>, wrapped only by the tap's skeleton view",
+  );
+  const view = read("components/layout/NavProgressView.tsx");
+  assert.ok(!/key=|animate-|transition|opacity/.test(view), "the tap's view adds no fade and keys nothing: the page stays mounted, no pageIn");
   assert.ok(!/key=/.test(layout), "nothing in the shell is keyed (the column, its header and the strip's sound unlock stay mounted)");
   assert.ok(!existsSync(path.join(CAFE, "components/layout/PageFade.tsx")), "PageFade is gone");
   const shell = read("lib/shell-layout.ts");
