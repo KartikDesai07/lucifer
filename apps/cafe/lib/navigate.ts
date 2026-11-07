@@ -14,6 +14,7 @@ import { serverReach } from "@/lib/server-reach";
 
 export type NavAction = "navigate" | "full-load" | "refuse" | "stay";
 export type NavStart = { action: NavAction; label: string };
+type ProgressStore = Pick<ReturnType<typeof createNavProgress>, "start" | "cancel">;
 
 /** The facts a decision reads, and the two side effects; every one has a real default so callers pass nothing. */
 export interface NavDeps {
@@ -41,7 +42,7 @@ export function beginNavigation(
   label: string | undefined,
   fromPath: string,
   now: number,
-  progress: Pick<ReturnType<typeof createNavProgress>, "start" | "cancel"> = navProgress,
+  progress: ProgressStore = navProgress,
   deps: Partial<NavDeps> = {},
 ): NavStart {
   const d = { ...realDeps, ...deps };
@@ -79,4 +80,21 @@ export function navigateTo(
   if (!applyNavAction(result, href, opts?.deps)) return;
   if (opts?.replace) router.replace(href);
   else router.push(href);
+}
+
+/** "Back" under "Still opening…" (ruling R35): the old screen shows again AND the navigation is dropped, so a late
+ *  answer can never replace the screen the person chose to stay on (a cart in progress lives in the POS page's state).
+ *  Next discards a pending navigation when a new one is dispatched, and a replace to the URL already showing keeps the
+ *  page's tree and state; `scroll: false` leaves the page where it was. */
+export function abandonNavigation(router: AppRouterInstance, progress: Pick<ProgressStore, "cancel"> = navProgress): void {
+  progress.cancel();
+  router.replace(window.location.pathname + window.location.search, { scroll: false });
+}
+
+/** "Try again" under "Still opening…": a full page load of the target. Offline, a document load could only swap the
+ *  POS for the browser's error page, so the refused tap's toast shows instead and the page stays as it is. */
+export function retryNavigation(href: string, label: string, deps: Partial<NavDeps> = {}): void {
+  const d = { ...realDeps, ...deps };
+  if (d.isOffline()) d.toastOffline(offlineNavMessage(label));
+  else d.assign(href);
 }

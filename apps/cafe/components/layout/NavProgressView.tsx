@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState, type PropsWithChildren, type ReactNode } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { NavSkeleton } from "@/components/layout/NavSkeleton";
 import { useNavProgress } from "@/hooks/use-nav-progress";
 import { heldRoutes } from "@/lib/held-routes";
+import { abandonNavigation, retryNavigation } from "@/lib/navigate";
 import { navProgress, type NavProgress } from "@/lib/nav-progress";
 import { coverOf, skeletonKindOf, stillOpeningIn } from "@/lib/nav-skeleton";
 
@@ -15,7 +16,8 @@ import { coverOf, skeletonKindOf, stillOpeningIn } from "@/lib/nav-skeleton";
 // (NavProgressLine) and the tapped row lights up (AppLink). Covering lasts while the path is still the one the tap came
 // from (lib/nav-skeleton.ts coverOf), so the new screen, or a redirect landing anywhere else, shows at once.
 // The page is HIDDEN, never unmounted: its queries, the pulse and printing keep running under the skeleton, and Back
-// shows it again as it was. The wrapper is `display: contents` while shown, so the page's own height chain inside
+// shows it again as it was and drops the navigation, so a late answer can no longer replace it (a cart in progress
+// lives in the page's state). The wrapper is `display: contents` while shown, so the page's own height chain inside
 // <main> is untouched.
 
 /** The dashboard's <main> content: the page, and while a tap's screen opens, its skeleton. Settles the store. */
@@ -86,8 +88,9 @@ export function NavProgressFrame({ cover, children }: PropsWithChildren<{ cover:
   );
 }
 
-/** After 8 s: the words, a full load of the target (Try again) and the old screen back (Back). The status region is
- *  there, empty, from the tap, so a screen reader hears the words when they come; it sits outside the busy skeleton. */
+/** After 8 s: the words, a full load of the target (Try again) and the old screen back for good (Back). The status
+ *  region is there, empty, from the tap, so a screen reader hears the words when they come; it sits outside the busy
+ *  skeleton. */
 function StillOpening({ cover }: { cover: NonNullable<NavProgress> }) {
   const [late, setLate] = useState<NavProgress>(null);
 
@@ -111,17 +114,25 @@ function StillOpening({ cover }: { cover: NonNullable<NavProgress> }) {
       <p role="status" aria-live="polite" className={shown ? "w-full text-sm text-muted-foreground tab:w-auto" : "sr-only"}>
         {shown ? "Still opening…" : ""}
       </p>
-      {shown && (
-        <>
-          <Button type="button" variant="outline" className="h-11 px-6" onClick={() => window.location.assign(cover.href)}>
-            Try again
-          </Button>
-          <Button type="button" variant="outline" className="h-11 px-6" onClick={() => navProgress.cancel()}>
-            Back
-          </Button>
-        </>
-      )}
+      {shown && <StillOpeningActions cover={cover} />}
     </div>
+  );
+}
+
+/** Try again: a full load of the target, or the offline toast when the line is down (no browser error page over the
+ *  POS). Back: the old screen shows again and the pending navigation is dropped, so it never lands later (ruling R35).
+ *  Its own component, so the router is read only once the buttons show. */
+function StillOpeningActions({ cover }: { cover: NonNullable<NavProgress> }) {
+  const router = useRouter();
+  return (
+    <>
+      <Button type="button" variant="outline" className="h-11 px-6" onClick={() => retryNavigation(cover.href, cover.label)}>
+        Try again
+      </Button>
+      <Button type="button" variant="outline" className="h-11 px-6" onClick={() => abandonNavigation(router)}>
+        Back
+      </Button>
+    </>
   );
 }
 

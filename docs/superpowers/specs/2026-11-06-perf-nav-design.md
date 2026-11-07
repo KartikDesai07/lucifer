@@ -84,7 +84,9 @@ another person; a deploy that silently lands in Virginia again; anything WebView
 - It ends when the path becomes the target (the new screen draws), when another navigation starts (that one wins), or
   when the person cancels (below). A second tap on the same row while it is in progress does nothing.
 - **After 8 s** (my call, `NAV_STILL_OPENING_MS`): the skeleton gains "Still opening…" with **Try again** (a full page
-  load of the target) and **Back** (the old screen shows again; if the navigation lands later it still switches).
+  load of the target; offline, the offline toast instead) and **Back** (the old screen shows again and the navigation
+  is abandoned, so a late answer never replaces it — ruling R35, 2026-11-07, amending "if the navigation lands later
+  it still switches": a cart in progress on /pos lives in the page's state).
 - **Offline** (the Phase 5 offline state, `serverReach.isOffline()`, or the browser's flag) and the target is not held
   on this device (visited or warmed in this page within the router-cache window, `PREFETCH_REUSE_SECONDS`): no
   navigation; a toast "Offline: <screen> opens once the internet is back" (the POS and its offline KOTs stay usable).

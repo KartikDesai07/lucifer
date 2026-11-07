@@ -103,14 +103,19 @@ test("render: each skeleton kind is a busy root; the list is the old loading.tsx
 
 // ── "Still opening…" ─────────────────────────────────────────────────────────
 
-test("PIN: the exact words, Try again = a full load of the target, Back = cancel", () => {
+// Moved on purpose (final review I1 / m-a, ruling R35): Back abandons the navigation (a late answer never replaces the
+// screen the person stayed on), and Try again checks the line before a document load.
+test("PIN: the exact words, Try again = retryNavigation, Back = abandonNavigation with the page's router", () => {
   const view = code(VIEW);
   assert.ok(view.includes('"Still opening…"'), "the exact words, one ellipsis character");
   assert.ok(!view.includes("Still opening..."), "never three dots");
   assert.match(view, />\s*Try again\s*</, "the exact words Try again");
   assert.match(view, />\s*Back\s*</, "the exact word Back");
-  assert.match(view, /onClick=\{\(\) => window\.location\.assign\(cover\.href\)\}[^>]*>\s*Try again\s*</, "Try again loads the target as a full page");
-  assert.match(view, /onClick=\{\(\) => navProgress\.cancel\(\)\}[^>]*>\s*Back\s*</, "Back ends the wait; the old screen shows again");
+  assert.match(view, /onClick=\{\(\) => retryNavigation\(cover\.href, cover\.label\)\}[^>]*>\s*Try again\s*</, "Try again: a full load online, the toast offline");
+  assert.ok(!view.includes("window.location.assign"), "no bare document load in the view (offline it would show the browser's error page)");
+  assert.match(view, /onClick=\{\(\) => abandonNavigation\(router\)\}[^>]*>\s*Back\s*</, "Back ends the wait AND drops the pending navigation");
+  assert.match(view, /function StillOpeningActions\(\{ cover \}[^)]*\) \{\s*const router = useRouter\(\);/, "the router comes from useRouter in the component that renders Back");
+  assert.match(view, /import \{[^}]*\buseRouter\b[^}]*\} from "next\/navigation";/, "next/navigation's useRouter");
   assert.equal((view.match(/<Button type="button" variant="outline" className="h-11 px-6"/g) ?? []).length, 2, "two real buttons, 44px tall");
   assert.match(view, /<p role="status" aria-live="polite"/, "the words reach a screen reader politely");
 });

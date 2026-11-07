@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { beginNavigation, navigateTo, type NavDeps } from "@/lib/navigate";
+import { abandonNavigation, beginNavigation, navigateTo, retryNavigation, type NavDeps } from "@/lib/navigate";
 import { createNavProgress, navProgress } from "@/lib/nav-progress";
 
 // Facts a node test sets by hand (no window, no network): online and nothing held unless a test says so.
@@ -62,11 +62,11 @@ test("a tap on the page already showing cancels an opening in progress, then nav
 
 // navigateTo with a fake router and a stubbed window.location (node has no window); restored after each test.
 type Calls = string[];
-function withWindowPath<T>(pathname: string, fn: () => T): T {
+function withWindow<T>(location: { pathname: string; search?: string; assign?: (h: string) => void }, fn: () => T): T {
   const g = globalThis as { window?: unknown };
   const had = Object.prototype.hasOwnProperty.call(g, "window");
   const before = g.window;
-  g.window = { location: { pathname } };
+  g.window = { location: { search: "", ...location } };
   try {
     return fn();
   } finally {
@@ -74,10 +74,12 @@ function withWindowPath<T>(pathname: string, fn: () => T): T {
     else delete g.window;
   }
 }
+const withWindowPath = <T,>(pathname: string, fn: () => T): T => withWindow({ pathname }, fn);
 function fakeRouter(calls: Calls) {
+  const opts = (o?: object) => (o === undefined ? "" : ` ${JSON.stringify(o)}`);
   return {
-    push: (h: string) => calls.push(`push ${h}`),
-    replace: (h: string) => calls.push(`replace ${h}`),
+    push: (h: string, o?: object) => calls.push(`push ${h}${opts(o)}`),
+    replace: (h: string, o?: object) => calls.push(`replace ${h}${opts(o)}`),
   } as unknown as Parameters<typeof navigateTo>[0];
 }
 
@@ -105,6 +107,42 @@ test("navigateTo: the href already opening is not navigated again; the current p
   withWindowPath("/pos", () => navigateTo(fakeRouter(calls), "/pos?x=1"));
   assert.equal(calls[1], "push /pos?x=1", "same path: pushes");
   assert.equal(navProgress.get(), null, "and the opening /orders was cancelled (R30)");
+});
+
+// --- "Back" and "Try again" under "Still opening…" (final review I1 / m-a) ---
+test("abandonNavigation: ends the wait and replaces the current URL without a scroll, so Next drops the pending navigation (R35)", () => {
+  const p = createNavProgress();
+  p.start("/orders", "Orders", 1, "/pos");
+  const calls: Calls = [];
+  withWindow({ pathname: "/pos", search: "?table=T-1" }, () => abandonNavigation(fakeRouter(calls), p));
+  assert.equal(p.get(), null, "the progress is cancelled: the old screen shows again");
+  assert.deepEqual(calls, ['replace /pos?table=T-1 {"scroll":false}'], "one replace to the page already showing (path + query), scroll kept");
+  assert.ok(!calls.some((c) => c.startsWith("push")), "never a push: no new history entry");
+});
+
+test("abandonNavigation: a page with no query replaces its bare path; the default store is the page-wide one", () => {
+  navProgress.cancel();
+  navProgress.start("/kitchen", "Kitchen", 1, "/orders");
+  const calls: Calls = [];
+  try {
+    withWindow({ pathname: "/orders" }, () => abandonNavigation(fakeRouter(calls)));
+    assert.equal(navProgress.get(), null, "the page-wide progress ends");
+  } finally {
+    navProgress.cancel();
+  }
+  assert.deepEqual(calls, ['replace /orders {"scroll":false}'], "the bare path, no stray '?'");
+});
+
+test("retryNavigation: online = a full page load of the target", () => {
+  const log: string[] = [];
+  retryNavigation("/orders?date=2026-11-07", "Orders", fxDeps(log, {}));
+  assert.deepEqual(log, ["assign /orders?date=2026-11-07"], "the whole href goes to the browser");
+});
+
+test("retryNavigation: offline = the offline toast and no document load (the browser's error page would replace the POS)", () => {
+  const log: string[] = [];
+  retryNavigation("/orders", "Orders", fxDeps(log, { offline: true }));
+  assert.deepEqual(log, ["toast Offline: Orders opens once the internet is back"], "the refused tap's toast, never assign");
 });
 
 // --- offline / update decisions (N1) ---
