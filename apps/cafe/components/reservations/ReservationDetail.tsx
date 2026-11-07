@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, type ReactNode } from "react";
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Check, Undo2, X } from "lucide-react";
 
@@ -184,9 +184,8 @@ function Primary({ r, action, busy, onAction }: { r: Reservation; action: ResAct
     const tableNo = r.tableNo;
     if (!tableNo) return null;
     return (
-      <Link
+      <AppLink
         href={FLOOR_POS_PATH}
-        prefetch={false}
         data-ui="reservation-detail-primary"
         onClick={(e) => {
           offerOnPlainClick(e, tableNo);
@@ -194,7 +193,7 @@ function Primary({ r, action, busy, onAction }: { r: Reservation; action: ResAct
         className={RES_DETAIL_PRIMARY_CLASS}
       >
         {PRIMARY_WORD[action]}
-      </Link>
+      </AppLink>
     );
   }
   return (

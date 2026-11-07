@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { navigateTo } from "@/lib/navigate";
 
 import {
   createLeaveGuardHistory,
@@ -19,7 +20,7 @@ import {
 // swallowed and the dialog opens. On Discard the form is reset, then the same
 // anchor is clicked again with the guard bypassed — a replay, so next/link AND
 // any onClick the link carries (the phone's More sheet closing) both run.
-// If the anchor left the DOM meanwhile, router.push(href) is the fallback.
+// If the anchor left the DOM meanwhile, navigateTo(router, href) is the fallback.
 // The bypass flag exists for this replay only.
 //
 // BACK: the history logic lives in lib/leave-guard.ts (createLeaveGuardHistory,
@@ -116,7 +117,7 @@ export function useInAppLeaveGuard(dirty: boolean, discard: () => void): InAppLe
     if (pending?.kind === "link") {
       bypassRef.current = true;
       if (pending.anchor.isConnected) pending.anchor.click();
-      else router.push(pending.href);
+      else navigateTo(router, pending.href);
       bypassRef.current = false;
     } else if (pending?.kind === "back") {
       controllerRef.current?.leaveBack();

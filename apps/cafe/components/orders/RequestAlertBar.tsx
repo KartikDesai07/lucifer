@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { usePathname } from "next/navigation";
 import { Volume2 } from "lucide-react";
 
@@ -97,9 +97,9 @@ export function RequestAlertBar() {
       className="flex min-h-10 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-status-warn-tint px-3 py-1 text-[13px] leading-[normal] text-status-warn-ink tab:px-5"
     >
       {openCount > 0 && (
-        <Link href={REQUESTS_PATH} data-ui="request-strip-count" className="text-[13px] font-semibold text-status-warn-ink underline-offset-2 hover:underline">
+        <AppLink href={REQUESTS_PATH} data-ui="request-strip-count" className="text-[13px] font-semibold text-status-warn-ink underline-offset-2 hover:underline">
           {pulse?.openTruncated ? TRUNCATED_LABEL : openCount} new order request{openCount === 1 ? "" : "s"}
-        </Link>
+        </AppLink>
       )}
 
       {unprinted.length > 0 && (
@@ -124,9 +124,9 @@ export function RequestAlertBar() {
               </Button>
             ))
           ) : (
-            <Link href={REQUESTS_PATH} className="text-xs underline">
+            <AppLink href={REQUESTS_PATH} className="text-xs underline">
               Open requests to print
-            </Link>
+            </AppLink>
           )}
           {pulse?.selfOrdersTruncated && (
             <span className="text-xs text-muted-foreground">— more exist; reprint older ones from Orders</span>

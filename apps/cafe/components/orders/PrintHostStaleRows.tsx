@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 
 import { Button } from "@/components/ui/button";
 import type { StaleBandRow } from "@/lib/print-readback";
@@ -43,10 +43,10 @@ export function PrintHostStaleRows({ rows, hiddenCount, truncated, tappedIds, on
         </span>
       ))}
       {(hiddenCount > 0 || truncated) && (
-        <Link href={ORDERS_PATH} className="text-xs underline">
+        <AppLink href={ORDERS_PATH} className="text-xs underline">
           +{hiddenCount}
           {truncated ? "+" : ""} older — reprint from Orders
-        </Link>
+        </AppLink>
       )}
     </>
   );

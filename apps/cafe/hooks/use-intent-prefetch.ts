@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useContext, useEffect, useRef } from "react";
+import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
+import { QueryClientContext } from "@tanstack/react-query";
 
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
 import { heldRoutes } from "@/lib/held-routes";
@@ -19,8 +19,10 @@ export function useIntentPrefetch(href: string): {
   onMouseEnter(): void;
   onMouseLeave(): void;
 } {
-  const router = useRouter();
-  const qc = useQueryClient();
+  // The contexts are read directly (what useRouter / useQueryClient do, minus the throw when nothing is mounted):
+  // a link rendered without them, as a source-render test does, simply never prefetches.
+  const router = useContext(AppRouterContext);
+  const qc = useContext(QueryClientContext);
   const timer = useRef<number | null>(null);
 
   const clear = useCallback(() => {
@@ -29,6 +31,7 @@ export function useIntentPrefetch(href: string): {
   }, []);
 
   const offer = useCallback(() => {
+    if (!router || !qc) return;
     const now = Date.now();
     const answeredAt = answeredAtFromCache(qc.getQueryState(POS_PULSE_KEYS.all), now);
     const go = shouldIntentPrefetch({

@@ -45,19 +45,20 @@ test("PIN: useIntentPrefetch decides at the event from the pulse's cached state,
   assert.ok(!/setInterval|useQuery\b|subscribe\(/.test(src), "no poll, query or subscription of its own");
 });
 
-test("PIN: IntentLink forces prefetch={false} after the caller's props and chains the caller's handlers", () => {
-  const src = read("components/layout/IntentLink.tsx");
+test("PIN: AppLink forces prefetch={false} after the caller's props and chains the caller's handlers", () => {
+  const src = read("components/layout/AppLink.tsx");
   assert.match(src, /\{\.\.\.rest\}\s*href=\{href\}\s*prefetch=\{false\}/, "rest first, then the forced prefetch={false}");
   assert.equal(src.match(/prefetch=/g)?.length, 1, "prefetch is set once");
   for (const [mine, theirs] of [["onPointerDown", "onPointerDown"], ["onMouseEnter", "onMouseEnter"], ["onMouseLeave", "onMouseLeave"]]) {
     assert.match(src, new RegExp(String.raw`intent\.${mine}\(\);\s*${theirs}\?\.\(e\);`), `${mine}: ours, then the caller's`);
   }
+  assert.match(src, /onNavigate\?\.\(e\);\s*if \(!beginNavigation\(/, "onNavigate: the caller's, then the shared navigation decision");
 });
 
 /** Every `<IntentLink …>` opening tag, brace-aware (a `>` inside `{…}` does not end it). */
 function intentTags(src: string): string[] {
   const tags: string[] = [];
-  for (const m of src.matchAll(/<IntentLink\b/g)) {
+  for (const m of src.matchAll(/<AppLink\b/g)) {
     let depth = 0;
     let end = m.index!;
     for (; end < src.length; end++) {
@@ -71,19 +72,19 @@ function intentTags(src: string): string[] {
   return tags;
 }
 
-test("PIN: every nav row site is an IntentLink (sidebar, group sub-rows, tab bar, More sheet), never a plain Link, and never sets prefetch itself", () => {
+test("PIN: every nav row site is an AppLink (sidebar, group sub-rows, tab bar, More sheet), never a plain Link, and never sets prefetch itself", () => {
   // Moved from lib/sidebar-paths.test.ts (P2 B4): these rows used to be next/link Links each saying prefetch={false};
-  // IntentLink now forces it, so a row must not set it and must not fall back to a plain Link.
+  // AppLink (which absorbed IntentLink in P2 C2) forces it, so a row must not set it and must not fall back to a plain Link.
   const rows = [["AppSidebar", 1], ["SidebarSettingsGroup", 1], ["SidebarReportsGroup", 1], ["SidebarMenuGroup", 2], ["SidebarTablesGroup", 1], ["TabBar", 1], ["ProfileSheet", 2]] as const;
   for (const [file, expected] of rows) {
     const src = read(`components/layout/${file}.tsx`);
     assert.ok(!src.includes("next/link") && !/<Link\b/.test(src), `${file}: no plain Link among the nav rows`);
-    assert.match(src, /import \{ IntentLink \} from "@\/components\/layout\/IntentLink";/, `${file}: imports IntentLink`);
+    assert.match(src, /import \{ AppLink \} from "@\/components\/layout\/AppLink";/, `${file}: imports AppLink`);
     const tags = intentTags(src);
-    assert.equal(tags.length, expected, `${file}: expected ${expected} <IntentLink> tags, found ${tags.length}`);
+    assert.equal(tags.length, expected, `${file}: expected ${expected} <AppLink> tags, found ${tags.length}`);
     for (const tag of tags) {
-      assert.ok(tag.includes("href="), `landmark: a whole IntentLink tag was read: ${tag}`);
-      assert.ok(!/\bprefetch=/.test(tag), `${file}: a row must not set prefetch itself (IntentLink forces false): ${tag}`);
+      assert.ok(tag.includes("href="), `landmark: a whole AppLink tag was read: ${tag}`);
+      assert.ok(!/\bprefetch=/.test(tag), `${file}: a row must not set prefetch itself (AppLink forces false): ${tag}`);
     }
   }
   assert.match(read("components/layout/ProfileSheet.tsx"), /onClick=\{onNavigate\}/, "the More sheet still closes on tap");

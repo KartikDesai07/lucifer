@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 
 import { cn } from "@/lib/utils";
 import {
@@ -25,10 +25,9 @@ export function MenuViewSwitch({ current }: { current: "items" | "categories" })
       {VIEWS.map(({ key, label, href, Icon }) => {
         const on = key === current;
         return (
-          <Link
+          <AppLink
             key={key}
             href={href}
-            prefetch={false}
             title={label}
             data-ui={`menu-view-${key}`}
             aria-current={on ? "page" : undefined}
@@ -36,7 +35,7 @@ export function MenuViewSwitch({ current }: { current: "items" | "categories" })
           >
             <Icon size={15} />
             <span className="max-tab:hidden">{label}</span>
-          </Link>
+          </AppLink>
         );
       })}
     </nav>

@@ -61,7 +61,7 @@ test("PIN: a category with items left links to the filtered Items page instead o
   // Only archived items left -> the link opens the Archived view (where they
   // are), and the rendered link really uses that computed href.
   assert.match(src, /status:\s*\(deletingCounts\?\.active \?\? 0\) === 0 \? "archived" : undefined/, "an all-archived category must link to the Archived view");
-  assert.match(src, /<Link href=\{deletingItemsHref\}/, "the blocked-delete link must use the computed deletingItemsHref");
+  assert.match(src, /<AppLink href=\{deletingItemsHref\}/, "the blocked-delete link must use the computed deletingItemsHref");
   // Vision guard for the negative below: the non-blocked branch must still
   // render a real Delete action, or this pin could pass on a page that never
   // offers Delete at all.

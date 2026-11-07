@@ -18,7 +18,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { ArrowLeft } from "lucide-react";
 
 import { NAV_RAIL_MIN_PX } from "@/lib/pos-layout";
@@ -188,15 +188,14 @@ export function backLinkOf(eyebrow: ReactNode): PageHeaderBack | undefined {
 export function PageHeaderBackLink({ back }: { back: PageHeaderBack }) {
   const name = `Back to ${back.label}`;
   return (
-    <Link
+    <AppLink
       href={back.href}
-      prefetch={false}
       aria-label={name}
       title={name}
       data-ui="header-back"
       className={cn(buttonVariants({ variant: "outline", size: "icon" }), HEADER_ICON_BUTTON_CLASS)}
     >
       <ArrowLeft aria-hidden="true" strokeWidth={1.8} />
-    </Link>
+    </AppLink>
   );
 }

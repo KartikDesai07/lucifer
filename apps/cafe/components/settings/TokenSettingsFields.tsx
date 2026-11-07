@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { Controller, useFormState } from "react-hook-form";
 import type { Control, FieldErrors, UseFormRegister, UseFormSetValue } from "react-hook-form";
 
@@ -68,9 +68,9 @@ export function TokenSettingsFields({ control, register, setValue, errors }: Tok
         {noBillPrinter && (
           <p role="alert" className="rounded-lg border border-destructive p-3 text-sm text-brand-ink">
             {TOKENS_NO_BILL_PRINTER_WARNING}{" "}
-            <Link href="/printers" className={HINT_LINK_CLASS}>
+            <AppLink href="/printers" className={HINT_LINK_CLASS}>
               Open Printer setup
-            </Link>
+            </AppLink>
           </p>
         )}
         <Field

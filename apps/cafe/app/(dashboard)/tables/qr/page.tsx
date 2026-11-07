@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { useReactToPrint } from "react-to-print";
 import { ArrowLeft, Printer } from "lucide-react";
 
@@ -60,9 +60,9 @@ function TableQrContent() {
       actions={
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" asChild>
-            <Link prefetch={false} href={TABLES_SETUP_PATH}>
+            <AppLink href={TABLES_SETUP_PATH}>
               <ArrowLeft className="mr-2 h-4 w-4" /> Back to setup
-            </Link>
+            </AppLink>
           </Button>
           <Button size="sm" onClick={() => printSheet()} disabled={!hasTables}>
             <Printer className="mr-2 h-4 w-4" /> Print

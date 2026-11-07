@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { IntentLink } from "@/components/layout/IntentLink";
+import { AppLink } from "@/components/layout/AppLink";
 import { usePathname } from "next/navigation";
 import { ChevronRight, Inbox, Users, PartyPopper, UserCog, Armchair, Printer, Tv, Wallet } from "lucide-react";
 
@@ -208,7 +208,7 @@ export function AppSidebar() {
     .flatMap((section) => section.items.map((item) => item.url));
   useWarmRoutes(warmHrefs);
 
-  // No nav row prefetches on sight (IntentLink forces prefetch={false}): a warm
+  // No nav row prefetches on sight (AppLink forces): a warm
   // row's warmers are the hook above and a touch (use-intent-prefetch), both of
   // which wait for a working line — a prefetch that fails on a line still waking
   // up turns the next click on that row into a full page load.
@@ -247,7 +247,7 @@ export function AppSidebar() {
     const active = item.exact ? pathname === item.url : isActivePath(pathname, item.url);
     return (
       <NavItem key={item.url} isActive={active}>
-        <IntentLink
+        <AppLink
           href={item.url}
           title={item.title}
           aria-current={active ? "page" : undefined}
@@ -255,7 +255,7 @@ export function AppSidebar() {
           <NavRowContent icon={item.icon} title={item.title} railTitle={item.railTitle}>
             {item.url === "/requests" && <RequestCountBadge />}
           </NavRowContent>
-        </IntentLink>
+        </AppLink>
       </NavItem>
     );
   };

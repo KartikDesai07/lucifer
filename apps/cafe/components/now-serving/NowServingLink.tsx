@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { Tv } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -34,9 +34,9 @@ export function NowServingLink({ variant, children }: NowServingLinkProps) {
     return (
       <p className={HINT_CLASS}>
         {HINT_TEXT}{" "}
-        <Link href={NOW_SERVING_PATH} prefetch={false} className={cn(HINT_LINK_CLASS, "inline-flex min-h-11 items-center")}>
+        <AppLink href={NOW_SERVING_PATH} className={cn(HINT_LINK_CLASS, "inline-flex min-h-11 items-center")}>
           {HINT_LINK_LABEL}
-        </Link>
+        </AppLink>
       </p>
     );
   }
@@ -44,10 +44,10 @@ export function NowServingLink({ variant, children }: NowServingLinkProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Button asChild variant="outline" className={cn(HEADER_ACTION_FLOOR_OUTLINE_CLASS, "max-tab:hidden")}>
-        <Link href={NOW_SERVING_PATH} prefetch={false}>
+        <AppLink href={NOW_SERVING_PATH}>
           <Tv aria-hidden="true" />
           {BUTTON_LABEL}
-        </Link>
+        </AppLink>
       </Button>
       {children}
     </div>

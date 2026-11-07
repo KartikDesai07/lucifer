@@ -42,7 +42,7 @@ function edge(fromRel: string, spec: string, usage: string): void {
 }
 
 test("PIN: reachability, Customers page -> Festival page (admin-only link) -> List -> Form -> Audience / Box fields -> the settings reward fields", () => {
-  const link: Pin = (s) => /\{isAdmin && \(\s*<Button\b[^>]*>\s*<Link href=\{FESTIVAL_CARDS_PAGE\}>/.test(s) && /import \{[^}]*\bFESTIVAL_CARDS_PAGE\b[^}]*\} from "@pos\/shared\/reward-campaigns"/.test(s);
+  const link: Pin = (s) => /\{isAdmin && \(\s*<Button\b[^>]*>\s*<AppLink href=\{FESTIVAL_CARDS_PAGE\}>/.test(s) && /import \{[^}]*\bFESTIVAL_CARDS_PAGE\b[^}]*\} from "@pos\/shared\/reward-campaigns"/.test(s);
   pinned("customers page link", code(CUSTOMERS), link, (s) => s.replace("{isAdmin && (", "{true && ("), (s) => s.replace("href={FESTIVAL_CARDS_PAGE}", 'href="/customers"'), (s) => s.replace('from "@pos/shared/reward-campaigns"', 'from "x"'));
   assert.match(code(CUSTOMERS), /const \{ isAdmin \} = useAuth\(\);/, "landmark: isAdmin is the session's role check");
   assert.equal(raw("../../packages/shared/src/reward-campaigns.ts").includes('FESTIVAL_CARDS_PAGE = "/customers/festival-cards"'), true, "landmark: the constant is the page's own route");
@@ -60,7 +60,7 @@ test("PIN: reachability, Customers page -> Festival page (admin-only link) -> Li
 });
 
 test("PIN: the Festival page is admin-only (AdminGuard wraps the whole body) and links back to /customers", () => {
-  const pin: Pin = (s) => /<AdminGuard>\s*<MenuPageShell>[\s\S]*<FestivalCardsList \/>\s*<\/MenuPageShell>\s*<\/AdminGuard>/.test(s) && /<Link href="\/customers"/.test(s);
+  const pin: Pin = (s) => /<AdminGuard>\s*<MenuPageShell>[\s\S]*<FestivalCardsList \/>\s*<\/MenuPageShell>\s*<\/AdminGuard>/.test(s) && /<AppLink href="\/customers"/.test(s);
   pinned("page guard", code(PAGE), pin, (s) => s.replace("<AdminGuard>", "<div>").replace("</AdminGuard>", "</div>"), (s) => s.replace('href="/customers"', 'href="/"'));
   assert.match(code("components/shared/AdminGuard.tsx"), /if \(!isAdmin\) return null;/, "landmark: the guard renders nothing for a non-admin");
 });

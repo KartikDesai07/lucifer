@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { RotateCw } from "lucide-react";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -97,12 +97,12 @@ export function DaySheet({ day, onOpenChange }: DaySheetProps) {
               </Section>
             )}
 
-            <Link
+            <AppLink
               href={`/orders?date=${day}`}
               className="mt-2 inline-flex h-11 items-center justify-center rounded-md bg-brand-primary px-4 text-[14px] font-semibold text-brand-slip hover:bg-brand-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent"
             >
               See all {d.kpis.current.orders} orders of this day
-            </Link>
+            </AppLink>
           </>
         )}
       </SheetContent>

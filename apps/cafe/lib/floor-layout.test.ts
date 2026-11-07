@@ -245,7 +245,7 @@ test("HeaderQuickTabs: on isFloorPath Tables is not drawn and New order takes HE
   assert.match(src, /const floor = isFloorPath\(pathname\);/, "one flag for the Floor");
   const map = bodyAfter(src, "HEADER_QUICK_TABS.map((tab) =>");
   assert.match(map, /if \(floor && tab\.url === FLOOR_PATH\) return null;/, "Tables (this page) is not drawn on the Floor");
-  assert.ok(map.indexOf("return null;") < map.indexOf("<Link"), "before its link renders");
+  assert.ok(map.indexOf("return null;") < map.indexOf("<AppLink"), "before its link renders");
   assert.match(
     src,
     /tab\.primary \? \(floor \? HEADER_FLOOR_NEW_ORDER_CLASS : HEADER_PRIMARY_BUTTON_CLASS\) : HEADER_OUTLINE_BUTTON_CLASS/,

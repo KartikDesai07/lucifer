@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { navigateTo } from "@/lib/navigate";
 import { useAuth } from "@/hooks/use-auth";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -15,7 +16,7 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoading && !isAdmin) router.replace("/");
+    if (!isLoading && !isAdmin) navigateTo(router, "/", { replace: true });
   }, [isLoading, isAdmin, router]);
 
   if (isLoading) {

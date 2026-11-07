@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { navigateTo } from "@/lib/navigate";
 import { ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
@@ -49,7 +50,7 @@ export function MoreCard({ home, onClose }: { home: "sheet" | "page"; onClose?: 
     // The review's Important 1 (PX-2): below 1280px the full-screen sheet would stay over Printer setup; close it first.
     "printer-setup": () => {
       onClose?.();
-      router.push("/printers");
+      navigateTo(router, "/printers");
     },
   };
 

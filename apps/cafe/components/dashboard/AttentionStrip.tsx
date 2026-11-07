@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { ChevronDown, CircleCheck } from "lucide-react";
 import { cn, inr } from "@/lib/utils";
 import { plural } from "@/lib/dashboard/format";
@@ -139,7 +139,7 @@ export function AttentionStrip({ live, loading, isError }: { live?: DashboardLiv
           status
         ) : (
           items.map((item) => (
-            <Link key={item.key} href={item.href} title={item.title} data-ui="attention-chip" className={CHIP_CLASS}>
+            <AppLink key={item.key} href={item.href} title={item.title} data-ui="attention-chip" className={CHIP_CLASS}>
               <StatusDot kind={item.kind} className="rounded-[50%]" />
               <span>
                 <Words item={item} />
@@ -147,7 +147,7 @@ export function AttentionStrip({ live, loading, isError }: { live?: DashboardLiv
               <span data-ui="attention-pill" className={PILL_CLASS}>
                 {item.action}
               </span>
-            </Link>
+            </AppLink>
           ))
         )}
       </div>
@@ -198,7 +198,7 @@ export function AttentionStrip({ live, loading, isError }: { live?: DashboardLiv
             <ul id={listId} hidden={!open} data-ui="attention-list" className="flex flex-col border-t border-border-2">
               {items.map((item, i) => (
                 <li key={item.key}>
-                  <Link
+                  <AppLink
                     href={item.href}
                     title={item.title}
                     data-ui="attention-item"
@@ -211,7 +211,7 @@ export function AttentionStrip({ live, loading, isError }: { live?: DashboardLiv
                     <span data-ui="attention-item-action" className={ITEM_ACTION_CLASS}>
                       {item.action}
                     </span>
-                  </Link>
+                  </AppLink>
                 </li>
               ))}
             </ul>

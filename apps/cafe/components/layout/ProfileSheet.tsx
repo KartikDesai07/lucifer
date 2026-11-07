@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { IntentLink } from "@/components/layout/IntentLink";
+import { AppLink } from "@/components/layout/AppLink";
 import { usePathname } from "next/navigation";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ChevronLeft, KeyRound, LogOut } from "lucide-react";
@@ -188,7 +188,7 @@ export function ProfileSheetBody({
                   const active = isActivePath(pathname, page.href);
                   return (
                     <li key={page.href}>
-                      <IntentLink
+                      <AppLink
                         href={page.href}
                         data-ui="more-sub-row"
                         data-active={active}
@@ -197,7 +197,7 @@ export function ProfileSheetBody({
                         className={BRAND_NAV_FLYOUT_ITEM_CLASS}
                       >
                         {page.title}
-                      </IntentLink>
+                      </AppLink>
                     </li>
                   );
                 })}
@@ -230,7 +230,7 @@ export function ProfileSheetBody({
                     {inside}
                   </button>
                 ) : (
-                  <IntentLink
+                  <AppLink
                     key={item.url}
                     href={item.url}
                     data-ui="more-tile"
@@ -240,7 +240,7 @@ export function ProfileSheetBody({
                     className={TILE_CLASS}
                   >
                     {inside}
-                  </IntentLink>
+                  </AppLink>
                 );
               })}
             </div>

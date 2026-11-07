@@ -1,5 +1,5 @@
 import { useId } from "react";
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -18,9 +18,9 @@ export { HINT_CLASS, HINT_LINK_CLASS };
 // toggle prints.
 export function SectionLink({ slug, children }: { slug: "business" | "taxes" | "loyalty" | "qr-ordering"; children: React.ReactNode }) {
   return (
-    <Link href={settingsSectionPath(slug)} className={HINT_LINK_CLASS}>
+    <AppLink href={settingsSectionPath(slug)} className={HINT_LINK_CLASS}>
       {children}
-    </Link>
+    </AppLink>
   );
 }
 

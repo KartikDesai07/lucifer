@@ -245,7 +245,7 @@ const PINS: PinCase[] = [
       assert.ok(read(FOCUS).includes(`export const DEVICE_SECTION_SELECTOR = '[data-printer-target="device"]'`) && src.includes("import { DEVICE_SECTION_SELECTOR, usePrinterPanelFocus }") && src.includes(`DESIGNATE_SELECTOR = '[data-action="designate"]'`) && !src.includes('"#printer-device"') && !src.includes("document.querySelector"), "the two targets; W-P: never a page-wide lookup");
       assert.ok(/const target = root\?\.querySelector<HTMLElement>\(selector\) \?\? null;/.test(read(FOCUS)) && /scrollIntoView\(/.test(read(FOCUS)) && !read(FOCUS).includes("document.querySelector"), "looked up inside the panel's root, then shown");
       assert.match(read(FOCUS), /pendingTarget\.current = selector;\s*onView\?\.\("settings"\);/, "a setup fix switches to the settings view first");
-      assert.match(src, /if \(kind === "printer-setup"\) \{\s*onClose\?\.\(\);\s*router\.push\("\/printers"\);/, "an admin's link closes the sheet, then opens Printer setup (the review's Important 1)");
+      assert.match(src, /if \(kind === "printer-setup"\) \{\s*onClose\?\.\(\);\s*navigateTo\(router, "\/printers"\);/, "an admin's link closes the sheet, then opens Printer setup (the review's Important 1)");
     },
     mutate: (src) => src.replace("toastConnectOutcome(devicePrinter().reconnect())", "Promise.resolve().then(() => toastConnectOutcome(devicePrinter().reconnect()))"),
   },

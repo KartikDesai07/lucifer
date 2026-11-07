@@ -231,8 +231,8 @@ const headerIsTitleOnlyWithMenuLinks = (view: string): boolean => {
   const header = openingTag(view, view.indexOf("<PageHeader"));
   const items = tagsNamed(view, /<DropdownMenuItem(?=\s)/g);
   const adminGate = /\{isAdmin && \(\s*<DropdownMenu>/.test(view);
-  const categories = /<DropdownMenuItem asChild[^>]*>\s*<Link href=\{EXPENSE_CATEGORIES_PATH\}[^>]*>\s*<Tags aria-hidden \/> Categories\s*<\/Link>/.test(view);
-  const report = /<DropdownMenuItem asChild[^>]*>\s*<Link href=\{EXPENSE_REPORT_PATH\}[^>]*>\s*<BarChart3 aria-hidden \/> Expense report\s*<\/Link>/.test(view);
+  const categories = /<DropdownMenuItem asChild[^>]*>\s*<AppLink href=\{EXPENSE_CATEGORIES_PATH\}[^>]*>\s*<Tags aria-hidden \/> Categories\s*<\/AppLink>/.test(view);
+  const report = /<DropdownMenuItem asChild[^>]*>\s*<AppLink href=\{EXPENSE_REPORT_PATH\}[^>]*>\s*<BarChart3 aria-hidden \/> Expense report\s*<\/AppLink>/.test(view);
   return (
     header.includes('title="Expenses"') &&
     !header.includes("description=") &&
@@ -256,7 +256,7 @@ test("PIN 5: /expenses header has no description= / eyebrow=; Categories + Expen
     ["a description is added", mutate(view, 'title="Expenses"', 'title="Expenses" description="Track spending"')],
     ["an eyebrow is added", mutate(view, 'title="Expenses"', 'title="Expenses" eyebrow="Money"')],
     ["the Categories link is dropped", mutate(view, "href={EXPENSE_CATEGORIES_PATH}", "href={EXPENSE_REPORT_PATH}")],
-    ["the Report item stops being a link item", mutate(view, "<DropdownMenuItem asChild className={MENU_ITEM_CLASS}>\n                    <Link href={EXPENSE_REPORT_PATH}", "<DropdownMenuItem className={MENU_ITEM_CLASS}>\n                    <Link href={EXPENSE_REPORT_PATH}")],
+    ["the Report item stops being a link item", mutate(view, "<DropdownMenuItem asChild className={MENU_ITEM_CLASS}>\n                    <AppLink href={EXPENSE_REPORT_PATH}", "<DropdownMenuItem className={MENU_ITEM_CLASS}>\n                    <AppLink href={EXPENSE_REPORT_PATH}")],
     ["the menu loses its admin gate", mutate(view, "{isAdmin && (\n              <DropdownMenu>", "{true && (\n              <DropdownMenu>")],
   ]);
   assert.ok(!page.includes("PageHeader"), "the route file adds no second header");

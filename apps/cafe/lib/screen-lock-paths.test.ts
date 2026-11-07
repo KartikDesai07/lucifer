@@ -252,7 +252,7 @@ test("PIN: locking writes the state and the attribute; unlocking clears both, le
   assert.match(src, /readLockState\(/, "a reload reads the stored lock");
   assert.match(src, /clearLockState\(/, "an unlock clears the stored lock");
   assert.match(src, /unlockPlan\(\{/, "what an unlock does comes from the pure unlockPlan");
-  assert.match(src, /if \(plan\.redirectHome\) router\.replace\("\/"\)/, "a non-admin leaves an admin page for the Dashboard");
+  assert.match(src, /if \(plan\.redirectHome\) navigateTo\(router, "\/", \{ replace: true \}\)/, "a non-admin leaves an admin page for the Dashboard");
   assert.match(src, /if \(plan\.toast\) toast\.success\(plan\.toast\)/, "a switch says who is signed in now");
   assert.match(src, /rememberThisDevice\(\)/, "every unlock remembers this device");
   assert.match(src, /<PinSignIn\b/, "the lock screen is the login page's picker");
@@ -558,9 +558,9 @@ test("PIN: a sign-in on the login page clears a stale lock before it navigates",
   const finish = arrowBody(src, "finishSignIn");
   assert.ok(finish.length > 0, "landmark: finishSignIn");
   const clear = finish.indexOf("clearLockState(window.localStorage)");
-  const replace = finish.indexOf('router.replace("/")');
+  const replace = finish.indexOf('navigateTo(router, "/", { replace: true })');
   assert.ok(clear >= 0, "finishSignIn calls clearLockState(window.localStorage)");
-  assert.ok(replace > clear, 'clearLockState comes before router.replace("/")');
+  assert.ok(replace > clear, 'clearLockState comes before navigateTo(router, "/")');
   assert.equal(count(src, "clearLockState("), 1, "one call");
 });
 

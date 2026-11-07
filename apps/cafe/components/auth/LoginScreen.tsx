@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { navigateTo } from "@/lib/navigate";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { signIn } from "next-auth/react";
@@ -108,7 +109,7 @@ export function LoginScreen({ brandName }: { brandName: string }) {
       // Storage itself can be blocked; then nothing was stored either.
     }
     await rememberThisDevice();
-    router.replace("/");
+    navigateTo(router, "/", { replace: true });
     router.refresh();
   };
 

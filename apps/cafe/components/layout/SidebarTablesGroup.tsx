@@ -6,7 +6,7 @@
 // manual collapse sticks while moving between Setup and QR codes, and the effect only forces it open when the route
 // ENTERS the manage paths from outside.
 import { useEffect, useState } from "react";
-import { IntentLink } from "@/components/layout/IntentLink";
+import { AppLink } from "@/components/layout/AppLink";
 
 import { TABLES_MANAGE_SECTIONS, isTableSectionActive, isTablesManagePath } from "@/lib/table-sections";
 import type { NavIcon } from "@/components/layout/nav-icons";
@@ -41,9 +41,9 @@ export function SidebarTablesGroup({ title, icon, wide, pathname }: SidebarTable
           const active = isTableSectionActive(pathname, section.href);
           return (
             <NavSubItem key={section.href} place={place} isActive={active}>
-              <IntentLink href={section.href} aria-current={active ? "page" : undefined}>
+              <AppLink href={section.href} aria-current={active ? "page" : undefined}>
                 {section.title}
-              </IntentLink>
+              </AppLink>
             </NavSubItem>
           );
         })}

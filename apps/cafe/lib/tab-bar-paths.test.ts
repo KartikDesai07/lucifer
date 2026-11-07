@@ -130,7 +130,7 @@ test("a group tile lists its sub-pages (Menu, Tables, Reports, Settings), from t
 // ── The bar itself ───────────────────────────────────────────────────────────
 
 function renderBar(pathname: string, moreActive = false): string {
-  // The rows are IntentLinks: they read the router and the query cache (for the touch prefetch), so the render
+  // The rows are AppLinks: they read the router and the query cache (for the touch prefetch), so the render
   // needs both providers, as the app has them; nothing prefetches during a server render.
   const router = { prefetch: () => {} } as unknown as React.ComponentProps<typeof AppRouterContext.Provider>["value"];
   return renderToStaticMarkup(
@@ -273,7 +273,7 @@ test("the old phone sheet's state is gone: no openMobile in the kit sidebar, no 
   assert.match(sidebar, /isMobile,\s*toggleSidebar,/, "landmark: the context still says isMobile and gives the toggle");
   for (const file of ["AppSidebar", "SidebarBrand", "SidebarSettingsGroup", "SidebarReportsGroup", "SidebarMenuGroup", "SidebarTablesGroup"]) {
     const src = read(`components/layout/${file}.tsx`);
-    assert.ok(src.includes(file === "SidebarBrand" ? "<Link" : "<IntentLink"), `landmark: ${file} renders its Links`);
+    assert.ok(src.includes("<AppLink"), `landmark: ${file} renders its Links`);
     assert.ok(!/closeMobile|setOpenMobile|onNavigate/.test(src), `${file}: no phone-sheet tap hook left`);
   }
 });

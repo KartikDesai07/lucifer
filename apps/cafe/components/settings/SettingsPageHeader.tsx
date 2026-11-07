@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { ChevronLeft } from "lucide-react";
 
 import { SETTINGS_BASE_PATH } from "@/lib/settings-sections";
@@ -18,13 +18,13 @@ export function SettingsPageHeader({ title, description }: SettingsPageHeaderPro
   return (
     <PageHeader
       eyebrow={
-        <Link
+        <AppLink
           href={SETTINGS_BASE_PATH}
           className="-mx-1 -my-3 inline-flex items-center gap-0.5 rounded-md px-1 py-3 hover:text-brand-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent"
         >
           <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
           Settings
-        </Link>
+        </AppLink>
       }
       title={title}
       description={description}

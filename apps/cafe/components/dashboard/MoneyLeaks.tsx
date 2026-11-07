@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { cn, inr } from "@/lib/utils";
 import { STATUS_CLASSES } from "@/lib/ui";
 import { plural } from "@/lib/dashboard/format";
@@ -112,13 +112,13 @@ export function MoneyLeaks({ leaks }: { leaks: DashboardLeaks }) {
           <li key={r.key} className="flex flex-col">
             {r.href ? (
               // Our one link here (the cancelled orders): the row keeps the HTML's box; hovering underlines its label.
-              <Link
+              <AppLink
                 href={r.href}
                 data-ui="leak-row"
                 className={cn(ROW_CLASS, "group text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring")}
               >
                 {body}
-              </Link>
+              </AppLink>
             ) : (
               <div data-ui="leak-row" className={ROW_CLASS}>
                 {body}

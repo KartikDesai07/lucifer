@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { Controller } from "react-hook-form";
 import type {
   Control,
@@ -126,12 +126,12 @@ export function GstFields({ control, register, setValue, watch, errors, settings
             description={
               <>
                 A {inr(SAMPLE_ITEM_PRICE)} sample item with these settings. Choose which lines print in{" "}
-                <Link
+                <AppLink
                   href={settingsSectionPath("bill-print")}
                   className="font-medium text-brand-primary underline-offset-2 hover:underline"
                 >
                   Bill print
-                </Link>
+                </AppLink>
                 .
               </>
             }

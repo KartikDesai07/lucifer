@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { Layers, LayoutGrid, Plus, QrCode } from "lucide-react";
 
 import { useTables, useDeleteTable } from "@/hooks/use-tables";
@@ -133,9 +133,9 @@ function TablesSetupContent() {
               <Layers className="mr-2 h-4 w-4" /> Areas
             </Button>
             <Button variant="outline" asChild>
-              <Link prefetch={false} href={TABLES_QR_PATH}>
+              <AppLink href={TABLES_QR_PATH}>
                 <QrCode className="mr-2 h-4 w-4" /> Print QR codes
-              </Link>
+              </AppLink>
             </Button>
             <Button onClick={openAdd}>
               <Plus className="mr-2 h-4 w-4" /> Add table
@@ -150,9 +150,9 @@ function TablesSetupContent() {
       {settings.data !== undefined && (
         <p className="text-sm text-muted-foreground">
           Long stay alert after {longStayMinutesOf(settings.data)} min ·{" "}
-          <Link href={LONG_STAY_SETTINGS_HREF} className="underline">
+          <AppLink href={LONG_STAY_SETTINGS_HREF} className="underline">
             Change
-          </Link>
+          </AppLink>
         </p>
       )}
 
