@@ -22,6 +22,7 @@ import { PosPulseProvider } from "@/components/layout/PosPulseProvider";
 import { PrintHostProvider } from "@/components/layout/PrintHostProvider";
 import { SessionKeepalive } from "@/components/layout/SessionKeepalive";
 import { TabBar } from "@/components/layout/TabBar";
+import { UpdateWhenQuiet } from "@/components/layout/UpdateWhenQuiet";
 import { ScreenLock } from "@/components/lock/ScreenLock";
 import { RequestAlertBar } from "@/components/orders/RequestAlertBar";
 import { PrintHostPrintSources } from "@/components/print/PrintHostPrintSources";
@@ -104,6 +105,9 @@ export default function DashboardLayout({
                 <SessionKeepalive />
                 {/* Printing Phase 5: offline orders are sent by themselves once the server answers (one tab per device). */}
                 <OfflineReplayRunner />
+                {/* P2 N4: a newer build loads at a quiet moment, never mid-sale (a local check while one waits, no
+                    request); a plain browser with alerts on gets the header's chip instead. */}
+                <UpdateWhenQuiet />
                 {/* The screen lock: a cover over this running page (never a sign-out, so printing, the pulse, the alarm
                     and realtime go on under it). Inside the master-data provider, so it reads the seeded settings. */}
                 <ScreenLock />

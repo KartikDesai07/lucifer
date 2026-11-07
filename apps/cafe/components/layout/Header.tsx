@@ -8,6 +8,7 @@ import { OfflineOrdersSheet } from "@/components/pos/OfflineOrdersSheet";
 import { BrandTile } from "@/components/layout/BrandTile";
 import { HeaderTitle } from "@/components/layout/HeaderTitle";
 import { RefreshButton } from "@/components/layout/RefreshButton";
+import { UpdateReadyChip } from "@/components/layout/UpdateWhenQuiet";
 import { HeaderQuickTabs } from "@/components/layout/HeaderQuickTabs";
 import { NavCoverInert, NavProgressLine } from "@/components/layout/NavProgressView";
 import { PosHeaderBrand, PosHeaderClock, usePosHeaderRoom } from "@/components/layout/PosHeaderBrand";
@@ -88,6 +89,8 @@ export function Header() {
       <NavCoverInert box={actionsBox} />
       <HeaderQuickTabs />
       {pos && <PosHeaderClock now={now} tone={printerTone} room={room} />}
+      {/* P2 N4: "Update ready · Reload" while a newer build waits and this device may not reload by itself. */}
+      <UpdateReadyChip />
       <RefreshButton />
       <TokenSheet />
       {/* Printing Phase 5: "Offline orders · n" beside the printer button while any offline order or note remains. */}

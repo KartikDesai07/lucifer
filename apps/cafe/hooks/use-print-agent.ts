@@ -23,7 +23,7 @@ import {
   printAgentSlipOf,
   readPendingAcks,
   setDirectPrintSource,
-  markPrinterWriting,
+  markPrinterWriting, trackPrintBusy,
   setPrinterHealthSource,
   setPulsePrintDevice,
   setReadyPrintersSource,
@@ -196,14 +196,14 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
     const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf, printerCannotPrintOf);
     const created = createPrintAgent({
       deviceId,
-      // tokenSlips: this page prints "token" jobs (S7); a page from before S7 leases none, on any line (print-lease.ts).
-      lease: (printerIds) => apiSend<PrintLeaseData>(LEASE_URL, "POST", { deviceId, tabId, tokenSlips: true, ...printerIdsBody(printerIds) }),
+      // tokenSlips: this page prints "token" jobs (S7); a page from before S7 leases none, on any line (print-lease.ts). P2 N4: the lease and the print are tracked in flight (lib/print-host-busy.ts), so a newer build never reloads the page under a leased job.
+      lease: (printerIds) => trackPrintBusy(apiSend<PrintLeaseData>(LEASE_URL, "POST", { deviceId, tabId, tokenSlips: true, ...printerIdsBody(printerIds) })),
       // Session 3B (the token fix's M-2): every ack says this page prints token slips, so its `more` counts them.
       // Session 3C (the 3B review gate's I-1): a server from before Phase 3 (a rollback) refuses tokenSlips and reason: the
       // ack goes once more without them (lib/print-agent-skew.ts), never read as answered and lost. PX-2 (spec §6.9 B4): an
       // applied printed answer takes its slip off this device's cached Not printed list at once (no request).
       ack: (id, body) => printAgentSkew.send({ ...body, tokenSlips: true }, olderAckBody, (sent) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", sent)).then((answer) => dropPrintedFromPulse(qc, id, body, answer)),
-      print,
+      print: (job) => trackPrintBusy(print(job)),
       // Session 3C (the gate's review, m-2): a device that prints printers is ready only by their own states (its app's
       // default printer out of paper must not let a kick lease an empty line).
       // The 3C review gate (m-4): in simple mode the app's default printer (this device's) by its own state too.

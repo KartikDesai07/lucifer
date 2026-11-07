@@ -16,6 +16,24 @@ export function holdUnsentWork(token: symbol, work: UnsentWork | null): void {
   else holders.set(token, work);
 }
 
+const cartHolders = new Map<symbol, number>();
+
+/** The POS cart (hooks/use-cart.ts): its unsent lines are this holder's "changes", exactly as holdUnsentWork sets them,
+ *  and its line count, fired lines included, tells a newer build to wait for an empty cart (lib/quiet-reload.ts).
+ *  null: the cart unmounted. */
+export function holdCart(token: symbol, cart: { unsent: boolean; lines: number } | null): void {
+  holdUnsentWork(token, cart !== null && cart.unsent ? "changes" : null);
+  if (cart === null || cart.lines === 0) cartHolders.delete(token);
+  else cartHolders.set(token, cart.lines);
+}
+
+/** The lines every cart on the page holds; 0 when none. */
+export function cartLines(): number {
+  let lines = 0;
+  for (const count of cartHolders.values()) lines += count;
+  return lines;
+}
+
 /** The weightiest work the page holds: an unconfirmed send before plain changes; null when none. */
 export function unsentWork(): UnsentWork | null {
   let found: UnsentWork | null = null;

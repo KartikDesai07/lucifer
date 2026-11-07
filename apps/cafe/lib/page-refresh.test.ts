@@ -7,7 +7,9 @@ import path from "node:path";
 import { stripComments } from "@/lib/source-pin-utils";
 import {
   REFRESH_OFFLINE_MESSAGE,
+  cartLines,
   clearDeliberateReload,
+  holdCart,
   holdUnsentWork,
   isDeliberateReload,
   markDeliberateReload,
@@ -36,6 +38,35 @@ test("unsent work: each holder says what it holds; an unconfirmed send outweighs
   assert.equal(unsentWork(), null, "all released");
   holdUnsentWork(cart, null);
   assert.equal(unsentWork(), null, "releasing twice is harmless");
+});
+
+// P2 N4: the POS cart also says how many lines it holds, so a new build waits for an empty cart; its unsent lines stay
+// Refresh's "changes" exactly as before.
+test("the cart: holdCart holds its unsent lines like holdUnsentWork, and its line count; null clears both", () => {
+  const cart = Symbol("cart");
+  const other = Symbol("other cart");
+  const send = Symbol("send");
+  assert.equal(cartLines(), 0, "no cart, no lines");
+  holdCart(cart, { unsent: true, lines: 3 });
+  assert.equal(unsentWork(), "changes", "unsent lines are changes, as holdUnsentWork(token, \"changes\") sets them");
+  assert.equal(cartLines(), 3, "and the cart holds three lines");
+  holdUnsentWork(send, "unconfirmed");
+  assert.equal(unsentWork(), "unconfirmed", "an unconfirmed send still outweighs the cart");
+  holdUnsentWork(send, null);
+  holdCart(cart, { unsent: false, lines: 2 });
+  assert.equal(unsentWork(), null, "fired lines only: nothing a reload loses, Refresh does not ask");
+  assert.equal(cartLines(), 2, "but the cart is not empty");
+  holdCart(other, { unsent: false, lines: 1 });
+  assert.equal(cartLines(), 3, "the lines sum over holders");
+  holdCart(cart, null);
+  assert.equal(cartLines(), 1, "a cart that unmounted holds no lines");
+  assert.equal(unsentWork(), null, "nor any unsent work");
+  holdCart(other, { unsent: true, lines: 1 });
+  holdCart(other, null);
+  assert.equal(cartLines(), 0, "all released");
+  assert.equal(unsentWork(), null, "its unsent entry cleared too");
+  holdCart(other, null);
+  assert.equal(cartLines(), 0, "releasing twice is harmless");
 });
 
 test("the question says what a refresh would lose, in plain words", () => {
@@ -86,8 +117,9 @@ test("PIN: one source of truth: the leave warning holds its work for Refresh and
   assert.match(guard, /holdUnsentWork\(token, dirty \? "changes" : null\)/, "the guard's dirty state is Refresh's too (a resumed tab, a settings form)");
   assert.match(guard, /if \(isDeliberateReload\(\)\) return;/, "a refresh staff already confirmed is not asked again");
   const cart = src("apps/cafe/hooks/use-cart.ts");
-  assert.match(cart, /holdUnsentWork\(token, cart\.some\(\(line\) => line\.kotRound === 0\) \? "changes" : null\)/, "the cart reports lines not fired yet");
-  assert.match(cart, /return \(\) => holdUnsentWork\(token, null\);/, "and releases them when it unmounts");
+  // P2 N4 (deliberate move): the cart reports through holdCart, which sets the same unsent entry and its line count.
+  assert.match(cart, /holdCart\(token, \{ unsent: cart\.some\(\(line\) => line\.kotRound === 0\), lines: cart\.length \}\)/, "the cart reports lines not fired yet (and how many lines it holds)");
+  assert.match(cart, /return \(\) => holdCart\(token, null\);/, "and releases them when it unmounts");
   const tab = src("apps/cafe/hooks/use-pos-tab.ts");
   assert.match(tab, /holdUnsentWork\(sendToken, send\.sending !== null \|\| send\.frozen !== null \? "unconfirmed" : null\)/, "a send in flight or not confirmed (the review's I2)");
   assert.match(tab, /return \(\) => holdUnsentWork\(sendToken, null\);/, "released on unmount");
