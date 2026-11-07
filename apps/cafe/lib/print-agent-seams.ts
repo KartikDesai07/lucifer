@@ -1,5 +1,6 @@
 import { PRINT_HEADER_ON, PRINT_PULSE_TOKENS_PARAM, type LeasedPrintJob } from "@pos/shared/print-agent-wire";
 import type { PrinterHealthReport } from "@pos/shared/print-failover";
+import { printHostClosing } from "@/lib/print-host-busy";
 
 // Printing redesign: the in-page print agent's module seams (client-only, never throw). The call sites and the
 // pulse reach this page's one agent through them, with no React context: an order answer that named a job (a
@@ -135,6 +136,7 @@ export function setDirectPrintSource(source: () => string | null): () => void {
  *  The requests that make slips then name it (PRINT_LEASE_HEADER), so a slip this device prints can be made
  *  already leased to this tab (spec §7.11). */
 export function directPrintTab(): string | null {
+  if (printHostClosing()) return null; // P2 N4 (R65): a page that began its reload names no tab (its slips go to the line).
   try {
     return directSource?.() ?? null;
   } catch {

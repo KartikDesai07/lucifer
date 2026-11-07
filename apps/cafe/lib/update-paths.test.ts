@@ -57,8 +57,11 @@ test("PIN: the page reloads only after a \"reload\" verdict and on the chip's ta
   );
   assert.equal(count(hook, "beforeReload"), 2, "beforeReload: the parameter, and that one call");
   assert.equal((hook.match(/(?<![.\w])reload\(\);/g) ?? []).length, 1, "reload() runs on nothing to lose");
-  assert.equal((hook.match(/\breload\b(?!\s*=)(?!\(\))/g) ?? []).length, 1, "and is otherwise named only as the question's onConfirm");
-  assert.match(hook, /onConfirm: reload,/, "a confirmed question reloads");
+  // The re-review's M4 rest (R66, deliberate move): the question's Refresh runs the rule again, so offline or a slip
+  // printing since the question opened is said, never reloaded under.
+  assert.equal((hook.match(/\breload\b(?!\s*=)(?!\(\))/g) ?? []).length, 0, "reload is never handed out: only the rule calls it");
+  assert.match(hook, /onConfirm: \(\) => decide\(true\),/, "a confirmed question runs the rule again, its work now staff's choice");
+  assert.match(hook, /const press = \(\) => decide\(false\);/, "the tap runs the rule");
   assert.match(
     src,
     /const target = updatePending\.serverBuild\(\);\s*if \(target === null\) return false;\s*window\.sessionStorage\.setItem\(UPDATE_RELOAD_KEY, target\);/,
@@ -225,10 +228,14 @@ test("PIN: the print agent's lease and print are tracked in place; print-agent.t
   assert.ok(lines(AGENT) <= 340, `use-print-agent.ts must not grow past 340 lines, got ${lines(AGENT)}`);
   assert.ok(lines("lib/print-agent.ts") <= 301, `lib/print-agent.ts must not grow past 301 lines, got ${lines("lib/print-agent.ts")}`);
   assert.match(code(SEAMS), /export \{ leaseUnlessClosing, trackPrintBusy \} from "@\/lib\/print-host-busy";/, "re-exported through the agent's seams");
-  // The verifiers' I1: the host drain's claim marks its row printed when won, so a page that began its reload claims none.
-  const drain = code("hooks/use-print-host-drain.ts");
-  assert.match(drain, /import \{ printHostClosing \} from "@\/lib\/print-host-busy";/, "the drain reads the closing gate");
-  assert.match(drain, /if \(claimingRef\.current \|\| claimLockRef\.current \|\| printHostClosing\(\)\) return;/, "no claim once the page began its reload");
+  // The re-review's I1 rest (R65): a page that began its reload names no tab for its slips, and its self-order lanes
+  // claim nothing (a KOT the claim makes would be leased to the dying tab, with nobody at the screen).
+  const seams = code(SEAMS);
+  assert.match(seams, /import \{ printHostClosing \} from "@\/lib\/print-host-busy";/, "the seams read the closing gate");
+  assert.match(seams, /export function directPrintTab\(\): string \| null \{\s*if \(printHostClosing\(\)\) return null;/, "no lease header while closing");
+  const selfOrder = code("hooks/use-self-order-auto-print.ts");
+  assert.match(selfOrder, /import \{ printHostClosing \} from "@\/lib\/print-host-busy";/, "the self-order lanes read the closing gate");
+  assert.match(selfOrder, /if \(claimingRef\.current\) return;\s*if \(printHostClosing\(\)\) return;\s*if \(claimLock\?\.current\) return;/, "no self-order claim while closing");
   const host = code(HOST);
   assert.match(host, /import \{ holdPrintBusy \} from "@\/lib\/print-host-busy";/, "the provider imports the holder");
   assert.match(host, /const \{ current, busy, kotRef, receiptRef, eodRef, setEodReady, queueSlip, queueTestSlip \} = bridge;/, "busy is the bridge's own");

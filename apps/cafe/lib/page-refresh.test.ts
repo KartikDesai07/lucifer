@@ -130,12 +130,13 @@ test("PIN: Refresh shows only inside the POS app, asks first, then reloads quiet
   // the browser's error page.
   assert.match(
     hook,
-    /const offline = serverReach\.isOffline\(\) \|\| navigator\.onLine === false;\s*const step = reloadStep\(!offline, unsentWork\(\), printHostBusy\(\)\);/,
+    /const offline = serverReach\.isOffline\(\) \|\| navigator\.onLine === false;\s*const step = reloadStep\(!offline, confirmed \? null : unsentWork\(\), printHostBusy\(\)\);/,
     "the decision is lib/page-refresh.ts's, offline read from serverReach and navigator.onLine, printing from this device's print holds",
   );
   assert.match(hook, /import \{ closePrintHost, printHostBusy \} from "@\/lib\/print-host-busy";/, "the print holds and the closing gate");
-  assert.match(hook, /if \(step\.kind === "printing"\) \{\s*toast\(REFRESH_PRINTING_MESSAGE\);\s*return;\s*\}/, "printing: says so, no reload (the verifiers' M4)");
-  assert.match(hook, /if \(step\.kind === "offline"\) \{\s*toast\.error\(REFRESH_OFFLINE_MESSAGE\);\s*return;\s*\}/, "offline: says so, no reload");
+  assert.match(hook, /if \(step\.kind === "printing"\) \{\s*setAsking\(null\);\s*toast\(REFRESH_PRINTING_MESSAGE\);\s*return;\s*\}/, "printing: says so, no reload (the verifiers' M4)");
+  // R66 (deliberate move): a refusal also closes the question when it came from the question's Refresh.
+  assert.match(hook, /if \(step\.kind === "offline"\) \{\s*setAsking\(null\);\s*toast\.error\(REFRESH_OFFLINE_MESSAGE\);\s*return;\s*\}/, "offline: says so, no reload");
   assert.match(hook, /if \(step\.kind === "ask"\) \{\s*setAsking\(step\.work\);\s*return;\s*\}\s*reload\(\);/, "unsent work: ask first; nothing to lose: reload");
   const reload = hook.slice(hook.indexOf("const reload = "), hook.indexOf("const press = "));
   assert.ok(
@@ -146,7 +147,7 @@ test("PIN: Refresh shows only inside the POS app, asks first, then reloads quiet
   assert.match(hook, /onOpenChange: \(open: boolean\) => \{\s*if \(!open\) setAsking\(null\);\s*\},/, "Stay (or Escape) closes the question");
   assert.match(hook, /title: REFRESH_CONFIRM_TITLE,/, "the question's title");
   assert.match(hook, /description: asking === null \? undefined : refreshQuestion\(asking\),/, "what a refresh would lose");
-  assert.match(hook, /confirmLabel: "Refresh",\s*cancelLabel: "Stay",\s*onConfirm: reload,/, "Refresh / Stay; confirming reloads");
+  assert.match(hook, /confirmLabel: "Refresh",\s*cancelLabel: "Stay",\s*onConfirm: \(\) => decide\(true\),/, "Refresh / Stay; confirming runs the rule again with the work confirmed (R66)");
 });
 
 test("PIN: one source of truth: the leave warning holds its work for Refresh and stays quiet on a deliberate refresh; the cart and the send hold theirs", () => {

@@ -5,6 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { REFRESH_SETTLE_MS } from "@/lib/page-refresh";
+import { directPrintTab, setDirectPrintSource } from "@/lib/print-agent-seams";
 import {
   PRINT_HOST_CLOSING_MS,
   closePrintHost,
@@ -105,4 +106,20 @@ test("closing: for PRINT_HOST_CLOSING_MS from the reload no new lease starts; th
   work.resolve("job");
   assert.equal(await leased, "job", "the agent gets the lease's own answer");
   assert.equal(printHostBusy(), false, "released once it settled");
+});
+
+// The re-review's I1 rest: a request that makes a slip names this tab (directPrintTab → the lease header), so the
+// server makes it already leased here — the self-order claim does that with nobody at the screen. Closing names none.
+test("closing: a page that began its reload names no tab for the slips its requests make", () => {
+  const off = setDirectPrintSource(() => "tab-1");
+  try {
+    closePrintHost(0);
+    assert.equal(directPrintTab(), "tab-1", "open: the agent's tab, as before");
+    closePrintHost();
+    assert.equal(directPrintTab(), null, "closing: no tab, so the slip goes to its line, never leased to the dying page");
+    closePrintHost(0);
+    assert.equal(directPrintTab(), "tab-1", "the page still here after the window: named again");
+  } finally {
+    off();
+  }
 });

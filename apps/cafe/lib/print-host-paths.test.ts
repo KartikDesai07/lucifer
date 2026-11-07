@@ -326,7 +326,7 @@ test("PIN (D): PrintHostDrain.tsx runs the print agent (the host for the cafe; w
 
 // ── E. use-print-host-drain.ts ─────────────────────────────────────────────
 
-test("PIN (E): use-print-host-drain.ts calls printJobDrainCandidate( with PRINT_HOST_MAX_AGE_MS; claimLockRef.current = true; and attemptedRef.current.add(candidate.id); BOTH appear before claimMutate(; onSettled clears claimLockRef.current = false;; onError deletes attemptedRef.current.delete(candidate.id); const { mutate: claimMutate } = claim;; if (result.reason === \"not-host\") onDemoted();; gate if (claimingRef.current || claimLockRef.current || printHostClosing()) return;", () => {
+test("PIN (E): use-print-host-drain.ts calls printJobDrainCandidate( with PRINT_HOST_MAX_AGE_MS; claimLockRef.current = true; and attemptedRef.current.add(candidate.id); BOTH appear before claimMutate(; onSettled clears claimLockRef.current = false;; onError deletes attemptedRef.current.delete(candidate.id); const { mutate: claimMutate } = claim;; if (result.reason === \"not-host\") onDemoted();; gate if (claimingRef.current || claimLockRef.current) return;", () => {
   const src = readSrc(USE_PRINT_HOST_DRAIN);
 
   const drainCandidateCall = src.indexOf("printJobDrainCandidate(");
@@ -360,9 +360,8 @@ test("PIN (E): use-print-host-drain.ts calls printJobDrainCandidate( with PRINT_
   assert.match(src, /if \(result\.reason === "not-host"\) onDemoted\(\);/, 'must call if (result.reason === "not-host") onDemoted();');
   assert.match(
     src,
-    // P2 N4 (deliberate move, R60): a won claim marks its row printed, so a page that began its reload claims none.
-    /if \(claimingRef\.current \|\| claimLockRef\.current \|\| printHostClosing\(\)\) return;/,
-    "the gate must read if (claimingRef.current || claimLockRef.current || printHostClosing()) return;",
+    /if \(claimingRef\.current \|\| claimLockRef\.current\) return;/,
+    "the gate must read if (claimingRef.current || claimLockRef.current) return;",
   );
 });
 

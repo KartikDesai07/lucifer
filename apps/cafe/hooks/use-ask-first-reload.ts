@@ -53,14 +53,18 @@ export function useAskFirstReload(beforeReload?: () => void): AskFirstReload {
     closePrintHost();
     window.location.reload();
   };
-  const press = () => {
+  // The tap, and again the question's Refresh (`confirmed`: the work it asked about is now staff's choice), so going
+  // offline or a slip starting to print while the question was open is said, never reloaded under (R66).
+  const decide = (confirmed: boolean) => {
     const offline = serverReach.isOffline() || navigator.onLine === false;
-    const step = reloadStep(!offline, unsentWork(), printHostBusy());
+    const step = reloadStep(!offline, confirmed ? null : unsentWork(), printHostBusy());
     if (step.kind === "offline") {
+      setAsking(null);
       toast.error(REFRESH_OFFLINE_MESSAGE);
       return;
     }
     if (step.kind === "printing") {
+      setAsking(null);
       toast(REFRESH_PRINTING_MESSAGE);
       return;
     }
@@ -70,6 +74,7 @@ export function useAskFirstReload(beforeReload?: () => void): AskFirstReload {
     }
     reload();
   };
+  const press = () => decide(false);
 
   return {
     reloading,
@@ -83,7 +88,7 @@ export function useAskFirstReload(beforeReload?: () => void): AskFirstReload {
       description: asking === null ? undefined : refreshQuestion(asking),
       confirmLabel: "Refresh",
       cancelLabel: "Stay",
-      onConfirm: reload,
+      onConfirm: () => decide(true),
     },
   };
 }
