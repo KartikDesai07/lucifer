@@ -181,6 +181,7 @@
     "lib/due-payment-ui-paths.test.ts",
     "lib/branding.test.ts",
     "lib/branding-paths.test.ts",
+    "lib/public-metadata-paths.test.ts",
     "lib/bill-header-preview-paths.test.ts",
     "lib/gst-sample-bill.test.ts",
     "lib/bill-print-preview-paths.test.ts",
