@@ -116,6 +116,9 @@ export const REFRESH_PRINTING_MESSAGE = "A slip is printing. Refresh once it is 
 // print-lifecycle.ts): a KOT or other non-bill goes back to the line marked REPRINT, a token DUPLICATE (a second maybe
 // ends in "failed", waiting for staff); a bill is never printed again by itself, it waits in the Printer panel's
 // "Not printed" card for the cashier.
+// A continuous hold is not always a slip on paper: requests that name this tab are tracked too (lib/print-agent-calls.ts),
+// e.g. an offline replay of several orders sent with the lease header. "Refresh anyway" is still safe then: the offline
+// outbox survives a reload and sends the rest after it.
 export const REFRESH_PRINT_TITLE = "Printing is taking long";
 
 export const REFRESH_PRINT_QUESTION =

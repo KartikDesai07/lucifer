@@ -76,6 +76,7 @@
     "lib/build-stamp.test.ts",
     "lib/quiet-reload.test.ts",
     "lib/print-host-busy.test.ts",
+    "lib/print-agent-hold.test.ts",
     "lib/print-request-track.test.ts",
     "lib/update-paths.test.ts",
     "lib/nav-decision.test.ts",

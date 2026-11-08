@@ -23,10 +23,9 @@ import { PRINT_SLIP_REFUSALS_MAX, isSlipRefusal, printWriteOutcomeOf } from "@/l
 // PRINT_AGENT_REFUSED_RECHECK_MS. Its only timer is local, set from the server's retryAt/nextAttemptAt.
 // Its acks are kept and re-sent by lib/print-agent-acks.ts (spec §7.9).
 //
-// Phase 2 Session 2B (spec §7.11): a job an answer carried already leased to this tab is taken (take) and
-// printed before any lease, first in first out; a job it already holds, is printing (however it came) or
-// acked is ignored, so an answer delivered twice prints once. After a job leaves the line, the ack's `more`
-// decides whether to lease again.
+// Phase 2 Session 2B (spec §7.11): a job an answer carried already leased to this tab is taken (take) and printed
+// before any lease, first in first out; a job it already holds, is printing (however it came) or acked is ignored, so
+// an answer delivered twice prints once. After a job leaves the line, the ack's `more` decides whether to lease again.
 //
 // Phase 2 Session 2E (spec §9.2): a Windows PC prints several printers, one slip at a time through its one bridge.
 // A refusal holds only its own printer's line (lib/print-agent-holds.ts); the lease, direct print and the kicks name
@@ -290,6 +289,7 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
     openPrinters() {
       return deps.printerReady() ? holds.open(ready()) : [];
     },
+    holdsJob: () => enabled && !stopped && held.length > 0,
   };
 }
 

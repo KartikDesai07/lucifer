@@ -56,13 +56,37 @@ test("PIN: the automatic reload arms the loop guard first, waits for the connect
   const gate = src.indexOf("cancelGate = leaveWhenPrintFree(");
   assert.ok(arm > 0 && gate > arm, "armed first, then the gate");
   assert.match(src, /const stopWaiting = reloadWhenOnline\(/, "the connection wait stays");
-  assert.match(src, /return \(\) => \{\s*stopWaiting\(\);\s*cancelGate\(\);\s*\};/, "cleanup stops the wait and a waiting gate");
+  // The final review's F2 (deliberate move): the one stop is also kept where a button tap reaches it.
+  assert.match(
+    src,
+    /const stop = \(\) => \{\s*stopWaiting\(\);\s*cancelGate\(\);\s*\};\s*stopAuto\.current = stop;\s*return stop;/,
+    "cleanup stops the wait and a waiting gate, and the same stop is kept for a button tap",
+  );
+});
+
+// The final review's F2: two waiting gates freed by print in one look would load twice (a reload racing assign("/")).
+test("PIN: a button tap first stops the automatic reload's wait and gate, so only one gate ever waits", () => {
+  const src = read(ERROR);
+  assert.match(src, /const stopAuto = useRef<\(\) => void>\(\(\) => undefined\);/, "the automatic reload's stop is kept in a ref");
+  assert.match(
+    src,
+    /const load = \(go: \(\) => void\) => \{\s*stopAuto\.current\(\);\s*cancelLoad\.current\(\);\s*let went = false;/,
+    "a tap stops the automatic gate (and any earlier button gate) before it starts its own",
+  );
 });
 
 test("PIN: a waiting button load shows the status words, disables both buttons, and is cancelled on unmount", () => {
   const src = read(ERROR);
   assert.match(src, /role="status"/, "a status line");
   assert.ok(src.includes("A slip is printing here. The page opens as soon as it is done."), "the exact words");
+  // The final review's Minor 8 (deliberate move): the region is there, empty, from the first render (the repo pattern:
+  // NavProgressView's StillOpening), so a screen reader hears the words when they come.
+  assert.doesNotMatch(src, /\{waiting && \(\s*<p role="status"/, "the status region is not mounted only while waiting");
+  assert.match(
+    src,
+    /<p role="status" aria-live="polite" className=\{waiting \? "[^"]+" : "sr-only"\}>\s*\{waiting \? "A slip is printing here\. The page opens as soon as it is done\." : ""\}\s*<\/p>/,
+    "mounted from the first render, empty; the words only while waiting",
+  );
   assert.equal(src.split("disabled={waiting}").length - 1, 2, "Reload and Go to dashboard are both disabled while waiting");
   assert.match(src, /useEffect\(\(\) => \(\) => cancelLoad\.current\(\), \[\]\)/, "a waiting gate is cancelled on unmount");
 });

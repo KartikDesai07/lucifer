@@ -20,7 +20,8 @@ import { armChunkReload, chunkReloadStore, isChunkLoadError } from "@/lib/chunk-
 // This layout keeps the print agent and print host mounted, so every document load here goes through the print gate
 // (leaveWhenPrintFree, R71): it never cuts a slip leased to this tab. The automatic reload also waits for the line.
 // The two buttons pass no line condition (printing Phase 5 kept them working offline); while one waits for a slip the
-// screen says so.
+// screen says so. Only one gate ever waits (the final review's F2): a tap first stops the automatic reload, else both
+// would go in the same look once print is free (a reload racing assign("/")).
 export default function DashboardError({
   error,
   reset,
@@ -31,6 +32,8 @@ export default function DashboardError({
   const staleBuild = isChunkLoadError(error);
   const [waiting, setWaiting] = useState(false);
   const cancelLoad = useRef<() => void>(() => undefined);
+  // The automatic reload's stop (its connection wait and its gate), where a button tap reaches it.
+  const stopAuto = useRef<() => void>(() => undefined);
 
   useEffect(() => {
     if (!staleBuild) return;
@@ -41,15 +44,18 @@ export default function DashboardError({
       if (!armChunkReload(chunkReloadStore(), Date.now())) return;
       cancelGate = leaveWhenPrintFree(() => window.location.reload(), { ready: () => lineIsUp() });
     });
-    return () => {
+    const stop = () => {
       stopWaiting();
       cancelGate();
     };
+    stopAuto.current = stop;
+    return stop;
   }, [staleBuild]);
 
   // A button's load: now when no slip is printing, otherwise the screen shows the wait. Gone with the screen.
   useEffect(() => () => cancelLoad.current(), []);
   const load = (go: () => void) => {
+    stopAuto.current();
     cancelLoad.current();
     let went = false;
     cancelLoad.current = leaveWhenPrintFree(() => {
@@ -86,11 +92,10 @@ export default function DashboardError({
           </p>
         )}
       </div>
-      {waiting && (
-        <p role="status" className="max-w-md text-sm text-muted-foreground">
-          A slip is printing here. The page opens as soon as it is done.
-        </p>
-      )}
+      {/* There, empty, from the first render (NavProgressView's StillOpening), so a screen reader hears the words. */}
+      <p role="status" aria-live="polite" className={waiting ? "max-w-md text-sm text-muted-foreground" : "sr-only"}>
+        {waiting ? "A slip is printing here. The page opens as soon as it is done." : ""}
+      </p>
       <div className="flex gap-2">
         {staleBuild ? (
           <Button disabled={waiting} onClick={() => load(() => window.location.reload())}>

@@ -100,6 +100,9 @@ export function useAskFirstReload(beforeReload?: () => void): AskFirstReload {
     press,
     dialog: {
       open: asking !== null,
+      // Only staff closing the question ("Wait" / "Stay" / Escape) forgets the waiver. A close this hook makes itself (the
+      // offline step, or a reload that never tore the page down after REFRESH_SETTLE_MS) keeps it by design: staff already
+      // answered for that same hold, and a newer hold has another start time anyway.
       onOpenChange: (open: boolean) => {
         if (!open) {
           waived.current = null;

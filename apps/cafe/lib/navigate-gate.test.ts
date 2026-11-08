@@ -127,6 +127,22 @@ test("two waiting loads: a newer tap cancels the older, only the newer can go", 
   assert.deepEqual(h.loads, ["assign /kitchen"], "only the newer load goes");
 });
 
+// Ruling P3 on the same entry: Try again of the same href while the tap's own full load waits keeps the progress entry,
+// so only the newer load replacing the waiting one (pendingLoad) stops the first gate; else both would load.
+test("Try again of the same href while its full load waits: the first gate is cancelled, exactly one load", () => {
+  const h = harness();
+  const p = createNavProgress();
+  assert.equal(tap(h, p, "/orders").action, "full-load", "landmark: the tap's full load waits at the gate (print busy)");
+  const entry = p.get();
+  retryNavigation("/orders", "Orders", h.deps, p);
+  assert.equal(p.get(), entry, "landmark: Try again keeps the same progress entry, so no entry change cancels anything");
+  assert.equal(h.gates.length, 2, "Try again started its own gate");
+  assert.equal(h.gates[0].cancelled, true, "the newer load cancels the waiting one");
+  h.open(0);
+  h.open(1);
+  assert.deepEqual(h.loads, ["assign /orders"], "both gates opened: exactly one load");
+});
+
 test("Try again online goes through the gate (with the line as ready); offline toasts and starts no gate", () => {
   const h = harness();
   const p = createNavProgress();

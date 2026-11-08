@@ -6,6 +6,11 @@
 // already (the agent's pending-ack store). From the reload on, no new lease or claim starts (closePrintHost). Module
 // state only; no React, no request.
 //
+// A third kind (the P2 follow-ups' final review, F1): a pull source read at every call. The print agent registers one
+// for a slip leased to this tab that waits in its held list (the bridge still busy, a lease's extra jobs) until that
+// slip's tracked print starts, or it is handed back (hooks/use-print-agent.ts). Without it a gate's look landing between
+// the bridge letting go and the agent hearing so would load the page, and the old page start the slip under the load.
+//
 // Two more parts for "no document load cuts a print job" (P2 follow-ups R71/R72): printHostBusySince() says when the
 // current continuous hold began (holders and in-flight work that overlap or hand over without a gap are one hold), so
 // Refresh can tell a hold that lasted past PRINT_STUCK_MS; and leaveWhenPrintFree() is the one gate every document
@@ -58,8 +63,30 @@ export function trackPrintBusy<T>(work: Promise<T>): Promise<T> {
   );
 }
 
+const sources = new Set<{ busy: () => boolean }>();
+
+/** Registers a pull source of print work, read at every printHostBusy() call (so by the hold clock and the gate too); one
+ *  that throws counts as not busy. Returns its unregister (calling it twice is harmless). */
+export function addPrintBusySource(busy: () => boolean): () => void {
+  const entry = { busy };
+  sources.add(entry);
+  syncSince();
+  return () => {
+    sources.delete(entry);
+    syncSince();
+  };
+}
+
+function sourceBusy(entry: { busy: () => boolean }): boolean {
+  try {
+    return entry.busy() === true;
+  } catch {
+    return false;
+  }
+}
+
 export function printHostBusy(): boolean {
-  return holders.size > 0 || inFlight > 0;
+  return holders.size > 0 || inFlight > 0 || [...sources].some(sourceBusy);
 }
 
 /** A continuous hold older than this counts as stuck (Refresh then offers "Refresh anyway"). */
