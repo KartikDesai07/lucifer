@@ -102,7 +102,7 @@ test("PIN: the settings PUT refuses the flip (409) BEFORE the write, from a fres
 test("PIN: the editor switch is disabled while the lock holds OR scratch cards are blocked and the switch is off; OFF stays open", () => {
   const rel = "components/settings/rewards/RewardLevelsSection.tsx";
   const pin: Pin = (s) => {
-    const row = /<ToggleRow[\s\S]*?\/>/.exec(s)?.[0] ?? "";
+    const row = /<SettingsSwitchRow[\s\S]*?\/>/.exec(s)?.[0] ?? "";
     return row.includes("disabled={!switchable || (blockedText !== null && !switchChecked)}") && s.includes("const switchChecked = switchable && cfg?.enabled === true;");
   };
   pinned(
@@ -120,7 +120,7 @@ test("PIN: Stamp card shows one plain note when levels are on, fed from the SAVE
   const card = code("components/settings/LoyaltyCard.tsx");
   const cardPin: Pin = (s) =>
     /levelsChosen: boolean;/.test(s) &&
-    /\{levelsChosen && \(\s*<p className=\{REWARD_NOTE_CLASS\} role="status">\s*\{LEVELS_ON_NOTE\}\s*<\/p>\s*\)\}/.test(s) &&
+    /\{levelsChosen && \(\s*<p className=\{SETTINGS_NOTE_CLASS\} role="status">\s*\{LEVELS_ON_NOTE\}\s*<\/p>\s*\)\}/.test(s) &&
     s.indexOf("{levelsChosen &&") > s.indexOf('title="Stamp card"') &&
     s.indexOf("{levelsChosen &&") < s.indexOf('name="loyaltyEnabled"') &&
     s.includes("Scratch-card levels are on, so diners stop earning stamps. Stamps and codes they already hold can still be used.");

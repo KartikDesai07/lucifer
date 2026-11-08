@@ -6,8 +6,9 @@ import { toast } from "sonner";
 import type { SettingsInput } from "@/schemas";
 import type { RewardLevelsDraft } from "@/hooks/use-reward-levels-draft";
 import { Button } from "@/components/ui/button";
-import { HINT_CLASS } from "@/components/settings/hint-classes";
 import { copyStampRewards, REWARD_STARTERS, starterConfig } from "@/lib/reward-levels-starters";
+import { SETTINGS_HINT_CLASS, SETTINGS_OUTLINE_BUTTON_CLASS } from "@/lib/settings-card-layout";
+import { cn } from "@/lib/utils";
 
 interface RewardStarterButtonsProps {
   levels: RewardLevelsDraft;
@@ -23,7 +24,11 @@ const liveMinBill = (getValues: UseFormGetValues<SettingsInput>): number => {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 };
 
-const BUTTON_CLASS = "h-auto min-h-11 flex-col items-start gap-0.5 whitespace-normal px-3 py-2 text-left";
+// The card look's plain button, grown to two lines (the loyalty page's new UI, 2026-11-09).
+const BUTTON_CLASS = cn(
+  SETTINGS_OUTLINE_BUTTON_CLASS,
+  "h-auto min-h-11 flex-col items-start gap-0.5 whitespace-normal px-3 py-2 text-left",
+);
 
 // Where an owner with nothing set up begins: three ready-made setups and a copy of their stamp card. Each one only
 // fills the editor (nothing is saved until Save changes, and none is ever switched on).
@@ -43,8 +48,8 @@ export function RewardStarterButtons({ levels, getValues, onCopyNotes }: RewardS
       <div className="grid gap-2 sm:grid-cols-2">
         {REWARD_STARTERS.map((starter) => (
           <Button
-            key={starter.id}
             type="button"
+            key={starter.id}
             variant="outline"
             className={BUTTON_CLASS}
             onClick={() => {
@@ -52,16 +57,16 @@ export function RewardStarterButtons({ levels, getValues, onCopyNotes }: RewardS
               levels.replace(starterConfig(starter.id, liveMinBill(getValues)));
             }}
           >
-            <span className="text-sm font-semibold text-brand-ink">{starter.label}</span>
-            <span className="text-xs font-normal text-brand-muted">{starter.description}</span>
+            <span className="text-sm font-semibold text-foreground">{starter.label}</span>
+            <span className="text-xs font-normal text-muted-foreground">{starter.description}</span>
           </Button>
         ))}
         <Button type="button" variant="outline" className={BUTTON_CLASS} onClick={copy}>
-          <span className="text-sm font-semibold text-brand-ink">Copy my stamp rewards</span>
-          <span className="text-xs font-normal text-brand-muted">Start from the rewards on your stamp card.</span>
+          <span className="text-sm font-semibold text-foreground">Copy my stamp rewards</span>
+          <span className="text-xs font-normal text-muted-foreground">Start from the rewards on your stamp card.</span>
         </Button>
       </div>
-      <p className={HINT_CLASS}>You can change everything afterwards. Nothing is saved until you press Save changes.</p>
+      <p className={SETTINGS_HINT_CLASS}>You can change everything afterwards. Nothing is saved until you press Save changes.</p>
     </div>
   );
 }

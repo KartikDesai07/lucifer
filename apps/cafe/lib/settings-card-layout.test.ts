@@ -54,6 +54,11 @@ test("card constants: the plan's values", () => {
   assert.equal(L.SETTINGS_BLOCK_SUB_CLASS, "mt-0.5 text-[12.5px] text-muted-foreground text-pretty", "block sub");
   assert.equal(L.SETTINGS_HINT_CLASS, "text-[12.5px] leading-snug text-muted-foreground text-pretty", "hint");
   assert.equal(L.SETTINGS_LINK_CLASS, "font-medium text-primary underline underline-offset-2", "link");
+  assert.equal(
+    L.SETTINGS_NOTE_CLASS,
+    "rounded-[10px] border border-border-2 bg-surface-2 p-3 text-[13.5px] text-foreground text-pretty",
+    "note",
+  );
   assert.equal(L.SETTINGS_SWITCH_ROW_CLASS, "flex min-h-11 cursor-pointer items-center justify-between gap-3", "switch row");
 });
 
@@ -231,4 +236,18 @@ test("SettingsSwitchRow: one label around the switch, named by the label, descri
   const describedBy = /<button[^>]*aria-describedby="([^"]+)"/.exec(html)?.[1];
   assert.ok(describedBy, "the switch is described");
   assert.ok(html.includes(`<span id="${describedBy}" class="${L.SETTINGS_HINT_CLASS}">Bills show the GST.</span>`), "by its line");
+});
+
+test("SettingsSwitchRow: disabled locks the switch and the row's pointer; enabled by default", () => {
+  const row = (disabled?: boolean): string =>
+    renderToStaticMarkup(
+      createElement(SettingsSwitchRow, { label: "Turn on", sub: "Why.", checked: false, onCheckedChange: () => {}, disabled }),
+    );
+  const off = row(true);
+  assert.ok(off.startsWith('<label class="flex min-h-11 items-center justify-between gap-3 cursor-not-allowed">'), "the row says not-allowed, not pointer");
+  assert.match(off, /<button[^>]*role="switch"[^>]*\bdisabled=""/, "the kit switch is natively disabled");
+  for (const on of [row(false), row(undefined)]) {
+    assert.ok(on.startsWith(`<label class="${L.SETTINGS_SWITCH_ROW_CLASS}">`), "an enabled row keeps the plain row class");
+    assert.ok(!/<button[^>]*\bdisabled=""/.test(on) && /<button[^>]*role="switch"/.test(on), "and an enabled switch (landmark: the switch)");
+  }
 });

@@ -71,7 +71,7 @@ test("PIN: the page runs useRewardLevelsDraft, hands the form extra={levels.extr
   const pin: Pin = (s) =>
     /const levels = useRewardLevelsDraft\(settings\);/.test(s) &&
     /<SettingsSectionForm\b[^>]*\bextra=\{levels\.extra\}/.test(s) &&
-    /<div className="space-y-6">\s*<LoyaltyCard\b[^>]*\/>\s*<LoyaltyStampGrid\b[^>]*\/>\s*<RewardLevelsSection\b[^>]*levels=\{levels\}[^>]*\/>\s*<\/div>/.test(s);
+    /<div className=\{SETTINGS_STACK_CLASS\}>\s*<LoyaltyCard\b[^>]*\/>\s*<LoyaltyStampGrid\b[^>]*\/>\s*<RewardLevelsSection\b[^>]*levels=\{levels\}[^>]*\/>\s*<\/div>/.test(s);
   pinned("page", code(PAGE), pin, (s) => s.replace("extra={levels.extra}", ""), (s) => s.replace("<LoyaltyStampGrid", "<LoyaltyStampGridX").replace(/(<RewardLevelsSection[^>]*\/>)(\s*)(<\/div>)/, "$3$2$1"), (s) => s.replace("useRewardLevelsDraft(settings)", "null"));
   edge(PAGE, "@/hooks/use-reward-levels-draft", "useRewardLevelsDraft(");
   edge(PAGE, `@/${R}/RewardLevelsSection`, "<RewardLevelsSection");
@@ -152,7 +152,7 @@ test("PIN: rewardLevels is not a form section field (settings-sections / setting
 // The shape in source is `const switchable = canSwitchOn(accountsOn)` / `disabled={!switchable || <blocked and off>}` and `checked={switchChecked}`;
 // a direct `disabled={!canSwitchOn(` / `checked={canSwitchOn(` also passes. Only the switch* aliases are expanded.
 const switchPin: Pin = (s) => {
-  const row = /<ToggleRow[\s\S]*?\/>/.exec(s)?.[0] ?? "";
+  const row = /<SettingsSwitchRow[\s\S]*?\/>/.exec(s)?.[0] ?? "";
   const defs = new Map([...s.matchAll(/const (switch\w+) = ([^;]+);/g)].map((m) => [m[1], m[2]]));
   const expand = (e: string): string => e.replace(/\bswitch\w+\b/g, (id) => defs.get(id) ?? id);
   const disabled = /disabled=\{([^}]+)\}/.exec(row)?.[1] ?? "";
@@ -162,7 +162,7 @@ const switchPin: Pin = (s) => {
 
 test("PIN: the master switch is disabled unless canSwitchOn and shown on only when canSwitchOn && enabled === true", () => {
   const src = code(`${R}/RewardLevelsSection.tsx`);
-  assert.match(src, /<ToggleRow\b[\s\S]*?label=\{SWITCH_LABEL\}/, "landmark: the master switch row");
+  assert.match(src, /<SettingsSwitchRow\b[\s\S]*?label=\{SWITCH_LABEL\}/, "landmark: the master switch row");
   pinned("switch", src, switchPin, (s) => s.replace("disabled={!switchable || ", "disabled={false || "), (s) => s.replace("checked={switchChecked}", "checked={cfg?.enabled === true}"), (s) => s.replace("const switchable = canSwitchOn(accountsOn);", "const switchable = accountsOn;"), (s) => s.replace("switchable && cfg?.enabled === true", "cfg?.enabled === true"));
   assert.ok(switchPin(src.replace("disabled={!switchable || ", "disabled={!canSwitchOn(accountsOn) || ")), "the direct spelling also passes");
   assert.match(code("lib/reward-levels-form.ts"), /export function canSwitchOn\(accountsOn: boolean\): boolean \{\s*return LAUNCHED && accountsOn;/, "the lock itself is the launch flag AND sign-in");

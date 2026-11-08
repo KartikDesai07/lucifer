@@ -9,16 +9,20 @@ import {
   REWARD_SLOTS_PER_LEVEL_MAX,
 } from "@pos/shared/reward-levels";
 import type { RewardLevelsDraft } from "@/hooks/use-reward-levels-draft";
-import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
-import { BRAND_FIELD_ERROR_CLASS } from "@/components/brand/brand-classes";
-import { HINT_CLASS } from "@/components/settings/hint-classes";
 import { LoyaltyStampBox } from "@/components/settings/LoyaltyStampBox";
 import { RewardNumberField } from "@/components/settings/rewards/RewardNumberField";
 import { RewardSlotSheet } from "@/components/settings/rewards/RewardSlotSheet";
-import { REWARD_ICON_BUTTON_CLASS } from "@/components/settings/rewards/reward-ui";
 import { removeLevel, setLevelSize } from "@/lib/reward-levels-edit";
 import { boxHasProblem, requiredNumber } from "@/lib/reward-levels-form";
+import {
+  SETTINGS_BLOCK_TITLE_CLASS,
+  SETTINGS_ERROR_CLASS,
+  SETTINGS_HINT_CLASS,
+  SETTINGS_LIST_EMPTY_CLASS,
+  SETTINGS_REMOVE_BUTTON_CLASS,
+} from "@/lib/settings-card-layout";
+import { cn } from "@/lib/utils";
 
 interface RewardLevelGridProps {
   levels: RewardLevelsDraft;
@@ -29,7 +33,8 @@ interface RewardLevelGridProps {
 }
 
 // One level of the scratch-card setup, drawn like the stamp card: a row of numbered boxes, a marked box has a reward.
-// Tapping a box opens its side panel; nothing is added to the page's draft by looking.
+// Tapping a box opens its side panel; nothing is added to the page's draft by looking. It sits in the Levels card (an
+// h2), so "Level N" is an h3.
 export function RewardLevelGrid({ levels, levelIndex, exampleBill, onExampleBillChange }: RewardLevelGridProps) {
   const cfg = levels.current;
   const level = cfg?.levels[levelIndex];
@@ -61,7 +66,7 @@ export function RewardLevelGrid({ levels, levelIndex, exampleBill, onExampleBill
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <h4 className="text-[15px] font-semibold text-brand-ink">{`Level ${levelIndex + 1}`}</h4>
+        <h3 className={SETTINGS_BLOCK_TITLE_CLASS}>{`Level ${levelIndex + 1}`}</h3>
         <div className="flex items-end gap-2">
           <div className="w-28">
             <RewardNumberField
@@ -70,31 +75,31 @@ export function RewardLevelGrid({ levels, levelIndex, exampleBill, onExampleBill
               min={REWARD_LEVEL_SIZE_MIN}
               max={REWARD_LEVEL_SIZE_MAX}
               error={sizeError}
+              look="card"
               onText={(text) => levels.edit((current) => setLevelSize(current, levelIndex, requiredNumber(text)))}
             />
           </div>
           {cfg.levels.length > 1 && (
-            <Button
+            <button
               type="button"
-              variant="ghost"
-              className={`${REWARD_ICON_BUTTON_CLASS} text-brand-danger hover:text-brand-danger`}
+              className={cn(SETTINGS_REMOVE_BUTTON_CLASS, "w-[42px] shrink-0 px-0")}
               aria-label={`Remove level ${levelIndex + 1}`}
               onClick={() => setConfirmOpen(true)}
             >
               <Trash2 className="h-4 w-4" aria-hidden="true" />
-            </Button>
+            </button>
           )}
         </div>
       </div>
 
       {levelError && (
-        <p className={BRAND_FIELD_ERROR_CLASS} role="alert">
+        <p className={SETTINGS_ERROR_CLASS} role="alert">
           {levelError}
         </p>
       )}
 
       {boxes === 0 ? (
-        <p className="rounded-md border border-dashed border-brand-rule p-4 text-sm text-brand-muted">
+        <p className={SETTINGS_LIST_EMPTY_CLASS}>
           Set how many boxes this level has to draw it.
         </p>
       ) : (
@@ -117,7 +122,7 @@ export function RewardLevelGrid({ levels, levelIndex, exampleBill, onExampleBill
         </div>
       )}
 
-      <p className={HINT_CLASS}>
+      <p className={SETTINGS_HINT_CLASS}>
         {atSlotMax
           ? `A level can have up to ${REWARD_SLOTS_PER_LEVEL_MAX} boxes with rewards. Remove one to place another.`
           : `Tap a box to choose what diners can win there. ${level.slots.length} of ${REWARD_SLOTS_PER_LEVEL_MAX} boxes have a reward.`}

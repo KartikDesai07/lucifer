@@ -1,6 +1,6 @@
 // The settings pages in the new UI (Business details: docs/superpowers/plans/2026-11-06-settings-business-ui.md; GST &
 // taxes: 2026-11-08-settings-taxes-ui.md; QR ordering: 2026-11-08-settings-qr-ui.md; Appearance:
-// 2026-11-08-settings-appearance-ui.md): the class strings
+// 2026-11-08-settings-appearance-ui.md; Rewards & loyalty: 2026-11-09-settings-loyalty-ui.md): the class strings
 // the settings cards render, in one place so Tailwind's source scanner sees each one and the pins
 // (lib/settings-business-layout.test.ts) read the SAME constants. Field look = the U5 item editor's (re-exported below).
 // Tokens only; WebView 109: no color-mix(), no light-dark(), no backdrop-blur, overflow-clip for clipping.
@@ -52,6 +52,10 @@ export const SETTINGS_BLOCK_TITLE_CLASS = "text-[14px] font-semibold";
 export const SETTINGS_BLOCK_SUB_CLASS = "mt-0.5 text-[12.5px] text-muted-foreground text-pretty";
 
 export const SETTINGS_HINT_CLASS = "text-[12.5px] leading-snug text-muted-foreground text-pretty";
+/** A quiet notice inside a card body (Rewards & loyalty: "Scratch-card levels are on", a blocked feature), on the list
+ *  row colours. */
+export const SETTINGS_NOTE_CLASS =
+  "rounded-[10px] border border-border-2 bg-surface-2 p-3 text-[13.5px] text-foreground text-pretty";
 export const SETTINGS_LINK_CLASS = "font-medium text-primary underline underline-offset-2";
 
 // ── Fields: the U5 editor's look, one source ────────────────────────────────────────────────────────────────────────

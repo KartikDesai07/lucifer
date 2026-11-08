@@ -31,22 +31,22 @@ function buttonLabelled(src: string, label: string): string {
   return seg;
 }
 
-test("PIN: the page puts LoyaltyCard, LoyaltyStampGrid, then RewardLevelsSection in one space-y-6 column", () => {
+test("PIN: the page puts LoyaltyCard, LoyaltyStampGrid, then RewardLevelsSection in the one card column", () => {
   const src = code(PAGE);
   assert.match(
     src,
-    /<div className="space-y-6">\s*<LoyaltyCard\b[^>]*\/>\s*<LoyaltyStampGrid\b[^>]*\/>\s*<RewardLevelsSection\b[\s\S]*?\/>\s*<\/div>/,
+    /<div className=\{SETTINGS_STACK_CLASS\}>\s*<LoyaltyCard\b[^>]*\/>\s*<LoyaltyStampGrid\b[^>]*\/>\s*<RewardLevelsSection\b[\s\S]*?\/>\s*<\/div>/,
     "one wrapper: the card first, the stamp rewards second, the scratch-card levels third",
   );
 });
 
-test("PIN: LoyaltyCard is two SettingsGroups (Diner accounts, Stamp card) and no Card", () => {
+test("PIN: LoyaltyCard is two SettingsCards (Diner accounts, Stamp card) and no Card", () => {
   const src = code(CARD);
   assert.match(src, /export function LoyaltyCard\(/, "landmark: the component is still here");
-  assert.equal(countOf(src, /<SettingsGroup\b/g), 2, "exactly two groups");
-  assert.match(src, /<SettingsGroup title="Diner accounts"/, "the first group");
-  assert.match(src, /<SettingsGroup\s+title="Stamp card"/, "the second group");
-  assert.ok(!/<Card[A-Z\s>]/.test(src), "no <Card…> wrapper");
+  assert.equal(countOf(src, /<SettingsCard\b/g), 2, "exactly two cards");
+  assert.match(src, /<SettingsCard title="Diner accounts"/, "the first card");
+  assert.match(src, /<SettingsCard\s+title="Stamp card"/, "the second card");
+  assert.ok(countOf(src, /<CardField\b/g) === 3 && !/<Card(?!Field\b)[A-Z\s>]/.test(src), "3 kit CardFields, no shadcn <Card…>");
   assert.ok(src.includes('label="Let diners sign in"') && src.includes('label="Turn on the stamp card"'), "switch labels");
 });
 
@@ -57,11 +57,11 @@ test("PIN: the stamp card switch is shown off and locked while sign-in is off, a
     /const accountsOn = useWatch\(\{ control, name: "dinerAccountsEnabled" \}\) === true;/,
     "accountsOn is the WATCHED sign-in value",
   );
-  const block = /name="loyaltyEnabled"[\s\S]*?<ToggleRow[\s\S]*?\/>/.exec(src)?.[0];
-  assert.ok(block, "landmark: the loyaltyEnabled ToggleRow");
+  const block = /name="loyaltyEnabled"[\s\S]*?<SettingsSwitchRow[\s\S]*?\/>/.exec(src)?.[0];
+  assert.ok(block, "landmark: the loyaltyEnabled SettingsSwitchRow");
   assert.ok(block.includes("disabled={!accountsOn}"), "the switch cannot be flipped while sign-in is off");
   assert.ok(block.includes("checked={accountsOn && (field.value ?? false)}"), "it shows off while sign-in is off");
-  assert.ok(block.includes("onChange={field.onChange}"), "a flip while enabled is the plain field change");
+  assert.ok(block.includes("onCheckedChange={field.onChange}"), "a flip while enabled is the plain field change");
   assert.ok(!/setValue/.test(src), "the file never calls setValue (the stored value is untouched)");
   assert.equal(countOf(src, /"loyaltyEnabled"/g), 1, "loyaltyEnabled appears once: its Controller, nothing writes it");
 });
@@ -77,17 +77,17 @@ test("PIN: the card size and the stamp's name are registered in LoyaltyCard, not
   assert.ok(!/<Input\b/.test(grid), "the grid has no inputs of its own");
 });
 
-test("PIN: every LoyaltyCard input is a 40px control with an id its Field points at", () => {
+test("PIN: every LoyaltyCard input is a 42px card input with an id its CardField points at", () => {
   const src = code(CARD);
   assert.equal(countOf(src, /<Input\b/g), 3, "landmark: three inputs");
-  assert.equal(countOf(src, /className=\{BRAND_CONTROL_CLASS\}/g), 3, "each is h-10");
-  assert.equal(countOf(src, /htmlFor=\{\w+Id\}/g), 3, "each Field names its input");
+  assert.equal(countOf(src, /<Input\b[^>]*className=\{SETTINGS_INPUT_CLASS\}/g), 3, "each wears the card input look");
+  assert.equal(countOf(src, /htmlFor=\{\w+Id\}/g), 3, "each CardField names its input");
   assert.equal(countOf(src, /inputMode="numeric"/g), 2, "the two numeric ones open a number pad");
 });
 
-test("PIN: the grid is the Rewards group, one LoyaltyStampBox per stamp, disabled only for an empty box at the cap", () => {
+test("PIN: the grid is the Rewards card, one LoyaltyStampBox per stamp, disabled only for an empty box at the cap", () => {
   const src = code(GRID);
-  assert.match(src, /<SettingsGroup\s+title="Rewards"/, "the group title");
+  assert.match(src, /<SettingsCard\s+title="Rewards"/, "the card title");
   assert.ok(!/<Card[A-Z\s>]/.test(src), "no <Card…> wrapper");
   assert.match(src, /Array\.from\(\{ length: boxes \}[\s\S]*?<LoyaltyStampBox\b/, "boxes map to LoyaltyStampBox");
   assert.ok(src.includes("disabled={atMax && !hasReward}"), "an empty box at the cap is disabled");
@@ -97,7 +97,7 @@ test("PIN: the grid is the Rewards group, one LoyaltyStampBox per stamp, disable
       src.includes("const codeBroken = codeStatus === \"missing\" || codeStatus === \"off\";"),
     "a box is marked when its row has ANY error",
   );
-  assert.match(src, /<p className=\{BRAND_FIELD_ERROR_CLASS\} role="alert">\s*\{arrayError\}/, "the array-root error still renders");
+  assert.match(src, /<p className=\{SETTINGS_ERROR_CLASS\} role="alert">\s*\{arrayError\}/, "the array-root error still renders");
 });
 
 test("PIN: closePanel removes the draft row ONLY when the panel is new, then closes", () => {
@@ -184,7 +184,7 @@ test("PIN: the panel footer has the save note and 44px buttons for both states",
   for (const label of ["Cancel", "Add reward", "Remove reward", "Done"]) {
     assert.ok(buttonLabelled(src, label).includes("FOOTER_BUTTON_CLASS"), `${label} uses the 44px class`);
   }
-  assert.ok(src.includes("<p className={HINT_CLASS}>Changes save when you press Save changes.</p>"), "the save note");
+  assert.ok(src.includes("<p className={SETTINGS_HINT_CLASS}>Changes save when you press Save changes.</p>"), "the save note");
   assert.match(src, /<SheetContent className="[^"]*\boverflow-y-auto\b[^"]*\bsm:max-w-md\b[^"]*">/, "the panel scrolls and caps its width");
 });
 
@@ -207,7 +207,7 @@ test("PIN: the stamp box names its state for a screen reader and is natively dis
   assert.ok(!src.includes("`Stamp ${at}"), "no hard-coded Stamp in the label");
   assert.match(src, /<button\s+type="button"\s+onClick=\{onOpen\}\s+disabled=\{disabled\}\s+aria-label=\{label\}/, "a real disabled button");
   assert.ok(src.includes('disabled && "cursor-not-allowed opacity-50"'), "a disabled box looks disabled");
-  assert.ok(src.includes('hasError && "border-solid border-brand-danger"'), "an error box has a solid red border");
+  assert.ok(src.includes('hasError && "border-solid border-status-bad"'), "an error box has a solid red border");
   assert.match(src, /<AlertCircle[^>]*aria-hidden="true"/, "the alert mark is decorative");
 });
 
