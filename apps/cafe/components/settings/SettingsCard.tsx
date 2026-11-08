@@ -27,7 +27,8 @@ import {
 } from "@/lib/settings-card-layout";
 
 // The settings pages' card pieces (Business details first, 2026-11-06). Class strings live in
-// lib/settings-card-layout.ts. Used by the pages already in the new look (Business details, GST & taxes, QR ordering).
+// lib/settings-card-layout.ts. Used by the pages already in the new look (Business details, GST & taxes, QR ordering,
+// Appearance, Rewards & loyalty).
 
 // A card: the title (an h2, the shell's header holds the h1) and one line under it, the body below. `sub` is a node so a
 // card can carry a link; `bodyClassName` replaces the body's look (the Bill preview sits on --surface-2).
@@ -198,21 +199,23 @@ export function SettingsChoice<T extends string>({
 }
 
 // An on/off row: the whole row is the label (a tap anywhere flips it; the switch alone is a small target). The switch is
-// named by the label and described by the line under it.
+// named by the label and described by the line under it. `disabled` locks the switch (the line says why).
 export function SettingsSwitchRow({
   label,
   sub,
   checked,
   onCheckedChange,
+  disabled = false,
 }: {
   label: string;
   sub: string;
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
+  disabled?: boolean;
 }) {
   const lineId = useId();
   return (
-    <label className={SETTINGS_SWITCH_ROW_CLASS}>
+    <label className={cn(SETTINGS_SWITCH_ROW_CLASS, disabled && "cursor-not-allowed")}>
       <span className="grid gap-0.5">
         <span className={SETTINGS_LABEL_CLASS}>{label}</span>
         <span id={lineId} className={SETTINGS_HINT_CLASS}>
@@ -223,6 +226,7 @@ export function SettingsSwitchRow({
         tone="accent"
         checked={checked}
         onCheckedChange={onCheckedChange}
+        disabled={disabled}
         aria-label={label}
         aria-describedby={lineId}
       />

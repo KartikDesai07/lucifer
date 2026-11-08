@@ -17,11 +17,15 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
-import { BRAND_FIELD_ERROR_CLASS } from "@/components/brand/brand-classes";
-import { HINT_CLASS, SettingsGroup } from "@/components/settings/SettingsFields";
+import { SettingsCard } from "@/components/settings/SettingsCard";
 import { LoyaltyStampBox } from "@/components/settings/LoyaltyStampBox";
 import { MilestoneRewardFields } from "@/components/settings/MilestoneRewardFields";
 import { milestonePromoStatus } from "@/lib/milestone-promo-status";
+import {
+  SETTINGS_ERROR_CLASS,
+  SETTINGS_HINT_CLASS,
+  SETTINGS_LIST_EMPTY_CLASS,
+} from "@/lib/settings-card-layout";
 
 // CB-5C — the stamp card as the owner actually pictures it: a row of numbered
 // boxes. Tapping a box opens a side panel to say what that box gives, so the
@@ -36,7 +40,8 @@ import { milestonePromoStatus } from "@/lib/milestone-promo-status";
 // CB-5D — membership and levels were REMOVED (owner: no client used them).
 // The card size and the stamp's name used to live here; settings pass slice 8
 // moved both to LoyaltyCard's "Stamp card" group (they describe the card, not
-// a reward). This file is the "Rewards" group only.
+// a reward). This file is the "Rewards" group only (the new UI, 2026-11-09: a
+// SettingsCard; the side panel keeps its look apart from the kit hint and rule).
 //
 // Settings pass slice 8 — a reward is made only by "Add reward". Tapping an
 // EMPTY box appends a draft row so the panel has something to edit, but
@@ -136,18 +141,18 @@ export function LoyaltyStampGrid({ control, register, errors, setValue }: Loyalt
 
   return (
     <>
-      <SettingsGroup
+      <SettingsCard
         title="Rewards"
-        description="Tap a box to choose what a diner gets when they reach it. The card starts again once it is full."
+        sub="Tap a box to choose what a diner gets when they reach it. The card starts again once it is full."
       >
         {arrayError && (
-          <p className={BRAND_FIELD_ERROR_CLASS} role="alert">
+          <p className={SETTINGS_ERROR_CLASS} role="alert">
             {arrayError}
           </p>
         )}
 
         {boxes === 0 ? (
-          <p className="rounded-md border border-dashed border-brand-rule p-4 text-sm text-brand-muted">
+          <p className={SETTINGS_LIST_EMPTY_CLASS}>
             Set how many stamps fill the card to draw it.
           </p>
         ) : (
@@ -181,20 +186,20 @@ export function LoyaltyStampGrid({ control, register, errors, setValue }: Loyalt
             </div>
 
             {fields.length === 0 ? (
-              <p className="rounded-md border border-dashed border-brand-rule p-4 text-sm text-brand-muted">
+              <p className={SETTINGS_LIST_EMPTY_CLASS}>
                 No rewards yet. Tap a box to add one.
               </p>
             ) : (
-              <p className={HINT_CLASS}>{`${fields.length} of ${LOYALTY_MILESTONES_MAX} rewards on the card.`}</p>
+              <p className={SETTINGS_HINT_CLASS}>{`${fields.length} of ${LOYALTY_MILESTONES_MAX} rewards on the card.`}</p>
             )}
             {atMax && (
-              <p className={HINT_CLASS}>
+              <p className={SETTINGS_HINT_CLASS}>
                 {`You can place up to ${LOYALTY_MILESTONES_MAX} rewards. Remove one to place another.`}
               </p>
             )}
           </>
         )}
-      </SettingsGroup>
+      </SettingsCard>
 
       {/* The per-box editor. Its body is mounted only while the box has a row so
           its inputs cannot hold a stale row after one is removed. */}
@@ -222,8 +227,8 @@ export function LoyaltyStampGrid({ control, register, errors, setValue }: Loyalt
             </div>
           )}
 
-          <div className="mt-auto space-y-3 border-t border-brand-rule pt-4">
-            <p className={HINT_CLASS}>Changes save when you press Save changes.</p>
+          <div className="mt-auto space-y-3 border-t border-border-2 pt-4">
+            <p className={SETTINGS_HINT_CLASS}>Changes save when you press Save changes.</p>
             {panelIsNew ? (
               <SheetFooter className="gap-2 sm:space-x-0">
                 <Button type="button" variant="outline" className={FOOTER_BUTTON_CLASS} onClick={closePanel}>
@@ -243,7 +248,7 @@ export function LoyaltyStampGrid({ control, register, errors, setValue }: Loyalt
                 <Button
                   type="button"
                   variant="ghost"
-                  className={`${FOOTER_BUTTON_CLASS} text-brand-danger hover:text-brand-danger`}
+                  className={`${FOOTER_BUTTON_CLASS} text-status-bad-ink hover:text-status-bad-ink`}
                   onClick={() => {
                     setRemoveAt(openAt);
                     setConfirmOpen(true);

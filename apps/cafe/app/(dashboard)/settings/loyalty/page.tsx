@@ -7,16 +7,17 @@ import { LoyaltyStampGrid } from "@/components/settings/LoyaltyStampGrid";
 import { RewardLevelsSection } from "@/components/settings/rewards/RewardLevelsSection";
 import { useRewardLevelsDraft } from "@/hooks/use-reward-levels-draft";
 import { rewardLevelsChosenRaw } from "@pos/shared/schemas/reward-levels-read.schema";
+import { SETTINGS_STACK_CLASS } from "@/lib/settings-card-layout";
 import type { SettingsSection } from "@/lib/settings-sections";
 import type { Settings } from "@/types";
 
 // CB-5A S5 — the Rewards & loyalty section page. Order follows the simplest
-// path top-down: sign-in and the stamp card switch (LoyaltyCard: the groups
-// "Diner accounts" and "Stamp card") → the rewards on the card (the group
+// path top-down: sign-in and the stamp card switch (LoyaltyCard: the cards
+// "Diner accounts" and "Stamp card") → the rewards on the card (the card
 // "Rewards" in LoyaltyStampGrid) → the scratch-card levels (CB-7 S3: the
-// groups "Scratch cards" and "Levels" in RewardLevelsSection). Settings pass
-// slice 8: three or more groups in one space-y-6 column, like Taxes and QR
-// ordering.
+// cards "Scratch cards" and "Levels" in RewardLevelsSection). The new UI
+// (docs/superpowers/plans/2026-11-09-settings-loyalty-ui.md): five cards in one
+// column at every width, like QR ordering, with the card Save bar.
 //
 // CB-5D — membership and levels are REMOVED (owner, 2026-09-15): no client
 // used them, and the owner clears the stored data himself.
@@ -47,9 +48,9 @@ function LoyaltyForm({ settings, section }: { settings: Settings; section: Setti
   const levels = useRewardLevelsDraft(settings);
 
   return (
-    <SettingsSectionForm settings={settings} section={section} extra={levels.extra}>
+    <SettingsSectionForm settings={settings} section={section} extra={levels.extra} saveBarLook="card">
       {({ control, register, setValue, getValues, errors }) => (
-        <div className="space-y-6">
+        <div className={SETTINGS_STACK_CLASS}>
           <LoyaltyCard control={control} register={register} errors={errors} levelsChosen={rewardLevelsChosenRaw(settings.rewardLevels)} />
           <LoyaltyStampGrid control={control} register={register} errors={errors} setValue={setValue} />
           <RewardLevelsSection levels={levels} settings={settings} control={control} getValues={getValues} />
