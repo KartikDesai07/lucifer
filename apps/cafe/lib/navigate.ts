@@ -6,16 +6,19 @@ import { heldKeyOf, heldRoutes } from "@/lib/held-routes";
 import { navDecision, offlineNavMessage } from "@/lib/nav-decision";
 import { navProgress, navTargetPath, type createNavProgress } from "@/lib/nav-progress";
 import { pageTitleFor } from "@/lib/page-titles";
+import { leaveWhenPrintFree } from "@/lib/print-host-busy";
 import { serverReach } from "@/lib/server-reach";
 import { updatePending } from "@/lib/update-pending";
 
 // The one place a staff navigation is decided, so a tap on a link (AppLink) and a navigation from code
 // (navigateTo) behave the same: the "page is opening" progress starts, and a tap on the page that is
 // already opening does nothing. The offline and full-load decisions are made HERE (lib/nav-decision.ts holds the table), not at call sites.
+// A document load this page starts (a full load, "Try again") goes through the print gate (R71): it waits while a slip
+// is printing here, and the waiting one is dropped the moment its opening ends (Back, a newer tap, a settle).
 
 export type NavAction = "navigate" | "full-load" | "refuse" | "stay";
 export type NavStart = { action: NavAction; label: string };
-type ProgressStore = Pick<ReturnType<typeof createNavProgress>, "start" | "cancel">;
+type ProgressStore = Pick<ReturnType<typeof createNavProgress>, "start" | "cancel" | "get" | "subscribe">;
 
 /** The facts a decision reads, and the two side effects; every one has a real default so callers pass nothing. */
 export interface NavDeps {
@@ -28,6 +31,8 @@ export interface NavDeps {
   assign: (href: string) => void;
   /** A full load that takes the current history entry's place (the screen it replaces must not come back on Back). */
   replace: (href: string) => void;
+  /** The print gate every document load goes through (lib/print-host-busy.ts); tests pass a fake. */
+  leave: typeof leaveWhenPrintFree;
 }
 
 const realDeps: NavDeps = {
@@ -37,7 +42,38 @@ const realDeps: NavDeps = {
   toastOffline: (message) => void toast.error(message),
   assign: (href) => window.location.assign(href),
   replace: (href) => window.location.replace(href),
+  leave: leaveWhenPrintFree,
 };
+
+// The ONE document load that may be waiting at the gate. A newer load replaces it; the entry of the opening it started
+// under ending (Back, a newer tap, a same-path tap, popstate) drops it, so a load never fires after the person left.
+let pendingLoad: (() => void) | null = null;
+
+function loadThroughGate(go: () => void, d: NavDeps, progress: ProgressStore, ready?: () => boolean): void {
+  pendingLoad?.();
+  const entry = progress.get();
+  let off = () => {};
+  let cancelGate = () => {};
+  const end = () => {
+    off();
+    if (pendingLoad === drop) pendingLoad = null;
+  };
+  const drop = () => {
+    end();
+    cancelGate();
+  };
+  pendingLoad = drop;
+  off = progress.subscribe(() => {
+    if (progress.get() !== entry) drop();
+  });
+  cancelGate = d.leave(
+    () => {
+      end();
+      go();
+    },
+    { ready },
+  );
+}
 
 /** Decide a navigation to `href` made from `fromPath`. `stay` = do nothing (that exact href is already opening).
  *  A same-path tap cancels any opening and starts none (nothing to wait for; a query change renders in place), and
@@ -67,10 +103,19 @@ export function beginNavigation(
 }
 
 /** Do what a decision says besides navigating. Returns true when the caller should go on and navigate. */
-export function applyNavAction(result: NavStart, href: string, deps: Partial<NavDeps> = {}, opts?: { replace?: boolean }): boolean {
+export function applyNavAction(
+  result: NavStart,
+  href: string,
+  deps: Partial<NavDeps> = {},
+  opts?: { replace?: boolean; progress?: ProgressStore },
+): boolean {
   const d = { ...realDeps, ...deps };
   if (result.action === "refuse") d.toastOffline(offlineNavMessage(result.label));
-  else if (result.action === "full-load") (opts?.replace ? d.replace : d.assign)(href);
+  else if (result.action === "full-load") {
+    // The load waits for print AND the line: an internet drop during the wait never loads the browser's error page.
+    const load = opts?.replace ? d.replace : d.assign;
+    loadThroughGate(() => load(href), d, opts?.progress ?? navProgress, () => !d.isOffline());
+  }
   return result.action === "navigate";
 }
 
@@ -82,7 +127,7 @@ export function navigateTo(
   opts?: { replace?: boolean; label?: string; deps?: Partial<NavDeps>; progress?: ProgressStore },
 ): void {
   const result = beginNavigation(href, opts?.label, window.location.pathname, Date.now(), opts?.progress, opts?.deps);
-  if (!applyNavAction(result, href, opts?.deps, { replace: opts?.replace })) return;
+  if (!applyNavAction(result, href, opts?.deps, { replace: opts?.replace, progress: opts?.progress })) return;
   if (opts?.replace) router.replace(href);
   else router.push(href);
 }
@@ -98,8 +143,8 @@ export function abandonNavigation(router: AppRouterInstance, progress: Pick<Prog
 
 /** "Try again" under "Still opening…": a full page load of the target. Offline, a document load could only swap the
  *  POS for the browser's error page, so the refused tap's toast shows instead and the page stays as it is. */
-export function retryNavigation(href: string, label: string, deps: Partial<NavDeps> = {}): void {
+export function retryNavigation(href: string, label: string, deps: Partial<NavDeps> = {}, progress: ProgressStore = navProgress): void {
   const d = { ...realDeps, ...deps };
   if (d.isOffline()) d.toastOffline(offlineNavMessage(label));
-  else d.assign(href);
+  else loadThroughGate(() => d.assign(href), d, progress, () => !d.isOffline());
 }

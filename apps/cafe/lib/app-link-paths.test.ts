@@ -105,3 +105,23 @@ test("PIN: IntentLink is gone (AppLink absorbed it)", () => {
   const users = sourceFiles().filter((f) => /\bIntentLink\b/.test(code(f)));
   assert.deepEqual(users, [], `nothing may still use IntentLink: ${users.join(", ")}`);
 });
+
+// P6: a raw <a> to an internal path is a document load with no offline refusal, no print gate and no closing gate.
+// A "#hash" anchor, an external URL and a computed href (whatsapp, downloads) are not internal paths.
+const rawInternalAnchor = (src: string): boolean => /<a\b(?:[^>]|=>)*?\bhref=(?:"\/|\{"\/|\{`\/)/.test(src);
+
+test("the raw-anchor detector sees an internal path in any attribute order, and nothing else", () => {
+  assert.ok(rawInternalAnchor(`<a href="/categories">x</a>`), "a plain internal anchor");
+  assert.ok(rawInternalAnchor(`<a className="b"
+  onClick={() => go()}
+  href={"/x"}>x</a>`), "later attribute, braces, a handler arrow before it");
+  assert.ok(!rawInternalAnchor(`<a href="#bill-preview">x</a>`), "a hash anchor");
+  assert.ok(!rawInternalAnchor(`<a href="https://x.test/a" target="_blank">x</a>`), "an external URL");
+  assert.ok(!rawInternalAnchor(`<a href={url}>x</a><AppLink href="/x">y</AppLink>`), "a variable href and AppLink");
+});
+
+test("PIN: no staff source renders a raw <a> to an internal path (AppLink, never a plain anchor)", () => {
+  const offenders = sourceFiles().filter((f) => !isPublic(f) && rawInternalAnchor(code(f)));
+  assert.deepEqual(offenders, [], `use AppLink for an internal link: ${offenders.join(", ")}`);
+  assert.match(code("components/menu/ItemsListSection.tsx"), /<AppLink href="\/categories">/, "landmark: the empty menu's Add a category link is an AppLink");
+});
