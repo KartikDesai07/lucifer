@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 
 import { cn } from "@/lib/utils";
 import {
@@ -16,7 +16,7 @@ const VIEWS = [
 ] as const;
 
 /** The HTML's Items / Categories switch (values 2) in the header: a 36px track of two links to the two routes (the routes
- *  stay; `prefetch={false}` as the nav's), the current one lit and marked `aria-current="page"`. The labels hide below
+ *  stay; an AppLink, which never prefetches on sight, as the nav's), the current one lit and marked `aria-current="page"`. The labels hide below
  *  720px (the track is then 86px of icons). The kit's links, so the header's slot rule gives them its press and sizes;
  *  the classes in lib/menu-layout.ts answer the rule where the HTML's switch differs. */
 export function MenuViewSwitch({ current }: { current: "items" | "categories" }) {
@@ -25,10 +25,9 @@ export function MenuViewSwitch({ current }: { current: "items" | "categories" })
       {VIEWS.map(({ key, label, href, Icon }) => {
         const on = key === current;
         return (
-          <Link
+          <AppLink
             key={key}
             href={href}
-            prefetch={false}
             title={label}
             data-ui={`menu-view-${key}`}
             aria-current={on ? "page" : undefined}
@@ -36,7 +35,7 @@ export function MenuViewSwitch({ current }: { current: "items" | "categories" })
           >
             <Icon size={15} />
             <span className="max-tab:hidden">{label}</span>
-          </Link>
+          </AppLink>
         );
       })}
     </nav>

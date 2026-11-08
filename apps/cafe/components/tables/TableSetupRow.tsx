@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { useSortable } from "@dnd-kit/sortable";
 import { ArrowDown, ArrowUp, GripVertical, MoreVertical, Pencil, QrCode, Trash2, TriangleAlert } from "lucide-react";
 
@@ -156,9 +156,9 @@ export function TableSetupRow({ table, index, total, disabled, onMove, onEdit, o
             <Pencil className="mr-2 h-4 w-4" /> Edit table
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
-            <Link href={TABLES_QR_PATH} prefetch={false}>
+            <AppLink href={TABLES_QR_PATH}>
               <QrCode className="mr-2 h-4 w-4" /> QR code
-            </Link>
+            </AppLink>
           </DropdownMenuItem>
           {/* The server stays the fence (it refuses a busy table's delete);
               this only stops offering what would fail. */}

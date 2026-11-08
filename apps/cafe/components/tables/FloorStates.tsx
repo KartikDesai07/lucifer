@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -47,9 +47,9 @@ export function FloorEmptyState() {
         {isAdmin ? "Add your tables on the Setup page to see them here." : "Ask an admin to add tables on the Setup page."}
       </p>
       {isAdmin && (
-        <Link data-ui="floor-empty-action" href={TABLES_SETUP_PATH} prefetch={false} className={FLOOR_EMPTY_ACCENT_BUTTON_CLASS}>
+        <AppLink data-ui="floor-empty-action" href={TABLES_SETUP_PATH} className={FLOOR_EMPTY_ACCENT_BUTTON_CLASS}>
           Open Setup
-        </Link>
+        </AppLink>
       )}
     </div>
   );

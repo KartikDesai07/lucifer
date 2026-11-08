@@ -1,7 +1,7 @@
 "use client";
 
 import type { ComponentType } from "react";
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { useSortable } from "@dnd-kit/sortable";
 import { ChefHat, ChevronDown, ChevronUp, Flame, GripVertical, IceCreamCone, Trash2, Wine } from "lucide-react";
 
@@ -137,10 +137,10 @@ export function CategoryRow({ category, index, total, counts, soldOut, hue, stat
       <span aria-hidden="true" className={CATEGORY_DOT_CLASS} style={{ backgroundColor: hue }} />
 
       {/* The name block opens the category in Items (today's count-link destination). Spans, not a <p>: no block inside a link. */}
-      <Link href={menuItemsHref({ categoryId: category._id })} prefetch={false} className={CATEGORY_NAME_LINK_CLASS}>
+      <AppLink href={menuItemsHref({ categoryId: category._id })} className={CATEGORY_NAME_LINK_CLASS}>
         <span className={CATEGORY_NAME_CLASS}>{category.name}</span>
         <span className={CATEGORY_META_CLASS}>{meta}</span>
-      </Link>
+      </AppLink>
 
       <span data-ui="category-station" title="Kitchen station" className={CATEGORY_STATION_CHIP_CLASS}>
         <Station size={14} aria-hidden={true} />

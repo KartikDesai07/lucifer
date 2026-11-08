@@ -2,6 +2,7 @@
 
 import { useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
+import { navigateTo } from "@/lib/navigate";
 import { toast } from "sonner";
 
 import { usePosPulseContext } from "@/components/layout/PosPulseProvider";
@@ -148,7 +149,7 @@ export function PrinterPanel(props: PrinterPanelProps) {
     // offline orders sheet's Fix and send does).
     if (kind === "printer-setup") {
       onClose?.();
-      router.push("/printers");
+      navigateTo(router, "/printers");
     } else if (kind === "connect-again" && native) {
       // X2: the guided connect, at the saved printer's list (what kind first when its way in has none).
       startConnect({ mode: "replace", transport: connectTransportOf(snapshot.printer === null ? null : deviceTransportOf(snapshot.printer)) });

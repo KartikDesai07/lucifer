@@ -10,6 +10,8 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
 
 import { stripComments } from "@/lib/source-pin-utils";
 import { MENU_SECTIONS } from "@/lib/menu-sections";
@@ -128,7 +130,16 @@ test("a group tile lists its sub-pages (Menu, Tables, Reports, Settings), from t
 // ── The bar itself ───────────────────────────────────────────────────────────
 
 function renderBar(pathname: string, moreActive = false): string {
-  return renderToStaticMarkup(createElement(TabBarNav, { pathname, moreActive, moreOpen: false, onMore: () => {} }));
+  // The rows are AppLinks: they read the router and the query cache (for the touch prefetch), so the render
+  // needs both providers, as the app has them; nothing prefetches during a server render.
+  const router = { prefetch: () => {} } as unknown as React.ComponentProps<typeof AppRouterContext.Provider>["value"];
+  return renderToStaticMarkup(
+    createElement(
+      AppRouterContext.Provider,
+      { value: router },
+      createElement(QueryClientProvider, { client: new QueryClient() }, createElement(TabBarNav, { pathname, moreActive, moreOpen: false, onMore: () => {} })),
+    ),
+  );
 }
 
 test("render: four tab links and the More button, the current tab in the accent colour, the rest in --text-2", () => {
@@ -262,7 +273,7 @@ test("the old phone sheet's state is gone: no openMobile in the kit sidebar, no 
   assert.match(sidebar, /isMobile,\s*toggleSidebar,/, "landmark: the context still says isMobile and gives the toggle");
   for (const file of ["AppSidebar", "SidebarBrand", "SidebarSettingsGroup", "SidebarReportsGroup", "SidebarMenuGroup", "SidebarTablesGroup"]) {
     const src = read(`components/layout/${file}.tsx`);
-    assert.ok(src.includes("<Link"), `landmark: ${file} renders its Links`);
+    assert.ok(src.includes("<AppLink"), `landmark: ${file} renders its Links`);
     assert.ok(!/closeMobile|setOpenMobile|onNavigate/.test(src), `${file}: no phone-sheet tap hook left`);
   }
 });

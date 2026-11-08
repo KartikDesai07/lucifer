@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, type ReactNode } from "react";
-import Link from "next/link";
+import { AppLink, closeOnPlainClick } from "@/components/layout/AppLink";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Check, Undo2, X } from "lucide-react";
 
@@ -161,7 +161,7 @@ export function ReservationDetail({ r, list, tables, nowMs, today, busy, sheet, 
         <button type="button" data-ui="reservation-detail-edit" onClick={() => onEdit(r)} className={RES_EDIT_CLASS}>
           Edit
         </button>
-        <Primary r={r} action={primary} busy={busy} onAction={onAction} />
+        <Primary r={r} action={primary} busy={busy} onAction={onAction} onClose={sheet ? onClose : undefined} />
       </div>
     </>
   );
@@ -177,24 +177,24 @@ function Fact({ label, value, tone, hideOnPhone = false }: { label: string; valu
 }
 
 /** The footer's primary (values 10.3, always accent): Seat, Open order (the /pos link; a plain click hands the table over,
- *  B17) or Book again. */
-function Primary({ r, action, busy, onAction }: { r: Reservation; action: ResAction | null; busy: boolean; onAction: ReservationDetailProps["onAction"] }): ReactNode {
+ *  B17, then closes the bottom sheet, `onClose`, so it never covers the opening POS: R34) or Book again. */
+function Primary({ r, action, busy, onAction, onClose }: { r: Reservation; action: ResAction | null; busy: boolean; onAction: ReservationDetailProps["onAction"]; onClose?: () => void }): ReactNode {
   if (action !== "seat" && action !== "openOrder" && action !== "bookAgain") return null;
   if (action === "openOrder") {
     const tableNo = r.tableNo;
     if (!tableNo) return null;
     return (
-      <Link
+      <AppLink
         href={FLOOR_POS_PATH}
-        prefetch={false}
         data-ui="reservation-detail-primary"
         onClick={(e) => {
           offerOnPlainClick(e, tableNo);
+          closeOnPlainClick(e, onClose);
         }}
         className={RES_DETAIL_PRIMARY_CLASS}
       >
         {PRIMARY_WORD[action]}
-      </Link>
+      </AppLink>
     );
   }
   return (

@@ -887,8 +887,8 @@ test("PIN: CR2.3 §20 reachability — the dashboard layout renders PosPulseProv
     1,
     "the dashboard layout must close exactly one </MasterDataProvider>",
   );
-  // Position: INSIDE PrintHostProvider (it needs the QueryClient and the
-  // session, both provided further up in app/layout.tsx, and nesting it here
+  // Position: INSIDE PrintHostProvider (it needs the QueryClient, provided
+  // further up in app/layout.tsx, and reads no session; nesting it here
   // leaves the two cardinality asserts above matching unchanged strings) and
   // ABOVE <SessionKeepalive /> — the seed must already have happened before
   // any child of the shell mounts and fires its own master fetch.

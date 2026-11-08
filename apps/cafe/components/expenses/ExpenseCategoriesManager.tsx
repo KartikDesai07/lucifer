@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { ArrowLeft, Loader2, Plus, Tags } from "lucide-react";
 
 import { EXPENSES_PATH, EXPENSE_CATEGORIES_MAX, EXPENSE_CATEGORY_NAME_MAX_LEN } from "@pos/shared/expense";
@@ -76,12 +76,12 @@ export function ExpenseCategoriesManager() {
     <>
       <PageHeader
         eyebrow={
-          <Link
+          <AppLink
             href={EXPENSES_PATH}
             className="-ml-1 inline-flex min-h-8 items-center gap-1 rounded-md px-1 text-brand-muted hover:text-brand-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent pointer-coarse:min-h-11"
           >
             <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> Expenses
-          </Link>
+          </AppLink>
         }
         title="Expense categories"
         description="What you pick from when adding an expense. Hiding one keeps your old expenses as they were."

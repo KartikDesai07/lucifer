@@ -126,11 +126,11 @@ test("PIN: after a successful password sign-in the page remembers this device, t
   const finish = arrowBody(src, "finishSignIn");
   assert.ok(finish.length > 0, "landmark: the page has const finishSignIn = async () => { ... }");
   const remember = finish.indexOf("await rememberThisDevice()");
-  const replace = finish.indexOf('router.replace("/")');
+  const replace = finish.indexOf('navigateTo(router, "/", { replace: true })');
   const refresh = finish.indexOf("router.refresh()");
   assert.ok(remember >= 0, "finishSignIn awaits rememberThisDevice()");
-  assert.ok(replace > remember, 'rememberThisDevice() comes before router.replace("/") (the remember call needs the new session, and runs once)');
-  assert.ok(refresh > replace, "router.refresh() follows router.replace");
+  assert.ok(replace > remember, 'rememberThisDevice() comes before navigateTo(router, "/") (the remember call needs the new session, and runs once)');
+  assert.ok(refresh > replace, "router.refresh() follows navigateTo");
 
   const submit = arrowBody(src, "onSubmit");
   const credentials = submit.indexOf('signIn("credentials"');
@@ -139,7 +139,7 @@ test("PIN: after a successful password sign-in the page remembers this device, t
   assert.ok(credentials >= 0, 'onSubmit still calls signIn("credentials"');
   assert.ok(refused > credentials, "a refused sign-in still shows Invalid username or password");
   assert.ok(finishCall > refused, "only a successful sign-in reaches finishSignIn (after the refusal's return)");
-  assert.equal(count(submit, "router.replace("), 0, "onSubmit navigates only through finishSignIn");
+  assert.equal(count(submit, "navigateTo("), 0, "onSubmit navigates only through finishSignIn");
 });
 
 test('PIN: "Sign in with PIN" shows only when this device remembers someone, after the password form', () => {

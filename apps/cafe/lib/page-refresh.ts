@@ -16,6 +16,24 @@ export function holdUnsentWork(token: symbol, work: UnsentWork | null): void {
   else holders.set(token, work);
 }
 
+const cartHolders = new Map<symbol, number>();
+
+/** The POS cart (hooks/use-cart.ts): its unsent lines are this holder's "changes", exactly as holdUnsentWork sets them,
+ *  and its line count, fired lines included, tells a newer build to wait for an empty cart (lib/quiet-reload.ts).
+ *  null: the cart unmounted. */
+export function holdCart(token: symbol, cart: { unsent: boolean; lines: number } | null): void {
+  holdUnsentWork(token, cart !== null && cart.unsent ? "changes" : null);
+  if (cart === null || cart.lines === 0) cartHolders.delete(token);
+  else cartHolders.set(token, cart.lines);
+}
+
+/** The lines every cart on the page holds; 0 when none. */
+export function cartLines(): number {
+  let lines = 0;
+  for (const count of cartHolders.values()) lines += count;
+  return lines;
+}
+
 /** The weightiest work the page holds: an unconfirmed send before plain changes; null when none. */
 export function unsentWork(): UnsentWork | null {
   let found: UnsentWork | null = null;
@@ -41,6 +59,18 @@ export function isDeliberateReload(): boolean {
   return deliberate;
 }
 
+export type ReloadStep = { kind: "offline" } | { kind: "printing" } | { kind: "ask"; work: UnsentWork } | { kind: "reload" };
+
+/** What a tap on Refresh (or the header's "Update ready · Reload" chip, P2 N4) does: offline it says so instead of
+ *  reloading into an error screen; while a slip prints here it says so too (a reload would lose it: a REPRINT, the
+ *  verifiers' M4); with work a reload would lose it asks first; with nothing to lose it reloads. */
+export function reloadStep(online: boolean, work: UnsentWork | null, printing = false): ReloadStep {
+  if (!online) return { kind: "offline" };
+  if (printing) return { kind: "printing" };
+  if (work !== null) return { kind: "ask", work };
+  return { kind: "reload" };
+}
+
 /** A reload that has not torn the page down by now did not happen: the button lets go. */
 export const REFRESH_SETTLE_MS = 8_000;
 
@@ -53,3 +83,5 @@ export function refreshQuestion(work: UnsentWork): string {
 }
 
 export const REFRESH_OFFLINE_MESSAGE = "You are offline. Refresh once the connection is back.";
+
+export const REFRESH_PRINTING_MESSAGE = "A slip is printing. Refresh once it is done.";

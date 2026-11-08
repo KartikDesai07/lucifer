@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { effectiveUnitPrice } from "@pos/shared/public";
-import { holdUnsentWork } from "@/lib/page-refresh";
+import { holdCart } from "@/lib/page-refresh";
 import { withAddOns } from "@/lib/modifier-picker";
 import type { OrderItem, OrderItemInput, Product, ProductModifierPrice } from "@/types";
 
@@ -180,13 +180,13 @@ const NEVER_LOCKED = () => false;
 export function useCart(isLocked: () => boolean = NEVER_LOCKED): UseCart {
   const [cart, setCart] = useState<CartItem[]>([]);
 
-  // Refresh asks first while unsent lines would be lost (lib/page-refresh.ts).
+  // Refresh asks first while unsent lines would be lost; a newer build waits for an empty cart (lib/page-refresh.ts).
   const [token] = useState(() => Symbol("cart"));
   useEffect(() => {
-    holdUnsentWork(token, cart.some((line) => line.kotRound === 0) ? "changes" : null);
+    holdCart(token, { unsent: cart.some((line) => line.kotRound === 0), lines: cart.length });
   }, [token, cart]);
   useEffect(() => {
-    return () => holdUnsentWork(token, null);
+    return () => holdCart(token, null);
   }, [token]);
 
   const addToCart = useCallback<UseCart["addToCart"]>((product, opts = {}) => {

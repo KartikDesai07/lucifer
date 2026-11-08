@@ -9,6 +9,7 @@ import { autoPrintCandidate } from "@pos/shared/self-order-alert";
 import { usePosPulseContext, usePrintHostRouting } from "@/components/layout/PosPulseProvider";
 import { useCanPrintNow } from "@/hooks/use-device-printer";
 import { readDevicePrefs } from "@/lib/pos-device-prefs";
+import { printHostClosing } from "@/lib/print-host-busy";
 import { shouldRoutePrint, type PrintHostRouting } from "@/lib/print-routing";
 import { canPrintNow, printBlockedMessage } from "@/lib/printer/print-lane";
 import type { Order } from "@/types";
@@ -173,6 +174,8 @@ export function useSelfOrderAutoPrint({
     }
     if (printsOnThisDevice(isHostLane, routing) && !canPrint) return; // retried when the printer comes back (canPrint is a dep)
     if (claimingRef.current) return;
+    // P2 N4 (R65): a page that began its reload claims none (the KOT would be leased to the dying tab).
+    if (printHostClosing()) return;
     if (claimLock?.current) return;
 
     // Prune attempts whose rows have left the payload — a printed/expired row

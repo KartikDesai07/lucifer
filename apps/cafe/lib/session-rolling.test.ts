@@ -8,8 +8,8 @@ import { stripComments } from "@/lib/source-pin-utils";
 import { SESSION_MAX_AGE_SECONDS, SESSION_KEEPALIVE_SECONDS } from "@pos/shared/constants";
 
 // CB-U1 (.claude/plan/v2/cb-u1-wake-and-session-plan.md, Slice B) — the
-// 90-day rolling login: constant values, apps/cafe/app/layout.tsx's
-// SessionProvider wiring, the apps/hub parity pin (hub deliberately NOT
+// 90-day rolling login: constant values, the SessionProvider wiring (now in
+// the dashboard's session gate), the apps/hub parity pin (hub deliberately NOT
 // rolled), and an installed-dist pin over @auth/core's session.js proving
 // the JWT branch actually re-signs the cookie's expiry on every session
 // action while `updateAge` is a dead knob there. Same readSrc + REPO_ROOT +
@@ -21,6 +21,7 @@ const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel),
 
 const CAFE_LAYOUT = "apps/cafe/app/layout.tsx";
 const CAFE_DASHBOARD_LAYOUT = "apps/cafe/app/(dashboard)/layout.tsx";
+const CAFE_SESSION_GATE = "apps/cafe/components/layout/DeviceSessionGate.tsx";
 const SESSION_KEEPALIVE = "apps/cafe/components/layout/SessionKeepalive.tsx";
 const CAFE_AUTH_CONFIG = "apps/cafe/auth.config.ts";
 const HUB_CONSTANTS = "apps/hub/lib/constants.ts";
@@ -60,21 +61,23 @@ test("SESSION_KEEPALIVE_SECONDS is at most one hour (60 * 60 seconds) — a keep
   );
 });
 
-// ── 2. apps/cafe/app/layout.tsx wiring ──────────────────────────────────────
+// ── 2. The session gate's SessionProvider wiring ────────────────────────────
 //
 // F1 fix (review round 1): SessionProvider's own refetchInterval was REJECTED
 // as the keepalive — next-auth's fetchData() returns null on ANY transient
 // error and _getSession then nulls the client session (status
 // "unauthenticated", interval stops), live-probed on the installed dist. The
-// root layout is back to a bare <SessionProvider session={session}> and the
 // keepalive moved to components/layout/SessionKeepalive.tsx, mounted in the
-// DASHBOARD layout only (see the pins below).
+// DASHBOARD layout only (see the pins below). P2 N2 moved SessionProvider
+// itself out of the root layout into the dashboard's session gate
+// (components/layout/DeviceSessionGate.tsx), which hands it the session it
+// read on the device and nothing else.
 
-test("PIN (F1 regression guard): apps/cafe/app/layout.tsx's SessionProvider element is EXACTLY <SessionProvider session={session}> (no refetchInterval, no refetchWhenOffline prop) — landmark: <SessionProvider IS present", () => {
-  const src = stripComments(readSrc(CAFE_LAYOUT));
+test("PIN (F1 regression guard): DeviceSessionGate's SessionProvider element is EXACTLY <SessionProvider session={session}> (no refetchInterval, no refetchWhenOffline, no key), the gate never names refetchInterval, and app/layout.tsx has no SessionProvider — landmark: <SessionProvider IS present in the gate", () => {
+  const src = stripComments(readSrc(CAFE_SESSION_GATE));
 
   const tagStart = src.indexOf("<SessionProvider");
-  assert.ok(tagStart >= 0, "positive landmark: <SessionProvider must be present");
+  assert.ok(tagStart >= 0, "positive landmark: <SessionProvider must be present in the gate");
   const tagEnd = src.indexOf(">", tagStart);
   assert.ok(tagEnd > tagStart, "expected to find the SessionProvider opening tag's closing >");
   const tagSlice = src.slice(tagStart, tagEnd + 1);
@@ -82,11 +85,16 @@ test("PIN (F1 regression guard): apps/cafe/app/layout.tsx's SessionProvider elem
   assert.equal(
     tagSlice.replace(/\s+/g, " "),
     "<SessionProvider session={session}>",
-    "app/layout.tsx's <SessionProvider> element must be exactly <SessionProvider session={session}> — the F1 fix reverted it to bare, moving the keepalive out to SessionKeepalive.tsx",
+    "the gate's <SessionProvider> must be exactly <SessionProvider session={session}>: the session read on the device and nothing else (no refetchInterval: F1; no key: a re-keyed provider would drop a PIN switch's update)",
   );
+  assert.equal(src.split("<SessionProvider").length - 1, 1, "the gate renders exactly one SessionProvider");
   assert.ok(
     !src.includes("refetchInterval"),
-    "app/layout.tsx must NOT contain refetchInterval anywhere — SessionProvider's own refetchInterval was rejected as the keepalive (F1): a transient fetchData() failure nulls the client session and stops the interval",
+    "the gate must NOT contain refetchInterval anywhere — SessionProvider's own refetchInterval was rejected as the keepalive (F1): a transient fetchData() failure nulls the client session and stops the interval",
+  );
+  assert.ok(
+    !stripComments(readSrc(CAFE_LAYOUT)).includes("SessionProvider"),
+    "app/layout.tsx must not hold a SessionProvider any more: /login and /m never fetch a session, the staff session is the gate's",
   );
 });
 
@@ -212,4 +220,41 @@ test('PIN (installed-dist, @auth/core 0.41.2): the JWT branch of node_modules/@a
   // proves this test is reading real, un-blinded source, not an empty slice.
   const restOfFile = src.slice(dbMarkerAt);
   assert.match(restOfFile, /updateAge/, "positive landmark: updateAge must appear somewhere AFTER the database marker (the database branch actually consults it) — otherwise this file may have been blinded");
+});
+
+// ── 6. Installed-dist pin: a signed-out answer clears the cookie ──────────
+//
+// The session gate (components/layout/DeviceSessionGate.tsx) sends a real
+// "signed out" (a 200 whose body is null) to /login as a full page load. That
+// can only loop /login ↔ / if the cookie survived: the edge middleware decodes
+// the JWT without the database, so a cookie the Node session refused (an
+// inactive account: lib/auth.ts's jwt callback returns null) would still read as
+// signed in at /login and bounce back to /. @auth/core clears it in both
+// signed-out branches of the JWT path; this pins that vendor fact.
+const CLEAN_PUSH = String.raw`response\.cookies\?\.push\(\.\.\.sessionStore\.clean\(\)\);`;
+const ELSE_CLEANS = new RegExp(String.raw`\}\s*else\s*\{\s*` + CLEAN_PUSH + String.raw`\s*\}`);
+const CATCH_CLEANS = new RegExp(String.raw`catch \(e\) \{[^}]*` + CLEAN_PUSH + String.raw`\s*\}`);
+
+function assertSignedOutClearsCookie(sessionJs: string): void {
+  assert.match(sessionJs, /const response = \{\s*body: null,/, "the answer starts as a 200 with a null body (set only for a session)");
+  const at = sessionJs.indexOf("if (token !== null)");
+  assert.ok(at >= 0, "landmark: the jwt callback's null check");
+  const end = sessionJs.indexOf("// Retrieve session from database", at);
+  assert.ok(end > at, "landmark: the database branch follows");
+  const rest = sessionJs.slice(at, end);
+  assert.match(rest, ELSE_CLEANS, "a jwt callback that returns null (inactive account) clears the session cookie");
+  assert.match(rest, CATCH_CLEANS, "a JWT that cannot be verified clears the session cookie");
+}
+
+test("PIN (installed-dist, @auth/core 0.41.x): a signed-out answer (200 null) clears the session cookie in both JWT branches, so the gate's /login can never bounce back to / — and the check bites on in-memory copies with either clean() removed", () => {
+  const src = readSrc(AUTH_CORE_SESSION_JS);
+  assertSignedOutClearsCookie(src);
+
+  const withoutElse = src.replace(ELSE_CLEANS, "} else {\n}");
+  assert.notEqual(withoutElse, src, "landmark: the copy really lost the else's clean()");
+  assert.throws(() => assertSignedOutClearsCookie(withoutElse), "bites: the else without clean() fails");
+  const catchAt = src.indexOf("catch (e) {", src.indexOf("if (token !== null)"));
+  const withoutCatch = src.slice(0, catchAt) + src.slice(catchAt).replace(/response\.cookies\?\.push\(\.\.\.sessionStore\.clean\(\)\);/, "");
+  assert.notEqual(withoutCatch, src, "landmark: the copy really lost the catch's clean()");
+  assert.throws(() => assertSignedOutClearsCookie(withoutCatch), "bites: the catch without clean() fails");
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { ArrowLeft } from "lucide-react";
 
 import { FESTIVAL_CARDS_TITLE } from "@pos/shared/reward-campaigns";
@@ -18,10 +18,10 @@ export default function FestivalCardsPage() {
         <PageHeader
           title={FESTIVAL_CARDS_TITLE}
           eyebrow={
-            <Link href="/customers" className="inline-flex min-h-11 items-center gap-1 text-brand-primary underline-offset-2 hover:underline">
+            <AppLink href="/customers" className="inline-flex min-h-11 items-center gap-1 text-brand-primary underline-offset-2 hover:underline">
               <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
               Customers
-            </Link>
+            </AppLink>
           }
         />
         <FestivalCardsList />

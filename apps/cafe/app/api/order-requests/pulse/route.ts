@@ -5,6 +5,7 @@ import { printPulseDeviceOf, printPulseTokensOf, readPulseJobsForDevice } from "
 import { readPrintAttention } from "@/lib/print-attention";
 import { sweepPrintJobsThrottled } from "@/lib/print-sweep";
 import { success, requireAuth, serverError } from "@/lib/api-helpers";
+import { POS_BUILD } from "@/lib/build-stamp";
 import { noStore } from "@/lib/order-request-tray";
 
 export const dynamic = "force-dynamic";
@@ -64,6 +65,8 @@ export async function GET(req: Request) {
     return noStore(
       success({
         ...data,
+        // The build this server runs: an open page that runs another one knows a deploy happened. No new read.
+        build: POS_BUILD,
         // Printing Phase 5 (spec 2026-11-03 §5.8): this server reads an order request's `offline` field, so a device
         // may send its offline rounds (an older server would drop the field and print every line again).
         offlineReplay: true,

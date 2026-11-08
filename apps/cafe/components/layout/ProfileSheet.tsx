@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { usePathname } from "next/navigation";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ChevronLeft, KeyRound, LogOut } from "lucide-react";
@@ -59,10 +59,10 @@ const PANEL_CLASS = cn(
 const AVATAR_44_CLASS =
   "[&>span:first-child]:size-11 [&>span:first-child]:rounded-[50%] [&>span:first-child]:text-[15px]";
 
-// A More tile: 72px, 1px border, radius 12, 12px/600, the 22px glyph 6px above the label; the current page on the
-// accent tint (--accent-t / --accent-i).
+// A More tile: 72px, 1px border, radius 12, 12px/600, the 22px glyph 6px above the label; the current page (and a
+// page opening) on the accent tint (--accent-t / --accent-i).
 const TILE_CLASS = cn(
-  "flex h-[72px] min-w-0 flex-col items-center justify-center gap-1.5 rounded-[12px] border border-border bg-transparent px-0.5 text-center text-[12px] font-semibold text-foreground data-[active=true]:bg-accent data-[active=true]:text-accent-foreground",
+  "flex h-[72px] min-w-0 flex-col items-center justify-center gap-1.5 rounded-[12px] border border-border bg-transparent px-0.5 text-center text-[12px] font-semibold text-foreground data-[active=true]:bg-accent data-[active=true]:text-accent-foreground data-[opening=true]:bg-accent data-[opening=true]:text-accent-foreground",
   BRAND_PRESS_CLASS,
 );
 
@@ -188,9 +188,8 @@ export function ProfileSheetBody({
                   const active = isActivePath(pathname, page.href);
                   return (
                     <li key={page.href}>
-                      <Link
+                      <AppLink
                         href={page.href}
-                        prefetch={false}
                         data-ui="more-sub-row"
                         data-active={active}
                         aria-current={active ? "page" : undefined}
@@ -198,7 +197,7 @@ export function ProfileSheetBody({
                         className={BRAND_NAV_FLYOUT_ITEM_CLASS}
                       >
                         {page.title}
-                      </Link>
+                      </AppLink>
                     </li>
                   );
                 })}
@@ -231,10 +230,9 @@ export function ProfileSheetBody({
                     {inside}
                   </button>
                 ) : (
-                  <Link
+                  <AppLink
                     key={item.url}
                     href={item.url}
-                    prefetch={false}
                     data-ui="more-tile"
                     data-active={active}
                     aria-current={active ? "page" : undefined}
@@ -242,7 +240,7 @@ export function ProfileSheetBody({
                     className={TILE_CLASS}
                   >
                     {inside}
-                  </Link>
+                  </AppLink>
                 );
               })}
             </div>

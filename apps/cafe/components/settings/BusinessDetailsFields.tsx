@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { Controller } from "react-hook-form";
 import type { Control, FieldErrors, UseFormRegister } from "react-hook-form";
 
@@ -105,9 +105,9 @@ export function BusinessDetailsFields({
         sub={
           <>
             How the top of a bill looks. Choose which lines print in{" "}
-            <Link href={settingsSectionPath("bill-print")} className={SETTINGS_LINK_CLASS}>
+            <AppLink href={settingsSectionPath("bill-print")} className={SETTINGS_LINK_CLASS}>
               Bill print
-            </Link>
+            </AppLink>
             .
           </>
         }

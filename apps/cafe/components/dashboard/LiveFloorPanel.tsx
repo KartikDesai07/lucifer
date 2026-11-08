@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment } from "react";
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 
 import { cn } from "@/lib/utils";
 import { TABLE_STATUS_META } from "@/lib/table-status";
@@ -144,16 +144,15 @@ export function LiveFloorPanel({ tables, orders, areas, reservations, loading, i
                   {body}
                 </button>
               ) : (
-                <Link
+                <AppLink
                   key={tile.table._id}
                   href="/tables"
-                  prefetch={false}
                   data-ui="table-tile"
                   title={tile.title}
                   className={cn(TILE_CLASS, look.tile)}
                 >
                   {body}
-                </Link>
+                </AppLink>
               );
             })}
           </div>

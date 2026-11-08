@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { AppLink, closeOnPlainClick } from "@/components/layout/AppLink";
 import { ChevronRight, RotateCw } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { inr } from "@/lib/utils";
@@ -84,9 +84,10 @@ export function HourSheet({ row, type, range, onOpenChange }: HourSheetProps) {
                 <p className="py-3 text-[13px] text-brand-muted">No orders in this hour.</p>
               ) : (
                 d.days.map((day) => (
-                  <Link
+                  <AppLink
                     key={day.date}
                     href={`/orders?date=${day.date}`}
+                    onClick={(e) => closeOnPlainClick(e, () => onOpenChange(false))}
                     className="flex items-center justify-between gap-3 py-1.5 text-[13.5px] hover:bg-brand-wash"
                   >
                     <span className="min-w-0 truncate text-brand-ink">{day.label}</span>
@@ -94,7 +95,7 @@ export function HourSheet({ row, type, range, onOpenChange }: HourSheetProps) {
                       {plural(day.orders, "order")} · {inr(day.sales)}
                       <ChevronRight className="h-3.5 w-3.5 text-brand-muted" aria-hidden />
                     </span>
-                  </Link>
+                  </AppLink>
                 ))
               )}
             </Section>

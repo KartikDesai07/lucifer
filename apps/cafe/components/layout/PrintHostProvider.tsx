@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -19,6 +20,7 @@ import { PRINT_AGENT_SLIP_DEADLINE_MS } from "@/lib/print-agent-slip";
 import type { HostPrintSlip } from "@/lib/print-host-slips";
 import { mintTabId, readDeviceId } from "@/lib/pos-device-id";
 import { readDevicePrefs, writeDevicePrefs } from "@/lib/pos-device-prefs";
+import { holdPrintBusy } from "@/lib/print-host-busy";
 import { devicePrinter } from "@/lib/printer/device-printer";
 import { nativePool } from "@/lib/printer/native-pool";
 
@@ -121,6 +123,15 @@ export function PrintHostProvider({ children }: { children: ReactNode }) {
 
   const bridge = usePrintHostBridge({ surfacesMounted });
   const { current, busy, kotRef, receiptRef, eodRef, setEodReady, queueSlip, queueTestSlip } = bridge;
+
+  // P2 N4: while the bridge prints a slip (its whole claim → onAfterPrint window) a newer build never reloads the page
+  // (lib/print-host-busy.ts). A layout effect, so the hold lands in the same commit that raised `busy`, before any
+  // timer can look; let go when it frees up and on unmount.
+  const [busyToken] = useState(() => Symbol("print-host-bridge"));
+  useLayoutEffect(() => {
+    holdPrintBusy(busyToken, busy);
+    return () => holdPrintBusy(busyToken, false);
+  }, [busyToken, busy]);
 
   const queueOfflineSlip = useCallback(
     (slip: HostPrintSlip) =>

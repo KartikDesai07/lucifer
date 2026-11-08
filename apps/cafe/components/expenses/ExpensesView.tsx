@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { BarChart3, MoreHorizontal, Plus, Tags, Wallet } from "lucide-react";
 
 import {
@@ -185,14 +185,14 @@ export function ExpensesView() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem asChild className={MENU_ITEM_CLASS}>
-                    <Link href={EXPENSE_CATEGORIES_PATH} prefetch={false}>
+                    <AppLink href={EXPENSE_CATEGORIES_PATH}>
                       <Tags aria-hidden /> Categories
-                    </Link>
+                    </AppLink>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild className={MENU_ITEM_CLASS}>
-                    <Link href={EXPENSE_REPORT_PATH} prefetch={false}>
+                    <AppLink href={EXPENSE_REPORT_PATH}>
                       <BarChart3 aria-hidden /> Expense report
-                    </Link>
+                    </AppLink>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

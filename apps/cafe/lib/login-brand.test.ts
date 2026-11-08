@@ -1,6 +1,6 @@
 // Ruling R39 (final review I2): the login screen's header names the cafe, as the owner's HTML lock/login header does
 // (design 5.6, values 4.2), where it used to name the product. /login has no session, so the name is read on the
-// server with readSettings(): the same in-memory-cached, read-only look-up app/layout.tsx's generateMetadata already
+// server with readSettings(): the same in-memory-cached, read-only look-up the login page's own generateMetadata
 // makes on every /login (no new request, no write; never getSettings(), which creates the document). The product's
 // mark stays the tile, and a database that cannot be read shows the product's name instead of breaking sign-in.
 import { test } from "node:test";
@@ -45,7 +45,7 @@ test("readLoginBrandName: one read; a read that fails shows the product's name i
 
 test("PIN: the read is readSettings() (cached, read-only), never getSettings(), and only on the server", () => {
   const brand = read(BRAND);
-  assert.match(brand, /import \{ readSettings \} from "@\/lib\/settings";/, "the look-up app/layout.tsx already makes on /login");
+  assert.match(brand, /import \{ readSettings \} from "@\/lib\/settings";/, "the look-up the login page's generateMetadata makes on /login");
   assert.match(brand, /read: \(\) => Promise<[^>]*> = readSettings/, "readSettings is the default reader");
   const page = read(PAGE);
   const screen = read(SCREEN);

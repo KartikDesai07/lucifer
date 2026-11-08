@@ -61,7 +61,7 @@ test("PIN: the guard entry is pushed and re-marked through leaveGuardEntryState 
   assert.match(hook, /back: \(\) => window\.history\.back\(\)/, "the port must go back through window.history.back");
 });
 
-test("PIN: leave discards, then replays the anchor click guarded by isConnected with a router.push fallback; the bypass lives ONLY in the link branch", () => {
+test("PIN: leave discards, then replays the anchor click guarded by isConnected with a navigateTo fallback; the bypass lives ONLY in the link branch", () => {
   const src = readSrc(HOOK);
   const leaveAt = src.indexOf("const leave = useCallback(");
   assert.ok(leaveAt >= 0, "landmark: leave callback exists");
@@ -75,8 +75,8 @@ test("PIN: leave discards, then replays the anchor click guarded by isConnected 
   const backBranch = body.slice(backAt);
   assert.match(
     linkBranch,
-    /bypassRef\.current = true;\s*if \(pending\.anchor\.isConnected\) pending\.anchor\.click\(\);\s*else router\.push\(pending\.href\);\s*bypassRef\.current = false;/,
-    "replay .click() guarded by isConnected, router.push fallback, bypass set around it and cleared",
+    /bypassRef\.current = true;\s*if \(pending\.anchor\.isConnected\) pending\.anchor\.click\(\);\s*else navigateTo\(router, pending\.href\);\s*bypassRef\.current = false;/,
+    "replay .click() guarded by isConnected, navigateTo fallback, bypass set around it and cleared",
   );
   assert.ok(!backBranch.includes("bypassRef"), "the back branch must not use the bypass flag");
   assert.match(backBranch, /controllerRef\.current\?\.leaveBack\(\);/, "a pending Back is completed through the controller");

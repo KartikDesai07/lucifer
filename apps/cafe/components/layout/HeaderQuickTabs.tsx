@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { usePathname } from "next/navigation";
 
 import { FLOOR_PATH, isFloorPath } from "@/lib/floor-layout";
@@ -65,11 +65,9 @@ export function HeaderQuickTabs() {
         const active = tab.exact ? pathname === tab.url : isActivePath(pathname, tab.url);
         const Icon = tab.icon;
         return (
-          <Link
+          <AppLink
             key={tab.url}
             href={tab.url}
-            // Never on its own: /pos and /tables are warmed by useWarmRoutes only once the line answers (lib/warm-routes.ts).
-            prefetch={false}
             data-active={active}
             aria-current={active ? "page" : undefined}
             aria-label={tab.title}
@@ -83,7 +81,7 @@ export function HeaderQuickTabs() {
           >
             <Icon aria-hidden="true" strokeWidth={tab.primary ? 2.4 : 1.8} />
             <span className={labelClass}>{tab.title}</span>
-          </Link>
+          </AppLink>
         );
       })}
     </>

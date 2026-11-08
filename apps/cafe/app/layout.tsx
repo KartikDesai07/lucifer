@@ -1,59 +1,26 @@
 import type { Metadata } from "next";
-import { SessionProvider } from "next-auth/react";
-import { auth } from "@/lib/auth";
 import { fontVariables } from "@/lib/fonts";
 import { AppToaster } from "@/components/layout/AppToaster";
 import { Providers } from "@/components/providers";
-import { readSettings } from "@/lib/settings";
 import { APP_NAME } from "@/lib/constants";
 import { DEFAULT_PRODUCT_LOGO_URL } from "@/lib/branding-default-logo";
-import { productImageUrl } from "@/lib/images";
+import { METADATA_DESCRIPTION } from "@/lib/document-branding";
 import "./globals.css";
 
-const METADATA_DESCRIPTION =
-  "Point-of-sale and management system for restaurants and cafes";
+// Static: the root layout reads no Settings and no session, so the staff frames can be served from the CDN. The
+// cafe's own name and logo reach the tab on the device (DocumentBranding, staff screens) or from the public pages'
+// own generateMetadata (/login, /m). The tab icon is declared here and never as app/favicon.ico: file-based
+// metadata OVERRIDES the metadata object (Next.js docs), and that file is deleted. No SessionProvider here either: the
+// staff session is read on the device by the dashboard's DeviceSessionGate, and /login and /m never fetch one.
+export const metadata: Metadata = {
+  title: APP_NAME,
+  description: METADATA_DESCRIPTION,
+  icons: { icon: [{ url: DEFAULT_PRODUCT_LOGO_URL }] },
+};
 
-// File-based metadata (app/favicon.ico) OVERRIDES the metadata object and
-// generateMetadata — Next.js docs: "File-based metadata has the higher
-// priority and will override the metadata object and generateMetadata
-// function." That file is deleted (see report) so this is now the single
-// source for the tab title/icon, and it must read Settings to brand them.
-export async function generateMetadata(): Promise<Metadata> {
-  try {
-    // readSettings(), NOT getSettings(): this runs on `/login`, which is public,
-    // and getSettings() upserts — its `timestamps: true` bumps `updatedAt` on
-    // every call, so anonymous traffic would drive writes against a 512MB M0.
-    const settings = await readSettings();
-    // `?.` deliberately: this is a `.lean()` read of a document that may predate
-    // a field (and may not exist at all on a freshly provisioned cluster) — a
-    // bare `.trim()` would throw into the catch below and cost the cafe its tab
-    // ICON as well as its name. Same defensive read the sidebar already uses.
-    const title = settings?.restaurantName?.trim() || APP_NAME;
-    const iconHref =
-      productImageUrl(settings?.productLogo) ?? DEFAULT_PRODUCT_LOGO_URL;
-    return {
-      title,
-      description: METADATA_DESCRIPTION,
-      icons: { icon: [{ url: iconHref }] },
-    };
-  } catch {
-    // A DB-down Settings read must never throw here — generateMetadata
-    // throwing turns the LOGIN page into a 500, locking every operator out of
-    // a POS whose shell would otherwise render fine. A missing tab icon is
-    // not worth that; fall back to static, DB-free metadata.
-    return {
-      title: APP_NAME,
-      description: METADATA_DESCRIPTION,
-      icons: { icon: [{ url: DEFAULT_PRODUCT_LOGO_URL }] },
-    };
-  }
-}
-
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const session = await auth();
-
   // suppressHydrationWarning covers <html>'s OWN attributes only (React applies it one level deep): the pre-paint
   // scripts set an attribute on <html> before React hydrates it (the dashboard's screen lock, data-pos-locked; the
   // diner's stored theme, data-pub-theme), which React's dev build would otherwise report as a mismatch. Nothing
@@ -66,10 +33,8 @@ export default async function RootLayout({
           desktop dvh === vh so nothing changes. /login, /m, print and
           global-error carry their own min-height and are unaffected. */}
       <body className="font-sans antialiased min-h-screen supports-[height:1dvh]:min-h-dvh bg-background text-foreground">
-        <SessionProvider session={session}>
-          <Providers>{children}</Providers>
-          <AppToaster />
-        </SessionProvider>
+        <Providers>{children}</Providers>
+        <AppToaster />
       </body>
     </html>
   );

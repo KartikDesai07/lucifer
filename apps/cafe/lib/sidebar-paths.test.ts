@@ -20,9 +20,7 @@ const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel),
 
 const APP_SIDEBAR = "apps/cafe/components/layout/AppSidebar.tsx";
 const SETTINGS_GROUP = "apps/cafe/components/layout/SidebarSettingsGroup.tsx";
-const REPORTS_GROUP = "apps/cafe/components/layout/SidebarReportsGroup.tsx";
 const MENU_GROUP = "apps/cafe/components/layout/SidebarMenuGroup.tsx";
-const TABLES_GROUP = "apps/cafe/components/layout/SidebarTablesGroup.tsx";
 const SIDEBAR_BRAND = "apps/cafe/components/layout/SidebarBrand.tsx";
 // 2026-10-11: the top bar's New Order + Tables tabs — the same two warm routes, so the same no-prefetch rule.
 const HEADER_QUICK_TABS = "apps/cafe/components/layout/HeaderQuickTabs.tsx";
@@ -227,7 +225,7 @@ test("PIN: exactly the Operate group is warm — no setup or admin screen — an
 /** Every `<Link …>` opening tag in `src`, brace-aware (a `>` inside `{…}` does not end it). */
 function linkTags(src: string): string[] {
   const tags: string[] = [];
-  for (const m of src.matchAll(/<Link\b/g)) {
+  for (const m of src.matchAll(/<AppLink\b/g)) {
     let depth = 0;
     let end = m.index!;
     for (; end < src.length; end++) {
@@ -241,24 +239,23 @@ function linkTags(src: string): string[] {
   return tags;
 }
 
-test("PIN: no sidebar Link prefetches on its own — every one says prefetch={false}; the warm rows' only warmer is useWarmRoutes", () => {
+test("PIN: no sidebar link prefetches on its own — the brand and the quick tabs are AppLinks (as are the nav rows, pinned in lib/intent-prefetch.test.ts) and set no prefetch: AppLink forces prefetch={false}", () => {
   // 2026-09-29: a Link's default (or true) prefetch fires on sight and on
   // hover; on a line still waking up it can fail, and a failed prefetch turns
   // the next click into a full page load (vendor facts: lib/warm-routes.test.ts).
   // U0 Task 2: Settings, Reports and Tables lost their rail-only Link (the rail opens a flyout of the same sub-page
   // Links); Menu keeps its staff single-section Link.
-  for (const [file, expected] of [[APP_SIDEBAR, 1], [SETTINGS_GROUP, 1], [REPORTS_GROUP, 1], [MENU_GROUP, 2], [TABLES_GROUP, 1], [SIDEBAR_BRAND, 1], [HEADER_QUICK_TABS, 1]] as const) {
+  for (const [file, expected] of [[SIDEBAR_BRAND, 1], [HEADER_QUICK_TABS, 1]] as const) {
     const src = stripComments(readSrc(file));
-    // Vision guards: Link is next/link under that one name, and the scan finds
+    // Vision guards: the link is AppLink (the only next/link wrapper: lib/app-link-paths.test.ts), and the scan finds
     // every tag the file renders (an extractor that finds none proves nothing).
-    assert.equal(src.match(/from "next\/link"/g)?.length, 1, `${file}: one next/link import`);
-    assert.match(src, /import Link from "next\/link";/, `${file}: imported as Link`);
+    assert.ok(!src.includes("next/link"), `${file}: no raw next/link`);
+    assert.match(src, /import \{ AppLink \} from "@\/components\/layout\/AppLink";/, `${file}: imports AppLink`);
     const tags = linkTags(src);
-    assert.equal(tags.length, expected, `${file}: expected ${expected} <Link> tags, found ${tags.length}`);
+    assert.equal(tags.length, expected, `${file}: expected ${expected} <AppLink> tags, found ${tags.length}`);
     for (const tag of tags) {
-      assert.ok(tag.includes("href="), `landmark: a whole Link tag was read: ${tag}`);
-      assert.equal(tag.match(/\bprefetch=/g)?.length, 1, `${file}: every Link sets prefetch exactly once: ${tag}`);
-      assert.ok(tag.includes("prefetch={false}"), `${file}: a Link keeps a default or true prefetch: ${tag}`);
+      assert.ok(tag.includes("href="), `landmark: a whole AppLink tag was read: ${tag}`);
+      assert.ok(!/\bprefetch=/.test(tag), `${file}: a link must not set prefetch itself (AppLink forces false): ${tag}`);
     }
   }
 });
@@ -277,7 +274,7 @@ test("PIN (F4): staleTimes reuses visited screens for the same window as prefetc
 test("PIN: the brand block is a link to the Dashboard; its tile shows an uploaded logo, else the cafe's initial (and the initial when the logo fails to load)", () => {
   const brand = stripComments(readSrc(SIDEBAR_BRAND));
   const tags = linkTags(brand);
-  assert.equal(tags.length, 1, "landmark: SidebarBrand renders one <Link>");
+  assert.equal(tags.length, 1, "landmark: SidebarBrand renders one <AppLink>");
   // Mutation this catches: the header going back to a plain <div> (the owner
   // asked for the cafe name to open the Dashboard), or pointing elsewhere.
   assert.ok(tags[0].includes(`href="/"`), "the brand link goes to the Dashboard");

@@ -5,7 +5,7 @@
 // only one VISIBLE section (staff, since Categories is adminOnly) this renders a single plain row instead of a
 // drop-down (D5, a declared deviation from "drop-down for every role"). Otherwise the sections open as sub-rows in the
 // wide form and in a flyout in the 76px rail (design 5.2; components/layout/nav-parts.tsx).
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 
 import { MENU_SECTIONS, MENU_ITEMS_PATH, isMenuPath, visibleMenuSections } from "@/lib/menu-sections";
 import { isActivePath } from "@/lib/nav-active";
@@ -43,9 +43,9 @@ export function SidebarMenuGroup({
     const exact = isActivePath(pathname, MENU_ITEMS_PATH);
     return (
       <NavItem isActive={onMenu}>
-        <Link href={MENU_ITEMS_PATH} prefetch={false} title={title} aria-current={exact ? "page" : undefined}>
+        <AppLink href={MENU_ITEMS_PATH} title={title} aria-current={exact ? "page" : undefined}>
           <NavRowContent icon={icon} title={title} />
-        </Link>
+        </AppLink>
       </NavItem>
     );
   }
@@ -63,9 +63,9 @@ export function SidebarMenuGroup({
           const active = isActivePath(pathname, section.href);
           return (
             <NavSubItem key={section.href} place={place} isActive={active}>
-              <Link href={section.href} prefetch={false} aria-current={active ? "page" : undefined}>
+              <AppLink href={section.href} aria-current={active ? "page" : undefined}>
                 {section.title}
-              </Link>
+              </AppLink>
             </NavSubItem>
           );
         })}

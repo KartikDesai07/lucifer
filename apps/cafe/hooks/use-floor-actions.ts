@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { navigateTo } from "@/lib/navigate";
 import { toast } from "sonner";
 import type { UseQueryResult } from "@tanstack/react-query";
 
@@ -92,7 +93,7 @@ export function useFloorActions(openTabs: Pick<UseQueryResult<Order[]>, "refetch
       const saved = await action.run(table, "Available", kind === "seat");
       if (saved && kind === "seat") {
         offerPosTable(table.tableNo, Date.now());
-        router.push(FLOOR_POS_PATH);
+        navigateTo(router, FLOOR_POS_PATH);
       }
     } finally {
       confirmingRef.current = false;

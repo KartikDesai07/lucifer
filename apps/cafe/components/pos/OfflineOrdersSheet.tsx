@@ -3,6 +3,7 @@
 import { useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { usePathname, useRouter } from "next/navigation";
+import { navigateTo } from "@/lib/navigate";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -110,7 +111,7 @@ function OfflineOrdersPanel({ onClose }: { onClose: () => void }) {
     if (entry === undefined) return;
     offlineFixes.request(entry);
     onClose();
-    if (pathname !== "/pos") router.push("/pos");
+    if (pathname !== "/pos") navigateTo(router, "/pos");
   };
   const confirmAsked = () => {
     if (asked === null) return;

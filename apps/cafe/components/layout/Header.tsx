@@ -8,7 +8,9 @@ import { OfflineOrdersSheet } from "@/components/pos/OfflineOrdersSheet";
 import { BrandTile } from "@/components/layout/BrandTile";
 import { HeaderTitle } from "@/components/layout/HeaderTitle";
 import { RefreshButton } from "@/components/layout/RefreshButton";
+import { UpdateReadyChip } from "@/components/layout/UpdateWhenQuiet";
 import { HeaderQuickTabs } from "@/components/layout/HeaderQuickTabs";
+import { NavCoverInert, NavProgressLine } from "@/components/layout/NavProgressView";
 import { PosHeaderBrand, PosHeaderClock, usePosHeaderRoom } from "@/components/layout/PosHeaderBrand";
 import { usePageHeader } from "@/components/layout/page-header-slot";
 import { TokenSheet } from "@/components/pos/TokenSheet";
@@ -83,13 +85,20 @@ export function Header() {
           box: flex:1, right-aligned, 6px apart, scrolling sideways; it stays in the row while empty; no header-button
           look (it holds the HTML's own switch-order button). */}
       <div ref={actionsRef} data-ui="header-actions" data-header-actions={pos ? undefined : ""} data-pos={pos ? "" : undefined} className="flex min-w-0 items-center gap-2.5 empty:hidden data-pos:flex-1 data-pos:justify-end data-pos:gap-1.5 data-pos:overflow-x-auto data-pos:empty:flex" />
+      {/* P2 N1: while a tap's screen opens, the hidden page's actions (portaled into the box above) go inert. */}
+      <NavCoverInert box={actionsBox} />
       <HeaderQuickTabs />
       {pos && <PosHeaderClock now={now} tone={printerTone} room={room} />}
+      {/* P2 N4: "Update ready · Reload" while a newer build waits and this device may not reload by itself. */}
+      <UpdateReadyChip />
       <RefreshButton />
       <TokenSheet />
       {/* Printing Phase 5: "Offline orders · n" beside the printer button while any offline order or note remains. */}
       <OfflineOrdersSheet />
       <PrinterStatusButton onToneChange={pos ? setPrinterTone : undefined} />
+      {/* P2 N1: the 2px line while a tapped screen opens. Absolute (app/nav-progress.css), so it takes no part in this
+          row's layout or gaps, and the header's height and its /pos static rule stay as they are. */}
+      <NavProgressLine pos={pos} />
     </header>
   );
 }

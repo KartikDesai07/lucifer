@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { ChevronRight } from "lucide-react";
 
 import { VISIBLE_SETTINGS_SECTIONS, settingsSectionPath } from "@/lib/settings-sections";
@@ -31,7 +31,7 @@ export default function SettingsPage() {
         {VISIBLE_SETTINGS_SECTIONS.map((section) => {
           const Icon = SETTINGS_SECTION_ICONS[section.slug];
           return (
-            <Link
+            <AppLink
               key={section.slug}
               href={settingsSectionPath(section.slug)}
               className={CARD_CLASS}
@@ -46,7 +46,7 @@ export default function SettingsPage() {
                 </div>
               </div>
               <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-brand-muted" aria-hidden="true" />
-            </Link>
+            </AppLink>
           );
         })}
       </div>

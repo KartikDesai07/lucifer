@@ -1,36 +1,38 @@
 import type { Metadata, Viewport } from "next";
 import { APP_NAME } from "@pos/shared/constants";
-import { getSettings } from "@/lib/settings";
 import {
   MANIFEST_PATH,
   APPLE_TOUCH_ICON_PATH,
   MANIFEST_THEME_COLOR,
 } from "@/lib/pos-install";
 import { DEFAULT_PRODUCT_LOGO_URL } from "@/lib/branding-default-logo";
-import { productImageUrl } from "@/lib/images";
 import { SCREEN_LOCK_SCRIPT } from "@/lib/screen-lock-script";
 import { NAV_STATE_SCRIPT } from "@/lib/nav-state-script";
 import { HTML_RULES_SCRIPT } from "@/lib/html-rules-scope";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Header } from "@/components/layout/Header";
+import { NavProgressView } from "@/components/layout/NavProgressView";
 import { PageHeaderSlotProvider } from "@/components/layout/page-header-slot";
+import { DeviceSessionGate } from "@/components/layout/DeviceSessionGate";
+import { DocumentBranding } from "@/components/layout/DocumentBranding";
 import { MasterDataProvider } from "@/components/layout/MasterDataProvider";
 import { OfflineReplayRunner } from "@/components/layout/OfflineReplayRunner";
 import { PosPulseProvider } from "@/components/layout/PosPulseProvider";
 import { PrintHostProvider } from "@/components/layout/PrintHostProvider";
 import { SessionKeepalive } from "@/components/layout/SessionKeepalive";
 import { TabBar } from "@/components/layout/TabBar";
+import { UpdateWhenQuiet } from "@/components/layout/UpdateWhenQuiet";
 import { ScreenLock } from "@/components/lock/ScreenLock";
 import { RequestAlertBar } from "@/components/orders/RequestAlertBar";
 import { PrintHostPrintSources } from "@/components/print/PrintHostPrintSources";
 import { TouchFeel } from "@/components/shared/TouchFeel";
 import { HtmlRulesScope } from "@/components/layout/HtmlRulesScope";
 import "../print-fonts.css";
+import "../nav-progress.css";
 
-// Tab title mirrors the cafe's own branding once Settings is configured,
-// falling back to the generic product name (never a hardcoded cafe name).
-// Rides getSettings' own cache — no extra DB round trip on top of the page's.
+// Static: no Settings read here, so every staff frame is served from the CDN. The cafe's own name and logo reach
+// the tab on the device (DocumentBranding, below), over this generic title and icon.
 //
 // The manifest link (CB-1d.2) is advertised from the DASHBOARD ONLY — never
 // the root layout or /m — so diners on the public QR flow never see an
@@ -42,28 +44,14 @@ import "../print-fonts.css";
 // `icons`. So the tab icon the root layout declares must be RE-DECLARED
 // here alongside the apple icon, or every dashboard route would silently
 // lose its tab icon.
-export async function generateMetadata(): Promise<Metadata> {
-  try {
-    const settings = await getSettings();
-    return {
-      title: settings.restaurantName?.trim() || APP_NAME,
-      manifest: MANIFEST_PATH,
-      icons: {
-        icon: [{ url: productImageUrl(settings.productLogo) ?? DEFAULT_PRODUCT_LOGO_URL }],
-        apple: [{ url: APPLE_TOUCH_ICON_PATH }],
-      },
-    };
-  } catch {
-    return {
-      title: APP_NAME,
-      manifest: MANIFEST_PATH,
-      icons: {
-        icon: [{ url: DEFAULT_PRODUCT_LOGO_URL }],
-        apple: [{ url: APPLE_TOUCH_ICON_PATH }],
-      },
-    };
-  }
-}
+export const metadata: Metadata = {
+  title: APP_NAME,
+  manifest: MANIFEST_PATH,
+  icons: {
+    icon: [{ url: DEFAULT_PRODUCT_LOGO_URL }],
+    apple: [{ url: APPLE_TOUCH_ICON_PATH }],
+  },
+};
 
 // Android Chrome (>=108) defaults to resizes-visual, which leaves the POS's
 // fixed bottom bar and the cart sheet's discount/notes inputs UNDER the
@@ -107,34 +95,45 @@ export default function DashboardLayout({
                 waits behind a placeholder so the mounted screens cannot each fire
                 their own master fetch first. */}
             <MasterDataProvider>
-              {/* CB-U1: the session keepalive rolls the 90-day cookie for a tab
-                  that never navigates — staff screens only, never /login or /m. */}
-              <SessionKeepalive />
-              {/* Printing Phase 5: offline orders are sent by themselves once the server answers (one tab per device). */}
-              <OfflineReplayRunner />
-              {/* The screen lock: a cover over this running page (never a sign-out, so printing, the pulse, the alarm
-                  and realtime go on under it). Inside the master-data provider, so it reads the seeded settings. */}
-              <ScreenLock />
-              <AppSidebar />
-              <SidebarInset>
-                {/* U0 Task 3: the page header's slot. Every page's PageHeader fills the one header (its title,
-                    subtitle and, from 720px, its actions), so the provider wraps the header and the page. */}
-                <PageHeaderSlotProvider>
-                  <Header />
-                  <RequestAlertBar />
-                  <TouchFeel />
-                  {/* The HTML's global rules (values 1.4, ruling R24) for every staff page, its lock and its dialogs. */}
-                  <HtmlRulesScope />
-                  {/* Below 720px the page's foot keeps 92px clear (values 2.1 screenPadB): the 59px tab bar plus air.
-                      No page fade on a screen change (owner D1, 2026-11-02). */}
-                  <main className="flex-1 p-4 pb-[92px] tab:pb-4 md:p-6">
-                    {children}
-                  </main>
-                  <PrintHostPrintSources />
-                </PageHeaderSlotProvider>
-              </SidebarInset>
-              {/* The phone's nav (values 2.6, U0 Task 4): the tab bar and its More sheet, fixed, below 720px only. */}
-              <TabBar />
+              {/* P2 N2: the session is read on the device (the frame is static). Everything below waits for it behind
+                  the same placeholder, so no shell, nav, guard or settings-reading part runs on a late session. */}
+              <DeviceSessionGate>
+                {/* The tab title and icon, from the settings this provider seeds (the frame itself is static). */}
+                <DocumentBranding />
+                {/* CB-U1: the session keepalive rolls the 90-day cookie for a tab
+                    that never navigates — staff screens only, never /login or /m. */}
+                <SessionKeepalive />
+                {/* Printing Phase 5: offline orders are sent by themselves once the server answers (one tab per device). */}
+                <OfflineReplayRunner />
+                {/* P2 N4: a newer build loads at a quiet moment, never mid-sale (a local check while one waits, no
+                    request); a plain browser with alerts on gets the header's chip instead. */}
+                <UpdateWhenQuiet />
+                {/* The screen lock: a cover over this running page (never a sign-out, so printing, the pulse, the alarm
+                    and realtime go on under it). Inside the master-data provider, so it reads the seeded settings. */}
+                <ScreenLock />
+                <AppSidebar />
+                <SidebarInset>
+                  {/* U0 Task 3: the page header's slot. Every page's PageHeader fills the one header (its title,
+                      subtitle and, from 720px, its actions), so the provider wraps the header and the page. */}
+                  <PageHeaderSlotProvider>
+                    <Header />
+                    <RequestAlertBar />
+                    <TouchFeel />
+                    {/* The HTML's global rules (values 1.4, ruling R24) for every staff page, its lock and its dialogs. */}
+                    <HtmlRulesScope />
+                    {/* Below 720px the page's foot keeps 92px clear (values 2.1 screenPadB): the 59px tab bar plus air.
+                        No page fade on a screen change (owner D1, 2026-11-02). P2 N1: a tap shows the target screen's
+                        skeleton here in the same frame, over the page (hidden, still mounted); this replaced the old
+                        route-level loading.tsx, which held a finished screen behind React's reveal throttle. */}
+                    <main className="flex-1 p-4 pb-[92px] tab:pb-4 md:p-6">
+                      <NavProgressView>{children}</NavProgressView>
+                    </main>
+                    <PrintHostPrintSources />
+                  </PageHeaderSlotProvider>
+                </SidebarInset>
+                {/* The phone's nav (values 2.6, U0 Task 4): the tab bar and its More sheet, fixed, below 720px only. */}
+                <TabBar />
+              </DeviceSessionGate>
             </MasterDataProvider>
           </PrintHostProvider>
         </PosPulseProvider>

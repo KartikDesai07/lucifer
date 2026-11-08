@@ -7,11 +7,11 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
-  type ReactNode,
-  type SyntheticEvent,
+  type ReactNode, type SyntheticEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
+import { navigateTo } from "@/lib/navigate";
 import { useSession } from "next-auth/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -229,7 +229,7 @@ export function ScreenLock() {
       }
       // F4: the router cache is keyed by URL, not person — drop every cached shell of the last person's session.
       router.refresh();
-      if (plan.redirectHome) router.replace("/");
+      if (plan.redirectHome) navigateTo(router, "/", { replace: true });
       if (plan.toast) toast.success(plan.toast);
     }
     void rememberThisDevice();

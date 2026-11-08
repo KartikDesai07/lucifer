@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import dynamic from "next/dynamic";
-import Link from "next/link";
+import { AppLink, closeOnPlainClick } from "@/components/layout/AppLink";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useReactToPrint } from "react-to-print";
 import { Ticket } from "lucide-react";
@@ -394,18 +394,17 @@ export function OrderDetailSheet({
         {foot && (
           <div data-ui="order-detail-foot" className={detailFootClass(editTable !== null)}>
             {editTable !== null && (
-              <Link
-                href="/pos"
-                prefetch={false}
-                data-ui="order-detail-edit"
+              <AppLink
+                href="/pos" data-ui="order-detail-edit"
                 onClick={(e) => {
                   if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) offerPosTable(editTable, Date.now());
+                  closeOnPlainClick(e, frame === "column" ? undefined : () => onOpenChange(false)); // R34: the sheet never covers the skeleton
                 }}
                 className={cn(ORDER_EDIT_ITEMS_CLASS, BRAND_PRESS_CLASS)}
               >
                 <Glyph path={QUICK_PATHS.pencil} size={16} stroke={1.9} />
                 Edit items
-              </Link>
+              </AppLink>
             )}
             <button type="button" data-ui="order-detail-settle" onClick={openSettle} className={cn(ORDER_SETTLE_CLASS, BRAND_PRESS_CLASS)}>
               {foot.settleLabel}

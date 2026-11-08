@@ -7,7 +7,9 @@ import { clearMastersBlob } from "@/lib/masters-blob";
 
 /**
  * Client-side access to the current session + role helpers.
- * Requires <SessionProvider> above it (wired in app/layout.tsx).
+ * Requires <SessionProvider> above it: the dashboard's DeviceSessionGate, which mounts it only once the session read
+ * on the device is known, so the status starts "authenticated" (isLoading is true only while next-auth's own
+ * update() runs, e.g. the lock screen's password sign-in).
  */
 export function useAuth() {
   const { data: session, status } = useSession();

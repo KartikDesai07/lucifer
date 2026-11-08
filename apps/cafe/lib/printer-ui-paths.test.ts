@@ -411,7 +411,7 @@ const CASES: PinCase[] = [
     mut("the sub-line dropped", "{printerSubOf(printer)}", ""),
   ] },
   // Phase 3 Session 3D: the battery checklist only on an app that has one. PX-3 Task 10 (on purpose): More's rows replace More options.
-  { file: F.more, pin: pinNeedles(['nativeRequest("app.changeUrl")', "moreRowsOf({", "{MORE_ROW_WORDS[row]}", "usePrintCapabilities()", 'const battery = native && nativeHasFeature("battery");', 'nativeRequest("app.battery")', "question={stopQuestionOf(false)}", 'onClose?.();\n      router.push("/printers");']), mutations: [
+  { file: F.more, pin: pinNeedles(['nativeRequest("app.changeUrl")', "moreRowsOf({", "{MORE_ROW_WORDS[row]}", "usePrintCapabilities()", 'const battery = native && nativeHasFeature("battery");', 'nativeRequest("app.battery")', "question={stopQuestionOf(false)}", 'onClose?.();\n      navigateTo(router, "/printers");']), mutations: [
     mut("change-address renamed", 'nativeRequest("app.changeUrl")', 'nativeRequest("app.changeAddress")'),
     mut("rows not from moreRowsOf", "moreRowsOf({", "allRowsOf({"),
     mut("battery shown on every app", 'native && nativeHasFeature("battery")', "native"),

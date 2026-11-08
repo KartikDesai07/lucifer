@@ -231,7 +231,7 @@ test("FloorStates: the skeleton in the floor grid; the one role read in FloorEmp
   const empty = bodyAfter(src, "export function FloorEmptyState()");
   assert.ok(empty.includes("const { isAdmin, isLoading: authLoading } = useAuth();"), "today's role read and its wait");
   assert.ok(empty.includes("if (authLoading) return <FloorSkeleton />;"), "the skeleton while the session loads");
-  assert.ok(empty.includes("href={TABLES_SETUP_PATH} prefetch={false}"), "Open Setup goes where it did, unprefetched");
+  assert.ok(empty.includes("href={TABLES_SETUP_PATH}"), "Open Setup goes where it did (AppLink never prefetches: lib/app-link-paths.test.ts)");
   const filtered = bodyAfter(src, "export function FloorFilterEmpty({ onShowAll }: { onShowAll: () => void })");
   assert.ok(filtered.includes("{FLOOR_EMPTY_FILTER_TEXT}") && filtered.includes("onClick={onShowAll}"), "the HTML's line and our reset");
 });

@@ -18,6 +18,7 @@ import { ORDER_REQUEST_KEYS } from "@/hooks/use-order-requests";
 import { ORDER_KEYS } from "@/hooks/use-orders";
 import { TABLE_KEYS } from "@/hooks/use-tables";
 import { readDevicePrefs } from "@/lib/pos-device-prefs";
+import { TITLE_PREFIX_RE } from "@/lib/document-branding";
 import { playAlertPing, isAlertSoundUnlocked, unlockAlertSound } from "@/lib/alert-sound";
 import { pulseArrival, ALERT_REPEAT_MS, type PosPulseData } from "@pos/shared/self-order-alert";
 import type { PrintJobFeedRow } from "@pos/shared/print-job";
@@ -31,12 +32,6 @@ import {
   type PrintReadbackEntry,
   type PrintReadbackRecord,
 } from "@/lib/print-readback";
-
-// The document.title prefix this provider stamps on ("(3) " ahead of the
-// page's own base title) — stripped back off before re-deriving `base` each
-// tick so the prefix is idempotent across repeat ticks and tolerant of Next
-// resetting document.title on a route change (the next tick just re-prefixes).
-const TITLE_PREFIX_RE = /^\(\d+\)\s/;
 
 type KotPrintHandler = (requestId: string) => void;
 

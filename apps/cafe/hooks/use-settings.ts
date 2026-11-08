@@ -1,7 +1,6 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { apiGet, apiSend } from "@/lib/api-client";
 import { STALE_TIMES, GC_TIMES } from "@/lib/query";
@@ -46,7 +45,6 @@ export async function commitSettings(qc: QueryClient, saved: Settings): Promise<
 
 export function useUpdateSettings() {
   const qc = useQueryClient();
-  const router = useRouter();
   return useMutation({
     mutationFn: (data: UpdateSettingsInput) =>
       apiSend<Settings>("/api/settings", "PUT", data),
@@ -54,9 +52,6 @@ export function useUpdateSettings() {
       // A commit cancelled by a newer read is harmless: that read is newer.
       await commitSettings(qc, saved).catch(() => undefined);
       toast.success("Settings saved");
-      // The dashboard layout's tab title is server-rendered from Settings —
-      // refresh so a renamed restaurant/logo shows up without a full reload.
-      router.refresh();
     },
     onError: (err: Error) => {
       toast.error(err.message || "Could not save settings");

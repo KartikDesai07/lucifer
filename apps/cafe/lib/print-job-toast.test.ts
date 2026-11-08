@@ -151,8 +151,13 @@ test("PIN: the bridge maps a job slip's toast", () => {
 
 test("PIN: the agent drops a printed slip from the cached feed", () => {
   const agent = src("apps/cafe/hooks/use-print-agent.ts");
-  const ack = agent.slice(agent.indexOf("ack: (id, body) =>"), agent.indexOf("print,", agent.indexOf("ack: (id, body) =>")));
-  assert.ok(ack.includes(".then((answer) => dropPrintedFromPulse(qc, id, body, answer)),"), "inside the ack dep: every answer passes through it, no request");
+  // P2 N4 (deliberate move, R53): the ack dep is wrapped in trackPrintBusy(...), and the print dep that ends the slice
+  // is now `print: (job) =>`; the slice must end there (a missing end would widen it to the whole file).
+  const ackAt = agent.indexOf("ack: (id, body) =>");
+  const ackEnd = agent.indexOf("print: (job) =>", ackAt);
+  assert.ok(ackAt >= 0 && ackEnd > ackAt, "the ack dep and the print dep after it are both found");
+  const ack = agent.slice(ackAt, ackEnd);
+  assert.ok(ack.includes(".then((answer) => dropPrintedFromPulse(qc, id, body, answer))),"), "inside the ack dep: every answer passes through it, no request");
   assert.ok(src("apps/cafe/lib/print-pulse-edit.ts").includes('if (body.outcome === "printed" && answer.applied && answer.status === "printed")'), "only an applied printed ack edits the cache");
 });
 

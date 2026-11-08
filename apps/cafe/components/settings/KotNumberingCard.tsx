@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { Controller } from "react-hook-form";
 import type { Control, FieldErrors, UseFormRegister, UseFormSetValue, UseFormWatch } from "react-hook-form";
 
@@ -21,9 +21,9 @@ function RestartNote({ lead }: { lead: string }) {
   return (
     <>
       {lead} It starts again every day at the restart time.{" "}
-      <Link href={settingsSectionPath("tokens")} className={HINT_LINK_CLASS}>
+      <AppLink href={settingsSectionPath("tokens")} className={HINT_LINK_CLASS}>
         Change the restart time
-      </Link>
+      </AppLink>
     </>
   );
 }

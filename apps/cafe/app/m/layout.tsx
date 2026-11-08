@@ -1,15 +1,26 @@
+import type { Metadata } from "next";
+import { readPublicMetadata } from "@/lib/public-metadata";
 import { readPublicAppearance } from "@/lib/public-appearance";
 import { FONT_PAIR_CLASSNAMES, FONT_PAIR_FAMILIES } from "@/lib/public-fonts";
 import { appearanceScopedCss } from "@pos/shared/appearance";
 import { appearanceOverrideCss, DINER_THEME_SCRIPT } from "@pos/shared/appearance-theme-override";
 
+// The tab title and icon for the diner pages (the root layout is static now and carries only the generic ones).
+export async function generateMetadata(): Promise<Metadata> {
+  return readPublicMetadata();
+}
+
+// Per request, never prerendered: the diner theme comes from Settings and nothing else makes /m dynamic now that the
+// root layout is static, so without this the build would freeze the theme and read the database at build time.
+export const dynamic = "force-dynamic";
+
 // CR2.4 S3 — server-renders the diner theme for every /m route, killing the
 // flash-of-default-theme a client-only theme switch would show on every scan.
 //
-// No `export const revalidate` here (A3 — ISR was the original plan, but the
-// ROOT layout does `await auth()`, a Dynamic API with no PPR, which makes
-// EVERY /m render dynamic regardless of what this layout exports; a
-// revalidate export here would be dead config). The actual freshness bound is
+// No `export const revalidate` here (A3 — ISR was the original plan, dropped
+// because /m renders per request). The root layout is static now (P2 N2), so
+// the `dynamic` export above is what keeps /m dynamic, and the build's route
+// list is where it shows. The freshness bound this layout relies on is
 // lib/settings.ts's TTL.SETTINGS cache (~45s) that readPublicAppearance reads
 // through — same class of bound the public menu route already accepts.
 export default async function PublicMenuLayout({

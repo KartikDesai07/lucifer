@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { usePathname } from "next/navigation";
 import { ChevronRight, Inbox, Users, PartyPopper, UserCog, Armchair, Printer, Tv, Wallet } from "lucide-react";
 
@@ -208,10 +208,10 @@ export function AppSidebar() {
     .flatMap((section) => section.items.map((item) => item.url));
   useWarmRoutes(warmHrefs);
 
-  // No nav Link prefetches on its own: a warm row's ONLY warmer is the
-  // hook above, which waits for a working line. A Link prefetch fires on sight
-  // and on hover — on a line still waking up it can fail, and a failed
-  // prefetch turns the next click on that row into a full page load.
+  // No nav row prefetches on sight (AppLink forces prefetch={false}): a warm
+  // row's warmers are the hook above and a touch (use-intent-prefetch), both of
+  // which wait for a working line — a prefetch that fails on a line still waking
+  // up turns the next click on that row into a full page load.
   const renderItem = (item: NavItemDef) => {
     switch (item.url) {
       case "/settings":
@@ -247,16 +247,15 @@ export function AppSidebar() {
     const active = item.exact ? pathname === item.url : isActivePath(pathname, item.url);
     return (
       <NavItem key={item.url} isActive={active}>
-        <Link
+        <AppLink
           href={item.url}
-          prefetch={false}
           title={item.title}
           aria-current={active ? "page" : undefined}
         >
           <NavRowContent icon={item.icon} title={item.title} railTitle={item.railTitle}>
             {item.url === "/requests" && <RequestCountBadge />}
           </NavRowContent>
-        </Link>
+        </AppLink>
       </NavItem>
     );
   };

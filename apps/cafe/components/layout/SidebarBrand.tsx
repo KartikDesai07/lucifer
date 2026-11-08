@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 
 import { VENDOR_PRODUCT_NAME } from "@/lib/constants";
 import { BrandTile } from "@/components/layout/BrandTile";
@@ -22,9 +22,8 @@ interface SidebarBrandProps {
 
 export function SidebarBrand({ brandName, logoUrl }: SidebarBrandProps) {
   return (
-    <Link
+    <AppLink
       href="/"
-      prefetch={false}
       title={brandName}
       aria-label={`${brandName}, go to Dashboard`}
       data-ui="nav-brand"
@@ -40,6 +39,6 @@ export function SidebarBrand({ brandName, logoUrl }: SidebarBrandProps) {
         </span>
         <NavDeviceLine lead={VENDOR_PRODUCT_NAME} dataUi="nav-brand-line" className="truncate text-[12px] text-nav-t2" />
       </span>
-    </Link>
+    </AppLink>
   );
 }

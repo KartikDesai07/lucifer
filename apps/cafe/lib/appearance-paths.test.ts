@@ -52,7 +52,7 @@ const FIXTURE_FAMILIES = { body: "Inter, sans-serif", display: "Playfair Display
 
 // ── P1 (A1/A3) — layout.tsx's data source, and no dead ISR config ──────────
 
-test('PIN (A3): app/m/layout.tsx reads the theme via readPublicAppearance, never getSettings, exports NO `revalidate` (ISR premise is FALSE — the root layout\'s await auth() makes every /m render dynamic; the real freshness bound is readSettings\' TTL.SETTINGS cache), and stays a server component', () => {
+test('PIN (A3): app/m/layout.tsx reads the theme via readPublicAppearance, never getSettings, exports NO `revalidate` (ISR premise is FALSE — /m\'s own `dynamic = "force-dynamic"` export makes every /m render per request; the real freshness bound is readSettings\' TTL.SETTINGS cache), and stays a server component', () => {
   const src = stripComments(readSrc(M_LAYOUT));
   assert.match(
     src,
@@ -60,13 +60,20 @@ test('PIN (A3): app/m/layout.tsx reads the theme via readPublicAppearance, never
     "layout.tsx must read the theme through readPublicAppearance",
   );
   assert.ok(!/\bgetSettings\b/.test(src), "layout.tsx must never call the upserting getSettings — it renders on every /m visit");
+  // The old premise (the root layout's await auth() made every /m render
+  // dynamic) is gone: the root layout is static now (P2 N2). /m's own export is
+  // what keeps it per request; without it the build prerenders the diner theme.
+  assert.match(
+    src,
+    /export const dynamic = "force-dynamic";/,
+    "app/m/layout.tsx must export dynamic = \"force-dynamic\": the root layout no longer makes /m dynamic, so a build would freeze the diner theme",
+  );
   // Mutation this catches: re-adding `export const revalidate = 60` (the
   // ORIGINAL S3 plan, deleted by A3) — dead config that would wrongly imply
-  // ISR governs freshness here, when the root layout's Dynamic API already
-  // forces every /m render to be dynamic regardless of this export.
+  // ISR governs freshness here, when /m renders per request.
   assert.ok(
     !/export const revalidate/.test(src),
-    "app/m/layout.tsx must not export `revalidate` — A3 proved the ISR premise false; re-adding it would be dead config that misleads the next reader",
+    "app/m/layout.tsx must not export `revalidate` — /m renders per request; re-adding it would be dead config that misleads the next reader",
   );
   assert.ok(
     !/["']use client["']/.test(src),

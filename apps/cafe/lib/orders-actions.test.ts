@@ -214,9 +214,9 @@ test("OrderDetailSheet: 'Cancel this order' only when the page gives the cancel 
   assert.ok(src.indexOf('<div data-ui="order-detail-scroll"') < at && scrollEnd > at, "inside the body (it scrolls with it)");
 });
 
-test("OrderDetailSheet: the foot under the body — Edit items (a Link to /pos, no prefetch, its plain click hands the table over: offerPosTable) only for an open tab at a table, then Settle & pay → openSettle; none when settled or cancelled", () => {
+test("OrderDetailSheet: the foot under the body — Edit items (an AppLink to /pos, never prefetching on sight, its plain click hands the table over: offerPosTable) only for an open tab at a table, then Settle & pay → openSettle; none when settled or cancelled", () => {
   const src = read(SHEET);
-  assert.match(src, /import Link from "next\/link";/, "next/link");
+  assert.match(src, /import \{ AppLink, closeOnPlainClick \} from "@\/components\/layout\/AppLink";/, "AppLink, and the sheet's close on a plain click (R34)");
   assert.match(src, /import \{ offerPosTable \} from "@\/lib\/pos-table-handoff";/, "the Floor's hand-off (no new request)");
   assert.match(src, /const foot = order \? detailFoot\(order\) : null;/, "the live order's foot");
   assert.match(src, /const editTable = foot\?\.editTable \?\? null;/, "the table Edit items hands over");
@@ -224,8 +224,8 @@ test("OrderDetailSheet: the foot under the body — Edit items (a Link to /pos, 
   assert.ok(at > src.indexOf("Cancel this order") && at < src.indexOf("pointer-events-none absolute left-[-9999px]"), "after the scrolling body, before the print sources");
   const foot = src.slice(at, src.indexOf("pointer-events-none absolute left-[-9999px]"));
   assert.match(foot, /<div data-ui="order-detail-foot" className=\{detailFootClass\(editTable !== null\)\}>/, "values 11.9 columns");
-  assert.match(foot, /\{editTable !== null && \(\s*<Link\s+href="\/pos"\s+prefetch=\{false\}/, "Edit items only for a tab at a table: a plain /pos link (the warm prefetch, no ?table=)");
-  assert.match(foot, /onClick=\{\(e\) => \{\s*if \(e\.button === 0 && !e\.metaKey && !e\.ctrlKey && !e\.shiftKey && !e\.altKey\) offerPosTable\(editTable, Date\.now\(\)\);\s*\}\}/, "a plain click hands the table over (a new-tab click opens a plain New Order, as the Floor's tile)");
+  assert.match(foot, /\{editTable !== null && \(\s*<AppLink\s+href="\/pos"/, "Edit items only for a tab at a table: a plain /pos link (the warm prefetch, no ?table=)");
+  assert.match(foot, /onClick=\{\(e\) => \{\s*if \(e\.button === 0 && !e\.metaKey && !e\.ctrlKey && !e\.shiftKey && !e\.altKey\) offerPosTable\(editTable, Date\.now\(\)\);\s*closeOnPlainClick\(e, frame === "column" \? undefined : \(\) => onOpenChange\(false\)\);\s*\}\}/, "a plain click hands the table over (a new-tab click opens a plain New Order, as the Floor's tile), then closes the sheet (R34)");
   assert.match(foot, /<Glyph path=\{QUICK_PATHS\.pencil\} size=\{16\} stroke=\{1\.9\} \/>\s*Edit items/, "the pencil, the HTML's words");
   assert.match(foot, /<button type="button" data-ui="order-detail-settle" onClick=\{openSettle\} className=\{cn\(ORDER_SETTLE_CLASS, BRAND_PRESS_CLASS\)\}>\s*\{foot\.settleLabel\}\s*<\/button>/, "Settle & pay · ₹x = today's Settle & Pay (the same latch)");
   assert.match(src, /className=\{cn\(ORDER_DETAIL_SCROLL_CLASS, foot && ORDER_DETAIL_SCROLL_OVER_FOOT_CLASS\)\}/, "with a foot the body's bottom room is 18px (the foot takes the inset)");

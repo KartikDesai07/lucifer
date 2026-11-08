@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type MouseEvent, type ReactNode } from "react";
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { Clock, Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -216,9 +216,8 @@ export function FloorTile({ tile, busy, tabsFailed, riseIndex, riseElapsedMs, on
   switch (kind) {
     case "link":
       surface = (
-        <Link
+        <AppLink
           href={FLOOR_POS_PATH}
-          prefetch={false}
           onClick={(e) => offerOnPlainClick(e, table.tableNo)}
           aria-label={view.accessibleName}
           data-ui="floor-tile"
@@ -226,7 +225,7 @@ export function FloorTile({ tile, busy, tabsFailed, riseIndex, riseElapsedMs, on
           className={cn(className, FLOOR_TILE_PRESS_CLASS)}
         >
           {content}
-        </Link>
+        </AppLink>
       );
       break;
     case "button":

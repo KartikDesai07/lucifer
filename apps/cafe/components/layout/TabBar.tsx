@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { usePathname } from "next/navigation";
 import type { StaffRole } from "@pos/shared/constants";
 
@@ -50,10 +50,10 @@ export function isMoreActive(pathname: string, more: readonly MoreItem[]): boole
   return !TAB_BAR_ITEMS.some((tab) => isTabActive(tab, pathname)) && more.some((item) => isMoreItemActive(item, pathname));
 }
 
-// A tab: 56px, the 22px glyph 3px over an 11px/500 label; --text-2, the accent on the current page. The HTML's tab
-// is a button with the browser's own 1px 6px padding (it sets none), kept here.
+// A tab: 56px, the 22px glyph 3px over an 11px/500 label; --text-2, the accent on the current page (and on a page
+// opening, P2 N1). The HTML's tab is a button with the browser's own 1px 6px padding (it sets none), kept here.
 const TAB_CLASS = cn(
-  "flex h-14 min-w-0 flex-col items-center justify-center gap-[3px] px-1.5 py-px text-[11px] font-medium text-muted-foreground data-[active=true]:text-primary",
+  "flex h-14 min-w-0 flex-col items-center justify-center gap-[3px] px-1.5 py-px text-[11px] font-medium text-muted-foreground data-[active=true]:text-primary data-[opening=true]:text-primary",
   BRAND_PRESS_CLASS,
 );
 
@@ -76,10 +76,9 @@ export function TabBarNav({ pathname, moreActive, moreOpen, onMore }: TabBarNavP
         const active = isTabActive(tab, pathname);
         const Icon = tab.icon;
         return (
-          <Link
+          <AppLink
             key={tab.url}
             href={tab.url}
-            prefetch={false}
             data-ui="tab"
             data-active={active}
             aria-current={active ? "page" : undefined}
@@ -87,7 +86,7 @@ export function TabBarNav({ pathname, moreActive, moreOpen, onMore }: TabBarNavP
           >
             <Icon aria-hidden="true" strokeWidth={1.7} className="size-[22px] flex-none" />
             <span>{tab.title}</span>
-          </Link>
+          </AppLink>
         );
       })}
       <button

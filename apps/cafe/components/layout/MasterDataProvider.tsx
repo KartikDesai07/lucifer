@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api-client";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   MASTERS_HOLD_MAX_MS,
@@ -171,13 +172,37 @@ export function MasterDataProvider({ children }: { children: React.ReactNode }) 
     !holdExpired;
 
   if (!mounted || holding) {
-    return (
-      <div className="flex min-h-screen supports-[height:1dvh]:min-h-dvh items-center justify-center p-6">
-        <span className="sr-only">Loading</span>
-        <Skeleton className="h-24 w-full max-w-sm" />
-      </div>
-    );
+    return <ShellPlaceholder />;
   }
 
   return <>{children}</>;
+}
+
+/**
+ * The staff shell's placeholder, shared by this provider and the session gate inside it (DeviceSessionGate) so the
+ * hand-over between them never changes what is on screen. Plain: a skeleton and a screen-reader "Loading". With a
+ * message: the words, visible, and with onRetry a Retry button (a 44px touch target).
+ */
+export function ShellPlaceholder({ message, onRetry }: { message?: string; onRetry?: () => void }) {
+  return (
+    <div className="flex min-h-screen supports-[height:1dvh]:min-h-dvh items-center justify-center p-6">
+      {message === undefined ? (
+        <>
+          <span className="sr-only">Loading</span>
+          <Skeleton className="h-24 w-full max-w-sm" />
+        </>
+      ) : (
+        <div className="flex flex-col items-center gap-3 text-center">
+          <p role="status" className="text-sm text-muted-foreground">
+            {message}
+          </p>
+          {onRetry && (
+            <Button type="button" variant="outline" className="h-11 px-6" onClick={onRetry}>
+              Retry
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }

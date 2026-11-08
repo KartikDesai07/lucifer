@@ -1,7 +1,7 @@
 "use client";
 
 import type { MouseEvent } from "react";
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { Check, Undo2, X } from "lucide-react";
 
 import { FLOOR_POS_PATH } from "@/lib/floor-tiles";
@@ -55,9 +55,9 @@ export function RowPrimary({ r, action, selected, busy, ui, onAction }: PrimaryP
     const tableNo = r.tableNo;
     if (!tableNo) return null;
     return (
-      <Link href={FLOOR_POS_PATH} prefetch={false} data-ui={`${ui}-primary`} onClick={(e) => offerOnPlainClick(e, tableNo)} className={className}>
+      <AppLink href={FLOOR_POS_PATH} data-ui={`${ui}-primary`} onClick={(e) => offerOnPlainClick(e, tableNo)} className={className}>
         {PRIMARY_WORD[action]}
-      </Link>
+      </AppLink>
     );
   }
   return (

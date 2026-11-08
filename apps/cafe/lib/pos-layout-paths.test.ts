@@ -721,7 +721,7 @@ test("PIN: only the dashboard layout opts into resizes-content — the public ro
   assert.ok(!rootSrc.includes("export const viewport"), "app/layout.tsx (root) must NOT export a viewport");
   assert.ok(!rootSrc.includes("generateViewport"), "app/layout.tsx (root) must not define generateViewport either");
   assert.ok(!rootSrc.includes("interactiveWidget"), "app/layout.tsx (root) must not mention interactiveWidget anywhere");
-  assert.match(rootSrc, /export async function generateMetadata\(/, "landmark: app/layout.tsx must still export generateMetadata");
+  assert.match(rootSrc, /export const metadata:\s*Metadata\s*=/, "landmark: app/layout.tsx exports its static metadata object (P2 N2: no generateMetadata, the root reads no Settings)");
 });
 
 test("PIN: app/layout.tsx's <body> is a vh base with a supports-dvh override (min-h-screen supports-[height:1dvh]:min-h-dvh) — CB-1c round 2 reverted round 1's percent-height-chain h-full body", () => {
@@ -737,7 +737,7 @@ test("PIN: app/layout.tsx's <body> is a vh base with a supports-dvh override (mi
     !bodyMatch![0].includes("h-full"),
     `app/layout.tsx's <body> must not carry round 1's h-full — that needed a percent-height chain the shell no longer has, got "${bodyMatch![0]}"`,
   );
-  assert.match(src, /export async function generateMetadata\(/, "landmark: app/layout.tsx must still export generateMetadata");
+  assert.match(src, /export const metadata:\s*Metadata\s*=/, "landmark: app/layout.tsx exports its static metadata object (P2 N2: no generateMetadata, the root reads no Settings)");
   assert.match(src, /<body\b/, "landmark: app/layout.tsx must still render <body");
 });
 
@@ -1233,7 +1233,7 @@ test("PIN: app/m/layout.tsx never mounts the touch-feel scope — the diner flow
 
   const rootSrc = readSrc(ROOT_LAYOUT);
   assert.ok(!rootSrc.includes(component), `app/layout.tsx (root) must not reference ${component} anywhere — it owns the <html> above /m, so mounting the publisher there would leak data-pos-touch into the diner flow`);
-  assert.match(rootSrc, /export async function generateMetadata\(/, "landmark: app/layout.tsx must still export generateMetadata");
+  assert.match(rootSrc, /export const metadata:\s*Metadata\s*=/, "landmark: app/layout.tsx exports its static metadata object (P2 N2: no generateMetadata, the root reads no Settings)");
 });
 
 // CB-1d.1b (owner device pass 2026-09-04, phone): the pane is a grid item, and

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
+import { AppLink } from "@/components/layout/AppLink";
 import { ArrowRight, RotateCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -156,7 +156,7 @@ export function DashCardHeader({
         )}
       </div>
       {link && (
-        <Link href={link.href} data-ui={ui("dash-card-link")} className={look.link}>
+        <AppLink href={link.href} data-ui={ui("dash-card-link")} className={look.link}>
           {variant === "dashboard" ? (
             `${link.label} →`
           ) : (
@@ -165,7 +165,7 @@ export function DashCardHeader({
               <ArrowRight className="h-3.5 w-3.5" aria-hidden />
             </>
           )}
-        </Link>
+        </AppLink>
       )}
       {aside}
     </header>
