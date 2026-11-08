@@ -14,7 +14,7 @@ import { PRODUCT_KEYS } from "@/hooks/use-products";
 import { apiGet, apiSend } from "@/lib/api-client";
 import { isDesktopShell } from "@/lib/desktop-shell";
 import { deliverLeasedJob, kickPrintAgent } from "@/lib/print-agent";
-import { printAgentHeaders } from "@/lib/print-agent-calls";
+import { printAgentHeaders, printRequestOptions } from "@/lib/print-agent-calls";
 import type { PrinterBody } from "@/lib/print-printer-schemas";
 import { testPrintSentText, type PrinterRowTone } from "@/lib/print-setup-text";
 import { readDeviceId } from "@/lib/pos-device-id";
@@ -89,7 +89,7 @@ export function useDeletePrinter() {
  *  answer carries the slip leased to it and it prints at once; otherwise its printing device hears of it. */
 export function useTestPrinter() {
   return useMutation({
-    mutationFn: (id: string) => apiSend<PrintJobRef>(`/api/printers/${encodeURIComponent(id)}/test`, "POST", {}, { headers: printAgentHeaders(readDeviceId()) }),
+    mutationFn: (id: string) => apiSend<PrintJobRef>(`/api/printers/${encodeURIComponent(id)}/test`, "POST", {}, printRequestOptions(printAgentHeaders(readDeviceId()))),
     onMutate: (variables) => throwIfOffline(variables),
     onSuccess: (ref: PrintJobRef) => {
       if (ref.leased !== undefined) deliverLeasedJob(ref.leased);

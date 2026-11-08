@@ -59,7 +59,7 @@ test("PIN (R1): the order requests send the opt-in through apiSend's headers; on
   assert.ok(src("apps/cafe/hooks/use-self-order-auto-print.ts").includes('`/api/order-requests/${requestId}/kot-claim`, "POST", undefined, printAgentRequestOptions())'), "a self-order claim: its KOT (R4)");
   const api = src("packages/shared/src/api-client.ts");
   assert.ok(api.includes('headers: { ...options.headers, "Content-Type": "application/json" },'), "apiSend keeps its JSON content type whatever a caller adds");
-  assert.ok(api.includes("options: { headers?: Record<string, string> } = {},"), "optional and last: every existing caller (cafe and Hub) is unchanged");
+  assert.ok(api.includes("options: { headers?: Record<string, string>; track?: <R>(work: Promise<R>) => Promise<R> } = {},"), "optional and last: every existing caller (cafe and Hub) is unchanged");
 });
 
 test("PIN: every print wrapper follows the job the order's answer made, and a device with an identity never prints locally", () => {
@@ -75,7 +75,7 @@ test("PIN: every print wrapper follows the job the order's answer made, and a de
   assert.ok(seam.includes('if (agentDeviceId !== "" && result.outcome === "queued") kickPrintAgent();'), "an enqueued job is leased now, not on a poll");
   assert.ok(seam.includes('if (ref.status === "queued") kickPrintAgent(ref.printerId);'), "a ref to a resolved job is followed, never leased (M-d); a queued one kicks with its printer (the 2E gate, M-1)");
   assert.ok(seam.includes('const ref = printJobRefOf(order, "moved");'), "the moved slip is followed by ref: its key has the server's movedAt");
-  assert.ok(src("apps/cafe/hooks/use-print-host.ts").includes('({ headers, ...input }: EnqueuePrintJobInput) => apiSend<PrintJobEnqueueResult>("/api/print-jobs", "POST", input, { headers })'), "headers are never part of the enqueue body");
+  assert.ok(src("apps/cafe/hooks/use-print-host.ts").includes('({ headers, ...input }: EnqueuePrintJobInput) => apiSend<PrintJobEnqueueResult>("/api/print-jobs", "POST", input, printRequestOptions(headers))'), "headers are never part of the enqueue body");
 });
 
 test("PIN: the provider hands the drain its surfaces, and the bridge's own KOT print no longer reaches a lane", () => {
