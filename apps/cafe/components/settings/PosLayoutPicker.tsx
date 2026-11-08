@@ -4,6 +4,15 @@ import { useId } from "react";
 
 import { POS_LAYOUTS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import {
+  SETTINGS_TILE_CLASS,
+  SETTINGS_TILE_DOT_CLASS,
+  SETTINGS_TILE_OFF_CLASS,
+  SETTINGS_TILE_ON_CLASS,
+  SETTINGS_TILE_RADIO_CLASS,
+  SETTINGS_TILE_RADIO_OFF_CLASS,
+  SETTINGS_TILE_RADIO_ON_CLASS,
+} from "@/lib/settings-card-layout";
 
 type PosLayout = (typeof POS_LAYOUTS)[number];
 
@@ -81,12 +90,7 @@ export function PosLayoutPicker({
           return (
             <label
               key={option}
-              className={cn(
-                "flex cursor-pointer flex-col gap-2 rounded-[12px] border p-3 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary has-[:focus-visible]:ring-offset-1",
-                selected
-                  ? "border-primary bg-status-info-tint"
-                  : "border-border bg-card pointer-fine:hover:bg-hover",
-              )}
+              className={cn(SETTINGS_TILE_CLASS, selected ? SETTINGS_TILE_ON_CLASS : SETTINGS_TILE_OFF_CLASS)}
             >
               <input
                 type="radio"
@@ -100,12 +104,9 @@ export function PosLayoutPicker({
               <span className="flex items-center gap-2">
                 <span
                   aria-hidden="true"
-                  className={cn(
-                    "grid h-4 w-4 shrink-0 place-items-center rounded-full border",
-                    selected ? "border-primary" : "border-subtle-foreground",
-                  )}
+                  className={cn(SETTINGS_TILE_RADIO_CLASS, selected ? SETTINGS_TILE_RADIO_ON_CLASS : SETTINGS_TILE_RADIO_OFF_CLASS)}
                 >
-                  {selected && <span className="h-2 w-2 rounded-full bg-primary" />}
+                  {selected && <span className={SETTINGS_TILE_DOT_CLASS} />}
                 </span>
                 <span className="text-[13px] font-medium text-foreground">{copy.label}</span>
               </span>

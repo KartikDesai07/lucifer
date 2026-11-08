@@ -1,4 +1,5 @@
-// Settings > Business details in the new UI (docs/superpowers/plans/2026-11-06-settings-business-ui.md): the class strings
+// The settings pages in the new UI (Business details: docs/superpowers/plans/2026-11-06-settings-business-ui.md; GST &
+// taxes: 2026-11-08-settings-taxes-ui.md; QR ordering: 2026-11-08-settings-qr-ui.md): the class strings
 // the settings cards render, in one place so Tailwind's source scanner sees each one and the pins
 // (lib/settings-business-layout.test.ts) read the SAME constants. Field look = the U5 item editor's (re-exported below).
 // Tokens only; WebView 109: no color-mix(), no light-dark(), no backdrop-blur, overflow-clip for clipping.
@@ -15,13 +16,18 @@ import {
 
 // ── The page grid ───────────────────────────────────────────────────────────────────────────────────────────────────
 
-/** One column; from 1280px the form beside a 340px column that holds the Bill preview. */
-export const BUSINESS_GRID_CLASS =
+/** A settings page with a preview: one column; from 1280px the form beside a 340px column that holds the preview. */
+export const SETTINGS_PREVIEW_GRID_CLASS =
   "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start xl:gap-5";
-/** Each of the five form cards stays in column 1. */
-export const BUSINESS_MAIN_CARD_CLASS = "xl:col-start-1";
-/** The preview: sticky in column 2, spanning the five form rows (one declaration, row-start + row-span would fight). */
+/** Each form card stays in column 1. */
+export const SETTINGS_MAIN_CARD_CLASS = "xl:col-start-1";
+/** Business details' Bill preview: sticky in column 2, spanning the five form rows (one declaration, row-start +
+ *  row-span would fight). */
 export const BUSINESS_PREVIEW_CLASS = "xl:sticky xl:top-20 xl:col-start-2 xl:[grid-row:1/span_5]";
+/** GST & taxes' sample bill: the same, over its four form rows. */
+export const TAXES_PREVIEW_CLASS = "xl:sticky xl:top-20 xl:col-start-2 xl:[grid-row:1/span_4]";
+/** A settings page without a preview (QR ordering): its cards in one column at every width. */
+export const SETTINGS_STACK_CLASS = "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4";
 
 // ── The card ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -63,7 +69,33 @@ export const SETTINGS_UNIT_BOX_CLASS =
 /** A switch row: the whole row is the label, 44px tall. */
 export const SETTINGS_SWITCH_ROW_CLASS = "flex min-h-11 cursor-pointer items-center justify-between gap-3";
 
-export const SETTINGS_ADD_BUTTON_CLASS = `inline-flex h-[42px] cursor-pointer items-center gap-1.5 self-start justify-self-start rounded-[10px] border border-dashed border-subtle-foreground bg-transparent px-3.5 text-[13.5px] font-semibold text-foreground pointer-fine:hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50 ${FLOOR_FOCUS_RING_CLASS}`;
+/** A picture/example tile around a hidden radio (New order layout, How prices work); the ring follows the radio's focus. */
+export const SETTINGS_TILE_CLASS =
+  "flex cursor-pointer flex-col gap-2 rounded-[12px] border p-3 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary has-[:focus-visible]:ring-offset-1";
+export const SETTINGS_TILE_ON_CLASS = "border-primary bg-status-info-tint";
+export const SETTINGS_TILE_OFF_CLASS = "border-border bg-card pointer-fine:hover:bg-hover";
+/** The tile's drawn radio: the ring, and the dot inside it while selected. */
+export const SETTINGS_TILE_RADIO_CLASS = "grid h-4 w-4 shrink-0 place-items-center rounded-full border";
+export const SETTINGS_TILE_RADIO_ON_CLASS = "border-primary";
+export const SETTINGS_TILE_RADIO_OFF_CLASS = "border-subtle-foreground";
+export const SETTINGS_TILE_DOT_CLASS = "h-2 w-2 rounded-full bg-primary";
+
+/** A one-tap choice button (the GST rates): 42px; the selected one in the primary rule on the info tint. */
+export const SETTINGS_CHIP_CLASS = `inline-flex h-[42px] min-w-16 cursor-pointer items-center justify-center rounded-[10px] border px-3 text-[14px] font-semibold tabular-nums text-foreground ${FLOOR_FOCUS_RING_CLASS}`;
+export const SETTINGS_CHIP_ON_CLASS = "border-primary bg-status-info-tint";
+export const SETTINGS_CHIP_OFF_CLASS = "border-border bg-card pointer-fine:hover:bg-hover";
+
+/** A one-of-a-few choice (Percent off / Amount off): equal-width 42px options in a row, each a label around a hidden
+ *  radio, so the ring follows the radio's focus. Selected / at rest: the chip colours above. */
+export const SETTINGS_CHOICE_CLASS =
+  "flex h-[42px] min-w-0 flex-1 cursor-pointer items-center justify-center rounded-[10px] border px-3 text-[14px] font-semibold text-foreground transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary has-[:focus-visible]:ring-offset-1";
+
+/** One row of a repeating list (UPI slabs, promo codes, announcements), its title, and the list's no-rows-yet box. */
+export const SETTINGS_LIST_ROW_CLASS = "grid gap-3 rounded-[10px] border border-border-2 bg-surface-2 p-3";
+export const SETTINGS_LIST_ROW_TITLE_CLASS = "min-w-0 truncate text-[14px] font-semibold text-foreground";
+export const SETTINGS_LIST_EMPTY_CLASS = "rounded-[10px] border border-dashed border-border p-4 text-[13.5px] text-muted-foreground";
+
+export const SETTINGS_ADD_BUTTON_CLASS =`inline-flex h-[42px] cursor-pointer items-center gap-1.5 self-start justify-self-start rounded-[10px] border border-dashed border-subtle-foreground bg-transparent px-3.5 text-[13.5px] font-semibold text-foreground pointer-fine:hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50 ${FLOOR_FOCUS_RING_CLASS}`;
 export const SETTINGS_REMOVE_BUTTON_CLASS = `inline-flex h-[42px] cursor-pointer items-center justify-center gap-1.5 rounded-[10px] border-0 bg-transparent px-3 text-[13.5px] font-semibold text-status-bad-ink pointer-fine:hover:bg-status-bad-tint disabled:cursor-not-allowed disabled:opacity-50 ${FLOOR_FOCUS_RING_CLASS}`;
 
 // ── The card Save bar (opt-in: SettingsSaveBar look="card") ─────────────────────────────────────────────────────────

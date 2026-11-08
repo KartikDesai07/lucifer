@@ -1,6 +1,5 @@
 "use client";
 
-import { useId } from "react";
 import { Controller } from "react-hook-form";
 import type { Control, FieldErrors } from "react-hook-form";
 
@@ -13,16 +12,8 @@ import {
   type PayQrMode,
 } from "@pos/shared/print-qr";
 import type { SettingsInput } from "@/schemas";
-import {
-  SETTINGS_CELL_RIGHT_CLASS,
-  SETTINGS_LABEL_CLASS,
-  SETTINGS_NUMBER_CLASS,
-  SETTINGS_SWITCH_ROW_CLASS,
-  SETTINGS_UNIT_BOX_CLASS,
-  SETTINGS_HINT_CLASS,
-} from "@/lib/settings-card-layout";
-import { MenuSwitch } from "@/components/menu/MenuSwitch";
-import { CardField, SettingsSelect } from "@/components/settings/SettingsCard";
+import { SETTINGS_CELL_RIGHT_CLASS, SETTINGS_NUMBER_CLASS, SETTINGS_UNIT_BOX_CLASS } from "@/lib/settings-card-layout";
+import { CardField, SettingsSelect, SettingsSwitchRow } from "@/components/settings/SettingsCard";
 
 interface PayQrFieldsProps {
   control: Control<SettingsInput>;
@@ -48,7 +39,6 @@ function minutesFromInput(raw: string): number {
 // The pay QR's two owner choices (S3b, 01-PLAN Amendment A4): when a bill prints one, and how long it stays valid
 // from the bill's first print. Rendered under the UPI ID, which the QR needs, inside the "Pay QR on bills" block.
 export function PayQrFields({ control, errors }: PayQrFieldsProps) {
-  const noLimitLineId = useId();
   return (
     <>
       <CardField
@@ -105,22 +95,12 @@ export function PayQrFields({ control, errors }: PayQrFieldsProps) {
                   </div>
                 )}
               </CardField>
-              {/* The whole row is the label: a tap anywhere flips the switch (the switch alone is a small target). */}
-              <label className={SETTINGS_SWITCH_ROW_CLASS}>
-                <span className="grid gap-0.5">
-                  <span className={SETTINGS_LABEL_CLASS}>No limit</span>
-                  <span id={noLimitLineId} className={SETTINGS_HINT_CLASS}>
-                    The QR prints on every reprint, with no Valid till line.
-                  </span>
-                </span>
-                <MenuSwitch
-                  tone="accent"
-                  checked={noLimit}
-                  onCheckedChange={(on) => field.onChange(on ? PAY_QR_NO_LIMIT : PAY_QR_MINUTES_DEFAULT)}
-                  aria-label="No limit"
-                  aria-describedby={noLimitLineId}
-                />
-              </label>
+              <SettingsSwitchRow
+                label="No limit"
+                sub="The QR prints on every reprint, with no Valid till line."
+                checked={noLimit}
+                onCheckedChange={(on) => field.onChange(on ? PAY_QR_NO_LIMIT : PAY_QR_MINUTES_DEFAULT)}
+              />
             </>
           );
         }}

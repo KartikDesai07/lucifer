@@ -30,7 +30,7 @@ const BANNED_IN = [LAYOUT, CARD, UPI_CARD, SCREENS, BUSINESS, UPI_RULES, PAY_QR,
 
 test("page: root grid, then Restaurant, Contact, Bill preview, UPI payments, Screens, App branding in that DOM order", () => {
   const s = read(BUSINESS);
-  assert.ok(s.includes("className={BUSINESS_GRID_CLASS}"), "the root is the grid");
+  assert.ok(s.includes("className={SETTINGS_PREVIEW_GRID_CLASS}"), "the root is the grid");
   const order = [
     'title="Restaurant"',
     'title="Contact & licence"',
@@ -43,8 +43,8 @@ test("page: root grid, then Restaurant, Contact, Bill preview, UPI payments, Scr
     return s.indexOf(needle);
   });
   for (let i = 1; i < order.length; i++) assert.ok(order[i - 1] < order[i], `card ${i} follows card ${i - 1}`);
-  const mainUses = s.split("className={BUSINESS_MAIN_CARD_CLASS}").length - 1;
-  assert.equal(mainUses, 5, "the five form cards each take BUSINESS_MAIN_CARD_CLASS");
+  const mainUses = s.split("className={SETTINGS_MAIN_CARD_CLASS}").length - 1;
+  assert.equal(mainUses, 5, "the five form cards each take SETTINGS_MAIN_CARD_CLASS");
   assert.equal(s.split("BUSINESS_PREVIEW_CLASS").length - 1, 2, "BUSINESS_PREVIEW_CLASS: the import and the one preview card");
   assert.ok(s.includes("className={BUSINESS_PREVIEW_CLASS}"), "the preview card wears the preview class");
   assert.ok(s.includes('bodyClassName="rounded-b-[12px] bg-surface-2 p-3"'), "the preview body sits on --surface-2");
@@ -151,11 +151,14 @@ test("words and ids: the form's own text, ids and input attributes are kept", ()
     "settings-pay-qr-minutes",
     "minutesFromInput",
     "PAY_QR_NO_LIMIT",
-    'tone="accent"',
-    "SETTINGS_SWITCH_ROW_CLASS",
-    "aria-describedby={noLimitLineId}",
   ]) assert.ok(qr.includes(word), `PayQrFields keeps ${word}`);
-  assert.ok(qr.includes("<label") && qr.includes("MenuSwitch"), "the No limit row is a label around the switch");
+  // The row's label-around-switch and its described-by wiring live in SettingsSwitchRow (rendered in
+  // lib/settings-card-layout.test.ts); here, that No limit is that row and still sets the sentinel.
+  assert.match(
+    qr,
+    /<SettingsSwitchRow\s+label="No limit"\s+sub="The QR prints on every reprint, with no Valid till line\."\s+checked=\{noLimit\}\s+onCheckedChange=\{\(on\) => field\.onChange\(on \? PAY_QR_NO_LIMIT : PAY_QR_MINUTES_DEFAULT\)\}/,
+    "the No limit row is a SettingsSwitchRow that flips the No limit sentinel",
+  );
 
   const picker = read(LAYOUT_PICKER);
   for (const word of ["<fieldset>", "New order screen layout", 'type="radio"', "All items in one grid.", "By category"]) {
@@ -197,7 +200,7 @@ test("page file: Business is wide and uses the card Save bar", () => {
   assert.ok(p.includes('saveBarLook="card"'), "the page opts into the card Save bar");
 });
 
-test("scope: no other settings page passes saveBarLook", () => {
+test("scope: only Business details, GST & taxes and QR ordering pass saveBarLook", () => {
   const root = path.join(CAFE_ROOT, "app/(dashboard)/settings");
   const pages: string[] = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {
@@ -207,7 +210,8 @@ test("scope: no other settings page passes saveBarLook", () => {
   for (const rel of pages) {
     const s = stripComments(readFileSync(path.join(root, rel), "utf8"));
     const passes = s.includes("saveBarLook");
-    assert.equal(passes, rel.startsWith("business"), `${rel}: saveBarLook only on the business page`);
+    const cardPage = rel.startsWith("business") || rel.startsWith("taxes") || rel.startsWith("qr-ordering");
+    assert.equal(passes, cardPage, `${rel}: saveBarLook only on the card pages (Business, Taxes, QR ordering)`);
   }
 });
 

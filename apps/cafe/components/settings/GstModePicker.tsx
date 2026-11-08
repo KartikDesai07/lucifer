@@ -6,6 +6,15 @@ import { GST_MODES } from "@/lib/constants";
 import type { GstMode } from "@/lib/constants";
 import { sampleGstBill, SAMPLE_ITEM_PRICE } from "@/lib/gst-sample-bill";
 import { cn, inr } from "@/lib/utils";
+import {
+  SETTINGS_TILE_CLASS,
+  SETTINGS_TILE_DOT_CLASS,
+  SETTINGS_TILE_OFF_CLASS,
+  SETTINGS_TILE_ON_CLASS,
+  SETTINGS_TILE_RADIO_CLASS,
+  SETTINGS_TILE_RADIO_OFF_CLASS,
+  SETTINGS_TILE_RADIO_ON_CLASS,
+} from "@/lib/settings-card-layout";
 
 // Plain-English copy for the GST_MODES enum — never render the raw value.
 const GST_MODE_COPY: Record<GstMode, { label: string; description: string }> = {
@@ -20,11 +29,11 @@ const GST_MODE_COPY: Record<GstMode, { label: string; description: string }> = {
 };
 
 const EXAMPLE_CLASS =
-  "space-y-0.5 overflow-hidden rounded-md border border-brand-rule bg-brand-paper p-2 text-xs tabular-nums text-brand-ink";
+  "space-y-0.5 overflow-clip rounded-[8px] border border-border-2 bg-surface-2 p-2 text-xs tabular-nums text-foreground";
 
 function ExampleRow({ label, value, muted = false }: { label: string; value: string; muted?: boolean }) {
   return (
-    <div className={cn("flex justify-between gap-2", muted && "text-brand-muted")}>
+    <div className={cn("flex justify-between gap-2", muted && "text-muted-foreground")}>
       <span>{label}</span>
       <span>{value}</span>
     </div>
@@ -38,7 +47,7 @@ function ModeExample({ mode, rate }: { mode: GstMode; rate: number }) {
   if (!bill) {
     return (
       <div className={EXAMPLE_CLASS}>
-        <p className="text-brand-muted">Enter a rate to see an example.</p>
+        <p className="text-muted-foreground">Enter a rate to see an example.</p>
       </div>
     );
   }
@@ -46,11 +55,11 @@ function ModeExample({ mode, rate }: { mode: GstMode; rate: number }) {
   return (
     <div className={EXAMPLE_CLASS}>
       <ExampleRow label="Menu price" value={inr(SAMPLE_ITEM_PRICE)} />
-      {!gst.show && <p className="text-brand-muted">No GST at {rate}%</p>}
+      {!gst.show && <p className="text-muted-foreground">No GST at {rate}%</p>}
       {gst.show && gst.inclusive && (
         <>
           <ExampleRow label="Customer pays" value={inr(total)} />
-          <p className="text-brand-muted">{inr(gst.gstAmount)} GST inside</p>
+          <p className="text-muted-foreground">{inr(gst.gstAmount)} GST inside</p>
         </>
       )}
       {gst.show && !gst.inclusive && (
@@ -87,12 +96,7 @@ export function GstModePicker({
           return (
             <label
               key={option}
-              className={cn(
-                "flex cursor-pointer flex-col gap-2 rounded-lg border p-3 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-accent",
-                selected
-                  ? "border-brand-primary bg-brand-primary-soft"
-                  : "border-brand-rule bg-brand-slip hover:bg-brand-wash",
-              )}
+              className={cn(SETTINGS_TILE_CLASS, selected ? SETTINGS_TILE_ON_CLASS : SETTINGS_TILE_OFF_CLASS)}
             >
               <input
                 type="radio"
@@ -112,16 +116,13 @@ export function GstModePicker({
               <span className="flex items-center gap-2">
                 <span
                   aria-hidden="true"
-                  className={cn(
-                    "grid h-4 w-4 shrink-0 place-items-center rounded-full border",
-                    selected ? "border-brand-primary" : "border-brand-field",
-                  )}
+                  className={cn(SETTINGS_TILE_RADIO_CLASS, selected ? SETTINGS_TILE_RADIO_ON_CLASS : SETTINGS_TILE_RADIO_OFF_CLASS)}
                 >
-                  {selected && <span className="h-2 w-2 rounded-full bg-brand-primary" />}
+                  {selected && <span className={SETTINGS_TILE_DOT_CLASS} />}
                 </span>
-                <span id={`${name}-${option}-label`} className="text-[13px] font-medium text-brand-ink">{copy.label}</span>
+                <span id={`${name}-${option}-label`} className="text-[13px] font-medium text-foreground">{copy.label}</span>
               </span>
-              <span id={`${name}-${option}-description`} className="text-xs text-brand-muted">{copy.description}</span>
+              <span id={`${name}-${option}-description`} className="text-xs text-muted-foreground">{copy.description}</span>
             </label>
           );
         })}

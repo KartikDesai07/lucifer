@@ -309,3 +309,23 @@ session). The Save bar's card look is opt-in, so the other pages are unchanged.
 
 **The owner's OK:** given for the merge and push on 2026-11-06 (main b822a07); the owner deploys posdemo. Plan, checks
 and review: `docs/superpowers/plans/2026-11-06-settings-business-ui.md` Results.
+
+### `/settings/taxes` (2026-11-08)
+
+GST & taxes is now five cards: GST, How prices work, GST rate, GST number and Bill preview. From 1280 px the sample
+bill is a sticky column, and with GST off only the GST card shows. The settings card pieces are now page-neutral: the
+preview grid, `SettingsSwitchRow`, and the tile and chip looks. They serve both pages so far, and the remaining 7
+settings pages take them one per session.
+
+**The owner's OK:** given for the merge and push on 2026-11-08 (main dd9f427); the owner deploys from his admin panel.
+Plan, checks and review: `docs/superpowers/plans/2026-11-08-settings-taxes-ui.md` Results.
+
+### `/settings/qr-ordering` (2026-11-08)
+
+QR ordering is now four cards in one column (Ordering, Tables, Promo codes, Announcements). It has no preview, so it
+keeps the narrow shell, with the card Save bar. The card kit gained `SettingsChoice` (the promo Discount type) and one
+list-row look, shared by UPI slabs, promo codes and announcements. 6 settings pages remain, one per session.
+
+**The owner's OK:** the owner picked this page after checking Business and Taxes on devices (2026-11-08). Merged and
+pushed under the standing ship rule (main 01ab4a8); the owner deploys from his admin panel. Plan, checks and review:
+`docs/superpowers/plans/2026-11-08-settings-qr-ui.md` Results.

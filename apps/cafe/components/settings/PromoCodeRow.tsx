@@ -7,11 +7,17 @@ import { Trash2 } from "lucide-react";
 
 import type { SettingsInput } from "@/schemas";
 import type { PromoKind } from "@pos/shared/public";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Field, ToggleRow } from "@/components/settings/SettingsFields";
-import { PrintSizeChoice } from "@/components/settings/PrintSizeChoice";
-import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
+import {
+  SETTINGS_INPUT_CLASS,
+  SETTINGS_LIST_ROW_CLASS,
+  SETTINGS_LIST_ROW_TITLE_CLASS,
+  SETTINGS_NUMBER_CLASS,
+  SETTINGS_REMOVE_BUTTON_CLASS,
+  SETTINGS_UNIT_BOX_CLASS,
+} from "@/lib/settings-card-layout";
+import { CardField, SettingsChoice, SettingsSwitchRow } from "@/components/settings/SettingsCard";
 
 const PROMO_CODE_INPUT_MAX_LEN = 16;
 const PERCENT_MAX = 100;
@@ -96,39 +102,35 @@ export function PromoCodeRow({ control, register, errors, index, onRemove }: Pro
   const codeId = `${idBase}-code`;
   const valueId = `${idBase}-value`;
   const minId = `${idBase}-min`;
+  const codeError = rowFieldMessage(errors.promoCodes, index, "code");
+  const valueError = rowFieldMessage(errors.promoCodes, index, "value");
+  const minError = rowFieldMessage(errors.promoCodes, index, "minSubtotal");
 
   return (
-    <div className="space-y-4 rounded-md border border-brand-rule bg-brand-paper p-3 sm:p-4">
+    <div className={SETTINGS_LIST_ROW_CLASS}>
       <div className="flex items-center justify-between gap-3">
-        <h4 className="min-w-0 truncate text-sm font-semibold text-brand-ink">
-          {blank ? "New promo code" : code}
-        </h4>
-        <Button
+        <h3 className={SETTINGS_LIST_ROW_TITLE_CLASS}>{blank ? "New promo code" : code}</h3>
+        <button
           type="button"
-          variant="ghost"
-          className="h-11 shrink-0 px-3 text-brand-danger md:h-10"
+          className={cn(SETTINGS_REMOVE_BUTTON_CLASS, "shrink-0")}
           onClick={() => onRemove(code)}
           aria-label={blank ? "Remove this promo code" : `Remove promo code ${code}`}
         >
-          <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
+          <Trash2 className="size-4" aria-hidden="true" />
           Remove
-        </Button>
+        </button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field
-          label="Code"
-          htmlFor={codeId}
-          hint="3 to 16 letters or numbers"
-          error={rowFieldMessage(errors.promoCodes, index, "code")}
-        >
+      <div className="grid gap-4 sm:grid-cols-2 sm:items-start">
+        <CardField label="Code" htmlFor={codeId} hint="3 to 16 letters or numbers" error={codeError}>
           <Controller
             control={control}
             name={`promoCodes.${index}.code`}
             render={({ field }) => (
               <Input
                 id={codeId}
-                className={BRAND_CONTROL_CLASS}
+                className={SETTINGS_INPUT_CLASS}
+                aria-invalid={codeError !== undefined}
                 value={field.value}
                 onChange={(e) => field.onChange(e.target.value.toUpperCase())}
                 maxLength={PROMO_CODE_INPUT_MAX_LEN}
@@ -139,14 +141,14 @@ export function PromoCodeRow({ control, register, errors, index, onRemove }: Pro
               />
             )}
           />
-        </Field>
+        </CardField>
 
         {kindEditable ? (
           <Controller
             control={control}
             name={`promoCodes.${index}.kind`}
             render={({ field }) => (
-              <PrintSizeChoice<PromoKind>
+              <SettingsChoice<PromoKind>
                 legend="Discount type"
                 options={EDITABLE_PROMO_KINDS}
                 value={field.value ?? "percent"}
@@ -156,65 +158,66 @@ export function PromoCodeRow({ control, register, errors, index, onRemove }: Pro
             )}
           />
         ) : (
-          <Field label="Discount type" hint="Set up outside this page, so it can't be changed here.">
-            <p className="flex h-10 items-center text-sm text-brand-ink">{PROMO_KIND_LABELS[kind]}</p>
-          </Field>
+          <CardField label="Discount type" hint="Set up outside this page, so it can't be changed here.">
+            <p className="flex h-[42px] items-center text-[14.5px] text-foreground">{PROMO_KIND_LABELS[kind]}</p>
+          </CardField>
         )}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2 sm:items-start">
         {kindEditable && (
-          <Field
+          <CardField
             label={kind === "percent" ? "Discount (%)" : "Discount (₹)"}
             htmlFor={valueId}
             hint={kind === "percent" ? "1 to 100" : undefined}
-            error={rowFieldMessage(errors.promoCodes, index, "value")}
+            error={valueError}
           >
-            <Input
-              id={valueId}
-              className={BRAND_CONTROL_CLASS}
-              type="number"
-              inputMode="numeric"
-              min={0}
-              max={kind === "percent" ? PERCENT_MAX : undefined}
-              {...register(`promoCodes.${index}.value`, { valueAsNumber: true })}
-            />
-          </Field>
+            <div className={SETTINGS_UNIT_BOX_CLASS}>
+              <input
+                id={valueId}
+                className={SETTINGS_NUMBER_CLASS}
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={kind === "percent" ? PERCENT_MAX : undefined}
+                aria-invalid={valueError !== undefined}
+                {...register(`promoCodes.${index}.value`, { valueAsNumber: true })}
+              />
+            </div>
+          </CardField>
         )}
 
-        <Field
-          label="Minimum order (₹)"
-          htmlFor={minId}
-          hint="Leave blank for no minimum"
-          error={rowFieldMessage(errors.promoCodes, index, "minSubtotal")}
-        >
+        <CardField label="Minimum order (₹)" htmlFor={minId} hint="Leave blank for no minimum" error={minError}>
           <Controller
             control={control}
             name={`promoCodes.${index}.minSubtotal`}
             render={({ field }) => (
-              <Input
-                id={minId}
-                className={BRAND_CONTROL_CLASS}
-                type="number"
-                inputMode="numeric"
-                min={0}
-                value={field.value ?? ""}
-                onChange={(e) => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))}
-              />
+              <div className={SETTINGS_UNIT_BOX_CLASS}>
+                <input
+                  id={minId}
+                  className={SETTINGS_NUMBER_CLASS}
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  aria-invalid={minError !== undefined}
+                  value={field.value ?? ""}
+                  onChange={(e) => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))}
+                />
+              </div>
             )}
           />
-        </Field>
+        </CardField>
       </div>
 
       <Controller
         control={control}
         name={`promoCodes.${index}.active`}
         render={({ field }) => (
-          <ToggleRow
+          <SettingsSwitchRow
             label="Code is on"
-            description="Diners can use it now. Turn it off to pause it without deleting it."
+            sub="Diners can use it now. Turn it off to pause it without deleting it."
             checked={field.value ?? false}
-            onChange={field.onChange}
+            onCheckedChange={field.onChange}
           />
         )}
       />
@@ -223,11 +226,11 @@ export function PromoCodeRow({ control, register, errors, index, onRemove }: Pro
         control={control}
         name={`promoCodes.${index}.oncePerCustomer`}
         render={({ field }) => (
-          <ToggleRow
+          <SettingsSwitchRow
             label="One use per customer"
-            description="Each mobile number can use it on one order only."
+            sub="Each mobile number can use it on one order only."
             checked={field.value ?? false}
-            onChange={field.onChange}
+            onCheckedChange={field.onChange}
           />
         )}
       />
