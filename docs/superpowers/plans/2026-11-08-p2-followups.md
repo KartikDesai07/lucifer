@@ -134,4 +134,92 @@ the paper never changes; offline KOTs untouched; printing's safety rules hold.
 
 ## Results
 
-(The session fills this in: commits, suites, the e2e and device runs, the review chain, rulings R70+ as built.)
+Session of 2026-11-08 on `feat/p2-followups` (from main aab2a63; origin/main had not moved). Not merged, not pushed.
+The owner's first question ("a lasting chip or a reload loop after the deploy?") was answered "No", so Task 1 started.
+
+### Commits (aab2a63..e650811)
+
+| Commit | What |
+|---|---|
+| 6a7ebae | Task 1: `printHostBusySince()`, `PRINT_STUCK_MS` 30 s, `PRINT_FREE_CHECK_MS` 250 ms, `leaveWhenPrintFree(go, { ready })` |
+| 059f390 | Task 2 (R70): shared `apiSend` `track`; `printRequestOptions` (lease header → tracked); 11 call sites covered |
+| 478487a | Task 3 (R71): navigation's full load and "Try again" through the gate (ready = online); one pending load, cancelled when the nav-progress entry changes; the plain `<a href="/categories">` became AppLink (pin: no raw internal anchors) |
+| 4625701 | Task 4 (R71, R73): the error screen's chunk reload (arm first, then the gate with ready = online) and both buttons (gate only, Phase 5 §5.10) with a waiting line; R73 comments |
+| a9d21a8 | Task 5 (R72): "Printing is taking long" / "Wait" / "Refresh anyway" after a 30 s hold; the waiver covers only that hold |
+| 4708e67 | Final-review fix wave: a slip held by the agent counts as print work while the agent is enabled (pull source `addPrintBusySource` + `holdsJob()`); one gate at a time on the error screen; the P3 same-entry test; comments |
+| 3f02067, 1606cf2, 8c7a2f5 | Post-verifier fixes: Next's own hard loads (a prefetch from a newer build or a failed one is a hard-load marker in Next's cache for 30 min): no prefetch/mark while a build is pending; marks after the last same-build pulse (pending) or the last proof of reach (line down) become "suspect" (offline → toast, online → the gated full load); Back skips the router replace only for our own full load (R35 kept for a soft navigation); a landed visit (first screen, soft landing) is never distrusted, so offline the POS still reopens |
+| e650811 | F12: the Refresh/chip question sits above a lasting toast (ConfirmDialog `aboveToasts`), so "Wait" stays tappable on a phone |
+
+### Verification
+
+- Suites on e650811: cafe 8162 (8161 pass, 0 fail, 1 skip), tsc 0, eslint 0 errors (2 old warnings), shared 1079 + tsc,
+  mobile 173, desktop 224, go-live 242, hygiene 13, print-tools 11, release-native 12, paper pin 41 (no diff vs main),
+  live print-host 524/0 (fresh `pos_scratch_print_host_p2fu`, self-dropping), `next build` (NEXT_TELEMETRY_DISABLED=1)
+  OK + static-routes-check 37 staff routes static. No test deleted; no file over 300 lines grew (use-print-agent.ts 340,
+  print-agent.ts 301, print-setup-form.test.ts 344 unchanged); package.json's testChain gained the 7 new test files.
+- End to end (production build, the Windows app unpackaged with a faked printer, Playwright `context.route` holding
+  requests 12 s; harness `D:\kd\pos-dev-keep\perf\p2fu\run-a..d.mjs`), on a9d21a8, again on 4708e67 and on e650811 —
+  all PASS each time: (a) a self-order KOT claim and an offline replay, both carrying `x-pos-print-lease`: the chip
+  says "A slip is printing", same page; after the answer one reload. (b) A newer build pending (pulse build rewritten)
+  + a held print request: skeleton in the first frame, no document while held, exactly one after; Back at "Still
+  opening…" → no document for 20 s after. (c) A > 30 s hold: toast, then the question; Wait keeps the page; "Refresh
+  anyway" one reload; the unsent-work question follows the print question; local axe 0. (d) The chunk-error reload and
+  "Reload" wait for the hold (waiting line, buttons disabled), then one load. Phone-size window (360×568, e650811): the
+  toast fully over "Wait" before F12; after it `elementFromPoint` at Wait's centre is Wait, a real click closes it.
+  The repo's stuck printer (`--delay 60000`) holds the Windows app only ~10 s (raw-TCP G5), so (c)/(d) used a slow
+  faked Windows driver (3 copies × 14–22 s).
+- Android emulator (Pixel_7_API_33, the installed 1.0 app, 4708e67 build), WebView 154 and 109: the toast under 30 s,
+  the question with the exact words, Wait keeps, "Refresh anyway" one load — PASS on both; same look, nothing cut by the
+  inset. (The 1.0 app's network print ends in ~0.8 s whatever the printer does; an End-of-day slip whose figures request
+  failed held ~45 s.) Found there: the lasting "KOT … has not printed yet" toast covered "Wait" → F12. Put back: WebView
+  154, adb reverse removed, the app signed out on its sign-in page, sync + emu kill. The Play Store was already disabled
+  at boot and was left disabled.
+- Cleaned: `pos_scratch_perf_p2fu` dropped (only uibase / uimatch left); servers, Electron, fake printers stopped.
+
+### Review chain
+
+Per-task reviews: Tasks 1-5 approved (0 C / 0 I). Claude Fable 5.1 whole branch: With fixes (1 I: a slip in the agent's
+`held` list was not print work; 8 M) → fix wave 4708e67 → scoped re-review: all addressed except the F4 words fact
+below. Adversarial verifier ("can any document load or reload still cut a print job leased to this tab, or reload while
+offline?"): YES — Next's own hard loads (paths 1-8) → 3f02067 + rounds 1606cf2 / 8c7a2f5 → scoped checks: addressed
+(the residuals are parked below). Emulator bug → e650811 → approved.
+
+### Rulings as built (the session's ledger)
+
+P1 the gate waits for print AND ready (nav + chunk reload: the line); P2 the error buttons get no offline refusal
+(§5.10); P3 one pending navigation load, cancelled on entry change; P4 arm the chunk loop guard first; P5 R73 comments;
+P6 the plain anchor → AppLink + pin; F1 held slips count while the agent is enabled; F2 one gate on the error screen;
+F3 the P3 test; F5 comments; V1 / V2 suspect prefetches; V3 + round 1 Back skips the replace only for our full load;
+V11 / V12 a landed visit (first screen, soft landing; not Back/Forward) proves its entry; F12 the question above toasts.
+
+### Parked (for the owner)
+
+- R74 (kept): R56/R64 sub-frame gaps, R68; R39 stays not built — and V9 rides on it: Back from a slow screen on a POS
+  open > 30 min, while a build is pending or the line just went down, still router-replaces and Next can hard-load.
+- R75: native shell loads outside the web gate — the Windows app's Help → Reload (`apps/desktop/src/main.ts:265`) and
+  the Android hardware Back across a document boundary (`apps/mobile/src/screens/PosScreen.tsx:141`); need app releases.
+  (A web `beforeunload` guard while printing was rejected: Electron would silently block closing the window, sign-out
+  and the signed-out /login.)
+- R76: Next hard-load residuals — a tap inside the deploy→pulse window (≤ one pulse interval); a single failed
+  prefetch while pulses keep succeeding / a short drop with one missed pulse; a prefetch in flight across the last
+  proof; `serverReach` counting a `setQueryData` edit as reached.
+- R77: a disabled agent's held job expires into REPRINT on a document load (no `stop()` runs); a hand-back at
+  `closePrintHost` later.
+- R78: the 8 s closing window can end before a very slow document load.
+- R79: next-auth `signIn`'s second providers read can send the page to `/api/auth/error` under the lock.
+- R80: a PIN switch on the lock screen while a newer build waits (`router.refresh()`) is a Next hard reload (cuts a
+  printing slip, clears a cart): skip the refresh while pending (cached shells of a still-dynamic route stay) or reload
+  at a quiet moment — the owner's call.
+- Later options (not built): a "Still opening… a slip is printing here" variant; gating sign-out.
+
+### For the owner's OK
+
+- The question's final words: title "Printing is taking long"; text "A slip has been printing on this device for over 30
+  seconds. If you refresh now, it may print again later, marked REPRINT or DUPLICATE, so it can come out twice. A bill is
+  never printed again by itself: it waits in the Printer panel."; buttons "Wait" / "Refresh anyway"; the error screen's
+  waiting line "A slip is printing here. The page opens as soon as it is done."
+- Facts for that choice: on the Android app in printers mode the Printer panel's "Reconnect" aborts a stuck write (a
+  hint would be true only there, while the words serve every device); after "Refresh anyway" the cut job keeps its
+  printer's line until its 90 s lease runs out, so new KOTs on that printer can wait up to about a minute more.
+- The untracked `apps/cafe/components/zz/x.ts` (`export {};`, a test leftover whose delete was refused) is for the owner
+  to delete; it is in no commit.
