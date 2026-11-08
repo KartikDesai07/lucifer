@@ -54,7 +54,7 @@ test("section: 'tokens' owns exactly the four fields, sits right after kitchen-t
 test("page: renders SettingsSectionPage slug='tokens' wide > SettingsSectionForm (given the design draft's extra) > TokenSettingsFields", () => {
   const src = read(PAGE);
   const sibling = read("app/(dashboard)/settings/taxes/page.tsx");
-  assert.ok(sibling.includes('<SettingsSectionPage slug="taxes">'), "landmark: the sibling page has the same shape");
+  assert.ok(sibling.includes('<SettingsSectionPage slug="taxes"'), "landmark: the sibling page has the same shape");
   for (const needle of ['"use client"', '<SettingsSectionPage slug="tokens" wide>', "<SettingsSectionForm settings={settings} section={section} extra={design.extra}>", "<TokenSettingsFields "]) {
     assert.ok(src.includes(needle), `the page holds ${needle}`);
   }

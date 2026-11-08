@@ -173,6 +173,7 @@
     "lib/settings-shell-paths.test.ts",
     "lib/settings-business-layout.test.ts",
     "lib/settings-card-layout.test.ts",
+    "lib/settings-taxes-layout.test.ts",
     "lib/go-live-runbook.test.ts",
     "lib/go-live-runbook-phase5.test.ts",
     "lib/customer-privacy.test.ts",

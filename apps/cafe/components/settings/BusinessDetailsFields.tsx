@@ -7,11 +7,11 @@ import type { Control, FieldErrors, UseFormRegister } from "react-hook-form";
 import type { SettingsInput } from "@/schemas";
 import { settingsSectionPath } from "@/lib/settings-sections";
 import {
-  BUSINESS_GRID_CLASS,
-  BUSINESS_MAIN_CARD_CLASS,
   BUSINESS_PREVIEW_CLASS,
   SETTINGS_INPUT_CLASS,
   SETTINGS_LINK_CLASS,
+  SETTINGS_MAIN_CARD_CLASS,
+  SETTINGS_PREVIEW_GRID_CLASS,
 } from "@/lib/settings-card-layout";
 import type { Settings } from "@/types";
 import { Input } from "@/components/ui/input";
@@ -45,11 +45,11 @@ export function BusinessDetailsFields({
   settings,
 }: BusinessDetailsFieldsProps) {
   return (
-    <div className={BUSINESS_GRID_CLASS}>
+    <div className={SETTINGS_PREVIEW_GRID_CLASS}>
       <SettingsCard
         title="Restaurant"
         sub="Your name, logo and tagline. They print at the top of every bill."
-        className={BUSINESS_MAIN_CARD_CLASS}
+        className={SETTINGS_MAIN_CARD_CLASS}
       >
         <div className="grid gap-4 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-start">
           <CardField label="Restaurant logo" hint="On bills, kitchen tickets and the sidebar.">
@@ -80,7 +80,7 @@ export function BusinessDetailsFields({
       <SettingsCard
         title="Contact & licence"
         sub="Printed under your name on bills."
-        className={BUSINESS_MAIN_CARD_CLASS}
+        className={SETTINGS_MAIN_CARD_CLASS}
       >
         <CardField label="Address" htmlFor="settings-address" error={errors.address?.message}>
           <Input id="settings-address" className={SETTINGS_INPUT_CLASS} {...register("address")} />
@@ -117,16 +117,16 @@ export function BusinessDetailsFields({
         <BillHeaderPreview control={control} settings={settings} />
       </SettingsCard>
 
-      <UpiPaymentsCard control={control} register={register} errors={errors} className={BUSINESS_MAIN_CARD_CLASS} />
+      <UpiPaymentsCard control={control} register={register} errors={errors} className={SETTINGS_MAIN_CARD_CLASS} />
 
-      <ScreensSettingsCard control={control} register={register} errors={errors} className={BUSINESS_MAIN_CARD_CLASS} />
+      <ScreensSettingsCard control={control} register={register} errors={errors} className={SETTINGS_MAIN_CARD_CLASS} />
 
       {/* App branding — the PRODUCT's mark (tab icon, login screen), distinct
           from the restaurant's own logo above. Never printed on a bill. */}
       <SettingsCard
         title="App branding"
         sub="How this POS identifies itself. Never printed on bills."
-        className={BUSINESS_MAIN_CARD_CLASS}
+        className={SETTINGS_MAIN_CARD_CLASS}
       >
         <CardField
           label="Product logo"

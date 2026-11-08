@@ -4,6 +4,7 @@ import { useId } from "react";
 import type { ReactNode } from "react";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { MenuSwitch } from "@/components/menu/MenuSwitch";
 import { cn } from "@/lib/utils";
 import {
   SETTINGS_BLOCK_CLASS,
@@ -19,6 +20,7 @@ import {
   SETTINGS_HINT_CLASS,
   SETTINGS_LABEL_CLASS,
   SETTINGS_SELECT_TRIGGER_CLASS,
+  SETTINGS_SWITCH_ROW_CLASS,
 } from "@/lib/settings-card-layout";
 
 // The settings pages' card pieces (Business details first, 2026-11-06). Class strings live in
@@ -139,5 +141,38 @@ export function SettingsSelect({
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+// An on/off row: the whole row is the label (a tap anywhere flips it; the switch alone is a small target). The switch is
+// named by the label and described by the line under it.
+export function SettingsSwitchRow({
+  label,
+  sub,
+  checked,
+  onCheckedChange,
+}: {
+  label: string;
+  sub: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  const lineId = useId();
+  return (
+    <label className={SETTINGS_SWITCH_ROW_CLASS}>
+      <span className="grid gap-0.5">
+        <span className={SETTINGS_LABEL_CLASS}>{label}</span>
+        <span id={lineId} className={SETTINGS_HINT_CLASS}>
+          {sub}
+        </span>
+      </span>
+      <MenuSwitch
+        tone="accent"
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+        aria-label={label}
+        aria-describedby={lineId}
+      />
+    </label>
   );
 }
