@@ -319,3 +319,13 @@ settings pages take them one per session.
 
 **The owner's OK:** given for the merge and push on 2026-11-08 (main dd9f427); the owner deploys from his admin panel.
 Plan, checks and review: `docs/superpowers/plans/2026-11-08-settings-taxes-ui.md` Results.
+
+### `/settings/qr-ordering` (2026-11-08)
+
+QR ordering is now four cards in one column (Ordering, Tables, Promo codes, Announcements). It has no preview, so it
+keeps the narrow shell, with the card Save bar. The card kit gained `SettingsChoice` (the promo Discount type) and one
+list-row look, shared by UPI slabs, promo codes and announcements. 6 settings pages remain, one per session.
+
+**The owner's OK:** the owner picked this page after checking Business and Taxes on devices (2026-11-08). Merged and
+pushed under the standing ship rule (main 01ab4a8); the owner deploys from his admin panel. Plan, checks and review:
+`docs/superpowers/plans/2026-11-08-settings-qr-ui.md` Results.
