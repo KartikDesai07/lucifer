@@ -4,7 +4,7 @@ import { toast } from "sonner";
 
 import { heldKeyOf, heldRoutes } from "@/lib/held-routes";
 import { navDecision, offlineNavMessage } from "@/lib/nav-decision";
-import { navProgress, navTargetPath, type createNavProgress } from "@/lib/nav-progress";
+import { navProgress, navTargetPath, type NavProgress, type createNavProgress } from "@/lib/nav-progress";
 import { pageTitleFor } from "@/lib/page-titles";
 import { leaveWhenPrintFree } from "@/lib/print-host-busy";
 import { serverReach } from "@/lib/server-reach";
@@ -51,6 +51,10 @@ const realDeps: NavDeps = {
 // The ONE document load that may be waiting at the gate. A newer load replaces it; the entry of the opening it started
 // under ending (Back, a newer tap, a same-path tap, popstate) drops it, so a load never fires after the person left.
 let pendingLoad: (() => void) | null = null;
+
+// How each opening (a progress entry) began: "soft" = Next navigates (it fetches the screen), "load" = our own full load
+// (no Next navigation ever starts). Back reads it (ruling V3, R35); "Try again" never changes it.
+const startedAs = new WeakMap<NonNullable<NavProgress>, "soft" | "load">();
 
 function loadThroughGate(go: () => void, d: NavDeps, progress: ProgressStore, ready?: () => boolean): void {
   pendingLoad?.();
@@ -103,6 +107,8 @@ export function beginNavigation(
   // A refused tap opens nothing, so no skeleton starts.
   if (action === "refuse") return { action, label: words };
   if (!progress.start(href, words, now, fromPath)) return { action: "stay", label: words };
+  const entry = progress.get();
+  if (entry !== null) startedAs.set(entry, action === "full-load" ? "load" : "soft");
   return { action, label: words };
 }
 
@@ -139,13 +145,14 @@ export function navigateTo(
 /** "Back" under "Still opening…" (ruling R35): the old screen shows again AND the navigation is dropped, so a late
  *  answer can never replace the screen the person chose to stay on (a cart in progress lives in the POS page's state).
  *  Next discards a pending navigation when a new one is dispatched, and a replace to the URL already showing keeps the
- *  page's tree and state; `scroll: false` leaves the page where it was. When the opening is our own document load
- *  waiting at the gate (ruling V3), dropping it is the whole job: no replace, since no Next navigation runs beside it and
- *  a replace of a stale current screen would refetch it (with a newer build waiting, Next loads the document itself). */
-export function abandonNavigation(router: AppRouterInstance, progress: Pick<ProgressStore, "cancel"> = navProgress): void {
-  const ours = pendingLoad;
+ *  page's tree and state; `scroll: false` leaves the page where it was. Ending the opening also drops our load waiting at
+ *  the gate under it (a full load, a "Try again"). Only an opening that began as our own full load skips the replace
+ *  (ruling V3): no Next navigation is in flight to drop, and a replace of a stale current screen would refetch it (with
+ *  a newer build waiting, Next loads the document itself, past the gate). A soft one keeps it, Try again or not (R35). */
+export function abandonNavigation(router: AppRouterInstance, progress: Pick<ProgressStore, "cancel" | "get"> = navProgress): void {
+  const entry = progress.get();
   progress.cancel();
-  if (ours !== null) return void ours();
+  if (entry !== null && startedAs.get(entry) === "load") return;
   router.replace(window.location.pathname + window.location.search, { scroll: false });
 }
 

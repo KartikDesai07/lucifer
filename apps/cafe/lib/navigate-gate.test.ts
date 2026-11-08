@@ -221,33 +221,41 @@ test("the real default asks the page's held record: a distrusted mark is a full 
   assert.match(src, /suspect: \(key, now\) => heldRoutes\.suspect\(key, now\),/, "realDeps.suspect reads heldRoutes.suspect");
 });
 
-// Ruling V3: Back while our own document load waits drops that load and calls no router.replace: no Next navigation runs
-// beside it, and a replace of a stale current screen would refetch it (with a newer build waiting, Next loads the document).
+// Ruling V3 (fix round 1): Back reads how the opening began. Our own full load (no Next navigation ever started): it is
+// dropped and the router is not touched, since a replace of a stale current screen would refetch it (with a newer build
+// waiting, Next loads the document itself). A soft navigation, Try again or not: Next's navigation may still be in
+// flight, so Back also replaces the current screen as R35 always did, and our waiting load is dropped with the opening.
 const recordingRouter = (calls: string[]) =>
   ({ replace: (href: string, o?: object) => void calls.push(`replace ${href}${o === undefined ? "" : ` ${JSON.stringify(o)}`}`) }) as never;
 
-test("Back while our full load waits: the load is cancelled and the router is not touched", () => {
+test("Back on an opening that began as our full load: the load is cancelled, no replace, no load", () => {
   const h = harness();
   const p = createNavProgress();
-  tap(h, p, "/orders");
+  assert.equal(tap(h, p, "/orders").action, "full-load", "landmark: the opening began as our own full load");
   const calls: string[] = [];
   withPath(() => abandonNavigation(recordingRouter(calls), p));
   assert.equal(h.gates[0].cancelled, true, "the waiting gate is cancelled");
-  assert.deepEqual(calls, [], "no router.replace");
+  assert.deepEqual(calls, [], "no router.replace: no Next navigation is in flight");
   assert.equal(p.get(), null, "the old screen shows again");
   h.open(0);
   assert.deepEqual(h.loads, [], "never a late load");
 });
 
-test("Back while Try again's load waits: that load is ours too, cancelled with no router.replace", () => {
+test("Back on a soft navigation whose Try again waits for print: one replace drops Next's navigation, our load never goes", () => {
   const h = harness();
   const p = createNavProgress();
-  p.start("/orders", "Orders", 1, "/pos");
+  const soft: Partial<NavDeps> = { ...h.deps, updatePending: () => false };
+  const r = beginNavigation("/orders", undefined, "/pos", 1, p, soft);
+  assert.equal(applyNavAction(r, "/orders", soft, { progress: p }), true, "landmark: a soft navigation, Next's own, is in flight");
   retryNavigation("/orders", "Orders", h.deps, p);
+  assert.equal(h.gates.length, 1, "landmark: Try again's load waits at the gate (a slip printing here)");
   const calls: string[] = [];
   withPath(() => abandonNavigation(recordingRouter(calls), p));
-  assert.equal(h.gates[0].cancelled, true, "the waiting gate is cancelled");
-  assert.deepEqual(calls, [], "no router.replace");
+  assert.deepEqual(calls, ['replace /pos {"scroll":false}'], "one replace: Next drops its pending navigation (R35); Try again changed nothing");
+  assert.equal(h.gates[0].cancelled, true, "our waiting load is cancelled with the opening");
+  h.open(0);
+  assert.deepEqual(h.loads, [], "our load never goes");
+  assert.equal(p.get(), null, "the old screen shows again");
 });
 
 test("Back with no load of ours waiting (a Next navigation opening): today's replace of the current screen (R35)", () => {
