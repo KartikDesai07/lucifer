@@ -100,6 +100,8 @@ export function useAskFirstReload(beforeReload?: () => void): AskFirstReload {
     press,
     dialog: {
       open: asking !== null,
+      // A lasting "has not printed yet" toast sits above a normal dialog and would hide "Wait" on a phone (F12).
+      aboveToasts: true,
       // Only staff closing the question ("Wait" / "Stay" / Escape) forgets the waiver. A close this hook makes itself (the
       // offline step, or a reload that never tore the page down after REFRESH_SETTLE_MS) keeps it by design: staff already
       // answered for that same hold, and a newer hold has another start time anyway.

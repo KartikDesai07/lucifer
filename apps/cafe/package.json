@@ -279,6 +279,7 @@
     "lib/pos-tile-paths.test.ts",
     "lib/pos-modals-paths.test.ts",
     "lib/confirm-dialog-look.test.ts",
+    "lib/confirm-dialog-above-toasts.test.ts",
     "lib/pos-layout-compile.test.ts",
     "lib/pos-header-paths.test.ts",
     "lib/customer-sheet-paths.test.ts",
