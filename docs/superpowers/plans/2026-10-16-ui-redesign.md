@@ -340,3 +340,14 @@ classes. 5 settings pages remain, one per session.
 **The owner's OK:** the owner picked this page after checking QR ordering on devices (2026-11-08). Merged and pushed
 under the standing ship rule (main 5c5aec9); the owner deploys from his admin panel. Plan, checks and review:
 `docs/superpowers/plans/2026-11-08-settings-appearance-ui.md` Results.
+
+### `/settings/loyalty` (2026-11-09)
+
+Rewards & loyalty is now five cards in one column (Diner accounts, Stamp card, Rewards, Scratch cards, Levels), with the
+card Save bar; the page stays wide so the stamp boxes fill the row. The kit switch row gained `disabled` for the stamp
+card and scratch-card locks, and the card kit gained a quiet note class. The side panels keep their look. 4 settings
+pages remain (Tokens, Bill print, Kitchen ticket, Notifications), one per session.
+
+**The owner's OK:** the owner picked this page after checking Appearance on devices (2026-11-09). Merged and pushed
+under the standing ship rule (main f74eb21); the owner deploys from his admin panel. Plan, checks and review:
+`docs/superpowers/plans/2026-11-09-settings-loyalty-ui.md` Results.
