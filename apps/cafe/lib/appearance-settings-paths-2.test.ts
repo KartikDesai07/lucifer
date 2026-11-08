@@ -8,8 +8,8 @@ import { stripComments } from "@/lib/source-pin-utils";
 
 // Settings > Appearance post-review pins (slice 9, s71): the colour status is
 // always mounted and describes the picker, the tile groups are real radio
-// groups, the banner upload says "Banner picture", the narrow-column grids and
-// the first-group spacing. Companion to appearance-settings-paths.test.ts.
+// groups, the banner upload says "Banner picture", the tile grids and (since the
+// 2026-11-08 card UI) no left-column wrapper. Companion to appearance-settings-paths.test.ts.
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel), "utf8");
@@ -31,6 +31,7 @@ test("PIN: the colour status <p> is always mounted (not behind a !feedback.ok co
   assert.ok(status, "the status paragraph carries id={statusId} and role=status");
   assert.ok(!/!feedback\.ok\s*&&\s*\(?\s*<p\b/.test(src), "no conditional mount around the paragraph");
   assert.match(status[0], /feedback\.ok \? "sr-only" : "order-last w-full"/, "empty = sr-only ALONE (w-full would beat its 1px width and overflow the page); a full-width line only when shown");
+  assert.match(status[0], /className=\{cn\(SETTINGS_ERROR_CLASS, feedback\.ok/, "the problem line itself wears the card error look");
   assert.match(status[0], /feedback\.ok \? null : accentProblemText\(feedback\.reason\)/, "empty when fine, plain text when not");
   assert.match(src, /<PopoverTrigger asChild>\s*<button[^>]*\baria-describedby=\{statusId\}/, "the picker's trigger is described by the status");
   assert.match(src, /const statusId = useId\(\)/, "one id per instance");
@@ -63,18 +64,16 @@ test("PIN: the dark-mode hint says a diner can choose light themselves", () => {
   assert.ok(!src.includes("set to dark mode see the dark version"), "the absolute wording is gone");
 });
 
-test("PIN: the theme and font grids drop to 2 columns at lg (the narrow left column) and return to 3 at xl", () => {
-  const grid = "grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3";
+test("PIN: the theme and font grids are 2 columns on a phone and 3 from sm (since the card UI the form column is never narrow)", () => {
+  const grid = "grid grid-cols-2 gap-2 sm:grid-cols-3";
   for (const rel of [THEME, TEXT_LAYOUT]) {
     assert.ok(code(rel).includes(`"${grid}"`), `${rel}: ${grid}`);
   }
 });
 
-test("PIN: the left column drops the first group's top border and padding at lg, so it lines up with the Preview heading", () => {
+test("PIN: the cards sit straight in the preview grid - no left-column wrapper, so no first-group spacing override", () => {
   const src = code(FIELDS);
   assert.match(src, /export function AppearanceFields\(/, "landmark");
-  const column = src.match(/<div className="(space-y-6 [^"]*first-of-type[^"]*)">/);
-  assert.ok(column, "the left column carries the first-section override");
-  assert.match(column[1], /lg:\[&>section:first-of-type\]:border-t-0/);
-  assert.match(column[1], /lg:\[&>section:first-of-type\]:pt-0/);
+  assert.match(src, /<div className=\{SETTINGS_PREVIEW_GRID_CLASS\}>\s*<a\s+href="#appearance-preview"/, "the grid's first child is the jump link");
+  assert.ok(!src.includes("first-of-type"), "the old column override is gone");
 });

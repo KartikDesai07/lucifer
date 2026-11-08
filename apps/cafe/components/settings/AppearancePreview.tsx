@@ -9,7 +9,7 @@ import type { SettingsInput } from "@/schemas";
 import { resolveAppearance, appearanceCssVars } from "@pos/shared/appearance";
 import { FONT_PAIR_CLASSNAMES, FONT_PAIR_FAMILIES } from "@/lib/public-fonts";
 import { cn } from "@/lib/utils";
-import { PrintSizeChoice } from "@/components/settings/PrintSizeChoice";
+import { SettingsChoice } from "@/components/settings/SettingsCard";
 import { PublicMenuHeader } from "@/components/public/PublicMenuHeader";
 import { PublicMenuItem, type PublicMenuProduct } from "@/components/public/PublicMenuItem";
 
@@ -68,7 +68,7 @@ export function AppearancePreview({ control }: AppearancePreviewProps) {
 
   return (
     <div className="space-y-4">
-      <PrintSizeChoice
+      <SettingsChoice
         legend="Diner's phone in"
         options={SCHEMES}
         value={scheme}
@@ -80,7 +80,7 @@ export function AppearancePreview({ control }: AppearancePreviewProps) {
       <div
         style={frameStyle}
         className={cn(
-          "mx-auto w-full max-w-sm overflow-hidden rounded-2xl border bg-background text-foreground font-pub-body",
+          "mx-auto w-full max-w-sm overflow-clip rounded-2xl border bg-background text-foreground font-pub-body",
           FONT_PAIR_CLASSNAMES[draft.fontPairKey],
         )}
       >

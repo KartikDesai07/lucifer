@@ -8,7 +8,7 @@ export default function AppearanceSettingsPage() {
   return (
     <SettingsSectionPage slug="appearance" wide>
       {(settings, section) => (
-        <SettingsSectionForm settings={settings} section={section}>
+        <SettingsSectionForm settings={settings} section={section} saveBarLook="card">
           {({ control }) => <AppearanceFields control={control} />}
         </SettingsSectionForm>
       )}

@@ -15,9 +15,18 @@ import {
 import type { FontPairKey } from "@pos/shared/appearance";
 import { FONT_PAIR_FAMILIES } from "@/lib/public-fonts";
 import { cn } from "@/lib/utils";
-import { BRAND_LABEL_CLASS } from "@/components/brand/brand-classes";
-import { HINT_CLASS, SectionLink, SettingsGroup } from "@/components/settings/SettingsFields";
-import { PrintSizeChoice } from "@/components/settings/PrintSizeChoice";
+import { settingsSectionPath } from "@/lib/settings-sections";
+import {
+  SETTINGS_HINT_CLASS,
+  SETTINGS_LABEL_CLASS,
+  SETTINGS_LINK_CLASS,
+  SETTINGS_MAIN_CARD_CLASS,
+  SETTINGS_TILE_CLASS,
+  SETTINGS_TILE_OFF_CLASS,
+  SETTINGS_TILE_ON_CLASS,
+} from "@/lib/settings-card-layout";
+import { AppLink } from "@/components/layout/AppLink";
+import { SettingsCard, SettingsChoice } from "@/components/settings/SettingsCard";
 import {
   FONT_PAIR_LABELS,
   CORNER_RADIUS_LABELS,
@@ -25,27 +34,25 @@ import {
   LOGO_PLACEMENT_LABELS,
 } from "@/components/settings/appearance-fields-utils";
 
+// A font tile: the shared tile look, at least 56px high, the name over its font names.
+const FONT_TILE_CLASS = "min-h-14 min-w-0 justify-center gap-0.5 px-3 py-2";
+
 // One tile per font pair, each name written in its own display font so the
 // owner sees the typeface, not a description of it. Radio semantics, like
-// PrintSizeChoice: a <label> around a visually hidden native radio.
+// SettingsChoice: a <label> around a visually hidden native radio.
 function FontTiles({ value, onChange }: { value: FontPairKey; onChange: (key: FontPairKey) => void }) {
   const name = useId();
   const hintId = useId();
   return (
     <fieldset className="min-w-0 space-y-1.5" aria-describedby={hintId}>
-      <legend className={cn("mb-1.5", BRAND_LABEL_CLASS)}>Font</legend>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3">
+      <legend className={cn("mb-1.5", SETTINGS_LABEL_CLASS)}>Font</legend>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {FONT_PAIR_KEYS.map((key) => {
           const selected = value === key;
           return (
             <label
               key={key}
-              className={cn(
-                "flex min-h-14 min-w-0 cursor-pointer flex-col justify-center rounded-md border px-3 py-2 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-accent",
-                selected
-                  ? "border-brand-primary bg-brand-primary-soft"
-                  : "border-brand-rule bg-brand-slip hover:bg-brand-wash",
-              )}
+              className={cn(SETTINGS_TILE_CLASS, FONT_TILE_CLASS, selected ? SETTINGS_TILE_ON_CLASS : SETTINGS_TILE_OFF_CLASS)}
             >
               <input
                 type="radio"
@@ -57,16 +64,16 @@ function FontTiles({ value, onChange }: { value: FontPairKey; onChange: (key: Fo
               />
               <span
                 style={{ fontFamily: FONT_PAIR_FAMILIES[key].display }}
-                className="break-words text-base leading-tight text-brand-ink"
+                className="break-words text-base leading-tight text-foreground"
               >
                 {FONT_PAIR_LABELS[key].name}
               </span>
-              <span className="text-xs text-brand-muted">{FONT_PAIR_LABELS[key].fonts}</span>
+              <span className="text-[12px] text-muted-foreground">{FONT_PAIR_LABELS[key].fonts}</span>
             </label>
           );
         })}
       </div>
-      <p id={hintId} className={HINT_CLASS}>
+      <p id={hintId} className={SETTINGS_HINT_CLASS}>
         Each name is written in its font. The preview shows it on your menu.
       </p>
     </fieldset>
@@ -76,10 +83,10 @@ function FontTiles({ value, onChange }: { value: FontPairKey; onChange: (key: Fo
 // How the words, corners and spacing of the menu look, plus where the logo sits.
 export function AppearanceTextLayoutGroup({ control }: { control: Control<SettingsInput> }) {
   return (
-    <SettingsGroup
-      stacked
+    <SettingsCard
       title="Text and layout"
-      description="How the words, corners and spacing of your menu look."
+      sub="How the words, corners and spacing of your menu look."
+      className={SETTINGS_MAIN_CARD_CLASS}
     >
       <Controller
         control={control}
@@ -92,7 +99,7 @@ export function AppearanceTextLayoutGroup({ control }: { control: Control<Settin
         control={control}
         name="appearance.cornerRadius"
         render={({ field }) => (
-          <PrintSizeChoice
+          <SettingsChoice
             legend="Corners"
             options={CORNER_RADII}
             value={field.value ?? DEFAULT_APPEARANCE.cornerRadius}
@@ -106,7 +113,7 @@ export function AppearanceTextLayoutGroup({ control }: { control: Control<Settin
         control={control}
         name="appearance.density"
         render={({ field }) => (
-          <PrintSizeChoice
+          <SettingsChoice
             legend="Spacing"
             options={DENSITIES}
             value={field.value ?? DEFAULT_APPEARANCE.density}
@@ -120,7 +127,7 @@ export function AppearanceTextLayoutGroup({ control }: { control: Control<Settin
         control={control}
         name="appearance.logoPlacement"
         render={({ field }) => (
-          <PrintSizeChoice
+          <SettingsChoice
             legend="Logo on the menu"
             options={LOGO_PLACEMENTS}
             value={field.value ?? DEFAULT_APPEARANCE.logoPlacement}
@@ -129,12 +136,15 @@ export function AppearanceTextLayoutGroup({ control }: { control: Control<Settin
             hint={
               <>
                 Where your logo sits at the top of the menu. Your logo is set in{" "}
-                <SectionLink slug="business">Business details</SectionLink>.
+                <AppLink href={settingsSectionPath("business")} className={SETTINGS_LINK_CLASS}>
+                  Business details
+                </AppLink>
+                .
               </>
             }
           />
         )}
       />
-    </SettingsGroup>
+    </SettingsCard>
   );
 }

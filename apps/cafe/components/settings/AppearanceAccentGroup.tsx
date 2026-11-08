@@ -8,8 +8,9 @@ import { DEFAULT_APPEARANCE } from "@pos/shared/appearance";
 import type { PresetId } from "@pos/shared/appearance";
 import { APPEARANCE_PRESETS } from "@pos/shared/appearance-presets";
 import { cn } from "@/lib/utils";
+import { SETTINGS_MAIN_CARD_CLASS, SETTINGS_OUTLINE_BUTTON_CLASS } from "@/lib/settings-card-layout";
 import { Button } from "@/components/ui/button";
-import { SettingsGroup } from "@/components/settings/SettingsFields";
+import { SettingsCard } from "@/components/settings/SettingsCard";
 import { AppearanceAccentInput } from "@/components/settings/AppearanceAccentInput";
 import { accentSuggestionsFor } from "@/components/settings/appearance-fields-utils";
 
@@ -24,10 +25,10 @@ export function AppearanceAccentGroup({
   presetId: PresetId;
 }) {
   return (
-    <SettingsGroup
-      stacked
+    <SettingsCard
       title="Button colour"
-      description="The colour of the Add buttons and other main buttons on your menu."
+      sub="The colour of the Add buttons and other main buttons on your menu."
+      className={SETTINGS_MAIN_CARD_CLASS}
     >
       <Controller
         control={control}
@@ -45,14 +46,14 @@ export function AppearanceAccentGroup({
               <div className="flex flex-wrap gap-3">
                 {suggestions.map((hex, index) => (
                   <button
-                    key={hex}
                     type="button"
+                    key={hex}
                     aria-pressed={accentValue === hex}
                     aria-label={`Suggested colour ${index + 1}`}
                     onClick={() => field.onChange(hex)}
                     style={{ backgroundColor: hex }}
                     className={cn(
-                      "h-11 w-11 shrink-0 rounded-full border-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-offset-2",
+                      "h-11 w-11 shrink-0 rounded-full border-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
                       accentValue === hex ? "border-foreground" : "border-transparent",
                     )}
                   />
@@ -68,7 +69,7 @@ export function AppearanceAccentGroup({
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-11 md:h-10"
+                  className={SETTINGS_OUTLINE_BUTTON_CLASS}
                   disabled={accentValue === ""}
                   onClick={() => field.onChange("")}
                 >
@@ -79,6 +80,6 @@ export function AppearanceAccentGroup({
           );
         }}
       />
-    </SettingsGroup>
+    </SettingsCard>
   );
 }

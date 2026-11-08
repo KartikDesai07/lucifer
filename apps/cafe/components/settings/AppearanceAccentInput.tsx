@@ -6,7 +6,7 @@ import { Check } from "lucide-react";
 import { accentProblemText, bestForeground, checkAccent } from "@pos/shared/appearance-contrast";
 import type { PresetId } from "@pos/shared/appearance";
 import { cn } from "@/lib/utils";
-import { BRAND_BUTTON_CLASS, BRAND_FIELD_ERROR_CLASS, BRAND_INPUT_CLASS, BRAND_LABEL_CLASS } from "@/components/brand/brand-classes";
+import { SETTINGS_BUTTON_CLASS, SETTINGS_ERROR_CLASS, SETTINGS_INPUT_CLASS, SETTINGS_LABEL_CLASS } from "@/lib/settings-card-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -101,15 +101,15 @@ export function AppearanceAccentInput({ value, presetAccent, presetId, onCommit 
         <Popover open={open} onOpenChange={handleOpenChange}>
           <PopoverTrigger asChild>
             <button
-              id={inputId}
               type="button"
+              id={inputId}
               aria-describedby={statusId}
               style={{ backgroundColor: live }}
-              className="h-11 w-11 shrink-0 cursor-pointer rounded-md border-2 border-brand-field focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-offset-2"
+              className="h-11 w-11 shrink-0 cursor-pointer rounded-[10px] border-2 border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
             />
           </PopoverTrigger>
           <PopoverContent align="start" collisionPadding={POPOVER_COLLISION_PADDING} className="max-h-[var(--radix-popover-content-available-height)] w-[min(20rem,calc(100vw-2rem))] space-y-3 overflow-y-auto overscroll-contain p-3">
-            <p id={swatchesId} className={BRAND_LABEL_CLASS}>
+            <p id={swatchesId} className={SETTINGS_LABEL_CLASS}>
               Pick a colour
             </p>
             <div role="group" aria-labelledby={swatchesId} className="grid grid-cols-4 gap-2">
@@ -117,14 +117,14 @@ export function AppearanceAccentInput({ value, presetAccent, presetId, onCommit 
                 const selected = live === hex;
                 return (
                   <button
-                    key={hex}
                     type="button"
+                    key={hex}
                     aria-pressed={selected}
                     onClick={() => pick(hex)}
                     style={{ backgroundColor: hex, color: bestForeground(hex) }}
                     className={cn(
-                      "relative flex h-11 w-full items-center justify-center rounded-md border-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-offset-2",
-                      selected ? "border-brand-ink" : "border-transparent",
+                      "relative flex h-11 w-full items-center justify-center rounded-[10px] border-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+                      selected ? "border-foreground" : "border-transparent",
                     )}
                   >
                     <span className="sr-only">{name}</span>
@@ -133,8 +133,8 @@ export function AppearanceAccentInput({ value, presetAccent, presetId, onCommit 
                 );
               })}
             </div>
-            <div className="space-y-1.5 border-t border-brand-rule pt-3">
-              <label htmlFor={hexId} className={BRAND_LABEL_CLASS}>
+            <div className="space-y-1.5 border-t border-border-2 pt-3">
+              <label htmlFor={hexId} className={SETTINGS_LABEL_CLASS}>
                 Or type a colour code
               </label>
               <Input
@@ -155,27 +155,27 @@ export function AppearanceAccentInput({ value, presetAccent, presetId, onCommit 
                   e.stopPropagation();
                   applyDraft();
                 }}
-                className={cn(BRAND_INPUT_CLASS, "h-11 uppercase placeholder:normal-case")}
+                className={cn(SETTINGS_INPUT_CLASS, "uppercase placeholder:normal-case")}
               />
               {hexInvalid && (
-                <p id={hexErrorId} role="alert" className={BRAND_FIELD_ERROR_CLASS}>
+                <p id={hexErrorId} role="alert" className={SETTINGS_ERROR_CLASS}>
                   {HEX_ERROR_TEXT}
                 </p>
               )}
-              <Button type="button" className={cn(BRAND_BUTTON_CLASS, "h-11")} onClick={applyDraft}>
+              <Button type="button" className={cn(SETTINGS_BUTTON_CLASS, "w-full")} onClick={applyDraft}>
                 Use this colour
               </Button>
             </div>
           </PopoverContent>
         </Popover>
-        <label htmlFor={inputId} className={BRAND_LABEL_CLASS}>
+        <label htmlFor={inputId} className={SETTINGS_LABEL_CLASS}>
           Pick your own colour
         </label>
       </div>
       <p
         id={statusId}
         role="status"
-        className={cn(BRAND_FIELD_ERROR_CLASS, feedback.ok ? "sr-only" : "order-last w-full")}
+        className={cn(SETTINGS_ERROR_CLASS, feedback.ok ? "sr-only" : "order-last w-full")}
       >
         {feedback.ok ? null : accentProblemText(feedback.reason)}
       </p>

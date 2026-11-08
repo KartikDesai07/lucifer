@@ -111,6 +111,13 @@ test("controls: unit box, add / remove and the card Save bar read the plan", () 
     "discard",
   );
   assert.equal(L.SETTINGS_SAVE_SUBMIT_CLASS, "h-[42px] rounded-[10px] px-5 text-[14.5px] font-semibold", "submit");
+  assert.equal(L.SETTINGS_BUTTON_CLASS, L.SETTINGS_SAVE_SUBMIT_CLASS, "the main button is the Save look");
+  assert.equal(L.SETTINGS_OUTLINE_BUTTON_CLASS, L.SETTINGS_SAVE_DISCARD_CLASS, "the plain button is the Discard look");
+  assert.equal(
+    L.APPEARANCE_PREVIEW_CLASS,
+    `${L.TAXES_PREVIEW_CLASS} xl:max-h-[calc(100dvh-11rem)] xl:overflow-y-auto`,
+    "Appearance's preview: sticky over its four cards, scrolling inside itself",
+  );
 });
 
 // createElement with children as an argument (the lint rule), props typed without them.
@@ -190,6 +197,25 @@ test("SettingsChoice: a fieldset named by its legend, one label around each hidd
   assert.deepEqual(inputs.map((i) => i.text), ["Percent off", "Amount off"], "each radio sits inside its own label, before the text");
   assert.ok(inputs[1].tag.includes('value="b"') && inputs[1].tag.includes('checked=""'), "the selected radio is checked");
   assert.ok(inputs[0].tag.includes('value="a"') && !inputs[0].tag.includes("checked"), "the other radio is not checked");
+  assert.ok(!html.includes("aria-describedby"), "no hint, so nothing describes the group");
+});
+
+test("SettingsChoice: an optional hint sits inside the fieldset, after the options, and describes the group", () => {
+  const html = renderToStaticMarkup(
+    createElement(SettingsChoice<"a" | "b">, {
+      legend: "Corners",
+      options: ["a", "b"],
+      value: "a",
+      onChange: () => {},
+      labelOf: (o) => o,
+      hint: "How round the buttons are.",
+    }),
+  );
+  const describedBy = /^<fieldset class="min-w-0" aria-describedby="([^"]+)"><legend/.exec(html)?.[1];
+  assert.ok(describedBy, "the fieldset is described by an id");
+  const hint = `<p id="${describedBy}" class="${L.SETTINGS_HINT_CLASS} mt-1.5">How round the buttons are.</p>`;
+  assert.ok(html.endsWith(`${hint}</fieldset>`), "the hint is the fieldset's last child and carries that id");
+  assert.ok(html.indexOf("</label>") < html.indexOf(hint), "after the options");
 });
 
 test("SettingsSwitchRow: one label around the switch, named by the label, described by its line", () => {
