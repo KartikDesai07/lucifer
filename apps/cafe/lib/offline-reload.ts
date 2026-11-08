@@ -3,6 +3,14 @@
 
 import { serverReach, type ServerReachStore } from "@/lib/server-reach";
 
+/** The one meaning of "the line is up" for a reload: the page's offline state says online and the browser agrees. */
+export function lineIsUp(
+  store: Pick<ServerReachStore, "isOffline"> = serverReach,
+  win: { navigator: { onLine: boolean } } = window,
+): boolean {
+  return !store.isOffline() && win.navigator.onLine !== false;
+}
+
 /** The error boundaries' automatic reload (a missing build chunk): a page that reloads without the internet cannot
  *  open, so it waits for the connection (the screen's own Reload button stays). Returns its cleanup. */
 export function reloadWhenOnline(
@@ -10,7 +18,7 @@ export function reloadWhenOnline(
   store: ServerReachStore = serverReach,
   win: Pick<Window, "addEventListener" | "removeEventListener"> & { navigator: { onLine: boolean } } = window,
 ): () => void {
-  const ready = () => !store.isOffline() && win.navigator.onLine !== false;
+  const ready = () => lineIsUp(store, win);
   if (ready()) {
     reload();
     return () => undefined;

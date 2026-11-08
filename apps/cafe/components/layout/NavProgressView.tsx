@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { NavSkeleton } from "@/components/layout/NavSkeleton";
 import { useNavCovered, useNavProgress } from "@/hooks/use-nav-progress";
 import { heldRoutes, markVisit } from "@/lib/held-routes";
-import { abandonNavigation, retryNavigation } from "@/lib/navigate";
+import { abandonNavigation, landingProves, retryNavigation } from "@/lib/navigate";
 import { navProgress, type NavProgress } from "@/lib/nav-progress";
 import { coverOf, skeletonKindOf, stillOpeningIn } from "@/lib/nav-skeleton";
 
@@ -28,11 +28,13 @@ export function NavProgressView({ children }: { children: ReactNode }) {
   // Before paint, on mount and on every new pathname: the screen that just drew ends the wait (so no frame shows the
   // skeleton over it), and the visit counts as held for an offline tap later (lib/navigate.ts), by its path and, when
   // it shows a query, by its whole URL. The query is read here from the address bar: these pages are static, so
-  // useSearchParams is not an option.
+  // useSearchParams is not an option. A landing that proves its entry (lib/navigate.ts landingProves, read before the
+  // settle ends the opening) is never distrusted later, so offline the POS still reopens from memory (V11).
   useLayoutEffect(() => {
     if (!pathname) return;
+    const proves = landingProves(pathname);
     navProgress.settle(pathname);
-    markVisit(heldRoutes, pathname, window.location.search, Date.now());
+    markVisit(heldRoutes, pathname, window.location.search, Date.now(), proves);
   }, [pathname]);
 
   // A page restored from the back-forward cache (Back after a full load) comes back with the store as it was at the

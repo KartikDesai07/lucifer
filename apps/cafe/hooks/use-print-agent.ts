@@ -23,7 +23,7 @@ import {
   printAgentSlipOf,
   readPendingAcks,
   setDirectPrintSource,
-  markPrinterWriting, leaseUnlessClosing, trackPrintBusy,
+  addPrintBusySource, printHostBusySince, markPrinterWriting, leaseUnlessClosing, trackPrintBusy,
   setPrinterHealthSource,
   setPulsePrintDevice,
   setReadyPrintersSource,
@@ -233,13 +233,13 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
 
   useEffect(() => {
     agent?.setGate({ enabled, busy });
+    printHostBusySince(); // re-sync the hold clock now: a disabled agent's held slip ends its hold (two never join)
   }, [agent, enabled, busy]);
 
-  // The printer reconnected or went away: look at the line (the gate decides). Session 2B: a nudge, so the
-  // printer's own status changes during the agent's print never queue an empty lease after it. Session 2F1: one of
-  // the POS app's printers too. The 2F1 review gate (N-1): only a change of what can print now (this device's own
-  // printer, or which of the app's printers are connected): a down printer's own reconnect probes (connecting <->
-  // disconnected, every 30 s) lease nothing while another printer prints.
+  // The printer reconnected or went away: look at the line (the gate decides). Session 2B: a nudge, so the printer's
+  // own status changes while the agent prints never queue an empty lease after it. Session 2F1: one of the POS app's
+  // printers too. The 2F1 review gate (N-1): only a change of what can print now (this device's own printer, or which
+  // app printers are connected): a down printer's own reconnect probes (every 30 s) lease nothing while another prints.
   useEffect(() => {
     agent?.nudge();
   }, [agent, canPrint, poolReady, lanReady]);
@@ -283,18 +283,19 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
     };
   }, [agent]);
 
-  // Phase 2 Session 2B (spec §7.11): while this tab drains this device's slips and can print now, the requests
-  // that make slips name it (directPrintTab → x-pos-print-lease), and a job an answer carries already leased
-  // to it is printed here at once: no lease request, no realtime message.
+  // Session 2B (spec §7.11): while this tab drains and can print now, slip-making requests name it (directPrintTab →
+  // x-pos-print-lease) and a job their answer carries leased to it prints here at once: no lease, no realtime message.
   useEffect(() => {
     if (agent === null) return;
     const offSource = setDirectPrintSource(() => (agent.directReady() ? tabId : null));
     const offReady = setReadyPrintersSource(() => agent.openPrinters());
     const offLeased = onLeasedJob((job) => agent.take(job));
+    const offHeld = addPrintBusySource(() => agent.holdsJob()); // F1: one held here (the bridge busy) is print work
     return () => {
       offSource();
       offReady();
       offLeased();
+      offHeld();
     };
   }, [agent, tabId]);
 
@@ -311,9 +312,8 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
     });
   }, [agent, enabled, isHost, deviceId]);
 
-  // Name this device on the pulse, and lease when its own line holds a job. The host too (the Phase 1 final
-  // gate, I-2): with its daily wake share spent and the socket down, the pulse is how it still hears of the
-  // slips other devices send it (spec §7.10). One bounded read on a request that already runs.
+  // Name this device on the pulse (a bounded read on a request that already runs) and lease when its line holds a job.
+  // The host too (Phase 1 final gate, I-2): with its wake share spent and the socket down, the pulse brings its slips (§7.10).
   useEffect(() => {
     if (agent === null || !enabled) return;
     setPulsePrintDevice(deviceId);

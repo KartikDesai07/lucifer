@@ -293,7 +293,7 @@ test("PIN (2D): the setup page's reads are on that page only (never polled); eve
   assert.equal((hooks.match(/onError: \(err: Error\) => toast\.error\(/g) ?? []).length, 5, "each write toasts its own error");
   assert.ok(!/\.mutate\(\s*[^)]*,\s*\{/.test(hooks), "no per-call callbacks");
   assert.equal((hooks.match(/onSuccess: \(\) => qc\.invalidateQueries\(\{ queryKey: PRINTERS_KEYS\.all \}\)/g) ?? []).length, 2, "a printer save or delete refreshes the printers this device (and its agent) reads");
-  assert.match(hooks, /headers: printAgentHeaders\(readDeviceId\(\)\)/, "a test print names this device and tab");
+  assert.match(hooks, /printRequestOptions\(printAgentHeaders\(readDeviceId\(\)\)\)/, "a test print names this device and tab");
   assert.match(hooks, /if \(ref\.leased !== undefined\) deliverLeasedJob\(ref\.leased\);/, "a test slip leased to this tab prints here at once");
 });
 

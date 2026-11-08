@@ -88,3 +88,64 @@ test("an error answer says whether it was our envelope", async () => {
   });
   assert.equal(new ApiError("x", "http", 400).enveloped, false, "the constructor default is false");
 });
+
+// R70: `options.track` wraps the WHOLE request (fetch + unwrap + the error mapping), so the caller of apiSend gets
+// exactly what track returns; a tracker that only counts hands back the same outcome.
+function spyTrack() {
+  const seen: Promise<unknown>[] = [];
+  const track = <R,>(work: Promise<R>): Promise<R> => {
+    seen.push(work);
+    return work;
+  };
+  return { seen, track };
+}
+
+test("track: the value comes back unchanged, and track saw a promise pending until the fetch settled", async () => {
+  let answer!: (res: Response) => void;
+  const real = globalThis.fetch;
+  globalThis.fetch = (() => new Promise<Response>((res) => { answer = res; })) as typeof fetch;
+  try {
+    const { seen, track } = spyTrack();
+    const sent = apiSend<{ ok: number }>("/api/x", "POST", {}, { track });
+    assert.equal(seen.length, 1, "track was applied once, around the request");
+    let settled = false;
+    void seen[0].then(() => { settled = true; }, () => { settled = true; });
+    await new Promise((r) => setTimeout(r, 5));
+    assert.equal(settled, false, "pending while the fetch has not answered");
+    answer(json(200, { success: true, data: { ok: 1 } }));
+    assert.deepEqual(await sent, { ok: 1 }, "the caller gets the value");
+    assert.equal(settled, true, "settled after the answer");
+  } finally {
+    globalThis.fetch = real;
+  }
+});
+
+test("track: an http error, a network error and the timeout reach the caller as the same ApiError", async () => {
+  const { seen, track } = spyTrack();
+  await withFetch(async () => json(409, { success: false, error: "Order already settled" }), async () => {
+    const e = (await apiSend("/api/x", "POST", {}, { track }).catch((err: unknown) => err)) as ApiError;
+    assert.ok(e instanceof ApiError, "an ApiError");
+    assert.deepEqual([e.kind, e.status, e.message], ["http", 409, "Order already settled"], "same kind, status and message");
+  });
+  await withFetch(async () => { throw new TypeError("Failed to fetch"); }, async () => {
+    const e = (await apiSend("/api/x", "POST", {}, { track }).catch((err: unknown) => err)) as ApiError;
+    assert.deepEqual([e.kind, e.status, e.message], ["network", null, NETWORK_ERROR_MESSAGE], "a network error");
+  });
+  await withFetch(async () => { throw new DOMException("signal timed out", "TimeoutError"); }, async () => {
+    const e = (await apiSend("/api/x", "POST", {}, { track }).catch((err: unknown) => err)) as ApiError;
+    assert.deepEqual([e.kind, e.status, e.message], ["timeout", null, TIMEOUT_ERROR_MESSAGE], "the timeout");
+  });
+  assert.equal(seen.length, 3, "track saw all three requests");
+  for (const work of seen) await work.catch(() => undefined);
+});
+
+test("track: omitted changes nothing (the request goes out with its headers, the value unwraps)", async () => {
+  let headers: HeadersInit | undefined;
+  await withFetch(async (_url, init) => {
+    headers = init?.headers;
+    return json(200, { success: true, data: 7 });
+  }, async () => {
+    assert.equal(await apiSend("/api/x", "POST", {}, { headers: { "X-A": "1" } }), 7, "the value");
+  });
+  assert.deepEqual(headers, { "X-A": "1", "Content-Type": "application/json" }, "headers as before");
+});

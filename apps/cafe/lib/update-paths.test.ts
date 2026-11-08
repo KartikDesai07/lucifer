@@ -60,8 +60,8 @@ test("PIN: the page reloads only after a \"reload\" verdict and on the chip's ta
   // The re-review's M4 rest (R66, deliberate move): the question's Refresh runs the rule again, so offline or a slip
   // printing since the question opened is said, never reloaded under.
   assert.equal((hook.match(/\breload\b(?!\s*=)(?!\(\))/g) ?? []).length, 0, "reload is never handed out: only the rule calls it");
-  assert.match(hook, /onConfirm: \(\) => decide\(true\),/, "a confirmed question runs the rule again, its work now staff's choice");
-  assert.match(hook, /const press = \(\) => decide\(false\);/, "the tap runs the rule");
+  assert.match(hook, /decide\(true, false\)\),/, "a confirmed question runs the rule again, its work now staff's choice");
+  assert.match(hook, /const press = \(\) => decide\(false, false\);/, "the tap runs the rule");
   assert.match(
     src,
     /const target = updatePending\.serverBuild\(\);\s*if \(target === null\) return false;\s*window\.sessionStorage\.setItem\(UPDATE_RELOAD_KEY, target\);/,

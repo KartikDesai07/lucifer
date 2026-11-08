@@ -29,6 +29,8 @@ import { useMyOrders } from "@/components/public/use-my-orders";
 import { useRepeatOrder } from "@/components/public/use-repeat-order";
 import type { DinerStampCard } from "@/lib/diner-loyalty";
 
+// R73: the diner page has no print agent or print host, so nothing here loads a document through a print gate.
+
 // Total ITEMS (not lines) in the persisted cart — the Menu tab's badge count.
 // Read from the STORE (the same place PublicOrderFlow hydrates from), never
 // from that component's state.

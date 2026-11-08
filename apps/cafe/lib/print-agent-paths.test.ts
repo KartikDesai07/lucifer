@@ -59,7 +59,7 @@ test("PIN (R1): the order requests send the opt-in through apiSend's headers; on
   assert.ok(src("apps/cafe/hooks/use-self-order-auto-print.ts").includes('`/api/order-requests/${requestId}/kot-claim`, "POST", undefined, printAgentRequestOptions())'), "a self-order claim: its KOT (R4)");
   const api = src("packages/shared/src/api-client.ts");
   assert.ok(api.includes('headers: { ...options.headers, "Content-Type": "application/json" },'), "apiSend keeps its JSON content type whatever a caller adds");
-  assert.ok(api.includes("options: { headers?: Record<string, string> } = {},"), "optional and last: every existing caller (cafe and Hub) is unchanged");
+  assert.ok(api.includes("options: { headers?: Record<string, string>; track?: <R>(work: Promise<R>) => Promise<R> } = {},"), "optional and last: every existing caller (cafe and Hub) is unchanged");
 });
 
 test("PIN: every print wrapper follows the job the order's answer made, and a device with an identity never prints locally", () => {
@@ -75,7 +75,7 @@ test("PIN: every print wrapper follows the job the order's answer made, and a de
   assert.ok(seam.includes('if (agentDeviceId !== "" && result.outcome === "queued") kickPrintAgent();'), "an enqueued job is leased now, not on a poll");
   assert.ok(seam.includes('if (ref.status === "queued") kickPrintAgent(ref.printerId);'), "a ref to a resolved job is followed, never leased (M-d); a queued one kicks with its printer (the 2E gate, M-1)");
   assert.ok(seam.includes('const ref = printJobRefOf(order, "moved");'), "the moved slip is followed by ref: its key has the server's movedAt");
-  assert.ok(src("apps/cafe/hooks/use-print-host.ts").includes('({ headers, ...input }: EnqueuePrintJobInput) => apiSend<PrintJobEnqueueResult>("/api/print-jobs", "POST", input, { headers })'), "headers are never part of the enqueue body");
+  assert.ok(src("apps/cafe/hooks/use-print-host.ts").includes('({ headers, ...input }: EnqueuePrintJobInput) => apiSend<PrintJobEnqueueResult>("/api/print-jobs", "POST", input, printRequestOptions(headers))'), "headers are never part of the enqueue body");
 });
 
 test("PIN: the provider hands the drain its surfaces, and the bridge's own KOT print no longer reaches a lane", () => {
@@ -228,4 +228,29 @@ test("PIN (3C gate): a new list of takeover printers the app lacks starts the be
   const agent = src("apps/cafe/hooks/use-print-agent.ts");
   assert.ok(agent.includes("missingRef.current = missingKey === \"\" ? [] : missingKey.split(\",\");\n    clockRef.current?.reports();"), "the list is sampled when it changes");
   assert.ok(agent.includes("clockRef.current = clock;") && agent.includes("clockRef.current = null;"), "the hook holds the agent's clock, and lets it go with the agent");
+});
+
+// Post-verifier R1: the held-slip source (F1) lives and dies with the agent's other seams: one effect, one cleanup.
+test("PIN (F1): the held-slip source is registered in the same effect as onLeasedJob and unregistered in its cleanup", () => {
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  const leased = agent.indexOf("const offLeased = onLeasedJob((job) => agent.take(job));");
+  assert.ok(leased > 0, "landmark: the leased-job seam");
+  const start = agent.lastIndexOf("useEffect(() => {", leased);
+  const end = agent.indexOf("}, [agent, tabId]);", leased);
+  assert.ok(start > 0 && end > leased, "landmark: the effect around it");
+  const effect = agent.slice(start, end);
+  assert.equal(count(agent, "addPrintBusySource("), 1, "one registration in the hook");
+  const at = effect.indexOf("const offHeld = addPrintBusySource(() => agent.holdsJob());");
+  assert.ok(at > 0, "registered in that same effect");
+  const cleanup = effect.indexOf("return () => {");
+  assert.ok(cleanup > at, "the effect's cleanup comes after the registration");
+  assert.ok(effect.slice(cleanup).includes("offHeld();"), "its unregister runs in that effect's cleanup");
+});
+
+// Post-verifier R1: a pull source has no change event, so setGate re-syncs the hold clock at once (two holds never join).
+test("PIN (R1): the setGate effect reads the hold clock right after setGate", () => {
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.match(agent, /useEffect\(\(\) => \{\s*agent\?\.setGate\(\{ enabled, busy \}\);\s*printHostBusySince\(\);\s*\}, \[agent, enabled, busy\]\);/, "setGate, then the re-sync, in one effect");
+  assert.match(agent, /addPrintBusySource, printHostBusySince, markPrinterWriting,/, "the name on the existing import line from @/lib/print-agent");
+  assert.match(src("apps/cafe/lib/print-agent-seams.ts"), /export \{ addPrintBusySource, printHostBusySince \} from "@\/lib\/print-host-busy";/, "re-exported through the agent's seams");
 });

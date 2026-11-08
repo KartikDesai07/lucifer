@@ -5,7 +5,9 @@
 // in the router cache for the whole reuse window (see lib/warm-routes.ts), so
 // a touch only prefetches on a line one of the page's own queries has just
 // proven. And a row already offered inside the window is left alone: asking
-// again is a no-op in Next at best and a wasted request at worst.
+// again is a no-op in Next at best and a wasted request at worst. Nothing is
+// offered while a newer build is pending (post-verifier V1): the answer could
+// come from that build, which Next keeps as a hard-load marker for the window.
 
 import { HELD_ROUTES_WINDOW_MS } from "@/lib/held-routes";
 
@@ -17,12 +19,14 @@ export interface IntentPrefetchInput {
   online: boolean;
   offline: boolean;
   lineProven: boolean;
+  /** A newer build is waiting for this page (lib/update-pending.ts). */
+  updatePending: boolean;
   offeredAt: number | undefined;
   now: number;
 }
 
 export function shouldIntentPrefetch(input: IntentPrefetchInput): boolean {
-  if (!input.online || input.offline || !input.lineProven) return false;
+  if (!input.online || input.offline || !input.lineProven || input.updatePending) return false;
   const { offeredAt, now } = input;
   // Strict, like HeldRoutes.holds: at exactly the window the entry is gone.
   return !(offeredAt !== undefined && now - offeredAt < HELD_ROUTES_WINDOW_MS);

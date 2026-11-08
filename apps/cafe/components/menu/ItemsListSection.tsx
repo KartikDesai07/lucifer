@@ -7,6 +7,7 @@ import { MENU_SKELETON_LIST_CLASS, MENU_SKELETON_ROW_CLASS } from "@/lib/menu-la
 import { MENU_CARDS_SSR_CLASS, MENU_LIST_BOX_CLASS, MENU_TABLE_QUERY, MENU_TABLE_SSR_CLASS } from "@/lib/menu-list-layout";
 import type { ProductSort, ProductSortKey } from "@/lib/products-sort";
 import { Button } from "@/components/ui/button";
+import { AppLink } from "@/components/layout/AppLink";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { MagnifierIcon } from "@/components/menu/menu-icons";
@@ -119,7 +120,7 @@ export function ItemsListSection({
         action={
           isAdmin ? (
             <Button asChild className="mt-2">
-              <a href="/categories">Add a category</a>
+              <AppLink href="/categories">Add a category</AppLink>
             </Button>
           ) : undefined
         }

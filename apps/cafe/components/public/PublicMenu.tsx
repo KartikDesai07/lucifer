@@ -172,6 +172,7 @@ export function PublicMenu({
         <EmptyState
           title="Couldn't load the menu"
           description="Check your connection and try again."
+          // No print gate on this reload (R73): the diner page has no print host.
           action={
             <button
               type="button"

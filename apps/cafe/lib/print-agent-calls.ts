@@ -15,6 +15,7 @@ import type { PrintJobKind } from "@pos/shared/print-job";
 import { readBillPrinterId } from "@/lib/print-bill-printer";
 import { directPrintTab, readyPrinterIds } from "@/lib/print-agent-seams";
 import { mintTabId, readDeviceId } from "@/lib/pos-device-id";
+import { trackPrintBusy } from "@/lib/print-host-busy";
 
 // Printing redesign, Phase 1 Session 1C (spec §7.4, §9.1; rulings R1 and M-d): the call sites' half of
 // the agent. An order request whose call site prints its slips says so (R1's headers), and the server
@@ -45,10 +46,21 @@ export function printAgentHeaders(
   };
 }
 
+/** apiSend's options for a request that sends print headers. A request that names this tab (the lease header) is
+ *  counted as print work while in flight, so a reload waits for its answer: the slips it makes may come back leased to
+ *  this tab and would expire into a REPRINT if the page left first. A request with no lease header is not counted: its
+ *  slips go to the printer's line, not this tab. */
+export function printRequestOptions(headers: Record<string, string> | undefined): {
+  headers?: Record<string, string>;
+  track?: typeof trackPrintBusy;
+} {
+  if (headers === undefined || Object.keys(headers).length === 0) return {};
+  return PRINT_LEASE_HEADER in headers ? { headers, track: trackPrintBusy } : { headers };
+}
+
 /** apiSend's options for an order request whose call site prints the slips it makes. */
-export function printAgentRequestOptions(bill = false): { headers?: Record<string, string> } {
-  const headers = printAgentHeaders(readDeviceId(), bill);
-  return Object.keys(headers).length === 0 ? {} : { headers };
+export function printAgentRequestOptions(bill = false): ReturnType<typeof printRequestOptions> {
+  return printRequestOptions(printAgentHeaders(readDeviceId(), bill));
 }
 
 /** A client-started print (POST /api/print-jobs) from an agent: the opt-in, so with no host the job is

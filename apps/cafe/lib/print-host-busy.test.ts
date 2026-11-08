@@ -7,12 +7,17 @@ import assert from "node:assert/strict";
 import { REFRESH_SETTLE_MS } from "@/lib/page-refresh";
 import { directPrintTab, setDirectPrintSource } from "@/lib/print-agent-seams";
 import {
+  PRINT_FREE_CHECK_MS,
   PRINT_HOST_CLOSING_MS,
+  PRINT_STUCK_MS,
   closePrintHost,
   holdPrintBusy,
   leaseUnlessClosing,
+  leaveWhenPrintFree,
   printHostBusy,
+  printHostBusySince,
   printHostClosing,
+  setPrintBusyClock,
   trackPrintBusy,
 } from "@/lib/print-host-busy";
 
@@ -121,5 +126,169 @@ test("closing: a page that began its reload names no tab for the slips its reque
     assert.equal(directPrintTab(), "tab-1", "the page still here after the window: named again");
   } finally {
     off();
+  }
+});
+
+// R71/R72 groundwork: the hold clock and the leave-when-print-free gate.
+test("the hold clock: set when it turns busy, kept through overlaps and hand-overs, null when free", async () => {
+  assert.equal(PRINT_STUCK_MS, 30_000, "30 s");
+  assert.equal(PRINT_FREE_CHECK_MS, 250, "a gate looks again every 250 ms");
+  let t = 1000;
+  const restore = setPrintBusyClock(() => t);
+  try {
+    assert.equal(printHostBusySince(), null, "free: no hold");
+    const bridge = Symbol("bridge");
+    holdPrintBusy(bridge, true);
+    assert.equal(printHostBusySince(), 1000, "a holder starts the hold now");
+    t = 5000;
+    holdPrintBusy(bridge, true);
+    assert.equal(printHostBusySince(), 1000, "holding again does not restart it");
+    const work = deferred<string>();
+    const tracked = trackPrintBusy(work.promise);
+    assert.equal(printHostBusySince(), 1000, "in-flight work joining a holder is the same hold");
+    t = 9000;
+    holdPrintBusy(bridge, false);
+    assert.equal(printHostBusy(), true, "the work still holds");
+    assert.equal(printHostBusySince(), 1000, "a hand-over with no gap is one hold");
+    work.resolve("ok");
+    await tracked;
+    assert.equal(printHostBusySince(), null, "free again: null");
+    t = 20_000;
+    const later = deferred<string>();
+    const second = trackPrintBusy(later.promise);
+    assert.equal(printHostBusySince(), 20_000, "in-flight work alone starts a new hold at its own time");
+    later.reject(new Error("x"));
+    await assert.rejects(second);
+    assert.equal(printHostBusySince(), null, "a failed work releases the hold too");
+  } finally {
+    restore();
+  }
+});
+
+function fakeTimers() {
+  const pending = new Map<number, () => void>();
+  let next = 1;
+  return {
+    pending,
+    options: {
+      setTimer: (run: () => void) => {
+        const id = next++;
+        pending.set(id, run);
+        return id;
+      },
+      clearTimer: (id: unknown) => {
+        pending.delete(id as number);
+      },
+    },
+    /** Fires every timer that is pending now, like the clock reaching them. */
+    tick(): void {
+      const due = [...pending.entries()];
+      pending.clear();
+      for (const [, run] of due) run();
+    },
+  };
+}
+
+test("gate: print free at the call goes at once, closing the host first, once", () => {
+  const timers = fakeTimers();
+  closePrintHost(0);
+  let goes = 0;
+  let closingWhenGone: boolean | null = null;
+  const cancel = leaveWhenPrintFree(() => {
+    goes += 1;
+    closingWhenGone = printHostClosing();
+  }, timers.options);
+  assert.equal(goes, 1, "went synchronously");
+  assert.equal(closingWhenGone, true, "the host was closed right before go");
+  assert.equal(timers.pending.size, 0, "no timer when it went at once");
+  cancel();
+  cancel();
+  assert.equal(goes, 1, "cancel after it went is harmless");
+  closePrintHost(0);
+});
+
+test("gate: busy never goes while busy, goes once on the first free check, closing right before go", () => {
+  const timers = fakeTimers();
+  closePrintHost(0);
+  const bridge = Symbol("bridge");
+  holdPrintBusy(bridge, true);
+  try {
+    let goes = 0;
+    let closingBefore: boolean | null = null;
+    let closingAtGo: boolean | null = null;
+    leaveWhenPrintFree(() => {
+      goes += 1;
+      closingAtGo = printHostClosing();
+    }, timers.options);
+    closingBefore = printHostClosing();
+    assert.equal(goes, 0, "not while print is busy");
+    assert.equal(closingBefore, false, "waiting does not close the host");
+    timers.tick();
+    timers.tick();
+    assert.equal(goes, 0, "still busy at the next looks");
+    assert.equal(timers.pending.size, 1, "it looks again");
+    holdPrintBusy(bridge, false);
+    assert.equal(goes, 0, "freeing alone does not go; the next look does");
+    timers.tick();
+    assert.equal(goes, 1, "went on the first look after print was free");
+    assert.equal(closingAtGo, true, "closed right before go");
+    assert.equal(timers.pending.size, 0, "its timer stopped");
+    timers.tick();
+    assert.equal(goes, 1, "never twice");
+  } finally {
+    holdPrintBusy(bridge, false);
+    closePrintHost(0);
+  }
+});
+
+test("gate: ready false keeps it waiting even when print is free", () => {
+  const timers = fakeTimers();
+  closePrintHost(0);
+  let lineUp = false;
+  let goes = 0;
+  leaveWhenPrintFree(() => {
+    goes += 1;
+  }, { ...timers.options, ready: () => lineUp });
+  assert.equal(goes, 0, "print is free but the line is not up");
+  assert.equal(printHostClosing(), false, "no close while it does not go");
+  timers.tick();
+  assert.equal(goes, 0, "still waiting");
+  lineUp = true;
+  timers.tick();
+  assert.equal(goes, 1, "goes once both hold");
+  closePrintHost(0);
+});
+
+test("gate: cancel stops it for good; two gates go at most once each; a late timer does nothing", () => {
+  const timers = fakeTimers();
+  closePrintHost(0);
+  const bridge = Symbol("bridge");
+  holdPrintBusy(bridge, true);
+  try {
+    let a = 0;
+    let b = 0;
+    const cancelA = leaveWhenPrintFree(() => {
+      a += 1;
+    }, timers.options);
+    leaveWhenPrintFree(() => {
+      b += 1;
+    }, timers.options);
+    assert.equal(timers.pending.size, 2, "both wait on their own timers");
+    const late = [...timers.pending.values()];
+    cancelA();
+    cancelA();
+    assert.equal(timers.pending.size, 1, "cancel cleared its timer");
+    holdPrintBusy(bridge, false);
+    late[0]();
+    assert.equal(a, 0, "a timer firing after cancel does nothing");
+    assert.equal(printHostClosing(), false, "a cancelled gate never closed the host");
+    timers.tick();
+    assert.equal(b, 1, "the other gate went once");
+    late[1]();
+    timers.tick();
+    assert.equal(b, 1, "a timer firing after go does nothing");
+  } finally {
+    holdPrintBusy(bridge, false);
+    closePrintHost(0);
   }
 });

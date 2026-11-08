@@ -11,13 +11,20 @@ import { INTENT_HOVER_MS, shouldIntentPrefetch } from "./intent-prefetch";
 const CAFE_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const read = (rel: string): string => stripComments(readFileSync(path.join(CAFE_ROOT, rel), "utf8"));
 
-const OK = { href: "/pos", online: true, offline: false, lineProven: true, offeredAt: undefined, now: 1_000_000 };
+const OK = { href: "/pos", online: true, offline: false, lineProven: true, updatePending: false, offeredAt: undefined, now: 1_000_000 };
 
 test("a touch prefetches only online, with the server reachable, on a proven line, for a row not yet offered", () => {
   assert.equal(shouldIntentPrefetch(OK), true, "all conditions met");
   assert.equal(shouldIntentPrefetch({ ...OK, online: false }), false, "browser offline blocks");
   assert.equal(shouldIntentPrefetch({ ...OK, offline: true }), false, "server unreachable blocks");
   assert.equal(shouldIntentPrefetch({ ...OK, lineProven: false }), false, "an unproven line blocks");
+});
+
+// Post-verifier V1: a prefetch made while a newer build waits may be answered by it, and Next keeps that answer as a
+// hard-load marker for the whole window (a later tap would load the document past the print gate).
+test("while a newer build is pending, a touch never prefetches", () => {
+  assert.equal(shouldIntentPrefetch({ ...OK, updatePending: true }), false, "a pending update blocks the prefetch (and so the mark)");
+  assert.equal(shouldIntentPrefetch({ ...OK, updatePending: false }), true, "landmark: the same touch with nothing pending prefetches");
 });
 
 test("a repeat inside the window is blocked; at the boundary and after it is allowed", () => {
@@ -39,6 +46,7 @@ test("PIN: useIntentPrefetch decides at the event from the pulse's cached state,
   assert.match(src, /online: navigator\.onLine !== false/, "the browser's online flag gates it");
   assert.match(src, /offeredAt: heldRoutes\.offeredAt\(href\)/, "a repeat is judged from the held record");
   assert.match(src, /router\.prefetch\(href\);\s*heldRoutes\.mark\(href, now\);/, "an offer prefetches and marks");
+  assert.match(src, /updatePending: updatePending\.isPending\(\),/, "a pending update gates it (post-verifier V1), read at the event");
   assert.match(src, /window\.setTimeout\([\s\S]*INTENT_HOVER_MS\)/, "hover waits INTENT_HOVER_MS");
   assert.match(src, /useEffect\(\(\) => clear, \[clear\]\)/, "the hover timer is cleared on unmount");
   assert.match(src, /onMouseLeave: clear/, "the hover timer is cleared on mouseleave");

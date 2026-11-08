@@ -15,6 +15,7 @@ import {
   staggerPlan,
   warmRoutes,
 } from "@/lib/warm-routes";
+import { updatePending } from "@/lib/update-pending";
 
 // Keeps `hrefs` fully prefetched while this component is mounted, so a click
 // on one of them renders from the router cache instead of waiting for the
@@ -27,8 +28,9 @@ import {
 // coming back into view start one only while the proof is recent. A line
 // failure (offline, timeout, 5xx, a paused fetch) drops the proof and cancels
 // any offers still waiting. A pass offers the routes one at a time, and each
-// offer re-checks the line as it fires. A hidden or offline tab sends
-// nothing. Prefetching is a no-op in `next dev` (Next skips it there), so
+// offer re-checks the line as it fires. A hidden or offline tab, or one a
+// newer build waits for (post-verifier V1), sends nothing. Prefetching is a
+// no-op in `next dev` (Next skips it there), so
 // this only has an effect in a production build.
 export function useWarmRoutes(hrefs: readonly string[]): void {
   const router = useRouter();
@@ -50,6 +52,7 @@ export function useWarmRoutes(hrefs: readonly string[]): void {
       visible: document.visibilityState === "visible",
       online: navigator.onLine !== false,
       lineProven: lineProven(answeredAt, Date.now()),
+      updatePending: updatePending.isPending(),
     });
     const cancelPass = () => {
       for (const offer of offers) window.clearTimeout(offer);

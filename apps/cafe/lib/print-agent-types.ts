@@ -71,4 +71,10 @@ export interface PrintAgent {
   directReady(): boolean;
   /** Session 2E: the printers this tab can print now: ready here and not held by a refusal of their own. */
   openPrinters(): string[];
+  /** P2 follow-ups F1: a job leased to this tab waits here for its print (taken while the bridge was busy, or a lease's
+   *  extra job), so it counts as print work (lib/print-host-busy.ts). False once its tracked print starts, it is handed
+   *  back or the agent stopped, and while this tab does not drain (ruling F1: a disabled agent's held job cannot print
+   *  here, and would hold the page forever). Between taking a held job out and its print, the cycle awaits only the
+   *  flush of a hand-back's ack, itself tracked (the page wraps every ack). */
+  holdsJob(): boolean;
 }

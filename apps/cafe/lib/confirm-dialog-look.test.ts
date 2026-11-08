@@ -46,7 +46,7 @@ function walk(dirAbs: string, out: string[]): void {
 // Cancel and Action.
 const TODAY_DEFAULT = `
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent className={cn(aboveToasts && ABOVE_TOASTS_CLASS)}>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           {description && (
@@ -76,6 +76,7 @@ const TODAY_DEFAULT = `
       </AlertDialogContent>
     </AlertDialog>`;
 
+// F12 (P2 follow-ups, moved on purpose): the default tree's one change is the content's className, off unless a caller sets aboveToasts (lib/confirm-dialog-above-toasts.test.ts).
 test("PIN (U1 Task 12, design 3): the default look is today's tree, unchanged for every caller that does not ask for the sheet", () => {
   const raw = readRaw(CONFIRM);
   assert.ok(normalise(raw).includes(normalise(TODAY_DEFAULT)), "the default branch renders today's kit AlertDialog tree exactly (about 30 callers keep it)");
