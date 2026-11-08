@@ -329,3 +329,14 @@ list-row look, shared by UPI slabs, promo codes and announcements. 6 settings pa
 **The owner's OK:** the owner picked this page after checking Business and Taxes on devices (2026-11-08). Merged and
 pushed under the standing ship rule (main 01ab4a8); the owner deploys from his admin panel. Plan, checks and review:
 `docs/superpowers/plans/2026-11-08-settings-qr-ui.md` Results.
+
+### `/settings/appearance` (2026-11-09)
+
+Appearance is now five cards (Theme, Button colour, Text and layout, Banner picture, Preview). It uses the Taxes
+layout: from 1280 px the menu preview is a sticky 340 px column that scrolls inside itself; below that it comes last,
+under the "See the preview" jump link. The card kit gained a `hint` on `SettingsChoice` and the card-look kit Button
+classes. 5 settings pages remain, one per session.
+
+**The owner's OK:** the owner picked this page after checking QR ordering on devices (2026-11-08). Merged and pushed
+under the standing ship rule (main 5c5aec9); the owner deploys from his admin panel. Plan, checks and review:
+`docs/superpowers/plans/2026-11-08-settings-appearance-ui.md` Results.
