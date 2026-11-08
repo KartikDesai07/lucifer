@@ -7,10 +7,14 @@ import { Plus } from "lucide-react";
 
 import type { SettingsInput } from "@/schemas";
 import { PROMO_CODE_MAX } from "@pos/shared/public";
-import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
-import { BRAND_FIELD_ERROR_CLASS } from "@/components/brand/brand-classes";
-import { HINT_CLASS, SettingsGroup } from "@/components/settings/SettingsFields";
+import {
+  SETTINGS_ADD_BUTTON_CLASS,
+  SETTINGS_ERROR_CLASS,
+  SETTINGS_HINT_CLASS,
+  SETTINGS_LIST_EMPTY_CLASS,
+} from "@/lib/settings-card-layout";
+import { SettingsCard } from "@/components/settings/SettingsCard";
 import { PromoCodeRow, arrayLevelMessage } from "@/components/settings/PromoCodeRow";
 
 interface PromoCodesFieldsProps {
@@ -46,17 +50,15 @@ export function PromoCodesFields({ control, register, errors }: PromoCodesFields
 
   return (
     <>
-      <SettingsGroup title="Promo codes" description="Codes a diner can type when ordering from the QR code.">
+      <SettingsCard title="Promo codes" sub="Codes a diner can type when ordering from the QR code.">
         {arrayError && (
-          <p className={BRAND_FIELD_ERROR_CLASS} role="alert">
+          <p className={SETTINGS_ERROR_CLASS} role="alert">
             {arrayError}
           </p>
         )}
 
         {fields.length === 0 && (
-          <p className="rounded-md border border-dashed border-brand-rule p-4 text-sm text-brand-muted">
-            No promo codes yet. Add one and diners can type it when they order.
-          </p>
+          <p className={SETTINGS_LIST_EMPTY_CLASS}>No promo codes yet. Add one and diners can type it when they order.</p>
         )}
 
         {fields.map((field, index) => (
@@ -70,20 +72,19 @@ export function PromoCodesFields({ control, register, errors }: PromoCodesFields
           />
         ))}
 
-        <div className="space-y-1.5">
-          <Button
+        <div className="grid gap-1.5">
+          <button
             type="button"
-            variant="outline"
-            className="h-11 md:h-10"
+            className={SETTINGS_ADD_BUTTON_CLASS}
             onClick={() => append({ code: "", kind: "percent", value: 10, active: true })}
             disabled={atMax}
           >
-            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+            <Plus className="size-4" aria-hidden="true" />
             Add a promo code
-          </Button>
-          {atMax && <p className={HINT_CLASS}>You can have up to {PROMO_CODE_MAX} codes.</p>}
+          </button>
+          {atMax && <p className={SETTINGS_HINT_CLASS}>You can have up to {PROMO_CODE_MAX} codes.</p>}
         </div>
-      </SettingsGroup>
+      </SettingsCard>
 
       <ConfirmDialog
         open={confirmOpen}

@@ -1,5 +1,5 @@
 // The settings pages in the new UI (Business details: docs/superpowers/plans/2026-11-06-settings-business-ui.md; GST &
-// taxes: 2026-11-08-settings-taxes-ui.md): the class strings
+// taxes: 2026-11-08-settings-taxes-ui.md; QR ordering: 2026-11-08-settings-qr-ui.md): the class strings
 // the settings cards render, in one place so Tailwind's source scanner sees each one and the pins
 // (lib/settings-business-layout.test.ts) read the SAME constants. Field look = the U5 item editor's (re-exported below).
 // Tokens only; WebView 109: no color-mix(), no light-dark(), no backdrop-blur, overflow-clip for clipping.
@@ -26,6 +26,8 @@ export const SETTINGS_MAIN_CARD_CLASS = "xl:col-start-1";
 export const BUSINESS_PREVIEW_CLASS = "xl:sticky xl:top-20 xl:col-start-2 xl:[grid-row:1/span_5]";
 /** GST & taxes' sample bill: the same, over its four form rows. */
 export const TAXES_PREVIEW_CLASS = "xl:sticky xl:top-20 xl:col-start-2 xl:[grid-row:1/span_4]";
+/** A settings page without a preview (QR ordering): its cards in one column at every width. */
+export const SETTINGS_STACK_CLASS = "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4";
 
 // ── The card ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -83,7 +85,17 @@ export const SETTINGS_CHIP_CLASS = `inline-flex h-[42px] min-w-16 cursor-pointer
 export const SETTINGS_CHIP_ON_CLASS = "border-primary bg-status-info-tint";
 export const SETTINGS_CHIP_OFF_CLASS = "border-border bg-card pointer-fine:hover:bg-hover";
 
-export const SETTINGS_ADD_BUTTON_CLASS = `inline-flex h-[42px] cursor-pointer items-center gap-1.5 self-start justify-self-start rounded-[10px] border border-dashed border-subtle-foreground bg-transparent px-3.5 text-[13.5px] font-semibold text-foreground pointer-fine:hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50 ${FLOOR_FOCUS_RING_CLASS}`;
+/** A one-of-a-few choice (Percent off / Amount off): equal-width 42px options in a row, each a label around a hidden
+ *  radio, so the ring follows the radio's focus. Selected / at rest: the chip colours above. */
+export const SETTINGS_CHOICE_CLASS =
+  "flex h-[42px] min-w-0 flex-1 cursor-pointer items-center justify-center rounded-[10px] border px-3 text-[14px] font-semibold text-foreground transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary has-[:focus-visible]:ring-offset-1";
+
+/** One row of a repeating list (UPI slabs, promo codes, announcements), its title, and the list's no-rows-yet box. */
+export const SETTINGS_LIST_ROW_CLASS = "grid gap-3 rounded-[10px] border border-border-2 bg-surface-2 p-3";
+export const SETTINGS_LIST_ROW_TITLE_CLASS = "min-w-0 truncate text-[14px] font-semibold text-foreground";
+export const SETTINGS_LIST_EMPTY_CLASS = "rounded-[10px] border border-dashed border-border p-4 text-[13.5px] text-muted-foreground";
+
+export const SETTINGS_ADD_BUTTON_CLASS =`inline-flex h-[42px] cursor-pointer items-center gap-1.5 self-start justify-self-start rounded-[10px] border border-dashed border-subtle-foreground bg-transparent px-3.5 text-[13.5px] font-semibold text-foreground pointer-fine:hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50 ${FLOOR_FOCUS_RING_CLASS}`;
 export const SETTINGS_REMOVE_BUTTON_CLASS = `inline-flex h-[42px] cursor-pointer items-center justify-center gap-1.5 rounded-[10px] border-0 bg-transparent px-3 text-[13.5px] font-semibold text-status-bad-ink pointer-fine:hover:bg-status-bad-tint disabled:cursor-not-allowed disabled:opacity-50 ${FLOOR_FOCUS_RING_CLASS}`;
 
 // ── The card Save bar (opt-in: SettingsSaveBar look="card") ─────────────────────────────────────────────────────────

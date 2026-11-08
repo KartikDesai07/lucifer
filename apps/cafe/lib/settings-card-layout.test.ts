@@ -11,7 +11,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import * as L from "./settings-card-layout";
 import * as M from "./menu-editor-layout";
 import { FLOOR_FOCUS_RING_CLASS } from "./floor-tile-classes";
-import { CardField, SettingsBlock, SettingsCard, SettingsSwitchRow } from "@/components/settings/SettingsCard";
+import { CardField, SettingsBlock, SettingsCard, SettingsChoice, SettingsSwitchRow } from "@/components/settings/SettingsCard";
 
 (globalThis as { React?: typeof React }).React = React;
 
@@ -32,6 +32,7 @@ test("grid: one column, then the form beside a 340px sticky preview from 1280px"
     "xl:sticky xl:top-20 xl:col-start-2 xl:[grid-row:1/span_4]",
     "Taxes: column 2, spanning the four form rows, one grid-row declaration",
   );
+  assert.equal(L.SETTINGS_STACK_CLASS, "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4", "QR ordering: one column of cards");
 });
 
 test("card constants: the plan's values", () => {
@@ -150,6 +151,45 @@ test("tiles and chips: the shared choice looks (New order layout, How prices wor
   );
   assert.equal(L.SETTINGS_CHIP_ON_CLASS, "border-primary bg-status-info-tint", "selected chip");
   assert.equal(L.SETTINGS_CHIP_OFF_CLASS, "border-border bg-card pointer-fine:hover:bg-hover", "chip at rest");
+  assert.equal(
+    L.SETTINGS_CHOICE_CLASS,
+    "flex h-[42px] min-w-0 flex-1 cursor-pointer items-center justify-center rounded-[10px] border px-3 text-[14px] font-semibold text-foreground transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary has-[:focus-visible]:ring-offset-1",
+    "choice: 42px equal-width options, the ring follows the hidden radio",
+  );
+});
+
+test("list rows: the UPI slab row look, shared by promo codes and announcements, plus the row title and the empty box", () => {
+  assert.equal(L.SETTINGS_LIST_ROW_CLASS, "grid gap-3 rounded-[10px] border border-border-2 bg-surface-2 p-3", "row");
+  assert.equal(L.SETTINGS_LIST_ROW_TITLE_CLASS, "min-w-0 truncate text-[14px] font-semibold text-foreground", "row title");
+  assert.equal(
+    L.SETTINGS_LIST_EMPTY_CLASS,
+    "rounded-[10px] border border-dashed border-border p-4 text-[13.5px] text-muted-foreground",
+    "no rows yet",
+  );
+});
+
+test("SettingsChoice: a fieldset named by its legend, one label around each hidden radio, the selected one checked", () => {
+  const html = renderToStaticMarkup(
+    createElement(SettingsChoice<"a" | "b">, {
+      legend: "Discount type",
+      options: ["a", "b"],
+      value: "b",
+      onChange: () => {},
+      labelOf: (o) => (o === "a" ? "Percent off" : "Amount off"),
+    }),
+  );
+  assert.ok(html.startsWith('<fieldset class="min-w-0"><legend'), "a fieldset, its legend first");
+  assert.match(html, /<legend class="[^"]*">Discount type<\/legend>/, "the legend names the group");
+  assert.equal(html.split("<label").length - 1, 2, "one label per option");
+  assert.equal(html.split('type="radio"').length - 1, 2, "one native radio per option");
+  const names = [...html.matchAll(/name="([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(names.length === 2 && names[0] === names[1], "both radios share one group name (arrow keys move between them)");
+  assert.ok(html.includes(`<label class="${L.SETTINGS_CHOICE_CLASS} ${L.SETTINGS_CHIP_OFF_CLASS}"><input`), "a at rest");
+  assert.ok(html.includes(`<label class="${L.SETTINGS_CHOICE_CLASS} ${L.SETTINGS_CHIP_ON_CLASS}"><input`), "b selected");
+  const inputs = [...html.matchAll(/<input[^>]*\/>([^<]*)<\/label>/g)].map((m) => ({ tag: m[0], text: m[1] }));
+  assert.deepEqual(inputs.map((i) => i.text), ["Percent off", "Amount off"], "each radio sits inside its own label, before the text");
+  assert.ok(inputs[1].tag.includes('value="b"') && inputs[1].tag.includes('checked=""'), "the selected radio is checked");
+  assert.ok(inputs[0].tag.includes('value="a"') && !inputs[0].tag.includes("checked"), "the other radio is not checked");
 });
 
 test("SettingsSwitchRow: one label around the switch, named by the label, described by its line", () => {

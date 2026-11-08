@@ -14,6 +14,7 @@ import {
   SETTINGS_ERROR_CLASS,
   SETTINGS_HINT_CLASS,
   SETTINGS_INPUT_CLASS,
+  SETTINGS_LIST_ROW_CLASS,
   SETTINGS_NUMBER_CLASS,
   SETTINGS_REMOVE_BUTTON_CLASS,
   SETTINGS_UNIT_BOX_CLASS,
@@ -29,7 +30,6 @@ interface UpiRulesFieldsProps {
 
 // A fresh slab has no amount yet: NaN is the schema's own "Enter the amount as a whole number", shown as a blank box.
 const BLANK_AMOUNT = Number.NaN;
-const SLAB_ROW_CLASS = "grid gap-3 rounded-[10px] border border-border-2 bg-surface-2 p-3";
 // Stacked on a phone; from sm one line: the amount box, the UPI ID, Remove.
 const SLAB_FIELDS_CLASS = "grid gap-3 sm:grid-cols-[10rem_minmax(0,1fr)_auto] sm:items-end";
 const RULES_SUB =
@@ -61,7 +61,7 @@ function SlabRow({ control, register, errors, index, onRemove }: SlabRowProps) {
   const upiIdError = messageOf(rowErrors?.upiId);
 
   return (
-    <div className={SLAB_ROW_CLASS}>
+    <div className={SETTINGS_LIST_ROW_CLASS}>
       <div className={SLAB_FIELDS_CLASS}>
         <CardField label="Bills up to ₹" htmlFor={amountId}>
           <Controller

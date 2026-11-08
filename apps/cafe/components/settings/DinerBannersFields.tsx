@@ -11,11 +11,23 @@ import {
   DINER_BANNER_TITLE_MAX_LEN,
   DINER_BANNER_BODY_MAX_LEN,
 } from "@pos/shared/public-diner";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { AppLink } from "@/components/layout/AppLink";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
-import { BRAND_CONTROL_CLASS, BRAND_FIELD_ERROR_CLASS } from "@/components/brand/brand-classes";
-import { Field, HINT_CLASS, SectionLink, SettingsGroup } from "@/components/settings/SettingsFields";
+import { settingsSectionPath } from "@/lib/settings-sections";
+import {
+  SETTINGS_ADD_BUTTON_CLASS,
+  SETTINGS_ERROR_CLASS,
+  SETTINGS_HINT_CLASS,
+  SETTINGS_INPUT_CLASS,
+  SETTINGS_LINK_CLASS,
+  SETTINGS_LIST_EMPTY_CLASS,
+  SETTINGS_LIST_ROW_CLASS,
+  SETTINGS_LIST_ROW_TITLE_CLASS,
+  SETTINGS_REMOVE_BUTTON_CLASS,
+} from "@/lib/settings-card-layout";
+import { CardField, SettingsCard } from "@/components/settings/SettingsCard";
 
 interface DinerBannersFieldsProps {
   // The SAVED "Diner accounts" switch: banners only show on the Home tab, and
@@ -81,54 +93,50 @@ function DinerBannerRow({ control, register, errors, index, onRemove }: DinerBan
   const idBase = useId();
   const titleId = `${idBase}-title`;
   const bodyId = `${idBase}-body`;
+  const titleError = rowFieldMessage(errors.dinerBanners, index, "title");
+  const bodyError = rowFieldMessage(errors.dinerBanners, index, "body");
 
   return (
-    <div className="space-y-4 rounded-md border border-brand-rule bg-brand-paper p-3 sm:p-4">
+    <div className={SETTINGS_LIST_ROW_CLASS}>
       <div className="flex items-center justify-between gap-3">
-        <h4 className="min-w-0 truncate text-sm font-semibold text-brand-ink">
-          {blank ? `Announcement ${index + 1}` : title}
-        </h4>
-        <Button
+        <h3 className={SETTINGS_LIST_ROW_TITLE_CLASS}>{blank ? `Announcement ${index + 1}` : title}</h3>
+        <button
           type="button"
-          variant="ghost"
-          className="h-11 shrink-0 px-3 text-brand-danger md:h-10"
+          className={cn(SETTINGS_REMOVE_BUTTON_CLASS, "shrink-0")}
           onClick={() => onRemove(title, body)}
           aria-label={blank ? "Remove this announcement" : `Remove announcement ${title}`}
         >
-          <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
+          <Trash2 className="size-4" aria-hidden="true" />
           Remove
-        </Button>
+        </button>
       </div>
 
-      <Field
-        label="Title"
-        htmlFor={titleId}
-        hint={`${titleLen}/${DINER_BANNER_TITLE_MAX_LEN}`}
-        error={rowFieldMessage(errors.dinerBanners, index, "title")}
-      >
+      <CardField label="Title" htmlFor={titleId} hint={`${titleLen}/${DINER_BANNER_TITLE_MAX_LEN}`} error={titleError}>
         <Input
           id={titleId}
-          className={BRAND_CONTROL_CLASS}
+          className={SETTINGS_INPUT_CLASS}
+          aria-invalid={titleError !== undefined}
           {...register(`dinerBanners.${index}.title`)}
           maxLength={DINER_BANNER_TITLE_MAX_LEN}
           placeholder="Diwali special"
         />
-      </Field>
+      </CardField>
 
-      <Field
+      <CardField
         label="More details (optional)"
         htmlFor={bodyId}
         hint={`${bodyLen}/${DINER_BANNER_BODY_MAX_LEN}`}
-        error={rowFieldMessage(errors.dinerBanners, index, "body")}
+        error={bodyError}
       >
         <Input
           id={bodyId}
-          className={BRAND_CONTROL_CLASS}
+          className={SETTINGS_INPUT_CLASS}
+          aria-invalid={bodyError !== undefined}
           {...register(`dinerBanners.${index}.body`)}
           maxLength={DINER_BANNER_BODY_MAX_LEN}
           placeholder="20% off on all desserts this week"
         />
-      </Field>
+      </CardField>
     </div>
   );
 }
@@ -160,27 +168,28 @@ export function DinerBannersFields({ dinerAccountsOn, control, register, errors 
 
   return (
     <>
-      <SettingsGroup
+      <SettingsCard
         title="Announcements"
-        description={`Short lines diners see on the Home tab of the QR menu, like a special offer. Up to ${DINER_BANNER_MAX}.`}
+        sub={`Short lines diners see on the Home tab of the QR menu, like a special offer. Up to ${DINER_BANNER_MAX}.`}
       >
         {!dinerAccountsOn && (
-          <p className={HINT_CLASS}>
+          <p className={SETTINGS_HINT_CLASS}>
             Diners see these only while Diner accounts is on in{" "}
-            <SectionLink slug="loyalty">Rewards &amp; loyalty</SectionLink>.
+            <AppLink href={settingsSectionPath("loyalty")} className={SETTINGS_LINK_CLASS}>
+              Rewards &amp; loyalty
+            </AppLink>
+            .
           </p>
         )}
 
         {arrayError && (
-          <p className={BRAND_FIELD_ERROR_CLASS} role="alert">
+          <p className={SETTINGS_ERROR_CLASS} role="alert">
             {arrayError}
           </p>
         )}
 
         {fields.length === 0 && (
-          <p className="rounded-md border border-dashed border-brand-rule p-4 text-sm text-brand-muted">
-            No announcements yet.
-          </p>
+          <p className={SETTINGS_LIST_EMPTY_CLASS}>No announcements yet.</p>
         )}
 
         {fields.map((field, index) => (
@@ -194,20 +203,19 @@ export function DinerBannersFields({ dinerAccountsOn, control, register, errors 
           />
         ))}
 
-        <div className="space-y-1.5">
-          <Button
+        <div className="grid gap-1.5">
+          <button
             type="button"
-            variant="outline"
-            className="h-11 md:h-10"
+            className={SETTINGS_ADD_BUTTON_CLASS}
             onClick={() => append({ title: "", body: "" })}
             disabled={atMax}
           >
-            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+            <Plus className="size-4" aria-hidden="true" />
             Add an announcement
-          </Button>
-          {atMax && <p className={HINT_CLASS}>You can show up to {DINER_BANNER_MAX} announcements.</p>}
+          </button>
+          {atMax && <p className={SETTINGS_HINT_CLASS}>You can show up to {DINER_BANNER_MAX} announcements.</p>}
         </div>
-      </SettingsGroup>
+      </SettingsCard>
 
       <ConfirmDialog
         open={confirmOpen}

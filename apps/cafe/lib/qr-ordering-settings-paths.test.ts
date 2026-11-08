@@ -7,12 +7,12 @@ import path from "node:path";
 import { PROMO_KINDS, SELF_ORDER_MODES } from "@pos/shared/public";
 import { stripComments } from "@/lib/source-pin-utils";
 
-// Settings > QR ordering (settings pass slice 7, s69): the mode is radio tiles
-// not a drop-down, the dead "show past orders" switch is hidden (its value
-// still saved), the promo Type offers only what the editor can save, and a
-// row that has something typed asks before it is removed. Source-read pins,
-// the same technique as kitchen-ticket-preview-paths.test.ts: each needle is
-// narrowed to its own subject, over comment-stripped source.
+// Settings > QR ordering (settings pass slice 7, s69; new card UI 2026-11-08, docs/superpowers/plans/
+// 2026-11-08-settings-qr-ui.md): the mode is radio tiles not a drop-down, the dead "show past orders" switch is
+// hidden (its value still saved), the promo Type offers only what the editor can save, and a row that has
+// something typed asks before it is removed. Source-read pins, the same technique as
+// kitchen-ticket-preview-paths.test.ts: each needle is narrowed to its own subject, over comment-stripped source.
+// The look (cards, tiles, rows, switch rows): lib/settings-qr-layout.test.ts.
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel), "utf8");
@@ -69,10 +69,10 @@ test("PIN: the Recommended badge is read out after the label, with a space, via 
   );
 });
 
-test("PIN: the Tables group still edits allowTableChange through a ToggleRow", () => {
+test("PIN: the Tables card still edits allowTableChange through a SettingsSwitchRow", () => {
   const src = code(SELF_ORDER);
-  assert.match(src, /name="allowTableChange"[\s\S]*<ToggleRow\b/, "allowTableChange must be a ToggleRow");
-  assert.equal(countOf(src, /<SettingsGroup\b/g), 2, "two groups: Ordering and Tables");
+  assert.match(src, /name="allowTableChange"[\s\S]*<SettingsSwitchRow\b/, "allowTableChange must be a SettingsSwitchRow");
+  assert.equal(countOf(src, /<SettingsCard\b/g), 2, "two cards: Ordering and Tables");
 });
 
 test("PIN: the dead showPastOrdersToDiner switch is hidden but its field is still saved", () => {
@@ -121,28 +121,28 @@ test("PIN: a stored item code is shown read-only: no Type choice, no Value box, 
   assert.match(src, /const kindEditable = isEditableKind\(kind\);/, "the row must derive kindEditable from the row's kind");
   const choice = src.match(/\{kindEditable \? \(([\s\S]*?)\) : \(([\s\S]*?)\)\}/);
   assert.ok(choice, "the Type cell must branch on kindEditable");
-  assert.match(choice[1], /<PrintSizeChoice\b/, "the editable branch holds the choice");
-  assert.ok(!/<PrintSizeChoice\b/.test(choice[2]), "the read-only branch must not hold the choice");
-  assert.match(choice[2], /<Field label="Discount type" hint="Set up outside this page, so it can't be changed here\.">/, "read-only Field with its hint");
+  assert.match(choice[1], /<SettingsChoice\b/, "the editable branch holds the choice");
+  assert.ok(!/<SettingsChoice\b/.test(choice[2]), "the read-only branch must not hold the choice");
+  assert.match(choice[2], /<CardField label="Discount type" hint="Set up outside this page, so it can't be changed here\.">/, "read-only CardField with its hint");
   assert.match(choice[2], /PROMO_KIND_LABELS\[kind\]/, "the read-only branch shows the kind's true name");
   assert.match(
     src,
-    /\{kindEditable && \(\s*<Field\s+label=\{kind === "percent" \? "Discount \(%\)" : "Discount \(₹\)"\}/,
+    /\{kindEditable && \(\s*<CardField\s+label=\{kind === "percent" \? "Discount \(%\)" : "Discount \(₹\)"\}/,
     "the Value field must be hidden for a non-editable kind",
   );
   const minAt = src.indexOf("promoCodes.${index}.minSubtotal");
   const valueAt = src.indexOf("{kindEditable && (");
   assert.ok(minAt > valueAt && valueAt > 0, "landmark: Minimum order follows the gated Value field");
-  assert.match(src.slice(valueAt, minAt), /<\/Field>\s*\)\}/, "the Value gate must close before Minimum order, which stays for every kind");
+  assert.match(src.slice(valueAt, minAt), /<\/CardField>\s*\)\}/, "the Value gate must close before Minimum order, which stays for every kind");
 });
 
-test("PIN: the promo row uses PrintSizeChoice and two ToggleRows — no drop-down, no raw switch", () => {
+test("PIN: the promo row uses SettingsChoice and two SettingsSwitchRows — no drop-down, no raw switch", () => {
   const src = code(PROMO_ROW);
   assert.match(src, /export function PromoCodeRow\(/, "landmark: the stripped source still has the row");
-  assert.match(src, /<PrintSizeChoice<PromoKind>\s+legend="Discount type"/, "Type must be <PrintSizeChoice legend=...");
-  assert.equal(countOf(src, /<ToggleRow\b/g), 2, "Code is on + One use per customer");
-  assert.match(src, /name=\{`promoCodes\.\$\{index\}\.active`\}[\s\S]*<ToggleRow\b/, "active must be a ToggleRow");
-  assert.match(src, /name=\{`promoCodes\.\$\{index\}\.oncePerCustomer`\}[\s\S]*<ToggleRow\b/, "oncePerCustomer must be a ToggleRow");
+  assert.match(src, /<SettingsChoice<PromoKind>\s+legend="Discount type"/, "Type must be <SettingsChoice legend=...");
+  assert.equal(countOf(src, /<SettingsSwitchRow\b/g), 2, "Code is on + One use per customer");
+  assert.match(src, /name=\{`promoCodes\.\$\{index\}\.active`\}[\s\S]*<SettingsSwitchRow\b/, "active must be a SettingsSwitchRow");
+  assert.match(src, /name=\{`promoCodes\.\$\{index\}\.oncePerCustomer`\}[\s\S]*<SettingsSwitchRow\b/, "oncePerCustomer must be a SettingsSwitchRow");
   assert.ok(!/<Switch\b/.test(src), "no raw <Switch in the row");
   assert.ok(!/<Select/.test(src), "no <Select... in the row");
   assert.ok(!/@\/components\/ui\/select/.test(src), "no import of the stock select");
@@ -150,7 +150,7 @@ test("PIN: the promo row uses PrintSizeChoice and two ToggleRows — no drop-dow
 
 test("PIN: the promo Remove button says Remove and is not an icon-only button", () => {
   const src = code(PROMO_ROW);
-  assert.match(src, /<Trash2\b[^>]*\/>\s*Remove\s*<\/Button>/, "the button's visible text must be Remove");
+  assert.match(src, /<Trash2\b[^>]*\/>\s*Remove\s*<\/button>/, "the button's visible text must be Remove");
   assert.ok(!/size="icon"/.test(src), "no size=\"icon\" Remove button");
   assert.match(src, /onClick=\{\(\) => onRemove\(code\)\}/, "the row must hand its typed code to onRemove");
 });
@@ -201,12 +201,12 @@ for (const list of LISTS) {
     assert.ok(!src.includes("Discard brings it back"), "an unsaved row is not brought back by Discard");
   });
 
-  test(`PIN: ${list.name} is a SettingsGroup with a dashed empty state and a 44px Add button`, () => {
+  test(`PIN: ${list.name} is a SettingsCard with the empty-list box and the 42px Add button`, () => {
     const src = code(list.rel);
-    assert.match(src, /<SettingsGroup\b/, "the list must render a SettingsGroup");
+    assert.match(src, /<SettingsCard\b/, "the list must render a SettingsCard");
     assert.ok(!/size="sm"/.test(src), "no size=\"sm\" button (32px) in the list");
-    assert.match(src, /border-dashed border-brand-rule/, "an empty list shows the dashed empty state");
-    assert.match(src, /variant="outline"\s+className="h-11 md:h-10"/, "the Add button must be h-11 md:h-10");
+    assert.match(src, /className=\{SETTINGS_LIST_EMPTY_CLASS\}/, "an empty list shows the dashed empty-list box");
+    assert.match(src, /className=\{SETTINGS_ADD_BUTTON_CLASS\}/, "the Add button wears the 42px kit class");
     assert.match(src, /disabled=\{atMax\}/, "Add is disabled at the maximum");
   });
 }
@@ -227,7 +227,7 @@ test("PIN: Announcements says Home tab and warns while Diner accounts is off, li
   assert.match(src, /dinerAccountsOn: boolean;/, "the list takes the saved flag as a prop");
   assert.match(
     src,
-    /\{!dinerAccountsOn && \(\s*<p className=\{HINT_CLASS\}>[^]*?<SectionLink slug="loyalty">Rewards &amp; loyalty<\/SectionLink>[^]*?<\/p>\s*\)\}/,
+    /\{!dinerAccountsOn && \(\s*<p className=\{SETTINGS_HINT_CLASS\}>[^]*?<AppLink href=\{settingsSectionPath\("loyalty"\)\} className=\{SETTINGS_LINK_CLASS\}>\s*Rewards &amp; loyalty\s*<\/AppLink>[^]*?<\/p>\s*\)\}/,
     "the note and its loyalty link must render only while dinerAccountsOn is false",
   );
   assert.ok(src.includes("Diners see these only while Diner accounts is on in"), "the note's wording");
@@ -236,16 +236,16 @@ test("PIN: Announcements says Home tab and warns while Diner accounts is off, li
 
 test("PIN: the announcement row has a visible Remove button that hands its typed title to onRemove", () => {
   const src = code(BANNERS);
-  assert.match(src, /<Trash2\b[^>]*\/>\s*Remove\s*<\/Button>/, "the button's visible text must be Remove");
+  assert.match(src, /<Trash2\b[^>]*\/>\s*Remove\s*<\/button>/, "the button's visible text must be Remove");
   assert.ok(!/size="icon"/.test(src), "no size=\"icon\" Remove button");
   assert.match(src, /onClick=\{\(\) => onRemove\(title, body\)\}/, "the row must hand its typed title to onRemove");
 });
 
 // ── the page ────────────────────────────────────────────────────────────────
 
-test("PIN: the page renders all three groups as siblings inside one space-y-6 column", () => {
+test("PIN: the page renders all three groups as siblings inside one SETTINGS_STACK_CLASS column", () => {
   const src = code(PAGE);
-  assert.match(src, /<div className="space-y-6">[\s\S]*<SelfOrderCard\b[\s\S]*<PromoCodesFields\b[\s\S]*<DinerBannersFields\b[\s\S]*<\/div>/, "one space-y-6 wrapper around all three, in order");
+  assert.match(src, /<div className=\{SETTINGS_STACK_CLASS\}>[\s\S]*<SelfOrderCard\b[\s\S]*<PromoCodesFields\b[\s\S]*<DinerBannersFields\b[\s\S]*<\/div>/, "one SETTINGS_STACK_CLASS wrapper around all three, in order");
   assert.match(
     src,
     /<DinerBannersFields\s+dinerAccountsOn=\{settingsFormDefaults\(settings\)\.dinerAccountsEnabled === true\}/,
