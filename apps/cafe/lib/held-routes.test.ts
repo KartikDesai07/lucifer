@@ -113,3 +113,42 @@ test("distrustSince(null) distrusts every mark; a mark made after the call is tr
   assert.equal(held.suspect("/kitchen", 40), false, "a mark after the distrust is not touched by it");
   assert.equal(held.holds("/kitchen", 40), true, "and is held");
 });
+
+// Post-verifier V11: a soft visit that landed proves Next's entry for its key came from this page's build (another
+// build's answer or a failed fetch would have loaded the document instead), so that window is never distrusted.
+test("visit: a landed visit's window is never distrusted; a prefetch-only mark made at the same time is", () => {
+  const held = createHeldRoutes(1000);
+  held.visit("/pos", 300);
+  held.mark("/orders", 300);
+  held.distrustSince(200);
+  assert.equal(held.suspect("/pos", 400), false, "a landed visit after `since` is not distrusted");
+  assert.equal(held.holds("/pos", 400), true, "it still opens from memory");
+  assert.equal(held.suspect("/orders", 400), true, "a prefetch-only mark after `since` is distrusted");
+  held.distrustSince(null);
+  assert.equal(held.suspect("/pos", 400), false, "not even by a distrust of every mark");
+});
+
+test("visit: a landed visit inside a distrusted window clears it for that window; the next window starts unproven", () => {
+  const held = createHeldRoutes(1000);
+  held.mark("/orders", 100);
+  held.distrustSince(50);
+  assert.equal(held.suspect("/orders", 500), true, "landmark: a distrusted prefetch mark");
+  held.visit("/orders", 600);
+  assert.equal(held.offeredAt("/orders"), 100, "the visit keeps the window's first time");
+  assert.equal(held.suspect("/orders", 700), false, "Next opened the screen from that entry, so the entry is good");
+  assert.equal(held.holds("/orders", 700), true, "held again");
+  held.mark("/orders", 1200);
+  held.distrustSince(1100);
+  assert.equal(held.suspect("/orders", 1300), true, "a new window (a prefetch after the old one ended) is not proven by the old visit");
+});
+
+test("markVisit: a landing that proves its entry is a visit; one that does not only marks; a query visit marks nothing", () => {
+  const held = createHeldRoutes(1000);
+  markVisit(held, "/pos", "", 300, true);
+  markVisit(held, "/kitchen", "", 300);
+  markVisit(held, "/menu", "?x=1", 300, true);
+  held.distrustSince(200);
+  assert.equal(held.suspect("/pos", 400), false, "a proving landing is never distrusted");
+  assert.equal(held.suspect("/kitchen", 400), true, "a landing that proves nothing (a Back / Forward step) is only a mark");
+  assert.equal(held.offeredAt("/menu"), undefined, "a query visit still marks nothing (R40, R41)");
+});

@@ -55,6 +55,20 @@ let pendingLoad: (() => void) | null = null;
 // How each opening (a progress entry) began: "soft" = Next navigates (it fetches the screen), "load" = our own full load
 // (no Next navigation ever starts). Back reads it (ruling V3, R35); "Try again" never changes it.
 const startedAs = new WeakMap<NonNullable<NavProgress>, "soft" | "load">();
+let documentLanded = false;
+
+/** Does the screen now showing at `pathname` prove Next's router-cache entry for it (lib/held-routes.ts visit, V11)? The
+ *  document's first screen does (Next seeds its cache with it, from this build), and so does the landing of a soft
+ *  navigation to it (Next resolved it through its cache, and another build's answer or a failed fetch would have loaded
+ *  the document instead). A landing with no such opening (a Back / Forward step restores from history) proves nothing.
+ *  Called once per landing, before the store settles (components/layout/NavProgressView.tsx). */
+export function landingProves(pathname: string, progress: Pick<ProgressStore, "get"> = navProgress): boolean {
+  const first = !documentLanded;
+  documentLanded = true;
+  if (first) return true;
+  const entry = progress.get();
+  return entry !== null && navTargetPath(entry.href) === pathname && startedAs.get(entry) === "soft";
+}
 
 function loadThroughGate(go: () => void, d: NavDeps, progress: ProgressStore, ready?: () => boolean): void {
   pendingLoad?.();

@@ -17,7 +17,12 @@
 // pending, or the line is found down, the marks made since the answers were last
 // known good may be such markers (lib/suspect-prefetch.ts): they become SUSPECT,
 // never held, until their own window ends (a later mark inside it clears nothing:
-// Next would not refetch a live entry).
+// Next would not refetch a live entry). A window a landed visit PROVED is never
+// distrusted, and such a visit clears a distrusted window (V11): Next opened that
+// screen from the very entry, which it would not have done for a marker (another
+// build's answer or a failed fetch loads the document instead), so trusting it
+// claims no more than Next holds. Only a landing Next resolved through that entry
+// proves it (lib/navigate.ts landingProves); a Back / Forward step does not.
 
 import { navTargetPath } from "@/lib/nav-progress";
 
@@ -28,11 +33,14 @@ export const HELD_ROUTES_WINDOW_MS = 30 * 60 * 1000;
 
 export interface HeldRoutes {
   mark(href: string, now: number): void;
+  /** A landing that proves the route's entry (V11): marked, and its current window is proven (never distrusted). */
+  visit(href: string, now: number): void;
   /** Marked, still inside the window and not suspect (at the boundary: no longer held). */
   holds(href: string, now: number): boolean;
   /** When the route's current window started (its first mark since it last expired), if ever. */
   offeredAt(href: string): number | undefined;
-  /** Every mark whose window started at or after `since` (null: every mark) becomes suspect for the rest of its window. */
+  /** Every mark whose window started at or after `since` (null: every mark) becomes suspect for the rest of its window,
+   *  unless a landed visit proved that window. */
   distrustSince(since: number | null): void;
   /** Distrusted, and that mark's window has not ended. */
   suspect(href: string, now: number): boolean;
@@ -42,15 +50,24 @@ export function createHeldRoutes(windowMs: number): HeldRoutes {
   const marked = new Map<string, number>();
   // The window start each distrusted mark had: a new window (a mark after it ended) is a new entry, trusted again.
   const distrusted = new Map<string, number>();
+  // The window start each proven mark had (V11), the same way: a new window starts unproven.
+  const proven = new Map<string, number>();
   const suspect = (href: string, now: number): boolean => {
     const at = marked.get(href);
     return at !== undefined && distrusted.get(href) === at && now - at < windowMs;
   };
+  const mark = (href: string, now: number): number => {
+    // A live entry keeps its first time: Next does not extend an entry on reuse, so a restart here would claim more than it holds.
+    const at = marked.get(href);
+    if (at === undefined || now - at >= windowMs) marked.set(href, now);
+    return marked.get(href) ?? now;
+  };
   return {
-    mark: (href, now) => {
-      // A live entry keeps its first time: Next does not extend an entry on reuse, so a restart here would claim more than it holds.
-      const at = marked.get(href);
-      if (at === undefined || now - at >= windowMs) marked.set(href, now);
+    mark: (href, now) => void mark(href, now),
+    visit: (href, now) => {
+      const at = mark(href, now);
+      proven.set(href, at);
+      if (distrusted.get(href) === at) distrusted.delete(href);
     },
     holds: (href, now) => {
       const at = marked.get(href);
@@ -58,7 +75,7 @@ export function createHeldRoutes(windowMs: number): HeldRoutes {
     },
     offeredAt: (href) => marked.get(href),
     distrustSince: (since) => {
-      for (const [href, at] of marked) if (since === null || at >= since) distrusted.set(href, at);
+      for (const [href, at] of marked) if ((since === null || at >= since) && proven.get(href) !== at) distrusted.set(href, at);
     },
     suspect,
   };
@@ -80,8 +97,10 @@ export function heldKeyOf(href: string): string {
 
 /** A screen now showing counts as held by its path, unless it shows a query (`search` is window.location.search): Next
  *  stores no entry for a query visit and serves it from a bare-path entry as a copy, so neither the query URL nor the
- *  path is reusable because of it (rulings R40, R41). */
-export function markVisit(held: Pick<HeldRoutes, "mark">, pathname: string, search: string, now: number): void {
+ *  path is reusable because of it (rulings R40, R41). `proves`: the landing proves the entry (lib/navigate.ts
+ *  landingProves), so it is a visit (V11); else a plain mark. */
+export function markVisit(held: Pick<HeldRoutes, "mark" | "visit">, pathname: string, search: string, now: number, proves = false): void {
   if (search.length > 1) return;
-  held.mark(pathname, now);
+  if (proves) held.visit(pathname, now);
+  else held.mark(pathname, now);
 }

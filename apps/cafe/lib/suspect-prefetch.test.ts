@@ -8,8 +8,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createHeldRoutes } from "@/lib/held-routes";
-import { beginNavigation, type NavDeps } from "@/lib/navigate";
+import { createHeldRoutes, markVisit } from "@/lib/held-routes";
+import { beginNavigation, landingProves, type NavDeps } from "@/lib/navigate";
 import { createNavProgress } from "@/lib/nav-progress";
 import { createServerReach } from "@/lib/server-reach";
 import { stripComments } from "@/lib/source-pin-utils";
@@ -139,4 +139,43 @@ test("PIN: the pulse hook feeds the update store from real answers only, with th
   assert.match(hook, /const offSuspect = watchSuspectPrefetches\(\{ proofAt: \(\) => pulseAnsweredAt \}\);/, "the watch reads that answer's time as the proof");
   assert.match(hook, /return \(\) => \{\s*offAnswers\(\);\s*offSuspect\(\);\s*\};\s*\}, \[qc\]\);/, "both stop with the effect");
   assert.deepEqual(callSites("watchSuspectPrefetches("), ["hooks/use-pos-pulse.ts"], "the wiring lives in one place");
+});
+
+// Post-verifier V11: a landed visit is never distrusted, so offline the POS still reopens from memory.
+test("V11: a visited row is not distrusted on a line drop nor on pending; a prefetched-only row in the same window is", () => {
+  const drop = world();
+  drop.w.proof = 200;
+  markVisit(drop.held, "/pos", "", 300, true);
+  drop.held.mark("/orders", 300);
+  drop.reach.report({ type: "pulse", reach: "unreached" });
+  drop.reach.report({ type: "pulse", reach: "unreached" });
+  assert.deepEqual(drop.w.since, [200], "landmark: the line was found down, since the last proof");
+  const offline: Partial<NavDeps> = { isOffline: () => true, holds: drop.held.holds, suspect: drop.held.suspect, updatePending: () => false };
+  assert.equal(beginNavigation("/pos", undefined, "/orders", 400, createNavProgress(), offline).action, "navigate", "offline, the visited POS still opens from memory");
+  assert.equal(beginNavigation("/orders", undefined, "/pos", 400, createNavProgress(), offline).action, "refuse", "offline, a prefetched-only row in the same window is refused");
+  const pend = world();
+  pend.update.observe("a", "a", 200);
+  markVisit(pend.held, "/pos", "", 300, true);
+  pend.held.mark("/orders", 300);
+  pend.update.observe("b", "a", 400);
+  assert.deepEqual(pend.w.since, [200], "landmark: pending turned on, since the same-build report");
+  assert.equal(pend.held.suspect("/pos", 500), false, "pending: the visited row is not distrusted");
+  assert.equal(pend.held.suspect("/orders", 500), true, "pending: the prefetched-only row is");
+});
+
+// The first call of landingProves in this test process (the module remembers the document's first screen).
+test("V11: a landing proves its entry only as the document's first screen or as the end of a soft navigation to it", () => {
+  const p = createNavProgress();
+  assert.equal(landingProves("/pos", p), true, "the document's first screen: Next seeds its cache with it, from this build");
+  assert.equal(landingProves("/pos", p), false, "then a landing with no opening (a Back / Forward step restores from history) proves nothing");
+  const online: Partial<NavDeps> = { isOffline: () => false, holds: () => false, suspect: () => false, updatePending: () => false };
+  beginNavigation("/orders", undefined, "/pos", 1, p, online);
+  assert.equal(landingProves("/orders", p), true, "a soft navigation to it landed: Next resolved it from this build");
+  assert.equal(landingProves("/kitchen", p), false, "a landing on another path (a redirect) proves nothing for it");
+  const q = createNavProgress();
+  beginNavigation("/orders", undefined, "/pos", 1, q, { ...online, updatePending: () => true });
+  assert.equal(landingProves("/orders", q), false, "an opening that began as our full load is not a soft landing");
+  const r = createNavProgress();
+  r.start("/orders", "Orders", 1, "/pos");
+  assert.equal(landingProves("/orders", r), false, "an opening this module did not start proves nothing");
 });
