@@ -4,6 +4,8 @@
 // (hooks/use-unsaved-guard.ts): a refresh staff already confirmed marks itself deliberate, so that warning
 // stays quiet instead of asking a second, native question (the release review's I1). Pure; no React.
 
+import { PRINT_STUCK_MS } from "@/lib/print-host-busy";
+
 /** "changes": cart lines not sent yet, or unsaved edits. "unconfirmed": an order still being sent, or one
  *  whose answer never came (a reload forgets its retry key, so re-sending it could make it twice; I2). */
 export type UnsentWork = "changes" | "unconfirmed";
@@ -59,14 +61,38 @@ export function isDeliberateReload(): boolean {
   return deliberate;
 }
 
-export type ReloadStep = { kind: "offline" } | { kind: "printing" } | { kind: "ask"; work: UnsentWork } | { kind: "reload" };
+export type ReloadStep =
+  | { kind: "offline" }
+  | { kind: "printing" }
+  | { kind: "ask-print" }
+  | { kind: "ask"; work: UnsentWork }
+  | { kind: "reload" };
 
-/** What a tap on Refresh (or the header's "Update ready · Reload" chip, P2 N4) does: offline it says so instead of
- *  reloading into an error screen; while a slip prints here it says so too (a reload would lose it: a REPRINT, the
- *  verifiers' M4); with work a reload would lose it asks first; with nothing to lose it reloads. */
-export function reloadStep(online: boolean, work: UnsentWork | null, printing = false): ReloadStep {
+/** What this device's print hold looks like to Refresh. `since` is printHostBusySince() (null: free), `waivedSince` the
+ *  hold staff already said "Refresh anyway" to. Stuck = continuous for PRINT_STUCK_MS or more. The waiver covers only
+ *  that one hold: a newer hold has another start time and is judged afresh (R72). */
+export function printHoldOf(
+  since: number | null,
+  now: number,
+  waivedSince: number | null,
+): { printing: boolean; stuck: boolean; waived: boolean } {
+  if (since === null) return { printing: false, stuck: false, waived: false };
+  return { printing: true, stuck: now - since >= PRINT_STUCK_MS, waived: waivedSince === since };
+}
+
+/** What a tap on Refresh (or the header's "Update ready · Reload" chip, P2 N4) does. In this order: offline it says so
+ *  instead of reloading into an error screen (whatever was confirmed); while a slip prints here, a young hold says so (a
+ *  reload would lose it: a REPRINT, the verifiers' M4), a stuck one (R72) asks "Refresh anyway" unless staff already
+ *  said yes to that hold; then work a reload would lose asks first; with nothing to lose it reloads. */
+export function reloadStep(
+  online: boolean,
+  work: UnsentWork | null,
+  printing = false,
+  stuck = false,
+  waived = false,
+): ReloadStep {
   if (!online) return { kind: "offline" };
-  if (printing) return { kind: "printing" };
+  if (printing && !(stuck && waived)) return stuck ? { kind: "ask-print" } : { kind: "printing" };
   if (work !== null) return { kind: "ask", work };
   return { kind: "reload" };
 }
@@ -85,3 +111,16 @@ export function refreshQuestion(work: UnsentWork): string {
 export const REFRESH_OFFLINE_MESSAGE = "You are offline. Refresh once the connection is back.";
 
 export const REFRESH_PRINTING_MESSAGE = "A slip is printing. Refresh once it is done.";
+
+// R72: a slip printing for over 30 s is a stuck printer. Lease runs out = a "maybe" failure (packages/shared
+// print-lifecycle.ts): a KOT or other non-bill goes back to the line marked REPRINT, a token DUPLICATE (a second maybe
+// ends in "failed", waiting for staff); a bill is never printed again by itself, it waits in the Printer panel's
+// "Not printed" card for the cashier.
+export const REFRESH_PRINT_TITLE = "Printing is taking long";
+
+export const REFRESH_PRINT_QUESTION =
+  "A slip has been printing on this device for over 30 seconds. If you refresh now, it may print again later, marked REPRINT or DUPLICATE, so it can come out twice. A bill is never printed again by itself: it waits in the Printer panel.";
+
+export const REFRESH_PRINT_CONFIRM = "Refresh anyway";
+
+export const REFRESH_PRINT_CANCEL = "Wait";

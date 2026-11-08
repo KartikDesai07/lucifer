@@ -570,6 +570,7 @@
     "lib/printer-dot-ui-paths.test.ts",
     "lib/printer-status-wiring-paths.test.ts",
     "lib/page-refresh.test.ts",
+    "lib/page-refresh-print.test.ts",
     "lib/printer-ui-paths.test.ts",
     "lib/printer-panel-layout.test.ts",
     "lib/printer-status-card.test.ts",
