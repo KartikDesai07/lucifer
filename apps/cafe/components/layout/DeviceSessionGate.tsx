@@ -32,6 +32,7 @@ export function DeviceSessionGate({ children }: { children: React.ReactNode }) {
       onSignedOut: () => {
         // A real sign-out: /login as a full page load (as the middleware would send it); the plain placeholder stays
         // until the browser leaves, never the shell and never the "Connecting" words.
+        // No print gate (R73): signed out, no print lease can be granted to this tab.
         window.clearTimeout(slowTimer);
         setSlow(false);
         window.location.assign("/login");

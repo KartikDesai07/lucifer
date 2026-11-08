@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
-import { reloadWhenOnline } from "@/lib/offline-reload";
+import { useEffect, useRef, useState } from "react";
+import { lineIsUp, reloadWhenOnline } from "@/lib/offline-reload";
+import { leaveWhenPrintFree } from "@/lib/print-host-busy";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { armChunkReload, chunkReloadStore, isChunkLoadError } from "@/lib/chunk-reload";
@@ -15,6 +16,11 @@ import { armChunkReload, chunkReloadStore, isChunkLoadError } from "@/lib/chunk-
 // the one error "Try again" can never fix: the page reloads itself once, and
 // only if that did not help does the operator see this screen, with a Reload
 // button instead of a retry that would fail the same way.
+//
+// This layout keeps the print agent and print host mounted, so every document load here goes through the print gate
+// (leaveWhenPrintFree, R71): it never cuts a slip leased to this tab. The automatic reload also waits for the line.
+// The two buttons pass no line condition (printing Phase 5 kept them working offline); while one waits for a slip the
+// screen says so.
 export default function DashboardError({
   error,
   reset,
@@ -23,14 +29,35 @@ export default function DashboardError({
   reset: () => void;
 }) {
   const staleBuild = isChunkLoadError(error);
+  const [waiting, setWaiting] = useState(false);
+  const cancelLoad = useRef<() => void>(() => undefined);
 
   useEffect(() => {
     if (!staleBuild) return;
+    let cancelGate = () => {};
     // Printing Phase 5 (spec 5.10): a reload without the internet cannot open the page: it waits for the connection.
-    return reloadWhenOnline(() => {
-      if (armChunkReload(chunkReloadStore(), Date.now())) window.location.reload();
+    // The loop guard is armed first; only an armed reload waits at the print gate (and for the line again).
+    const stopWaiting = reloadWhenOnline(() => {
+      if (!armChunkReload(chunkReloadStore(), Date.now())) return;
+      cancelGate = leaveWhenPrintFree(() => window.location.reload(), { ready: () => lineIsUp() });
     });
+    return () => {
+      stopWaiting();
+      cancelGate();
+    };
   }, [staleBuild]);
+
+  // A button's load: now when no slip is printing, otherwise the screen shows the wait. Gone with the screen.
+  useEffect(() => () => cancelLoad.current(), []);
+  const load = (go: () => void) => {
+    cancelLoad.current();
+    let went = false;
+    cancelLoad.current = leaveWhenPrintFree(() => {
+      went = true;
+      go();
+    });
+    if (!went) setWaiting(true);
+  };
 
   // Don't surface raw internal error text to users in production.
   const detail =
@@ -59,13 +86,20 @@ export default function DashboardError({
           </p>
         )}
       </div>
+      {waiting && (
+        <p role="status" className="max-w-md text-sm text-muted-foreground">
+          A slip is printing here. The page opens as soon as it is done.
+        </p>
+      )}
       <div className="flex gap-2">
         {staleBuild ? (
-          <Button onClick={() => window.location.reload()}>Reload</Button>
+          <Button disabled={waiting} onClick={() => load(() => window.location.reload())}>
+            Reload
+          </Button>
         ) : (
           <Button onClick={reset}>Try again</Button>
         )}
-        <Button variant="outline" onClick={() => window.location.assign("/")}>
+        <Button variant="outline" disabled={waiting} onClick={() => load(() => window.location.assign("/"))}>
           Go to dashboard
         </Button>
       </div>

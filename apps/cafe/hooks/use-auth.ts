@@ -31,6 +31,7 @@ export function useAuth() {
   //    believing they logged out while an admin session stays live for the rest
   //    of its 90-day rolling life (SESSION_MAX_AGE_SECONDS). Say so instead of
   //    failing silently.
+  // No print gate on the sign-out's page load (R73): it is staff's own choice and it ends this device's printing role.
   const logout = async () => {
     clearMastersBlob();
     queryClient.clear();
