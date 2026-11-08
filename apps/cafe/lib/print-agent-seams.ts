@@ -160,3 +160,6 @@ export function onLeasedJob(listener: (job: LeasedPrintJob) => void): () => void
 // P2 N4: the agent's lease and print are counted while in flight, so a newer build never reloads the page under a
 // leased job; hooks/use-print-agent.ts reaches it through print-agent.ts, which re-exports every name here.
 export { leaseUnlessClosing, trackPrintBusy } from "@/lib/print-host-busy";
+// P2 follow-ups F1: and a job leased to this tab while it waits in the agent for the bridge (agent.holdsJob()); the hook
+// reads the hold clock after each setGate, so a disabled agent's held slip ends its hold at once (post-verifier R1).
+export { addPrintBusySource, printHostBusySince } from "@/lib/print-host-busy";

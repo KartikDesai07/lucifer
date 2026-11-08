@@ -37,7 +37,12 @@ interface ConfirmDialogProps {
   /** "sheet" = the owner's HTML confirm (U1 Task 12; only the POS prompts, the send-discard confirm and, from U3 Task 6,
    *  the Floor's Seat now / Free table confirm ask for it). */
   look?: "default" | "sheet";
+  /** Lifts the default look's content above sonner's toaster (z-index 999999999), so a lasting toast cannot hide a button
+   *  (the Refresh question's "Wait", F12). Off by default; the toaster and the global dialog z-index stay as they are. */
+  aboveToasts?: boolean;
 }
+
+const ABOVE_TOASTS_CLASS = "z-[1000000000]";
 
 // The HTML confirm (values 12.1 in docs/superpowers/specs/2026-10-20-pos-html-values.md; values 0.3 sheetAlign /
 // sheetPad / sheetRadius; design 3, 6.12) in the shared sheet frame (lib/sheet-frame.ts, ruling P54): the scrim, the
@@ -48,7 +53,7 @@ const SHEET_BUTTONS_CLASS = "flex flex-col gap-2";
 const SHEET_ACTION_CLASS = "border-primary bg-primary text-primary-foreground";
 const SHEET_CANCEL_CLASS = "border-transparent bg-surface-3 text-foreground";
 
-type ConfirmSheetProps = Required<Omit<ConfirmDialogProps, "description" | "look">> & Pick<ConfirmDialogProps, "description">;
+type ConfirmSheetProps = Required<Omit<ConfirmDialogProps, "description" | "look" | "aboveToasts">> & Pick<ConfirmDialogProps, "description">;
 
 // The same alert dialog in the HTML's confirm sheet: role alertdialog, the focus on Cancel as it opens, Escape = Cancel,
 // an outside tap does not dismiss it; the action keeps it open while it runs (the caller closes it), with today's
@@ -116,6 +121,7 @@ export function ConfirmDialog({
   isLoading = false,
   onConfirm,
   look = "default",
+  aboveToasts = false,
 }: ConfirmDialogProps) {
   if (look === "sheet") {
     return (
@@ -134,7 +140,7 @@ export function ConfirmDialog({
   }
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent className={cn(aboveToasts && ABOVE_TOASTS_CLASS)}>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           {description && (

@@ -120,9 +120,10 @@ test("Task 15: what waits offline is refused before any request; the reload, the
   const guard = src("apps/cafe/lib/offline-guard.ts");
   assert.equal(count(guard, 'outbox: Pick<OutboxStore, "getSnapshot"> = offlineOutbox'), 2, "offlineRefusalOf and throwIfOffline default to the page's outbox");
   assert.ok(guard.includes('import { offlineOutbox, type OutboxStore } from "@/lib/offline-outbox-store";'), "the page's one store");
-  for (const file of ["apps/cafe/app/(dashboard)/error.tsx", "apps/cafe/app/global-error.tsx"]) {
-    assert.ok(src(file).includes("return reloadWhenOnline(() => {"), `${file}: the automatic reload waits for the connection`);
-  }
+  // The dashboard's error screen keeps its wait for the connection but now hands the reload on to the print gate
+  // (lib/error-reload-paths.test.ts pins the rest of that shape); the fallback keeps the plain form.
+  assert.ok(src("apps/cafe/app/(dashboard)/error.tsx").includes("const stopWaiting = reloadWhenOnline(() => {"), "app/(dashboard)/error.tsx: the automatic reload waits for the connection");
+  assert.ok(src("apps/cafe/app/global-error.tsx").includes("return reloadWhenOnline(() => {"), "app/global-error.tsx: the automatic reload waits for the connection");
   assert.ok(src("apps/cafe/app/global-error.tsx").includes('import { reloadWhenOnline } from "@/lib/offline-reload";'), "the fallback imports only the small reload module");
   assert.ok(src("apps/cafe/components/lock/ScreenLock.tsx").includes("if (openRef.current || serverReach.isOffline()) return;"), "the idle lock waits; a lock staff choose still works");
   assert.ok(src("apps/cafe/hooks/use-print-agent.ts").includes("offline: () => serverReach.isOffline(),"), "kept acks wait offline, with no 5 s timer");

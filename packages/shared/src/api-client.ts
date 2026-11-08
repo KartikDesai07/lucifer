@@ -75,13 +75,15 @@ export function apiGet<T>(url: string): Promise<T> {
 // so the two can carry different auth guards (tables, CR1.1).
 // `options.headers` (printing Phase 1 Session 1C): extra request headers, e.g. the print-agent opt-in.
 // Optional and last, so every existing caller (the cafe and the Hub) is unchanged.
+// `options.track` (P2 follow-ups R70): wraps the whole request (fetch, unwrap, error mapping) and apiSend returns what
+// it returns. The cafe passes its print-busy counter for a request that names this tab, so a reload waits for the answer.
 export function apiSend<T>(
   url: string,
   method: "POST" | "PUT" | "PATCH" | "DELETE",
   payload?: unknown,
-  options: { headers?: Record<string, string> } = {},
+  options: { headers?: Record<string, string>; track?: <R>(work: Promise<R>) => Promise<R> } = {},
 ): Promise<T> {
-  return fetch(url, {
+  const request = fetch(url, {
     method,
     headers: { ...options.headers, "Content-Type": "application/json" },
     body: payload === undefined ? undefined : JSON.stringify(payload),
@@ -92,4 +94,5 @@ export function apiSend<T>(
       throw transportError(e);
     },
   );
+  return options.track ? options.track(request) : request;
 }

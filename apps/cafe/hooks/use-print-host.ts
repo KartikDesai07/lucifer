@@ -4,6 +4,7 @@ import { throwIfOffline } from "@/lib/offline-guard";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiSend } from "@/lib/api-client";
+import { printRequestOptions } from "@/lib/print-agent-calls";
 import type { PrintHostState, PrintJobClaimRefusal, PrintJobEnqueueResult, PrintJobKind } from "@pos/shared/print-job";
 import type { PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 
@@ -62,7 +63,7 @@ export interface EnqueuePrintJobInput {
 export function useEnqueuePrintJob() {
   return useMutation({
     mutationKey: PRINT_JOB_KEYS.mutation,
-    mutationFn: ({ headers, ...input }: EnqueuePrintJobInput) => apiSend<PrintJobEnqueueResult>("/api/print-jobs", "POST", input, { headers }),
+    mutationFn: ({ headers, ...input }: EnqueuePrintJobInput) => apiSend<PrintJobEnqueueResult>("/api/print-jobs", "POST", input, printRequestOptions(headers)),
     onMutate: (variables) => throwIfOffline(variables),
     onError: (err: Error) => toast.error(err.message || ENQUEUE_ERROR),
   });

@@ -33,7 +33,13 @@ test("the pulse JSON carries build, and the hook feeds the store", () => {
   assert.match(route, /build:\s*POS_BUILD/, "the pulse answer carries build: POS_BUILD");
   assert.match(route, /import \{ POS_BUILD \} from "@\/lib\/build-stamp"/, "the route imports the stamp");
   const hook = code("apps/cafe/hooks/use-pos-pulse.ts");
-  assert.match(hook, /updatePending\.observe\(query\.data\?\.build,\s*POS_BUILD\)/, "the hook compares the pulse's build with the page's");
+  // Moved on purpose (post-verifier V1): each real answer is observed with its time (lib/suspect-prefetch.test.ts pins
+  // the cache-event filter around it).
+  assert.match(
+    hook,
+    /updatePending\.observe\(\(event\.query\.state\.data as PosPulseData \| undefined\)\?\.build,\s*POS_BUILD,\s*pulseAnsweredAt\)/,
+    "the hook compares the pulse's build with the page's",
+  );
   assert.equal(hook.split("updatePending.observe(").length - 1, 1, "exactly one observation");
 });
 

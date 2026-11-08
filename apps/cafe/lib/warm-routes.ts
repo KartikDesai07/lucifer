@@ -56,6 +56,10 @@ export interface WarmEnvironment {
   /** lineProven(...) — one of the page's own requests answered recently, so
    *  a prefetch is unlikely to fail and poison its cache entry. */
   lineProven: boolean;
+  /** A newer build is waiting (lib/update-pending.ts): a prefetch now could be
+   *  answered by it, which Next keeps as a hard-load marker for the whole
+   *  window (post-verifier V1), so nothing is offered. */
+  updatePending: boolean;
 }
 
 /** One offer in a staggered pass: `href` goes to the router `delayMs` after
@@ -72,7 +76,7 @@ export function warmRoutes(
   prefetch: (href: string) => void,
   env: WarmEnvironment,
 ): string[] {
-  if (!env.visible || !env.online || !env.lineProven) return [];
+  if (!env.visible || !env.online || !env.lineProven || env.updatePending) return [];
   const offered: string[] = [];
   for (const href of new Set(hrefs)) {
     // A prefetch is an optimisation only: one that throws (a malformed href,

@@ -22,6 +22,7 @@ export default function GlobalError({
   useEffect(() => {
     if (!staleBuild) return;
     // Printing Phase 5 (spec 5.10): a reload without the internet cannot open the page: it waits for the connection.
+    // No print gate here (R73): this boundary replaces the whole tree, so no print agent or host is left to cut a slip.
     return reloadWhenOnline(() => {
       if (armChunkReload(chunkReloadStore(), Date.now())) window.location.reload();
     });

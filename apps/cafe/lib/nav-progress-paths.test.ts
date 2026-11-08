@@ -134,8 +134,8 @@ test("PIN: a layout effect on the pathname settles the store and marks the visit
   const view = code(VIEW);
   assert.match(
     view,
-    /useLayoutEffect\(\(\) => \{[^}]*?navProgress\.settle\(pathname\);\s*markVisit\(heldRoutes, pathname, window\.location\.search, Date\.now\(\)\);\s*\}, \[pathname\]\);/,
-    "before paint, on mount and on every pathname: settle, then mark the visit by its path and its query (moved on purpose, R36)",
+    /useLayoutEffect\(\(\) => \{[^}]*?const proves = landingProves\(pathname\);\s*navProgress\.settle\(pathname\);\s*markVisit\(heldRoutes, pathname, window\.location\.search, Date\.now\(\), proves\);\s*\}, \[pathname\]\);/,
+    "before paint, on mount and on every pathname: whether the landing proves its entry (read before the settle), then settle and mark the visit (moved on purpose, R36, V11)",
   );
   assert.ok(!/useSearchParams/.test(view), "the query is read from window.location inside the effect, never useSearchParams (static pages)");
   assert.match(

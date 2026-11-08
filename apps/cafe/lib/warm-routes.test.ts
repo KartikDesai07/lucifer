@@ -20,7 +20,7 @@ import {
   warmRoutes,
 } from "./warm-routes";
 
-const LIVE = { visible: true, online: true, lineProven: true };
+const LIVE = { visible: true, online: true, lineProven: true, updatePending: false };
 const CAFE_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const readCafe = (rel: string): string => readFileSync(path.join(CAFE_ROOT, rel), "utf8");
 
@@ -37,6 +37,15 @@ test("warmRoutes sends nothing from a hidden tab, while offline, or before the l
   assert.deepEqual(warmRoutes(["/pos"], (h) => seen.push(h), { ...LIVE, online: false }), []);
   assert.deepEqual(warmRoutes(["/pos"], (h) => seen.push(h), { ...LIVE, lineProven: false }), []);
   assert.deepEqual(seen, [], "no prefetch may be issued in any of these states");
+});
+
+// Post-verifier V1: while a newer build waits, a prefetch may be answered by it, and Next keeps that answer as a hard-load
+// marker for the whole window; the hook marks a route held only inside its prefetch, so nothing offered = nothing marked.
+test("warmRoutes sends nothing while a newer build is pending", () => {
+  const seen: string[] = [];
+  assert.deepEqual(warmRoutes(["/pos", "/orders"], (h) => seen.push(h), { ...LIVE, updatePending: true }), [], "nothing offered while pending");
+  assert.deepEqual(seen, [], "no prefetch, so no held mark either");
+  assert.deepEqual(warmRoutes(["/pos"], () => undefined, LIVE), ["/pos"], "landmark: the same pass with nothing pending offers");
 });
 
 test("a prefetch that throws skips only itself — the rest are still offered", () => {
@@ -208,4 +217,5 @@ test("PIN: useWarmRoutes seeds from the pulse's cached answer at mount and passe
     "the seed is read before the subscription (an answer in between is still seen)",
   );
   assert.match(src, /router\.prefetch\(href\);\s*heldRoutes\.mark\(href, Date\.now\(\)\);/, "an offered route is marked in heldRoutes");
+  assert.match(src, /const env = \(\) => \(\{[^}]*updatePending: updatePending\.isPending\(\),[^}]*\}\);/, "each offer reads the update store as it fires (post-verifier V1)");
 });
