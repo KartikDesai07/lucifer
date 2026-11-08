@@ -7,7 +7,16 @@ import type { Control } from "react-hook-form";
 import type { SettingsInput } from "@/schemas";
 import { SELF_ORDER_MODES } from "@pos/shared/public";
 import { cn } from "@/lib/utils";
-import { SettingsGroup, ToggleRow } from "@/components/settings/SettingsFields";
+import {
+  SETTINGS_TILE_CLASS,
+  SETTINGS_TILE_DOT_CLASS,
+  SETTINGS_TILE_OFF_CLASS,
+  SETTINGS_TILE_ON_CLASS,
+  SETTINGS_TILE_RADIO_CLASS,
+  SETTINGS_TILE_RADIO_OFF_CLASS,
+  SETTINGS_TILE_RADIO_ON_CLASS,
+} from "@/lib/settings-card-layout";
+import { SettingsCard, SettingsSwitchRow } from "@/components/settings/SettingsCard";
 
 interface SelfOrderCardProps {
   control: Control<SettingsInput>;
@@ -37,6 +46,10 @@ const SELF_ORDER_MODE_COPY: Record<(typeof SELF_ORDER_MODES)[number], { label: s
 
 const RECOMMENDED_MODE: SelfOrderMode = "approve";
 
+// The shared tile laid out as a row: the drawn radio beside a sentence-long label. cn is tailwind-merge, so
+// flex-row and gap-3 win over the tile's flex-col and gap-2.
+const MODE_TILE_CLASS = "min-h-11 flex-row items-start gap-3";
+
 // Three tiles instead of a drop-down, one column at every width (the copy is a
 // sentence long): each is a <label> around a visually hidden native radio, the
 // same idiom as GstModePicker.
@@ -61,12 +74,7 @@ function SelfOrderModePicker({
           return (
             <label
               key={option}
-              className={cn(
-                "flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-accent",
-                selected
-                  ? "border-brand-primary bg-brand-primary-soft"
-                  : "border-brand-rule bg-brand-slip hover:bg-brand-wash",
-              )}
+              className={cn(SETTINGS_TILE_CLASS, MODE_TILE_CLASS, selected ? SETTINGS_TILE_ON_CLASS : SETTINGS_TILE_OFF_CLASS)}
             >
               <input
                 type="radio"
@@ -81,25 +89,26 @@ function SelfOrderModePicker({
               <span
                 aria-hidden="true"
                 className={cn(
-                  "mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border",
-                  selected ? "border-brand-primary" : "border-brand-field",
+                  "mt-0.5",
+                  SETTINGS_TILE_RADIO_CLASS,
+                  selected ? SETTINGS_TILE_RADIO_ON_CLASS : SETTINGS_TILE_RADIO_OFF_CLASS,
                 )}
               >
-                {selected && <span className="h-2 w-2 rounded-full bg-brand-primary" />}
+                {selected && <span className={SETTINGS_TILE_DOT_CLASS} />}
               </span>
               <span className="min-w-0 space-y-0.5">
                 <span className="flex flex-wrap items-center gap-2">
-                  <span id={labelId} className="text-[13px] font-medium text-brand-ink">{copy.label}</span>
+                  <span id={labelId} className="text-[14px] font-semibold text-foreground">{copy.label}</span>
                   {recommended && (
                     <span
                       id={badgeId}
-                      className="rounded-full border border-brand-rule bg-brand-slip px-2 py-0.5 text-xs font-medium text-brand-ink"
+                      className="rounded-full border border-border bg-card px-2 py-0.5 text-[11.5px] font-semibold text-muted-foreground"
                     >
                       Recommended
                     </span>
                   )}
                 </span>
-                <span id={`${name}-${option}-description`} className="block text-xs text-brand-muted">
+                <span id={`${name}-${option}-description`} className="block text-[12.5px] leading-snug text-muted-foreground">
                   {copy.description}
                 </span>
               </span>
@@ -111,8 +120,8 @@ function SelfOrderModePicker({
   );
 }
 
-// QR self-ordering — CR2.2. Settings pass slice 7 (s69): two two-column
-// groups, the mode as radio tiles (no drop-down). Every field here is
+// QR self-ordering — CR2.2. Settings pass slice 7 (s69): the mode as radio tiles (no drop-down). New UI 2026-11-08
+// (docs/superpowers/plans/2026-11-08-settings-qr-ui.md): two SettingsCards. Every field here is
 // Controller-driven with no free-text input, so — unlike BillPrintCard/
 // KotPrintCard — this card needs neither `register` nor `errors`: these fields
 // can never fail settingsSchema validation from the form UI. The "Show past
@@ -122,34 +131,28 @@ function SelfOrderModePicker({
 export function SelfOrderCard({ control }: SelfOrderCardProps) {
   return (
     <>
-      <SettingsGroup
-        title="Ordering"
-        description="What happens when a diner orders from the menu on their phone."
-      >
+      <SettingsCard title="Ordering" sub="What happens when a diner orders from the menu on their phone.">
         <Controller
           control={control}
           name="selfOrderMode"
           render={({ field }) => <SelfOrderModePicker value={field.value} onChange={field.onChange} />}
         />
-      </SettingsGroup>
+      </SettingsCard>
 
-      <SettingsGroup
-        title="Tables"
-        description="For diners who open the menu link without scanning a table's QR code."
-      >
+      <SettingsCard title="Tables" sub="For diners who open the menu link without scanning a table's QR code.">
         <Controller
           control={control}
           name="allowTableChange"
           render={({ field }) => (
-            <ToggleRow
+            <SettingsSwitchRow
               label="Let diners pick their table"
-              description="When off, they can only order a parcel. A scanned table QR code always sets the table."
+              sub="When off, they can only order a parcel. A scanned table QR code always sets the table."
               checked={field.value}
-              onChange={field.onChange}
+              onCheckedChange={field.onChange}
             />
           )}
         />
-      </SettingsGroup>
+      </SettingsCard>
     </>
   );
 }
