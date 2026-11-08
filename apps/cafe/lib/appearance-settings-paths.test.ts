@@ -9,7 +9,9 @@ import { stripComments } from "@/lib/source-pin-utils";
 // Settings > Appearance DESIGN (settings pass slice 9, s71): Kitchen-ticket layout,
 // four plain groups, radio tiles, 44px swatches and picker, and a plain English
 // colour problem instead of the raw contrast pair. Source-read pins over
-// comment-stripped source (the banned-copy scan reads RAW bytes).
+// comment-stripped source (the banned-copy scan reads RAW bytes). Since the
+// 2026-11-08 card UI the groups are SettingsCards and the layout is the Taxes one
+// (lib/settings-appearance-layout.test.ts pins the cards).
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel), "utf8");
@@ -42,33 +44,23 @@ function appearanceFilesOnDisk(): string[] {
 
 // ── layout: grid, jump link, sticky preview ────────────────────────────────
 
-test("PIN: the page is the Kitchen ticket layout - a settings column and a sticky preview column", () => {
+test("PIN: the page is the card preview layout - the form cards and a sticky preview column (2026-11-08 card UI)", () => {
   const src = code(FIELDS);
   assert.match(src, /export function AppearanceFields\(/, "landmark: the stripped source still has the component");
-  assert.ok(
-    src.includes(
-      "space-y-6 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] xl:grid-cols-[minmax(0,1fr)_24rem] lg:items-start lg:gap-8 lg:space-y-0",
-    ),
-    "the grid classes",
-  );
-  assert.ok(
-    src.includes(
-      "border-t border-brand-rule pt-6 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-11rem)] lg:overflow-y-auto lg:border-t-0 lg:pt-0",
-    ),
-    "the preview column is sticky and scrolls inside itself",
-  );
+  assert.match(src, /<div className=\{SETTINGS_PREVIEW_GRID_CLASS\}>/, "the shared preview grid");
+  assert.match(src, /className=\{APPEARANCE_PREVIEW_CLASS\}/, "the preview card is sticky and scrolls inside itself");
   assert.match(code(PAGE), /<SettingsSectionPage slug="appearance" wide>/, "the page keeps the wide shell");
 });
 
-test("PIN: the preview group has id=appearance-preview and a lg:hidden jump link points at it", () => {
+test("PIN: the preview card has id=appearance-preview and an xl:hidden jump link points at it", () => {
   const src = code(FIELDS);
-  assert.match(src, /<SettingsGroup\s+stacked\s+id="appearance-preview"\s+title="Preview"/, "the preview group carries the id");
-  assert.match(src, /<AppearancePreview control=\{control\} \/>/, "the preview sits inside the group");
+  assert.match(src, /<SettingsCard\s+id="appearance-preview"\s+title="Preview"/, "the preview card carries the id");
+  assert.match(src, /<AppearancePreview control=\{control\} \/>/, "the preview sits inside the card");
   const link = src.match(/<a\s+href="#appearance-preview"\s+className="([^"]*)"/);
   assert.ok(link, "a jump link to the preview");
-  assert.match(link[1], /(^|\s)lg:hidden(\s|$)/, "hidden on a computer");
+  assert.match(link[1], /(^|\s)xl:hidden(\s|$)/, "hidden once the preview sits beside the form");
   assert.match(link[1], /(^|\s)min-h-11(\s|$)/, "at least 44px tall");
-  assert.match(link[1], /(^|\s)text-brand-primary(\s|$)/, "the link colour");
+  assert.match(link[1], /(^|\s)text-primary(\s|$)/, "the link colour");
   assert.match(src, /See the preview/, "the link says what it does");
 });
 
@@ -82,16 +74,14 @@ test("PIN: the four settings groups and the preview group have these plain title
   assert.match(code(FIELDS), /title="Preview"/);
 });
 
-test("PIN: every SettingsGroup on the Appearance page is stacked", () => {
-  let groups = 0;
+test("PIN: every part of the Appearance page is a SettingsCard (the old SettingsGroup is gone)", () => {
+  let cards = 0;
   for (const rel of APPEARANCE_UI_FILES) {
     const src = code(rel);
-    const opened = countOf(src, /<SettingsGroup\b/g);
-    const stacked = countOf(src, /<SettingsGroup\s+stacked\b/g);
-    assert.equal(stacked, opened, `${rel}: every <SettingsGroup must be stacked`);
-    groups += opened;
+    assert.equal(countOf(src, /<SettingsGroup\b/g), 0, `${rel}: no <SettingsGroup`);
+    cards += countOf(src, /<SettingsCard\b/g);
   }
-  assert.equal(groups, 5, "landmark: Theme, Button colour, Text and layout, Banner picture, Preview");
+  assert.equal(cards, 5, "landmark: Theme, Button colour, Text and layout, Banner picture, Preview");
 });
 
 test("PIN: the banner picture is the wide ImageUpload on appearance.heroImage, alt Menu banner", () => {
@@ -126,8 +116,7 @@ test("PIN: the theme is radio tiles keyed off PRESET_IDS, with three 24px swatch
   assert.match(src, /SWATCH_KEYS = \["background", "card", "primary"\] as const/, "fixed dot order");
   assert.match(src, /h-6 w-6 rounded-full/, "dots are 24px");
   assert.match(src, /min-h-11/, "tiles are at least 44px");
-  assert.ok(src.includes("border-brand-primary bg-brand-primary-soft"), "selected style");
-  assert.ok(src.includes("border-brand-rule bg-brand-slip hover:bg-brand-wash"), "unselected style");
+  assert.ok(src.includes("selected ? SETTINGS_TILE_ON_CLASS : SETTINGS_TILE_OFF_CLASS"), "the shared tile colours");
   assert.ok(!/aria-pressed/.test(src), "radio semantics, not toggle buttons");
 });
 
@@ -146,7 +135,7 @@ test("PIN: the colour swatches and the colour picker are 44px, and a swatch is n
   assert.match(input, /relative flex h-11 w-full /, "each swatch inside the popup is a 44px target");
 });
 
-test("PIN: the picker has a visible label and the reset button is an outline button that is 44px on a phone", () => {
+test("PIN: the picker has a visible label and the reset button is the 42px plain card button", () => {
   const input = code(ACCENT_INPUT);
   const group = code(ACCENT_GROUP);
   assert.match(input, /const inputId = useId\(\)/);
@@ -154,7 +143,7 @@ test("PIN: the picker has a visible label and the reset button is an outline but
   assert.match(input, /<label htmlFor=\{inputId\}[^>]*>\s*Pick your own colour\s*<\/label>/, "a visible label for it");
   assert.ok(!/aria-label=/.test(input), "named by the visible label, not an aria-label");
   assert.match(group, /variant="outline"/);
-  assert.match(group, /className="h-11 md:h-10"/);
+  assert.match(group, /className=\{SETTINGS_OUTLINE_BUTTON_CLASS\}/);
   assert.ok(group.includes("Use the theme&apos;s colour"), "the reset button text");
   assert.match(group, /disabled=\{accentValue === ""\}/, "disabled while there is no override");
 });
@@ -164,7 +153,7 @@ test("PIN: the colour problem is shown in plain English via accentProblemText(fe
   assert.match(src, /const feedback = untouchedDefault \?/, "landmark: the feedback guard is still here");
   assert.match(src, /accentProblemText\(feedback\.reason\)/, "the message comes from the plain-English map");
   assert.match(src, /role="status"/, "announced politely");
-  assert.match(src, /BRAND_FIELD_ERROR_CLASS/, "the shared error style");
+  assert.match(src, /SETTINGS_ERROR_CLASS/, "the shared error style");
   assert.match(src, /order-last w-full/, "on its own full-width line under the row");
   assert.ok(!/\.failing\b/.test(src), "the raw failing string is never read here");
 });
@@ -191,14 +180,18 @@ test("PIN: the font choice is radio tiles keyed off FONT_PAIR_KEYS, each name in
   assert.match(code(UTILS), /FONT_PAIR_LABELS: Record<FontPairKey, \{ name: string; fonts: string \}>/, "name + font names");
 });
 
-test("PIN: corners, spacing and logo are PrintSizeChoice tiles with their hints", () => {
+test("PIN: corners, spacing and logo are SettingsChoice tiles with their hints", () => {
   const src = code(TEXT_LAYOUT);
-  assert.match(src, /name="appearance\.cornerRadius"[\s\S]*?<PrintSizeChoice\s+legend="Corners"\s+options=\{CORNER_RADII\}/);
-  assert.match(src, /name="appearance\.density"[\s\S]*?<PrintSizeChoice\s+legend="Spacing"\s+options=\{DENSITIES\}/);
-  assert.match(src, /name="appearance\.logoPlacement"[\s\S]*?<PrintSizeChoice\s+legend="Logo on the menu"\s+options=\{LOGO_PLACEMENTS\}/);
+  assert.match(src, /name="appearance\.cornerRadius"[\s\S]*?<SettingsChoice\s+legend="Corners"\s+options=\{CORNER_RADII\}/);
+  assert.match(src, /name="appearance\.density"[\s\S]*?<SettingsChoice\s+legend="Spacing"\s+options=\{DENSITIES\}/);
+  assert.match(src, /name="appearance\.logoPlacement"[\s\S]*?<SettingsChoice\s+legend="Logo on the menu"\s+options=\{LOGO_PLACEMENTS\}/);
   assert.match(src, /hint="How round the buttons and dish cards are\."/);
   assert.match(src, /hint="Compact fits more dishes on one screen\. Roomy leaves more space around each dish\."/);
-  assert.match(src, /<SectionLink slug="business">Business details<\/SectionLink>/, "the logo hint links to Business details");
+  assert.match(
+    src,
+    /<AppLink href=\{settingsSectionPath\("business"\)\} className=\{SETTINGS_LINK_CLASS\}>\s*Business details\s*<\/AppLink>/,
+    "the logo hint links to Business details",
+  );
   assert.equal(countOf(src, /\?\? DEFAULT_APPEARANCE\.(fontPairKey|cornerRadius|density|logoPlacement)/g), 4, "each keeps its default");
 });
 
@@ -213,10 +206,10 @@ test("PIN: the display labels are plain English", () => {
 
 // ── preview ─────────────────────────────────────────────────────────────────
 
-test("PIN: the preview's Light/Dark switch is a PrintSizeChoice with the dark-mode hint, over a full-width phone frame", () => {
+test("PIN: the preview's Light/Dark switch is a SettingsChoice with the dark-mode hint, over a full-width phone frame", () => {
   const src = code(PREVIEW);
   assert.match(src, /export function AppearancePreview\(/, "landmark");
-  assert.match(src, /<PrintSizeChoice\s+legend="Diner's phone in"\s+options=\{SCHEMES\}/, "a PrintSizeChoice, not tab buttons");
+  assert.match(src, /<SettingsChoice\s+legend="Diner's phone in"\s+options=\{SCHEMES\}/, "a SettingsChoice, not tab buttons");
   assert.ok(src.includes("Light mode") && src.includes("Dark mode"), "plain labels");
   assert.ok(src.includes("Diners see the dark version when their phone is in dark mode, unless they choose light themselves."), "the hint");
   assert.ok(src.includes("mx-auto w-full max-w-sm"), "the frame fills the column up to phone width");

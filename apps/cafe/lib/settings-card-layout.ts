@@ -1,5 +1,6 @@
 // The settings pages in the new UI (Business details: docs/superpowers/plans/2026-11-06-settings-business-ui.md; GST &
-// taxes: 2026-11-08-settings-taxes-ui.md; QR ordering: 2026-11-08-settings-qr-ui.md): the class strings
+// taxes: 2026-11-08-settings-taxes-ui.md; QR ordering: 2026-11-08-settings-qr-ui.md; Appearance:
+// 2026-11-08-settings-appearance-ui.md): the class strings
 // the settings cards render, in one place so Tailwind's source scanner sees each one and the pins
 // (lib/settings-business-layout.test.ts) read the SAME constants. Field look = the U5 item editor's (re-exported below).
 // Tokens only; WebView 109: no color-mix(), no light-dark(), no backdrop-blur, overflow-clip for clipping.
@@ -26,6 +27,10 @@ export const SETTINGS_MAIN_CARD_CLASS = "xl:col-start-1";
 export const BUSINESS_PREVIEW_CLASS = "xl:sticky xl:top-20 xl:col-start-2 xl:[grid-row:1/span_5]";
 /** GST & taxes' sample bill: the same, over its four form rows. */
 export const TAXES_PREVIEW_CLASS = "xl:sticky xl:top-20 xl:col-start-2 xl:[grid-row:1/span_4]";
+/** Appearance's menu preview: the same over its four form cards, and it scrolls inside itself (it can be taller than
+ *  the screen between the 56px header and the Save bar). */
+export const APPEARANCE_PREVIEW_CLASS =
+  "xl:sticky xl:top-20 xl:col-start-2 xl:[grid-row:1/span_4] xl:max-h-[calc(100dvh-11rem)] xl:overflow-y-auto";
 /** A settings page without a preview (QR ordering): its cards in one column at every width. */
 export const SETTINGS_STACK_CLASS = "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4";
 
@@ -98,10 +103,15 @@ export const SETTINGS_LIST_EMPTY_CLASS = "rounded-[10px] border border-dashed bo
 export const SETTINGS_ADD_BUTTON_CLASS =`inline-flex h-[42px] cursor-pointer items-center gap-1.5 self-start justify-self-start rounded-[10px] border border-dashed border-subtle-foreground bg-transparent px-3.5 text-[13.5px] font-semibold text-foreground pointer-fine:hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50 ${FLOOR_FOCUS_RING_CLASS}`;
 export const SETTINGS_REMOVE_BUTTON_CLASS = `inline-flex h-[42px] cursor-pointer items-center justify-center gap-1.5 rounded-[10px] border-0 bg-transparent px-3 text-[13.5px] font-semibold text-status-bad-ink pointer-fine:hover:bg-status-bad-tint disabled:cursor-not-allowed disabled:opacity-50 ${FLOOR_FOCUS_RING_CLASS}`;
 
+/** The kit Button in the card look, 42px: the main one (default variant) and the plain one (Discard, Use the theme's
+ *  colour). */
+export const SETTINGS_BUTTON_CLASS = "h-[42px] rounded-[10px] px-5 text-[14.5px] font-semibold";
+export const SETTINGS_OUTLINE_BUTTON_CLASS =
+  "h-[42px] rounded-[10px] border border-border bg-card px-4 text-[14px] font-semibold text-foreground pointer-fine:hover:bg-hover";
+
 // ── The card Save bar (opt-in: SettingsSaveBar look="card") ─────────────────────────────────────────────────────────
 
 export const SETTINGS_SAVE_BAR_CARD_CLASS =
   "sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-[12px] border border-border bg-card px-4 py-3 [box-shadow:var(--pop)] pb-[calc(0.75rem+env(safe-area-inset-bottom))]";
-export const SETTINGS_SAVE_DISCARD_CLASS =
-  "h-[42px] rounded-[10px] border border-border bg-card px-4 text-[14px] font-semibold text-foreground pointer-fine:hover:bg-hover";
-export const SETTINGS_SAVE_SUBMIT_CLASS = "h-[42px] rounded-[10px] px-5 text-[14.5px] font-semibold";
+export const SETTINGS_SAVE_DISCARD_CLASS = SETTINGS_OUTLINE_BUTTON_CLASS;
+export const SETTINGS_SAVE_SUBMIT_CLASS = SETTINGS_BUTTON_CLASS;

@@ -200,7 +200,7 @@ test("page file: Business is wide and uses the card Save bar", () => {
   assert.ok(p.includes('saveBarLook="card"'), "the page opts into the card Save bar");
 });
 
-test("scope: only Business details, GST & taxes and QR ordering pass saveBarLook", () => {
+test("scope: only Business details, GST & taxes, QR ordering and Appearance pass saveBarLook", () => {
   const root = path.join(CAFE_ROOT, "app/(dashboard)/settings");
   const pages: string[] = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {
@@ -210,8 +210,8 @@ test("scope: only Business details, GST & taxes and QR ordering pass saveBarLook
   for (const rel of pages) {
     const s = stripComments(readFileSync(path.join(root, rel), "utf8"));
     const passes = s.includes("saveBarLook");
-    const cardPage = rel.startsWith("business") || rel.startsWith("taxes") || rel.startsWith("qr-ordering");
-    assert.equal(passes, cardPage, `${rel}: saveBarLook only on the card pages (Business, Taxes, QR ordering)`);
+    const cardPage = ["business", "taxes", "qr-ordering", "appearance"].some((slug) => rel.startsWith(slug));
+    assert.equal(passes, cardPage, `${rel}: saveBarLook only on the card pages (Business, Taxes, QR ordering, Appearance)`);
   }
 });
 

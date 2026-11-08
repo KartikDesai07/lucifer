@@ -149,22 +149,26 @@ export function SettingsSelect({
 
 // A one-of-a-few choice (Percent off / Amount off) instead of a drop-down: each option is a <label> around a visually
 // hidden native radio, so arrow keys and screen readers work as for any radio group. The legend reads as a field label.
+// An optional hint sits under the options and describes the group.
 export function SettingsChoice<T extends string>({
   legend,
   options,
   value,
   onChange,
   labelOf,
+  hint,
 }: {
   legend: string;
   options: readonly T[];
   value: T;
   onChange: (value: T) => void;
   labelOf: (value: T) => string;
+  hint?: ReactNode;
 }) {
   const name = useId();
+  const hintId = useId();
   return (
-    <fieldset className="min-w-0">
+    <fieldset className="min-w-0" aria-describedby={hint ? hintId : undefined}>
       <legend className={cn(SETTINGS_LABEL_CLASS, "mb-1.5")}>{legend}</legend>
       <div className="flex gap-2">
         {options.map((option) => (
@@ -184,6 +188,11 @@ export function SettingsChoice<T extends string>({
           </label>
         ))}
       </div>
+      {hint && (
+        <p id={hintId} className={cn(SETTINGS_HINT_CLASS, "mt-1.5")}>
+          {hint}
+        </p>
+      )}
     </fieldset>
   );
 }
