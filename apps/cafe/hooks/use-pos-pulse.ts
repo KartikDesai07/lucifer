@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { hashKey, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api-client";
 import { pulseErrorReach, serverReach } from "@/lib/server-reach";
 import { cadenceVersionOf, currentPulseIntervalMs, markOwnSlip, subscribeCadence } from "@/lib/pulse-cadence-now";
@@ -9,6 +9,7 @@ import { pulsePrintDeviceQuery } from "@/lib/print-agent";
 import { STALE_TIMES } from "@/lib/query";
 import { POS_BUILD } from "@/lib/build-stamp";
 import { updatePending } from "@/lib/update-pending";
+import { watchSuspectPrefetches } from "@/lib/suspect-prefetch";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
 
 // CR2.3 §20 — the ONE 20s staff-attention poll per tab, replacing the old
@@ -33,6 +34,9 @@ const POS_PULSE_ENDPOINT = "/api/order-requests/pulse";
 /** The writes that make slips (send, Pay Now, settle, void, move share ORDER_KEYS.mutation; every client-started
  *  slip goes through the print-jobs enqueue): spelt here so this module imports neither hook. */
 const SLIP_MAKING_MUTATIONS = new Set([JSON.stringify(["orders", "mutation"]), JSON.stringify(["print-jobs", "mutation"])]);
+
+/** When the pulse last really answered (a fetch, never a cache edit), for the whole tab: the line's last proof of reach. */
+let pulseAnsweredAt: number | null = null;
 
 export function usePosPulse() {
   const qc = useQueryClient();
@@ -65,9 +69,21 @@ export function usePosPulse() {
     const reach = pulseErrorReach(errorUpdateCount, error);
     if (reach !== null) serverReach.report({ type: "pulse", reach });
   }, [errorUpdateCount, error]);
-  // A newer build waiting is read from the same answer: no extra request.
+  // A newer build waiting is read from the same answer: no extra request. Only a real answer counts, with its time (a
+  // cache edit keeps the last answer's build and proves no reach): it is the line's last proof of reach and, when it
+  // names this page's build, bounds which prefetches a newer build may have answered (lib/suspect-prefetch.ts, V1, V2).
   useEffect(() => {
-    updatePending.observe(query.data?.build, POS_BUILD);
-  }, [query.data?.build]);
+    const pulseHash = hashKey(POS_PULSE_KEYS.all);
+    const offAnswers = qc.getQueryCache().subscribe((event) => {
+      if (event.type !== "updated" || event.action.type !== "success" || event.action.manual === true || event.query.queryHash !== pulseHash) return;
+      pulseAnsweredAt = event.query.state.dataUpdatedAt;
+      updatePending.observe((event.query.state.data as PosPulseData | undefined)?.build, POS_BUILD, pulseAnsweredAt);
+    });
+    const offSuspect = watchSuspectPrefetches({ proofAt: () => pulseAnsweredAt });
+    return () => {
+      offAnswers();
+      offSuspect();
+    };
+  }, [qc]);
   return query;
 }

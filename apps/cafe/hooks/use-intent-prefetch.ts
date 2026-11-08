@@ -8,6 +8,7 @@ import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
 import { heldRoutes } from "@/lib/held-routes";
 import { INTENT_HOVER_MS, shouldIntentPrefetch } from "@/lib/intent-prefetch";
 import { serverReach } from "@/lib/server-reach";
+import { updatePending } from "@/lib/update-pending";
 import { answeredAtFromCache, lineProven } from "@/lib/warm-routes";
 
 // A nav row prefetches its route when the user shows intent: a press, or a
@@ -39,6 +40,7 @@ export function useIntentPrefetch(href: string): {
       online: navigator.onLine !== false,
       offline: serverReach.isOffline(),
       lineProven: lineProven(answeredAt, now),
+      updatePending: updatePending.isPending(),
       offeredAt: heldRoutes.offeredAt(href),
       now,
     });

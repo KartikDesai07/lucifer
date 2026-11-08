@@ -23,7 +23,7 @@ import {
   printAgentSlipOf,
   readPendingAcks,
   setDirectPrintSource,
-  addPrintBusySource, markPrinterWriting, leaseUnlessClosing, trackPrintBusy,
+  addPrintBusySource, printHostBusySince, markPrinterWriting, leaseUnlessClosing, trackPrintBusy,
   setPrinterHealthSource,
   setPulsePrintDevice,
   setReadyPrintersSource,
@@ -233,6 +233,7 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
 
   useEffect(() => {
     agent?.setGate({ enabled, busy });
+    printHostBusySince(); // re-sync the hold clock now: a disabled agent's held slip ends its hold (two never join)
   }, [agent, enabled, busy]);
 
   // The printer reconnected or went away: look at the line (the gate decides). Session 2B: a nudge, so the printer's
@@ -311,9 +312,8 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
     });
   }, [agent, enabled, isHost, deviceId]);
 
-  // Name this device on the pulse, and lease when its own line holds a job. The host too (the Phase 1 final
-  // gate, I-2): with its daily wake share spent and the socket down, the pulse is how it still hears of the
-  // slips other devices send it (spec §7.10). One bounded read on a request that already runs.
+  // Name this device on the pulse (a bounded read on a request that already runs) and lease when its line holds a job.
+  // The host too (Phase 1 final gate, I-2): with its wake share spent and the socket down, the pulse brings its slips (§7.10).
   useEffect(() => {
     if (agent === null || !enabled) return;
     setPulsePrintDevice(deviceId);

@@ -229,3 +229,28 @@ test("PIN (3C gate): a new list of takeover printers the app lacks starts the be
   assert.ok(agent.includes("missingRef.current = missingKey === \"\" ? [] : missingKey.split(\",\");\n    clockRef.current?.reports();"), "the list is sampled when it changes");
   assert.ok(agent.includes("clockRef.current = clock;") && agent.includes("clockRef.current = null;"), "the hook holds the agent's clock, and lets it go with the agent");
 });
+
+// Post-verifier R1: the held-slip source (F1) lives and dies with the agent's other seams: one effect, one cleanup.
+test("PIN (F1): the held-slip source is registered in the same effect as onLeasedJob and unregistered in its cleanup", () => {
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  const leased = agent.indexOf("const offLeased = onLeasedJob((job) => agent.take(job));");
+  assert.ok(leased > 0, "landmark: the leased-job seam");
+  const start = agent.lastIndexOf("useEffect(() => {", leased);
+  const end = agent.indexOf("}, [agent, tabId]);", leased);
+  assert.ok(start > 0 && end > leased, "landmark: the effect around it");
+  const effect = agent.slice(start, end);
+  assert.equal(count(agent, "addPrintBusySource("), 1, "one registration in the hook");
+  const at = effect.indexOf("const offHeld = addPrintBusySource(() => agent.holdsJob());");
+  assert.ok(at > 0, "registered in that same effect");
+  const cleanup = effect.indexOf("return () => {");
+  assert.ok(cleanup > at, "the effect's cleanup comes after the registration");
+  assert.ok(effect.slice(cleanup).includes("offHeld();"), "its unregister runs in that effect's cleanup");
+});
+
+// Post-verifier R1: a pull source has no change event, so setGate re-syncs the hold clock at once (two holds never join).
+test("PIN (R1): the setGate effect reads the hold clock right after setGate", () => {
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.match(agent, /useEffect\(\(\) => \{\s*agent\?\.setGate\(\{ enabled, busy \}\);\s*printHostBusySince\(\);\s*\}, \[agent, enabled, busy\]\);/, "setGate, then the re-sync, in one effect");
+  assert.match(agent, /addPrintBusySource, printHostBusySince, markPrinterWriting,/, "the name on the existing import line from @/lib/print-agent");
+  assert.match(src("apps/cafe/lib/print-agent-seams.ts"), /export \{ addPrintBusySource, printHostBusySince \} from "@\/lib\/print-host-busy";/, "re-exported through the agent's seams");
+});

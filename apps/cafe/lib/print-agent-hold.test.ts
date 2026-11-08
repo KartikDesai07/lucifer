@@ -210,3 +210,37 @@ test("the hold clock starts on the first read after a source turns true and runs
     restore();
   }
 });
+
+// Post-verifier R1: the agent's held slip is a pull source with no change event, so disabling the agent ends its hold
+// only at the next read. The page reads the clock right after every setGate (hooks/use-print-agent.ts), so a hold the
+// disabling ended never joins a later one into a hold that looks 30 s old (Refresh would offer "Refresh anyway").
+test("the hold clock: a read right after setGate ends the hold a disabling ended; enabled again later, a new hold starts", async () => {
+  let t = 1000;
+  const restore = setPrintBusyClock(() => t);
+  const { agent } = world();
+  const off = addPrintBusySource(() => agent.holdsJob());
+  const setGate = (gate: { enabled: boolean; busy: boolean }): void => {
+    agent.setGate(gate);
+    printHostBusySince(); // what the page's setGate effect does
+  };
+  try {
+    setGate({ enabled: true, busy: true });
+    agent.take(job("j1"));
+    await settle();
+    assert.equal(printHostBusySince(), 1000, "held (the bridge busy): the hold starts");
+    t = 2000;
+    setGate({ enabled: false, busy: true });
+    assert.equal(agent.holdsJob(), false, "landmark: a disabled agent reports no hold");
+    t = 9000;
+    setGate({ enabled: true, busy: true });
+    assert.equal(printHostBusySince(), 9000, "the disabling ended the first hold: enabled again, a new one starts now");
+    agent.setGate({ enabled: false, busy: true });
+    t = 20_000;
+    agent.setGate({ enabled: true, busy: true });
+    assert.equal(printHostBusySince(), 9000, "without the read between, the clock cannot see the gap: the two holds join");
+  } finally {
+    off();
+    agent.stop();
+    restore();
+  }
+});

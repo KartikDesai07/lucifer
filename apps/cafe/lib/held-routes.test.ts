@@ -69,3 +69,47 @@ test("markVisit: a plain visit holds the path; a visit with a query marks nothin
   assert.equal(held.offeredAt("/kitchen"), undefined, "a query visit does not mark the bare path either");
   assert.equal(held.holds("/orders?date=Y", 600), false, "another query is not held");
 });
+
+// Post-verifier V1/V2: Next 15.5 keeps a prefetch answered by another build, or one that failed, as a hard-load marker
+// for its entry's whole life, so a mark made at or after the last moment the answers were known good is distrusted.
+test("distrustSince: a mark made at or after `since` is suspect and not held, until its own window ends", () => {
+  const held = createHeldRoutes(1000);
+  held.mark("/pos", 100);
+  held.mark("/orders", 300);
+  held.mark("/kitchen", 500);
+  held.distrustSince(300);
+  assert.equal(held.suspect("/pos", 600), false, "a mark before `since` stays trusted");
+  assert.equal(held.holds("/pos", 600), true, "and held");
+  assert.equal(held.suspect("/orders", 600), true, "a mark exactly at `since` is suspect (its answer may have come after)");
+  assert.equal(held.holds("/orders", 600), false, "a suspect mark is never held");
+  assert.equal(held.suspect("/kitchen", 600), true, "a later mark is suspect");
+  assert.equal(held.offeredAt("/kitchen"), 500, "its offer time stays: a touch must not ask again for an entry Next keeps");
+  assert.equal(held.suspect("/kitchen", 1499), true, "suspect to the end of its own window");
+  assert.equal(held.suspect("/kitchen", 1500), false, "at the boundary the entry is gone, and the suspicion with it");
+  assert.equal(held.holds("/kitchen", 1500), false, "and nothing is held there either");
+  assert.equal(held.suspect("/menu", 600), false, "an unmarked route is never suspect");
+});
+
+test("a suspect mark stays suspect through a later mark inside its window; a mark after the window starts trusted", () => {
+  const held = createHeldRoutes(1000);
+  held.mark("/orders", 100);
+  held.distrustSince(50);
+  held.mark("/orders", 900);
+  assert.equal(held.suspect("/orders", 950), true, "a later mark inside the window clears nothing (Next would not refetch a live entry)");
+  assert.equal(held.holds("/orders", 950), false, "still not held");
+  held.mark("/orders", 1100);
+  assert.equal(held.suspect("/orders", 1100), false, "a mark after the window ended is a new entry: trusted");
+  assert.equal(held.holds("/orders", 1100), true, "and held");
+});
+
+test("distrustSince(null) distrusts every mark; a mark made after the call is trusted", () => {
+  const held = createHeldRoutes(1000);
+  held.mark("/pos", 0);
+  held.mark("/orders", 10);
+  held.distrustSince(null);
+  assert.equal(held.suspect("/pos", 20), true, "no good report seen yet: every mark is suspect, even one at 0");
+  assert.equal(held.suspect("/orders", 20), true, "every mark");
+  held.mark("/kitchen", 30);
+  assert.equal(held.suspect("/kitchen", 40), false, "a mark after the distrust is not touched by it");
+  assert.equal(held.holds("/kitchen", 40), true, "and is held");
+});

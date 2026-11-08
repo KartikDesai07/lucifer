@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { heldRoutes } from "@/lib/held-routes";
 import { abandonNavigation, applyNavAction, beginNavigation, retryNavigation, type NavDeps } from "@/lib/navigate";
 import { createNavProgress } from "@/lib/nav-progress";
 import { leaveWhenPrintFree } from "@/lib/print-host-busy";
@@ -176,4 +177,91 @@ test("PIN: the real NavDeps gate is leaveWhenPrintFree, and both loads use it", 
   assert.equal(typeof leaveWhenPrintFree, "function", "landmark: the gate exists");
   assert.equal(src.split("loadThroughGate(").length - 1, 3, "the definition plus the full load and Try again");
   assert.doesNotMatch(src, /else d\.assign\(href\)|\(opts\?\.replace \? d\.replace : d\.assign\)\(href\)/, "no bare document load is left");
+});
+
+// Post-verifier V1/V2: a suspect row (lib/held-routes.ts distrustSince) is never left to Next, which would load the
+// document itself past the gate (or show the browser's error page offline): online our gated full load, offline the toast.
+test("a suspect row online: the gated full load, pending or not, even when it reads as held", () => {
+  for (const pending of [false, true]) {
+    const h = harness();
+    const asked: string[] = [];
+    const deps: Partial<NavDeps> = { ...h.deps, updatePending: () => pending, holds: () => true, suspect: (key, now) => (asked.push(`${key}@${now}`), true) };
+    const p = createNavProgress();
+    const r = beginNavigation("/orders?d=1#x", undefined, "/pos", 5, p, deps);
+    applyNavAction(r, "/orders?d=1#x", deps, { progress: p });
+    assert.equal(r.action, "full-load", `pending=${pending}: a suspect row is our full load`);
+    assert.deepEqual(asked, ["/orders?d=1@5"], `pending=${pending}: asked by heldKeyOf(href) and now`);
+    assert.equal(h.gates.length, 1, `pending=${pending}: it goes through the print gate`);
+    assert.deepEqual(h.loads, [], `pending=${pending}: nothing loads before the gate goes`);
+    h.open(0);
+    assert.deepEqual(h.loads, ["assign /orders?d=1#x"], `pending=${pending}: one load once it goes`);
+  }
+});
+
+test("a suspect row offline: the toast, no gate, no skeleton", () => {
+  const h = harness({ offline: true });
+  const deps: Partial<NavDeps> = { ...h.deps, holds: () => true, suspect: () => true };
+  const p = createNavProgress();
+  const r = beginNavigation("/orders", undefined, "/pos", 1, p, deps);
+  applyNavAction(r, "/orders", deps, { progress: p });
+  assert.equal(r.action, "refuse", "offline, a suspect row is refused even though it reads as held");
+  assert.deepEqual(h.toasts, ["Offline: Orders opens once the internet is back"], "the refused tap's toast");
+  assert.equal(h.gates.length, 0, "no gate");
+  assert.equal(p.get(), null, "no skeleton");
+});
+
+test("the real default asks the page's held record: a distrusted mark is a full load, a trusted one navigates", () => {
+  heldRoutes.mark("/__suspect-a", 100);
+  heldRoutes.mark("/__suspect-b", 300);
+  heldRoutes.distrustSince(300);
+  const online: Partial<NavDeps> = { isOffline: () => false, updatePending: () => false };
+  assert.equal(beginNavigation("/__suspect-a", undefined, "/pos", 400, createNavProgress(), online).action, "navigate", "marked before `since`: held, opens from memory");
+  assert.equal(beginNavigation("/__suspect-b", undefined, "/pos", 400, createNavProgress(), online).action, "full-load", "distrusted: our gated load");
+  const src = stripComments(readFileSync(fileURLToPath(new URL("./navigate.ts", import.meta.url)), "utf8"));
+  assert.match(src, /suspect: \(key, now\) => heldRoutes\.suspect\(key, now\),/, "realDeps.suspect reads heldRoutes.suspect");
+});
+
+// Ruling V3: Back while our own document load waits drops that load and calls no router.replace: no Next navigation runs
+// beside it, and a replace of a stale current screen would refetch it (with a newer build waiting, Next loads the document).
+const recordingRouter = (calls: string[]) =>
+  ({ replace: (href: string, o?: object) => void calls.push(`replace ${href}${o === undefined ? "" : ` ${JSON.stringify(o)}`}`) }) as never;
+
+test("Back while our full load waits: the load is cancelled and the router is not touched", () => {
+  const h = harness();
+  const p = createNavProgress();
+  tap(h, p, "/orders");
+  const calls: string[] = [];
+  withPath(() => abandonNavigation(recordingRouter(calls), p));
+  assert.equal(h.gates[0].cancelled, true, "the waiting gate is cancelled");
+  assert.deepEqual(calls, [], "no router.replace");
+  assert.equal(p.get(), null, "the old screen shows again");
+  h.open(0);
+  assert.deepEqual(h.loads, [], "never a late load");
+});
+
+test("Back while Try again's load waits: that load is ours too, cancelled with no router.replace", () => {
+  const h = harness();
+  const p = createNavProgress();
+  p.start("/orders", "Orders", 1, "/pos");
+  retryNavigation("/orders", "Orders", h.deps, p);
+  const calls: string[] = [];
+  withPath(() => abandonNavigation(recordingRouter(calls), p));
+  assert.equal(h.gates[0].cancelled, true, "the waiting gate is cancelled");
+  assert.deepEqual(calls, [], "no router.replace");
+});
+
+test("Back with no load of ours waiting (a Next navigation opening): today's replace of the current screen (R35)", () => {
+  const h = harness();
+  const p0 = createNavProgress();
+  tap(h, p0, "/kitchen");
+  h.open(0);
+  assert.deepEqual(h.loads, ["assign /kitchen"], "landmark: our earlier load went, so none of ours waits");
+  const p = createNavProgress();
+  const soft: Partial<NavDeps> = { ...h.deps, updatePending: () => false };
+  const r = beginNavigation("/orders", undefined, "/pos", 2, p, soft);
+  assert.equal(applyNavAction(r, "/orders", soft, { progress: p }), true, "landmark: a soft navigation, Next's own");
+  const calls: string[] = [];
+  withPath(() => abandonNavigation(recordingRouter(calls), p));
+  assert.deepEqual(calls, ['replace /pos {"scroll":false}'], "the replace that makes Next drop its pending navigation");
+  assert.equal(p.get(), null, "the old screen shows again");
 });

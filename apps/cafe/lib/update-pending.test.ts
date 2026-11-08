@@ -64,3 +64,35 @@ test("subscribers hear a change, not an identical report, and not after unsubscr
   s.observe("b", "a");
   assert.equal(calls, 3, "unsubscribed: no more calls");
 });
+
+// Post-verifier V1: when the pulse last said "this page's build" bounds which prefetches a newer build may have answered.
+test("sameBuildAt: the latest report equal to the page's build, by its time; null before any", () => {
+  const s = createUpdatePending();
+  assert.equal(s.sameBuildAt(), null, "no report yet");
+  s.observe("a", "a", 100);
+  assert.equal(s.sameBuildAt(), 100, "a same-build report's time");
+  s.observe("a", "a", 250);
+  assert.equal(s.sameBuildAt(), 250, "an identical report moves it (the pulse said so again)");
+  s.observe("b", "a", 400);
+  assert.equal(s.sameBuildAt(), 250, "a newer build's report does not move it");
+  s.observe(undefined, "a", 500);
+  s.observe("", "a", 500);
+  assert.equal(s.sameBuildAt(), 250, "a bad report does not either");
+  s.observe("a", "a", 600);
+  assert.equal(s.sameBuildAt(), 600, "a rollback's report is a same-build report");
+  s.observe("a", "a", 300);
+  assert.equal(s.sameBuildAt(), 600, "an older time never moves it back");
+});
+
+test("sameBuildAt: a report with no time is stamped now; a same-build time alone notifies nobody", () => {
+  const s = createUpdatePending();
+  const before = Date.now();
+  s.observe("a", "a");
+  const at = s.sameBuildAt();
+  assert.ok(at !== null && at >= before && at <= Date.now(), `stamped with Date.now(), got ${at}`);
+  let calls = 0;
+  s.subscribe(() => void calls++);
+  s.observe("a", "a", (at ?? 0) + 1000);
+  assert.equal(calls, 0, "pending and the build are unchanged: no listener runs");
+  assert.equal(s.sameBuildAt(), (at ?? 0) + 1000, "but the time moved");
+});

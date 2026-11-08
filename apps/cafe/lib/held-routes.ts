@@ -9,6 +9,15 @@
 // network and swap the POS for the browser's error page. Pure and tiny: the same
 // record answers "did we already offer this row?" (lib/intent-prefetch.ts) and
 // "may an offline tap on this row still open?" (lib/navigate.ts).
+//
+// Why a mark can be distrusted (the post-verifier's V1, V2): Next keeps a prefetch
+// whose answer came from another build, or that failed, as a hard-load marker for
+// the entry's whole life, and a tap on it makes Next load the document itself, past
+// the print gate (offline: the browser's error page). When a newer build turns
+// pending, or the line is found down, the marks made since the answers were last
+// known good may be such markers (lib/suspect-prefetch.ts): they become SUSPECT,
+// never held, until their own window ends (a later mark inside it clears nothing:
+// Next would not refetch a live entry).
 
 import { navTargetPath } from "@/lib/nav-progress";
 
@@ -19,14 +28,24 @@ export const HELD_ROUTES_WINDOW_MS = 30 * 60 * 1000;
 
 export interface HeldRoutes {
   mark(href: string, now: number): void;
-  /** Marked and still inside the window (at the boundary: no longer held). */
+  /** Marked, still inside the window and not suspect (at the boundary: no longer held). */
   holds(href: string, now: number): boolean;
   /** When the route's current window started (its first mark since it last expired), if ever. */
   offeredAt(href: string): number | undefined;
+  /** Every mark whose window started at or after `since` (null: every mark) becomes suspect for the rest of its window. */
+  distrustSince(since: number | null): void;
+  /** Distrusted, and that mark's window has not ended. */
+  suspect(href: string, now: number): boolean;
 }
 
 export function createHeldRoutes(windowMs: number): HeldRoutes {
   const marked = new Map<string, number>();
+  // The window start each distrusted mark had: a new window (a mark after it ended) is a new entry, trusted again.
+  const distrusted = new Map<string, number>();
+  const suspect = (href: string, now: number): boolean => {
+    const at = marked.get(href);
+    return at !== undefined && distrusted.get(href) === at && now - at < windowMs;
+  };
   return {
     mark: (href, now) => {
       // A live entry keeps its first time: Next does not extend an entry on reuse, so a restart here would claim more than it holds.
@@ -35,9 +54,13 @@ export function createHeldRoutes(windowMs: number): HeldRoutes {
     },
     holds: (href, now) => {
       const at = marked.get(href);
-      return at !== undefined && now - at < windowMs;
+      return at !== undefined && now - at < windowMs && !suspect(href, now);
     },
     offeredAt: (href) => marked.get(href),
+    distrustSince: (since) => {
+      for (const [href, at] of marked) if (since === null || at >= since) distrusted.set(href, at);
+    },
+    suspect,
   };
 }
 

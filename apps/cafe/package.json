@@ -71,6 +71,7 @@
     "lib/health-region.test.ts",
     "lib/navigate.test.ts",
     "lib/navigate-gate.test.ts",
+    "lib/suspect-prefetch.test.ts",
     "lib/error-reload-paths.test.ts",
     "lib/update-pending.test.ts",
     "lib/build-stamp.test.ts",
