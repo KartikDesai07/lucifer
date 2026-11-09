@@ -5,6 +5,7 @@ import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { SettingsGroup, HINT_CLASS } from "@/components/settings/SettingsFields";
+import { SettingsCard } from "@/components/settings/SettingsCard";
 import { PrintSizeChoice } from "@/components/settings/PrintSizeChoice";
 import { BlockEditor } from "@/components/settings/print-design/BlockEditor";
 import { FontPicker } from "@/components/settings/print-design/FontPicker";
@@ -20,12 +21,58 @@ import { PRINT_FONT_SIZES } from "@/lib/constants";
 import { isEdited, setBaseSize, setFont, type EditableTemplate } from "@/lib/print-design-editor";
 import type { EditorKind } from "@/lib/print-design-kinds";
 import { PREVIEW_LOAD_FAILED_TEXT } from "@/lib/print-design-labels";
+import {
+  SETTINGS_ALERT_CLASS,
+  SETTINGS_BUTTON_CLASS,
+  SETTINGS_HINT_CLASS,
+  SETTINGS_NOTE_CLASS,
+  SETTINGS_OUTLINE_BUTTON_CLASS,
+} from "@/lib/settings-card-layout";
+import { cn } from "@/lib/utils";
 import type { Settings } from "@/types";
 
 type Pending<D extends string> = { kind: "switch"; design: D } | { kind: "reset" } | { kind: "today" } | null;
 
 // The shadcn Button never wraps (whitespace-nowrap); these long labels must, or they overflow a 360px screen.
 const RECOVERY_BUTTON_CLASS = "h-auto min-h-11 whitespace-normal text-left";
+
+/** The section's own parts in each look: "group" is the old settings look (Bill print, Kitchen ticket), "card" the
+ *  settings card kit (Tokens & numbering, plan 2026-11-09-settings-tokens-ui.md). */
+const LOOKS = {
+  group: {
+    alert: "space-y-3 rounded-lg border border-destructive p-3 text-sm text-brand-ink",
+    notice: "rounded-lg border border-brand-rule bg-brand-wash p-3 text-sm text-brand-ink",
+    hint: HINT_CLASS,
+    main: "min-h-11",
+    outline: "min-h-11",
+    recovery: RECOVERY_BUTTON_CLASS,
+  },
+  card: {
+    alert: cn(SETTINGS_ALERT_CLASS, "space-y-3"),
+    notice: SETTINGS_NOTE_CLASS,
+    hint: SETTINGS_HINT_CLASS,
+    main: SETTINGS_BUTTON_CLASS,
+    outline: SETTINGS_OUTLINE_BUTTON_CLASS,
+    recovery: cn(SETTINGS_OUTLINE_BUTTON_CLASS, RECOVERY_BUTTON_CLASS),
+  },
+} as const;
+type Look = keyof typeof LOOKS;
+
+// One part of the section: an old settings group, or a settings card (an h2) whose body the page's stack spaces.
+function Part({ look, title, description, children }: { look: Look; title: string; description: string; children: ReactNode }) {
+  if (look === "card") {
+    return (
+      <SettingsCard title={title} sub={description}>
+        {children}
+      </SettingsCard>
+    );
+  }
+  return (
+    <SettingsGroup stacked title={title} description={description}>
+      {children}
+    </SettingsGroup>
+  );
+}
 
 /** What a kind's gallery gets: the design being edited (null = today's slip), the page's sample date, and the pick. */
 export interface GalleryArgs<D extends string> {
@@ -42,6 +89,10 @@ interface DesignSectionProps<T extends EditableTemplate> {
   /** The saved settings with the form's live legacy toggles laid over them, read at click time: what Classic starts from. */
   legacy: () => Settings;
   gallery: (args: GalleryArgs<T["design"]>) => ReactNode;
+  /** "card": the settings card kit, each part its own card in the page's stack. Default: the old settings groups. */
+  look?: "card";
+  /** A line at the top of the first part (the token slip: "Turn on tokens above"). */
+  note?: ReactNode;
 }
 
 /** "Couldn't load the design preview" + Try again: shown while the draft needs the lazy slip chunk and it failed. */
@@ -90,9 +141,11 @@ function confirmCopyOf<T extends EditableTemplate>(
 
 // The slip designs: the gallery, then (once one is picked) every line of the slip and its font and size. Every
 // change is only the unsaved draft; the page's one Save bar saves it with the rest of the form.
-export function DesignSection<T extends EditableTemplate>({ kind, design, settings, legacy, gallery }: DesignSectionProps<T>) {
+export function DesignSection<T extends EditableTemplate>({ kind, design, settings, legacy, gallery, look, note }: DesignSectionProps<T>) {
   const { draft } = design;
   const { copy } = kind;
+  const shown: Look = look ?? "group";
+  const ui = LOOKS[shown];
   // Reading `design` off a generic template widens it to string, so it is typed once here.
   const current = (draft?.design ?? null) as T["design"] | null;
   const [pending, setPending] = useState<Pending<T["design"]>>(null);
@@ -118,53 +171,54 @@ export function DesignSection<T extends EditableTemplate>({ kind, design, settin
     setPending(null);
   };
 
-  return (
-    <div className="space-y-6">
-      <SettingsGroup stacked title={copy.sectionTitle} description={copy.sectionDescription}>
+  const parts = (
+    <>
+      <Part look={shown} title={copy.sectionTitle} description={copy.sectionDescription}>
+        {note}
         {design.unreadable && (
-          <div role="alert" className="space-y-3 rounded-lg border border-destructive p-3 text-sm text-brand-ink">
+          <div role="alert" className={ui.alert}>
             <p>{copy.unreadable}</p>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" className={RECOVERY_BUTTON_CLASS} onClick={() => design.recoverClassic(legacy())}>
+              <Button type="button" variant="outline" className={ui.recovery} onClick={() => design.recoverClassic(legacy())}>
                 {copy.recoverClassicLabel}
               </Button>
-              <Button type="button" variant="outline" className={RECOVERY_BUTTON_CLASS} onClick={design.keepToday}>
+              <Button type="button" variant="outline" className={ui.recovery} onClick={design.keepToday}>
                 {copy.keepTodayLabel}
               </Button>
             </div>
           </div>
         )}
         {design.notices.map((notice) => (
-          <p key={notice} role="status" className="rounded-lg border border-brand-rule bg-brand-wash p-3 text-sm text-brand-ink">
+          <p key={notice} role="status" className={ui.notice}>
             {notice}
           </p>
         ))}
         {gallery({ active: current, createdAt, onPick: pick })}
         {draft === null ? (
           <div className="space-y-2">
-            <Button type="button" className="min-h-11" onClick={() => design.activate(kind.todayDesign, legacy())}>
+            <Button type="button" className={ui.main} onClick={() => design.activate(kind.todayDesign, legacy())}>
               {copy.customizeLabel}
             </Button>
-            <p className={HINT_CLASS}>{copy.customizeHint}</p>
+            <p className={ui.hint}>{copy.customizeHint}</p>
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" className="min-h-11" onClick={() => (edited ? setPending({ kind: "reset" }) : design.activate(draft.design, legacy()))}>
+            <Button type="button" variant="outline" className={ui.outline} onClick={() => (edited ? setPending({ kind: "reset" }) : design.activate(draft.design, legacy()))}>
               Reset to {kind.designLabel[current as T["design"]]}
             </Button>
-            <Button type="button" variant="outline" className="min-h-11" onClick={() => setPending({ kind: "today" })}>
+            <Button type="button" variant="outline" className={ui.outline} onClick={() => setPending({ kind: "today" })}>
               {copy.backToTodayLabel}
             </Button>
           </div>
         )}
-      </SettingsGroup>
+      </Part>
 
       {draft !== null && (
         <>
-          <SettingsGroup stacked title={copy.linesTitle} description={copy.linesDescription}>
+          <Part look={shown} title={copy.linesTitle} description={copy.linesDescription}>
             <BlockEditor kind={kind} template={draft} settings={settings} issues={design.issues} onChange={design.set} />
-          </SettingsGroup>
-          <SettingsGroup stacked title="Font and text size" description="The base face and size every line is scaled from.">
+          </Part>
+          <Part look={shown} title="Font and text size" description="The base face and size every line is scaled from.">
             <FontPicker value={draft.font} onChange={(font) => design.set(setFont(draft, font))} />
             <PrintSizeChoice
               legend="Text size"
@@ -172,7 +226,7 @@ export function DesignSection<T extends EditableTemplate>({ kind, design, settin
               value={draft.size}
               onChange={(size) => design.set(setBaseSize(draft, size))}
             />
-          </SettingsGroup>
+          </Part>
         </>
       )}
 
@@ -187,6 +241,8 @@ export function DesignSection<T extends EditableTemplate>({ kind, design, settin
           onConfirm={confirm}
         />
       )}
-    </div>
+    </>
   );
+  // The cards sit straight in the page's stack (its gap spaces them); the old groups keep their own column.
+  return shown === "card" ? parts : <div className="space-y-6">{parts}</div>;
 }

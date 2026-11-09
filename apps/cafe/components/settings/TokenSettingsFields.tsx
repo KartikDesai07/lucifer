@@ -16,9 +16,14 @@ import type { SettingsInput } from "@/schemas";
 import { PRINT_NUMBER_START_MIN, PRINT_NUMBER_START_MAX } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Field, HINT_CLASS, HINT_LINK_CLASS, SettingsGroup, ToggleRow } from "@/components/settings/SettingsFields";
-import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
+import { CardField, SettingsCard, SettingsSelect, SettingsSwitchRow } from "@/components/settings/SettingsCard";
+import { NowServingLink } from "@/components/now-serving/NowServingLink";
+import {
+  SETTINGS_ALERT_CLASS,
+  SETTINGS_HINT_CLASS,
+  SETTINGS_INPUT_CLASS,
+  SETTINGS_LINK_CLASS,
+} from "@/lib/settings-card-layout";
 import { blankToMinStart, makeNumberStartBlurHandler } from "@/components/settings/print-form-utils";
 import { usePrintersRead } from "@/hooks/use-agent-printers";
 import { KITCHEN_TOKEN_HINT } from "@/lib/kitchen-lines";
@@ -27,6 +32,8 @@ import { NUMBER_RESET_HINT, TOKENS_NO_BILL_PRINTER_WARNING, TOKENS_RELOAD_HINT, 
 const TOKEN_NUMBER_START_ID = "settings-token-number-start";
 const RESET_TIME_ID = "settings-number-reset-minutes";
 const READY_CLEAR_ID = "settings-token-ready-clear-minutes";
+// The three controls share one width: wide enough for "12:00 am (midnight)", never the whole card on a computer.
+const CONTROL_WIDTH_CLASS = "max-w-60";
 
 interface TokenSettingsFieldsProps {
   control: Control<SettingsInput>;
@@ -35,8 +42,9 @@ interface TokenSettingsFieldsProps {
   errors: FieldErrors<SettingsInput>;
 }
 
-// The Tokens & numbering page (print customization S6). Nothing here switches or resets another setting by itself:
-// "Token numbers start at" stays visible whether tokens are on or off, and the restart time is its own choice.
+// The Tokens & numbering page (print customization S6): three cards in the page's stack. Nothing here switches or
+// resets another setting by itself: "Token numbers start at" stays visible whether tokens are on or off, and the
+// restart time is its own choice.
 export function TokenSettingsFields({ control, register, setValue, errors }: TokenSettingsFieldsProps) {
   const tokenNumberStartRegistration = register("tokenNumberStart", { setValueAs: blankToMinStart });
   const handleTokenNumberStartBlur = makeNumberStartBlurHandler(setValue, "tokenNumberStart");
@@ -49,31 +57,31 @@ export function TokenSettingsFields({ control, register, setValue, errors }: Tok
   const noBillPrinter = tokensHaveNoBillPrinter(usePrintersRead(true).printers);
 
   return (
-    <div className="space-y-6">
-      <SettingsGroup title="Tokens" description="A short number for each order, so the customer can be called when it is ready.">
+    <>
+      <SettingsCard title="Tokens" sub="A short number for each order, so the customer can be called when it is ready.">
         <Controller
           control={control}
           name="tokenEnabled"
           render={({ field }) => (
-            <ToggleRow
+            <SettingsSwitchRow
               label="Give every order a token"
-              description="Every new order gets a token number. It prints on the bill and the kitchen ticket. It also prints on its own token slip with the first kitchen ticket."
+              sub="Every new order gets a token number. It prints on the bill and the kitchen ticket. It also prints on its own token slip with the first kitchen ticket."
               checked={field.value === true}
-              onChange={field.onChange}
+              onCheckedChange={field.onChange}
             />
           )}
         />
-        <p className={HINT_CLASS}>{TOKENS_RELOAD_HINT}</p>
-        <p className={HINT_CLASS}>{KITCHEN_TOKEN_HINT}</p>
+        <p className={SETTINGS_HINT_CLASS}>{TOKENS_RELOAD_HINT}</p>
+        <p className={SETTINGS_HINT_CLASS}>{KITCHEN_TOKEN_HINT}</p>
         {noBillPrinter && (
-          <p role="alert" className="rounded-lg border border-destructive p-3 text-sm text-brand-ink">
+          <p role="alert" className={SETTINGS_ALERT_CLASS}>
             {TOKENS_NO_BILL_PRINTER_WARNING}{" "}
-            <AppLink href="/printers" className={HINT_LINK_CLASS}>
+            <AppLink href="/printers" className={SETTINGS_LINK_CLASS}>
               Open Printer setup
             </AppLink>
           </p>
         )}
-        <Field
+        <CardField
           label="Token numbers start at"
           htmlFor={TOKEN_NUMBER_START_ID}
           error={errors.tokenNumberStart?.message}
@@ -81,7 +89,7 @@ export function TokenSettingsFields({ control, register, setValue, errors }: Tok
         >
           <Input
             id={TOKEN_NUMBER_START_ID}
-            className={cn(BRAND_CONTROL_CLASS, "w-32")}
+            className={cn(SETTINGS_INPUT_CLASS, CONTROL_WIDTH_CLASS)}
             type="number"
             inputMode="numeric"
             min={PRINT_NUMBER_START_MIN}
@@ -92,13 +100,14 @@ export function TokenSettingsFields({ control, register, setValue, errors }: Tok
               handleTokenNumberStartBlur(e);
             }}
           />
-        </Field>
-      </SettingsGroup>
-      <SettingsGroup
+        </CardField>
+        <NowServingLink variant="hint" />
+      </SettingsCard>
+      <SettingsCard
         title="Daily restart time"
-        description="Token, kitchen ticket and bill numbers all start again from their start number at this time."
+        sub="Token, kitchen ticket and bill numbers all start again from their start number at this time."
       >
-        <Field
+        <CardField
           label="Numbers start again at"
           htmlFor={RESET_TIME_ID}
           error={errors.numberResetMinutes?.message}
@@ -108,30 +117,25 @@ export function TokenSettingsFields({ control, register, setValue, errors }: Tok
             control={control}
             name="numberResetMinutes"
             render={({ field }) => (
-              <Select
+              <SettingsSelect
+                id={RESET_TIME_ID}
                 value={String(numberResetMinutesOf(field.value))}
                 onValueChange={(v) => field.onChange(Number(v))}
-              >
-                <SelectTrigger id={RESET_TIME_ID} className={BRAND_CONTROL_CLASS}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {numberResetOptions(saved?.numberResetMinutes).map((minutes) => (
-                    <SelectItem key={minutes} value={String(minutes)}>
-                      {numberResetLabel(minutes)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                options={numberResetOptions(saved?.numberResetMinutes).map((minutes) => ({
+                  value: String(minutes),
+                  label: numberResetLabel(minutes),
+                }))}
+                className={CONTROL_WIDTH_CLASS}
+              />
             )}
           />
-        </Field>
-      </SettingsGroup>
-      <SettingsGroup
+        </CardField>
+      </SettingsCard>
+      <SettingsCard
         title="Ready tokens"
-        description="How long a ready token stays on the token list before it clears by itself."
+        sub="How long a ready token stays on the token list before it clears by itself."
       >
-        <Field
+        <CardField
           label="Clear a ready token after"
           htmlFor={READY_CLEAR_ID}
           error={errors.tokenReadyClearMinutes?.message}
@@ -141,25 +145,20 @@ export function TokenSettingsFields({ control, register, setValue, errors }: Tok
             control={control}
             name="tokenReadyClearMinutes"
             render={({ field }) => (
-              <Select
+              <SettingsSelect
+                id={READY_CLEAR_ID}
                 value={String(tokenReadyClearMinutesOf(field.value))}
                 onValueChange={(v) => field.onChange(Number(v))}
-              >
-                <SelectTrigger id={READY_CLEAR_ID} className={BRAND_CONTROL_CLASS}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {tokenReadyClearOptions(saved?.tokenReadyClearMinutes).map((minutes) => (
-                    <SelectItem key={minutes} value={String(minutes)}>
-                      {tokenReadyClearLabel(minutes)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                options={tokenReadyClearOptions(saved?.tokenReadyClearMinutes).map((minutes) => ({
+                  value: String(minutes),
+                  label: tokenReadyClearLabel(minutes),
+                }))}
+                className={CONTROL_WIDTH_CLASS}
+              />
             )}
           />
-        </Field>
-      </SettingsGroup>
-    </div>
+        </CardField>
+      </SettingsCard>
+    </>
   );
 }

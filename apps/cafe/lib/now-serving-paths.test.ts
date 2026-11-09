@@ -30,6 +30,7 @@ const LINK = "components/now-serving/NowServingLink.tsx";
 const SIDEBAR = "components/layout/AppSidebar.tsx";
 const KITCHEN_PAGE = "app/(dashboard)/kitchen/page.tsx";
 const TOKENS_PAGE = "app/(dashboard)/settings/tokens/page.tsx";
+const TOKENS_FIELDS = "components/settings/TokenSettingsFields.tsx";
 
 const COMPONENTS = [BOARD, COLUMN, PANEL, LINK];
 const SCREEN_FILES = [...COMPONENTS, PAGE];
@@ -297,9 +298,14 @@ test("links: exactly one NowServingLink on the Kitchen header (button, after the
   assert.equal(count(kitchen, "<NowServingLink"), 1);
   assert.ok(kitchen.includes('actions={<><KitchenTypeFilter value={filter} onChange={setFilter} /><NowServingLink variant="button" /></>}'), "the header's actions: the filter, then Now Serving");
   assert.ok(!kitchen.includes("KitchenFreshnessChip"), "the chip is not drawn on /kitchen");
-  const tokens = read(TOKENS_PAGE);
+  // Card UI (2026-11-09-settings-tokens-ui.md): the hint moved from the page into the Tokens card, under the start number.
+  assert.ok(read(TOKENS_PAGE).includes("<TokenSettingsFields "), "landmark: the page renders the token fields");
+  assert.ok(!read(TOKENS_PAGE).includes("<NowServingLink"), "no second hint on the page itself");
+  const tokens = read(TOKENS_FIELDS);
   assert.equal(count(tokens, "<NowServingLink"), 1);
   assert.ok(tokens.includes('<NowServingLink variant="hint" />'));
+  assert.ok(tokens.indexOf('label="Token numbers start at"') < tokens.indexOf('<NowServingLink variant="hint" />'), "under the start number");
+  assert.ok(tokens.indexOf('<NowServingLink variant="hint" />') < tokens.indexOf('title="Daily restart time"'), "inside the Tokens card");
 });
 
 function sourceFilesUnder(dir: string, out: string[] = []): string[] {

@@ -1,6 +1,7 @@
 // The settings pages in the new UI (Business details: docs/superpowers/plans/2026-11-06-settings-business-ui.md; GST &
 // taxes: 2026-11-08-settings-taxes-ui.md; QR ordering: 2026-11-08-settings-qr-ui.md; Appearance:
-// 2026-11-08-settings-appearance-ui.md; Rewards & loyalty: 2026-11-09-settings-loyalty-ui.md): the class strings
+// 2026-11-08-settings-appearance-ui.md; Rewards & loyalty: 2026-11-09-settings-loyalty-ui.md; Tokens & numbering:
+// 2026-11-09-settings-tokens-ui.md): the class strings
 // the settings cards render, in one place so Tailwind's source scanner sees each one and the pins
 // (lib/settings-business-layout.test.ts) read the SAME constants. Field look = the U5 item editor's (re-exported below).
 // Tokens only; WebView 109: no color-mix(), no light-dark(), no backdrop-blur, overflow-clip for clipping.
@@ -31,6 +32,10 @@ export const TAXES_PREVIEW_CLASS = "xl:sticky xl:top-20 xl:col-start-2 xl:[grid-
  *  the screen between the 56px header and the Save bar). */
 export const APPEARANCE_PREVIEW_CLASS =
   "xl:sticky xl:top-20 xl:col-start-2 xl:[grid-row:1/span_4] xl:max-h-[calc(100dvh-11rem)] xl:overflow-y-auto";
+/** Tokens & numbering's slip preview: sticky in column 2 beside ONE stack of form cards (the slip design adds one or
+ *  three cards, so a fixed row span would not cover them), and it scrolls inside itself like Appearance's. */
+export const TOKENS_PREVIEW_CLASS =
+  "xl:sticky xl:top-20 xl:col-start-2 xl:row-start-1 xl:max-h-[calc(100dvh-11rem)] xl:overflow-y-auto";
 /** A settings page without a preview (QR ordering): its cards in one column at every width. */
 export const SETTINGS_STACK_CLASS = "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4";
 
@@ -56,6 +61,10 @@ export const SETTINGS_HINT_CLASS = "text-[12.5px] leading-snug text-muted-foregr
  *  row colours. */
 export const SETTINGS_NOTE_CLASS =
   "rounded-[10px] border border-border-2 bg-surface-2 p-3 text-[13.5px] text-foreground text-pretty";
+/** A warning inside a card body (Tokens: no bill printer takes the slips; a saved slip design that could not be read):
+ *  the note's shape on the bad rule. */
+export const SETTINGS_ALERT_CLASS =
+  "rounded-[10px] border border-status-bad bg-card p-3 text-[13.5px] text-foreground text-pretty";
 export const SETTINGS_LINK_CLASS = "font-medium text-primary underline underline-offset-2";
 
 // ── Fields: the U5 editor's look, one source ────────────────────────────────────────────────────────────────────────
