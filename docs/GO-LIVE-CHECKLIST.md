@@ -9,7 +9,7 @@ is genuinely a judgement call it says so.
 | Role | Who | Owns |
 |---|---|---|
 | **OWNER** | platform operator | accounts, domain, creds, backups (§0, §9) |
-| **DEPLOYER** | whoever runs the CLI | deploy + seed + verification (§1, §2, §8) |
+| **DEPLOYER** | the owner, from his admin panel | deploy + seed + verification (§1, §2, §8) |
 | **CAFE ADMIN** | the client | their own data: settings, floor, menu, staff (§3–§6) |
 
 Steps marked 🖐️ **cannot be done remotely** — someone has to stand at the
@@ -53,16 +53,15 @@ Nothing in §1 can start until all of these exist.
       account: My Profile → API Tokens → Create Token → Custom, with exactly
       `Workers Scripts: Edit` + `Account Settings: Read`, limited to that one
       account (measured 2026-09-25: enough to create the Worker, run its
-      Durable Object migration and set its secret — Admin is not needed). Paste
-      it into the console's Hosting → Realtime block; the go-live run does the
-      rest. Skipping this is fine: the cafe polls, exactly as it always has.
+      Durable Object migration and set its secret — Admin is not needed). Keep
+      it with the other creds for the Worker's deploy (`workers/realtime/README.md`
+      § "Deploying into a client's account"). Skipping this is fine: the cafe
+      polls, exactly as it always has.
 - [ ] **A host, decided.** The app resolves *which cafe it is serving* from the
       request host, so the host and two env vars have to agree. Two supported
       shapes:
-      The owner console now defaults every new cafe to shape (B), on the ONE
-      apex domain recorded in `clients/_platform.json` (console: ⚙ Platform) —
-      shape (A) still works and is what an existing cafe keeps until its web
-      address is set.
+      New cafes use shape (B), on the owner's ONE apex domain — shape (A) still
+      works and is what an existing cafe keeps until its web address is set.
       - **(A) Vercel's own free domain** — no purchase needed. Set
         `ROOT_DOMAIN=vercel.app` and `TENANT_ID=` **the first label of the
         production domain Vercel actually assigned**, then deploy. Confirmed live
@@ -101,21 +100,18 @@ Nothing in §1 can start until all of these exist.
 
 ## §1 Deploy the app (DEPLOYER)
 
-> **The one-command path.** `npm run go-live -- <client>` (or double-click
-> `go-live.cmd`) does every box below except the 3 WAF rules, the R2 CORS rule
-> and Telegram (Settings → Telegram), and also runs the §2 seed — from a single
-> `clients/<client>.json` you fill in once (`scripts/go-live/client.example.json`
-> is the template, `demo.example.json` a ready demo café). It reads the assigned
-> domain so `TENANT_ID` can never disagree with the host, and ends with the
-> `/api/health` check. Details: `apps/cafe/DEPLOY.md` §1. Tick the boxes below
-> by reading its summary.
+> **How a cafe is deployed.** The owner deploys every cafe from his own admin
+> panel (it runs on the owner's server, outside this repo) and sets the
+> functions' region there. The boxes below are what a deploy must get right,
+> whatever runs it; tick them against the panel's deploy and the live cafe.
+> The repo's old local path (`npm run deploy` / `scripts/deploy.mjs`, the
+> go-live run and its owner console, `scripts/go-live/*`) is no longer used for
+> live cafes; it stays in the repo for reference (`apps/cafe/DEPLOY.md` §1).
 >
-> **Realtime (optional):** filling in the `cloudflare` block (a client-issued
-> Cloudflare token; console: Hosting → Realtime) makes the same run provision a
-> Worker in the CLIENT'S OWN Cloudflare account and wire the cafe to it — the
-> Kitchen board and the print host then react within about a second of a POS
-> write instead of waiting for their poll. Leaving the block empty (the
-> default) is fully supported: the cafe just polls, exactly as it always has.
+> **Realtime (optional):** a Worker in the CLIENT'S OWN Cloudflare account,
+> wired to the cafe, makes the Kitchen board and the print host react within
+> about a second of a POS write instead of waiting for their poll. Without one
+> (the default) the cafe just polls, exactly as it always has.
 
 - [ ] Vercel project created with **Root Directory = `apps/cafe`**.
 - [ ] Environment variables set in Vercel (Production). **Required four:**
@@ -133,22 +129,22 @@ Nothing in §1 can start until all of these exist.
       with must be **byte-identical** — otherwise you seed one database and the
       app serves another, and the cafe sees an empty menu it just imported.
 - [ ] **ANY env var change only affects NEW deployments.** After editing a value
-      in the dashboard, re-run `npm run deploy -- --profile <client>` before
+      in the dashboard, redeploy the cafe from the admin panel before
       re-testing. This is not limited to `NEXT_PUBLIC_*`; a dashboard edit plus a
       hard refresh changes nothing on its own.
-- [ ] **Functions run in Mumbai**, not Vercel's default Virginia. `apps/cafe/vercel.json`
-      pins `"regions": ["bom1"]` so every deploy gets it — confirm in the build
-      output/Project → Functions. Left at the default, each POS action pays
-      several Virginia↔Mumbai round trips to the Atlas cluster.
+- [ ] **Functions run in Mumbai** (`bom1`), not Vercel's default Virginia. The
+      owner sets the region in the admin panel's region select (`apps/cafe/vercel.json`
+      also names `"regions": ["bom1"]`, but a deploy can override it). Confirm on
+      the live cafe: `GET /api/health` answers `"region": "bom1"`, and the
+      `X-Vercel-Id` response header reads `bom1::bom1`. Left at the default, each
+      POS action pays several Virginia↔Mumbai round trips to the Atlas cluster.
 - [ ] Image store env — **only if §0 chose one**: either the `R2_*` set plus
       `NEXT_PUBLIC_R2_PUBLIC_BASE_URL`, or `IMAGE_STORE=cloudinary` plus the
       `CLOUDINARY_*` set. Deliberately omitting both is a supported shape (see
       §0) — uploads answer "Image uploads are not configured" and no image
       renders; nothing else is affected. Remember `NEXT_PUBLIC_*` is baked in at
-      build time, so adding a store later needs another `npm run deploy` — a
+      build time, so adding a store later needs another deploy — a
       dashboard edit plus a hard refresh changes nothing and photos keep failing.
-- [ ] Profile added to `deploy.profiles.json` (`app`, `orgId`, `projectId`,
-      `tokenEnv`); `npm run deploy -- --list` shows it.
 - [ ] **Root Directory = `apps/cafe`** (Vercel Project → Settings → Build and
       Deployment). Not optional, and the single most likely thing to get wrong:
       this is an npm-workspaces monorepo where `apps/cafe` depends on
@@ -158,15 +154,10 @@ Nothing in §1 can start until all of these exist.
       pointing at the repo root **fails the build outright**: proven 2026-08-12,
       when a branch push auto-triggered a Vercel build against a root-configured
       project and it failed.
-- [ ] **Rehearse with a preview first:**
-      `npm run deploy -- --profile <client> --preview` succeeds *and* its build
-      log is clean. `npm run deploy` runs the Vercel CLI from the **repo root**
-      by design (`scripts/deploy.mjs` — deploying from inside `apps/cafe` cannot
-      work, the install would look for `@pos/shared` on the public registry). If
-      the build fails complaining about `@pos/shared`, the Root Directory above
-      is wrong.
-- [ ] `npm run deploy -- --profile <client>` succeeds. (The deploy script never
-      touches git — committing and pushing stay manual, by design.)
+- [ ] **The deploy from the admin panel succeeds** *and* its build log is clean.
+      A deploy must upload the whole repo, never `apps/cafe` alone: the install
+      would look for `@pos/shared` on the public registry. If the build fails
+      complaining about `@pos/shared`, the Root Directory above is wrong.
 - [ ] Host wired to match §0's choice:
       - **Shape (A), Vercel's domain:** confirm `ROOT_DOMAIN=vercel.app` and that
         `TENANT_ID` is *byte-for-byte* the first label of the domain under
@@ -175,9 +166,9 @@ Nothing in §1 can start until all of these exist.
         `TENANT_ID`. A mismatch 404s every page.
       - **Shape (B), real domain:** add it in Vercel, DNS `CNAME <client-slug>` →
         Vercel, and `ROOT_DOMAIN` = the apex actually used.
-- [ ] On shape (A), know that **the preview URL from the rehearsal above will
-      itself 404** — its host is `proj-hash-team.vercel.app`, whose subdomain is
-      not `TENANT_ID`. That is expected and not a failure: judge the rehearsal by
+- [ ] On shape (A), know that **a preview deployment's URL will itself 404** —
+      its host is `proj-hash-team.vercel.app`, whose subdomain is not
+      `TENANT_ID`. That is expected and not a failure: judge a preview by
       **the build log**, not by loading the page. Only the production alias
       serves the app.
 - [ ] Atlas Network Access allows `0.0.0.0/0` (Vercel has no static egress IPs).
@@ -188,10 +179,10 @@ Nothing in §1 can start until all of these exist.
       obvious abuse patterns against `/m` and `/api/public/*` (the public menu
       and diner order endpoints). Hobby gets 3 custom rules + 3 IP blocks;
       native rate limiting is Pro.
-- [ ] **Realtime (optional) — if the console's Hosting → Realtime block was
-      filled in:** the run deployed a Worker `pos-realtime-<slug>` into the
-      CLIENT'S OWN Cloudflare account and set the cafe's three `REALTIME_*` env
-      vars. Verify: open the Kitchen board on one device, fire a KOT from
+- [ ] **Realtime (optional) — if the cafe uses it:** its Worker
+      `pos-realtime-<slug>` runs in the CLIENT'S OWN Cloudflare account and the
+      cafe's three `REALTIME_*` env vars are set (`apps/cafe/DEPLOY.md`
+      "Realtime Worker"). Verify: open the Kitchen board on one device, fire a KOT from
       another — the board updates within about a second instead of waiting for
       its poll. Left empty (the default), the cafe polls exactly as before —
       nothing to verify here.
@@ -201,10 +192,10 @@ Nothing in §1 can start until all of these exist.
       breaks, but the new frames never arrive and the print readback waits for
       its 20 s pulse instead (for `print-setup`: a printer change reaches each
       device only when it reads the printer list again — see "Existing cafes:
-      the printing Phase 2 release" below). Re-run the go-live run for the cafe: its Realtime
-      step sees the changed Worker source (`sourceHash`) and redeploys it, BEFORE
-      the app's deploy. For such a release use the go-live run, not
-      `npm run deploy -- --profile <slug>` alone: that deploys only the app.
+      the printing Phase 2 release" below). Redeploy the cafe's Worker (by hand:
+      `workers/realtime/README.md` § "Deploying into a client's account") BEFORE
+      the app's deploy from the admin panel. A deploy of the app alone does not
+      update the Worker.
 - [ ] `GET /api/health` returns HTTP 200 with `ok: true` and `db: "up"`. A 503
       carrying `db: "down"` means the app is running but cannot reach the
       cluster — check the Atlas allowlist and `MONGODB_URI` before continuing.
@@ -224,15 +215,15 @@ the old print jobs and devices keep working.
 The order matters: the Worker first, then the web, then reload every open POS
 screen, then the apps; Set up printers last, and only if the cafe wants stations.
 
-- [ ] **Worker.** Re-run the go-live run for the cafe (not `npm run deploy`
-      alone): its Realtime step redeploys the Worker, which now knows
-      `print-setup`, before it deploys the app. A cafe with Realtime left empty
-      has no Worker: nothing to do. Skipped or late, nothing is lost, but a
+- [ ] **Worker.** Redeploy the cafe's Worker first (by hand:
+      `workers/realtime/README.md` § "Deploying into a client's account"); it
+      then knows `print-setup`. A cafe without Realtime has no Worker: nothing
+      to do. Skipped or late, nothing is lost, but a
       printer change reaches a device only when it reads the printer list again
       (a page load, a focus after 30 minutes, or within about a minute once a
       slip is aimed at a printer it does not know yet); slips aimed at it wait
       in the waiting-slips panel meanwhile.
-- [ ] **Web.** The same go-live run deploys it after the Worker. `GET
+- [ ] **Web.** Deploy the cafe from the admin panel, after the Worker. `GET
       /api/health` answers 200, and `/printers` opens for an admin.
 - [ ] **Reload every POS screen that was open before the deploy:** Refresh in
       the POS app, reload each browser tab, quit and reopen the Windows app. A
@@ -330,7 +321,7 @@ Phase 2 one.
 The order matters: the web first, then every open POS screen reloaded, then the POS app on each printing device
 and the app opened once there, then the Windows app.
 
-- [ ] **The web first.** Re-run the go-live run for the cafe (not `npm run deploy` alone). `GET /api/health`
+- [ ] **The web first.** Deploy the cafe from the admin panel. `GET /api/health`
       answers 200.
 - [ ] **Reload every POS screen** that was open before the deploy: Refresh in the POS app, reload each browser
       tab, quit and reopen the Windows app ("printing failover and the backup printer" above says what an older
@@ -422,7 +413,7 @@ cafe's server. **No Worker change.**
 
 The order matters: the web first, then the 2.0.2 upload, then the demo cafe, then the clients printer by printer.
 
-- [ ] **The web first.** Re-run the go-live run for the cafe (not `npm run deploy` alone). `GET /api/health`
+- [ ] **The web first.** Deploy the cafe from the admin panel. `GET /api/health`
       answers 200. On that day no paper changes: every printer's switch starts off, and with it off every slip prints
       exactly as before (a picture).
 - [ ] **Reload every POS screen** that was open before the deploy: Refresh in the POS app, reload each browser tab,
@@ -484,7 +475,7 @@ back."). The same release makes the POS's check of the server calm when the cafe
 **no Worker change**, no data migration, no new setting and no app release (every POS app and the Windows app print
 the offline KOT as they print any KOT today).
 
-- [ ] **The web first.** Re-run the go-live run for the cafe (not `npm run deploy` alone). `GET /api/health`
+- [ ] **The web first.** Deploy the cafe from the admin panel. `GET /api/health`
       answers 200. On that day no paper changes online: the offline path is used only during an outage.
 - [ ] **Reload every POS screen** that was open before the deploy: Refresh in the POS app, reload each browser tab,
       quit and reopen the Windows app. A page from before the deploy works as before, without the offline path.
@@ -529,7 +520,7 @@ the offline KOT as they print any KOT today).
 This release adds a 4-digit PIN sign-in for staff, a screen lock, and the new look of the POS (colours, top bar,
 dashboard). The Worker, the printing and the data are not changed; the staff list gains a PIN per person.
 
-- [ ] **Deploy** (re-run the go-live run for the cafe). `GET /api/health` answers 200. Reload every open POS screen.
+- [ ] **Deploy** (from the admin panel). `GET /api/health` answers 200. Reload every open POS screen.
 - [ ] **The cafe's admin signs in once** with username and password (the PIN sign-in has nobody remembered yet).
 - [ ] **Set a PIN for each staff member** on the Staff page (*Edit staff* → *New PIN*), the admin's own included.
       Until a person has a PIN they keep signing in with the password.
