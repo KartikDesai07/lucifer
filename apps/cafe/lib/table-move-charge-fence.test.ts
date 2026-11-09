@@ -16,6 +16,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CAFE_ROOT = path.join(HERE, "..");
 const SETTLE_ROUTE = "app/api/orders/[id]/settle/route.ts";
 const ITEMS_ROUTE = "app/api/orders/[id]/items/route.ts";
+const VOID_ROUTE = "app/api/orders/[id]/items/void/route.ts";
 const SETTLE_CHARGES = "lib/settle-charges.ts";
 const read = (rel: string) => stripComments(readFileSync(path.join(CAFE_ROOT, rel), "utf8"));
 const count = (src: string, needle: string) => src.split(needle).length - 1;
@@ -162,19 +163,29 @@ test("PIN (settle echo): the route refuses on the WHOLE body's echo (table inclu
   assert.ok(read("lib/settle-flow.ts").includes("expectedTableNo: p.expectedTableNo"), "the flow's Check re-reads against the same echo");
 });
 
-test("PIN (reciprocal CAS): the add-round and the settle fence their write on the table they priced from, the move's own term", () => {
+test("PIN (reciprocal CAS): the add-round, the settle, the void and the QR accept's round fence their write on the table they priced from, the move's own term", () => {
   // The echo is checked on the route's READ; a move landing between that read and the write (the move changes neither
   // kotRounds nor voids, nor the total between two same-charge tables) must make the write miss, not clobber it.
+  // The void and the QR accept write back the old table's total / charges the same way (2026-11-09).
   const TERM = "...tableGuardFilter(old.tableNo),";
-  for (const rel of [ITEMS_ROUTE, SETTLE_ROUTE]) {
+  for (const rel of [ITEMS_ROUTE, SETTLE_ROUTE, VOID_ROUTE]) {
     const src = read(rel);
     const at = src.indexOf("const filter: FilterQuery<IOrder> = {");
     assert.ok(at !== -1, `landmark: ${rel}'s CAS filter`);
     const filter = src.slice(at, src.indexOf("};", at));
     assert.ok(filter.includes("kotRounds: old.kotRounds ?? 0,"), `landmark: ${rel}'s round term`);
     assert.ok(filter.includes(TERM), `${rel}: the CAS fences the table`);
+    assert.doesNotMatch(filter, /tableNo\s*:/, `${rel}: no later tableNo key overrides the term`);
     assert.match(src, /import \{ tableGuardFilter \} from "@\/lib\/order-table-move";/, `${rel}: the one shared builder`);
   }
+  const core = read("lib/order-request-accept-core.ts");
+  const at = core.indexOf("export function buildAddRoundFilter(");
+  assert.ok(at !== -1, "landmark: the QR accept's add-round CAS builder");
+  const accept = core.slice(at, core.indexOf("\nexport ", at + 1));
+  assert.ok(accept.includes("kotRounds: old.kotRounds ?? 0,"), "landmark: the accept's round term");
+  assert.ok(accept.includes(TERM), "the QR accept's add-round CAS fences the table");
+  assert.doesNotMatch(accept, /tableNo\s*:/, "the accept: no later tableNo key overrides the term");
+  assert.match(core, /import \{ tableGuardFilter \} from "@\/lib\/order-table-move";/, "the accept: the one shared builder");
   const move = read("lib/order-table-move.ts");
   const fn = move.slice(move.indexOf("export function moveOrderFilter("), move.indexOf("export function claimTableFilter("));
   assert.ok(fn.includes("...tableGuardFilter(fromTableNo),"), "the move's own CAS uses the same builder");

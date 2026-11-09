@@ -57,6 +57,7 @@ export async function acceptAddRoundBranch(
     | "_id"
     | "kotRounds"
     | "voids"
+    | "tableNo"
     | "items"
     | "discount"
     | "discountKind"

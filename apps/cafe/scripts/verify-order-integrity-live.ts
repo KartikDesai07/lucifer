@@ -40,6 +40,7 @@ import { type OrderStatus, type PaymentMode, type GstMode, type DiscountKind } f
 import { computeOrderTotals, gstConfigFromOrder, resolveDiscountKind, type GstConfig } from "@/lib/receipt";
 import { ledgerContribution, reconcileLedger, resolveSettleMoney } from "@/lib/order";
 import { resolveItemVoid, voidGuardFilter, type ItemVoidRequest } from "@/lib/order-void";
+import { tableGuardFilter } from "@/lib/order-table-move";
 import { resolveTableCharge } from "@/lib/table-admin";
 import { printConfigOf, printedSlipNumber } from "@/lib/print";
 import { nextSlipSequence } from "@/models/Counter";
@@ -216,6 +217,7 @@ type LeanOrder = Pick<
   | "gstRate"
   | "gstMode"
   | "chargeAmount"
+  | "tableNo"
   | "kotRounds"
   | "kotNumbers"
   | "voids"
@@ -264,6 +266,7 @@ function buildVoidWrite(
     payment: "Unpaid",
     kotRounds: old.kotRounds,
     ...voidGuardFilter(expectedVoids),
+    ...tableGuardFilter(old.tableNo), // the route's table term (T1 follow-up)
   };
   // A void never changes intent, so the stored kind rides through unchanged —
   // EXCEPT when the re-derived discount lands at 0 AND the shared predicate
@@ -369,6 +372,7 @@ function buildItemsWrite(
     payment: "Unpaid",
     kotRounds: old.kotRounds ?? 0,
     ...voidGuardFilter(old.voids?.length ?? 0),
+    ...tableGuardFilter(old.tableNo), // the route's table term (T1)
   };
   // Mirrors app/api/orders/[id]/items/route.ts exactly: a waived charge (0) is
   // UNSET, never left stored as a 0 sitting beside its old label — the receipt
@@ -482,6 +486,7 @@ function buildSettleWrite(
     // P1 (s87) — mirrors the route: the round we read (leg22).
     kotRounds: old.kotRounds ?? 0,
     ...voidGuardFilter(old.voids?.length ?? 0),
+    ...tableGuardFilter(old.tableNo), // the route's table term (T1)
   };
   return { ok: true as const, money, filter, update };
 }
