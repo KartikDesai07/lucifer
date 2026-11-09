@@ -124,17 +124,19 @@ into a client's account" has the by-hand `wrangler` commands.
 
 The owner deploys every cafe from his own admin panel, which runs on the owner's
 server outside this repo. The panel also sets each project's function region
-(Mumbai, `bom1`). Nothing in this repo deploys a live cafe any more.
+(Mumbai, `bom1`). Nothing in this repo is used to deploy a live cafe any more.
 
 What every deploy still needs, whatever runs it:
 
 - **Root Directory = `apps/cafe`** on the Vercel project (Project → Settings → Build
-  and Deployment). This app lives in an npm-workspaces monorepo: the deploy uploads
-  the whole repo (`apps/cafe` alone cannot install the workspace-only `@pos/shared`)
-  and this setting selects the app. A project pointing at the repo root fails the build.
+  and Deployment). This app lives in an npm-workspaces monorepo: a deploy must give
+  Vercel the whole repo (`apps/cafe` alone cannot install the workspace-only
+  `@pos/shared`); this setting selects the app. A project pointing at the repo root
+  fails the build.
 - The environment variables in the table above, with `NEXTAUTH_URL` / `AUTH_URL` absent.
 - Functions in Mumbai. Check a live cafe read-only: `GET /api/health` answers
-  `"region": "bom1"`, and the `X-Vercel-Id` response header reads `bom1::bom1`.
+  `"region": "bom1"`, and the `X-Vercel-Id` response header starts `bom1::bom1::`
+  (edge::function; `…::iad1::…` means Virginia).
 - Any env var change, `NEXT_PUBLIC_*` above all, reaches the cafe only with a new deploy.
 
 `docs/GO-LIVE-CHECKLIST.md` §1 has every box for a new cafe.
@@ -148,8 +150,8 @@ The rest of this section describes them as they were used before the admin panel
 
 One-time, in the Vercel dashboard: **Project → Settings → Build and Deployment →
 Root Directory = `apps/cafe`** (this app lives in a monorepo). Rehearse the first
-deploy with `npm run deploy -- --preview` before promoting to production — see
-`docs/GO-LIVE-CHECKLIST.md` §1 for why that rehearsal matters.
+deploy with `npm run deploy -- --preview` before promoting to production — on shape
+(A) judge the preview by its build log; its URL 404s by design (checklist §1).
 
 ```bash
 npx vercel login            # browser auth (your Vercel account)
@@ -320,7 +322,7 @@ node scripts/go-live/index.mjs <demo-client> --seed-demo --confirm <slug> --conf
 
 ### Do NOT use GitHub auto-deploy for a client
 
-Client deploys never come from a git push, deliberately. Git integration means every push to
+A client's Vercel project is never connected to the git repo (no Git integration), deliberately. Git integration means every push to
 the tracked branch ships to a live cafe — on 2026-08-12 a branch push auto-triggered
 a build on the v1 project and only its stale Root Directory stopped it from becoming
 a production deploy of untested code. It is also impractical here: the repo lives on

@@ -134,9 +134,11 @@ Nothing in §1 can start until all of these exist.
       hard refresh changes nothing on its own.
 - [ ] **Functions run in Mumbai** (`bom1`), not Vercel's default Virginia. The
       owner sets the region in the admin panel's region select (`apps/cafe/vercel.json`
-      also names `"regions": ["bom1"]`, but a deploy can override it). Confirm on
-      the live cafe: `GET /api/health` answers `"region": "bom1"`, and the
-      `X-Vercel-Id` response header reads `bom1::bom1`. Left at the default, each
+      also names `"regions": ["bom1"]`, but a deploy can override it: the 2026-11-06
+      deploy ran in `iad1` despite it, `docs/perf/2026-11-06-p2-measurements.md`).
+      Confirm on the live cafe: `GET /api/health` answers `"region": "bom1"`, and
+      the `X-Vercel-Id` response header starts `bom1::bom1::` (edge::function;
+      `…::iad1::…` means Virginia). Left at the default, each
       POS action pays several Virginia↔Mumbai round trips to the Atlas cluster.
 - [ ] Image store env — **only if §0 chose one**: either the `R2_*` set plus
       `NEXT_PUBLIC_R2_PUBLIC_BASE_URL`, or `IMAGE_STORE=cloudinary` plus the
@@ -149,13 +151,14 @@ Nothing in §1 can start until all of these exist.
       Deployment). Not optional, and the single most likely thing to get wrong:
       this is an npm-workspaces monorepo where `apps/cafe` depends on
       `@pos/shared` as a **workspace sibling** — raw TypeScript, never published
-      to a registry — so the deploy uploads the whole repo and lets the install
-      resolve it, while this setting selects which app to build. A project left
+      to a registry — so a deploy must give Vercel the whole repo and let the
+      install resolve it, while this setting selects which app to build. A project left
       pointing at the repo root **fails the build outright**: proven 2026-08-12,
       when a branch push auto-triggered a Vercel build against a root-configured
       project and it failed.
-- [ ] **The deploy from the admin panel succeeds** *and* its build log is clean.
-      A deploy must upload the whole repo, never `apps/cafe` alone: the install
+- [ ] **The deploy from the admin panel succeeds** *and* the Vercel build log
+      (Project → Deployments) is clean. A deploy must give Vercel the whole repo,
+      never `apps/cafe` alone: the install
       would look for `@pos/shared` on the public registry. If the build fails
       complaining about `@pos/shared`, the Root Directory above is wrong.
 - [ ] Host wired to match §0's choice:

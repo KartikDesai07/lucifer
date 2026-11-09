@@ -135,6 +135,9 @@ scope). **This is what `go-live` should ask a client to create.**
 
 ## Deploying into a client's account
 
+*The go-live console mentioned below is the repo's old local deploy path, no longer used for live cafes (the
+owner deploys every cafe from his admin panel; `apps/cafe/DEPLOY.md` §1). The by-hand commands below still work.*
+
 **`go-live` does this for you** (console: Hosting → Realtime, or fill in the
 `cloudflare` block on the client file) — it provisions the Worker, mints and
 sets the secret, sets the cafe's three env vars, and redeploys the cafe. This
