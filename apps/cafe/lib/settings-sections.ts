@@ -171,6 +171,46 @@ export function settingsSectionPath(slug: SettingsSectionSlug): string {
   return `${SETTINGS_BASE_PATH}/${slug}`;
 }
 
+// The Settings hub lists the sections in groups (owner 2026-11-09). Every slug has a group, a hidden one too, so
+// bringing a section back needs no change here. The groups follow SETTINGS_SECTIONS order, so the hub reads in the
+// sidebar's order.
+export type SettingsHubGroupKey = "cafe" | "printing" | "diners";
+
+const SETTINGS_HUB_GROUP_TITLES: Readonly<Record<SettingsHubGroupKey, string>> = {
+  cafe: "Your cafe",
+  printing: "Printing",
+  diners: "Diners",
+};
+
+const SETTINGS_HUB_GROUP_ORDER: readonly SettingsHubGroupKey[] = ["cafe", "printing", "diners"];
+
+const SETTINGS_HUB_GROUP_OF: Readonly<Record<SettingsSectionSlug, SettingsHubGroupKey>> = {
+  business: "cafe",
+  taxes: "cafe",
+  "bill-print": "printing",
+  "kitchen-ticket": "printing",
+  tokens: "printing",
+  "qr-ordering": "diners",
+  loyalty: "diners",
+  appearance: "diners",
+  notifications: "diners",
+};
+
+export interface SettingsHubGroup {
+  key: SettingsHubGroupKey;
+  title: string;
+  sections: readonly SettingsSection[];
+}
+
+// Each section it is given, once, in its group and in the given order; a group with none is left out.
+export function settingsHubGroups(sections: readonly SettingsSection[]): SettingsHubGroup[] {
+  return SETTINGS_HUB_GROUP_ORDER.map((key) => ({
+    key,
+    title: SETTINGS_HUB_GROUP_TITLES[key],
+    sections: sections.filter((section) => SETTINGS_HUB_GROUP_OF[section.slug] === key),
+  })).filter((group) => group.sections.length > 0);
+}
+
 // First (only) section whose `fields` list carries this key — every
 // settingsSchema field belongs to exactly one section (parity-pinned in
 // settings-sections.test.ts), so a matching section is a real bug elsewhere

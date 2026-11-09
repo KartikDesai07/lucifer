@@ -1,7 +1,7 @@
 // The settings pages in the new UI (Business details: docs/superpowers/plans/2026-11-06-settings-business-ui.md; GST &
 // taxes: 2026-11-08-settings-taxes-ui.md; QR ordering: 2026-11-08-settings-qr-ui.md; Appearance:
 // 2026-11-08-settings-appearance-ui.md; Rewards & loyalty: 2026-11-09-settings-loyalty-ui.md; Tokens & numbering:
-// 2026-11-09-settings-tokens-ui.md): the class strings
+// 2026-11-09-settings-tokens-ui.md; the Settings hub: 2026-11-09-settings-hub-ui.md): the class strings
 // the settings cards render, in one place so Tailwind's source scanner sees each one and the pins
 // (lib/settings-business-layout.test.ts) read the SAME constants. Field look = the U5 item editor's (re-exported below).
 // Tokens only; WebView 109: no color-mix(), no light-dark(), no backdrop-blur, overflow-clip for clipping.
@@ -121,6 +121,27 @@ export const SETTINGS_REMOVE_BUTTON_CLASS = `inline-flex h-[42px] cursor-pointer
 export const SETTINGS_BUTTON_CLASS = "h-[42px] rounded-[10px] px-5 text-[14.5px] font-semibold";
 export const SETTINGS_OUTLINE_BUTTON_CLASS =
   "h-[42px] rounded-[10px] border border-border bg-card px-4 text-[14px] font-semibold text-foreground pointer-fine:hover:bg-hover";
+
+// ── The Settings hub (/settings): the sections in groups, each an h2 over one card of link rows ────────────────────
+
+/** The groups, 24px apart. */
+export const SETTINGS_HUB_STACK_CLASS = "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6";
+/** A group: its title over its card. */
+export const SETTINGS_HUB_GROUP_CLASS = "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2";
+/** An h2: the shell's header holds the page's h1. */
+export const SETTINGS_HUB_GROUP_TITLE_CLASS = "px-1 text-[13.5px] font-semibold text-muted-foreground";
+/** The group's card, a list; it clips the rows' hover to its corners. */
+export const SETTINGS_HUB_LIST_CLASS = "min-w-0 overflow-clip rounded-[12px] border border-border bg-card";
+/** A rule above each row, except the first. */
+export const SETTINGS_HUB_ITEM_CLASS = "border-t border-border-2 first:border-t-0";
+/** The whole row is the link, 64px at least; the focus ring sits inside it because the card clips. */
+export const SETTINGS_HUB_ROW_CLASS =
+  "flex min-h-16 items-center gap-3 px-4 py-3 text-foreground transition-colors pointer-fine:hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary";
+export const SETTINGS_HUB_ICON_CLASS =
+  "grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-status-info-tint text-primary";
+export const SETTINGS_HUB_ROW_TITLE_CLASS = "text-[14.5px] font-semibold leading-snug";
+export const SETTINGS_HUB_ROW_SUB_CLASS = "text-[13px] text-muted-foreground text-pretty";
+export const SETTINGS_HUB_CHEVRON_CLASS = "h-4 w-4 shrink-0 text-muted-foreground";
 
 // ── The card Save bar (opt-in: SettingsSaveBar look="card") ─────────────────────────────────────────────────────────
 

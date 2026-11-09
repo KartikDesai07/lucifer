@@ -11,6 +11,7 @@ import {
   HIDDEN_SETTINGS_SLUGS,
   VISIBLE_SETTINGS_SECTIONS,
   isSettingsSectionHidden,
+  settingsHubGroups,
   settingsSectionPath,
   pickSectionValues,
 } from "./settings-sections";
@@ -271,6 +272,26 @@ test("PIN: Notifications is hidden — HIDDEN_SETTINGS_SLUGS is exactly {notific
   assert.ok(VISIBLE_SETTINGS_SECTIONS.length > 0, "landmark: the visible list is not empty");
   assert.equal(isSettingsSectionHidden("notifications"), true);
   assert.equal(isSettingsSectionHidden("appearance"), false);
+});
+
+// Owner 2026-11-09 (s110): the hub lists the sections in groups. The groups read in the sidebar's order, so the hub
+// and the sub-menu never disagree about which section comes first.
+test("PIN: settingsHubGroups — Your cafe, Printing, Diners; every section it is given exactly once, in SETTINGS_SECTIONS order; an empty group left out", () => {
+  const groups = settingsHubGroups(VISIBLE_SETTINGS_SECTIONS);
+  assert.deepEqual(groups.map((g) => [g.key, g.title]), [["cafe", "Your cafe"], ["printing", "Printing"], ["diners", "Diners"]]);
+  assert.deepEqual(
+    groups.map((g) => g.sections.map((s) => s.slug)),
+    [["business", "taxes"], ["bill-print", "kitchen-ticket", "tokens"], ["qr-ordering", "loyalty", "appearance"]],
+  );
+  assert.deepEqual(groups.flatMap((g) => g.sections), [...VISIBLE_SETTINGS_SECTIONS], "every visible section once, in the sidebar's order");
+
+  // Every slug has a group, so a hidden section comes back in one with no change to the grouping.
+  const all = settingsHubGroups(SETTINGS_SECTIONS);
+  assert.deepEqual(all.flatMap((g) => g.sections), [...SETTINGS_SECTIONS], "every section has a group");
+  assert.deepEqual(all.find((g) => g.key === "diners")?.sections.map((s) => s.slug).at(-1), "notifications");
+
+  assert.deepEqual(settingsHubGroups(SETTINGS_SECTIONS.filter((s) => s.slug === "tokens")).map((g) => g.key), ["printing"]);
+  assert.deepEqual(settingsHubGroups([]), []);
 });
 
 test("PIN: every hidden section's route has a server layout.tsx that redirects to the Settings hub while the slug is hidden — a typed URL never shows the page", () => {

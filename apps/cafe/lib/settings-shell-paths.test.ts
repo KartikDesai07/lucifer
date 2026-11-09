@@ -84,7 +84,7 @@ test("PIN: app/(dashboard)/settings/layout.tsx imports AdminGuard and wraps {chi
 
 // ── 3. hub reachability — every section reachable ─────────────────────────
 
-test("PIN: settings/page.tsx (the hub) imports VISIBLE_SETTINGS_SECTIONS + settingsSectionPath and maps it directly — every section that is not hidden (HIDDEN_SETTINGS_SLUGS, owner 2026-10-03) must be reachable from the hub, not just compiled; Printer setup (now /printers) has no card here", () => {
+test("PIN: settings/page.tsx (the hub) imports VISIBLE_SETTINGS_SECTIONS + settingsSectionPath and maps it through settingsHubGroups — every section that is not hidden (HIDDEN_SETTINGS_SLUGS, owner 2026-10-03) must be reachable from the hub, not just compiled; Printer setup (now /printers) has no card here", () => {
   const src = stripComments(readSrc(SETTINGS_HUB_PAGE));
 
   assert.match(
@@ -99,8 +99,12 @@ test("PIN: settings/page.tsx (the hub) imports VISIBLE_SETTINGS_SECTIONS + setti
   );
   // Re-anchored 2026-10-02: the literal Printer-setup card (and the FORM_SECTIONS
   // filter that skipped it) are gone — the hub maps the whole list.
-  assert.ok(src.includes("{VISIBLE_SETTINGS_SECTIONS.map("), "the hub must render a card for every visible section");
+  // Re-anchored 2026-11-09 (s110, the hub in groups): the whole list goes through
+  // settingsHubGroups, which keeps every section it is given (settings-sections.test.ts).
+  assert.ok(src.includes("{settingsHubGroups(VISIBLE_SETTINGS_SECTIONS).map("), "the hub must render every visible section, in its group");
+  assert.ok(src.includes("{group.sections.map("), "each group must render a row for each of its sections");
   assert.ok(!src.includes("{SETTINGS_SECTIONS.map("), "the hub must not list hidden sections (the raw list includes them)");
+  assert.ok(!src.includes("settingsHubGroups(SETTINGS_SECTIONS"), "the hub must not group the raw list either");
   assert.ok(!src.includes("FORM_SECTIONS"), "no filtered copy of the section list");
   assert.ok(!src.includes("printing"), "Printer setup is no longer a Settings card (it has its own /printers page)");
 
