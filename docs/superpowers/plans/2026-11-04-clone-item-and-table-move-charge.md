@@ -142,3 +142,28 @@ ONLY on the owner's OK (posdemo is in client use; never lucifer007; never touch 
   the device could be settled; a may-have-landed replay's Discard said nothing was saved; a kept round put back the
   discount/extras it was taken with): fixed test first, chain re-measured green. Record: the printing Phase 5 plan,
   "The pre-deploy check".
+
+## Results - the deferred void + QR-accept table term (2026-11-09, built)
+
+> **DONE & VERIFIED 2026-11-09** (s111, owner pick after the Settings hub check): cafe tsc 0 + lint 0 err (2 old
+> warnings) + 8219/8219; live order-request 247/0 (leg35 new), table-move 72/0, orders 153/0; mutation 9/9; opus
+> read-only review: no defects (tree hash same before/after). shared/hub untouched. NOT deployed (the owner deploys).
+
+- The fix: the move's own CAS term `...tableGuardFilter(old.tableNo)` in the void route's CAS
+  (app/api/orders/[id]/items/void/route.ts) and in `buildAddRoundFilter` (lib/order-request-accept-core.ts, the QR
+  accept's round). Both price from the charges of the table they READ; a move changes neither kotRounds nor voids, so
+  before this a move landing between their read and write got the old table's total (void) or charges (QR round)
+  written back. Now that write misses: the void 409s "Tab changed", the QR accept goes through guardedReject (replay,
+  or the request back to pending). The `Pick` types on the accept path carry `tableNo`. No schema or wire change, so no
+  rollback hazard; server only.
+- Writers of an open tab's money now all carry the term: add-round, settle (2026-11-05), void, QR accept round, and the
+  move itself. Cancel and PUT /api/orders/[id] write no money (review checked).
+- Tests (failing first): the reciprocal-CAS pin (lib/table-move-charge-fence.test.ts) now covers the void route and
+  the accept builder, and refuses a later `tableNo:` key overriding the term in any of the four filters (mutation M7
+  survived the first version of this pin); buildAddRoundFilter's six-term pin (lib/order-request-paths.test.ts); a unit
+  test for the seated and walk-in forms (lib/order-request-accept.test.ts); live leg35
+  (scripts/verify-order-request-live.ts) drives the accept's own read and the real applyAddRound against a tab moved
+  inside the window: RED before the fix (the round landed on the moved tab), green after. leg16's stale read now selects
+  tableNo, and the orders live leg's three CAS mirrors (void, round, settle) carry the term, as the routes do.
+- Mutation pass (main thread, byte backup, alone): 9/9 killed (term removed / fed undefined / fed a constant /
+  overridden by a later key, in the accept builder, the void, the add-round and the settle).
