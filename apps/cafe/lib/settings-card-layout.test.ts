@@ -59,6 +59,16 @@ test("card constants: the plan's values", () => {
     "rounded-[10px] border border-border-2 bg-surface-2 p-3 text-[13.5px] text-foreground text-pretty",
     "note",
   );
+  assert.equal(
+    L.SETTINGS_ALERT_CLASS,
+    "rounded-[10px] border border-status-bad bg-card p-3 text-[13.5px] text-foreground text-pretty",
+    "alert: the note's shape on the bad rule (Tokens)",
+  );
+  assert.equal(
+    L.TOKENS_PREVIEW_CLASS,
+    "xl:sticky xl:top-20 xl:col-start-2 xl:row-start-1 xl:max-h-[calc(100dvh-11rem)] xl:overflow-y-auto",
+    "Tokens: column 2 beside the one stack of form cards, scrolling inside itself",
+  );
   assert.equal(L.SETTINGS_SWITCH_ROW_CLASS, "flex min-h-11 cursor-pointer items-center justify-between gap-3", "switch row");
 });
 

@@ -34,7 +34,8 @@ test("page: ONE form given the draft's extra, the settings fields, the design se
   const page = code(PAGE);
   assert.equal(count(page, "<SettingsSectionForm"), 1, "one form, one Save bar");
   assert.ok(page.includes("const design = useTokenDesignDraft(settings);"), "the draft lives above the form");
-  assert.ok(page.includes("<SettingsSectionForm settings={settings} section={section} extra={design.extra}>"), "extra={design.extra}");
+  // Card UI (2026-11-09-settings-tokens-ui.md): the same form, in the card Save bar look.
+  assert.ok(page.includes('<SettingsSectionForm settings={settings} section={section} extra={design.extra} saveBarLook="card">'), "extra={design.extra}");
   const fields = page.indexOf("<TokenSettingsFields control={control} register={register} setValue={setValue} errors={errors} />");
   const section = page.indexOf("<TokenDesignSection design={design} settings={settings} control={control} />");
   assert.ok(page.indexOf("<SettingsSectionForm") < fields && fields !== -1 && fields < section, "the settings fields, then the design section, inside the form");

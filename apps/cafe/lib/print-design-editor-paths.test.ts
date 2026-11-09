@@ -114,9 +114,12 @@ test("PIN: BlockEditor shows no lock reason for a line another control switches 
 test("PIN: the unreadable-design recovery buttons wrap at 360px (RECOVERY_BUTTON_CLASS) and both carry type=\"button\"", () => {
   const src = code(`${DESIGN_DIR}/DesignSection.tsx`);
   assert.ok(src.includes('const RECOVERY_BUTTON_CLASS = "h-auto min-h-11 whitespace-normal text-left";'), "tall-enough, wrapping, left-aligned");
-  assert.equal(count(src, "className={RECOVERY_BUTTON_CLASS}"), 2, "both recovery buttons");
-  assert.match(src, /<Button type="button" variant="outline" className=\{RECOVERY_BUTTON_CLASS\} onClick=\{\(\) => design\.recoverClassic\(legacy\(\)\)\}>/);
-  assert.match(src, /<Button type="button" variant="outline" className=\{RECOVERY_BUTTON_CLASS\} onClick=\{design\.keepToday\}>/);
+  // Card UI (2026-11-09-settings-tokens-ui.md, moved on purpose): each look's recovery class carries the wrap.
+  assert.ok(src.includes("recovery: RECOVERY_BUTTON_CLASS,"), "the old look (Bill print, Kitchen ticket): the class itself");
+  assert.ok(src.includes("recovery: cn(SETTINGS_OUTLINE_BUTTON_CLASS, RECOVERY_BUTTON_CLASS),"), "the card look (Tokens) grows the plain card button");
+  assert.equal(count(src, "className={ui.recovery}"), 2, "both recovery buttons");
+  assert.match(src, /<Button type="button" variant="outline" className=\{ui\.recovery\} onClick=\{\(\) => design\.recoverClassic\(legacy\(\)\)\}>/);
+  assert.match(src, /<Button type="button" variant="outline" className=\{ui\.recovery\} onClick=\{design\.keepToday\}>/);
 });
 
 // ── BlockRow ─────────────────────────────────────────────────────────────────

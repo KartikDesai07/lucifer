@@ -104,7 +104,7 @@ test("PIN (skip-KOT): the \"No KOT\" tag sits on the Categories and both Items l
 test("PIN (skip-KOT): Printer setup says no-KOT items never print on a KOT, and Tokens says an all-no-KOT order has no token", () => {
   const stations = src("components/print/setup/StationsSetupSection.tsx");
   assert.match(stations, /\(Menu → Items\)\. \$\{KITCHEN_PRINTER_SETUP_NOTE\}`;/, "the note is appended to the section description");
-  assert.match(src("components/settings/TokenSettingsFields.tsx"), /<p className=\{HINT_CLASS\}>\{KITCHEN_TOKEN_HINT\}<\/p>/);
+  assert.match(src("components/settings/TokenSettingsFields.tsx"), /<p className=\{SETTINGS_HINT_CLASS\}>\{KITCHEN_TOKEN_HINT\}<\/p>/);
   assert.ok(KITCHEN_PRINTER_SETUP_NOTE.length > 0 && KITCHEN_TOKEN_HINT.length > 0, "landmark: the copy is not empty");
 });
 

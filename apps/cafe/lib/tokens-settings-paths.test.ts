@@ -55,7 +55,8 @@ test("page: renders SettingsSectionPage slug='tokens' wide > SettingsSectionForm
   const src = read(PAGE);
   const sibling = read("app/(dashboard)/settings/taxes/page.tsx");
   assert.ok(sibling.includes('<SettingsSectionPage slug="taxes"'), "landmark: the sibling page has the same shape");
-  for (const needle of ['"use client"', '<SettingsSectionPage slug="tokens" wide>', "<SettingsSectionForm settings={settings} section={section} extra={design.extra}>", "<TokenSettingsFields "]) {
+  // Card UI (2026-11-09-settings-tokens-ui.md): the form also opts into the card Save bar.
+  for (const needle of ['"use client"', '<SettingsSectionPage slug="tokens" wide>', '<SettingsSectionForm settings={settings} section={section} extra={design.extra} saveBarLook="card">', "<TokenSettingsFields "]) {
     assert.ok(src.includes(needle), `the page holds ${needle}`);
   }
   assert.ok(src.indexOf("<SettingsSectionPage") < src.indexOf("<SettingsSectionForm") && src.indexOf("<SettingsSectionForm") < src.indexOf("<TokenSettingsFields"));
@@ -95,9 +96,10 @@ test("fields (S8): the 'Ready tokens' group registers tokenReadyClearMinutes onc
     "Marking it Collected clears it at once.",
   ]) assert.ok(src.includes(copy), `copy: ${copy}`);
   assert.match(src, /error=\{errors\.tokenReadyClearMinutes\?\.message\}/, "a rejected value shows its message under the field");
-  // the group is a sibling of the other two, after the restart time, not folded into the tokens switch
-  assert.ok(src.indexOf("Daily restart time") < src.indexOf("Ready tokens"), "it comes after the restart time group");
-  assert.equal(count(src, "<SettingsGroup"), 3, "three groups: Tokens, Daily restart time, Ready tokens");
+  // the card is a sibling of the other two, after the restart time, not folded into the tokens switch (card UI,
+  // 2026-11-09-settings-tokens-ui.md: the three groups became three cards)
+  assert.ok(src.indexOf("Daily restart time") < src.indexOf("Ready tokens"), "it comes after the restart time card");
+  assert.equal(count(src, "<SettingsCard"), 3, "three cards: Tokens, Daily restart time, Ready tokens");
   // it must not depend on, or be hidden by, the tokens switch (nothing flips by itself)
   assert.ok(!/tokenReadyClearMinutes[^\n]*(disabled|watch)/.test(src));
   assert.ok(!/tokenEnabled[^\n]*tokenReadyClear|tokenReadyClear[^\n]*tokenEnabled/.test(src), "the two controls do not reference each other");
@@ -197,7 +199,7 @@ test("T2: the hint right under the tokens switch says to reload every POS screen
   assert.equal(count(src, "{TOKENS_RELOAD_HINT}"), 1, "shown once");
   const at = { toggle: src.indexOf('name="tokenEnabled"'), hint: src.indexOf("{TOKENS_RELOAD_HINT}"), start: src.indexOf("Token numbers start at") };
   assert.ok(at.toggle >= 0 && at.toggle < at.hint && at.hint < at.start, "under the tokens switch, before the start box");
-  assert.match(src, /<p className=\{HINT_CLASS\}>\{TOKENS_RELOAD_HINT\}<\/p>/, "a hint line, styled like the page's other hints");
+  assert.match(src, /<p className=\{SETTINGS_HINT_CLASS\}>\{TOKENS_RELOAD_HINT\}<\/p>/, "a hint line, styled like the page's other hints");
 });
 
 const NO_SLIPS: PrinterSlips = { bill: false, kotStations: [], kotAll: false, notices: false, eod: false };
