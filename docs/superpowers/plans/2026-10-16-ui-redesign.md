@@ -351,3 +351,16 @@ pages remain (Tokens, Bill print, Kitchen ticket, Notifications), one per sessio
 **The owner's OK:** the owner picked this page after checking Appearance on devices (2026-11-09). Merged and pushed
 under the standing ship rule (main f74eb21); the owner deploys from his admin panel. Plan, checks and review:
 `docs/superpowers/plans/2026-11-09-settings-loyalty-ui.md` Results.
+
+### `/settings/tokens` (2026-11-09)
+
+Tokens & numbering is now cards in one stack (Tokens, Daily restart time, Ready tokens, Token slip design, plus Lines on
+the token slip and Font and text size once a design is customized), with the card Save bar. From 1280 px the sample slip
+is a sticky 340 px "Slip preview" card that scrolls inside itself; below that it comes last, under the "See the slip"
+jump link. The shared slip design section gained a card look; Bill print and Kitchen ticket keep the old look (their
+HTML is unchanged) until their own session. The card kit gained a warning box class. 3 settings pages remain (Bill print,
+Kitchen ticket, Notifications), one per session.
+
+**The owner's OK:** the owner picked this page after checking Rewards & loyalty on devices (2026-11-09). Merged and
+pushed under the standing ship rule (main c18ddaa); the owner deploys from his admin panel. Plan, checks and review:
+`docs/superpowers/plans/2026-11-09-settings-tokens-ui.md` Results.
