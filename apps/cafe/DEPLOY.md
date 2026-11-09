@@ -45,8 +45,8 @@ not configured" and every surface just renders no product photo — see
 
 ## Environment variables
 
-Set these in the **Vercel Project → Settings → Environment Variables** (or via the
-CLI, below). All except the public one are secrets.
+Set these in the **Vercel Project → Settings → Environment Variables**. All except
+the public one are secrets.
 
 | Name | Notes |
 |------|-------|
@@ -66,9 +66,9 @@ CLI, below). All except the public one are secrets.
 | `CLOUDINARY_API_KEY` | 〃 |
 | `CLOUDINARY_API_SECRET` | 〃 |
 | `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` | only if any Cloudinary images exist; inlined at build to render them. |
-| `REALTIME_PUBLISH_URL` | optional, server-only — where the cafe POSTs its signed realtime nudges. Set by go-live from the console's Realtime block; blank = the cafe polls, exactly as it does today. |
-| `REALTIME_PUBLISH_SECRET` | optional, server-only — must equal the Worker's own secret. Set by go-live from the Realtime block; blank = publishing is off (fail-closed). |
-| `NEXT_PUBLIC_REALTIME_URL` | optional, **build-time** — the public WebSocket subscribe URL; inlined into the client bundle, so any change needs a redeploy (go-live's run always follows one). Set by go-live from the Realtime block; blank = the cafe polls. |
+| `REALTIME_PUBLISH_URL` | optional, server-only — where the cafe POSTs its signed realtime nudges. Set when the cafe's Worker is wired up ("Realtime Worker" below); blank = the cafe polls, exactly as it does today. |
+| `REALTIME_PUBLISH_SECRET` | optional, server-only — must equal the Worker's own secret. Set when the Worker is wired up; blank = publishing is off (fail-closed). |
+| `NEXT_PUBLIC_REALTIME_URL` | optional, **build-time** — the public WebSocket subscribe URL; inlined into the client bundle, so any change needs a redeploy. Set when the Worker is wired up; blank = the cafe polls. |
 
 `NEXTAUTH_URL` / `AUTH_URL` must be **ABSENT** — not merely "not needed". Auth.js v5
 auto-detects the deployment URL and `trustHost: true` is set in `auth.config.ts`; if
@@ -76,6 +76,10 @@ either variable IS set, next-auth rewrites every request's origin to that value 
 **login breaks everywhere**. Do not copy them in from a local `.env`.
 
 ### Realtime Worker (optional)
+
+*The steps below are how the old go-live console set a Worker up (§1 "The old local
+path"); the ownership, token scope and off / standby facts still describe what a
+cafe's Worker needs. By hand: "Manual fallback" at the end of this section.*
 
 Filling in the console's Hosting → Realtime block (a client-issued Cloudflare
 token) makes the go-live run provision **one Cloudflare Worker per cafe**, into
@@ -116,12 +120,38 @@ into a client's account" has the by-hand `wrangler` commands.
 
 ---
 
-## 1. Deploy via the Vercel CLI (what this project uses)
+## 1. Deploying a cafe: the owner's admin panel
+
+The owner deploys every cafe from his own admin panel, which runs on the owner's
+server outside this repo. The panel also sets each project's function region
+(Mumbai, `bom1`). Nothing in this repo is used to deploy a live cafe any more.
+
+What every deploy still needs, whatever runs it:
+
+- **Root Directory = `apps/cafe`** on the Vercel project (Project → Settings → Build
+  and Deployment). This app lives in an npm-workspaces monorepo: a deploy must give
+  Vercel the whole repo (`apps/cafe` alone cannot install the workspace-only
+  `@pos/shared`); this setting selects the app. A project pointing at the repo root
+  fails the build.
+- The environment variables in the table above, with `NEXTAUTH_URL` / `AUTH_URL` absent.
+- Functions in Mumbai. Check a live cafe read-only: `GET /api/health` answers
+  `"region": "bom1"`, and the `X-Vercel-Id` response header starts `bom1::bom1::`
+  (edge::function; `…::iad1::…` means Virginia).
+- Any env var change, `NEXT_PUBLIC_*` above all, reaches the cafe only with a new deploy.
+
+`docs/GO-LIVE-CHECKLIST.md` §1 has every box for a new cafe.
+
+### The old local path (no longer used for live cafes)
+
+`npm run deploy` (`scripts/deploy.mjs`), the go-live run (`npm run go-live`,
+`scripts/go-live/*`) and its owner console stay in the repo for reference, and
+`npm run test:go-live` still tests them, but the owner no longer deploys with them.
+The rest of this section describes them as they were used before the admin panel.
 
 One-time, in the Vercel dashboard: **Project → Settings → Build and Deployment →
 Root Directory = `apps/cafe`** (this app lives in a monorepo). Rehearse the first
-deploy with `npm run deploy -- --preview` before promoting to production — see
-`docs/GO-LIVE-CHECKLIST.md` §1 for why that rehearsal matters.
+deploy with `npm run deploy -- --preview` before promoting to production — on shape
+(A) judge the preview by its build log; its URL 404s by design (checklist §1).
 
 ```bash
 npx vercel login            # browser auth (your Vercel account)
@@ -148,7 +178,7 @@ CLI's own default exclusions (`.env.local`, `node_modules`, `.git`, `.vercel` �
 every secret-bearing path (`clients/`, `deploy.profiles.json`, every `.env*`) is listed
 in `.vercelignore` too. Add there, not to `.gitignore`, when a new one appears.
 
-### One command for a new cafe: `npm run go-live -- <client>`
+#### One command for a new cafe: `npm run go-live -- <client>`
 
 Prefer the **owner console**: `npm run go-live:ui` (or double-click `go-live-ui.cmd`)
 opens a local page at http://127.0.0.1:4848 that edits the same client files with a
@@ -264,7 +294,7 @@ and continues where it stopped. `clients/<name>.json` holds live credentials: it
 gitignored and `.vercelignore`d — keep it out of chat, mail and screenshots. Still
 manual afterwards: the 3 WAF rules and, with R2, the bucket CORS rule (checklist §1).
 
-### Demo data
+#### Demo data
 
 For a client ticked `"demo": true`, **Danger zone → Reset & seed demo data…** (or
 `--seed-demo`) drops its database and builds a month of realistic content to show
@@ -292,7 +322,7 @@ node scripts/go-live/index.mjs <demo-client> --seed-demo --confirm <slug> --conf
 
 ### Do NOT use GitHub auto-deploy for a client
 
-Client deploys are **CLI-only**, deliberately. Git integration means every push to
+A client's Vercel project is never connected to the git repo (no Git integration), deliberately. Git integration means every push to
 the tracked branch ships to a live cafe — on 2026-08-12 a branch push auto-triggered
 a build on the v1 project and only its stale Root Directory stopped it from becoming
 a production deploy of untested code. It is also impractical here: the repo lives on
