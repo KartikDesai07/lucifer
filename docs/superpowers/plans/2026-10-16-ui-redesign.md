@@ -364,3 +364,12 @@ Kitchen ticket, Notifications), one per session.
 **The owner's OK:** the owner picked this page after checking Rewards & loyalty on devices (2026-11-09). Merged and
 pushed under the standing ship rule (main c18ddaa); the owner deploys from his admin panel. Plan, checks and review:
 `docs/superpowers/plans/2026-11-09-settings-tokens-ui.md` Results.
+
+### `/settings` (the hub, 2026-11-09)
+
+The hub lists the sections in groups (owner pick "Groups me list"). There are three groups: Your cafe, Printing and
+Diners. Each group is an h2 over one card of link rows (icon tile, title, line, chevron), in one column inside the narrow
+shell. The groups come from `settingsHubGroups` in `lib/settings-sections.ts`, in the sidebar's order. The classes are
+`SETTINGS_HUB_*` in `lib/settings-card-layout.ts`. Bill print and Kitchen ticket need nothing (owner: already
+redesigned). Notifications stays hidden. Plan, checks and review: `docs/superpowers/plans/2026-11-09-settings-hub-ui.md`
+Results.
