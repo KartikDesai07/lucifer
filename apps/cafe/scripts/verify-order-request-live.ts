@@ -48,7 +48,14 @@ import {
   type AcceptContext,
 } from "@/lib/order-request-accept";
 import { applyAddRound, createOrFindCustomer } from "@/lib/order-request-accept-write";
-import { finalizeAccept, reject } from "@/lib/order-request-accept-core";
+import {
+  finalizeAccept,
+  reject,
+  buildAddRoundFilter,
+  resolveOpenTabState,
+  TAB_CHANGED_ERROR,
+} from "@/lib/order-request-accept-core";
+import { moveOrderFilter } from "@/lib/order-table-move";
 import { claimPromoRedemption } from "@/lib/order-request-accept-promo";
 import { resolveRequestPromo } from "@/lib/order-request-create";
 import {
@@ -1014,8 +1021,8 @@ async function leg16(): Promise<void> {
 
   // The "loser" reads the tab's kotRounds/voids BEFORE the winner's round below lands.
   const staleOpenTab = (await Order.findOne({ _id: openResult.order._id })
-    .select("_id kotRounds voids")
-    .lean()) as unknown as Pick<IOrder, "_id" | "kotRounds" | "voids">;
+    .select("_id kotRounds voids tableNo")
+    .lean()) as unknown as Pick<IOrder, "_id" | "kotRounds" | "voids" | "tableNo">;
 
   const request16 = await stageRequest({
     targetKind: "table",
@@ -2304,6 +2311,65 @@ async function leg34(): Promise<void> {
   await Product.updateOne({ _id: teaId }, { $set: { available: true } });
 }
 
+// T1 follow-up (2026-11-09) — a move from another device lands between the accept's READ of the tab and its add-round
+// write. A move changes neither kotRounds nor voids, so only the table term makes the round miss; without it the round
+// writes the old table's charges and total back over the moved tab. Drives the accept's own read
+// (resolveOpenTabState) and its real write (applyAddRound -> buildAddRoundFilter).
+async function leg35(): Promise<void> {
+  console.log(
+    "\nLeg 35 — a table move inside the QR round's window: the real applyAddRound CAS misses the moved tab (TAB_CHANGED, request back to pending), nothing written\n",
+  );
+
+  await Table.create({ tableNo: "T-35", capacity: 4, status: "Available" });
+  const opener = await stageRequest({
+    targetKind: "table",
+    tableNo: "T-35",
+    items: [{ productId: teaId, qty: 1 }],
+    name: "Leg35 Opener",
+    mobile: "9990000085",
+  });
+  const opened = await acceptOrderRequest(String(opener._id), STAFF_CTX("Staff M"));
+  if ("error" in opened) throw new Error("leg35: opening the tab unexpectedly failed");
+
+  const request35 = await stageRequest({
+    targetKind: "table",
+    tableNo: "T-35",
+    items: [{ productId: teaId, qty: 1 }],
+    name: "Leg35 Diner",
+    mobile: "9990000086",
+  });
+  const requestId35 = String(request35._id);
+  await OrderRequest.updateOne({ _id: requestId35 }, { $set: { status: "accepting" } }); // step 2's CAS, as the accept takes it
+  const { openTab } = await resolveOpenTabState(request35); // the accept's own read of the tab
+  check(
+    "leg35 setup: the accept reads the open tab at T-35, its table included",
+    openTab != null && openTab._id.equals(opened.order._id) && openTab.tableNo === "T-35",
+  );
+  if (!openTab) throw new Error("leg35: the accept found no open tab");
+  check("leg35 setup: before the move the round's CAS matches the tab", (await Order.exists(buildAddRoundFilter(openTab, requestId35))) != null);
+
+  // Another device moves the tab, through the move's own CAS (same rounds, voids and total).
+  const moved = await Order.findOneAndUpdate(
+    moveOrderFilter(String(openTab._id), openTab.tableNo, openTab),
+    { $set: { tableNo: "T-35B" } },
+    { new: true },
+  ).lean();
+  check("leg35 setup: the move lands inside the window", moved?.tableNo === "T-35B");
+  const withoutTable: Record<string, unknown> = { ...buildAddRoundFilter(openTab, requestId35) };
+  delete withoutTable.tableNo;
+  check("leg35 regression witness: WITHOUT the table term the round's CAS still matches the moved tab", (await Order.exists(withoutTable)) != null);
+
+  const update = { $set: { kotRounds: (openTab.kotRounds ?? 0) + 1 }, $addToSet: { sourceRequestIds: requestId35 } };
+  const result = await applyAddRound(openTab, update, requestId35, "Staff M");
+  check("leg35: the round misses the moved tab and 409s TAB_CHANGED", "error" in result && result.error === TAB_CHANGED_ERROR && result.status === 409);
+  const after = await Order.findById(openTab._id).lean();
+  check(
+    "leg35: nothing written — the moved tab keeps its table and rounds, with no trace of this request",
+    after?.tableNo === "T-35B" && after.kotRounds === moved?.kotRounds && !(after.sourceRequestIds ?? []).some((id) => String(id) === requestId35),
+  );
+  check("leg35: the request goes back to pending (staff can accept it again)", (await OrderRequest.findById(requestId35).lean())?.status === "pending");
+}
+
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
   const dbName = new URL(uri.replace("mongodb://", "http://")).pathname.slice(1);
@@ -2365,6 +2431,7 @@ async function main(): Promise<void> {
     await leg32();
     await leg33();
     await leg34();
+    await leg35();
     const tokenDeps = { check, stage: async (tableNo: string, mobile: string) => String((await stageRequest({ targetKind: "table", tableNo, items: [{ productId: teaId, qty: 1 }], name: "Token leg", mobile }))._id) };
     await runTokenAcceptLegs(tokenDeps);
     await runTokenAcceptPrintLegs(tokenDeps);

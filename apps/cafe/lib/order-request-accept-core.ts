@@ -8,6 +8,7 @@ import cache from "@/lib/cache";
 import { orderSummaryCacheKey } from "@/lib/utils";
 import { FREE_TABLE_FILTER } from "@/lib/table-admin";
 import { voidGuardFilter } from "@/lib/order-void";
+import { tableGuardFilter } from "@/lib/order-table-move";
 import { pendingCutoff } from "@/lib/order-request-intake";
 
 // Sibling of lib/order-request-accept.ts (CR2.2 SLICE 4) — split out because
@@ -110,9 +111,10 @@ export function mergedNote(existingNotes: string | undefined, requestNote: strin
 // items route's own guard terms, so a writer of Order.items that skipped them
 // would re-introduce the re-bill-a-voided-line bug; no other writer touches
 // sourceRequestIds, so the acceptGuardFilter term alone completes the guard
-// against a double accept.
+// against a double accept. The table term (the move's own, T1 follow-up): this round writes the tab's charges back as
+// READ, and a move changes neither kotRounds nor voids, so without it a move landing in between is overwritten.
 export function buildAddRoundFilter(
-  old: Pick<IOrder, "_id" | "kotRounds" | "voids">,
+  old: Pick<IOrder, "_id" | "kotRounds" | "voids" | "tableNo">,
   requestId: string,
 ): FilterQuery<IOrder> {
   return {
@@ -122,6 +124,7 @@ export function buildAddRoundFilter(
     kotRounds: old.kotRounds ?? 0,
     ...voidGuardFilter(old.voids?.length ?? 0),
     ...acceptGuardFilter(requestId),
+    ...tableGuardFilter(old.tableNo),
   };
 }
 

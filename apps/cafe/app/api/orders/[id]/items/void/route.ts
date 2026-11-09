@@ -16,6 +16,7 @@ import { getSettings, gstConfigOf } from "@/lib/settings";
 import { gstConfigFromOrder } from "@/lib/receipt";
 import { rewardFromOrderSnapshot } from "@pos/shared/reward-redemption";
 import { resolveItemVoid, voidGuardFilter } from "@/lib/order-void";
+import { tableGuardFilter } from "@/lib/order-table-move";
 import { printConfigOf } from "@/lib/print";
 import { nextPrintedNumber } from "@/lib/slip-numbers";
 import { voidItemSchema } from "@/schemas";
@@ -103,12 +104,15 @@ export async function POST(req: Request, { params }: Params) {
     // against a retry. A resend whose first attempt actually landed carries the old
     // count, matches nothing, and 409s — where a server-read count would happily
     // void a second unit off the same line (CR1.3 review).
+    // The table term (the move's own, T1 follow-up): the total above is priced from the charges we READ, and a move
+    // changes neither kotRounds nor voids, so without it a move landing in between gets the old table's total back.
     const filter: FilterQuery<IOrder> = {
       _id: id,
       status: "Pending",
       payment: "Unpaid",
       kotRounds: old.kotRounds ?? 0,
       ...voidGuardFilter(parsed.data.expectedVoids),
+      ...tableGuardFilter(old.tableNo),
     };
     const updated = await Order.findOneAndUpdate(
       filter,

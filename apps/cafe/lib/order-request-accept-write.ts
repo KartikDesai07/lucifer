@@ -67,7 +67,7 @@ export async function guardedReject(
 // (now guardedReject'd, FIX1 above), and the step-7 sourceRequestIds
 // dup-key repair, unchanged in behavior from the pre-fix version.
 export async function applyAddRound(
-  openTab: Pick<IOrder, "_id" | "kotRounds" | "voids">,
+  openTab: Pick<IOrder, "_id" | "kotRounds" | "voids" | "tableNo">,
   update: Record<string, unknown>,
   requestId: string,
   actor: string,

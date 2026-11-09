@@ -243,7 +243,7 @@ test("PIN: acceptOrderRequest's findByRequestId repair lookup runs BEFORE the or
 
 // ── C. Add-round guard completeness ─────────────────────────────────────────
 
-test('PIN: buildAddRoundFilter carries ALL FIVE CAS terms — status:"Pending", payment:"Unpaid", the kotRounds echo, voidGuardFilter(, and acceptGuardFilter( — dropping any one reopens a race this filter exists to close', () => {
+test('PIN: buildAddRoundFilter carries ALL SIX CAS terms — status:"Pending", payment:"Unpaid", the kotRounds echo, voidGuardFilter(, acceptGuardFilter( and tableGuardFilter( — dropping any one reopens a race this filter exists to close', () => {
   const src = stripComments(readSrc(ACCEPT_CORE));
   const start = mustIndexOf(src, "export function buildAddRoundFilter", "buildAddRoundFilter");
   const nextExport = src.indexOf("\nexport ", start + 1);
@@ -257,6 +257,9 @@ test('PIN: buildAddRoundFilter carries ALL FIVE CAS terms — status:"Pending", 
   assert.match(body, /kotRounds:\s*old\.kotRounds/, "buildAddRoundFilter must echo the tab's own kotRounds");
   assert.match(body, /voidGuardFilter\(/, "buildAddRoundFilter must spread voidGuardFilter(...)");
   assert.match(body, /acceptGuardFilter\(/, "buildAddRoundFilter must spread acceptGuardFilter(...)");
+  // A move (another device) changes neither kotRounds nor voids: without the table term this round would write the
+  // old table's charges back over the moved tab (T1 follow-up, 2026-11-09).
+  assert.match(body, /tableGuardFilter\(old\.tableNo\)/, "buildAddRoundFilter must spread tableGuardFilter(old.tableNo)");
 });
 
 // ── D. Public POST control order + honeypot-before-create ──────────────────

@@ -33,14 +33,15 @@ import { guardedRejectDecision, isSourceRequestIdsDuplicate, gstConfigDrifted } 
 import { resolveAcceptPromo, decidePromoRedemption, promoIsClaimable, PROMO_USED_ERROR } from "./order-request-accept-promo";
 import { PUBLIC_REQUEST_PENDING_TTL_MS } from "./order-request-intake";
 import { voidGuardFilter } from "./order-void";
+import { tableGuardFilter } from "./order-table-move";
 import type { IOrder } from "@/models/Order";
 import { computeOrderTotals, gstConfigFromOrder, type GstConfig } from "@/lib/receipt";
 
-// buildAddRoundFilter only reads _id/kotRounds/voids off its `old` param —
+// buildAddRoundFilter only reads _id/kotRounds/voids/tableNo off its `old` param —
 // this fixture builder casts a plain fixture to that Pick<IOrder, ...> shape
 // so tests never need a real ObjectId or a full Order document.
-type OldOrderFixture = Pick<IOrder, "_id" | "kotRounds" | "voids">;
-function oldOrder(fields: { _id?: string; kotRounds?: number; voids?: unknown[] }): OldOrderFixture {
+type OldOrderFixture = Pick<IOrder, "_id" | "kotRounds" | "voids" | "tableNo">;
+function oldOrder(fields: { _id?: string; kotRounds?: number; voids?: unknown[]; tableNo?: string }): OldOrderFixture {
   return fields as unknown as OldOrderFixture;
 }
 
@@ -93,6 +94,16 @@ test("buildAddRoundFilter: merges voidGuardFilter's terms EXACTLY (zero and non-
 test("buildAddRoundFilter: merges acceptGuardFilter's $ne term for THIS request id — the reciprocal-CAS fence", () => {
   const filter = buildAddRoundFilter(oldOrder({ _id: "o1", kotRounds: 0 }), "req-1") as Record<string, unknown>;
   assert.deepEqual(filter.sourceRequestIds, { $ne: "req-1" });
+});
+
+// T1 follow-up (2026-11-09) — the round writes the tab's charges back as READ; a move from another device changes
+// neither kotRounds nor voids, so only the table term makes this CAS miss the moved tab instead of clobbering it.
+test("buildAddRoundFilter: merges tableGuardFilter for the table the tab was READ at (a name, or the absent form)", () => {
+  const seated = buildAddRoundFilter(oldOrder({ _id: "o1", kotRounds: 1, tableNo: "T-5" }), "req-1") as Record<string, unknown>;
+  assert.deepEqual(seated.tableNo, tableGuardFilter("T-5").tableNo);
+  assert.equal(seated.tableNo, "T-5");
+  const walkIn = buildAddRoundFilter(oldOrder({ _id: "o1", kotRounds: 1 }), "req-1") as Record<string, unknown>;
+  assert.deepEqual(walkIn.tableNo, { $in: [null, ""] });
 });
 
 test("buildKotNumbers: returns undefined when the cafe doesn't number KOTs (ticket undefined)", () => {
