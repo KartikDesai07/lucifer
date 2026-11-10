@@ -1,6 +1,20 @@
 import mongoose, { Schema, Types, type Document, type Model } from "mongoose";
 import type { ProductModifierPrice, ProductVariation } from "@/types";
 
+// Inventory lite — a size's own amount of one stock item (milli-units of that item's unit, per one sold).
+export interface IProductStockUseSize {
+  name: string;
+  qty: number;
+}
+
+// Inventory lite — one stock item a sold unit of this menu item takes out: `qty` integer milli-units of the stock
+// item's own unit per one sold; `sizes` overrides it for a line sold as that size (absent = same for every size).
+export interface IProductStockUse {
+  itemId: Types.ObjectId;
+  qty: number;
+  sizes?: IProductStockUseSize[];
+}
+
 export interface IProduct extends Document {
   name: string;
   // Links by id only; the category NAME is not stored here. Joins are
@@ -51,6 +65,10 @@ export interface IProduct extends Document {
   // Skip-KOT: true = never on a kitchen ticket, false = always (even if its category skips), ABSENT =
   // its category's choice. No `default:` below (the CSV import has no column for it).
   noKot?: boolean;
+  // Inventory lite: what one sold unit takes out of stock. ABSENT (never []) for an item that uses no stock — no
+  // `default:` below, the `variations` precedent. Written only by its own route; the CSV import and the product
+  // PUT never touch it. The settle / Pay Now create reads it (lib/inventory/stock-use.ts).
+  stockUse?: IProductStockUse[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -71,6 +89,25 @@ const productVariationSchema = new Schema<ProductVariation>(
   {
     name: { type: String, required: true, trim: true },
     price: { type: Number, required: true, min: 0 },
+  },
+  { _id: false },
+);
+
+// Inventory lite — embedded `_id:false`, like a size above. A size may take 0 (that size uses none of this item).
+const productStockUseSizeSchema = new Schema<IProductStockUseSize>(
+  {
+    name: { type: String, required: true },
+    qty: { type: Number, required: true, min: 0 },
+  },
+  { _id: false },
+);
+
+const productStockUseSchema = new Schema<IProductStockUse>(
+  {
+    itemId: { type: Schema.Types.ObjectId, required: true },
+    qty: { type: Number, required: true, min: 1 },
+    // No `default:` — omit-empty: a link with one amount for every size stores no key.
+    sizes: { type: [productStockUseSizeSchema], default: undefined },
   },
   { _id: false },
 );
@@ -105,6 +142,8 @@ export const productSchema = new Schema<IProduct>(
     // No `default:` — see the IProduct comment above: absent means the category's station.
     stationId: { type: Schema.Types.ObjectId },
     noKot: { type: Boolean },
+    // No `default:` — see the IProduct comment above: absent means the item uses no stock.
+    stockUse: { type: [productStockUseSchema], default: undefined },
   },
   { timestamps: true },
 );

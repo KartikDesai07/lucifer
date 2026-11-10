@@ -93,6 +93,12 @@ export interface IOrderVoid {
   kotNumber?: number; // this void slip's own kitchen-ticket number
 }
 
+// Inventory lite — what this sale took out of one stock item, in integer milli-units of that item's unit.
+export interface IOrderStockUsed {
+  itemId: Types.ObjectId;
+  qty: number;
+}
+
 export interface IOrder extends Document, IOrderRewardFields {
   orderId: string; // ORD-YYYYMMDD-NNN
   customerId?: Types.ObjectId;
@@ -194,6 +200,11 @@ export interface IOrder extends Document, IOrderRewardFields {
   // CB-DL-2: stored as ObjectIds (the OrderRequest _id); every writer and CAS
   // filter goes through the model, which casts the hex strings it is handed.
   sourceRequestIds?: Types.ObjectId[];
+  // Inventory lite — the exact stock this bill took out, summed per item and sorted by itemId
+  // (lib/inventory/stock-use.ts). Written ONLY in the settle CAS `$set` or the Pay Now insert; a cancel (or the
+  // admin delete) of a settled bill adds back exactly this, so a recipe edited later never changes the add-back.
+  // Absent on every open tab and on any sale of items that use no stock.
+  stockUsed?: IOrderStockUsed[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -243,6 +254,15 @@ const orderItemModifierPriceSchema = new Schema<ProductModifierPrice>(
   {
     name: { type: String, required: true },
     price: { type: Number, required: true },
+  },
+  { _id: false },
+);
+
+// Inventory lite — embedded, no _id (same idiom as orderChargeSchema). A zero amount is never stored.
+const orderStockUsedSchema = new Schema<IOrderStockUsed>(
+  {
+    itemId: { type: Schema.Types.ObjectId, required: true },
+    qty: { type: Number, required: true, min: 1 },
   },
   { _id: false },
 );
@@ -365,6 +385,9 @@ const orderSchema = new Schema<IOrder>(
     source: { type: String },
     // See the IOrder comment above — `default: undefined`, NEVER `[]`.
     sourceRequestIds: { type: [Schema.Types.ObjectId], default: undefined },
+    // Inventory lite — declared, not interface-only: strict:true silently drops an undeclared path (the reward
+    // note/rewardItem incidents on this model). `default: undefined`, NEVER `[]` — omit-empty.
+    stockUsed: { type: [orderStockUsedSchema], default: undefined },
   },
   { timestamps: true },
 );

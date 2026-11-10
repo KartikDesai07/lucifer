@@ -18,6 +18,7 @@ import { returnRewardStamps } from "@/lib/reward-claim";
 import { releaseRewardCard } from "@/lib/reward-card-claim";
 import { returnPoints } from "@/lib/reward-points-spend";
 import { releaseAssignedRewardForRung } from "@/lib/assigned-reward-gate";
+import { addBackStockQuietly } from "@/lib/inventory/stock-move";
 import { cancelOrderSchema } from "@/schemas";
 
 export const dynamic = "force-dynamic";
@@ -61,6 +62,13 @@ export async function POST(req: Request, { params }: Params) {
     ).lean();
     if (!updated) return failure("Order changed — reload and try again", 409);
     try {
+      // Inventory lite - a cancelled SETTLED bill puts back exactly the stock its settle (or Pay Now) took out: the
+      // snapshot stored on the order, never re-derived from today's recipes. Gated on the status the CAS replaced, so
+      // an open tab (which took nothing) puts nothing back, and a repeat cancel never gets here (409 above). The CAS
+      // has LANDED, and addBackStockQuietly swallows its own failure; it runs FIRST so a ledger throw below (a 500
+      // whose retry meets the "already cancelled" 409) can never skip it.
+      if (old.status === "Completed" && updated.stockUsed?.length) await addBackStockQuietly(updated.stockUsed);
+
       // ledgerContribution returns zero for a Cancelled order, so this reverses a
       // settled bill's visit/spend/due through the same delta a delete used.
       const touched = await reconcileLedger(old, updated);

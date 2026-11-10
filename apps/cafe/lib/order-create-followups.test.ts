@@ -47,10 +47,11 @@ interface Calls {
   progress: Array<[ISettings | null, string | null | undefined, ProgressOrder]>;
   ledger: Array<[string, { visits: number; spend: number; due: number }]>;
   table: Array<[string, string]>;
+  stock: Array<[unknown, number]>;
 }
 
 function fakeDeps(over: Overrides = {}): { deps: CreateFollowUpDeps; calls: Calls } {
-  const calls: Calls = { numbers: [], trace: [], spent: [], progress: [], ledger: [], table: [] };
+  const calls: Calls = { numbers: [], trace: [], spent: [], progress: [], ledger: [], table: [], stock: [] };
   const deps: CreateFollowUpDeps = {
     // The dep type is overloaded (the generic overload answers unknown), so the single-signature fake is cast once.
     issueBillNumbers: (async (id: OrderRef, plan: BillNumberingPlan) => {
@@ -77,6 +78,7 @@ function fakeDeps(over: Overrides = {}): { deps: CreateFollowUpDeps; calls: Call
       calls.table.push([tableNo, orderId]);
       if (over.occupyTable) await over.occupyTable(tableNo, orderId);
     },
+    moveStock: async (used, sign) => { calls.stock.push([used, sign]); if (over.moveStock) await over.moveStock(used, sign); },
   };
   return { deps, calls };
 }

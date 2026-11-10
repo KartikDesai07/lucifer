@@ -34,21 +34,19 @@ import { CARD_NOT_USABLE } from "@pos/shared/reward-card-use";
 import { shouldStoreDiscountKind, rewardFromOrderSnapshot } from "@pos/shared/reward-redemption";
 import { chargeWriteFields } from "@/lib/order-charges-write";
 import { createOrderPrintJobs, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
+import { stockUsedForSale, stockUsedFields } from "@/lib/inventory/stock-use";
 
 export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ id: string }> };
 
 // POST /api/orders/[id]/settle — take payment on an open tab and close it.
-// Server-authoritative: paidAmount is derived from the order's stored total (or
-// a settle-time discount recomputed against it) and the mode/collected-amount —
-// see resolveSettleMoney. Idempotent-safe: the update is conditional on the
-// order still being Pending, so a double-fired settle lands exactly once.
-// Only the settle whose CAS LANDED takes the bill number (lib/slip-numbers.ts),
-// so a refused, stale or losing settle never leaves a gap in the bill series,
-// and the response carries the numbered doc the bill prints from. The ledger
-// (the open tab contributed nothing at open), the loyalty stamp and the table
-// free follow best-effort (lib/settle-followups.ts): a settle that landed
+// Server-authoritative: paidAmount is derived from the order's stored total (or a settle-time discount recomputed
+// against it) and the mode/collected-amount — see resolveSettleMoney. Idempotent-safe: the update is conditional on
+// the order still being Pending, so a double-fired settle lands exactly once. Only the settle whose CAS LANDED takes
+// the bill number (lib/slip-numbers.ts), so a refused, stale or losing settle never leaves a gap in the bill series,
+// and the response carries the numbered doc the bill prints from. The ledger (the open tab contributed nothing at
+// open), the loyalty stamp and the table free follow best-effort (lib/settle-followups.ts): a settle that landed
 // answers 200 whatever they do; only an unconfirmed bill number answers 500.
 export async function POST(req: Request, { params }: Params) {
   const authed = await requireAuth();
@@ -144,6 +142,7 @@ export async function POST(req: Request, { params }: Params) {
     ) {
       return failure("Tab changed — reopen it and try again", 409);
     }
+    const stockUsedP = stockUsedForSale(old.items); // inventory lite: overlaps the reads below; never rejects (D3)
 
     // The order's own customer is authoritative; the body may only ATTACH a
     // customer to a tab opened without one (never reassign an existing one).
@@ -221,6 +220,7 @@ export async function POST(req: Request, { params }: Params) {
     if (card) Object.assign(set, cardSnapshotFields(card.reward));
     // Points store only their cost (the lot plan is on the Customer's spend record); never rewardAt / rewardStamps.
     if (points) set.rewardPoints = points.n;
+    Object.assign(set, stockUsedFields(await stockUsedP)); // the stock snapshot; moved only after the CAS wins
     const update: Record<string, unknown> = { $set: set };
     if (Object.keys(unset).length > 0) update.$unset = unset;
 
