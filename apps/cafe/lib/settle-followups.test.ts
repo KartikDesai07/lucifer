@@ -18,10 +18,11 @@ interface Calls {
   grant: Array<[ISettings | null, string | null, string, number]>;
   progress: Array<[ISettings | null, string | null, ProgressOrder]>;
   table: Array<[string, string]>;
+  stock: Array<[unknown, number]>;
 }
 
 function fakeDeps(over: Partial<SettleFollowUpDeps> = {}): { deps: SettleFollowUpDeps; calls: Calls } {
-  const calls: Calls = { ledger: 0, grant: [], progress: [], table: [] };
+  const calls: Calls = { ledger: 0, grant: [], progress: [], table: [], stock: [] };
   const deps: SettleFollowUpDeps = {
     reconcileLedger: async (...args) => {
       calls.ledger += 1;
@@ -42,6 +43,10 @@ function fakeDeps(over: Partial<SettleFollowUpDeps> = {}): { deps: SettleFollowU
     freeTable: async (tableNo, orderId) => {
       calls.table.push([tableNo, orderId]);
       if (over.freeTable) await over.freeTable(tableNo, orderId);
+    },
+    moveStock: async (used, sign) => {
+      calls.stock.push([used, sign]);
+      if (over.moveStock) await over.moveStock(used, sign);
     },
   };
   return { deps, calls };
@@ -165,4 +170,33 @@ test("the progress step does not wait for a slow ledger (one wave)", async () =>
   assert.equal(calls.progress.length, 1, "progress must not wait for the ledger");
   release(new Set());
   assert.deepEqual(await run, { customersTouched: false });
+});
+
+// Inventory lite: the stock move is the fifth member of the wave.
+const USED = [{ itemId: "665f000000000000000000a1", qty: 150 }];
+
+test("a settle that stored a stockUsed snapshot takes exactly it out of stock (sign -1), once", async () => {
+  const { deps, calls } = fakeDeps();
+  await runSettleFollowUps(OLD, { ...UPDATED, stockUsed: USED }, SETTINGS, deps);
+  assert.deepEqual(calls.stock, [[USED, -1]]);
+});
+
+test("no snapshot (absent or empty) moves no stock; the other follow-ups still run", async () => {
+  for (const stockUsed of [undefined, []]) {
+    const { deps, calls } = fakeDeps();
+    await runSettleFollowUps(OLD, { ...UPDATED, stockUsed }, SETTINGS, deps);
+    assert.deepEqual(calls.stock, [], `stockUsed ${JSON.stringify(stockUsed)}`);
+    assert.equal(calls.table.length, 1, "landmark: the wave ran");
+  }
+});
+
+test("a stock move that throws is swallowed: the settle's follow-ups still resolve and free the table", async () => {
+  const { deps, calls } = fakeDeps({
+    moveStock: async () => {
+      throw new Error("stock down");
+    },
+  });
+  assert.deepEqual(await runSettleFollowUps(OLD, { ...UPDATED, stockUsed: USED }, SETTINGS, deps), { customersTouched: false });
+  assert.equal(calls.stock.length, 1, "landmark: the move really ran");
+  assert.deepEqual(calls.table, [["T-2", "ORD-1"]]);
 });

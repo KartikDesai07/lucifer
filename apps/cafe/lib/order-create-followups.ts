@@ -5,12 +5,13 @@
 // object, one runner, runnable without a database.
 //
 // Everything here runs only AFTER the order insert has landed, so none of it may
-// fail the request (a 5xx would invite a retry and a duplicate order): the six
+// fail the request (a 5xx would invite a retry and a duplicate order): the seven
 // writes run together via allSettled and every failure but the bill numbering is
 // absorbed by the route (only `numbered` is read back — a missing number answers
 // 503 so the client sends again). Drift in the rest is repairable: a missed
 // ledger delta through the customer reconcile route, a stuck table from the
-// Tables screen, a stale "my rewards" row is cosmetic.
+// Tables screen, a stale "my rewards" row is cosmetic, a missed stock move is
+// fixed by a Count (inventory lite).
 import { Customer } from "@/models/Customer";
 import { Table } from "@/models/Table";
 import type { ISettings } from "@/models/Settings";
@@ -20,12 +21,13 @@ import { ledgerContribution } from "@/lib/order";
 import { backfillPromoRedemptionOrderId } from "@/lib/order-request-accept-promo";
 import { markAssignedRewardUsed } from "@/lib/assigned-reward-gate";
 import { advanceRewardProgress } from "@/lib/reward-progress";
+import { moveStock, STOCK_TAKE, type StockUsedRef } from "@/lib/inventory/stock-move";
 import cache from "@/lib/cache";
 
 type LedgerInput = Parameters<typeof ledgerContribution>[0];
 type OrderRef = Parameters<typeof issueBillNumbers>[0];
 
-// Pay Now saves a bill already Completed; only such a bill counts a ladder step on create.
+// Pay Now saves a bill already Completed; only such a bill counts a ladder step (or moves stock) on create.
 const ORDER_STATUS_COMPLETED = "Completed";
 
 /** A promo code and the mobile its fence row is keyed on, or null when the route has no such write to make. */
@@ -36,7 +38,14 @@ export interface PromoWrite {
 
 /** What the post-insert block reads: the landed order, the numbering plan and the route's precomputed promo gates. */
 export interface CreateFollowUpInput {
-  landed: { _id: OrderRef; orderId: string; status: string; createdAt: Date; total: number };
+  landed: {
+    _id: OrderRef;
+    orderId: string;
+    status: string;
+    createdAt: Date;
+    total: number;
+    stockUsed?: readonly StockUsedRef[]; // inventory lite: the snapshot the Pay Now insert carried
+  };
   settings: ISettings | null;
   numbering: BillNumberingPlan;
   customerId?: string | null;
@@ -57,6 +66,7 @@ export interface CreateFollowUpDeps {
   incCustomerLedger(customerId: string, c: { visits: number; spend: number; due: number }): Promise<unknown>;
   /** The claim: occupy the table ONLY if it is currently free. */
   occupyTable(tableNo: string, orderId: string): Promise<unknown>;
+  moveStock: typeof moveStock;
 }
 
 export const CREATE_FOLLOW_UP_DEPS: CreateFollowUpDeps = {
@@ -70,10 +80,11 @@ export const CREATE_FOLLOW_UP_DEPS: CreateFollowUpDeps = {
   // the same table and overwrite each other's currentOrderId.
   occupyTable: (tableNo, orderId) =>
     Table.findOneAndUpdate({ tableNo, status: "Available" }, { status: "Occupied", currentOrderId: orderId }),
+  moveStock,
 };
 
 /**
- * The six writes that follow a landed create, in one allSettled wave. Never
+ * The seven writes that follow a landed create, in one allSettled wave. Never
  * rejects; only the bill-numbering result is returned (the route answers 503 on
  * a rejection and prints from its value).
  * The result names NumberedOrder on purpose: ReturnType<typeof issueBillNumbers>
@@ -130,6 +141,11 @@ export async function runCreateFollowUps(
     applyLedger(),
     occupyTable(),
     advanceProgress(),
+    // Inventory lite — a Pay Now bill takes its snapshot out of stock once, riding this one insert win (a send-key
+    // twin adopted the winner above and never gets here). An open tab moves stock when it is settled.
+    landed.status === ORDER_STATUS_COMPLETED && landed.stockUsed?.length
+      ? deps.moveStock(landed.stockUsed, STOCK_TAKE)
+      : null,
   ]);
   return { numbered };
 }

@@ -100,7 +100,7 @@ export async function POST(req: Request, { params }: Params) {
       // One indexed query, only when the payload could possibly be affected.
       productIds.length
         ? Product.find({ _id: { $in: productIds } })
-            .select("name variations modifiers modifiersPreselected modifierPrices price discount available isActive")
+            .select("name variations modifiers modifiersPreselected modifierPrices price discount available isActive stockUse")
             .lean()
         : Promise.resolve([]),
       getSettings(),

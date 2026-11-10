@@ -19,6 +19,7 @@ import { updateOrderSchema } from "@/schemas";
 import { TABLE_CHANGE_WRONG_ROUTE_ERROR } from "@/lib/order-table-move";
 import { hasOrderReward } from "@/lib/order-reward-fence";
 import { REWARD_REASSIGN_REFUSED } from "@pos/shared/reward-card-use";
+import { addBackStockQuietly } from "@/lib/inventory/stock-move";
 
 export const dynamic = "force-dynamic";
 
@@ -168,6 +169,11 @@ export async function DELETE(_req: Request, { params }: Params) {
     const deleted = await Order.findByIdAndDelete(id);
     if (!deleted) return notFound("Order not found");
     try {
+      // Inventory lite - a deleted SETTLED bill puts back the stock snapshot it took out, read off `deleted` (the
+      // document as it was AT REMOVAL, like the table below). Only the delete that removed the row gets here, so it
+      // adds back once; a cancelled bill already put its stock back and is not Completed. Swallows its own failure.
+      if (deleted.status === "Completed" && deleted.stockUsed?.length) await addBackStockQuietly(deleted.stockUsed);
+
       // Reverse the order's ledger contribution (a held "Unpaid" tab contributed
       // nothing, so deleting it touches no ledger).
       const touched = await reconcileLedger(order, null);

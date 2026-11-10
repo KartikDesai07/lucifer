@@ -51,6 +51,7 @@ import { promoMarkerFields } from "@/lib/order-reward-fence";
 import { mintedPromoCodes } from "@pos/shared/loyalty-rules";
 import { mergedNote } from "@/lib/order-request-accept-core";
 import { assignedRewardRefusal } from "@/lib/assigned-reward-gate";
+import { stockUsedForSale, stockUsedFields } from "@/lib/inventory/stock-use";
 
 export const dynamic = "force-dynamic";
 
@@ -88,7 +89,7 @@ export async function POST(req: Request) {
       // One indexed query, only when the payload could possibly be affected.
       productIds.length
         ? Product.find({ _id: { $in: productIds } })
-            .select("name variations modifiers modifiersPreselected modifierPrices price discount available isActive")
+            .select("name variations modifiers modifiersPreselected modifierPrices price discount available isActive stockUse")
             .lean()
         : Promise.resolve([]),
       // The table's configured extra charge, doubling as its existence check.
@@ -349,6 +350,8 @@ export async function POST(req: Request) {
     // Priced add-ons: the charged amounts ride on every new line (the reward dish carries no add-ons, so no stamp).
     const kot = await withKitchenFlags(stampModifierPrices(rewardItems, products));
     rewardItems = kot.lines;
+    // Inventory lite: a Pay Now sale's stock snapshot (an open tab's is taken at settle). Never rejects (owner D3).
+    const stockUsed = data.status === "Completed" ? await stockUsedForSale(rewardItems, products) : undefined;
 
     // Pay Now's bill: the SAME condition under which this route makes the server's bill job
     // below, named once so the stamp and the job can never drift apart.
@@ -421,11 +424,11 @@ export async function POST(req: Request) {
       // duplicate-key retry re-sends this same doc, stamp included. A bill this
       // call does not print is stamped later by settle / the print-jobs enqueue.
       ...firstBillPrintInsertFields(printsBillNow, Date.now(), totals.total),
+      ...stockUsedFields(stockUsed), // inventory lite, omit-empty: the stock moves after the insert wins
     };
 
-    // Order number from an atomic per-day counter (no read-max race). On the
-    // rare collision with orders predating the counter, reseed from the day's
-    // max once — the unique index on orderId is the safety net.
+    // Order number from an atomic per-day counter (no read-max race). On the rare collision with orders predating the
+    // counter, reseed from the day's max once — the unique index on orderId is the safety net.
     //
     // CLAIM ORDERING (CB-5B S4): the stamp claim keys its marker on the orderId (claimRewardStamps ->
     // redeemedOrders; a scratch card keys on it too) and happens BEFORE the create, so a bill is never
@@ -489,15 +492,13 @@ export async function POST(req: Request) {
       return (await lateReplay()) ?? failure(PROMO_USED_ERROR, 409);
     }
 
-    // Slip numbers come from their OWN daily counters (one tab, several kitchen
-    // tickets, exactly one bill), each a single atomic $inc. The opening KOT
-    // number is taken HERE — after every refusal above, so a refused create
-    // costs the ticket series nothing — and reused by the duplicate-key retry.
-    // Losing it to a failed insert is an accepted burn. The order's TOKEN (when
-    // tokens are on) is drawn right here with it, on the same terms: one token
-    // per order, reused by the retry through `doc`, burned by a refused insert. The BILL number is not
-    // taken here at all: only the insert that WON takes it (below), so a Pay
-    // Now twin that loses on the send key can never leave a gap in the bills.
+    // Slip numbers come from their OWN daily counters (one tab, several kitchen tickets, exactly one bill), each a
+    // single atomic $inc. The opening KOT number is taken HERE — after every refusal above, so a refused create costs
+    // the ticket series nothing — and reused by the duplicate-key retry. Losing it to a failed insert is an accepted
+    // burn. The order's TOKEN (when tokens are on) is drawn right here with it, on the same terms: one token per
+    // order, reused by the retry through `doc`, burned by a refused insert. The BILL number is not taken here at all:
+    // only the insert that WON takes it (below), so a Pay Now twin that loses on the send key can never leave a gap
+    // in the bills.
     let slips: Awaited<ReturnType<typeof allocateOpeningSlips>>;
     try {
       slips = await allocateOpeningSlips(printCfg, { kitchen: kot.kitchen }, undefined, { token: !offlinePaperOut(data.offline) });
@@ -577,10 +578,9 @@ export async function POST(req: Request) {
       }
     }
 
-    // The order row is now the source of truth. Everything below is a
-    // best-effort follow-up that must NOT fail the request (that would invite
-    // a retry → duplicate order), so all of it settles together: any drift is
-    // repairable via the customer reconcile endpoint.
+    // The order row is now the source of truth. Everything below is a best-effort follow-up that must NOT fail the
+    // request (that would invite a retry → duplicate order), so all of it settles together: any drift is repairable
+    // via the customer reconcile endpoint.
     const landed = order;
     const numbering = billNumberingPlan(landed, printCfg.bill); // a paid sale's bill number + GST invoice serial
     // The five writes (bill number, promo trace + spent, ledger, table) settle
