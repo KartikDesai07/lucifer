@@ -487,6 +487,24 @@ as the Bar's) and, if the cafe has one, a waiter phone with no printer. Two tabs
       device showed, its KOT numbers with no repeat; the tab with the offline round shows that round.
 - [ ] End of day only after every device's Offline orders list is empty; its figures include the offline sales.
 
+## Phase 6 checks (parallel printing) (added 2026-11-12)
+
+Needs the demo cafe on the printing Phase 6 web with every POS screen reloaded, and one phone (the POS app 2.0.x) that
+prints three station printers: two Bluetooth printers (for example the Bar and the Desserts) and a network printer (for
+example the Kitchen), plus the bill printer the cafe uses. The owner's check (P6-4): a cafe where one phone prints two
+Bluetooth printers gets Phase 6 only after this passes on such a phone.
+
+- [ ] A three-station round from that phone (an item for each station): all three KOTs print, each complete; the
+      second and the third printer start while the first is still printing, not one after another.
+- [ ] The same round with one Bluetooth printer switched off before Send: the other two print at once; the third KOT
+      waits on the waiting-slips list and prints once when its printer is back on, with no REPRINT label.
+- [ ] A KOT with two copies (the Kitchen printer's KOT copies set to 2): two identical slips on the Kitchen printer,
+      one on each other printer.
+- [ ] Pay Now on a tab with a round: the bill prints once on the bill printer.
+- [ ] Ten rounds in a row, quickly (a rush): every KOT prints once, in order on each printer; nothing twice, no label.
+- [ ] The owner's notes: the phone's model and Android version, the printers' models, how long the round took, and
+      whether two Bluetooth printers printed side by side or one after another.
+
 ## Result
 
 Date: ________  Device and Android version: ________________________
