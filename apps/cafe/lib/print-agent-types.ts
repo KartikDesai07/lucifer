@@ -3,7 +3,8 @@ import type { LeasedPrintJob, PrintAckData, PrintLeaseData } from "@pos/shared/p
 // Printing redesign, Phase 1 Session 1C (spec §9.1): the in-page print agent's shapes. Split out of
 // print-agent.ts in Session 2B to keep that file near its ~300-line budget; print-agent.ts re-exports them.
 
-export type PrintAgentResult = { ok: true } | { ok: false; error: unknown };
+/** Phase 6 (spec §9 ruling 24): `written` is how many times a two-step slip's bytes were written (Task 7 reads it). */
+export type PrintAgentResult = { ok: true; written?: number } | { ok: false; error: unknown };
 
 export interface PrintAgentAckBody {
   deviceId: string;

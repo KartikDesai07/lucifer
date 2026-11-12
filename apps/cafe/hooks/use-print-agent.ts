@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { hashKey, useQueryClient } from "@tanstack/react-query";
 
 import { PRINT_SETUP_REFRESH_MIN_MS } from "@pos/shared/print-budget";
-import type { LeasedPrintJob, PrintAckData, PrintJobsForMe, PrintLeaseData } from "@pos/shared/print-agent-wire";
+import type { PrintAckData, PrintJobsForMe, PrintLeaseData } from "@pos/shared/print-agent-wire";
 import { PRINTERS_KEYS } from "@/hooks/use-agent-printers";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
 import { useCanPrintNow, useDesktopLan, useNativePool } from "@/hooks/use-device-printer";
@@ -16,28 +16,25 @@ import { printerHealthClock } from "@/lib/print-agent-health";
 import { olderAckBody, printAgentSkew } from "@/lib/print-agent-skew";
 import { dropPrintedFromPulse } from "@/lib/print-pulse-edit";
 import {
-  PRINT_AGENT_SLIP_DEADLINE_MS,
   createPrintAgent,
   onLeasedJob,
   onPrintAgentKick,
-  printAgentSlipOf,
   readPendingAcks,
   setDirectPrintSource,
-  addPrintBusySource, printHostBusySince, markPrinterWriting, leaseUnlessClosing, trackPrintBusy,
+  addPrintBusySource, printHostBusySince, leaseUnlessClosing, trackPrintBusy,
   setPrinterHealthSource,
   setPulsePrintDevice,
   setReadyPrintersSource,
   writePendingAcks,
   type PrintAgent,
-  type PrintAgentResult,
 } from "@/lib/print-agent";
-import { jobsForMeLeasable, printJobCopies, printerListLooksStale, readyPrinterIdsOf, type AgentPrinters } from "@/lib/print-agent-printers";
+import { jobsForMeLeasable, printerListLooksStale, readyPrinterIdsOf, type AgentPrinters } from "@/lib/print-agent-printers";
 import type { HostPrintDone } from "@/lib/print-host-tickets";
-import { PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print-host-slips";
-import { PrintWriteError } from "@/lib/print-write-outcome";
+import { agentPrint } from "@/lib/print-agent-print";
+import type { HostPrintSlip } from "@/lib/print-host-slips";
 import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
 import { connectedLanKey, desktopLan, desktopLanApi, desktopPrintersState } from "@/lib/printer/desktop-lan";
-import { desktopPrinterSnapshot, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import { desktopPrinterSnapshot } from "@/lib/printer/desktop-printer-state";
 import { devicePrinter } from "@/lib/printer/device-printer";
 import { connectedPoolKey, nativePool, poolDefaultCannotPrint } from "@/lib/printer/native-pool";
 import { printerCannotPrintOf, printerStatusOf, printersState } from "@/lib/printer/printer-registry";
@@ -71,9 +68,9 @@ interface UsePrintAgentOptions {
   printers: AgentPrinters;
   deviceId: string;
   tabId: string;
-  /** The host bridge is printing something (a test slip, another slip). */
+  /** Phase 6 (spec §9 ruling 14): the bridge's surface is drawing a slip (`drawing`), not a write in flight on a lane. */
   busy: boolean;
-  queueSlip: (slip: HostPrintSlip, done?: HostPrintDone) => void;
+  queueSlip: (slip: HostPrintSlip, done: HostPrintDone) => { withdraw(): boolean };
 }
 
 /** Session 2C: the printers a lease names, omitted when there are none (simple mode, an old server). */
@@ -157,40 +154,16 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
   // One agent per device identity and tab. A reload re-sends any "printed" ack the last page left.
   useEffect(() => {
     if (deviceId === "") return;
-    const printOnce = (job: LeasedPrintJob): Promise<PrintAgentResult> =>
-      new Promise((resolve) => {
-        // The bridge settles every slip; one its watchdog gave up on settles late, so this wait is bounded.
-        const deadline = window.setTimeout(
-          () => resolve({ ok: false, error: new Error(PRINT_HOST_PRINT_FAILED_MESSAGE) }),
-          PRINT_AGENT_SLIP_DEADLINE_MS,
-        );
-        const done = (result: PrintAgentResult): void => {
-          window.clearTimeout(deadline);
-          resolve(result);
-        };
-        try {
-          const slip = printAgentSlipOf(job, cafeDateString(), job.printerId === undefined ? undefined : targetsRef.current[job.printerId]);
-          queueRef.current(job.printerId !== undefined && takeoverRef.current.includes(job.printerId) ? { ...slip, takeover: true } : slip, done);
-        } catch {
-          // A payload this page cannot turn into a slip (deploy skew): nothing was sent, and never will be.
-          done({ ok: false, error: new PrintWriteError(PRINT_HOST_PRINT_FAILED_MESSAGE, "no", true) });
-        }
-      });
-    // Session 2C: a printer job only on this device's own printer, every copy inside its one lease. Session 2E: a Windows
-    // printer that failed is looked up again in the Windows app, so one renamed or removed there stops being this PC's.
-    // Session 3B (the final Phase 2 gate, (a) item 4): the POS app printer it writes to is marked meanwhile, so the page's
-    // removal of a network printer it added waits for the print (hooks/use-agent-printers.ts).
-    const print = async (job: LeasedPrintJob): Promise<PrintAgentResult> => {
-      const nativeId = job.printerId === undefined ? undefined : targetsRef.current[job.printerId]?.nativeId;
-      if (nativeId !== undefined) markPrinterWriting(nativeId, true);
-      try {
-        const result = await printJobCopies(job, readyRef.current, () => printOnce(job));
-        if (!result.ok && job.printerId !== undefined && targetsRef.current[job.printerId]?.printerName !== undefined) void refreshDesktopPrinterChosen();
-        return result;
-      } finally {
-        if (nativeId !== undefined) markPrinterWriting(nativeId, false);
-      }
-    };
+    // Phase 6 (spec §9 ruling 12): the agent's print step and its 140 s bound live in lib/print-agent-print.ts; the seams
+    // are this hook's refs, read at call time.
+    const print = agentPrint({
+      queueSlip: (slip, done) => queueRef.current(slip, done),
+      targets: () => targetsRef.current,
+      takeovers: () => takeoverRef.current,
+      ready: () => readyRef.current,
+      today: cafeDateString,
+      ...timers(),
+    });
     // Session 2F1 (spec §9.2): of the printers it prints here, those that can print now: one of the POS app's printers
     // (bridge v2) by its own state, any other while this device's own printer can print (as before).
     const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf, printerCannotPrintOf);

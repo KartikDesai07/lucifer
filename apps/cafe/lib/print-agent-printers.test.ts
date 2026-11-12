@@ -422,10 +422,10 @@ test("printJobCopies: only this device's printer; every copy in one lease; a fai
 });
 
 test("PIN (2C): the agent prints a leased job through printJobCopies on this device's printers; the station line reaches the paper", () => {
-  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  const agent = src("apps/cafe/lib/print-agent-print.ts"); // Phase 6 Task 6 (spec §9 ruling 12) deliberately changed: the print step moved out of the hook into lib/print-agent-print.ts (agentPrint, its slip through printSlipOnce)
   // Session 2E: the same call, inside a body that looks a failed Windows printer up again.
   // Session 3B (deliberate change): the app printer it writes to is marked meanwhile, so the page never removes it mid-print.
-  assert.match(agent, /const print = async \(job: LeasedPrintJob\): Promise<PrintAgentResult> => \{[\s\S]*?const result = await printJobCopies\(job, readyRef\.current, \(\) => printOnce\(job\)\);/);
+  assert.match(agent, /return async \(job\) => \{[\s\S]*?const result = await printJobCopies\(job, seams\.ready\(\), \(\) => printSlipOnce\(seams, job, 1\)\);/);
   const kot = src("apps/cafe/components/pos/KOTReceipt.tsx");
   const title = kot.indexOf("KITCHEN ORDER");
   const line = kot.indexOf("{stationLine && (");
@@ -586,7 +586,7 @@ test("PIN (3B): the page marks the app printer each job is written to, a removal
   assert.ok(hook.includes('const writing = useSyncExternalStore(onPrintersWritingChange, printersBeingWritten, () => "");'), "the printers being written, followed");
   assert.ok(hook.includes("}, [enabled, loaded, printers, deviceId, pool, writing]);"), "a removal runs again once the print is done");
   assert.ok(hook.includes("const takenOver = useSyncExternalStore(onTakenOverChange, takenOverPrinterIds, () => NO_IDS);"), "the dot follows what the wake says it took over");
-  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  const agent = src("apps/cafe/lib/print-agent-print.ts"); // Phase 6 Task 6 deliberately changed: the marking moved with the print step into lib/print-agent-print.ts
   assert.ok(agent.includes("if (nativeId !== undefined) markPrinterWriting(nativeId, true);") && agent.includes("if (nativeId !== undefined) markPrinterWriting(nativeId, false);"), "marked while it prints, unmarked after");
   const others = src("apps/cafe/components/print/OtherDevicePrinters.tsx");
   assert.ok(others.includes("const TAKEOVER = PRINTER_TAKEOVER_MESSAGE;"), "the takeover words");

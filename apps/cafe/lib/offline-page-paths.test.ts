@@ -55,8 +55,12 @@ test("Task 11: the POS sends carry their offline facts; the payment sheet is off
   assert.ok(modal.includes("splitMismatch || !shownModes.includes(mode)));"), "a mode chosen before the outage is not sent offline");
   assert.ok(modal.includes("<PaymentPoints points={points} disabled={locked || offlineSale} />"), "points need the internet");
   const provider = src("apps/cafe/components/layout/PrintHostProvider.tsx");
-  assert.ok(provider.includes("queueSlip(slip, (result) => {"), "the offline slip rides the one bridge");
-  assert.ok(provider.includes('const deadline = window.setTimeout(() => resolve("maybe"), PRINT_AGENT_SLIP_DEADLINE_MS);'), "bounded as the agent's wait: maybe");
+  // Phase 6 Task 6 (spec §9 ruling 12) deliberately changed: the provider's own "maybe" at the deadline is gone; the bound is
+  // offlineSlipWithBound's (lib/offline-send.ts): withdrawn at the bound ("no"), or waited for and answered by its own end.
+  assert.ok(provider.includes("offlineSlipWithBound(queueSlip, slip, {"), "the offline slip rides the one bridge, bounded as the agent's wait");
+  assert.ok(!provider.includes('resolve("maybe")'), "no early maybe at the deadline");
+  const sendLib = src("apps/cafe/lib/offline-send.ts");
+  assert.ok(sendLib.includes("queued?.withdraw();") && sendLib.includes("PRINT_AGENT_SLIP_DEADLINE_MS"), "withdrawn at the bound, otherwise waited for");
   const send = src("apps/cafe/hooks/use-pos-send.ts");
   assert.ok(send.includes("onAnswer: (error) => void reportWriteAnswer(error, serverReach, () => checkPulseReach(qc)),"), "each answer feeds the state; a miss is checked once");
   const reads = src("apps/cafe/hooks/use-agent-printers.ts");

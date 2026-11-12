@@ -58,8 +58,9 @@ test("2E: a slip for a printer is drawn for that printer's paper, as if the cafe
 });
 
 test("PIN (2E): each slip carries its printer's target from the agent to the Windows app, and is drawn for its paper", () => {
-  const hook = src("hooks/use-print-agent.ts");
-  assert.match(hook, /printAgentSlipOf\(job, cafeDateString\(\), job\.printerId === undefined \? undefined : targetsRef\.current\[job\.printerId\]\)/, "the job's printer's target rides its slip");
+  // Phase 6 Task 6 deliberately changed: the slip is made in lib/print-agent-print.ts, which reads the target through the hook's seam.
+  const hook = src("lib/print-agent-print.ts");
+  assert.match(hook, /printAgentSlipOf\(job, seams\.today\(\), job\.printerId === undefined \? undefined : seams\.targets\(\)\[job\.printerId\]\)/, "the job's printer's target rides its slip");
   const bridge = src("hooks/use-print-host-bridge.ts");
   assert.match(bridge, /const target = current\?\.kind === "slip" \? current\.slip\.target : undefined;/);
   // Session 2F1 (deliberate change): one of the POS app's printers too (raster: the app's id and the printer's paper).
@@ -92,9 +93,10 @@ test("PIN (2E): the agent leases, offers for direct print and is kicked only for
 });
 
 test("PIN (2E): a Windows printer that failed is looked up again, so one renamed or removed in Windows stops being this PC's", () => {
-  const hook = src("hooks/use-print-agent.ts");
+  // Phase 6 Task 6 deliberately changed: the re-read moved with the print step into lib/print-agent-print.ts (targets via the seam).
+  const hook = src("lib/print-agent-print.ts");
   // Session 2F1 (deliberate change): only a Windows printer's target (a POS app printer's has no Windows list to read).
-  assert.match(hook, /if \(!result\.ok && job\.printerId !== undefined && targetsRef\.current\[job\.printerId\]\?\.printerName !== undefined\) void refreshDesktopPrinterChosen\(\);/);
+  assert.match(hook, /if \(!result\.ok && job\.printerId !== undefined && seams\.targets\(\)\[job\.printerId\]\?\.printerName !== undefined\) void refreshDesktopPrinterChosen\(\);/);
 });
 
 test("PIN (2E): every job of a slip leased to this tab is handed to the agent, from an order answer and from an enqueue", () => {

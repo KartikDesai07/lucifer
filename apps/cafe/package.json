@@ -307,6 +307,7 @@
     "lib/print-write-outcome.test.ts",
     "lib/print-agent.test.ts",
     "lib/print-agent-paths.test.ts",
+    "lib/print-agent-print.test.ts",
     "lib/print-lines-today.test.ts",
     "lib/print-lines.test.ts",
     "lib/print-lines-rules.test.ts",

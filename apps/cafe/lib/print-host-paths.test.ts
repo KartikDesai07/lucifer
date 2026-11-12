@@ -318,7 +318,7 @@ test("PIN (D): PrintHostDrain.tsx runs the print agent (the host for the cafe; w
   );
   assert.match(src, /const drains = isAgent && holdsLock;/, "the agent drains only under the lock");
   assert.match(src, /const hostDrains = enabled && holdsLock;/, "the host's self-order lane keeps the host gate");
-  assert.match(src, /usePrintAgent\(\{ enabled: drains, isHost: enabled, printers, deviceId, tabId, busy, queueSlip: onSlip \}\);/, "the agent prints through the provider's bridge");
+  assert.match(src, /usePrintAgent\(\{ enabled: drains, isHost: enabled, printers, deviceId, tabId, busy: drawing, queueSlip: onSlip \}\);/, "the agent prints through the provider's bridge"); // Phase 6 Task 6 (spec §9 ruling 14) deliberately changed: the agent's gate is the surface drawing (busy: drawing), not a lane's write in flight; busy stays the self-order lane's
   assert.match(src, /useSelfOrderAutoPrint\(\{ enabled: hostDrains, busy, queueKotRound, hostLane \}\);/, "the host lane hands a claimed KOT to the agent (job-aware lane)");
   assert.ok(src.includes("PRINT_HOST_MAX_AGE_MS"), "hostLane must reference PRINT_HOST_MAX_AGE_MS");
   assert.match(src, /return null;/, "PrintHostDrain must return null — a null-rendering child");

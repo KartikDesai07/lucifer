@@ -221,7 +221,7 @@ test("spec §5.3: a printer this device only takes over for another device print
 test("PIN (spec §5.3): the agent marks a slip of a printer it only takes over", () => {
   const agent = readFileSync(path.join(process.cwd(), "hooks/use-print-agent.ts"), "utf8");
   assert.ok(agent.includes("const takeoverRef = useRef(printers.takeoverIds);"), "the printers it may take over, read at print time");
-  assert.ok(agent.includes("job.printerId !== undefined && takeoverRef.current.includes(job.printerId) ? { ...slip, takeover: true } : slip"), "such a job's slip says so");
+  assert.ok(agent.includes("takeovers: () => takeoverRef.current,") && readFileSync(path.join(process.cwd(), "lib/print-agent-print.ts"), "utf8").includes("job.printerId !== undefined && seams.takeovers().includes(job.printerId) ? { ...slip, takeover: true } : slip"), "such a job's slip says so"); // Phase 6 Task 6 (spec §9 ruling 12) deliberately changed: the slip is made in lib/print-agent-print.ts; the hook hands it the takeovers
 });
 
 test("spec §4.1 rule 7 in the step: a slip whose text would pass the picture's limit at its paper prints as a picture", () => {

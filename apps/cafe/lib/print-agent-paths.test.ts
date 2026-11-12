@@ -113,7 +113,12 @@ test("PIN: the agent leases on events aimed at it, names itself on the pulse (th
   assert.ok(agent.includes("printerReady: () => (readyRef.current.length === 0 ? canPrintNow() && !poolDefaultCannotPrint(nativePool().getSnapshot()) : readyNow().length > 0),"), "the agent's gate is the device's own can-print verdict");
   // Session 3C (spec §10) deliberately changed: and not one the app says cannot print.
   assert.ok(agent.includes("const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf, printerCannotPrintOf);"), "and its printers' own states");
-  assert.ok(agent.includes("PRINT_AGENT_SLIP_DEADLINE_MS"), "its wait on one slip is bounded");
+  // Phase 6 Task 6 (spec §9 ruling 12) deliberately changed: the wait on one slip moved out of the hook into lib/print-agent-print.ts
+  // (the hook builds that step's seams); its bound is the same 140 s, but at the bound a slip never drawn is withdrawn (its ticket's
+  // own "no") and a slip drawn is waited for, instead of an early "maybe".
+  const step = src("apps/cafe/lib/print-agent-print.ts");
+  assert.ok(step.includes("PRINT_AGENT_SLIP_DEADLINE_MS") && step.includes("queued?.withdraw();"), "its wait on one slip is bounded: withdrawn at the bound, or waited for");
+  assert.ok(agent.includes("agentPrint({"), "the hook's print step is the module's");
 });
 
 // Phase 2 Session 2B (spec §7.11): direct print on the asking device, wired end to end on the page.
@@ -262,6 +267,8 @@ test("PIN (F1): the held-slip source is registered in the same effect as onLease
 test("PIN (R1): the setGate effect reads the hold clock right after setGate", () => {
   const agent = src("apps/cafe/hooks/use-print-agent.ts");
   assert.match(agent, /useEffect\(\(\) => \{\s*agent\?\.setGate\(\{ enabled, busy \}\);\s*printHostBusySince\(\);\s*\}, \[agent, enabled, busy\]\);/, "setGate, then the re-sync, in one effect");
-  assert.match(agent, /addPrintBusySource, printHostBusySince, markPrinterWriting,/, "the name on the existing import line from @/lib/print-agent");
+  // Phase 6 Task 6 deliberately changed: markPrinterWriting moved with the print step into lib/print-agent-print.ts, so the hook's
+  // import line no longer names it; the pin is on printHostBusySince's name there.
+  assert.match(agent, /addPrintBusySource, printHostBusySince, leaseUnlessClosing,/, "the name on the existing import line from @/lib/print-agent");
   assert.match(src("apps/cafe/lib/print-agent-seams.ts"), /export \{ addPrintBusySource, printHostBusySince \} from "@\/lib\/print-host-busy";/, "re-exported through the agent's seams");
 });

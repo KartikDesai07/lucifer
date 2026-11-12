@@ -15,8 +15,7 @@ import {
 
 import { PrintHostDrain } from "@/components/print/PrintHostDrain";
 import { usePrintHostBridge, type HostPrintCurrent } from "@/hooks/use-print-host-bridge";
-import { offlineSlipOutcomeOf, type OfflineSlipOutcome } from "@/lib/offline-send";
-import { PRINT_AGENT_SLIP_DEADLINE_MS } from "@/lib/print-agent-slip";
+import { offlineSlipWithBound, type OfflineSlipOutcome } from "@/lib/offline-send";
 import type { HostPrintSlip } from "@/lib/print-host-slips";
 import { mintTabId, readDeviceId } from "@/lib/pos-device-id";
 import { readDevicePrefs, writeDevicePrefs } from "@/lib/pos-device-prefs";
@@ -69,7 +68,7 @@ export interface PrintHostContextValue {
    *  wedged the bridge for the rest of the tab's life. */
   reportSurfacesMounted: (mounted: boolean) => void;
   /** Printing Phase 5 (spec 5.4): an offline KOT's slip through this one bridge, behind any slip already printing; no
-   *  lease, no ack, no request. "maybe" also when the bridge has not settled it in its agent's bound. */
+   *  lease, no ack, no request. Phase 6 (ruling 12): at the agent's bound a slip still waiting is withdrawn ("no"); one drawn is waited for. */
   queueOfflineSlip: (slip: HostPrintSlip) => Promise<OfflineSlipOutcome>;
 }
 
@@ -139,12 +138,9 @@ export function PrintHostProvider({ children }: { children: ReactNode }) {
 
   const queueOfflineSlip = useCallback(
     (slip: HostPrintSlip) =>
-      new Promise<OfflineSlipOutcome>((resolve) => {
-        const deadline = window.setTimeout(() => resolve("maybe"), PRINT_AGENT_SLIP_DEADLINE_MS);
-        queueSlip(slip, (result) => {
-          window.clearTimeout(deadline);
-          resolve(offlineSlipOutcomeOf(result));
-        });
+      offlineSlipWithBound(queueSlip, slip, {
+        setTimer: (fn, ms) => window.setTimeout(fn, ms),
+        clearTimer: (handle) => window.clearTimeout(handle as number),
       }),
     [queueSlip],
   );
