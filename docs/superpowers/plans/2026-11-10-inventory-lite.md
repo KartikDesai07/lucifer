@@ -317,3 +317,43 @@ recipes; size override ignored; sum → overwrite; Pay Now gate removed; `stockU
   run AFTER `reconcileLedger` in the same try, so a ledger throw skips them and the retry's 409 keeps them skipped.
   Owner call whether to move them up like the stock add-back.
 - **Next = Slice 2** (Inventory page + stock items, M).
+
+### Slice 2: Inventory page and stock items (s113, 2026-11-10 to 11-12): DONE
+
+- Built with two implementers on separate files (server; page + nav). The main thread wrote the contract first
+  (`schemas/inventory.schema.ts`, `types/inventory.ts`, `STOCK_ITEMS_MAX` / `STOCK_QTY_MAX` in `inventory.ts`) and
+  did the integration. Server: `lib/inventory/items.ts`, `app/api/inventory/items/route.ts` (GET any signed-in
+  user, POST admin), `app/api/inventory/items/[id]/route.ts` (PATCH admin, no DELETE). Client: `hooks/use-inventory.ts`,
+  `lib/inventory/stock-view.ts`, `lib/inventory/stock-item-form.ts`, `app/(dashboard)/inventory/page.tsx`,
+  `components/inventory/{InventoryView,StockList,StockItemSheet}.tsx`. The sheet reuses the item editor's frame. The
+  Inventory nav row sits under Menu, open to every role.
+- **Deviations from the plan text (main thread):**
+  - The request keys are `openingQtyMilli` / `lowAtMilli` (integer milli-units), not `openingQty` / `lowAt`, so no
+    float reaches the server (the `amountPaise` precedent).
+  - `archived` can only be set to `true`; nothing restores an item yet.
+  - Staff GET leaves out `lastRatePaise` (it is a cost).
+  - A PATCH only matches an ACTIVE item, so editing an item archived meanwhile is a 404.
+  - The empty state doesn't mention "Stock use" yet, because that editor ships in Slice 3. Slice 3 updates the copy.
+  - The list uses the Settings hub card rows, not a table.
+  - The AppSidebar Expenses comment went from 2 lines to 1, so the file stays at its 306-line cap.
+- Review: one opus reviewer found no HIGH or MED. Three LOWs, all fixed:
+  - A PATCH of an archived item answered 200 and wrote to it. The live repro went RED first; the fix is
+    `{ _id, ...ACTIVE }` plus a pin.
+  - The staff-POST live case didn't prove that nothing was written.
+  - The sidebar cap had been raised. It is now held instead.
+  - The fresh-eyes check of the fix round found no defects.
+- Mutation pass (main thread, alone, byte backup, sha1 restore, tree hash the same before and after): 14/14 killed
+  after one pin fix. The miss was "unit picker shown on edit": the needle `isEdit ? (` also matched the flipped
+  `!isEdit ? (`. It is now anchored on `{`.
+- Chain on merged main (origin/main 4bd357c, printing Phase 6, merged in):
+  - shared: tsc 0, 1097/1097
+  - cafe: tsc 0, lint 0 errors (2 old warnings), 8423/8423
+  - hub: tsc 0, lint 0, 288/288
+  - live: `verify:inventory:items:live` 26/26 (new), `verify:inventory:live` 15/15
+- Not done: a browser smoke (low RAM). The owner checks the page on a phone, a tablet and the PC after deploying.
+- Rollback: new routes and a new page only; no existing request schema changed. After a rollback, `/inventory` and
+  its API 404, and the stock items stay in the DB untouched.
+- **Owner decision (s113):** move the cancel route's stamp / scratch-card / points give-backs BEFORE
+  `reconcileLedger`, like the stock add-back ("Seen, not fixed" above). This is a separate Tier L fix, done next,
+  before Slice 3.
+- **Next =** the cancel give-backs fix (L), then Slice 3 (Stock use in the item editor, M).
