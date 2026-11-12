@@ -2,10 +2,11 @@ import type { Types } from "mongoose";
 import { StockItem } from "@/models/StockItem";
 
 // Inventory lite (plan: docs/superpowers/plans/2026-11-10-inventory-lite.md, "Settle deduct and cancel add-back"):
-// the ONE writer that moves stock for a sale. Callers run it only AFTER their own write has landed — the settle
-// CAS, the Pay Now insert, the cancel CAS, the admin delete — so it rides that one win and moves exactly once.
-// It never reverts anything on a throw: a bulkWrite that fails after the win loses this bill's move, and a
-// Count fixes it. Stock may go negative (a sale is never blocked, owner D3).
+// the ONE writer of stock numbers, for sales (moveStock) AND purchases (receiveStock, Slice 5). Callers run it only
+// AFTER their own write has landed — the settle CAS, the Pay Now insert, the cancel CAS, the admin delete, the
+// purchase row insert — so it rides that one win and moves exactly once. It never reverts anything on a throw: a
+// bulkWrite that fails after the win loses that move, and a Count fixes it. Stock may go negative (a sale is never
+// blocked, owner D3).
 
 /** A sale's stock line: integer milli-units of the stock item's own unit (Order.stockUsed). */
 export interface StockUsedRef {
@@ -25,6 +26,30 @@ export async function moveStock(used: readonly StockUsedRef[] | undefined, sign:
   await StockItem.bulkWrite(
     used.map((line) => ({
       updateOne: { filter: { _id: line.itemId }, update: { $inc: { qty: sign * line.qty } } },
+    })),
+    { ordered: false },
+  );
+}
+
+/** A purchase line: milli-units bought and what ONE unit cost (paise; 0 = free goods). */
+export interface StockReceiptLine {
+  itemId: Types.ObjectId | string;
+  qty: number;
+  ratePaise: number;
+}
+
+/**
+ * One unordered bulkWrite for a purchase: `$inc` the stock and `$set` the item's last rate, one updateOne per line.
+ * A free line (rate 0) only `$inc`s: it is not what one unit costs. Nothing to move → no write. Propagates a throw.
+ */
+export async function receiveStock(lines: readonly StockReceiptLine[]): Promise<void> {
+  if (lines.length === 0) return;
+  await StockItem.bulkWrite(
+    lines.map((line) => ({
+      updateOne: {
+        filter: { _id: line.itemId },
+        update: line.ratePaise > 0 ? { $inc: { qty: line.qty }, $set: { lastRatePaise: line.ratePaise } } : { $inc: { qty: line.qty } },
+      },
     })),
     { ordered: false },
   );

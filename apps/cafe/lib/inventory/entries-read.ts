@@ -3,6 +3,7 @@ import { connectDB } from "@/lib/db";
 import { addDays } from "@/lib/dashboard/range";
 import { cafeDateString } from "@/lib/utils";
 import { StockItem } from "@/models/StockItem";
+import { Supplier } from "@/models/Supplier";
 import { ACTIVE_STOCK_ENTRY, StockEntry } from "@/models/StockEntry";
 import {
   STOCK_ENTRY_BACKDATE_MAX_DAYS,
@@ -15,7 +16,8 @@ import type { StockEntryDto, StockEntryLineDto, StockEntryPageDto } from "@/type
 
 // Read side of the stock entries (Inventory lite, Slice 4): the wire DTO, the date window, the page cursor and the
 // list read. The writes live in ./entries-write.ts. The helpers above `listStockEntries` are pure and DB-free so
-// tests call them directly. Nothing here ever sends clientRef, createdById, v, the delete stamp or a money field.
+// tests call them directly. The list is admin-only, so a purchase's money (rates, amounts, total, paid, due) and its
+// supplier ride along (Slice 5); nothing here ever sends clientRef, createdById, v or the delete stamp.
 
 export const STOCK_ENTRY_FUTURE_DATE_ERROR = "The date can't be in the future";
 export const STOCK_ENTRY_OLD_DATE_ERROR = `The date can't be more than ${STOCK_ENTRY_BACKDATE_MAX_DAYS} days ago`;
@@ -25,7 +27,11 @@ export interface StockEntryRow {
   _id: { toString(): string };
   kind: StockEntryKind;
   date: string;
-  lines?: readonly { itemId: { toString(): string }; qty: number; counted?: number }[];
+  lines?: readonly { itemId: { toString(): string }; qty: number; counted?: number; ratePaise?: number; amountPaise?: number }[];
+  supplierId?: { toString(): string };
+  totalPaise?: number;
+  paidPaise?: number;
+  duePaise?: number;
   reason?: string;
   note?: string;
   createdBy: string;
@@ -42,7 +48,11 @@ export interface StockEntryItemInfo {
  * Lean row to wire shape. Lines keep their stored order; a line whose item is not in `items` is left out. `qtyMilli`
  * is the SIGNED change as it was applied; `countedMilli` appears only on a count's line.
  */
-export function toStockEntryDto(row: StockEntryRow, items: ReadonlyMap<string, StockEntryItemInfo>): StockEntryDto {
+export function toStockEntryDto(
+  row: StockEntryRow,
+  items: ReadonlyMap<string, StockEntryItemInfo>,
+  suppliers: ReadonlyMap<string, string> = new Map(),
+): StockEntryDto {
   const lines: StockEntryLineDto[] = [];
   for (const line of row.lines ?? []) {
     const itemId = line.itemId.toString();
@@ -50,8 +60,12 @@ export function toStockEntryDto(row: StockEntryRow, items: ReadonlyMap<string, S
     if (!item) continue;
     const dto: StockEntryLineDto = { itemId, name: item.name, unit: item.unit, qtyMilli: line.qty };
     if (typeof line.counted === "number") dto.countedMilli = line.counted;
+    if (typeof line.ratePaise === "number") dto.ratePaise = line.ratePaise;
+    if (typeof line.amountPaise === "number") dto.amountPaise = line.amountPaise;
     lines.push(dto);
   }
+  const supplierId = row.supplierId?.toString();
+  const supplierName = supplierId === undefined ? undefined : suppliers.get(supplierId);
   return {
     id: row._id.toString(),
     kind: row.kind,
@@ -59,6 +73,11 @@ export function toStockEntryDto(row: StockEntryRow, items: ReadonlyMap<string, S
     lines,
     ...(row.reason !== undefined ? { reason: row.reason as WasteReason } : {}),
     ...(row.note !== undefined ? { note: row.note } : {}),
+    ...(supplierId !== undefined ? { supplierId } : {}),
+    ...(supplierName !== undefined ? { supplierName } : {}),
+    ...(typeof row.totalPaise === "number" ? { totalPaise: row.totalPaise } : {}),
+    ...(typeof row.paidPaise === "number" ? { paidPaise: row.paidPaise } : {}),
+    ...(typeof row.duePaise === "number" ? { duePaise: row.duePaise } : {}),
     createdBy: row.createdBy,
     createdAt: row.createdAt.toISOString(),
   };
@@ -101,14 +120,14 @@ export interface StockEntryListOptions {
   limit?: number;
 }
 
-/** One page of active entries, newest first, with item names and units from ONE `$in` read (archived items included). */
+/** One page of active entries, newest first, with item names and units from ONE `$in` read (archived items included) and supplier names from another. */
 export async function listStockEntries(options: StockEntryListOptions = {}): Promise<StockEntryPageDto> {
   const limit = options.limit ?? STOCK_ENTRY_PAGE_MAX;
   await connectDB();
   const found = await StockEntry.find({ ...ACTIVE_STOCK_ENTRY, ...entryCursorFilter(options.before) })
     .sort({ date: -1, _id: -1 })
     .limit(limit + 1)
-    .select("kind date lines reason note createdBy createdAt")
+    .select("kind date lines reason note supplierId totalPaise paidPaise duePaise createdBy createdAt")
     .lean();
   const hasMore = found.length > limit;
   const rows = hasMore ? found.slice(0, limit) : found;
@@ -120,7 +139,15 @@ export async function listStockEntries(options: StockEntryListOptions = {}): Pro
     for (const item of stock) items.set(item._id.toString(), { name: item.name, unit: item.unit });
   }
 
-  const page: StockEntryPageDto = { rows: rows.map((row) => toStockEntryDto(row, items)) };
+  // ONE read for the page's supplier names; an archived supplier still shows its name on old purchases.
+  const supplierIds = [...new Set(rows.flatMap((row) => (row.supplierId ? [row.supplierId.toString()] : [])))];
+  const suppliers = new Map<string, string>();
+  if (supplierIds.length > 0) {
+    const found = await Supplier.find({ _id: { $in: supplierIds } }).select("name").lean();
+    for (const supplier of found) suppliers.set(supplier._id.toString(), supplier.name);
+  }
+
+  const page: StockEntryPageDto = { rows: rows.map((row) => toStockEntryDto(row, items, suppliers)) };
   if (hasMore) page.nextBefore = entryCursorOf(rows[rows.length - 1]);
   return page;
 }

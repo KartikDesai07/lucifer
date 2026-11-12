@@ -54,9 +54,16 @@ export interface StockEntryLineDto {
   qtyMilli: number;
   /** A count: how much was counted. */
   countedMilli?: number;
+  /** A purchase: what one unit cost, in paise. */
+  ratePaise?: number;
+  /** A purchase: this line's amount in paise (purchaseLineAmountPaise, worked out by the server). */
+  amountPaise?: number;
 }
 
-/** One wastage or count in the entries list (admin). A line whose stock item no longer exists is left out. */
+/**
+ * One wastage, count or purchase in the entries list (admin only: a purchase carries money). A line whose stock item
+ * no longer exists is left out.
+ */
 export interface StockEntryDto {
   id: string;
   kind: StockEntryKind;
@@ -66,9 +73,29 @@ export interface StockEntryDto {
   /** A wastage: why it was thrown away. */
   reason?: WasteReason;
   note?: string;
+  /** A purchase from a supplier (Slice 5); the name is read even when the supplier was archived since. */
+  supplierId?: string;
+  supplierName?: string;
+  /** A purchase: the sum of its line amounts, and what was paid on the day (paise). */
+  totalPaise?: number;
+  paidPaise?: number;
+  /** What this entry adds to the supplier's dues (total minus paid); absent when nothing is owed. */
+  duePaise?: number;
   /** Staff name from the session. */
   createdBy: string;
   createdAt: string;
+}
+
+/**
+ * One active supplier, as /api/inventory/suppliers sends it (admin). `duePaise` is worked out on read from the
+ * supplier's entries that still count: above 0 = still to pay them; below 0 = paid in advance; 0 = settled.
+ */
+export interface SupplierDto {
+  id: string;
+  name: string;
+  phone?: string;
+  note?: string;
+  duePaise: number;
 }
 
 /** One page of entries, newest first. `nextBefore` (absent on the last page) is sent back as `?before=`. */

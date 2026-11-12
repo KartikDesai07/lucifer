@@ -2,8 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  STOCK_ENTRY_MAX_TOTAL_PAISE,
   STOCK_ITEM_NAME_MAX_LEN,
+  STOCK_QTY_MAX_MILLI,
   STOCK_QTY_SCALE,
+  STOCK_RATE_MAX_PAISE,
   STOCK_UNITS,
   STOCK_UNIT_FACTOR,
   STOCK_UNIT_GROUP,
@@ -15,6 +18,8 @@ import {
   formatQty,
   isStockUnit,
   milliToQty,
+  purchaseLineAmountPaise,
+  purchaseTotalPaise,
   qtyToMilli,
   stockLevel,
 } from "./inventory";
@@ -144,4 +149,25 @@ test("stockLevel edges", () => {
   assert.equal(stockLevel(1001, 1000), "ok");
   assert.equal(stockLevel(1), "ok");
   assert.equal(stockLevel(5000, undefined), "ok");
+});
+
+test("purchaseLineAmountPaise: qty (milli) x rate (paise per unit), rounded once, half-up", () => {
+  assert.equal(purchaseLineAmountPaise(2500, 4010), 10025, "2.5 kg at Rs 40.10");
+  assert.equal(purchaseLineAmountPaise(1000, 0), 0, "free goods");
+  assert.equal(purchaseLineAmountPaise(1, 500), 1, "0.001 x 500 paise = 0.5 paise rounds up");
+  assert.equal(purchaseLineAmountPaise(1, 499), 0, "0.499 paise rounds down");
+  assert.equal(purchaseLineAmountPaise(333, 1001), 333, "0.333 x 1001 = 333.333");
+  assert.equal(purchaseLineAmountPaise(1500, 333), 500, "1.5 x 333 = 499.5 rounds up");
+  const bigProduct = STOCK_QTY_MAX_MILLI * STOCK_RATE_MAX_PAISE;
+  assert.ok(Number.isSafeInteger(bigProduct), "the largest qty x rate stays inside 2^53");
+  assert.equal(purchaseLineAmountPaise(STOCK_QTY_MAX_MILLI, STOCK_RATE_MAX_PAISE), bigProduct / STOCK_QTY_SCALE);
+});
+
+test("purchaseTotalPaise: the sum of the ROUNDED line amounts; the total cap fits Int32", () => {
+  assert.equal(purchaseTotalPaise([]), 0);
+  assert.equal(purchaseTotalPaise([{ qtyMilli: 2500, ratePaise: 4010 }, { qtyMilli: 3000, ratePaise: 1200 }]), 13625);
+  // Each line is 0.5 paise and rounds to 1; rounding the sum instead would give 1, not 2.
+  assert.equal(purchaseTotalPaise([{ qtyMilli: 1, ratePaise: 500 }, { qtyMilli: 1, ratePaise: 500 }]), 2);
+  const INT32_MAX = 2 ** 31 - 1;
+  assert.ok(STOCK_ENTRY_MAX_TOTAL_PAISE <= INT32_MAX, "a purchase total is stored as Int32 paise");
 });

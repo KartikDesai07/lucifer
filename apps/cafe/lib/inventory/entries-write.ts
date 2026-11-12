@@ -1,23 +1,28 @@
 import { isDuplicateKeyError } from "@/lib/api-helpers";
 import { connectDB, modelReady } from "@/lib/db";
 import { StockItem } from "@/models/StockItem";
+import { Supplier } from "@/models/Supplier";
 import { ACTIVE_STOCK_ENTRY, STOCK_ENTRY_SCHEMA_VERSION, StockEntry } from "@/models/StockEntry";
-import type { CountEntryInput, CreateStockEntryInput, WasteEntryInput } from "@/schemas";
+import type { CountEntryInput, CreateStockEntryInput, PurchaseEntryInput, WasteEntryInput } from "@/schemas";
 import { STOCK_ITEM_NOT_FOUND_ERROR } from "./items";
 import type { StockEntryItemInfo, StockEntryRow } from "./entries-read";
-import { moveStock, type StockSign, type StockUsedRef } from "./stock-move";
+import { purchaseMoneyError, purchaseSameAs, purchaseSums } from "./purchase";
+import { moveStock, receiveStock, type StockReceiptLine, type StockSign, type StockUsedRef } from "./stock-move";
+import { SUPPLIER_NOT_FOUND_ERROR } from "./suppliers";
 
-// Inventory lite Slice 4: the write side of the manual stock entries (wastage and counts). Entries are the SECOND
-// stock writer after a sale (stock-move.ts): BOTH kinds land their row first (it claims the clientRef) and only then
-// move stock through moveStock, by exactly the change the row records. So a retried or racing Save can never move
-// stock twice, and deleting a row undoes exactly what it did. No auth gate lives here: the routes own that, and every
-// identity field arrives from the SESSION. Ports are injected (real defaults below) so tests are DB-free.
+// Inventory lite Slices 4-5: the write side of the manual stock entries (wastage, counts, purchases). Entries are the
+// SECOND stock writer after a sale (stock-move.ts): every kind lands its row first (it claims the clientRef) and only
+// then moves stock (moveStock, or receiveStock for a purchase), by exactly what the row records. So a retried or
+// racing Save can never move stock twice, and deleting a row undoes exactly what it did. No auth gate lives here: the
+// routes own that, and every identity field arrives from the SESSION. Ports are injected (real defaults below) so
+// tests are DB-free.
 
 export const STOCK_ENTRY_ALREADY_SAVED_ERROR = "This entry was already saved. Close this and check the list.";
 export const STOCK_ENTRY_NOT_FOUND_ERROR = "Entry not found";
 export const STOCK_ENTRY_SAVED_STOCK_OFF_ERROR = "Saved, but the stock number may be off. Count this item.";
 export const STOCK_ENTRY_DELETED_STOCK_OFF_ERROR = "Deleted, but the stock number may be off. Count this item.";
 
+const BAD_REQUEST_STATUS = 400;
 const NOT_FOUND_STATUS = 404;
 const CONFLICT_STATUS = 409;
 const SERVER_ERROR_STATUS = 500;
@@ -34,14 +39,21 @@ export interface NewEntryLine {
   itemId: string;
   qty: number;
   counted?: number;
+  ratePaise?: number;
+  amountPaise?: number;
 }
 
 export interface NewEntryDoc {
-  kind: "waste" | "count";
+  kind: "waste" | "count" | "purchase";
   date: string;
   lines: NewEntryLine[];
   reason?: string;
   note?: string;
+  supplierId?: string;
+  totalPaise?: number;
+  paidPaise?: number;
+  /** A purchase only, and only when something is owed (omit-empty: a settled purchase has no key). */
+  duePaise?: number;
   createdBy: string;
   createdById: string;
   clientRef: string;
@@ -56,9 +68,10 @@ export interface ActiveItemRow extends StockEntryItemInfo {
 export type StockEntryCommand = CreateStockEntryInput & { createdBy: string; createdById: string };
 type WasteCommand = WasteEntryInput & { createdBy: string; createdById: string };
 type CountCommand = CountEntryInput & { createdBy: string; createdById: string };
+type PurchaseCommand = PurchaseEntryInput & { createdBy: string; createdById: string };
 
 export type CreateStockEntryResult =
-  | { ok: true; row: StoredEntry; items: Map<string, StockEntryItemInfo>; replay?: true }
+  | { ok: true; row: StoredEntry; items: Map<string, StockEntryItemInfo>; suppliers?: Map<string, string>; replay?: true }
   | { ok: false; status: number; error: string };
 
 const refuse = (status: number, error: string): { ok: false; status: number; error: string } => ({ ok: false, status, error });
@@ -72,15 +85,27 @@ export interface StockEntryDeps {
   findActiveItem(id: string): Promise<ActiveItemRow | null>;
   /** A stock item of any state (a replay reads it for the answer), or null. */
   findItem(id: string): Promise<StockEntryItemInfo | null>;
+  /** Purchase: the ACTIVE stock items among these ids (one `$in` read), keyed by id; a replay reads them in any state. */
+  findActiveItems(ids: readonly string[]): Promise<Map<string, StockEntryItemInfo>>;
+  findItemInfos(ids: readonly string[]): Promise<Map<string, StockEntryItemInfo>>;
+  /** An ACTIVE supplier or null; a replay reads names in any state (an archived supplier keeps its name). */
+  findActiveSupplier(id: string): Promise<{ name: string } | null>;
+  findSupplierNames(ids: readonly string[]): Promise<Map<string, string>>;
   /** Inserts the entry row; a duplicate clientRef throws the driver's E11000. */
   insert(doc: NewEntryDoc): Promise<StoredEntry>;
   /** One `$inc` per stock item (stock-move.ts). */
   move(lines: readonly StockUsedRef[], sign: StockSign): Promise<void>;
+  /** A purchase's one `bulkWrite`: `$inc` the stock and `$set` the last rate (stock-move.ts). */
+  receive(lines: readonly StockReceiptLine[]): Promise<void>;
   /** The delete's CAS on "not deleted"; answers the lines of the row it just marked, or null on a miss. */
   softDelete(id: string, deletedBy: string, now: Date): Promise<{ lines?: readonly NewEntryLine[] } | null>;
 }
 
 const ACTIVE_ITEM = { archived: { $exists: false } } as const;
+const itemInfos = async (ids: readonly string[], active: boolean): Promise<Map<string, StockEntryItemInfo>> => {
+  const rows = await StockItem.find({ _id: { $in: ids }, ...(active ? ACTIVE_ITEM : {}) }).select("name unit").lean();
+  return new Map(rows.map((row) => [row._id.toString(), { name: row.name, unit: row.unit }]));
+};
 
 export const STOCK_ENTRY_DEPS: StockEntryDeps = {
   connect: async () => {
@@ -89,12 +114,20 @@ export const STOCK_ENTRY_DEPS: StockEntryDeps = {
   findByRef: (clientRef) => StockEntry.findOne({ clientRef }).lean() as Promise<StoredEntry | null>,
   findActiveItem: (id) => StockItem.findOne({ _id: id, ...ACTIVE_ITEM }).select("name unit qty").lean(),
   findItem: (id) => StockItem.findById(id).select("name unit").lean(),
+  findActiveItems: (ids) => itemInfos(ids, true),
+  findItemInfos: (ids) => itemInfos(ids, false),
+  findActiveSupplier: (id) => Supplier.findOne({ _id: id, ...ACTIVE_ITEM }).select("name").lean(),
+  findSupplierNames: async (ids) => {
+    const rows = await Supplier.find({ _id: { $in: ids } }).select("name").lean();
+    return new Map(rows.map((row) => [row._id.toString(), row.name]));
+  },
   insert: async (doc) => {
     // The unique clientRef index must exist before the insert (modelReady), or two racing taps could both land.
     await modelReady(StockEntry);
     return (await StockEntry.create(doc)).toObject() as StoredEntry;
   },
   move: (lines, sign) => moveStock(lines, sign),
+  receive: (lines) => receiveStock(lines),
   softDelete: (id, deletedBy, now) =>
     StockEntry.findOneAndUpdate({ _id: id, ...ACTIVE_STOCK_ENTRY }, { $set: { deletedAt: now, deletedBy } }, { new: true })
       .select("lines")
@@ -108,15 +141,19 @@ const infoMap = (id: string, info: StockEntryItemInfo | null): Map<string, Stock
 // entry and never a second stock move. It is only a replay when it is the SAME account sending the SAME entry to a
 // row that still counts; an edited re-send (same sheet, same ref) or a ref of a deleted row answers 409 instead.
 async function replayOf(first: StoredEntry, cmd: StockEntryCommand, deps: StockEntryDeps): Promise<CreateStockEntryResult> {
-  const line = first.lines?.[0];
   let same =
     !first.deletedAt &&
     first.createdById === cmd.createdById &&
     first.kind === cmd.kind &&
     first.date === cmd.date &&
-    (first.note ?? "") === (cmd.note ?? "") &&
-    line !== undefined &&
-    line.itemId.toString() === cmd.itemId;
+    (first.note ?? "") === (cmd.note ?? "");
+  if (cmd.kind === "purchase") {
+    if (!same || !purchaseSameAs(first, cmd)) return refuse(CONFLICT_STATUS, STOCK_ENTRY_ALREADY_SAVED_ERROR);
+    const items = await deps.findItemInfos(cmd.lines.map((l) => l.itemId));
+    return { ok: true, row: first, items, suppliers: await deps.findSupplierNames(cmd.supplierId ? [cmd.supplierId] : []), replay: true };
+  }
+  const line = first.lines?.[0];
+  same = same && line !== undefined && line.itemId.toString() === cmd.itemId;
   if (same && cmd.kind === "waste") same = line?.qty === -cmd.qtyMilli && first.reason === cmd.reason;
   if (same && cmd.kind === "count") same = line?.counted === cmd.countedMilli;
   if (!same) return refuse(CONFLICT_STATUS, STOCK_ENTRY_ALREADY_SAVED_ERROR);
@@ -154,7 +191,7 @@ function baseDoc(cmd: StockEntryCommand, lines: NewEntryLine[]): NewEntryDoc {
 // Both kinds: the row lands FIRST (an insert that fails moved nothing, so its retry starts clean; the loser of a
 // same-ref race replays and moves nothing), THEN stock moves by exactly the row's lines. A throw from the move leaves
 // the row in place (never reverted) and says so; a Count fixes the stock number. A line of 0 is never sent.
-async function insertThenMove(doc: NewEntryDoc, cmd: StockEntryCommand, item: ActiveItemRow, deps: StockEntryDeps): Promise<CreateStockEntryResult> {
+async function insertThenMove(doc: NewEntryDoc, cmd: WasteCommand | CountCommand, item: ActiveItemRow, deps: StockEntryDeps): Promise<CreateStockEntryResult> {
   const inserted = await insertEntry(doc, cmd, deps);
   if ("done" in inserted) return inserted.done;
   const lines = doc.lines.filter((line) => line.qty !== 0).map((line) => ({ itemId: line.itemId, qty: line.qty }));
@@ -190,11 +227,45 @@ async function createCount(cmd: CountCommand, deps: StockEntryDeps): Promise<Cre
   return insertThenMove(doc, cmd, item, deps);
 }
 
+// A purchase: the server works out every amount and the total, checks the money (400), that EVERY item and the
+// supplier are active (404), lands the row, and only then moves stock (one bulkWrite). A receive that throws after the
+// row landed leaves the row (never reverted) and says the stock may be off.
+async function createPurchase(cmd: PurchaseCommand, deps: StockEntryDeps): Promise<CreateStockEntryResult> {
+  const sums = purchaseSums(cmd);
+  const moneyError = purchaseMoneyError(sums, cmd.supplierId);
+  if (moneyError) return refuse(BAD_REQUEST_STATUS, moneyError);
+  const items = await deps.findActiveItems(cmd.lines.map((line) => line.itemId));
+  if (cmd.lines.some((line) => !items.has(line.itemId))) return refuse(NOT_FOUND_STATUS, STOCK_ITEM_NOT_FOUND_ERROR);
+  const suppliers = new Map<string, string>();
+  if (cmd.supplierId) {
+    const supplier = await deps.findActiveSupplier(cmd.supplierId);
+    if (!supplier) return refuse(NOT_FOUND_STATUS, SUPPLIER_NOT_FOUND_ERROR);
+    suppliers.set(cmd.supplierId, supplier.name);
+  }
+  const doc: NewEntryDoc = {
+    ...baseDoc(cmd, sums.lines),
+    ...(cmd.supplierId ? { supplierId: cmd.supplierId } : {}),
+    totalPaise: sums.totalPaise,
+    paidPaise: sums.paidPaise,
+    ...(sums.duePaise !== 0 ? { duePaise: sums.duePaise } : {}),
+  };
+  const inserted = await insertEntry(doc, cmd, deps);
+  if ("done" in inserted) return inserted.done;
+  const received = sums.lines.filter((line) => line.qty !== 0).map((line) => ({ itemId: line.itemId, qty: line.qty, ratePaise: line.ratePaise }));
+  try {
+    await deps.receive(received);
+  } catch {
+    return refuse(SERVER_ERROR_STATUS, STOCK_ENTRY_SAVED_STOCK_OFF_ERROR);
+  }
+  return { ok: true, row: inserted.row, items, suppliers };
+}
+
 export async function createStockEntry(cmd: StockEntryCommand, deps: StockEntryDeps = STOCK_ENTRY_DEPS): Promise<CreateStockEntryResult> {
   await deps.connect();
   // A replay must never write anything again: it gets the first row back and moves nothing.
   const existing = await deps.findByRef(cmd.clientRef);
   if (existing) return replayOf(existing, cmd, deps);
+  if (cmd.kind === "purchase") return createPurchase(cmd, deps);
   return cmd.kind === "waste" ? createWaste(cmd, deps) : createCount(cmd, deps);
 }
 
@@ -214,7 +285,8 @@ export async function deleteStockEntry(
   await deps.connect();
   const won = await deps.softDelete(id, deletedBy, now);
   if (!won) return refuse(NOT_FOUND_STATUS, STOCK_ENTRY_NOT_FOUND_ERROR);
-  // A line that changed nothing (a count with no change) is never sent to the move.
+  // A line that changed nothing (a count with no change) is never sent to the move. A deleted purchase takes its
+  // quantities back out, but its items' lastRatePaise is NOT restored: accepted residual, the next purchase sets it.
   const lines = (won.lines ?? []).filter((line) => line.qty !== 0).map((line) => ({ itemId: line.itemId, qty: line.qty }));
   if (lines.length === 0) return { ok: true };
   try {

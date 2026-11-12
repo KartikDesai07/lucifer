@@ -1378,17 +1378,18 @@ test("PIN §6: the doc names prices, item add/edit, archive/restore, CSV import,
   );
 });
 
-test("PIN §6: the doc's role summary lists Categories, Tables Setup, Tables QR codes, Expense categories and Printer setup alongside Staff, Reports and Settings as blocked for staff — the same eight routes ADMIN_ROUTES names", () => {
+test("PIN §6: the doc's role summary lists Categories, Tables Setup, Tables QR codes, Expense categories, Suppliers and Printer setup alongside Staff, Reports and Settings as blocked for staff — the same nine routes ADMIN_ROUTES names", () => {
   const section = sectionSlice("## §6 Staff accounts").replace(/\s+/g, " ");
   assert.match(
     section,
-    /Staff, Reports, Printer setup, Settings, Categories, Tables Setup, Tables QR codes and Expense categories are blocked/i,
-    "§6's role summary must list all eight ADMIN_ROUTES screens by name",
+    /Staff, Reports, Printer setup, Settings, Categories, Tables Setup, Tables QR codes, Expense categories and Suppliers are blocked/i,
+    "§6's role summary must list all nine ADMIN_ROUTES screens by name",
   );
   assert.deepEqual(
     [...ADMIN_ROUTES].sort(),
-    ["/categories", "/expenses/categories", "/printers", "/reports", "/settings", "/staff", "/tables/qr", "/tables/setup"],
-    "ADMIN_ROUTES must still be exactly these eight routes for the doc's role summary to stay true",
+    // Slice 5 of Inventory lite added /inventory/suppliers on purpose (what is owed to each supplier is owner-only).
+    ["/categories", "/expenses/categories", "/inventory/suppliers", "/printers", "/reports", "/settings", "/staff", "/tables/qr", "/tables/setup"],
+    "ADMIN_ROUTES must still be exactly these nine routes for the doc's role summary to stay true",
   );
 });
 

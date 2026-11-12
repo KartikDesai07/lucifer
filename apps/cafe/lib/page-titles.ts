@@ -23,6 +23,7 @@ const PAGE_TITLES: Readonly<Record<string, string>> = {
   "/customers": "Customers",
   "/customers/festival-cards": FESTIVAL_CARDS_TITLE,
   "/inventory": "Inventory",
+  "/inventory/suppliers": "Suppliers",
   "/expenses": "Expenses",
   "/expenses/categories": "Expense categories",
   "/events": "Events",

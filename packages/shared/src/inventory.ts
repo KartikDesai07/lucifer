@@ -180,6 +180,39 @@ export const STOCK_ENTRY_PAGE_MAX = 50;
 /** How many days back an entry may be dated (today is day 0). */
 export const STOCK_ENTRY_BACKDATE_MAX_DAYS = 31;
 
+// ── Suppliers and purchases (Slice 5) ────────────────────────────────────────
+
+export const SUPPLIER_NAME_MAX_LEN = 60;
+export const SUPPLIER_PHONE_MAX_LEN = 20;
+export const SUPPLIER_NOTE_MAX_LEN = 200;
+/** Digits, spaces, "+", "-" and brackets: a phone as people write it. Empty is allowed (no phone). */
+export const SUPPLIER_PHONE_PATTERN = /^[0-9+()\s-]*$/;
+/** Active suppliers one outlet may have: the list is read whole, with no paging. */
+export const SUPPLIERS_MAX = 200;
+/** Lines one purchase may carry, one per stock item. */
+export const PURCHASE_MAX_LINES = 20;
+/**
+ * The most one unit may cost: ₹5,00,000 in paise. With a quantity of at most STOCK_QTY_MAX_MILLI, a line's
+ * qtyMilli × ratePaise stays at or under 5 × 10^15, inside 2^53, so the line amount is worked out exactly.
+ */
+export const STOCK_RATE_MAX_PAISE = 50_000_000;
+/** One purchase's total: at most ₹1,00,00,000 in paise, inside Int32 (it is stored as Int32 paise). */
+export const STOCK_ENTRY_MAX_TOTAL_PAISE = 1_000_000_000;
+
+/**
+ * One purchase line's amount in paise: quantity (integer milli-units of the item's own unit) × the rate of ONE unit
+ * (integer paise), rounded ONCE, half-up. The server stores this and the purchase sheet previews with it, so both
+ * always agree. Exact: the product is an integer under 2^53 and a tie (x.5) divides out exactly.
+ */
+export function purchaseLineAmountPaise(qtyMilli: number, ratePaise: number): number {
+  return Math.round((qtyMilli * ratePaise) / STOCK_QTY_SCALE);
+}
+
+/** A purchase's total in paise: the sum of its rounded line amounts (each line rounds once, never the sum). */
+export function purchaseTotalPaise(lines: readonly { qtyMilli: number; ratePaise: number }[]): number {
+  return lines.reduce((sum, line) => sum + purchaseLineAmountPaise(line.qtyMilli, line.ratePaise), 0);
+}
+
 // ── Stock level ──────────────────────────────────────────────────────────────
 
 export type StockLevel = "out" | "low" | "ok";

@@ -1,13 +1,21 @@
 import { z } from "zod";
 import {
+  PURCHASE_MAX_LINES,
+  STOCK_ENTRY_MAX_TOTAL_PAISE,
   STOCK_ENTRY_NOTE_MAX_LEN,
   STOCK_ENTRY_PAGE_MAX,
   STOCK_ITEM_NAME_MAX_LEN,
   STOCK_QTY_MAX,
   STOCK_QTY_MAX_MILLI,
+  STOCK_RATE_MAX_PAISE,
   STOCK_UNITS,
   STOCK_USE_MAX_LINES,
+  SUPPLIER_NAME_MAX_LEN,
+  SUPPLIER_NOTE_MAX_LEN,
+  SUPPLIER_PHONE_MAX_LEN,
+  SUPPLIER_PHONE_PATTERN,
   WASTE_REASONS,
+  purchaseTotalPaise,
 } from "../inventory";
 import { MAX_VARIATIONS, VARIATION_NAME_MAX_LEN } from "../constants";
 import { expenseDateSchema } from "./expense.schema";
@@ -19,6 +27,12 @@ import { objectIdString } from "./object-id.schema";
 
 const TOO_MUCH = `Enter at most ${STOCK_QTY_MAX.toLocaleString("en-IN")}`;
 const DECIMALS = "Use at most 3 decimal places";
+const PAISE_DECIMALS = "Use at most 2 decimal places";
+const PAISE_PER_RUPEE = 100;
+const TOTAL_TOO_BIG = `A purchase can total at most ₹${(STOCK_ENTRY_MAX_TOTAL_PAISE / PAISE_PER_RUPEE).toLocaleString("en-IN")}`;
+/** Shared with the server's own re-check (lib/inventory), so both refusals read the same. */
+export const PAID_OVER_TOTAL_ERROR = "Paid can't be more than the total";
+export const DUE_NEEDS_SUPPLIER_ERROR = "Pick a supplier for what is still to pay";
 
 const stockItemNameSchema = z
   .string()
@@ -133,7 +147,93 @@ const countEntrySchema = z
   })
   .strict();
 
-export const createStockEntrySchema = z.discriminatedUnion("kind", [wasteEntrySchema, countEntrySchema]);
+// Slice 5: a purchase (admin) adds each line's quantity to stock and records what it cost. Quantities are integer
+// milli-units of the item's own unit; `ratePaise` is what ONE unit cost, in integer paise (0 = free goods). Line
+// amounts and the total are worked out with purchaseLineAmountPaise / purchaseTotalPaise (the server stores its own
+// sums, never a client's). `paidPaise` is what was paid now; total - paid is owed to the supplier, so anything left
+// to pay needs `supplierId`. The route checks the date window and that the supplier and every item are active.
+const purchaseLineSchema = z
+  .object({
+    itemId: objectIdString,
+    qtyMilli: z.number().int(DECIMALS).min(1, "Enter an amount above 0").max(STOCK_QTY_MAX_MILLI, TOO_MUCH),
+    ratePaise: z
+      .number()
+      .int(PAISE_DECIMALS)
+      .min(0, "Enter 0 or more")
+      .max(STOCK_RATE_MAX_PAISE, `Enter at most ₹${(STOCK_RATE_MAX_PAISE / PAISE_PER_RUPEE).toLocaleString("en-IN")}`),
+  })
+  .strict();
+
+const purchaseEntrySchema = z
+  .object({
+    kind: z.literal("purchase"),
+    supplierId: objectIdString.optional(),
+    date: expenseDateSchema,
+    lines: z
+      .array(purchaseLineSchema)
+      .min(1, "Add at least one stock item")
+      .max(PURCHASE_MAX_LINES, `A purchase can have at most ${PURCHASE_MAX_LINES} stock items`)
+      .refine((lines) => new Set(lines.map((l) => l.itemId)).size === lines.length, "A stock item is listed twice"),
+    paidPaise: z.number().int(PAISE_DECIMALS).min(0, "Enter 0 or more").max(STOCK_ENTRY_MAX_TOTAL_PAISE, TOTAL_TOO_BIG),
+    note: stockEntryNoteSchema.optional(),
+    clientRef: z.string().uuid(),
+  })
+  .strict();
+
+// The money rules of a purchase need the whole body, so they sit on the union (a discriminatedUnion member must be a
+// plain object). The server re-checks all three with its own sums.
+export const createStockEntrySchema = z
+  .discriminatedUnion("kind", [wasteEntrySchema, countEntrySchema, purchaseEntrySchema])
+  .superRefine((entry, ctx) => {
+    if (entry.kind !== "purchase") return;
+    const total = purchaseTotalPaise(entry.lines);
+    if (total > STOCK_ENTRY_MAX_TOTAL_PAISE) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["lines"], message: TOTAL_TOO_BIG });
+    } else if (entry.paidPaise > total) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["paidPaise"], message: PAID_OVER_TOTAL_ERROR });
+    } else if (entry.paidPaise < total && entry.supplierId === undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["supplierId"], message: DUE_NEEDS_SUPPLIER_ERROR });
+    }
+  });
+
+// Slice 5: suppliers (admin). A phone or note of "" is none. On PATCH, `phone` / `note` of null or "" clears it, and
+// `archived` can only be set (the server refuses it while the supplier still has dues either way).
+const supplierNameSchema = z
+  .string()
+  .trim()
+  .min(1, "Name the supplier")
+  .max(SUPPLIER_NAME_MAX_LEN, `Keep the name to ${SUPPLIER_NAME_MAX_LEN} characters or fewer`);
+
+const supplierPhoneSchema = z
+  .string()
+  .trim()
+  .max(SUPPLIER_PHONE_MAX_LEN, `Keep the phone to ${SUPPLIER_PHONE_MAX_LEN} characters or fewer`)
+  .regex(SUPPLIER_PHONE_PATTERN, "Use digits, spaces, + or - only");
+
+const supplierNoteSchema = z
+  .string()
+  .trim()
+  .max(SUPPLIER_NOTE_MAX_LEN, `Keep the note to ${SUPPLIER_NOTE_MAX_LEN} characters or fewer`);
+
+export const createSupplierSchema = z
+  .object({
+    name: supplierNameSchema,
+    phone: supplierPhoneSchema.optional(),
+    note: supplierNoteSchema.optional(),
+  })
+  .strict();
+
+export const updateSupplierSchema = z
+  .object({
+    name: supplierNameSchema.optional(),
+    phone: supplierPhoneSchema.nullable().optional(),
+    note: supplierNoteSchema.nullable().optional(),
+    archived: z.literal(true).optional(),
+  })
+  .strict();
+
+export type CreateSupplierInput = z.infer<typeof createSupplierSchema>;
+export type UpdateSupplierInput = z.infer<typeof updateSupplierSchema>;
 
 /**
  * The entries list's page cursor: the last row's "<date>_<id>" (the list is sorted by date, then id, newest first).
@@ -152,6 +252,8 @@ export const stockEntryListQuerySchema = z
 export type CreateStockEntryInput = z.infer<typeof createStockEntrySchema>;
 export type WasteEntryInput = Extract<CreateStockEntryInput, { kind: "waste" }>;
 export type CountEntryInput = Extract<CreateStockEntryInput, { kind: "count" }>;
+export type PurchaseEntryInput = Extract<CreateStockEntryInput, { kind: "purchase" }>;
+export type PurchaseLineInput = PurchaseEntryInput["lines"][number];
 export type StockEntryListQuery = z.infer<typeof stockEntryListQuerySchema>;
 
 export type StockUseInput = z.infer<typeof stockUseSchema>;

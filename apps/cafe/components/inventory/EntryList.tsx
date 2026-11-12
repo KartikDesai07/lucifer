@@ -15,7 +15,7 @@ import {
   SETTINGS_HUB_ROW_TITLE_CLASS,
   SETTINGS_REMOVE_BUTTON_CLASS,
 } from "@/lib/settings-card-layout";
-import { cn } from "@/lib/utils";
+import { cn, inrPaise } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
@@ -42,22 +42,32 @@ function titleOf(entry: StockEntryDto): string {
   return names === "" ? KIND_LABEL[entry.kind] : `${KIND_LABEL[entry.kind]}${SEPARATOR}${names}`;
 }
 
+// A purchase: who it was from, what it cost, and what is still owed on it.
+function purchaseParts(entry: StockEntryDto): string[] {
+  const owed = entry.duePaise !== undefined && entry.duePaise > 0 ? [`${inrPaise(entry.duePaise)} to pay`] : [];
+  return [entry.supplierName ?? "", entry.totalPaise === undefined ? "" : inrPaise(entry.totalPaise), ...owed];
+}
+
 function subLineOf(entry: StockEntryDto): string {
+  if (entry.kind === "purchase") return [shortDate(entry.date), ...purchaseParts(entry), `by ${entry.createdBy}`].filter((part) => part !== "").join(SEPARATOR);
   const counted = entry.lines.flatMap((l) => (l.countedMilli === undefined ? [] : [`Counted ${formatQty(l.countedMilli, l.unit)}`])).join(", ");
   const what = entry.kind === "count" ? counted : (entry.reason ?? "");
   return [shortDate(entry.date), what, `by ${entry.createdBy}`].filter((part) => part !== "").join(SEPARATOR);
 }
 
-// What deleting does to stock, per line: a wastage's amount goes back in; a count's change is undone.
+// What deleting does to stock, per line: a purchase's amount comes back out; a wastage's goes back in; a count's change is undone.
 function undoSentence(entry: StockEntryDto, line: StockEntryLineDto): string {
   if (line.qtyMilli === 0) return `${line.name}'s stock does not change.`;
+  if (entry.kind === "purchase") return `${formatQty(Math.abs(line.qtyMilli), line.unit)} comes out of ${line.name}'s stock.`;
   if (entry.kind === "waste") return `${formatQty(Math.abs(line.qtyMilli), line.unit)} goes back into ${line.name}'s stock.`;
   return `${line.name}'s stock moves back by ${entryChangeText({ ...line, qtyMilli: -line.qtyMilli })}.`;
 }
 
 function deleteDescription(entry: StockEntryDto): string {
-  if (entry.lines.length === 0) return "It leaves the history. Stock does not change.";
-  return entry.lines.map((l) => undoSentence(entry, l)).join(" ");
+  const stock = entry.lines.length === 0 ? ["It leaves the history. Stock does not change."] : entry.lines.map((l) => undoSentence(entry, l));
+  // A purchase also took what was unpaid onto the supplier's dues; deleting it removes that too.
+  const owed = entry.duePaise !== undefined && entry.duePaise > 0 ? [`${inrPaise(entry.duePaise)} owed to ${entry.supplierName ?? "the supplier"} is removed.`] : [];
+  return [...stock, ...owed].join(" ");
 }
 
 function EntryListSkeleton() {
@@ -70,7 +80,7 @@ function EntryListSkeleton() {
   );
 }
 
-// The admin's history of wastage and counts, newest first, a page at a time. Deleting an entry takes its stock change
+// The admin's history of purchases, wastage and counts, newest first, a page at a time. Deleting an entry takes its stock change
 // back out (once; the server guards a double tap), after a confirm that says what happens to stock.
 export function EntryList() {
   const entries = useStockEntries(true);
@@ -103,8 +113,8 @@ export function EntryList() {
     return (
       <EmptyState
         icon={<History className="h-8 w-8" />}
-        title="No wastage or counts yet"
-        description="Log wastage or count stock and it shows here."
+        title="No entries yet"
+        description="Purchases, wastage and counts show here."
       />
     );
   }

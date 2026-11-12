@@ -66,10 +66,12 @@ test("PIN auth: GET and DELETE are admin only; POST takes any signed-in account"
   assert.ok(del.includes("await " + REQUIRE_ADMIN) && !del.includes(REQUIRE_AUTH), "DELETE: requireAdmin");
 });
 
-test("PIN POST: the staff-count 403 comes after the parse and BEFORE the date check and any createStockEntry call", () => {
+// Slice 5: the gate is deny-by-default. Only a wastage is open to staff; a count AND a purchase (money) need an admin.
+test("PIN POST: the non-wastage 403 comes after the parse and BEFORE the date check and any createStockEntry call", () => {
   const post = handlerBody(read(LIST_ROUTE), "POST");
   const parse = at(post, "await validateBody(req, createStockEntrySchema)", "the body parse");
-  const gate = at(post, 'parsed.data.kind === "count" && user.role !== "admin"', "the count gate");
+  const gate = at(post, 'parsed.data.kind !== "waste" && user.role !== "admin"', "the deny-by-default gate");
+  assert.equal(post.includes('kind === "count"'), false, "the old count-only gate is gone (a new kind would be open to staff)");
   const refusal = at(post, 'failure("Admin access required", 403)', "the 403", gate);
   const date = at(post, "stockEntryDateError(", "the date check");
   const call = at(post, "await " + CREATE_CALL, "the write call");
@@ -111,7 +113,8 @@ test("PIN create order: the clientRef pre-read comes first; both kinds land thei
     assert.equal(body.includes("deps.move("), false, `${name} never moves stock itself`);
   }
   assert.equal(src.split("deps.move(").length - 1, 2, "exactly two move calls: insertThenMove and the delete reversal");
-  assert.equal(src.split("insertEntry(").length - 1, 2, "insertEntry is defined once and called once");
+  // Slice 5: the purchase writer is the third caller (waste and count share insertThenMove).
+  assert.equal(src.split("insertEntry(").length - 1, 3, "insertEntry is defined once and called twice: insertThenMove and createPurchase");
 });
 
 test("PIN delete: the soft-delete CAS filter spreads ACTIVE_STOCK_ENTRY, and the reversal runs after it with ENTRY_REVERSE", () => {
@@ -139,13 +142,16 @@ test("PIN read: the list select never carries clientRef or createdById, and filt
   const sel = at(src, '.select("', "the list select");
   const selectText = src.slice(sel, src.indexOf('")', sel));
   assert.ok(selectText.includes("kind date lines"), "landmark: this is the list select");
-  for (const banned of ["client" + "Ref", "createdBy" + "Id", "deleted", "supplier", "Paise"]) {
+  // Slice 5: the list is admin-only, so the supplier and the money of a purchase ARE selected; the identity and delete keys never.
+  assert.ok(selectText.includes("supplierId totalPaise paidPaise duePaise"), "landmark: the purchase fields are selected");
+  for (const banned of ["client" + "Ref", "createdBy" + "Id", "deleted"]) {
     assert.equal(selectText.includes(banned), false, `select must not carry ${banned}`);
   }
   assert.ok(src.includes("{ ...ACTIVE_STOCK_ENTRY, ...entryCursorFilter(options.before) }"), "deleted entries never listed");
   const dto = src.slice(at(src, "export function toStockEntryDto(", "the DTO"), at(src, "export function stockEntryDateWindow(", "next export"));
   assert.ok(dto.includes("qtyMilli: line.qty"), "landmark: the DTO maps the line");
-  for (const banned of ["client" + "Ref", "createdBy" + "Id", "deleted" + "At", "supplier" + "Id"]) {
+  assert.ok(dto.includes("supplierName"), "landmark: the DTO carries the supplier name (Slice 5)");
+  for (const banned of ["client" + "Ref", "createdBy" + "Id", "deleted" + "At"]) {
     assert.equal(dto.includes(banned), false, `the DTO never reads ${banned}`);
   }
 });

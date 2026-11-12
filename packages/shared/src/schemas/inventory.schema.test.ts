@@ -1,19 +1,29 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  DUE_NEEDS_SUPPLIER_ERROR,
+  PAID_OVER_TOTAL_ERROR,
   createStockEntrySchema,
   createStockItemSchema,
+  createSupplierSchema,
   ownStockSchema,
   stockEntryListQuerySchema,
   stockUseSchema,
   updateStockItemSchema,
+  updateSupplierSchema,
 } from "./inventory.schema";
 import {
+  PURCHASE_MAX_LINES,
+  STOCK_ENTRY_MAX_TOTAL_PAISE,
   STOCK_ENTRY_NOTE_MAX_LEN,
   STOCK_ENTRY_PAGE_MAX,
   STOCK_ITEM_NAME_MAX_LEN,
   STOCK_QTY_MAX_MILLI,
+  STOCK_RATE_MAX_PAISE,
   STOCK_USE_MAX_LINES,
+  SUPPLIER_NAME_MAX_LEN,
+  SUPPLIER_NOTE_MAX_LEN,
+  SUPPLIER_PHONE_MAX_LEN,
   WASTE_REASONS,
 } from "../inventory";
 import { MAX_VARIATIONS } from "../constants";
@@ -150,7 +160,8 @@ test("createStockEntrySchema refuses a wastage of 0, a float, an over-cap amount
 test("createStockEntrySchema keeps each kind's own keys: no reason on a count, no countedMilli on a wastage", () => {
   assert.equal(createStockEntrySchema.safeParse({ ...count, reason: "Spoiled" }).success, false);
   assert.equal(createStockEntrySchema.safeParse({ ...waste, countedMilli: 5 }).success, false);
-  assert.equal(createStockEntrySchema.safeParse({ ...waste, kind: "purchase" }).success, false, "purchases ship later");
+  assert.equal(createStockEntrySchema.safeParse({ ...waste, kind: "purchase" }).success, false, "a purchase has its own keys");
+  assert.equal(createStockEntrySchema.safeParse({ ...waste, kind: "payment" }).success, false, "payments ship later (Slice 6)");
   assert.equal(createStockEntrySchema.safeParse({ ...waste, createdBy: "Someone" }).success, false);
 });
 
@@ -172,4 +183,95 @@ test("stockEntryListQuerySchema takes a server cursor and a limit up to one page
   assert.equal(stockEntryListQuerySchema.safeParse({ before: ITEM }).success, false);
   assert.equal(stockEntryListQuerySchema.safeParse({ before: `2026-11-13_${ITEM.toUpperCase()}x` }).success, false);
   assert.equal(stockEntryListQuerySchema.safeParse({ before: { $gt: "" } }).success, false);
+});
+
+// Inventory lite Slice 5: a purchase (admin) and the supplier bodies.
+
+const SUPPLIER = "665f00000000000000000009";
+const ITEM_2 = "665f00000000000000000002";
+// 2.5 kg at Rs 40.10 = Rs 100.25; 3 pcs at Rs 12 = Rs 36: total 13625 paise.
+const purchase = {
+  kind: "purchase",
+  supplierId: SUPPLIER,
+  date: "2026-11-13",
+  lines: [
+    { itemId: ITEM, qtyMilli: 2500, ratePaise: 4010 },
+    { itemId: ITEM_2, qtyMilli: 3000, ratePaise: 1200 },
+  ],
+  paidPaise: 13625,
+  clientRef: REF,
+};
+const PURCHASE_TOTAL = 13625;
+const { supplierId: _noSupplier, ...purchaseNoSupplier } = purchase;
+
+const issueAt = (body: unknown, key: string): string | undefined => {
+  const parsed = createStockEntrySchema.safeParse(body);
+  if (parsed.success) return undefined;
+  return parsed.error.issues.find((issue) => issue.path[0] === key)?.message;
+};
+
+test("createStockEntrySchema accepts a purchase paid in full, in part with a supplier, and a free line", () => {
+  assert.equal(createStockEntrySchema.safeParse(purchase).success, true);
+  assert.equal(createStockEntrySchema.safeParse(purchaseNoSupplier).success, true, "paid in full needs no supplier");
+  assert.equal(createStockEntrySchema.safeParse({ ...purchase, paidPaise: 0 }).success, true, "nothing paid, all owed");
+  assert.equal(createStockEntrySchema.safeParse({ ...purchase, paidPaise: 5000, note: "Bill 42" }).success, true);
+  const free = { ...purchaseNoSupplier, lines: [{ itemId: ITEM, qtyMilli: 1000, ratePaise: 0 }], paidPaise: 0 };
+  assert.equal(createStockEntrySchema.safeParse(free).success, true, "free goods: rate 0, total 0, nothing owed");
+});
+
+test("createStockEntrySchema: paid over the total, or anything owed without a supplier, is refused", () => {
+  assert.equal(issueAt({ ...purchase, paidPaise: PURCHASE_TOTAL + 1 }, "paidPaise"), PAID_OVER_TOTAL_ERROR);
+  assert.equal(issueAt({ ...purchaseNoSupplier, paidPaise: PURCHASE_TOTAL - 1 }, "supplierId"), DUE_NEEDS_SUPPLIER_ERROR);
+  assert.equal(issueAt({ ...purchaseNoSupplier, paidPaise: 0 }, "supplierId"), DUE_NEEDS_SUPPLIER_ERROR);
+  assert.equal(createStockEntrySchema.safeParse({ ...purchase, supplierId: "abc" }).success, false);
+});
+
+test("createStockEntrySchema: purchase lines need 1..max unique items, qty above 0, whole paise within the caps", () => {
+  const line = purchase.lines[0];
+  const idOf = (i: number) => (0x665f0000 + i).toString(16).padEnd(24, "0");
+  const many = Array.from({ length: PURCHASE_MAX_LINES + 1 }, (_, i) => ({ ...line, itemId: idOf(i) }));
+  assert.equal(createStockEntrySchema.safeParse({ ...purchase, lines: [] }).success, false);
+  assert.equal(createStockEntrySchema.safeParse({ ...purchase, lines: many, paidPaise: 0 }).success, false);
+  assert.equal(createStockEntrySchema.safeParse({ ...purchase, lines: many.slice(0, PURCHASE_MAX_LINES), paidPaise: 0 }).success, true);
+  assert.equal(createStockEntrySchema.safeParse({ ...purchase, lines: [line, line], paidPaise: 0 }).success, false, "an item twice");
+  const bads = [{ qtyMilli: 0 }, { qtyMilli: 1.5 }, { qtyMilli: STOCK_QTY_MAX_MILLI + 1 }, { ratePaise: -1 }, { ratePaise: 10.5 }, { ratePaise: STOCK_RATE_MAX_PAISE + 1 }];
+  for (const bad of bads) {
+    assert.equal(createStockEntrySchema.safeParse({ ...purchase, lines: [{ ...line, ...bad }], paidPaise: 0 }).success, false, JSON.stringify(bad));
+  }
+  assert.equal(createStockEntrySchema.safeParse({ ...purchase, lines: [{ ...line, amountPaise: 1 }] }).success, false, "no client amounts");
+  assert.equal(createStockEntrySchema.safeParse({ ...purchase, totalPaise: PURCHASE_TOTAL }).success, false, "no client total");
+  assert.equal(createStockEntrySchema.safeParse({ ...purchase, paidPaise: 10.5 }).success, false);
+  assert.equal(createStockEntrySchema.safeParse({ ...purchase, paidPaise: -1 }).success, false);
+});
+
+test("createStockEntrySchema: a purchase over the total cap is refused on its lines", () => {
+  // Two lines at the per-unit cap: one alone fits under the total cap, the two together pass it.
+  const qtyMilli = Math.ceil(((STOCK_ENTRY_MAX_TOTAL_PAISE / 2 + 1) * 1000) / STOCK_RATE_MAX_PAISE);
+  const lines = [
+    { itemId: ITEM, qtyMilli, ratePaise: STOCK_RATE_MAX_PAISE },
+    { itemId: ITEM_2, qtyMilli, ratePaise: STOCK_RATE_MAX_PAISE },
+  ];
+  assert.ok(issueAt({ ...purchase, lines, paidPaise: 0 }, "lines")?.includes("at most"), "the total cap names the limit");
+  assert.equal(createStockEntrySchema.safeParse({ ...purchase, lines: lines.slice(0, 1), paidPaise: 0 }).success, true);
+});
+
+test("createSupplierSchema / updateSupplierSchema: name, phone and note shapes; strict keys", () => {
+  assert.equal(createSupplierSchema.safeParse({ name: "Fresh Dairy" }).success, true);
+  assert.equal(createSupplierSchema.safeParse({ name: "Fresh Dairy", phone: "+91 98765-43210", note: "Comes Mon" }).success, true);
+  assert.equal(createSupplierSchema.safeParse({ name: "Fresh Dairy", phone: "" }).success, true, "empty phone = none");
+  assert.equal(createSupplierSchema.safeParse({ name: "   " }).success, false);
+  assert.equal(createSupplierSchema.safeParse({ name: "x".repeat(SUPPLIER_NAME_MAX_LEN + 1) }).success, false);
+  assert.equal(createSupplierSchema.safeParse({ name: "A", phone: "call me" }).success, false);
+  assert.equal(createSupplierSchema.safeParse({ name: "A", phone: "9".repeat(SUPPLIER_PHONE_MAX_LEN + 1) }).success, false);
+  assert.equal(createSupplierSchema.safeParse({ name: "A", note: "x".repeat(SUPPLIER_NOTE_MAX_LEN + 1) }).success, false);
+  assert.equal(createSupplierSchema.safeParse({ name: "A", duePaise: 0 }).success, false, "no stored dues");
+  const trimmed = createSupplierSchema.safeParse({ name: "  Fresh Dairy  " });
+  assert.ok(trimmed.success && trimmed.data.name === "Fresh Dairy");
+
+  assert.equal(updateSupplierSchema.safeParse({}).success, true);
+  assert.equal(updateSupplierSchema.safeParse({ phone: null, note: null }).success, true, "null clears");
+  assert.equal(updateSupplierSchema.safeParse({ archived: true }).success, true);
+  assert.equal(updateSupplierSchema.safeParse({ archived: false }).success, false, "no un-archive yet");
+  assert.equal(updateSupplierSchema.safeParse({ name: "" }).success, false);
+  assert.equal(updateSupplierSchema.safeParse({ duePaise: 0 }).success, false);
 });

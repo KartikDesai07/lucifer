@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import { NOW_SERVING_PATH } from "@/components/now-serving/NowServingLink";
 import { DASHBOARD_KEYS } from "@/hooks/use-dashboard";
 import { EXPENSE_KEYS } from "@/hooks/use-expenses";
+import { INVENTORY_KEYS } from "@/hooks/use-inventory";
 import { PRINT_DEVICES_KEYS } from "@/hooks/use-print-setup";
 import { REPORT_KEYS } from "@/hooks/use-reports";
 import { STAFF_KEYS } from "@/hooks/use-staff";
@@ -178,6 +179,9 @@ describe("person-scoped queries", () => {
         EXPENSE_KEYS.all[0],
         TELEGRAM_KEYS.status[0],
         PRINT_DEVICES_KEYS.all[0],
+        // Review s117 (LOW): the stock list carries an admin's last purchase rate, and History / Suppliers carry
+        // purchase money, so a PIN switch to staff must drop the whole inventory family.
+        INVENTORY_KEYS.all[0],
       ],
       "roots follow the hook keys",
     );
