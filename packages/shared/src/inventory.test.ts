@@ -10,6 +10,7 @@ import {
   STOCK_UNIT_LABEL,
   STOCK_USE_MAX_LINES,
   compatibleUnits,
+  convertMilli,
   convertToMilli,
   formatQty,
   isStockUnit,
@@ -94,6 +95,18 @@ test("convertToMilli across groups is null", () => {
   assert.equal(convertToMilli(1, "ml", "g"), null);
   assert.equal(convertToMilli(1, "pcs", "packet"), null);
   assert.equal(convertToMilli(1, "box", "bottle"), null);
+});
+
+test("convertMilli: milli-units of one unit to milli-units of another in the same group, rounded once", () => {
+  assert.equal(convertMilli(150000, "ml", "L"), 150); // 150 ml of a litre item
+  assert.equal(convertMilli(150, "L", "ml"), 150000); // and back, for the editor
+  assert.equal(convertMilli(10000, "g", "kg"), 10);
+  assert.equal(convertMilli(1500, "kg", "g"), 1500000);
+  assert.equal(convertMilli(2500, "pcs", "pcs"), 2500);
+  assert.equal(convertMilli(500, "ml", "L"), 1); // half a milli-litre rounds up to 1
+  assert.equal(convertMilli(400, "ml", "L"), 0); // under half rounds to 0: the caller refuses it
+  assert.equal(convertMilli(1, "kg", "L"), null);
+  assert.equal(convertMilli(1, "pcs", "packet"), null);
 });
 
 test("compatibleUnits: same group in list order", () => {

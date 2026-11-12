@@ -115,6 +115,16 @@ export function convertToMilli(qty: number, from: StockUnit, to: StockUnit): num
   return Math.round(milli + Number.EPSILON);
 }
 
+/**
+ * Integer milli-units of `from` → integer milli-units of `to` (a recipe typed in ml, stored against a litre item),
+ * or null across groups. Integer × integer ÷ integer, rounded ONCE: 150000 milli-ml → 150 milli-L. Used both ways:
+ * the server stores in the item's unit, the item editor shows a stored amount back in the unit a person reads.
+ */
+export function convertMilli(milli: number, from: StockUnit, to: StockUnit): number | null {
+  if (STOCK_UNIT_GROUP[from] !== STOCK_UNIT_GROUP[to]) return null;
+  return Math.round((milli * STOCK_UNIT_FACTOR[from]) / STOCK_UNIT_FACTOR[to] + Number.EPSILON);
+}
+
 /** Units a recipe may use for an item counted in `unit`: its group, in list order. */
 export function compatibleUnits(unit: StockUnit): StockUnit[] {
   const group = STOCK_UNIT_GROUP[unit];

@@ -77,7 +77,7 @@ export function InventoryView() {
           title="No stock items yet"
           description={
             isAdmin
-              ? "Add what you keep in stock, like milk, sugar or packets of chips, and how much you have now."
+              ? "Add what you keep in stock, like milk, sugar or packets of chips. Then open Menu, edit an item and set its Stock use."
               : "The owner adds stock items here."
           }
           action={isAdmin ? <div className="mt-2 flex w-full max-w-xs">{addButton()}</div> : undefined}

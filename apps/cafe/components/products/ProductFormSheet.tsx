@@ -26,6 +26,7 @@ import { EditorField } from "@/components/products/EditorField";
 import { ItemEditorFooter, ItemEditorFrame } from "@/components/products/ItemEditorFrame";
 import { ItemSwitchesField } from "@/components/products/ItemSwitchesCard";
 import { ItemArchiveLink } from "@/components/products/ItemArchiveLink";
+import { StockUseField } from "@/components/products/StockUseField";
 import { PriceModeField } from "@/components/products/PriceModeField";
 import { ModifierInput } from "@/components/products/ModifierInput";
 import { ProductArtField } from "@/components/products/ProductArtField";
@@ -262,6 +263,8 @@ export function ProductFormSheet({
       </EditorField>
 
       <KitchenTicketField control={control} categories={categories} />
+
+      <StockUseField product={product} onLeave={() => onOpenChange(false)} />
 
       {product && onArchive && onRestore && (
         <ItemArchiveLink product={product} onArchive={onArchive} onRestore={onRestore} restoring={restoring} />
