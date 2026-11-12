@@ -84,8 +84,8 @@ test("moreItemsFor(staff): every page staff may open that is not a tab, in the n
   const staff = moreItemsFor("staff", false);
   assert.deepEqual(
     staff.map((m) => m.url),
-    ["/requests", "/kitchen", "/reservations", "/products", "/customers", "/expenses", "/events"],
-    "Order Requests, Kitchen, Reservations, Menu, Customers, Expenses, Events",
+    ["/requests", "/kitchen", "/reservations", "/products", "/inventory", "/customers", "/expenses", "/events"],
+    "Order Requests, Kitchen, Reservations, Menu, Inventory, Customers, Expenses, Events",
   );
   for (const url of ADMIN_ONLY_URLS) assert.ok(!staff.some((m) => m.url === url), `staff never see ${url}`);
   assert.ok(!staff.some((m) => m.url === "/now-serving"), "Now Serving only while tokens are on");

@@ -69,11 +69,11 @@ test("PIN: Operate lists Home, Floor, Order, Orders, Order Requests, Kitchen, No
   assert.ok(rows.every((r) => !r.adminOnly), "every Operate row is open to every role");
 });
 
-test("PIN: Manage lists Menu, Tables, Customers, Expenses, Events, Staff, Reports, Printer setup, Settings", () => {
+test("PIN: Manage lists Menu, Inventory, Tables, Customers, Expenses, Events, Staff, Reports, Printer setup, Settings", () => {
   const rows = rowsOf(readSrc(APP_SIDEBAR), "Manage");
   assert.deepEqual(
     rows.map((r) => r.title),
-    ["Menu", "Tables", "Customers", "Expenses", "Events", "Staff", "Reports", "Printer setup", "Settings"],
+    ["Menu", "Inventory", "Tables", "Customers", "Expenses", "Events", "Staff", "Reports", "Printer setup", "Settings"],
     "Manage's rows in the design's order",
   );
   assert.deepEqual(

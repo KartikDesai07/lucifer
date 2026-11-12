@@ -34,12 +34,13 @@ const GLOBALS_CSS = "apps/cafe/app/globals.css";
  *  scan at all (see the Menu-group test below, which reads MENU_SECTIONS
  *  directly instead). */
 const ADMIN_ONLY_URLS = ["/printers", "/reports", "/settings", "/staff", "/tables/setup"];
-const NAV_ENTRY_COUNT = 17;
+const NAV_ENTRY_COUNT = 18;
 
+// 2026-11-10: Inventory (Manage, open to every role) became the 18th flat row.
 // 2026-10-10: Expenses (Manage, open to every role) became the 17th flat row.
 // 2026-10-02: Floor (Service) and Printer setup (Admin, above Settings) became
 // flat rows; the Tables row (Setup + QR codes) became admin-only.
-test("PIN: the sidebar lists all 17 flat screens once each, and exactly Staff, Reports, Printer setup, Settings and the Tables (Setup / QR) row are admin-only", () => {
+test("PIN: the sidebar lists all 18 flat screens once each, and exactly Staff, Reports, Printer setup, Settings and the Tables (Setup / QR) row are admin-only", () => {
   const src = stripComments(readSrc(APP_SIDEBAR));
   const entries = [...src.matchAll(/\{\s*title:\s*"([^"]+)",\s*url:\s*"([^"]+)"[^}]*\}/g)].map((m) => ({
     title: m[1],

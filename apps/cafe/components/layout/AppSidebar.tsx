@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { AppLink } from "@/components/layout/AppLink";
 import { usePathname } from "next/navigation";
-import { ChevronRight, Inbox, Users, PartyPopper, UserCog, Armchair, Printer, Tv, Wallet } from "lucide-react";
+import { Boxes, ChevronRight, Inbox, Users, PartyPopper, UserCog, Armchair, Printer, Tv, Wallet } from "lucide-react";
 
 import { useAuth } from "@/hooks/use-auth";
 import { useWarmRoutes } from "@/hooks/use-warm-routes";
@@ -95,10 +95,10 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Manage",
     items: [
       { title: "Menu", url: "/products", icon: NavMenu },
+      { title: "Inventory", url: "/inventory", icon: Boxes }, // every role sees stock; editing is admin-only in the page
       { title: "Tables", url: "/tables/setup", icon: Armchair, adminOnly: true },
       { title: "Customers", url: "/customers", icon: Users },
-      // Open to every role: staff add an expense and see their own from today;
-      // the full list, categories and the report stay admin-only inside the page.
+      // Every role: staff add an expense and see their own from today; list, categories, report stay admin-only.
       { title: "Expenses", url: "/expenses", icon: Wallet },
       { title: "Events", url: "/events", icon: PartyPopper },
       { title: "Staff", url: "/staff", icon: UserCog, adminOnly: true },

@@ -66,7 +66,8 @@
     "verify:kitchen-order:live": "node --import tsx scripts/verify-kitchen-order-live.ts",
     "verify:expenses:live": "node --import tsx scripts/verify-expenses-live.ts",
     "verify:staff-pin:live": "node --import tsx scripts/verify-staff-pin-live.ts",
-    "verify:inventory:live": "node --import tsx scripts/verify-inventory-live.ts"
+    "verify:inventory:live": "node --import tsx scripts/verify-inventory-live.ts",
+    "verify:inventory:items:live": "node --import tsx scripts/verify-inventory-items-live.ts"
   },
   "testChain": [
     "lib/health-region.test.ts",
@@ -702,7 +703,12 @@
     "lib/pulse-cadence-now.test.ts",
     "lib/inventory/stock-use.test.ts",
     "lib/inventory/inventory-core-paths.test.ts",
-    "models/inventory-models.test.ts"
+    "models/inventory-models.test.ts",
+    "lib/inventory/items.test.ts",
+    "lib/inventory/inventory-items-paths.test.ts",
+    "lib/inventory/stock-view.test.ts",
+    "lib/inventory/stock-item-form.test.ts",
+    "lib/inventory/inventory-ui-paths.test.ts"
   ],
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
