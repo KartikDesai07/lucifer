@@ -1,4 +1,5 @@
 import type { PrinterCoverState, PrinterPaperState } from "@pos/shared/print-failover";
+import { withLaneWrites } from "@/lib/printer/lane-writes";
 import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE, type PrinterStatus } from "@/lib/printer/web-printer-types";
 
 // Printing redesign, Phase 3 Session 3E (spec §9.6): the network printers the Windows app 1.12.0 writes for this page,
@@ -273,11 +274,11 @@ let instance: DesktopLan | null = null;
 /** The page's one store of the Windows app's network printers. */
 export function desktopLan(): DesktopLan {
   if (instance === null) {
-    instance = createDesktopLan({
+    instance = withLaneWrites(createDesktopLan({
       api: desktopLanApi,
       setTimer: (fn, ms) => setTimeout(fn, ms),
       clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
-    });
+    }));
   }
   return instance;
 }

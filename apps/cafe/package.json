@@ -572,6 +572,7 @@
     "lib/printer/print-lane.test.ts",
     "lib/printer/report-debounce.test.ts",
     "lib/printer/lane-print.test.ts",
+    "lib/printer/lane-writes.test.ts",
     "lib/printer/print-gating-paths.test.ts",
     "lib/printer/printer-dot.test.ts",
     "lib/printer/printer-dot-waiting.test.ts",
