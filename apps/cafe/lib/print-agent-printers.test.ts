@@ -539,8 +539,8 @@ test("PIN (3B, Session 3A's I-1): a page names in its lease only a printer it ca
   const statusOf = (id: string) => POOL.printers.find((p) => p.id === id)?.status ?? "none";
   const targets = { theirs: { nativeId: "tcp:10.0.2.2:9100", paper: "80mm" as const }, down: { nativeId: "tcp:10.0.2.2:9101", paper: "80mm" as const } };
   assert.deepEqual(readyPrinterIdsOf(["theirs", "down"], targets, true, statusOf), ["theirs"], "the app reaches one and not the other: only that one is ever named");
-  const agent = src("apps/cafe/lib/print-agent.ts");
-  assert.ok(agent.includes("const data = await deps.lease(holds.open(ready()));"), "the lease names only the ready printers no refusal holds");
+  // Phase 6 Task 5 (spec §9 ruling 15) deliberately changed: of those, only the lines with no job in flight or held here.
+  assert.ok(["const ids = ready();\n    if (ids.length === 0) return lines.inFlight().length === 0 ? [] : null;\n    const free = holds.open(ids).filter((id) => !occupied(id));", "const names = leaseNames();", "const data = await deps.lease(names);"].every((line) => src("apps/cafe/lib/print-agent.ts").includes(line)), "the lease names only the ready printers no refusal holds");
   const hook = src("apps/cafe/hooks/use-print-agent.ts");
   // Session 3C (spec §10) deliberately changed: and not while the app says it cannot print (out of paper, cover open).
   assert.ok(hook.includes("const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf, printerCannotPrintOf);"), "ready: the app's own state per printer");

@@ -55,16 +55,22 @@ export interface PrintAgentDeps {
 }
 
 export interface PrintAgent {
+  /** enabled: this tab drains. busy: Printing Phase 6 (spec §9 ruling 14): the surface is drawing (the page passes
+   *  `drawing`); its opening lets the next held job start (one per opening, ruling 17) and a wish lease. */
   setGate(gate: { enabled: boolean; busy: boolean }): void;
-  /** A job may wait for this device (an answer, a frame, the pulse, the wake, a timer): lease now, or once
-   *  the running cycle ends. The 2E review gate (M-1): a job's printer, when known; a printer this tab does not lease
-   *  now (held by a refusal, or not printed here) is no reason to lease the others. */
-  kick(printerId?: string): void;
-  /** Session 2B: this device's state changed (its printer): lease now if idle, never queued behind a cycle. */
+  /** A job may wait for this device (an answer, a frame, the pulse, the wake, a timer). The 2E review gate (M-1): a job's
+   *  printer, when known; a printer this tab does not lease now (held by a refusal, or not printed here) is no reason
+   *  to lease the others. Phase 6 (ruling 25): a named line leases at once when free, else when it frees; an unnamed
+   *  kick leases at once when no line is occupied, else once after a line frees; a `print-status` frame's job id that
+   *  this tab holds or prints right now is no reason to lease. */
+  kick(printerId?: string, jobId?: string): void;
+  /** Session 2B: this device's state changed (its printer): a wish to lease only while nothing prints, waits or is
+   *  leased here and no ack just said a line is empty (ruling 19); it still starts held jobs. */
   nudge(): void;
   flushAcks(): Promise<void>;
+  /** Hands back every line's held jobs; jobs in flight finish and ack. */
   stop(): void;
-  /** Session 2B: a job already leased to this tab (an answer carried it). Printed before any lease. */
+  /** Session 2B: a job already leased to this tab (an answer carried it). Printed before its line is leased. */
   take(job: LeasedPrintJob): void;
   /** Session 2B: this tab drains, its printer can print now and no refusal holds it, so its requests may
    *  ask for their slips leased to it (directPrintTab). */
@@ -74,7 +80,7 @@ export interface PrintAgent {
   /** P2 follow-ups F1: a job leased to this tab waits here for its print (taken while the bridge was busy, or a lease's
    *  extra job), so it counts as print work (lib/print-host-busy.ts). False once its tracked print starts, it is handed
    *  back or the agent stopped, and while this tab does not drain (ruling F1: a disabled agent's held job cannot print
-   *  here, and would hold the page forever). Between taking a held job out and its print, the cycle awaits only the
-   *  flush of a hand-back's ack, itself tracked (the page wraps every ack). */
+   *  here, and would hold the page forever). Phase 6 (ruling 18): a held job taken out starts its print at once (no
+   *  flush waits before it). */
   holdsJob(): boolean;
 }

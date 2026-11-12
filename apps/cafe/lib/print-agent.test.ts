@@ -914,8 +914,10 @@ test("2B: a held job dropped by the hold bound or by stop() is handed back as a 
 });
 
 // The 2B review gate (M-A): the cycle took a fresh held job out of the queue, then waited for the ack of a stale
-// one it had just handed back; a stop() landing in that wait dropped the fresh job with no ack at all.
-test("2B gate: a stop() while a hand-back is on the wire hands back the job the cycle already took", async () => {
+// one it had just handed back; a stop() landing in that wait dropped the fresh job with no ack at all. Phase 6 Task 5
+// (spec §9 ruling 18) deliberately changed: a held job's start waits for no flush, so the fresh job already prints when
+// the stop() lands; a job in flight finishes and acks. Either way no taken job is left unacked.
+test("2B gate: a stop() while a hand-back is on the wire leaves no taken job unacked", async () => {
   const { w, deps } = world();
   let agentRef: ReturnType<typeof createPrintAgent> | null = null;
   const agent = createPrintAgent({
@@ -931,12 +933,8 @@ test("2B gate: a stop() while a hand-back is on the wire hands back the job the 
   agent.take(job("fresh"));
   agent.setGate({ enabled: true, busy: false });
   await settle();
-  assert.deepEqual(w.prints, [], "nothing prints on a stopped page");
-  assert.deepEqual(
-    w.acks.map((a) => [a.id, a.body.sent]),
-    [["stale", "no"], ["fresh", "no"]],
-    "both handed back, so neither waits 90 s to expire into a REPRINT",
-  );
+  assert.deepEqual(w.prints, ["fresh"], "the fresh job started at the opening, before the stop(): it finishes");
+  assert.deepEqual(w.acks.map((a) => [a.id, a.body.outcome, a.body.sent]), [["stale", "failed", "no"], ["fresh", "printed", undefined]], "the stale one handed back, the fresh one acked printed: neither waits 90 s to expire into a REPRINT");
 });
 
 // The 2B review gate (M-B): a refusal whose first send got no answer was applied later by the 5 s retry, but
@@ -1190,9 +1188,9 @@ test("2B: the seams: the lease header names the draining tab only while its agen
   assert.deepEqual(got, ["d9"], "delivered to the agent that listens, never after it stopped listening");
 });
 
-// Phase 2 Session 2C (the 2B gate's ruling R9): one lease may answer one job per line (the device's own line and
-// each printer line it writes); on its one local printer they print one by one.
-test("2C: a lease that answers several lines' jobs prints them one by one, and a line in backoff sets the timer", async () => {
+// Phase 2 Session 2C (the 2B gate's ruling R9): one lease may answer one job per line. Phase 6 Task 5 (ruling 16) re-derived:
+// these name no printer, so both are on the device line, which runs alone: one by one (one per printer line: print-lines-rules-2).
+test("2C: a lease that answers several device-line jobs prints them one by one, and a line in backoff sets the timer", async () => {
   const { w, deps } = world();
   w.leases.push({ jobs: [job("k1"), job("b1")], retryAt: null });
   w.ackAnswers.push(done(false), done(false));

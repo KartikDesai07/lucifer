@@ -303,9 +303,9 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
     if (agent === null || !enabled) return;
     return subscribeRealtime((kind, message) => {
       if (kind === "print-status") {
-        // The 2E review gate (M-1): a printer job's frame names its printer.
-        const job = message.job as { status?: unknown; target?: unknown; printerId?: unknown } | undefined;
-        if (job?.status === "queued" && job.target === deviceId) agent.kick(typeof job.printerId === "string" ? job.printerId : undefined);
+        // The 2E review gate (M-1): a printer job's frame names its printer; Phase 6 (spec §9 ruling 25): and its job.
+        const job = message.job as { status?: unknown; target?: unknown; printerId?: unknown; id?: unknown } | undefined;
+        if (job?.status === "queued" && job.target === deviceId) agent.kick(typeof job.printerId === "string" ? job.printerId : undefined, typeof job.id === "string" ? job.id : undefined);
       } else if (kind === "print-job" && isHost) {
         agent.kick();
       }

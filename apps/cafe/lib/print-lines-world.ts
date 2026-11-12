@@ -45,7 +45,7 @@ export interface LinesWorld {
   queue(line: string, ...ids: string[]): void;
   /** Jobs made already leased to this tab (direct print, §7.11), handed to agent.take in order. */
   deliver(...jobs: Array<{ id: string; line: string }>): void;
-  /** A print-status frame: agent.kick(line) (a device-line job's frame names no printer, as the page's); none: kick(). */
+  /** A print-status frame: agent.kick(line, jobId) (a device-line job's frame names no printer, as the page's); none: kick(). */
   frame(line?: string, jobId?: string): void;
   /** Beside the brief's interface: a scenario step at now() + ms on the world's clock. */
   at(ms: number, step: () => void): void;
@@ -66,8 +66,8 @@ const ACK_ANSWER_MS = 20;
 const DRAW_MS = 550;
 const WRITE_MS = 5;
 const SETTLE_MS = 200_000;
-/** The agent's hand-back errors (a held job dropped unprinted, sent back to its line). Mirrors lib/print-agent.ts's two
- *  strings HELD_TOO_LONG and PRINTING_STOPPED: a rewording there must update it here. */
+/** The agent's hand-back errors (a held job dropped unprinted, sent back to its line). Mirrors lib/print-line-job.ts's
+ *  two strings HELD_TOO_LONG and PRINTING_STOPPED: a rewording there must update it here. */
 const HAND_BACK_ERRORS: ReadonlySet<string> = new Set(["held too long on this device", "printing stopped on this device"]);
 
 type Slip = { job: LeasedPrintJob; line: string; resolve: (result: PrintAgentResult) => void };
@@ -176,8 +176,8 @@ export function createLinesWorld(options: WorldOptions): LinesWorld {
         const made = jobs.map(({ id, line }) => server.deliver(line, id));
         for (const job of made) agent.take(job);
       }),
-    // Task 5 passes the job id on: agent.kick(line, jobId).
-    frame: (line, _jobId) => act(() => agent.kick(line === undefined || line === PRINT_DEVICE_LINE ? undefined : line)),
+    // Phase 6 Task 5 (spec §9 ruling 25): the frame names its job, as the page's (hooks/use-print-agent.ts).
+    frame: (line, jobId) => act(() => agent.kick(line === undefined || line === PRINT_DEVICE_LINE ? undefined : line, jobId)),
     at: (ms, step) => act(() => void clock.later(ms, step)),
     writeMs: { ...options.writeMs },
     stations: [...STATIONS],

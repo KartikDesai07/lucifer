@@ -45,16 +45,19 @@ test("the world's server: a head a live lease holds answers its lease's end as r
 });
 
 for (const name of NAMES) {
-  test(`today's agent, one step: ${name} makes TODAY's leases and acks, every job on paper once`, async () => {
+  test(`the agent per line, one step: ${name} makes today's leases and acks (framesLate one lease fewer, ruling 25), every job on paper once`, async () => {
     const world = createLinesWorld({ twoStep: false });
     await SCENARIOS[name](world);
     await world.settle();
     const counts = world.counts();
     const measured = { leases: counts.leases, acks: counts.acks };
+    // Phase 6 Task 5 (spec §9 ruling 25) deliberately changed: on a one-step device too, the late frames name jobs this
+    // tab already holds, so the agent per line makes one empty lease fewer than TODAY (the recorded "before", {2, 3}).
+    const expected = name === "framesLate" ? { leases: 1, acks: 3 } : TODAY[name];
     assert.deepEqual(
       measured,
-      TODAY[name],
-      `${name}: measured {leases ${measured.leases}, acks ${measured.acks}}, TODAY {leases ${TODAY[name].leases}, acks ${TODAY[name].acks}}`,
+      expected,
+      `${name}: measured {leases ${measured.leases}, acks ${measured.acks}}, expected {leases ${expected.leases}, acks ${expected.acks}}, TODAY {leases ${TODAY[name].leases}, acks ${TODAY[name].acks}}`,
     );
     const ids = world.paper().map((record) => record.id);
     assert.equal(new Set(ids).size, ids.length, `${name}: no job on paper twice (paper: ${ids.join(", ")})`);

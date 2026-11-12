@@ -93,9 +93,10 @@ test("PIN: the provider hands the drain its surfaces, and the bridge's own KOT p
 
 test("PIN: the agent leases on events aimed at it, names itself on the pulse (the host too), and only the host polls", () => {
   const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  // Phase 6 Task 5 (spec §9 ruling 25) deliberately changed: the frame names its job too (one this tab holds or prints costs no lease).
   assert.ok(
-    agent.includes('if (job?.status === "queued" && job.target === deviceId) agent.kick(typeof job.printerId === "string" ? job.printerId : undefined);'),
-    "a print-status frame for another device never leases (R7); a printer job's frame names its printer (the 2E gate, M-1)",
+    agent.includes('if (job?.status === "queued" && job.target === deviceId) agent.kick(typeof job.printerId === "string" ? job.printerId : undefined, typeof job.id === "string" ? job.id : undefined);'),
+    "a print-status frame for another device never leases (R7); a printer job's frame names its printer (the 2E gate, M-1) and its job",
   );
   assert.ok(agent.includes('} else if (kind === "print-job" && isHost) {'), "the broadcast nudge wakes only the host (no fan-out, M-c)");
   // The Phase 1 final gate (I-2, deliberate change): the host names itself too. With its daily wake share spent and
@@ -130,9 +131,15 @@ test("PIN (2B): the draining tab offers itself for direct print, every answer th
   assert.ok(calls.includes("leaseTab: string | null = directPrintTab()"), "every opt-in reads the seam: orders, rounds, settle, moves, voids, accepts, claims and enqueues");
   assert.ok(calls.includes("...(leaseTab !== null ? { [PRINT_LEASE_HEADER]: leaseTab } : {}),"));
   const core = src("apps/cafe/lib/print-agent.ts");
-  assert.ok(core.includes("if (held.length > 0 && enabled && !busy) return void cycle(true);"), "a held job prints before any lease, past the printer gate (its attempt was made while ready)");
-  assert.ok(core.includes("if (deps.now() - next.at < PRINT_DIRECT_HOLD_MS) return next.job;"), "but only well inside its lease (the fresh review, I-1)");
-  assert.ok(core.includes("again = answers.get(key)?.more !== false;"), "the ack's more decides the next lease");
+  // Phase 6 Task 5 (spec §9 rulings 15-18) deliberately changed: the agent pumps per line (no cycle): one held job starts
+  // at an opening of the surface, before the lease step and past the printer gate; the stale ones go back first, per line;
+  // a line's job ends in lib/print-line-job.ts, whose ack's more decides that line's next lease.
+  const start = core.indexOf("if (!busy && fresh) {\n      const at = lines.nextStart(held.map((h) => lineOf(h.job)));");
+  assert.ok(start > 0 && start < core.indexOf("\n    maybeLease();\n", start), "a held job prints before any lease, past the printer gate (its attempt was made while ready)");
+  // The Task 5 review (m-4): and only while this tab drains (today's `enabled` in the held-job kick).
+  assert.ok(core.includes("function pump(): void {\n    if (stopped || !enabled) return;"), "a held job prints only while this tab drains");
+  assert.ok(core.includes("const stale = held.filter((h) => deps.now() - h.at >= PRINT_DIRECT_HOLD_MS);"), "but only well inside its lease (the fresh review, I-1)");
+  assert.ok(src("apps/cafe/lib/print-line-job.ts").includes("const more = ctx.answers.get(key)?.more !== false;"), "the ack's more decides the next lease");
   // The 2F1 review gate (N-1, deliberate change): only a change of what can print now is a nudge. Phase 3 Session 3E
   // deliberately changed: a network printer of the Windows app too.
   assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, canPrint, poolReady, lanReady]);"), "a printer state change is a nudge, never a lease queued behind a print");
@@ -186,7 +193,8 @@ test("PIN (3B): the wake says lanFailover on bridge v2, tokenSlips and the print
   // Session 3C's review (I-1) deliberately changed: through the health clock (pinned below), from the agent's own lists.
   assert.ok(agent.includes("setPrinterHealthSource(clock.reports)") && agent.includes("localIds: readyRef.current,"), "the beat reads its printers' health from the agent's own lists");
   assert.ok(src("apps/cafe/lib/print-agent-seams.ts").includes("`?device=${encodeURIComponent(pulseDevice)}&${PRINT_PULSE_TOKENS_PARAM}=${PRINT_HEADER_ON}`"), "the pulse says tokens");
-  assert.ok(src("apps/cafe/lib/print-agent.ts").includes("const body = failedAckBody(deps.deviceId, job.epoch, outcome, deps.networkPrinter?.(job) === true);"), "the agent's refusal says unreachable for a network printer");
+  // Phase 6 Task 5 deliberately changed: a line's job is acked in lib/print-line-job.ts (the same line, moved).
+  assert.ok(src("apps/cafe/lib/print-line-job.ts").includes("const body = failedAckBody(deps.deviceId, job.epoch, outcome, deps.networkPrinter?.(job) === true);"), "the agent's refusal says unreachable for a network printer");
 });
 
 // Session 3C (the 3B review gate's I-1; the 3B review's m-1 and m-3): after a rollback of the web, a server from before
