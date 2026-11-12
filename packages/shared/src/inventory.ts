@@ -70,11 +70,22 @@ export const STOCK_UNIT_LABEL: Readonly<Record<StockUnit, string>> = {
 /** Limits shared by the routes and the forms. */
 export const STOCK_USE_MAX_LINES = 10;
 export const STOCK_ITEM_NAME_MAX_LEN = 60;
+/** Active (not archived) stock items one outlet may have: the list is read whole, with no paging. */
+export const STOCK_ITEMS_MAX = 500;
+/**
+ * The largest number a person may type for one item (opening stock, low-stock
+ * level), in whole units of the item's own unit. Keeps every quantity sum, and
+ * a later qty × rate, far inside 2^53.
+ */
+export const STOCK_QTY_MAX = 100_000;
 
 // ── Quantity codec ───────────────────────────────────────────────────────────
 
 /** Milli-units stored per one whole unit of the item's own unit. */
 export const STOCK_QTY_SCALE = 1000;
+
+/** STOCK_QTY_MAX in stored milli-units. */
+export const STOCK_QTY_MAX_MILLI = STOCK_QTY_MAX * STOCK_QTY_SCALE;
 
 /**
  * Quantity (in the item's own unit) → integer MILLI-units for storage

@@ -29,6 +29,7 @@ test("skeletonKindOf: the boards, the forms, and the list for every other screen
     ["/tables/setup", "list"],
     ["/tables/qr", "list"],
     ["/staff", "list"],
+    ["/inventory", "list"],
     ["/expenses", "list"],
     ["/events", "list"],
   ];
