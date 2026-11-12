@@ -61,8 +61,9 @@ export interface StockEntryLineDto {
 }
 
 /**
- * One wastage, count or purchase in the entries list (admin only: a purchase carries money). A line whose stock item
- * no longer exists is left out.
+ * One wastage, count, purchase or supplier payment in the entries list (admin only: purchases and payments carry
+ * money). A line whose stock item no longer exists is left out. A payment (Slice 6) has no lines: `totalPaise` is what
+ * was paid and `duePaise` is minus that.
  */
 export interface StockEntryDto {
   id: string;
@@ -73,13 +74,13 @@ export interface StockEntryDto {
   /** A wastage: why it was thrown away. */
   reason?: WasteReason;
   note?: string;
-  /** A purchase from a supplier (Slice 5); the name is read even when the supplier was archived since. */
+  /** A purchase from, or a payment to, a supplier (Slices 5-6); the name is read even when the supplier was archived since. */
   supplierId?: string;
   supplierName?: string;
-  /** A purchase: the sum of its line amounts, and what was paid on the day (paise). */
+  /** A purchase: the sum of its line amounts, and what was paid on the day (paise). A payment: totalPaise = the amount paid. */
   totalPaise?: number;
   paidPaise?: number;
-  /** What this entry adds to the supplier's dues (total minus paid); absent when nothing is owed. */
+  /** What this entry adds to the supplier's dues: a purchase total minus paid (absent when nothing is owed); a payment minus its amount. */
   duePaise?: number;
   /** Staff name from the session. */
   createdBy: string;

@@ -71,7 +71,8 @@
     "verify:inventory:items:live": "node --import tsx scripts/verify-inventory-items-live.ts",
     "verify:inventory:stock-use:live": "node --import tsx scripts/verify-inventory-stock-use-live.ts",
     "verify:inventory:entries:live": "node --import tsx scripts/verify-inventory-entries-live.ts",
-    "verify:inventory:purchases:live": "node --import tsx scripts/verify-inventory-purchases-live.ts"
+    "verify:inventory:purchases:live": "node --import tsx scripts/verify-inventory-purchases-live.ts",
+    "verify:inventory:payments:live": "node --import tsx scripts/verify-inventory-payments-live.ts"
   },
   "testChain": [
     "lib/health-region.test.ts",
@@ -742,7 +743,11 @@
     "lib/inventory/inventory-purchases-paths.test.ts",
     "lib/inventory/purchase-form.test.ts",
     "lib/inventory/supplier-form.test.ts",
-    "lib/inventory/inventory-purchases-ui-paths.test.ts"
+    "lib/inventory/inventory-purchases-ui-paths.test.ts",
+    "lib/inventory/entries-payment.test.ts",
+    "lib/inventory/inventory-payments-paths.test.ts",
+    "lib/inventory/payment-form.test.ts",
+    "lib/inventory/inventory-payments-ui-paths.test.ts"
   ],
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

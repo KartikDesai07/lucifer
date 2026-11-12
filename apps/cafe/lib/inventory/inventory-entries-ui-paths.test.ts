@@ -55,7 +55,8 @@ test("PIN: the History tab and the entries list render only under isAdmin", () =
   assert.ok(list > tabs, "the list is gated on isAdmin and the History tab");
   assert.equal(count(src, "<EntryList"), 1, "EntryList renders in exactly one place");
   assert.ok(!src.includes("useStockEntries"), "the view itself never asks for entries");
-  assert.equal(count(readSrc(ENTRY_LIST), "useStockEntries(true)"), 1, "landmark: the list is what asks");
+  // Slice 6 moved this on purpose: the list takes an optional supplierId (a supplier's history), so the call carries it.
+  assert.equal(count(readSrc(ENTRY_LIST), "useStockEntries(true, supplierId)"), 1, "landmark: the list is what asks");
 });
 
 test("PIN: the editor's Count stock / Log wastage buttons sit inside the edit-only branch, above Archive", () => {
@@ -148,8 +149,10 @@ test("PIN: the hooks refresh the stock list AND the entries on success and on er
 
 test("PIN: the entries hook pages by the server's cursor, and staff never enable it", () => {
   const src = readSrc(HOOK);
-  assert.ok(src.includes("encodeURIComponent(pageParam)") && src.includes("getNextPageParam: (last: StockEntryPageDto) => last.nextBefore"), "cursor in, cursor out");
-  assert.ok(src.includes("export function useStockEntries(enabled: boolean)") && src.includes("    enabled,\n"), "gated by the caller");
+  // Slice 6 moved this on purpose: the query string is built with URLSearchParams (it carries supplierId too, and encodes the
+  // cursor the same way), and the hook takes an optional supplierId after the enabled gate.
+  assert.ok(src.includes('params.set("before", pageParam)') && src.includes("getNextPageParam: (last: StockEntryPageDto) => last.nextBefore"), "cursor in, cursor out");
+  assert.ok(src.includes("export function useStockEntries(enabled: boolean, supplierId?: string)") && src.includes("    enabled,\n"), "gated by the caller");
 });
 
 test("PIN: the new files stay under the line budget", () => {

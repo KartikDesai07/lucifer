@@ -30,6 +30,7 @@ const DECIMALS = "Use at most 3 decimal places";
 const PAISE_DECIMALS = "Use at most 2 decimal places";
 const PAISE_PER_RUPEE = 100;
 const TOTAL_TOO_BIG = `A purchase can total at most ₹${(STOCK_ENTRY_MAX_TOTAL_PAISE / PAISE_PER_RUPEE).toLocaleString("en-IN")}`;
+const PAYMENT_TOO_BIG = `A payment can be at most ₹${(STOCK_ENTRY_MAX_TOTAL_PAISE / PAISE_PER_RUPEE).toLocaleString("en-IN")}`;
 /** Shared with the server's own re-check (lib/inventory), so both refusals read the same. */
 export const PAID_OVER_TOTAL_ERROR = "Paid can't be more than the total";
 export const DUE_NEEDS_SUPPLIER_ERROR = "Pick a supplier for what is still to pay";
@@ -180,10 +181,25 @@ const purchaseEntrySchema = z
   })
   .strict();
 
+// Slice 6: a payment to a supplier (admin). No stock moves: the row alone lowers what the supplier is owed by
+// `amountPaise` (stored as totalPaise = amount, duePaise = -amount; dues are summed on read). Paying more than is owed
+// is allowed (the supplier then shows "paid ahead"). The amount is always the one the person typed, never a "pay it
+// all" flag the server would fill in. The route checks the date window; the server checks the supplier is active.
+const paymentEntrySchema = z
+  .object({
+    kind: z.literal("payment"),
+    supplierId: objectIdString,
+    amountPaise: z.number().int(PAISE_DECIMALS).min(1, "Enter an amount above 0").max(STOCK_ENTRY_MAX_TOTAL_PAISE, PAYMENT_TOO_BIG),
+    date: expenseDateSchema,
+    note: stockEntryNoteSchema.optional(),
+    clientRef: z.string().uuid(),
+  })
+  .strict();
+
 // The money rules of a purchase need the whole body, so they sit on the union (a discriminatedUnion member must be a
 // plain object). The server re-checks all three with its own sums.
 export const createStockEntrySchema = z
-  .discriminatedUnion("kind", [wasteEntrySchema, countEntrySchema, purchaseEntrySchema])
+  .discriminatedUnion("kind", [wasteEntrySchema, countEntrySchema, purchaseEntrySchema, paymentEntrySchema])
   .superRefine((entry, ctx) => {
     if (entry.kind !== "purchase") return;
     const total = purchaseTotalPaise(entry.lines);
@@ -241,11 +257,13 @@ export type UpdateSupplierInput = z.infer<typeof updateSupplierSchema>;
  */
 export const STOCK_ENTRY_CURSOR_PATTERN = /^\d{4}-\d{2}-\d{2}_[0-9a-f]{24}$/;
 
-// GET /api/inventory/entries (admin): ?before=<cursor>&limit=<1..50>.
+// GET /api/inventory/entries (admin): ?before=<cursor>&limit=<1..50>, and (Slice 6) ?supplierId=<id> for one
+// supplier's purchases and payments only.
 export const stockEntryListQuerySchema = z
   .object({
     before: z.string().regex(STOCK_ENTRY_CURSOR_PATTERN, "Invalid page").optional(),
     limit: z.coerce.number().int().min(1).max(STOCK_ENTRY_PAGE_MAX).optional(),
+    supplierId: objectIdString.optional(),
   })
   .strict();
 
@@ -254,6 +272,7 @@ export type WasteEntryInput = Extract<CreateStockEntryInput, { kind: "waste" }>;
 export type CountEntryInput = Extract<CreateStockEntryInput, { kind: "count" }>;
 export type PurchaseEntryInput = Extract<CreateStockEntryInput, { kind: "purchase" }>;
 export type PurchaseLineInput = PurchaseEntryInput["lines"][number];
+export type PaymentEntryInput = Extract<CreateStockEntryInput, { kind: "payment" }>;
 export type StockEntryListQuery = z.infer<typeof stockEntryListQuerySchema>;
 
 export type StockUseInput = z.infer<typeof stockUseSchema>;

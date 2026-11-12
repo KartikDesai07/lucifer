@@ -16,6 +16,7 @@ export const SUPPLIER_LIMIT_ERROR = `You can have at most ${SUPPLIERS_MAX} suppl
 export const SUPPLIER_NOT_FOUND_ERROR = "Supplier not found";
 export const SUPPLIER_HAS_DUES_ERROR = "Settle this supplier's dues before you archive them.";
 export const SUPPLIER_NOTHING_ERROR = "Nothing to change";
+export const SUPPLIER_ARCHIVED_ENTRY_ERROR = "This entry belongs to an archived supplier, so it can't be deleted.";
 
 const BAD_REQUEST_STATUS = 400;
 const NOT_FOUND_STATUS = 404;
@@ -77,6 +78,20 @@ export async function supplierDues(ids?: readonly string[]): Promise<Map<string,
     { $group: { _id: "$supplierId", due: { $sum: "$duePaise" } } },
   ]);
   return new Map(rows.map((row) => [row._id.toString(), row.due]));
+}
+
+/**
+ * Would deleting this entry change an ARCHIVED supplier's dues? Review s118 (MED): an archived supplier owes 0 (the
+ * archive rule), but its rows can still hold amounts that cancel out (a purchase and the payment that settled it).
+ * Deleting one would bring back a due nobody can see or pay (archived suppliers leave the list and cannot be paid), so
+ * the DELETE route refuses it. A row without duePaise (wastage, count, a purchase paid in full) never moves dues.
+ * Accepted residual (the archive race kind): an archive landing between this read and the delete's CAS.
+ */
+export async function entryMovesArchivedDues(entryId: string): Promise<boolean> {
+  await connectDB();
+  const entry = await StockEntry.findOne({ _id: entryId, ...ACTIVE_STOCK_ENTRY, duePaise: { $exists: true } }).select("supplierId").lean();
+  if (!entry?.supplierId) return false;
+  return (await Supplier.exists({ _id: entry.supplierId, archived: { $exists: true } })) !== null;
 }
 
 export type SupplierWrite =

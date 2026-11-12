@@ -69,14 +69,21 @@ const ENTRY_SAVED_TOAST: Record<CreateStockEntryInput["kind"], string> = {
   waste: "Wastage logged",
   count: "Stock count saved",
   purchase: "Purchase saved",
+  payment: "Payment saved",
 };
 
-/** The entries history (admin), newest first, one page at a time; `enabled` keeps staff from ever asking. */
-export function useStockEntries(enabled: boolean) {
+/** The entries history (admin), newest first, one page at a time; `enabled` keeps staff from ever asking. With a `supplierId` it is
+ *  that supplier's purchases and payments only; its key stays under the entries prefix, so every entries refresh covers it. */
+export function useStockEntries(enabled: boolean, supplierId?: string) {
   return useInfiniteQuery({
-    queryKey: INVENTORY_KEYS.entries,
-    queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
-      apiGet<StockEntryPageDto>(`/api/inventory/entries${pageParam === undefined ? "" : `?before=${encodeURIComponent(pageParam)}`}`),
+    queryKey: supplierId === undefined ? INVENTORY_KEYS.entries : [...INVENTORY_KEYS.entries, "supplier", supplierId],
+    queryFn: ({ pageParam }: { pageParam: string | undefined }) => {
+      const params = new URLSearchParams();
+      if (supplierId !== undefined) params.set("supplierId", supplierId);
+      if (pageParam !== undefined) params.set("before", pageParam);
+      const query = params.toString();
+      return apiGet<StockEntryPageDto>(`/api/inventory/entries${query === "" ? "" : `?${query}`}`);
+    },
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last: StockEntryPageDto) => last.nextBefore,
     staleTime: STOCK_ITEMS_STALE_MS,

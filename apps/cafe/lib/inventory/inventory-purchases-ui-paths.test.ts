@@ -163,7 +163,9 @@ test("PIN: a purchase row names its supplier, total and dues; its delete confirm
   assert.ok(src.includes("entry.supplierName") && src.includes("entry.totalPaise") && src.includes("to pay"), "the row's sub line parts");
   assert.ok(src.includes("comes out of ${line.name}'s stock."), "the purchase delete sentence");
   assert.ok(src.includes("owed to ${entry.supplierName") && src.includes("is removed."), "the dues sentence");
-  assert.ok(src.includes('title="No entries yet"') && src.includes("Purchases, wastage and counts show here."), "the empty state");
+  // Slice 6 moved this on purpose: the title is now a supplierId ternary (a supplier's own history says "Nothing here yet"),
+  // and the all-entries description names payments too.
+  assert.ok(src.includes('"No entries yet"') && src.includes("Purchases, payments, wastage and counts show here."), "the empty state");
   assert.ok(src.includes("useDeleteStockEntry") && src.includes("onConfirm={confirmDelete}"), "landmark: delete still goes through its confirm");
 });
 

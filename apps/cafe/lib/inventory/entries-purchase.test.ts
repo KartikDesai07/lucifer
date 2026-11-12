@@ -41,7 +41,7 @@ const purchase = (over: Partial<PurchaseCmd> = {}): StockEntryCommand => ({
 const stored = (doc: NewEntryDoc, extra: Partial<StoredEntry> = {}): StoredEntry => ({
   _id: NEW_ID,
   ...doc,
-  lines: doc.lines.map((l) => ({ ...l, itemId: new Types.ObjectId(l.itemId) })),
+  ...(doc.lines ? { lines: doc.lines.map((l) => ({ ...l, itemId: new Types.ObjectId(l.itemId) })) } : {}),
   ...(doc.supplierId ? { supplierId: new Types.ObjectId(doc.supplierId) } : {}),
   createdAt: NOW,
   ...extra,
