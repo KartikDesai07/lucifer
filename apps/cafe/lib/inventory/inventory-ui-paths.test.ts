@@ -64,8 +64,12 @@ test("PIN: the page renders InventoryView inside MenuPageShell, with no admin gu
 test("PIN: the view gates Add, the row tap and the empty-state action on isAdmin", () => {
   const src = readSrc(VIEW);
   assert.ok(src.includes("Add stock item"), "landmark: the Add button exists");
-  assert.ok(src.includes("actions={isAdmin ? addButton(HEADER_ADD_CLASS) : undefined}"), "the header Add is admin-only");
-  assert.ok(src.includes("onOpen={isAdmin ? openEdit : undefined}"), "only an admin's rows open the editor");
+  // Slice 4 moved these two on purpose: the header now holds Add + More for an admin and a Log wastage button for staff
+  // (see inventory-entries-ui-paths.test.ts), and a staff row tap opens Log wastage instead of nothing.
+  const gate = src.indexOf("const headerActions = isAdmin ? (");
+  assert.ok(gate >= 0 && src.indexOf("{addButton(HEADER_ADD_CLASS)}") > gate, "the header Add is inside the admin branch");
+  assert.ok(src.includes("actions={headerActions}"), "landmark: the header renders those actions");
+  assert.ok(src.includes("onOpen={isAdmin ? openEdit : logWastageFor}"), "only an admin's rows open the editor; staff log wastage");
   assert.ok(src.includes("action={isAdmin ? <div"), "the empty state offers Add to an admin only");
 });
 

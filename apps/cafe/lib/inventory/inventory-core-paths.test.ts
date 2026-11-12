@@ -19,6 +19,7 @@ const SETTLE_FOLLOW = "lib/settle-followups.ts";
 const CREATE_FOLLOW = "lib/order-create-followups.ts";
 const STOCK_USE = "lib/inventory/stock-use.ts";
 const STOCK_MOVE = "lib/inventory/stock-move.ts";
+const ENTRIES_WRITE = "lib/inventory/entries-write.ts";
 
 const raw = (rel: string) => readFileSync(path.join(CAFE_ROOT, rel), "utf8").replace(/\r\n/g, "\n");
 const read = (rel: string) => stripComments(raw(rel));
@@ -155,7 +156,8 @@ test("PIN writer census: who works out the snapshot and who moves stock", () => 
   const holders = (needle: string) => files.filter((f) => read(f).includes(needle)).sort();
   assert.deepEqual(holders(FIELDS), [CREATE, SETTLE, STOCK_USE].sort());
   assert.deepEqual(holders(FOR_SALE), [CREATE, SETTLE, STOCK_USE].sort());
-  assert.deepEqual(holders(MOVE), [CREATE_FOLLOW, SETTLE_FOLLOW, STOCK_MOVE].sort());
+  // Slice 4 moved this on purpose: a wastage and the delete of an entry are the second, manual, stock writer.
+  assert.deepEqual(holders(MOVE), [CREATE_FOLLOW, ENTRIES_WRITE, SETTLE_FOLLOW, STOCK_MOVE].sort());
   assert.deepEqual(holders(ADD_BACK), [CANCEL, ORDER_ID, STOCK_MOVE].sort());
 });
 

@@ -49,19 +49,23 @@ function RowBody({ item }: { item: StockItemDto }) {
 
 interface StockListProps {
   items: StockItemDto[];
-  /** Admin only: a tap on a row opens the editor. Without it the rows are plain. */
+  /** A tap on a row opens the editor (admin) or Log wastage (staff). Without it the rows are plain. */
   onOpen?: (item: StockItemDto) => void;
+  /** The row button's aria-label; default "Edit Milk". */
+  rowLabel?: (item: StockItemDto) => string;
 }
+
+const defaultRowLabel = (item: StockItemDto): string => `Edit ${item.name}`;
 
 // One card of stock rows, already sorted (Out, Low, then the rest): the name and its low line on the left, how much
 // is in stock and the Out / Low badge on the right.
-export function StockList({ items, onOpen }: StockListProps) {
+export function StockList({ items, onOpen, rowLabel = defaultRowLabel }: StockListProps) {
   return (
     <ul className={SETTINGS_HUB_LIST_CLASS}>
       {items.map((item) => (
         <li key={item.id} className={SETTINGS_HUB_ITEM_CLASS}>
           {onOpen ? (
-            <button type="button" aria-label={`Edit ${item.name}`} className={BUTTON_ROW_CLASS} onClick={() => onOpen(item)}>
+            <button type="button" aria-label={rowLabel(item)} className={BUTTON_ROW_CLASS} onClick={() => onOpen(item)}>
               <RowBody item={item} />
             </button>
           ) : (
