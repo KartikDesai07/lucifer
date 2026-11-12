@@ -1,4 +1,4 @@
-import { connectDB } from "@/lib/db";
+import { connectDB, modelReady } from "@/lib/db";
 import { ExpenseCategory } from "@/models/ExpenseCategory";
 import {
   created,
@@ -49,11 +49,10 @@ export async function POST(req: Request) {
   try {
     // Seed first: adding a custom category to a never-opened (empty) list would
     // otherwise stop the defaults from ever being seeded. This also awaits the
-    // unique collation index (init() is memoized per process) before the cap
-    // check and the insert — connectDB()'s autoIndex build is not awaited.
+    // unique collation index before the cap check and the insert (modelReady).
     await ensureExpenseCategories();
     await connectDB();
-    await ExpenseCategory.init();
+    await modelReady(ExpenseCategory);
     // Accepted residual (the Area one): two admins adding in the same instant can
     // both pass this count and land one over the cap; the next add is refused.
     if ((await ExpenseCategory.countDocuments()) >= EXPENSE_CATEGORIES_MAX) {

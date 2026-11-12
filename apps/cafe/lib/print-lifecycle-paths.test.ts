@@ -348,12 +348,12 @@ test("PIN: clearing the host dismisses every unresolved job but a leased one (sp
   assert.ok(!bulk.includes('"leased"'), "a leased job is never torn down under its writer");
 });
 
-test("PIN: the heartbeat awaits the PrintDevice unique-index build before its first upsert (the house init() rule)", () => {
+test("PIN: the heartbeat awaits the PrintDevice unique-index build before its first upsert (the modelReady rule)", () => {
   const s = src(DEVICE);
   const start = s.indexOf("export async function beatPrintDevice(");
   const end = s.indexOf("export async function touchPrintDevice(");
   assert.ok(start >= 0 && end > start, "beatPrintDevice is declared before touchPrintDevice");
-  inOrder(s.slice(start, end), ["await PrintDevice.init();", "PrintDevice.updateOne("], "beatPrintDevice");
+  inOrder(s.slice(start, end), ["await modelReady(PrintDevice);", "PrintDevice.updateOne("], "beatPrintDevice");
 });
 
 // ── Session 1B: the 1A review's lease rulings and the print-status publishes ───────────────────────

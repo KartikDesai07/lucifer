@@ -4,7 +4,7 @@ import mongoose, {
   type UpdateQuery,
 } from "mongoose";
 import type { ZodTypeAny, z } from "zod";
-import { connectDB } from "@/lib/db";
+import { connectDB, modelReady } from "@/lib/db";
 import cache from "@/lib/cache";
 import { listFromSpec, type MasterListSpec } from "@/lib/masters";
 import {
@@ -142,13 +142,8 @@ export function createCollectionRoute<TDoc, TCreate extends ZodTypeAny>(
       await connectDB();
       const invalid = await config.validate?.(parsed.data as z.infer<TCreate>);
       if (invalid) return failure(invalid, 400);
-      // Await the unique-index build before the first insert — connectDB()'s
-      // autoIndex createIndexes() is not awaited, so on a cold cluster two
-      // concurrent inserts can both land before the index exists; the deferred
-      // build then fails silently and PERMANENTLY, voiding this collection's
-      // duplicate-name guard for its whole life. .init() is memoized per
-      // process, so warm invocations pay nothing (mirrors due-payment.ts).
-      await config.model.init();
+      // The unique name index must exist before the first insert (modelReady).
+      await modelReady(config.model);
       const doc = await config.model.create(parsed.data as z.infer<TCreate>);
       clearCaches(config.cacheKey, config.invalidateKeys);
       return created(doc);

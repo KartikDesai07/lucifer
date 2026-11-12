@@ -1558,9 +1558,9 @@ test("PIN: SPEC P4 + review MED #4 — the reject path never CLAIMS the fence it
 
 test("PIN: review MAJORs 2026-08-20 — the fence awaits its unique-index build (cold-start rule) and every fence touchpoint keys on the CANONICAL mobile; claims are gated on a REAL discount; the edit courtesy check excludes this request's own claim; PROMO_ALREADY_USED is never rate-refunded (usage oracle stays metered)", () => {
   const promoLib = stripComments(readSrc("apps/cafe/lib/order-request-accept-promo.ts"));
-  const initIdx = mustIndexOf(promoLib, "await PromoRedemption.init()", "the index-build await");
+  const initIdx = mustIndexOf(promoLib, "await modelReady(PromoRedemption)", "the index-build await");
   const createIdx = mustIndexOf(promoLib, "PromoRedemption.create(", "the fence create");
-  assert.ok(initIdx < createIdx, "init() must be awaited before the fence create (crud-route/due-payment precedent)");
+  assert.ok(initIdx < createIdx, "modelReady() must be awaited before the fence create (crud-route/due-payment precedent)");
   assert.match(promoLib, /canonicalPromoMobile\(mobile\)/, "the claim must key on the canonical mobile");
 
   const createLib = stripComments(readSrc("apps/cafe/lib/order-request-create.ts"));

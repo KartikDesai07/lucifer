@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { canonicalPromoMobile, resolvePromoDiscount, type PromoCodeConfig, type PromoKind } from "@pos/shared/public";
 import { isDuplicateKeyError } from "@pos/shared/api";
 import { PromoRedemption } from "@/models/PromoRedemption";
+import { modelReady } from "@/lib/db";
 import { mintedPromoCodes } from "@pos/shared/loyalty-rules";
 import type { ISettings } from "@/models/Settings";
 
@@ -185,12 +186,8 @@ export async function claimPromoRedemption(
   mobile: string,
   claimant: PromoClaimant,
 ): Promise<PromoRedemptionDecision> {
-  // Cold-start rule (crud-route.ts / due-payment.ts precedent): a write whose
-  // correctness IS a unique index must await the index build first — on a
-  // fresh cluster two concurrent claims could otherwise both land and the
-  // deferred build then fails silently and permanently (review MAJOR #1).
-  // Mongoose caches init(), so this is a one-time cost per process.
-  await PromoRedemption.init();
+  // The unique claim index must exist before the write (modelReady).
+  await modelReady(PromoRedemption);
   const fenceMobile = canonicalPromoMobile(mobile);
   // Derived ONCE and used for both the write and the compare below — the
   // whole point of claimantKeyFor being single-homed.

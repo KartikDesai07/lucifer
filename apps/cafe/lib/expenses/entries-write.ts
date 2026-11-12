@@ -1,4 +1,4 @@
-import { connectDB } from "@/lib/db";
+import { connectDB, modelReady } from "@/lib/db";
 import { ACTIVE_EXPENSE, ExpenseEntry, type IExpenseEntry } from "@/models/ExpenseEntry";
 import { isDuplicateKeyError } from "@pos/shared/api";
 import { EXPENSE_SCHEMA_VERSION } from "@pos/shared/expense";
@@ -51,10 +51,8 @@ type IExpenseEntryLean = ExpenseRow & Pick<IExpenseEntry, "createdById" | "delet
 
 export async function createExpense(input: CreateExpenseCommand): Promise<ExpenseWriteResult> {
   await connectDB();
-  // The unique clientRef index is what makes the race below safe: never insert
-  // before it is guaranteed to exist (connectDB's autoIndex is not awaited —
-  // the lib/due-payment.ts / Area precedent; memoized per process).
-  await ExpenseEntry.init();
+  // The unique clientRef index must exist before the insert below (modelReady).
+  await modelReady(ExpenseEntry);
   const existing = await ExpenseEntry.findOne({ clientRef: input.clientRef }).lean();
   if (existing) return replayOf(existing, input);
 
