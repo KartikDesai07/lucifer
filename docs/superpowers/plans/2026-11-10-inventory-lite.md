@@ -388,3 +388,60 @@ recipes; size override ignored; sum → overwrite; Pay Now gate removed; `stockU
   ledger is the same kind of one-line move.
 - Rollback: statement order only; a revert puts back the old order.
 - **Next =** Slice 3 (Stock use in the item editor, M).
+
+### Slice 3: "Stock use" in the item editor (s115, 2026-11-12 to 11-13): DONE
+
+- Built with two implementers on separate files (server; UI). The main thread wrote the contract first:
+  `convertMilli` (`packages/shared/src/inventory.ts`), `stockUseSchema` / `ownStockSchema`
+  (`schemas/inventory.schema.ts`), `StockUseDto` (`types/inventory.ts`) and the `package.json` test/script entries.
+  - Server: `lib/inventory/stock-use-write.ts` (`getStockUse`, `setStockUse`, `trackOwnStock` over injected ports),
+    `app/api/products/[id]/stock-use/route.ts` (GET, PUT) and `.../stock-use/own/route.ts` (POST). All three are
+    admin-only and clear the products cache after a write.
+  - Client: `hooks/use-stock-use.ts`, `lib/inventory/stock-use-form.ts`,
+    `components/products/{StockUseField,StockUseRow}.tsx`, wired into `ProductFormSheet.tsx` before the archive link.
+    The Inventory empty state now points at Stock use.
+- **Deviations from the plan text (main thread):**
+  - A line carries `qtyMilli` in the unit the person TYPED (any unit of the item's group), not a float `qty`. The
+    server converts once with `convertMilli` (integer × integer ÷ integer, one rounding): the `amountPaise` precedent.
+  - The GET returns each linked item's name and unit, and flags an archived one. A link whose item no longer exists
+    is left out.
+  - A PUT refuses an archived or missing stock item, a size name the menu item doesn't have, an amount that converts
+    to 0 (the line, or a size typed above 0), and one over the cap.
+  - The one tap refuses an item that already uses stock (409), a duplicate active name (409; it says to pick the
+    existing item instead) and the 500-item cap. It restores an archived own item and checks that item's stored name.
+  - The own-stock upsert awaits `modelReady(StockItem)` (the office PC's model-init hotfix, merged this session);
+    `lib/model-ready-pins.test.ts` now lists 13 sites.
+  - The editor shows a stored amount in a unit that reads well (150 milli-L as "150 ml"). Turning "Different amount
+    per size" on starts every size at the row's amount.
+  - The field renders for admins only (staff can open the menu editor). Its Inventory link is an `AppLink` that
+    closes the sheet (R34).
+- Review: one opus reviewer found two LOWs, both confirmed in code:
+  - A size typed above 0 that converted to 0 was stored silently as "uses none". Repro test RED first, fixed.
+  - A one tap that loses its claim to a recipe saved in the same instant answers 409 with the own item already made.
+    **Accepted residual**, the items.ts kind, commented in place: the item is unlinked, visible and can be archived,
+    and a later tap reuses it.
+- Main-thread fixes after the review: the restore path checks the restored name (test RED on the old code); the size
+  inputs' ids no longer embed the size name; the editor is keyed by item; the AppLink / R34 fix. Pins moved on
+  purpose: `inventory-items-paths` (the own-stock upsert may `findOneAndUpdate`; create stays items.ts only) and
+  `model-ready-pins` (13 sites).
+- Mutation pass (main thread, alone, byte backup, sha1 restore, tree hash the same before and after): 13 of 13
+  killed, plus the `modelReady` site (1 of 1). Mutants: CAS filter dropped, no unit conversion, empty list stored as
+  `[]`, size-name check removed, archived item accepted, a size rounding to 0 accepted, replay treated as busy, PUT
+  skips the cache clear, GET open to staff, form drops sizes, display unit never shrinks, Enter guard removed, link
+  doesn't close the sheet.
+- Chain on the merged tree (origin/main 768c486, the model-init hotfix, merged in), run from an `F:` working directory:
+  - shared: tsc 0, 1103/1103
+  - cafe: tsc 0, lint 0 errors (2 old warnings), 8478/8478
+  - hub: tsc 0, lint 0, 288/288 (measured this session; hub untouched by both sides)
+  - live: `verify:inventory:stock-use:live` 12/12 (new), `verify:inventory:live` 15/15, `verify:inventory:items:live`
+    26/26, `verify:model-ready:live` 14/14, `verify:orders:live` 153/153
+- Seen, not fixed (environment, not code): run from a lowercase `f:` working directory (this VS Code session), the
+  chain fails `TodayReservations` in `lib/dashboard-layout-paths.test.ts` with "Cannot read properties of null
+  (reading 'useContext')". React loads twice, once as `F:\` (through `@pos/shared`) and once as `f:\`. The same suite
+  passes 50/50 from `F:`.
+- Not done: a browser smoke (low RAM). The owner checks the item editor's Stock use on a phone, a tablet and the PC
+  after deploying.
+- Rollback: new routes, a new editor section and new shared exports; no existing request schema changed. After a
+  rollback the routes 404 and the section is gone. Saved stock use stays on the products and sales still deduct it.
+  Unlinking needs the new build.
+- **Next =** Slice 4 (wastage, counts, entries list, delete, M).
