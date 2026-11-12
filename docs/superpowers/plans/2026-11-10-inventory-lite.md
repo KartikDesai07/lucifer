@@ -562,3 +562,64 @@ recipes; size override ignored; sum → overwrite; Pay Now gate removed; `stockU
     `verify:inventory:live` 15/15, `verify:inventory:items:live` 26/26, `verify:inventory:stock-use:live` 12/12,
     `verify:model-ready:live` 14/14
 - **Next =** Slice 6 (pay a supplier and supplier history, L, money, small).
+
+### Slice 6: pay a supplier and supplier history (s118, 2026-11-13): DONE
+
+- Owner checks of Slice 5 (deploy of 994a902: purchases, suppliers, History delete on devices) and the table-free move call
+  were not reported this session; both carry forward.
+- Main thread wrote the contract and the server core. Shared: the `payment` member of `createStockEntrySchema` (strict:
+  `supplierId`, `amountPaise` 1..`STOCK_ENTRY_MAX_TOTAL_PAISE`, `date`, `note?`, `clientRef`; the amount is always the typed
+  one, never a pay-it-all flag) and `supplierId?` on `stockEntryListQuerySchema`. Server: `lib/inventory/entry-replay.ts`
+  (pure `sameEntry` for all four kinds, moved out of `entries-write.ts`'s replayOf to keep that file under 300 lines; a
+  22-row table and two mutants prove waste/count/purchase replays are unchanged), `entries-write.ts` `createPayment`
+  (active supplier or 404, then the row: `totalPaise` = amount, `duePaise` = minus it, no `lines`, so no stock moves), the
+  `?supplierId=` filter in `entries-read.ts` and the GET route. Then a test-engineer (unit tests, pins, live leg) and an
+  implementer (UI) on separate files.
+  - Client: `lib/inventory/payment-form.ts`, `components/inventory/{SupplierPaySheet,SupplierHistorySheet}.tsx`;
+    `SuppliersView` (a row opens that supplier's history; its footer hands over to Pay or Edit details; one sheet at a
+    time, the supplier looked up by id in the live list); `EntryList` (`supplierId` filter, payment rows show the amount,
+    the delete confirm says the amount counts as owed again); `useStockEntries(enabled, supplierId?)` keyed under the
+    entries prefix, so every entry write and delete refreshes it.
+- **Deviations from the plan text:** the supplier history is a sheet, not a new `/inventory/suppliers/[id]` page (the
+  page-title pins walk every page.tsx and need a fixed title). A Suppliers row now opens the history; editing is one tap
+  further (Edit details). The pay amount starts at what is owed, capped at the most one payment may be.
+- Review: one opus reviewer, no HIGH. Three findings, all fixed test first:
+  - MED: deleting a payment or a purchase of an ARCHIVED supplier brought back a due nobody could see or pay (new with
+    payments: a due of 0 can now be rows that cancel out). The DELETE route now refuses it with 409
+    (`entryMovesArchivedDues` in `suppliers.ts`: an active row with a due whose supplier is archived). Live case (m) RED,
+    then green.
+  - LOW: Edit details compared the form with the live supplier row, so after another admin's rename a refetch made Save
+    undo it (a regression from Slice 5). The editor gets the copy taken when it opened (pin RED, then green).
+  - LOW: a due above the one-payment cap prefilled an amount Save refused. The prefill is capped (test RED, then green).
+- Accepted residuals: an archive landing between the delete guard's read and the delete's CAS, or a payment landing
+  between an archive's dues check and its write (two admins at once, the Slice 5 kind). The sheets now unmount on close, so
+  they close without the slide-out.
+- Pins moved on purpose: `insertEntry(` count 3 to 4 (createPayment); the list filter needle gains `...supplier`; the
+  entries UI needles (`useStockEntries(true, supplierId)`, the URLSearchParams cursor, the hook signature); the History
+  empty-state needles. New: `entries-payment.test.ts`, `inventory-payments-paths.test.ts`, `payment-form.test.ts`,
+  `inventory-payments-ui-paths.test.ts`, live `verify:inventory:payments:live`.
+- Mutation pass (main thread, alone, byte backup, sha1 restore per mutant, tracked diff + untracked file hashes the same
+  before and after): 27 of 27 killed. Mutants: due sign flipped, archived supplier paid, a payment moves stock, replay
+  ignores the amount / the supplier / a deleted row, waste replay ignores the reason, count replay ignores the count,
+  payment dispatched before the replay pre-read, GET drops the supplier, list ignores it, staff may pay, shared schema
+  allows 0 / no supplier, form allows 0, the after-text ignores an advance, clientRef minted per render, history key
+  outside the entries prefix, amount not prefilled, Pay opens the editor, dues drop payments, history unfiltered, delete
+  guard removed, guard refuses every supplier's due rows, editor compares with the live row, prefill not capped, an
+  empty note sent.
+- Not done: a browser smoke (low RAM). The owner checks on a phone, a tablet and the PC after deploying: Suppliers, tap a
+  supplier, its history shows; Pay (amount prefilled; pay part; pay more and see "paid ahead"); the due on the list
+  updates; delete a payment in the history (the due comes back); Edit details still edits and archives; after each
+  sheet closes the screen still responds to taps.
+- Rollback: the new payment member and the optional `supplierId` query key are only sent by new tabs. After a rollback a
+  tab still holding the new JS gets 400 on Pay and on a supplier's history until it reloads; payments already saved
+  still lower the dues (the old dues sum reads every row's `duePaise`) and show in History as "Payment".
+- Chain, run from an `F:` working directory (shared and hub measured before the review fixes, which touched only the
+  cafe app; cafe measured again on the final tree):
+  - shared: tsc 0, 1119/1119
+  - cafe: tsc 0, lint 0 errors (the 2 old warnings in `lib/masters-blob.test.ts`), 8638/8638
+  - hub: tsc 0, lint 0, 288/288
+  - live: `verify:inventory:payments:live` 31/31 (new, cases a-m), `verify:inventory:purchases:live` 43/43,
+    `verify:inventory:entries:live` 32/32, `verify:inventory:live` 15/15, `verify:inventory:items:live` 26/26,
+    `verify:inventory:stock-use:live` 12/12, `verify:model-ready:live` 14/14
+- **Next =** inventory lite is complete (6 of 6 slices). The owner deploys and checks Slices 4-6 on devices; then the
+  owner picks the next work (open call: the table-free move on cancel).
