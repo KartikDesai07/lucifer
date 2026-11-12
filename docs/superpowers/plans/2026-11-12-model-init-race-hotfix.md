@@ -257,4 +257,72 @@ differences documented; the `createCollection`-rejects test; the live leg uses `
 
 ## Results
 
-(written by the hotfix session)
+Hotfix session 2026-11-12, branch `fix/model-init-race` from `main` `4bd357c` (`origin/main` was still `4bd357c`: no
+merge needed). Not pushed, not merged.
+
+**Commits:** `a14ed50` the plan; `b121d51` Task 1 (`lib/memoize-until-failure.ts`, `ModelLike` /
+`createModelReady` / `modelReady` in `lib/db.ts`, `lib/model-ready.test.ts`); `bb2b4e2` Task 2 (the 12 call sites,
+the moved pins, the GATE `lib/model-ready-pins.test.ts`, two script edits); `050cab3` Task 3
+(`scripts/verify-model-ready-live.ts`, `verify:model-ready:live`); this Results commit.
+
+**RED → GREEN** (each checked by the session itself: the old or a naive file put back beside the new test, run,
+restored byte-identical):
+- Task 1: `lib/db.ts` at `a14ed50` → `model-ready.test.ts` 7 / 7 fail ("createModelReady is not a function") → 7 / 7.
+- Task 2: the 12 sources at `b121d51` → GATE (a) fails listing exactly the 12 files, (c) fails, (b) passes → 3 / 3.
+  The task review (opus) showed GATE (c)'s first form vacuous for `entries-write.ts` / `print-device.ts` (a landmark
+  that recurs later in the file); (c) now anchors each site on its own function (start < its own `connectDB()` <
+  `modelReady` < its first write) and bites: a `modelReady` moved after `ExpenseEntry.create(`, and the crud POST's own
+  `connectDB()` removed, each fail it. The moved pins (`areas-route-paths`, `order-request-paths:1561`,
+  `print-lifecycle-paths:356`) keep their ordering chains and were each shown to bite.
+- Task 3: `lib/db.ts` given a naive `modelReady` (connect + `init()` only) → the live leg 6 passed / 8 failed (2a–2d,
+  3c, 3d, 3f, 3g) → 14 passed / 0 failed; the database dropped by the script.
+
+**Decisions beyond the plan's text** (each recorded with its reason): the GATE's (a) allows exactly one `.init(` in
+non-test sources, `lib/db.ts`'s `model.init()` inside `createModelReady` (the fix itself needs it);
+`scripts/verify-reward-assign-live.ts` sets `process.env.MONGODB_URI` before its own bare `mongoose.connect` (it reaches
+`claimPromoRedemption` → `modelReady` → `connectDB()`; without the line its no-env default fails 16 / 6, with it
+22 / 0, as before the hotfix); `lib/print-printer-test.ts`'s header says "never calls connectDB() itself" like the
+three print libs (comment only).
+
+**Counts, `4bd357c` → `050cab3`:** cafe 8387 (8386 / 0 / 1 skip) → 8397 (8396 / 0 / 1: +7 helper, +3 GATE); tsc 0 → 0;
+lint 0 errors / 2 old warnings → the same; shared 1090 → 1090; `apps/mobile` 173 → 173. Live legs, each on its own
+scratch database: print 524 / 0 → 524 / 0, dues 102 / 0 → 102 / 0 (its G2 leg awaits `modelReady(DuePayment)`), areas
+82 / 0 → 82 / 0, expenses 72 / 0 → 72 / 0, order-request 247 / 0 → 247 / 0, menu 51 / 0 → 51 / 0, reward-assign 22 / 0
+→ 22 / 0, reward-redeem 26 / 0 → 26 / 0, model-ready (new) 14 / 0. Line counts: `lib/due-payment.ts` 371 → 364,
+`lib/order-request-accept-promo.ts` 302 → 299, `lib/crud-route.ts` 299 → 294, `lib/print-printers.ts` 159 → 160; no
+file over 300 grew. Nothing outside `apps/cafe` changed (no `apps/mobile`, `apps/desktop`, `workers`, `packages`).
+
+**The cold-start check (Task 4):** two `next build` worktrees (`D:\kd\mi0` = `4bd357c`, `D:\kd\mi1` = `050cab3`,
+153 routes each), the Session 6B harness without its two accommodations (no station pre-seed, no warm-up request);
+each cold start = a fresh database + a fresh `next start` + the setup (the `/pos` page's first requests race the
+connection; GET stations, POST 2 stations, 4 category PUTs, POST 4 printers).
+- Before (`4bd357c`): **4 / 10 cold starts failed** (GET `/api/stations` 500, both station POSTs 500, 4 / 4 printer
+  POSTs 500, the page's own GET `/api/printers` 500 twice, 11 `createCollection` TypeErrors in the server log each).
+- After (`050cab3`): **20 / 20 clean** (stations 200, station POSTs 201 / 201, printer POSTs 4 × 201, 4 printers, no
+  5xx, no `createCollection` error); every one of the 20 databases holds the unique `name` index on `stations` and
+  `printers`. At the measured 40 % base rate, 20 clean runs by luck ≈ 0.004 %.
+- One M1 round on the after build: T-1's 3 KOTs and the bill printed (4 jobs printed, no duplicate); the slips' bytes
+  (48 342 / 44 382 / 44 382) and the request counts (send..pay: 3 acks + 1 wake; pay..end: 1 ack + 1 pulse) equal
+  Session 6B's `m1-after` run.
+
+**The final review (Claude Fable, read-only, `4bd357c..050cab3`): Ready to merge — Yes; 0 Critical, 0 Important,
+5 Minor**, none required before the merge: run the two reward legs (done: 22 / 0 and 26 / 0); a stalled fallback
+would be shared by every caller of that model in the instance (a hang, not a 500: the same class as mongoose's own
+pending `init()` and `ensureIdemKeyIndex`; no timer added, by the free-tier rule) — a known residual; the
+`print-setup-paths` pin title "never connect" is now true by letter (not loosened); a placeholder in the live leg;
+the GATE's `.init(` match is broad (fails loudly, the safe direction). It confirmed against mongoose 8.24's source:
+the happy path is today's (no new command, request, timer or write), the fallback does init's own work and rejects
+with the build's error (fail closed, `lib/due-payment.ts` included), no sticky rejection remains, and the 12 sites
+keep their order.
+
+**Known residuals:** models no call site guards (`Order`, `Table`, `Staff`, …) still skip their automatic index build
+in a raced instance (as planned); a stalled `createCollection` / `createIndexes` holds that model's callers in that
+instance (as above). The live leg's step 1b (a model compiled while connecting: `init()` rejects) is the tripwire: when
+a mongoose upgrade makes it fail, revisit `modelReady`.
+
+**Left for the owner:** the merge and the push (on his word only; `origin/main` fetched first); the deploy (his admin
+panel; it can go out with printing Phase 6 or after it); the scratch databases this session left on the local mongod
+(35: the 31 cold-start `pos_scratch_e2e_4g_mi*`, `pos_scratch_mi_base_dues`, `pos_scratch_mi_final_dues`,
+`pos_scratch_assign`, `pos_scratch_reward_redeem`; Claude's own drop is refused) —
+`node D:\kd\pos-dev-keep\hotfix\model-init\drop-mi.mjs` from `apps/cafe` (`--dry` lists them). Session tools and
+logs: `D:\kd\pos-dev-keep\hotfix\model-init\` (README.txt).
