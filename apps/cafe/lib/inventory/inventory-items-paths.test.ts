@@ -93,16 +93,23 @@ test("PIN the DTO sends lastRatePaise only when isAdmin", () => {
   assert.equal(body.split("dto.lastRatePaise =").length - 1, 1, "lastRatePaise is assigned in exactly one place");
 });
 
-test("PIN the only StockItem create / findOneAndUpdate call sites in app/ and lib/ are lib/inventory/items.ts", () => {
+// Slice 3 moved this pin on purpose: the one-tap "Track this item's own stock" upserts its own StockItem
+// (findOneAndUpdate with $setOnInsert) in lib/inventory/stock-use-write.ts. A plain create stays items.ts only.
+const OWN_STOCK_WRITER = "lib/inventory/stock-use-write.ts";
+
+test("PIN StockItem create is only in items.ts; findOneAndUpdate only in items.ts and the own-stock upsert", () => {
   const core = read(CORE);
   assert.ok(core.includes(CREATE_CALL), "landmark: items.ts creates");
   assert.ok(core.includes(FIND_UPDATE_CALL), "landmark: items.ts updates");
+  const own = read(OWN_STOCK_WRITER);
+  assert.equal(own.split(FIND_UPDATE_CALL).length - 1, 1, "landmark: the own-stock upsert is one call");
   const files = [...codeFiles("app"), ...codeFiles("lib")];
   assert.ok(files.length > 50, "the scan sees the source tree");
   for (const rel of files) {
     if (rel === CORE) continue;
     const src = read(rel);
     assert.ok(!src.includes(CREATE_CALL), `${rel} must not create StockItems`);
+    if (rel === OWN_STOCK_WRITER) continue;
     assert.ok(!src.includes(FIND_UPDATE_CALL), `${rel} must not findOneAndUpdate StockItems`);
   }
 });
