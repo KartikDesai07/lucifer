@@ -317,9 +317,11 @@ and the cost if it is wrong. They bind the plan; where one differs from §1–§
 26. **S4 as measured.** A scenario test drives today's agent and the new one through the same rounds (direct, from
     another device with its frames before and after the lease's answer, a frame for a busy line and for a free line
     while another line writes, a backlog with fast and with slow writes, a stuck printer, simple mode) and pins both
-    counts side by side; only the slow-write backlog may differ upward, by ruling 25; two differ downward on purpose,
-    on a one-step device too: the late frames (one empty lease fewer, ruling 25) and the stuck printer (2 acks and 2
-    leases fewer a round); neither is an S5 deviation. 6B adds the counting proxy on the fake-printer rounds and the soak's leases per printed slip against the
+    counts side by side; only the slow-write backlog may differ upward, by ruling 25; two differ downward on purpose: on a one-step device
+    only the late frames (one empty lease fewer, ruling 25); the stuck printer's drop (2 acks and 2 leases fewer a round)
+    is on a two-step device, while on a one-step device a stuck write holds the surface, so the held slips go back at
+    the 60 s hold bound as today (ruling 17's one start per opening; the bound keeps a print inside its 90 s lease)
+    (corrected in Session 6A); neither is an S5 deviation. 6B adds the counting proxy on the fake-printer rounds and the soak's leases per printed slip against the
     same soak on `main`.
 27. **P6-4: the real-printer check is a GO-LIVE step.** The merge gate is 6B's exit (fake printers, the emulator on
     WebView 109 and 154, the Windows app). GO-LIVE: the demo cafe first; a cafe where **one** phone prints two Bluetooth

@@ -309,6 +309,7 @@
     "lib/print-agent-paths.test.ts",
     "lib/print-agent-print.test.ts",
     "lib/print-lines-today.test.ts",
+    "lib/print-phase6-pins.test.ts",
     "lib/print-lines.test.ts",
     "lib/print-lines-rules.test.ts",
     "lib/print-lines-rules-2.test.ts",

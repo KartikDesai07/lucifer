@@ -22,8 +22,8 @@ import {
 // print lanes throw is curated (lane-print.ts LANE_MESSAGES), so the sentence IS the code: a refusal
 // made before any byte left, a payload that can never print, or "it may already be on paper". An
 // error this file does not know is "maybe", the safe direction: it never authorizes an unlabelled
-// repeat. The write queue is unchanged (device-printer-write.ts): the agent prints one job at a time,
-// so a job never waits behind another there, and its "write failed" stays "maybe".
+// repeat. The write queue is unchanged (device-printer-write.ts); Phase 6: a printer's line prints one job at a time, so
+// a job never waits behind another of its own printer there, and its "write failed" stays "maybe".
 
 export type PrintWriteSent = "no" | "maybe";
 
