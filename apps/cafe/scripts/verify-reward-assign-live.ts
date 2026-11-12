@@ -100,6 +100,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // connectDB(), reached through modelReady, reads MONGODB_URI (the verify-print-host-live.ts pattern).
+  process.env.MONGODB_URI = uri;
   await mongoose.connect(uri);
   console.log(`\nreward assign live — live against ${dbName}\n`);
 

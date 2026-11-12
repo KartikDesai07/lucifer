@@ -1,4 +1,4 @@
-import { connectDB } from "@/lib/db";
+import { connectDB, modelReady } from "@/lib/db";
 import { Area } from "@/models/Area";
 import cache from "@/lib/cache";
 import {
@@ -56,12 +56,8 @@ export async function POST(req: Request) {
 
   try {
     await connectDB();
-    // Await the unique collation-index build before the cap check and the insert:
-    // connectDB()'s autoIndex createIndexes() is not awaited, so on a cold
-    // cluster two inserts could both land before the index exists, and the
-    // deferred build would then fail silently for good, voiding the
-    // duplicate-name guard. .init() is memoized per process (see crud-route.ts).
-    await Area.init();
+    // The unique collation index must exist before the cap check and the insert (modelReady).
+    await modelReady(Area);
     // Accepted residual: two admins adding in the same instant can both pass
     // this count and land one area over the cap; the next add is refused.
     if ((await Area.countDocuments()) >= TABLE_AREAS_MAX) return failure(AREA_LIMIT_ERROR, 400);

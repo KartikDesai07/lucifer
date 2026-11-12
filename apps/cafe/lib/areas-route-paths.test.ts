@@ -9,7 +9,7 @@ import { stripComments } from "./source-pin-utils";
 // routes (GET/POST/PATCH and PUT/DELETE by id) and the two table writes that
 // name an area. Behaviour is proven against a real mongod by
 // scripts/verify-areas-live.ts; these pins keep the ORDER of the guards (the
-// live leg cannot see a memoized no-op like Area.init()) and the pinned
+// live leg cannot see a warm no-op like modelReady(Area)) and the pinned
 // literals from being reordered or dropped. Every chain asserts each needle
 // EXISTS before comparing positions.
 
@@ -77,7 +77,7 @@ test("PIN: AREA_LIST is cached under \"areas\" and the routes invalidate exactly
   }
 });
 
-test("PIN: POST /api/areas - admin, validate, connect, Area.init(), THEN the cap count, THEN the append position, THEN create, THEN the cache flush", () => {
+test("PIN: POST /api/areas - admin, validate, connect, modelReady(Area), THEN the cap count, THEN the append position, THEN create, THEN the cache flush", () => {
   const post = handler(AREAS_ROUTE, "POST");
   assertChain(
     post,
@@ -85,7 +85,7 @@ test("PIN: POST /api/areas - admin, validate, connect, Area.init(), THEN the cap
       "await requireAdmin();",
       "validateBody(req, createAreaSchema)",
       "await connectDB();",
-      "await Area.init();",
+      "await modelReady(Area);",
       "await Area.countDocuments()",
       "TABLE_AREAS_MAX) return failure(AREA_LIMIT_ERROR, 400)",
       "displayOrder: { $exists: true }",
@@ -93,12 +93,12 @@ test("PIN: POST /api/areas - admin, validate, connect, Area.init(), THEN the cap
       "cache.del(CACHE_KEY)",
       "return created(area)",
     ],
-    "init() guarantees the unique collation index before the cap check and the insert",
+    "modelReady() guarantees the unique collation index before the cap check and the insert",
   );
   const dup = post.indexOf("isDuplicateKeyError(error)");
   assert.ok(dup > post.indexOf("cache.del(CACHE_KEY)"), "landmark: the duplicate catch follows the write");
   assert.match(post.slice(dup), /^isDuplicateKeyError\(error\)\) return failure\(AREA_DUPLICATE_ERROR, 400\);/);
-  assert.equal(count(post, "Area.init()"), 1, "POST awaits Area.init() exactly once");
+  assert.equal(count(post, "modelReady(Area)"), 1, "POST awaits modelReady(Area) exactly once");
 });
 
 test("PIN: PATCH /api/areas - admin, validate, the exact-set check BEFORE the bulkWrite, the 409 copy, then flush and the fresh list", () => {
@@ -120,7 +120,7 @@ test("PIN: PATCH /api/areas - admin, validate, the exact-set check BEFORE the bu
   );
 });
 
-test("PIN: PUT /api/areas/[id] - admin, id shape, validate, connect, Area.init() (the second writer of name), ONE findOneAndUpdate, null -> 404, flush; duplicate -> 400", () => {
+test("PIN: PUT /api/areas/[id] - admin, id shape, validate, connect, modelReady(Area) (the second writer of name), ONE findOneAndUpdate, null -> 404, flush; duplicate -> 400", () => {
   const put = handler(AREA_ID_ROUTE, "PUT");
   assertChain(
     put,
@@ -129,7 +129,7 @@ test("PIN: PUT /api/areas/[id] - admin, id shape, validate, connect, Area.init()
       "mongoose.isValidObjectId(id)) return notFound(AREA_NOT_FOUND_ERROR)",
       "validateBody(req, renameAreaSchema)",
       "await connectDB();",
-      "await Area.init();",
+      "await modelReady(Area);",
       "await Area.findOneAndUpdate({ _id: id }, { $set: parsed.data }, { new: true, runValidators: true })",
       "if (!updated) return notFound(AREA_NOT_FOUND_ERROR)",
       "cache.del(CACHE_KEY)",

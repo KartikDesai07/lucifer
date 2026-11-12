@@ -3,11 +3,12 @@ import { PRINT_DEVICES_LIST_MAX, type PrintDeviceCapabilities, type PrintDeviceS
 import { PRINT_DEVICE_HEARTBEAT_WRITE_MS, PRINT_DEVICE_ONLINE_MS, PRINT_DEVICE_PRUNE_MS } from "@pos/shared/print-lifecycle";
 import type { PrinterFailover } from "@pos/shared/print-failover";
 import { PrintDevice } from "@/models/PrintDevice";
+import { modelReady } from "@/lib/db";
 
 // Printing redesign, Phase 1 (spec §6.4, §10): the device heartbeat. It rides the agent's existing
 // wake poll, and lease calls refresh it too, so it adds no request. Atlas M0 budget: at most one
 // write per device per 30 s by each path (its wake's, by beatAt's own clock since Session 3C, and its
-// leases'), however often the agent polls. Never calls connectDB(). No console.*.
+// leases'), however often the agent polls. Never calls connectDB() itself. No console.*.
 
 export interface PrintDeviceBeat {
   deviceId: string;
@@ -22,11 +23,8 @@ export interface PrintDeviceBeat {
  *  `beatAt`, the wake's own clock (a lease's touch refreshes lastSeenAt only), and is due whenever either clock is 30 s
  *  old, so a writer whose leases keep touching its row can never starve the write that says it may take a printer over. */
 export async function beatPrintDevice(beat: PrintDeviceBeat, nowMs: number): Promise<void> {
-  // The upsert's "one row per device" rests on the unique deviceId index, and connectDB()'s autoIndex
-  // build is not awaited. Without this, a cold-start wake could insert a second row before the index
-  // exists; the build then fails for good and countOnlineAgents over-counts, shrinking every agent's
-  // wake share. .init() is memoized per process (house rule: due-payment.ts, crud-route.ts).
-  await PrintDevice.init();
+  // The upsert's "one row per device" rests on the unique deviceId index (modelReady).
+  await modelReady(PrintDevice);
   const due = new Date(nowMs - PRINT_DEVICE_HEARTBEAT_WRITE_MS);
   try {
     await PrintDevice.updateOne(

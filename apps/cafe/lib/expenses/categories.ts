@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { connectDB } from "@/lib/db";
+import { connectDB, modelReady } from "@/lib/db";
 import { ExpenseCategory } from "@/models/ExpenseCategory";
 import { isDuplicateKeyError } from "@pos/shared/api";
 import { EXPENSE_CATEGORIES_MAX, EXPENSE_DEFAULT_CATEGORIES } from "@pos/shared/expense";
@@ -50,13 +50,12 @@ function isSeedRace(error: unknown): boolean {
 
 /**
  * Seed the 8 defaults when the collection is EMPTY (idempotent, race-safe: the
- * unique name index swallows a concurrent seeder). `init()` first so the unique
- * collation index exists before the insert — connectDB()'s autoIndex build is
- * not awaited (the Area precedent).
+ * unique name index swallows a concurrent seeder). `modelReady` first so the unique
+ * collation index exists before the insert.
  */
 export async function ensureExpenseCategories(): Promise<void> {
   await connectDB();
-  await ExpenseCategory.init();
+  await modelReady(ExpenseCategory);
   if ((await ExpenseCategory.countDocuments()) > 0) return;
   try {
     await ExpenseCategory.insertMany(

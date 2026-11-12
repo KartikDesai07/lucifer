@@ -8,6 +8,7 @@
 // a replay nudges nothing.
 import type { IndexDefinition, IndexOptions, Types, mongo } from "mongoose";
 import { Order } from "@/models/Order";
+import { memoizeUntilFailure } from "./memoize-until-failure";
 import { success, failure, serverError } from "@pos/shared/api";
 import { issueBillNumbers, BILL_NUMBER_UNCONFIRMED } from "@/lib/slip-numbers";
 import { billNumberingPlan, planHasWork, type BillNumberingPlan, type NumberableOrder } from "@/lib/gst-invoice";
@@ -77,23 +78,7 @@ export async function createIdemKeyIndex(
   await collection.createIndex(spec[0] as mongo.IndexSpecification, spec[1] as mongo.CreateIndexesOptions);
 }
 
-/**
- * One in-flight run shared by every caller; a success is kept for the
- * process, a failure is dropped so the NEXT call runs again (unlike
- * Model.init(), whose memoized rejection would stand for the instance's life).
- */
-export function memoizeUntilFailure(run: () => Promise<void>): () => Promise<void> {
-  let memo: Promise<void> | undefined;
-  return () => {
-    memo ??= Promise.resolve()
-      .then(run)
-      .catch((error: unknown) => {
-        memo = undefined;
-        throw error;
-      });
-    return memo;
-  };
-}
+export { memoizeUntilFailure };
 
 /**
  * autoIndex is not awaited by connectDB(): a cold-start pair of same-key

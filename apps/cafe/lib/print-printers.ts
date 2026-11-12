@@ -4,13 +4,14 @@ import { printerBackupRefusal } from "@pos/shared/print-failover";
 import { PRINTERS_MAX, printerClashMessage, printerWriterClash, type PrinterConfig, type PrinterConnection } from "@pos/shared/print-printers";
 import { Printer, type IPrinter, type IPrinterConnection } from "@/models/Printer";
 import { Station } from "@/models/Station";
+import { modelReady } from "@/lib/db";
 import type { PrinterBody } from "@/lib/print-printer-schemas";
 import type { PrintSetupResult } from "@/lib/print-stations";
 import { publishCafeEvent } from "@/lib/realtime-publish";
 
 // Printing redesign, Phase 2 (spec §6.3, §11): the outlet's printers. The setup screens (Session 2D) save a
 // printer whole; the routing (lib/print-printer-routing.ts) and, from Session 2C, the agent read them as
-// PrinterConfig. Never calls connectDB() (the routes do). No console.*.
+// PrinterConfig. Never calls connectDB() itself (the routes do). No console.*.
 
 export const PRINTER_NOT_FOUND = "Printer not found";
 export const PRINTER_EXISTS_MESSAGE = "A printer with this name already exists.";
@@ -104,8 +105,8 @@ export async function createPrinter(body: PrinterBody): Promise<PrintSetupResult
   // print several Windows printers, each a different one.
   const clash = printerWriterClash(existing, stored);
   if (clash !== null) return { ok: false, status: 409, error: printerClashMessage(clash, stored) };
-  // The unique name index must exist before the first insert (house rule: crud-route.ts).
-  await Printer.init();
+  // The unique name index must exist before the first insert (modelReady).
+  await modelReady(Printer);
   try {
     const created = await Printer.create({ ...stored, order: order ?? last + 1 });
     // Session 2C: every device reads its printers again (two Worker requests per admin save, never per slip).
