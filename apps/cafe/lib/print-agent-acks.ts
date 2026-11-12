@@ -8,7 +8,7 @@ import type { PendingPrintAck, PrintAgentDeps } from "@/lib/print-agent-types";
 // cleared on ANY answer from the server (1A review M3). Split out of print-agent.ts at the 2E review gate (M-5: that
 // file had passed its ~300-line budget); the agent's rules did not change.
 
-/** The pending-ack store keeps at most this many entries (an agent prints one job at a time). */
+/** The pending-ack store keeps at most this many entries (an agent prints one job per printer line, still far under this). */
 export const PRINT_ACK_PENDING_LIMIT = 50;
 
 /** A bounded insert: the oldest key goes once the store holds as many as the pending-ack store. */

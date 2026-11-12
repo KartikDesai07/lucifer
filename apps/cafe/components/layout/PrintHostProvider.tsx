@@ -15,8 +15,7 @@ import {
 
 import { PrintHostDrain } from "@/components/print/PrintHostDrain";
 import { usePrintHostBridge, type HostPrintCurrent } from "@/hooks/use-print-host-bridge";
-import { offlineSlipOutcomeOf, type OfflineSlipOutcome } from "@/lib/offline-send";
-import { PRINT_AGENT_SLIP_DEADLINE_MS } from "@/lib/print-agent-slip";
+import { offlineSlipWithBound, type OfflineSlipOutcome } from "@/lib/offline-send";
 import type { HostPrintSlip } from "@/lib/print-host-slips";
 import { mintTabId, readDeviceId } from "@/lib/pos-device-id";
 import { readDevicePrefs, writeDevicePrefs } from "@/lib/pos-device-prefs";
@@ -48,6 +47,9 @@ export interface PrintHostContextValue {
   tabId: string;
   /** What the bridge is printing right now, or null when idle. */
   current: HostPrintCurrent | null;
+  /** Phase 6 (spec §9 rulings 3, 13): the bridge holds print work — a slip on its surface or waiting for it, or a write
+   *  still in flight on a printer's lane (the bridge's `busy`). The Test buttons wait for it. */
+  printing: boolean;
   kotRef: RefObject<HTMLDivElement | null>;
   receiptRef: RefObject<HTMLDivElement | null>;
   eodRef: RefObject<HTMLDivElement | null>;
@@ -66,7 +68,7 @@ export interface PrintHostContextValue {
    *  wedged the bridge for the rest of the tab's life. */
   reportSurfacesMounted: (mounted: boolean) => void;
   /** Printing Phase 5 (spec 5.4): an offline KOT's slip through this one bridge, behind any slip already printing; no
-   *  lease, no ack, no request. "maybe" also when the bridge has not settled it in its agent's bound. */
+   *  lease, no ack, no request. Phase 6 (ruling 12): at the agent's bound a slip still waiting is withdrawn ("no"); one drawn is waited for. */
   queueOfflineSlip: (slip: HostPrintSlip) => Promise<OfflineSlipOutcome>;
 }
 
@@ -124,9 +126,10 @@ export function PrintHostProvider({ children }: { children: ReactNode }) {
   const bridge = usePrintHostBridge({ surfacesMounted });
   const { current, busy, kotRef, receiptRef, eodRef, setEodReady, queueSlip, queueTestSlip } = bridge;
 
-  // P2 N4: while the bridge prints a slip (its whole claim → onAfterPrint window) a newer build never reloads the page
-  // (lib/print-host-busy.ts). A layout effect, so the hold lands in the same commit that raised `busy`, before any
-  // timer can look; let go when it frees up and on unmount.
+  // P2 N4: while the bridge prints a slip (its whole claim → onAfterPrint window; Phase 6, spec §9 ruling 3: and while any
+  // write is still in flight on a printer's lane) a newer build never reloads the page (lib/print-host-busy.ts). A layout
+  // effect, so the hold lands in the same commit that raised `busy`, before any timer can look; let go when it frees up
+  // and on unmount.
   const [busyToken] = useState(() => Symbol("print-host-bridge"));
   useLayoutEffect(() => {
     holdPrintBusy(busyToken, busy);
@@ -135,19 +138,16 @@ export function PrintHostProvider({ children }: { children: ReactNode }) {
 
   const queueOfflineSlip = useCallback(
     (slip: HostPrintSlip) =>
-      new Promise<OfflineSlipOutcome>((resolve) => {
-        const deadline = window.setTimeout(() => resolve("maybe"), PRINT_AGENT_SLIP_DEADLINE_MS);
-        queueSlip(slip, (result) => {
-          window.clearTimeout(deadline);
-          resolve(offlineSlipOutcomeOf(result));
-        });
+      offlineSlipWithBound(queueSlip, slip, {
+        setTimer: (fn, ms) => window.setTimeout(fn, ms),
+        clearTimer: (handle) => window.clearTimeout(handle as number),
       }),
     [queueSlip],
   );
 
   const value = useMemo<PrintHostContextValue>(
-    () => ({ isHostDevice, deviceId, tabId, current, kotRef, receiptRef, eodRef, setEodReady, queueTestSlip, syncHostPref, reportSurfacesMounted, queueOfflineSlip }),
-    [isHostDevice, deviceId, tabId, current, kotRef, receiptRef, eodRef, setEodReady, queueTestSlip, syncHostPref, reportSurfacesMounted, queueOfflineSlip],
+    () => ({ isHostDevice, deviceId, tabId, current, printing: busy, kotRef, receiptRef, eodRef, setEodReady, queueTestSlip, syncHostPref, reportSurfacesMounted, queueOfflineSlip }),
+    [isHostDevice, deviceId, tabId, current, busy, kotRef, receiptRef, eodRef, setEodReady, queueTestSlip, syncHostPref, reportSurfacesMounted, queueOfflineSlip],
   );
 
   // The lanes arm only once the surfaces exist: a claim is a CAS that marks the
@@ -160,6 +160,7 @@ export function PrintHostProvider({ children }: { children: ReactNode }) {
         deviceId={deviceId}
         tabId={tabId}
         busy={busy}
+        drawing={bridge.drawing}
         claimLockRef={claimLockRef}
         onSlip={queueSlip}
         surfacesMounted={surfacesMounted}

@@ -318,7 +318,7 @@ test("PIN (D): PrintHostDrain.tsx runs the print agent (the host for the cafe; w
   );
   assert.match(src, /const drains = isAgent && holdsLock;/, "the agent drains only under the lock");
   assert.match(src, /const hostDrains = enabled && holdsLock;/, "the host's self-order lane keeps the host gate");
-  assert.match(src, /usePrintAgent\(\{ enabled: drains, isHost: enabled, printers, deviceId, tabId, busy, queueSlip: onSlip \}\);/, "the agent prints through the provider's bridge");
+  assert.match(src, /usePrintAgent\(\{ enabled: drains, isHost: enabled, printers, deviceId, tabId, busy: drawing, queueSlip: onSlip \}\);/, "the agent prints through the provider's bridge"); // Phase 6 Task 6 (spec §9 ruling 14) deliberately changed: the agent's gate is the surface drawing (busy: drawing), not a lane's write in flight; busy stays the self-order lane's
   assert.match(src, /useSelfOrderAutoPrint\(\{ enabled: hostDrains, busy, queueKotRound, hostLane \}\);/, "the host lane hands a claimed KOT to the agent (job-aware lane)");
   assert.ok(src.includes("PRINT_HOST_MAX_AGE_MS"), "hostLane must reference PRINT_HOST_MAX_AGE_MS");
   assert.match(src, /return null;/, "PrintHostDrain must return null — a null-rendering child");
@@ -422,7 +422,7 @@ test('PIN (H): use-print-host-wake-lock.ts contains navigator.wakeLock.request(W
 
 // ── I. use-print-host-bridge.ts (MERGED-13) ──────────────────────────────
 
-test("PIN (I): use-print-host-bridge.ts declares exactly THREE useReactToPrint( calls, each with onAfterPrint: finish, (x3) and onPrintError, (x3); the eod surface uses pageStyle: RECEIPT_PAGE_STYLE; PRINT_HOST_EOD_READY_TIMEOUT_MS is used in a window.setTimeout(; busy: current !== null; queueTestSlip rejects with PRINT_HOST_BUSY_MESSAGE when occupiedRef is set; queueSlip queues (FIFO) while occupied and settle promotes the next slip before clearing — review L1", () => {
+test("PIN (I): use-print-host-bridge.ts declares exactly THREE useReactToPrint( calls, each with onAfterPrint: finish, (x3) and onPrintError, (x3); the eod surface uses pageStyle: RECEIPT_PAGE_STYLE; PRINT_HOST_EOD_READY_TIMEOUT_MS is used in a window.setTimeout(; busy: current !== null || tickets.writing() > 0 and drawing: current !== null; queueTestSlip rejects with PRINT_HOST_BUSY_MESSAGE when occupiedRef is set or a lane writes; queueSlip queues (FIFO, with its ticket) while occupied and settle promotes the next slip before clearing — review L1", () => {
   const src = readSrc(USE_PRINT_HOST_BRIDGE);
 
   const useReactToPrintCalls = countOccurrences(src, "useReactToPrint(");
@@ -439,27 +439,23 @@ test("PIN (I): use-print-host-bridge.ts declares exactly THREE useReactToPrint( 
     /window\.setTimeout\(\(\) => \{[\s\S]*?\}, PRINT_HOST_EOD_READY_TIMEOUT_MS\)/,
     "PRINT_HOST_EOD_READY_TIMEOUT_MS must be used as a window.setTimeout( duration",
   );
-  assert.match(src, /busy: current !== null,/, "must return busy: current !== null,");
+  // Phase 6 Task 4 (spec §9 ruling 3) deliberately changed: `busy` also covers every write still in flight on a printer's
+  // lane (the reload hold, the self-order lane); `drawing` is the surface alone (its waiting slips included).
+  assert.match(src, /busy: current !== null \|\| tickets\.writing\(\) > 0,/, "must return busy: current !== null || tickets.writing() > 0,");
+  assert.match(src, /drawing: current !== null,/, "must return drawing: current !== null,");
   // Review PH-5 L1 (HIGH, dist-verified): react-to-print removes the existing
   // fixed-id #printWindow at the start of EVERY print call, so a slip arriving
   // mid-print (the band's manual tap has no busy gate) must WAIT, never replace
   // `current`. Occupancy is a SYNCHRONOUS ref (state lags a render), and settle
   // promotes the next waiting slip without `current` ever touching null.
-  assert.match(
-    src,
-    /if \(occupiedRef\.current\) \{\s*reject\(new Error\(PRINT_HOST_BUSY_MESSAGE\)\);/,
-    "queueTestSlip must reject with PRINT_HOST_BUSY_MESSAGE when occupiedRef.current is set",
-  );
-  assert.match(
-    src,
-    /if \(occupiedRef\.current\) \{\s*pendingRef\.current\.push\(slip\);\s*return;\s*\}\s*occupiedRef\.current = true;\s*setCurrent\(\{ kind: "slip", slip \}\);/,
-    "queueSlip must push onto pendingRef while occupied and only otherwise mark occupied + setCurrent",
-  );
-  assert.match(
-    src,
-    /const next = pendingRef\.current\.shift\(\);\s*if \(next\) \{\s*setCurrent\(\{ kind: "slip", slip: next \}\);\s*return;\s*\}\s*occupiedRef\.current = false;\s*setCurrent\(null\);/,
-    "settle must promote the next pending slip before ever clearing occupancy / current",
-  );
+  // Phase 6 Task 4 (spec §9 ruling 13) deliberately changed: a test slip is refused while a lane still writes, too.
+  assert.match(src, /if \(occupiedRef\.current \|\| tickets\.writing\(\) > 0\) \{\s*reject\(new Error\(PRINT_HOST_BUSY_MESSAGE\)\);/, "queueTestSlip must reject with PRINT_HOST_BUSY_MESSAGE while occupied or a lane writes");
+  // Phase 6 Task 4 (spec §9 ruling 10) deliberately changed: each slip waits with its ticket, the slip on the surface's
+  // ticket is in ticketRef, and promotion moves both; the FIFO order and the occupancy rules are as before. Phase 6 Task 4
+  // fix round 1 deliberately changed: `current` carries its ticket; the dispatch effect acts only for the ticket on the surface.
+  assert.match(src, /if \(occupiedRef\.current\) \{\s*pendingRef\.current\.push\(\{ slip, ticket \}\);\s*\} else \{\s*occupiedRef\.current = true;\s*ticketRef\.current = ticket;\s*setCurrent\(\{ kind: "slip", slip, ticket \}\);/, "queueSlip must push onto pendingRef while occupied and only otherwise mark occupied + setCurrent");
+  assert.match(src, /const next = pendingRef\.current\.shift\(\);\s*ticketRef\.current = next\?\.ticket \?\? null;\s*if \(next\) \{\s*setCurrent\(\{ kind: "slip", slip: next\.slip, ticket: next\.ticket \}\);\s*return;\s*\}\s*occupiedRef\.current = false;\s*setCurrent\(null\);/, "settle must promote the next pending slip before ever clearing occupancy / current");
+  assert.match(src, /if \(!current \|\| dispatchedRef\.current \|\| !surfacesMounted\) return;\s*\/\/[^\n]*\n\s*if \(current\.ticket !== ticketRef\.current\) return;[\s\S]*?dispatchSlip\(tickets, current\.ticket, /, "a dispatch run whose slip is no longer on the surface does nothing; a live one dispatches its own ticket");
   assert.ok(!src.includes("currentRef"), "the render-lagging currentRef mirror must be gone — occupancy is the synchronous occupiedRef");
   assert.equal(countOccurrences(src, "setCurrent({ kind: \"slip\", slip"), 2, "exactly two slip setCurrent sites: queueSlip (idle) and settle (promotion)");
 });
@@ -660,10 +656,11 @@ test("INVENTORY: files containing the needle useReactToPrint( under app/componen
 // Phase 2 Session 2E: use-print-host-bridge.ts 250 -> 255 (measured 252): a slip's own Windows printer and paper.
 // Printing Phase 4 Session 4B: use-print-host-bridge.ts 255 -> 265 (measured 262): the text step before the KOT surface.
 // PX-2 Task 7 (spec §6.9 B7, on purpose): use-print-host-bridge.ts 265 -> 270 (measured 270): a job's slip's toast.
-test("PIN (P): line budgets — PrintHostProvider.tsx <= 200, use-print-host-bridge.ts <= 270, use-print-host-drain.ts <= 150, use-print-host-beat.ts <= 90, PrintHostPrintSources.tsx <= 110, PrintHostEodSource.tsx <= 90, PosPulseProvider.tsx <= 300, use-self-order-auto-print.ts <= 300", () => {
+// Phase 6 Task 4 (spec §9 rulings 8–13) deliberately changed: use-print-host-bridge.ts 270 -> 300 (measured 300): Phase 6's two steps.
+test("PIN (P): line budgets — PrintHostProvider.tsx <= 200, use-print-host-bridge.ts <= 300, use-print-host-drain.ts <= 150, use-print-host-beat.ts <= 90, PrintHostPrintSources.tsx <= 110, PrintHostEodSource.tsx <= 90, PosPulseProvider.tsx <= 300, use-self-order-auto-print.ts <= 300", () => {
   const budgets: [string, number][] = [
     [PRINT_HOST_PROVIDER, 200],
-    [USE_PRINT_HOST_BRIDGE, 270],
+    [USE_PRINT_HOST_BRIDGE, 300],
     [USE_PRINT_HOST_DRAIN, 150],
     [USE_PRINT_HOST_BEAT, 90],
     [PRINT_HOST_PRINT_SOURCES, 110],

@@ -7,7 +7,6 @@ import { PRINT_WAKE_FAST_MS, PRINT_WAKE_SLOW_MS, PRINT_WAKE_SOCKET_MS } from "@p
 import { PRINT_AGENT_REFUSED_RECHECK_MS, type LeasedPrintJob, type PrintAckData, type PrintLeaseData } from "@pos/shared/print-agent-wire";
 import { createPrintAgentWake, printAgentWakeMayPoll } from "@/lib/print-agent-wake";
 import { leasedJobsOf, printAgentEnqueueHeaders, printAgentHeaders, printJobRefOf } from "@/lib/print-agent-calls";
-import { createHostSlipOutcomes } from "@/lib/print-host-outcomes";
 import {
   PRINT_AGENT_QUIET_AFTER_ACK_MS,
   PRINT_DIRECT_HOLD_MS,
@@ -463,18 +462,7 @@ test("the call sites' helpers: the opt-in headers, a ref by kind, and nothing fo
   assert.ok(/^[A-Za-z0-9-]{8,64}$/.test(printAgentEnqueueHeaders("dev-a")["idempotency-key"] ?? ""), "an enqueue carries a usable Idempotency-Key");
 });
 
-test("the bridge's outcome line: each slip's caller hears once, in print order; the test slip and untracked slips keep their place", () => {
-  const outcomes = createHostSlipOutcomes();
-  const heard: string[] = [];
-  outcomes.track((r) => heard.push(`a:${r.ok}`));
-  outcomes.track(null);
-  outcomes.track((r) => heard.push(`c:${r.ok}`));
-  outcomes.finish({ ok: true });
-  outcomes.finish({ ok: true });
-  outcomes.finish({ ok: false, error: new Error("x") });
-  outcomes.finish({ ok: true });
-  assert.deepEqual(heard, ["a:true", "c:false"], "in order, once each, the test slip in between untold");
-});
+// Phase 6 Task 4 (spec §9 ruling 10): the outcomes FIFO is gone; each slip's caller hears once by its ticket (print-host-tickets.test.ts).
 
 // Session 1C final review I2: a kick that lands while a cycle runs used to be dropped. If that cycle's
 // lease read the line before the new job was inserted, the job waited for the next poll (up to 60 s on
@@ -926,8 +914,10 @@ test("2B: a held job dropped by the hold bound or by stop() is handed back as a 
 });
 
 // The 2B review gate (M-A): the cycle took a fresh held job out of the queue, then waited for the ack of a stale
-// one it had just handed back; a stop() landing in that wait dropped the fresh job with no ack at all.
-test("2B gate: a stop() while a hand-back is on the wire hands back the job the cycle already took", async () => {
+// one it had just handed back; a stop() landing in that wait dropped the fresh job with no ack at all. Phase 6 Task 5
+// (spec §9 ruling 18) deliberately changed: a held job's start waits for no flush, so the fresh job already prints when
+// the stop() lands; a job in flight finishes and acks. Either way no taken job is left unacked.
+test("2B gate: a stop() while a hand-back is on the wire leaves no taken job unacked", async () => {
   const { w, deps } = world();
   let agentRef: ReturnType<typeof createPrintAgent> | null = null;
   const agent = createPrintAgent({
@@ -943,12 +933,8 @@ test("2B gate: a stop() while a hand-back is on the wire hands back the job the 
   agent.take(job("fresh"));
   agent.setGate({ enabled: true, busy: false });
   await settle();
-  assert.deepEqual(w.prints, [], "nothing prints on a stopped page");
-  assert.deepEqual(
-    w.acks.map((a) => [a.id, a.body.sent]),
-    [["stale", "no"], ["fresh", "no"]],
-    "both handed back, so neither waits 90 s to expire into a REPRINT",
-  );
+  assert.deepEqual(w.prints, ["fresh"], "the fresh job started at the opening, before the stop(): it finishes");
+  assert.deepEqual(w.acks.map((a) => [a.id, a.body.outcome, a.body.sent]), [["stale", "failed", "no"], ["fresh", "printed", undefined]], "the stale one handed back, the fresh one acked printed: neither waits 90 s to expire into a REPRINT");
 });
 
 // The 2B review gate (M-B): a refusal whose first send got no answer was applied later by the 5 s retry, but
@@ -1202,9 +1188,9 @@ test("2B: the seams: the lease header names the draining tab only while its agen
   assert.deepEqual(got, ["d9"], "delivered to the agent that listens, never after it stopped listening");
 });
 
-// Phase 2 Session 2C (the 2B gate's ruling R9): one lease may answer one job per line (the device's own line and
-// each printer line it writes); on its one local printer they print one by one.
-test("2C: a lease that answers several lines' jobs prints them one by one, and a line in backoff sets the timer", async () => {
+// Phase 2 Session 2C (the 2B gate's ruling R9): one lease may answer one job per line. Phase 6 Task 5 (ruling 16) re-derived:
+// these name no printer, so both are on the device line, which runs alone: one by one (one per printer line: print-lines-rules-2).
+test("2C: a lease that answers several device-line jobs prints them one by one, and a line in backoff sets the timer", async () => {
   const { w, deps } = world();
   w.leases.push({ jobs: [job("k1"), job("b1")], retryAt: null });
   w.ackAnswers.push(done(false), done(false));

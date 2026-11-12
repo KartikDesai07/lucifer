@@ -11,7 +11,7 @@ import { PRINTER_NOT_CONNECTED_MESSAGE } from "@/lib/printer/web-printer-types";
 
 /** How long the agent waits for the bridge to settle one slip: past the bridge's own bounds (the end-of-day
  *  figures' wait, then the dispatch watchdog), so only a slip the watchdog gave up on reaches it. Such a
- *  slip may have printed, so it is acked "maybe". */
+ *  slip still waiting to be drawn is withdrawn and acked "no"; one already drawn is waited for (print-agent-print.ts). */
 export const PRINT_AGENT_SLIP_DEADLINE_MS = PRINT_HOST_EOD_READY_TIMEOUT_MS + PRINT_HOST_DISPATCH_TIMEOUT_MS + 5_000;
 
 /** Session 3B (spec §9.3, P3-3): `network` is true when the job's printer is a network printer this device prints. Its

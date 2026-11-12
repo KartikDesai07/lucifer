@@ -1,10 +1,8 @@
-import { PRINT_JOBS_FOR_ME_LIMIT, type LeasedPrintJob, type PrintJobsForMe } from "@pos/shared/print-agent-wire";
+import { PRINT_JOBS_FOR_ME_LIMIT, type PrintJobsForMe } from "@pos/shared/print-agent-wire";
 import { PRINTER_PROBLEMS, printerHealthProblem, type PrinterCoverState, type PrinterPaperState } from "@pos/shared/print-failover";
 import { printerWriterDeviceId, printersModeOn, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
 import { DOT_PROBLEMS } from "@/lib/print-agent-here";
-import type { PrintAgentResult } from "@/lib/print-agent-types";
 import type { SlipPrintTarget } from "@/lib/print-host-slips";
-import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
 import { desktopLanId, type DesktopLanPrinter } from "@/lib/printer/desktop-lan";
 import type { DevicePrinter } from "@/lib/printer/device-printer-store";
 import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
@@ -336,22 +334,4 @@ export function jobsForMeLeasable(jobs: PrintJobsForMe | undefined, ready: reado
   // A full answer names only the oldest jobs: one it can lease may wait behind them (the 2C review gate, F-1).
   if (jobs.count >= PRINT_JOBS_FOR_ME_LIMIT) return true;
   return jobs.printerIds.some((id) => ready.includes(id));
-}
-
-/** One leased job on this device (spec §6.3 copies, plan decision 2): a printer job is refused (sent:"no", never
- *  counted) when its printer is not this device's printer; otherwise every copy is written in its one lease, one
- *  after another. A failure after the first copy may already have put paper out, so it is "maybe" (the REPRINT
- *  repeats every copy, labelled). A job of the device's own simple-mode line prints once, as today. */
-export async function printJobCopies(
-  job: Pick<LeasedPrintJob, "printerId" | "copies">,
-  localIds: readonly string[],
-  printOnce: () => Promise<PrintAgentResult>,
-): Promise<PrintAgentResult> {
-  if (job.printerId !== undefined && !localIds.includes(job.printerId)) return { ok: false, error: new PrintWriteError(PRINTER_NOT_LOCAL_MESSAGE, "no") };
-  const copies = job.copies ?? 1;
-  for (let copy = 1; copy <= copies; copy++) {
-    const result = await printOnce();
-    if (!result.ok) return copy === 1 ? result : { ok: false, error: new PrintWriteError(printWriteOutcomeOf(result.error).message, "maybe") };
-  }
-  return { ok: true };
 }

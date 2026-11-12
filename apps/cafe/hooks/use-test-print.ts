@@ -48,7 +48,7 @@ export interface TestPrint {
 }
 
 export function useTestPrint(): TestPrint {
-  const { queueTestSlip, isHostDevice, current } = usePrintHostContext();
+  const { queueTestSlip, isHostDevice, printing } = usePrintHostContext();
   const qc = useQueryClient();
   const lane = usePrintLane();
   const [phase, setPhase] = useState<TestPhase>("idle");
@@ -117,9 +117,9 @@ export function useTestPrint(): TestPrint {
     raster: lane === "raster",
     phase,
     tips: showTips,
-    startDisabled: current !== null || phase !== "idle" || beat.isPending,
+    startDisabled: printing || phase !== "idle" || beat.isPending,
     // Only where a test is offered, as the Test print card said it.
-    deviceBusy: testable && phase === "idle" && current !== null,
+    deviceBusy: testable && phase === "idle" && printing,
     attesting: beat.isPending,
     start: handleTestPrint,
     answer: handleAttest,

@@ -1,5 +1,6 @@
 import { desktopLan, desktopLanCannotPrint } from "@/lib/printer/desktop-lan";
 import { devicePrinter } from "@/lib/printer/device-printer";
+import { laneWrite, nativeLaneKey } from "@/lib/printer/lane-writes";
 import { nativePool, poolPrinterCannotPrint } from "@/lib/printer/native-pool";
 import type { PrinterStatus } from "@/lib/printer/web-printer-types";
 
@@ -10,7 +11,8 @@ import type { PrinterStatus } from "@/lib/printer/web-printer-types";
 
 /** Writes one finished job to the printer with this app id, through that printer's own queue. */
 export function printerWriter(nativeId: string): (bytes: Uint8Array) => Promise<void> {
-  return (bytes) => nativePool().write(nativeId, bytes);
+  // Phase 6 (spec §9 ruling 9): through the lane hand-off (unarmed, the write as before).
+  return (bytes) => laneWrite(nativeLaneKey(nativeId), () => nativePool().write(nativeId, bytes));
 }
 
 let lastState: { device: unknown; pool: unknown } | null = null;

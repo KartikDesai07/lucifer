@@ -535,6 +535,37 @@ dashboard). The Worker, the printing and the data are not changed; the staff lis
       and Now Serving screens never lock, and printing, the alarm and new order requests go on while locked.
 - [ ] **Sign-in lasts 90 days** without use (renewing while in use), so devices already signed in stay signed in.
 
+### Existing cafes: the printing Phase 6 release
+
+Printing Phase 6 lets one device print several printers **side by side**: the POS still draws one slip at a time, but
+each printer writes on its own, so the Bar's KOT no longer waits for the Kitchen printer to finish, and a printer that
+is slow, off or stuck no longer holds the others. A printer still prints its own slips one at a time and in order. **The
+paper does not change** (every slip's bytes are the same as before), the slips' life does not change (REPRINT,
+DUPLICATE, BACKUP PRINTER, the waiting-slips list, "clear after this try", offline KOTs) and there is no new kind of
+request. Measured on fake printers (one device printing Kitchen, Bar and Desserts): with a slow printer (2 s a slip)
+the round's last slip came out at 3.7 s instead of 7.9 s; with the Kitchen printer stuck for a minute, the Bar and
+Desserts KOTs printed at 1.2 s and 1.7 s instead of after 63 s. The web only: **no Worker change**, no data migration,
+no new setting and no app release (the POS app 2.0.x already writes each printer on its own; the POS app 1.0 and a
+browser print one printer as before; the Windows app writes its network printers side by side and its Windows printers
+one at a time, as before).
+
+- [ ] **The web first.** Deploy the cafe from the admin panel. `GET /api/health` answers 200.
+- [ ] **Reload every POS screen** that was open before the deploy: Refresh in the POS app, reload each browser tab,
+      quit and reopen the Windows app. A page from before the deploy prints as before, one slip after another.
+- [ ] **Then the demo cafe**, for some days, before any client (the release gate): run
+      `apps/mobile/TEST-CHECKLIST.md` → "Phase 6 checks (parallel printing)" there.
+- [ ] **A cafe where one phone prints two Bluetooth printers gets Phase 6 only after the owner's check on such a
+      phone** (two Bluetooth printers on one phone depend on the phone and the printers): until then that cafe's
+      account stays on the build before Phase 6 (the admin panel). A device that prints one printer is unaffected.
+- [ ] **Then the clients**, after the demo cafe's days and the Phase 6 checks passed. Staff see nothing new: the KOTs
+      of one round just come out together.
+- [ ] **The lease requests:** in a rush, a phone (the POS app 2.0.x) that prints several printers asks for each
+      printer's next slip as soon as that printer is free, so it may ask more often than before: measured up to about
+      1.5 times the lease requests of the build before Phase 6 in a rush on fake printers, never more than one per slip
+      printed plus one at the end of a burst. Inside the free budget.
+- [ ] **If you roll the web back:** deploy the build before Phase 6 from the admin panel, then reload every POS screen.
+      Nothing is stored differently, so nothing has to be moved back.
+
 ---
 
 ## §2 First run, and the admin handover (DEPLOYER → CAFE ADMIN)

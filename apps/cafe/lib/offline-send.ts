@@ -10,7 +10,10 @@ import { addEntry, offlineRoundsOf, takeOfflineRef } from "@/lib/offline-outbox"
 import type { OutboxEntry, OutboxRecord } from "@/lib/offline-outbox-schema";
 import { isOfflineOrderId, offlineKotOrder, offlineRoundOf, type OfflineKotBody } from "@/lib/offline-kot-order";
 import { offlineKotPlan, type OfflineLinePlan } from "@/lib/offline-lines";
-import type { HostPrintResult } from "@/lib/print-host-outcomes";
+import { PRINT_AGENT_SLIP_DEADLINE_MS } from "@/lib/print-agent-slip";
+import type { HostPrintResult } from "@/lib/print-host-tickets";
+import type { AgentPrintSeams } from "@/lib/print-agent-print";
+import type { HostPrintSlip } from "@/lib/print-host-slips";
 import type { PrintRouting } from "@/lib/print-printer-routing";
 import { printWriteOutcomeOf } from "@/lib/print-write-outcome";
 import type { Order } from "@/types";
@@ -26,6 +29,29 @@ export type OfflineSlipOutcome = "printed" | "maybe" | "no";
 export function offlineSlipOutcomeOf(result: HostPrintResult): OfflineSlipOutcome {
   if (result.ok) return "printed";
   return printWriteOutcomeOf(result.error).sent === "no" ? "no" : "maybe";
+}
+
+/** An offline KOT's slip through the bridge with the agent's bound (Phase 6, spec §9 ruling 12): at
+ *  PRINT_AGENT_SLIP_DEADLINE_MS a slip still waiting to be drawn is withdrawn and answered "no" by its own ticket (never
+ *  "maybe": nothing reached paper); one on the surface or on its printer's lane is waited for, answered by its own end. */
+export function offlineSlipWithBound(
+  queueSlip: AgentPrintSeams["queueSlip"],
+  slip: HostPrintSlip,
+  timers: Pick<AgentPrintSeams, "setTimer" | "clearTimer">,
+): Promise<OfflineSlipOutcome> {
+  return new Promise((resolve) => {
+    let deadline: unknown = null;
+    let queued: { withdraw(): boolean } | null = null;
+    deadline = timers.setTimer(() => {
+      deadline = null;
+      queued?.withdraw();
+    }, PRINT_AGENT_SLIP_DEADLINE_MS);
+    queued = queueSlip(slip, (result) => {
+      if (deadline !== null) timers.clearTimer(deadline);
+      deadline = null;
+      resolve(offlineSlipOutcomeOf(result));
+    });
+  });
 }
 
 export interface OfflineMenu {

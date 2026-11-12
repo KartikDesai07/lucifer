@@ -224,7 +224,7 @@ test("PIN: the print agent's lease and print are tracked in place; print-agent.t
     /ack: \(id, body\) => trackPrintBusy\(printAgentSkew\.send\(\{ \.\.\.body, tokenSlips: true \}, olderAckBody, \(sent\) => apiSend<PrintAckData>\(`\/api\/print-jobs\/\$\{encodeURIComponent\(id\)\}\/ack`, "POST", sent\)\)\.then\(\(answer\) => dropPrintedFromPulse\(qc, id, body, answer\)\)\),/,
     "the ack, tracked until it settles, unchanged inside",
   );
-  assert.match(agent, /markPrinterWriting, leaseUnlessClosing, trackPrintBusy,\s*setPrinterHealthSource,[\s\S]*?\} from "@\/lib\/print-agent";/, "the name on an existing import line");
+  assert.match(agent, /printHostBusySince, leaseUnlessClosing, trackPrintBusy,\s*setPrinterHealthSource,[\s\S]*?\} from "@\/lib\/print-agent";/, "the name on an existing import line"); // Phase 6 Task 6 deliberately changed: markPrinterWriting moved to lib/print-agent-print.ts, so the line names printHostBusySince before it
   assert.ok(lines(AGENT) <= 340, `use-print-agent.ts must not grow past 340 lines, got ${lines(AGENT)}`);
   assert.ok(lines("lib/print-agent.ts") <= 301, `lib/print-agent.ts must not grow past 301 lines, got ${lines("lib/print-agent.ts")}`);
   assert.match(code(SEAMS), /export \{ leaseUnlessClosing, trackPrintBusy \} from "@\/lib\/print-host-busy";/, "re-exported through the agent's seams");

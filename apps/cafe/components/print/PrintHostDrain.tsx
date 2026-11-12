@@ -16,7 +16,7 @@ import { usePrintHostWakeLock } from "@/hooks/use-print-host-wake-lock";
 import { usePrintSlipAlarm } from "@/hooks/use-print-slip-alarm";
 import { useSelfOrderAutoPrint } from "@/hooks/use-self-order-auto-print";
 import { printJobRefOf } from "@/lib/print-agent-calls";
-import type { HostPrintDone } from "@/lib/print-host-outcomes";
+import type { HostPrintDone } from "@/lib/print-host-tickets";
 import type { HostPrintSlip } from "@/lib/print-host-slips";
 import { kotPrintJob, opensWithToken, tokenPrintJob } from "@/lib/print-routing";
 import { roundSkipsKitchen } from "@/lib/kitchen-lines";
@@ -30,8 +30,11 @@ interface PrintHostDrainProps {
   deviceId: string;
   tabId: string;
   busy: boolean;
+  /** Phase 6 (spec §9 ruling 14): the bridge's surface is drawing a slip (its waiting slips included); unlike `busy`, a
+   *  write still in flight on a printer's lane does not count. The agent's gate (Task 6); the self-order lane keeps `busy`. */
+  drawing: boolean;
   claimLockRef: MutableRefObject<boolean>;
-  onSlip: (slip: HostPrintSlip, done?: HostPrintDone) => void;
+  onSlip: (slip: HostPrintSlip, done?: HostPrintDone) => { withdraw(): boolean };
   onDemoted: () => void;
 }
 
@@ -42,7 +45,7 @@ interface PrintHostDrainProps {
 // slips (spec §6.6, R6). It replaces the claim drain and the host's GET wake poll, which stay in the
 // codebase for one release, unused here (a tab from before Phase 1 still runs them itself). The
 // heartbeat, the wake lock, the app's background service and the self-order lane stay host-only.
-export function PrintHostDrain({ enabled, surfacesMounted, deviceId, tabId, busy, claimLockRef, onSlip, onDemoted }: PrintHostDrainProps) {
+export function PrintHostDrain({ enabled, surfacesMounted, deviceId, tabId, busy, drawing, claimLockRef, onSlip, onDemoted }: PrintHostDrainProps) {
   // Written as host/unknown checks (D-11): an unknown lane waits for the pulse rather than guess.
   const routing = usePrintHostRouting();
   // Session 2C (printers mode): no host plays a part, so every device whose surfaces exist is an agent, as with no
@@ -90,7 +93,7 @@ export function PrintHostDrain({ enabled, surfacesMounted, deviceId, tabId, busy
   const hostLane = useMemo(() => ({ claimLock: claimLockRef, maxAgeMs: PRINT_HOST_MAX_AGE_MS }), [claimLockRef]);
   useSelfOrderAutoPrint({ enabled: hostDrains, busy, queueKotRound, hostLane });
 
-  usePrintAgent({ enabled: drains, isHost: enabled, printers, deviceId, tabId, busy, queueSlip: onSlip });
+  usePrintAgent({ enabled: drains, isHost: enabled, printers, deviceId, tabId, busy: drawing, queueSlip: onSlip });
   // Session 1D: the 20 s alarm on every device with an identity (the asking one and the printing one).
   usePrintSlipAlarm(deviceId);
 
