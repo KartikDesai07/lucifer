@@ -103,18 +103,26 @@ test("PIN create follow-ups: the move runs only for a Completed landed order, in
   assert.ok(wave < gate && gate < move && move < close);
 });
 
-test("PIN cancel: the add-back runs after the CAS landed and BEFORE the ledger, gated on the status it replaced", () => {
+test("PIN cancel: the add-back, then the stamp / card / points give-backs, run after the CAS landed and BEFORE the ledger", () => {
   const src = read(CANCEL);
   const miss = at(src, "if (!updated) return failure(", "the CAS miss");
   const addBack = at(src, "if (old.status === \"Completed\" && updated.stockUsed?.length) await " + ADD_BACK + "updated.stockUsed);", "the gated add-back");
-  // First in the try: a ledger throw (a 500 whose retry meets the "already cancelled" 409) can never skip it.
+  const stamps = at(src, "const returned = await returnRewardStamps(rewardCustomer, updated.orderId, rewardCost);", "the stamp give-back");
+  const card = at(src, "if (await releaseRewardCard(rewardCustomer, updated.rewardCardId, updated.orderId)) cache.del(\"customers\");", "the card give-back");
+  const points = at(src, "if (await returnPoints(rewardCustomer, updated.orderId)) cache.del(\"customers\");", "the points give-back");
+  // Owner decision s113: a ledger throw is a 500 whose retry meets the "already cancelled" 409, so nothing after the
+  // ledger reversal is guaranteed to run. Every give-back sits above it (live legs k1-k3 throw the ledger for real).
   const ledger = at(src, "const touched = await reconcileLedger(old, updated);", "the ledger reversal");
-  const points = at(src, "if (await returnPoints(rewardCustomer, updated.orderId)) cache.del(\"customers\");", "landmark: the points give-back");
-  assert.ok(miss < addBack && addBack < ledger && ledger < points);
+  assert.ok(miss < addBack && addBack < stamps && stamps < card && card < points && points < ledger);
   assert.equal(src.slice(at(src, "try {", "the follow-up try", miss) + "try {".length, addBack).replace(/\/\/[^\n]*/g, "").trim(), "", "nothing but comments between the try and the add-back");
   const giveBacks = at(src, "const rewardCustomer = validCustomer(", "landmark: the give-backs' first statement");
-  assert.equal(depthAt(src, addBack), depthAt(src, giveBacks), "not nested in the points block (same depth as the give-backs)");
+  const top = depthAt(src, addBack);
+  assert.equal(depthAt(src, giveBacks), top, "the give-backs sit at the follow-ups' own depth");
+  assert.equal(depthAt(src, at(src, "if (rewardCustomer && updated.rewardCardId) {", "the card block")), top, "the card block is not nested in the stamp block");
+  assert.equal(depthAt(src, at(src, "if (rewardCustomer && updated.rewardPoints !== undefined) {", "the points block")), top, "the points block is not nested in the card block");
+  assert.equal(depthAt(src, ledger), top, "the ledger is not inside a give-back's swallowing try (its failure still answers 500)");
   assert.equal(count(src, ADD_BACK), 1);
+  assert.equal(count(src, "reconcileLedger("), 1);
 });
 
 test("PIN DELETE: the add-back runs only after the delete removed the row, off `deleted`, gated on Completed", () => {
