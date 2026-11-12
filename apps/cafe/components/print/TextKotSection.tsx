@@ -61,7 +61,7 @@ export function TextKotSection() {
 }
 
 function TextKotRow({ printer, rows }: { printer: TextKotPrinter; rows: number }) {
-  const { queueTestSlip, current } = usePrintHostContext();
+  const { queueTestSlip, printing } = usePrintHostContext();
   const settings = useSettings();
   const choice = useTextKot(printer.key);
   const switchId = useId();
@@ -123,7 +123,7 @@ function TextKotRow({ printer, rows }: { printer: TextKotPrinter; rows: number }
           className={PRINTER_SWITCH_CLASS}
           checked={on}
           aria-label={`${words.label}: ${printer.name}`}
-          disabled={!on && (busy || current !== null)}
+          disabled={!on && (busy || printing)}
           onCheckedChange={(next) => (next ? void turnOn() : turnOff())}
         />
       </div>

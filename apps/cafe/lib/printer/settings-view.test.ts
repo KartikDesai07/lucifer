@@ -170,7 +170,8 @@ const testPrintPin: Pin = (code) => {
   const p: string[] = [];
   need(p, code.includes("await queueTestSlip()"), "the test slip goes through the bridge's queueTestSlip()");
   need(p, code.includes("useBeatPrintHost("), "the attestation is the host beat");
-  need(p, code.includes('startDisabled: current !== null || phase !== "idle" || beat.isPending'), "Test print waits for a free bridge, an idle test and the beat");
+  // Phase 6 Task 4 (spec §9 ruling 13) deliberately changed: a free bridge is `printing` false (no slip drawn, no lane write).
+  need(p, code.includes('startDisabled: printing || phase !== "idle" || beat.isPending'), "Test print waits for a free bridge, an idle test and the beat");
   return p;
 };
 const setupActionsPin: Pin = (code) => {

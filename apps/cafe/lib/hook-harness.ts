@@ -18,6 +18,7 @@ interface EffectSlot {
   deps: Deps;
   cleanup: Cleanup;
 }
+type Queued = { slot: EffectSlot; deps: Deps; run: () => Cleanup };
 interface MemoSlot<T> {
   deps: Deps;
   value: T;
@@ -40,7 +41,9 @@ function runtime(): Runtime<unknown> {
 class Runtime<R> {
   private slots: unknown[] = [];
   private cursor = 0;
-  private queued: Array<{ slot: EffectSlot; deps: Deps; run: () => Cleanup }> = [];
+  private queued: Queued[] = [];
+  private holding = false; // holdEffects(): the next flush keeps its effect batch in `held`
+  private held: Queued[] = [];
   private dirty = false;
   private depth = 0;
   private flushing = false;
@@ -68,6 +71,7 @@ class Runtime<R> {
   private flush(): void {
     this.flushing = true;
     try {
+      this.runEffects(this.held.splice(0)); // React runs pending passive effects before its next render
       for (let pass = 0; ; pass++) {
         if (pass >= MAX_RENDER_PASSES) throw new Error("the hook never settled (render loop)");
         this.dirty = false;
@@ -82,14 +86,9 @@ class Runtime<R> {
         }
         const batch = this.queued;
         this.queued = [];
-        for (const { slot } of batch) {
-          if (typeof slot.cleanup === "function") slot.cleanup();
-          slot.cleanup = undefined;
-        }
-        for (const { slot, deps, run } of batch) {
-          slot.deps = deps;
-          slot.cleanup = run();
-        }
+        if (this.holding) this.held.push(...batch);
+        else this.runEffects(batch);
+        this.holding = false;
         if (!this.dirty) break;
       }
     } finally {
@@ -97,6 +96,20 @@ class Runtime<R> {
     }
   }
 
+  private runEffects(batch: Queued[]): void {
+    for (const { slot } of batch) {
+      if (typeof slot.cleanup === "function") slot.cleanup();
+      slot.cleanup = undefined;
+    }
+    for (const { slot, deps, run } of batch) {
+      slot.deps = deps;
+      slot.cleanup = run();
+    }
+  }
+
+  holdEffects(): void {
+    this.holding = true;
+  }
   start(): void {
     this.flush();
   }
@@ -132,12 +145,16 @@ export interface MountedHook<R> {
   /** Re-render now (something the hook reads outside React changed). */
   rerender(): void;
   unmount(): void;
+  /** Opt-in (Phase 6 Task 4 fix round 1): the next render's effects are kept, not run, and run first thing in the flush
+   *  after it, as react-dom 19 runs a commit's passive effects in a later task and flushes them before its next render:
+   *  an event (a print's end, a timer) can land in between. `rerender()` lets kept effects go. */
+  holdEffects(): void;
 }
 
 export function mountHook<R>(body: () => R): MountedHook<R> {
   const rt = new Runtime(body);
   rt.start();
-  return { result: () => rt.result(), act: (fn) => rt.act(fn), rerender: () => rt.rerender(), unmount: () => rt.unmount() };
+  return { result: () => rt.result(), act: (fn) => rt.act(fn), rerender: () => rt.rerender(), unmount: () => rt.unmount(), holdEffects: () => rt.holdEffects() };
 }
 
 // ---- the stubbed modules --------------------------------------------------------------------

@@ -4,9 +4,11 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
 import { mountHook, resetStubs, stubModule, stubs, type MountedHook } from "@/lib/hook-harness";
-import type { HostPrintDone } from "@/lib/print-host-outcomes";
+import type { HostPrintDone } from "@/lib/print-host-tickets";
 import { PRINT_HOST_BUSY_MESSAGE, PRINT_HOST_DISPATCH_TIMEOUT_MS, PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print-host-slips";
 import type { TextKotWrite, TextKotWriteInput } from "@/lib/printer/kot-text/text-kot-print";
+import { JOB_NOT_CONNECTED_TOAST } from "@/lib/print-job-toast";
+import { laneWrite, nativeLaneKey } from "@/lib/printer/lane-writes";
 import { PRINTER_NOT_CONNECTED_MESSAGE } from "@/lib/printer/web-printer-types";
 
 // Printing Phase 4 (spec 2026-10-15 §5.2, S1, S3, S4): the print bridge's text step, driven through the REAL hook body
@@ -62,6 +64,7 @@ function scene(t: TestContext) {
     hook,
     outcomes,
     queue: (surface: HostPrintSlip["surface"], title: string) => hook.act(() => hook.result().queueSlip(slipOf(surface, title), done)),
+    queueSlip: (slip: HostPrintSlip) => hook.act(() => hook.result().queueSlip(slip, done)),
     /** react-to-print reports the picture done (the KOT surface's onAfterPrint). */
     finish: () => hook.act(() => stubs.options[0]?.onAfterPrint?.()),
     settled: async () => {
@@ -226,4 +229,26 @@ test("m-2: a text test whose writer throws at once is refused with the printer's
   await s.settled();
   assert.equal(await failed, PRINTER_NOT_CONNECTED_MESSAGE, "the section hears the printer's sentence");
   assert.equal(s.hook.result().current, null, "the bridge is free");
+});
+
+// Phase 6 Task 4 fix round 1 (the review's m-2; spec §9 ruling 9): the text step writes through the same writers, so a
+// text KOT for one of the app's printers splits the same way: its write is handed to the lane at once, the text step's
+// own promise frees the surface, and the write answers its own caller.
+test("a text KOT for one of the app's printers frees the surface at the hand-off; its write answers its own caller", async (t) => {
+  const s = scene(t);
+  const held = heldWrite();
+  const target = { paper: "80mm" as const, nativeId: "tcp:127.0.0.1:9101" };
+  world.answer = (input) => (input.slip.documentTitle === "KOT-1" ? { bytes: BYTES, write: () => laneWrite(nativeLaneKey(target.nativeId), held.answer.write) } : null);
+  s.queueSlip({ ...slipOf("kot", "KOT-1"), target, jobId: "job-1" } as HostPrintSlip);
+  s.queue("kot", "KOT-2"); // a direct slip, no job
+  assert.equal(held.calls, 1, "the text bytes were handed to the printer's lane at once");
+  await s.settled();
+  assert.deepEqual([world.asked, stubs.printed], [["KOT-1", "KOT-2"], ["kot"]], "the surface freed at the hand-off: the next slip went while the write is pending");
+  assert.deepEqual(s.outcomes, [], "KOT-1 is answered by its write, not by the surface");
+  held.reject(new Error(PRINTER_NOT_CONNECTED_MESSAGE));
+  await s.settled();
+  assert.deepEqual(s.outcomes, [`failed: ${PRINTER_NOT_CONNECTED_MESSAGE}`], "its own caller hears its printer's sentence");
+  assert.deepEqual(stubs.toasts, [JOB_NOT_CONNECTED_TOAST], "one toast, in its own job's words (the slip on the surface has none)");
+  s.finish();
+  assert.deepEqual(s.outcomes, [`failed: ${PRINTER_NOT_CONNECTED_MESSAGE}`, "printed"], "the next slip's own outcome");
 });

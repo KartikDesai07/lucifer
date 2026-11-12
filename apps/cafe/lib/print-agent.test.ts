@@ -7,7 +7,6 @@ import { PRINT_WAKE_FAST_MS, PRINT_WAKE_SLOW_MS, PRINT_WAKE_SOCKET_MS } from "@p
 import { PRINT_AGENT_REFUSED_RECHECK_MS, type LeasedPrintJob, type PrintAckData, type PrintLeaseData } from "@pos/shared/print-agent-wire";
 import { createPrintAgentWake, printAgentWakeMayPoll } from "@/lib/print-agent-wake";
 import { leasedJobsOf, printAgentEnqueueHeaders, printAgentHeaders, printJobRefOf } from "@/lib/print-agent-calls";
-import { createHostSlipOutcomes } from "@/lib/print-host-outcomes";
 import {
   PRINT_AGENT_QUIET_AFTER_ACK_MS,
   PRINT_DIRECT_HOLD_MS,
@@ -463,18 +462,7 @@ test("the call sites' helpers: the opt-in headers, a ref by kind, and nothing fo
   assert.ok(/^[A-Za-z0-9-]{8,64}$/.test(printAgentEnqueueHeaders("dev-a")["idempotency-key"] ?? ""), "an enqueue carries a usable Idempotency-Key");
 });
 
-test("the bridge's outcome line: each slip's caller hears once, in print order; the test slip and untracked slips keep their place", () => {
-  const outcomes = createHostSlipOutcomes();
-  const heard: string[] = [];
-  outcomes.track((r) => heard.push(`a:${r.ok}`));
-  outcomes.track(null);
-  outcomes.track((r) => heard.push(`c:${r.ok}`));
-  outcomes.finish({ ok: true });
-  outcomes.finish({ ok: true });
-  outcomes.finish({ ok: false, error: new Error("x") });
-  outcomes.finish({ ok: true });
-  assert.deepEqual(heard, ["a:true", "c:false"], "in order, once each, the test slip in between untold");
-});
+// Phase 6 Task 4 (spec §9 ruling 10): the outcomes FIFO is gone; each slip's caller hears once by its ticket (print-host-tickets.test.ts).
 
 // Session 1C final review I2: a kick that lands while a cycle runs used to be dropped. If that cycle's
 // lease read the line before the new job was inserted, the job waited for the next poll (up to 60 s on

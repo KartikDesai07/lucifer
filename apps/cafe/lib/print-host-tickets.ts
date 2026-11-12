@@ -1,5 +1,6 @@
-import { PRINT_HOST_PRINT_FAILED_MESSAGE } from "@/lib/print-host-slips";
+import { PRINT_HOST_PRINT_FAILED_MESSAGE, type SlipPrintTarget } from "@/lib/print-host-slips";
 import { PrintWriteError, hostPrintFailureMessage } from "@/lib/print-write-outcome";
+import { armLaneWrite, laneKeyOfTarget } from "@/lib/printer/lane-writes";
 
 // Printing redesign Phase 6 (spec §9 rulings 10 and 12): a TICKET per slip instead of the outcomes FIFO
 // (print-host-outcomes.ts). Slips are still drawn one at a time on one surface, but a slip's write can run
@@ -136,5 +137,57 @@ export function createHostSlipTickets(): HostSlipTickets {
       for (const entry of live) if (entry.state === "writing") n += 1;
       return n;
     },
+  };
+}
+
+// ---- Phase 6 Task 4: the bridge's bookkeeping around its tickets (hooks/use-print-host-bridge.ts keeps the React wiring).
+
+type WriteEnd = (ticket: HostSlipTicket, result: HostPrintResult) => void;
+
+/** The bridge's waiting attestation test slip (PH-7): resolved with trigger -> onAfterPrint milliseconds. */
+export interface HostTestSlipWaiter {
+  resolve: (dtMs: number) => void;
+  reject: (err: Error) => void;
+  startedAt: number;
+}
+
+/** The surface's settle of the slip on it (spec §9 ruling 10): a ticket handed off to its lane is answered by its write,
+ *  so the surface only frees (true); any other is settled with the surface's result, as before Phase 6 (false). */
+export function settleOrRelease(tickets: HostSlipTickets, ticket: HostSlipTicket | null, result: HostPrintResult): boolean {
+  if (ticket === null) return false;
+  if (tickets.handedOff(ticket)) return true;
+  tickets.settle(ticket, result);
+  return false;
+}
+
+/** The surface is about to draw this ticket's slip (spec §9 rulings 8, 9): waiting -> drawing, and a slip that takes two
+ *  steps (for one of the POS app's printers or a Windows app network printer, on any surface but `test`) has that
+ *  printer's next write handed to the ticket, written `writes` times (absent: once). Returns the disarm (none: a no-op). */
+export function dispatchSlip(tickets: HostSlipTickets, ticket: HostSlipTicket | null, slip: { surface: string; target?: SlipPrintTarget; writes?: number } | null, onEnd: WriteEnd): () => void {
+  if (ticket === null) return () => undefined;
+  tickets.dispatched(ticket);
+  const lane = slip === null || slip.surface === "test" ? null : laneKeyOfTarget(slip.target);
+  const writes = slip?.writes ?? 1;
+  return lane === null ? () => undefined : armLaneWrite(lane, (write) => tickets.handOff(ticket, write, writes, onEnd));
+}
+
+/** Withdraw (spec §9 ruling 12): a slip still waiting to be drawn is answered sent "no": one in `queue` is taken off it
+ *  ("queue"); the one on the surface (`current`) only while its dispatch still waits ("current": the bridge then puts the
+ *  next on the surface). A slip drawn is waited for (null). */
+export function withdrawSlip(tickets: HostSlipTickets, queue: Array<{ ticket: HostSlipTicket }>, current: HostSlipTicket | null, ticket: HostSlipTicket): "queue" | "current" | null {
+  const at = queue.findIndex((entry) => entry.ticket === ticket);
+  if (at < 0 && current !== ticket) return null;
+  if (at >= 0) queue.splice(at, 1);
+  if (!tickets.withdraw(ticket)) return null;
+  return at >= 0 ? "queue" : "current";
+}
+
+/** A write on its lane ended (spec §9 ruling 10; its ticket has told its caller): a failure is said once, with its own
+ *  slip's job, in the sentence its ticket carries: hostPrintFailureMessage applied once, as the surface's settle does
+ *  (fix round 1, m-3: never twice; the Windows app's unwrapped sentence would not survive a second mapping). Then `after`. */
+export function laneWriteEnd(say: (failure: string, jobId: string | undefined) => void, after: () => void): WriteEnd {
+  return (ticket, result) => {
+    if (!result.ok) say(result.error instanceof Error ? result.error.message : hostPrintFailureMessage(result.error), ticket.jobId);
+    after();
   };
 }

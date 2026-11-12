@@ -3,9 +3,10 @@
 // Print-host plan §B5 (PH-5) — the host's ONE print bridge: three provider-owned react-to-print
 // surfaces (KOT/void/moved · bill · end-of-day), the "what is on the paper right now" state, and the
 // dispatch effect that fires exactly one surface per job. react-to-print keeps ONE fixed-id iframe
-// (`lib/print.ts` print-chain note), so `busy` — the whole window from claim to onAfterPrint — is the
-// gate every lane respects (§B5, MERGED-13: the EOD and test slips ride the same window). Session 1C:
-// each slip's caller (the print agent) hears its result once, in print order (print-host-outcomes.ts).
+// (`lib/print.ts` print-chain note), so the surface — the whole window from claim to onAfterPrint — draws one slip
+// at a time (§B5, MERGED-13: the EOD and test slips ride the same window). Session 1C: each slip's caller (the print
+// agent) hears its result once; Phase 6 (spec §9 rulings 8–13): by its ticket (print-host-tickets.ts), and a slip for one
+// of the POS app's printers or a Windows app network printer frees the surface once its bytes are on that printer's lane.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useReactToPrint } from "react-to-print";
@@ -29,21 +30,16 @@ import {
 } from "@/lib/print-host-slips";
 import { createWindowLateCompletionGuard } from "@/lib/print-host-late-completion";
 import { hostPrintFailureMessage } from "@/lib/print-write-outcome";
-import { createHostSlipOutcomes, type HostPrintDone } from "@/lib/print-host-outcomes";
+import { createHostSlipTickets, dispatchSlip, laneWriteEnd, settleOrRelease, withdrawSlip, type HostPrintDone, type HostSlipTicket, type HostTestSlipWaiter } from "@/lib/print-host-tickets";
 import { slipToastOf } from "@/lib/print-job-toast";
 import { textKotEnv, textKotWriteFor } from "@/lib/printer/kot-text/text-kot-print";
 import type { Order } from "@/types";
 
 /** What the bridge is printing: a claimed job's slip, or PH-7's attestation test slip
  *  (`PrintHostTestSlip`); it and a printer's Test print (Session 2D) use the KOT surface. Printing Phase 4 (spec §5.1):
- *  a printer's text test rides the test slip's window, its bytes written by `write` instead of the KOT surface. */
-export type HostPrintCurrent = { kind: "slip"; slip: HostPrintSlip } | { kind: "test"; write?: () => Promise<void> };
-
-interface TestSlipWaiter {
-  resolve: (dtMs: number) => void;
-  reject: (err: Error) => void;
-  startedAt: number;
-}
+ *  a printer's text test rides the test slip's window, its bytes written by `write` instead of the KOT surface. Phase 6
+ *  Task 4 fix round 1: with its ticket, so a dispatch run acts only for the ticket on the surface. */
+export type HostPrintCurrent = { kind: "slip"; slip: HostPrintSlip; ticket: HostSlipTicket } | { kind: "test"; write?: () => Promise<void>; ticket: HostSlipTicket };
 
 function surfaceOf(current: HostPrintCurrent): HostPrintSurface {
   return current.kind === "test" || current.slip.surface === "test" ? "kot" : current.slip.surface;
@@ -72,8 +68,10 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
   // (the band's manual tap has no busy gate) WAITS here instead of replacing `current`: a second
   // react-to-print call tears down the fixed-id `#printWindow` iframe in use (review PH-5 L1).
   const occupiedRef = useRef(false);
-  const pendingRef = useRef<HostPrintSlip[]>([]);
-  const testRef = useRef<TestSlipWaiter | null>(null);
+  // Phase 6 (spec §9 ruling 10): each waiting slip with its ticket, and the ticket of the slip on the surface.
+  const pendingRef = useRef<Array<{ slip: HostPrintSlip; ticket: HostSlipTicket }>>([]);
+  const ticketRef = useRef<HostSlipTicket | null>(null);
+  const testRef = useRef<HostTestSlipWaiter | null>(null);
   // Armed at dispatch, cleared by settle: the ceiling on one job's in-flight
   // window (PRINT_HOST_DISPATCH_TIMEOUT_MS). Without it a surface that never
   // reports back — react-to-print's silent null-ref return, a torn-down
@@ -83,7 +81,9 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
   // A job the watchdog gave up on is ABANDONED, not forgotten: its slot stays occupied
   // until it reports or the grace passes (one shared onAfterPrint would settle the NEXT job).
   const [lateGuard] = useState(createWindowLateCompletionGuard);
-  const outcomesRef = useRef(createHostSlipOutcomes());
+  const [tickets] = useState(createHostSlipTickets);
+  const disarmRef = useRef<() => void>(() => undefined); // Phase 6 (spec §9 ruling 9): the slip being drawn's lane arm
+  const [, setWritesEnded] = useState(0); // a lane write's end re-renders `busy`
   // PX-2 (spec §6.9 B7): the job of the slip on the paper now, for its toast; set before the dispatch effect runs.
   const jobIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -91,9 +91,11 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
   }, [current]);
 
   const settle = useCallback((requested: string | null) => {
+    disarmRef.current();
     const failure = lateGuard.take() ? null : requested; // already announced at the watchdog
     // A slip the watchdog gave up on that never reported may be on paper: its caller hears "maybe", never "printed".
-    outcomesRef.current.finish(requested === null && !lateGuard.graceRanOut() ? { ok: true } : { ok: false, error: new Error(requested ?? PRINT_HOST_PRINT_FAILED_MESSAGE) });
+    // Phase 6 (spec §9 ruling 10): a slip handed off to its lane is answered by its write; the surface only frees.
+    const handedOff = settleOrRelease(tickets, ticketRef.current, requested === null && !lateGuard.graceRanOut() ? { ok: true } : { ok: false, error: new Error(requested ?? PRINT_HOST_PRINT_FAILED_MESSAGE) });
     if (watchdogRef.current !== null) {
       window.clearTimeout(watchdogRef.current);
       watchdogRef.current = null;
@@ -103,7 +105,7 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
     const waiter = testRef.current;
     testRef.current = null;
     if (failure !== null) {
-      toast.error(slipToastOf(failure, jobIdRef.current));
+      if (!handedOff) toast.error(slipToastOf(failure, jobIdRef.current));
       waiter?.reject(new Error(failure));
     } else if (waiter) {
       waiter.resolve(performance.now() - waiter.startedAt);
@@ -111,16 +113,18 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
     // Promote the next waiting slip through the SAME busy window — `current`
     // never touches null between two queued jobs, so no lane sees a gap.
     const next = pendingRef.current.shift();
+    ticketRef.current = next?.ticket ?? null;
     if (next) {
-      setCurrent({ kind: "slip", slip: next });
+      setCurrent({ kind: "slip", slip: next.slip, ticket: next.ticket });
       return;
     }
     occupiedRef.current = false;
     setCurrent(null);
-  }, [lateGuard]);
+  }, [lateGuard, tickets]);
   const finish = useCallback(() => settle(null), [settle]);
-  // The watchdog: announce now, reject a waiting test slip now, hold the slot.
+  // The watchdog: announce now, reject a waiting test slip now, hold the slot; Phase 6 (spec §9 ruling 11): disarm first.
   const abandon = useCallback(() => {
+    disarmRef.current();
     toast.error(slipToastOf(PRINT_HOST_PRINT_FAILED_MESSAGE, jobIdRef.current));
     testRef.current?.reject(new Error(PRINT_HOST_PRINT_FAILED_MESSAGE));
     testRef.current = null;
@@ -134,6 +138,9 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
     (_where: "onBeforePrint" | "print", error: Error) => settle(hostPrintFailureMessage(error)),
     [settle],
   );
+  // Phase 6 (spec §9 ruling 10): a write on its lane ended (its ticket told its caller): a failure toasts once, in its own
+  // slip's job's words (lib/print-host-tickets.ts laneWriteEnd), and `busy` is read again.
+  const [onWriteEnd] = useState(() => laneWriteEnd((failure, jobId) => toast.error(slipToastOf(failure, jobId)), () => setWritesEnded((n) => n + 1)));
 
   const kotRef = useRef<HTMLDivElement>(null);
   const receiptRef = useRef<HTMLDivElement>(null);
@@ -181,6 +188,8 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
   // code is on its way, so they see the finished slip. The watchdog then bounds the in-flight window itself.
   useEffect(() => {
     if (!current || dispatchedRef.current || !surfacesMounted) return;
+    // Phase 6 Task 4 fix round 1: a run held past its slip's settle (react-dom runs passive effects in a later task) is stale.
+    if (current.ticket !== ticketRef.current) return;
     const surface = surfaceOf(current);
     if (surface === "eod" ? !eodReady : current.kind === "slip" && slipCodePending) return;
     const node = surface === "receipt" || surface === "token" ? receiptRef.current : surface === "eod" ? eodRef.current : kotRef.current;
@@ -192,6 +201,9 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
       settle(PRINT_HOST_EMPTY_SLIP_MESSAGE);
       return;
     }
+    // Phase 6 (spec §9 rulings 8, 9): a slip for one of the app's printers or a Windows app network printer (never a Test
+    // print) hands its bytes to that printer's lane, so the surface frees once they exist (the picture and the text step).
+    disarmRef.current = dispatchSlip(tickets, current.ticket, current.kind === "slip" ? current.slip : null, onWriteEnd);
     dispatchedRef.current = true;
     watchdogRef.current = window.setTimeout(abandon, PRINT_HOST_DISPATCH_TIMEOUT_MS);
     if (surface === "receipt" || surface === "token") printReceipt();
@@ -205,7 +217,7 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
       if (write === undefined) printKot();
       else void new Promise<void>((resolve) => resolve(write())).then(finish, (error: unknown) => settle(hostPrintFailureMessage(error)));
     }
-  }, [current, eodReady, slipCodePending, surfacesMounted, printKot, printReceipt, printEod, settle, abandon, settings.data, target, finish]);
+  }, [current, eodReady, slipCodePending, surfacesMounted, printKot, printReceipt, printEod, settle, abandon, settings.data, target, finish, tickets, onWriteEnd]);
 
   // The eod wait is bounded: an aggregate that never loads (host offline from
   // the API, a deploy in flight) must not hold every KOT behind it. The claim
@@ -219,15 +231,25 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
     return () => window.clearTimeout(id);
   }, [current, settle]);
 
-  const queueSlip = useCallback((slip: HostPrintSlip, done?: HostPrintDone) => {
-    outcomesRef.current.track(done ?? null);
+  // Phase 6 (spec §9 ruling 12): a slip still waiting to be drawn is taken back, sent "no"; the current one whose dispatch
+  // still waits is replaced by the next through settle, which then only promotes (nothing was armed or timed for it).
+  const withdraw = useCallback((ticket: HostSlipTicket): boolean => {
+    const was = withdrawSlip(tickets, pendingRef.current, ticketRef.current, ticket);
+    if (was === "current") settle(null);
+    return was !== null;
+  }, [tickets, settle]);
+
+  const queueSlip = useCallback((slip: HostPrintSlip, done?: HostPrintDone): { withdraw(): boolean } => {
+    const ticket = tickets.add(done ?? null, slip.jobId);
     if (occupiedRef.current) {
-      pendingRef.current.push(slip);
-      return;
+      pendingRef.current.push({ slip, ticket });
+    } else {
+      occupiedRef.current = true;
+      ticketRef.current = ticket;
+      setCurrent({ kind: "slip", slip, ticket });
     }
-    occupiedRef.current = true;
-    setCurrent({ kind: "slip", slip });
-  }, []);
+    return { withdraw: () => withdraw(ticket) };
+  }, [tickets, withdraw]);
 
   // The self-order lane's `queueKotRound` on the host: the same slip the local
   // lane would synthesize, printed through THIS bridge instead of a page's.
@@ -240,25 +262,31 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
   // milliseconds. Refused while anything is in flight or waiting — the test
   // rides the same busy window as every job, so it can never race a claimed
   // KOT's iframe, and it is never queued behind real slips (a timing probe
-  // that waited on a KOT would measure the wrong thing).
+  // that waited on a KOT would measure the wrong thing). Phase 6 (spec §9 ruling 13): nor while a lane still writes.
   const queueTestSlip = useCallback(
     (write?: () => Promise<void>) =>
       new Promise<number>((resolve, reject) => {
-        if (occupiedRef.current) {
+        if (occupiedRef.current || tickets.writing() > 0) {
           reject(new Error(PRINT_HOST_BUSY_MESSAGE));
           return;
         }
         occupiedRef.current = true;
-        outcomesRef.current.track(null);
+        const ticket = tickets.add(null);
+        ticketRef.current = ticket;
         testRef.current = { resolve, reject, startedAt: performance.now() };
-        setCurrent({ kind: "test", write });
+        setCurrent({ kind: "test", write, ticket });
       }),
-    [],
+    [tickets],
   );
+
+  // Phase 6 (spec §9 ruling 12): unmounted, a waiting slip hears "no" at once and the slip on the surface "maybe"; a write
+  // in flight settles by itself. The watchdog and the late guard keep their course.
+  useEffect(() => () => { disarmRef.current(); tickets.unmount(); }, [tickets]);
 
   return {
     current,
-    busy: current !== null,
+    busy: current !== null || tickets.writing() > 0, // Phase 6 (spec §9 ruling 3): the surface and every write in flight
+    drawing: current !== null, // the surface, its waiting slips included
     kotRef,
     receiptRef,
     eodRef,

@@ -10,7 +10,7 @@ import { addEntry, offlineRoundsOf, takeOfflineRef } from "@/lib/offline-outbox"
 import type { OutboxEntry, OutboxRecord } from "@/lib/offline-outbox-schema";
 import { isOfflineOrderId, offlineKotOrder, offlineRoundOf, type OfflineKotBody } from "@/lib/offline-kot-order";
 import { offlineKotPlan, type OfflineLinePlan } from "@/lib/offline-lines";
-import type { HostPrintResult } from "@/lib/print-host-outcomes";
+import type { HostPrintResult } from "@/lib/print-host-tickets";
 import type { PrintRouting } from "@/lib/print-printer-routing";
 import { printWriteOutcomeOf } from "@/lib/print-write-outcome";
 import type { Order } from "@/types";

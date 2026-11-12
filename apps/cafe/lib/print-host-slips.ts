@@ -135,6 +135,8 @@ export type HostPrintSlip = (HostKotSlip | HostReceiptSlip | HostTokenSlip | Hos
   printerId?: string;
   takeover?: true;
   jobId?: string;
+  /** Phase 6 (spec §9 rulings 8, 24): how many times a two-step slip's bytes are written (a KOT's copies); absent = 1. */
+  writes?: number;
 };
 
 export const ROUND_LABEL_PREFIX = "Round ";

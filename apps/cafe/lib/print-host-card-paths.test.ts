@@ -188,9 +188,11 @@ test("PIN (c) A-16/§B7: use-test-print.ts imports useBeatPrintHost from @/hooks
 
 // ── (d) Busy gate + never-queue ───────────────────────────────────────────
 
-test('PIN (d): the test-print button\'s disabled expression is exactly current !== null || phase !== "idle" || beat.isPending (PX-3 Task 10: use-test-print.ts\'s startDisabled, which the device card\'s Test print wears); the catch compares err.message === PRINT_HOST_BUSY_MESSAGE (imported from @/lib/print-host-slips); no pendingRef and no .push( — a test slip is refused, never queued', () => {
+test('PIN (d): the test-print button\'s disabled expression is exactly printing || phase !== "idle" || beat.isPending (PX-3 Task 10: use-test-print.ts\'s startDisabled, which the device card\'s Test print wears); the catch compares err.message === PRINT_HOST_BUSY_MESSAGE (imported from @/lib/print-host-slips); no pendingRef and no .push( — a test slip is refused, never queued', () => {
   const src = readSrc(TEST_TS);
-  assert.match(src, /startDisabled: current !== null \|\| phase !== "idle" \|\| beat\.isPending,/, 'must wire startDisabled: current !== null || phase !== "idle" || beat.isPending');
+  // Phase 6 Task 4 (spec §9 ruling 13) deliberately changed: `printing` (the bridge's hold: the surface or a write still in
+  // flight on a printer's lane) instead of `current !== null`, so Test print stays disabled exactly as long as it is refused.
+  assert.match(src, /startDisabled: printing \|\| phase !== "idle" \|\| beat\.isPending,/, 'must wire startDisabled: printing || phase !== "idle" || beat.isPending');
   assert.ok(readSrc(DEVICE_TSX).includes("disabled={test.startDisabled}"), "the device card's Test print wears it");
 
   assert.match(
@@ -198,11 +200,7 @@ test('PIN (d): the test-print button\'s disabled expression is exactly current !
     /import\s*\{\s*PRINT_HOST_BUSY_MESSAGE\s*\}\s*from\s*"@\/lib\/print-host-slips"/,
     "must import { PRINT_HOST_BUSY_MESSAGE } from @/lib/print-host-slips",
   );
-  assert.match(
-    src,
-    /err\.message === PRINT_HOST_BUSY_MESSAGE/,
-    "positive landmark: the catch must compare err.message === PRINT_HOST_BUSY_MESSAGE",
-  );
+  assert.match(src, /err\.message === PRINT_HOST_BUSY_MESSAGE/, "positive landmark: the catch must compare err.message === PRINT_HOST_BUSY_MESSAGE");
 
   assert.ok(!src.includes("pendingRef"), "use-test-print.ts must NOT contain pendingRef — the bridge owns the FIFO, the card never queues");
   assert.ok(!src.includes(".push("), "use-test-print.ts must NOT contain .push( — a test slip is refused (busy), never queued");

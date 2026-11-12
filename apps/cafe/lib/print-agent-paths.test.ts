@@ -83,9 +83,12 @@ test("PIN: the provider hands the drain its surfaces, and the bridge's own KOT p
   assert.ok(provider.includes("surfacesMounted={surfacesMounted}"), "with no host, every device is an agent once its surfaces exist");
   assert.ok(!provider.includes("onKotRound="), "the host lane prints only print jobs");
   const bridge = src("apps/cafe/hooks/use-print-host-bridge.ts");
-  assert.equal(count(bridge, "outcomesRef.current.track("), 2, "every slip and the test slip join the outcome line");
-  assert.equal(count(bridge, "outcomesRef.current.finish("), 1, "the one settle finishes the slip in front");
-  assert.ok(bridge.indexOf("outcomesRef.current.track(done ?? null);") < bridge.indexOf("if (occupiedRef.current) {\n      pendingRef.current.push(slip);"), "a slip is tracked before it waits or prints");
+  // Phase 6 Task 4 (spec §9 ruling 10) deliberately changed: a ticket per slip replaces the outcomes FIFO (writes end out of
+  // order); the one settle answers the ticket of the slip on the surface, or only frees it once its write is on its lane.
+  assert.equal(count(bridge, "tickets.add("), 2, "every slip and the test slip get a ticket");
+  assert.equal(count(bridge, "settleOrRelease(tickets, ticketRef.current, "), 1, "the one settle answers the slip on the surface");
+  const ticketAt = bridge.indexOf("const ticket = tickets.add(done ?? null, slip.jobId);");
+  assert.ok(ticketAt >= 0 && ticketAt < bridge.indexOf("if (occupiedRef.current) {\n      pendingRef.current.push({ slip, ticket });"), "a slip has its ticket before it waits or prints");
 });
 
 test("PIN: the agent leases on events aimed at it, names itself on the pulse (the host too), and only the host polls", () => {

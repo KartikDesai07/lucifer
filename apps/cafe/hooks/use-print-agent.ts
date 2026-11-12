@@ -32,7 +32,7 @@ import {
   type PrintAgentResult,
 } from "@/lib/print-agent";
 import { jobsForMeLeasable, printJobCopies, printerListLooksStale, readyPrinterIdsOf, type AgentPrinters } from "@/lib/print-agent-printers";
-import type { HostPrintDone } from "@/lib/print-host-outcomes";
+import type { HostPrintDone } from "@/lib/print-host-tickets";
 import { PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print-host-slips";
 import { PrintWriteError } from "@/lib/print-write-outcome";
 import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";

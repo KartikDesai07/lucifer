@@ -76,7 +76,8 @@ const CASES: PinCase[] = [
       check(p, ordered(abandon, [ABANDON_TOAST, "testRef.current?.reject(", "testRef.current = null;", "lateGuard.abandon(() => settle(null));"]), "abandon: announce, reject a waiting test slip, then hold the slot");
       check(p, s.includes("window.setTimeout(abandon, PRINT_HOST_DISPATCH_TIMEOUT_MS)"), "the watchdog abandons (it no longer settles)");
       check(p, !abandon.includes("occupiedRef") && !abandon.includes("setCurrent"), "abandon must NOT free the slot itself");
-      check(p, lines(r) <= 270, "stays <= 270 lines (Phase 2 Session 2E: a slip's own Windows printer and paper; printing Phase 4 Session 4B: the text step; PX-2 Task 7: a job's slip's toast)");
+      // Phase 6 Task 4 (spec §9 rulings 8–13) deliberately changed: 270 -> 300 (measured 300), Phase 6's two steps.
+      check(p, lines(r) <= 300, "stays <= 300 lines (Phase 2 Session 2E: a slip's own Windows printer and paper; printing Phase 4 Session 4B: the text step; PX-2 Task 7: a job's slip's toast; Phase 6 Task 4: Phase 6's two steps)");
       return p;
     },
     mutations: [

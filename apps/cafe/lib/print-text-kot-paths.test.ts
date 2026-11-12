@@ -48,7 +48,8 @@ test("PIN (S2): turning a printer on prints its text test first; only Yes keeps 
   assert.ok(section.includes("if (choice !== null) setNarrow80(choice.narrow80);"), "off keeps the 42 choice it was proven at for its next test");
   assert.ok(section.includes("message === PRINT_HOST_PRINT_FAILED_MESSAGE ? TEST_FAILED_MESSAGE : desktopRefusalWordsOf(message)"), "a test the watchdog gave up on says the section's own words");
   assert.ok(section.includes("disabled={on || busy}"), "the characters per line are chosen while the switch is off, before its test");
-  assert.ok(section.includes("disabled={!on && (busy || current !== null)}"), "turning on waits for a free bridge; turning off never waits");
+  // Phase 6 Task 4 (spec §9 ruling 13) deliberately changed: a free bridge is `printing` false (no slip drawn, no lane write).
+  assert.ok(section.includes("disabled={!on && (busy || printing)}"), "turning on waits for a free bridge; turning off never waits");
   assert.ok(section.includes("if (printers.length === 0) return null;"), "hidden on a device with no printer it can write text to");
   assert.ok(section.includes("<label htmlFor={switchId}") && section.includes("id={switchId}"), "the printer's whole row is the switch's label: a 44 px tap target on a phone");
 });
