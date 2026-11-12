@@ -49,6 +49,7 @@ function purchaseParts(entry: StockEntryDto): string[] {
 }
 
 function subLineOf(entry: StockEntryDto): string {
+  if (entry.kind === "payment") return [shortDate(entry.date), entry.supplierName ?? "", `by ${entry.createdBy}`].filter((part) => part !== "").join(SEPARATOR);
   if (entry.kind === "purchase") return [shortDate(entry.date), ...purchaseParts(entry), `by ${entry.createdBy}`].filter((part) => part !== "").join(SEPARATOR);
   const counted = entry.lines.flatMap((l) => (l.countedMilli === undefined ? [] : [`Counted ${formatQty(l.countedMilli, l.unit)}`])).join(", ");
   const what = entry.kind === "count" ? counted : (entry.reason ?? "");
@@ -64,6 +65,8 @@ function undoSentence(entry: StockEntryDto, line: StockEntryLineDto): string {
 }
 
 function deleteDescription(entry: StockEntryDto): string {
+  // A payment moves no stock; deleting it puts the amount back onto what is owed.
+  if (entry.kind === "payment") return `${inrPaise(entry.totalPaise ?? 0)} paid to ${entry.supplierName ?? "the supplier"} is removed, so it counts as owed again.`;
   const stock = entry.lines.length === 0 ? ["It leaves the history. Stock does not change."] : entry.lines.map((l) => undoSentence(entry, l));
   // A purchase also took what was unpaid onto the supplier's dues; deleting it removes that too.
   const owed = entry.duePaise !== undefined && entry.duePaise > 0 ? [`${inrPaise(entry.duePaise)} owed to ${entry.supplierName ?? "the supplier"} is removed.`] : [];
@@ -80,10 +83,11 @@ function EntryListSkeleton() {
   );
 }
 
-// The admin's history of purchases, wastage and counts, newest first, a page at a time. Deleting an entry takes its stock change
-// back out (once; the server guards a double tap), after a confirm that says what happens to stock.
-export function EntryList() {
-  const entries = useStockEntries(true);
+// The admin's history of purchases, payments, wastage and counts, newest first, a page at a time; with a supplierId, only that
+// supplier's purchases and payments. Deleting an entry takes its stock change (or its payment) back out (once; the server guards a
+// double tap), after a confirm that says what happens.
+export function EntryList({ supplierId }: { supplierId?: string }) {
+  const entries = useStockEntries(true, supplierId);
   const remove = useDeleteStockEntry();
   const [deleting, setDeleting] = useState<StockEntryDto | null>(null);
 
@@ -113,8 +117,8 @@ export function EntryList() {
     return (
       <EmptyState
         icon={<History className="h-8 w-8" />}
-        title="No entries yet"
-        description="Purchases, wastage and counts show here."
+        title={supplierId === undefined ? "No entries yet" : "Nothing here yet"}
+        description={supplierId === undefined ? "Purchases, payments, wastage and counts show here." : "Purchases from this supplier and payments to them show here."}
       />
     );
   }
@@ -131,6 +135,7 @@ export function EntryList() {
                 {entry.note && <div className={cn(SETTINGS_HUB_ROW_SUB_CLASS, "break-words")}>{entry.note}</div>}
               </div>
               <div className="flex shrink-0 flex-col items-end text-[14.5px] font-semibold tabular-nums">
+                {entry.kind === "payment" && entry.totalPaise !== undefined && <span>{inrPaise(entry.totalPaise)}</span>}
                 {entry.lines.map((line) => (
                   <span key={line.itemId} className={cn(line.qtyMilli < 0 && "text-status-bad-ink")}>
                     {entryChangeText(line)}

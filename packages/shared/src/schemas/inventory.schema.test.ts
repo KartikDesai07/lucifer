@@ -161,7 +161,7 @@ test("createStockEntrySchema keeps each kind's own keys: no reason on a count, n
   assert.equal(createStockEntrySchema.safeParse({ ...count, reason: "Spoiled" }).success, false);
   assert.equal(createStockEntrySchema.safeParse({ ...waste, countedMilli: 5 }).success, false);
   assert.equal(createStockEntrySchema.safeParse({ ...waste, kind: "purchase" }).success, false, "a purchase has its own keys");
-  assert.equal(createStockEntrySchema.safeParse({ ...waste, kind: "payment" }).success, false, "payments ship later (Slice 6)");
+  assert.equal(createStockEntrySchema.safeParse({ ...waste, kind: "payment" }).success, false, "a payment has its own keys (Slice 6)");
   assert.equal(createStockEntrySchema.safeParse({ ...waste, createdBy: "Someone" }).success, false);
 });
 
@@ -274,4 +274,41 @@ test("createSupplierSchema / updateSupplierSchema: name, phone and note shapes; 
   assert.equal(updateSupplierSchema.safeParse({ archived: false }).success, false, "no un-archive yet");
   assert.equal(updateSupplierSchema.safeParse({ name: "" }).success, false);
   assert.equal(updateSupplierSchema.safeParse({ duePaise: 0 }).success, false);
+});
+
+// Inventory lite Slice 6: a payment to a supplier (admin) and the supplier filter of the list query.
+
+const payment = { kind: "payment", supplierId: SUPPLIER, amountPaise: 120050, date: "2026-11-13", clientRef: REF };
+
+test("createStockEntrySchema accepts a payment, with or without a note, up to the cap", () => {
+  assert.equal(createStockEntrySchema.safeParse(payment).success, true);
+  assert.equal(createStockEntrySchema.safeParse({ ...payment, note: "Cash at the door" }).success, true);
+  assert.equal(createStockEntrySchema.safeParse({ ...payment, amountPaise: 1 }).success, true, "one paisa is a payment");
+  assert.equal(createStockEntrySchema.safeParse({ ...payment, amountPaise: STOCK_ENTRY_MAX_TOTAL_PAISE }).success, true);
+});
+
+test("createStockEntrySchema refuses a payment of 0, below 0, a float, over the cap, or without a supplier", () => {
+  for (const amountPaise of [0, -100, 10.5, STOCK_ENTRY_MAX_TOTAL_PAISE + 1]) {
+    assert.equal(createStockEntrySchema.safeParse({ ...payment, amountPaise }).success, false, String(amountPaise));
+  }
+  const { supplierId: _none, ...noSupplier } = payment;
+  assert.equal(createStockEntrySchema.safeParse(noSupplier).success, false, "a payment always names its supplier");
+  assert.equal(createStockEntrySchema.safeParse({ ...payment, supplierId: "raju" }).success, false);
+  assert.equal(createStockEntrySchema.safeParse({ ...payment, clientRef: "abc" }).success, false);
+  assert.equal(createStockEntrySchema.safeParse({ ...payment, date: "2026-02-30" }).success, false);
+});
+
+test("createStockEntrySchema: a payment has only its own keys (no lines, no paid, no due, no pay-it-all flag)", () => {
+  for (const extra of [{ lines: [] }, { paidPaise: 100 }, { duePaise: -100 }, { totalPaise: 100 }, { payAll: true }, { itemId: ITEM }]) {
+    assert.equal(createStockEntrySchema.safeParse({ ...payment, ...extra }).success, false, Object.keys(extra)[0]);
+  }
+  const { amountPaise: _none, ...noAmount } = payment;
+  assert.equal(createStockEntrySchema.safeParse(noAmount).success, false, "the amount is always sent");
+});
+
+test("stockEntryListQuerySchema takes one supplier's id, and nothing else in its place", () => {
+  assert.equal(stockEntryListQuerySchema.safeParse({ supplierId: SUPPLIER }).success, true);
+  assert.equal(stockEntryListQuerySchema.safeParse({ supplierId: SUPPLIER, before: `2026-11-13_${ITEM}` }).success, true);
+  assert.equal(stockEntryListQuerySchema.safeParse({ supplierId: "raju" }).success, false);
+  assert.equal(stockEntryListQuerySchema.safeParse({ supplierId: { $ne: null } }).success, false);
 });

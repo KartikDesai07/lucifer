@@ -8,8 +8,8 @@ export const dynamic = "force-dynamic";
 // Shown when an account has no display name (createdBy is required, never "").
 const UNNAMED_STAFF = "Staff";
 
-// GET /api/inventory/entries: the wastage, count and purchase history (admin). Newest first, one page at a time: send the
-// answer's `nextBefore` back as ?before= for the next one.
+// GET /api/inventory/entries: the wastage, count, purchase and supplier payment history (admin). Newest first, one page
+// at a time: send the answer's `nextBefore` back as ?before= for the next one. ?supplierId= keeps one supplier's rows.
 export async function GET(req: Request) {
   const authed = await requireAdmin();
   if ("error" in authed) return authed.error;
@@ -18,6 +18,7 @@ export async function GET(req: Request) {
   const query = stockEntryListQuerySchema.safeParse({
     before: sp.get("before") ?? undefined,
     limit: sp.get("limit") ?? undefined,
+    supplierId: sp.get("supplierId") ?? undefined,
   });
   if (!query.success) return failure("Invalid page", 400);
 
@@ -28,9 +29,9 @@ export async function GET(req: Request) {
   }
 }
 
-// POST /api/inventory/entries: log a wastage (any signed-in account: staff record what was thrown away), or a count
-// or a purchase (admin only: a count sets the stock number, a purchase is money). Deny by default: any kind other than
-// a wastage needs an admin. Who did it comes from the SESSION only. A repeated clientRef returns the FIRST entry with
+// POST /api/inventory/entries: log a wastage (any signed-in account: staff record what was thrown away), or a count,
+// a purchase or a supplier payment (admin only: a count sets the stock number, the other two are money). Deny by
+// default: any kind other than a wastage needs an admin. Who did it comes from the SESSION only. A repeated clientRef returns the FIRST entry with
 // 200 instead of recording it, and moving stock, twice.
 export async function POST(req: Request) {
   const authed = await requireAuth();

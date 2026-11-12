@@ -32,7 +32,7 @@ const count = (over: Partial<CountCmd> = {}): StockEntryCommand => ({ kind: "cou
 const stored = (doc: NewEntryDoc, extra: Partial<StoredEntry> = {}): StoredEntry => ({
   _id: NEW_ID,
   ...doc,
-  lines: doc.lines.map((l) => ({ itemId: new Types.ObjectId(l.itemId), qty: l.qty, ...(l.counted !== undefined ? { counted: l.counted } : {}) })),
+  lines: (doc.lines ?? []).map((l) => ({ itemId: new Types.ObjectId(l.itemId), qty: l.qty, ...(l.counted !== undefined ? { counted: l.counted } : {}) })),
   createdAt: NOW,
   ...extra,
 });
@@ -93,7 +93,10 @@ function fake(cfg: Partial<Fake["cfg"]> = {}): Fake {
 }
 
 const dup = Object.assign(new Error("E11000 duplicate key"), { code: 11000 });
-const lineOf = (doc: NewEntryDoc) => doc.lines[0];
+const lineOf = (doc: NewEntryDoc) => {
+  assert.ok(doc.lines?.[0], "a wastage or count row has its line");
+  return doc.lines[0];
+};
 test("waste: inserts the signed line, THEN moves stock with ENTRY_APPLY", async () => {
   const f = fake();
   const r = await createStockEntry(waste({ note: "dropped" }), f.deps);

@@ -113,8 +113,8 @@ test("PIN create order: the clientRef pre-read comes first; both kinds land thei
     assert.equal(body.includes("deps.move("), false, `${name} never moves stock itself`);
   }
   assert.equal(src.split("deps.move(").length - 1, 2, "exactly two move calls: insertThenMove and the delete reversal");
-  // Slice 5: the purchase writer is the third caller (waste and count share insertThenMove).
-  assert.equal(src.split("insertEntry(").length - 1, 3, "insertEntry is defined once and called twice: insertThenMove and createPurchase");
+  // Slice 5: the purchase writer is the third caller (waste and count share insertThenMove); Slice 6: the payment writer.
+  assert.equal(src.split("insertEntry(").length - 1, 4, "insertEntry is defined once and called by insertThenMove, createPurchase and createPayment");
 });
 
 test("PIN delete: the soft-delete CAS filter spreads ACTIVE_STOCK_ENTRY, and the reversal runs after it with ENTRY_REVERSE", () => {
@@ -147,7 +147,8 @@ test("PIN read: the list select never carries clientRef or createdById, and filt
   for (const banned of ["client" + "Ref", "createdBy" + "Id", "deleted"]) {
     assert.equal(selectText.includes(banned), false, `select must not carry ${banned}`);
   }
-  assert.ok(src.includes("{ ...ACTIVE_STOCK_ENTRY, ...entryCursorFilter(options.before) }"), "deleted entries never listed");
+  // Slice 6: the supplier filter (one supplier's history) is spread between the two; it narrows, never widens.
+  assert.ok(src.includes("{ ...ACTIVE_STOCK_ENTRY, ...supplier, ...entryCursorFilter(options.before) }"), "deleted entries never listed");
   const dto = src.slice(at(src, "export function toStockEntryDto(", "the DTO"), at(src, "export function stockEntryDateWindow(", "next export"));
   assert.ok(dto.includes("qtyMilli: line.qty"), "landmark: the DTO maps the line");
   assert.ok(dto.includes("supplierName"), "landmark: the DTO carries the supplier name (Slice 5)");

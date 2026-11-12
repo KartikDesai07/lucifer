@@ -17,7 +17,8 @@ import type { StockEntryDto, StockEntryLineDto, StockEntryPageDto } from "@/type
 // Read side of the stock entries (Inventory lite, Slice 4): the wire DTO, the date window, the page cursor and the
 // list read. The writes live in ./entries-write.ts. The helpers above `listStockEntries` are pure and DB-free so
 // tests call them directly. The list is admin-only, so a purchase's money (rates, amounts, total, paid, due) and its
-// supplier ride along (Slice 5); nothing here ever sends clientRef, createdById, v or the delete stamp.
+// supplier ride along (Slice 5), as does a supplier payment's (Slice 6: no lines; totalPaise = the amount, duePaise =
+// minus it); nothing here ever sends clientRef, createdById, v or the delete stamp.
 
 export const STOCK_ENTRY_FUTURE_DATE_ERROR = "The date can't be in the future";
 export const STOCK_ENTRY_OLD_DATE_ERROR = `The date can't be more than ${STOCK_ENTRY_BACKDATE_MAX_DAYS} days ago`;
@@ -118,13 +119,16 @@ export function entryCursorFilter(before?: string): EntryCursorFilter {
 export interface StockEntryListOptions {
   before?: string;
   limit?: number;
+  /** Slice 6: one supplier's history only (their purchases and payments). The route has validated the id shape. */
+  supplierId?: string;
 }
 
 /** One page of active entries, newest first, with item names and units from ONE `$in` read (archived items included) and supplier names from another. */
 export async function listStockEntries(options: StockEntryListOptions = {}): Promise<StockEntryPageDto> {
   const limit = options.limit ?? STOCK_ENTRY_PAGE_MAX;
   await connectDB();
-  const found = await StockEntry.find({ ...ACTIVE_STOCK_ENTRY, ...entryCursorFilter(options.before) })
+  const supplier = options.supplierId === undefined ? {} : { supplierId: new Types.ObjectId(options.supplierId) };
+  const found = await StockEntry.find({ ...ACTIVE_STOCK_ENTRY, ...supplier, ...entryCursorFilter(options.before) })
     .sort({ date: -1, _id: -1 })
     .limit(limit + 1)
     .select("kind date lines reason note supplierId totalPaise paidPaise duePaise createdBy createdAt")

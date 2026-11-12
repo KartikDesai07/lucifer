@@ -23,6 +23,8 @@ import { ErrorState } from "@/components/shared/ErrorState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SupplierHistorySheet } from "@/components/inventory/SupplierHistorySheet";
+import { SupplierPaySheet } from "@/components/inventory/SupplierPaySheet";
 import { SupplierSheet } from "@/components/inventory/SupplierSheet";
 import type { SupplierDto } from "@/types/inventory";
 
@@ -38,11 +40,21 @@ const DUE_TONE_CLASS: Record<DueTone, string> = {
   settled: "text-muted-foreground",
 };
 
+// Only ONE sheet is open at a time: a row opens that supplier's history, and the history hands over to Pay or Edit details.
+type SheetMode = "none" | "add" | "history" | "pay" | "edit";
+
 interface SheetState {
-  open: boolean;
+  mode: SheetMode;
   /** Bumped on every open, so the form always starts fresh. */
   key: number;
-  supplier: SupplierDto | null;
+  /** The supplier the history, pay or edit sheet is about; looked up in the live list, so a payment's refetch shows. */
+  id: string | null;
+  /**
+   * Edit details only: the supplier as it was when the editor opened. The editor sends what differs from the supplier it
+   * is given, so it must be this copy, never the live row (review s118: a refetch after another admin's rename made the
+   * untouched old name look like a change, and Save undid the rename).
+   */
+  snapshot: SupplierDto | null;
 }
 
 function SuppliersSkeleton() {
@@ -55,28 +67,35 @@ function SuppliersSkeleton() {
   );
 }
 
-// The Suppliers screen (admin): who you buy from and what is still owed to each. Tap a row to edit or archive; adding a
-// supplier is here, and a purchase picks one from the same list. Staff never reach it (ADMIN_ROUTES + the page guard),
+// The Suppliers screen (admin): who you buy from and what is still owed to each. Tap a row for that supplier's history, then
+// Pay them or Edit details (which can archive); adding a supplier is here, and a purchase picks one from the same list. Staff never reach it (ADMIN_ROUTES + the page guard),
 // and the list is only fetched for an admin.
 export function SuppliersView() {
   const { isAdmin, isLoading: authLoading } = useAuth();
   const list = useSuppliers(isAdmin);
   const update = useUpdateSupplier();
-  const [sheet, setSheet] = useState<SheetState>({ open: false, key: 0, supplier: null });
+  const [sheet, setSheet] = useState<SheetState>({ mode: "none", key: 0, id: null, snapshot: null });
   // The one supplier whose "Archive?" confirm is open over the editor.
   const [archiving, setArchiving] = useState<SupplierDto | null>(null);
   const data = list.data;
   const atLimit = !!data && data.length >= SUPPLIERS_MAX;
 
-  const openAdd = () => setSheet((s) => ({ open: true, key: s.key + 1, supplier: null }));
-  const openEdit = (supplier: SupplierDto) => setSheet((s) => ({ open: true, key: s.key + 1, supplier }));
+  // The open supplier, by id in the live list; if it has left the list (archived), its sheet closes.
+  const current = data?.find((s) => s.id === sheet.id) ?? null;
+  const modeIs = (mode: SheetMode) => sheet.mode === mode;
+
+  const openSheet = (mode: SheetMode, id: string | null, snapshot: SupplierDto | null = null) => setSheet((s) => ({ mode, key: s.key + 1, id, snapshot }));
+  const openAdd = () => openSheet("add", null);
+  const closeSheet = (open: boolean) => {
+    if (!open) setSheet((s) => ({ ...s, mode: "none" }));
+  };
 
   const confirmArchive = async () => {
     if (!archiving) return;
     try {
       await update.mutateAsync({ id: archiving.id, input: { archived: true } });
       setArchiving(null);
-      setSheet((s) => ({ ...s, open: false }));
+      closeSheet(false);
     } catch {
       // The hook toasts the refusal (dues must be settled first); the confirm stays open.
     }
@@ -105,7 +124,7 @@ export function SuppliersView() {
         <EmptyState
           icon={<Truck className="h-8 w-8" />}
           title="No suppliers yet"
-          description="Add who you buy stock from, like your milk or vegetable supplier. Then pick them when you add a purchase, and see what you still owe."
+          description="Add who you buy stock from, like your milk or vegetable supplier. Then pick them when you add a purchase, see what you still owe, and pay them."
           action={<div className="mt-2 flex w-full max-w-xs">{addButton()}</div>}
         />
       );
@@ -118,7 +137,7 @@ export function SuppliersView() {
             const sub = supplierSubLine(supplier);
             return (
               <li key={supplier.id} className={SETTINGS_HUB_ITEM_CLASS}>
-                <button type="button" aria-label={`Edit ${supplier.name}`} className={ROW_BUTTON_CLASS} onClick={() => openEdit(supplier)}>
+                <button type="button" aria-label={`Open ${supplier.name}`} className={ROW_BUTTON_CLASS} onClick={() => openSheet("history", supplier.id)}>
                   <div className="min-w-0 flex-1">
                     <div className={cn(SETTINGS_HUB_ROW_TITLE_CLASS, "truncate")}>{supplier.name}</div>
                     {sub !== "" && <div className={cn(SETTINGS_HUB_ROW_SUB_CLASS, "truncate")}>{sub}</div>}
@@ -151,13 +170,20 @@ export function SuppliersView() {
       />
       {body()}
 
-      <SupplierSheet
-        key={sheet.key}
-        open={sheet.open}
-        onOpenChange={(open) => setSheet((s) => ({ ...s, open }))}
-        supplier={sheet.supplier}
-        onArchive={setArchiving}
-      />
+      {modeIs("history") && current && (
+        <SupplierHistorySheet
+          key={sheet.key}
+          open
+          onOpenChange={closeSheet}
+          supplier={current}
+          onPay={() => openSheet("pay", current.id)}
+          onEdit={() => openSheet("edit", current.id, current)}
+        />
+      )}
+      {modeIs("pay") && current && <SupplierPaySheet key={sheet.key} open onOpenChange={closeSheet} supplier={current} />}
+      {(modeIs("add") || (modeIs("edit") && current && sheet.snapshot)) && (
+        <SupplierSheet key={sheet.key} open onOpenChange={closeSheet} supplier={modeIs("edit") ? sheet.snapshot : null} onArchive={setArchiving} />
+      )}
 
       <ConfirmDialog
         open={!!archiving}
