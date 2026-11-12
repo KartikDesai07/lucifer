@@ -64,9 +64,9 @@ export function createLineState(): LineState {
 export interface LineTimer {
   /** A reason at `at` (absolute ms on the agent's clock); a reason's soonest time is kept. */
   wake(line: string | null, at: number): void;
-  /** The final review (I-2): a lease answered: no pending reason of this name (null: no line) is left; the timer follows
-   *  the rest (the lease's own retryAt sets its reason again). */
-  forget(line: string | null): void;
+  /** The final review (I-2): no pending reason of this name (null: no line) is left; the timer follows the rest (a lease's
+   *  own retryAt sets its reason again). Returns the time it held for that reason (undefined: there was none). */
+  forget(line: string | null): number | undefined;
   stop(): void;
 }
 
@@ -94,11 +94,13 @@ export function createLineTimer(clock: Pick<PrintAgentDeps, "now" | "setTimer" |
       arm();
     },
     forget(line) {
-      if (!wakes.delete(line) || timer === null || Math.min(...wakes.values()) <= timerAt) return;
+      const held = wakes.get(line);
+      if (!wakes.delete(line) || timer === null || Math.min(...wakes.values()) <= timerAt) return held;
       clock.clearTimer(timer);
       timer = null;
       timerAt = Number.POSITIVE_INFINITY;
       arm();
+      return held;
     },
     stop() {
       if (timer !== null) clock.clearTimer(timer);

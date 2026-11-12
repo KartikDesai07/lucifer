@@ -132,8 +132,9 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
   function lineEnd(line: string, end: LineJobEnd): void {
     lines.release(line);
     fresh = true;
-    // The final review (I-2): with no printer line, a job back in line drops the kick kept meanwhile (it could only find
-    // that job not due: today's kickedWhileRunning = false); with printer lines another line may hold its job (ruling 20).
+    // The final review (I-2): with ready().length === 0 (simple mode, or every printer down now: no lease could be made,
+    // a printer coming back nudges) a job back in line drops the kick kept meanwhile (it finds the job not due); else
+    // another line may hold it (ruling 20).
     if (end.kind !== "back" || ready().length > 0) wish ||= deferred;
     deferred = false;
     // The Task 5 review (m-2): a line its refusal holds is looked at when the hold ends, whatever its answer said.
@@ -173,6 +174,7 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
 
   async function lease(): Promise<void> {
     leasing = true;
+    let forgotten: number | undefined;
     try {
       // An ack the last page (or a dropped answer) left goes first: a lease could expire our own job (M6); a hand-back
       // too, so the lease can reach its job (the final review, I-1). A stop() meanwhile leases nothing (the 1D gate M-4).
@@ -183,8 +185,10 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
       if (names === null) return;
       wish = false;
       lines.takeMore([PRINT_DEVICE_LINE, ...names]);
+      // The final review (I-2): a lease is what an unnamed wake wanted. 6B (n-1): forgotten when it is SENT, so a wake
+      // set while it is in flight (a requeued refusal's backoff) survives; its retryAt sets one again; no answer: put back.
+      forgotten = timer.forget(null);
       const data = await deps.lease(names);
-      timer.forget(null); // the final review (I-2): a lease is what an unnamed wake wanted; its own retryAt sets one again
       // Session 2C: one job per line; each waits here for its line's turn (the first that may start starts now).
       const got: LeasedPrintJob[] = [];
       for (const job of data.jobs) {
@@ -202,6 +206,7 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
       else if (data.retryAt !== null) wakeAt(Date.parse(data.retryAt));
     } catch {
       // No answer from the lease (offline, a deploy): look again later, never in a tight loop.
+      if (!stopped && forgotten !== undefined) timer.wake(null, forgotten);
       wakeAt(deps.now() + PRINT_AGENT_REFUSED_RECHECK_MS);
     } finally {
       leasing = false;

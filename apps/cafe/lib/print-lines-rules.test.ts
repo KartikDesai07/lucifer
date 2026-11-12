@@ -3,9 +3,13 @@ import assert from "node:assert/strict";
 
 import { PRINT_AGENT_REFUSED_RECHECK_MS, type PrintAckData } from "@pos/shared/print-agent-wire";
 import { PRINT_DIRECT_HOLD_MS } from "@/lib/print-agent";
-import { PRINT_AGENT_HOLD_END_MARGIN_MS } from "@/lib/print-agent-holds";
+import { PRINT_AGENT_HOLD_END_MARGIN_MS, createRefusalHolds } from "@/lib/print-agent-holds";
 import { PRINT_HOST_NOT_DRAWN_MESSAGE } from "@/lib/print-host-tickets";
-import { job, printed, queuedAt, rig, settle } from "@/lib/print-lines-rig";
+import { ApiError } from "@/lib/api-client";
+import { createAckFlusher } from "@/lib/print-agent-acks";
+import type { PendingPrintAck, PrintAgentDeps } from "@/lib/print-agent-types";
+import { runLineOnce, type LineJobEnd } from "@/lib/print-line-job";
+import { RIG_T0, job, printed, queuedAt, rig, settle } from "@/lib/print-lines-rig";
 import { PrintWriteError } from "@/lib/print-write-outcome";
 import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
 
@@ -173,4 +177,121 @@ test("a line whose ack a lease's kept-acks flush answers is free and named in th
   release();
   await settle();
   assert.deepEqual(t.r.asked, [["K", "D"]], "one lease names K (its ack answered with more) and D; B still writes");
+});
+
+// Phase 6 Session 6B: the 6A final review's three minors.
+test("a requeued wake set while a lease is in flight survives that lease's answer (6B amendment n-1)", async () => {
+  const t = rig();
+  await t.start();
+  const answered = t.deps.lease;
+  let answerLease: () => void = () => undefined;
+  t.deps.lease = (ids) =>
+    new Promise((resolve) => {
+      t.r.asked.push([...ids]);
+      answerLease = () => resolve({ jobs: [], retryAt: null });
+    });
+  t.agent.kick();
+  await settle();
+  assert.deepEqual(t.r.asked, [["K", "B", "D"]], "the lease is sent and hangs");
+  t.r.pending = [{ id: "K9", epoch: 1, at: t.r.now, fail: { deviceId: "dev-r", epoch: 1, outcome: "failed", sent: "no", error: "a refusal kept with no answer" } }];
+  t.r.answers.set("K9", queuedAt(t.r.now + 2_000));
+  await t.agent.flushAcks();
+  t.deps.lease = answered;
+  answerLease();
+  await settle();
+  await t.advance(1_999);
+  assert.equal(t.r.asked.length, 1, "nothing before the backoff ends");
+  await t.advance(1);
+  assert.deepEqual(t.r.asked, [["K", "B", "D"], ["K", "B", "D"]], "the backoff's end leases again: the wake set while the lease was in flight survived its answer");
+});
+
+test("a lease that gets no answer keeps the unnamed wake it was sent with (6B amendment n-1)", async () => {
+  const t = rig();
+  await t.start();
+  const answered = t.deps.lease;
+  let call = 0;
+  t.deps.lease = async (ids) => {
+    call += 1;
+    if (call === 1) {
+      t.r.asked.push([...ids]);
+      return { jobs: [], retryAt: new Date(t.r.now + 5_000).toISOString() };
+    }
+    if (call === 2) {
+      t.r.asked.push([...ids]);
+      throw new ApiError("offline", "network", null);
+    }
+    return answered(ids);
+  };
+  t.agent.kick();
+  await settle();
+  t.r.now += 1_000;
+  t.agent.kick();
+  await settle();
+  assert.equal(t.r.asked.length, 2, "two leases were sent");
+  await t.advance(3_999);
+  assert.equal(t.r.asked.length, 2, "nothing before the retryAt");
+  await t.advance(1);
+  assert.equal(t.r.asked.length, 3, "the retryAt wake survived the lease that got no answer; not pushed to the 30 s re-check");
+});
+
+test("a throw in a line's end heard inside the ack flush never stops it: the ack is forgotten, the line ends once (6B amendment n-3)", async () => {
+  let pending: PendingPrintAck[] = [];
+  const sent: string[] = [];
+  const ends: LineJobEnd[] = [];
+  let pumps = 0;
+  const onAnswer = new Map<string, (answer: PrintAckData) => void>();
+  const deps = {
+    deviceId: "dev-n3",
+    ack: async (id: string) => {
+      sent.push(id);
+      return printed(false);
+    },
+    readPending: () => [...pending],
+    writePending: (entries: PendingPrintAck[]) => void (pending = [...entries]),
+    now: () => RIG_T0,
+    setTimer: () => 0,
+    clearTimer: () => undefined,
+    print: async () => ({ ok: true as const }),
+    printerReady: () => true,
+    printerState: () => null,
+  } as unknown as PrintAgentDeps;
+  const acks = createAckFlusher(deps, { stopped: () => false, answered: (key, answer) => onAnswer.get(key)?.(answer), requeued: () => undefined });
+  const ctx = { deps, acks, answers: new Map(), holds: createRefusalHolds(deps), slipRefusals: new Map(), lineOf: () => "K", hold: () => undefined };
+  runLineOnce(job("K1"), ctx, onAnswer, (end) => {
+    ends.push(end);
+    if (ends.length === 1) throw new Error("a line end that throws");
+  }, () => void (pumps += 1));
+  await settle();
+  await settle();
+  assert.deepEqual(sent, ["K1"], "the ack is sent once");
+  assert.deepEqual(pending, [], "the ack is forgotten, never sent twice");
+  assert.deepEqual(ends, [{ kind: "printed", more: false }], "the line ended once, by the answer");
+  assert.equal(pumps, 1, "the run's own return still pumps");
+});
+
+test("a lease that gets no answer after stop() arms no timer (6B amendment n-1)", async () => {
+  const t = rig();
+  await t.start();
+  const answered = t.deps.lease;
+  let call = 0;
+  let failLease: (error: unknown) => void = () => undefined;
+  t.deps.lease = (ids) => {
+    call += 1;
+    t.r.asked.push([...ids]);
+    if (call === 1) return Promise.resolve({ jobs: [], retryAt: new Date(t.r.now + 5_000).toISOString() });
+    if (call === 2) return new Promise((_resolve, reject) => void (failLease = reject));
+    return answered(ids);
+  };
+  t.agent.kick();
+  await settle();
+  t.r.now += 1_000;
+  t.agent.kick();
+  await settle();
+  assert.equal(t.r.asked.length, 2, "the second lease is sent and hangs");
+  t.agent.stop();
+  failLease(new ApiError("offline", "network", null));
+  await settle();
+  assert.deepEqual(t.r.timers, [], "no timer is left on a stopped agent");
+  await t.advance(PRINT_AGENT_REFUSED_RECHECK_MS + 10_000);
+  assert.equal(t.r.asked.length, 2, "no lease after the stop, at the old retryAt or the re-check");
 });

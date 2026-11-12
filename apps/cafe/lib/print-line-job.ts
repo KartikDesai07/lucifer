@@ -65,12 +65,23 @@ export function runLineOnce(
   const key = `${job.id}:${job.epoch}`;
   let done = false;
   const end = (result: LineJobEnd, pumpNow = true): void => {
-    if (!done) ended(result);
-    done = true;
-    onAnswer.delete(key);
+    if (!done) {
+      done = true;
+      onAnswer.delete(key);
+      ended(result);
+    }
     if (pumpNow) pump();
   };
-  const kept = (): void => void onAnswer.set(key, (answer) => end({ kind: "printed", more: answer.more !== false }, false));
+  // 6B (n-3): this runs inside the ack flush's try: a throw must not leave the ack unforgotten (it would be sent again).
+  const kept = (): void =>
+    void onAnswer.set(key, (answer) => {
+      try {
+        end({ kind: "printed", more: answer.more !== false }, false);
+      } catch {
+        // Nothing in a line's end throws today; if it ever did, the ack must still be forgotten and never sent twice;
+        // the line has ended once.
+      }
+    });
   void runLineJob(job, { ...ctx, kept }).then((result) => end(result), () => end({ kind: "unanswered" }));
 }
 
