@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 
 import { coreConnection, ledgerWriteConnection } from "./cluster-router";
+import { memoizeUntilFailure } from "./memoize-until-failure";
 
 // Query hardening: strictQuery drops unknown filter keys.
 //
@@ -66,6 +67,47 @@ export async function connectDB() {
 
   return cached.conn;
 }
+
+/** A model with an index build to await: structural, so no `Model<any>` (lint). */
+export interface ModelLike {
+  init(): Promise<unknown>;
+  createCollection(): Promise<unknown>;
+  createIndexes(): Promise<unknown>;
+}
+
+/** The house rule "await the unique index before the write", made safe. Each call: connect, then mongoose's own
+ *  init() (mongoose memoizes it, and resets it on dropDatabase / disconnect, as today). If init's memo is a
+ *  rejection (its first run began while the connection was connecting, after a failed connect, or hit a transient
+ *  error), do init's work again through the public API: createCollection (tolerates "exists", code 48; applies the
+ *  schema's collection options) then createIndexes (the schema's own indexes, the same options as init's build).
+ *  Only that fallback is memoized per model: a success is kept for the process, a failure is dropped so the next
+ *  call tries again, and the caller's write still fails CLOSED. Unlike init, the fallback ignores `autoIndex: false`,
+ *  a per-index `_autoIndex: false` and never builds search indexes; no model uses any of them (a GATE test pins it). */
+export function createModelReady(connect: () => Promise<unknown>): (model: ModelLike) => Promise<void> {
+  const fallbacks = new WeakMap<ModelLike, () => Promise<void>>();
+  const fallbackFor = (model: ModelLike): (() => Promise<void>) => {
+    let fallback = fallbacks.get(model);
+    if (!fallback) {
+      fallback = memoizeUntilFailure(async () => {
+        await model.createCollection();
+        await model.createIndexes();
+      });
+      fallbacks.set(model, fallback);
+    }
+    return fallback;
+  };
+  return async (model) => {
+    await connect();
+    try {
+      await model.init();
+      return;
+    } catch {
+      await fallbackFor(model)();
+    }
+  };
+}
+
+export const modelReady = createModelReady(connectDB);
 
 export type ConnectionRole = "core" | "ledger";
 

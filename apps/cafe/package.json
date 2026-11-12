@@ -429,6 +429,7 @@
     "lib/settle-followups.test.ts",
     "lib/order-idem.test.ts",
     "lib/order-idem-index.test.ts",
+    "lib/model-ready.test.ts",
     "lib/realtime-live-state.test.ts",
     "lib/realtime-nudge-fetch.test.ts",
     "lib/realtime-visible-recheck.test.ts",
