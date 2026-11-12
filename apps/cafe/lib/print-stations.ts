@@ -5,13 +5,14 @@ import { Category } from "@/models/Category";
 import { Printer } from "@/models/Printer";
 import { Product } from "@/models/Product";
 import { Station } from "@/models/Station";
+import { modelReady } from "@/lib/db";
 import type { CreateStationBody, UpdateStationBody } from "@/lib/print-printer-schemas";
 import { publishCafeEvent } from "@/lib/realtime-publish";
 
 // Printing redesign, Phase 2 (spec §6.1, §11): kitchen stations. The first read seeds the default
 // "Kitchen"; there is always exactly one default, which can be moved but never deleted. Deleting a station
 // clears it everywhere it was chosen (categories, items, printers), so no row points at a station that is
-// gone (owner: no stale print data). Never calls connectDB() (the routes do). No console.*.
+// gone (owner: no stale print data). Never calls connectDB() itself (the routes do). No console.*.
 
 /** A setup write's answer: the routes turn a refusal into its status and message. */
 export type PrintSetupResult<T> = { ok: true; data: T } | { ok: false; status: 400 | 404 | 409; error: string };
@@ -49,9 +50,8 @@ async function readStations(): Promise<StationConfig[]> {
 /** Seeds the default "Kitchen" (spec §6.1). Two first reads racing both upsert the same name: the unique
  *  name index lets one insert and the other match or collide (a no-op). */
 export async function seedDefaultStation(): Promise<void> {
-  // The unique name index is what makes the race safe, and connectDB()'s autoIndex build is not awaited
-  // (house rule: print-device.ts, crud-route.ts). .init() is memoized per process.
-  await Station.init();
+  // The unique name index is what makes the race safe (modelReady).
+  await modelReady(Station);
   try {
     await Station.updateOne({ name: DEFAULT_STATION_NAME }, { $setOnInsert: { order: 0, isDefault: true } }, { upsert: true });
   } catch (error) {

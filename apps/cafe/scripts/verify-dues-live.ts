@@ -396,7 +396,7 @@ async function leg10(): Promise<void> {
 // fires the clientRef unique-index build automatically but in the
 // BACKGROUND, unawaited by connectDB() — the arbiter's live probe measured
 // it completing ~329ms after connect. This leg exercises receiveDuePayment's
-// OWN `.init()` await (the G2 fix) rather than this script's convenience
+// OWN `modelReady(DuePayment)` await (the G2 index await) rather than this script's convenience
 // build, which every other leg quietly relies on.
 async function legG2ColdStartRace(): Promise<void> {
   // main() already dropped the collection immediately before calling this

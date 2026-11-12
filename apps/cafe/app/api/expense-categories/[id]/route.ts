@@ -1,5 +1,5 @@
 import mongoose, { type UpdateQuery } from "mongoose";
-import { connectDB } from "@/lib/db";
+import { connectDB, modelReady } from "@/lib/db";
 import { ExpenseCategory, type IExpenseCategory } from "@/models/ExpenseCategory";
 import {
   failure,
@@ -43,9 +43,8 @@ export async function PATCH(req: Request, { params }: Params) {
 
   try {
     await connectDB();
-    // A second writer of `name`: never rename before the unique collation index
-    // is guaranteed to exist (memoized per process — the Area precedent).
-    await ExpenseCategory.init();
+    // A second writer of `name`: never rename before the unique collation index exists (modelReady).
+    await modelReady(ExpenseCategory);
     // One atomic write (not read, set, save): an unknown id answers 404, not a 500.
     const updated = await ExpenseCategory.findOneAndUpdate({ _id: id }, update, {
       new: true,

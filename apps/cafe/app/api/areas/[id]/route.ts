@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { connectDB } from "@/lib/db";
+import { connectDB, modelReady } from "@/lib/db";
 import { Area } from "@/models/Area";
 import { Table } from "@/models/Table";
 import cache from "@/lib/cache";
@@ -37,9 +37,8 @@ export async function PUT(req: Request, { params }: Params) {
 
   try {
     await connectDB();
-    // A second writer of `name`: same reason as the POST - never rename before
-    // the unique collation index is guaranteed to exist (memoized per process).
-    await Area.init();
+    // A second writer of `name`: never rename before the unique collation index exists (modelReady).
+    await modelReady(Area);
     // One atomic write (not read, set, save): a rename racing a delete finds
     // nothing to update and answers 404 instead of failing the save with a 500.
     const updated = await Area.findOneAndUpdate({ _id: id }, { $set: parsed.data }, { new: true, runValidators: true });

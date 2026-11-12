@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { connectDB } from "@/lib/db";
+import { connectDB, modelReady } from "@/lib/db";
 import { Customer } from "@/models/Customer";
 import { DuePayment } from "@/models/DuePayment";
 import cache from "@/lib/cache";
@@ -228,15 +228,8 @@ export async function receiveDuePayment(input: ReceiveDuePaymentInput) {
     return { ok: false as const, status: 400, error: resolved.error };
   }
 
-  // G2: `autoIndex`'s createIndexes() is NOT awaited by connectDB() — a
-  // cold-start race (two concurrent same-clientRef inserts before the unique
-  // index finishes building) can leave two rows for one clientRef, after
-  // which the deferred build 11000s and leaves the index PERMANENTLY absent
-  // (no `.on("index")` listener surfaces it), silently voiding the whole
-  // idempotency/CAS-loser-recovery contract below. `.init()` is memoized per
-  // process; a rejection here propagates and fails this write CLOSED — a
-  // broken uniqueness constraint on a money path must error, never degrade.
-  await DuePayment.init();
+  // G2: the unique clientRef index before the CAS (modelReady); a failure fails CLOSED on a money path.
+  await modelReady(DuePayment);
 
   // 4. CAS decrement — the codebase's own idiom (app/api/orders/[id]/settle/
   // route.ts:148-160). The `$gte` guard is what stops two cashiers each

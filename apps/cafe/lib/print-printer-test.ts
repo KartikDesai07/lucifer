@@ -19,7 +19,7 @@ import { publishPrintStatus } from "@/lib/realtime-publish";
 // slip) on that printer's line, aimed at its one writer, made from the stored printer so the paper says what the
 // setup says. It rides the whole lifecycle: the writer leases it (the asking tab at once when it writes this
 // printer and can print on it now, decision 15), prints it only if this printer IS its printer, and acks; one
-// that cannot print waits in the waiting-slips panel like any slip. Never calls connectDB(). No console.*.
+// that cannot print waits in the waiting-slips panel like any slip. Never calls connectDB() itself. No console.*.
 
 export const PRINT_TEST_LABEL = "Test print";
 export const PRINTER_TEST_NOT_ROUTABLE_MESSAGE = "Switch this printer on and choose its slips first: only a printer that takes slips prints.";
