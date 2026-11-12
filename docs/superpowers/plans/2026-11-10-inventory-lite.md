@@ -357,3 +357,34 @@ recipes; size override ignored; sum → overwrite; Pay Now gate removed; `stockU
   `reconcileLedger`, like the stock add-back ("Seen, not fixed" above). This is a separate Tier L fix, done next,
   before Slice 3.
 - **Next =** the cancel give-backs fix (L), then Slice 3 (Stock use in the item editor, M).
+
+### Cancel give-backs fix (s114, 2026-11-12): DONE
+
+- Owner decision (s113): give the stamps, the scratch card and the points back BEFORE `reconcileLedger`, like the
+  stock add-back. Before this, a ledger throw answered 500 after the cancel had landed, the retry met the "already
+  cancelled" 409, and those rewards stayed spent forever.
+- Change: `app/api/orders/[id]/cancel/route.ts` now runs the stock add-back, then stamps, then card, then points, and
+  only then the ledger reversal. Each give-back still swallows its own failure. The ledger, the table free and the
+  cache drops follow, and the publish stays in the `finally`. No request or response shape changed.
+- Test first: new live legs k1-k3 (`scripts/reward-card-use-live-legs-cancel.ts`, run by
+  `verify:reward-card-use:live`). Each settles a stamp, card or points bill, then makes `Customer.findByIdAndUpdate`
+  reject for the ledger's `$inc` of `visits` only (no give-back uses that method). It cancels and expects a 500, the
+  order Cancelled, the ledger untouched, a retry 409, and the reward given back. All three went RED on the old
+  route, failing on the give-back assertion only; GREEN after.
+- Pins: the inventory `PIN cancel` asserts add-back < stamps < card < points < ledger. The ledger and each give-back
+  block sit at the follow-ups' own brace depth: not nested, and the ledger is not inside a swallowing try. Exactly one
+  `reconcileLedger(` call. The realtime pin's cancel `first` landmark is now the stock add-back.
+- Mutation pass (main thread, alone, byte backup, sha1 restore matched, tree diff hash the same): 6 of 7 killed. The
+  survivor moves the ledger below the table free. That is allowed: every give-back is still before the ledger, and
+  it would even free the table on a ledger throw.
+- Review: one opus reviewer found no defects. It checked that the ledger and the give-backs touch different fields
+  (clampLedger only sets visits / totalSpend / totalDue; the give-backs use `updateOne`; Customer has no hooks), the
+  comment directions, that k1-k3 cannot pass without proving anything, the pin anchoring, and the Unpaid, reassigned
+  and no-customer cancels.
+- Live: card-use 51/51 (k1-k3 new), points 20/20, inventory 15/15, orders 153/153, reward-redeem 26/26, reward-assign
+  22/22, reward-progress 17/17. Pin suites touching the route: 204/204.
+- Seen, not fixed (owner call): a ledger throw still skips the table free and the summary cache drops. The table then
+  stays Occupied, pointing at a cancelled order, until someone frees it by hand. Moving the table free above the
+  ledger is the same kind of one-line move.
+- Rollback: statement order only; a revert puts back the old order.
+- **Next =** Slice 3 (Stock use in the item editor, M).
