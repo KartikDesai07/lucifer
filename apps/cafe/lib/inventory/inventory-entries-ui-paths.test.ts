@@ -141,7 +141,9 @@ test("PIN: the hooks refresh the stock list AND the entries on success and on er
     assert.ok(body.slice(onError).includes("refreshStockAndEntries(qc)"), `${name}: the error path refreshes too`);
     assert.ok(body.slice(onError).includes("toast.error(error.message)"), `${name}: the error toast is the server's message`);
   }
-  assert.ok(src.includes('"Wastage logged" : "Stock count saved"'), "the success toasts follow the kind");
+  // Slice 5 moved this on purpose: the toast now comes from a per-kind table (waste, count, purchase).
+  assert.ok(src.includes("toast.success(ENTRY_SAVED_TOAST[input.kind])"), "landmark: the success toast follows the kind");
+  assert.ok(src.includes('waste: "Wastage logged"') && src.includes('count: "Stock count saved"'), "the wastage and count toasts are unchanged");
 });
 
 test("PIN: the entries hook pages by the server's cursor, and staff never enable it", () => {

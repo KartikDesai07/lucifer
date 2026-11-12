@@ -121,7 +121,8 @@ export function coverTabTarget<T>(
 }
 
 // The first key segment of each person-scoped query family (STAFF_KEYS, REPORT_KEYS, DASHBOARD_KEYS, EXPENSE_KEYS,
-// TELEGRAM_KEYS, PRINT_DEVICES_KEYS), written as literals; screen-lock.test.ts compares them with the hooks.
+// TELEGRAM_KEYS, PRINT_DEVICES_KEYS, INVENTORY_KEYS), written as literals; screen-lock.test.ts compares them with the
+// hooks. Inventory: an admin's stock list carries the last purchase rate, and History / Suppliers carry purchase money.
 export const PERSON_SCOPED_QUERY_ROOTS: readonly string[] = [
   "staff",
   "reports",
@@ -129,6 +130,7 @@ export const PERSON_SCOPED_QUERY_ROOTS: readonly string[] = [
   "expenses",
   "telegram",
   "print-devices",
+  "inventory",
 ];
 
 export function isPersonScopedQuery(queryKey: readonly unknown[]): boolean {

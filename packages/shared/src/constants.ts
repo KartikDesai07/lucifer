@@ -176,7 +176,8 @@ export type TableStatus = (typeof TABLE_STATUSES)[number];
 // joined with the Tables redesign (owner, 2026-09-30: staff see only the live
 // floor at "/tables", which stays open to every role). "/printers" joined
 // when Printer setup moved out of Settings into its own admin row (owner,
-// 2026-10-02) — it was admin-only inside Settings, so it stays so.
+// 2026-10-02) — it was admin-only inside Settings, so it stays so. "/inventory/suppliers"
+// (Inventory lite Slice 5) holds what is owed to each supplier; "/inventory" itself stays open.
 export const ADMIN_ROUTES = [
   "/staff",
   "/reports",
@@ -186,6 +187,7 @@ export const ADMIN_ROUTES = [
   "/tables/qr",
   "/printers",
   "/expenses/categories",
+  "/inventory/suppliers",
 ] as const;
 
 // Tables redesign (2026-09-30). An occupied table whose open bill is at least

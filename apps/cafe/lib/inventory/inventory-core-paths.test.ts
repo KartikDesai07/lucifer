@@ -56,6 +56,7 @@ const FIELDS = "stockUsed" + "Fields(";
 const FOR_SALE = "stockUsed" + "ForSale(";
 const MOVE = "move" + "Stock(";
 const ADD_BACK = "addBack" + "StockQuietly(";
+const RECEIVE = "receive" + "Stock(";
 
 test("PIN settle: the snapshot starts after the money refusals and joins the $set before the CAS, once", () => {
   const src = read(SETTLE);
@@ -159,6 +160,10 @@ test("PIN writer census: who works out the snapshot and who moves stock", () => 
   // Slice 4 moved this on purpose: a wastage and the delete of an entry are the second, manual, stock writer.
   assert.deepEqual(holders(MOVE), [CREATE_FOLLOW, ENTRIES_WRITE, SETTLE_FOLLOW, STOCK_MOVE].sort());
   assert.deepEqual(holders(ADD_BACK), [CANCEL, ORDER_ID, STOCK_MOVE].sort());
+  // Slice 5 added this on purpose: a purchase is the only thing that ADDS bought stock (and sets the last rate), and
+  // the purchase writer (entries-write.ts, behind its receive port) is its one caller.
+  assert.deepEqual(holders(RECEIVE), [ENTRIES_WRITE, STOCK_MOVE].sort());
+  assert.equal(count(raw(STOCK_MOVE), "StockItem.bulkWrite("), 2, "landmark: stock-move.ts holds both bulkWrites (moveStock and receiveStock)");
 });
 
 test("PIN D3: no inventory code mentions the menu item's on/off flag (raw bytes, comments included)", () => {

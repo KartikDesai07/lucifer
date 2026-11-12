@@ -21,7 +21,7 @@ import {
 } from "@/lib/menu-editor-layout";
 import { MENU_SELECT_TRIGGER_CLASS } from "@/lib/menu-layout";
 import { SETTINGS_OUTLINE_BUTTON_CLASS } from "@/lib/settings-card-layout";
-import { cn } from "@/lib/utils";
+import { cn, inrPaise } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EditorField } from "@/components/products/EditorField";
@@ -133,6 +133,10 @@ export function StockItemSheet({ open, onOpenChange, item, onArchive, onAdjust }
         <QtyBox id="stock-item-low-at" value={values.lowAtText} onChange={(lowAtText) => set({ lowAtText })} unitCode={unitCode} invalid={!!errors.lowAt} />
         <p className={MENU_EDITOR_HINT_CLASS}>The list shows Low when stock is at or under this.</p>
       </EditorField>
+
+      {item && typeof item.lastRatePaise === "number" && (
+        <p className={MENU_EDITOR_HINT_CLASS}>{`Last bought at ${inrPaise(item.lastRatePaise)} / ${item.unit}`}</p>
+      )}
 
       {item && (
         <>

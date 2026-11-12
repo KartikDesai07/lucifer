@@ -3,9 +3,10 @@ import assert from "node:assert/strict";
 import { Types } from "mongoose";
 import { StockEntry, stockEntrySchema } from "./StockEntry";
 import { StockItem, stockItemSchema, STOCK_ITEM_SCHEMA_VERSION } from "./StockItem";
+import { Supplier, supplierSchema, SUPPLIER_SCHEMA_VERSION } from "./Supplier";
 import { Product } from "./Product";
 import { Order } from "./Order";
-import { STOCK_UNITS } from "@pos/shared/inventory";
+import { STOCK_UNITS, SUPPLIER_NAME_MAX_LEN, SUPPLIER_NOTE_MAX_LEN, SUPPLIER_PHONE_MAX_LEN } from "@pos/shared/inventory";
 
 // Inventory lite (Slice 1) — the model shapes, DB-free: documents are built, validated and toObject()-ed, never
 // saved. The DB-truth (the partial unique index build, $inc on a real row) is verify:inventory:live.
@@ -139,4 +140,41 @@ test("StockEntry: lines[].qty is a whole number of milli-units; money paths are 
   }
   assert.equal(stockEntrySchema.path("lines.ratePaise").instance, "Int32");
   assert.equal(stockEntrySchema.path("lines.amountPaise").instance, "Int32");
+});
+
+// ── Supplier (Slice 5) ───────────────────────────────────────────────────────
+
+const SUPPLIER_DOC = { name: "Sharma Dairy" };
+
+test("Supplier: a minimal doc validates; optional paths and archived store no key; v defaults", () => {
+  assert.equal(new Supplier(SUPPLIER_DOC).validateSync(), undefined, "landmark: the minimal doc validates");
+  const obj = new Supplier(SUPPLIER_DOC).toObject() as unknown as Record<string, unknown>;
+  for (const key of ["phone", "note", "archived"]) assert.equal(key in obj, false, key);
+  assert.equal(obj.v, SUPPLIER_SCHEMA_VERSION);
+  assert.equal(SUPPLIER_SCHEMA_VERSION, 1);
+});
+
+test("Supplier: name is required and every text path has its shared length limit", () => {
+  assert.ok(new Supplier({}).validateSync()?.errors.name, "a name is required");
+  const long = (n: number) => "x".repeat(n + 1);
+  assert.ok(new Supplier({ name: long(SUPPLIER_NAME_MAX_LEN) }).validateSync()?.errors.name, "name over the limit");
+  assert.ok(new Supplier({ ...SUPPLIER_DOC, phone: long(SUPPLIER_PHONE_MAX_LEN) }).validateSync()?.errors.phone, "phone over the limit");
+  assert.ok(new Supplier({ ...SUPPLIER_DOC, note: long(SUPPLIER_NOTE_MAX_LEN) }).validateSync()?.errors.note, "note over the limit");
+  const edge = { name: "x".repeat(SUPPLIER_NAME_MAX_LEN), phone: "9".repeat(SUPPLIER_PHONE_MAX_LEN), note: "n".repeat(SUPPLIER_NOTE_MAX_LEN) };
+  assert.equal(new Supplier(edge).validateSync(), undefined, "landmark: the limits themselves are fine");
+});
+
+test("Supplier: no TTL index and no unique index (names are matched by the write, with a collation)", () => {
+  const indexes = supplierSchema.indexes();
+  assert.ok(indexes.every(([, o]) => o.expireAfterSeconds === undefined), "no TTL index");
+  assert.ok(indexes.every(([, o]) => o.unique !== true), "no unique index: an archived supplier may share a name");
+  assert.equal(supplierSchema.path("name").options.unique, undefined, "name is not unique at the path either");
+  assert.equal(supplierSchema.path("archived").instance, "Boolean", "landmark: a path of the schema is readable here");
+});
+
+test("Supplier: there is no stored balance path (dues are summed from the entries on read)", () => {
+  for (const banned of ["due", "duePaise", "balance", "balancePaise", "owed"]) {
+    assert.equal(supplierSchema.path(banned), undefined, banned);
+  }
+  assert.ok(supplierSchema.path("name"), "landmark: path() does find a real path");
 });

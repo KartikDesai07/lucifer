@@ -4,19 +4,21 @@ import { useState } from "react";
 import { Boxes, MoreHorizontal, Plus } from "lucide-react";
 
 import { useAuth } from "@/hooks/use-auth";
-import { useStockItems, useUpdateStockItem } from "@/hooks/use-inventory";
+import { useStockItems, useSuppliers, useUpdateStockItem } from "@/hooks/use-inventory";
 import type { StockAdjustKind } from "@/lib/inventory/stock-adjust-form";
 import { sortStockItems } from "@/lib/inventory/stock-view";
 import { cn } from "@/lib/utils";
 import { BRAND_BUTTON_CLASS } from "@/components/brand/brand-classes";
+import { AppLink } from "@/components/layout/AppLink";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { EntryList } from "@/components/inventory/EntryList";
+import { PurchaseSheet } from "@/components/inventory/PurchaseSheet";
 import { StockAdjustSheet } from "@/components/inventory/StockAdjustSheet";
 import { StockItemSheet } from "@/components/inventory/StockItemSheet";
 import { StockList, StockListSkeleton } from "@/components/inventory/StockList";
@@ -26,6 +28,7 @@ import type { StockItemDto } from "@/types/inventory";
 const HEADER_ADD_CLASS = "h-10 w-auto shrink-0 px-4 pointer-coarse:h-11";
 const MORE_BUTTON_CLASS = "size-10 shrink-0 border-brand-rule bg-brand-slip text-brand-ink hover:bg-brand-wash pointer-coarse:size-11";
 const MENU_ITEM_CLASS = "min-h-9 pointer-coarse:min-h-11";
+const SUPPLIERS_PATH = "/inventory/suppliers";
 
 type InventoryTab = "stock" | "history";
 const TAB_OPTIONS: { value: InventoryTab; label: string }[] = [
@@ -49,8 +52,9 @@ interface AdjustState {
 }
 
 // The Inventory screen. Everyone sees the stock list (Out and Low first) and can log wastage; an admin also adds, edits
-// and archives stock items from the sheet, counts stock, and reads the History of wastage and counts. A stock number is
-// never typed on the item editor: it moves with sales, wastage and counts.
+// and archives stock items from the sheet, adds purchases, counts stock, opens Suppliers, and reads the History of
+// purchases, wastage and counts. A stock number is never typed on the item editor: it moves with sales, purchases,
+// wastage and counts.
 export function InventoryView() {
   const { isAdmin, isLoading: authLoading } = useAuth();
   const list = useStockItems();
@@ -58,6 +62,10 @@ export function InventoryView() {
   const [tab, setTab] = useState<InventoryTab>("stock");
   const [sheet, setSheet] = useState<SheetState>({ open: false, key: 0, item: null });
   const [adjust, setAdjust] = useState<AdjustState>({ open: false, key: 0, kind: "waste" });
+  // Add purchase: bumped on every open for a fresh form and a fresh clientRef.
+  const [purchase, setPurchase] = useState({ open: false, key: 0 });
+  // The suppliers list is only fetched for an admin (the purchase sheet picks from it).
+  const suppliers = useSuppliers(isAdmin);
   // The one item whose "Archive?" confirm is open over the editor.
   const [archiving, setArchiving] = useState<StockItemDto | null>(null);
   const data = list.data;
@@ -65,6 +73,7 @@ export function InventoryView() {
 
   const openAdd = () => setSheet((s) => ({ open: true, key: s.key + 1, item: null }));
   const openEdit = (item: StockItemDto) => setSheet((s) => ({ open: true, key: s.key + 1, item }));
+  const openPurchase = () => setPurchase((p) => ({ open: true, key: p.key + 1 }));
   const openAdjust = (kind: StockAdjustKind, itemId?: string) => setAdjust((a) => ({ open: true, key: a.key + 1, kind, itemId }));
   // From the editor: it closes, the adjust sheet opens for that item.
   const adjustFromEditor = (item: StockItemDto, kind: StockAdjustKind) => {
@@ -101,11 +110,18 @@ export function InventoryView() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem className={MENU_ITEM_CLASS} disabled={!hasItems} onSelect={openPurchase}>
+            Add purchase
+          </DropdownMenuItem>
           <DropdownMenuItem className={MENU_ITEM_CLASS} disabled={!hasItems} onSelect={() => openAdjust("waste")}>
             Log wastage
           </DropdownMenuItem>
           <DropdownMenuItem className={MENU_ITEM_CLASS} disabled={!hasItems} onSelect={() => openAdjust("count")}>
             Count stock
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem asChild className={MENU_ITEM_CLASS}>
+            <AppLink href={SUPPLIERS_PATH}>Suppliers</AppLink>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -157,14 +173,17 @@ export function InventoryView() {
       {isAdmin && <SegmentedControl label="Inventory view" value={tab} options={TAB_OPTIONS} onChange={setTab} className="self-start" />}
       {isAdmin && tab === "history" ? <EntryList /> : body()}
 
-      <StockItemSheet
-        key={sheet.key}
-        open={sheet.open}
-        onOpenChange={(open) => setSheet((s) => ({ ...s, open }))}
-        item={sheet.item}
-        onArchive={setArchiving}
-        onAdjust={adjustFromEditor}
-      />
+      {/* Admin only: it shows the last purchase price, so a PIN switch to staff must unmount an open editor. */}
+      {isAdmin && (
+        <StockItemSheet
+          key={sheet.key}
+          open={sheet.open}
+          onOpenChange={(open) => setSheet((s) => ({ ...s, open }))}
+          item={sheet.item}
+          onArchive={setArchiving}
+          onAdjust={adjustFromEditor}
+        />
+      )}
 
       {data && (
         <StockAdjustSheet
@@ -174,6 +193,16 @@ export function InventoryView() {
           kind={adjust.kind}
           items={data}
           initialItemId={adjust.itemId}
+        />
+      )}
+
+      {data && isAdmin && (
+        <PurchaseSheet
+          key={purchase.key}
+          open={purchase.open}
+          onOpenChange={(open) => setPurchase((p) => ({ ...p, open }))}
+          items={data}
+          suppliers={suppliers.data ?? []}
         />
       )}
 

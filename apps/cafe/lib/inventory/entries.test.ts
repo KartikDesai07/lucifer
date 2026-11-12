@@ -71,6 +71,8 @@ function fake(cfg: Partial<Fake["cfg"]> = {}): Fake {
       return f.cfg.item ? { ...f.cfg.item } : null;
     },
     findItem: async () => (f.cfg.item ? { name: f.cfg.item.name, unit: f.cfg.item.unit } : null),
+    // The purchase ports (Slice 5) are exercised in entries-purchase.test.ts; the waste / count paths never call them.
+    findActiveItems: async () => new Map(), findItemInfos: async () => new Map(), findActiveSupplier: async () => null, findSupplierNames: async () => new Map(), receive: async () => {},
     insert: async (doc) => {
       log.push("insert");
       f.inserts.push(doc);
@@ -288,9 +290,12 @@ test("toStockEntryDto: unknown-item lines left out, order kept, no internal keys
   assert.equal(dto.note, "n");
   assert.equal(dto.createdAt, NOW.toISOString());
   assert.equal("reason" in dto, false);
-  for (const key of ["clientRef", "createdById", "v", "deletedAt", "deletedBy", "supplierId", "totalPaise", "duePaise"]) {
+  for (const key of ["clientRef", "createdById", "v", "deletedAt", "deletedBy", "duePaise", "paidPaise"]) {
     assert.equal(key in dto, false, key);
   }
+  // Slice 5 moved this on purpose: the admin list shows a purchase's supplier and money (a number only when stored;
+  // the name only when the supplier map knows the id).
+  assert.deepEqual([dto.supplierId, dto.totalPaise, "supplierName" in dto], ["x", 1, false]);
   const w = toStockEntryDto(
     stored({ kind: "waste", date: DATE, lines: [{ itemId: MILK, qty: -500 }], reason: "Spoiled", createdBy: "A", createdById: USER, clientRef: REF, v: 1 }),
     known,
