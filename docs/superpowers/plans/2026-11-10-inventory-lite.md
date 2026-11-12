@@ -499,3 +499,66 @@ recipes; size override ignored; sum → overwrite; Pay Now gate removed; `stockU
   - live: `verify:inventory:entries:live` 32/32 (new; a-o plus count cases p, q), `verify:inventory:live` 15/15,
     `verify:inventory:items:live` 26/26, `verify:inventory:stock-use:live` 12/12, `verify:model-ready:live` 14/14
 - **Next =** Slice 5 (suppliers and purchases, L, money).
+
+### Slice 5: suppliers and purchases (s117, 2026-11-13): DONE
+
+- Owner checks of Slice 4 (deploy of cf2f957: wastage, count, History, delete on devices) and the table-free move call were
+  not reported this session; both carry forward.
+- Main thread wrote the contract first: `SUPPLIER_*` limits, `SUPPLIERS_MAX` (200), `PURCHASE_MAX_LINES` (20),
+  `STOCK_RATE_MAX_PAISE` (₹5,00,000 a unit, so qtyMilli × rate ≤ 5×10^15 < 2^53), `STOCK_ENTRY_MAX_TOTAL_PAISE`
+  (₹1,00,00,000, Int32), `purchaseLineAmountPaise` (one round per line, half-up, exact) and `purchaseTotalPaise` (sum of the
+  rounded lines) in `packages/shared/src/inventory.ts`; the purchase member of `createStockEntrySchema` (strict; lines
+  `{itemId, qtyMilli, ratePaise}` 1..20 unique; `paidPaise`; no client amounts or total) with a `superRefine` on the union
+  (total cap, `PAID_OVER_TOTAL_ERROR`, `DUE_NEEDS_SUPPLIER_ERROR`), `createSupplierSchema` / `updateSupplierSchema`; DTO
+  fields (`StockEntryDto` purchase money, `SupplierDto` with a signed `duePaise`); `models/Supplier.ts`. Then two
+  implementers on separate files.
+  - Server: `lib/inventory/purchase.ts` (pure: server sums, the three money re-checks, the replay same-check),
+    `entries-write.ts` `createPurchase` (pre-read → money 400 → ONE `$in` of active items 404 → active supplier 404 → row →
+    `receiveStock`), `stock-move.ts` `receiveStock` (one bulkWrite, `$inc qty` + `$set lastRatePaise`, rate 0 = `$inc`
+    only), `entries-read.ts` (purchase money + supplier name in the admin-only History), `lib/inventory/suppliers.ts`
+    (dues = ONE aggregate over `ACTIVE_STOCK_ENTRY` with ObjectId casts; list / create / update; archive refused while the
+    due is not 0), routes `app/api/inventory/suppliers/route.ts` (GET/POST) + `[id]/route.ts` (PATCH), all admin. The
+    entries POST gate is now deny-by-default: anything but a wastage needs admin.
+  - Client: `hooks/use-inventory.ts` (suppliers query + create/update; every entry write and delete also refreshes
+    suppliers, on error too), `lib/inventory/{purchase-form,supplier-form}.ts`, `components/inventory/{PurchaseSheet,
+    PurchaseLineRow,SuppliersView,SupplierSheet}.tsx`, page `/inventory/suppliers` (ADMIN_ROUTES + page title). Inventory
+    More menu: Add purchase, Log wastage, Count stock, Suppliers. History shows purchase rows (supplier, total, to pay)
+    and the delete confirm says what leaves stock and which dues go. The item editor shows "Last bought at ₹X / unit".
+- **Deviations from the plan text:** none in behaviour. A rate of 0 is allowed (free goods) and does not overwrite the
+  last price. Archiving a supplier is refused while it has dues either way (owed or paid ahead).
+- Review: one opus reviewer, no HIGH or MED. Two LOW, both fixed test first:
+  (1) a PIN switch from an admin to staff kept the inventory caches (the stock list carries the admin's last price;
+  History and Suppliers carry purchase money), and an item editor left open stayed mounted, showing "Last bought at".
+  Fix: `"inventory"` joins `PERSON_SCOPED_QUERY_ROOTS` (screen-lock.test.ts pin RED → green) and the item editor mounts only
+  for an admin (new pin RED → green). (2) the live replay check used a purchase with no due, so it could not fail: the
+  replayed purchase now owes 60 and the check reads 4560.
+- Accepted residuals (commented in place): a purchase's stock move that throws after its row answers 500 "Saved, but the
+  stock number may be off" (the Slice 4 kind); deleting a purchase does not restore `lastRatePaise` (the next purchase sets
+  it); a purchase landing between an archive's dues check and its write (two admins) can leave an archived supplier with
+  a due; a backdated purchase entered later still becomes the "last" price.
+- Pins moved on purpose: the entries POST gate needle, the History select / DTO bans (money is allowed in the admin
+  list; clientRef, createdById, v and the delete stamp still never), the `receiveStock(` census, ADMIN_ROUTES in the
+  go-live runbook pin + `docs/GO-LIVE-CHECKLIST.md`, the person-scoped roots. New: `inventory-purchases-paths`,
+  `inventory-purchases-ui-paths`.
+- Mutation pass (main thread, alone, byte backup, sha1 restore per mutant, tracked + untracked tree hash the same
+  before and after): 28 of 28 killed. Mutants: free line sets the last price, receive takes stock out, server paid>total /
+  due-without-supplier / total-cap checks gone, replay ignores paid / rate / the same-check, one archived item among good
+  ones accepted, archived supplier accepted, a due of 0 stored, paid stored as total, staff may purchase, dues count
+  deleted rows, dues aggregate without ObjectId casts, archive allowed with an advance / with dues, list shows archived
+  suppliers, History drops the supplier name, shared line amount floors, shared schema paid>total by 1 / due without a
+  supplier allowed, form sends 0 for paid in full, form allows a due without a supplier / part paid over the total,
+  entry refresh skips suppliers, item editor mounted for staff, lock switch keeps inventory caches.
+- Not done: a browser smoke (low RAM). The owner checks on a phone, a tablet and the PC after deploying: Add purchase
+  (two items, Part paid, a supplier), the supplier's due on Suppliers, the purchase in History, delete it (stock and
+  due go back), archive a supplier with no dues.
+- Rollback: new routes, a new collection and new UI; the only changed request schema is `createStockEntrySchema`, which
+  gained a member (old tabs never send it). After a rollback the purchase routes 400/404 and the buttons are gone;
+  purchases stay in the DB and the stock they added stays added.
+- Chain, run from an `F:` working directory:
+  - shared: tsc 0, 1115/1115
+  - cafe: tsc 0, lint 0 errors (the 2 old warnings in `lib/masters-blob.test.ts`), 8606/8606 on the final tree
+  - hub: tsc 0, lint 0, 288/288
+  - live: `verify:inventory:purchases:live` 43/43 (new, cases a-l), `verify:inventory:entries:live` 32/32,
+    `verify:inventory:live` 15/15, `verify:inventory:items:live` 26/26, `verify:inventory:stock-use:live` 12/12,
+    `verify:model-ready:live` 14/14
+- **Next =** Slice 6 (pay a supplier and supplier history, L, money, small).
