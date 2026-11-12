@@ -1,5 +1,5 @@
 import { isDuplicateKeyError } from "@/lib/api-helpers";
-import { connectDB } from "@/lib/db";
+import { connectDB, modelReady } from "@/lib/db";
 import { STOCK_ITEM_LIMIT_ERROR } from "@/lib/inventory/items";
 import { Product } from "@/models/Product";
 import { StockItem } from "@/models/StockItem";
@@ -95,8 +95,11 @@ export const STOCK_USE_DEPS: StockUseDeps = {
   countActive: () => StockItem.countDocuments(ACTIVE),
   nameTaken: async (name, productId) =>
     (await StockItem.exists({ ...ACTIVE, name, ownerProductId: { $ne: productId } }).collation(NAME_COLLATION)) !== null,
-  upsertItem: (filter, update) =>
-    StockItem.findOneAndUpdate(filter, update, { upsert: true, new: true }).select("name unit archived").lean() as Promise<UseItemRow>,
+  upsertItem: async (filter, update) => {
+    // The unique ownerProductId index makes two racing taps one item, so it must exist before the upsert (modelReady).
+    await modelReady(StockItem);
+    return StockItem.findOneAndUpdate(filter, update, { upsert: true, new: true }).select("name unit archived").lean() as Promise<UseItemRow>;
+  },
   updateProduct: async (filter, update) => (await Product.updateOne(filter, update)).matchedCount,
 };
 
