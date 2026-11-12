@@ -445,3 +445,57 @@ recipes; size override ignored; sum → overwrite; Pay Now gate removed; `stockU
   rollback the routes 404 and the section is gone. Saved stock use stays on the products and sales still deduct it.
   Unlinking needs the new build.
 - **Next =** Slice 4 (wastage, counts, entries list, delete, M).
+
+### Slice 4: wastage, counts, entries list, delete (s116, 2026-11-13): DONE
+
+- Owner checks of Slice 3 (deploy of 7219803, Stock use on devices) and the table-free move call were not reported this
+  session; both carry forward.
+- Built with two implementers on separate files (server; UI). The main thread wrote the contract first:
+  `STOCK_ENTRY_KINDS`, `WASTE_REASONS`, `STOCK_ENTRY_NOTE_MAX_LEN`, `STOCK_ENTRY_PAGE_MAX`,
+  `STOCK_ENTRY_BACKDATE_MAX_DAYS` (31) in `packages/shared/src/inventory.ts`; `createStockEntrySchema`,
+  `stockEntryListQuerySchema`, `STOCK_ENTRY_CURSOR_PATTERN` in `schemas/inventory.schema.ts` (+ tests);
+  `StockEntryDto` / `StockEntryLineDto` / `StockEntryPageDto` in `types/inventory.ts`; `models/StockEntry.ts`.
+  - Server: `lib/inventory/entries-read.ts` (date window, cursor, DTO, list), `lib/inventory/entries-write.ts`
+    (`createStockEntry`, `deleteStockEntry` over injected ports), `app/api/inventory/entries/route.ts` (GET admin, POST
+    wastage any signed-in user / count admin), `app/api/inventory/entries/[id]/route.ts` (DELETE admin, soft).
+  - Client: `hooks/use-inventory.ts` (entries infinite query, create, delete; both lists refresh on success AND error),
+    `lib/inventory/stock-adjust-form.ts`, `components/inventory/{StockAdjustSheet,EntryList,QtyBox}.tsx`. Inventory
+    page: admin header "Add stock item" + a More menu (Log wastage, Count stock) and a Stock / History switch; staff get
+    a "Log wastage" header button and a row tap logs wastage for that item; the item editor gains Count stock / Log
+    wastage. The More menu is non-modal (it opens a sheet).
+- **Deviations from the plan text (main thread):**
+  - Request keys are integer milli-units (`qtyMilli`, `countedMilli`), the Slice 2 precedent.
+  - The list sorts by `{date:-1, _id:-1}` (index `date_-1__id_-1`), and the cursor is "<date>_<id>", not createdAt.
+  - An entry may be dated today back to 31 days. A count is always dated today (no date picker).
+  - **A count does not `$set` the stock.** It reads the item's stock number, lands its row (change = counted minus that
+    number), then moves stock by exactly that change with `$inc`, through the same insert-then-move helper as a
+    wastage. Review s116 (MED, probe-confirmed): the planned `findOneAndUpdate $set` ran BEFORE the row, so a retry
+    after a failed insert (with a sale in between) or a same-ref race applied the count twice and left a row that did
+    not match what it did to stock. Live cases (p) and (q) went RED on that code and GREEN after.
+- Review: one opus reviewer. MED above fixed test first. LOW "a count whose insert fails says Failed though stock
+  moved": gone with the fix. Accepted residuals (commented in place): (1) a wastage or count whose move throws after
+  its row landed answers "Saved, but the stock number may be off. Count this item." and a later retry replays as
+  success; a kill between the two writes is silent (the plan's "a Count fixes it"); (2) fix-round LOW: two admins
+  counting the SAME item inside one read-to-move window both add their change (each row still equals what it did; the
+  next count fixes it), the items.ts kind.
+- Pins moved on purpose: the inventory writer census (`moveStock(` holders gain `entries-write.ts`), `model-ready-pins`
+  (14 sites: the StockEntry insert port), `inventory-ui-paths` (header actions now have an admin and a staff branch;
+  staff rows open Log wastage). New pins: `inventory-entries-paths` (auth gates, insert-then-move order for both kinds,
+  no source `$set`s a stock number, delete CAS, list select), `inventory-entries-ui-paths`.
+- Mutation pass (main thread, alone, byte backup, sha1 restore per mutant, tracked-diff hash the same before and after):
+  19 of 19 killed. Mutants: count ignores the read number, count moves before its row, replay pre-read skipped, waste
+  sign flipped, delete applies instead of reversing, delete CAS without the not-deleted term, replay ignores the
+  amount, zero lines moved, archived item accepted, staff may count, date window unchecked, list and delete open to
+  staff, list shows deleted rows, cursor repeats the boundary row, History offered to staff, clientRef minted per
+  render, create error leaves the lists stale, count dated by the picker.
+- Not done: a browser smoke (low RAM). The owner checks the Inventory page on a phone, a tablet and the PC after
+  deploying (Log wastage as staff, Count stock and History as admin, delete from History).
+- Rollback: new routes, a new collection and new UI only; no existing request schema changed. After a rollback the
+  routes 404 and the buttons are gone; entries stay in the DB and the stock numbers they moved stay moved.
+- Chain on the final tree, run from an `F:` working directory:
+  - shared: tsc 0, 1108/1108
+  - cafe: tsc 0, lint 0 errors (2 old warnings in `lib/masters-blob.test.ts`), 8534/8534
+  - hub: tsc 0, lint 0, 288/288
+  - live: `verify:inventory:entries:live` 32/32 (new; a-o plus count cases p, q), `verify:inventory:live` 15/15,
+    `verify:inventory:items:live` 26/26, `verify:inventory:stock-use:live` 12/12, `verify:model-ready:live` 14/14
+- **Next =** Slice 5 (suppliers and purchases, L, money).
