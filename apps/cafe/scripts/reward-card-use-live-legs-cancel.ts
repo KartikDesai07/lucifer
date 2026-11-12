@@ -1,9 +1,9 @@
 /**
- * Live legs k1-k3 (s114, owner decision s113): a cancel whose LEDGER reversal throws still gives the bill's reward back.
- * The cancel CAS has landed, so the 500 that follows can never be retried into a give-back (the retry meets the
- * "already cancelled" 409). The stamps (k1), the scratch card (k2) and the points (k3) must therefore be given back
- * BEFORE reconcileLedger, each swallowing its own failure, like the stock add-back. Part of
- * verify-reward-card-use-live.ts. (ops CLI support module, not app code.)
+ * Live legs k1-k4 (s114, owner decision s113; k4 s119): a cancel whose LEDGER reversal throws still gives the bill's
+ * reward back and frees its table. The cancel CAS has landed, so the 500 that follows can never be retried into a
+ * give-back (the retry meets the "already cancelled" 409). The stamps (k1), the scratch card (k2), the points (k3) and
+ * the table a Pay Now bill holds (k4) must therefore be handled BEFORE reconcileLedger, each swallowing its own failure,
+ * like the stock add-back. Part of verify-reward-card-use-live.ts. (ops CLI support module, not app code.)
  *
  * The fault: Customer.findByIdAndUpdate rejects for the ledger's `$inc` of visits only (the shape reconcileLedger
  * writes on a settled bill); no give-back uses that method, so every other write is real.
@@ -12,9 +12,10 @@ import assert from "node:assert/strict";
 import mongoose from "mongoose";
 
 import { Customer } from "@/models/Customer";
+import { Table } from "@/models/Table";
 import {
   RUNG_AT, assertCardUntouched, cardOf, diner, hoursFromNow, line, openTab, rawOrder, revealed, seedSettings, settleBody,
-  type Api, type Ctx, type Rec,
+  tabBody, type Api, type Ctx, type Rec,
 } from "./reward-card-use-live-kit";
 import { assertLotUntouched, lot, lotOf, settlePoints, spendsOf } from "./reward-points-live-kit";
 
@@ -22,9 +23,15 @@ const STAMPS = 10;
 const POINTS = 40;
 const LOT_SIZE = 50;
 const REASON = "ledger throws";
+const TABLE = "T2";
 
 const rawCustomer = async (id: string): Promise<Rec> =>
   ((await Customer.collection.findOne({ _id: new mongoose.Types.ObjectId(id) })) ?? {}) as Rec;
+
+const tableOf = async (tableNo: string): Promise<Rec> => {
+  const row = (await Table.collection.findOne({ tableNo })) as Rec | null;
+  return { status: row?.status, currentOrderId: row?.currentOrderId };
+};
 
 type Writer = (id: unknown, update: Rec, ...rest: unknown[]) => unknown;
 
@@ -99,5 +106,52 @@ export async function runCancelLedgerThrowLegs({ api, menu, scenario }: Ctx): Pr
     await cancelWhileLedgerThrows(api, id, d.id);
     await assertLotUntouched(d, l, "the lot after the cancel whose ledger threw");
     assert.ok((await spendsOf(d))[0].returnedAt instanceof Date, "the spend record is closed");
+  });
+
+  /** A Pay Now bill at TABLE for a fresh diner (the POS shape: Completed, the table sent, paidAmount omitted on a full payment). */
+  const payNowAtTable = async (): Promise<{ id: string; order: Rec; customerId: string }> => {
+    await seedSettings();
+    // Fixture: an earlier leg may have left this table held; the bill below must be the one that takes it.
+    await Table.updateOne({ tableNo: TABLE }, { $set: { status: "Available", currentOrderId: "" } });
+    const d = await diner([]);
+    const made = await api.create(tabBody(d, bill350(), { status: "Completed", payment: "Cash", paidAmount: undefined, tableNo: TABLE }));
+    assert.equal(made.status, 201, `fixture: the Pay Now table bill lands - got ${made.status}: ${made.body.error ?? ""}`);
+    const id = String(made.body.data!._id);
+    const order = await rawOrder(id);
+    assert.equal(order.status, "Completed", "landmark: a Pay Now bill is a sale (the ledger reversal will write)");
+    assert.deepEqual(await tableOf(TABLE), { status: "Occupied", currentOrderId: order.orderId }, "landmark: the bill holds its table");
+    return { id, order, customerId: d.id };
+  };
+
+  await scenario("k4", "a Pay Now table bill whose cancel's ledger reversal throws: 500, cancelled, and the table IS freed", async () => {
+    const { id, customerId } = await payNowAtTable();
+    await cancelWhileLedgerThrows(api, id, customerId);
+    assert.deepEqual(await tableOf(TABLE), { status: "Available", currentOrderId: "" }, "the table is freed despite the ledger throw");
+  });
+
+  await scenario("k5", "a Pay Now table bill whose cancel's table free throws: 200, cancelled, and the ledger IS still reversed", async () => {
+    const { id, order, customerId } = await payNowAtTable();
+    const before = await rawCustomer(customerId);
+    assert.equal(before.visits, 1, "landmark: the Pay Now counted a visit (the reversal has something to undo)");
+    const model = Table as unknown as { findOneAndUpdate: Writer };
+    const real = model.findOneAndUpdate;
+    let fired = 0;
+    model.findOneAndUpdate = () => {
+      fired += 1;
+      return Promise.reject(new Error("injected: the table free failed"));
+    };
+    let status: number;
+    try {
+      status = (await api.cancel(id, "table throws")).status;
+    } finally {
+      model.findOneAndUpdate = real;
+    }
+    assert.equal(fired, 1, "landmark: the table free ran once and threw");
+    assert.equal(status, 200, "a failed table free is swallowed: the cancel stands");
+    assert.equal((await rawOrder(id)).status, "Cancelled");
+    const after = await rawCustomer(customerId);
+    assert.equal(after.visits, Number(before.visits) - 1, "the ledger visit is reversed despite the table throw");
+    assert.equal(after.totalSpend, Number(before.totalSpend) - Number(order.total), "the ledger spend is reversed despite the table throw");
+    assert.deepEqual(await tableOf(TABLE), { status: "Occupied", currentOrderId: order.orderId }, "landmark: the injected failure wrote nothing");
   });
 }

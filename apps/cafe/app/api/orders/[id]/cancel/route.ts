@@ -184,30 +184,41 @@ export async function POST(req: Request, { params }: Params) {
         }
       }
 
+      // Free the table only if it still points at this order (a Pay Now bill keeps its table until it is freed). It runs
+      // BEFORE the ledger (owner call s119), on the give-backs' terms: a ledger throw is a 500 whose retry meets the
+      // "already cancelled" 409, so a table freed below it stayed Occupied, holding a cancelled bill, until freed by hand
+      // (live leg k4). Its failure is swallowed so it can never skip the ledger reversal either (live leg k5); the tables
+      // cache is dropped either way, since a write that threw may still have landed.
+      if (updated.tableNo) {
+        try {
+          await Table.findOneAndUpdate(
+            { tableNo: updated.tableNo, currentOrderId: updated.orderId },
+            { status: "Available", currentOrderId: "" },
+          );
+        } catch {
+          // Deliberately empty - see above. The table stays held; the cancel stands.
+        }
+        cache.del("tables");
+      }
+
+      // Today's KPIs AND the order's own day, since a prior-day bill can be cancelled. Also above the ledger, so its
+      // throw cannot leave today's sales counting this bill.
+      cache.del(orderSummaryCacheKey());
+      cache.del(orderSummaryCacheKey(new Date(updated.createdAt)));
+
       // ledgerContribution returns zero for a Cancelled order, so this reverses a
       // settled bill's visit/spend/due through the same delta a delete used. It runs
-      // AFTER every give-back above (owner decision s113): a throw here is a 500 whose
-      // retry meets the "already cancelled" 409, so a give-back below it could be lost.
+      // AFTER every give-back and the table free above (owner decisions s113, s119): a
+      // throw here is a 500 whose retry meets the "already cancelled" 409, so anything
+      // below it could be lost.
       const touched = await reconcileLedger(old, updated);
       if (touched.size) {
         cache.del("customers");
         // Ledger-wide Outstanding Dues KPI lives in TODAY's summary regardless of
-        // this (possibly prior-day) order's own date.
+        // this (possibly prior-day) order's own date. Dropped again here: the drop
+        // above ran before the ledger wrote.
         cache.del(orderSummaryCacheKey());
       }
-
-      // Free the table only if it still points at this order.
-      if (updated.tableNo) {
-        await Table.findOneAndUpdate(
-          { tableNo: updated.tableNo, currentOrderId: updated.orderId },
-          { status: "Available", currentOrderId: "" },
-        );
-        cache.del("tables");
-      }
-
-      // Today's KPIs AND the order's own day, since a prior-day bill can be cancelled.
-      cache.del(orderSummaryCacheKey());
-      cache.del(orderSummaryCacheKey(new Date(updated.createdAt)));
     } finally {
       // The cancel landed — nudge the Kitchen board and every device's open
       // tabs, order lists and tables. Only AFTER every follow-up above (the
