@@ -4,7 +4,7 @@
  * category snapshot, free-item at settle, reassign, one reward per bill, the QR submit + accept, void / table move /
  * QR add-round, the strict-schema round trip, the diner-accounts gate and the zero-match refusal, then the S5b money legs
  * (minBill on the bill without the reward, promo + GST preset, same-key retry at the reward-resolve step), and a
- * cancel whose ledger reversal throws still giving the stamps / card / points back (k1-k3).
+ * cancel whose ledger reversal throws still giving the stamps / card / points back and freeing the table (k1-k4).
  *
  *   npm run verify:reward-card-use:live          (defaults to the local stand-in)
  *   MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_reward_card_use npm run verify:reward-card-use:live

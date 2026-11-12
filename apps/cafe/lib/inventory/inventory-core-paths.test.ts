@@ -105,7 +105,7 @@ test("PIN create follow-ups: the move runs only for a Completed landed order, in
   assert.ok(wave < gate && gate < move && move < close);
 });
 
-test("PIN cancel: the add-back, then the stamp / card / points give-backs, run after the CAS landed and BEFORE the ledger", () => {
+test("PIN cancel: the add-back, the stamp / card / points give-backs, the table free and the summary drops run after the CAS landed and BEFORE the ledger", () => {
   const src = read(CANCEL);
   const miss = at(src, "if (!updated) return failure(", "the CAS miss");
   const addBack = at(src, "if (old.status === \"Completed\" && updated.stockUsed?.length) await " + ADD_BACK + "updated.stockUsed);", "the gated add-back");
@@ -115,13 +115,30 @@ test("PIN cancel: the add-back, then the stamp / card / points give-backs, run a
   // Owner decision s113: a ledger throw is a 500 whose retry meets the "already cancelled" 409, so nothing after the
   // ledger reversal is guaranteed to run. Every give-back sits above it (live legs k1-k3 throw the ledger for real).
   const ledger = at(src, "const touched = await reconcileLedger(old, updated);", "the ledger reversal");
-  assert.ok(miss < addBack && addBack < stamps && stamps < card && card < points && points < ledger);
+  // Owner call s119: the table free and the summary drops sit above it too (live leg k4), the table write in its own
+  // swallowing try so its failure can never skip the ledger (live leg k5).
+  const table = at(src, "if (updated.tableNo) {", "the table free");
+  const tableWrite = at(src, "await Table.findOneAndUpdate(", "the table write", table);
+  const tableClose = closeOf(src, table + "if (updated.tableNo) ".length);
+  const daySummary = at(src, "cache.del(orderSummaryCacheKey(new Date(updated.createdAt)));", "the order-day summary drop");
+  assert.ok(miss < addBack && addBack < stamps && stamps < card && card < points && points < table);
+  const todaySummary = at(src, "cache.del(orderSummaryCacheKey());", "today's summary drop", tableClose);
+  assert.ok(table < tableWrite && tableWrite < tableClose && tableClose < todaySummary && todaySummary < daySummary && daySummary < ledger);
+  assert.match(src.slice(at(src, "try {", "the table write's try", table), tableWrite), /^try \{\s*$/, "the table write opens its own try");
+  assert.match(src.slice(tableWrite, tableClose), /\} catch \{\s*\}\s*cache\.del\("tables"\);\s*$/, "its catch is empty (swallowed), then the tables cache drops either way");
+  assert.equal(count(src, "Table.findOneAndUpdate("), 1, "one table write");
+  assert.ok(src.slice(tableWrite, tableClose).includes("{ tableNo: updated.tableNo, currentOrderId: updated.orderId }"), "frees the table only while it still holds this order");
+  const redrop = src.indexOf("cache.del(orderSummaryCacheKey());", ledger);
+  assert.ok(redrop > ledger && redrop < at(src, "} finally {", "the follow-ups' finally", ledger), "the ledger drops today's summary again after it wrote (the drop above ran before it)");
   assert.equal(src.slice(at(src, "try {", "the follow-up try", miss) + "try {".length, addBack).replace(/\/\/[^\n]*/g, "").trim(), "", "nothing but comments between the try and the add-back");
   const giveBacks = at(src, "const rewardCustomer = validCustomer(", "landmark: the give-backs' first statement");
   const top = depthAt(src, addBack);
   assert.equal(depthAt(src, giveBacks), top, "the give-backs sit at the follow-ups' own depth");
   assert.equal(depthAt(src, at(src, "if (rewardCustomer && updated.rewardCardId) {", "the card block")), top, "the card block is not nested in the stamp block");
   assert.equal(depthAt(src, at(src, "if (rewardCustomer && updated.rewardPoints !== undefined) {", "the points block")), top, "the points block is not nested in the card block");
+  assert.equal(depthAt(src, table), top, "the table free is not nested in a give-back");
+  assert.equal(depthAt(src, todaySummary), top, "today's summary drop is not nested in the table block");
+  assert.equal(depthAt(src, daySummary), top, "the order-day summary drop is not nested in the table block");
   assert.equal(depthAt(src, ledger), top, "the ledger is not inside a give-back's swallowing try (its failure still answers 500)");
   assert.equal(count(src, ADD_BACK), 1);
   assert.equal(count(src, "reconcileLedger("), 1);
