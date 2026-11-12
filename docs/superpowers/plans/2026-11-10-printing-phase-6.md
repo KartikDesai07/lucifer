@@ -761,3 +761,182 @@ runbook test is over 1,700 lines). `apps/mobile`'s own tests read its docs: run 
 
 A fresh Claude Fable 5.1 review of `0c794d6..HEAD` (read-only); one fix wave; "Session 6B Results" (every expected
 above with its measured value); then the owner's merge OK.
+
+---
+
+# Session 6A Results (2026-11-12)
+
+Branch `feat/printing-phase-6`, not pushed, not merged. Subagent-driven, each task test first, a task review per task
+(fix rounds where it found something), the controller's own RED → GREEN and the full suites before every commit.
+
+## Before the tasks
+
+- `origin/main` had moved `0c794d6..f256cce` (inventory lite, Slice 1: stock out on settle, back on cancel). None of
+  its 27 files is a printing file (no S1-pinned file, nothing under `lib/print*`, `lib/printer/`, `hooks/use-print*`,
+  `components/print/`; its plan keeps `stockUsed` out of every print payload), so it was merged `--no-ff` first:
+  `6d45288`. Because of that merge, the 6A scope check and the final review use `f256cce` / `6d45288` as their base
+  instead of `0c794d6`.
+- **Task 0 baseline** on `6d45288`: cafe `npm test` 8255 (8254 pass / 0 fail / 1 skip; the plan's 8219 + 36 inventory
+  tests), `npm run typecheck` 0, lint 0 errors / 2 old warnings (`masters-blob.test.ts:331`), shared 1090 (1079 + 11
+  inventory), live legs on `pos_scratch_print_host_6a` 524 passed / 0 failed (dropped by its runner).
+
+## Commits
+
+| Task | Commit | What |
+|---|---|---|
+| merge | `6d45288` | origin/main (inventory lite) into the branch |
+| 1 | `eab3451` | the scenario world (`lib/print-lines-world.ts`, `lib/print-lines-world-clock.ts`) and TODAY |
+| 2 | `57bbc1a` | the lane hand-off (`lib/printer/lane-writes.ts`; `printerWriter`, `desktopLan()`) |
+| 3 | `5ca0cf3` | a ticket per slip (`lib/print-host-tickets.ts`) |
+| 4 | `1fb0e8d` | the bridge's two steps (`hooks/use-print-host-bridge.ts`; `lib/print-host-outcomes.ts` deleted) |
+| 5 | `b6b6898` | the agent per line (`lib/print-agent.ts`, `lib/print-lines.ts`, `lib/print-line-job.ts`) |
+| 6 | `af22a2e` | the wiring: the gate is `drawing`, the 140 s bound withdraws (`lib/print-agent-print.ts`) |
+| 7 | `9eae4cc` | copies (`lib/print-copies.ts`) |
+| 8 | `65e02fa` | the scope pins (`lib/print-phase6-pins.test.ts`), the one-at-a-time comments, ruling 26 corrected |
+| review | `d01cfa2` | the final review's fix wave |
+| docs | (this) | these Results |
+
+## RED → GREEN per task (the controller's own runs)
+
+| Task | RED | GREEN |
+|---|---|---|
+| 1 | the world moved aside: `Cannot find module '@/lib/print-lines-world'` | today-test 10/10 (11/11 after the review's leased-head `retryAt` case) |
+| 2 | module not found (implementer); the `desktopLan()` pin broken by the controller: 7/8 | lane-writes 8/8; PIN (S1) 16/16 |
+| 3 | module not found; the `handedOff`-after-write case RED before its fix | tickets 13/13 |
+| 4 | HEAD's bridge with the new tests: 2/2 files fail | lanes 12/12 + stale 3/3 (+ tickets-helpers 4/4) |
+| 5 | today's agent with the new tests: 23 fail | 49/49 (lines 18, rules 7, rules-2 13, today 11) |
+| 6 | the module moved aside: module not found (note: this task's implementation was written before its test file's first run; RED was shown afterwards) | print-agent-print 12/12 |
+| 7 | module not found + the repointed 2C pin failing (recorded first) | print-copies 9/9 |
+| 8 | the pins pass on committed code by design; each shown to bite on a scratch variant | pins 5/5 |
+
+## Counts before → after
+
+| | Task 0 (`6d45288`) | After Task 8 (`65e02fa`) | After the fix wave |
+|---|---|---|---|
+| cafe `npm test` | 8255 (8254 / 0 / 1 skip) | 8370 (8369 / 0 / 1 skip) | 8379 (8378 / 0 / 1 skip) |
+| typecheck | 0 | 0 | 0 |
+| lint | 0 errors, 2 warnings | 0 errors, 2 warnings | 0 errors, 2 warnings |
+| shared | 1090 | 1090 | 1090 |
+| live legs | 524 / 0 (`_6a`) | 524 / 0 (`_6a2`) | (no server change) |
+
+Scope: `git diff --stat f256cce -- apps/mobile apps/desktop packages workers apps/cafe/app/api apps/cafe/models` is
+empty; `lane-print.ts`, `desktop-shell.ts`, the KOT renderers and `print-budget.test.ts` are byte for byte as at
+`0c794d6` (pinned in `lib/print-phase6-pins.test.ts`); PIN (S1) 16/16.
+
+**The scenario world (leases / acks; S4, ruling 26):**
+
+| Scenario | TODAY (`6d45288`'s agent) | Phase 6, one step | Phase 6, two steps | Why it differs |
+|---|---|---|---|---|
+| direct | 0 / 3 | 0 / 3 | 0 / 3 | |
+| frames | 2 / 3 | 2 / 3 | 2 / 3 | |
+| framesLate | 2 / 3 | **1 / 3** | **1 / 3** | ruling 25: a frame for a job this tab holds costs nothing |
+| frameBusy | 1 / 2 | 1 / 2 | 1 / 2 | |
+| frameFree | 1 / 2 | 1 / 2 | 1 / 2 | B1's first byte before K1's cut (two steps) |
+| backlog | 2 / 5 | 2 / 5 | 2 / 5 | |
+| backlogSlow | 2 / 5 | 2 / 5 | **3 / 5** | P6-3: K's `more` lands with the surface free |
+| stuck | 2 / 5 (2 hand-backs) | 2 / 5 (2 hand-backs) | **0 / 3**, no hand-back | two steps: Bar and Desserts print at once |
+| simple | 2 / 2 | 2 / 2 | 2 / 2 | |
+| backlogEven (review) | 2 / 6 | 2 / 6 | **3 / 6** | P6-3 (accepted): the last line's `more` misses the shared lease |
+| retryKick (review) | 2 / 2 | 2 / 2 | 2 / 2 | |
+| retryBesideBacklog (review) | 4 / 5 | 4 / 5 | 4 / 5 | |
+
+Paper times (two steps, the world's 550 ms draw): `direct` with 2 s writes — Bar and Desserts drawn while Kitchen
+writes, the last cut ≤ 3 × 550 + 2,000 + 100 ms; `stuck` — Bar and Desserts cut before 3 × 550 + 100 ms, Kitchen at
+60 s. The reviewer's random run (120 seeds, 2,578 jobs per mode, failures, refusals, withdrawn slips, slow writes, lost
+acks): no two jobs in flight on one line, no device-line job beside another, nothing on paper twice, nothing left
+behind; leases without failures: simple mode 2,539 = today's 2,539, one-step printers mode 1,056 vs 1,067, two-step
+printers mode **1,752 vs 1,067** (P6-3's "at once, per printer"; still at most one lease per slip, print-budget's model).
+
+## Line counts (the plan's budgets)
+
+| File | Before | After |
+|---|---|---|
+| `lib/print-agent.ts` | 301 | 295 |
+| `lib/print-lines.ts` | — | 109 |
+| `lib/print-line-job.ts` | — | 125 |
+| `lib/print-agent-printers.ts` | 357 | 337 |
+| `hooks/use-print-agent.ts` | 340 | 313 |
+| `hooks/use-print-host-bridge.ts` | 270 (cap 270 → 300, on purpose) | 298 |
+| `lib/printer/desktop-lan.ts` | 299 | 300 |
+| `lib/print-host-tickets.ts` | — | 193 |
+| `lib/print-agent.test.ts` | 1,423 | 1,409 |
+| `lib/print-host-paths.test.ts` | 696 | 693 |
+| `lib/print-agent-printers.test.ts` | 593 | 566 |
+| `lib/printer/kot-text/text-kot-print.test.ts` | 333 | 333 |
+
+Every new file ≤ 300 lines.
+
+## The reviews
+
+- **Task reviews** (sonnet for Tasks 1–3, 7, 8; opus for 4–6): Task 1 Approved (minors taken: a live-leased head
+  answers `retryAt`, comments); Task 2 Approved; Task 3 fixed `handedOff` (stays true after the write ended, so a late
+  `onAfterPrint` never settles a slip twice); **Task 4 I-1**: a passive-effect run held past its slip's settle could
+  draw that slip again and hand its bytes to the next slip's ticket (latent on `main` too: a re-render during a draw):
+  the dispatch effect now acts only for the ticket on the surface, shown with a new harness opt-in (`holdEffects()`)
+  RED on the old code; **Task 5 I-1**: a line's own want survived its backoff end (3 leases vs today's 1) — cleared;
+  m-2 a refused line's hold end armed on any line end; m-3 a lease answered after the tab stopped draining still
+  starts its first job (today's cycle printed `jobs[0]`), by ruling 16; Task 6 kept an over-cap test file from growing;
+  Task 7 tightened the same-bytes test; Task 8 used the shared `stripComments` (a GATE test caught a local one).
+- **The final review** (the Agent tool's Fable model, read-only, `6d45288..65e02fa`, with the spec, the plan, the
+  Review Focus and the ledger): **"With fixes"**, 0 Critical / 2 Important / 6 Minor. It found no path that prints a
+  slip twice, loses one, acks wrongly or stalls a printer (traced through the real code, plus a 120-seed random run per
+  mode, 2,578 jobs each: no S2 or ruling-16 violation, nothing on paper twice, nothing left behind); every Review Focus
+  point holds; every deferred minor triaged "no fix before merge". The one fix wave (`d01cfa2`): **I-1(a)** a one-step
+  even backlog (every line two deep) made 3 leases against today's 2 (depth 4: 7 vs 4), because the lease's re-read
+  after its kept-acks flush ran before the line whose ack that flush answered was released — a started job's line now
+  ends the moment its printed ack's answer is heard (`runLineOnce`), so one step = TODAY again; **I-1(b)** the same
+  backlog on two steps costs one more lease (3 vs 2): accepted as P6-3, ruling 25's sentence corrected; **I-2** a retry
+  cost 1–2 empty leases more (simple mode with a pulse during the failing print: 4 vs 2; a failure beside another
+  line's backlog: 5 vs 4) — simple mode now drops the kick kept during a job that goes back, and a lease's answer
+  forgets the timer's pending unnamed reason; three new scenarios pin all of it against TODAY measured on `6d45288`'s
+  agent. **The re-check** (the same reviewer): "Ready to merge? Yes" for 6A's code, every finding addressed, no new
+  critical or important; three new minors carried to 6B's start (below).
+
+## Differences from the plan, and why (the controller's rulings)
+
+1. **The origin/main merge** (`6d45288`) without asking: no printing file in it. The scope check and the review base
+   moved to `f256cce` / `6d45288` (the merge brings inventory changes into `app/api`, `models`, `packages/shared`).
+2. **Process:** implementers wrote files only; the controller ran each task's tests (RED → GREEN), the full suites, and
+   made one commit per task. Tasks 2 and 3, and then 4, ran beside Task 1 (disjoint files).
+3. **Task 4:** `PrintHostDrain` got the `drawing` prop in Task 4 and used it in Task 6; `use-test-print.ts`'s
+   `deviceBusy` reads `printing` too (the plan's ":120-122"); the bridge's helpers moved into
+   `lib/print-host-tickets.ts` to keep the hook ≤ 300; **the dispatch effect acts only for the ticket on the surface**
+   (the task review's I-1: a stale effect run could draw a settled slip again and hand its bytes to the next slip's
+   ticket — latent on `main` too; closed here); the hook harness gained an opt-in `holdEffects()`.
+4. **Task 5:** a pump that starts a held job leases nothing in that pump (the controller's trace of `backlog`:
+   without it {3, 5}); the hook's frame line passes the job id (the plan's Files list omitted the hook); one-step
+   `stuck` stays TODAY {2, 5} (ruling 17's one start per opening; on one step a stuck write holds the surface, and the
+   hold bound keeps a print inside its 90 s lease) — **ruling 26's clause saying one-step `stuck` also drops was a spec
+   slip, corrected in the spec**; the 2B-gate M-A test's outcome changed on purpose (a held job's start waits for no
+   flush, ruling 18); a line's own want is cleared on a backoff end (today's `kickedWhileRunning = false`; another
+   line's never, ruling 20); a refused line's hold end is armed on any line end; a lease answered after the tab stopped
+   draining still starts its first job (today's cycle printed `jobs[0]`), by ruling 16.
+5. **Task 6:** a slip carries `writes` only when > 1, so one-copy slips are unchanged; the early "maybe" at 140 s is
+   gone (ruling 12). This task's implementation was written before its test file's first run (RED shown afterwards
+   by moving the module aside): a process slip, recorded here.
+6. **Task 7:** `kind === "kot"` only (void, moved, cancel notices, tokens and bills keep a draw per copy, ruling 24).
+7. **Task 8:** the pins use the shared `stripComments` (`lib/source-pin-utils.ts`'s GATE).
+8. **The final review:** I-1(b) accepted as P6-3 (no owner question: P6-3 already accepted "up to one lease per printer
+   per wave"); the printers-mode case "a pulse during a failing print" stays 4 leases vs today's 2 (ruling 20 keeps an
+   unnamed kick another line may need); n-1..n-3 carried to 6B.
+9. A stray probe file a subagent left (`apps/cafe/lib/zz-probe.test.ts`, one comment line, never committed) was moved
+   out of the repo to the session scratchpad (`rm` is refused).
+
+## What 6B must know
+
+- 6A's head is `d01cfa2` + this Results commit; verify every commit above, the counts and the line budgets first.
+- **6A amendments for 6B's start (test first, one small commit):** n-1 call `timer.forget(null)` when a lease is
+  SENT, not when it is answered (so a `requeued` wake set while the lease is in flight survives: today one retry may
+  wait for the lease's end or the pulse; no paper effect); n-2 a comment that "no printer line" is
+  `ready().length === 0`; n-3 guard the line end inside the flusher's `answered` hook (`try`), so a throw there can
+  never stop the flush.
+- The bridge + agent wiring (`drawing` → `setGate` → the agent's one start per opening) is modelled by the world but
+  not exercised by any test with the real bridge and the real agent together: 6B Task 10's fake-printer runs are its
+  first real check — watch for a device that runs serially (a start that never sees an opening).
+- Count leases per printed slip on a **one-step** multi-printer device too (the Windows app with two Windows printers)
+  in Task 10/14, not only on bridge v2: S5 has no end-to-end count yet.
+- Expect on two steps: `backlogSlow` +1 lease, `backlogEven` +1 lease per wave (P6-3); a rush backlog on a bridge-v2
+  device leases more often than today (the random run: 1,752 vs 1,067 leases, still ≤ one per slip). Task 14's
+  leases-per-printed-slip against `main` must be read with that.
+- `hooks/use-print-host-bridge.ts` is at 298 of 300 lines; `lib/print-agent.ts` at 295.
+- The scratch DBs this session made (`pos_scratch_print_host_6a`, `_6a2`) were dropped by their runner.
