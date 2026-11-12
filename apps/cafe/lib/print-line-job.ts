@@ -33,6 +33,9 @@ export interface LineJobContext {
   lineOf(job: LeasedPrintJob): string;
   /** A refusal holds this line (the agent remembers it, so its timer looks at the line when the hold ends). */
   hold(line: string): void;
+  /** The final review (I-1(a)): this job's printed ack is kept: the agent ends its line the moment that ack's answer is
+   *  heard, inside the flush, so a lease waiting on the same flush finds the line free (whichever waited first). */
+  kept?(): void;
 }
 
 /** Why a held job went back to its line unprinted: its refusal's error (the waiting-slips panel may show it). */
@@ -48,6 +51,29 @@ export function handBack(ctx: Pick<LineJobContext, "deps" | "acks">, job: Leased
   ctx.acks.keep({ id: job.id, epoch: job.epoch, at: deps.now(), fail: { deviceId: deps.deviceId, epoch: job.epoch, outcome: "failed", sent: "no", error: why } });
 }
 
+/** The final review (I-1(a)): runs a started job, whose line ends exactly once: the moment its printed ack's answer is
+ *  heard (the ack flusher's answered hook calls `onAnswer` by key, inside the flush, so a lease waiting on that flush
+ *  finds the line free, whichever waited first), else when the run returns. Only that return pumps: a job started inside
+ *  the flush would keep its ack into a flush already done (lib/print-agent-acks.ts) and miss its answer. */
+export function runLineOnce(
+  job: LeasedPrintJob,
+  ctx: LineJobContext,
+  onAnswer: Map<string, (answer: PrintAckData) => void>,
+  ended: (end: LineJobEnd) => void,
+  pump: () => void,
+): void {
+  const key = `${job.id}:${job.epoch}`;
+  let done = false;
+  const end = (result: LineJobEnd, pumpNow = true): void => {
+    if (!done) ended(result);
+    done = true;
+    onAnswer.delete(key);
+    if (pumpNow) pump();
+  };
+  const kept = (): void => void onAnswer.set(key, (answer) => end({ kind: "printed", more: answer.more !== false }, false));
+  void runLineJob(job, { ...ctx, kept }).then((result) => end(result), () => end({ kind: "unanswered" }));
+}
+
 export async function runLineJob(job: LeasedPrintJob, ctx: LineJobContext): Promise<LineJobEnd> {
   const { deps, acks, holds } = ctx;
   const key = `${job.id}:${job.epoch}`;
@@ -59,6 +85,7 @@ export async function runLineJob(job: LeasedPrintJob, ctx: LineJobContext): Prom
     ctx.slipRefusals.delete(job.id);
     // Kept BEFORE it is sent, so a reload mid-ack still reports the paper (spec §7.9). Awaited, so the line's next
     // lease does not find this job still leased at its head. Ruling 18: acks go one flush at a time on the wire.
+    ctx.kept?.();
     acks.keep({ id: job.id, epoch: job.epoch, at: deps.now() });
     await acks.flush();
     // Session 2B (decision 9): lease again only when the ack says the line holds more. No answer, or

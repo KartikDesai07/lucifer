@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 
 import { SCENARIOS, SCENARIO_JOBS, TODAY, createLinesWorld, type LinesWorld, type PaperRecord, type ScenarioName, type WorldOptions } from "@/lib/print-lines-world";
 
-// Printing Phase 6 Task 5 (spec §9 rulings 14-20, 25, 26): the agent runs one job per printer line. The nine scenarios
-// on a two-step device (lib/print-lines-world.ts), each pinned beside TODAY (today's agent on a one-step surface,
-// lib/print-lines-today.test.ts). Only the slow-write backlog may cost more (ruling 25, P6-3); the late frames and the
-// stuck printer cost less (ruling 26). Then the rules a whole world shows best (lib/print-lines-rules.test.ts: the rest).
+// Printing Phase 6 Task 5 (spec §9 rulings 14-20, 25, 26): the agent runs one job per printer line. The scenarios (the
+// nine, and three from the final review) on a two-step device (lib/print-lines-world.ts), each pinned beside TODAY
+// (today's agent on a one-step surface, lib/print-lines-today.test.ts). Only the slow-write and the even backlog may cost
+// more (ruling 25, P6-3); the late frames and the stuck printer cost less (ruling 26). Then the rules a whole world shows
+// best (lib/print-lines-rules.test.ts: the rest).
 
 /** The world's own timings (lib/print-lines-world.ts): one draw, an ack's answer. */
 const DRAW_MS = 550;
@@ -22,6 +23,11 @@ const PHASE_6: Record<ScenarioName, { leases: number; acks: number; why: string 
   backlogSlow: { leases: 3, acks: 5, why: "TODAY + 1 lease (P6-3): K's more lands with the surface free" },
   stuck: { leases: 0, acks: 3, why: "TODAY - 2 leases - 2 acks: no hand-back" },
   simple: { leases: 2, acks: 2, why: "= TODAY" },
+  // The final review's fix wave. backlogEven (I-1(b), accepted as P6-3, the owner's choice): the last line of the wave
+  // writes after the opening that leased the others, so its more costs a lease of its own (one step: = TODAY).
+  backlogEven: { leases: 3, acks: 6, why: "TODAY + 1 lease (P6-3): D1's more lands after the wave's shared lease" },
+  retryKick: { leases: 2, acks: 2, why: "= TODAY (simple mode: the device line, one step)" },
+  retryBesideBacklog: { leases: 4, acks: 5, why: "= TODAY" },
 };
 
 async function run(name: ScenarioName, options: Partial<WorldOptions> = {}): Promise<LinesWorld> {
@@ -50,6 +56,13 @@ for (const name of Object.keys(SCENARIOS) as ScenarioName[]) {
     assert.equal(counts.handBacks, 0, `${name}: nothing handed back (hand-backs ${counts.handBacks})`);
   });
 }
+
+// The final review (I-1(b), P6-3 as the owner chose it): a backlog wave costs up to one lease per printer, never more.
+test("an even backlog on two steps costs at most one lease more per printer than TODAY (P6-3)", async () => {
+  const world = await run("backlogEven");
+  const bound = TODAY.backlogEven.leases + world.stations.length;
+  assert.ok(world.counts().leases <= bound, `backlogEven, two steps: ${world.counts().leases} leases, at most ${bound}`);
+});
 
 test("a stuck line holds only itself: B1 and D1 cut before 3 × 550 + 100 ms, K1 at 60 000 ms and after", async () => {
   const paper = paperOf(await run("stuck"));

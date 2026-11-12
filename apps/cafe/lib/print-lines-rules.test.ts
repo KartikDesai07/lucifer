@@ -152,3 +152,25 @@ test("a failure's backoff holds only its line; another line's kick is kept: B le
   await t.advance(PRINT_AGENT_HOLD_END_MARGIN_MS + 1);
   assert.deepEqual(t.r.asked.at(-1), ["K", "B", "D"], "its hold ends: K is leased again");
 });
+
+// The final review (I-1(a)): a line ends the moment its printed ack is answered, inside the flush, so a lease that waits
+// on that same flush names it, whichever of the two waited on the flush first.
+test("a line whose ack a lease's kept-acks flush answers is free and named in that one lease, whichever waited first", async () => {
+  const t = rig();
+  await t.start();
+  t.agent.take(job("K1"));
+  await t.drawn();
+  t.agent.take(job("B1"));
+  await t.drawn();
+  let release: () => void = () => undefined;
+  t.r.pending = [{ id: "old", epoch: 1, at: t.r.now }];
+  t.r.answers.set("old", new Promise<PrintAckData>((resolve) => (release = () => resolve(printed(false)))));
+  t.agent.kick("D"); // a lease is decided: its flush waits on "old"
+  await settle();
+  t.r.answers.set("K1", printed(true));
+  await t.finish("K1"); // K1's ack joins that flush after the lease waited on it
+  assert.deepEqual(t.r.asked, [], "the lease waits for its flush");
+  release();
+  await settle();
+  assert.deepEqual(t.r.asked, [["K", "D"]], "one lease names K (its ack answered with more) and D; B still writes");
+});

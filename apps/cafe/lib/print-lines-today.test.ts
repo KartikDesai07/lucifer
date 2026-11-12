@@ -11,11 +11,12 @@ import { WORLD_T0, createWorldClock, createWorldServer } from "@/lib/print-lines
 
 const NAMES = Object.keys(SCENARIOS) as ScenarioName[];
 
-test("the world names the nine scenarios, each with its TODAY and its jobs", () => {
-  const nine: ScenarioName[] = ["direct", "frames", "framesLate", "frameBusy", "frameFree", "backlog", "backlogSlow", "stuck", "simple"];
-  assert.deepEqual([...NAMES].sort(), [...nine].sort(), `the scenarios: ${NAMES.join(", ")}`);
-  assert.deepEqual(Object.keys(TODAY).sort(), [...nine].sort(), `TODAY's scenarios: ${Object.keys(TODAY).join(", ")}`);
-  assert.deepEqual(Object.keys(SCENARIO_JOBS).sort(), [...nine].sort(), `SCENARIO_JOBS' scenarios: ${Object.keys(SCENARIO_JOBS).join(", ")}`);
+// The final review's fix wave added backlogEven, retryKick and retryBesideBacklog (I-1, I-2), each pinned below.
+test("the world names the twelve scenarios, each with its TODAY and its jobs", () => {
+  const all: ScenarioName[] = ["direct", "frames", "framesLate", "frameBusy", "frameFree", "backlog", "backlogSlow", "stuck", "simple", "backlogEven", "retryKick", "retryBesideBacklog"];
+  assert.deepEqual([...NAMES].sort(), [...all].sort(), `the scenarios: ${NAMES.join(", ")}`);
+  assert.deepEqual(Object.keys(TODAY).sort(), [...all].sort(), `TODAY's scenarios: ${Object.keys(TODAY).join(", ")}`);
+  assert.deepEqual(Object.keys(SCENARIO_JOBS).sort(), [...all].sort(), `SCENARIO_JOBS' scenarios: ${Object.keys(SCENARIO_JOBS).join(", ")}`);
 });
 
 // The Task 1 review (Minor 1): the real server answers a head a live lease holds with that lease's end as retryAt

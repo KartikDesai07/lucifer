@@ -9,7 +9,7 @@ import {
 import { createAckFlusher, rememberBounded as remember } from "@/lib/print-agent-acks";
 import { PRINT_DEVICE_LINE, createRefusalHolds } from "@/lib/print-agent-holds";
 import type { PrintAgent, PrintAgentDeps } from "@/lib/print-agent-types";
-import { HELD_TOO_LONG, PRINTING_STOPPED, handBack, runLineJob, type LineJobEnd } from "@/lib/print-line-job";
+import { HELD_TOO_LONG, PRINTING_STOPPED, handBack, runLineOnce, type LineJobEnd } from "@/lib/print-line-job";
 import { createLineState, createLineTimer } from "@/lib/print-lines";
 
 // Printing redesign, Phase 1 Session 1C (spec §9.1): the in-page print agent's core, no React, unit-tested with fakes
@@ -62,9 +62,14 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
   const held: Array<{ job: LeasedPrintJob; at: number }> = [];
   const taken = new Set<string>();
   const answers = new Map<string, PrintAckData>();
+  // The final review (I-1(a)): a started job whose printed ack is kept ends its line when that ack's answer is heard.
+  const onAnswer = new Map<string, (answer: PrintAckData) => void>();
   const acks = createAckFlusher(deps, {
     stopped: () => stopped,
-    answered: (key, answer) => remember(answers, key, answer),
+    answered: (key, answer) => {
+      remember(answers, key, answer);
+      onAnswer.get(key)?.(answer);
+    },
     requeued: (atMs) => wakeAt(atMs),
   });
   const flushAcks = acks.flush;
@@ -121,15 +126,15 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
     const line = lineOf(job);
     fresh = false;
     lines.occupy(line, job.id);
-    void runLineJob(job, ctx)
-      .catch((): LineJobEnd => ({ kind: "unanswered" }))
-      .then((end) => lineEnd(line, end));
+    runLineOnce(job, ctx, onAnswer, (end) => lineEnd(line, end), pump);
   }
 
   function lineEnd(line: string, end: LineJobEnd): void {
     lines.release(line);
     fresh = true;
-    wish ||= deferred;
+    // The final review (I-2): with no printer line, a job back in line drops the kick kept meanwhile (it could only find
+    // that job not due: today's kickedWhileRunning = false); with printer lines another line may hold its job (ruling 20).
+    if (end.kind !== "back" || ready().length > 0) wish ||= deferred;
     deferred = false;
     // The Task 5 review (m-2): a line its refusal holds is looked at when the hold ends, whatever its answer said.
     const holdEnd = holds.holding(line) ? holds.nextEnd() : null;
@@ -144,7 +149,6 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
       wakeAt(deps.now() + PRINT_AGENT_REFUSED_RECHECK_MS);
     } else if (end.more) lines.wantMore(line);
     else if (end.kind === "printed") quietUntil = deps.now() + PRINT_AGENT_QUIET_AFTER_ACK_MS;
-    pump();
   }
 
   /** The printers a lease names now ([] in simple mode: the device line only), or null when no line may take a job:
@@ -180,6 +184,7 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
       wish = false;
       lines.takeMore([PRINT_DEVICE_LINE, ...names]);
       const data = await deps.lease(names);
+      timer.forget(null); // the final review (I-2): a lease is what an unnamed wake wanted; its own retryAt sets one again
       // Session 2C: one job per line; each waits here for its line's turn (the first that may start starts now).
       const got: LeasedPrintJob[] = [];
       for (const job of data.jobs) {

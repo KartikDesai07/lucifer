@@ -216,7 +216,10 @@ and the cost if it is wrong. They bind the plan; where one differs from §1–§
     REPRINTed, a lost one acked printed); pinned with writes ending out of order (Task 3).
 11. **The watchdog and the late guard stay the surface's.** Drawing stays one at a time, so `PRINT_HOST_DISPATCH_TIMEOUT_MS`
     (90 s) and the late-completion guard keep guarding the surface. The watchdog also disarms the lane, so a draw it
-    gave up on writes, if it ever does, inside its own late draw under today's late rules.
+    gave up on writes, if it ever does, inside its own late draw under today's late rules. After the watchdog and its 30 s
+    grace such a late draw's write could in principle be taken by the next slip of the same printer (the arm is by lane
+    key), but a raster draw is bounded by `LANE_RASTER_DEADLINE_MS` (12 s) and the text step writes at once, so no real
+    path reaches it; the same class as `main`'s late `onAfterPrint` (added in Session 6A, the final review's m-2).
 12. **A slip never drawn is never "maybe"; a slip drawn is waited for.** The agent's 140 s bound
     (`PRINT_AGENT_SLIP_DEADLINE_MS`) and the offline slip's bound start when the slip is queued; with several lines a
     slip can wait behind other lines' draws. When the bound passes while the slip still waits to be drawn (in the queue,
@@ -310,7 +313,10 @@ and the cost if it is wrong. They bind the plan; where one differs from §1–§
     line's want from any other named kick is cleared only by a lease that names that line, and is merged with, never
     cleared by, the line's ack's `more`, so a job queued while its line was busy is never left to the pulse. Normal rounds cost today's requests (direct print: 0 leases and 1 ack a slip; a round from another
     device: 1 lease + 1 trailing). In a backlog the lines' wishes that land while slips are drawn share the next
-    opening's lease, so with fast writes a backlog costs today's leases; with slow (Bluetooth-like) writes a line's
+    opening's lease, so with fast writes a backlog costs today's leases when the last line of a wave has nothing more;
+    when every line holds more (an even backlog), on a two-step device that last line writes and acks after the opening
+    that leased the others, so its `more` costs a lease of its own: up to one more lease per wave (P6-3), while a one-step
+    device keeps today's count (corrected in Session 6A); with slow (Bluetooth-like) writes a line's
     `more` lands while the surface is free and a backlog wave costs up to one lease per printer (today one for all), inside
     `print-budget.test.ts`'s model (at most one lease and one ack per slip, plus one trailing lease per burst), which
     stays unchanged. (The builder check's item 1 found the "at once" bounded by the surface.)

@@ -2,15 +2,17 @@ import type { LeasedPrintJob } from "@pos/shared/print-agent-wire";
 import { createPrintAgent } from "@/lib/print-agent";
 import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
 import type { PendingPrintAck, PrintAgent, PrintAgentResult } from "@/lib/print-agent-types";
-import { createWorldClock, createWorldServer } from "@/lib/print-lines-world-clock";
+import { createWorldClock, createWorldServer, type ScenarioName } from "@/lib/print-lines-world-clock";
+import { PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
 
 // Test support (NOT app code: no app file imports it). Printing Phase 6 Task 1 (spec §9 rulings 17, 19, 25, 26): the
 // scenario world. A fake server with lines and a hand-cranked clock (lib/print-lines-world-clock.ts), a fake surface
 // (the bridge: one step or two), and the REAL agent (createPrintAgent), driven only through the PrintAgentDeps below and
 // the PrintAgent methods, never its internals, so Task 5's agent per line runs the same scenarios unchanged.
-// lib/print-lines-today.test.ts pins TODAY on today's agent.
+// lib/print-lines-today.test.ts pins TODAY on today's agent. The scenarios' names, jobs and TODAY live in the clock file.
 
-export type ScenarioName = "direct" | "frames" | "framesLate" | "frameBusy" | "frameFree" | "backlog" | "backlogSlow" | "stuck" | "simple";
+export { SCENARIO_JOBS, TODAY } from "@/lib/print-lines-world-clock";
+export type { ScenarioName } from "@/lib/print-lines-world-clock";
 
 export interface WorldOptions {
   /** Phase 6 (§4.1): the surface is held only while drawing, and a station line's write then runs on its line. */
@@ -53,6 +55,9 @@ export interface LinesWorld {
    *  and the station lines readyPrinters() answers (default K, B, D; simple mode []). */
   writeMs: Record<string, number>;
   stations: string[];
+  /** Read live (the final review's fix wave): jobs whose first write fails "may have printed": not on paper, and the
+   *  server puts each back for its second attempt. */
+  failOnce: Set<string>;
   /** Runs the clock event by event until nothing is pending, or maxMs (default 200 000) passed. */
   settle(maxMs?: number): Promise<void>;
   counts(): WorldCounts;
@@ -121,8 +126,9 @@ export function createLinesWorld(options: WorldOptions): LinesWorld {
       const end = start + (world.writeMs[slip.line] ?? WRITE_MS);
       laneFreeAt.set(slip.line, end);
       clock.later(end - drawnAt, () => {
-        records.push({ id: slip.job.id, line: slip.line, drawnAt: drawnAt - origin, firstByteAt: start - origin, cutAt: end - origin });
-        slip.resolve({ ok: true });
+        const failed = world.failOnce.delete(slip.job.id);
+        if (!failed) records.push({ id: slip.job.id, line: slip.line, drawnAt: drawnAt - origin, firstByteAt: start - origin, cutAt: end - origin });
+        slip.resolve(failed ? { ok: false, error: new Error(PRINTER_WRITE_FAILED_MESSAGE) } : { ok: true });
         if (oneStep) freeSurface();
       });
     });
@@ -181,6 +187,7 @@ export function createLinesWorld(options: WorldOptions): LinesWorld {
     at: (ms, step) => act(() => void clock.later(ms, step)),
     writeMs: { ...options.writeMs },
     stations: [...STATIONS],
+    failOnce: new Set<string>(),
     async settle(maxMs = SETTLE_MS) {
       if (!started) {
         await clock.run(SETTLE_MS);
@@ -253,43 +260,24 @@ export const SCENARIOS: Record<ScenarioName, (world: LinesWorld) => Promise<void
     w.queue(PRINT_DEVICE_LINE, "J1", "J2");
     w.frame();
   },
-};
-
-/** The jobs each scenario makes: each must reach paper exactly once. */
-export const SCENARIO_JOBS: Record<ScenarioName, readonly string[]> = {
-  direct: ["K1", "B1", "D1"],
-  frames: ["K1", "B1", "D1"],
-  framesLate: ["K1", "B1", "D1"],
-  frameBusy: ["K1", "K2"],
-  frameFree: ["K1", "B1"],
-  backlog: ["K1", "K2", "B1", "B2", "D1"],
-  backlogSlow: ["K1", "K2", "B1", "B2", "D1"],
-  stuck: ["K1", "B1", "D1"],
-  simple: ["J1", "J2"],
-};
-
-/** Today's agent (one slip at a time) on a one-step surface: traced by hand through `main`'s agent, then measured in
- *  this world (lib/print-lines-today.test.ts); the "before" of S4 (ruling 26). Every measured count equals the traced. */
-export const TODAY: Record<ScenarioName, { leases: number; acks: number }> = {
-  // The held jobs print one by one; each ack says no more.
-  direct: { leases: 0, acks: 3 },
-  // One lease takes the three heads; the frames that landed during the cycle buy one trailing (empty) lease.
-  frames: { leases: 2, acks: 3 },
-  // The same: a frame during a cycle waits for it and leases once after it.
-  framesLate: { leases: 2, acks: 3 },
-  // K1's ack says more (K2): one lease after it.
-  frameBusy: { leases: 1, acks: 2 },
-  // The frame waits for K1's cycle; one lease after it finds B1.
-  frameFree: { leases: 1, acks: 2 },
-  // The first lease takes K1, B1, D1; K1's and B1's more lease once more after D1: K2, B2.
-  backlog: { leases: 2, acks: 5 },
-  // The same: one cycle at a time, whatever a write takes.
-  backlogSlow: { leases: 2, acks: 5 },
-  // The e2e "before": B1 and D1, held past 60 s behind K1, are handed back (2 acks). The acks go out one at a time, so
-  // D1's leaves as B1's answer arrives (20 ms later); the lease right after finds both not due (2 s backoff: empty).
-  // B1's answer set the timer, its delay clamped to at least 2 000 ms (printAgentTimerDelayMs), so it fires no sooner
-  // than D1 is due: its lease takes both. Then 3 printed acks.
-  stuck: { leases: 2, acks: 5 },
-  // The device line: J1's ack says more, the second lease takes J2.
-  simple: { leases: 2, acks: 2 },
+  // The final review's fix wave (I-1): every line holds two, so each wave's last line has more too.
+  backlogEven: async (w) => {
+    for (const line of STATIONS) w.queue(line, `${line}1`, `${line}2`);
+    w.frame();
+  },
+  // (I-2) Simple mode: J1's first write fails "maybe" (back for its second attempt 2 s later); the pulse kicks meanwhile.
+  retryKick: async (w) => {
+    w.stations = [];
+    w.failOnce.add("J1");
+    w.queue(PRINT_DEVICE_LINE, "J1");
+    w.frame();
+    w.at(300, () => w.frame());
+  },
+  // (I-2) K1's first write fails "maybe" while B prints B1 to B3; no kick but the first.
+  retryBesideBacklog: async (w) => {
+    w.failOnce.add("K1");
+    w.queue("K", "K1");
+    w.queue("B", "B1", "B2", "B3");
+    w.frame();
+  },
 };

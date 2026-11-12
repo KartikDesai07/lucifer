@@ -258,3 +258,17 @@ test("a lease answered after the tab stopped draining starts none of its jobs wh
   assert.deepEqual(t.r.prints, [], "J0 waits here (ruling 16), so B1 does not start ahead of it");
   agent.stop();
 });
+
+// The final review (I-2): only in simple mode does a job going back drop an unnamed kick kept meanwhile; with printer
+// lines the others may hold that kick's job (ruling 20).
+test("with printer lines an unnamed kick kept while a line was busy still leases when that line's job goes back", async () => {
+  const t = rig();
+  await t.start();
+  t.agent.take(job("K1"));
+  await t.drawn();
+  t.agent.kick(); // the pulse while K1 writes
+  await settle();
+  t.r.answers.set("K1", queuedAt(t.r.now + 5_000));
+  await t.finish("K1", { ok: false, error: new Error(PRINTER_WRITE_FAILED_MESSAGE) });
+  assert.deepEqual(t.r.asked, [["K", "B", "D"]], "the kick leases the lines at once");
+});

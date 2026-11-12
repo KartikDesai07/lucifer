@@ -127,7 +127,8 @@ export function createWorldServer(clock: Pick<WorldClock, "now">): WorldServer {
     },
     // Printed: the job leaves its line; `more` = the line still holds a queued job. Sent "no": back at the head of its
     // line, due printBackoffMs(attempts) later, and that nextAttemptAt answered (planAck, print-lifecycle.ts:459-466).
-    // Any other failure leaves the line (no scenario makes one; the REPRINT path is not modelled).
+    // The final review's fix wave: a first "maybe" goes back the same way for its second attempt (a KOT's REPRINT; the
+    // label is not modelled); any other failure leaves the line.
     ack(id, body) {
       const job = [...lines.values()].flat().find((j) => j.id === id);
       if (job === undefined) return { applied: false, status: null, nextAttemptAt: null, reason: "not-found" };
@@ -136,7 +137,7 @@ export function createWorldServer(clock: Pick<WorldClock, "now">): WorldServer {
       job.leaseEnd = null;
       const jobs = lineJobs(job.line);
       jobs.splice(jobs.indexOf(job), 1);
-      if (body.outcome === "failed" && body.sent === "no" && body.permanent !== true) {
+      if (body.outcome === "failed" && body.permanent !== true && (body.sent === "no" || job.attempts < 2)) {
         job.dueAt = clock.now() + printBackoffMs(job.attempts);
         jobs.unshift(job);
         return { applied: true, status: "queued", nextAttemptAt: new Date(job.dueAt).toISOString() };
@@ -145,3 +146,63 @@ export function createWorldServer(clock: Pick<WorldClock, "now">): WorldServer {
     },
   };
 }
+
+// ── The scenarios' names, the jobs each makes and TODAY (lib/print-lines-world.ts re-exports them; moved here in the final
+// review's fix wave to keep the world under 300 lines) ──
+
+export type ScenarioName =
+  | "direct" | "frames" | "framesLate" | "frameBusy" | "frameFree" | "backlog" | "backlogSlow" | "stuck" | "simple"
+  | "backlogEven" | "retryKick" | "retryBesideBacklog";
+
+/** The jobs each scenario makes: each must reach paper exactly once. */
+export const SCENARIO_JOBS: Record<ScenarioName, readonly string[]> = {
+  direct: ["K1", "B1", "D1"],
+  frames: ["K1", "B1", "D1"],
+  framesLate: ["K1", "B1", "D1"],
+  frameBusy: ["K1", "K2"],
+  frameFree: ["K1", "B1"],
+  backlog: ["K1", "K2", "B1", "B2", "D1"],
+  backlogSlow: ["K1", "K2", "B1", "B2", "D1"],
+  stuck: ["K1", "B1", "D1"],
+  simple: ["J1", "J2"],
+  backlogEven: ["K1", "K2", "B1", "B2", "D1", "D2"],
+  retryKick: ["J1"],
+  retryBesideBacklog: ["K1", "B1", "B2", "B3"],
+};
+
+/** Today's agent (one slip at a time) on a one-step surface: traced by hand through `main`'s agent, then measured in
+ *  this world (lib/print-lines-today.test.ts); the "before" of S4 (ruling 26). Every measured count equals the traced. */
+export const TODAY: Record<ScenarioName, { leases: number; acks: number }> = {
+  // The held jobs print one by one; each ack says no more.
+  direct: { leases: 0, acks: 3 },
+  // One lease takes the three heads; the frames that landed during the cycle buy one trailing (empty) lease.
+  frames: { leases: 2, acks: 3 },
+  // The same: a frame during a cycle waits for it and leases once after it.
+  framesLate: { leases: 2, acks: 3 },
+  // K1's ack says more (K2): one lease after it.
+  frameBusy: { leases: 1, acks: 2 },
+  // The frame waits for K1's cycle; one lease after it finds B1.
+  frameFree: { leases: 1, acks: 2 },
+  // The first lease takes K1, B1, D1; K1's and B1's more lease once more after D1: K2, B2. (This backlog only: D1 is
+  // its line's last job, so its ack says no more; when every line holds more, see backlogEven.)
+  backlog: { leases: 2, acks: 5 },
+  // The same: one cycle at a time, whatever a write takes.
+  backlogSlow: { leases: 2, acks: 5 },
+  // The e2e "before": B1 and D1, held past 60 s behind K1, are handed back (2 acks). The acks go out one at a time, so
+  // D1's leaves as B1's answer arrives (20 ms later); the lease right after finds both not due (2 s backoff: empty).
+  // B1's answer set the timer, its delay clamped to at least 2 000 ms (printAgentTimerDelayMs), so it fires no sooner
+  // than D1 is due: its lease takes both. Then 3 printed acks.
+  stuck: { leases: 2, acks: 5 },
+  // The device line: J1's ack says more, the second lease takes J2.
+  simple: { leases: 2, acks: 2 },
+  // The final review's fix wave: these three were MEASURED, not traced: 6d45288's lib/print-agent.ts (`git show`) run in
+  // this world from a scratch copy outside the repo, one step and two steps alike (the reviewer's probes read the same).
+  // The first lease takes K1, B1, D1; every ack says more, and one lease after D1 takes K2, B2, D2.
+  backlogEven: { leases: 2, acks: 6 },
+  // J1's lease; its "maybe" ack names a retry, which drops the pulse's kick (kickedWhileRunning = false); the timer's
+  // lease takes J1 again (its ack says no more). Acks: J1 failed, J1 printed.
+  retryKick: { leases: 2, acks: 2 },
+  // The first lease takes K1 and B1; K1 goes back (due 2 s later); B's more leases B2, then B3 (K1 not due yet); K1's
+  // timer leases it. Acks: K1 failed, K1 printed, B1 to B3.
+  retryBesideBacklog: { leases: 4, acks: 5 },
+};
