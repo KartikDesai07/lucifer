@@ -41,6 +41,7 @@
     "verify:reward-assign:live": "node --import tsx scripts/verify-reward-assign-live.ts",
     "verify:loyalty-rules:live": "node --import tsx scripts/verify-loyalty-rules-live.ts",
     "verify:print:live": "node --import tsx scripts/verify-print-host-live.ts",
+    "verify:model-ready:live": "node --import tsx scripts/verify-model-ready-live.ts",
     "verify:bootstrap:live": "node --import tsx scripts/verify-bootstrap-live.ts",
     "verify:migrate:live": "node --import tsx scripts/verify-migrate-links-live.ts",
     "verify:money:live": "node --import tsx scripts/verify-money-breakdown-live.ts",
