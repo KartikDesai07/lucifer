@@ -17,7 +17,8 @@ const count = (src: string, needle: string) => src.split(needle).length - 1;
 
 const ORDERS_ROUTE = "app/api/orders/route.ts";
 const ITEMS_ROUTE = "app/api/orders/[id]/items/route.ts";
-const SELECT = '.select("name variations modifiers modifiersPreselected modifierPrices price discount available isActive")';
+// Inventory lite (Slice 1) moved this on purpose: the same one read also carries stockUse (no extra read).
+const SELECT = '.select("name variations modifiers modifiersPreselected modifierPrices price discount available isActive stockUse")';
 
 test("PIN: both staff order writers select modifierPrices and stamp the new lines from the rows they read", () => {
   for (const rel of [ORDERS_ROUTE, ITEMS_ROUTE]) {

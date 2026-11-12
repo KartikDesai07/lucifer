@@ -20,7 +20,8 @@ const ITEMS_ROUTE = "app/api/orders/[id]/items/route.ts";
 const PRODUCTS_ROUTE = "app/api/products/route.ts";
 const CRUD_ROUTE = "lib/crud-route.ts";
 const RULE_FILE = "lib/order-availability.ts";
-const NEW_SELECT = '.select("name variations modifiers modifiersPreselected modifierPrices price discount available isActive")';
+// Inventory lite (Slice 1) moved this on purpose: the same one read also carries stockUse (no extra read).
+const NEW_SELECT = '.select("name variations modifiers modifiersPreselected modifierPrices price discount available isActive stockUse")';
 
 // Comment-stripped, CRLF-normalised (autocrlf can flip the checkout).
 const read = (rel: string) => stripComments(readFileSync(path.join(CAFE_ROOT, rel), "utf8")).replace(/\r\n/g, "\n");

@@ -5,28 +5,35 @@
 // write" for this route; these are its follow-ups, runnable with fake deps.
 //
 // Everything here runs only AFTER the settle CAS has landed, so none of it may
-// fail the settle (owner decision O4): the four run together via allSettled,
+// fail the settle (owner decision O4): the five run together via allSettled,
 // each failure is absorbed, and the table free never waits on the ledger. A
 // missed ledger delta is repaired through the customer reconcile route, the
 // same rule the create route already follows; a stuck table is freed by hand
 // from the Tables screen; a missed stamp or reward-ladder step is a counter
-// conversation.
+// conversation. A missed stock move (inventory lite) is fixed by a Count.
 import { Table } from "@/models/Table";
 import type { ISettings } from "@/models/Settings";
 import { reconcileLedger } from "@/lib/order";
 import { grantStampForSettledOrder } from "@/lib/diner-loyalty-earn";
 import { advanceRewardProgress } from "@/lib/reward-progress";
+import { moveStock, STOCK_TAKE, type StockUsedRef } from "@/lib/inventory/stock-move";
 
 type LedgerTab = Parameters<typeof reconcileLedger>[0];
 
 /** The slice of a settled order these follow-ups read. */
-export type SettledTab = LedgerTab & { orderId: string; tableNo?: string; createdAt: Date };
+export type SettledTab = LedgerTab & {
+  orderId: string;
+  tableNo?: string;
+  createdAt: Date;
+  stockUsed?: readonly StockUsedRef[]; // inventory lite: the snapshot the settle CAS stored
+};
 
 export interface SettleFollowUpDeps {
   reconcileLedger(old: LedgerTab, updated: LedgerTab): Promise<Set<string>>;
   grantStampForSettledOrder: typeof grantStampForSettledOrder;
   advanceRewardProgress: typeof advanceRewardProgress;
   freeTable(tableNo: string, orderId: string): Promise<unknown>;
+  moveStock: typeof moveStock;
 }
 
 export const SETTLE_FOLLOW_UP_DEPS: SettleFollowUpDeps = {
@@ -36,11 +43,12 @@ export const SETTLE_FOLLOW_UP_DEPS: SettleFollowUpDeps = {
   // Free the table only if it still points to this order.
   freeTable: (tableNo, orderId) =>
     Table.findOneAndUpdate({ tableNo, currentOrderId: orderId }, { status: "Available", currentOrderId: "" }),
+  moveStock,
 };
 
 /**
- * Ledger, loyalty stamp, reward-ladder step and table free for a settle whose
- * CAS landed. Never rejects. `customersTouched` is true when the customers cache
+ * Ledger, loyalty stamp, reward-ladder step, table free and stock move for a
+ * settle whose CAS landed. Never rejects. `customersTouched` is true when the customers cache
  * must drop: the ledger moved someone, a stamp was granted, a ladder step was
  * counted, or the ledger outcome is unknown.
  */
@@ -94,6 +102,8 @@ export async function runSettleFollowUps(
     grantStamp(),
     advanceProgress(),
     updated.tableNo ? deps.freeTable(updated.tableNo, updated.orderId) : Promise.resolve(),
+    // Inventory lite — the snapshot comes out of stock once, riding this one CAS win (one unordered bulkWrite).
+    updated.stockUsed?.length ? deps.moveStock(updated.stockUsed, STOCK_TAKE) : Promise.resolve(),
   ]);
   const ledgerTouched = ledger.status === "rejected" || ledger.value.size > 0;
   return {
