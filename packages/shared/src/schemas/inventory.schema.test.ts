@@ -1,7 +1,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createStockItemSchema, ownStockSchema, stockUseSchema, updateStockItemSchema } from "./inventory.schema";
-import { STOCK_ITEM_NAME_MAX_LEN, STOCK_QTY_MAX_MILLI, STOCK_USE_MAX_LINES } from "../inventory";
+import {
+  createStockEntrySchema,
+  createStockItemSchema,
+  ownStockSchema,
+  stockEntryListQuerySchema,
+  stockUseSchema,
+  updateStockItemSchema,
+} from "./inventory.schema";
+import {
+  STOCK_ENTRY_NOTE_MAX_LEN,
+  STOCK_ENTRY_PAGE_MAX,
+  STOCK_ITEM_NAME_MAX_LEN,
+  STOCK_QTY_MAX_MILLI,
+  STOCK_USE_MAX_LINES,
+  WASTE_REASONS,
+} from "../inventory";
 import { MAX_VARIATIONS } from "../constants";
 
 // Inventory lite Slice 2: the write bodies of /api/inventory/items.
@@ -106,4 +120,56 @@ test("ownStockSchema defaults to pcs and refuses an unknown unit or an extra key
   assert.equal(kg.success && kg.data.unit, "kg");
   assert.equal(ownStockSchema.safeParse({ unit: "kgs" }).success, false);
   assert.equal(ownStockSchema.safeParse({ unit: "kg", qty: 1 }).success, false);
+});
+
+// Inventory lite Slice 4: the write body of POST /api/inventory/entries and the list query.
+
+const REF = "0b5a2f2e-6a43-4d7e-9a51-6c1f0f5d2b11";
+const ITEM = "665f00000000000000000001";
+const waste = { kind: "waste", itemId: ITEM, qtyMilli: 500, reason: "Spoiled", date: "2026-11-13", clientRef: REF };
+const count = { kind: "count", itemId: ITEM, countedMilli: 4250, date: "2026-11-13", clientRef: REF };
+
+test("createStockEntrySchema accepts a wastage and a count, with or without a note", () => {
+  assert.equal(createStockEntrySchema.safeParse(waste).success, true);
+  assert.equal(createStockEntrySchema.safeParse({ ...waste, note: "Left out overnight" }).success, true);
+  assert.equal(createStockEntrySchema.safeParse(count).success, true);
+  assert.equal(createStockEntrySchema.safeParse({ ...count, countedMilli: 0 }).success, true, "a count of nothing is a real count");
+  for (const reason of WASTE_REASONS) assert.equal(createStockEntrySchema.safeParse({ ...waste, reason }).success, true, reason);
+});
+
+test("createStockEntrySchema refuses a wastage of 0, a float, an over-cap amount and an unknown reason", () => {
+  assert.equal(createStockEntrySchema.safeParse({ ...waste, qtyMilli: 0 }).success, false);
+  assert.equal(createStockEntrySchema.safeParse({ ...waste, qtyMilli: -500 }).success, false);
+  assert.equal(createStockEntrySchema.safeParse({ ...waste, qtyMilli: 1.5 }).success, false);
+  assert.equal(createStockEntrySchema.safeParse({ ...waste, qtyMilli: STOCK_QTY_MAX_MILLI + 1 }).success, false);
+  assert.equal(createStockEntrySchema.safeParse({ ...waste, reason: "Stolen" }).success, false);
+  assert.equal(createStockEntrySchema.safeParse({ ...count, countedMilli: -1 }).success, false);
+  assert.equal(createStockEntrySchema.safeParse({ ...count, countedMilli: STOCK_QTY_MAX_MILLI + 1 }).success, false);
+});
+
+test("createStockEntrySchema keeps each kind's own keys: no reason on a count, no countedMilli on a wastage", () => {
+  assert.equal(createStockEntrySchema.safeParse({ ...count, reason: "Spoiled" }).success, false);
+  assert.equal(createStockEntrySchema.safeParse({ ...waste, countedMilli: 5 }).success, false);
+  assert.equal(createStockEntrySchema.safeParse({ ...waste, kind: "purchase" }).success, false, "purchases ship later");
+  assert.equal(createStockEntrySchema.safeParse({ ...waste, createdBy: "Someone" }).success, false);
+});
+
+test("createStockEntrySchema needs a real date, a uuid clientRef, an item id and a short note", () => {
+  assert.equal(createStockEntrySchema.safeParse({ ...waste, date: "2026-02-30" }).success, false);
+  assert.equal(createStockEntrySchema.safeParse({ ...waste, date: "13-11-2026" }).success, false);
+  assert.equal(createStockEntrySchema.safeParse({ ...waste, clientRef: "abc" }).success, false);
+  assert.equal(createStockEntrySchema.safeParse({ ...waste, itemId: "milk" }).success, false);
+  assert.equal(createStockEntrySchema.safeParse({ ...waste, note: "x".repeat(STOCK_ENTRY_NOTE_MAX_LEN + 1) }).success, false);
+  const trimmed = createStockEntrySchema.safeParse({ ...waste, note: "  dropped  " });
+  assert.ok(trimmed.success && trimmed.data.note === "dropped");
+});
+
+test("stockEntryListQuerySchema takes a server cursor and a limit up to one page", () => {
+  assert.equal(stockEntryListQuerySchema.safeParse({}).success, true);
+  assert.equal(stockEntryListQuerySchema.safeParse({ before: `2026-11-13_${ITEM}`, limit: "20" }).success, true);
+  assert.equal(stockEntryListQuerySchema.safeParse({ limit: String(STOCK_ENTRY_PAGE_MAX + 1) }).success, false);
+  assert.equal(stockEntryListQuerySchema.safeParse({ limit: "0" }).success, false);
+  assert.equal(stockEntryListQuerySchema.safeParse({ before: ITEM }).success, false);
+  assert.equal(stockEntryListQuerySchema.safeParse({ before: `2026-11-13_${ITEM.toUpperCase()}x` }).success, false);
+  assert.equal(stockEntryListQuerySchema.safeParse({ before: { $gt: "" } }).success, false);
 });

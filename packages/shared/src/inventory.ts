@@ -159,6 +159,27 @@ export function formatQty(milli: number, unit: StockUnit): string {
   return `${trimmed(milliToQty(milli))} ${unit}`;
 }
 
+// ── Stock entries (Slice 4) ──────────────────────────────────────────────────
+
+/**
+ * Every kind of stock entry. APPEND-ONLY: stored on every entry. Wastage and
+ * counts ship first; purchases and supplier payments arrive in later slices.
+ */
+export const STOCK_ENTRY_KINDS = ["purchase", "waste", "count", "payment"] as const;
+
+export type StockEntryKind = (typeof STOCK_ENTRY_KINDS)[number];
+
+/** Why stock was thrown away. APPEND-ONLY: stored on wastage entries, shown as-is. */
+export const WASTE_REASONS = ["Spoiled", "Spilled or broken", "Staff meal", "Other"] as const;
+
+export type WasteReason = (typeof WASTE_REASONS)[number];
+
+export const STOCK_ENTRY_NOTE_MAX_LEN = 200;
+/** One page of the entries list, newest first. */
+export const STOCK_ENTRY_PAGE_MAX = 50;
+/** How many days back an entry may be dated (today is day 0). */
+export const STOCK_ENTRY_BACKDATE_MAX_DAYS = 31;
+
 // ── Stock level ──────────────────────────────────────────────────────────────
 
 export type StockLevel = "out" | "low" | "ok";

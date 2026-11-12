@@ -1,6 +1,6 @@
 // Inventory lite (docs/superpowers/plans/2026-11-10-inventory-lite.md): what /api/inventory/items sends back.
 // Quantities are INTEGER milli-units of the item's own unit; render them with formatQty (@pos/shared/inventory).
-import type { StockUnit } from "@pos/shared/inventory";
+import type { StockEntryKind, StockUnit, WasteReason } from "@pos/shared/inventory";
 
 export interface StockItemDto {
   id: string;
@@ -40,4 +40,39 @@ export interface StockUseLineDto {
 
 export interface StockUseDto {
   lines: StockUseLineDto[];
+}
+
+/**
+ * One stock item a stock entry moved (Slice 4), as /api/inventory/entries sends it. `qtyMilli` is SIGNED, as it was
+ * applied to stock, in integer milli-units of the item's own unit: a wastage is negative; a count is the change it
+ * made (counted minus what the list showed). Deleting the entry takes exactly this back out.
+ */
+export interface StockEntryLineDto {
+  itemId: string;
+  name: string;
+  unit: StockUnit;
+  qtyMilli: number;
+  /** A count: how much was counted. */
+  countedMilli?: number;
+}
+
+/** One wastage or count in the entries list (admin). A line whose stock item no longer exists is left out. */
+export interface StockEntryDto {
+  id: string;
+  kind: StockEntryKind;
+  /** IST business day, "YYYY-MM-DD". */
+  date: string;
+  lines: StockEntryLineDto[];
+  /** A wastage: why it was thrown away. */
+  reason?: WasteReason;
+  note?: string;
+  /** Staff name from the session. */
+  createdBy: string;
+  createdAt: string;
+}
+
+/** One page of entries, newest first. `nextBefore` (absent on the last page) is sent back as `?before=`. */
+export interface StockEntryPageDto {
+  rows: StockEntryDto[];
+  nextBefore?: string;
 }

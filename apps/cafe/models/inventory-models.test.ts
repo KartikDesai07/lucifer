@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Types } from "mongoose";
+import { StockEntry, stockEntrySchema } from "./StockEntry";
 import { StockItem, stockItemSchema, STOCK_ITEM_SCHEMA_VERSION } from "./StockItem";
 import { Product } from "./Product";
 import { Order } from "./Order";
@@ -88,4 +89,54 @@ test("Order: stockUsed.qty is at least 1 (a zero line is never stored)", () => {
   const zero = new Order({ ...ORDER_BASE, stockUsed: [{ itemId: ITEM, qty: 0 }] }).validateSync();
   assert.ok(zero?.errors["stockUsed.0.qty"], "qty 0 is refused");
   assert.equal(new Order({ ...ORDER_BASE, stockUsed: [{ itemId: ITEM, qty: 1 }] }).validateSync(), undefined, "landmark: 1 is fine");
+});
+
+// ── StockEntry (Slice 4) ─────────────────────────────────────────────────────
+
+const WASTE_DOC = {
+  kind: "waste",
+  date: "2026-11-10",
+  lines: [{ itemId: ITEM, qty: -500 }],
+  reason: "Spoiled",
+  createdBy: "Asha",
+  createdById: "u1",
+  clientRef: "9b2f6a1e-0c43-4f1b-8a52-3d6f1c0e7a11",
+};
+
+test("StockEntry: indexes - clientRef unique, the date/_id list index, supplierId partial; no TTL", () => {
+  const indexes = stockEntrySchema.indexes();
+  const find = (keys: object) => indexes.find(([k]) => JSON.stringify(k) === JSON.stringify(keys));
+  assert.equal(stockEntrySchema.path("clientRef").options.unique, true, "clientRef is unique");
+  const list = find({ date: -1, _id: -1 });
+  assert.ok(list, "the date/_id index is declared");
+  assert.equal(list[1].name, "date_-1__id_-1");
+  const supplier = find({ supplierId: 1, date: -1 });
+  assert.ok(supplier, "the supplier index is declared");
+  assert.deepEqual(supplier[1].partialFilterExpression, { supplierId: { $exists: true } });
+  assert.ok(indexes.every(([, o]) => o.expireAfterSeconds === undefined), "no TTL index");
+});
+
+test("StockEntry: the kind and reason enums refuse unknown values; a minimal waste doc validates", () => {
+  assert.equal(new StockEntry(WASTE_DOC).validateSync(), undefined, "landmark: the waste doc validates");
+  assert.ok(new StockEntry({ ...WASTE_DOC, kind: "adjust" }).validateSync()?.errors.kind, "adjust is not a kind");
+  assert.ok(new StockEntry({ ...WASTE_DOC, reason: "Stolen" }).validateSync()?.errors.reason, "Stolen is not a reason");
+});
+
+test("StockEntry: a minimal waste doc stores no deleted / supplier / money keys; v defaults", () => {
+  const obj = new StockEntry(WASTE_DOC).toObject() as unknown as Record<string, unknown>;
+  for (const key of ["deletedAt", "deletedBy", "supplierId", "totalPaise", "paidPaise", "duePaise", "note"]) {
+    assert.equal(key in obj, false, key);
+  }
+  assert.equal(obj.v, 1);
+  assert.equal("_id" in (obj.lines as Array<Record<string, unknown>>)[0], false, "lines are embedded, no _id");
+});
+
+test("StockEntry: lines[].qty is a whole number of milli-units; money paths are Int32", () => {
+  assert.ok(new StockEntry({ ...WASTE_DOC, lines: [{ itemId: ITEM, qty: 1.5 }] }).validateSync()?.errors["lines.0.qty"]);
+  assert.equal(new StockEntry({ ...WASTE_DOC, lines: [{ itemId: ITEM, qty: -2000 }] }).validateSync(), undefined, "landmark: negative is legal");
+  for (const money of ["totalPaise", "paidPaise", "duePaise"]) {
+    assert.equal(stockEntrySchema.path(money).instance, "Int32", money);
+  }
+  assert.equal(stockEntrySchema.path("lines.ratePaise").instance, "Int32");
+  assert.equal(stockEntrySchema.path("lines.amountPaise").instance, "Int32");
 });

@@ -65,10 +65,12 @@ const SITES: Array<[string, string, string, string, boolean]> = [
   ["lib/print-printers.ts", "export async function createPrinter(", "Printer", "Printer.create(", false],
   // Inventory lite Slice 3: the one-tap own-stock upsert (its connect runs first, in trackOwnStock).
   ["lib/inventory/stock-use-write.ts", "upsertItem: async (filter, update) => {", "StockItem", "StockItem.findOneAndUpdate(", false],
+  // Inventory lite Slice 4: the entry insert (unique clientRef index) inside the entries-write default ports.
+  ["lib/inventory/entries-write.ts", "insert: async (doc) => {", "StockEntry", "StockEntry.create(", false],
 ];
 
-test("(c) each of the 13 sites awaits modelReady(<its model>) exactly once: after its own connectDB(), before its write", () => {
-  assert.equal(SITES.length, 13, "the table lists the 13 sites");
+test("(c) each of the 14 sites awaits modelReady(<its model>) exactly once: after its own connectDB(), before its write", () => {
+  assert.equal(SITES.length, 14, "the table lists the 14 sites");
   for (const [rel, start, model, write, connects] of SITES) {
     const src = code(rel);
     const call = `await modelReady(${model});`;

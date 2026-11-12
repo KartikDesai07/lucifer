@@ -1,12 +1,16 @@
 import { z } from "zod";
 import {
+  STOCK_ENTRY_NOTE_MAX_LEN,
+  STOCK_ENTRY_PAGE_MAX,
   STOCK_ITEM_NAME_MAX_LEN,
   STOCK_QTY_MAX,
   STOCK_QTY_MAX_MILLI,
   STOCK_UNITS,
   STOCK_USE_MAX_LINES,
+  WASTE_REASONS,
 } from "../inventory";
 import { MAX_VARIATIONS, VARIATION_NAME_MAX_LEN } from "../constants";
+import { expenseDateSchema } from "./expense.schema";
 import { objectIdString } from "./object-id.schema";
 
 // Inventory lite, Slice 2 (docs/superpowers/plans/2026-11-10-inventory-lite.md): the write surfaces of
@@ -95,6 +99,60 @@ export const stockUseSchema = z
 // POST /api/products/[id]/stock-use/own (admin): the one tap that makes a menu item its own stock item (a store or
 // dairy item IS its stock), counted in `unit`. One sold = one unit taken.
 export const ownStockSchema = z.object({ unit: z.enum(STOCK_UNITS).default("pcs") }).strict();
+
+// Slice 4: POST /api/inventory/entries. A wastage (any signed-in account: staff log what was thrown away) takes
+// `qtyMilli` out of stock; a count (admin) sets the stock to `countedMilli`, and the entry records the change it made.
+// Both are in the item's OWN unit (integer milli-units), and both are idempotent on `clientRef` (one per opened sheet).
+// The route checks that `date` is inside the allowed window (it needs "today"); this only checks the shape.
+// A note of "" is no note.
+const stockEntryNoteSchema = z
+  .string()
+  .trim()
+  .max(STOCK_ENTRY_NOTE_MAX_LEN, `Keep the note to ${STOCK_ENTRY_NOTE_MAX_LEN} characters or fewer`);
+
+const wasteEntrySchema = z
+  .object({
+    kind: z.literal("waste"),
+    itemId: objectIdString,
+    qtyMilli: z.number().int(DECIMALS).min(1, "Enter an amount above 0").max(STOCK_QTY_MAX_MILLI, TOO_MUCH),
+    reason: z.enum(WASTE_REASONS),
+    date: expenseDateSchema,
+    note: stockEntryNoteSchema.optional(),
+    clientRef: z.string().uuid(),
+  })
+  .strict();
+
+const countEntrySchema = z
+  .object({
+    kind: z.literal("count"),
+    itemId: objectIdString,
+    countedMilli: openingQtyMilliSchema,
+    date: expenseDateSchema,
+    note: stockEntryNoteSchema.optional(),
+    clientRef: z.string().uuid(),
+  })
+  .strict();
+
+export const createStockEntrySchema = z.discriminatedUnion("kind", [wasteEntrySchema, countEntrySchema]);
+
+/**
+ * The entries list's page cursor: the last row's "<date>_<id>" (the list is sorted by date, then id, newest first).
+ * The server hands it out as `nextBefore`; the client sends it back untouched.
+ */
+export const STOCK_ENTRY_CURSOR_PATTERN = /^\d{4}-\d{2}-\d{2}_[0-9a-f]{24}$/;
+
+// GET /api/inventory/entries (admin): ?before=<cursor>&limit=<1..50>.
+export const stockEntryListQuerySchema = z
+  .object({
+    before: z.string().regex(STOCK_ENTRY_CURSOR_PATTERN, "Invalid page").optional(),
+    limit: z.coerce.number().int().min(1).max(STOCK_ENTRY_PAGE_MAX).optional(),
+  })
+  .strict();
+
+export type CreateStockEntryInput = z.infer<typeof createStockEntrySchema>;
+export type WasteEntryInput = Extract<CreateStockEntryInput, { kind: "waste" }>;
+export type CountEntryInput = Extract<CreateStockEntryInput, { kind: "count" }>;
+export type StockEntryListQuery = z.infer<typeof stockEntryListQuerySchema>;
 
 export type StockUseInput = z.infer<typeof stockUseSchema>;
 export type StockUseLineInput = StockUseInput["lines"][number];

@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { STOCK_ITEM_NAME_MAX_LEN, STOCK_UNITS, STOCK_UNIT_LABEL, formatQty, isStockUnit } from "@pos/shared/inventory";
 import { useCreateStockItem, useUpdateStockItem } from "@/hooks/use-inventory";
+import type { StockAdjustKind } from "@/lib/inventory/stock-adjust-form";
 import {
   buildCreateInput,
   buildUpdateInput,
@@ -14,19 +15,18 @@ import {
 } from "@/lib/inventory/stock-item-form";
 import {
   MENU_EDITOR_ARCHIVE_CLASS,
-  MENU_EDITOR_CELL_RIGHT_CLASS,
   MENU_EDITOR_HINT_CLASS,
   MENU_EDITOR_INPUT_CLASS,
-  MENU_EDITOR_NUMBER_CLASS,
-  MENU_EDITOR_PRICE_BOX_CLASS,
   MENU_EDITOR_SELECT_CLASS,
 } from "@/lib/menu-editor-layout";
 import { MENU_SELECT_TRIGGER_CLASS } from "@/lib/menu-layout";
+import { SETTINGS_OUTLINE_BUTTON_CLASS } from "@/lib/settings-card-layout";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EditorField } from "@/components/products/EditorField";
 import { ItemEditorFooter, ItemEditorFrame } from "@/components/products/ItemEditorFrame";
+import { QtyBox } from "@/components/inventory/QtyBox";
 import type { StockItemDto } from "@/types/inventory";
 
 /** Shown in the unit cell before a unit is picked. */
@@ -39,43 +39,14 @@ interface StockItemSheetProps {
   item: StockItemDto | null;
   /** Archive stock item: the page opens its confirm over the editor. */
   onArchive: (item: StockItemDto) => void;
-}
-
-interface QtyBoxProps {
-  id: string;
-  value: string;
-  onChange: (text: string) => void;
-  unitCode: string;
-  invalid: boolean;
-}
-
-// A typed quantity with the item's unit after it (the Discount field's "%" box). Text, not a number input: the
-// form turns it into milli-units itself, so "1.5", ".5" and "2" all work and a mouse wheel never nudges it.
-function QtyBox({ id, value, onChange, unitCode, invalid }: QtyBoxProps) {
-  return (
-    <div className={MENU_EDITOR_PRICE_BOX_CLASS}>
-      <input
-        id={id}
-        type="text"
-        inputMode="decimal"
-        autoComplete="off"
-        placeholder="0"
-        value={value}
-        aria-invalid={invalid}
-        className={MENU_EDITOR_NUMBER_CLASS}
-        onChange={(e) => onChange(e.target.value)}
-      />
-      <span aria-hidden="true" className={MENU_EDITOR_CELL_RIGHT_CLASS}>
-        {unitCode}
-      </span>
-    </div>
-  );
+  /** Count stock / Log wastage: the page closes this editor and opens the adjust sheet for the item. */
+  onAdjust: (item: StockItemDto, kind: StockAdjustKind) => void;
 }
 
 // The Add / Edit stock item editor. The unit is picked once, when the item is added, and is read-only after that
 // (stock is counted in it); an edit changes only the name and the low-stock line. A stock number is never typed
 // on an edit: it moves with sales.
-export function StockItemSheet({ open, onOpenChange, item, onArchive }: StockItemSheetProps) {
+export function StockItemSheet({ open, onOpenChange, item, onArchive, onAdjust }: StockItemSheetProps) {
   const create = useCreateStockItem();
   const update = useUpdateStockItem();
   const isEdit = item !== null;
@@ -164,9 +135,19 @@ export function StockItemSheet({ open, onOpenChange, item, onArchive }: StockIte
       </EditorField>
 
       {item && (
-        <button type="button" className={MENU_EDITOR_ARCHIVE_CLASS} disabled={saving} onClick={() => onArchive(item)}>
-          Archive stock item
-        </button>
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" className={SETTINGS_OUTLINE_BUTTON_CLASS} disabled={saving} onClick={() => onAdjust(item, "count")}>
+              Count stock
+            </button>
+            <button type="button" className={SETTINGS_OUTLINE_BUTTON_CLASS} disabled={saving} onClick={() => onAdjust(item, "waste")}>
+              Log wastage
+            </button>
+          </div>
+          <button type="button" className={MENU_EDITOR_ARCHIVE_CLASS} disabled={saving} onClick={() => onArchive(item)}>
+            Archive stock item
+          </button>
+        </>
       )}
     </ItemEditorFrame>
   );

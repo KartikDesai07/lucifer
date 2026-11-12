@@ -1,16 +1,17 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiGet, apiSend } from "@/lib/api-client";
-import type { CreateStockItemInput, UpdateStockItemInput } from "@/schemas";
-import type { StockItemDto } from "@/types/inventory";
+import type { CreateStockEntryInput, CreateStockItemInput, UpdateStockItemInput } from "@/schemas";
+import type { StockEntryDto, StockEntryPageDto, StockItemDto } from "@/types/inventory";
 
 // Inventory lite, Slice 2: the stock items. Every write refreshes the list; a failed update refreshes it too, so
 // the editor's next look is the current row (the item may be gone or renamed meanwhile).
 export const INVENTORY_KEYS = {
   all: ["inventory"] as const,
   items: ["inventory", "items"] as const,
+  entries: ["inventory", "entries"] as const,
 };
 
 /** Stock moves with every settled bill, so the list is only briefly fresh; it also refetches when the tab regains focus. */
@@ -50,6 +51,56 @@ export function useUpdateStockItem() {
     onError: (error: Error) => {
       toast.error(error.message);
       void qc.invalidateQueries({ queryKey: INVENTORY_KEYS.items });
+    },
+  });
+}
+
+// Slice 4: wastage, counts and the entries history. A wastage or count moves stock, so both lists refresh after it; on an
+// ERROR too, because a 500 ("Saved, but the stock number may be off") means the entry WAS saved.
+const refreshStockAndEntries = (qc: ReturnType<typeof useQueryClient>) => {
+  void qc.invalidateQueries({ queryKey: INVENTORY_KEYS.items });
+  void qc.invalidateQueries({ queryKey: INVENTORY_KEYS.entries });
+};
+
+/** The entries history (admin), newest first, one page at a time; `enabled` keeps staff from ever asking. */
+export function useStockEntries(enabled: boolean) {
+  return useInfiniteQuery({
+    queryKey: INVENTORY_KEYS.entries,
+    queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
+      apiGet<StockEntryPageDto>(`/api/inventory/entries${pageParam === undefined ? "" : `?before=${encodeURIComponent(pageParam)}`}`),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last: StockEntryPageDto) => last.nextBefore,
+    staleTime: STOCK_ITEMS_STALE_MS,
+    enabled,
+  });
+}
+
+export function useCreateStockEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateStockEntryInput) => apiSend<StockEntryDto>("/api/inventory/entries", "POST", input),
+    onSuccess: (_entry, input) => {
+      toast.success(input.kind === "waste" ? "Wastage logged" : "Stock count saved");
+      refreshStockAndEntries(qc);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+      refreshStockAndEntries(qc);
+    },
+  });
+}
+
+export function useDeleteStockEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiSend<{ deleted: true }>(`/api/inventory/entries/${id}`, "DELETE"),
+    onSuccess: () => {
+      toast.success("Entry deleted");
+      refreshStockAndEntries(qc);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+      refreshStockAndEntries(qc);
     },
   });
 }
