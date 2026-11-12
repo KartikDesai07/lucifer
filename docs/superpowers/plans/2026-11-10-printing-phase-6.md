@@ -940,3 +940,178 @@ Every new file ≤ 300 lines.
   leases-per-printed-slip against `main` must be read with that.
 - `hooks/use-print-host-bridge.ts` is at 298 of 300 lines; `lib/print-agent.ts` at 295.
 - The scratch DBs this session made (`pos_scratch_print_host_6a`, `_6a2`) were dropped by their runner.
+
+---
+
+# Session 6B Results (2026-11-12)
+
+Branch `feat/printing-phase-6`, not pushed, not merged. The 6A amendments test first (implementer, task review, one
+fix round), Tasks 10–14 measured by the controller on two builds, Task 15 test first (implementer, task review), Task 16
+the final review. Every measurement ran with no build, suite or subagent running.
+
+## Before the tasks
+
+- Preflight: C: 57 GB, D: 18 GB free; a clean tree on `feat/printing-phase-6` at `925b5cb`; `origin/main` still
+  `f256cce` (nothing to merge). 6A verified: its commits `6d45288`, `eab3451` … `925b5cb` present; every line budget as
+  its Results say.
+- Builds (worktrees on `D:\kd`, `link-modules.ps1`, the nocache edit, `NEXT_TELEMETRY_DISABLED=1`): the "before"
+  `D:\kd\p6b0` = `main` `0c794d6` (as the plan says), the "after" `D:\kd\p6b1` = `8539d08` (6A + the amendments;
+  Task 15 is docs only). Tools and every run's output: `D:\kd\pos-dev-keep\phase6\session-6b\` (a fresh
+  `pos_scratch_e2e_4g_p6b*` database per run).
+
+## Commits
+
+| Task | Commit | What |
+|---|---|---|
+| amendments | `8539d08` | n-1 the unnamed wake forgotten when a lease is SENT (put back when it gets no answer, unless stopped); n-2 the comment; n-3 a line's end heard inside the ack flush runs in a try and is marked ended first |
+| 15 | `49c87aa` | GO-LIVE "Existing cafes: the printing Phase 6 release", TEST-CHECKLIST "Phase 6 checks (parallel printing)", `lib/go-live-runbook-phase6.test.ts` |
+| docs | (this) | these Results |
+
+No fix wave: the final review found nothing to fix before merge.
+
+## RED → GREEN (the controller's own runs)
+
+| Change | RED | GREEN |
+|---|---|---|
+| amendments | on `925b5cb`'s sources: "a requeued wake set while a lease is in flight survives" and "a throw in a line's end inside the flush" fail; "a lease with no answer keeps its wake" passes and fails once the put-back is removed (shown); "a failed lease after stop() arms no timer" fails without the `!stopped` guard (the task review's I-1) | rules 12/12; the five agent files 120/120; the world's counts unchanged |
+| 15 | the new test 0/4 with `8539d08`'s docs | 4/4; the go-live tests 117/117; `apps/mobile` 173/173 |
+
+## Counts
+
+| | 6A end (`925b5cb`) | After the amendments (`8539d08`) | HEAD (`49c87aa`) |
+|---|---|---|---|
+| cafe `npm test` | 8379 (8378 / 0 / 1 skip) | 8383 (8382 / 0 / 1) | 8387 (8386 / 0 / 1) |
+| typecheck | 0 | 0 | 0 |
+| lint | 0 errors, 2 old warnings | 0 errors, 2 old warnings | 0 errors, 2 old warnings |
+| shared | 1090 | — | 1090 |
+| `apps/mobile` | — | — | 173 |
+| live legs | 524 / 0 (6A) | no server change | no server change |
+
+Lines: `lib/print-agent.ts` 295 → 300 (cap 300), `lib/print-lines.ts` 109 → 111, `lib/print-line-job.ts` 125 → 136,
+`lib/print-lines-rules.test.ts` 176 → 297, `lib/go-live-runbook-phase6.test.ts` 90 (new), the bridge hook 298.
+Scope: `git diff 6d45288..HEAD` touches nothing under `apps/desktop`, `packages`, `workers`, `app/api` or `models`; in
+`apps/mobile` only `TEST-CHECKLIST.md` (Task 15's doc); `lane-print.ts`, `desktop-shell.ts` and
+`print-budget.test.ts` byte for byte as at `0c794d6`.
+
+## Task 10: speed, the stuck printer and the requests (fake printers, bridge v2, 5 rounds, medians)
+
+| Run | Expected | Before (spec §5) | After (`8539d08`) | |
+|---|---|---|---|---|
+| M1 first byte Kitchen / Bar / Desserts | within +50 ms | 649 / 1,222 / 1,796 ms | 628 / 1,184 / 1,748 ms | ✅ |
+| M1 requests a round | 3 KOT acks + 0 leases; bill 1 ack | the same | 3 + 0 every round; bill 1 ack (wake and pulse counts round by round as before) | ✅ |
+| M1-slow (`--delay 2000`, `FAKE_WAIT_CLOSE=1`) last cut | ≤ 4,500 ms, Bar and Desserts drawn while Kitchen writes | 7,860 ms | 3,748 ms; Bar 1,168 / Desserts 1,727 first byte while Kitchen writes to 2,642 (overlap 5/5) | ✅ |
+| M1-stuck (Kitchen `--delay 60000`) Bar / Desserts first byte | ≤ 2,500 ms | 63,308 / 63,893 ms | 1,174 / 1,734 ms; Kitchen's cut 60,635 | ✅ |
+| M1-stuck requests a round | 3 acks + 0 leases | 5 acks + 2 leases | 3 + 0 every round | ✅ |
+| `check6b` (= `check6m`) | every job printed once, no label, no duplicate | — | 20 printed, no label, no duplicate key or KOT number, all three runs | ✅ |
+| Bytes | Kitchen 48,342, Bar / Desserts 44,382, bill 47,838 | the same | the same, every round | ✅ |
+
+The real bridge with the real agent (6A's "What 6B must know"): no device ran serially; Bar's first byte came one draw
+(~556 ms) after Kitchen's in every round, never after Kitchen's write and ack. The one-step count is in Task 13.
+
+## Task 11: the paper (S1) and the copies
+
+| Check | Expected | Measured |
+|---|---|---|
+| S1, simple mode, bridge v1 (the 4B gate's `pw-4b.mjs`, `payloads.json`) | 9/9 byte for byte | 9/9 equal ✅ |
+| S1, printers mode, bridge v2 | 9/9 | 9/9 equal ✅ |
+| Per printer, the four-printer setup | Kitchen 48,342, Bar / Desserts 44,382, bill 47,838 | the same in all 15 rounds of Task 10 ✅ |
+| KOT, `copies.kot = 2`, classic | two files, equal to each other and to the "before" build's two | 56,414 B × 2, all four equal ✅ |
+| KOT, `copies.kot = 2`, a saved design (`kot-template-qr.json`) | the same | 65,486 B × 2, all four equal ✅ |
+| Bill, `copies.bill = 2` | two files, each equal to the "before" build's (the same minute) | 51,654 B × 2, both builds side by side at 15:19, all four equal ✅ |
+
+## Task 12: the lifecycle paths end to end (printers mode, Kitchen, Bar, Desserts, a bill printer; `check6b` clean after each)
+
+| Path | Expected | Measured |
+|---|---|---|
+| Offline KOT (`context.setOffline`) | `OFFLINE · O-n` on every station printer at once; replays once; nothing twice | Kitchen / Bar / Desserts at +0.63 / +1.19 / +1.76 s; "Offline orders sent: 1"; the three jobs saved printed "(offline O-1)"; KOT number 1; nothing twice ✅ |
+| "Clear after this try" on Kitchen's slip while it writes | ends dismissed after its try; Bar untouched | the try ends without paper (Kitchen held 66 s, past the page's 65 s native timeout: "stopped answering", maybe): **dismissed "cleared while printing"**, no REPRINT; the try ends on paper: **printed** (paper wins); Bar / Desserts printed at 1.2 / 1.8 s in both ✅ |
+| A deploy's quiet reload while two lines write | waits for the last write; loads once; no REPRINT | the pulse reported a newer build from +9.5 s; Kitchen and Bar wrote to +62.7 / +63.3 s; **one** reload at +74.5 s; all three printed once, no label ✅ |
+| A navigation while two lines write | no load cuts them | a navigation to /orders at +3.3 s while Kitchen and Bar wrote 20 s: no document load (a soft navigation keeps the page), both writes and acks done, back to /pos: none ✅ |
+| A stuck printer past 30 s | "Refresh anyway" as today | at +35 s "Printing is taking long" (Wait / Refresh anyway); Refresh anyway: exactly one reload; Bar / Desserts printed at 1.3 / 1.8 s; Kitchen's slip on paper at 60.7 s and one REPRINT after its lease ran out (what the question warns) ✅ |
+| A refused printer (`--refuse` on Bar) | Bar's line held; Kitchen and Desserts print | Kitchen / Desserts at 0.69 / 1.81 s; Bar sent "no", held, tried again at +31.9 s, "1 slip waiting"; 1 lease ✅ |
+| A lost ack on one line while another prints | one REPRINT copy on that printer; nothing else twice | every epoch-1 ack of Kitchen lost on the wire; its lease ran out at 90 s; one REPRINT on Kitchen; Bar / Desserts untouched ✅ |
+
+## Task 13: the Windows app and the emulator
+
+The Windows app 2.0.2 (`apps/desktop/out`, unpackaged, scratch user data; only the OS printer list and `print()`
+faked), server = each build:
+
+| Check | Expected | Before | After |
+|---|---|---|---|
+| Two network printers (`printRaw`; Kitchen `--delay 2000`), 3 rounds | the second's first byte about one draw after the first | Bar +3.04 / 2.97 / 4.11 s (after Kitchen's write) | Kitchen +0.68 / 0.61 / 0.63 s, Bar +1.23 / 1.15 / 1.19 s ✅ |
+| A Windows printer (`printHtmlOn`, 3 s) + a network printer | the Windows printer one at a time as today | Windows 1.9 → 4.9 s, Bar 5.5 s | the same (Bar 5.46 / 5.43 / 5.79 s) ✅ |
+| One-step device, two Windows printers, the soak (neither mode, 40 orders) | leases per printed slip as today (S5) | 40 leases, 60 acks, 29 wakes, 5 pulses | **exactly the same**; 60 KOTs on paper both; 0.67 leases per printed slip both ✅ |
+
+The emulator (Pixel_7_API_33, `-no-snapshot -no-metrics -memory 4096`): the as-found app `29115bdf` (1.0) and
+WebView 154.0.8037.106 recorded; the kept 4C APK `99b5b763` (2.0.1, versionCode 20001) installed; the page from the
+6B build at `localhost:3165` (`adb reverse`); Kitchen `10.0.2.2:9101` and Bar `10.0.2.2:9102` written by the app;
+the orders came from another device through the API, so the app leased its own two slips:
+
+| Check | Expected | Measured |
+|---|---|---|
+| WebView 154, a two-station round | both print, the second about one draw after the first | one lease; Kitchen +736 ms, Bar 630 ms after Kitchen ✅ |
+| WebView 154, Kitchen `--delay 60000` | does not hold Bar | Bar 0.67 s after Kitchen's write began; the app's own write gave up at ~11 s ("stopped answering": maybe) → one REPRINT on Kitchen, the lifecycle as today ✅ |
+| Factory WebView 109.0.5414.123 | the same | Kitchen +714 ms, Bar 682 ms after; stuck: Bar 0.66 s after Kitchen's start, Kitchen maybe → one REPRINT ✅ |
+| Crash buffer | empty | 0 lines throughout ✅ |
+| Put back | as found | `29115bdf` reinstalled (sha256 checked, empty start screen), WebView 154 (`43278cd6`) back, `adb reverse` removed, the Play Store left disabled as found, `adb shell sync`, `adb emu kill` ✅ |
+
+## Task 14: the soak (`scripts/print-soak.ts` neither mode, 120 orders every 1.5 s; the harness's headless POS app on bridge v2 as the printing device of Kitchen, Bar, Desserts and the bill printer; Bar `--drop-after 2000 --drop-every 4`)
+
+| Soak | Before (`0c794d6`) | After (`8539d08`) | Ratio |
+|---|---|---|---|
+| a: the fake app cannot see a cut (like Android's TCP lane, G5) | 120 leases, 300 acks, 69 wakes, 11 pulses; 300 jobs printed | 156 leases, 300 acks, 69 wakes, 11 pulses; 300 printed | leases 1.30 |
+| b: the fake app sees a cut (a "maybe") | 120 leases, 319 acks, 87 wakes, 10 pulses; **clean**: every printer's paper = its printed jobs, Bar's 19 cuts = 19 counted = 19 REPRINT labels, no other label | 176 leases, 319 acks, 72 wakes, 11 pulses; **clean**, the same 19 / 19 / 19 | leases **1.47**; 0.59 leases per printed slip |
+
+Expected (P6-3, accepted by the owner): a backlog on a bridge-v2 device leases more than before, at most one lease
+per printed slip plus one per burst: measured 0.52–0.59 leases per printed slip, 1.30 and 1.47 times the "before"
+build's leases (the 6A random run predicted 1.64); acks the same; inside `print-budget`'s model.
+
+## Task 15: the docs
+
+GO-LIVE "Existing cafes: the printing Phase 6 release" (web only; the demo cafe first with the Phase 6 checks; P6-4:
+a cafe where one phone prints two Bluetooth printers stays on the build before Phase 6 until the owner's check on such
+a phone; the measured times; P6-3's lease cost; the rollback from the admin panel) and TEST-CHECKLIST "Phase 6 checks
+(parallel printing)", pinned by `lib/go-live-runbook-phase6.test.ts`. Task review: Approved (0 C / 0 I).
+
+## The final review (Task 16)
+
+Claude Fable (the Agent tool's `fable` model), read-only, `6d45288..49c87aa` with the spec, the plan, the Review Focus,
+the ledger and these measurements: **"Ready to merge? Yes"**, 0 Critical / 0 Important / 7 Minor, none before merge.
+It traced every Review Focus point and the amendment through every exit (an answer, no answer, `stop()` during the
+flush or the lease, a throw inside the flusher's hook) and found no path that prints a slip twice, loses one, acks
+wrongly, stalls a line or leaves a timer after `stop()`; it ran 12 Phase 6 test files (129 tests, 0 failed); every
+ledger minor triaged "not before merge", every ruling agreed. Its minors, carried: m-1 an offline slip's lane write can
+run beside a device-line slip on the same physical printer (printers mode + a device-line slip + an outage; the app's
+BUSY refuses the second write before any byte: an unlabelled retry 30 s later, never double paper); m-2 the dev-only
+remount path keeps slips answered "no" in `pendingRef` (a one-token hardening at `use-print-host-bridge.ts:284`); m-3 a
+requeued wake from a lease's own pre-send flush is still forgotten at the send (always covered by `retryAt`, a hold-end
+wake or the line's want); m-4 the n-3 guard covers the flush path only; m-5 comments saying "today's cycle" will mean
+"before Phase 6" after the merge; m-6 no headroom: `print-agent.ts` 300/300, the bridge hook 298, `desktop-lan.ts`
+300 (the next change splits first); m-7 these Results (done here).
+
+## Differences from the plan, and why (the controller's rulings)
+
+1. **Amendment n-1** also puts the forgotten wake back when the lease gets no answer (unless the agent stopped
+   meanwhile), so a failed lease behaves as before the move; the task review's I-1 added the `!stopped` guard.
+2. **Harness, not product:** the seed has tables T-1 … T-8 (the first batch used T-9); the deploy run holds the
+   writes 62 s (66 s passed the page's own 65 s native timeout, which ends a write "maybe", today's rule); a refused
+   printer needs `FAKE_WAIT_CLOSE=1` (without it the fake app cannot see a reset, like G5); "clear after this try" was
+   run on both branches; the Windows app's page drains only with a PC printer chosen, so the network-printer runs
+   choose a spare one; the emulator's orders came from another device through the API; a WebView switch clears the
+   page's storage, so the app's new device id (read from the pulse by a counting proxy) became the printers' writer.
+3. **A pre-existing race (not Phase 6) the runs met:** on a fresh database, a server process whose Station or Printer
+   model was compiled before its database connection opened answers 500 to the default station's seed and to printer
+   creates for its whole life (`Model.init()` memoized with `bufferCommands: false`; `lib/print-stations.ts`
+   `seedDefaultStation`, `lib/print-printers.ts:108`, `lib/print-device.ts`, `lib/crud-route.ts`, all unchanged since
+   `0c794d6`; `lib/order-idem.ts` already avoids it with `memoizeUntilFailure`). The harness pre-seeds the default
+   station and checks the four printers after its setup (a fresh server and database otherwise). Reported to the
+   owner as its own item (a hotfix branch from `main` on his word).
+4. `apps/mobile/TEST-CHECKLIST.md` changed (a doc, named by Task 15); no app code changed (S5).
+
+## For the owner
+
+- P6-3's measured cost: 1.30 and 1.47 times the lease requests in a rush on a bridge-v2 device (≤ 0.59 per printed
+  slip); a one-step device and simple mode: the same as before.
+- The pre-existing `Model.init()` race above: its own hotfix branch, separate from Phase 6.
+- P6-4: the two-Bluetooth-printers phone check is the GO-LIVE step before any such cafe.
+- Scratch databases `pos_scratch_e2e_4g_p6b*` (47): `D:\kd\pos-dev-keep\phase6\session-6b\drop-p6b.mjs` drops them.
