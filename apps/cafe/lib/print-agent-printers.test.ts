@@ -7,7 +7,6 @@ import type { PrinterConfig } from "@pos/shared/print-printers";
 import { stripComments } from "@/lib/source-pin-utils";
 import { PRINT_JOBS_FOR_ME_LIMIT } from "@pos/shared/print-agent-wire";
 import {
-  PRINTER_NOT_LOCAL_MESSAGE,
   agentPrintersOf,
   dotPrintersOf,
   jobsForMeLeasable,
@@ -16,17 +15,13 @@ import {
   nativeIdOf,
   ownPrinterInSetup,
   PRINTER_TAKEOVER_MESSAGE,
-  printJobCopies,
   printerIsLocal,
   printerListLooksStale,
   readyPrinterIdsOf,
   takeoverPrintersOf,
   type DesktopPrinters,
 } from "@/lib/print-agent-printers";
-import type { PrintAgentResult } from "@/lib/print-agent-types";
 import { DESKTOP_LAN_CHECK_MS } from "@/lib/printer/desktop-lan";
-import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
-import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
 import type { DevicePrinter } from "@/lib/printer/device-printer-store";
 
 // Phase 2 Session 2C (spec §9.3, plan decision 1): the printers this device writes, and which of them it prints
@@ -395,37 +390,15 @@ test("PIN (2C, the 2A gate's Important 1): the agent polls the wake by printAgen
   assert.match(agent, /bumpPrintWakeBudget\(mergePrintWakeBudget\(readPrintWakeBudget\(\), memory, dayKey\), dayKey, capRef\.current\)/, "the constant is no longer the only cap");
 });
 
-function printsWith(results: PrintAgentResult[]) {
-  const calls: number[] = [];
-  const once = async (): Promise<PrintAgentResult> => {
-    calls.push(calls.length + 1);
-    return results.shift() ?? { ok: true };
-  };
-  return { calls, once };
-}
-
-// Session 2C (spec §6.3 copies, plan decision 2): all copies of a slip are one job, written in its one lease.
-test("printJobCopies: only this device's printer; every copy in one lease; a failure after the first copy may be on paper", async () => {
-  const away = printsWith([]);
-  const refused = await printJobCopies({ printerId: "p-bar" }, ["p-counter"], away.once);
-  assert.deepEqual([away.calls.length, refused.ok ? null : printWriteOutcomeOf(refused.error)], [0, { sent: "no", permanent: false, message: PRINTER_NOT_LOCAL_MESSAGE }], "not this device's printer: refused, nothing sent, never counted");
-  const simple = printsWith([]);
-  assert.deepEqual([await printJobCopies({}, [], simple.once), simple.calls.length], [{ ok: true }, 1], "the device's own simple-mode line: one copy, as today");
-  const two = printsWith([]);
-  assert.deepEqual([await printJobCopies({ printerId: "p-counter", copies: 2 }, ["p-counter"], two.once), two.calls.length], [{ ok: true }, 2], "both copies, back to back");
-  const firstFails = printsWith([{ ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) }]);
-  const first = await printJobCopies({ printerId: "p-counter", copies: 2 }, ["p-counter"], firstFails.once);
-  assert.deepEqual([firstFails.calls.length, first.ok ? null : printWriteOutcomeOf(first.error).sent], [1, "no"], "the first copy's refusal stands: nothing reached paper");
-  const secondFails = printsWith([{ ok: true }, { ok: false, error: new PrintWriteError(PRINTER_WRITE_FAILED_MESSAGE, "no") }]);
-  const second = await printJobCopies({ printerId: "p-counter", copies: 2 }, ["p-counter"], secondFails.once);
-  assert.deepEqual(second.ok ? null : printWriteOutcomeOf(second.error), { sent: "maybe", permanent: false, message: PRINTER_WRITE_FAILED_MESSAGE }, "a copy is on paper already: maybe (its REPRINT repeats every copy)");
-});
-
 test("PIN (2C): the agent prints a leased job through printJobCopies on this device's printers; the station line reaches the paper", () => {
   const agent = src("apps/cafe/lib/print-agent-print.ts"); // Phase 6 Task 6 (spec §9 ruling 12) deliberately changed: the print step moved out of the hook into lib/print-agent-print.ts (agentPrint, its slip through printSlipOnce)
   // Session 2E: the same call, inside a body that looks a failed Windows printer up again.
   // Session 3B (deliberate change): the app printer it writes to is marked meanwhile, so the page never removes it mid-print.
-  assert.match(agent, /return async \(job\) => \{[\s\S]*?const result = await printJobCopies\(job, seams\.ready\(\), \(\) => printSlipOnce\(seams, job, 1\)\);/);
+  // Phase 6 Task 7 (spec §9 ruling 24) deliberately changed: printJobCopies moved to lib/print-copies.ts and takes the writes of one draw
+  // (a KOT's copies on a lane are drawn once, written N times) plus whether the job's bytes are drawn once (copiesDrawnOnce).
+  assert.match(agent, /return async \(job\) => \{[\s\S]*?const result = await printJobCopies\(job, seams\.ready\(\), \(writes\) => printSlipOnce\(seams, job, writes\), copiesDrawnOnce\(job, target\)\);/);
+  assert.match(src("apps/cafe/lib/print-copies.ts"), /export async function printJobCopies\(/, "the copies step lives in lib/print-copies.ts (Task 7)");
+  assert.ok(!src("apps/cafe/lib/print-agent-printers.ts").includes("printJobCopies"), "and no longer in lib/print-agent-printers.ts");
   const kot = src("apps/cafe/components/pos/KOTReceipt.tsx");
   const title = kot.indexOf("KITCHEN ORDER");
   const line = kot.indexOf("{stationLine && (");

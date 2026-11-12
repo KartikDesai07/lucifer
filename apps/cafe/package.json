@@ -622,6 +622,7 @@
     "lib/print-direct.test.ts",
     "lib/print-printer-jobs.test.ts",
     "lib/print-agent-printers.test.ts",
+    "lib/print-copies.test.ts",
     "lib/print-printer-test.test.ts",
     "lib/print-bill-printer.test.ts",
     "lib/print-setup-form.test.ts",

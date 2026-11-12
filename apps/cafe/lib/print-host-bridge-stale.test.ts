@@ -28,8 +28,8 @@ const load = createRequire(__filename);
 const { usePrintHostBridge } = load("@/hooks/use-print-host-bridge") as typeof import("@/hooks/use-print-host-bridge");
 
 const native = (n: number): SlipPrintTarget => ({ paper: "80mm", nativeId: `tcp:127.0.0.1:910${n}` });
-const slipOf = (name: string, target?: SlipPrintTarget): HostPrintSlip =>
-  ({ surface: "kot", documentTitle: name, kotVariant: "kot", order: {}, jobId: name, ...(target !== undefined ? { target } : {}) }) as unknown as HostPrintSlip;
+const slipOf = (name: string, target?: SlipPrintTarget, writes?: number): HostPrintSlip =>
+  ({ surface: "kot", documentTitle: name, kotVariant: "kot", order: {}, jobId: name, ...(target !== undefined ? { target } : {}), ...(writes !== undefined ? { writes } : {}) }) as unknown as HostPrintSlip;
 
 interface Held {
   promise: Promise<void>;
@@ -54,7 +54,7 @@ function scene(t: TestContext, mounted = true) {
   return {
     hook,
     heard,
-    queue: (name: string, target?: SlipPrintTarget) => hook.act(() => void handles.set(name, hook.result().queueSlip(slipOf(name, target), say(name)))),
+    queue: (name: string, target?: SlipPrintTarget, writes?: number) => hook.act(() => void handles.set(name, hook.result().queueSlip(slipOf(name, target, writes), say(name)))),
     withdraw: (name: string) => hook.act(() => void handles.get(name)?.withdraw()),
     /** What lib/printer/lane-print.ts does for a slip on a lane: its bytes through laneWrite, then the surface's end. */
     handOff: (target: SlipPrintTarget, write: Held) => void laneWrite(laneKeyOfTarget(target) ?? "", () => write.promise),
@@ -114,4 +114,21 @@ test("withdraw: a current slip taken back before its dispatch is never drawn by 
   assert.deepEqual(stubs.printed, ["kot:B"], "A is never drawn; B is drawn by its own run");
   s.finish();
   assert.deepEqual(s.heard, [`A:${PRINT_HOST_NOT_DRAWN_MESSAGE}`, "B:printed"], "A: sent no; B: its own end");
+});
+
+// Phase 6 Task 7 (spec §9 ruling 24): a KOT's copies are one draw; the bytes the surface hands to the lane are written
+// `slip.writes` times, back to back, and the caller hears one answer after the last.
+test("a slip asked for 2 writes writes the same bytes twice on its lane", async (t) => {
+  const s = scene(t);
+  const writes: string[] = [];
+  const once = (): Promise<void> => {
+    writes.push("bytes");
+    return Promise.resolve();
+  };
+  s.queue("K", native(1), 2);
+  void laneWrite(laneKeyOfTarget(native(1)) ?? "", once);
+  s.finish();
+  await s.settled();
+  assert.deepEqual(writes, ["bytes", "bytes"], "the one draw's bytes are written twice, in order");
+  assert.deepEqual(s.heard, ["K:printed"], "the caller hears one answer, after the last write");
 });

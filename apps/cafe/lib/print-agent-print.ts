@@ -1,6 +1,6 @@
 import type { LeasedPrintJob } from "@pos/shared/print-agent-wire";
 import { markPrinterWriting } from "@/lib/print-agent-seams";
-import { printJobCopies } from "@/lib/print-agent-printers";
+import { copiesDrawnOnce, printJobCopies } from "@/lib/print-copies";
 import { PRINT_AGENT_SLIP_DEADLINE_MS, printAgentSlipOf } from "@/lib/print-agent-slip";
 import type { PrintAgentResult } from "@/lib/print-agent-types";
 import { PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip, type SlipPrintTarget } from "@/lib/print-host-slips";
@@ -60,10 +60,11 @@ export function printSlipOnce(seams: AgentPrintSeams, job: LeasedPrintJob, write
  *  removal of a network printer it added waits for the print (hooks/use-agent-printers.ts). */
 export function agentPrint(seams: AgentPrintSeams): (job: LeasedPrintJob) => Promise<PrintAgentResult> {
   return async (job) => {
-    const nativeId = job.printerId === undefined ? undefined : seams.targets()[job.printerId]?.nativeId;
+    const target = job.printerId === undefined ? undefined : seams.targets()[job.printerId];
+    const nativeId = target?.nativeId;
     if (nativeId !== undefined) markPrinterWriting(nativeId, true);
     try {
-      const result = await printJobCopies(job, seams.ready(), () => printSlipOnce(seams, job, 1));
+      const result = await printJobCopies(job, seams.ready(), (writes) => printSlipOnce(seams, job, writes), copiesDrawnOnce(job, target));
       if (!result.ok && job.printerId !== undefined && seams.targets()[job.printerId]?.printerName !== undefined) void refreshDesktopPrinterChosen();
       return result;
     } finally {
