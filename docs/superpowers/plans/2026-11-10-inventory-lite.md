@@ -623,3 +623,40 @@ recipes; size override ignored; sum → overwrite; Pay Now gate removed; `stockU
     `verify:inventory:stock-use:live` 12/12, `verify:model-ready:live` 14/14
 - **Next =** inventory lite is complete (6 of 6 slices). The owner deploys and checks Slices 4-6 on devices; then the
   owner picks the next work (open call: the table-free move on cancel).
+
+### Table-free move on cancel (s119, 2026-11-13): DONE
+
+- Owner checks: deployed 9c7474b, Suppliers pay + history checked on devices, all fine (so Slices 4-6 are live). Owner
+  call on the table-free move: yes, move it. The next work: the owner will say.
+- Problem (seen in s114): on cancel, the ledger reversal is not inside a try. A throw there answers 500 after the
+  cancel landed, and the retry meets the "already cancelled" 409, so the table free and the summary cache drops below it
+  never ran. A Pay Now bill keeps its table (the POS sends `tableNo` on Pay Now; the create occupies it whatever the
+  status), so cancelling it left the table Occupied, holding a cancelled bill, until freed by hand.
+- Change (`app/api/orders/[id]/cancel/route.ts`): order is now stock add-back, stamps, card, points, table free, the
+  two summary drops, then the ledger. The table write sits in its own swallowing try like the give-backs, so its failure
+  can never skip the ledger reversal; `cache.del("tables")` runs after it either way (a write that threw may have
+  landed). The ledger block still drops today's summary again when it wrote (the early drop ran before it). Only
+  today's summary is ever cached, so the early drop of a past day's key is harmless. No request or response shape
+  changed; one behaviour did: a table write that throws now answers 200 (the table stays held, as before) instead of a
+  500 whose retry was the 409. `useCancelOrder` only toasts on error and refetches orders, tables and customers either way.
+- Test first: live legs k4 and k5 in `scripts/reward-card-use-live-legs-cancel.ts` (run by `verify:reward-card-use:live`).
+  k4: a Pay Now table bill, the ledger's `$inc` of visits rejects on cancel; expects 500, Cancelled, ledger untouched,
+  retry 409, and the table freed. RED on the old route (the table stayed Occupied), GREEN after. k5: same bill,
+  `Table.findOneAndUpdate` rejects on cancel; expects 200, Cancelled, visits and spend reversed, table still held. RED
+  on the old route (500), GREEN after.
+- Pins: the inventory `PIN cancel` now asserts points < table free < today's summary drop < order-day summary drop <
+  ledger, all at the follow-ups' own depth; the table write opens its own try with an empty catch, then the tables drop;
+  one table write, filtered on this order; the ledger re-drops today's summary before the finally. The realtime pin's
+  cancel `last` landmark is now the ledger's own summary drop.
+- Mutation pass (main thread, alone, byte backup, sha1 restore per mutant, tree diff the same before and after): 8 of 8
+  killed (group back below the ledger, summary drops below it, table write unswallowed, catch rethrows, tables drop only
+  on success, ledger re-drop removed, early today drop removed, table filter loses the order guard). The last one first
+  SURVIVED (an old gap in the moved block); a pin was added and it is killed.
+- Review: one opus reviewer, no HIGH/MED. One LOW (the early today's-summary drop was unpinned) fixed with the pin above.
+- Chain, run from an `F:` working directory: shared tsc 0, 1119/1119; cafe tsc 0, lint 0 errors (the 2 old warnings in
+  `lib/masters-blob.test.ts`), 8638/8638; hub tsc 0, lint 0, 288/288; live `verify:reward-card-use:live` 53/53 (k4, k5
+  new), `verify:orders:live` 153/153, `verify:inventory:live` 15/15, `verify:reward-points:live` 20/20,
+  `verify:reward-redeem:live` 26/26, `verify:reward-assign:live` 22/22, `verify:reward-progress:live` 17/17.
+- Rollback: statement order only; a revert puts back the old order (a ledger throw would again leave the table held).
+- **Next =** the owner deploys and checks a cancel of a Pay Now table bill (the table frees); then the owner picks the
+  next work.
