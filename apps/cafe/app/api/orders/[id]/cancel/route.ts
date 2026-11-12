@@ -65,19 +65,9 @@ export async function POST(req: Request, { params }: Params) {
       // Inventory lite - a cancelled SETTLED bill puts back exactly the stock its settle (or Pay Now) took out: the
       // snapshot stored on the order, never re-derived from today's recipes. Gated on the status the CAS replaced, so
       // an open tab (which took nothing) puts nothing back, and a repeat cancel never gets here (409 above). The CAS
-      // has LANDED, and addBackStockQuietly swallows its own failure; it runs FIRST so a ledger throw below (a 500
-      // whose retry meets the "already cancelled" 409) can never skip it.
+      // has LANDED, and addBackStockQuietly swallows its own failure; it runs FIRST (the stamp / card / points
+      // give-backs next) so a ledger throw below (a 500 whose retry meets the "already cancelled" 409) can never skip it.
       if (old.status === "Completed" && updated.stockUsed?.length) await addBackStockQuietly(updated.stockUsed);
-
-      // ledgerContribution returns zero for a Cancelled order, so this reverses a
-      // settled bill's visit/spend/due through the same delta a delete used.
-      const touched = await reconcileLedger(old, updated);
-      if (touched.size) {
-        cache.del("customers");
-        // Ledger-wide Outstanding Dues KPI lives in TODAY's summary regardless of
-        // this (possibly prior-day) order's own date.
-        cache.del(orderSummaryCacheKey());
-      }
 
       // CB-5B S6 (D2) — a cancelled bill gives the stamps back. The cancel CAS
       // above has ALREADY LANDED, so this runs against a definite, committed
@@ -135,7 +125,7 @@ export async function POST(req: Request, { params }: Params) {
           // row, so there is nothing to invalidate (mirrors the earn-side
           // grant's own `if (granted.granted)` shape in settle/route.ts).
           //
-          // This is a SEPARATE del from the `if (touched.size)` one above, and
+          // This is a SEPARATE del from the `if (touched.size)` one below, and
           // it is not redundant: the commonest S6 path is a reward claimed at
           // order-taking on an Unpaid/Pending tab that is cancelled before
           // payment, and ledgerContribution (lib/order.ts:79-80) returns zero
@@ -192,6 +182,18 @@ export async function POST(req: Request, { params }: Params) {
         } catch {
           // Deliberately empty - see above. The points stay spent; the cancel stands.
         }
+      }
+
+      // ledgerContribution returns zero for a Cancelled order, so this reverses a
+      // settled bill's visit/spend/due through the same delta a delete used. It runs
+      // AFTER every give-back above (owner decision s113): a throw here is a 500 whose
+      // retry meets the "already cancelled" 409, so a give-back below it could be lost.
+      const touched = await reconcileLedger(old, updated);
+      if (touched.size) {
+        cache.del("customers");
+        // Ledger-wide Outstanding Dues KPI lives in TODAY's summary regardless of
+        // this (possibly prior-day) order's own date.
+        cache.del(orderSummaryCacheKey());
       }
 
       // Free the table only if it still points at this order.

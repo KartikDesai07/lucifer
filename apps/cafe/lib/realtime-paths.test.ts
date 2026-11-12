@@ -553,7 +553,9 @@ test("PIN: the publish-gap handlers publish exactly once on the landed path, aft
       last: "cache.del(orderSummaryCacheKey(new Date(order.createdAt)));", ret: "return success({ deleted: true });",
     },
     {
-      rel: CANCEL_ROUTE, verb: "POST", guard: 'if (!updated) return failure("Order changed', first: "await reconcileLedger(old, updated);",
+      // The cancel's first follow-up is the stock add-back (the give-backs then the ledger follow it, each give-back
+      // in its own swallowing try, so the nearest `try {` above the ledger is no longer the follow-ups' own).
+      rel: CANCEL_ROUTE, verb: "POST", guard: 'if (!updated) return failure("Order changed', first: "await addBackStockQuietly(updated.stockUsed);",
       last: "cache.del(orderSummaryCacheKey(new Date(updated.createdAt)));", ret: "return success(updated);",
     },
     { rel: TABLE_ROUTE, verb: "PUT", guard: ": notFound(TABLE_NOT_FOUND_ERROR);", last: "cache.del(CACHE_KEY);", ret: "return success(table);" },

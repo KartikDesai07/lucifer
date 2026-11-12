@@ -3,7 +3,8 @@
  * real mongod: claim -> price -> settle, the claim race, the use-by instant, identity, cancel / release, scope money, the
  * category snapshot, free-item at settle, reassign, one reward per bill, the QR submit + accept, void / table move /
  * QR add-round, the strict-schema round trip, the diner-accounts gate and the zero-match refusal, then the S5b money legs
- * (minBill on the bill without the reward, promo + GST preset, same-key retry at the reward-resolve step).
+ * (minBill on the bill without the reward, promo + GST preset, same-key retry at the reward-resolve step), and a
+ * cancel whose ledger reversal throws still giving the stamps / card / points back (k1-k3).
  *
  *   npm run verify:reward-card-use:live          (defaults to the local stand-in)
  *   MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_reward_card_use npm run verify:reward-card-use:live
@@ -25,6 +26,7 @@ import { runQrLegs } from "./reward-card-use-live-legs-qr";
 import { runMoneyLegs } from "./reward-card-use-live-legs-money";
 import { runAcceptLegs } from "./reward-card-use-live-legs-accept";
 import { runChargeLegs } from "./reward-card-use-live-legs-charges";
+import { runCancelLedgerThrowLegs } from "./reward-card-use-live-legs-cancel";
 
 const SCRATCH_PREFIX = "pos_scratch_";
 const DEFAULT_URI = `mongodb://127.0.0.1:27017/${SCRATCH_PREFIX}reward_card_use`;
@@ -67,6 +69,7 @@ async function main(): Promise<void> {
     await runMoneyLegs(ctx);
     await runAcceptLegs(ctx);
     await runChargeLegs(ctx);
+    await runCancelLedgerThrowLegs(ctx);
   } finally {
     // Wait for every model's background index build, or a build landing after the drop leaves an empty database behind.
     await Promise.allSettled(Object.values(mongoose.models).map((model) => model.init()));
