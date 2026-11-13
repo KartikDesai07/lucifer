@@ -143,7 +143,7 @@ export function RemovedItemsTable({ rows, loading, onRowClick, total }: ListTabl
         ],
       }}
       emptyTitle="No items removed in this period"
-      emptyDescription="Voided items show here."
+      emptyDescription="Cancelled items show here."
     />
   );
 }

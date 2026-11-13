@@ -135,7 +135,7 @@ test("banner locks: a template with table + items OFF prints neither on a normal
       assert.ok(!n.includes("T4"), `[${label}] normal: no Table line`);
       assert.ok(DISHES.every((d) => !n.includes(d)), `[${label}] normal: no dishes`);
       const v = kot(voided.order, storedWith(s, off), voided.extra);
-      assert.ok(v.includes("*** VOID ***") && v.includes("T4") && v.includes("Cold Coffee"), `[${label}] void: the Table line and the dishes are locked on`);
+      assert.ok(v.includes("*** CANCEL ***") && v.includes("T4") && v.includes("Cold Coffee"), `[${label}] void: the Table line and the dishes are locked on`);
       assert.ok(!v.includes("Masala Chai") && !v.includes("Pizza"), `[${label}] void: only the voided line, not the rest of the tab`);
       const m = kot(moved.order, storedWith(s, off), moved.extra);
       assert.ok(m.includes("*** TABLE MOVED ***") && m.includes("T2 → T4"), `[${label}] moved: FROM -> TO is locked on`);

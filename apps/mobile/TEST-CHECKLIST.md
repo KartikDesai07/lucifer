@@ -422,7 +422,7 @@ Text KOTs:
       clearly, with the ruler on one line?". **Yes**: "On: English-only kitchen tickets print as text on this
       printer." Turn it off and on again, answer **No**: it stays off (on 80 mm: "Keep it off, or try Characters per
       line: 42").
-- [ ] With the switch on: a KOT, a VOID, a TABLE MOVED, a cancel notice and a REPRINT, each as text: every word the
+- [ ] With the switch on: a KOT, a CANCEL slip, a TABLE MOVED, a cancel notice and a REPRINT, each as text: every word the
       picture had, in the same order, nothing cut at the right edge, the amounts on the right, `Rs` where the picture
       has ₹, the REPRINT banner white on black.
 - [ ] The same slips with **Kitchen Bold** chosen for the kitchen ticket.

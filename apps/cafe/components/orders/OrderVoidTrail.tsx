@@ -25,7 +25,7 @@ export function OrderVoidTrail({ voids }: OrderVoidTrailProps) {
     <div data-ui="order-detail-voids">
       <div data-ui="order-detail-voids-rule" aria-hidden className={cn(ORDER_DETAIL_RULE_CLASS, "my-2.5")} />
       <p data-ui="order-detail-voids-head" className={ORDER_DETAIL_BOX_HEAD_CLASS}>
-        Voided after the kitchen was notified
+        Cancelled after the kitchen was notified
       </p>
       {voids.map((v, i) => (
         <div key={i} data-ui="order-detail-void" className={ORDER_DETAIL_LINE_CLASS}>

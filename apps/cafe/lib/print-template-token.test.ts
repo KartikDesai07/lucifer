@@ -136,7 +136,7 @@ test("legacy kot: TOKEN sits after '#n' and before the round label, on a round, 
   assert.ok(at(round, "KITCHEN ORDER") < at(round, "#7</div>"));
   for (const id of ["void-reason-by-at", "cancel-notice-reason"]) {
     const html = kot(withToken(ps(id).order), s, ps(id).extra);
-    assert.ok(at(html, "*** VOID ***") < at(html, line), `${id}: the token follows the void banner`);
+    assert.ok(at(html, "*** CANCEL ***") < at(html, line), `${id}: the token follows the void banner`);
     assert.ok(html.includes("CANCELLED ITEMS"), `landmark: ${id} is a void slip`);
   }
   const moved = kot(withToken(ps("moved-from-by-at").order), s, ps("moved-from-by-at").extra);

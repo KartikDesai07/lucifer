@@ -57,7 +57,7 @@ const EOD_ORDER_REF = "End of day";
 const KIND_NAMES: Record<PrintJobKind, string> = {
   kot: "KOT",
   bill: "Bill",
-  void: "Void",
+  void: "Item cancel",
   moved: "Move",
   eod: "Closing slip",
   "cancel-notice": "Cancel notice",

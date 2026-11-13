@@ -420,6 +420,16 @@ test('printReadbackChips: cancelled-at-host outranks cancelled outranks waiting'
   assert.equal(chips[0].state, "cancelled-at-host");
 });
 
+// Owner 2026-11-13 (VOID becomes CANCEL): an item cancel's chip reads "Item cancel", told apart from a whole order's
+// "Cancel notice", and never "Cancelled item: Cancelled — nothing printed" (the word twice hides the missed slip).
+test('printReadbackChips: an item cancel reads "Item cancel", an order cancel "Cancel notice"', () => {
+  const chips = printReadbackChips([
+    entryFixture({ id: "job-v", kind: "void", orderKey: "o1", orderRef: "T-4" }),
+    entryFixture({ id: "job-c", kind: "cancel-notice", orderKey: "o2", orderRef: "T-5" }),
+  ]);
+  assert.deepEqual(chips.map((c) => c.kinds), ["Item cancel", "Cancel notice"]);
+});
+
 test("printReadbackChips: two orders -> two chips in insertion order", () => {
   const entries: PrintReadbackEntry[] = [
     entryFixture({ id: "job-1", orderKey: "o1", orderRef: "T-1" }),

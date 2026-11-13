@@ -42,7 +42,7 @@ function rowsOf(leaks: DashboardLeaks): LeakRow[] {
       amount: leaks.cancelled.value,
       href: "/orders?status=Cancelled",
     },
-    { key: "voids", glyph: GLYPH.voids, label: "Voided items", detail: plural(leaks.voids.qty, "item"), amount: leaks.voids.value },
+    { key: "voids", glyph: GLYPH.voids, label: "Cancelled items", detail: plural(leaks.voids.qty, "item"), amount: leaks.voids.value },
     {
       key: "discounts",
       glyph: GLYPH.discounts,

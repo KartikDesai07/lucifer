@@ -427,10 +427,10 @@ test("qty greater than the line's remaining qty -> 400, no nextItems returned", 
     charge: 0,
     gstCfg: GST_OFF,
   });
-  assert.ok("error" in result, "cannot void more than what's on the line");
+  assert.ok("error" in result, "cannot cancel more than what's on the line");
   if (!("error" in result)) return;
   assert.equal(result.status, 400);
-  assert.match(result.error, /cannot void more/i);
+  assert.match(result.error, /cannot cancel more/i);
   assert.ok(!("nextItems" in result));
 });
 

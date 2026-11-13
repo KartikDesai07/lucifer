@@ -150,7 +150,7 @@ export function OrderReceipt({ order, settings, banner, ref }: OrderReceiptProps
                 *** CANCELLED ***
               </div>
               <div className="text-center text-[1.08em] font-semibold">
-                VOID — NOT A VALID RECEIPT
+                CANCELLED — NOT A VALID RECEIPT
               </div>
               <Divider />
             </>
@@ -254,7 +254,7 @@ export function OrderReceipt({ order, settings, banner, ref }: OrderReceiptProps
                 assert a live receivable that the cancel already reversed. */}
             {isCancelled ? (
               <div className="pt-1 text-center text-[0.92em] font-semibold">
-                VOID — no payment due
+                CANCELLED — no payment due
               </div>
             ) : (
               <>

@@ -105,7 +105,7 @@ export const KOT_CLASSIC_BLOCKS: ClassicKotRenderers = {
       // void for a fresh ticket and fire it.
       <>
         <div className="text-center text-[1.29em] font-bold tracking-widest">
-          *** VOID ***
+          *** CANCEL ***
         </div>
         <div className="text-center text-[0.93em] font-semibold">
           CANCELLED ITEMS — DO NOT MAKE
@@ -194,7 +194,7 @@ export const KOT_CLASSIC_BLOCKS: ClassicKotRenderers = {
   itemCount: (_block, { isMoved, isVoid, items }) =>
     !isMoved && (
       <div className="text-center text-[0.86em]">
-        {items.reduce((n, it) => n + it.qty, 0)} item(s){isVoid ? " VOIDED" : ""}
+        {items.reduce((n, it) => n + it.qty, 0)} item(s){isVoid ? " CANCELLED" : ""}
       </div>
     ),
   // This round's total — never the bill total, so it is labelled

@@ -50,7 +50,7 @@ export async function POST(req: Request, { params }: Params) {
     const old = await Order.findById(id).lean();
     if (!old) return notFound("Order not found");
     if (old.status !== "Pending" || old.payment !== "Unpaid") {
-      return failure("Can only void items on an open tab", 409);
+      return failure("Can only cancel items on an open tab", 409);
     }
     const settings = await getSettings();
 
@@ -172,6 +172,6 @@ export async function POST(req: Request, { params }: Params) {
       : null;
     return success(withPrintJobs(updated, printJobs));
   } catch (error) {
-    return serverError("Failed to void item", error);
+    return serverError("Failed to cancel item", error);
   }
 }

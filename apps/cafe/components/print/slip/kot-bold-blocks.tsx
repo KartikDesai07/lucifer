@@ -59,7 +59,7 @@ const KOT_BOLD_BLOCKS: KotRenderers = {
       </Band>
     ) : isVoid ? (
       <Band className="px-2 py-1 text-center">
-        <div className="text-[1.4em] font-bold tracking-widest">*** VOID ***</div>
+        <div className="text-[1.4em] font-bold tracking-widest">*** CANCEL ***</div>
         <div className="text-[0.95em] font-bold">CANCELLED ITEMS — DO NOT MAKE</div>
       </Band>
     ) : (
@@ -134,7 +134,7 @@ const KOT_BOLD_BLOCKS: KotRenderers = {
   itemCount: (_block, { isMoved, isVoid, items }) =>
     !isMoved && (
       <div className="text-[0.9em] font-bold">
-        {items.reduce((n, it) => n + it.qty, 0)} item(s){isVoid ? " VOIDED" : ""}
+        {items.reduce((n, it) => n + it.qty, 0)} item(s){isVoid ? " CANCELLED" : ""}
       </div>
     ),
   // This round's total, never the bill total; only with line amounts, never on a moved slip (no items there).

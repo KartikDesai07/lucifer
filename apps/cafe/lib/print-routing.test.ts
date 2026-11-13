@@ -226,6 +226,15 @@ test("voidPrintJob: payload parses printJobPayloadSchema, and label is non-empty
   assert.ok(job.label.length <= PRINT_JOB_LABEL_MAX_CHARS);
 });
 
+// Owner 2026-11-13: staff never see the word VOID; an item cancel's job reads "Cancelled item <dish> · <order>".
+test("voidPrintJob: the label names a cancelled item (first print and reprint), never VOID", () => {
+  const first = voidPrintJob(orderFixture(), orderVoidFixture(), { reprint: false }).label;
+  const again = voidPrintJob(orderFixture(), orderVoidFixture(), { reprint: true }).label;
+  assert.ok(first.startsWith("Cancelled item Filter Coffee · "), first);
+  assert.ok(again.startsWith("Cancelled item reprint Filter Coffee · "), again);
+  for (const label of [first, again]) assert.doesNotMatch(label, /void/i);
+});
+
 test("billPrintJob: payload parses printJobPayloadSchema, and label is non-empty and within bound", () => {
   const job = billPrintJob(orderFixture(), { reprint: false });
   assertPayloadParses("bill", job.payload);

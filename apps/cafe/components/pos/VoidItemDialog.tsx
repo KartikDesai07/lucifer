@@ -40,7 +40,7 @@ interface VoidItemDialogProps {
 
 // U1 Task 12 (design 6.12): the void dialog in the owner's HTML sheet frame (docs/superpowers/specs/2026-10-20-pos-html-values.md:
 // the 420px confirm frame of values 12.1; the head of values 8.1; the check rows and the stepper of values 10.1; the 48px
-// field of values 8.3). Every word, rule and the payload as before; the head's ✕ and the foot's Cancel close it.
+// field of values 8.3). Every word, rule and the payload as before; the head's ✕ and the foot's Keep item close it.
 
 // The frame is the HTML's shared sheet frame (lib/sheet-frame.ts, ruling P54): the scrim (values 12.1, 0.3 sheetAlign /
 // sheetPad) at z-index 50; the panel (values 12.1) 420px on --surface with a 1px --border, sheetIn .34s, content-sized up
@@ -80,8 +80,8 @@ const CAPTION_CLASS = "text-[12.5px] font-semibold text-muted-foreground";
 const GUARD_CLASS = "text-[13px] font-medium leading-[1.5] text-status-bad-ink";
 // The reason (values 8.3): the caption 6px over the shared 48px field (SHEET_FIELD_CLASS, on the kit Input).
 const FIELD_CLASS = "flex flex-col gap-1.5";
-// The shared foot (values 8.2: SHEET_FOOT_CLASS). "Void item" as the HTML confirm's 46px button (values 12.1: radius 10,
-// 14.5px 600) in --bad with white text (design 6.12), at .5 until the form is complete; "Cancel" as the confirm's link
+// The shared foot (values 8.2: SHEET_FOOT_CLASS). "Cancel item" as the HTML confirm's 46px button (values 12.1: radius 10,
+// 14.5px 600) in --bad with white text (design 6.12), at .5 until the form is complete; "Keep item" as the confirm's link
 // button (kind 2: transparent, --link).
 const VOID_CLASS =
   "h-[46px] w-full cursor-pointer rounded-[10px] border border-status-bad bg-status-bad px-1.5 py-px text-[14.5px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50";
@@ -168,9 +168,9 @@ export function VoidItemDialog({
           <DialogPrimitive.Content data-ui="void-panel" {...openerFocus} className={PANEL_CLASS}>
             <div data-ui="void-head" className={HEAD_CLASS}>
               <div className="min-w-0 flex-1">
-                <DialogPrimitive.Title data-ui="void-title" className={TITLE_CLASS}>Void an item</DialogPrimitive.Title>
+                <DialogPrimitive.Title data-ui="void-title" className={TITLE_CLASS}>Cancel an item</DialogPrimitive.Title>
                 <DialogPrimitive.Description className={SUB_CLASS}>
-                  The kitchen gets a VOID slip for this line. This cannot be undone.
+                  The kitchen gets a CANCEL slip for this line. This cannot be undone.
                 </DialogPrimitive.Description>
               </div>
               <DialogPrimitive.Close data-ui="void-close" aria-label="Close" className={cn(SHEET_CLOSE_CLASS, BRAND_PRESS_CLASS)}>
@@ -240,7 +240,7 @@ export function VoidItemDialog({
 
               {line && (
                 <div data-ui="void-qty-row" className={QTY_ROW_CLASS}>
-                  <span id={qtyId} className={CAPTION_CLASS}>Quantity to void</span>
+                  <span id={qtyId} className={CAPTION_CLASS}>Quantity to cancel</span>
                   <div data-ui="void-stepper" role="group" aria-labelledby={qtyId} className={SHEET_STEPPER_CLASS}>
                     <button
                       type="button"
@@ -288,9 +288,9 @@ export function VoidItemDialog({
                 onClick={confirm}
                 className={cn(VOID_CLASS, BRAND_PRESS_CLASS)}
               >
-                Void {qty > 1 ? `${qty} × ` : ""}item
+                Cancel {qty > 1 ? `${qty} × ` : ""}item
               </button>
-              <DialogPrimitive.Close data-ui="void-cancel" className={cn(CANCEL_CLASS, BRAND_PRESS_CLASS)}>Cancel</DialogPrimitive.Close>
+              <DialogPrimitive.Close data-ui="void-cancel" className={cn(CANCEL_CLASS, BRAND_PRESS_CLASS)}>Keep item</DialogPrimitive.Close>
             </div>
           </DialogPrimitive.Content>
         </DialogPrimitive.Overlay>

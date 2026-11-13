@@ -441,16 +441,16 @@ function voidConst(src: string, name: string): string {
 test("PIN (U1 Task 12, design 6.12): the void dialog keeps every word and rule of today and adds the HTML's Cancel", () => {
   const src = stripComments(readSrc(VOID_DIALOG));
   for (const words of [
-    ">Void an item</DialogPrimitive.Title>",
-    "The kitchen gets a VOID slip for this line. This cannot be undone.",
+    ">Cancel an item</DialogPrimitive.Title>",
+    "The kitchen gets a CANCEL slip for this line. This cannot be undone.",
     "Nothing sent to the kitchen yet on this tab.",
-    "Quantity to void",
+    "Quantity to cancel",
     "Reason (required)",
     'placeholder="e.g. wrong item fired, guest changed mind"',
     "This would empty the tab — a tab must keep at least one item. Ask",
     "an admin to cancel the order instead.",
-    'Void {qty > 1 ? `${qty} × ` : ""}item',
-    ">Cancel</DialogPrimitive.Close>",
+    'Cancel {qty > 1 ? `${qty} × ` : ""}item',
+    ">Keep item</DialogPrimitive.Close>",
     'aria-label="Decrease quantity"',
     'aria-label="Increase quantity"',
   ]) {

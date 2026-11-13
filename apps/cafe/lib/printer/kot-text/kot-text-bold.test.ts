@@ -51,11 +51,11 @@ test("a round's KOT in Kitchen Bold on 80 mm: the band, the station, the number 
 test("a VOID on 58 mm: white-on-black title bands; a moved slip names from -> to and lists no items", () => {
   const voided = shown(planOf("void-reason-by-at", boldSettings(), 32));
   assert.deepEqual(voided.slice(0, 3), [
-    "tall  BIl|         *** VOID ***          |",
+    "tall  BIl|        *** CANCEL ***         |",
     "normalBIl| CANCELLED ITEMS - DO NOT MAKE |",
     "big   BIl|KOT 9          |",
   ], "the void bands, then the number box");
-  assert.deepEqual(voided.slice(-3), ["normalBIl|NOTE: BIRTHDAY TABLE, NO       |", "normalBIl|PEANUTS                        |", "normalB l|1 item(s) VOIDED|"], "the note band wraps");
+  assert.deepEqual(voided.slice(-3), ["normalBIl|NOTE: BIRTHDAY TABLE, NO       |", "normalBIl|PEANUTS                        |", "normalB l|1 item(s) CANCELLED|"], "the note band wraps");
   const moved = shown(planOf("moved-from-by-at", boldSettings(), 48));
   assert.ok(moved.includes("big   B l|Table T2 -> T4|"), "the table, from -> to, at double size");
   assert.ok(!moved.some((line) => line.includes("[")), "no items on a moved slip");
