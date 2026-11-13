@@ -23,6 +23,8 @@ import {
   tokenModeOf,
 } from "@/lib/token-board";
 import { readKitchenTokenArm, writeKotReady } from "@/lib/token-board-server";
+import { kitchenGateFilter } from "@/lib/kitchen-walkin";
+import { readKitchenWalkInArm } from "@/lib/kitchen-walkin-server";
 
 export const dynamic = "force-dynamic";
 
@@ -82,7 +84,8 @@ export async function GET() {
       .limit(OPEN_TAB_LIMIT)
       .lean();
     const tokenArm = mode.enabled ? await readKitchenTokenArm(mode.dayStart) : [];
-    const orders = mergeKitchenArms(open as unknown as KitchenOrderInput[], tokenArm);
+    const walkInArm = await readKitchenWalkInArm(mode);
+    const orders = mergeKitchenArms(mergeKitchenArms(open as unknown as KitchenOrderInput[], tokenArm), walkInArm);
 
     const ids = orders.map((order) => String(order._id));
     const ticks = await KotTick.find({ _id: { $in: ids } }).select("refs readyAt").lean();
@@ -131,8 +134,9 @@ export async function POST(req: Request) {
     // closed tab's record. The only cost is the message below — an Undo tapped
     // after someone else settled the tab is told plainly what happened rather
     // than being shown a "not found" that reads like the line vanished.
-    // S8: with tokens on, "open" also covers today's paid token orders (kitchenOrderFilter).
-    const open = await Order.exists({ _id: orderId, ...kitchenOrderFilter(filterModeOf(mode)) });
+    // "Open" is kitchenGateFilter(mode): with tokens on it also covers today's paid token orders, and always today's
+    // paid Walk-In or parcel orders (spec 2026-11-13).
+    const open = await Order.exists({ _id: orderId, ...kitchenGateFilter(mode) });
     if (!open) {
       return notFound(
         body.action === "ready"

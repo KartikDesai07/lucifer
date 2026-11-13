@@ -59,9 +59,9 @@ test("kitchen GET: the token arm runs ONLY under mode.enabled, once, and tabCoun
   assert.ok(!/@\/models\/Settings/.test(src), "settings via getSettings(), not the model");
 });
 
-test("kitchen POST: the gate is kitchenOrderFilter(filterModeOf(mode)) and runs BEFORE any write; ready goes through writeKotReady; tick and untick keep their writers", () => {
+test("kitchen POST: the gate is kitchenGateFilter(mode) and runs BEFORE any write; ready goes through writeKotReady; tick and untick keep their writers", () => {
   const post = handlerOf(read(KITCHEN), "POST");
-  assert.match(post, /Order\.exists\(\{\s*_id:\s*orderId,\s*\.\.\.kitchenOrderFilter\(filterModeOf\(mode\)\)\s*\}\)/);
+  assert.match(post, /Order\.exists\(\{\s*_id:\s*orderId,\s*\.\.\.kitchenGateFilter\(mode\)\s*\}\)/);
   const gateAt = post.indexOf("Order.exists(");
   const readyAt = post.indexOf("writeKotReady(");
   const tickAt = post.indexOf("$addToSet");
