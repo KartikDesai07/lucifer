@@ -294,3 +294,112 @@ taps Ready, or for 2 hours after its newest kitchen round. Its tick, Ready and U
   wave, then a scoped re-check.
 - [ ] **Step 4:** Write the Results (commits, RED→GREEN per task, counts, browser check, review verdict, residuals),
   then commit as `docs(kitchen): the paid Walk-In results` together with the GO-LIVE section.
+
+## Results (2026-11-13)
+
+Branch `feat/kitchen-paid-parcel` from main `f1d09d5`. Not merged, not pushed, not deployed.
+
+### Commits
+
+| Commit | What |
+|---|---|
+| `2f4de7c` | spec |
+| `e563c9f` | plan |
+| `16c252b` | Task 1, the pure filters |
+| `cf0697a` | Task 2, the arm + the route |
+| `ba90111` | Task 3, the live leg |
+| `ed54a60` | Task 3 fix round: the create route's shape |
+| `8e71296` | the GO-LIVE section |
+| `b796d26` | the final-review fix wave |
+
+These Results come in the next commit. Implementers wrote files only. The controller saw RED by moving files aside,
+ran GREEN and the suites, and made every commit. Three implementer writes came out CRLF; they were normalised to LF.
+
+### RED → GREEN
+
+| Task | RED | GREEN |
+|---|---|---|
+| 1 | `lib/kitchen-walkin.ts` moved aside: "Cannot find module", 1 fail | 70/70, with `token-board.test.ts` |
+| 2 | route at `16c252b` and the server file aside: exactly the 4 new pins fail (13 pass) | 101/101 over 5 files |
+| 3 | `app/api/kitchen/route.ts` at `f1d09d5`: 8 of 17 fail (1-6, 9, 14b), the 9 negatives pass | 17/0 |
+| 3 fix | (none) | 20/0 |
+| Fix wave | the arm at `8e71296`: 2 pins fail, and leg check 18 fails ("61 older noKot-only paid Walk-Ins do not push a real paid Walk-In off the board", 23/1) | 102/102 focused, leg 24/0, `verify:tokens:live` 58/0 |
+
+Task 3's fix round added the create route's real shape: no `kotFiredAt`.
+
+### Counts, `f1d09d5` → `b796d26`
+
+| Suite | `f1d09d5` | `b796d26` |
+|---|---|---|
+| cafe | 8641 / 0 / 1 | 8651 / 0 / 1 |
+| tsc | 0 | 0 |
+| lint | 0 errors / 2 warnings | 0 errors / 2 warnings |
+| shared | 1119 | 1119 |
+| mobile | 173 | 173 |
+| desktop | 224 | 224 |
+| live legs | 54, every one 0 failed | 55 (the new `verify:kitchen:walkin:live` 24/0), every one 0 failed |
+| `verify:tokens:live` | 56/0 | 58/0 (T7/T10 rewritten, ruling R3) |
+
+The branch counts are from `run-all-kw.sh kw2`, run from an uppercase `D:\` cwd.
+
+Checks against `f1d09d5`:
+- `git diff f1d09d5` on `app/api/tokens/**` and `lib/token-board-server.ts`: empty.
+- `lib/token-board.ts`: only `export ` on `PAID_STATUS`.
+- Nothing outside `apps/cafe/` and `docs/`.
+- `print-budget.test.ts`, the S1 pin, the printing renderers, mobile, desktop and workers: untouched.
+- No new request kind, write kind, timer or index.
+- The Walk-In candidate query runs on `createdAt_-1`: `LIMIT > FETCH > IXSCAN`, no `COLLSCAN`, no `SORT`.
+
+### Browser check
+
+A production build of the branch was served from `next start` on 127.0.0.1:3171, on fresh `pos_scratch_e2e_kw*` DBs,
+and driven with headless Chrome. It ran twice, on `ba90111` and on `b796d26`, and passed 17/17 both times with no page
+errors:
+- **Walk-In, Pay Now:** the card shows on `/kitchen`, and the card's Ready removes it.
+- **Walk-In, Send KOT then Pay:** the card is on `/kitchen` while open and after the payment, and Ready removes it.
+- **Table T-3, Send KOT then Pay:** the card leaves `/kitchen` on payment, as before.
+
+The tools, runs, screenshots and logs are in `D:\kd\pos-dev-keep\kitchen-walkin`. The worktree was removed
+junction-safe.
+
+### Reviews
+
+- **Builder check of the spec.** It found that the POS has no Parcel control: a counter parcel is a Walk-In with no
+  table. That led to the owner's O3 (every Walk-In) and O4 (2 hours).
+- **Task reviews.** All approved. Task 3 had one plan-mandated Important finding, fixed by R2.
+- **Final review (fable): "With fixes".** 0 Critical, and 1 Important, I-1: noKot-only paid Walk-Ins held arm slots
+  with no card, and 60 of them would hide real ones. The one fix wave also handled M-1 to M-4, F7 and R3. Its scoped
+  re-review found every item addressed and no new Critical or Important finding.
+
+### Rulings
+
+- **R1:** keep a test of the reused `pendingTokenIds`.
+- **R2:** seed the create route's shape (no `kotFiredAt`).
+- **R3:** rewrite `verify-token-live-legs` T7/T10 to the approved rule. With tokens off, a Pay Now order with no table
+  is a paid Walk-In and stays on the board. The open-tab query and "no token arm with tokens off" stay pinned.
+
+### Known residuals (accepted)
+
+- **Comment wording (parked).**
+  - `kitchen-walkin-server.ts:9` says a whole-skip order is "never a token-arm candidate". A token tab voided to
+    whole-skip before payment can be one. The token arm's own rare slot hole is pre-existing, and its file is frozen.
+  - The route comments say "a paid TABLE tab leaves the board". With tokens on, a paid table order with a token stays,
+    on the token arm, which is unchanged.
+- **T10 coverage.** It no longer proves live that, with tokens off, a paid table order WITH a token is refused. The pure
+  pin and the walk-in leg's check 7 cover the gate's shape.
+- **"Business day" in GO-LIVE.** The new bullet uses it to mean restart time to restart time. §11 uses it for the sales
+  and reports day, IST midnight.
+- **Midnight cut (owner-approved C1).** Paid Walk-In cards leave at the daily restart time.
+- **Never-Ready kitchens (C4).** A kitchen that never taps Ready shows old paid cards first for up to 2 hours.
+- **Kitchen header numbers.** "Average wait" and the Late band include unready paid Walk-Ins.
+- **Cost.** Each Kitchen GET makes 1 to 3 more sequential reads (M-5). Each Ready or tick on a paid Walk-In leaves a
+  small `KotTick` doc (M-6, the same as token cafes).
+
+### Left for the owner
+
+- The merge OK, then a separate push word.
+- The deploy, demo cafe first. Follow GO-LIVE "Existing cafes: the Kitchen paid Walk-In release", including telling the
+  kitchen to tap Ready.
+- Scratch DBs, run from `apps/cafe`:
+  - this session's 35: `node D:\kd\pos-dev-keep\kitchen-walkin\drop-kw.mjs` (`--dry` lists them);
+  - the pull check's 15 `pos_scratch_mi_main2_*`: `D:\kd\pos-dev-keep\hotfix\model-init\drop-mi.mjs`.
