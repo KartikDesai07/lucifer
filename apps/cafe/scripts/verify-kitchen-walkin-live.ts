@@ -91,6 +91,9 @@ interface Seed {
   createdHoursAgo?: number;
   status?: string;
   noKot?: boolean;
+  /** The create route's round-1 shape: no kotFiredAt at all (the fire time falls back to createdAt). */
+  noFiredAt?: boolean;
+  createdMinAgo?: number;
 }
 /** One order in the shape the create/settle routes write; returns its _id string. */
 async function seed(o: Seed = {}): Promise<string> {
@@ -110,7 +113,7 @@ async function seed(o: Seed = {}): Promise<string> {
     status: o.status ?? (paid ? "Completed" : "Pending"),
     receiver: "Live leg",
     kotRounds: 1,
-    kotFiredAt: [fired],
+    ...(o.noFiredAt ? {} : { kotFiredAt: [fired] }),
     ...(o.tableNo ? { tableNo: o.tableNo } : {}),
     ...(o.parcel ? { parcel: true } : {}),
     ...(o.tokenNumber ? { tokenNumber: o.tokenNumber } : {}),
@@ -118,7 +121,12 @@ async function seed(o: Seed = {}): Promise<string> {
   // createdAt is the business-day bound and the floor of the newest-fire rule: a real order is created BEFORE its
   // round fires, so default it to a minute earlier (Order.create would stamp "now"). Set it on the collection so no
   // timestamps logic can interfere.
-  const created = o.createdHoursAgo !== undefined ? new Date(Date.now() - o.createdHoursAgo * HOUR) : new Date(fired.getTime() - MIN);
+  const created =
+    o.createdHoursAgo !== undefined
+      ? new Date(Date.now() - o.createdHoursAgo * HOUR)
+      : o.createdMinAgo !== undefined
+        ? new Date(Date.now() - o.createdMinAgo * MIN)
+        : new Date(fired.getTime() - MIN);
   await Order.collection.updateOne({ _id: doc._id }, { $set: { createdAt: created } });
   return String(doc._id);
 }
@@ -158,6 +166,12 @@ async function run(): Promise<void> {
   await Settings.create({ tokenEnabled: false, numberResetMinutes: reset });
   cache.del(SETTINGS_CACHE_KEY);
 
+  // 1b: the create route's real shape, no kotFiredAt (round 1 falls back to createdAt).
+  const raw = await seed({ noFiredAt: true, createdMinAgo: 5 });
+  check("1b a paid Pay Now Walk-In with NO kotFiredAt (the create route's shape) is on the board", await onBoard(raw));
+  const rawDoc = await Order.collection.findOne({ _id: new Types.ObjectId(raw) });
+  check("1b' the seeded order really has no kotFiredAt field", rawDoc !== null && !("kotFiredAt" in rawDoc));
+
   // 1-4: Pay Now Walk-In, Ready, Undo, tick.
   const a = await seed();
   const card = find(await board(), a);
@@ -182,6 +196,8 @@ async function run(): Promise<void> {
   const tableTick = await post({ action: "tick", orderId: t, ref: "x", done: true });
   check("7 paid table order is NOT on the board and a tick answers 404", !(await onBoard(t)) && tableTick === 404, `tick ${tableTick}`);
   check("8 paid Walk-In fired 121 minutes ago is NOT on the board", !(await onBoard(await seed({ firedMinAgo: 121 }))));
+
+  check("8b a paid Walk-In with NO kotFiredAt created 121 minutes ago is NOT on the board", !(await onBoard(await seed({ noFiredAt: true, createdMinAgo: 121 }))));
 
   // 9-12: review focus 1-4.
   const u = await seed({ paid: false, tableNo: "T-9" });
