@@ -458,6 +458,7 @@
     "lib/kitchen-actions.test.ts",
     "lib/token-board.test.ts",
     "lib/token-routes-paths.test.ts",
+    "lib/kitchen-walkin.test.ts",
     "lib/token-sheet-paths.test.ts",
     "lib/now-serving-announcer.test.ts",
     "lib/now-serving-prefs.test.ts",
