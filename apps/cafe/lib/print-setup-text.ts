@@ -161,7 +161,7 @@ export function setupGaps(printers: readonly PrinterConfig[], stations: readonly
       );
     }
   }
-  if (!live.some((printer) => printer.slips.notices)) gaps.push("No printer takes notices: void, moved and cancel slips will not print.");
+  if (!live.some((printer) => printer.slips.notices)) gaps.push("No printer takes notices: cancel and table-moved slips will not print.");
   return gaps;
 }
 

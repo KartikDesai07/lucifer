@@ -453,7 +453,7 @@ export function LeaksCard(p: RangeCardProps & { className?: string }) {
       ui="leak-card"
       className={p.className}
       title="Money leaks"
-      period="Cancelled, voided and given away"
+      period="Cancelled and given away"
       aside={p.data ? <MoneyLeaksTotal leaks={p.data.leaks} updating={p.updating} /> : undefined}
       headGap={10}
       bodyGap={10}

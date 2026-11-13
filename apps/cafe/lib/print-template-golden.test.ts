@@ -267,7 +267,7 @@ test("landmark: the Classic converters carry the forward blocks (bill title off 
   assert.ok(kt.some((b) => b.type === "station") && kt.some((b) => b.type === "token"), "KOT station and token blocks present");
 });
 
-test("engine: a KOT template with title off prints no KITCHEN ORDER but keeps *** VOID ***", () => {
+test("engine: a KOT template with title off prints no KITCHEN ORDER but keeps *** CANCEL ***", () => {
   const plain = KOT_PROP_SETS.find((p) => p.id === "round-label-number") as KotPropSet;
   const voided = KOT_PROP_SETS.find((p) => p.id === "void-reason-by-at") as KotPropSet;
   const s = settingsOf();
@@ -276,7 +276,7 @@ test("engine: a KOT template with title off prints no KITCHEN ORDER but keeps **
   const off: KotTemplate = { ...tpl, blocks: tpl.blocks.map((b) => (b.type === "title" ? { ...b, on: false } : b)) };
   assert.ok(engineKot(plain.order, s, plain.extra).includes("KITCHEN ORDER"), "landmark: Classic prints the title");
   assert.ok(!engineKot(plain.order, s, plain.extra, off).includes("KITCHEN ORDER"), "no title on a plain round");
-  assert.ok(engineKot(voided.order, s, voided.extra, off).includes("*** VOID ***"), "the void banner is locked on");
+  assert.ok(engineKot(voided.order, s, voided.extra, off).includes("*** CANCEL ***"), "the void banner is locked on");
 });
 
 test("engine: roundTotal prints only when the visible items block shows prices", () => {

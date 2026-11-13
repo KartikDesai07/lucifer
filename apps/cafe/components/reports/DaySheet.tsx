@@ -89,11 +89,11 @@ export function DaySheet({ day, onOpenChange }: DaySheetProps) {
             )}
 
             {(d.leaks.cancelled.count > 0 || d.leaks.voids.qty > 0) && (
-              <Section title="Cancelled & voided">
+              <Section title="Cancelled">
                 {d.leaks.cancelled.count > 0 && (
                   <Row label={`${plural(d.leaks.cancelled.count, "cancelled order")}`} value={inr(d.leaks.cancelled.value)} />
                 )}
-                {d.leaks.voids.qty > 0 && <Row label={`${plural(d.leaks.voids.qty, "voided item")}`} value={inr(d.leaks.voids.value)} />}
+                {d.leaks.voids.qty > 0 && <Row label={`${plural(d.leaks.voids.qty, "cancelled item")}`} value={inr(d.leaks.voids.value)} />}
               </Section>
             )}
 

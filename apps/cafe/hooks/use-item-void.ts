@@ -42,11 +42,11 @@ export function useItemVoid(
       const entry = order.voids?.at(-1);
       if (!entry) return;
       onVoided(order, entry);
-      toast.success("Item voided");
+      toast.success("Item cancelled");
       setOpen(false);
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Could not void item");
+      toast.error(err.message || "Could not cancel item");
       // A rejection (409 stale view, 400 last-line) means the snapshot the
       // dialog is showing no longer describes the tab — close it rather than
       // let the operator resubmit the same view, since onSettled's invalidation

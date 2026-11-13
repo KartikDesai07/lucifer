@@ -14,8 +14,11 @@ import { KOTReceipt } from "@/components/pos/KOTReceipt";
 import { BillSlip, KotSlip } from "@/components/print/slip/SlipEngine";
 import { classicBillTemplate, classicKotTemplate } from "@/lib/print-template-legacy";
 import { loadSlipCode } from "@/components/print/slip/slip-code";
+import { defaultBillTemplate, defaultKotTemplate } from "@/lib/print-template-designs";
+import { kotTextPlan } from "@/lib/printer/kot-text/kot-text";
+import { shownPieces, slipOf } from "@/lib/printer/kot-text/kot-text.fixtures";
 import { PAPER_WIDTHS, PRINT_FONT_SIZES } from "@/lib/constants";
-import type { BillTemplate, KotTemplate } from "@pos/shared/print-template";
+import { BILL_DESIGNS, KOT_DESIGNS, type BillTemplate, type KotTemplate } from "@pos/shared/print-template";
 import type { Order, Settings } from "@/types";
 
 // Print customization S2: the Classic golden through the STORED path. The S1 golden proves BillSlip/KotSlip with
@@ -139,7 +142,7 @@ test("unreadable stored template: the bill and the kot print exactly as the lega
     counts.unreadableBill++;
     counts.unreadableKot++;
   }
-  assert.ok(bill(fx.order, fx.settings).includes("TOTAL") && kot(ps.order, kotS, ps.extra).includes("VOID"), "landmark: real slips were compared");
+  assert.ok(bill(fx.order, fx.settings).includes("TOTAL") && kot(ps.order, kotS, ps.extra).includes("*** CANCEL ***"), "landmark: real slips were compared");
   assert.notEqual(bill(fx.order, storedBill(fx.settings)), "", "landmark: the stored path renders");
 });
 
@@ -257,6 +260,33 @@ test("today's bill (billTemplate null) is the legacy bytes, and differs from a s
   assert.ok(legacy.includes('class="flex justify-between text-[1.17em] font-bold"') && !legacy.includes("flex-wrap"), "landmark: legacy TOTAL row, no wrapping rows");
   assert.ok(stored.includes('class="flex flex-wrap justify-between text-[1.17em] font-bold"'), "landmark: the stored Classic template wraps its TOTAL row");
   assert.notEqual(stored, legacy, "so a Classic template is not today's bill");
+});
+
+const KOT_CANCEL_TITLE = "*** CANCEL ***";
+function assertNoVoid(label: string, out: string, needle: string): void {
+  assert.ok(out.includes(needle), `${label}: prints ${needle}`);
+  assert.ok(!/\bVOID/.test(out), `${label}: prints no VOID word`);
+}
+
+test("no VOID word on a cancelled-item slip (engine Classic + Bold, text KOT Classic + Bold) or a cancelled-order bill (legacy + every design)", () => {
+  const voidSets = KOT_PROP_SETS.filter((p) => p.extra.variant === "void");
+  assert.ok(voidSets.length >= 6, "landmark: the void and cancel-notice prop sets are the ones checked");
+  const s = settingsOf({ logo: "" });
+  const boldS: Settings = { ...s, kotTemplate: JSON.parse(JSON.stringify(defaultKotTemplate("kitchenBold", s))) };
+  for (const ps of voidSets) {
+    for (const design of KOT_DESIGNS) assertNoVoid(`${ps.id} engine ${design}`, engineKot(ps.order, s, ps.extra, defaultKotTemplate(design, s)), KOT_CANCEL_TITLE);
+    for (const [label, settings] of [["classic", s], ["bold", boldS]] as const) {
+      const plan = kotTextPlan({ slip: slipOf(ps.id), settings, columns: 48 });
+      assert.ok(plan.ok, `${ps.id} text ${label}: prints as text`);
+      if (plan.ok) assertNoVoid(`${ps.id} text ${label}`, shownPieces(plan.pieces).join("\n"), KOT_CANCEL_TITLE);
+    }
+  }
+  const cancelledBills = BILL_FIXTURES.filter((f) => f.order.status === "Cancelled");
+  assert.ok(cancelledBills.length >= 2, "landmark: the cancelled-order bill fixtures are the ones checked");
+  for (const fx of cancelledBills) {
+    assertNoVoid(`${fx.id} legacy`, bill(fx.order, fx.settings), "CANCELLED —");
+    for (const design of BILL_DESIGNS) assertNoVoid(`${fx.id} ${design}`, engineBill(fx.order, fx.settings, defaultBillTemplate(design, fx.settings)), "CANCELLED —");
+  }
 });
 
 test("stored golden summary", (t) => {

@@ -123,7 +123,7 @@ export const BILL_FIXTURES: BillFixture[] = [
   { id: "gst-settings-fallback", order: orderOf({ over: { gstRate: undefined, gstMode: undefined, gstAmount: undefined } }), settings: settingsOf(gstOn(5, "inclusive")) },
   // Blind-branch closers (review): walk-in table, a qty>1 reward line with no note, Split with no split amounts.
   { id: "walk-in-reward-qty-split-unset", order: orderOf({ items: [...ITEMS, { ...REWARD_LINE, qty: 2, note: undefined }], over: { tableNo: undefined, payment: "Split" } }), settings: settingsOf() },
-  // Cancelled with NO reason and money still owing: legacy hides Due and prints "VOID - no payment due".
+  // Cancelled with NO reason and money still owing: legacy hides Due and prints "CANCELLED - no payment due".
   { id: "cancelled-no-reason-due", order: orderOf({ over: { status: "Cancelled", paidAmount: 100 } }), settings: settingsOf() },
   { id: "empty-content", order: orderOf({ gst: { rate: 5, mode: "inclusive" } }), settings: settingsOf(EMPTY_CONTENT) },
 ];

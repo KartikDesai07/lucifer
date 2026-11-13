@@ -20,7 +20,7 @@ import type { TextRow } from "./text-layout";
 
 const MOVED_TITLE = "*** TABLE MOVED ***";
 const MOVED_SUBTITLE = "FOOD ALREADY ORDERED — DO NOT MAKE AGAIN";
-const VOID_TITLE = "*** VOID ***";
+const VOID_TITLE = "*** CANCEL ***";
 const VOID_SUBTITLE = "CANCELLED ITEMS — DO NOT MAKE";
 const KOT_TITLE = "KITCHEN ORDER";
 const INSTRUCTION_PREFIX = "» ";
@@ -72,7 +72,7 @@ export const KOT_TEXT_BOLD: KotTextDesign = {
     },
     notes: (_block, { order }) => (order.notes ? [textRow(`Note: ${order.notes}`, 1, true, "left", { invert: true, upper: true })] : []),
     itemCount: (_block, { isMoved, isVoid, items }) =>
-      isMoved ? [] : [textRow(`${items.reduce((n, it) => n + it.qty, 0)} item(s)${isVoid ? " VOIDED" : ""}`, META_RATIO, true, "left")],
+      isMoved ? [] : [textRow(`${items.reduce((n, it) => n + it.qty, 0)} item(s)${isVoid ? " CANCELLED" : ""}`, META_RATIO, true, "left")],
     roundTotal: (_block, { isMoved, showsPrices, roundTotal }) =>
       !isMoved && showsPrices ? [textRow(`Round total: ${inr(roundTotal)}`, META_RATIO, true, "left")] : [],
     qr: (block) => (isSafeHttpsLink(block.options.url.trim()) ? PICTURE_ONLY : []),

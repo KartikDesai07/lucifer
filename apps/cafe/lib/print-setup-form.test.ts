@@ -233,7 +233,7 @@ test("2D: what the setup leaves without a printer (printers mode only), and the 
   assert.deepEqual(setupGaps([kitchen], [KITCHEN, BAR]), [
     "No printer takes bills: bills will not print.",
     "No printer takes Bar KOTs: they will not print.",
-    "No printer takes notices: void, moved and cancel slips will not print.",
+    "No printer takes notices: cancel and table-moved slips will not print.",
   ]);
   const counter = printer("Counter", { slips: { bill: true, kotStations: [], kotAll: false, notices: true, eod: true } });
   assert.deepEqual(setupGaps([kitchen, counter], [KITCHEN, BAR]), ["No printer takes Bar KOTs: they print at Counter, marked NO PRINTER SET."]);

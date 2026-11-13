@@ -889,7 +889,7 @@ test("PIN §A behaviour: settingsSchema — each branding field's max length is 
 test("PIN: the doc names all four device-leg paper paths AND both browsers — this leg is §7's whole reason for existing", () => {
   assert.ok(doc.includes("**Customer receipt, with logo, over the network**"));
   assert.ok(doc.includes("**KOT**"));
-  assert.ok(doc.includes("**VOID slip**"));
+  assert.ok(doc.includes("**cancel slip**"));
   assert.ok(doc.includes("**End of day, including a past date**"));
   assert.match(
     doc,
@@ -1670,7 +1670,7 @@ test("PIN (printing Phase 4, spec §11 items 2 and 6): TEST-CHECKLIST's Phase 4 
   const checks = checklist.slice(start, end);
   for (const phrase of [
     "a Bluetooth, a USB and a network (LAN) printer",
-    "a KOT, a VOID, a TABLE MOVED, a cancel notice and a REPRINT",
+    "a KOT, a CANCEL slip, a TABLE MOVED, a cancel notice and a REPRINT",
     "Kitchen Bold",
     "58 mm",
     "80 mm",

@@ -132,7 +132,7 @@ export function resolveItemVoid<T extends VoidableLine>(
     };
   }
   if (request.qty > line.qty) {
-    return { error: "Cannot void more than the quantity on that line", status: 400 };
+    return { error: "Cannot cancel more than the quantity on that line", status: 400 };
   }
 
   const nextItems =

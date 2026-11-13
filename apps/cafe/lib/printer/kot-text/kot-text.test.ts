@@ -70,10 +70,10 @@ test("the same KOT on 58 mm wraps inside 31 characters", () => {
 
 test("a VOID, a cancel notice and a TABLE MOVED slip keep their loud titles and their rules", () => {
   const voided = shown(planOf(slipOf("void-reason-by-at")));
-  assert.deepEqual(voided.slice(0, 2), ["tall  B c|*** VOID ***|", "normalB c|CANCELLED ITEMS - DO NOT MAKE|"], "the void title");
+  assert.deepEqual(voided.slice(0, 2), ["tall  B c|*** CANCEL ***|", "normalB c|CANCELLED ITEMS - DO NOT MAKE|"], "the void title");
   assert.ok(voided.includes("normal  l|Staff                                     Owner|"), "the voider, not the tab's opener");
   assert.ok(voided.includes("normalB l|Reason: Guest changed mind|"), "the reason");
-  assert.equal(voided.at(-2), "normal  c|1 item(s) VOIDED|", "the voided count");
+  assert.equal(voided.at(-2), "normal  c|1 item(s) CANCELLED|", "the voided count");
   const cancelled = shown(planOf(slipOf("cancel-notice-reason")));
   assert.ok(cancelled.includes("normalB l|3 x Cold Coffee                          Rs 360|"), "a cancel notice lists every item");
   const moved = shown(planOf(slipOf("moved-from-by-at")));
@@ -96,7 +96,7 @@ test("a block's own size, alignment and weight, and the template's base size", (
   // At the large base the floor shows (the 4A gate's review, I-1): 16/14 x 1.29 x 0.875 = 1.29 is double height, while
   // xs (x 0.75 = 1.106) would be normal.
   const locked = withTemplate((t) => t.blocks.map((b) => (b.type === "title" ? { ...b, size: "xs" } : b)), { kotFontSize: "large" });
-  assert.equal(shown(planOf(slipOf("void-reason-by-at"), locked))[0], "tall  B c|*** VOID ***|", "a locked title shrinks to sm, never xs");
+  assert.equal(shown(planOf(slipOf("void-reason-by-at"), locked))[0], "tall  B c|*** CANCEL ***|", "a locked title shrinks to sm, never xs");
 });
 
 test("Classic's meta lines are 0.93em in the picture, so a block's own size grows them less (the 4A gate's m-2)", () => {

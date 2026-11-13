@@ -198,7 +198,7 @@ test("OrderVoidTrail in the items box after the total: a dashed rule, the captio
   assert.ok(box.indexOf('data-ui="order-detail-total"') < box.indexOf('data-ui="order-detail-voids"'), "after the total, inside the box");
   expectAll(tagOf(out, "order-detail-voids-rule"), [...tokens(ORDER_DETAIL_RULE_CLASS), "my-2.5"], "the dashed rule before it");
   assert.deepEqual(classesOf(tagOf(out, "order-detail-voids-head")), tokens(ORDER_DETAIL_BOX_HEAD_CLASS), "the caption in the box head's look");
-  assert.equal(textOf(out, "order-detail-voids-head"), "Voided after the kitchen was notified", "today's caption (design 11: stays)");
+  assert.equal(textOf(out, "order-detail-voids-head"), "Cancelled after the kitchen was notified", "today's caption (design 11: stays)");
   const lines = tagsOf(out, "order-detail-void");
   assert.equal(lines.length, 2, "a line per void");
   lines.forEach((tag, i) => assert.deepEqual(classesOf(tag), tokens(ORDER_DETAIL_LINE_CLASS), `void ${i + 1}: an item line's grid`));

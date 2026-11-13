@@ -472,7 +472,7 @@ Split only. Points, Due, Credit and choosing a customer need the internet.") and
 the internet is back. A new order kept offline shows in Open tabs as "Offline · O-1", and every kept order is listed
 under **Offline orders** beside the printer button. When the server answers again, each device sends its kept orders
 by itself, oldest first ("Offline orders sent: 2"): the server saves every line printed offline as printed, so the
-kitchen gets no second KOT, and the order gets its KOT numbers then. Settle, void, move, cancel, QR orders, reprints,
+kitchen gets no second KOT, and the order gets its KOT numbers then. Settle, cancel an item, move, cancel, QR orders, reprints,
 **Print bill** and **End of day** wait for the internet ("Offline: this needs the internet. Try again once it is
 back."). The same release makes the POS's check of the server calm when the cafe is quiet (below). The web only:
 **no Worker change**, no data migration, no new setting and no app release (every POS app and the Windows app print
@@ -858,8 +858,8 @@ Two routes: type it in, or import a CSV. For more than ~30 items, import.
       can accidentally sell a Large at the Small price. **Add** stays disabled
       until a size is tapped.
 - [ ] Two sizes of one dish are **separate cart lines** at their own prices.
-- [ ] The size prints on the **KOT**, the **customer bill**, the **VOID slip**,
-      and shows in the cart, the order sheet and the void trail — everywhere the
+- [ ] The size prints on the **KOT**, the **customer bill**, the **cancel slip**,
+      and shows in the cart, the order sheet and the cancel trail — everywhere the
       dish name appears.
 - [ ] Reports: **Top Products** lists each size as its own row, so they can see
       which size actually sells.
@@ -881,7 +881,7 @@ Two routes: type it in, or import a CSV. For more than ~30 items, import.
 
 ## §6 Staff accounts (CAFE ADMIN, `Staff`, admin only)
 
-- [ ] One login per person. Attribution on receipts, void slips and the void
+- [ ] One login per person. Attribution on receipts, cancel slips and the cancel
       trail uses the account's display name — shared logins destroy the trail.
 - [ ] Add staff: *Name*, *Mobile* (≥10 digits), *Username* (≥3 characters,
       stored lowercase), *Role*, *Password* (≥8 characters) and a 4-digit *PIN*.
@@ -921,7 +921,7 @@ Two routes: type it in, or import a CSV. For more than ~30 items, import.
         thing to suspect and the hardest to see.
       - **Permanently delete a reservation or an event**, with no record of who
         did it.
-      - Void a fired item (reason required, kitchen gets a VOID slip), receive a
+      - Cancel a fired item (reason required, kitchen gets a CANCEL slip), receive a
         customer's dues payment, and print the end-of-day slip.
       - **Cancelling a whole order is admin-only**, as is resetting someone
         else's password, **anything on the Categories screen**, and
@@ -1089,7 +1089,7 @@ Tick a box only after **looking at the paper**.
 |---|---|---|---|---|---|
 | 1 | **Customer receipt, with logo, over the network** | `New Order` (the POS screen) → add items → Pay Now (Cash) | logo actually rendered, name/address/phone, GSTIN (if GST on) and FSSAI, items with modifiers, TOTAL, footer only if set | ☐ | ☐ |
 | 2 | **KOT** | the same counter sale, and then a table tab: fire round 1, add items, fire round 2 | *two separate slips* from the one Pay Now — receipt **and** a `KITCHEN ORDER` / `Round 1` ticket, neither missing; round 2 prints **only** the new items | ☐ | ☐ |
-| 3 | **VOID slip** | open tab with a fired item → void a line, with a reason | `*** VOID ***` / `CANCELLED ITEMS — DO NOT MAKE`, the **voided** qty, that line's modifiers and instructions, and **who voided it and when** (not the tab's opener) | ☐ | ☐ |
+| 3 | **cancel slip** | open tab with a fired item → cancel a line (its **Cancel** button), with a reason | `*** CANCEL ***` / `CANCELLED ITEMS — DO NOT MAKE`, the **cancelled** qty, that line's modifiers and instructions, and **who cancelled it and when** (not the tab's opener) | ☐ | ☐ |
 | 4 | **End of day, including a past date** | Dashboard → date box → **End of day**; then set the box to yesterday and print again | today: sales, payment split, **Dues collected** (Cash/Online), open tabs. Yesterday: that day's figures, open tabs "not applicable", dues labelled "as of print" | ☐ | ☐ |
 
 - [ ] Sign-off recorded: date, device, Chrome + Firefox versions, printer model,
@@ -1103,7 +1103,7 @@ tap. How it prints depends on whether a print host is set
 (**Admin → Printer setup** → the **Print host** card).
 
 - [ ] **With a print host set**: the host PC prints every slip — KOTs,
-      bills, void/moved slips, end of day — from ANY dashboard screen it has
+      bills, cancel/moved slips, end of day — from ANY dashboard screen it has
       open, and every other device routes its prints to it (its band reads
       `Slips print at <label>.` with the host's label filled in). Non-host devices
       never auto-print; the **Auto-print self-orders** switch is disabled
@@ -1256,7 +1256,7 @@ cleanup is easy.
 
 - [ ] Counter sale: Pay Now, Cash → KOT + receipt (§7 path 1+2).
 - [ ] Dine-in: seat a table, fire round 1, add round 2, settle.
-- [ ] Item void with a reason → VOID slip, and the tab's total drops.
+- [ ] Item cancel with a reason → CANCEL slip, and the tab's total drops.
 - [ ] Partial payment: settle a ₹500 tab with ₹300 collected → ₹200 becomes the
       **customer's due** (a customer must be attached — the app asks).
 - [ ] `Customers` → **Receive payment** → collect the ₹200 in Cash → the due
@@ -1541,11 +1541,11 @@ Not bugs. Say them before the client discovers them mid-service.
 - **Table names are ASCII only.**
 - **Declining the "free the table?" prompt** after a counter sale leaves the
   table Occupied — free it from the Tables page.
-- **A discount on a tab that is later voided down re-clamps to the smaller
+- **A discount on a tab that later has items cancelled re-clamps to the smaller
   total**, and later rounds bill that smaller discount.
 - **Cancelled orders count for nothing** in Reports, the end-of-day slip, and
   customer spend — that is the point of cancel-instead-of-delete.
-- **Only an admin can cancel an order or permanently remove one**; staff void
+- **Only an admin can cancel an order or permanently remove one**; staff cancel
   individual items instead.
 - Orders are stored in the current money format; a future platform update
   migrates them. No action for the client.

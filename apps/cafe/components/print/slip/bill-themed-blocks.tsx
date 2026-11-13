@@ -162,7 +162,7 @@ export function billThemedBlocks(theme: BillTheme): BillRenderers {
       isCancelled && (
         <>
           <Band className="py-1 text-center text-[1.3em] font-bold tracking-widest">*** CANCELLED ***</Band>
-          <div className="mt-1 text-center text-[0.95em] font-bold">VOID — NOT A VALID RECEIPT</div>
+          <div className="mt-1 text-center text-[0.95em] font-bold">CANCELLED — NOT A VALID RECEIPT</div>
           {rule()}
         </>
       ),
@@ -258,7 +258,7 @@ export function billThemedBlocks(theme: BillTheme): BillRenderers {
     // A cancelled bill's payment / paidAmount are snapshots the books no longer count: no Paid / Due lines.
     payment: (_block, { order, isCancelled }) =>
       isCancelled ? (
-        <div className="pt-1 text-center text-[0.95em] font-bold">VOID — no payment due</div>
+        <div className="pt-1 text-center text-[0.95em] font-bold">CANCELLED — no payment due</div>
       ) : (
         <>
           {row(`Paid (${order.payment})`, money(order.paidAmount))}

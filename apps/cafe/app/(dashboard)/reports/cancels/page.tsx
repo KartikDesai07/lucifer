@@ -215,7 +215,7 @@ export default function CancelsReportPage() {
         )}
       </DashCard>
 
-      <DashCard title="Items removed" status={r && r.removed.rows.length === 0 ? "empty" : cardStatus} onRetry={retry} updating={updating} empty={{ title: "No items removed in this period", description: "Voided items show here." }} bodyMinHeight={200}>
+      <DashCard title="Items removed" status={r && r.removed.rows.length === 0 ? "empty" : cardStatus} onRetry={retry} updating={updating} empty={{ title: "No items removed in this period", description: "Cancelled items show here." }} bodyMinHeight={200}>
         {r && (
           <div className="flex flex-col gap-2">
             <RemovedItemsTable rows={r.removed.rows} loading={false} onRowClick={(row) => setOpenDay(row.day)} total={r.kpis.current.voids} />

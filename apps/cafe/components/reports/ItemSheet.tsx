@@ -76,7 +76,7 @@ export function ItemSheet({ item, range, onOpenChange }: ItemSheetProps) {
             {(item.freeQty > 0 || d.removed.qty > 0) && (
               <Section title="Given away & taken back">
                 {item.freeQty > 0 && <Row label="Given free as rewards" value={String(item.freeQty)} />}
-                {d.removed.qty > 0 && <Row label="Taken back (voided)" value={`${d.removed.qty} · ${inr(d.removed.value)}`} />}
+                {d.removed.qty > 0 && <Row label="Taken back (cancelled)" value={`${d.removed.qty} · ${inr(d.removed.value)}`} />}
               </Section>
             )}
 

@@ -426,7 +426,7 @@ test("PIN: OrderReceipt resolves the logo via productImageUrl's no-crop fit, pri
 test("PIN: OrderReceipt prints *** CANCELLED *** plus a 'no payment due' line INSTEAD of Paid/Due when the order is Cancelled, and the cancelled branch itself prints neither a Paid nor a Due line", () => {
   const src = readSrc(ORDER_RECEIPT);
   assert.match(src, /\*\*\* CANCELLED \*\*\*/);
-  assert.match(src, /VOID — no payment due/);
+  assert.match(src, /CANCELLED — no payment due/);
 
   const ternaryIdx = src.indexOf("isCancelled ? (");
   assert.ok(ternaryIdx >= 0, "the Paid/Due block must be gated on isCancelled");
@@ -457,7 +457,7 @@ test("PIN: OrderReceipt prints *** CANCELLED *** plus a 'no payment due' line IN
 
 // ── 9. The VOID slip tells the kitchen who and what ─────────────────────────
 
-test("PIN: KOTReceipt's void variant prints *** VOID *** / CANCELLED ITEMS — DO NOT MAKE ONLY in the void branch (never in the plain-KOT branch, which prints KITCHEN ORDER instead), prefers voider/void-time with a both-or-neither fallback, and still prints modifiers/instructions", () => {
+test("PIN: KOTReceipt's void variant prints *** CANCEL *** / CANCELLED ITEMS — DO NOT MAKE ONLY in the void branch (never in the plain-KOT branch, which prints KITCHEN ORDER instead), prefers voider/void-time with a both-or-neither fallback, and still prints modifiers/instructions", () => {
   const src = readSrc(KOT_RECEIPT);
 
   const ternaryIdx = src.indexOf("isVoid ? (");
@@ -475,9 +475,9 @@ test("PIN: KOTReceipt's void variant prints *** VOID *** / CANCELLED ITEMS — D
   // Scoped to the branch (mirrors the cancelled-receipt pin above) — a whole-
   // file string search still passes if the banner became unconditional, or if
   // it were moved to the WRONG branch (inverted). Neither escapes this.
-  assert.match(voidBranch, /\*\*\* VOID \*\*\*/, "the void branch must print *** VOID ***");
+  assert.match(voidBranch, /\*\*\* CANCEL \*\*\*/, "the void branch must print *** CANCEL ***");
   assert.match(voidBranch, /CANCELLED ITEMS — DO NOT MAKE/, "the void branch must print the DO NOT MAKE warning");
-  assert.ok(!/\*\*\* VOID \*\*\*/.test(elseBranch), "the plain-KOT (else) branch must NOT print *** VOID ***");
+  assert.ok(!/\*\*\* CANCEL \*\*\*/.test(elseBranch), "the plain-KOT (else) branch must NOT print *** CANCEL ***");
   assert.ok(
     !/CANCELLED ITEMS — DO NOT MAKE/.test(elseBranch),
     "the plain-KOT (else) branch must NOT print the DO NOT MAKE warning",

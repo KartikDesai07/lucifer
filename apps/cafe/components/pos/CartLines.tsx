@@ -108,7 +108,7 @@ export function CartLines({
           setSelection(null);
           onVoidItem(voidLineOf(item, resumedOrder));
         }}
-      >Void</button>
+      >Cancel</button>
     );
   };
 

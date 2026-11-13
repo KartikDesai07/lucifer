@@ -42,7 +42,7 @@ const LAN_TIP = "Give the printer a fixed address (a static IP, or a DHCP reserv
 const LAN_DEVICE_NOTE =
   "The POS app on an Android phone or tablet, or the Windows app 1.12 or later on a PC, prints to a network printer. A device not listed here (a PC that prints nothing yet, say): open Printer setup on it and add the printer there.";
 const FULL_COPY_NOTE = "A full copy already holds every station's items.";
-const NOTICES_NOTE = "Void, moved and cancel slips for the stations it prints.";
+const NOTICES_NOTE = "Cancel and table-moved slips for the stations it prints.";
 const COPIES = ["1", "2", "3"];
 const ONE_WINDOWS_PRINTER = "This Windows app prints one printer, the one chosen for this PC. Install the Windows app 1.11 or later to print several printers here.";
 const ONE_APP_PRINTER = "This POS app prints one printer, the one on this device. Update the POS app to print several printers here.";

@@ -1390,7 +1390,7 @@ test("LeaksCard: the HTML's Money leaks - the lost-total pill, rows of a 32px ti
   const { LeaksCard } = await import("@/components/dashboard/RangeCards");
   const html = renderToStaticMarkup(createElement(LeaksCard, ready({ leaks: LEAKS })));
   assert.ok(tagOf(html, "leak-card").startsWith("<section"), "the card names itself (data-ui leak-card)");
-  assert.ok(html.includes(">Money leaks</h2>") && html.includes(">Cancelled, voided and given away</p>"), "the HTML's title and sub (ruling R17)");
+  assert.ok(html.includes(">Money leaks</h2>") && html.includes(">Cancelled and given away</p>"), "the HTML's title and sub (ruling R17)");
   const head = classesOf(html, "dash-card-head");
   hasAll(head, ["flex", "items-start", "justify-between", "gap-2.5"], "the head 10px apart (values 3.11)");
   assert.ok(!head.includes("gap-3"), "not the generic 12px");
@@ -1414,7 +1414,7 @@ test("LeaksCard: the HTML's Money leaks - the lost-total pill, rows of a 32px ti
   const svgs = (html.match(/<svg[^>]*>/g) ?? []).filter((s) => /width="16" height="16"/.test(s) && s.includes('stroke-width="1.8"') && s.includes('stroke-linecap="round"') && s.includes('stroke-linejoin="round"'));
   assert.equal(svgs.length, 4, "each glyph at 16px, stroke 1.8, round caps and joins");
   for (const t of allTags(html, "leak-label")) expectAll(t, ["block", "text-[13.5px]", "font-medium"], "the label 13.5/500");
-  assert.deepEqual(textsOf(html, "leak-label"), ["Cancelled orders", "Voided items", "Discounts given", "Rewards given"], "our four rows");
+  assert.deepEqual(textsOf(html, "leak-label"), ["Cancelled orders", "Cancelled items", "Discounts given", "Rewards given"], "our four rows");
   for (const t of allTags(html, "leak-sub")) expectAll(t, ["block", "text-[12px]", "text-subtle-foreground"], "the sub 12px text-3");
   assert.deepEqual(textsOf(html, "leak-sub"), ["2 orders", "5 items", "1 order", "0 orders"], "our subs");
   const amounts = allTags(html, "leak-amount");

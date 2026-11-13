@@ -20,7 +20,7 @@ import type { TextRow } from "./text-layout";
 
 const MOVED_TITLE = "*** TABLE MOVED ***";
 const MOVED_SUBTITLE = "FOOD ALREADY ORDERED — DO NOT MAKE AGAIN";
-const VOID_TITLE = "*** VOID ***";
+const VOID_TITLE = "*** CANCEL ***";
 const VOID_SUBTITLE = "CANCELLED ITEMS — DO NOT MAKE";
 const KOT_TITLE = "KITCHEN ORDER";
 
@@ -64,7 +64,7 @@ export const KOT_TEXT_CLASSIC: KotTextDesign = {
     },
     notes: (_block, { order }) => (order.notes ? [{ kind: "rule", rule: "dashed" }, textRow(`Note: ${order.notes}`, 0.86, true, "left")] : []),
     itemCount: (_block, { isMoved, isVoid, items }) =>
-      isMoved ? [] : [textRow(`${items.reduce((n, it) => n + it.qty, 0)} item(s)${isVoid ? " VOIDED" : ""}`, 0.86, false, "center")],
+      isMoved ? [] : [textRow(`${items.reduce((n, it) => n + it.qty, 0)} item(s)${isVoid ? " CANCELLED" : ""}`, 0.86, false, "center")],
     roundTotal: (_block, { isMoved, showsPrices, roundTotal }) =>
       !isMoved && showsPrices ? [textRow(`Round total: ${inr(roundTotal)}`, 0.86, true, "center")] : [],
     station: (_block, { stationLine }) => (stationLine ? [textRow(stationLine, 1.29, true, "center")] : []),

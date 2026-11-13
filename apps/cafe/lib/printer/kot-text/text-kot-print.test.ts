@@ -277,27 +277,29 @@ test("a printer job's slip names its printer; a simple-mode job's slip names non
 // blocks, whose item rows now go through billLinesOf (lib/bill-lines.ts). No KOT or token file changed.
 // Re-pinned 2026-11-03 (priced add-ons, D1: the bill prints "+ Cheese Burst ₹100"): the same four bill files now
 // render a line's modifiers through billModifierLines. No KOT or token file changed (the KOT hashes below held).
+// Re-pinned 2026-11-13 (owner: the word VOID becomes CANCEL everywhere): KOTReceipt + the KOT classic / bold blocks print
+// "*** CANCEL ***" and "item(s) CANCELLED"; OrderReceipt + the bill classic / themed blocks print "CANCELLED — ...". Copy only.
 const PICTURE_FILES: ReadonlyArray<readonly [string, string]> = [
   ["apps/cafe/lib/printer/escpos.ts", "a0ebdf99560951b26ab030fe2c063e32c39e2348b8267dea4ca630aa98bbacb7"],
   ["apps/cafe/lib/printer/raster.ts", "a8e28e7255671fde55fc67bcbfcfc4179a356190ff52d42db48403f4c9917a55"],
   ["apps/cafe/lib/printer/raster-assets.ts", "890fa950970a301991f5e6cad7a4c8ac944d86640242f162d69cce11df3c5282"],
   ["apps/cafe/lib/printer/lane-print.ts", "85c2fbfe90c4ace49714f4eca7dab38ea71f518aa2e85c046f7411eab041f631"],
   ["apps/cafe/lib/desktop-shell.ts", "6500105e629eab187c941973bdf2efefb9527a864ed3c7a4344ec31ff65002a9"],
-  ["apps/cafe/components/pos/KOTReceipt.tsx", "8cf5b916d92dfb849cebfc706e5092ae64a32f5543c32c3881280b75a2cc6a6c"],
-  ["apps/cafe/components/pos/OrderReceipt.tsx", "3c52e53c262c00e50a3a00a272b3d42f0fcece76dce82e6068a996c9ca3dd3a4"],
+  ["apps/cafe/components/pos/KOTReceipt.tsx", "7b832892a6b5568338d4b5573e12917a8b2b0f148d3348f337bd54eee81be1b1"],
+  ["apps/cafe/components/pos/OrderReceipt.tsx", "119169e7bfb8990303d9a5a8e0a58899c9eec23c9002b52cb642f8be2a2c60ff"],
   ["apps/cafe/components/pos/PrintSources.tsx", "9e48741a302e346676ab3d5743f33b71186f2ab263ada641486713e562391626"],
   ["apps/cafe/components/pos/PrintBanner.tsx", "ae64381a09a8756e96e5a8ff354dd30929ffe69157023b88d5eff34d7ac8adbb"],
   ["apps/cafe/components/print/slip/SlipEngine.tsx", "7dadadca482d807afe61af08fa5251fe6700c10b44d5e0742441c8532d0efa48"],
   ["apps/cafe/components/print/slip/SlipSkeleton.tsx", "f611392cca061ecbd578917e498bc6c2b22f9b6d82574d47377d28fee4065350"],
   ["apps/cafe/components/print/slip/TokenSlip.tsx", "dc61cf11886300c5fb1f67e25633fa81c56526944936445e12685019c8194e14"],
   ["apps/cafe/components/print/slip/bill-cafe-blocks.tsx", "52bfa8cdd7d34e936f07afe17c952417eb9cb101dc760b1d1e72b7aa0afb4edf"],
-  ["apps/cafe/components/print/slip/bill-classic-blocks.tsx", "9754c486fa0da664ed6f8515e4dedfeb94217aa9896b6f5e584f87c9ace217ea"],
+  ["apps/cafe/components/print/slip/bill-classic-blocks.tsx", "3ced9f9ca327278718a4243d91fa0af1937f7ff117daead7fbf106d5c6ee1b59"],
   ["apps/cafe/components/print/slip/bill-express-blocks.tsx", "cea92172ce8a542c8caec96488124b3f55a0df52bae05e273e2bb65522f5268f"],
   ["apps/cafe/components/print/slip/bill-modern-blocks.tsx", "23c2e561dbb5be0625c958d28e5a62725eeae9ace19e99c6042a3ff46ffa4a53"],
-  ["apps/cafe/components/print/slip/bill-themed-blocks.tsx", "e5446ddc2eb5fab607e4af45131d43ef4ce388f05d0db7c9b81873aa5d0e82ef"],
+  ["apps/cafe/components/print/slip/bill-themed-blocks.tsx", "f07d745d60c75eefd86b4ca71e99c120b39eea89a761e6934761e55cef331b4f"],
   ["apps/cafe/components/print/slip/generic-blocks.tsx", "caf0b117be2497bb9b089ec0f2f890e1b182d84a9d828a94ea27c752fc32b5ab"],
-  ["apps/cafe/components/print/slip/kot-bold-blocks.tsx", "f8cf55c4e5ad8d3b38a13ff09f79921d6954c948374c9c9ff584f80815db4957"],
-  ["apps/cafe/components/print/slip/kot-classic-blocks.tsx", "398dcaff958c617b564ff4f31f10bab9722bcd5345bcd3db17610d18b9d22c9f"],
+  ["apps/cafe/components/print/slip/kot-bold-blocks.tsx", "29fe784534e898ddb0d32f86d2c7de21bfdf7653e5fe05fbfeb5e2600c2cf8f7"],
+  ["apps/cafe/components/print/slip/kot-classic-blocks.tsx", "40afcfcc69b1f83db3b2f53e62faccd36004a8da4dd960357b091a70fc7fe411"],
   ["apps/cafe/components/print/slip/slip-code-lazy.ts", "c9b5ee58ab7c1b4b7667286f5a0f004f8a771d12b00c731801c401a0763e1082"],
   ["apps/cafe/components/print/slip/slip-code.ts", "57233d57b60d16bf006e708456ddbcdd5ffbca6a949c94ec8cfa8ea49355e857"],
   ["apps/cafe/components/print/slip/slip-context.ts", "4877169aca7bff0e6e709d5ea1ddfcd449e39e78dd8fa417492da37a8ba28ccd"],

@@ -509,7 +509,7 @@ test("PIN: CartLines selects one line and offers Remove (a new line) or Void (a 
   assert.ok(lines.includes("if (isBusy) return;"), "no selection while busy or frozen");
   const remove = between(lines, "item.kotRound === 0", ">Remove</button>");
   assert.ok(remove.includes("onRemove(item.lineId)"), "Remove removes that new line (today's remove)");
-  const voidRow = between(lines, "if (!resumedOrder || !onVoidItem) return null;", ">Void</button>");
+  const voidRow = between(lines, "if (!resumedOrder || !onVoidItem) return null;", ">Cancel</button>");
   assert.ok(voidRow.includes("onVoidItem(voidLineOf(item, resumedOrder))"), "Void opens the dialog on that sent line");
   assert.match(between(lines, "<CartLine", "/>"), /disabled=\{isBusy\}/, "every line's controls lock while busy");
   assert.ok(line.includes("onClick={disabled ? undefined : () => onToggle(item.lineId)}"), "a tap on the line selects it, not while busy");
@@ -537,7 +537,7 @@ test("PIN: the focus never falls to <body> after a line's Remove or Void", () =>
   );
   assert.ok(lines.includes("focusIndexAfterRemove(gone.index, names.length)"), "the next line, else the previous (the pure rule)");
   assert.ok(lines.includes("if (!gone || lines.some((l) => l.lineId === gone.lineId)) return;"), "only once the line is really gone");
-  const voidRow = between(lines, "if (!resumedOrder || !onVoidItem) return null;", ">Void</button>");
+  const voidRow = between(lines, "if (!resumedOrder || !onVoidItem) return null;", ">Cancel</button>");
   assert.ok(voidRow.includes("nameOf(e.currentTarget)?.focus();"), "Void hands the focus to the line's name first");
   assert.ok(
     voidRow.indexOf("nameOf(e.currentTarget)?.focus();") < voidRow.indexOf("onVoidItem(voidLineOf(item, resumedOrder))"),

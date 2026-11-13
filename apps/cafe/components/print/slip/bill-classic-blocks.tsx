@@ -117,7 +117,7 @@ export const BILL_CLASSIC_BLOCKS: ClassicBillRenderers = {
           *** CANCELLED ***
         </div>
         <div className="text-center text-[1.08em] font-semibold">
-          VOID — NOT A VALID RECEIPT
+          CANCELLED — NOT A VALID RECEIPT
         </div>
         <Divider />
       </>
@@ -245,7 +245,7 @@ export const BILL_CLASSIC_BLOCKS: ClassicBillRenderers = {
   payment: (_block, { order, isCancelled }) =>
     isCancelled ? (
       <div className="pt-1 text-center text-[0.92em] font-semibold">
-        VOID — no payment due
+        CANCELLED — no payment due
       </div>
     ) : (
       <>
