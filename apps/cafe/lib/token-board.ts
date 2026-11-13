@@ -43,7 +43,7 @@ export const TOKEN_BOARD_LIMIT = 50;
 export const TOKEN_STALE_MINUTES = 120;
 
 /** The order status a paid token order carries (Pay Now, or a settled tab). */
-const PAID_STATUS = "Completed";
+export const PAID_STATUS = "Completed";
 
 export type KitchenFilterMode = { tokenMode: false } | { tokenMode: true; dayStart: Date };
 export const TOKENS_OFF: KitchenFilterMode = { tokenMode: false };

@@ -566,6 +566,31 @@ one at a time, as before).
 - [ ] **If you roll the web back:** deploy the build before Phase 6 from the admin panel, then reload every POS screen.
       Nothing is stored differently, so nothing has to be moved back.
 
+### Existing cafes: the Kitchen paid Walk-In release
+
+A paid Walk-In order (no table: the counter's parcel) or a customer's QR parcel now **stays on the Kitchen screen
+until the kitchen taps Ready**, or leaves by itself 2 hours after its last KOT round. This holds whether it was paid
+with Pay Now or settled after its KOT. Before this release it left the Kitchen screen the moment it was paid, and a
+Pay Now Walk-In never showed there at all. Table orders do not change: they still leave the Kitchen screen when they
+are paid. Billing, payment, KOTs and slips, the token board and the apps do not change. There is no new kind of
+request, no new setting and no data migration.
+
+- [ ] **The web first.** Deploy the cafe from the admin panel. `GET /api/health` answers 200.
+- [ ] **Reload every POS and Kitchen screen** that was open before the deploy.
+- [ ] **Then the demo cafe**, before any client. Take a Walk-In order and pay it with Pay Now: its card shows on the
+      Kitchen screen and leaves on Ready. Then take a Walk-In order, send its KOT and then pay it: the card stays after
+      the payment and leaves on Ready. Finally take a table order, send its KOT and pay it: the card leaves when it is
+      paid, as before.
+- [ ] **Tell the kitchen once:** tap **Ready** on a Walk-In or parcel card when it is handed over. A card nobody marks
+      Ready leaves by itself after 2 hours.
+- [ ] **Once, right after the deploy:** today's paid Walk-In or parcel orders from the last 2 hours that nobody marked
+      Ready appear on the Kitchen screen. Tap Ready, or they leave by themselves within 2 hours.
+- [ ] **A cafe still serving at its daily restart time** (**Settings → Tokens & numbering** → **Daily restart time**,
+      midnight by default) sees paid Walk-In and parcel cards leave the Kitchen screen at that time, because they count
+      for one business day. Set the restart time to after closing (change it outside service hours).
+- [ ] **If you roll the web back:** deploy the build before this release from the admin panel, then reload every POS
+      and Kitchen screen. Nothing is stored differently, so nothing has to be moved back.
+
 ---
 
 ## §2 First run, and the admin handover (DEPLOYER → CAFE ADMIN)
