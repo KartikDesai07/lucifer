@@ -660,3 +660,26 @@ recipes; size override ignored; sum → overwrite; Pay Now gate removed; `stockU
 - Rollback: statement order only; a revert puts back the old order (a ledger throw would again leave the table held).
 - **Next =** the owner deploys and checks a cancel of a Pay Now table bill (the table frees); then the owner picks the
   next work.
+
+## After the phase: VOID becomes CANCEL (s120, 2026-11-13)
+
+> **DONE & VERIFIED 2026-11-13.** The owner deployed 0df98ad; a Pay Now table bill's cancel frees the table. Next work,
+> the client's ask: staff and slips never say VOID. The owner picked the KOT title `*** CANCEL ***` and the scope
+> "everywhere". Copy only: the `void` kind, the API path, data and identifiers are unchanged.
+
+- Kitchen ticket (on-screen, Classic, Bold, text Classic, text Bold): `*** CANCEL ***`, `N item(s) CANCELLED`; the
+  whole-order cancel notice uses the same variant. Cancelled-order bill: `CANCELLED — NOT A VALID RECEIPT`,
+  `CANCELLED — no payment due`.
+- POS: the sent line's **Cancel**; the dialog "Cancel an item" / "Cancel N × item" with the dismiss renamed **Keep item**
+  (two Cancel buttons otherwise, like CancelOrderDialog's "Keep order"). Toasts, item-cancel API errors, orders trail,
+  dashboard and reports wording, printer setup notes, job label `Cancelled item <dish>`, status chip `Item cancel`
+  (apart from the order's `Cancel notice`), go-live and mobile checklists.
+- Tests: needles moved at the same strength; a rendered-output pin (print-template-golden-stored) that no KOT, HTML or
+  text, and no cancelled bill prints VOID; label + chip pins (chip RED first). The picture byte pin
+  (text-kot-print.test.ts PICTURE_FILES) re-baselined for the 6 slip files changed here, with a dated note.
+- Review: one opus reviewer, no HIGH/MED; LOW 1 (chip read "Cancelled item: Cancelled — nothing printed") fixed; LOW 2
+  (labels unpinned) pinned. Mutants 6/6 killed (both labels, chip, Bold KOT title, text KOT title, Themed bill line).
+- Chain from `F:`: shared tsc 0, 1119/1119; cafe tsc 0, lint 0 errors (2 old warnings), 8641/8641; hub tsc 0, 288/288.
+  Pushed main 4cdb1fa (app 4070b5e).
+- **Next =** the owner deploys, reloads every POS screen, cancels one sent item and sees `*** CANCEL ***` on the KOT;
+  then the owner names the next work.
