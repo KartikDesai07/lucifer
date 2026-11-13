@@ -17,6 +17,7 @@
     "verify:dues:live": "node --import tsx scripts/verify-dues-live.ts",
     "verify:kitchen:live": "node --import tsx scripts/verify-kitchen-live.ts",
     "verify:kitchen:ready:live": "node --import tsx scripts/verify-kitchen-ready-live.ts",
+    "verify:kitchen:walkin:live": "node --import tsx scripts/verify-kitchen-walkin-live.ts",
     "verify:tokens:live": "node --import tsx scripts/verify-token-live.ts",
     "verify:branding:live": "node --import tsx scripts/verify-branding-live.ts",
     "verify:table-move:live": "node --import tsx scripts/verify-table-move-live.ts",
