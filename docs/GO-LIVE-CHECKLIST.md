@@ -585,6 +585,9 @@ request, no new setting and no data migration.
       Ready leaves by itself after 2 hours.
 - [ ] **Once, right after the deploy:** today's paid Walk-In or parcel orders from the last 2 hours that nobody marked
       Ready appear on the Kitchen screen. Tap Ready, or they leave by themselves within 2 hours.
+- [ ] **A cafe still serving at its daily restart time** (**Settings → Tokens & numbering** → **Daily restart time**,
+      midnight by default) sees paid Walk-In and parcel cards leave the Kitchen screen at that time, because they count
+      for one business day. Set the restart time to after closing (change it outside service hours).
 - [ ] **If you roll the web back:** deploy the build before this release from the admin panel, then reload every POS
       and Kitchen screen. Nothing is stored differently, so nothing has to be moved back.
 

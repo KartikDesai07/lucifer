@@ -30,7 +30,9 @@ export const dynamic = "force-dynamic";
 
 // A wall display's row cap, not a paginated list's — bounded so a busy shift
 // with many open tabs never hands back an unbounded query result on a 512MB
-// M0. Well within an 8s Vercel route (two bounded, indexed queries below).
+// M0. Well within an 8s Vercel route: every query below is bounded and indexed
+// (the open-tab query, the token arm with tokens on, the Walk-In arm, and the
+// one ticks read for the merged cards).
 const OPEN_TAB_LIMIT = 100;
 
 // POST /api/kitchen body — a cook ticking (or un-ticking) one collapsed
@@ -76,7 +78,9 @@ export async function GET() {
   try {
     await connectDB();
 
-    // S8 — tokens on adds today's PAID token orders as a second arm; tokens off is exactly the open-tab query.
+    // S8 — tokens on adds today's PAID token orders as a second arm; the open-tab query is the same either way.
+    // Spec 2026-11-13 — the Walk-In arm (tokens on or off) adds today's PAID Walk-In or parcel orders until Ready or
+    // 2 h; a paid TABLE order still leaves the board on payment.
     const mode = tokenModeOf(await getSettings(), new Date());
     const open = await Order.find({ ...kitchenOrderFilter(TOKENS_OFF), kotRounds: { $gte: 1 } })
       .select(kitchenSelectOf(filterModeOf(mode)))
@@ -112,7 +116,9 @@ export async function GET() {
 // POST /api/kitchen — tick (or un-tick) one collapsed board row. Idempotent by
 // construction: $addToSet/$pull make a double-tap or a retry a no-op, so no
 // CAS term is needed here — there is no lost-update hazard on a set. A settled
-// tab must not accrue ticks, so the guard below runs before either write.
+// TABLE tab must not accrue ticks, so the guard below runs before either write;
+// a paid Walk-In or parcel order of the day is still on the board (until Ready
+// or 2 h) and accepts ticks, Ready and Undo (spec 2026-11-13).
 export async function POST(req: Request) {
   const authed = await requireAuth();
   if ("error" in authed) return authed.error;
@@ -128,14 +134,16 @@ export async function POST(req: Request) {
     await connectDB();
     const mode = tokenModeOf(await getSettings(), new Date());
 
-    // EVERY verb is gated on the tab still being OPEN. That is deliberate for
-    // the un-tick too: a settled tab never returns to the board, so its refs
-    // are inert, and an ungated $pull would let a stale client keep mutating a
-    // closed tab's record. The only cost is the message below — an Undo tapped
-    // after someone else settled the tab is told plainly what happened rather
-    // than being shown a "not found" that reads like the line vanished.
-    // "Open" is kitchenGateFilter(mode): with tokens on it also covers today's paid token orders, and always today's
-    // paid Walk-In or parcel orders (spec 2026-11-13).
+    // EVERY verb is gated on the order still being one the board can show. That
+    // is deliberate for the un-tick too: a settled TABLE tab never returns to
+    // the board, so its refs are inert, and an ungated $pull would let a stale
+    // client keep mutating a closed tab's record. The only cost is the message
+    // below — an Undo tapped after someone else settled the tab is told plainly
+    // what happened rather than being shown a "not found" that reads like the
+    // line vanished. The gate is kitchenGateFilter(mode): open tabs; with tokens
+    // on, today's paid token orders; and always today's paid Walk-In or parcel
+    // orders (spec 2026-11-13, for the whole business day: their card stays
+    // until Ready or 2 h, and their ticks, Ready and Undo work after payment).
     const open = await Order.exists({ _id: orderId, ...kitchenGateFilter(mode) });
     if (!open) {
       return notFound(

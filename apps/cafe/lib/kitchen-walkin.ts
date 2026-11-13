@@ -1,9 +1,11 @@
 // Kitchen board, paid Walk-In / parcel arm (spec 2026-11-13 kitchen-paid-walkin, owner rules O3/O4) — the pure Mongo
-// filter builders. Pure: no DB, no React, no fetch (the server read that runs them comes later).
+// filter builders. Pure: no DB, no React, no fetch (the server read that runs them is lib/kitchen-walkin-server.ts).
 //
 // A PAID order of the business day with no table (Walk-In) or marked parcel stays on the Kitchen board until Ready or
 // the 120 minute stale-out, exactly like a paid token order. Every call returns FRESH objects: no nested array or
 // object is shared between calls or with OPEN_TAB_FILTER.
+// The Kitchen POST's gate is kitchenGateFilter here, not kitchenOrderFilter (whose "THE kitchen gate" comment in
+// lib/token-board.ts predates this release; token-board.ts stays as it is).
 import { OPEN_TAB_FILTER, PAID_STATUS, paidTokenFilter, type TokenMode } from "@/lib/token-board";
 
 /** A paid order of the current business day with no table (`tableNo: null` matches absent and null) or a parcel. */

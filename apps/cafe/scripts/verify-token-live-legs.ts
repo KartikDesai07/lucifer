@@ -178,7 +178,7 @@ async function capture(fn: () => Promise<void>): Promise<Call[]> {
 }
 
 async function t7(): Promise<void> {
-  console.log("T7 Tokens OFF - the kitchen query is exactly today's");
+  console.log("T7 Tokens OFF - no token arm; the open-tab query is exactly today's (plus the Walk-In arm, spec 2026-11-13)");
   const paid = await payNow();
   const tab = await create({ customerName: "Plain tab" });
   await setSettings({ tokenEnabled: false });
@@ -186,14 +186,16 @@ async function t7(): Promise<void> {
   const orderFinds = calls.filter((c) => c.coll === "orders");
   const [filter, options] = (orderFinds[0]?.args ?? []) as [unknown, Record<string, unknown> | undefined];
   const projection = (options?.projection ?? {}) as Record<string, number>;
-  ck("exactly one orders query, a find", orderFinds.length === 1 && orderFinds[0].method === "find");
+  ck("the first orders query is a find (the open-tab query)", orderFinds[0]?.method === "find");
   ck("filter is exactly {status:Pending, payment:Unpaid, kotRounds:{$gte:1}} (key for key)", JSON.stringify(filter) === JSON.stringify({ status: "Pending", payment: "Unpaid", kotRounds: { $gte: 1 } }));
   ck("projection is the KITCHEN_ORDER_SELECT fields incl. parcel, no tokenNumber", JSON.stringify(Object.keys(projection).sort()) === JSON.stringify([...KITCHEN_SELECT_FIELDS].sort()) && "parcel" in projection && !("tokenNumber" in projection));
   ck("sort {createdAt:1}, limit 100", JSON.stringify(options?.sort) === JSON.stringify({ createdAt: 1 }) && options?.limit === 100);
-  ck("exactly one kotticks find", calls.filter((c) => c.coll === "kotticks").length === 1 && calls.filter((c) => c.coll === "kotticks")[0].method === "find");
-  ck("landmark: the open tab's card is on the board, the paid token order's is not", (await cardOf(tab.id)) !== undefined && (await cardOf(paid.id)) === undefined);
+  ck("no orders query carries tokenNumber {$exists:true} (the token arm never runs)", !orderFinds.some((c) => JSON.stringify(c.args[0] ?? {}).includes('"tokenNumber":{"$exists":true}')));
+  ck("every later orders query is a find with status Completed and the Walk-In $or (the Walk-In arm)", orderFinds.length > 1 && orderFinds.slice(1).every((c) => c.method === "find" && (c.args[0] as Record<string, unknown> | undefined)?.status === "Completed" && JSON.stringify(c.args[0]).includes('"$or":[{"tableNo":null},{"parcel":true}]')));
+  ck("every kotticks query is a find (no write), at most two (the route's one + the Walk-In arm's one)", calls.filter((c) => c.coll === "kotticks").length >= 1 && calls.filter((c) => c.coll === "kotticks").length <= 2 && calls.filter((c) => c.coll === "kotticks").every((c) => c.method === "find"));
+  ck("landmark: the open tab's card is on the board, and so is the paid Pay Now order (no table = a paid Walk-In)", (await cardOf(tab.id)) !== undefined && (await cardOf(paid.id)) !== undefined);
   const post = await kitchenPost({ action: "ready", orderId: paid.id, ready: true });
-  ck("Kitchen POST ready on the paid token order -> 404, nothing written", post.status === 404 && !(await tickOf(paid.id)));
+  ck("Kitchen POST ready on that paid Walk-In -> 200, a KotTick readyAt stored (workable with tokens off)", post.status === 200 && !!(await tickOf(paid.id))?.readyAt);
   let res: Res<Board> | undefined;
   const boardCalls = await capture(async () => { res = await boardRes(); });
   ck("GET /api/tokens -> enabled:false, empty lists, and no orders query", res?.body.data?.enabled === false && res.body.data.preparing.length === 0 && boardCalls.filter((c) => c.coll === "orders").length === 0);
@@ -255,7 +257,7 @@ async function t10(): Promise<void> {
   ck("tokens on: tick on a paid token card -> 200, ref stored", on.status === 200 && ((await tickOf(o.id))?.refs as string[] | undefined)?.includes(ref) === true);
   await setSettings({ tokenEnabled: false });
   const off = await tick(false);
-  ck("tokens off: the same tick -> 404, ref NOT pulled", off.status === 404 && ((await tickOf(o.id))?.refs as string[] | undefined)?.includes(ref) === true);
+  ck("tokens off: the same untick -> 200, ref pulled (a paid Walk-In, spec 2026-11-13)", off.status === 200 && ((await tickOf(o.id))?.refs as string[] | undefined)?.includes(ref) === false);
 }
 
 async function t11(): Promise<void> {

@@ -33,7 +33,7 @@ test("readKitchenWalkInArm: the token arm's two-phase shape over walkInArmFilter
   assert.match(src, /\.limit\(TOKEN_DAY_SCAN_LIMIT\)/);
   assert.match(src, /if \(candidates\.length === 0\) return \[\];/, "early exit without candidates");
   assert.match(src, /KotTick\.find\(\{\s*_id:\s*\{\s*\$in:\s*ids\s*\}\s*\}\)\.select\("readyAt"\)/, "ticks by _id");
-  assert.match(src, /pendingTokenIds\(candidates,\s*readyAtById,\s*Date\.now\(\)\)/);
+  assert.match(src, /pendingTokenIds\(kept,\s*readyAtById,\s*Date\.now\(\)\)/);
   assert.match(src, /if \(pending\.length === 0\) return \[\];/, "early exit when nothing is pending");
   assert.match(src, /Order\.find\(\{\s*_id:\s*\{\s*\$in:\s*pending\s*\},\s*\.\.\.walkInArmFilter\(mode\)\s*\}\)/, "full read re-applies the filter");
   assert.match(src, /\.select\(kitchenSelectOf\(filterModeOf\(mode\)\)\)/);
@@ -41,6 +41,22 @@ test("readKitchenWalkInArm: the token arm's two-phase shape over walkInArmFilter
   for (const banned of ["connectDB(", ".updateOne(", ".create(", "$set", "setTimeout", "setInterval"]) {
     assert.ok(!src.includes(banned), `read only: no ${banned}`);
   }
+});
+
+// Fix wave F1: a paid Walk-In whose every fired line is noKot is still written with kotRounds 1, so it is a candidate,
+// but buildKitchenCards gives it no card and nobody can tap Ready. Kept, it would hold one of pendingTokenIds' oldest-
+// first slots for 2 h, and 60 of them would hide every newer real paid Walk-In. The token arm needs no such drop.
+test("readKitchenWalkInArm: noKot-only candidates are dropped BEFORE pendingTokenIds, which gets the kept list", () => {
+  const src = read(ARM);
+  assert.match(src, /import \{ orderSkipsKitchen \} from "@\/lib\/kitchen-lines";/);
+  const drop = /const kept = candidates\.filter\(\s*\(order\) => !\(order\.items !== undefined && orderSkipsKitchen\(\{ items: order\.items \}\)\),?\s*\);/;
+  assert.match(src, drop, "the noKot-only drop, guarded on items like token-board.ts");
+  const dropAt = src.search(drop);
+  const pendingAt = src.indexOf("pendingTokenIds(");
+  assert.ok(dropAt > 0 && pendingAt > dropAt, "the drop sits before pendingTokenIds(");
+  assert.equal(count(src, "pendingTokenIds("), 1, "pendingTokenIds runs once");
+  assert.ok(!src.includes("pendingTokenIds(candidates"), "pendingTokenIds never receives the unfiltered candidates");
+  assert.match(src, /const pending = pendingTokenIds\(kept,/, "pendingTokenIds receives the kept list");
 });
 
 test("kitchen GET: the Walk-In arm runs once, after the token arm, and merges last", () => {

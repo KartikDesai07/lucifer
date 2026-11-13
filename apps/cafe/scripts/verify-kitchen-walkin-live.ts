@@ -3,9 +3,10 @@
  *
  * WHAT IT PROVES: against a real mongod, through the REAL GET and POST of app/api/kitchen/route.ts, a PAID
  * (Completed) Walk-In (no tableNo) or parcel order of the business day stays on the board until the kitchen taps
- * Ready or 120 minutes pass; table orders still leave on payment; a token order is exactly one card; and the arm's
- * candidate query is served by an index (no COLLSCAN). Orders are seeded in the shapes the create and settle routes
- * write (status/payment, kotRounds 1, kotFiredAt [t], one kitchen line with kotRound 1).
+ * Ready or 120 minutes pass; table orders still leave on payment; a token order is exactly one card; kotRounds 0 is
+ * excluded; noKot-only paid Walk-Ins (no card) never take the arm's 60 slots; and the arm's candidate query is served
+ * by an index that also serves its sort (no COLLSCAN, no blocking SORT). Orders are seeded in the shapes the create and
+ * settle routes write (status/payment, kotRounds 1, kotFiredAt [t], one kitchen line with kotRound 1).
  *
  *   MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_kitchen_walkin npm run verify:kitchen:walkin:live
  *
@@ -229,7 +230,7 @@ async function run(): Promise<void> {
   // 15: skip-KOT.
   check("15 a paid Walk-In whose only line is noKot has no card", !(await onBoard(await seed({ noKot: true }))));
 
-  // 16: the arm's candidate query uses an index.
+  // 16: the arm's candidate query uses an index, and the index serves its sort (no COLLSCAN, no blocking SORT).
   const mode = { enabled: false, dayStart, clearMinutes: 10 };
   const plan = await Order.find({ ...walkInArmFilter(mode), kotRounds: { $gte: 1 } })
     .sort({ createdAt: -1 })
@@ -237,8 +238,40 @@ async function run(): Promise<void> {
     .explain("queryPlanner");
   const winning = JSON.stringify((plan as unknown as { queryPlanner: { winningPlan: unknown } }).queryPlanner.winningPlan);
   const indexes = [...winning.matchAll(/"indexName":"([^"]+)"/g)].map((x) => x[1]);
-  console.log(`winning plan index: ${indexes.join(", ") || "(none)"}`);
-  check("16 the Walk-In candidate query has no COLLSCAN", !winning.includes("COLLSCAN") && indexes.length > 0, winning);
+  // Every stage name anywhere in the tree (exact names: SORT_KEY_GENERATOR or SORT_MERGE is not a blocking SORT).
+  const stages = [...winning.matchAll(/"stage":"([^"]+)"/g)].map((x) => x[1]);
+  console.log(`winning plan index: ${indexes.join(", ") || "(none)"}; stages: ${stages.join(" > ") || "(none)"}`);
+  const served = !winning.includes("COLLSCAN") && !stages.includes("SORT") && indexes.length > 0;
+  check("16 the Walk-In candidate query has no COLLSCAN and no blocking SORT (the index serves the sort)", served, winning);
+
+  // 17: kotRounds 0 is excluded (the line still carries kotRound 1, as seeded everywhere, so only kotRounds differs).
+  const zero = await seed();
+  await Order.collection.updateOne({ _id: new Types.ObjectId(zero) }, { $set: { kotRounds: 0 } });
+  check("17 a paid Walk-In with kotRounds 0 is NOT on the board", !(await onBoard(zero)));
+  await Order.collection.updateOne({ _id: new Types.ObjectId(zero) }, { $set: { kotRounds: 1 } });
+  check("17' landmark: the same order with kotRounds 1 IS on the board", await onBoard(zero));
+
+  // 18: 61 noKot-only paid Walk-Ins, all OLDER than one real paid Walk-In, must not take the arm's 60 slots.
+  await seedNoKotOnly(61);
+  const real = await seed();
+  const noKotCount = await Order.countDocuments({ orderId: /^WK-NK-/, status: "Completed", kotRounds: 1, "items.noKot": true });
+  check("18' landmark: 61 paid noKot-only Walk-Ins are stored", noKotCount === 61, `count ${noKotCount}`);
+  check("18 61 older noKot-only paid Walk-Ins do not push a real paid Walk-In off the board", await onBoard(real));
+}
+
+/** `n` paid Walk-Ins whose only line is noKot (water), fired 20..(19+n) minutes ago: inside today, under 2 h old, and
+ *  older than any default seed. The create/settle routes' shape; one raw insertMany keeps the leg small. */
+async function seedNoKotOnly(n: number): Promise<void> {
+  const docs = Array.from({ length: n }, (_, i) => {
+    const fired = new Date(Date.now() - (20 + i) * MIN);
+    const line = { productId: new Types.ObjectId(), name: "Water", price: 20, qty: 1, modifiers: [], instructions: "", kotRound: 1, noKot: true };
+    return {
+      orderId: `WK-NK-${i}`, customerName: "Walk-In", items: [line], subtotal: 20, total: 20, paidAmount: 20,
+      payment: "Cash", status: "Completed", receiver: "Live leg", kotRounds: 1, kotFiredAt: [fired],
+      createdAt: new Date(fired.getTime() - MIN), updatedAt: fired,
+    };
+  });
+  await Order.collection.insertMany(docs);
 }
 
 async function main(): Promise<void> {
