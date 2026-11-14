@@ -683,3 +683,5 @@ recipes; size override ignored; sum → overwrite; Pay Now gate removed; `stockU
   Pushed main 4cdb1fa (app 4070b5e).
 - **Next =** the owner deploys, reloads every POS screen, cancels one sent item and sees `*** CANCEL ***` on the KOT;
   then the owner names the next work.
+- Owner checks (s121, 2026-11-14): deployed 4cdb1fa, reloaded, cancelled a sent item: the KOT printed `*** CANCEL ***`
+  and the POS showed Cancel / Keep item, all fine (the CANCEL wording is live). The owner will name the next work later.
